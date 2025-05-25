@@ -12,13 +12,6 @@
 		"LS(/workspace/**)"
 	],
 	"deny": [
-		"Read(**/.env*)",
-		"Read(**/secrets/**)",
-		"Read(**/*.key)",
-		"Read(**/*.pem)",
-		"Read(**/private/**)",
-		"Write(**/.env*)",
-		"Edit(**/.env*)",
 		"Bash(reboot)",
 		"Bash(shutdown *)",
 		"Bash(poweroff)",
