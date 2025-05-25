@@ -442,6 +442,19 @@
           }
       when: not claude_settings.stat.exists
 
+    - name: Check for Claude .env file
+      stat:
+        path: "{{ project_path }}/packages/vm/claude-settings/.env.claude"
+      register: claude_env
+
+    - name: Copy Claude .env file
+      copy:
+        src: "{{ project_path }}/packages/vm/claude-settings/.env.claude"
+        dest: "/home/{{ project_user }}/.claude/.env"
+        remote_src: yes
+        owner: "{{ project_user }}"
+      when: claude_env.stat.exists
+
     # Universal aliases and environment
     - name: Add universal aliases
       blockinfile:
