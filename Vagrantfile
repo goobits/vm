@@ -40,8 +40,15 @@ Vagrant.configure("2") do |config|
   workspace_path = project_config['project']['workspace_path']
   
   # Forward ports from config
+  port_binding = project_config.dig('vm', 'port_binding')
   project_config['ports'].each do |service, port|
-    config.vm.network "forwarded_port", guest: port, host: port, host_ip: "127.0.0.1", auto_correct: true
+    if port_binding
+      # Use specified binding (e.g., "127.0.0.1" for localhost only)
+      config.vm.network "forwarded_port", guest: port, host: port, host_ip: port_binding, auto_correct: true
+    else
+      # Default: bind to all interfaces (0.0.0.0) for broader accessibility
+      config.vm.network "forwarded_port", guest: port, host: port, auto_correct: true
+    end
   end
   
   # VirtualBox provider (default)
