@@ -1,0 +1,629 @@
+---
+# Configuration-Driven Development Environment
+- name: Setup Development Environment
+  hosts: all
+  become: yes
+  vars:
+    # Default values, will be overridden by config
+    default_user: "vagrant"
+    default_workspace: "/workspace"
+
+  # Load and process configuration
+  pre_tasks:
+    - name: Check for merged configuration from Vagrant
+      stat:
+        path: "/tmp/vm-config.json"
+      register: config_file_stat
+
+    - name: Load merged configuration from Vagrant
+      set_fact:
+        project_config: "{{ lookup('file', '/tmp/vm-config.json') | from_json }}"
+      when: config_file_stat.stat.exists
+
+    - name: Use minimal fallback configuration
+      set_fact:
+        project_config:
+          project:
+            name: "{{ ansible_hostname.split('.')[0] | default('project') }}"
+            hostname: "dev.{{ ansible_hostname.split('.')[0] | default('project') }}.local"
+            workspace_path: "{{ default_workspace }}"
+          vm:
+            user: "{{ default_user }}"
+          services:
+            postgresql: { enabled: false }
+            redis: { enabled: false }
+            mongodb: { enabled: false }
+            docker: { enabled: true }
+            headless_browser: { enabled: false }
+          terminal:
+            emoji: "🚀"
+            username: "dev"
+            theme: "dracula"
+          aliases: { }
+          environment: { }
+      when: not config_file_stat.stat.exists
+
+    - name: Check for terminal themes
+      stat:
+        path: "{{ default_workspace }}/packages/vm/themes.json"
+      register: themes_file_stat
+
+    - name: Load terminal themes
+      set_fact:
+        terminal_themes: "{{ lookup('file', default_workspace + '/packages/vm/themes.json') | from_json }}"
+      when: themes_file_stat.stat.exists
+
+    - name: Use fallback Dracula theme
+      set_fact:
+        terminal_themes:
+          dracula:
+            name: "Dracula"
+            colors:
+              foreground: "#f8f8f2"
+              background: "#282a36"
+              red: "#ff5555"
+              green: "#50fa7b"
+              yellow: "#f1fa8c"
+              blue: "#bd93f9"
+              magenta: "#ff79c6"
+              cyan: "#8be9fd"
+              bright_black: "#6272a4"
+      when: not themes_file_stat.stat.exists
+
+    - name: Set derived variables
+      set_fact:
+        project_name: "{{ project_config.project.name | default('project') }}"
+        project_user: "{{ project_config.vm.user | default(default_user) }}"
+        project_path: "{{ project_config.project.workspace_path | default(default_workspace) }}"
+        project_hostname: "{{ project_config.project.hostname | default('dev.' + (project_config.project.name | default('project')) + '.local') }}"
+        terminal_emoji: "{{ project_config.terminal.emoji | default('🚀') }}"
+        terminal_username: "{{ project_config.terminal.username | default('dev') }}"
+        terminal_theme_name: "{{ project_config.terminal.theme | default('dracula') }}"
+        show_git_branch: "{{ project_config.terminal.show_git_branch | default(true) }}"
+        show_timestamp: "{{ project_config.terminal.show_timestamp | default(false) }}"
+        terminal_colors: "{{ terminal_themes[project_config.terminal.theme | default('dracula')].colors | default(terminal_themes.dracula.colors) }}"
+
+  handlers:
+    - name: restart postgresql
+      systemd:
+        name: postgresql
+        state: restarted
+
+    - name: restart redis
+      systemd:
+        name: redis-server
+        state: restarted
+
+    - name: restart ssh
+      systemd:
+        name: ssh
+        state: restarted
+
+  tasks:
+    # System configuration
+    - name: Set hostname
+      hostname:
+        name: "{{ project_hostname }}"
+
+    - name: Update /etc/hosts with hostname
+      lineinfile:
+        path: /etc/hosts
+        regexp: '^127\.0\.1\.1'
+        line: "127.0.1.1 {{ project_hostname }} {{ project_hostname.split('.')[0] }}"
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install base system packages
+      apt:
+        name:
+          - curl
+          - wget
+          - git
+          - git-lfs
+          - build-essential
+          - python3-pip
+          - python3-dev
+          - python3-venv
+          - ufw
+          - fail2ban
+          - unattended-upgrades
+          - jq
+          - htop
+          - tree
+          - ncdu
+          - python3-psycopg2
+          - zsh
+          - zsh-syntax-highlighting
+        state: present
+
+    # Security setup - Configure rules first, enable last
+    - name: Allow SSH (critical - must be first)
+      ufw:
+        rule: allow
+        port: 22
+        proto: tcp
+        comment: "Allow SSH access"
+
+    - name: Allow configured ports from localhost
+      ufw:
+        rule: allow
+        port: "{{ item.value }}"
+        proto: tcp
+        from_ip: 127.0.0.1
+        comment: "Allow {{ item.key }} port"
+      with_dict: "{{ project_config.ports | default({}) }}"
+      when: project_config.ports is defined
+
+    - name: Allow configured ports from Vagrant host
+      ufw:
+        rule: allow
+        port: "{{ item.value }}"
+        proto: tcp
+        from_ip: 10.0.2.2
+        comment: "Allow {{ item.key }} port from Vagrant host"
+      with_dict: "{{ project_config.ports | default({}) }}"
+      when: project_config.ports is defined
+
+    # Node.js via NVM
+    - name: Download NVM installer
+      get_url:
+        url: "https://raw.githubusercontent.com/nvm-sh/nvm/{{ project_config.versions.nvm | default('v0.39.7') }}/install.sh"
+        dest: /tmp/install_nvm.sh
+        mode: '0755'
+      become_user: "{{ project_user }}"
+
+    - name: Install NVM
+      shell: /tmp/install_nvm.sh
+      args:
+        creates: "/home/{{ project_user }}/.nvm/nvm.sh"
+      become_user: "{{ project_user }}"
+
+    # Change default shell to zsh
+    - name: Change vagrant user shell to zsh
+      user:
+        name: "{{ project_user }}"
+        shell: /usr/bin/zsh
+
+    - name: Setup NVM in shell
+      blockinfile:
+        path: "/home/{{ project_user }}/.zshrc"
+        block: |
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+        marker: "# {mark} ANSIBLE MANAGED - NVM"
+        create: yes
+
+    - name: Setup custom zsh prompt with project branding
+      blockinfile:
+        path: "/home/{{ project_user }}/.zshrc"
+        block: |
+          # Custom prompt function
+          function git_branch_name() {
+            {% if show_git_branch %}
+            git branch 2>/dev/null | grep '^*' | colrm 1 2 | sed 's/^/ (/' | sed 's/$/)/'
+            {% endif %}
+          }
+          
+          function format_timestamp() {
+            {% if show_timestamp %}
+            echo " [$(date '+%H:%M:%S')]"
+            {% endif %}
+          }
+          
+          # Set custom prompt: emoji username project-name > 
+          setopt PROMPT_SUBST
+          PROMPT='{{ terminal_emoji }} {{ terminal_username }} {{ project_name }}$(git_branch_name)$(format_timestamp) > '
+        marker: "# {mark} ANSIBLE MANAGED - PROMPT"
+        create: yes
+
+    - name: Setup terminal color scheme
+      blockinfile:
+        path: "/home/{{ project_user }}/.zshrc"
+        block: |
+          # Terminal color scheme: {{ terminal_theme_name }} ({{ terminal_themes[terminal_theme_name].name | default('Unknown') }})
+          # {{ terminal_themes[terminal_theme_name].description | default('') }}
+          export TERM=xterm-256color
+          
+          # Theme-based color scheme for ls and other tools
+          export LS_COLORS='di=1;34:ln=1;36:so=1;35:pi=1;33:ex=1;32:bd=1;33:cd=1;33:su=0;41:sg=0;46:tw=0;42:ow=0;43:'
+          
+          # Enable colored output for common commands
+          alias ls='ls --color=auto'
+          alias grep='grep --color=auto'
+          alias fgrep='fgrep --color=auto'
+          alias egrep='egrep --color=auto'
+          alias diff='diff --color=auto'
+          
+          # Theme colors for zsh syntax highlighting
+          if [[ -r /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]]; then
+            source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+            # Apply {{ terminal_theme_name }} theme colors
+            ZSH_HIGHLIGHT_HIGHLIGHTERS=(main brackets pattern cursor)
+            ZSH_HIGHLIGHT_STYLES[default]='fg={{ terminal_colors.foreground }}'
+            ZSH_HIGHLIGHT_STYLES[unknown-token]='fg={{ terminal_colors.red }}'
+            ZSH_HIGHLIGHT_STYLES[reserved-word]='fg={{ terminal_colors.magenta }}'
+            ZSH_HIGHLIGHT_STYLES[alias]='fg={{ terminal_colors.green }}'
+            ZSH_HIGHLIGHT_STYLES[suffix-alias]='fg={{ terminal_colors.green }}'
+            ZSH_HIGHLIGHT_STYLES[builtin]='fg={{ terminal_colors.green }}'
+            ZSH_HIGHLIGHT_STYLES[function]='fg={{ terminal_colors.green }}'
+            ZSH_HIGHLIGHT_STYLES[command]='fg={{ terminal_colors.green }}'
+            ZSH_HIGHLIGHT_STYLES[precommand]='fg={{ terminal_colors.green }}'
+            ZSH_HIGHLIGHT_STYLES[commandseparator]='fg={{ terminal_colors.magenta }}'
+            ZSH_HIGHLIGHT_STYLES[hashed-command]='fg={{ terminal_colors.green }}'
+            ZSH_HIGHLIGHT_STYLES[path]='fg={{ terminal_colors.foreground }}'
+            ZSH_HIGHLIGHT_STYLES[path_pathseparator]='fg={{ terminal_colors.bright_black }}'
+            ZSH_HIGHLIGHT_STYLES[globbing]='fg={{ terminal_colors.magenta }}'
+            ZSH_HIGHLIGHT_STYLES[history-expansion]='fg={{ terminal_colors.blue }}'
+            ZSH_HIGHLIGHT_STYLES[single-hyphen-option]='fg={{ terminal_colors.yellow }}'
+            ZSH_HIGHLIGHT_STYLES[double-hyphen-option]='fg={{ terminal_colors.yellow }}'
+            ZSH_HIGHLIGHT_STYLES[back-quoted-argument]='fg={{ terminal_colors.cyan }}'
+            ZSH_HIGHLIGHT_STYLES[single-quoted-argument]='fg={{ terminal_colors.yellow }}'
+            ZSH_HIGHLIGHT_STYLES[double-quoted-argument]='fg={{ terminal_colors.yellow }}'
+            ZSH_HIGHLIGHT_STYLES[dollar-quoted-argument]='fg={{ terminal_colors.yellow }}'
+            ZSH_HIGHLIGHT_STYLES[dollar-double-quoted-argument]='fg={{ terminal_colors.cyan }}'
+            ZSH_HIGHLIGHT_STYLES[back-double-quoted-argument]='fg={{ terminal_colors.cyan }}'
+            ZSH_HIGHLIGHT_STYLES[back-dollar-quoted-argument]='fg={{ terminal_colors.cyan }}'
+            ZSH_HIGHLIGHT_STYLES[assign]='fg={{ terminal_colors.foreground }}'
+            ZSH_HIGHLIGHT_STYLES[redirection]='fg={{ terminal_colors.magenta }}'
+            ZSH_HIGHLIGHT_STYLES[comment]='fg={{ terminal_colors.bright_black }}'
+          fi
+        marker: "# {mark} ANSIBLE MANAGED - COLORS"
+        create: yes
+
+    - name: Install Node.js
+      shell: |
+        source ~/.nvm/nvm.sh
+        nvm install {{ project_config.versions.node | default('22') }}
+        nvm use {{ project_config.versions.node | default('22') }}
+        nvm alias default {{ project_config.versions.node | default('22') }}
+      args:
+        executable: /bin/bash
+      become_user: "{{ project_user }}"
+
+    - name: Enable corepack for Yarn
+      shell: |
+        source ~/.nvm/nvm.sh
+        corepack enable
+      args:
+        executable: /bin/bash
+      become_user: "{{ project_user }}"
+
+    - name: Install Yarn
+      shell: |
+        source ~/.nvm/nvm.sh
+        corepack prepare yarn@{{ project_config.versions.yarn | default('4.9.1') }} --activate
+      args:
+        executable: /bin/bash
+      become_user: "{{ project_user }}"
+
+    - name: Install global npm packages
+      shell: |
+        source ~/.nvm/nvm.sh
+        npm install -g {{ item }}
+      args:
+        executable: /bin/bash
+      become_user: "{{ project_user }}"
+      loop: "{{ project_config.npm_packages | default([]) }}"
+      when: project_config.npm_packages is defined and project_config.npm_packages | length > 0
+
+    # PostgreSQL (conditional)
+    - name: Install PostgreSQL
+      apt:
+        name:
+          - postgresql
+          - postgresql-contrib
+        state: present
+      when: project_config.services.postgresql.enabled | default(false)
+
+    - name: Configure PostgreSQL and create database
+      shell: |
+        sudo -u postgres psql -c "ALTER USER {{ project_config.services.postgresql.user | default('postgres') }} PASSWORD '{{ project_config.services.postgresql.password | default('postgres') }}';"
+        sudo -u postgres createdb "{{ project_config.services.postgresql.database }}" || echo "Database exists"
+      when: project_config.services.postgresql.enabled | default(false)
+
+    - name: Check for database backup
+      find:
+        paths: "{{ project_path }}/backups"
+        patterns: "{{ project_config.backup_pattern | default('*backup*.sql.gz') }}"
+      register: backup_files
+      when: project_config.services.postgresql.enabled | default(false)
+
+    - name: Restore database from backup
+      shell: |
+        gunzip -c "{{ (backup_files.files | sort(attribute='mtime') | last).path }}" | sudo -u postgres psql -d "{{ project_config.services.postgresql.database }}"
+      when:
+        - project_config.services.postgresql.enabled | default(false)
+        - backup_files.files | length > 0
+
+    # Redis (conditional)
+    - name: Install Redis
+      apt:
+        name: redis-server
+        state: present
+      when: project_config.services.redis.enabled | default(false)
+
+    - name: Configure Redis
+      lineinfile:
+        path: /etc/redis/redis.conf
+        regexp: "^bind"
+        line: "bind 127.0.0.1 ::1"
+      notify: restart redis
+      when: project_config.services.redis.enabled | default(false)
+
+    # Headless browser testing
+    - name: Install browser testing tools
+      apt:
+        name:
+          - chromium-browser
+          - xvfb
+        state: present
+
+    - name: Create Xvfb service
+      copy:
+        dest: /etc/systemd/system/xvfb.service
+        content: |
+          [Unit]
+          Description=X Virtual Framebuffer
+          After=network.target
+          [Service]
+          Type=simple
+          ExecStart=/usr/bin/Xvfb :99 -screen 0 1024x768x24 -ac
+          Restart=always
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Enable Xvfb
+      systemd:
+        name: xvfb
+        enabled: yes
+        state: started
+        daemon_reload: yes
+
+    # Docker
+    - name: Install Docker
+      apt:
+        name:
+          - docker.io
+          - docker-compose
+        state: present
+
+    - name: Add user to docker group
+      user:
+        name: "{{ project_user }}"
+        groups: docker
+        append: yes
+
+    # Claude Code setup
+    - name: Create Claude settings directory
+      file:
+        path: "/home/{{ project_user }}/.claude"
+        state: directory
+        owner: "{{ project_user }}"
+        mode: '0755'
+
+    - name: Check for project Claude settings
+      stat:
+        path: "{{ project_path }}/packages/vm/claude-settings/settings.json"
+      register: claude_settings
+
+    - name: Copy project Claude settings
+      copy:
+        src: "{{ project_path }}/packages/vm/claude-settings/settings.json"
+        dest: "/home/{{ project_user }}/.claude/settings.json"
+        remote_src: yes
+        owner: "{{ project_user }}"
+      when: claude_settings.stat.exists
+
+    - name: Use default Claude settings
+      copy:
+        dest: "/home/{{ project_user }}/.claude/settings.json"
+        owner: "{{ project_user }}"
+        content: |
+          {
+            "allow": [
+              "Read(/workspace/**)",
+              "Write(/workspace/**)",
+              "Edit(/workspace/**)",
+              "MultiEdit(/workspace/**)",
+              "Bash",
+              "WebSearch",
+              "WebFetch"
+            ],
+            "deny": [
+              "Read(**/.env*)",
+              "Read(**/*.key)",
+              "Bash(sudo *)",
+              "Bash(rm -rf /)"
+            ]
+          }
+      when: not claude_settings.stat.exists
+
+    # Universal aliases and environment
+    - name: Add universal aliases
+      blockinfile:
+        path: "/home/{{ project_user }}/.zshrc"
+        block: |
+          # Universal aliases
+          alias ll='ls -la'
+          alias dev='cd {{ project_path }} && ls'
+          alias ports='netstat -tulpn | grep LISTEN'
+          alias services='systemctl list-units --type=service --state=running'
+          
+          # Git shortcuts
+          alias gs='git status'
+          alias ga='git add'
+          alias gc='git commit'
+          alias gp='git push'
+          alias gl='git log --oneline'
+          
+          # Docker shortcuts
+          alias dps='docker ps'
+          alias dimg='docker images'
+          
+          # Database shortcuts
+          alias psql='sudo -u postgres psql'
+          alias redis='redis-cli'
+          
+          # Environment
+          export DISPLAY={{ project_config.services.headless_browser.display | default(':99') }}
+          export PUPPETEER_EXECUTABLE_PATH={{ project_config.services.headless_browser.executable_path | default('/usr/bin/chromium-browser') }}
+          
+          # Auto-cd to workspace
+          cd {{ project_path }} 2>/dev/null || true
+        marker: "# {mark} ANSIBLE MANAGED - ALIASES"
+        create: yes
+
+    # Project-specific environment setup
+    - name: Check for .env template
+      stat:
+        path: "{{ project_path }}/{{ project_config.project.env_template_path }}"
+      register: env_template
+      when: project_config.project.env_template_path is defined and project_config.project.env_template_path
+
+    - name: Copy .env template
+      copy:
+        src: "{{ project_path }}/{{ project_config.project.env_template_path }}"
+        dest: "{{ project_path }}/{{ project_config.project.env_template_path | dirname }}/.env"
+        remote_src: yes
+        owner: "{{ project_user }}"
+      when:
+        - project_config.project.env_template_path is defined and project_config.project.env_template_path
+        - env_template.stat.exists
+
+    - name: Configure DATABASE_URL in .env
+      lineinfile:
+        path: "{{ project_path }}/{{ project_config.project.env_template_path | dirname }}/.env"
+        regexp: "^DATABASE_URL="
+        line: "DATABASE_URL=postgresql://{{ project_config.services.postgresql.user | default('postgres') }}:{{ project_config.services.postgresql.password | default('postgres') }}@localhost:{{ project_config.ports.postgresql | default(project_config.services.postgresql.port | default(5432)) }}/{{ project_config.services.postgresql.database }}"
+      when:
+        - project_config.project.env_template_path is defined and project_config.project.env_template_path
+        - env_template.stat.exists
+        - project_config.services.postgresql.enabled | default(false)
+
+    - name: Configure REDIS_URL in .env
+      lineinfile:
+        path: "{{ project_path }}/{{ project_config.project.env_template_path | dirname }}/.env"
+        regexp: "^REDIS_URL="
+        line: "REDIS_URL=redis://localhost:{{ project_config.ports.redis | default(project_config.services.redis.port | default(6379)) }}"
+      when:
+        - project_config.project.env_template_path is defined and project_config.project.env_template_path
+        - env_template.stat.exists
+        - project_config.services.redis.enabled | default(false)
+
+    # Project-specific aliases
+    - name: Generate project aliases
+      set_fact:
+        project_aliases_block: |
+          # Project aliases (from infrastructure.json)
+          {% for alias_name, alias_command in (project_config.aliases | default({})).items() %}
+          alias {{ alias_name }}='{{ alias_command }}'
+          {% endfor %}
+          
+          # Port information
+          {% for service, port in (project_config.ports | default({})).items() %}
+          # {{ service }}: localhost:{{ port }} (or auto-corrected port)
+          {% endfor %}
+          # Note: Check 'vagrant up' output for actual port mappings if auto-corrected
+      when: config_file_stat.stat.exists
+
+    - name: Add project aliases to zshrc
+      blockinfile:
+        path: "/home/{{ project_user }}/.zshrc"
+        block: "{{ project_aliases_block }}"
+        marker: "# {mark} ANSIBLE MANAGED - PROJECT"
+        create: yes
+      when: config_file_stat.stat.exists
+
+    # Check for lock files
+    - name: Check for yarn.lock
+      stat:
+        path: "{{ project_path }}/yarn.lock"
+      register: yarn_lock
+
+    - name: Check for package-lock.json
+      stat:
+        path: "{{ project_path }}/package-lock.json"
+      register: npm_lock
+
+    - name: Check for pnpm-lock.yaml
+      stat:
+        path: "{{ project_path }}/pnpm-lock.yaml"
+      register: pnpm_lock
+
+    # Install project dependencies
+    - name: Install Yarn dependencies
+      shell: |
+        export NVM_DIR="/home/{{ project_user }}/.nvm"
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+        cd {{ project_path }}
+        yarn install
+      args:
+        executable: /bin/bash
+      become_user: "{{ project_user }}"
+      when:
+        - config_file_stat.stat.exists
+        - yarn_lock.stat.exists
+
+    - name: Install NPM dependencies
+      shell: |
+        export NVM_DIR="/home/{{ project_user }}/.nvm"
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+        cd {{ project_path }}
+        npm install
+      args:
+        executable: /bin/bash
+      become_user: "{{ project_user }}"
+      when:
+        - config_file_stat.stat.exists
+        - npm_lock.stat.exists
+        - not yarn_lock.stat.exists
+
+    - name: Install pnpm dependencies
+      shell: |
+        export NVM_DIR="/home/{{ project_user }}/.nvm"
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+        cd {{ project_path }}
+        pnpm install
+      args:
+        executable: /bin/bash
+      become_user: "{{ project_user }}"
+      when:
+        - config_file_stat.stat.exists
+        - pnpm_lock.stat.exists
+        - not yarn_lock.stat.exists
+        - not npm_lock.stat.exists
+
+    # Git configuration
+    - name: Configure Git safe directory
+      command: git config --global --add safe.directory {{ project_path }}
+      become_user: "{{ project_user }}"
+
+    # Enable UFW after all rules are configured
+    - name: Enable UFW with default deny policy
+      ufw:
+        state: enabled
+        default: deny
+        direction: incoming
+        logging: on
+      notify: restart ssh
+
+    # Final message
+    - name: Display completion message
+      debug:
+        msg: |
+          ✅ Universal Dev Environment Ready!
+          
+          Project: {{ project_name }}
+          Path: {{ project_path }}
+          
+          Services:
+          - PostgreSQL (postgres/postgres)
+          - Redis (localhost:6379)
+          - Docker
+          - Xvfb (display :99)
+          
+          Run 'vagrant ssh' to enter the VM
