@@ -1,6 +1,7 @@
 {
 	// Default configuration uses port range 3000-3009
 	// Each project should use its own 10-port range to avoid conflicts
+	// Note: Your project's "ports" section will completely replace these defaults
 	"project": {
 		"name": "myproject",
 		"hostname": "dev.myproject.local",
@@ -19,13 +20,9 @@
 		"nvm": "v0.39.7",
 		"yarn": "4.9.1"
 	},
-	"ports": {
-		"frontend": 3000,
-		"backend": 3001,
-		"postgresql": 3005,
-		"redis": 3006,
-		"mongodb": 3007
-	},
+	// Define your project's ports here (required)
+	// Example: "ports": { "frontend": 3020, "backend": 3022, "postgresql": 3025 }
+	"ports": {},
 	"services": {
 		"postgresql": {
 			"enabled": false,
