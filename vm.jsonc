@@ -1,0 +1,67 @@
+// Example vm.json with comments (copy to vm.json and remove comments)
+// Default configuration uses port range 3000-3009
+// Each project should use its own 10-port range to avoid conflicts
+// Note: Your project's "ports" section will completely replace these defaults
+{
+	"project": {
+		"name": "myproject",
+		"hostname": "dev.myproject.local",
+		"workspace_path": "/workspace",
+		"env_template_path": null,  // e.g. "backend/.env.template"
+		"backup_pattern": "*backup*.sql.gz"
+	},
+	"vm": {
+		"box": "bento/ubuntu-22.04",
+		"memory": 4096,
+		"cpus": 2,
+		"user": "vagrant",
+		"port_binding": "127.0.0.1"  // Add this for localhost-only access
+	},
+	"versions": {
+		"node": "22",
+		"nvm": "v0.39.7",
+		"yarn": "4.9.1"
+	},
+	// Define your project's ports here (required)
+	// Example: "ports": { "frontend": 3020, "backend": 3022, "postgresql": 3025 }
+	"ports": {
+		// "frontend": 3000,
+		// "backend": 3001,
+		// "postgresql": 3005,
+		// "redis": 3006
+	},
+	"services": {
+		"postgresql": {
+			"enabled": false,
+			"database": "myproject_dev",
+			"user": "postgres",  // DEVELOPMENT DEFAULT - Never use in production
+			"password": "postgres",  // DEVELOPMENT DEFAULT - Never use in production
+			"port": 3005
+		},
+		"redis": {
+			"enabled": false,
+			"port": 3006
+		},
+		"mongodb": {
+			"enabled": false,
+			"port": 3007
+		},
+		"docker": {
+			"enabled": true
+		},
+		"headless_browser": {
+			"enabled": false,
+			"display": ":99",
+			"executable_path": "/usr/bin/chromium-browser"
+		}
+	},
+	"npm_packages": [],
+	"environment": {},
+	"terminal": {
+		"emoji": "🚀",
+		"username": "dev",
+		"theme": "dracula",
+		"show_git_branch": true,
+		"show_timestamp": false
+	}
+}
