@@ -8,22 +8,22 @@ Configuration-driven development environment using Vagrant + Ansible with beauti
 # 1. Copy this folder to your project
 cp -r packages/vm your-project/packages/
 
-# 2. (Optional) Create vm.json in project root to override defaults
-# The package includes sensible defaults with Dracula theme
-# You only need to specify values you want to change
+# 2. Create vm.json in project root with your configuration
+# See vm.jsonc for example with comments
+# At minimum, define your ports
 
 # 3. Add script to your package.json
 {
   "scripts": {
-    "vagrant": "cd packages/vm && VM_CONFIG=../../vm.json vagrant"
+    "vm": "./packages/vm/vm.sh"
   }
 }
 
 # 4. Start VM
-yarn vagrant up      # Creates VM, installs everything
+yarn vm up      # Creates VM, installs everything
 
 # 5. Enter VM
-yarn vagrant ssh     # You're now in Ubuntu with Node.js + beautiful terminal!
+yarn vm ssh     # You're now in Ubuntu with Node.js + beautiful terminal!
 ```
 ## 📦 Included Software
 
@@ -188,11 +188,11 @@ Available themes: `dracula`, `gruvbox_dark`, `solarized_dark`, `nord`, `monokai`
 ## 🛠️ VM Management
 
 ```bash
-yarn vagrant status   # Check if running
-yarn vagrant halt     # Stop VM (preserves data)
-yarn vagrant destroy  # Delete VM completely
-yarn vagrant reload   # Restart VM with new config
-yarn vagrant provision # Re-run Ansible provisioning
+yarn vm status   # Check if running
+yarn vm halt     # Stop VM (preserves data)
+yarn vm destroy  # Delete VM completely
+yarn vm reload   # Restart VM with new config
+yarn vm provision # Re-run Ansible provisioning
 ```
 
 ## 📁 File Sync
@@ -234,20 +234,21 @@ Example port allocation for a project using 3020-3029:
 ```
 
 ### Port Forwarding
-By default, forwarded ports are accessible from all network interfaces on your host machine. This allows you to:
-- Access services from `localhost:3020`
-- Access from your machine's IP address (e.g., `192.168.1.100:3020`)
-- Share development URLs with others on your network
+By default, forwarded ports are only accessible from localhost (127.0.0.1) for security. 
 
-### Security Note
-If you prefer to restrict access to localhost only, add this to your `vm.json`:
+To make ports accessible from other machines on your network, add this to your `vm.json`:
 ```json
 {
   "vm": {
-    "port_binding": "127.0.0.1"
+    "port_binding": "0.0.0.0"  // WARNING: Exposes services to network
   }
 }
 ```
+
+This allows you to:
+- Access from your machine's IP address (e.g., `192.168.1.100:3020`)
+- Share development URLs with others on your network
+- Test on mobile devices
 
 ### Port Conflicts
 If you see "port collision", check the output:
@@ -270,6 +271,20 @@ The `claude-settings/settings.json` file contains security settings for Claude C
   ]
 }
 ```
+
+## 🔒 Security Best Practices
+
+1. **Port Binding**: Default is localhost-only (127.0.0.1). Only use "0.0.0.0" if you need network access.
+2. **Claude Settings**: The included settings.json restricts dangerous commands. Customize as needed.
+3. **Database Passwords**: Change default PostgreSQL passwords for any non-development use.
+4. **SSH Keys**: VM uses Vagrant's insecure key by default. This is fine for local development.
+
+## ⚠️ Troubleshooting
+
+- **Port conflicts**: Check the Vagrant output for remapped ports
+- **VM won't start**: Run `yarn vm destroy` and try again
+- **Slow performance**: Increase memory/CPUs in vm.json
+- **Can't access ports**: Ensure services are running and ports are in vm.json
 
 ## ✅ Requirements
 
