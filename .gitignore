@@ -1,0 +1,12 @@
+# Operating System
+.DS_Store
+Thumbs.db
+
+# Vagrant
+.vagrant/
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.claude
