@@ -1,0 +1,70 @@
+{
+	"project": {
+		"name": "myproject",
+		"hostname": "dev.myproject.local",
+		"workspace_path": "/workspace",
+		"env_template_path": null,
+		"backup_pattern": "*backup*.sql.gz"
+	},
+	"vm": {
+		"box": "bento/ubuntu-22.04",
+		"memory": 8192,
+		"cpus": 4,
+		"user": "vagrant"
+	},
+	"versions": {
+		"node": "22",
+		"nvm": "v0.39.7",
+		"yarn": "4.9.1"
+	},
+	"ports": {
+		"dev_server": 3000,
+		"api_server": 3001,
+		"postgresql": 5432,
+		"redis": 6379,
+		"mongodb": 27017
+	},
+	"services": {
+		"postgresql": {
+			"enabled": false,
+			"database": "myproject_dev",
+			"user": "postgres",
+			"password": "postgres",
+			"port": 5432
+		},
+		"redis": {
+			"enabled": false,
+			"port": 6379
+		},
+		"mongodb": {
+			"enabled": false,
+			"port": 27017
+		},
+		"docker": {
+			"enabled": true
+		},
+		"headless_browser": {
+			"enabled": false,
+			"display": ":99",
+			"executable_path": "/usr/bin/chromium-browser"
+		}
+	},
+	"npm_packages": [
+		"@anthropic-ai/claude-code",
+		"npm-check-updates",
+		"prettier",
+		"eslint"
+	],
+	"aliases": {},
+	"environment": {
+		"NODE_ENV": "development",
+		"DISPLAY": ":99"
+	},
+	"terminal": {
+		"emoji": "🚀",
+		"username": "dev",
+		"show_git_branch": true,
+		"show_timestamp": false,
+		"theme": "dracula"
+	}
+}

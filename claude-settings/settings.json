@@ -1,0 +1,29 @@
+{
+	"allow": [
+		"Read(/workspace/**)",
+		"Write(/workspace/**)",
+		"Edit(/workspace/**)",
+		"MultiEdit(/workspace/**)",
+		"Bash",
+		"WebSearch",
+		"WebFetch",
+		"Grep(/workspace/**)",
+		"Glob(/workspace/**)",
+		"LS(/workspace/**)"
+	],
+	"deny": [
+		"Read(**/.env*)",
+		"Read(**/secrets/**)",
+		"Read(**/*.key)",
+		"Read(**/*.pem)",
+		"Write(**/.env*)",
+		"Edit(**/.env*)",
+		"Bash(sudo iptables*)",
+		"Bash(sudo chmod*)",
+		"Bash(sudo useradd*)",
+		"Bash(sudo apt-get install*)",
+		"Bash(rm -rf /*)"
+	],
+	"includeCoAuthoredBy": true,
+	"cleanupPeriodDays": 30
+}
