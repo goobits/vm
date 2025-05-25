@@ -260,7 +260,11 @@ Your app is now on `localhost:2200` instead.
 
 ## 🔒 Claude Settings
 
-The `claude-settings/settings.json` file contains security settings for Claude Code. Update the paths to match your `workspace_path`:
+The `claude-settings/settings.json` file contains security settings for Claude Code. The VM is designed as a safe sandbox where Claude can work freely.
+
+**Philosophy**: The VM is isolated from your host machine, so Claude can experiment, install packages, and make changes without risk. The only restrictions prevent Claude from accidentally shutting down or rebooting the VM (which would disconnect the session).
+
+Update the paths to match your `workspace_path` if needed:
 
 ```json
 {
@@ -275,9 +279,10 @@ The `claude-settings/settings.json` file contains security settings for Claude C
 ## 🔒 Security Best Practices
 
 1. **Port Binding**: Default is localhost-only (127.0.0.1). Only use "0.0.0.0" if you need network access.
-2. **Claude Settings**: The included settings.json restricts dangerous commands. Customize as needed.
-3. **Database Passwords**: Change default PostgreSQL passwords for any non-development use.
-4. **SSH Keys**: VM uses Vagrant's insecure key by default. This is fine for local development.
+2. **VM Isolation**: The VM is sandboxed from your host. Claude can experiment freely inside.
+3. **Claude Restrictions**: Only prevents VM shutdown/reboot (which would disconnect Claude).
+4. **Database Passwords**: Change default PostgreSQL passwords for any non-development use.
+5. **SSH Keys**: VM uses Vagrant's insecure key by default. This is fine for local development.
 
 ## ⚠️ Troubleshooting
 
