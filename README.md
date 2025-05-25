@@ -198,8 +198,25 @@ Mac: ~/your-project/src/app.js
 VM:  /workspace/src/app.js
 ```
 
-## 🔌 Port Conflicts
+## 🔌 Port Configuration
 
+### Port Forwarding
+By default, forwarded ports are accessible from all network interfaces on your host machine. This allows you to:
+- Access services from `localhost:3000`
+- Access from your machine's IP address (e.g., `192.168.1.100:3000`)
+- Share development URLs with others on your network
+
+### Security Note
+If you prefer to restrict access to localhost only, add this to your `vm.json`:
+```json
+{
+  "vm": {
+    "port_binding": "127.0.0.1"
+  }
+}
+```
+
+### Port Conflicts
 If you see "port collision", check the output:
 ```
 ==> default: Fixed port collision for 3000 => 3000. Now on port 2200.
