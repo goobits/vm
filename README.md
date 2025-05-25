@@ -63,6 +63,11 @@ The package includes `packages/vm/vm.json` with sensible defaults. You can use i
   "project": {
     "name": "my-awesome-app"
   },
+  "ports": {
+    "frontend": 3020,
+    "backend": 3022,
+    "postgresql": 3025
+  },
   "services": {
     "postgresql": { "enabled": true }
   },
@@ -76,6 +81,7 @@ The package includes `packages/vm/vm.json` with sensible defaults. You can use i
 
 This minimal config will:
 - Use all defaults from `packages/vm/vm.json`
+- **Define ports (required)** - no default ports are included
 - Override project name and terminal customization
 - Enable PostgreSQL (disabled by default)
 - Get a custom terminal: `⚡ awesome my-awesome-app >`
