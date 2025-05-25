@@ -1,4 +1,6 @@
 {
+	// Default configuration uses port range 3000-3009
+	// Each project should use its own 10-port range to avoid conflicts
 	"project": {
 		"name": "myproject",
 		"hostname": "dev.myproject.local",
@@ -18,11 +20,11 @@
 		"yarn": "4.9.1"
 	},
 	"ports": {
-		"dev_server": 3000,
-		"api_server": 3001,
-		"postgresql": 5432,
-		"redis": 6379,
-		"mongodb": 27017
+		"frontend": 3000,
+		"backend": 3001,
+		"postgresql": 3005,
+		"redis": 3006,
+		"mongodb": 3007
 	},
 	"services": {
 		"postgresql": {
@@ -30,15 +32,15 @@
 			"database": "myproject_dev",
 			"user": "postgres",
 			"password": "postgres",
-			"port": 5432
+			"port": 3005
 		},
 		"redis": {
 			"enabled": false,
-			"port": 6379
+			"port": 3006
 		},
 		"mongodb": {
 			"enabled": false,
-			"port": 27017
+			"port": 3007
 		},
 		"docker": {
 			"enabled": true

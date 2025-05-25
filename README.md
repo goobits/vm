@@ -200,10 +200,37 @@ VM:  /workspace/src/app.js
 
 ## 🔌 Port Configuration
 
+### Port Range Convention
+To avoid conflicts when running multiple projects, we recommend assigning each project a dedicated port range of 10 ports:
+
+- **Project 1**: 3000-3009
+- **Project 2**: 3010-3019  
+- **Project 3**: 3020-3029
+- **Project 4**: 3030-3039
+- etc.
+
+Example port allocation for a project using 3020-3029:
+```json
+{
+  "ports": {
+    "frontend": 3020,        // Main web app
+    "frontend_preview": 3021, // Production preview
+    "backend": 3022,         // API server
+    "admin": 3023,           // Admin dashboard
+    "admin_dev": 3024,       // Admin dev server
+    "postgresql": 3025,      // Database
+    "redis": 3026,           // Cache/queue
+    "devtools": 3027,        // Chrome DevTools
+    "docs": 3028,            // Documentation site
+    "storybook": 3029        // Component library
+  }
+}
+```
+
 ### Port Forwarding
 By default, forwarded ports are accessible from all network interfaces on your host machine. This allows you to:
-- Access services from `localhost:3000`
-- Access from your machine's IP address (e.g., `192.168.1.100:3000`)
+- Access services from `localhost:3020`
+- Access from your machine's IP address (e.g., `192.168.1.100:3020`)
 - Share development URLs with others on your network
 
 ### Security Note
