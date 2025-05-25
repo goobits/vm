@@ -25,5 +25,13 @@
 		"Bash(rm -rf /*)"
 	],
 	"includeCoAuthoredBy": true,
-	"cleanupPeriodDays": 30
+	"cleanupPeriodDays": 30,
+	"env": {
+		"ANTHROPIC_MODEL": "claude-3-7-sonnet-20250219",
+		"DISABLE_ERROR_REPORTING": "false",
+		"DISABLE_TELEMETRY": "false",
+		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "false",
+		"BASH_DEFAULT_TIMEOUT_MS": "30000",
+		"MCP_TOOL_TIMEOUT": "300000"
+	}
 }
