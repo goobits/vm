@@ -8,8 +8,8 @@
 	},
 	"vm": {
 		"box": "bento/ubuntu-22.04",
-		"memory": 8192,
-		"cpus": 4,
+		"memory": 4096,
+		"cpus": 2,
 		"user": "vagrant"
 	},
 	"versions": {
