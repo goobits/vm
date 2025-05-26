@@ -35,7 +35,7 @@
 			"port": 3007
 		},
 		"docker": {
-			"enabled": true
+			"enabled": false
 		},
 		"headless_browser": {
 			"enabled": false,
