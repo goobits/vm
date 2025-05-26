@@ -160,6 +160,7 @@
           - python3-psycopg2
           - zsh
           - zsh-syntax-highlighting
+          - ripgrep
         state: present
 
     # Security setup - Configure rules first, enable last
@@ -354,6 +355,14 @@
         state: present
       when: project_config.services.postgresql.enabled | default(false)
 
+    - name: Configure PostgreSQL port
+      lineinfile:
+        path: /etc/postgresql/{{ ansible_distribution_version }}/main/postgresql.conf
+        regexp: "^port ="
+        line: "port = {{ project_config.ports.postgresql | default(5432) }}"
+      notify: restart postgresql
+      when: project_config.services.postgresql.enabled | default(false)
+
     - name: Configure PostgreSQL and create database
       shell: |
         sudo -u postgres psql -c "ALTER USER {{ project_config.services.postgresql.user | default('postgres') }} PASSWORD '{{ project_config.services.postgresql.password | default('postgres') }}';"
@@ -406,6 +415,14 @@
         path: /etc/redis/redis.conf
         regexp: "^bind"
         line: "bind 127.0.0.1 ::1"
+      notify: restart redis
+      when: project_config.services.redis.enabled | default(false)
+
+    - name: Configure Redis port
+      lineinfile:
+        path: /etc/redis/redis.conf
+        regexp: "^port"
+        line: "port {{ project_config.ports.redis | default(6379) }}"
       notify: restart redis
       when: project_config.services.redis.enabled | default(false)
 
@@ -507,6 +524,10 @@
           alias dev='cd {{ project_path }} && ls'
           alias ports='netstat -tulpn | grep LISTEN'
           alias services='systemctl list-units --type=service --state=running'
+          
+          # Search tools
+          alias rg='rg --smart-case'
+          alias rgf='rg --files | rg'
           
           # Git shortcuts
           alias gs='git status'
@@ -676,8 +697,8 @@
           Path: {{ project_path }}
           
           Services:
-          - PostgreSQL (postgres/postgres)
-          - Redis (localhost:6379)
+          - PostgreSQL (postgres/postgres) on port {{ project_config.ports.postgresql | default(5432) }}
+          - Redis on port {{ project_config.ports.redis | default(6379) }}
           - Docker
           - Xvfb (display :99)
           
