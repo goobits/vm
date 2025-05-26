@@ -39,10 +39,19 @@ Vagrant.configure("2") do |config|
   vm_user = project_config['vm']['user']
   workspace_path = project_config['project']['workspace_path']
   
+  # Validate critical configuration values
+  if project_name.nil? || project_name.empty?
+    abort "Error: project.name is required in vm.json"
+  end
+  
+  if workspace_path.nil? || workspace_path.empty?
+    abort "Error: project.workspace_path is required in vm.json"
+  end
+  
   # Forward ports from config
   # Default to localhost-only for security (override with vm.port_binding)
   port_binding = project_config.dig('vm', 'port_binding') || "127.0.0.1"
-  project_config['ports'].each do |service, port|
+  (project_config['ports'] || {}).each do |service, port|
     if port_binding == "0.0.0.0"
       # Explicitly bind to all interfaces if requested
       config.vm.network "forwarded_port", guest: port, host: port, auto_correct: true
@@ -55,11 +64,7 @@ Vagrant.configure("2") do |config|
   # VirtualBox provider (default)
   config.vm.provider "virtualbox" do |vb|
     # Set a clean VM name based on project
-    if config_file && File.exist?(config_file)
-      vb.name = "#{JSON.parse(File.read(config_file))['project']['name']}-dev"
-    else
-      vb.name = "#{project_name}-dev"
-    end
+    vb.name = "#{project_name}-dev"
     
     vb.memory = vm_memory
     vb.cpus = vm_cpus
@@ -69,11 +74,7 @@ Vagrant.configure("2") do |config|
   # Parallels provider (alternative)
   config.vm.provider "parallels" do |prl|
     # Set a clean VM name based on project
-    if config_file && File.exist?(config_file)
-      prl.name = "#{JSON.parse(File.read(config_file))['project']['name']}-dev"
-    else
-      prl.name = "#{project_name}-dev"
-    end
+    prl.name = "#{project_name}-dev"
     
     prl.memory = vm_memory
     prl.cpus = vm_cpus
