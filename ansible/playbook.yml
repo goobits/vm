@@ -116,6 +116,29 @@
         update_cache: yes
         cache_valid_time: 3600
 
+    # Locale configuration
+    - name: Install locale packages
+      apt:
+        name:
+          - locales
+          - locales-all
+        state: present
+
+    - name: Generate en_US.UTF-8 locale
+      locale_gen:
+        name: en_US.UTF-8
+        state: present
+
+    - name: Set system locale
+      copy:
+        dest: /etc/default/locale
+        content: |
+          LANG=en_US.UTF-8
+          LANGUAGE=en_US:en
+          LC_ALL=en_US.UTF-8
+          LC_CTYPE=en_US.UTF-8
+        mode: '0644'
+
     - name: Install base system packages
       apt:
         name:
@@ -195,6 +218,18 @@
           [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
           [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
         marker: "# {mark} ANSIBLE MANAGED - NVM"
+        create: yes
+
+    - name: Setup locale environment variables
+      blockinfile:
+        path: "/home/{{ project_user }}/.zshrc"
+        block: |
+          # Locale settings
+          export LANG=en_US.UTF-8
+          export LANGUAGE=en_US:en
+          export LC_ALL=en_US.UTF-8
+          export LC_CTYPE=en_US.UTF-8
+        marker: "# {mark} ANSIBLE MANAGED - LOCALE"
         create: yes
 
     - name: Setup custom zsh prompt with project branding
