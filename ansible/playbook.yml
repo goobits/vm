@@ -214,9 +214,9 @@
             {% endif %}
           }
           
-          # Set custom prompt: emoji username project-name > 
+          # Set custom prompt: emoji username current-folder (branch) > 
           setopt PROMPT_SUBST
-          PROMPT='{{ terminal_emoji }} {{ terminal_username }} {{ project_name }}$(git_branch_name)$(format_timestamp) > '
+          PROMPT='{{ terminal_emoji }} {{ terminal_username }} %c$(git_branch_name)$(format_timestamp) > '
         marker: "# {mark} ANSIBLE MANAGED - PROMPT"
         create: yes
 
