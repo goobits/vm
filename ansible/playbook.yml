@@ -336,6 +336,14 @@
         executable: /bin/bash
       become_user: "{{ project_user }}"
 
+    - name: Install pnpm
+      shell: |
+        source ~/.nvm/nvm.sh
+        corepack prepare pnpm@{{ project_config.versions.pnpm | default('9.15.0') }} --activate
+      args:
+        executable: /bin/bash
+      become_user: "{{ project_user }}"
+
     - name: Install global npm packages
       shell: |
         source ~/.nvm/nvm.sh
@@ -355,9 +363,14 @@
         state: present
       when: project_config.services.postgresql.enabled | default(false)
 
+    - name: Get PostgreSQL version
+      shell: ls /etc/postgresql/ | head -1
+      register: postgresql_version
+      when: project_config.services.postgresql.enabled | default(false)
+
     - name: Configure PostgreSQL port
       lineinfile:
-        path: /etc/postgresql/{{ ansible_distribution_version }}/main/postgresql.conf
+        path: /etc/postgresql/{{ postgresql_version.stdout }}/main/postgresql.conf
         regexp: "^port ="
         line: "port = {{ project_config.ports.postgresql | default(5432) }}"
       notify: restart postgresql
