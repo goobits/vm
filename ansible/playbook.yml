@@ -340,10 +340,30 @@
         - backup_files.files | length > 0
 
     # Redis (conditional)
-    - name: Install Redis
-      apt:
-        name: redis-server
+    - name: Add Redis repository GPG key
+      get_url:
+        url: https://packages.redis.io/gpg
+        dest: /tmp/redis-gpg-key
+      when: project_config.services.redis.enabled | default(false)
+
+    - name: Import Redis GPG key
+      apt_key:
+        file: /tmp/redis-gpg-key
         state: present
+      when: project_config.services.redis.enabled | default(false)
+
+    - name: Add Redis repository
+      apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb {{ ansible_distribution_release }} main"
+        state: present
+        update_cache: yes
+      when: project_config.services.redis.enabled | default(false)
+
+    - name: Install Redis 6.2+
+      apt:
+        name: redis-server=6:6.2.18-1rl1~{{ ansible_distribution_release }}1
+        state: present
+        allow_downgrade: yes
       when: project_config.services.redis.enabled | default(false)
 
     - name: Configure Redis
