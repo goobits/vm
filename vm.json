@@ -8,8 +8,8 @@
 	},
 	"vm": {
 		"box": "bento/ubuntu-22.04",
-		"memory": 4096,
-		"cpus": 2,
+		"memory": 6144,
+		"cpus": 4,
 		"user": "vagrant"
 	},
 	"versions": {
@@ -35,7 +35,7 @@
 			"port": 3007
 		},
 		"docker": {
-			"enabled": true
+			"enabled": false
 		},
 		"headless_browser": {
 			"enabled": false,

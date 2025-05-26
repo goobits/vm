@@ -384,30 +384,19 @@
         - backup_files.files | length > 0
 
     # Redis (conditional)
-    - name: Add Redis repository GPG key
-      get_url:
-        url: https://packages.redis.io/gpg
-        dest: /tmp/redis-gpg-key
-      when: project_config.services.redis.enabled | default(false)
-
-    - name: Import Redis GPG key
-      apt_key:
-        file: /tmp/redis-gpg-key
-        state: present
-      when: project_config.services.redis.enabled | default(false)
-
-    - name: Add Redis repository
-      apt_repository:
-        repo: "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb {{ ansible_distribution_release }} main"
-        state: present
-        update_cache: yes
-      when: project_config.services.redis.enabled | default(false)
-
-    - name: Install Redis 6.2+
+    - name: Install Redis from Ubuntu repository
       apt:
-        name: redis-server=6:6.2.18-1rl1~{{ ansible_distribution_release }}1
+        name:
+          - redis-server
+          - redis-tools
         state: present
-        allow_downgrade: yes
+      when: project_config.services.redis.enabled | default(false)
+
+    - name: Enable and start Redis service
+      systemd:
+        name: redis-server
+        enabled: yes
+        state: started
       when: project_config.services.redis.enabled | default(false)
 
     - name: Configure Redis
@@ -455,19 +444,21 @@
         state: started
         daemon_reload: yes
 
-    # Docker
+    # Docker (conditional)
     - name: Install Docker
       apt:
         name:
           - docker.io
           - docker-compose
         state: present
+      when: project_config.services.docker.enabled | default(false)
 
     - name: Add user to docker group
       user:
         name: "{{ project_user }}"
         groups: docker
         append: yes
+      when: project_config.services.docker.enabled | default(false)
 
     # Claude Code setup
     - name: Create Claude settings directory
@@ -636,13 +627,50 @@
         export NVM_DIR="/home/{{ project_user }}/.nvm"
         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
         cd {{ project_path }}
-        yarn install
+        # Configure yarn timeouts for large monorepos
+        yarn config set httpTimeout 600000
+        # Install without running scripts
+        yarn install --mode skip-build
+      args:
+        executable: /bin/bash
+      become_user: "{{ project_user }}"
+      async: 1800  # 30 minutes timeout
+      poll: 30     # Check every 30 seconds
+      when:
+        - config_file_stat.stat.exists
+        - yarn_lock.stat.exists
+
+    - name: Check if build script exists
+      shell: |
+        export NVM_DIR="/home/{{ project_user }}/.nvm"
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+        cd {{ project_path }}
+        if yarn run --list | grep -q "^build$"; then
+          echo "build_exists"
+        else
+          echo "no_build"
+        fi
+      args:
+        executable: /bin/bash
+      become_user: "{{ project_user }}"
+      register: build_check
+      when:
+        - config_file_stat.stat.exists
+        - yarn_lock.stat.exists
+
+    - name: Run build script if it exists
+      shell: |
+        export NVM_DIR="/home/{{ project_user }}/.nvm"
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+        cd {{ project_path }}
+        yarn build
       args:
         executable: /bin/bash
       become_user: "{{ project_user }}"
       when:
         - config_file_stat.stat.exists
         - yarn_lock.stat.exists
+        - build_check.stdout == "build_exists"
 
     - name: Install NPM dependencies
       shell: |
