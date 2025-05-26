@@ -427,19 +427,21 @@
         state: started
         daemon_reload: yes
 
-    # Docker
+    # Docker (conditional)
     - name: Install Docker
       apt:
         name:
           - docker.io
           - docker-compose
         state: present
+      when: project_config.services.docker.enabled | default(false)
 
     - name: Add user to docker group
       user:
         name: "{{ project_user }}"
         groups: docker
         append: yes
+      when: project_config.services.docker.enabled | default(false)
 
     # Claude Code setup
     - name: Create Claude settings directory
@@ -604,10 +606,15 @@
         export NVM_DIR="/home/{{ project_user }}/.nvm"
         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
         cd {{ project_path }}
-        yarn install
+        # Configure yarn timeouts for large monorepos
+        yarn config set httpTimeout 600000
+        yarn config set networkTimeout 600000
+        yarn install --network-timeout 600000
       args:
         executable: /bin/bash
       become_user: "{{ project_user }}"
+      async: 1800  # 30 minutes timeout
+      poll: 30     # Check every 30 seconds
       when:
         - config_file_stat.stat.exists
         - yarn_lock.stat.exists
