@@ -20,10 +20,10 @@ cp -r packages/vm your-project/packages/
 }
 
 # 4. Start VM
-yarn vm up      # Creates VM, installs everything
+pnpm vm up      # Creates VM, installs everything
 
 # 5. Enter VM
-yarn vm ssh     # You're now in Ubuntu with Node.js + beautiful terminal!
+pnpm vm ssh     # You're now in Ubuntu with Node.js + beautiful terminal!
 ```
 
 ## 📦 Included Software
@@ -31,7 +31,7 @@ yarn vm ssh     # You're now in Ubuntu with Node.js + beautiful terminal!
 - **Operating System**: Ubuntu 22.04 (configurable)
 - **Shell**: Zsh with syntax highlighting + custom prompts
 - **Node.js**: Configurable version via NVM (default: v22)
-- **Yarn**: Configurable version via Corepack (default: 4.9.1)
+- **pnpm**: Configurable version via Corepack
 - **PostgreSQL**: Optional service (default: disabled)
 - **Redis**: Optional service (default: disabled)
 - **MongoDB**: Optional service (default: disabled)
@@ -114,7 +114,7 @@ Complete `vm.json` reference:
 	"versions": {
 		"node": "22",
 		"nvm": "v0.39.7",
-		"yarn": "4.9.1"
+		"pnpm": "latest"
 	},
 	"ports": {
 		"frontend": 3000,
@@ -198,11 +198,11 @@ Available themes: `dracula`, `gruvbox_dark`, `solarized_dark`, `nord`, `monokai`
 ## 🛠️ VM Management
 
 ```bash
-yarn vm status   # Check if running
-yarn vm halt     # Stop VM (preserves data)
-yarn vm destroy  # Delete VM completely
-yarn vm reload   # Restart VM with new config
-yarn vm provision # Re-run Ansible provisioning
+pnpm vm status   # Check if running
+pnpm vm halt     # Stop VM (preserves data)
+pnpm vm destroy  # Delete VM completely
+pnpm vm reload   # Restart VM with new config
+pnpm vm provision # Re-run Ansible provisioning
 ```
 
 ## 📁 File Sync
@@ -320,7 +320,7 @@ Update the paths to match your `workspace_path` if needed:
 ## ⚠️ Troubleshooting
 
 - **Port conflicts**: Check the Vagrant output for remapped ports
-- **VM won't start**: Run `yarn vm destroy` and try again
+- **VM won't start**: Run `pnpm vm destroy` and try again
 - **Slow performance**: Increase memory/CPUs in vm.json
 - **Can't access ports**: Ensure services are running and ports are in vm.json
 

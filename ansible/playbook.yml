@@ -320,7 +320,7 @@
         executable: /bin/bash
       become_user: "{{ project_user }}"
 
-    - name: Enable corepack for Yarn
+    - name: Enable corepack for pnpm
       shell: |
         source ~/.nvm/nvm.sh
         corepack enable
@@ -328,10 +328,10 @@
         executable: /bin/bash
       become_user: "{{ project_user }}"
 
-    - name: Install Yarn
+    - name: Install pnpm
       shell: |
         source ~/.nvm/nvm.sh
-        corepack prepare yarn@{{ project_config.versions.yarn | default('4.9.1') }} --activate
+        corepack prepare pnpm@{{ project_config.versions.pnpm | default('9.15.4') }} --activate
       args:
         executable: /bin/bash
       become_user: "{{ project_user }}"
@@ -619,31 +619,28 @@
       when: config_file_stat.stat.exists
 
     # Check for lock files
-    - name: Check for yarn.lock
+    - name: Check for pnpm-lock.yaml
       stat:
-        path: "{{ project_path }}/yarn.lock"
-      register: yarn_lock
+        path: "{{ project_path }}/pnpm-lock.yaml"
+      register: pnpm_lock
 
     - name: Check for package-lock.json
       stat:
         path: "{{ project_path }}/package-lock.json"
       register: npm_lock
 
-    - name: Check for pnpm-lock.yaml
+    - name: Check for yarn.lock (legacy)
       stat:
-        path: "{{ project_path }}/pnpm-lock.yaml"
-      register: pnpm_lock
+        path: "{{ project_path }}/yarn.lock"
+      register: yarn_lock
 
     # Install project dependencies
-    - name: Install Yarn dependencies
+    - name: Install pnpm dependencies
       shell: |
         export NVM_DIR="/home/{{ project_user }}/.nvm"
         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
         cd {{ project_path }}
-        # Configure yarn timeouts for large monorepos
-        yarn config set httpTimeout 600000
-        # Install without running scripts
-        yarn install --mode skip-build
+        pnpm install
       args:
         executable: /bin/bash
       become_user: "{{ project_user }}"
@@ -651,14 +648,14 @@
       poll: 30     # Check every 30 seconds
       when:
         - config_file_stat.stat.exists
-        - yarn_lock.stat.exists
+        - pnpm_lock.stat.exists
 
     - name: Check if build script exists
       shell: |
         export NVM_DIR="/home/{{ project_user }}/.nvm"
         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
         cd {{ project_path }}
-        if yarn run --list | grep -q "^build$"; then
+        if pnpm run --silent list | grep -q "build"; then
           echo "build_exists"
         else
           echo "no_build"
@@ -669,20 +666,20 @@
       register: build_check
       when:
         - config_file_stat.stat.exists
-        - yarn_lock.stat.exists
+        - pnpm_lock.stat.exists
 
     - name: Run build script if it exists
       shell: |
         export NVM_DIR="/home/{{ project_user }}/.nvm"
         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
         cd {{ project_path }}
-        yarn build
+        pnpm build
       args:
         executable: /bin/bash
       become_user: "{{ project_user }}"
       when:
         - config_file_stat.stat.exists
-        - yarn_lock.stat.exists
+        - pnpm_lock.stat.exists
         - build_check.stdout == "build_exists"
 
     - name: Install NPM dependencies
@@ -697,22 +694,7 @@
       when:
         - config_file_stat.stat.exists
         - npm_lock.stat.exists
-        - not yarn_lock.stat.exists
-
-    - name: Install pnpm dependencies
-      shell: |
-        export NVM_DIR="/home/{{ project_user }}/.nvm"
-        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-        cd {{ project_path }}
-        pnpm install
-      args:
-        executable: /bin/bash
-      become_user: "{{ project_user }}"
-      when:
-        - config_file_stat.stat.exists
-        - pnpm_lock.stat.exists
-        - not yarn_lock.stat.exists
-        - not npm_lock.stat.exists
+        - not pnpm_lock.stat.exists
 
     # Git configuration
     - name: Configure Git safe directory
