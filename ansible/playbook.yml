@@ -160,6 +160,7 @@
           - python3-psycopg2
           - zsh
           - zsh-syntax-highlighting
+          - ripgrep
         state: present
 
     # Security setup - Configure rules first, enable last
@@ -319,7 +320,7 @@
         executable: /bin/bash
       become_user: "{{ project_user }}"
 
-    - name: Enable corepack for Yarn
+    - name: Enable corepack for pnpm
       shell: |
         source ~/.nvm/nvm.sh
         corepack enable
@@ -327,10 +328,18 @@
         executable: /bin/bash
       become_user: "{{ project_user }}"
 
-    - name: Install Yarn
+    - name: Install pnpm
       shell: |
         source ~/.nvm/nvm.sh
-        corepack prepare yarn@{{ project_config.versions.yarn | default('4.9.1') }} --activate
+        corepack prepare pnpm@{{ project_config.versions.pnpm | default('9.15.4') }} --activate
+      args:
+        executable: /bin/bash
+      become_user: "{{ project_user }}"
+
+    - name: Install pnpm
+      shell: |
+        source ~/.nvm/nvm.sh
+        corepack prepare pnpm@{{ project_config.versions.pnpm | default('9.15.0') }} --activate
       args:
         executable: /bin/bash
       become_user: "{{ project_user }}"
@@ -352,6 +361,19 @@
           - postgresql
           - postgresql-contrib
         state: present
+      when: project_config.services.postgresql.enabled | default(false)
+
+    - name: Get PostgreSQL version
+      shell: ls /etc/postgresql/ | head -1
+      register: postgresql_version
+      when: project_config.services.postgresql.enabled | default(false)
+
+    - name: Configure PostgreSQL port
+      lineinfile:
+        path: /etc/postgresql/{{ postgresql_version.stdout }}/main/postgresql.conf
+        regexp: "^port ="
+        line: "port = {{ project_config.ports.postgresql | default(5432) }}"
+      notify: restart postgresql
       when: project_config.services.postgresql.enabled | default(false)
 
     - name: Configure PostgreSQL and create database
@@ -398,6 +420,14 @@
       notify: restart redis
       when: project_config.services.redis.enabled | default(false)
 
+    - name: Configure Redis port
+      lineinfile:
+        path: /etc/redis/redis.conf
+        regexp: "^port"
+        line: "port {{ project_config.ports.redis | default(6379) }}"
+      notify: restart redis
+      when: project_config.services.redis.enabled | default(false)
+
     # Headless browser testing
     - name: Install browser testing tools
       apt:
@@ -427,19 +457,21 @@
         state: started
         daemon_reload: yes
 
-    # Docker
+    # Docker (conditional)
     - name: Install Docker
       apt:
         name:
           - docker.io
           - docker-compose
         state: present
+      when: project_config.services.docker.enabled | default(false)
 
     - name: Add user to docker group
       user:
         name: "{{ project_user }}"
         groups: docker
         append: yes
+      when: project_config.services.docker.enabled | default(false)
 
     # Claude Code setup
     - name: Create Claude settings directory
@@ -496,6 +528,10 @@
           alias dev='cd {{ project_path }} && ls'
           alias ports='netstat -tulpn | grep LISTEN'
           alias services='systemctl list-units --type=service --state=running'
+          
+          # Search tools
+          alias rg='rg --smart-case'
+          alias rgf='rg --files | rg'
           
           # Git shortcuts
           alias gs='git status'
@@ -583,34 +619,68 @@
       when: config_file_stat.stat.exists
 
     # Check for lock files
-    - name: Check for yarn.lock
+    - name: Check for pnpm-lock.yaml
       stat:
-        path: "{{ project_path }}/yarn.lock"
-      register: yarn_lock
+        path: "{{ project_path }}/pnpm-lock.yaml"
+      register: pnpm_lock
 
     - name: Check for package-lock.json
       stat:
         path: "{{ project_path }}/package-lock.json"
       register: npm_lock
 
-    - name: Check for pnpm-lock.yaml
+    - name: Check for yarn.lock (legacy)
       stat:
-        path: "{{ project_path }}/pnpm-lock.yaml"
-      register: pnpm_lock
+        path: "{{ project_path }}/yarn.lock"
+      register: yarn_lock
 
     # Install project dependencies
-    - name: Install Yarn dependencies
+    - name: Install pnpm dependencies
       shell: |
         export NVM_DIR="/home/{{ project_user }}/.nvm"
         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
         cd {{ project_path }}
-        yarn install
+        pnpm install
+      args:
+        executable: /bin/bash
+      become_user: "{{ project_user }}"
+      async: 1800  # 30 minutes timeout
+      poll: 30     # Check every 30 seconds
+      when:
+        - config_file_stat.stat.exists
+        - pnpm_lock.stat.exists
+
+    - name: Check if build script exists
+      shell: |
+        export NVM_DIR="/home/{{ project_user }}/.nvm"
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+        cd {{ project_path }}
+        if pnpm run --silent list | grep -q "build"; then
+          echo "build_exists"
+        else
+          echo "no_build"
+        fi
+      args:
+        executable: /bin/bash
+      become_user: "{{ project_user }}"
+      register: build_check
+      when:
+        - config_file_stat.stat.exists
+        - pnpm_lock.stat.exists
+
+    - name: Run build script if it exists
+      shell: |
+        export NVM_DIR="/home/{{ project_user }}/.nvm"
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+        cd {{ project_path }}
+        pnpm build
       args:
         executable: /bin/bash
       become_user: "{{ project_user }}"
       when:
         - config_file_stat.stat.exists
-        - yarn_lock.stat.exists
+        - pnpm_lock.stat.exists
+        - build_check.stdout == "build_exists"
 
     - name: Install NPM dependencies
       shell: |
@@ -624,22 +694,7 @@
       when:
         - config_file_stat.stat.exists
         - npm_lock.stat.exists
-        - not yarn_lock.stat.exists
-
-    - name: Install pnpm dependencies
-      shell: |
-        export NVM_DIR="/home/{{ project_user }}/.nvm"
-        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-        cd {{ project_path }}
-        pnpm install
-      args:
-        executable: /bin/bash
-      become_user: "{{ project_user }}"
-      when:
-        - config_file_stat.stat.exists
-        - pnpm_lock.stat.exists
-        - not yarn_lock.stat.exists
-        - not npm_lock.stat.exists
+        - not pnpm_lock.stat.exists
 
     # Git configuration
     - name: Configure Git safe directory
@@ -665,8 +720,8 @@
           Path: {{ project_path }}
           
           Services:
-          - PostgreSQL (postgres/postgres)
-          - Redis (localhost:6379)
+          - PostgreSQL (postgres/postgres) on port {{ project_config.ports.postgresql | default(5432) }}
+          - Redis on port {{ project_config.ports.redis | default(6379) }}
           - Docker
           - Xvfb (display :99)
           
