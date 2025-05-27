@@ -20,10 +20,10 @@ cp -r packages/vm your-project/packages/
 }
 
 # 4. Start VM
-yarn vm up      # Creates VM, installs everything
+pnpm vm up      # Creates VM, installs everything
 
 # 5. Enter VM
-yarn vm ssh     # You're now in Ubuntu with Node.js + beautiful terminal!
+pnpm vm ssh     # You're now in Ubuntu with Node.js + beautiful terminal!
 ```
 ## 📦 Included Software
 
@@ -188,11 +188,11 @@ Available themes: `dracula`, `gruvbox_dark`, `solarized_dark`, `nord`, `monokai`
 ## 🛠️ VM Management
 
 ```bash
-yarn vm status   # Check if running
-yarn vm halt     # Stop VM (preserves data)
-yarn vm destroy  # Delete VM completely
-yarn vm reload   # Restart VM with new config
-yarn vm provision # Re-run Ansible provisioning
+pnpm vm status   # Check if running
+pnpm vm halt     # Stop VM (preserves data)
+pnpm vm destroy  # Delete VM completely
+pnpm vm reload   # Restart VM with new config
+pnpm vm provision # Re-run Ansible provisioning
 ```
 
 ## 📁 File Sync
