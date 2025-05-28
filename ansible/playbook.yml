@@ -88,6 +88,7 @@
       systemd:
         name: postgresql
         state: restarted
+        daemon_reload: yes
 
     - name: restart redis
       systemd:
@@ -371,15 +372,58 @@
     - name: Configure PostgreSQL port
       lineinfile:
         path: /etc/postgresql/{{ postgresql_version.stdout }}/main/postgresql.conf
-        regexp: "^port ="
+        regexp: "^#?port ="
         line: "port = {{ project_config.ports.postgresql | default(5432) }}"
       notify: restart postgresql
       when: project_config.services.postgresql.enabled | default(false)
 
+    - name: Ensure PostgreSQL listens on all addresses
+      lineinfile:
+        path: /etc/postgresql/{{ postgresql_version.stdout }}/main/postgresql.conf
+        regexp: "^#?listen_addresses ="
+        line: "listen_addresses = 'localhost'"
+      notify: restart postgresql
+      when: project_config.services.postgresql.enabled | default(false)
+
+    - name: Force restart PostgreSQL after configuration changes
+      meta: flush_handlers
+      when: project_config.services.postgresql.enabled | default(false)
+
+    - name: Ensure PostgreSQL service is started and enabled
+      systemd:
+        name: postgresql
+        state: started
+        enabled: yes
+      when: project_config.services.postgresql.enabled | default(false)
+
+    - name: Check PostgreSQL status and logs
+      shell: |
+        echo "=== PostgreSQL Status ==="
+        systemctl status postgresql || true
+        echo "=== PostgreSQL Logs ==="
+        journalctl -u postgresql --no-pager -n 20 || true
+        echo "=== Port Check ==="
+        netstat -tlnp | grep {{ project_config.ports.postgresql | default(5432) }} || echo "Port {{ project_config.ports.postgresql | default(5432) }} not found"
+      register: pg_debug
+      when: project_config.services.postgresql.enabled | default(false)
+
+    - name: Display PostgreSQL debug info
+      debug:
+        var: pg_debug.stdout_lines
+      when: project_config.services.postgresql.enabled | default(false)
+
+    - name: Wait for PostgreSQL to be ready
+      wait_for:
+        port: "{{ project_config.ports.postgresql | default(5432) }}"
+        host: localhost
+        delay: 2
+        timeout: 30
+      when: project_config.services.postgresql.enabled | default(false)
+
     - name: Configure PostgreSQL and create database
       shell: |
-        sudo -u postgres psql -c "ALTER USER {{ project_config.services.postgresql.user | default('postgres') }} PASSWORD '{{ project_config.services.postgresql.password | default('postgres') }}';"
-        sudo -u postgres createdb "{{ project_config.services.postgresql.database }}" || echo "Database exists"
+        sudo -u postgres psql -p {{ project_config.ports.postgresql | default(5432) }} -c "ALTER USER {{ project_config.services.postgresql.user | default('postgres') }} PASSWORD '{{ project_config.services.postgresql.password | default('postgres') }}';"
+        sudo -u postgres createdb -p {{ project_config.ports.postgresql | default(5432) }} "{{ project_config.services.postgresql.database }}" || echo "Database exists"
       when: project_config.services.postgresql.enabled | default(false)
 
     - name: Check for database backup
@@ -391,7 +435,7 @@
 
     - name: Restore database from backup
       shell: |
-        gunzip -c "{{ (backup_files.files | sort(attribute='mtime') | last).path }}" | sudo -u postgres psql -d "{{ project_config.services.postgresql.database }}"
+        gunzip -c "{{ (backup_files.files | sort(attribute='mtime') | last).path }}" | sudo -u postgres psql -p {{ project_config.ports.postgresql | default(5432) }} -d "{{ project_config.services.postgresql.database }}"
       when:
         - project_config.services.postgresql.enabled | default(false)
         - backup_files.files | length > 0
@@ -545,8 +589,8 @@
           alias dimg='docker images'
           
           # Database shortcuts
-          alias psql='sudo -u postgres psql'
-          alias redis='redis-cli'
+          alias psql='sudo -u postgres psql -p {{ project_config.ports.postgresql | default(5432) }}'
+          alias redis='redis-cli -p {{ project_config.ports.redis | default(6379) }}'
           
           # Environment
           export DISPLAY={{ project_config.services.headless_browser.display | default(':99') }}
