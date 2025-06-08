@@ -1,360 +1,284 @@
-# VM Infrastructure
+# 🚀 VM Infrastructure
 
-Configuration-driven development environment using Vagrant + Ansible with beautiful terminal themes.
+Beautiful development VMs with one command. Vagrant + Ansible + gorgeous terminals.
 
-## 🚀 Quick Start
+> **🔐 Built for Claude Code**: This VM infrastructure was specifically created to provide a safe sandbox where you can run `claude --dangerously-skip-permissions` without fear. Unlike Docker (which shares your host kernel), Vagrant VMs provide true isolation with their own kernel - meaning even if something goes wrong, it stays contained in the VM. We use Docker *inside* the VM for project containers, giving you the best of both worlds: security + convenience.
+
+## 📚 Table of Contents
+
+- [Quick Start](#-quick-start)
+- [What's Included](#-whats-included)
+- [Terminal Themes](#-terminal-themes)
+- [Configuration](#-configuration)
+  - [Minimal Setup](#-minimal-setup)
+  - [Full Reference](#-full-reference)
+  - [Terminal Options](#-terminal-options)
+- [Commands](#-commands)
+- [Port Strategy](#-port-strategy)
+- [Tips & Tricks](#-tips--tricks)
+- [Troubleshooting](#-troubleshooting)
+- [Installation](#-installation)
+
+## 🏃 Quick Start
 
 ```bash
-# 1. Copy this folder to your project
+# 1. Copy to your project
 cp -r packages/vm your-project/packages/
 
-# 2. Create vm.json in project root with your configuration
-# See vm.jsonc for example with comments
-# At minimum, define your ports
-
-# 3. Add script to your package.json
+# 2. Add to package.json
 {
   "scripts": {
     "vm": "./packages/vm/vm.sh"
   }
 }
 
-# 4. Start VM
-pnpm vm up      # Creates VM, installs everything
+# 3. Create minimal vm.json (or use defaults!)
+{
+  "ports": {
+    "frontend": 3000,
+    "backend": 3001
+  }
+}
 
-# 5. Enter VM
-pnpm vm ssh     # You're now in Ubuntu with Node.js + beautiful terminal!
+# 4. Launch! 
+pnpm vm up      # Creates & provisions VM
+pnpm vm ssh     # Enter your shiny new Ubuntu box
 ```
 
-## 📦 Included Software
+## 📦 What's Included
 
-- **Operating System**: Ubuntu 22.04 (configurable)
-- **Shell**: Zsh with syntax highlighting + custom prompts
-- **Node.js**: Configurable version via NVM (default: v22)
-- **pnpm**: Configurable version via Corepack
-- **PostgreSQL**: Optional service (default: disabled)
-- **Redis**: Optional service (default: disabled)
-- **MongoDB**: Optional service (default: disabled)
-- **Docker**: Optional service (default: enabled)
-- **Headless Browser**: Optional for testing (default: disabled)
+- **Ubuntu 22.04** with Zsh + syntax highlighting
+- **Node.js v22** via NVM (configurable)
+- **pnpm** via Corepack
+- **Beautiful terminals** with 8 themes
+- **Optional services**: PostgreSQL, Redis, MongoDB, Docker, Headless Browser
+- **Auto-sync**: Edit locally, run in VM
+- **Claude-ready**: Safe sandbox for AI experiments
 
 ## 🎨 Terminal Themes
 
-Choose from 8 beautiful, popular themes:
+All themes include syntax highlighting and git-aware prompts!
 
-- **`dracula`** ⭐ **Default** - Purple accents, vibrant colors
-- **`gruvbox_dark`** - Warm, earthy retro tones
-- **`solarized_dark`** - Precision colors, scientifically designed
-- **`nord`** - Arctic, north-bluish palette
-- **`monokai`** - Classic dark with vibrant highlights
-- **`one_dark`** - Atom's iconic theme
-- **`catppuccin_mocha`** - Soothing pastels
-- **`tokyo_night`** - Clean, inspired by Tokyo's night
+- `dracula` ⭐ - Purple magic (default)
+- `gruvbox_dark` - Retro warmth
+- `solarized_dark` - Science-backed colors
+- `nord` - Arctic vibes
+- `monokai` - Classic vibrance
+- `one_dark` - Atom's gift
+- `catppuccin_mocha` - Smooth pastels
+- `tokyo_night` - Neon dreams
 
-All themes include syntax highlighting and custom prompts!
+## ⚙️ Configuration
 
-## 🎯 Default Configuration
+### 🎯 Minimal Setup
 
-The package includes `packages/vm/vm.json` with sensible defaults. You can use it as-is for most projects, or create
-your own `vm.json` in the project root to override specific values.
-
-### Minimal Override Example
+Most projects just need ports. Everything else has smart defaults:
 
 ```json
 {
-	"project": {
-		"name": "my-awesome-app"
-	},
-	"ports": {
-		"frontend": 3020,
-		"backend": 3022,
-		"postgresql": 3025
-	},
-	"services": {
-		"postgresql": {
-			"enabled": true
-		}
-	},
-	"terminal": {
-		"emoji": "⚡",
-		"username": "awesome",
-		"theme": "nord"
-	}
+  "ports": {
+    "frontend": 3020,
+    "backend": 3022
+  }
 }
 ```
 
-This minimal config will:
-
-- Use all defaults from `packages/vm/vm.json`
-- **Define ports (required)** - no default ports are included
-- Override project name and terminal customization
-- Enable PostgreSQL (disabled by default)
-- Get a custom terminal: `⚡ awesome my-awesome-app >`
-
-## 🔧 Configuration
-
-Complete `vm.json` reference:
+Want PostgreSQL? Just add:
 
 ```json
 {
-	"project": {
-		"name": "my-app",
-		"hostname": "dev.my-app.local",
-		"workspace_path": "/workspace",
-		"env_template_path": null,
-		// e.g. "backend/.env.template"
-		"backup_pattern": "*backup*.sql.gz"
-	},
-	"vm": {
-		"box": "bento/ubuntu-22.04",
-		"memory": 4096,
-		"cpus": 2,
-		"user": "vagrant"
-	},
-	"versions": {
-		"node": "22",
-		"nvm": "v0.39.7",
-		"pnpm": "latest"
-	},
-	"ports": {
-		"frontend": 3000,
-		"backend": 3001,
-		"postgresql": 5432,
-		"redis": 6379
-	},
-	"services": {
-		"postgresql": {
-			"enabled": true,
-			"database": "myapp_dev",
-			"user": "postgres",
-			"password": "postgres",
-			"port": 5432
-		},
-		"redis": {
-			"enabled": true,
-			"port": 6379
-		},
-		"mongodb": {
-			"enabled": false,
-			"port": 27017
-		},
-		"docker": {
-			"enabled": true
-		},
-		"headless_browser": {
-			"enabled": true,
-			"display": ":99",
-			"executable_path": "/usr/bin/chromium-browser"
-		}
-	},
-	"npm_packages": [
-		"prettier",
-		"eslint",
-		"typescript"
-	],
-	"environment": {
-		"NODE_ENV": "development",
-		"API_URL": "http://localhost:3001"
-	},
-	"terminal": {
-		"emoji": "🚀",
-		"username": "dev",
-		"theme": "dracula",
-		"show_git_branch": true,
-		"show_timestamp": false
-	}
+  "ports": {
+    "frontend": 3020,
+    "backend": 3022,
+    "postgresql": 3025
+  },
+  "services": {
+    "postgresql": { "enabled": true }
+  }
 }
 ```
 
-### Terminal Configuration
-
-The `terminal` section lets you customize your shell experience:
+### 📋 Full Reference
 
 ```json
 {
-	"terminal": {
-		"emoji": "🌀",
-		"username": "myproject",
-		"theme": "dracula",
-		"show_git_branch": true,
-		"show_timestamp": false
-	}
+  "project": {
+    "name": "my-app",                    // VM name & prompt
+    "hostname": "dev.my-app.local",      // VM hostname
+    "workspace_path": "/workspace",      // Sync path in VM
+    "env_template_path": null,           // e.g. "backend/.env.template"
+    "backup_pattern": "*backup*.sql.gz"  // For auto-restore
+  },
+  "vm": {
+    "box": "bento/ubuntu-22.04",        // Vagrant box
+    "memory": 4096,                      // RAM in MB
+    "cpus": 2,                           // CPU cores
+    "user": "vagrant",                   // VM user
+    "port_binding": "127.0.0.1"          // or "0.0.0.0" for network
+  },
+  "versions": {
+    "node": "22",                        // Node version
+    "nvm": "v0.39.7",                    // NVM version
+    "pnpm": "latest"                     // pnpm version
+  },
+  "ports": {
+    "frontend": 3000,
+    "backend": 3001,
+    "postgresql": 5432,
+    "redis": 6379
+  },
+  "services": {
+    "postgresql": {
+      "enabled": true,
+      "database": "myapp_dev",
+      "user": "postgres",
+      "password": "postgres"
+    },
+    "redis": { "enabled": true },
+    "mongodb": { "enabled": false },
+    "docker": { "enabled": true },
+    "headless_browser": { "enabled": false }
+  },
+  "npm_packages": [                      // Global installs
+    "prettier",
+    "eslint"
+  ],
+  "aliases": {                           // Custom aliases
+    "dev": "pnpm dev",
+    "test": "pnpm test"
+  },
+  "environment": {                       // ENV vars
+    "NODE_ENV": "development"
+  }
 }
 ```
 
-**Options:**
+### 🎭 Terminal Options
 
-- `emoji`: Custom emoji for prompt
-- `username`: Display name in terminal
-- `theme`: Theme name (see themes above)
-- `show_git_branch`: Show current git branch
-- `show_timestamp`: Show current time
+Make your prompt uniquely yours:
 
-**Result**: `🌀 myproject goobits (main) >`
+```json
+{
+  "terminal": {
+    "emoji": "⚡",              // Prompt emoji
+    "username": "hacker",       // Prompt name
+    "theme": "tokyo_night",     // Color theme
+    "show_git_branch": true,    // Show branch
+    "show_timestamp": false     // Show time
+  }
+}
+```
 
-Available themes: `dracula`, `gruvbox_dark`, `solarized_dark`, `nord`, `monokai`, `one_dark`, `catppuccin_mocha`,
-`tokyo_night`
+Result: `⚡ hacker my-app (main) >`
 
-## 🛠️ VM Management
+## 🎮 Commands
 
 ```bash
-pnpm vm status   # Check if running
-pnpm vm halt     # Stop VM (preserves data)
-pnpm vm destroy  # Delete VM completely
-pnpm vm reload   # Restart VM with new config
-pnpm vm provision # Re-run Ansible provisioning
+pnpm vm up         # Start VM
+pnpm vm ssh        # Connect to VM
+pnpm vm halt       # Stop VM (keeps data)
+pnpm vm destroy    # Delete VM
+pnpm vm reload     # Restart with new config
+pnpm vm status     # Check if running
+pnpm vm validate   # Check config
+pnpm vm kill       # Force kill stuck VMs
+pnpm vm provision  # Re-run Ansible provisioning
 ```
 
-## 📁 File Sync
+## 🔌 Port Strategy
 
-Edit anywhere - changes sync instantly:
+Avoid conflicts by giving each project 10 ports:
 
+- **Project 1**: 3000-3009
+- **Project 2**: 3010-3019  
+- **Project 3**: 3020-3029
+- **Project 4**: 3030-3039
+
+Example allocation:
+```json
+{
+  "ports": {
+    "frontend": 3020,        // Main app
+    "backend": 3022,         // API
+    "postgresql": 3025,      // Database
+    "redis": 3026,           // Cache
+    "docs": 3028             // Documentation
+  }
+}
+```
+
+**Network access?** Add `"port_binding": "0.0.0.0"` to share with your network.
+
+## 💡 Tips & Tricks
+
+### 🔄 File Sync
 ```
 Mac: ~/your-project/src/app.js
- ↕️
+ ↕️ (instant sync)
 VM:  /workspace/src/app.js
 ```
 
-## 🔌 Port Configuration
+### 🧪 Why Vagrant for Claude Code?
 
-### Port Range Convention
+**Security layers**:
+1. **VM isolation**: Separate kernel = true sandbox (unlike Docker's shared kernel)
+2. **Claude can experiment freely**: Install packages, modify configs, test ideas
+3. **Your host stays safe**: Even with `--dangerously-skip-permissions`
+4. **Docker inside VM**: Best practice for container security (disabled by default, enable in config)
 
-To avoid conflicts when running multiple projects, we recommend assigning each project a dedicated port range of 10
-ports:
+The only restrictions prevent VM shutdown/reboot (would disconnect Claude).
 
-- **Project 1**: 3000-3009
-- **Project 2**: 3010-3019
-- **Project 3**: 3020-3029
-- **Project 4**: 3030-3039
-- etc.
+### 🐘 Database Backups
+Drop `.sql.gz` files matching your `backup_pattern` in the project - they'll auto-restore on provision!
 
-Example port allocation for a project using 3020-3029:
-
-```json
-{
-	"ports": {
-		"frontend": 3020,
-		// Main web app
-		"frontend_preview": 3021,
-		// Production preview
-		"backend": 3022,
-		// API server
-		"admin": 3023,
-		// Admin dashboard
-		"admin_dev": 3024,
-		// Admin dev server
-		"postgresql": 3025,
-		// Database
-		"redis": 3026,
-		// Cache/queue
-		"devtools": 3027,
-		// Chrome DevTools
-		"docs": 3028,
-		// Documentation site
-		"storybook": 3029
-		// Component library
-	}
-}
+### 🚪 Port Conflicts
+See "port collision" in output? Vagrant auto-remapped it:
+```
+Fixed port collision for 3000 => 3000. Now on port 2200.
 ```
 
-### Port Forwarding
+## 🚨 Troubleshooting
 
-By default, forwarded ports are only accessible from localhost (127.0.0.1) for security.
+**Q: Port conflicts?**  
+A: Check Vagrant output for remapped ports
 
-To make ports accessible from other machines on your network, add this to your `vm.json`:
+**Q: VM won't start?**  
+A: `pnpm vm destroy` then `pnpm vm up`
 
-```json
-{
-	"vm": {
-		"port_binding": "0.0.0.0"
-		// WARNING: Exposes services to network
-	}
-}
-```
+**Q: Slow performance?**  
+A: Increase memory/CPUs in vm.json
 
-This allows you to:
+**Q: Can't connect to service?**  
+A: Check it's enabled and port is in vm.json
 
-- Access from your machine's IP address (e.g., `192.168.1.100:3020`)
-- Share development URLs with others on your network
-- Test on mobile devices
+**Q: VirtualBox stuck?**  
+A: `pnpm vm kill` to force cleanup
 
-### Port Conflicts
+## 💻 Installation
 
-If you see "port collision", check the output:
-
-```
-==> default: Fixed port collision for 3000 => 3000. Now on port 2200.
-```
-
-Your app is now on `localhost:2200` instead.
-
-## 🔒 Claude Settings
-
-The `claude-settings/settings.json` file contains security settings for Claude Code. The VM is designed as a safe
-sandbox where Claude can work freely.
-
-**Philosophy**: The VM is isolated from your host machine, so Claude can experiment, install packages, and make changes
-without risk. The only restrictions prevent Claude from accidentally shutting down or rebooting the VM (which would
-disconnect the session).
-
-Update the paths to match your `workspace_path` if needed:
-
-```json
-{
-	"allow": [
-		"Read(/your-workspace/**)",
-		"Write(/your-workspace/**)"
-		// etc.
-	]
-}
-```
-
-## 🔒 Security Best Practices
-
-1. **Port Binding**: Default is localhost-only (127.0.0.1). Only use "0.0.0.0" if you need network access.
-2. **VM Isolation**: The VM is sandboxed from your host. Claude can experiment freely inside.
-3. **Claude Restrictions**: Only prevents VM shutdown/reboot (which would disconnect Claude).
-4. **Database Passwords**: Change default PostgreSQL passwords for any non-development use.
-5. **SSH Keys**: VM uses Vagrant's insecure key by default. This is fine for local development.
-
-## ⚠️ Troubleshooting
-
-- **Port conflicts**: Check the Vagrant output for remapped ports
-- **VM won't start**: Run `pnpm vm destroy` and try again
-- **Slow performance**: Increase memory/CPUs in vm.json
-- **Can't access ports**: Ensure services are running and ports are in vm.json
-
-## ✅ Requirements
-
-- Vagrant 2.0+
-- VirtualBox/Parallels/VMware
-- 4GB free RAM
-
-### Installation
-
-#### macOS
+### macOS
 ```bash
-# Install Vagrant
 brew tap hashicorp/tap
 brew install hashicorp/tap/hashicorp-vagrant
-
-# Install VirtualBox
 brew install --cask virtualbox
 ```
 
-#### Ubuntu/Debian
+### Ubuntu/Debian
 ```bash
-# Install Vagrant
-wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
-sudo apt update && sudo apt install vagrant
+# Add HashiCorp repo
+wget -O- https://apt.releases.hashicorp.com/gpg | \
+  sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
+  https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
+  sudo tee /etc/apt/sources.list.d/hashicorp.list
 
-# Install VirtualBox
-sudo apt update
-sudo apt install virtualbox
+# Install
+sudo apt update && sudo apt install vagrant virtualbox
 ```
 
-#### Windows
-Download installers from:
-- Vagrant: https://www.vagrantup.com/downloads
-- VirtualBox: https://www.virtualbox.org/wiki/Downloads
+### Windows
+Download from [vagrant.com](https://www.vagrantup.com/downloads) and [virtualbox.org](https://www.virtualbox.org/wiki/Downloads)
+
+---
+
+**Pro tip**: The package includes `packages/vm/vm.json` with sensible defaults. Your project's `vm.json` only needs what's different! 🎪
