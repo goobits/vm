@@ -14,8 +14,14 @@ const __dirname = path.dirname(__filename)
 function deepMerge(base, override) {
 	const result = { ...base }
 	for (const [key, value] of Object.entries(override)) {
-		if (typeof value === 'object' && value !== null && !Array.isArray(value) && 
-			typeof result[key] === 'object' && result[key] !== null && !Array.isArray(result[key])) {
+		if (
+			typeof value === 'object' &&
+			value !== null &&
+			!Array.isArray(value) &&
+			typeof result[key] === 'object' &&
+			result[key] !== null &&
+			!Array.isArray(result[key])
+		) {
 			result[key] = deepMerge(result[key], value)
 		} else {
 			result[key] = value
@@ -27,23 +33,23 @@ function deepMerge(base, override) {
 function validateConfig(configFile) {
 	console.log(`Validating VM configuration: ${configFile}`)
 	console.log('='.repeat(60))
-	
+
 	// Load default configuration
 	const defaultsFile = path.join(__dirname, 'vm.json')
 	if (!fs.existsSync(defaultsFile)) {
 		console.log(`ERROR: Default configuration file not found: ${defaultsFile}`)
 		return false
 	}
-	
+
 	let defaultConfig, userConfig, projectConfig
-	
+
 	try {
 		defaultConfig = JSON.parse(fs.readFileSync(defaultsFile, 'utf8'))
 	} catch (e) {
 		console.log(`ERROR: Invalid JSON in default config: ${e.message}`)
 		return false
 	}
-	
+
 	// Load project configuration if it exists
 	if (fs.existsSync(configFile)) {
 		try {
@@ -57,27 +63,27 @@ function validateConfig(configFile) {
 		console.log('WARNING: Project config file not found, using defaults only')
 		projectConfig = defaultConfig
 	}
-	
+
 	// Validation rules
 	const errors = []
 	const warnings = []
-	
+
 	// Required project fields
 	const projectName = projectConfig.project?.name
 	if (!projectName || projectName.trim() === '') {
 		errors.push('project.name is required')
 	}
-	
+
 	const workspacePath = projectConfig.project?.workspace_path
 	if (!workspacePath || workspacePath.trim() === '') {
 		errors.push('project.workspace_path is required')
 	}
-	
+
 	const hostname = projectConfig.project?.hostname
 	if (!hostname || hostname.trim() === '') {
 		errors.push('project.hostname is required')
 	}
-	
+
 	// VM configuration validation
 	if (!projectConfig.vm) {
 		errors.push('vm configuration section is required')
@@ -86,25 +92,25 @@ function validateConfig(configFile) {
 		if (!vmBox || vmBox.trim() === '') {
 			errors.push('vm.box is required')
 		}
-		
+
 		const vmMemory = projectConfig.vm.memory
 		if (!Number.isInteger(vmMemory) || vmMemory <= 0) {
 			errors.push('vm.memory must be a positive integer')
 		} else if (vmMemory < 1024) {
 			warnings.push(`vm.memory is quite low (${vmMemory}MB), consider at least 1024MB`)
 		}
-		
+
 		const vmCpus = projectConfig.vm.cpus
 		if (!Number.isInteger(vmCpus) || vmCpus <= 0) {
 			errors.push('vm.cpus must be a positive integer')
 		}
-		
+
 		const vmUser = projectConfig.vm.user
 		if (!vmUser || vmUser.trim() === '') {
 			errors.push('vm.user is required')
 		}
 	}
-	
+
 	// Port validation
 	if (projectConfig.ports) {
 		Object.entries(projectConfig.ports).forEach(([service, port]) => {
@@ -113,47 +119,47 @@ function validateConfig(configFile) {
 			}
 		})
 	}
-	
+
 	// Terminal configuration validation
 	if (projectConfig.terminal) {
 		const emoji = projectConfig.terminal.emoji
 		if (emoji && emoji.length > 10) {
 			warnings.push('terminal.emoji is quite long, consider keeping it short')
 		}
-		
+
 		const username = projectConfig.terminal.username
 		if (username && username.length > 20) {
 			warnings.push('terminal.username is quite long, consider keeping it under 20 characters')
 		}
 	}
-	
+
 	// Report results
 	console.log('\nValidation Results:')
 	console.log('-'.repeat(20))
-	
+
 	if (errors.length === 0 && warnings.length === 0) {
 		console.log('✅ Configuration is valid!')
 		return true
 	}
-	
+
 	if (errors.length > 0) {
 		console.log(`\n❌ ERRORS (${errors.length}):`)
 		errors.forEach((error, index) => {
 			console.log(`  ${index + 1}. ${error}`)
 		})
 	}
-	
+
 	if (warnings.length > 0) {
 		console.log(`\n⚠️  WARNINGS (${warnings.length}):`)
 		warnings.forEach((warning, index) => {
 			console.log(`  ${index + 1}. ${warning}`)
 		})
 	}
-	
+
 	console.log(`\nConfiguration file: ${configFile}`)
 	console.log(`Default config: ${defaultsFile}`)
 	console.log('='.repeat(60))
-	
+
 	return errors.length === 0
 }
 

@@ -44,12 +44,7 @@
 			"executable_path": "/usr/bin/chromium-browser"
 		}
 	},
-	"npm_packages": [
-		"@anthropic-ai/claude-code",
-		"npm-check-updates",
-		"prettier",
-		"eslint"
-	],
+	"npm_packages": ["@anthropic-ai/claude-code", "npm-check-updates", "prettier", "eslint"],
 	"aliases": {},
 	"environment": {
 		"NODE_ENV": "development",
