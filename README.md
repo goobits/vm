@@ -21,28 +21,52 @@ Beautiful development VMs with one command. Vagrant + Ansible + gorgeous termina
 
 ## 🏃 Quick Start
 
+### Option 1: npm Global Installation (Recommended)
+
 ```bash
-# 1. Copy to your project
-cp -r packages/vm your-project/packages/
+# 1. Install globally via npm
+npm install -g @goobits/vm
 
-# 2. Add to package.json
-{
-  "scripts": {
-    "vm": "./packages/vm/vm.sh"
-  }
-}
+# 2. Start immediately with defaults OR create custom vm.json
+vm up      # Works without any config! Uses smart defaults
+vm ssh     # Enter your shiny new Ubuntu box
 
-# 3. Create minimal vm.json (or use defaults!)
+# OR customize with vm.json
 {
   "ports": {
     "frontend": 3000,
     "backend": 3001
   }
 }
+```
 
-# 4. Launch!
-pnpm vm up      # Creates & provisions VM
-pnpm vm ssh     # Enter your shiny new Ubuntu box
+### Option 2: Manual Global Installation
+
+```bash
+# 1. Clone and install
+git clone <repo-url>
+cd vm
+./install.sh
+
+# 2. Use globally
+vm up
+```
+
+### Option 3: Per-Project Installation
+
+```bash
+# 1. Copy to your project
+cp -r vm your-project/
+
+# 2. Add to package.json
+{
+  "scripts": {
+    "vm": "./vm/vm.sh"
+  }
+}
+
+# 3. Launch!
+pnpm vm up
 ```
 
 ## 📦 What's Included
@@ -177,16 +201,31 @@ Result: `⚡ hacker my-app (main) >`
 ## 🎮 Commands
 
 ```bash
-pnpm vm up         # Start VM
-pnpm vm ssh        # Connect to VM
-pnpm vm halt       # Stop VM (keeps data)
-pnpm vm destroy    # Delete VM
-pnpm vm reload     # Restart with new config
-pnpm vm status     # Check if running
-pnpm vm validate   # Check config
-pnpm vm kill       # Force kill stuck VMs
-pnpm vm provision  # Re-run Ansible provisioning
+vm up                        # Start VM
+vm ssh                       # Connect to VM
+vm halt                      # Stop VM (keeps data)
+vm destroy                   # Delete VM
+vm reload                    # Restart with new config
+vm status                    # Check if running
+vm validate                  # Check config
+vm kill                      # Force kill stuck VMs
+vm provision                 # Re-run Ansible provisioning
+
+# Use custom config file
+vm --config prod.json up     # Start with specific config
+vm --config dev.json ssh     # Any command works with --config
 ```
+
+## 🔍 Automatic vm.json Discovery
+
+The `vm` command automatically searches for `vm.json` configuration:
+
+1. **Current directory**: `./vm.json`
+2. **Parent directory**: `../vm.json`
+3. **Grandparent directory**: `../../vm.json`
+4. **Defaults**: If no config found, uses built-in defaults
+
+This means you can run `vm up` from anywhere in your project tree, and it will find the right configuration!
 
 ## 🔌 Port Strategy
 

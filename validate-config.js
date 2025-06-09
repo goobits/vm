@@ -11,6 +11,22 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+function findVmJson(startDir, maxLevels = 3) {
+	let dir = startDir
+	let level = 0
+	
+	while (level < maxLevels && dir !== path.dirname(dir)) {
+		const vmJsonPath = path.join(dir, 'vm.json')
+		if (fs.existsSync(vmJsonPath)) {
+			return vmJsonPath
+		}
+		dir = path.dirname(dir)
+		level++
+	}
+	
+	return null
+}
+
 function deepMerge(base, override) {
 	const result = { ...base }
 	for (const [key, value] of Object.entries(override)) {
@@ -164,7 +180,10 @@ function validateConfig(configFile) {
 }
 
 // Main execution
-const configFile = process.argv[2] || process.env.VM_CONFIG || path.join(__dirname, '../../vm.json')
+const configFile = process.argv[2] || 
+	process.env.VM_CONFIG || 
+	findVmJson(process.cwd()) || 
+	path.join(__dirname, '../../vm.json')
 
 if (validateConfig(configFile)) {
 	console.log('\n✅ VM configuration is ready to use!')
