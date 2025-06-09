@@ -144,6 +144,11 @@ Vagrant.configure("2") do |config|
     sudo ufw disable || true
     sudo ufw allow ssh || true
     
+    # Copy Ansible playbook to VM temp directory
+    echo "Setting up Ansible playbook..."
+    mkdir -p /tmp/vm-ansible
+    cp -r /workspace/projects/vm/ansible/* /tmp/vm-ansible/
+    
     # Write merged configuration for Ansible (separate from project vm.json)
     cat > /tmp/vm-config.json << 'EOF'
 #{JSON.pretty_generate(project_config)}
@@ -152,8 +157,8 @@ EOF
   
   # Provision with Ansible
   config.vm.provision "ansible_local" do |ansible|
-    ansible.playbook = "ansible/playbook.yml"
-    ansible.provisioning_path = "/workspace/packages/vm"
+    ansible.playbook = "playbook.yml"
+    ansible.provisioning_path = "/tmp/vm-ansible"
     ansible.install_mode = "pip"
     ansible.version = "latest"
   end
