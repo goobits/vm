@@ -1,0 +1,39 @@
+{
+  "name": "@goobits/vm",
+  "version": "1.0.0",
+  "description": "Beautiful development VMs with one command. Vagrant + Ansible + gorgeous terminals.",
+  "type": "module",
+  "bin": {
+    "vm": "./vm.sh"
+  },
+  "files": [
+    "vm.sh",
+    "vm.json",
+    "validate-config.js",
+    "Vagrantfile",
+    "ansible/",
+    "themes.json",
+    "claude-settings/"
+  ],
+  "scripts": {
+    "test": "node validate-config.mjs",
+    "postinstall": "chmod +x vm.sh"
+  },
+  "keywords": [
+    "vagrant",
+    "vm",
+    "development",
+    "ansible",
+    "ubuntu",
+    "claude-code"
+  ],
+  "author": "goobits",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16"
+  },
+  "peerDependencies": {
+    "vagrant": "*",
+    "virtualbox": "*"
+  }
+}
