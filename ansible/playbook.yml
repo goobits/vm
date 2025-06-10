@@ -472,13 +472,14 @@
         notify: restart redis
         when: project_config.services.redis.enabled | default(false)
 
-      # Headless browser testing
+      # Headless browser testing (conditional)
       - name: Install browser testing tools
         apt:
             name:
                 - chromium-browser
                 - xvfb
             state: present
+        when: project_config.services.headless_browser.enabled | default(false)
 
       - name: Create Xvfb service
         copy:
@@ -493,6 +494,7 @@
                 Restart=always
                 [Install]
                 WantedBy=multi-user.target
+        when: project_config.services.headless_browser.enabled | default(false)
 
       - name: Enable Xvfb
         systemd:
@@ -500,6 +502,7 @@
             enabled: yes
             state: started
             daemon_reload: yes
+        when: project_config.services.headless_browser.enabled | default(false)
 
       # Docker (conditional)
       - name: Install Docker
