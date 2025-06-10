@@ -157,7 +157,7 @@ case "${1:-}" in
 			
 			if [ -f "$FULL_CONFIG_PATH" ]; then
 				echo "📍 Using custom config: $FULL_CONFIG_PATH"
-				VM_CONFIG="$FULL_CONFIG_PATH" vagrant "$@"
+				VM_PROJECT_DIR="$(dirname "$FULL_CONFIG_PATH")" VM_CONFIG="$FULL_CONFIG_PATH" vagrant "$@"
 			else
 				echo "❌ Error: Config file not found: $FULL_CONFIG_PATH"
 				exit 1
@@ -167,7 +167,7 @@ case "${1:-}" in
 			VM_JSON_PATH=$(find_vm_json "$CURRENT_DIR")
 			if [ $? -eq 0 ]; then
 				echo "📍 Using vm.json from: $VM_JSON_PATH"
-				VM_CONFIG="$VM_JSON_PATH" vagrant "$@"
+				VM_PROJECT_DIR="$(dirname "$VM_JSON_PATH")" VM_CONFIG="$VM_JSON_PATH" vagrant "$@"
 			elif [ -f "../../vm.json" ]; then
 				echo "📍 Using vm.json from: ../../vm.json"
 				VM_CONFIG="../../vm.json" vagrant "$@"
