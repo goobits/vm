@@ -82,6 +82,7 @@ pnpm vm up
 - **Auto-sync**: Edit locally, run in VM
 - **Claude-ready**: Safe sandbox for AI experiments
 - **Provider choice**: Vagrant (full isolation) or Docker (lightweight)
+- **Unified architecture**: Both providers use identical Ansible provisioning
 
 ## 🎨 Terminal Themes
 
@@ -216,9 +217,9 @@ vm validate                  # Check config
 vm kill                      # Force kill stuck processes
 vm provision                 # Re-run provisioning
 
-# Docker-specific commands
-vm logs                      # View container logs (Docker only)
-vm exec <command>            # Execute command in container (Docker only)
+# Provider-specific commands
+vm logs                      # View service logs (Docker: container logs, Vagrant: journalctl)
+vm exec <command>            # Execute command in VM/container
 
 # Use custom config file
 vm --config prod.json up     # Start with specific config
@@ -273,21 +274,23 @@ VM:  /workspace/src/app.js
 
 ### 🧪 Vagrant vs Docker: Which to Choose?
 
+**Both providers now offer identical development environments!** Services run on localhost, commands work the same, and Ansible handles all provisioning. The only differences are:
+
 **Vagrant (Full VM Isolation)**:
 - ✅ Separate kernel = maximum security
 - ✅ Perfect for `claude --dangerously-skip-permissions`
 - ✅ Complete OS-level isolation
-- ❌ Higher resource usage
-- ❌ Slower startup times
+- ❌ Higher resource usage (~2GB RAM)
+- ❌ Slower startup times (~2-3 minutes)
 
 **Docker (Container Isolation)**:
 - ✅ Lightweight and fast
-- ✅ Minimal resource usage
-- ✅ Quick startup/teardown
+- ✅ Minimal resource usage (~500MB RAM)
+- ✅ Quick startup/teardown (~10-30 seconds)
 - ❌ Shared kernel with host
 - ❌ Less isolation for risky operations
 
-**Recommendation**: Use Vagrant for untrusted code or when using `--dangerously-skip-permissions`. Use Docker for trusted development with faster iteration.
+**The development experience is now identical**: Same commands, same localhost connections, same Ansible provisioning. Choose based on your security/performance needs.
 
 ### 🐘 Database Backups
 
@@ -304,19 +307,28 @@ Fixed port collision for 3000 => 3000. Now on port 2200.
 ## 🚨 Troubleshooting
 
 **Q: Port conflicts?**  
-A: Check Vagrant output for remapped ports
+A: Check output for remapped ports (Vagrant) or adjust ports in vm.json
 
-**Q: VM won't start?**  
-A: `pnpm vm destroy` then `pnpm vm up`
+**Q: VM/container won't start?**  
+A: `vm destroy` then `vm up`
 
 **Q: Slow performance?**  
-A: Increase memory/CPUs in vm.json
+A: Increase memory/CPUs in vm.json (or switch to Docker provider)
 
 **Q: Can't connect to service?**  
-A: Check it's enabled and port is in vm.json
+A: 
+- Check service is enabled in vm.json
+- Verify service is running: `vm exec 'systemctl status postgresql'`
+- All services use localhost (not container names)
 
 **Q: VirtualBox stuck?**  
-A: `pnpm vm kill` to force cleanup
+A: `vm kill` to force cleanup
+
+**Q: Provisioning failed?**  
+A: Check Ansible output - it handles provisioning for both providers:
+```bash
+vm provision  # Re-run Ansible playbook
+```
 
 ## 💻 Installation
 
@@ -363,6 +375,24 @@ sudo usermod -aG docker $USER
 **Vagrant**: Download from [vagrant.com](https://www.vagrantup.com/downloads) and [virtualbox.org](https://www.virtualbox.org/wiki/Downloads)
 **Docker**: Install [Docker Desktop](https://www.docker.com/products/docker-desktop)
 
+## 🏗️ Technical Architecture
+
+### Unified Provisioning
+Both Vagrant and Docker providers use the **same Ansible playbook** for provisioning. This ensures identical environments regardless of provider choice:
+
+```
+vm.sh → Provider (Vagrant/Docker) → Ansible Playbook → Configured Environment
+```
+
+### Service Architecture
+All services (PostgreSQL, Redis, MongoDB) run **inside** the VM/container and are accessed via `localhost`. No more confusion about container hostnames vs localhost!
+
+### Configuration Flow
+1. `vm.json` defines your requirements
+2. `validate-config.js` merges with defaults and validates
+3. Provider-specific setup (Vagrantfile or docker-compose.yml)
+4. Ansible playbook provisions everything identically
+
 ---
 
-**Pro tip**: The package includes `packages/vm/vm.json` with sensible defaults. Your project's `vm.json` only needs what's different! 🎪
+**Pro tip**: The package includes `vm.json` with sensible defaults. Your project's `vm.json` only needs what's different! 🎪
