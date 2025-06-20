@@ -30,7 +30,17 @@ Vagrant.configure("2") do |config|
     project_config = default_config
   end
   
-  # Extract configuration values
+  # Validate configuration using the validation script
+  validation_script = File.expand_path("../../validate-config.js", File.dirname(__FILE__))
+  validation_result = `node "#{validation_script}" "#{config_file}" 2>&1`
+  validation_exit_code = $?.exitstatus
+  
+  if validation_exit_code != 0
+    puts validation_result
+    abort "VM configuration validation failed"
+  end
+  
+  # Extract configuration values after validation
   project_name = project_config['project']['name']
   
   # Define a named machine instead of using default
@@ -41,56 +51,6 @@ Vagrant.configure("2") do |config|
     vm_cpus = project_config['vm']['cpus']
     vm_user = project_config['vm']['user']
     workspace_path = project_config['project']['workspace_path']
-  
-  # Validate critical configuration values
-  errors = []
-  
-  if project_name.nil? || project_name.empty?
-    errors << "project.name is required"
-  end
-  
-  if workspace_path.nil? || workspace_path.empty?
-    errors << "project.workspace_path is required"
-  end
-  
-  if project_config['project']['hostname'].nil? || project_config['project']['hostname'].empty?
-    errors << "project.hostname is required"
-  end
-  
-  # Validate VM configuration exists
-  unless project_config['vm']
-    errors << "vm configuration section is required"
-  else
-    if project_config['vm']['box'].nil? || project_config['vm']['box'].empty?
-      errors << "vm.box is required"
-    end
-    
-    if project_config['vm']['memory'].nil? || project_config['vm']['memory'] <= 0
-      errors << "vm.memory must be a positive number"
-    end
-    
-    if project_config['vm']['cpus'].nil? || project_config['vm']['cpus'] <= 0
-      errors << "vm.cpus must be a positive number"
-    end
-    
-    if project_config['vm']['user'].nil? || project_config['vm']['user'].empty?
-      errors << "vm.user is required"
-    end
-  end
-  
-  # Report all errors at once
-  unless errors.empty?
-    puts "\n" + "="*60
-    puts "VM CONFIGURATION ERRORS:"
-    puts "="*60
-    errors.each_with_index do |error, index|
-      puts "#{index + 1}. #{error}"
-    end
-    puts "\nConfiguration file: #{config_file}"
-    puts "Please check your vm.json file and ensure all required fields are present."
-    puts "="*60 + "\n"
-    abort "VM configuration validation failed with #{errors.length} error(s)"
-  end
   
     # Forward ports from config
     # Default to localhost-only for security (override with vm.port_binding)
