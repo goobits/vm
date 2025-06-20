@@ -1,10 +1,5 @@
 #!/bin/bash
-# Minimal Docker entrypoint - just keeps container running for Ansible
+set -e
 
-# Start SSH if configured (optional - for SSH-based Ansible connection)
-if [ -f /etc/ssh/sshd_config ]; then
-    service ssh start
-fi
-
-# Keep container running
-exec sleep infinity
+# Start supervisor, which will in turn start all configured services.
+exec /usr/bin/supervisord -n -c /etc/supervisor/supervisord.conf
