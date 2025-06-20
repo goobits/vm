@@ -343,14 +343,6 @@
             executable: /bin/bash
         become_user: '{{ project_user }}'
 
-      - name: Install pnpm
-        shell: |
-            source ~/.nvm/nvm.sh
-            corepack prepare pnpm@{{ project_config.versions.pnpm | default('9.15.0') }} --activate
-        args:
-            executable: /bin/bash
-        become_user: '{{ project_user }}'
-
       - name: Install global npm packages
         shell: |
             source ~/.nvm/nvm.sh

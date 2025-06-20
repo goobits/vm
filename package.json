@@ -15,7 +15,7 @@
     "examples/"
   ],
   "scripts": {
-    "test": "node validate-config.mjs",
+    "test": "node validate-config.js",
     "postinstall": "chmod +x vm.sh"
   },
   "keywords": [
