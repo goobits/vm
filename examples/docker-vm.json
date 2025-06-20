@@ -1,0 +1,29 @@
+{
+	"provider": "docker",
+	"project": {
+		"name": "my-docker-project",
+		"hostname": "dev.my-docker-project.local"
+	},
+	"vm": {
+		"memory": 2048,
+		"cpus": 2
+	},
+	"ports": {
+		"frontend": 3010,
+		"backend": 3011,
+		"postgresql": 3015
+	},
+	"services": {
+		"postgresql": {
+			"enabled": true,
+			"database": "myapp_dev"
+		},
+		"redis": {
+			"enabled": true
+		}
+	},
+	"terminal": {
+		"theme": "monokai",
+		"emoji": "🐳"
+	}
+}

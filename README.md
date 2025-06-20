@@ -1,8 +1,10 @@
 # 🚀 VM Infrastructure
 
-Beautiful development VMs with one command. Vagrant + Ansible + gorgeous terminals.
+Beautiful development environments with one command. Choose between Vagrant (full VM isolation) or Docker (lightweight containers) based on your needs.
 
-> **🔐 Built for Claude Code**: This VM infrastructure was specifically created to provide a safe sandbox where you can run `claude --dangerously-skip-permissions` without fear. Unlike Docker (which shares your host kernel), Vagrant VMs provide true isolation with their own kernel - meaning even if something goes wrong, it stays contained in the VM. We use Docker _inside_ the VM for project containers, giving you the best of both worlds: security + convenience.
+> **🔐 Built for Claude Code**: This infrastructure provides safe sandboxes for AI-assisted development. Choose your isolation level:
+> - **Vagrant**: Full VM isolation with separate kernel - ideal for `claude --dangerously-skip-permissions`
+> - **Docker**: Lightweight containers with shared kernel - fast and resource-efficient for trusted workloads
 
 ## 📚 Table of Contents
 
@@ -33,6 +35,7 @@ vm ssh     # Enter your shiny new Ubuntu box
 
 # OR customize with vm.json
 {
+  "provider": "docker",  # Use Docker instead of Vagrant (optional)
   "ports": {
     "frontend": 3000,
     "backend": 3001
@@ -78,6 +81,7 @@ pnpm vm up
 - **Optional services**: PostgreSQL, Redis, MongoDB, Docker, Headless Browser
 - **Auto-sync**: Edit locally, run in VM
 - **Claude-ready**: Safe sandbox for AI experiments
+- **Provider choice**: Vagrant (full isolation) or Docker (lightweight)
 
 ## 🎨 Terminal Themes
 
@@ -126,18 +130,19 @@ Want PostgreSQL? Just add:
 
 ```json
 {
+	"provider": "vagrant", // or "docker" - defaults to "vagrant"
 	"project": {
-		"name": "my-app", // VM name & prompt
-		"hostname": "dev.my-app.local", // VM hostname
-		"workspace_path": "/workspace", // Sync path in VM
+		"name": "my-app", // VM/container name & prompt
+		"hostname": "dev.my-app.local", // VM/container hostname
+		"workspace_path": "/workspace", // Sync path in VM/container
 		"env_template_path": null, // e.g. "backend/.env.template"
 		"backup_pattern": "*backup*.sql.gz" // For auto-restore
 	},
 	"vm": {
-		"box": "bento/ubuntu-22.04", // Vagrant box
+		"box": "bento/ubuntu-22.04", // Vagrant box (Vagrant only)
 		"memory": 4096, // RAM in MB
 		"cpus": 2, // CPU cores
-		"user": "vagrant", // VM user
+		"user": "vagrant", // VM/container user
 		"port_binding": "127.0.0.1" // or "0.0.0.0" for network
 	},
 	"versions": {
@@ -201,15 +206,19 @@ Result: `⚡ hacker my-app (main) >`
 ## 🎮 Commands
 
 ```bash
-vm up                        # Start VM
-vm ssh                       # Connect to VM
-vm halt                      # Stop VM (keeps data)
-vm destroy                   # Delete VM
+vm up                        # Start VM/container
+vm ssh                       # Connect to VM/container
+vm halt                      # Stop VM/container (keeps data)
+vm destroy                   # Delete VM/container
 vm reload                    # Restart with new config
 vm status                    # Check if running
 vm validate                  # Check config
-vm kill                      # Force kill stuck VMs
-vm provision                 # Re-run Ansible provisioning
+vm kill                      # Force kill stuck processes
+vm provision                 # Re-run provisioning
+
+# Docker-specific commands
+vm logs                      # View container logs (Docker only)
+vm exec <command>            # Execute command in container (Docker only)
 
 # Use custom config file
 vm --config prod.json up     # Start with specific config
@@ -262,16 +271,23 @@ Mac: ~/your-project/src/app.js
 VM:  /workspace/src/app.js
 ```
 
-### 🧪 Why Vagrant for Claude Code?
+### 🧪 Vagrant vs Docker: Which to Choose?
 
-**Security layers**:
+**Vagrant (Full VM Isolation)**:
+- ✅ Separate kernel = maximum security
+- ✅ Perfect for `claude --dangerously-skip-permissions`
+- ✅ Complete OS-level isolation
+- ❌ Higher resource usage
+- ❌ Slower startup times
 
-1. **VM isolation**: Separate kernel = true sandbox (unlike Docker's shared kernel)
-2. **Claude can experiment freely**: Install packages, modify configs, test ideas
-3. **Your host stays safe**: Even with `--dangerously-skip-permissions`
-4. **Docker inside VM**: Best practice for container security (disabled by default, enable in config)
+**Docker (Container Isolation)**:
+- ✅ Lightweight and fast
+- ✅ Minimal resource usage
+- ✅ Quick startup/teardown
+- ❌ Shared kernel with host
+- ❌ Less isolation for risky operations
 
-The only restrictions prevent VM shutdown/reboot (would disconnect Claude).
+**Recommendation**: Use Vagrant for untrusted code or when using `--dangerously-skip-permissions`. Use Docker for trusted development with faster iteration.
 
 ### 🐘 Database Backups
 
@@ -304,31 +320,48 @@ A: `pnpm vm kill` to force cleanup
 
 ## 💻 Installation
 
+### Prerequisites
+
+**For Vagrant provider**:
+- VirtualBox or Parallels
+- Vagrant
+
+**For Docker provider**:
+- Docker Desktop (macOS/Windows) or Docker Engine (Linux)
+- docker-compose
+
 ### macOS
 
 ```bash
+# For Vagrant
 brew tap hashicorp/tap
 brew install hashicorp/tap/hashicorp-vagrant
 brew install --cask virtualbox
+
+# For Docker
+brew install --cask docker
 ```
 
 ### Ubuntu/Debian
 
 ```bash
-# Add HashiCorp repo
+# For Vagrant
 wget -O- https://apt.releases.hashicorp.com/gpg | \
   sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
 echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
   https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
   sudo tee /etc/apt/sources.list.d/hashicorp.list
-
-# Install
 sudo apt update && sudo apt install vagrant virtualbox
+
+# For Docker
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
 ```
 
 ### Windows
 
-Download from [vagrant.com](https://www.vagrantup.com/downloads) and [virtualbox.org](https://www.virtualbox.org/wiki/Downloads)
+**Vagrant**: Download from [vagrant.com](https://www.vagrantup.com/downloads) and [virtualbox.org](https://www.virtualbox.org/wiki/Downloads)
+**Docker**: Install [Docker Desktop](https://www.docker.com/products/docker-desktop)
 
 ---
 

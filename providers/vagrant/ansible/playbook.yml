@@ -45,12 +45,12 @@
 
       - name: Check for terminal themes
         stat:
-            path: '{{ default_workspace }}/packages/vm/themes.json'
+            path: '/vm-tool/shared/themes.json'
         register: themes_file_stat
 
       - name: Load terminal themes
         set_fact:
-            terminal_themes: "{{ lookup('file', default_workspace + '/packages/vm/themes.json') | from_json }}"
+            terminal_themes: "{{ lookup('file', '/vm-tool/shared/themes.json') | from_json }}"
         when: themes_file_stat.stat.exists
 
       - name: Use fallback Dracula theme
@@ -94,6 +94,12 @@
         systemd:
             name: redis-server
             state: restarted
+
+      - name: restart mongodb
+        systemd:
+            name: mongod
+            state: restarted
+            daemon_reload: yes
 
       - name: restart ssh
         systemd:
@@ -472,6 +478,75 @@
         notify: restart redis
         when: project_config.services.redis.enabled | default(false)
 
+      # MongoDB (conditional)
+      - name: Install MongoDB dependencies
+        apt:
+            name:
+                - gnupg
+                - curl
+            state: present
+        when: project_config.services.mongodb.enabled | default(false)
+
+      - name: Add MongoDB GPG key
+        apt_key:
+            url: https://pgp.mongodb.com/server-6.0.asc
+            state: present
+        when: project_config.services.mongodb.enabled | default(false)
+
+      - name: Add MongoDB repository
+        apt_repository:
+            repo: "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/6.0 multiverse"
+            state: present
+            update_cache: yes
+        when: project_config.services.mongodb.enabled | default(false)
+
+      - name: Install MongoDB
+        apt:
+            name:
+                - mongodb-org
+            state: present
+        when: project_config.services.mongodb.enabled | default(false)
+
+      - name: Configure MongoDB port
+        lineinfile:
+            path: /etc/mongod.conf
+            regexp: '^\s*port:'
+            line: '  port: {{ project_config.ports.mongodb | default(project_config.services.mongodb.port | default(27017)) }}'
+        when: project_config.services.mongodb.enabled | default(false)
+
+      - name: Configure MongoDB bind IP
+        lineinfile:
+            path: /etc/mongod.conf
+            regexp: '^\s*bindIp:'
+            line: '  bindIp: 127.0.0.1'
+        when: project_config.services.mongodb.enabled | default(false)
+
+      - name: Enable and start MongoDB service
+        systemd:
+            name: mongod
+            enabled: yes
+            state: started
+            daemon_reload: yes
+        when: project_config.services.mongodb.enabled | default(false)
+
+      - name: Wait for MongoDB to be ready
+        wait_for:
+            port: '{{ project_config.ports.mongodb | default(project_config.services.mongodb.port | default(27017)) }}'
+            host: localhost
+            delay: 2
+            timeout: 30
+        when: project_config.services.mongodb.enabled | default(false)
+
+      - name: Create MongoDB database
+        shell: |
+            mongosh --port {{ project_config.ports.mongodb | default(project_config.services.mongodb.port | default(27017)) }} --eval "
+            db = db.getSiblingDB('{{ project_config.project.name }}_dev');
+            db.createCollection('init');
+            print('Database {{ project_config.project.name }}_dev created');
+            "
+        when: project_config.services.mongodb.enabled | default(false)
+        ignore_errors: yes
+
       # Headless browser testing (conditional)
       - name: Install browser testing tools
         apt:
@@ -530,12 +605,12 @@
 
       - name: Check for project Claude settings
         stat:
-            path: '{{ project_path }}/packages/vm/claude-settings/settings.json'
+            path: '/vm-tool/shared/claude-settings/settings.json'
         register: claude_settings
 
       - name: Copy project Claude settings
         copy:
-            src: '{{ project_path }}/packages/vm/claude-settings/settings.json'
+            src: '/vm-tool/shared/claude-settings/settings.json'
             dest: '/home/{{ project_user }}/.claude/settings.json'
             remote_src: yes
             owner: '{{ project_user }}'
@@ -594,6 +669,7 @@
                 # Database shortcuts
                 alias psql='sudo -u postgres psql -p {{ project_config.ports.postgresql | default(5432) }}'
                 alias redis='redis-cli -p {{ project_config.ports.redis | default(6379) }}'
+                alias mongo='mongosh --port {{ project_config.ports.mongodb | default(27017) }}'
 
                 # Environment
                 export DISPLAY={{ project_config.services.headless_browser.display | default(':99') }}
