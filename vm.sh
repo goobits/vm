@@ -136,7 +136,6 @@ docker_up() {
 	
 	# Run Ansible playbook
 	echo "🔧 Running Ansible provisioning..."
-	docker exec "${container_name}" bash -c "apt-get update && apt-get install -y ansible"
 	docker exec "${container_name}" ansible-playbook -i localhost, -c local /vm-tool/providers/vagrant/ansible/playbook.yml
 	
 	echo "✅ Docker environment is running and provisioned!"
