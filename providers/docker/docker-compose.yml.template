@@ -6,17 +6,7 @@ services:
       context: {{VM_TOOL_PATH}}
       dockerfile: providers/docker/Dockerfile
       args:
-        NODE_VERSION: "{{NODE_VERSION}}"
-        NVM_VERSION: "{{NVM_VERSION}}"
-        PNPM_VERSION: "{{PNPM_VERSION}}"
-        PROJECT_NAME: "{{PROJECT_NAME}}"
         PROJECT_USER: "{{PROJECT_USER}}"
-        TERMINAL_THEME: "{{TERMINAL_THEME}}"
-        TERMINAL_EMOJI: "{{TERMINAL_EMOJI}}"
-        TERMINAL_USERNAME: "{{TERMINAL_USERNAME}}"
-        SHOW_GIT_BRANCH: "{{SHOW_GIT_BRANCH}}"
-        SHOW_TIMESTAMP: "{{SHOW_TIMESTAMP}}"
-        HEADLESS_BROWSER_ENABLED: "{{HEADLESS_BROWSER_ENABLED}}"
     container_name: {{PROJECT_NAME}}-dev
     hostname: {{PROJECT_HOSTNAME}}
     tty: true
@@ -24,23 +14,6 @@ services:
     environment:
       - LANG=en_US.UTF-8
       - LC_ALL=en_US.UTF-8
-      - DISPLAY={{DISPLAY}}
-      - NPM_PACKAGES={{NPM_PACKAGES}}
-      - ENV_TEMPLATE_PATH={{ENV_TEMPLATE_PATH}}
-      - BACKUP_PATTERN={{BACKUP_PATTERN}}
-      - PROJECT_ALIASES={{PROJECT_ALIASES}}
-      - HEADLESS_BROWSER_ENABLED={{HEADLESS_BROWSER_ENABLED}}
-      - PUPPETEER_EXECUTABLE_PATH={{PUPPETEER_EXECUTABLE_PATH}}
-      - POSTGRES_ENABLED={{ENABLE_POSTGRESQL}}
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT={{POSTGRES_PORT}}
-      - POSTGRES_USER={{POSTGRES_USER}}
-      - POSTGRES_PASSWORD={{POSTGRES_PASSWORD}}
-      - POSTGRES_DB={{POSTGRES_DB}}
-      - REDIS_HOST=redis
-      - REDIS_PORT={{REDIS_PORT}}
-      - MONGODB_HOST=mongodb
-      - MONGODB_PORT={{MONGODB_PORT}}
       {{#ENVIRONMENT}}
       - {{KEY}}={{VALUE}}
       {{/ENVIRONMENT}}
@@ -50,6 +23,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - {{PROJECT_NAME}}_nvm:/home/{{PROJECT_USER}}/.nvm
       - {{PROJECT_NAME}}_cache:/home/{{PROJECT_USER}}/.cache
+      - {{PROJECT_NAME}}_config:/tmp
     ports:
       {{#PORTS}}
       - "{{HOST_IP}}:{{HOST_PORT}}:{{CONTAINER_PORT}}"
@@ -60,61 +34,6 @@ services:
       - SYS_PTRACE
     security_opt:
       - seccomp:unconfined
-    {{#ENABLE_POSTGRESQL}}
-    depends_on:
-      - postgres
-    {{/ENABLE_POSTGRESQL}}
-    {{#ENABLE_REDIS}}
-    depends_on:
-      - redis
-    {{/ENABLE_REDIS}}
-    {{#ENABLE_MONGODB}}
-    depends_on:
-      - mongodb
-    {{/ENABLE_MONGODB}}
-
-  {{#ENABLE_POSTGRESQL}}
-  postgres:
-    image: postgres:15-alpine
-    container_name: {{PROJECT_NAME}}-postgres
-    environment:
-      POSTGRES_USER: {{POSTGRES_USER}}
-      POSTGRES_PASSWORD: {{POSTGRES_PASSWORD}}
-      POSTGRES_DB: {{POSTGRES_DB}}
-    volumes:
-      - {{PROJECT_NAME}}_postgres_data:/var/lib/postgresql/data
-    ports:
-      - "{{HOST_IP}}:{{POSTGRES_PORT}}:5432"
-    networks:
-      - {{PROJECT_NAME}}_network
-  {{/ENABLE_POSTGRESQL}}
-
-  {{#ENABLE_REDIS}}
-  redis:
-    image: redis:7-alpine
-    container_name: {{PROJECT_NAME}}-redis
-    command: redis-server --port {{REDIS_PORT}}
-    ports:
-      - "{{HOST_IP}}:{{REDIS_PORT}}:{{REDIS_PORT}}"
-    volumes:
-      - {{PROJECT_NAME}}_redis_data:/data
-    networks:
-      - {{PROJECT_NAME}}_network
-  {{/ENABLE_REDIS}}
-
-  {{#ENABLE_MONGODB}}
-  mongodb:
-    image: mongo:6
-    container_name: {{PROJECT_NAME}}-mongodb
-    environment:
-      MONGO_INITDB_DATABASE: {{MONGODB_DATABASE}}
-    volumes:
-      - {{PROJECT_NAME}}_mongodb_data:/data/db
-    ports:
-      - "{{HOST_IP}}:{{MONGODB_PORT}}:27017"
-    networks:
-      - {{PROJECT_NAME}}_network
-  {{/ENABLE_MONGODB}}
 
 networks:
   {{PROJECT_NAME}}_network:
@@ -123,12 +42,4 @@ networks:
 volumes:
   {{PROJECT_NAME}}_nvm:
   {{PROJECT_NAME}}_cache:
-  {{#ENABLE_POSTGRESQL}}
-  {{PROJECT_NAME}}_postgres_data:
-  {{/ENABLE_POSTGRESQL}}
-  {{#ENABLE_REDIS}}
-  {{PROJECT_NAME}}_redis_data:
-  {{/ENABLE_REDIS}}
-  {{#ENABLE_MONGODB}}
-  {{PROJECT_NAME}}_mongodb_data:
-  {{/ENABLE_MONGODB}}
+  {{PROJECT_NAME}}_config:

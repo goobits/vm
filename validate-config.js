@@ -206,15 +206,59 @@ function validateConfig(configFile) {
 }
 
 // Main execution
-const configFile = process.argv[2] || 
+const args = process.argv.slice(2)
+const getConfigFlag = args.includes('--get-config')
+const configFile = args.find(arg => !arg.startsWith('--')) || 
 	process.env.VM_CONFIG || 
 	findVmJson(process.cwd()) || 
 	path.join(__dirname, '../../vm.json')
 
-if (validateConfig(configFile)) {
-	console.log('\n✅ VM configuration is ready to use!')
-	process.exit(0)
+if (getConfigFlag) {
+	// Load and output merged configuration for vm.sh
+	try {
+		// Load default configuration
+		const defaultsFile = path.join(__dirname, 'vm.json')
+		let defaultConfig = {}
+		if (fs.existsSync(defaultsFile)) {
+			defaultConfig = JSON.parse(fs.readFileSync(defaultsFile, 'utf8'))
+		}
+
+		// Load user configuration if it exists
+		let userConfig = {}
+		if (fs.existsSync(configFile)) {
+			userConfig = JSON.parse(fs.readFileSync(configFile, 'utf8'))
+		}
+
+		// Merge configurations
+		const projectConfig = deepMerge(defaultConfig, userConfig)
+
+		// Validate the merged config
+		const errors = []
+		
+		// Basic validation
+		if (!projectConfig.project?.name) errors.push('project.name is required')
+		if (!projectConfig.project?.workspace_path) errors.push('project.workspace_path is required')
+		if (!projectConfig.project?.hostname) errors.push('project.hostname is required')
+		
+		if (errors.length > 0) {
+			console.error(JSON.stringify({ error: errors.join('; ') }))
+			process.exit(1)
+		}
+
+		// Output the merged configuration
+		console.log(JSON.stringify(projectConfig))
+		process.exit(0)
+	} catch (e) {
+		console.error(JSON.stringify({ error: e.message }))
+		process.exit(1)
+	}
 } else {
-	console.log('\n❌ VM configuration has errors that must be fixed before use.')
-	process.exit(1)
+	// Normal validation mode
+	if (validateConfig(configFile)) {
+		console.log('\n✅ VM configuration is ready to use!')
+		process.exit(0)
+	} else {
+		console.log('\n❌ VM configuration has errors that must be fixed before use.')
+		process.exit(1)
+	}
 }
