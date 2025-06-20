@@ -108,7 +108,7 @@ load_config() {
 # Get provider from config
 get_provider() {
 	local config="$1"
-	echo "$config" | jq -r '.provider // "vagrant"'
+	echo "$config" | jq -r '.provider // "docker"'
 }
 
 # Docker helper function to reduce duplication

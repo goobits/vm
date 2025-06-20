@@ -1,6 +1,6 @@
 {
 	"$schema": "./vm.schema.json",
-	"provider": "vagrant",
+	"provider": "docker",
 	"project": {
 		"name": "myproject",
 		"hostname": "dev.myproject.local",
