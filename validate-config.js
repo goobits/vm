@@ -84,6 +84,12 @@ function validateConfig(configFile) {
 	const errors = []
 	const warnings = []
 
+	// Provider validation
+	const provider = projectConfig.provider
+	if (provider && provider !== 'vagrant' && provider !== 'docker') {
+		errors.push(`Invalid provider: "${provider}". Must be "vagrant" or "docker"`)
+	}
+
 	// Required project fields
 	const projectName = projectConfig.project?.name
 	if (!projectName || projectName.trim() === '') {
@@ -104,9 +110,14 @@ function validateConfig(configFile) {
 	if (!projectConfig.vm) {
 		errors.push('vm configuration section is required')
 	} else {
-		const vmBox = projectConfig.vm.box
-		if (!vmBox || vmBox.trim() === '') {
-			errors.push('vm.box is required')
+		// Provider-specific validation
+		const currentProvider = projectConfig.provider || 'vagrant'
+		
+		if (currentProvider === 'vagrant') {
+			const vmBox = projectConfig.vm.box
+			if (!vmBox || vmBox.trim() === '') {
+				errors.push('vm.box is required for Vagrant provider')
+			}
 		}
 
 		const vmMemory = projectConfig.vm.memory
@@ -124,6 +135,12 @@ function validateConfig(configFile) {
 		const vmUser = projectConfig.vm.user
 		if (!vmUser || vmUser.trim() === '') {
 			errors.push('vm.user is required')
+		}
+		
+		// Port binding validation
+		const portBinding = projectConfig.vm.port_binding
+		if (portBinding && portBinding !== '127.0.0.1' && portBinding !== '0.0.0.0') {
+			warnings.push(`Unusual port binding: "${portBinding}". Typically use "127.0.0.1" (localhost) or "0.0.0.0" (all interfaces)`)
 		}
 	}
 
@@ -149,9 +166,18 @@ function validateConfig(configFile) {
 		}
 	}
 
+	// Services validation (Docker-specific warnings)
+	if (projectConfig.services) {
+		const currentProvider = projectConfig.provider || 'vagrant'
+		if (currentProvider === 'docker' && projectConfig.services.docker?.enabled) {
+			warnings.push('Docker-in-Docker is enabled. This requires mounting the Docker socket and may have security implications.')
+		}
+	}
+
 	// Report results
 	console.log('\nValidation Results:')
 	console.log('-'.repeat(20))
+	console.log(`Provider: ${projectConfig.provider || 'vagrant'} (default)`)
 
 	if (errors.length === 0 && warnings.length === 0) {
 		console.log('✅ Configuration is valid!')
