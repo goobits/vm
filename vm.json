@@ -1,4 +1,5 @@
 {
+	"provider": "vagrant",
 	"project": {
 		"name": "myproject",
 		"hostname": "dev.myproject.local",
@@ -10,7 +11,8 @@
 		"box": "bento/ubuntu-22.04",
 		"memory": 6144,
 		"cpus": 4,
-		"user": "vagrant"
+		"user": "vagrant",
+		"port_binding": "127.0.0.1"
 	},
 	"versions": {
 		"node": "22",

@@ -10,10 +10,9 @@
     "vm.sh",
     "vm.json",
     "validate-config.js",
-    "Vagrantfile",
-    "ansible/",
-    "themes.json",
-    "claude-settings/"
+    "providers/",
+    "shared/",
+    "examples/"
   ],
   "scripts": {
     "test": "node validate-config.mjs",
@@ -21,11 +20,13 @@
   },
   "keywords": [
     "vagrant",
+    "docker",
     "vm",
     "development",
     "ansible",
     "ubuntu",
-    "claude-code"
+    "claude-code",
+    "dev-environment"
   ],
   "author": "goobits",
   "license": "MIT",
@@ -35,5 +36,13 @@
   "peerDependencies": {
     "vagrant": "*",
     "virtualbox": "*"
+  },
+  "peerDependenciesMeta": {
+    "vagrant": {
+      "optional": true
+    },
+    "virtualbox": {
+      "optional": true
+    }
   }
 }
