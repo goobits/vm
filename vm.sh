@@ -4,6 +4,11 @@
 
 set -e
 
+# Default port configuration
+DEFAULT_POSTGRES_PORT=5432
+DEFAULT_REDIS_PORT=6379
+DEFAULT_MONGODB_PORT=27017
+
 # Get the directory where this script is located (packages/vm)
 # Handle both direct execution and npm link scenarios
 if [ -L "$0" ]; then
@@ -106,6 +111,35 @@ get_provider() {
 	echo "$config" | jq -r '.provider // "vagrant"'
 }
 
+# Docker helper function to reduce duplication
+docker_run() {
+	local action="$1"
+	local config="$2"
+	local project_dir="$3"
+	shift 3
+	
+	# Extract project name once
+	local project_name=$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')
+	local container_name="${project_name}-dev"
+	
+	case "$action" in
+		"compose")
+			cd "$project_dir"
+			docker-compose "$@"
+			;;
+		"exec")
+			docker exec "${container_name}" "$@"
+			;;
+		"exec-it")
+			docker exec -it "${container_name}" "$@"
+			;;
+		*)
+			cd "$project_dir"
+			docker-compose "$action" "$@"
+			;;
+	esac
+}
+
 # Docker functions
 docker_up() {
 	local config="$1"
@@ -119,9 +153,8 @@ docker_up() {
 	node "$SCRIPT_DIR/providers/docker/docker-provisioning.js" /tmp/vm-config.json "$project_dir"
 	
 	# Build and start containers
-	cd "$project_dir"
-	docker-compose build
-	docker-compose up -d "$@"
+	docker_run "compose" "$config" "$project_dir" build
+	docker_run "compose" "$config" "$project_dir" up -d "$@"
 	
 	# Get container name
 	local project_name=$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')
@@ -131,12 +164,12 @@ docker_up() {
 	docker cp /tmp/vm-config.json "${container_name}:/tmp/vm-config.json"
 	
 	# Copy VM tool directory to container for Ansible playbook access
-	docker exec "${container_name}" mkdir -p /vm-tool
+	docker_run "exec" "$config" "$project_dir" mkdir -p /vm-tool
 	docker cp "$SCRIPT_DIR/." "${container_name}:/vm-tool/"
 	
 	# Run Ansible playbook
 	echo "🔧 Running Ansible provisioning..."
-	docker exec "${container_name}" ansible-playbook -i localhost, -c local /vm-tool/providers/vagrant/ansible/playbook.yml
+	docker_run "exec" "$config" "$project_dir" ansible-playbook -i localhost, -c local /vm-tool/providers/vagrant/ansible/playbook.yml
 	
 	echo "✅ Docker environment is running and provisioned!"
 	echo "Run 'vm ssh' to connect"
@@ -144,10 +177,9 @@ docker_up() {
 
 docker_ssh() {
 	local config="$1"
-	local project_name=$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')
 	shift
 	
-	docker exec -it "${project_name}-dev" /bin/zsh
+	docker_run "exec-it" "$config" "" /bin/zsh
 }
 
 docker_halt() {
@@ -155,8 +187,7 @@ docker_halt() {
 	local project_dir="$2"
 	shift 2
 	
-	cd "$project_dir"
-	docker-compose stop "$@"
+	docker_run "stop" "$config" "$project_dir" "$@"
 }
 
 docker_destroy() {
@@ -164,8 +195,7 @@ docker_destroy() {
 	local project_dir="$2"
 	shift 2
 	
-	cd "$project_dir"
-	docker-compose down -v "$@"
+	docker_run "down" "$config" "$project_dir" -v "$@"
 }
 
 docker_status() {
@@ -173,8 +203,7 @@ docker_status() {
 	local project_dir="$2"
 	shift 2
 	
-	cd "$project_dir"
-	docker-compose ps "$@"
+	docker_run "ps" "$config" "$project_dir" "$@"
 }
 
 docker_reload() {
@@ -192,9 +221,8 @@ docker_provision() {
 	shift 2
 	
 	echo "🔄 Rebuilding Docker environment..."
-	cd "$project_dir"
-	docker-compose build --no-cache
-	docker-compose up -d "$@"
+	docker_run "compose" "$config" "$project_dir" build --no-cache
+	docker_run "compose" "$config" "$project_dir" up -d "$@"
 }
 
 docker_logs() {
@@ -202,16 +230,14 @@ docker_logs() {
 	local project_dir="$2"
 	shift 2
 	
-	cd "$project_dir"
-	docker-compose logs "$@"
+	docker_run "logs" "$config" "$project_dir" "$@"
 }
 
 docker_exec() {
 	local config="$1"
-	local project_name=$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')
 	shift
 	
-	docker exec "${project_name}-dev" "$@"
+	docker_run "exec" "$config" "" "$@"
 }
 
 docker_kill() {
