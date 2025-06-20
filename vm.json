@@ -1,4 +1,5 @@
 {
+	"$schema": "./vm.schema.json",
 	"provider": "vagrant",
 	"project": {
 		"name": "myproject",

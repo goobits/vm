@@ -99,6 +99,8 @@ All themes include syntax highlighting and git-aware prompts!
 
 ## ⚙️ Configuration
 
+📖 **Full configuration reference**: See [CONFIGURATION.md](CONFIGURATION.md) for all available options.
+
 ### 🎯 Minimal Setup
 
 Most projects just need ports. Everything else has smart defaults:
@@ -123,6 +125,19 @@ Want PostgreSQL? Just add:
 	},
 	"services": {
 		"postgresql": { "enabled": true }
+	}
+}
+```
+
+### 📋 IDE Support
+
+For autocompletion and validation in your editor:
+
+```json
+{
+	"$schema": "./vm.schema.json",
+	"ports": {
+		"frontend": 3020
 	}
 }
 ```
