@@ -177,7 +177,7 @@ function validateConfig(configFile) {
 	// Report results
 	console.log('\nValidation Results:')
 	console.log('-'.repeat(20))
-	console.log(`Provider: ${projectConfig.provider || 'vagrant'} (default)`)
+	console.log(`Provider: ${projectConfig.provider || 'docker'} (default)`)
 
 	if (errors.length === 0 && warnings.length === 0) {
 		console.log('✅ Configuration is valid!')

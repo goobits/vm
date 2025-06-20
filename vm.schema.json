@@ -7,8 +7,8 @@
     "provider": {
       "type": "string",
       "enum": ["vagrant", "docker"],
-      "default": "vagrant",
-      "description": "The virtualization provider to use. Vagrant provides full VM isolation, Docker provides lightweight containers."
+      "default": "docker",
+      "description": "The virtualization provider to use. Docker provides lightweight containers (default), Vagrant provides full VM isolation."
     },
     "project": {
       "type": "object",

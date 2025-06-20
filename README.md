@@ -1,10 +1,10 @@
 # 🚀 VM Infrastructure
 
-Beautiful development environments with one command. Choose between Vagrant (full VM isolation) or Docker (lightweight containers) based on your needs.
+Beautiful development environments with one command. Choose between Docker (lightweight containers, default) or Vagrant (full VM isolation) based on your needs.
 
 > **🔐 Built for Claude Code**: This infrastructure provides safe sandboxes for AI-assisted development. Choose your isolation level:
+> - **Docker (default)**: Lightweight containers with shared kernel - fast and resource-efficient for most workloads
 > - **Vagrant**: Full VM isolation with separate kernel - ideal for `claude --dangerously-skip-permissions`
-> - **Docker**: Lightweight containers with shared kernel - fast and resource-efficient for trusted workloads
 
 ## 📚 Table of Contents
 
@@ -35,11 +35,11 @@ vm ssh     # Enter your shiny new Ubuntu box
 
 # OR customize with vm.json
 {
-  "provider": "docker",  # Use Docker instead of Vagrant (optional)
   "ports": {
     "frontend": 3000,
     "backend": 3001
   }
+  # Default provider is Docker - add "provider": "vagrant" for full VM
 }
 ```
 
@@ -81,7 +81,7 @@ pnpm vm up
 - **Optional services**: PostgreSQL, Redis, MongoDB, Docker, Headless Browser
 - **Auto-sync**: Edit locally, run in VM
 - **Claude-ready**: Safe sandbox for AI experiments
-- **Provider choice**: Vagrant (full isolation) or Docker (lightweight)
+- **Provider choice**: Docker (default, lightweight) or Vagrant (full isolation)
 - **Unified architecture**: Both providers use identical Ansible provisioning
 
 ## 🎨 Terminal Themes
@@ -146,7 +146,7 @@ For autocompletion and validation in your editor:
 
 ```json
 {
-	"provider": "vagrant", // or "docker" - defaults to "vagrant"
+	"provider": "docker", // or "vagrant" - defaults to "docker"
 	"project": {
 		"name": "my-app", // VM/container name & prompt
 		"hostname": "dev.my-app.local", // VM/container hostname
@@ -287,9 +287,17 @@ Mac: ~/your-project/src/app.js
 VM:  /workspace/src/app.js
 ```
 
-### 🧪 Vagrant vs Docker: Which to Choose?
+### 🧪 Docker vs Vagrant: Which to Choose?
 
 **Both providers now offer identical development environments!** Services run on localhost, commands work the same, and Ansible handles all provisioning. The only differences are:
+
+**Docker (Default - Container Isolation)**:
+- ✅ Lightweight and fast
+- ✅ Minimal resource usage (~500MB RAM)
+- ✅ Quick startup/teardown (~10-30 seconds)
+- ✅ Perfect for most development needs
+- ❌ Shared kernel with host
+- ❌ Less isolation for risky operations
 
 **Vagrant (Full VM Isolation)**:
 - ✅ Separate kernel = maximum security
@@ -297,13 +305,6 @@ VM:  /workspace/src/app.js
 - ✅ Complete OS-level isolation
 - ❌ Higher resource usage (~2GB RAM)
 - ❌ Slower startup times (~2-3 minutes)
-
-**Docker (Container Isolation)**:
-- ✅ Lightweight and fast
-- ✅ Minimal resource usage (~500MB RAM)
-- ✅ Quick startup/teardown (~10-30 seconds)
-- ❌ Shared kernel with host
-- ❌ Less isolation for risky operations
 
 **The development experience is now identical**: Same commands, same localhost connections, same Ansible provisioning. Choose based on your security/performance needs.
 
