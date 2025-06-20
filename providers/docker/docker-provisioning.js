@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 // Docker provisioning script - generates docker-compose.yml from vm.json
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Get __dirname equivalent in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Template parser (simple mustache-like syntax)
 function parseTemplate(template, data) {
@@ -112,10 +117,10 @@ function generateDockerCompose(config, projectDir) {
 }
 
 // Export for use in vm.sh
-module.exports = { generateDockerCompose };
+export { generateDockerCompose };
 
 // Allow direct execution
-if (require.main === module) {
+if (import.meta.url === `file://${process.argv[1]}`) {
     const configPath = process.argv[2];
     const projectDir = process.argv[3] || process.cwd();
     
