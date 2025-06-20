@@ -96,30 +96,8 @@ kill_virtualbox() {
 # Function to load and parse config
 load_config() {
 	local config_path="$1"
-	if [ -f "$config_path" ]; then
-		# Load config and merge with defaults
-		node -e "
-			const fs = require('fs');
-			const defaultConfig = JSON.parse(fs.readFileSync('$SCRIPT_DIR/vm.json', 'utf8'));
-			const userConfig = JSON.parse(fs.readFileSync('$config_path', 'utf8'));
-			const deepMerge = (base, override) => {
-				const result = {...base};
-				for (const key in override) {
-					if (override[key] && typeof override[key] === 'object' && !Array.isArray(override[key])) {
-						result[key] = deepMerge(base[key] || {}, override[key]);
-					} else {
-						result[key] = override[key];
-					}
-				}
-				return result;
-			};
-			const merged = deepMerge(defaultConfig, userConfig);
-			console.log(JSON.stringify(merged));
-		"
-	else
-		# Return defaults
-		cat "$SCRIPT_DIR/vm.json"
-	fi
+	# Use the unified validation script with --get-config flag
+	node "$SCRIPT_DIR/validate-config.js" --get-config "$config_path"
 }
 
 # Get provider from config
@@ -145,7 +123,23 @@ docker_up() {
 	docker-compose build
 	docker-compose up -d "$@"
 	
-	echo "✅ Docker environment is running!"
+	# Get container name
+	local project_name=$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')
+	local container_name="${project_name}-dev"
+	
+	# Copy config file to container
+	docker cp /tmp/vm-config.json "${container_name}:/tmp/vm-config.json"
+	
+	# Copy VM tool directory to container for Ansible playbook access
+	docker exec "${container_name}" mkdir -p /vm-tool
+	docker cp "$SCRIPT_DIR/." "${container_name}:/vm-tool/"
+	
+	# Run Ansible playbook
+	echo "🔧 Running Ansible provisioning..."
+	docker exec "${container_name}" bash -c "apt-get update && apt-get install -y ansible"
+	docker exec "${container_name}" ansible-playbook -i localhost, -c local /vm-tool/providers/vagrant/ansible/playbook.yml
+	
+	echo "✅ Docker environment is running and provisioned!"
 	echo "Run 'vm ssh' to connect"
 }
 
@@ -386,7 +380,21 @@ case "${1:-}" in
 			esac
 		else
 			# Vagrant provider
-			VM_PROJECT_DIR="$PROJECT_DIR" VM_CONFIG="$FULL_CONFIG_PATH" VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant "$COMMAND" "$@"
+			case "$COMMAND" in
+				"exec")
+					# Execute command in Vagrant VM
+					VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh -c "$@"
+					;;
+				"logs")
+					# Show service logs in Vagrant VM
+					echo "📋 Showing service logs (Ctrl+C to stop)..."
+					VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh -c "sudo journalctl -u postgresql -u redis-server -u mongod -f"
+					;;
+				*)
+					# Pass through to vagrant command
+					VM_PROJECT_DIR="$PROJECT_DIR" VM_CONFIG="$FULL_CONFIG_PATH" VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant "$COMMAND" "$@"
+					;;
+			esac
 		fi
 		;;
 esac
