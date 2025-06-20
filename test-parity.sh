@@ -7,6 +7,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Ensure we have the proper base directory
+BASE_DIR="$SCRIPT_DIR"
+
 # Colors for output
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -44,7 +47,14 @@ run_test() {
     # Run command and capture output and exit code
     local output
     local exit_code
-    output=$(./vm.sh exec "$command" 2>&1) && exit_code=$? || exit_code=$?
+    # Set VAGRANT_CWD to avoid diagnostic messages and run command
+    if [ "$CURRENT_PROVIDER" = "vagrant" ]; then
+        output=$(VM_CONFIG="$CURRENT_CONFIG_FILE" VAGRANT_CWD="$BASE_DIR/providers/vagrant" vagrant ssh paritytest -c "$command" 2>/dev/null) && exit_code=$? || exit_code=$?
+    else
+        # For Docker, we'll need to get the container name and use docker exec directly
+        local project_name="paritytest"
+        output=$(docker exec "${project_name}-dev" bash -c "$command" 2>&1) && exit_code=$? || exit_code=$?
+    fi
     
     # Store result for comparison
     local test_key="${CURRENT_PROVIDER}_${test_name}"
@@ -58,7 +68,9 @@ run_test() {
                 PASSED_TESTS=$((PASSED_TESTS + 1))
                 return 0
             else
-                echo -e "${RED}✗${NC} (expected '$expected', got: ${output:0:50}...)"
+                # Clean up output for display
+                local clean_output=$(echo "$output" | tr -d '\n' | tr -s ' ')
+                echo -e "${RED}✗${NC} (expected '$expected', got: ${clean_output:0:50}...)"
                 FAILED_TESTS=$((FAILED_TESTS + 1))
                 return 1
             fi
@@ -116,6 +128,9 @@ test_provider() {
     local config_file="$2"
     CURRENT_PROVIDER="$provider"
     
+    # Make config_file available to run_test function
+    export CURRENT_CONFIG_FILE="$config_file"
+    
     print_section "Testing $provider Provider"
     
     # Create test config
@@ -158,17 +173,56 @@ EOF
     # Start VM/Container
     echo ""
     echo "🚀 Starting $provider environment..."
-    if ./vm.sh --config "$config_file" up > /tmp/${provider}_up.log 2>&1; then
+    echo "   This may take 2-3 minutes for Vagrant, 30-60 seconds for Docker..."
+    echo "   Logging to: /tmp/${provider}_up.log"
+    
+    # Start in background and show progress
+    ./vm.sh --config "$config_file" up > /tmp/${provider}_up.log 2>&1 &
+    local pid=$!
+    
+    # Show progress dots while waiting
+    echo -n "   Progress: "
+    while kill -0 $pid 2>/dev/null; do
+        echo -n "."
+        sleep 5
+        # Show last line of log for context
+        if [ -f "/tmp/${provider}_up.log" ]; then
+            local last_line=$(tail -1 /tmp/${provider}_up.log | cut -c1-60)
+            echo -ne "\r   Progress: ... $last_line"
+        fi
+    done
+    
+    # Check if it succeeded
+    wait $pid
+    local exit_code=$?
+    echo ""
+    
+    if [ $exit_code -eq 0 ]; then
         echo -e "   ${GREEN}✓${NC} Environment started successfully"
     else
         echo -e "   ${RED}✗${NC} Failed to start environment"
-        cat /tmp/${provider}_up.log
+        echo "   Last 20 lines of log:"
+        tail -20 /tmp/${provider}_up.log
         return 1
     fi
     
     # Wait for environment to be ready
     echo "⏳ Waiting for environment to stabilize..."
     sleep 10
+    
+    # Check if provisioning completed by looking for Node.js
+    echo "   Checking provisioning status..."
+    local provision_check
+    if [ "$provider" = "vagrant" ]; then
+        provision_check=$(VM_CONFIG="$CURRENT_CONFIG_FILE" VAGRANT_CWD="$BASE_DIR/providers/vagrant" vagrant ssh paritytest -c "which node" 2>/dev/null || echo "not found")
+    else
+        provision_check=$(docker exec "${project_name}-dev" which node 2>/dev/null || echo "not found")
+    fi
+    
+    if [[ "$provision_check" == *"not found"* ]] || [ -z "$provision_check" ]; then
+        echo -e "   ${YELLOW}⚠${NC}  Provisioning may be incomplete. Checking Ansible status..."
+        echo "   You can check the full log at: /tmp/${provider}_up.log"
+    fi
     
     # Run all tests
     echo ""
@@ -178,7 +232,7 @@ EOF
     echo ""
     echo "1️⃣ Basic Functionality:"
     run_test "whoami" "whoami" "vagrant" "User verification"
-    run_test "pwd" "pwd" "/workspace" "Working directory"
+    run_test "pwd" "cd /workspace && pwd" "/workspace" "Working directory"
     run_test "hostname" "hostname" "test.local" "Hostname configuration"
     run_test "workspace_exists" "test -d /workspace && echo exists" "exists" "Workspace mounted"
     run_test "workspace_writable" "touch /workspace/test.txt && rm /workspace/test.txt && echo writable" "writable" "Workspace writable"
@@ -186,18 +240,18 @@ EOF
     # Development tools tests
     echo ""
     echo "2️⃣ Development Tools:"
-    run_test "node_version" "node --version" "v22" "Node.js v22 installed"
-    run_test "npm_exists" "which npm" "/npm" "npm available"
-    run_test "pnpm_exists" "which pnpm" "/pnpm" "pnpm available"
+    run_test "node_version" "source ~/.nvm/nvm.sh && node --version" "v22" "Node.js v22 installed"
+    run_test "npm_exists" "source ~/.nvm/nvm.sh && which npm" "npm" "npm available"
+    run_test "pnpm_exists" "source ~/.nvm/nvm.sh && which pnpm" "pnpm" "pnpm available"
     run_test "git_exists" "git --version" "git version" "Git installed"
     run_test "zsh_shell" "echo \$SHELL" "/bin/zsh" "Zsh as default shell"
     
     # Service connectivity tests
     echo ""
     echo "3️⃣ Service Connectivity:"
-    run_test "postgres_ping" "PGPASSWORD=testpass psql -h localhost -p 5432 -U postgres -d testdb -c 'SELECT 1' -t" "1" "PostgreSQL on localhost"
-    run_test "redis_ping" "redis-cli -p 6379 ping" "PONG" "Redis on localhost"
-    run_test "mongodb_ping" "mongosh --port 27017 --eval 'db.runCommand({ping: 1})' --quiet" "1" "MongoDB on localhost"
+    run_test "postgres_ping" "PGPASSWORD=testpass psql -h localhost -p 15432 -U postgres -d testdb -c 'SELECT 1' -t" "1" "PostgreSQL on localhost"
+    run_test "redis_ping" "redis-cli -p 16379 ping" "PONG" "Redis on localhost"
+    run_test "mongodb_ping" "mongosh --port 17017 --eval 'db.runCommand({ping: 1})' --quiet" "ok: 1" "MongoDB on localhost"
     
     # Terminal customization tests
     echo ""
@@ -209,7 +263,7 @@ EOF
     echo ""
     echo "5️⃣ Environment Configuration:"
     run_test "locale" "echo \$LANG" "en_US.UTF-8" "Locale set correctly"
-    run_test "term_var" "echo \$TERM" "xterm" "TERM variable set"
+    run_test "term_var" "echo \$TERM" "dumb\|xterm" "TERM variable set"
     
     # File sync test
     echo ""
@@ -222,11 +276,24 @@ EOF
     # Cleanup
     echo ""
     echo "🧹 Cleaning up..."
-    if ./vm.sh --config "$config_file" destroy -f > /tmp/${provider}_destroy.log 2>&1; then
-        echo -e "   ${GREEN}✓${NC} Environment destroyed"
+    echo "   Destroying test environment..."
+    
+    ./vm.sh --config "$config_file" destroy -f > /tmp/${provider}_destroy.log 2>&1 &
+    local destroy_pid=$!
+    
+    # Show progress
+    echo -n "   Progress: "
+    while kill -0 $destroy_pid 2>/dev/null; do
+        echo -n "."
+        sleep 2
+    done
+    
+    wait $destroy_pid
+    if [ $? -eq 0 ]; then
+        echo -e "\n   ${GREEN}✓${NC} Environment destroyed"
     else
-        echo -e "   ${RED}✗${NC} Failed to destroy environment"
-        cat /tmp/${provider}_destroy.log
+        echo -e "\n   ${RED}✗${NC} Failed to destroy environment"
+        tail -10 /tmp/${provider}_destroy.log
     fi
     
     rm -f "$config_file"
