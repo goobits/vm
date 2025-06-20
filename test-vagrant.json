@@ -1,0 +1,31 @@
+{
+  "provider": "vagrant",
+  "project": {
+    "name": "paritytest",
+    "hostname": "test.local",
+    "workspace_path": "/workspace"
+  },
+  "vm": {
+    "memory": 2048,
+    "cpus": 2
+  },
+  "services": {
+    "postgresql": {
+      "enabled": true,
+      "database": "testdb",
+      "user": "postgres", 
+      "password": "testpass"
+    },
+    "redis": {
+      "enabled": true
+    }
+  },
+  "ports": {
+    "postgresql": 15432,
+    "redis": 16379
+  },
+  "terminal": {
+    "emoji": "🧪",
+    "username": "tester"
+  }
+}
