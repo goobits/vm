@@ -6,7 +6,8 @@
       "Bash(mv:*)",
       "Bash(ls:*)",
       "Bash(true)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(docker exec:*)"
     ],
     "deny": []
   }

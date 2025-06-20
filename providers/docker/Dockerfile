@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     python3-dev \
     ansible \
+    supervisor \
     openssh-server \
     sudo \
     && rm -rf /var/lib/apt/lists/*

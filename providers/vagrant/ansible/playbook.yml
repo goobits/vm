@@ -10,6 +10,15 @@
 
   # Load and process configuration
   pre_tasks:
+      - name: Check if running in container
+        stat:
+            path: /.dockerenv
+        register: dockerenv_stat
+
+      - name: Set container fact
+        set_fact:
+            is_docker_container: "{{ dockerenv_stat.stat.exists }}"
+
       - name: Check for merged configuration from Vagrant
         stat:
             path: '/tmp/vm-config.json'
@@ -89,34 +98,51 @@
             name: postgresql
             state: restarted
             daemon_reload: yes
+        when: not is_docker_container
 
       - name: restart redis
         systemd:
             name: redis-server
             state: restarted
+        when: not is_docker_container
 
       - name: restart mongodb
         systemd:
             name: mongod
             state: restarted
             daemon_reload: yes
+        when: not is_docker_container
 
       - name: restart ssh
         systemd:
             name: ssh
             state: restarted
+        when: not is_docker_container
+
+      - name: restart supervisor
+        command: supervisorctl reload
+        when: is_docker_container
 
   tasks:
       # System configuration
       - name: Set hostname
         hostname:
             name: '{{ project_hostname }}'
+        when: not is_docker_container
 
       - name: Update /etc/hosts with hostname
         lineinfile:
             path: /etc/hosts
             regexp: '^127\.0\.1\.1'
             line: "127.0.1.1 {{ project_hostname }} {{ project_hostname.split('.')[0] }}"
+        when: not is_docker_container
+
+      - name: Update /etc/hosts in container
+        shell: |
+            grep -v '^127.0.1.1' /etc/hosts > /tmp/hosts.new
+            echo "127.0.1.1 {{ project_hostname }} {{ project_hostname.split('.')[0] }}" >> /tmp/hosts.new
+            cat /tmp/hosts.new > /etc/hosts
+        when: is_docker_container
 
       - name: Update apt cache
         apt:
@@ -168,6 +194,7 @@
                 - zsh
                 - zsh-syntax-highlighting
                 - ripgrep
+                - supervisor
             state: present
 
       # Security setup - Configure rules first, enable last
@@ -177,6 +204,7 @@
             port: 22
             proto: tcp
             comment: 'Allow SSH access'
+        when: not is_docker_container
 
       - name: Allow configured ports from localhost
         ufw:
@@ -186,7 +214,9 @@
             from_ip: 127.0.0.1
             comment: 'Allow {{ item.key }} port'
         with_dict: '{{ project_config.ports | default({}) }}'
-        when: project_config.ports is defined
+        when: 
+            - project_config.ports is defined
+            - not is_docker_container
 
       - name: Allow configured ports from Vagrant host
         ufw:
@@ -196,7 +226,9 @@
             from_ip: 10.0.2.2
             comment: 'Allow {{ item.key }} port from Vagrant host'
         with_dict: '{{ project_config.ports | default({}) }}'
-        when: project_config.ports is defined
+        when: 
+            - project_config.ports is defined
+            - not is_docker_container
 
       # Node.js via NVM
       - name: Download NVM installer
@@ -365,11 +397,27 @@
           - name: Force restart PostgreSQL after configuration changes
             meta: flush_handlers
 
-          - name: Ensure PostgreSQL service is started and enabled
+          - name: Ensure PostgreSQL service is started and enabled (systemd)
             systemd:
                 name: postgresql
                 state: started
                 enabled: yes
+            when: not is_docker_container
+
+          - name: Create PostgreSQL supervisor config (Docker)
+            copy:
+                dest: /etc/supervisor/conf.d/postgresql.conf
+                content: |
+                    [program:postgresql]
+                    command=/usr/lib/postgresql/14/bin/postgres -D /var/lib/postgresql/14/main -c config_file=/etc/postgresql/14/main/postgresql.conf
+                    user=postgres
+                    autostart=true
+                    autorestart=true
+                    stderr_logfile=/var/log/supervisor/postgresql-err.log
+                    stdout_logfile=/var/log/supervisor/postgresql-out.log
+                    environment=LC_ALL="en_US.UTF-8",LC_CTYPE="en_US.UTF-8"
+            when: is_docker_container
+            notify: restart supervisor
 
           - name: Wait for PostgreSQL to be ready
             wait_for:
@@ -415,11 +463,26 @@
                 - { regexp: '^port', line: 'port {{ project_config.ports.redis | default(6379) }}' }
             notify: restart redis
 
-          - name: Enable and start Redis service
+          - name: Enable and start Redis service (systemd)
             systemd:
                 name: redis-server
                 enabled: yes
                 state: started
+            when: not is_docker_container
+
+          - name: Create Redis supervisor config (Docker)
+            copy:
+                dest: /etc/supervisor/conf.d/redis.conf
+                content: |
+                    [program:redis]
+                    command=/usr/bin/redis-server /etc/redis/redis.conf
+                    user=redis
+                    autostart=true
+                    autorestart=true
+                    stderr_logfile=/var/log/supervisor/redis-err.log
+                    stdout_logfile=/var/log/supervisor/redis-out.log
+            when: is_docker_container
+            notify: restart supervisor
         when: project_config.services.redis.enabled | default(false)
 
       # MongoDB (conditional)
@@ -458,12 +521,27 @@
                 - { regexp: '^\s*port:', line: '  port: {{ project_config.ports.mongodb | default(project_config.services.mongodb.port | default(27017)) }}' }
                 - { regexp: '^\s*bindIp:', line: '  bindIp: 127.0.0.1' }
 
-          - name: Enable and start MongoDB service
+          - name: Enable and start MongoDB service (systemd)
             systemd:
                 name: mongod
                 enabled: yes
                 state: started
                 daemon_reload: yes
+            when: not is_docker_container
+
+          - name: Create MongoDB supervisor config (Docker)
+            copy:
+                dest: /etc/supervisor/conf.d/mongodb.conf
+                content: |
+                    [program:mongodb]
+                    command=/usr/bin/mongod --config /etc/mongod.conf
+                    user=mongodb
+                    autostart=true
+                    autorestart=true
+                    stderr_logfile=/var/log/supervisor/mongodb-err.log
+                    stdout_logfile=/var/log/supervisor/mongodb-out.log
+            when: is_docker_container
+            notify: restart supervisor
 
           - name: Wait for MongoDB to be ready
             wait_for:
@@ -506,13 +584,30 @@
                 WantedBy=multi-user.target
         when: project_config.services.headless_browser.enabled | default(false)
 
-      - name: Enable Xvfb
+      - name: Enable Xvfb (systemd)
         systemd:
             name: xvfb
             enabled: yes
             state: started
             daemon_reload: yes
-        when: project_config.services.headless_browser.enabled | default(false)
+        when: 
+            - project_config.services.headless_browser.enabled | default(false)
+            - not is_docker_container
+
+      - name: Create Xvfb supervisor config (Docker)
+        copy:
+            dest: /etc/supervisor/conf.d/xvfb.conf
+            content: |
+                [program:xvfb]
+                command=/usr/bin/Xvfb :99 -screen 0 1024x768x24 -ac
+                autostart=true
+                autorestart=true
+                stderr_logfile=/var/log/supervisor/xvfb-err.log
+                stdout_logfile=/var/log/supervisor/xvfb-out.log
+        when:
+            - project_config.services.headless_browser.enabled | default(false)
+            - is_docker_container
+        notify: restart supervisor
 
       # Docker (conditional)
       - name: Install Docker
@@ -767,6 +862,22 @@
             direction: incoming
             logging: on
         notify: restart ssh
+        when: not is_docker_container
+
+      # Ensure supervisor is started and services are loaded in Docker
+      - name: Start supervisor and reload configurations (Docker)
+        block:
+          - name: Ensure supervisor is running
+            service:
+              name: supervisor
+              state: started
+          
+          - name: Reload supervisor configuration
+            command: supervisorctl reread
+          
+          - name: Update supervisor processes
+            command: supervisorctl update
+        when: is_docker_container
 
       # Final message
       - name: Display completion message

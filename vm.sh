@@ -125,7 +125,7 @@ docker_run() {
 	case "$action" in
 		"compose")
 			cd "$project_dir"
-			docker-compose "$@"
+			docker compose "$@"
 			;;
 		"exec")
 			docker exec "${container_name}" "$@"
@@ -135,7 +135,7 @@ docker_run() {
 			;;
 		*)
 			cd "$project_dir"
-			docker-compose "$action" "$@"
+			docker compose "$action" "$@"
 			;;
 	esac
 }
@@ -150,7 +150,7 @@ docker_up() {
 	
 	# Generate docker-compose.yml
 	echo "$config" > /tmp/vm-config.json
-	node "$SCRIPT_DIR/providers/docker/docker-provisioning.js" /tmp/vm-config.json "$project_dir"
+	node "$SCRIPT_DIR/providers/docker/docker-provisioning-simple.cjs" /tmp/vm-config.json "$project_dir"
 	
 	# Build and start containers
 	docker_run "compose" "$config" "$project_dir" build
@@ -167,9 +167,16 @@ docker_up() {
 	docker_run "exec" "$config" "$project_dir" mkdir -p /vm-tool
 	docker cp "$SCRIPT_DIR/." "${container_name}:/vm-tool/"
 	
-	# Run Ansible playbook
+	# Run Ansible playbook inside the container
 	echo "🔧 Running Ansible provisioning..."
-	docker_run "exec" "$config" "$project_dir" ansible-playbook -i localhost, -c local /vm-tool/providers/vagrant/ansible/playbook.yml
+	docker_run "exec" "$config" "$project_dir" ansible-playbook \
+		-i localhost, \
+		-c local \
+		/vm-tool/providers/vagrant/ansible/playbook.yml
+	
+	# Ensure supervisor services are started
+	echo "🔄 Starting services..."
+	docker_run "exec" "$config" "$project_dir" bash -c "supervisorctl reread && supervisorctl update"
 	
 	echo "✅ Docker environment is running and provisioned!"
 	echo "Run 'vm ssh' to connect"
