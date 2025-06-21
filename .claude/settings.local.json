@@ -7,7 +7,12 @@
       "Bash(ls:*)",
       "Bash(true)",
       "Bash(chmod:*)",
-      "Bash(docker exec:*)"
+      "Bash(docker exec:*)",
+      "Bash(rg:*)",
+      "Bash(grep:*)",
+      "Bash(./vm.sh:*)",
+      "Bash(./test-parity.sh:*)",
+      "Bash(VAGRANT_CWD=\"/home/miko/projects/vm/providers/vagrant\" vagrant destroy -f myproject)"
     ],
     "deny": []
   }

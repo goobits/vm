@@ -1,0 +1,31 @@
+{
+  "provider": "docker",
+  "project": {
+    "name": "paritytest",
+    "hostname": "test.local",
+    "workspace_path": "/workspace"
+  },
+  "services": {
+    "postgresql": {
+      "enabled": true,
+      "database": "testdb",
+      "user": "postgres",
+      "password": "testpass"
+    },
+    "redis": {
+      "enabled": true
+    },
+    "mongodb": {
+      "enabled": true
+    }
+  },
+  "ports": {
+    "postgresql": 15432,
+    "redis": 16379,
+    "mongodb": 17017
+  },
+  "terminal": {
+    "emoji": "🧪",
+    "username": "tester"
+  }
+}
