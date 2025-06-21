@@ -150,12 +150,19 @@
             cache_valid_time: 3600
 
       # Locale configuration
+      - name: Wait for apt lock to be released
+        shell: while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 1; done
+        
       - name: Install locale packages
         apt:
             name:
                 - locales
                 - locales-all
             state: present
+        retries: 5
+        delay: 10
+        register: locale_install
+        until: locale_install is succeeded
 
       - name: Generate en_US.UTF-8 locale
         locale_gen:
@@ -196,6 +203,10 @@
                 - ripgrep
                 - supervisor
             state: present
+        retries: 5
+        delay: 10
+        register: base_packages_install
+        until: base_packages_install is succeeded
 
       # Security setup - Configure rules first, enable last
       - name: Allow SSH (critical - must be first)
@@ -410,6 +421,10 @@
                 - docker.io
                 - docker-compose
             state: present
+        retries: 5
+        delay: 10
+        register: docker_install
+        until: docker_install is succeeded
         when: project_config.services.docker.enabled | default(false)
 
       - name: Add user to docker group

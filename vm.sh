@@ -84,12 +84,13 @@ kill_virtualbox() {
 # Function to load and validate config (delegated to validate-config.js)
 load_config() {
 	local config_path="$1"
+	local original_dir="$2"
 	if [ -n "$config_path" ]; then
 		# Use custom config path
-		node "$SCRIPT_DIR/validate-config.js" "$config_path"
+		cd "$original_dir" && node "$SCRIPT_DIR/validate-config.js" "$config_path"
 	else
-		# Use default discovery logic
-		node "$SCRIPT_DIR/validate-config.js"
+		# Use default discovery logic - run from the original directory
+		cd "$original_dir" && node "$SCRIPT_DIR/validate-config.js"
 	fi
 }
 
@@ -271,9 +272,6 @@ if [ "$1" = "--config" ]; then
 	shift 2  # Remove --config and path from arguments
 fi
 
-# Change to the VM directory for loading configs
-cd "$SCRIPT_DIR"
-
 # Handle special commands
 case "${1:-}" in
 	"validate")
@@ -287,7 +285,7 @@ case "${1:-}" in
 		;;
 	"kill")
 		# Load config to determine provider
-		CONFIG=$(load_config "$CUSTOM_CONFIG")
+		CONFIG=$(load_config "$CUSTOM_CONFIG" "$CURRENT_DIR")
 		if [ $? -ne 0 ]; then
 			echo "❌ Configuration validation failed. Aborting."
 			exit 1
@@ -306,7 +304,7 @@ case "${1:-}" in
 		;;
 	*)
 		# Load and validate config (discovery handled by validate-config.js)
-		CONFIG=$(load_config "$CUSTOM_CONFIG")
+		CONFIG=$(load_config "$CUSTOM_CONFIG" "$CURRENT_DIR")
 		if [ $? -ne 0 ]; then
 			echo "❌ Configuration validation failed. Aborting."
 			exit 1
