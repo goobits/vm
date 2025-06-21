@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  quicktest:
+    build:
+      context: /home/miko/projects/vm
+      dockerfile: providers/docker/Dockerfile
+      args:
+        PROJECT_USER: "vagrant"
+    container_name: quicktest-dev
+    hostname: test.local
+    tty: true
+    stdin_open: true
+    environment:
+      - LANG=en_US.UTF-8
+      - LC_ALL=en_US.UTF-8
+    volumes:
+      - /home/miko/projects/vm:/workspace:delegated
+      - /home/miko/projects/vm:/vm-tool:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - quicktest_nvm:/home/vagrant/.nvm
+      - quicktest_cache:/home/vagrant/.cache
+      - quicktest_config:/tmp
+    ports:
+      - "127.0.0.1:15432:15432"
+    networks:
+      - quicktest_network
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
+
+networks:
+  quicktest_network:
+    driver: bridge
+
+volumes:
+  quicktest_nvm:
+  quicktest_cache:
+  quicktest_config:

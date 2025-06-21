@@ -1,0 +1,114 @@
+---
+# Reusable service management task
+# This task handles the installation and configuration of a single service
+# Variables expected:
+#   - service_name: The name of the service (e.g., 'postgresql', 'redis', 'mongodb')
+#   - service_config: The service configuration from project_config.services[service_name]
+#   - project_config: The full project configuration
+#   - is_docker_container: Boolean indicating if running in Docker
+
+- name: "Install {{ service_name }} dependencies"
+  apt:
+    name: "{{ service_dependencies }}"
+    state: present
+  when: service_dependencies | length > 0
+
+- name: "Add {{ service_name }} GPG key"
+  apt_key:
+    url: "{{ service_gpg_key_url }}"
+    state: present
+  when: service_gpg_key_url != ""
+
+- name: "Add {{ service_name }} repository"
+  apt_repository:
+    repo: "{{ service_repository }}"
+    state: present
+    update_cache: yes
+  when: service_repository != ""
+
+- name: "Install {{ service_name }} packages"
+  apt:
+    name: "{{ service_packages }}"
+    state: present
+  when: service_packages | length > 0
+
+- name: "Configure {{ service_name }}"
+  lineinfile:
+    path: "{{ item.path }}"
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+  loop: "{{ service_config_lines }}"
+  notify: "restart {{ service_name }}"
+  when: service_config_lines | length > 0
+
+- name: "Get {{ service_name }} version (if needed)"
+  shell: "{{ service_version_command }}"
+  register: service_version_result
+  when: service_version_command != ""
+
+- name: "Configure {{ service_name }} with version-specific paths"
+  lineinfile:
+    path: "{{ item.path | replace('VERSION', service_version_result.stdout) }}"
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+  loop: "{{ service_versioned_config_lines }}"
+  notify: "restart {{ service_name }}"
+  when: 
+    - service_versioned_config_lines | length > 0
+    - service_version_result is defined
+
+- name: "Enable and start {{ service_name }} service (systemd)"
+  systemd:
+    name: "{{ service_systemd_name if service_systemd_name != '' else service_name }}"
+    enabled: yes
+    state: started
+    daemon_reload: "{{ service_systemd_daemon_reload }}"
+  when: 
+    - not is_docker_container
+    - service_systemd_name != "" or service_name is defined
+  notify: "restart {{ service_name }}"
+
+- name: "Force systemd service restart for {{ service_name }}"
+  meta: flush_handlers
+  when: 
+    - not is_docker_container
+    - service_systemd_name != "" or service_name is defined
+
+- name: "Create {{ service_name }} supervisor config (Docker)"
+  copy:
+    dest: "/etc/supervisor/conf.d/{{ service_name }}.conf"
+    content: |
+      [program:{{ service_name }}]
+      command={{ service_supervisor_command }}
+      user={{ service_supervisor_user if service_supervisor_user != '' else 'root' }}
+      autostart=true
+      autorestart=true
+      stderr_logfile=/var/log/supervisor/{{ service_name }}-err.log
+      stdout_logfile=/var/log/supervisor/{{ service_name }}-out.log
+      {% if service_supervisor_environment != '' %}
+      environment={{ service_supervisor_environment }}
+      {% endif %}
+  when: 
+    - is_docker_container
+    - service_supervisor_command != ""
+  notify: restart supervisor
+
+- name: "Force supervisor reload for {{ service_name }} (Docker)"
+  meta: flush_handlers
+  when: 
+    - is_docker_container
+    - service_supervisor_command != ""
+
+- name: "Wait for {{ service_name }} to be ready"
+  wait_for:
+    port: "{{ service_port }}"
+    host: localhost
+    delay: 2
+    timeout: 30
+  when: service_port != ""
+
+- name: "Run {{ service_name }} post-installation commands"
+  shell: "{{ item }}"
+  loop: "{{ service_post_install_commands }}"
+  ignore_errors: "{{ service_ignore_errors }}"
+  when: service_post_install_commands | length > 0

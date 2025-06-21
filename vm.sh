@@ -23,23 +23,6 @@ fi
 # Get the current working directory (where user ran the command)
 CURRENT_DIR="$(pwd)"
 
-# Function to find vm.json by searching upward from current directory
-find_vm_json() {
-	local dir="$1"
-	local max_levels=3  # Search up to 3 levels
-	local level=0
-	
-	while [ "$level" -lt "$max_levels" ] && [ "$dir" != "/" ]; do
-		if [ -f "$dir/vm.json" ]; then
-			echo "$dir/vm.json"
-			return 0
-		fi
-		dir="$(dirname "$dir")"
-		level=$((level + 1))
-	done
-	
-	return 1
-}
 
 # Show usage information
 show_usage() {
@@ -98,11 +81,16 @@ kill_virtualbox() {
 	echo "ℹ️ or run 'vagrant up' to start your VM again."
 }
 
-# Function to load and parse config
+# Function to load and validate config (delegated to validate-config.js)
 load_config() {
 	local config_path="$1"
-	# Use the unified validation script with --get-config flag
-	node "$SCRIPT_DIR/validate-config.js" --get-config "$config_path"
+	if [ -n "$config_path" ]; then
+		# Use custom config path
+		node "$SCRIPT_DIR/validate-config.js" "$config_path"
+	else
+		# Use default discovery logic
+		node "$SCRIPT_DIR/validate-config.js"
+	fi
 }
 
 # Get provider from config
@@ -163,9 +151,10 @@ docker_up() {
 	# Copy config file to container
 	docker cp /tmp/vm-config.json "${container_name}:/tmp/vm-config.json"
 	
-	# Copy VM tool directory to container for Ansible playbook access
-	docker_run "exec" "$config" "$project_dir" mkdir -p /vm-tool
-	docker cp "$SCRIPT_DIR/." "${container_name}:/vm-tool/"
+	# Fix volume permissions before Ansible
+	docker_run "exec" "$config" "$project_dir" chown -R vagrant:vagrant /home/vagrant/.nvm /home/vagrant/.cache
+	
+	# VM tool directory is already mounted read-only via docker-compose
 	
 	# Run Ansible playbook inside the container
 	echo "🔧 Running Ansible provisioning..."
@@ -186,7 +175,17 @@ docker_ssh() {
 	local config="$1"
 	shift
 	
-	docker_run "exec-it" "$config" "" /bin/zsh
+	# Handle -c flag specifically for command execution
+	if [ "$1" = "-c" ] && [ -n "$2" ]; then
+		# Run command non-interactively
+		docker_run "exec" "$config" "" su - vagrant -c "cd /workspace && source ~/.zshrc && $2"
+	elif [ $# -gt 0 ]; then
+		# Run with all arguments
+		docker_run "exec" "$config" "" su - vagrant -c "cd /workspace && source ~/.zshrc && zsh $*"
+	else
+		# Interactive mode
+		docker_run "exec-it" "$config" "" su - vagrant -c "cd /workspace && /bin/zsh"
+	fi
 }
 
 docker_halt() {
@@ -279,53 +278,21 @@ cd "$SCRIPT_DIR"
 case "${1:-}" in
 	"validate")
 		echo "🔍 Validating VM configuration..."
+		# Validate configuration using the centralized config manager
 		if [ -n "$CUSTOM_CONFIG" ]; then
-			# Convert relative path to absolute path
-			if [[ "$CUSTOM_CONFIG" = /* ]]; then
-				# Already absolute path
-				FULL_CONFIG_PATH="$CUSTOM_CONFIG"
-			else
-				# Relative path, make it absolute from current directory
-				FULL_CONFIG_PATH="$CURRENT_DIR/$CUSTOM_CONFIG"
-			fi
-			
-			if [ -f "$FULL_CONFIG_PATH" ]; then
-				echo "📍 Using custom config: $FULL_CONFIG_PATH"
-				node "$SCRIPT_DIR/validate-config.js" "$FULL_CONFIG_PATH"
-			else
-				echo "❌ Error: Config file not found: $FULL_CONFIG_PATH"
-				exit 1
-			fi
+			node "$SCRIPT_DIR/validate-config.js" --validate "$CUSTOM_CONFIG"
 		else
-			# Search for vm.json in current directory and upward
-			VM_JSON_PATH=$(find_vm_json "$CURRENT_DIR")
-			if [ $? -eq 0 ]; then
-				echo "📍 Found vm.json at: $VM_JSON_PATH"
-				node "$SCRIPT_DIR/validate-config.js" "$VM_JSON_PATH"
-			else
-				echo "⚠️  No vm.json found, using defaults only"
-				node "$SCRIPT_DIR/validate-config.js"
-			fi
+			node "$SCRIPT_DIR/validate-config.js" --validate
 		fi
 		;;
 	"kill")
 		# Load config to determine provider
-		if [ -n "$CUSTOM_CONFIG" ]; then
-			if [[ "$CUSTOM_CONFIG" = /* ]]; then
-				FULL_CONFIG_PATH="$CUSTOM_CONFIG"
-			else
-				FULL_CONFIG_PATH="$CURRENT_DIR/$CUSTOM_CONFIG"
-			fi
-		else
-			VM_JSON_PATH=$(find_vm_json "$CURRENT_DIR")
-			if [ $? -eq 0 ]; then
-				FULL_CONFIG_PATH="$VM_JSON_PATH"
-			else
-				FULL_CONFIG_PATH="$SCRIPT_DIR/vm.json"
-			fi
+		CONFIG=$(load_config "$CUSTOM_CONFIG")
+		if [ $? -ne 0 ]; then
+			echo "❌ Configuration validation failed. Aborting."
+			exit 1
 		fi
 		
-		CONFIG=$(load_config "$FULL_CONFIG_PATH")
 		PROVIDER=$(get_provider "$CONFIG")
 		
 		if [ "$PROVIDER" = "docker" ]; then
@@ -338,37 +305,25 @@ case "${1:-}" in
 		show_usage
 		;;
 	*)
-		# Determine config path
-		if [ -n "$CUSTOM_CONFIG" ]; then
-			if [[ "$CUSTOM_CONFIG" = /* ]]; then
-				FULL_CONFIG_PATH="$CUSTOM_CONFIG"
-			else
-				FULL_CONFIG_PATH="$CURRENT_DIR/$CUSTOM_CONFIG"
-			fi
-			
-			if [ ! -f "$FULL_CONFIG_PATH" ]; then
-				echo "❌ Error: Config file not found: $FULL_CONFIG_PATH"
-				exit 1
-			fi
-			echo "📍 Using custom config: $FULL_CONFIG_PATH"
-			PROJECT_DIR="$(dirname "$FULL_CONFIG_PATH")"
-		else
-			# Search for vm.json
-			VM_JSON_PATH=$(find_vm_json "$CURRENT_DIR")
-			if [ $? -eq 0 ]; then
-				echo "📍 Using vm.json from: $VM_JSON_PATH"
-				FULL_CONFIG_PATH="$VM_JSON_PATH"
-				PROJECT_DIR="$(dirname "$VM_JSON_PATH")"
-			else
-				echo "⚠️  No vm.json found, using defaults only"
-				FULL_CONFIG_PATH="$SCRIPT_DIR/vm.json"
-				PROJECT_DIR="$CURRENT_DIR"
-			fi
+		# Load and validate config (discovery handled by validate-config.js)
+		CONFIG=$(load_config "$CUSTOM_CONFIG")
+		if [ $? -ne 0 ]; then
+			echo "❌ Configuration validation failed. Aborting."
+			exit 1
 		fi
 		
-		# Load config and determine provider
-		CONFIG=$(load_config "$FULL_CONFIG_PATH")
 		PROVIDER=$(get_provider "$CONFIG")
+		
+		# Determine project directory and config path
+		if [ -n "$CUSTOM_CONFIG" ]; then
+			# If using custom config, project dir is where the config file is located
+			FULL_CONFIG_PATH="$(readlink -f "$CUSTOM_CONFIG")"
+			PROJECT_DIR="$(dirname "$FULL_CONFIG_PATH")"
+		else
+			# Default: current directory, no explicit config path (uses discovery)
+			PROJECT_DIR="$CURRENT_DIR"
+			FULL_CONFIG_PATH=""
+		fi
 		
 		echo "🔧 Using provider: $PROVIDER"
 		
@@ -424,7 +379,11 @@ case "${1:-}" in
 					;;
 				*)
 					# Pass through to vagrant command
-					VM_PROJECT_DIR="$PROJECT_DIR" VM_CONFIG="$FULL_CONFIG_PATH" VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant "$COMMAND" "$@"
+					if [ -n "$FULL_CONFIG_PATH" ]; then
+						VM_PROJECT_DIR="$PROJECT_DIR" VM_CONFIG="$FULL_CONFIG_PATH" VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant "$COMMAND" "$@"
+					else
+						VM_PROJECT_DIR="$PROJECT_DIR" VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant "$COMMAND" "$@"
+					fi
 					;;
 			esac
 		fi
