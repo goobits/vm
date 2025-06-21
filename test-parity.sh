@@ -51,9 +51,8 @@ run_test() {
     if [ "$CURRENT_PROVIDER" = "vagrant" ]; then
         output=$(VM_CONFIG="$CURRENT_CONFIG_FILE" VAGRANT_CWD="$BASE_DIR/providers/vagrant" vagrant ssh paritytest -c "$command" 2>/dev/null) && exit_code=$? || exit_code=$?
     else
-        # For Docker, we'll need to get the container name and use docker exec directly
-        local project_name="paritytest"
-        output=$(docker exec "${project_name}-dev" bash -c "$command" 2>&1) && exit_code=$? || exit_code=$?
+        # For Docker, use vm ssh command which properly executes as vagrant user
+        output=$(./vm.sh --config "$CURRENT_CONFIG_FILE" ssh -c "$command" 2>/dev/null) && exit_code=$? || exit_code=$?
     fi
     
     # Store result for comparison
@@ -216,7 +215,7 @@ EOF
     if [ "$provider" = "vagrant" ]; then
         provision_check=$(VM_CONFIG="$CURRENT_CONFIG_FILE" VAGRANT_CWD="$BASE_DIR/providers/vagrant" vagrant ssh paritytest -c "which node" 2>/dev/null || echo "not found")
     else
-        provision_check=$(docker exec "${project_name}-dev" which node 2>/dev/null || echo "not found")
+        provision_check=$(./vm.sh --config "$config_file" ssh -c "which node" 2>/dev/null || echo "not found")
     fi
     
     if [[ "$provision_check" == *"not found"* ]] || [ -z "$provision_check" ]; then

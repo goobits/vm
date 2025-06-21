@@ -178,3 +178,72 @@ rm -f providers/docker/docker-provisioning.cjs     # Replaced by docker-provisio
 2. Run full test suite after each major change
 3. Document any new findings
 4. Celebrate when all 17 tests pass! 🎉
+
+---
+
+## TODO Checklist - Parity Resolution Tasks
+
+### Phase 1: Core Configuration Fixes (30 mins)
+- [ ] **Fix hostname setting in Docker** (5 mins)
+  - [ ] Update playbook.yml with container-specific hostname command
+  - [ ] Test hostname command works in Docker container
+- [ ] **Add locale environment variables** (10 mins)
+  - [ ] Update Dockerfile with LANG=en_US.UTF-8
+  - [ ] Update Dockerfile with LC_ALL=en_US.UTF-8  
+  - [ ] Update Dockerfile with LANGUAGE=en_US:en
+  - [ ] Test locale warnings are resolved
+- [ ] **Fix Redis supervisor configuration** (10 mins)
+  - [ ] Update Ansible playbook with correct Redis bind/port command
+  - [ ] Test Redis starts properly with supervisor in Docker
+- [ ] **Add volume permission fixes** (5 mins)
+  - [ ] Update vm.sh docker_up function to fix NVM permissions
+  - [ ] Update vm.sh docker_up function to fix cache permissions
+  - [ ] Test Node.js/npm work without permission errors
+
+### Phase 2: Service Management (20 mins)
+- [ ] **Add Docker-specific service restart handlers** (10 mins)
+  - [ ] Create supervisorctl handler for PostgreSQL restart
+  - [ ] Create supervisorctl handler for Redis restart
+  - [ ] Test handlers work during Ansible provisioning
+- [ ] **Test additional services** (10 mins)
+  - [ ] Test Xvfb (headless browser) service with Docker
+  - [ ] Test Docker-in-Docker functionality
+  - [ ] Test database backup/restore functionality
+
+### Phase 3: Testing & Validation (60 mins)
+- [ ] **Run comprehensive test suite** (15 mins)
+  - [ ] Execute test-parity.sh for Vagrant provider
+  - [ ] Execute test-parity.sh for Docker provider
+  - [ ] Document specific test failures
+- [ ] **Fix failing tests** (30 mins)
+  - [ ] Fix basic functionality tests (user, pwd, hostname, workspace)
+  - [ ] Fix development tools tests (Node.js, npm, pnpm, Git, Zsh)
+  - [ ] Fix service connectivity tests (PostgreSQL, Redis, MongoDB)
+  - [ ] Fix terminal customization tests (emoji, username)
+  - [ ] Fix environment tests (locale, TERM variable)
+  - [ ] Fix file synchronization tests
+- [ ] **Verify all 17 tests pass** (15 mins)
+  - [ ] Confirm 100% test pass rate for Docker
+  - [ ] Confirm 100% test pass rate for Vagrant
+  - [ ] Confirm parity comparison tests all pass
+
+### Phase 4: Documentation & Cleanup (10 mins)
+- [ ] **Clean up temporary test files** (5 mins)
+  - [ ] Remove test-cleanup.sh, test-docker.json, test-vagrant.json
+  - [ ] Remove other temporary test files listed above
+  - [ ] Keep only essential test-parity.sh
+- [ ] **Update documentation** (5 mins)
+  - [ ] Mark all tasks in this checklist as completed
+  - [ ] Update README.md with Docker-specific notes if needed
+  - [ ] Document any remaining unavoidable differences
+
+### Success Criteria
+- [ ] **All 17 tests in test-parity.sh pass for both providers**
+- [ ] **Same commands work identically in both environments**
+- [ ] **Services accessible on same ports with same functionality**
+- [ ] **Development workflow identical between providers**
+- [ ] **Only documented, unavoidable differences remain (systemd vs supervisor)**
+
+**Total Estimated Time**: ~2 hours  
+**Current Status**: Ready to execute  
+**Expected Outcome**: Full Docker-Vagrant parity achieved 🎯

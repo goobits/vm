@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * VM Configuration Validator
- * Usage: node validate-config.js [path-to-vm.json]
+ * VM Configuration Manager
+ * Primary purpose: Load, merge, validate, and output final configuration
+ * Usage: node validate-config.js [--validate] [--get-config]
  */
 
 import fs from 'fs'
@@ -10,22 +11,6 @@ import { fileURLToPath } from 'url'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-
-function findVmJson(startDir, maxLevels = 3) {
-	let dir = startDir
-	let level = 0
-	
-	while (level < maxLevels && dir !== path.dirname(dir)) {
-		const vmJsonPath = path.join(dir, 'vm.json')
-		if (fs.existsSync(vmJsonPath)) {
-			return vmJsonPath
-		}
-		dir = path.dirname(dir)
-		level++
-	}
-	
-	return null
-}
 
 function deepMerge(base, override) {
 	const result = { ...base }
@@ -46,107 +31,108 @@ function deepMerge(base, override) {
 	return result
 }
 
-function validateConfig(configFile) {
-	console.log(`Validating VM configuration: ${configFile}`)
-	console.log('='.repeat(60))
 
-	// Load default configuration
-	const defaultsFile = path.join(__dirname, 'vm.json')
-	if (!fs.existsSync(defaultsFile)) {
-		console.log(`ERROR: Default configuration file not found: ${defaultsFile}`)
-		return false
-	}
-
-	let defaultConfig, userConfig, projectConfig
-
-	try {
-		defaultConfig = JSON.parse(fs.readFileSync(defaultsFile, 'utf8'))
-	} catch (e) {
-		console.log(`ERROR: Invalid JSON in default config: ${e.message}`)
-		return false
-	}
-
-	// Load project configuration if it exists
-	if (fs.existsSync(configFile)) {
-		try {
-			userConfig = JSON.parse(fs.readFileSync(configFile, 'utf8'))
-			projectConfig = deepMerge(defaultConfig, userConfig)
-		} catch (e) {
-			console.log(`ERROR: Invalid JSON in project config: ${e.message}`)
-			return false
+function loadAndMergeConfig(customConfigPath = null) {
+	// Config discovery: custom path, current directory vm.json, or default
+	const localConfigPath = path.join(process.cwd(), 'vm.json')
+	const defaultConfigPath = path.join(__dirname, 'vm.json')
+	
+	let configFileToLoad
+	if (customConfigPath) {
+		// Handle custom config path (for tests and explicit --config usage)
+		configFileToLoad = path.isAbsolute(customConfigPath) ? customConfigPath : path.join(process.cwd(), customConfigPath)
+		if (!fs.existsSync(configFileToLoad)) {
+			throw new Error(`Custom config file not found: ${configFileToLoad}`)
 		}
 	} else {
-		console.log('WARNING: Project config file not found, using defaults only')
-		projectConfig = defaultConfig
+		// Default discovery: current directory or default
+		configFileToLoad = fs.existsSync(localConfigPath) ? localConfigPath : defaultConfigPath
 	}
+	
+	// Load default configuration
+	if (!fs.existsSync(defaultConfigPath)) {
+		throw new Error(`Default configuration file not found: ${defaultConfigPath}`)
+	}
+	
+	let defaultConfig, userConfig = {}, finalConfig
+	
+	try {
+		defaultConfig = JSON.parse(fs.readFileSync(defaultConfigPath, 'utf8'))
+	} catch (e) {
+		throw new Error(`Invalid JSON in default config: ${e.message}`)
+	}
+	
+	// Load user config if using a custom config or local config
+	if (configFileToLoad !== defaultConfigPath) {
+		try {
+			userConfig = JSON.parse(fs.readFileSync(configFileToLoad, 'utf8'))
+		} catch (e) {
+			throw new Error(`Invalid JSON in project config: ${e.message}`)
+		}
+	}
+	
+	// Merge configurations (user config overrides defaults)
+	finalConfig = deepMerge(defaultConfig, userConfig)
+	
+	return { finalConfig, configFileToLoad, isLocal: configFileToLoad === localConfigPath }
+}
 
-	// Validation rules
+function validateMergedConfig(config) {
 	const errors = []
 	const warnings = []
 
 	// Provider validation
-	const provider = projectConfig.provider
+	const provider = config.provider
 	if (provider && provider !== 'vagrant' && provider !== 'docker') {
 		errors.push(`Invalid provider: "${provider}". Must be "vagrant" or "docker"`)
 	}
 
 	// Required project fields
-	const projectName = projectConfig.project?.name
-	if (!projectName || projectName.trim() === '') {
+	if (!config.project?.name?.trim()) {
 		errors.push('project.name is required')
 	}
-
-	const workspacePath = projectConfig.project?.workspace_path
-	if (!workspacePath || workspacePath.trim() === '') {
+	if (!config.project?.workspace_path?.trim()) {
 		errors.push('project.workspace_path is required')
 	}
-
-	const hostname = projectConfig.project?.hostname
-	if (!hostname || hostname.trim() === '') {
+	if (!config.project?.hostname?.trim()) {
 		errors.push('project.hostname is required')
 	}
 
 	// VM configuration validation
-	if (!projectConfig.vm) {
+	if (!config.vm) {
 		errors.push('vm configuration section is required')
 	} else {
-		// Provider-specific validation
-		const currentProvider = projectConfig.provider || 'vagrant'
+		const currentProvider = config.provider || 'vagrant'
 		
 		if (currentProvider === 'vagrant') {
-			const vmBox = projectConfig.vm.box
-			if (!vmBox || vmBox.trim() === '') {
+			if (!config.vm.box?.trim()) {
 				errors.push('vm.box is required for Vagrant provider')
 			}
 		}
 
-		const vmMemory = projectConfig.vm.memory
-		if (!Number.isInteger(vmMemory) || vmMemory <= 0) {
+		if (!Number.isInteger(config.vm.memory) || config.vm.memory <= 0) {
 			errors.push('vm.memory must be a positive integer')
-		} else if (vmMemory < 1024) {
-			warnings.push(`vm.memory is quite low (${vmMemory}MB), consider at least 1024MB`)
+		} else if (config.vm.memory < 1024) {
+			warnings.push(`vm.memory is quite low (${config.vm.memory}MB), consider at least 1024MB`)
 		}
 
-		const vmCpus = projectConfig.vm.cpus
-		if (!Number.isInteger(vmCpus) || vmCpus <= 0) {
+		if (!Number.isInteger(config.vm.cpus) || config.vm.cpus <= 0) {
 			errors.push('vm.cpus must be a positive integer')
 		}
 
-		const vmUser = projectConfig.vm.user
-		if (!vmUser || vmUser.trim() === '') {
+		if (!config.vm.user?.trim()) {
 			errors.push('vm.user is required')
 		}
 		
-		// Port binding validation
-		const portBinding = projectConfig.vm.port_binding
+		const portBinding = config.vm.port_binding
 		if (portBinding && portBinding !== '127.0.0.1' && portBinding !== '0.0.0.0') {
 			warnings.push(`Unusual port binding: "${portBinding}". Typically use "127.0.0.1" (localhost) or "0.0.0.0" (all interfaces)`)
 		}
 	}
 
 	// Port validation
-	if (projectConfig.ports) {
-		Object.entries(projectConfig.ports).forEach(([service, port]) => {
+	if (config.ports) {
+		Object.entries(config.ports).forEach(([service, port]) => {
 			if (!Number.isInteger(port) || port <= 0 || port >= 65536) {
 				errors.push(`ports.${service} must be a valid port number (1-65535)`)
 			}
@@ -154,111 +140,82 @@ function validateConfig(configFile) {
 	}
 
 	// Terminal configuration validation
-	if (projectConfig.terminal) {
-		const emoji = projectConfig.terminal.emoji
-		if (emoji && emoji.length > 10) {
+	if (config.terminal) {
+		if (config.terminal.emoji?.length > 10) {
 			warnings.push('terminal.emoji is quite long, consider keeping it short')
 		}
-
-		const username = projectConfig.terminal.username
-		if (username && username.length > 20) {
+		if (config.terminal.username?.length > 20) {
 			warnings.push('terminal.username is quite long, consider keeping it under 20 characters')
 		}
 	}
 
 	// Services validation (Docker-specific warnings)
-	if (projectConfig.services) {
-		const currentProvider = projectConfig.provider || 'vagrant'
-		if (currentProvider === 'docker' && projectConfig.services.docker?.enabled) {
+	if (config.services) {
+		const currentProvider = config.provider || 'vagrant'
+		if (currentProvider === 'docker' && config.services.docker?.enabled) {
 			warnings.push('Docker-in-Docker is enabled. This requires mounting the Docker socket and may have security implications.')
 		}
 	}
 
-	// Report results
-	console.log('\nValidation Results:')
-	console.log('-'.repeat(20))
-	console.log(`Provider: ${projectConfig.provider || 'docker'} (default)`)
-
-	if (errors.length === 0 && warnings.length === 0) {
-		console.log('✅ Configuration is valid!')
-		return true
-	}
-
-	if (errors.length > 0) {
-		console.log(`\n❌ ERRORS (${errors.length}):`)
-		errors.forEach((error, index) => {
-			console.log(`  ${index + 1}. ${error}`)
-		})
-	}
-
-	if (warnings.length > 0) {
-		console.log(`\n⚠️  WARNINGS (${warnings.length}):`)
-		warnings.forEach((warning, index) => {
-			console.log(`  ${index + 1}. ${warning}`)
-		})
-	}
-
-	console.log(`\nConfiguration file: ${configFile}`)
-	console.log(`Default config: ${defaultsFile}`)
-	console.log('='.repeat(60))
-
-	return errors.length === 0
+	return { errors, warnings }
 }
 
 // Main execution
 const args = process.argv.slice(2)
+const validateFlag = args.includes('--validate')
 const getConfigFlag = args.includes('--get-config')
-const configFile = args.find(arg => !arg.startsWith('--')) || 
-	process.env.VM_CONFIG || 
-	findVmJson(process.cwd()) || 
-	path.join(__dirname, '../../vm.json')
+const customConfigPath = args.find(arg => !arg.startsWith('--'))
 
-if (getConfigFlag) {
-	// Load and output merged configuration for vm.sh
-	try {
-		// Load default configuration
-		const defaultsFile = path.join(__dirname, 'vm.json')
-		let defaultConfig = {}
-		if (fs.existsSync(defaultsFile)) {
-			defaultConfig = JSON.parse(fs.readFileSync(defaultsFile, 'utf8'))
-		}
-
-		// Load user configuration if it exists
-		let userConfig = {}
-		if (fs.existsSync(configFile)) {
-			userConfig = JSON.parse(fs.readFileSync(configFile, 'utf8'))
-		}
-
-		// Merge configurations
-		const projectConfig = deepMerge(defaultConfig, userConfig)
-
-		// Validate the merged config
-		const errors = []
+try {
+	const { finalConfig, configFileToLoad, isLocal } = loadAndMergeConfig(customConfigPath)
+	const { errors, warnings } = validateMergedConfig(finalConfig)
+	
+	if (validateFlag) {
+		// Verbose validation mode for debugging
+		console.log(`Validating VM configuration: ${configFileToLoad}`)
+		console.log('='.repeat(60))
+		console.log(`Provider: ${finalConfig.provider || 'docker'} (default)`)
 		
-		// Basic validation
-		if (!projectConfig.project?.name) errors.push('project.name is required')
-		if (!projectConfig.project?.workspace_path) errors.push('project.workspace_path is required')
-		if (!projectConfig.project?.hostname) errors.push('project.hostname is required')
+		if (errors.length === 0 && warnings.length === 0) {
+			console.log('✅ Configuration is valid!')
+		}
 		
 		if (errors.length > 0) {
-			console.error(JSON.stringify({ error: errors.join('; ') }))
+			console.log(`\n❌ ERRORS (${errors.length}):`)
+			errors.forEach((error, index) => {
+				console.log(`  ${index + 1}. ${error}`)
+			})
+		}
+		
+		if (warnings.length > 0) {
+			console.log(`\n⚠️  WARNINGS (${warnings.length}):`)
+			warnings.forEach((warning, index) => {
+				console.log(`  ${index + 1}. ${warning}`)
+			})
+		}
+		
+		console.log(`\nConfiguration file: ${configFileToLoad}`)
+		console.log('='.repeat(60))
+		
+		if (errors.length === 0) {
+			console.log('\n✅ VM configuration is ready to use!')
+			process.exit(0)
+		} else {
+			console.log('\n❌ VM configuration has errors that must be fixed before use.')
 			process.exit(1)
 		}
-
-		// Output the merged configuration
-		console.log(JSON.stringify(projectConfig))
-		process.exit(0)
-	} catch (e) {
-		console.error(JSON.stringify({ error: e.message }))
-		process.exit(1)
-	}
-} else {
-	// Normal validation mode
-	if (validateConfig(configFile)) {
-		console.log('\n✅ VM configuration is ready to use!')
-		process.exit(0)
 	} else {
-		console.log('\n❌ VM configuration has errors that must be fixed before use.')
-		process.exit(1)
+		// Default mode: Output merged config for vm.sh or validate quietly
+		if (errors.length > 0) {
+			console.error(errors.join('; '))
+			process.exit(1)
+		}
+		
+		// Print the final, merged config object to stdout for the shell script to capture
+		console.log(JSON.stringify(finalConfig))
+		process.exit(0)
 	}
+} catch (e) {
+	console.error(e.message)
+	process.exit(1)
 }

@@ -369,247 +369,41 @@
         loop: '{{ project_config.npm_packages | default([]) }}'
         when: project_config.npm_packages is defined and project_config.npm_packages | length > 0
 
-      # PostgreSQL (conditional)
-      - name: Install PostgreSQL
-        apt:
-            name:
-                - postgresql
-                - postgresql-contrib
-            state: present
-        when: project_config.services.postgresql.enabled | default(false)
+      # Load service definitions
+      - name: Load service definitions
+        include_vars: vars/service_definitions.yml
 
-      - name: Configure and start PostgreSQL
-        block:
-          - name: Get PostgreSQL version
-            shell: ls /etc/postgresql/ | head -1
-            register: postgresql_version
-
-          - name: Configure PostgreSQL
-            lineinfile:
-                path: /etc/postgresql/{{ postgresql_version.stdout }}/main/postgresql.conf
-                regexp: "{{ item.regexp }}"
-                line: "{{ item.line }}"
-            loop:
-                - { regexp: '^#?port =', line: 'port = {{ project_config.ports.postgresql | default(5432) }}' }
-                - { regexp: '^#?listen_addresses =', line: "listen_addresses = 'localhost'" }
-            notify: restart postgresql
-
-          - name: Force restart PostgreSQL after configuration changes
-            meta: flush_handlers
-
-          - name: Ensure PostgreSQL service is started and enabled (systemd)
-            systemd:
-                name: postgresql
-                state: started
-                enabled: yes
-            when: not is_docker_container
-
-          - name: Create PostgreSQL supervisor config (Docker)
-            copy:
-                dest: /etc/supervisor/conf.d/postgresql.conf
-                content: |
-                    [program:postgresql]
-                    command=/usr/lib/postgresql/14/bin/postgres -D /var/lib/postgresql/14/main -c config_file=/etc/postgresql/14/main/postgresql.conf
-                    user=postgres
-                    autostart=true
-                    autorestart=true
-                    stderr_logfile=/var/log/supervisor/postgresql-err.log
-                    stdout_logfile=/var/log/supervisor/postgresql-out.log
-                    environment=LC_ALL="en_US.UTF-8",LC_CTYPE="en_US.UTF-8"
-            when: is_docker_container
-            notify: restart supervisor
-
-          - name: Wait for PostgreSQL to be ready
-            wait_for:
-                port: '{{ project_config.ports.postgresql | default(5432) }}'
-                host: localhost
-                delay: 2
-                timeout: 30
-
-          - name: Configure PostgreSQL and create database
-            shell: |
-                sudo -u postgres psql -p {{ project_config.ports.postgresql | default(5432) }} -c "ALTER USER {{ project_config.services.postgresql.user | default('postgres') }} PASSWORD '{{ project_config.services.postgresql.password | default('postgres') }}';"
-                sudo -u postgres createdb -p {{ project_config.ports.postgresql | default(5432) }} "{{ project_config.services.postgresql.database }}" || echo "Database exists"
-
-          - name: Check for database backup
-            find:
-                paths: '{{ project_path }}/backups'
-                patterns: "{{ project_config.backup_pattern | default('*backup*.sql.gz') }}"
-            register: backup_files
-
-          - name: Restore database from backup
-            shell: |
-                gunzip -c "{{ (backup_files.files | sort(attribute='mtime') | last).path }}" | sudo -u postgres psql -p {{ project_config.ports.postgresql | default(5432) }} -d "{{ project_config.services.postgresql.database }}"
-            when: backup_files.files | length > 0
-        when: project_config.services.postgresql.enabled | default(false)
-
-      # Redis (conditional)
-      - name: Install and configure Redis
-        block:
-          - name: Install Redis from Ubuntu repository
-            apt:
-                name:
-                    - redis-server
-                    - redis-tools
-                state: present
-
-          - name: Configure Redis
-            lineinfile:
-                path: /etc/redis/redis.conf
-                regexp: "{{ item.regexp }}"
-                line: "{{ item.line }}"
-            loop:
-                - { regexp: '^bind', line: 'bind 127.0.0.1 ::1' }
-                - { regexp: '^port', line: 'port {{ project_config.ports.redis | default(6379) }}' }
-            notify: restart redis
-
-          - name: Enable and start Redis service (systemd)
-            systemd:
-                name: redis-server
-                enabled: yes
-                state: started
-            when: not is_docker_container
-
-          - name: Create Redis supervisor config (Docker)
-            copy:
-                dest: /etc/supervisor/conf.d/redis.conf
-                content: |
-                    [program:redis]
-                    command=/usr/bin/redis-server /etc/redis/redis.conf
-                    user=redis
-                    autostart=true
-                    autorestart=true
-                    stderr_logfile=/var/log/supervisor/redis-err.log
-                    stdout_logfile=/var/log/supervisor/redis-out.log
-            when: is_docker_container
-            notify: restart supervisor
-        when: project_config.services.redis.enabled | default(false)
-
-      # MongoDB (conditional)
-      - name: Install and configure MongoDB
-        block:
-          - name: Install MongoDB dependencies
-            apt:
-                name:
-                    - gnupg
-                    - curl
-                state: present
-
-          - name: Add MongoDB GPG key
-            apt_key:
-                url: https://pgp.mongodb.com/server-6.0.asc
-                state: present
-
-          - name: Add MongoDB repository
-            apt_repository:
-                repo: "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/6.0 multiverse"
-                state: present
-                update_cache: yes
-
-          - name: Install MongoDB
-            apt:
-                name:
-                    - mongodb-org
-                state: present
-
-          - name: Configure MongoDB
-            lineinfile:
-                path: /etc/mongod.conf
-                regexp: "{{ item.regexp }}"
-                line: "{{ item.line }}"
-            loop:
-                - { regexp: '^\s*port:', line: '  port: {{ project_config.ports.mongodb | default(project_config.services.mongodb.port | default(27017)) }}' }
-                - { regexp: '^\s*bindIp:', line: '  bindIp: 127.0.0.1' }
-
-          - name: Enable and start MongoDB service (systemd)
-            systemd:
-                name: mongod
-                enabled: yes
-                state: started
-                daemon_reload: yes
-            when: not is_docker_container
-
-          - name: Create MongoDB supervisor config (Docker)
-            copy:
-                dest: /etc/supervisor/conf.d/mongodb.conf
-                content: |
-                    [program:mongodb]
-                    command=/usr/bin/mongod --config /etc/mongod.conf
-                    user=mongodb
-                    autostart=true
-                    autorestart=true
-                    stderr_logfile=/var/log/supervisor/mongodb-err.log
-                    stdout_logfile=/var/log/supervisor/mongodb-out.log
-            when: is_docker_container
-            notify: restart supervisor
-
-          - name: Wait for MongoDB to be ready
-            wait_for:
-                port: '{{ project_config.ports.mongodb | default(project_config.services.mongodb.port | default(27017)) }}'
-                host: localhost
-                delay: 2
-                timeout: 30
-
-          - name: Create MongoDB database
-            shell: |
-                mongosh --port {{ project_config.ports.mongodb | default(project_config.services.mongodb.port | default(27017)) }} --eval "
-                db = db.getSiblingDB('{{ project_config.project.name }}_dev');
-                db.createCollection('init');
-                print('Database {{ project_config.project.name }}_dev created');
-                "
-            ignore_errors: yes
-        when: project_config.services.mongodb.enabled | default(false)
-
-      # Headless browser testing (conditional)
-      - name: Install browser testing tools
-        apt:
-            name:
-                - chromium-browser
-                - xvfb
-            state: present
-        when: project_config.services.headless_browser.enabled | default(false)
-
-      - name: Create Xvfb service
-        copy:
-            dest: /etc/systemd/system/xvfb.service
-            content: |
-                [Unit]
-                Description=X Virtual Framebuffer
-                After=network.target
-                [Service]
-                Type=simple
-                ExecStart=/usr/bin/Xvfb :99 -screen 0 1024x768x24 -ac
-                Restart=always
-                [Install]
-                WantedBy=multi-user.target
-        when: project_config.services.headless_browser.enabled | default(false)
-
-      - name: Enable Xvfb (systemd)
-        systemd:
-            name: xvfb
-            enabled: yes
-            state: started
-            daemon_reload: yes
+      # Install and configure all enabled services using reusable task
+      - name: Install and configure enabled services
+        include_tasks: tasks/manage-service.yml
+        vars:
+          service_name: "{{ service_item.key }}"
+          service_config: "{{ service_item.value }}"
+          # Only pass variables that are actually defined for this service
+          service_packages: "{{ service_definitions[service_item.key].service_packages | default([]) }}"
+          service_dependencies: "{{ service_definitions[service_item.key].service_dependencies | default([]) }}"
+          service_gpg_key_url: "{{ service_definitions[service_item.key].service_gpg_key_url | default('') }}"
+          service_repository: "{{ service_definitions[service_item.key].service_repository | default('') }}"
+          service_config_lines: "{{ service_definitions[service_item.key].service_config_lines | default([]) }}"
+          service_version_command: "{{ service_definitions[service_item.key].service_version_command | default('') }}"
+          service_versioned_config_lines: "{{ service_definitions[service_item.key].service_versioned_config_lines | default([]) }}"
+          service_systemd_name: "{{ service_definitions[service_item.key].service_systemd_name | default('') }}"
+          service_systemd_daemon_reload: "{{ service_definitions[service_item.key].service_systemd_daemon_reload | default(false) }}"
+          service_supervisor_command: "{{ service_definitions[service_item.key].service_supervisor_command | default('') }}"
+          service_supervisor_user: "{{ service_definitions[service_item.key].service_supervisor_user | default('') }}"
+          service_supervisor_environment: "{{ service_definitions[service_item.key].service_supervisor_environment | default('') }}"
+          service_port: "{{ service_definitions[service_item.key].service_port | default('') }}"
+          service_post_install_commands: "{{ service_definitions[service_item.key].service_post_install_commands | default([]) }}"
+          service_ignore_errors: "{{ service_definitions[service_item.key].service_ignore_errors | default(false) }}"
+        loop: "{{ project_config.services | dict2items }}"
+        loop_control:
+          loop_var: service_item
         when: 
-            - project_config.services.headless_browser.enabled | default(false)
-            - not is_docker_container
+          - service_item.value.enabled | default(false)
+          - service_item.key in service_definitions
+          - service_item.key != 'docker'  # Docker handled separately due to user group requirements
 
-      - name: Create Xvfb supervisor config (Docker)
-        copy:
-            dest: /etc/supervisor/conf.d/xvfb.conf
-            content: |
-                [program:xvfb]
-                command=/usr/bin/Xvfb :99 -screen 0 1024x768x24 -ac
-                autostart=true
-                autorestart=true
-                stderr_logfile=/var/log/supervisor/xvfb-err.log
-                stdout_logfile=/var/log/supervisor/xvfb-out.log
-        when:
-            - project_config.services.headless_browser.enabled | default(false)
-            - is_docker_container
-        notify: restart supervisor
-
-      # Docker (conditional)
+      # Handle Docker service separately (requires user group management)
       - name: Install Docker
         apt:
             name:
@@ -624,6 +418,40 @@
             groups: docker
             append: yes
         when: project_config.services.docker.enabled | default(false)
+
+      # Handle special services that need additional configuration
+      - name: Create Xvfb systemd service file
+        copy:
+            dest: /etc/systemd/system/xvfb.service
+            content: |
+                [Unit]
+                Description=X Virtual Framebuffer
+                After=network.target
+                [Service]
+                Type=simple
+                ExecStart=/usr/bin/Xvfb :99 -screen 0 1024x768x24 -ac
+                Restart=always
+                [Install]
+                WantedBy=multi-user.target
+        when: 
+          - project_config.services.headless_browser.enabled | default(false)
+          - not is_docker_container
+
+      # Handle database backup restoration for PostgreSQL
+      - name: Check for database backup
+        find:
+            paths: '{{ project_path }}/backups'
+            patterns: "{{ project_config.backup_pattern | default('*backup*.sql.gz') }}"
+        register: backup_files
+        when: project_config.services.postgresql.enabled | default(false)
+
+      - name: Restore database from backup
+        shell: |
+            gunzip -c "{{ (backup_files.files | sort(attribute='mtime') | last).path }}" | sudo -u postgres psql -p {{ project_config.ports.postgresql | default(5432) }} -d "{{ project_config.services.postgresql.database }}"
+        when: 
+          - project_config.services.postgresql.enabled | default(false)
+          - backup_files is defined
+          - backup_files.files | length > 0
 
       # Claude Code setup
       - name: Create Claude settings directory
