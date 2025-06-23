@@ -2,8 +2,8 @@
 	"$schema": "./vm.schema.json",
 	"provider": "docker",
 	"project": {
-		"name": "myproject",
-		"hostname": "dev.myproject.local",
+		"name": "vm",
+		"hostname": "dev.vm.local",
 		"workspace_path": "/workspace",
 		"env_template_path": null,
 		"backup_pattern": "*backup*.sql.gz"
@@ -25,7 +25,7 @@
 	"services": {
 		"postgresql": {
 			"enabled": false,
-			"database": "myproject_dev",
+			"database": "vm_dev",
 			"user": "postgres",
 			"password": "postgres",
 			"port": 3005
@@ -54,8 +54,8 @@
 		"DISPLAY": ":99"
 	},
 	"terminal": {
-		"emoji": "🚀",
-		"username": "dev",
+		"emoji": "⚙️",
+		"username": "vm-dev",
 		"show_git_branch": true,
 		"show_timestamp": false,
 		"theme": "dracula"
