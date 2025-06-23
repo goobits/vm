@@ -168,6 +168,13 @@ docker_up() {
 	echo "🔄 Starting services..."
 	docker_run "exec" "$config" "$project_dir" bash -c "supervisorctl reread && supervisorctl update"
 	
+	# Clean up generated docker-compose.yml since containers are now running
+	local compose_file="${project_dir}/docker-compose.yml"
+	if [ -f "$compose_file" ]; then
+		echo "🧹 Cleaning up generated docker-compose.yml..."
+		rm "$compose_file"
+	fi
+	
 	echo "✅ Docker environment is running and provisioned!"
 	echo "Run 'vm ssh' to connect"
 }
@@ -228,8 +235,20 @@ docker_provision() {
 	shift 2
 	
 	echo "🔄 Rebuilding Docker environment..."
+	
+	# Generate fresh docker-compose.yml for provisioning
+	echo "$config" > /tmp/vm-config.json
+	node "$SCRIPT_DIR/providers/docker/docker-provisioning-simple.cjs" /tmp/vm-config.json "$project_dir"
+	
 	docker_run "compose" "$config" "$project_dir" build --no-cache
 	docker_run "compose" "$config" "$project_dir" up -d "$@"
+	
+	# Clean up generated docker-compose.yml since containers are now running
+	local compose_file="${project_dir}/docker-compose.yml"
+	if [ -f "$compose_file" ]; then
+		echo "🧹 Cleaning up generated docker-compose.yml..."
+		rm "$compose_file"
+	fi
 }
 
 docker_logs() {
