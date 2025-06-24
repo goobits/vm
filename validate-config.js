@@ -8,6 +8,8 @@
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import readline from 'readline'
+import { execSync } from 'child_process'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -45,8 +47,53 @@ function loadAndMergeConfig(customConfigPath = null) {
 			throw new Error(`Custom config file not found: ${configFileToLoad}`)
 		}
 	} else {
-		// Default discovery: current directory or default
-		configFileToLoad = fs.existsSync(localConfigPath) ? localConfigPath : defaultConfigPath
+		// Check if local vm.json exists
+		if (fs.existsSync(localConfigPath)) {
+			configFileToLoad = localConfigPath
+		} else {
+			// Prompt user to create local vm.json
+			console.error(`❌ No vm.json configuration file found in ${process.cwd()}`)
+			console.error()
+			console.error('The VM tool needs a vm.json file to configure your development environment.')
+			console.error(`I can create a default vm.json file customized for the "${path.basename(process.cwd())}" project.`)
+			console.error()
+			console.error('Would you like me to create a vm.json file for this directory?')
+			
+			// Read user input synchronously
+			const rl = readline.createInterface({
+				input: process.stdin,
+				output: process.stdout
+			})
+			
+			// Use a promise to handle async readline in sync context
+			const answer = execSync('echo "Create vm.json? (y/n): " >&2 && read answer && echo $answer', { 
+				encoding: 'utf8', 
+				stdio: ['inherit', 'pipe', 'inherit'] 
+			}).trim()
+			
+			if (answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes') {
+				// Create local vm.json based on default but with directory-specific name
+				const defaultConfig = JSON.parse(fs.readFileSync(defaultConfigPath, 'utf8'))
+				const dirName = path.basename(process.cwd())
+				
+				// Customize config for this directory
+				const localConfig = {
+					...defaultConfig,
+					project: {
+						...defaultConfig.project,
+						name: dirName,
+						hostname: dirName
+					}
+				}
+				
+				fs.writeFileSync(localConfigPath, JSON.stringify(localConfig, null, 2))
+				console.error(`✅ Created vm.json for project: ${dirName}`)
+				configFileToLoad = localConfigPath
+			} else {
+				console.error('Using default configuration...')
+				configFileToLoad = defaultConfigPath
+			}
+		}
 	}
 	
 	// Load default configuration
