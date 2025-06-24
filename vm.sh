@@ -89,10 +89,10 @@ load_config() {
 	local original_dir="$2"
 	if [ -n "$config_path" ]; then
 		# Use custom config path
-		cd "$original_dir" && node "$SCRIPT_DIR/validate-config.js" "$config_path"
+		(cd "$original_dir" && node "$SCRIPT_DIR/validate-config.js" "$config_path")
 	else
 		# Use default discovery logic - run from the original directory
-		cd "$original_dir" && node "$SCRIPT_DIR/validate-config.js"
+		(cd "$original_dir" && node "$SCRIPT_DIR/validate-config.js")
 	fi
 }
 
@@ -213,7 +213,8 @@ docker_destroy() {
 	
 	# Generate docker-compose.yml temporarily for destroy operation
 	echo "🔧 Regenerating docker-compose.yml for destroy operation..."
-	generate_docker_compose "$config" "$project_dir"
+	echo "$config" > /tmp/vm-config.json
+	node "$SCRIPT_DIR/providers/docker/docker-provisioning-simple.cjs" /tmp/vm-config.json "$project_dir"
 	
 	# Run docker compose down with volumes
 	docker_run "down" "$config" "$project_dir" -v "$@"
