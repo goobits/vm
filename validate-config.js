@@ -83,6 +83,11 @@ function loadAndMergeConfig(customConfigPath = null) {
 						...defaultConfig.project,
 						name: dirName,
 						hostname: dirName
+					},
+					terminal: {
+						...defaultConfig.terminal,
+						emoji: "🚀",
+						username: dirName
 					}
 				}
 				
