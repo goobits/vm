@@ -33,6 +33,7 @@ show_usage() {
 	echo ""
 	echo "Commands:"
 	echo "  validate              Validate VM configuration"
+	echo "  list                  List all VM instances"
 	echo "  up [args]            Start VM"
 	echo "  ssh [args]           SSH into VM"
 	echo "  halt [args]          Stop VM"
@@ -46,6 +47,7 @@ show_usage() {
 	echo ""
 	echo "Examples:"
 	echo "  $0 validate                    # Check configuration"
+	echo "  $0 list                        # List all VM instances"
 	echo "  $0 --config ./prod.json up     # Start VM with specific config"
 	echo "  $0 up                          # Start the VM (auto-find vm.json)"
 	echo "  $0 ssh                         # Connect to VM"
@@ -209,7 +211,19 @@ docker_destroy() {
 	local project_dir="$2"
 	shift 2
 	
+	# Generate docker-compose.yml temporarily for destroy operation
+	echo "🔧 Regenerating docker-compose.yml for destroy operation..."
+	generate_docker_compose "$config" "$project_dir"
+	
+	# Run docker compose down with volumes
 	docker_run "down" "$config" "$project_dir" -v "$@"
+	
+	# Clean up the generated docker-compose.yml after destroy
+	local compose_file="${project_dir}/docker-compose.yml"
+	if [ -f "$compose_file" ]; then
+		echo "🧹 Cleaning up generated docker-compose.yml..."
+		rm "$compose_file"
+	fi
 }
 
 docker_status() {
@@ -279,6 +293,42 @@ docker_kill() {
 	echo "✅ All Docker containers stopped!"
 }
 
+# List all VM instances
+vm_list() {
+	echo "📋 VM Instances:"
+	echo "=================="
+	
+	# Check if Docker is available
+	if command -v docker &> /dev/null; then
+		echo ""
+		echo "🐳 Docker VMs:"
+		echo "--------------"
+		
+		# Get all containers and filter for VM-like names
+		local vm_containers=$(docker ps -a --format "{{.Names}}\t{{.Status}}\t{{.CreatedAt}}" | awk '$1 ~ /-dev$/ || $1 ~ /postgres/ || $1 ~ /redis/ || $1 ~ /mongodb/ {print}' 2>/dev/null || true)
+		
+		if [ -n "$vm_containers" ]; then
+			echo "NAME                    STATUS                       CREATED"
+			echo "================================================================"
+			echo "$vm_containers" | while IFS=$'\t' read -r name status created; do
+				printf "%-22s %-28s %s\n" "$name" "$status" "$created"
+			done
+		else
+			echo "No Docker VMs found"
+		fi
+	fi
+	
+	# Check if Vagrant is available
+	if command -v vagrant &> /dev/null; then
+		echo ""
+		echo "📦 Vagrant VMs:"
+		echo "---------------"
+		vagrant global-status 2>/dev/null || echo "No Vagrant VMs found"
+	fi
+	
+	echo ""
+}
+
 # Parse --config flag
 CUSTOM_CONFIG=""
 if [ "$1" = "--config" ]; then
@@ -301,6 +351,9 @@ case "${1:-}" in
 		else
 			node "$SCRIPT_DIR/validate-config.js" --validate
 		fi
+		;;
+	"list")
+		vm_list
 		;;
 	"kill")
 		# Load config to determine provider
