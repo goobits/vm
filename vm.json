@@ -13,7 +13,8 @@
 		"memory": 6144,
 		"cpus": 4,
 		"user": "vagrant",
-		"port_binding": "127.0.0.1"
+		"port_binding": "127.0.0.1",
+		"timezone": "America/Los_Angeles"
 	},
 	"versions": {
 		"node": "22",

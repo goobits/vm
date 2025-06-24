@@ -179,6 +179,11 @@
                 LC_CTYPE=en_US.UTF-8
             mode: '0644'
 
+      # Timezone configuration
+      - name: Set system timezone
+        timezone:
+            name: "{{ project_config.vm.timezone | default('UTC') }}"
+
       - name: Install base system packages
         apt:
             name:

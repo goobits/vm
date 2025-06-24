@@ -11,6 +11,9 @@ ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 ENV LANGUAGE=en_US:en
 
+# Set default timezone (will be overridden by docker-compose)
+ENV TZ=America/Los_Angeles
+
 # Install minimal base packages needed for Ansible
 RUN apt-get update && apt-get install -y \
     python3 \

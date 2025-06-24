@@ -77,6 +77,11 @@
           "type": "boolean",
           "default": false,
           "description": "Enable GUI mode for VirtualBox (Vagrant provider only)"
+        },
+        "timezone": {
+          "type": "string",
+          "default": "America/Los_Angeles",
+          "description": "System timezone (e.g., 'America/New_York', 'Europe/London', 'UTC')"
         }
       }
     },

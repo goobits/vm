@@ -21,6 +21,7 @@ services:
     environment:
       - LANG=en_US.UTF-8
       - LC_ALL=en_US.UTF-8
+      - TZ={{TIMEZONE}}
     volumes:
       - {{PROJECT_PATH}}:{{WORKSPACE_PATH}}:delegated
       - {{VM_TOOL_PATH}}:/vm-tool:ro
@@ -51,7 +52,8 @@ volumes:
         PROJECT_PATH: projectDir,
         VM_TOOL_PATH: path.join(__dirname, '../..'),
         WORKSPACE_PATH: config.project.workspace_path || '/workspace',
-        PROJECT_USER: config.vm?.user || 'vagrant'
+        PROJECT_USER: config.vm?.user || 'vagrant',
+        TIMEZONE: config.vm?.timezone || 'UTC'
     };
 
     // Handle ports section
