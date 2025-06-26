@@ -193,8 +193,16 @@ docker_ssh() {
 		# Run with all arguments
 		docker_run "exec" "$config" "" su - vagrant -c "cd /workspace && source ~/.zshrc && zsh $*"
 	else
-		# Interactive mode
-		docker_run "exec-it" "$config" "" su - vagrant -c "cd /workspace && /bin/zsh"
+		# Interactive mode - use a simple approach that works
+		local project_name=$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')
+		local container_name="${project_name}-dev"
+		
+		# Run an interactive shell that properly handles signals
+		docker exec -it "${container_name}" bash -c '
+			cd /workspace
+			# Switch to vagrant user while preserving signal handling
+			exec sudo -u vagrant -i bash -c "cd /workspace && exec /bin/zsh"
+		'
 	fi
 }
 
