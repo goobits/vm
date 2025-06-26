@@ -274,6 +274,26 @@
         ["typescript", "eslint", "prettier"]
       ]
     },
+    "cargo_packages": {
+      "type": "array",
+      "description": "Global Cargo packages to install (triggers Rust installation)",
+      "items": {
+        "type": "string"
+      },
+      "examples": [
+        ["cargo-watch", "cargo-edit", "tokei"]
+      ]
+    },
+    "pip_packages": {
+      "type": "array",
+      "description": "Global pip packages to install (triggers Python/pyenv installation)",
+      "items": {
+        "type": "string"
+      },
+      "examples": [
+        ["black", "pytest", "flake8", "mypy"]
+      ]
+    },
     "aliases": {
       "type": "object",
       "description": "Custom shell aliases",
