@@ -83,6 +83,7 @@ pnpm vm up
 - **Claude-ready**: Safe sandbox for AI experiments
 - **Provider choice**: Docker (default, lightweight) or Vagrant (full isolation)
 - **Unified architecture**: Both providers use identical Ansible provisioning
+- **Automatic language installation**: Rust (via cargo_packages) and Python (via pip_packages)
 
 ## 🎨 Terminal Themes
 
@@ -128,6 +129,22 @@ Want PostgreSQL? Just add:
 	}
 }
 ```
+
+### 🚀 Automatic Language Installation
+
+Need Rust or Python? Just add packages and the VM automatically installs the language runtime:
+
+```json
+{
+	"cargo_packages": ["cargo-watch", "tokei"],     // Installs Rust + Cargo
+	"pip_packages": ["black", "pytest", "mypy"]     // Installs Python + pyenv
+}
+```
+
+The VM will:
+- **Rust**: Install via rustup with stable toolchain when `cargo_packages` is present
+- **Python**: Install pyenv + Python 3.11 when `pip_packages` is present
+- **Node.js**: Already included by default (configurable version)
 
 ### 📋 IDE Support
 
@@ -185,9 +202,19 @@ For autocompletion and validation in your editor:
 		"headless_browser": { "enabled": false }
 	},
 	"npm_packages": [
-		// Global installs
+		// Global npm packages
 		"prettier",
 		"eslint"
+	],
+	"cargo_packages": [
+		// Global Cargo packages (triggers Rust installation)
+		"cargo-watch",
+		"tokei"
+	],
+	"pip_packages": [
+		// Global pip packages (triggers Python/pyenv installation)
+		"black",
+		"pytest"
 	],
 	"aliases": {
 		// Custom aliases
