@@ -96,12 +96,12 @@
         },
         "nvm": {
           "type": "string",
-          "default": "v0.39.7",
+          "default": "v0.40.3",
           "description": "NVM (Node Version Manager) version"
         },
         "pnpm": {
           "type": "string",
-          "default": "9.15.4",
+          "default": "10.12.3",
           "description": "pnpm package manager version"
         }
       }

@@ -9,7 +9,7 @@
 		"backup_pattern": "*backup*.sql.gz"
 	},
 	"vm": {
-		"box": "bento/ubuntu-22.04",
+		"box": "bento/ubuntu-24.04",
 		"memory": 6144,
 		"cpus": 4,
 		"user": "vagrant",
@@ -17,10 +17,10 @@
 		"timezone": "America/Los_Angeles"
 	},
 	"versions": {
-		"node": "22",
-		"nvm": "v0.39.7",
-		"yarn": "4.9.1",
-		"pnpm": "9.15.4"
+		"node": "22.11.0",
+		"nvm": "v0.40.3",
+		"yarn": "4.9.2",
+		"pnpm": "10.12.3"
 	},
 	"ports": {},
 	"services": {
