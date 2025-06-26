@@ -101,6 +101,42 @@ Vagrant.configure("2") do |config|
     machine.vm.synced_folder File.expand_path("../..", File.dirname(__FILE__)), "/vm-tool"
     
     machine.vm.synced_folder ".", "/vagrant", disabled: true
+    
+    # Handle Claude sync if enabled
+    if project_config['claude_sync'] == true
+      claude_host_path = File.expand_path("~/.claude/vms/#{project_name}")
+      claude_guest_path = "/home/#{vm_user}/.claude"
+      machine.vm.synced_folder claude_host_path, claude_guest_path, create: true
+    end
+    
+    # Handle database persistence if enabled
+    if project_config['persist_databases'] == true
+      vm_data_path = File.join(File.dirname(config_file), '.vm', 'data')
+      
+      # PostgreSQL
+      if project_config.dig('services', 'postgresql', 'enabled')
+        machine.vm.synced_folder "#{vm_data_path}/postgres", "/var/lib/postgresql", 
+          create: true, owner: "postgres", group: "postgres"
+      end
+      
+      # Redis
+      if project_config.dig('services', 'redis', 'enabled')
+        machine.vm.synced_folder "#{vm_data_path}/redis", "/var/lib/redis", 
+          create: true, owner: "redis", group: "redis"
+      end
+      
+      # MongoDB
+      if project_config.dig('services', 'mongodb', 'enabled')
+        machine.vm.synced_folder "#{vm_data_path}/mongodb", "/var/lib/mongodb", 
+          create: true, owner: "mongodb", group: "mongodb"
+      end
+      
+      # MySQL
+      if project_config.dig('services', 'mysql', 'enabled')
+        machine.vm.synced_folder "#{vm_data_path}/mysql", "/var/lib/mysql", 
+          create: true, owner: "mysql", group: "mysql"
+      end
+    end
   
     # Write merged configuration for Ansible to use
     machine.vm.provision "shell", inline: <<-SHELL

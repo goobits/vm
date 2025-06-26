@@ -3,6 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 function generateDockerCompose(config, projectDir) {
     const template = `version: '3.8'
@@ -28,7 +29,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - {{PROJECT_NAME}}_nvm:/home/{{PROJECT_USER}}/.nvm
       - {{PROJECT_NAME}}_cache:/home/{{PROJECT_USER}}/.cache
-      - {{PROJECT_NAME}}_config:/tmp{{PORTS_SECTION}}
+      - {{PROJECT_NAME}}_config:/tmp{{CLAUDE_SYNC_VOLUME}}{{PORTS_SECTION}}
     networks:
       - {{PROJECT_NAME}}_network
     cap_add:
@@ -66,6 +67,44 @@ volumes:
         portsSection = '\n    ports:\n' + portLines.join('\n');
     }
     data.PORTS_SECTION = portsSection;
+
+    // Handle Claude sync volume
+    let claudeSyncVolume = '';
+    if (config.claude_sync === true) {
+        const hostPath = path.join(os.homedir(), '.claude', 'vms', data.PROJECT_NAME);
+        const containerPath = `/home/${data.PROJECT_USER}/.claude`;
+        claudeSyncVolume = `\n      - ${hostPath}:${containerPath}:delegated`;
+    }
+    data.CLAUDE_SYNC_VOLUME = claudeSyncVolume;
+
+    // Handle database persistence volumes
+    let databaseVolumes = '';
+    if (config.persist_databases === true) {
+        const vmDataPath = path.join(projectDir, '.vm', 'data');
+        
+        // PostgreSQL
+        if (config.services?.postgresql?.enabled) {
+            databaseVolumes += `\n      - ${vmDataPath}/postgres:/var/lib/postgresql:delegated`;
+        }
+        
+        // Redis
+        if (config.services?.redis?.enabled) {
+            databaseVolumes += `\n      - ${vmDataPath}/redis:/var/lib/redis:delegated`;
+        }
+        
+        // MongoDB
+        if (config.services?.mongodb?.enabled) {
+            databaseVolumes += `\n      - ${vmDataPath}/mongodb:/var/lib/mongodb:delegated`;
+        }
+        
+        // MySQL
+        if (config.services?.mysql?.enabled) {
+            databaseVolumes += `\n      - ${vmDataPath}/mysql:/var/lib/mysql:delegated`;
+        }
+        
+        // Add to main volume list after Claude sync
+        data.CLAUDE_SYNC_VOLUME = claudeSyncVolume + databaseVolumes;
+    }
 
     // Simple replacement
     let result = template;
