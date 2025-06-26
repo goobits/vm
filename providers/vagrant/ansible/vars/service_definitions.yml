@@ -73,6 +73,26 @@ service_definitions:
     service_supervisor_command: "/usr/bin/Xvfb :99 -screen 0 1024x768x24 -ac"
     service_supervisor_user: "root"
 
+  mysql:
+    service_packages:
+      - mysql-server
+      - mysql-client
+    service_config_lines:
+      - path: "/etc/mysql/mysql.conf.d/mysqld.cnf"
+        regexp: "^bind-address"
+        line: "bind-address = 127.0.0.1"
+      - path: "/etc/mysql/mysql.conf.d/mysqld.cnf"
+        regexp: "^port"
+        line: "port = {{ project_config.ports.mysql | default(3306) }}"
+    service_systemd_name: "mysql"
+    service_supervisor_command: "/usr/sbin/mysqld --basedir=/usr --datadir=/var/lib/mysql --plugin-dir=/usr/lib/mysql/plugin --user=mysql --log-error=/var/log/mysql/error.log --pid-file=/var/run/mysqld/mysqld.pid"
+    service_supervisor_user: "mysql"
+    service_port: "{{ project_config.ports.mysql | default(3306) }}"
+    service_post_install_commands:
+      - "mysql -u root -e \"ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{{ project_config.services.mysql.password | default('mysql') }}';\""
+      - "mysql -u root -p{{ project_config.services.mysql.password | default('mysql') }} -e \"CREATE DATABASE IF NOT EXISTS {{ project_config.services.mysql.database | default(project_config.project.name + '_dev') }};\""
+    service_ignore_errors: true
+
   docker:
     service_packages:
       - docker.io

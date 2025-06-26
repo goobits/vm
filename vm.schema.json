@@ -189,6 +189,36 @@
             }
           }
         },
+        "mysql": {
+          "type": "object",
+          "description": "MySQL database configuration",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "Enable MySQL installation"
+            },
+            "user": {
+              "type": "string",
+              "default": "root",
+              "description": "MySQL root user"
+            },
+            "password": {
+              "type": "string",
+              "default": "mysql",
+              "description": "MySQL root password"
+            },
+            "database": {
+              "type": "string",
+              "description": "Default database name. Defaults to '{project.name}_dev'"
+            },
+            "port": {
+              "type": "integer",
+              "default": 3306,
+              "description": "MySQL port (inside VM/container)"
+            }
+          }
+        },
         "docker": {
           "type": "object",
           "description": "Docker inside VM configuration (Vagrant only)",
@@ -320,6 +350,16 @@
           "DEBUG": "true"
         }
       ]
+    },
+    "claude_sync": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable Claude AI data synchronization to ~/.claude/vms/{project_name}"
+    },
+    "persist_databases": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable persistent database storage in .vm/data/ directory"
     }
   },
   "required": ["project"],

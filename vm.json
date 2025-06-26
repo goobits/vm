@@ -62,5 +62,7 @@
 		"show_git_branch": true,
 		"show_timestamp": false,
 		"theme": "dracula"
-	}
+	},
+	"claude_sync": false,
+	"persist_databases": false
 }
