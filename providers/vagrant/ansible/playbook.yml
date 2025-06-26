@@ -207,6 +207,7 @@
                 - zsh-syntax-highlighting
                 - ripgrep
                 - supervisor
+                - nano
             state: present
         retries: 5
         delay: 10

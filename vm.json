@@ -49,7 +49,9 @@
 		}
 	},
 	"npm_packages": ["@anthropic-ai/claude-code", "npm-check-updates", "prettier", "eslint"],
-	"aliases": {},
+	"aliases": {
+		"claudeyolo": "claude --dangerously-skip-permissions"
+	},
 	"environment": {
 		"NODE_ENV": "development",
 		"DISPLAY": ":99"
