@@ -249,7 +249,7 @@
       # Node.js via NVM
       - name: Download NVM installer
         get_url:
-            url: "https://raw.githubusercontent.com/nvm-sh/nvm/{{ project_config.versions.nvm | default('v0.39.7') }}/install.sh"
+            url: "https://raw.githubusercontent.com/nvm-sh/nvm/{{ project_config.versions.nvm | default('v0.40.3') }}/install.sh"
             dest: /tmp/install_nvm.sh
             mode: '0755'
         become_user: '{{ project_user }}'
@@ -370,7 +370,7 @@
       - name: Install pnpm
         shell: |
             source ~/.nvm/nvm.sh
-            corepack prepare pnpm@{{ project_config.versions.pnpm | default('9.15.4') }} --activate
+            corepack prepare pnpm@{{ project_config.versions.pnpm | default('10.12.3') }} --activate
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'

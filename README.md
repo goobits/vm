@@ -74,7 +74,7 @@ pnpm vm up
 
 ## 📦 What's Included
 
-- **Ubuntu 22.04** with Zsh + syntax highlighting
+- **Ubuntu 24.04 LTS** with Zsh + syntax highlighting
 - **Node.js v22** via NVM (configurable)
 - **pnpm** via Corepack
 - **Beautiful terminals** with 8 themes
@@ -172,15 +172,15 @@ For autocompletion and validation in your editor:
 		"backup_pattern": "*backup*.sql.gz" // For auto-restore
 	},
 	"vm": {
-		"box": "bento/ubuntu-22.04", // Vagrant box (Vagrant only)
+		"box": "bento/ubuntu-24.04", // Vagrant box (Vagrant only)
 		"memory": 4096, // RAM in MB
 		"cpus": 2, // CPU cores
 		"user": "vagrant", // VM/container user
 		"port_binding": "127.0.0.1" // or "0.0.0.0" for network
 	},
 	"versions": {
-		"node": "22", // Node version
-		"nvm": "v0.39.7", // NVM version
+		"node": "22.11.0", // Node version
+		"nvm": "v0.40.3", // NVM version
 		"pnpm": "latest" // pnpm version
 	},
 	"ports": {
