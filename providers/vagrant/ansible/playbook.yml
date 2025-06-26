@@ -385,6 +385,137 @@
         loop: '{{ project_config.npm_packages | default([]) }}'
         when: project_config.npm_packages is defined and project_config.npm_packages | length > 0
 
+      # Install Rust if cargo_packages is defined
+      - name: Check if Rust is already installed
+        stat:
+          path: '{{ home_dir }}/.cargo/bin/cargo'
+        register: cargo_installed
+        become_user: '{{ project_user }}'
+        when: project_config.cargo_packages is defined and project_config.cargo_packages | length > 0
+
+      - name: Install Rust via rustup
+        when: project_config.cargo_packages is defined and project_config.cargo_packages | length > 0 and not cargo_installed.stat.exists
+        block:
+          - name: Download rustup installer
+            get_url:
+              url: https://sh.rustup.rs
+              dest: /tmp/rustup.sh
+              mode: '0755'
+            become_user: '{{ project_user }}'
+
+          - name: Install Rust
+            shell: |
+              /tmp/rustup.sh -y --default-toolchain {{ project_config.versions.rust | default('stable') }} --no-modify-path
+            args:
+              executable: /bin/bash
+            become_user: '{{ project_user }}'
+            environment:
+              CARGO_HOME: '{{ home_dir }}/.cargo'
+              RUSTUP_HOME: '{{ home_dir }}/.rustup'
+
+          - name: Clean up rustup installer
+            file:
+              path: /tmp/rustup.sh
+              state: absent
+
+      - name: Install cargo packages
+        shell: |
+          source $HOME/.cargo/env
+          cargo install {{ item }}
+        args:
+          executable: /bin/bash
+        become_user: '{{ project_user }}'
+        loop: '{{ project_config.cargo_packages }}'
+        when: project_config.cargo_packages is defined and project_config.cargo_packages | length > 0
+
+      - name: Setup Rust environment in shell
+        blockinfile:
+          path: '{{ home_dir }}/.zshrc'
+          block: |
+            # Rust environment
+            export PATH="$HOME/.cargo/bin:$PATH"
+          marker: '# {mark} ANSIBLE MANAGED - RUST'
+          create: yes
+        become_user: '{{ project_user }}'
+        when: project_config.cargo_packages is defined and project_config.cargo_packages | length > 0
+
+      # Install Python via pyenv if pip_packages is defined
+      - name: Check if pyenv is already installed
+        stat:
+          path: '{{ home_dir }}/.pyenv/bin/pyenv'
+        register: pyenv_installed
+        become_user: '{{ project_user }}'
+        when: project_config.pip_packages is defined and project_config.pip_packages | length > 0
+
+      - name: Install pyenv dependencies
+        apt:
+          name:
+            - make
+            - build-essential
+            - libssl-dev
+            - zlib1g-dev
+            - libbz2-dev
+            - libreadline-dev
+            - libsqlite3-dev
+            - wget
+            - curl
+            - llvm
+            - libncursesw5-dev
+            - xz-utils
+            - tk-dev
+            - libxml2-dev
+            - libxmlsec1-dev
+            - libffi-dev
+            - liblzma-dev
+          state: present
+        when: project_config.pip_packages is defined and project_config.pip_packages | length > 0 and not pyenv_installed.stat.exists
+
+      - name: Install pyenv
+        when: project_config.pip_packages is defined and project_config.pip_packages | length > 0 and not pyenv_installed.stat.exists
+        block:
+          - name: Clone pyenv repository
+            git:
+              repo: https://github.com/pyenv/pyenv.git
+              dest: '{{ home_dir }}/.pyenv'
+              version: master
+            become_user: '{{ project_user }}'
+
+          - name: Install Python version
+            shell: |
+              export PYENV_ROOT="$HOME/.pyenv"
+              export PATH="$PYENV_ROOT/bin:$PATH"
+              eval "$(pyenv init -)"
+              pyenv install {{ project_config.versions.python | default('3.11') }}
+              pyenv global {{ project_config.versions.python | default('3.11') }}
+            args:
+              executable: /bin/bash
+            become_user: '{{ project_user }}'
+
+      - name: Install pip packages
+        shell: |
+          export PYENV_ROOT="$HOME/.pyenv"
+          export PATH="$PYENV_ROOT/bin:$PATH"
+          eval "$(pyenv init -)"
+          pip install {{ item }}
+        args:
+          executable: /bin/bash
+        become_user: '{{ project_user }}'
+        loop: '{{ project_config.pip_packages }}'
+        when: project_config.pip_packages is defined and project_config.pip_packages | length > 0
+
+      - name: Setup Python/pyenv environment in shell
+        blockinfile:
+          path: '{{ home_dir }}/.zshrc'
+          block: |
+            # Python/pyenv environment
+            export PYENV_ROOT="$HOME/.pyenv"
+            export PATH="$PYENV_ROOT/bin:$PATH"
+            eval "$(pyenv init -)"
+          marker: '# {mark} ANSIBLE MANAGED - PYTHON'
+          create: yes
+        become_user: '{{ project_user }}'
+        when: project_config.pip_packages is defined and project_config.pip_packages | length > 0
+
       # Load service definitions
       - name: Load service definitions
         include_vars: vars/service_definitions.yml
