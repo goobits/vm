@@ -353,7 +353,7 @@
     },
     "claude_sync": {
       "type": "boolean",
-      "default": false,
+      "default": true,
       "description": "Enable Claude AI data synchronization to ~/.claude/vms/{project_name}"
     },
     "persist_databases": {

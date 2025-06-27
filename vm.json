@@ -64,6 +64,6 @@
 		"show_timestamp": false,
 		"theme": "dracula"
 	},
-	"claude_sync": false,
+	"claude_sync": true,
 	"persist_databases": false
 }

@@ -2,6 +2,8 @@ FROM ubuntu:24.04
 
 # Build arguments
 ARG PROJECT_USER=vagrant
+ARG PROJECT_UID=1000
+ARG PROJECT_GID=1000
 
 # Prevent interactive prompts during installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -31,8 +33,20 @@ RUN apt-get update && apt-get install -y \
     && update-locale LANG=en_US.UTF-8 \
     && rm -rf /var/lib/apt/lists/*
 
-# Create user with sudo privileges
-RUN useradd -m -s /bin/zsh -G sudo ${PROJECT_USER} && \
+# Create group and user with specific UID/GID to match host
+RUN set -e && \
+    # Handle existing user with same UID first
+    if getent passwd ${PROJECT_UID} >/dev/null 2>&1; then \
+        EXISTING_USER=$(getent passwd ${PROJECT_UID} | cut -d: -f1); \
+        userdel $EXISTING_USER; \
+    fi && \
+    # Ensure group with correct GID exists
+    if ! getent group ${PROJECT_GID} >/dev/null 2>&1; then \
+        groupadd -g ${PROJECT_GID} ${PROJECT_USER}; \
+    fi && \
+    GROUP_NAME=$(getent group ${PROJECT_GID} | cut -d: -f1) && \
+    # Create user with correct UID and group
+    useradd -m -u ${PROJECT_UID} -g ${GROUP_NAME} -s /bin/zsh -G sudo ${PROJECT_USER} && \
     echo "${PROJECT_USER} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 # Configure SSH for Ansible access (optional - can use docker connection plugin instead)

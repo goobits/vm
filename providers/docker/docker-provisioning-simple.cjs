@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { execSync } = require('child_process');
 
 function generateDockerCompose(config, projectDir) {
     const template = `services:
@@ -13,6 +14,8 @@ function generateDockerCompose(config, projectDir) {
       dockerfile: providers/docker/Dockerfile
       args:
         PROJECT_USER: "{{PROJECT_USER}}"
+        PROJECT_UID: "{{PROJECT_UID}}"
+        PROJECT_GID: "{{PROJECT_GID}}"
     container_name: {{PROJECT_NAME}}-dev
     hostname: {{PROJECT_HOSTNAME}}
     tty: true
@@ -44,6 +47,10 @@ volumes:
   {{PROJECT_NAME}}_cache:
   {{PROJECT_NAME}}_config:`;
 
+    // Get host user/group IDs for proper file permissions
+    const hostUid = execSync('id -u', { encoding: 'utf8' }).trim();
+    const hostGid = execSync('id -g', { encoding: 'utf8' }).trim();
+
     // Prepare data
     const data = {
         PROJECT_NAME: config.project.name.replace(/[^a-zA-Z0-9]/g, ''),
@@ -52,6 +59,8 @@ volumes:
         VM_TOOL_PATH: path.join(__dirname, '../..'),
         WORKSPACE_PATH: config.project.workspace_path || '/workspace',
         PROJECT_USER: config.vm?.user || 'vagrant',
+        PROJECT_UID: hostUid,
+        PROJECT_GID: hostGid,
         TIMEZONE: config.vm?.timezone || 'UTC'
     };
 
