@@ -16,6 +16,7 @@ ENV TZ=America/Los_Angeles
 
 # Install minimal base packages needed for Ansible
 RUN apt-get update && apt-get install -y \
+    locales \
     python3 \
     python3-pip \
     python3-dev \
@@ -23,10 +24,15 @@ RUN apt-get update && apt-get install -y \
     supervisor \
     openssh-server \
     sudo \
+    zsh \
+    tzdata \
+    jq \
+    && locale-gen en_US.UTF-8 \
+    && update-locale LANG=en_US.UTF-8 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create user with sudo privileges
-RUN useradd -m -s /bin/bash -G sudo ${PROJECT_USER} && \
+RUN useradd -m -s /bin/zsh -G sudo ${PROJECT_USER} && \
     echo "${PROJECT_USER} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 # Configure SSH for Ansible access (optional - can use docker connection plugin instead)
@@ -42,6 +48,10 @@ WORKDIR /workspace
 # Copy minimal entrypoint
 COPY providers/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Copy shell setup script
+COPY providers/docker/setup-shell.sh /usr/local/bin/setup-shell.sh
+RUN chmod +x /usr/local/bin/setup-shell.sh
 
 # Set entrypoint
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

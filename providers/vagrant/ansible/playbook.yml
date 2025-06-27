@@ -179,10 +179,11 @@
                 LC_CTYPE=en_US.UTF-8
             mode: '0644'
 
-      # Timezone configuration
+      # Timezone configuration (unified method for both VM and container)
       - name: Set system timezone
-        timezone:
-            name: "{{ project_config.vm.timezone | default('UTC') }}"
+        shell: |
+            ln -sf /usr/share/zoneinfo/{{ project_config.vm.timezone | default('UTC') }} /etc/localtime
+            echo "{{ project_config.vm.timezone | default('UTC') }}" > /etc/timezone
 
       - name: Install base system packages
         apt:
@@ -360,6 +361,15 @@
             executable: /bin/bash
         become_user: '{{ project_user }}'
 
+      - name: Update npm to latest version
+        shell: |
+            source ~/.nvm/nvm.sh
+            npm install -g npm@{{ project_config.versions.npm | default('latest') }}
+        args:
+            executable: /bin/bash
+        become_user: '{{ project_user }}'
+        ignore_errors: yes
+
       - name: Enable corepack for pnpm
         shell: |
             source ~/.nvm/nvm.sh
@@ -368,13 +378,25 @@
             executable: /bin/bash
         become_user: '{{ project_user }}'
 
-      - name: Install pnpm
+      - name: Install pnpm via corepack
         shell: |
             source ~/.nvm/nvm.sh
             corepack prepare pnpm@{{ project_config.versions.pnpm | default('10.12.3') }} --activate
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
+        register: corepack_result
+        ignore_errors: yes
+
+      - name: Install pnpm via npm if corepack failed
+        shell: |
+            source ~/.nvm/nvm.sh
+            npm install -g pnpm@{{ project_config.versions.pnpm | default('10.12.3') }}
+            echo "✅ Installed pnpm via npm as fallback"
+        args:
+            executable: /bin/bash
+        become_user: '{{ project_user }}'
+        when: corepack_result.failed | default(false)
 
       - name: Install global npm packages
         shell: |
@@ -385,6 +407,26 @@
         become_user: '{{ project_user }}'
         loop: '{{ project_config.npm_packages | default([]) }}'
         when: project_config.npm_packages is defined and project_config.npm_packages | length > 0
+
+      - name: Install Claude Code CLI
+        shell: |
+            source ~/.nvm/nvm.sh
+            npm install -g @anthropic-ai/claude-code
+        args:
+            executable: /bin/bash
+        become_user: '{{ project_user }}'
+        ignore_errors: yes
+
+      - name: Install pnpm via npm as fallback
+        shell: |
+            source ~/.nvm/nvm.sh
+            if ! which pnpm > /dev/null 2>&1; then
+                npm install -g pnpm@{{ project_config.versions.pnpm | default('10.12.3') }}
+            fi
+        args:
+            executable: /bin/bash
+        become_user: '{{ project_user }}'
+        when: project_config.versions.pnpm is defined
 
       # Install Rust if cargo_packages is defined
       - name: Check if Rust is already installed
