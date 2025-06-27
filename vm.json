@@ -17,10 +17,11 @@
 		"timezone": "America/Los_Angeles"
 	},
 	"versions": {
-		"node": "22.11.0",
+		"node": "22",
 		"nvm": "v0.40.3",
 		"yarn": "4.9.2",
-		"pnpm": "10.12.3"
+		"pnpm": "10.12.3",
+		"npm": "latest"
 	},
 	"ports": {},
 	"services": {
