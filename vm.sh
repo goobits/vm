@@ -161,14 +161,37 @@ docker_up() {
 	
 	# Run Ansible playbook inside the container
 	echo "🔧 Running Ansible provisioning..."
-	docker_run "exec" "$config" "$project_dir" ansible-playbook \
+	
+	# Check if debug mode is enabled
+	ANSIBLE_VERBOSITY=""
+	if [ "${VM_DEBUG:-}" = "true" ] || [ "${DEBUG:-}" = "true" ]; then
+		echo "🐛 Debug mode enabled - showing detailed Ansible output"
+		ANSIBLE_VERBOSITY="-vvv"
+	fi
+	
+	# Create log file path
+	ANSIBLE_LOG="/tmp/ansible-provision-$(date +%Y%m%d-%H%M%S).log"
+	
+	if docker_run "exec" "$config" "$project_dir" bash -c "ansible-playbook \
 		-i localhost, \
 		-c local \
-		/vm-tool/providers/vagrant/ansible/playbook.yml
+		$ANSIBLE_VERBOSITY \
+		--diff \
+		/vm-tool/providers/vagrant/ansible/playbook.yml 2>&1 | tee $ANSIBLE_LOG"; then
+		echo "✅ Ansible provisioning completed successfully!"
+	else
+		ANSIBLE_EXIT_CODE=$?
+		echo "⚠️  Ansible provisioning had some issues (exit code: $ANSIBLE_EXIT_CODE)"
+		echo "📋 Full log saved in container at: $ANSIBLE_LOG"
+		echo "💡 Tips:"
+		echo "   - Run with VM_DEBUG=true vm up to see detailed error output"
+		echo "   - View the log: vm exec cat $ANSIBLE_LOG"
+		echo "   - Or copy it: docker cp ${container_name}:$ANSIBLE_LOG ./ansible-error.log"
+	fi
 	
 	# Ensure supervisor services are started
 	echo "🔄 Starting services..."
-	docker_run "exec" "$config" "$project_dir" bash -c "supervisorctl reread && supervisorctl update"
+	docker_run "exec" "$config" "$project_dir" bash -c "supervisorctl reread && supervisorctl update" || true
 	
 	# Clean up generated docker-compose.yml since containers are now running
 	local compose_file="${project_dir}/docker-compose.yml"
@@ -178,7 +201,10 @@ docker_up() {
 	fi
 	
 	echo "✅ Docker environment is running and provisioned!"
-	echo "Run 'vm ssh' to connect"
+	echo "🔗 Connecting to VM..."
+	
+	# Automatically SSH into the container
+	docker_ssh "$config"
 }
 
 docker_ssh() {
@@ -447,6 +473,16 @@ case "${1:-}" in
 		else
 			# Vagrant provider
 			case "$COMMAND" in
+				"up")
+					# Start VM and auto-SSH
+					if [ -n "$FULL_CONFIG_PATH" ]; then
+						VM_PROJECT_DIR="$PROJECT_DIR" VM_CONFIG="$FULL_CONFIG_PATH" VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant up "$@"
+					else
+						VM_PROJECT_DIR="$PROJECT_DIR" VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant up "$@"
+					fi
+					echo "🔗 Connecting to VM..."
+					VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh
+					;;
 				"exec")
 					# Execute command in Vagrant VM
 					VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh -c "$@"

@@ -6,9 +6,7 @@ const path = require('path');
 const os = require('os');
 
 function generateDockerCompose(config, projectDir) {
-    const template = `version: '3.8'
-
-services:
+    const template = `services:
   {{PROJECT_NAME}}:
     build:
       context: {{VM_TOOL_PATH}}
