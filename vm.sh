@@ -26,10 +26,11 @@ CURRENT_DIR="$(pwd)"
 
 # Show usage information
 show_usage() {
-	echo "Usage: $0 [--config PATH] [command] [args...]"
+	echo "Usage: $0 [--config PATH] [--debug] [command] [args...]"
 	echo ""
 	echo "Options:"
 	echo "  --config PATH        Use specific vm.json file"
+	echo "  --debug              Enable debug output"
 	echo ""
 	echo "Commands:"
 	echo "  validate              Validate VM configuration"
@@ -87,11 +88,24 @@ kill_virtualbox() {
 load_config() {
 	local config_path="$1"
 	local original_dir="$2"
+	
+	# Debug output if --debug flag is set
+	if [ "${VM_DEBUG:-}" = "true" ]; then
+		echo "DEBUG load_config: config_path='$config_path', original_dir='$original_dir'" >&2
+		echo "DEBUG load_config: SCRIPT_DIR='$SCRIPT_DIR'" >&2
+	fi
+	
 	if [ -n "$config_path" ]; then
 		# Use custom config path
+		if [ "${VM_DEBUG:-}" = "true" ]; then
+			echo "DEBUG load_config: Running: cd '$original_dir' && node '$SCRIPT_DIR/validate-config.js' '$config_path'" >&2
+		fi
 		(cd "$original_dir" && node "$SCRIPT_DIR/validate-config.js" "$config_path")
 	else
 		# Use default discovery logic - run from the original directory
+		if [ "${VM_DEBUG:-}" = "true" ]; then
+			echo "DEBUG load_config: Running: cd '$original_dir' && node '$SCRIPT_DIR/validate-config.js'" >&2
+		fi
 		(cd "$original_dir" && node "$SCRIPT_DIR/validate-config.js")
 	fi
 }
@@ -203,32 +217,43 @@ docker_up() {
 	echo "✅ Docker environment is running and provisioned!"
 	echo "🔗 Connecting to VM..."
 	
-	# Automatically SSH into the container
-	docker_ssh "$config"
+	# Automatically SSH into the container  
+	docker_ssh "$config" "" "."
 }
 
 docker_ssh() {
 	local config="$1"
-	shift
+	local project_dir="$2"
+	local relative_path="$3"
+	shift 3
+	
+	# Get workspace path from config, default to /workspace
+	local workspace_path=$(echo "$config" | jq -r '.project.workspace_path // "/workspace"')
+	local target_dir="${workspace_path}"
+	
+	# If we have a relative path and it's not just ".", append it to workspace path
+	if [ -n "$relative_path" ] && [ "$relative_path" != "." ]; then
+		target_dir="${workspace_path}/${relative_path}"
+	fi
 	
 	# Handle -c flag specifically for command execution
 	if [ "$1" = "-c" ] && [ -n "$2" ]; then
 		# Run command non-interactively
-		docker_run "exec" "$config" "" su - vagrant -c "cd /workspace && source ~/.zshrc && $2"
+		docker_run "exec" "$config" "" su - vagrant -c "cd '$target_dir' && source ~/.zshrc && $2"
 	elif [ $# -gt 0 ]; then
 		# Run with all arguments
-		docker_run "exec" "$config" "" su - vagrant -c "cd /workspace && source ~/.zshrc && zsh $*"
+		docker_run "exec" "$config" "" su - vagrant -c "cd '$target_dir' && source ~/.zshrc && zsh $*"
 	else
 		# Interactive mode - use a simple approach that works
 		local project_name=$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')
 		local container_name="${project_name}-dev"
 		
 		# Run an interactive shell that properly handles signals
-		docker exec -it "${container_name}" bash -c '
-			cd /workspace
+		docker exec -it "${container_name}" bash -c "
+			cd '$target_dir'
 			# Switch to vagrant user while preserving signal handling
-			exec sudo -u vagrant -i bash -c "cd /workspace && exec /bin/zsh"
-		'
+			exec sudo -u vagrant -i bash -c \"cd '$target_dir' && exec /bin/zsh\"
+		"
 	fi
 }
 
@@ -364,17 +389,49 @@ vm_list() {
 	echo ""
 }
 
-# Parse --config flag
+# Parse command line arguments using getopt
 CUSTOM_CONFIG=""
-if [ "$1" = "--config" ]; then
-	if [ -z "$2" ]; then
-		echo "❌ Error: --config requires a path argument"
-		show_usage
-		exit 1
-	fi
-	CUSTOM_CONFIG="$2"
-	shift 2  # Remove --config and path from arguments
+DEBUG_MODE=""
+
+# Use getopt to parse arguments properly
+TEMP=$(getopt -o c:d --long config:,debug -n 'vm' -- "$@")
+if [ $? != 0 ]; then
+	echo "❌ Error parsing arguments" >&2
+	show_usage
+	exit 1
 fi
+
+# Note the quotes around '$TEMP': they are essential!
+eval set -- "$TEMP"
+
+# Parse arguments
+while true; do
+	case "$1" in
+		-c|--config)
+			config_arg="$2"
+			# If the path is a directory, append vm.json to it
+			if [ -d "$config_arg" ]; then
+				CUSTOM_CONFIG="$config_arg/vm.json"
+			else
+				CUSTOM_CONFIG="$config_arg"
+			fi
+			shift 2
+			;;
+		-d|--debug)
+			DEBUG_MODE="true"
+			export VM_DEBUG="true"
+			shift
+			;;
+		--)
+			shift
+			break
+			;;
+		*)
+			echo "❌ Internal error parsing arguments" >&2
+			exit 1
+			;;
+	esac
+done
 
 # Handle special commands
 case "${1:-}" in
@@ -411,6 +468,9 @@ case "${1:-}" in
 		;;
 	*)
 		# Load and validate config (discovery handled by validate-config.js)
+		if [ "${VM_DEBUG:-}" = "true" ]; then
+			echo "DEBUG main: CUSTOM_CONFIG='$CUSTOM_CONFIG'" >&2
+		fi
 		CONFIG=$(load_config "$CUSTOM_CONFIG" "$CURRENT_DIR")
 		if [ $? -ne 0 ]; then
 			echo "❌ Configuration validation failed. Aborting."
@@ -422,7 +482,8 @@ case "${1:-}" in
 		# Determine project directory and config path
 		if [ -n "$CUSTOM_CONFIG" ]; then
 			# If using custom config, project dir is where the config file is located
-			FULL_CONFIG_PATH="$(readlink -f "$CUSTOM_CONFIG")"
+			# Resolve the path from the original directory where user ran the command
+			FULL_CONFIG_PATH="$(cd "$CURRENT_DIR" && readlink -f "$CUSTOM_CONFIG")"
 			PROJECT_DIR="$(dirname "$FULL_CONFIG_PATH")"
 		else
 			# Default: current directory, no explicit config path (uses discovery)
@@ -442,7 +503,9 @@ case "${1:-}" in
 					docker_up "$CONFIG" "$PROJECT_DIR" "$@"
 					;;
 				"ssh")
-					docker_ssh "$CONFIG" "$@"
+					# Calculate relative path from project dir to current dir for SSH
+					RELATIVE_PATH=$(realpath --relative-to="$PROJECT_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
+					docker_ssh "$CONFIG" "$PROJECT_DIR" "$RELATIVE_PATH" "$@"
 					;;
 				"halt")
 					docker_halt "$CONFIG" "$PROJECT_DIR" "$@"
@@ -482,6 +545,17 @@ case "${1:-}" in
 					fi
 					echo "🔗 Connecting to VM..."
 					VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh
+					;;
+				"ssh")
+					# SSH into VM with relative path support
+					RELATIVE_PATH=$(realpath --relative-to="$PROJECT_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
+					WORKSPACE_PATH="/workspace"  # Default workspace path for Vagrant
+					if [ "$RELATIVE_PATH" != "." ]; then
+						TARGET_DIR="${WORKSPACE_PATH}/${RELATIVE_PATH}"
+						VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh -c "cd '$TARGET_DIR' && exec /bin/bash"
+					else
+						VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh
+					fi
 					;;
 				"exec")
 					# Execute command in Vagrant VM
