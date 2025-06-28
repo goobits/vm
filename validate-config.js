@@ -46,6 +46,7 @@ function loadAndMergeConfig(customConfigPath = null) {
 		if (!fs.existsSync(configFileToLoad)) {
 			throw new Error(`Custom config file not found: ${configFileToLoad}`)
 		}
+		// When using custom config, we found it successfully, so use it
 	} else {
 		// Check if local vm.json exists
 		if (fs.existsSync(localConfigPath)) {
@@ -217,6 +218,13 @@ const args = process.argv.slice(2)
 const validateFlag = args.includes('--validate')
 const getConfigFlag = args.includes('--get-config')
 const customConfigPath = args.find(arg => !arg.startsWith('--'))
+
+// Debug logging when VM_DEBUG is set
+if (process.env.VM_DEBUG) {
+	console.error('DEBUG: args =', args)
+	console.error('DEBUG: customConfigPath =', customConfigPath)
+	console.error('DEBUG: cwd =', process.cwd())
+}
 
 try {
 	const { finalConfig, configFileToLoad, isLocal } = loadAndMergeConfig(customConfigPath)
