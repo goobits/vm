@@ -26,11 +26,12 @@ CURRENT_DIR="$(pwd)"
 
 # Show usage information
 show_usage() {
-	echo "Usage: $0 [--config PATH] [--debug] [command] [args...]"
+	echo "Usage: $0 [--config [PATH]] [--debug] [--dry-run] [command] [args...]"
 	echo ""
 	echo "Options:"
-	echo "  --config PATH        Use specific vm.json file"
+	echo "  --config [PATH]      Use specific vm.json file, or scan up directory tree if no path given"
 	echo "  --debug              Enable debug output"
+	echo "  --dry-run            Show what would be executed without actually running it"
 	echo ""
 	echo "Commands:"
 	echo "  validate              Validate VM configuration"
@@ -50,6 +51,8 @@ show_usage() {
 	echo "  $0 validate                    # Check configuration"
 	echo "  $0 list                        # List all VM instances"
 	echo "  $0 --config ./prod.json up     # Start VM with specific config"
+	echo "  $0 --config up                 # Start VM scanning up for vm.json"
+	echo "  $0 --dry-run ssh --config      # Show what would be executed"
 	echo "  $0 up                          # Start the VM (auto-find vm.json)"
 	echo "  $0 ssh                         # Connect to VM"
 	echo "  $0 halt                        # Stop the VM"
@@ -389,49 +392,59 @@ vm_list() {
 	echo ""
 }
 
-# Parse command line arguments using getopt
+# Parse command line arguments manually for better control
 CUSTOM_CONFIG=""
 DEBUG_MODE=""
+DRY_RUN=""
+ARGS=()
 
-# Use getopt to parse arguments properly
-TEMP=$(getopt -o c:d --long config:,debug -n 'vm' -- "$@")
-if [ $? != 0 ]; then
-	echo "❌ Error parsing arguments" >&2
-	show_usage
-	exit 1
-fi
-
-# Note the quotes around '$TEMP': they are essential!
-eval set -- "$TEMP"
-
-# Parse arguments
-while true; do
+# Manual argument parsing - much simpler and more reliable than getopt
+while [[ $# -gt 0 ]]; do
 	case "$1" in
 		-c|--config)
-			config_arg="$2"
-			# If the path is a directory, append vm.json to it
-			if [ -d "$config_arg" ]; then
-				CUSTOM_CONFIG="$config_arg/vm.json"
+			shift
+			# Check if next argument exists and is not a flag or command
+			if [[ $# -eq 0 ]] || [[ "$1" =~ ^- ]] || [[ "$1" =~ ^(validate|list|up|ssh|halt|destroy|status|reload|provision|logs|exec|kill|help)$ ]]; then
+				# No argument provided or next is a flag/command - use scan mode
+				CUSTOM_CONFIG="__SCAN__"
 			else
-				CUSTOM_CONFIG="$config_arg"
+				# Argument provided - use it as config path
+				if [ -d "$1" ]; then
+					CUSTOM_CONFIG="$1/vm.json"
+				else
+					CUSTOM_CONFIG="$1"
+				fi
+				shift
 			fi
-			shift 2
 			;;
 		-d|--debug)
 			DEBUG_MODE="true"
 			export VM_DEBUG="true"
 			shift
 			;;
-		--)
+		--dry-run)
+			DRY_RUN="true"
 			shift
-			break
+			;;
+		-h|--help)
+			show_usage
+			exit 0
+			;;
+		-*)
+			echo "❌ Unknown option: $1" >&2
+			show_usage
+			exit 1
 			;;
 		*)
-			echo "❌ Internal error parsing arguments" >&2
-			exit 1
+			# Collect remaining arguments (command and its args)
+			ARGS+=("$1")
+			shift
 			;;
 	esac
 done
+
+# Restore positional parameters to the command and its arguments
+set -- "${ARGS[@]}"
 
 # Handle special commands
 case "${1:-}" in
@@ -480,7 +493,11 @@ case "${1:-}" in
 		PROVIDER=$(get_provider "$CONFIG")
 		
 		# Determine project directory and config path
-		if [ -n "$CUSTOM_CONFIG" ]; then
+		if [ "$CUSTOM_CONFIG" = "__SCAN__" ]; then
+			# Scan mode: project dir is where user ran the command
+			PROJECT_DIR="$CURRENT_DIR"
+			FULL_CONFIG_PATH=""
+		elif [ -n "$CUSTOM_CONFIG" ]; then
 			# If using custom config, project dir is where the config file is located
 			# Resolve the path from the original directory where user ran the command
 			FULL_CONFIG_PATH="$(cd "$CURRENT_DIR" && readlink -f "$CUSTOM_CONFIG")"
@@ -493,6 +510,26 @@ case "${1:-}" in
 		
 		echo "🔧 Using provider: $PROVIDER"
 		
+		# Show dry run information if enabled
+		if [ "$DRY_RUN" = "true" ]; then
+			echo ""
+			echo "🔍 DRY RUN MODE - showing what would be executed:"
+			echo "   Project directory: $PROJECT_DIR"
+			echo "   Provider: $PROVIDER"
+			echo "   Command: $1"
+			echo "   Arguments: ${@:2}"
+			if [ "$CUSTOM_CONFIG" = "__SCAN__" ]; then
+				echo "   Config mode: Scanning up directory tree"
+			elif [ -n "$CUSTOM_CONFIG" ]; then
+				echo "   Config mode: Explicit config ($CUSTOM_CONFIG)"
+			else
+				echo "   Config mode: Default discovery"
+			fi
+			echo ""
+			echo "🚫 Dry run complete - no commands were executed"
+			exit 0
+		fi
+		
 		# Route command to appropriate provider
 		COMMAND="$1"
 		shift
@@ -503,8 +540,29 @@ case "${1:-}" in
 					docker_up "$CONFIG" "$PROJECT_DIR" "$@"
 					;;
 				"ssh")
-					# Calculate relative path from project dir to current dir for SSH
-					RELATIVE_PATH=$(realpath --relative-to="$PROJECT_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
+					# Calculate relative path for SSH
+					if [ "$CUSTOM_CONFIG" = "__SCAN__" ]; then
+						# In scan mode, we need to figure out where we are relative to the found config
+						# Get the directory where vm.json was found from validate-config.js output
+						CONFIG_DIR=$(echo "$CONFIG" | jq -r '.__config_dir // empty' 2>/dev/null)
+						if [ -n "$CONFIG_DIR" ] && [ "$CONFIG_DIR" != "$CURRENT_DIR" ]; then
+							# Calculate path from config dir to current dir
+							RELATIVE_PATH=$(realpath --relative-to="$CONFIG_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
+						else
+							RELATIVE_PATH="."
+						fi
+					else
+						# Normal mode: relative path from project dir to current dir
+						RELATIVE_PATH=$(realpath --relative-to="$PROJECT_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
+					fi
+					
+					if [ "${VM_DEBUG:-}" = "true" ]; then
+						echo "DEBUG ssh: CURRENT_DIR='$CURRENT_DIR'" >&2
+						echo "DEBUG ssh: PROJECT_DIR='$PROJECT_DIR'" >&2
+						echo "DEBUG ssh: CUSTOM_CONFIG='$CUSTOM_CONFIG'" >&2
+						echo "DEBUG ssh: CONFIG_DIR='$CONFIG_DIR'" >&2
+						echo "DEBUG ssh: RELATIVE_PATH='$RELATIVE_PATH'" >&2
+					fi
 					docker_ssh "$CONFIG" "$PROJECT_DIR" "$RELATIVE_PATH" "$@"
 					;;
 				"halt")
