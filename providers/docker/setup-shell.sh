@@ -22,6 +22,9 @@ if [ -f "$CONFIG_FILE" ]; then
     
     # Extract environment variables
     ENV_VARS=$(jq -r '.environment // {} | to_entries | .[] | "export \(.key)=\"\(.value)\""' "$CONFIG_FILE")
+    
+    # Extract aliases
+    ALIASES=$(jq -r '.aliases // {} | to_entries | .[] | "alias \(.key)='\''\(.value)'\''"' "$CONFIG_FILE")
 fi
 
 # Create .bashrc
@@ -66,6 +69,9 @@ alias gl='git log --oneline'
 # Docker shortcuts
 alias dps='docker ps'
 alias dimg='docker images'
+
+# Project aliases (from vm.json)
+$ALIASES
 
 # Environment
 export DISPLAY=:99
@@ -118,6 +124,9 @@ alias gl='git log --oneline'
 # Docker shortcuts
 alias dps='docker ps'
 alias dimg='docker images'
+
+# Project aliases (from vm.json)
+$ALIASES
 
 # Environment
 export DISPLAY=:99
