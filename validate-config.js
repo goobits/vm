@@ -34,13 +34,96 @@ function deepMerge(base, override) {
 }
 
 
+function findVmJsonUpwards(startDir) {
+	let currentDir = path.resolve(startDir)
+	const rootDir = path.parse(currentDir).root
+	
+	while (currentDir !== rootDir) {
+		const vmJsonPath = path.join(currentDir, 'vm.json')
+		if (fs.existsSync(vmJsonPath)) {
+			return vmJsonPath
+		}
+		currentDir = path.dirname(currentDir)
+	}
+	
+	// Check root directory as well
+	const rootVmJsonPath = path.join(rootDir, 'vm.json')
+	if (fs.existsSync(rootVmJsonPath)) {
+		return rootVmJsonPath
+	}
+	
+	return null
+}
+
 function loadAndMergeConfig(customConfigPath = null) {
 	// Config discovery: custom path, current directory vm.json, or default
 	const localConfigPath = path.join(process.cwd(), 'vm.json')
 	const defaultConfigPath = path.join(__dirname, 'vm.json')
 	
 	let configFileToLoad
-	if (customConfigPath) {
+	let configDirForScan = null
+	if (customConfigPath === '__SCAN__') {
+		// Scan up directory tree for vm.json
+		const foundConfig = findVmJsonUpwards(process.cwd())
+		if (foundConfig) {
+			configFileToLoad = foundConfig
+			// Store the directory where config was found for scan mode
+			configDirForScan = path.dirname(foundConfig)
+		} else {
+			// Not found during scan, offer to create one
+			console.error(`❌ No vm.json configuration file found scanning up from ${process.cwd()}`)
+			console.error()
+			console.error('The VM tool needs a vm.json file to configure your development environment.')
+			console.error(`I can create a default vm.json file customized for the "${path.basename(process.cwd())}" project.`)
+			console.error()
+			console.error('Would you like me to create a vm.json file for this directory?')
+			
+			// Read user input synchronously - but only if we're in an interactive terminal
+			let answer = 'n'
+			if (process.stdin.isTTY && process.stdout.isTTY && process.stderr.isTTY) {
+				try {
+					answer = execSync('echo "Create vm.json? (y/n): " >&2 && read answer && echo $answer', { 
+						encoding: 'utf8', 
+						stdio: ['inherit', 'pipe', 'pipe'],
+						timeout: 30000 // 30 second timeout
+					}).trim()
+				} catch (e) {
+					console.error('Failed to read input, using default configuration...')
+					answer = 'n'
+				}
+			} else {
+				console.error('Non-interactive terminal detected, using default configuration...')
+			}
+			
+			if (answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes') {
+				// Create local vm.json based on default but with directory-specific name
+				const defaultConfig = JSON.parse(fs.readFileSync(defaultConfigPath, 'utf8'))
+				const dirName = path.basename(process.cwd())
+				
+				// Customize config for this directory
+				const localConfig = {
+					...defaultConfig,
+					project: {
+						...defaultConfig.project,
+						name: dirName,
+						hostname: dirName
+					},
+					terminal: {
+						...defaultConfig.terminal,
+						emoji: "🚀",
+						username: dirName
+					}
+				}
+				
+				fs.writeFileSync(localConfigPath, JSON.stringify(localConfig, null, 2))
+				console.error(`✅ Created vm.json for project: ${dirName}`)
+				configFileToLoad = localConfigPath
+			} else {
+				console.error('Using default configuration...')
+				configFileToLoad = defaultConfigPath
+			}
+		}
+	} else if (customConfigPath) {
 		// Handle custom config path (for tests and explicit --config usage)
 		configFileToLoad = path.isAbsolute(customConfigPath) ? customConfigPath : path.join(process.cwd(), customConfigPath)
 		if (!fs.existsSync(configFileToLoad)) {
@@ -61,12 +144,6 @@ function loadAndMergeConfig(customConfigPath = null) {
 			console.error('Would you like me to create a vm.json file for this directory?')
 			
 			// Read user input synchronously
-			const rl = readline.createInterface({
-				input: process.stdin,
-				output: process.stdout
-			})
-			
-			// Use a promise to handle async readline in sync context
 			const answer = execSync('echo "Create vm.json? (y/n): " >&2 && read answer && echo $answer', { 
 				encoding: 'utf8', 
 				stdio: ['inherit', 'pipe', 'inherit'] 
@@ -127,7 +204,7 @@ function loadAndMergeConfig(customConfigPath = null) {
 	// Merge configurations (user config overrides defaults)
 	finalConfig = deepMerge(defaultConfig, userConfig)
 	
-	return { finalConfig, configFileToLoad, isLocal: configFileToLoad === localConfigPath }
+	return { finalConfig, configFileToLoad, isLocal: configFileToLoad === localConfigPath, configDirForScan }
 }
 
 function validateMergedConfig(config) {
@@ -227,7 +304,7 @@ if (process.env.VM_DEBUG) {
 }
 
 try {
-	const { finalConfig, configFileToLoad, isLocal } = loadAndMergeConfig(customConfigPath)
+	const { finalConfig, configFileToLoad, isLocal, configDirForScan } = loadAndMergeConfig(customConfigPath)
 	const { errors, warnings } = validateMergedConfig(finalConfig)
 	
 	if (validateFlag) {
@@ -272,6 +349,10 @@ try {
 		}
 		
 		// Print the final, merged config object to stdout for the shell script to capture
+		// Include the config directory if we're in scan mode
+		if (configDirForScan) {
+			finalConfig.__config_dir = configDirForScan
+		}
 		console.log(JSON.stringify(finalConfig))
 		process.exit(0)
 	}
