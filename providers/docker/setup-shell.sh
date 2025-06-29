@@ -155,3 +155,8 @@ if [ -f "$USER_HOME/.nvm/nvm.sh" ]; then
         fi
     '
 fi
+
+# Fix ownership of shell configuration files
+echo "🔧 Fixing shell configuration file ownership..."
+chown vagrant:vagrant "$USER_HOME/.bashrc" "$USER_HOME/.zshrc"
+chmod 644 "$USER_HOME/.bashrc" "$USER_HOME/.zshrc"

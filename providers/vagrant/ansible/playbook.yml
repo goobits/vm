@@ -269,6 +269,7 @@
             shell: /usr/bin/zsh
 
       - name: Setup NVM in shell
+        become_user: '{{ project_user }}'
         blockinfile:
             path: '/home/{{ project_user }}/.zshrc'
             block: |
@@ -279,6 +280,7 @@
             create: yes
 
       - name: Setup locale environment variables
+        become_user: '{{ project_user }}'
         blockinfile:
             path: '/home/{{ project_user }}/.zshrc'
             block: |
@@ -291,6 +293,7 @@
             create: yes
 
       - name: Setup custom zsh prompt with project branding
+        become_user: '{{ project_user }}'
         blockinfile:
             path: '/home/{{ project_user }}/.zshrc'
             block: |
@@ -314,6 +317,7 @@
             create: yes
 
       - name: Setup terminal color scheme
+        become_user: '{{ project_user }}'
         blockinfile:
             path: '/home/{{ project_user }}/.zshrc'
             block: |
@@ -694,6 +698,7 @@
 
       # Universal aliases and environment
       - name: Add universal aliases
+        become_user: '{{ project_user }}'
         blockinfile:
             path: '/home/{{ project_user }}/.zshrc'
             block: |
@@ -787,6 +792,7 @@
         when: config_file_stat.stat.exists
 
       - name: Add project aliases to zshrc
+        become_user: '{{ project_user }}'
         blockinfile:
             path: '/home/{{ project_user }}/.zshrc'
             block: '{{ project_aliases_block }}'
