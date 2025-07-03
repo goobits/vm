@@ -424,6 +424,15 @@
         become_user: '{{ project_user }}'
         ignore_errors: yes
 
+      - name: Install Gemini CLI
+        shell: |
+            source ~/.nvm/nvm.sh
+            npm install -g @google/gemini-cli
+        args:
+            executable: /bin/bash
+        become_user: '{{ project_user }}'
+        ignore_errors: yes
+
       - name: Install pnpm via npm as fallback
         shell: |
             source ~/.nvm/nvm.sh
@@ -698,6 +707,38 @@
                   ]
                 }
         when: not claude_settings.stat.exists
+
+      # Gemini CLI setup
+      - name: Create Gemini settings directory
+        file:
+            path: '/home/{{ project_user }}/.gemini'
+            state: directory
+            owner: '{{ project_user }}'
+            mode: '0755'
+
+      - name: Check for project Gemini settings
+        stat:
+            path: '/vm-tool/shared/gemini-settings/settings.json'
+        register: gemini_settings
+
+      - name: Copy project Gemini settings
+        copy:
+            src: '/vm-tool/shared/gemini-settings/settings.json'
+            dest: '/home/{{ project_user }}/.gemini/settings.json'
+            remote_src: yes
+            owner: '{{ project_user }}'
+        when: gemini_settings.stat.exists
+
+      - name: Use default Gemini settings
+        copy:
+            dest: '/home/{{ project_user }}/.gemini/settings.json'
+            owner: '{{ project_user }}'
+            content: |
+                {
+                  "model": "gemini-2.5-pro",
+                  "interactive": true
+                }
+        when: not gemini_settings.stat.exists
 
       # Universal aliases and environment
       - name: Add universal aliases
