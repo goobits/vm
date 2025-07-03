@@ -159,6 +159,14 @@ if [ -f "$USER_HOME/.nvm/nvm.sh" ]; then
             echo "✅ Claude Code CLI is already installed"
         fi
         
+        # Check if gemini is already installed
+        if ! which gemini > /dev/null 2>&1; then
+            echo "📦 Installing Gemini CLI..."
+            npm install -g @google/gemini-cli
+        else
+            echo "✅ Gemini CLI is already installed"
+        fi
+        
         # Also try to install pnpm directly if corepack fails
         if ! which pnpm > /dev/null 2>&1; then
             echo "📦 Installing pnpm via npm..."

@@ -356,6 +356,11 @@
       "default": true,
       "description": "Enable Claude AI data synchronization to ~/.claude/vms/{project_name}"
     },
+    "gemini_sync": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable Gemini AI data synchronization to ~/.gemini/vms/{project_name}"
+    },
     "persist_databases": {
       "type": "boolean",
       "default": false,
