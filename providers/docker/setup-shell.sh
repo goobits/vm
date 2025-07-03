@@ -75,6 +75,7 @@ $ALIASES
 
 # Environment
 export DISPLAY=:99
+export PYTHONDONTWRITEBYTECODE=1
 $ENV_VARS
 
 # Auto-cd to workspace
@@ -130,6 +131,7 @@ $ALIASES
 
 # Environment
 export DISPLAY=:99
+export PYTHONDONTWRITEBYTECODE=1
 $ENV_VARS
 
 # Auto-cd to workspace

@@ -16,6 +16,9 @@ ENV LANGUAGE=en_US:en
 # Set default timezone (will be overridden by docker-compose)
 ENV TZ=America/Los_Angeles
 
+# Prevent Python from creating __pycache__ directories
+ENV PYTHONDONTWRITEBYTECODE=1
+
 # Install minimal base packages needed for Ansible
 RUN apt-get update && apt-get install -y \
     locales \
