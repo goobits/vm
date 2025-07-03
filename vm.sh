@@ -606,11 +606,26 @@ case "${1:-}" in
 					;;
 				"ssh")
 					# SSH into VM with relative path support
-					RELATIVE_PATH=$(realpath --relative-to="$PROJECT_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
-					WORKSPACE_PATH="/workspace"  # Default workspace path for Vagrant
+					# Calculate relative path (similar to Docker SSH logic)
+					if [ "$CUSTOM_CONFIG" = "__SCAN__" ]; then
+						# In scan mode, figure out where we are relative to the found config
+						CONFIG_DIR=$(echo "$CONFIG" | jq -r '.__config_dir // empty' 2>/dev/null)
+						if [ -n "$CONFIG_DIR" ] && [ "$CONFIG_DIR" != "$CURRENT_DIR" ]; then
+							RELATIVE_PATH=$(realpath --relative-to="$CONFIG_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
+						else
+							RELATIVE_PATH="."
+						fi
+					else
+						# Normal mode: relative path from project dir to current dir
+						RELATIVE_PATH=$(realpath --relative-to="$PROJECT_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
+					fi
+					
+					# Get workspace path from config
+					WORKSPACE_PATH=$(echo "$CONFIG" | jq -r '.project.workspace_path // "/workspace"')
+					
 					if [ "$RELATIVE_PATH" != "." ]; then
 						TARGET_DIR="${WORKSPACE_PATH}/${RELATIVE_PATH}"
-						VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh -c "cd '$TARGET_DIR' && exec /bin/bash"
+						VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh -c "cd '$TARGET_DIR' && exec /bin/zsh"
 					else
 						VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh
 					fi
