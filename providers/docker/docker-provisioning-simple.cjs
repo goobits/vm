@@ -30,7 +30,7 @@ function generateDockerCompose(config, projectDir) {
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - {{PROJECT_NAME}}_nvm:/home/{{PROJECT_USER}}/.nvm
       - {{PROJECT_NAME}}_cache:/home/{{PROJECT_USER}}/.cache
-      - {{PROJECT_NAME}}_config:/tmp{{CLAUDE_SYNC_VOLUME}}{{PORTS_SECTION}}
+      - {{PROJECT_NAME}}_config:/tmp{{CLAUDE_SYNC_VOLUME}}{{GEMINI_SYNC_VOLUME}}{{DATABASE_VOLUMES}}{{PORTS_SECTION}}
     networks:
       - {{PROJECT_NAME}}_network
     cap_add:
@@ -84,6 +84,15 @@ volumes:
     }
     data.CLAUDE_SYNC_VOLUME = claudeSyncVolume;
 
+    // Handle Gemini sync volume
+    let geminiSyncVolume = '';
+    if (config.gemini_sync === true) {
+        const hostPath = path.join(os.homedir(), '.gemini', 'vms', data.PROJECT_NAME);
+        const containerPath = `/home/${data.PROJECT_USER}/.gemini`;
+        geminiSyncVolume = `\n      - ${hostPath}:${containerPath}:delegated`;
+    }
+    data.GEMINI_SYNC_VOLUME = geminiSyncVolume;
+
     // Handle database persistence volumes
     let databaseVolumes = '';
     if (config.persist_databases === true) {
@@ -109,9 +118,9 @@ volumes:
             databaseVolumes += `\n      - ${vmDataPath}/mysql:/var/lib/mysql:delegated`;
         }
         
-        // Add to main volume list after Claude sync
-        data.CLAUDE_SYNC_VOLUME = claudeSyncVolume + databaseVolumes;
     }
+    // Always set DATABASE_VOLUMES (empty string if no databases to persist)
+    data.DATABASE_VOLUMES = databaseVolumes;
 
     // Simple replacement
     let result = template;
