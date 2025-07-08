@@ -39,18 +39,31 @@ RUN apt-get update && apt-get install -y \
 
 # Create group and user with specific UID/GID to match host
 RUN set -e && \
-    # Handle existing user with same UID first
+    # Handle existing user with same UID first - but skip if it's currently in use
     if getent passwd ${PROJECT_UID} >/dev/null 2>&1; then \
         EXISTING_USER=$(getent passwd ${PROJECT_UID} | cut -d: -f1); \
-        userdel $EXISTING_USER; \
+        # Only delete if it's not the current user (avoid deleting root during build)
+        if [ "$EXISTING_USER" != "root" ] && [ "$$" != "1" ]; then \
+            userdel $EXISTING_USER 2>/dev/null || true; \
+        fi; \
     fi && \
     # Ensure group with correct GID exists
     if ! getent group ${PROJECT_GID} >/dev/null 2>&1; then \
         groupadd -g ${PROJECT_GID} ${PROJECT_USER}; \
     fi && \
     GROUP_NAME=$(getent group ${PROJECT_GID} | cut -d: -f1) && \
-    # Create user with correct UID and group
-    useradd -m -u ${PROJECT_UID} -g ${GROUP_NAME} -s /bin/zsh -G sudo ${PROJECT_USER} && \
+    # Create user with correct UID and group - use different UID if current one is in use
+    if getent passwd ${PROJECT_UID} >/dev/null 2>&1; then \
+        # If UID is in use, create user without specifying UID, then change it later if possible
+        useradd -m -g ${GROUP_NAME} -s /bin/zsh -G sudo ${PROJECT_USER} && \
+        # Try to change UID if the existing user is not critical
+        EXISTING_USER=$(getent passwd ${PROJECT_UID} | cut -d: -f1); \
+        if [ "$EXISTING_USER" != "root" ]; then \
+            usermod -u ${PROJECT_UID} ${PROJECT_USER} 2>/dev/null || true; \
+        fi; \
+    else \
+        useradd -m -u ${PROJECT_UID} -g ${GROUP_NAME} -s /bin/zsh -G sudo ${PROJECT_USER}; \
+    fi && \
     echo "${PROJECT_USER} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 # Configure SSH for Ansible access (optional - can use docker connection plugin instead)

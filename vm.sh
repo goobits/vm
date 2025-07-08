@@ -71,6 +71,7 @@ show_usage() {
 	echo "  provision [args]     Reprovision VM"
 	echo "  logs [args]          View VM logs (Docker only)"
 	echo "  exec [args]          Execute command in VM (Docker only)"
+	echo "  test [args]          Run VM test suite"
 	echo "  kill                 Force kill VM processes"
 	echo ""
 	echo "Examples:"
@@ -470,6 +471,14 @@ while [[ $# -gt 0 ]]; do
 			ARGS+=("$@")
 			break
 			;;
+		test)
+			# Special handling for test command - pass all remaining args
+			ARGS+=("$1")
+			shift
+			# Add all remaining arguments without parsing
+			ARGS+=("$@")
+			break
+			;;
 		*)
 			# Collect remaining arguments (command and its args)
 			ARGS+=("$1")
@@ -636,6 +645,10 @@ case "${1:-}" in
 				"exec")
 					docker_exec "$CONFIG" "$@"
 					;;
+				"test")
+					# Run tests using test-runner.sh
+					"$SCRIPT_DIR/test-runner.sh" "$@"
+					;;
 				*)
 					echo "❌ Unknown command for Docker provider: $COMMAND"
 					exit 1
@@ -688,6 +701,10 @@ case "${1:-}" in
 					# Show service logs in Vagrant VM
 					echo "📋 Showing service logs (Ctrl+C to stop)..."
 					VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh -c "sudo journalctl -u postgresql -u redis-server -u mongod -f"
+					;;
+				"test")
+					# Run tests using test-runner.sh
+					"$SCRIPT_DIR/test-runner.sh" "$@"
 					;;
 				*)
 					# Pass through to vagrant command
