@@ -337,7 +337,7 @@ docker_ssh() {
 		local container_name="${project_name}-dev"
 		
 		# Run an interactive shell that properly handles signals
-		docker exec -it "${container_name}" bash -c "
+		docker_cmd exec -it "${container_name}" bash -c "
 			cd '$target_dir'
 			# Switch to vagrant user while preserving signal handling
 			exec sudo -u vagrant -i bash -c \"cd '$target_dir' && exec /bin/zsh\"
