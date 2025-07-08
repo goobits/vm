@@ -31,8 +31,8 @@ Vagrant.configure("2") do |config|
   end
   
   # Validate configuration using the validation script
-  validation_script = File.expand_path("../../validate-config.js", File.dirname(__FILE__))
-  validation_result = `node "#{validation_script}" "#{config_file}" 2>&1`
+  validation_script = File.expand_path("../../validate-config.sh", File.dirname(__FILE__))
+  validation_result = `"#{validation_script}" "#{config_file}" 2>&1`
   validation_exit_code = $?.exitstatus
   
   if validation_exit_code != 0

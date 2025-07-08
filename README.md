@@ -432,7 +432,7 @@ All services (PostgreSQL, Redis, MongoDB) run **inside** the VM/container and ar
 
 ### Configuration Flow
 1. `vm.json` defines your requirements
-2. `validate-config.js` merges with defaults and validates
+2. `validate-config.sh` merges with defaults and validates
 3. Provider-specific setup (Vagrantfile or docker-compose.yml)
 4. Ansible playbook provisions everything identically
 

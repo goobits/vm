@@ -112,7 +112,7 @@ kill_virtualbox() {
 	echo "ℹ️ or run 'vagrant up' to start your VM again."
 }
 
-# Function to load and validate config (delegated to validate-config.js)
+# Function to load and validate config (delegated to validate-config.sh)
 load_config() {
 	local config_path="$1"
 	local original_dir="$2"
@@ -126,15 +126,15 @@ load_config() {
 	if [ -n "$config_path" ]; then
 		# Use custom config path
 		if [ "${VM_DEBUG:-}" = "true" ]; then
-			echo "DEBUG load_config: Running: cd '$original_dir' && node '$SCRIPT_DIR/validate-config.js' '$config_path'" >&2
+			echo "DEBUG load_config: Running: cd '$original_dir' && '$SCRIPT_DIR/validate-config.sh' '$config_path'" >&2
 		fi
-		(cd "$original_dir" && node "$SCRIPT_DIR/validate-config.js" "$config_path")
+		(cd "$original_dir" && "$SCRIPT_DIR/validate-config.sh" "$config_path")
 	else
 		# Use default discovery logic - run from the original directory
 		if [ "${VM_DEBUG:-}" = "true" ]; then
-			echo "DEBUG load_config: Running: cd '$original_dir' && node '$SCRIPT_DIR/validate-config.js'" >&2
+			echo "DEBUG load_config: Running: cd '$original_dir' && '$SCRIPT_DIR/validate-config.sh'" >&2
 		fi
-		(cd "$original_dir" && node "$SCRIPT_DIR/validate-config.js")
+		(cd "$original_dir" && "$SCRIPT_DIR/validate-config.sh")
 	fi
 }
 
@@ -183,7 +183,7 @@ docker_up() {
 	
 	# Generate docker-compose.yml
 	echo "$config" > /tmp/vm-config.json
-	node "$SCRIPT_DIR/providers/docker/docker-provisioning-simple.cjs" /tmp/vm-config.json "$project_dir"
+	"$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" /tmp/vm-config.json "$project_dir"
 	
 	# Build and start containers
 	docker_run "compose" "$config" "$project_dir" build
@@ -302,7 +302,7 @@ docker_destroy() {
 	# Generate docker-compose.yml temporarily for destroy operation
 	echo "🔧 Regenerating docker-compose.yml for destroy operation..."
 	echo "$config" > /tmp/vm-config.json
-	node "$SCRIPT_DIR/providers/docker/docker-provisioning-simple.cjs" /tmp/vm-config.json "$project_dir"
+	"$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" /tmp/vm-config.json "$project_dir"
 	
 	# Run docker compose down with volumes
 	docker_run "down" "$config" "$project_dir" -v "$@"
@@ -341,7 +341,7 @@ docker_provision() {
 	
 	# Generate fresh docker-compose.yml for provisioning
 	echo "$config" > /tmp/vm-config.json
-	node "$SCRIPT_DIR/providers/docker/docker-provisioning-simple.cjs" /tmp/vm-config.json "$project_dir"
+	"$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" /tmp/vm-config.json "$project_dir"
 	
 	docker_run "compose" "$config" "$project_dir" build --no-cache
 	docker_run "compose" "$config" "$project_dir" up -d "$@"
@@ -476,20 +476,20 @@ set -- "${ARGS[@]}"
 case "${1:-}" in
 	"init")
 		echo "🚀 Initializing VM configuration..."
-		# Use validate-config.js with special init flag
+		# Use validate-config.sh with special init flag
 		if [ -n "$CUSTOM_CONFIG" ] && [ "$CUSTOM_CONFIG" != "__SCAN__" ]; then
-			node "$SCRIPT_DIR/validate-config.js" --init "$CUSTOM_CONFIG"
+			"$SCRIPT_DIR/validate-config.sh" --init "$CUSTOM_CONFIG"
 		else
-			node "$SCRIPT_DIR/validate-config.js" --init
+			"$SCRIPT_DIR/validate-config.sh" --init
 		fi
 		;;
 	"validate")
 		echo "🔍 Validating VM configuration..."
 		# Validate configuration using the centralized config manager
 		if [ -n "$CUSTOM_CONFIG" ]; then
-			node "$SCRIPT_DIR/validate-config.js" --validate "$CUSTOM_CONFIG"
+			"$SCRIPT_DIR/validate-config.sh" --validate "$CUSTOM_CONFIG"
 		else
-			node "$SCRIPT_DIR/validate-config.js" --validate
+			"$SCRIPT_DIR/validate-config.sh" --validate
 		fi
 		;;
 	"list")
