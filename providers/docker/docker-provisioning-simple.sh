@@ -33,8 +33,19 @@ generate_docker_compose() {
     local project_user="$(echo "$config" | jq -r '.vm.user // "vagrant"')"
     local timezone="$(echo "$config" | jq -r '.vm.timezone // "UTC"')"
     
-    # Get VM tool path (parent directory of this script)
-    local vm_tool_path="$(cd "$(dirname "$0")/../.." && pwd)"
+    # Get VM tool path (use absolute path to avoid relative path issues)
+    # The VM tool is always in the workspace directory where vm.sh is located
+    local vm_tool_base_path="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    
+    # Handle Docker-in-Docker scenario - copy vm-tool content into project directory
+    # This avoids bind mount issues in nested Docker environments
+    mkdir -p "$project_dir"
+    mkdir -p "$project_dir/vm-tool"
+    echo "Copying vm-tool content from $vm_tool_base_path to $project_dir/vm-tool"
+    cp -r "$vm_tool_base_path"/{providers,vm.sh,package.json,generate-config.sh} "$project_dir/vm-tool/" 2>/dev/null || true
+    echo "Contents after copy: $(ls -la "$project_dir/vm-tool/" 2>/dev/null || echo "Failed to list")"
+    # vm-tool will be accessible as /workspace/vm-tool inside container
+    local vm_tool_path="/workspace/vm-tool"
     
     # Generate ports section
     local ports_section=""
@@ -142,7 +153,7 @@ generate_docker_compose() {
     local docker_compose_content="services:
   $project_name:
     build:
-      context: $vm_tool_path
+      context: $vm_tool_base_path
       dockerfile: providers/docker/Dockerfile
       args:
         PROJECT_USER: \"$project_user\"
@@ -158,7 +169,6 @@ generate_docker_compose() {
       - TZ=$timezone$audio_env$gpu_env
     volumes:
       - $project_dir:$workspace_path:delegated
-      - $vm_tool_path:/vm-tool:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${project_name}_nvm:/home/$project_user/.nvm
       - ${project_name}_cache:/home/$project_user/.cache
