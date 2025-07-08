@@ -126,6 +126,17 @@ function loadAndMergeConfig(customConfigPath = null) {
 	} else if (customConfigPath) {
 		// Handle custom config path (for tests and explicit --config usage)
 		configFileToLoad = path.isAbsolute(customConfigPath) ? customConfigPath : path.join(process.cwd(), customConfigPath)
+		
+		// If the path ends with vm.json but the file doesn't exist, check if the directory exists
+		// This handles the case where vm.sh converts directory paths to "dir/vm.json"
+		if (!fs.existsSync(configFileToLoad) && configFileToLoad.endsWith('/vm.json')) {
+			const dirPath = path.dirname(configFileToLoad)
+			if (fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory()) {
+				// The directory exists but vm.json doesn't - this is an error
+				throw new Error(`No vm.json found in directory: ${dirPath}`)
+			}
+		}
+		
 		if (!fs.existsSync(configFileToLoad)) {
 			throw new Error(`Custom config file not found: ${configFileToLoad}`)
 		}
@@ -135,46 +146,22 @@ function loadAndMergeConfig(customConfigPath = null) {
 		if (fs.existsSync(localConfigPath)) {
 			configFileToLoad = localConfigPath
 		} else {
-			// Prompt user to create local vm.json
-			console.error(`❌ No vm.json configuration file found in ${process.cwd()}`)
-			console.error()
-			console.error('The VM tool needs a vm.json file to configure your development environment.')
-			console.error(`I can create a default vm.json file customized for the "${path.basename(process.cwd())}" project.`)
-			console.error()
-			console.error('Would you like me to create a vm.json file for this directory?')
+			// Check if we're in a TTY environment and can prompt
+			const isTTY = process.stdin.isTTY && process.stdout.isTTY
 			
-			// Read user input synchronously
-			const answer = execSync('echo "Create vm.json? (y/n): " >&2 && read answer && echo $answer', { 
-				encoding: 'utf8', 
-				stdio: ['inherit', 'pipe', 'inherit'] 
-			}).trim()
-			
-			if (answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes') {
-				// Create local vm.json based on default but with directory-specific name
-				const defaultConfig = JSON.parse(fs.readFileSync(defaultConfigPath, 'utf8'))
-				const dirName = path.basename(process.cwd())
-				
-				// Customize config for this directory
-				const localConfig = {
-					...defaultConfig,
-					project: {
-						...defaultConfig.project,
-						name: dirName,
-						hostname: dirName
-					},
-					terminal: {
-						...defaultConfig.terminal,
-						emoji: "🚀",
-						username: dirName
-					}
-				}
-				
-				fs.writeFileSync(localConfigPath, JSON.stringify(localConfig, null, 2))
-				console.error(`✅ Created vm.json for project: ${dirName}`)
-				configFileToLoad = localConfigPath
+			if (isTTY) {
+				// Prompt user to create local vm.json
+				console.error(`❌ No vm.json configuration file found in ${process.cwd()}`)
+				console.error()
+				console.error('To create a vm.json file for this project, run:')
+				console.error('  vm init')
+				console.error()
+				console.error('Or specify an existing configuration with:')
+				console.error('  vm --config /path/to/vm.json <command>')
+				throw new Error('No vm.json found. Run "vm init" to create one.')
 			} else {
-				console.error('Using default configuration...')
-				configFileToLoad = defaultConfigPath
+				// Non-interactive mode, just fail
+				throw new Error(`No vm.json configuration file found in ${process.cwd()}. Run "vm init" to create one.`)
 			}
 		}
 	}
@@ -199,6 +186,17 @@ function loadAndMergeConfig(customConfigPath = null) {
 		} catch (e) {
 			throw new Error(`Invalid JSON in project config: ${e.message}`)
 		}
+		
+		// Check for completely invalid configs (no valid top-level keys)
+		const validTopLevelKeys = ['$schema', 'provider', 'project', 'vm', 'versions', 'ports', 'services', 
+			'npm_packages', 'cargo_packages', 'pip_packages', 'aliases', 'environment', 'terminal', 
+			'claude_sync', 'gemini_sync', 'persist_databases']
+		const userKeys = Object.keys(userConfig)
+		const hasValidKeys = userKeys.some(key => validTopLevelKeys.includes(key))
+		
+		if (!hasValidKeys && userKeys.length > 0) {
+			throw new Error(`Invalid configuration structure. No recognized configuration keys found. Got: ${userKeys.join(', ')}`)
+		}
 	}
 	
 	// Merge configurations (user config overrides defaults)
@@ -207,9 +205,71 @@ function loadAndMergeConfig(customConfigPath = null) {
 	return { finalConfig, configFileToLoad, isLocal: configFileToLoad === localConfigPath, configDirForScan }
 }
 
+function initializeVmJson(targetPath) {
+	const defaultConfigPath = path.join(__dirname, 'vm.json')
+	const localConfigPath = targetPath || path.join(process.cwd(), 'vm.json')
+	
+	// Check if vm.json already exists
+	if (fs.existsSync(localConfigPath)) {
+		console.error(`❌ vm.json already exists at ${localConfigPath}`)
+		console.error('Use --config to specify a different location or remove the existing file.')
+		return false
+	}
+	
+	// Load default configuration
+	if (!fs.existsSync(defaultConfigPath)) {
+		console.error(`❌ Default configuration template not found at ${defaultConfigPath}`)
+		return false
+	}
+	
+	const defaultConfig = JSON.parse(fs.readFileSync(defaultConfigPath, 'utf8'))
+	const dirName = path.basename(process.cwd())
+	
+	// Customize config for this directory
+	const localConfig = {
+		...defaultConfig,
+		project: {
+			...defaultConfig.project,
+			name: dirName,
+			hostname: `dev.${dirName}.local`
+		},
+		terminal: {
+			...defaultConfig.terminal,
+			username: `${dirName}-dev`
+		}
+	}
+	
+	// Write the customized config
+	try {
+		fs.writeFileSync(localConfigPath, JSON.stringify(localConfig, null, 2))
+		console.log(`✅ Created vm.json for project: ${dirName}`)
+		console.log(`📍 Configuration file: ${localConfigPath}`)
+		console.log('')
+		console.log('Next steps:')
+		console.log('  1. Review and customize vm.json as needed')
+		console.log('  2. Run "vm up" to start your development environment')
+		return true
+	} catch (err) {
+		console.error(`❌ Failed to create vm.json: ${err.message}`)
+		return false
+	}
+}
+
 function validateMergedConfig(config) {
 	const errors = []
 	const warnings = []
+
+	// First check if config is a valid object
+	if (!config || typeof config !== 'object' || Array.isArray(config)) {
+		errors.push('Configuration must be a valid JSON object')
+		return { errors, warnings }
+	}
+
+	// Check for required top-level sections
+	if (!config.project || typeof config.project !== 'object') {
+		errors.push('project section is required and must be an object')
+		return { errors, warnings }
+	}
 
 	// Provider validation
 	const provider = config.provider
@@ -294,6 +354,7 @@ function validateMergedConfig(config) {
 const args = process.argv.slice(2)
 const validateFlag = args.includes('--validate')
 const getConfigFlag = args.includes('--get-config')
+const initFlag = args.includes('--init')
 const customConfigPath = args.find(arg => !arg.startsWith('--'))
 
 // Debug logging when VM_DEBUG is set
@@ -304,6 +365,12 @@ if (process.env.VM_DEBUG) {
 }
 
 try {
+	// Handle init command separately
+	if (initFlag) {
+		const success = initializeVmJson(customConfigPath)
+		process.exit(success ? 0 : 1)
+	}
+	
 	const { finalConfig, configFileToLoad, isLocal, configDirForScan } = loadAndMergeConfig(customConfigPath)
 	const { errors, warnings } = validateMergedConfig(finalConfig)
 	

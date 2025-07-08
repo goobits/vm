@@ -23,6 +23,30 @@ fi
 # Get the current working directory (where user ran the command)
 CURRENT_DIR="$(pwd)"
 
+# Docker wrapper to handle sudo requirements
+docker_cmd() {
+	if ! docker version &>/dev/null 2>&1; then
+		sudo docker "$@"
+	else
+		docker "$@"
+	fi
+}
+
+# Docker compose wrapper to handle both docker-compose and docker compose
+docker_compose() {
+	# Check if we need sudo for docker
+	local docker_prefix=""
+	if ! docker version &>/dev/null 2>&1; then
+		docker_prefix="sudo"
+	fi
+	
+	if command -v docker-compose &> /dev/null; then
+		$docker_prefix docker-compose "$@"
+	else
+		$docker_prefix docker compose "$@"
+	fi
+}
+
 
 # Show usage information
 show_usage() {
@@ -34,6 +58,7 @@ show_usage() {
 	echo "  --dry-run            Show what would be executed without actually running it"
 	echo ""
 	echo "Commands:"
+	echo "  init                  Initialize a new vm.json configuration file"
 	echo "  validate              Validate VM configuration"
 	echo "  list                  List all VM instances"
 	echo "  up [args]            Start VM"
@@ -133,17 +158,17 @@ docker_run() {
 	case "$action" in
 		"compose")
 			cd "$project_dir"
-			docker compose "$@"
+			docker_compose "$@"
 			;;
 		"exec")
-			docker exec "${container_name}" "$@"
+			docker_cmd exec "${container_name}" "$@"
 			;;
 		"exec-it")
-			docker exec -it "${container_name}" "$@"
+			docker_cmd exec -it "${container_name}" "$@"
 			;;
 		*)
 			cd "$project_dir"
-			docker compose "$action" "$@"
+			docker_compose "$action" "$@"
 			;;
 	esac
 }
@@ -169,7 +194,8 @@ docker_up() {
 	local container_name="${project_name}-dev"
 	
 	# Copy config file to container
-	docker cp /tmp/vm-config.json "${container_name}:/tmp/vm-config.json"
+	# Copy config file to container
+	docker_cmd cp /tmp/vm-config.json "${container_name}:/tmp/vm-config.json"
 	
 	# Fix volume permissions before Ansible
 	docker_run "exec" "$config" "$project_dir" chown -R vagrant:vagrant /home/vagrant/.nvm /home/vagrant/.cache
@@ -348,10 +374,10 @@ docker_kill() {
 	local config="$1"
 	local project_name=$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')
 	
-	docker stop "${project_name}-dev" 2>/dev/null || true
-	docker stop "${project_name}-postgres" 2>/dev/null || true
-	docker stop "${project_name}-redis" 2>/dev/null || true
-	docker stop "${project_name}-mongodb" 2>/dev/null || true
+	docker_cmd stop "${project_name}-dev" 2>/dev/null || true
+	docker_cmd stop "${project_name}-postgres" 2>/dev/null || true
+	docker_cmd stop "${project_name}-redis" 2>/dev/null || true
+	docker_cmd stop "${project_name}-mongodb" 2>/dev/null || true
 	
 	echo "✅ All Docker containers stopped!"
 }
@@ -368,7 +394,7 @@ vm_list() {
 		echo "--------------"
 		
 		# Get all containers and filter for VM-like names
-		local vm_containers=$(docker ps -a --format "{{.Names}}\t{{.Status}}\t{{.CreatedAt}}" | awk '$1 ~ /-dev$/ || $1 ~ /postgres/ || $1 ~ /redis/ || $1 ~ /mongodb/ {print}' 2>/dev/null || true)
+		local vm_containers=$(docker_cmd ps -a --format "{{.Names}}\t{{.Status}}\t{{.CreatedAt}}" | awk '$1 ~ /-dev$/ || $1 ~ /postgres/ || $1 ~ /redis/ || $1 ~ /mongodb/ {print}' 2>/dev/null || true)
 		
 		if [ -n "$vm_containers" ]; then
 			echo "NAME                    STATUS                       CREATED"
@@ -404,7 +430,7 @@ while [[ $# -gt 0 ]]; do
 		-c|--config)
 			shift
 			# Check if next argument exists and is not a flag or command
-			if [[ $# -eq 0 ]] || [[ "$1" =~ ^- ]] || [[ "$1" =~ ^(validate|list|up|ssh|halt|destroy|status|reload|provision|logs|exec|kill|help)$ ]]; then
+			if [[ $# -eq 0 ]] || [[ "$1" =~ ^- ]] || [[ "$1" =~ ^(init|validate|list|up|ssh|halt|destroy|status|reload|provision|logs|exec|kill|help)$ ]]; then
 				# No argument provided or next is a flag/command - use scan mode
 				CUSTOM_CONFIG="__SCAN__"
 			else
@@ -448,6 +474,15 @@ set -- "${ARGS[@]}"
 
 # Handle special commands
 case "${1:-}" in
+	"init")
+		echo "🚀 Initializing VM configuration..."
+		# Use validate-config.js with special init flag
+		if [ -n "$CUSTOM_CONFIG" ] && [ "$CUSTOM_CONFIG" != "__SCAN__" ]; then
+			node "$SCRIPT_DIR/validate-config.js" --init "$CUSTOM_CONFIG"
+		else
+			node "$SCRIPT_DIR/validate-config.js" --init
+		fi
+		;;
 	"validate")
 		echo "🔍 Validating VM configuration..."
 		# Validate configuration using the centralized config manager

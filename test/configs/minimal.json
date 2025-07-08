@@ -1,0 +1,22 @@
+{
+    "$schema": "./vm.schema.json",
+    "provider": "docker",
+    "project": {
+        "name": "test-minimal",
+        "hostname": "dev.test-minimal.local",
+        "workspace_path": "/workspace"
+    },
+    "vm": {
+        "user": "vagrant"
+    },
+    "services": {},
+    "npm_packages": [],
+    "cargo_packages": [],
+    "pip_packages": [],
+    "aliases": {},
+    "environment": {},
+    "terminal": {
+        "emoji": "🧪",
+        "username": "test-min"
+    }
+}

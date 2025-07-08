@@ -96,11 +96,13 @@ service_definitions:
   docker:
     service_packages:
       - docker-compose
-      - docker-buildx
+    service_optional_packages:
+      buildx: docker-buildx
     service_post_install_commands:
       - "usermod -a -G docker {{ 'developer' if is_docker_container else 'vagrant' }}"
+      - "{{ 'docker buildx install' if project_config.services.docker.buildx | default(true) else 'echo \"Buildx disabled\"' }}"
     service_ignore_errors: true
-    # Note: docker.io CLI is included in base Docker image
+    # Note: docker.io CLI is included in base Docker image for Docker provider
 
   audio:
     service_packages:
