@@ -1,5 +1,5 @@
 services:
-  vm:
+  testminimalvm:
     build:
       context: /workspace
       dockerfile: providers/docker/Dockerfile
@@ -7,35 +7,33 @@ services:
         PROJECT_USER: "vagrant"
         PROJECT_UID: "1000"
         PROJECT_GID: "1000"
-    container_name: vm-dev
-    hostname: dev.vm.local
+    container_name: testminimalvm-dev
+    hostname: dev.minimal.local
     tty: true
     stdin_open: true
     environment:
       - LANG=en_US.UTF-8
       - LC_ALL=en_US.UTF-8
-      - TZ=America/Los_Angeles
+      - TZ=UTC
     volumes:
-      - /workspace:/workspace:delegated
+      - /workspace/test/configs:/workspace:delegated
       - /workspace:/vm-tool:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - vm_nvm:/home/vagrant/.nvm
-      - vm_cache:/home/vagrant/.cache
-      - vm_config:/tmp
-      - /home/vagrant/.claude/vms/vm:/home/vagrant/.claude:delegated
-      - /home/vagrant/.gemini/vms/vm:/home/vagrant/.gemini:delegated
+      - testminimalvm_nvm:/home/vagrant/.nvm
+      - testminimalvm_cache:/home/vagrant/.cache
+      - testminimalvm_config:/tmp
     networks:
-      - vm_network
+      - testminimalvm_network
     cap_add:
       - SYS_PTRACE
     security_opt:
       - seccomp:unconfined
 
 networks:
-  vm_network:
+  testminimalvm_network:
     driver: bridge
 
 volumes:
-  vm_nvm:
-  vm_cache:
-  vm_config:
+  testminimalvm_nvm:
+  testminimalvm_cache:
+  testminimalvm_config:

@@ -1,7 +1,7 @@
 {
   "project": {
-    "name": "test-minimal",
-    "hostname": "dev.minimal.local",
+    "name": "test-mongodb",
+    "hostname": "dev.mongodb.local",
     "workspace_path": "/workspace"
   },
   "provider": "docker",
@@ -9,6 +9,10 @@
     "emoji": "🧪",
     "username": "test-dev"
   },
-  "services": {},
+  "services": {
+    "mongodb": {
+      "enabled": true
+    }
+  },
   "aliases": {}
 }

@@ -15,7 +15,7 @@ PROJECT_NAME=""
 OUTPUT_FILE="vm.json"
 
 # Available services (discovered from test/configs/services/)
-AVAILABLE_SERVICES="postgresql redis mongodb docker"
+AVAILABLE_SERVICES="postgresql redis mongodb docker vm"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
