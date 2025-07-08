@@ -205,6 +205,31 @@ docker_up() {
 			# Also verify we can exec into it
 			if docker_cmd exec "${container_name}" echo "ready" >/dev/null 2>&1; then
 				echo "✅ Container is ready"
+				
+				# Copy vm-tool content into container to fix Docker-in-Docker mount issues
+				echo "🔧 Setting up vm-tool content in container..."
+				# Handle npm link case - use workspace path directly when available
+				local vm_tool_base_path="/workspace"
+				if [ ! -d "$vm_tool_base_path/providers" ]; then
+					# Fallback to script location if /workspace doesn't work
+					vm_tool_base_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+				fi
+				echo "🔧 Base path: $vm_tool_base_path"
+				docker_cmd exec "${container_name}" mkdir -p /workspace/vm-tool || true
+				docker_cmd exec "${container_name}" rm -rf /workspace/vm-tool/* || true
+				# Copy essential files
+				for item in providers vm.sh package.json generate-config.sh; do
+					if [ -e "$vm_tool_base_path/$item" ]; then
+						echo "🔧 Copying $item..."
+						docker_cmd cp "$vm_tool_base_path/$item" "${container_name}:/workspace/vm-tool/" || echo "❌ Failed to copy $item"
+					else
+						echo "⚠️ $item not found at $vm_tool_base_path/$item"
+					fi
+				done
+				echo "🔧 Checking copied content..."
+				docker_cmd exec "${container_name}" ls -la /workspace/vm-tool/ || echo "❌ Failed to list vm-tool contents"
+				echo "✅ vm-tool content setup complete"
+				
 				break
 			fi
 		fi
@@ -218,10 +243,21 @@ docker_up() {
 	done
 	
 	# Copy config file to container
-	docker_cmd cp /tmp/vm-config.json "${container_name}:/tmp/vm-config.json"
+	echo "🔧 Copying config file to container..."
+	if docker_cmd cp /tmp/vm-config.json "${container_name}:/tmp/vm-config.json"; then
+		echo "✅ Config file copied successfully"
+	else
+		echo "❌ Failed to copy config file"
+		return 1
+	fi
 	
 	# Fix volume permissions before Ansible
-	docker_run "exec" "$config" "$project_dir" chown -R vagrant:vagrant /home/vagrant/.nvm /home/vagrant/.cache
+	echo "🔧 Fixing volume permissions..."
+	if docker_run "exec" "$config" "$project_dir" chown -R vagrant:vagrant /home/vagrant/.nvm /home/vagrant/.cache; then
+		echo "✅ Volume permissions fixed"
+	else
+		echo "⚠️ Volume permissions fix failed (non-critical)"
+	fi
 	
 	# VM tool directory is already mounted read-only via docker-compose
 	
@@ -243,7 +279,7 @@ docker_up() {
 		-c local \
 		$ANSIBLE_VERBOSITY \
 		--diff \
-		/vm-tool/providers/vagrant/ansible/playbook.yml 2>&1 | tee $ANSIBLE_LOG"; then
+		/workspace/vm-tool/providers/vagrant/ansible/playbook.yml 2>&1 | tee $ANSIBLE_LOG"; then
 		echo "✅ Ansible provisioning completed successfully!"
 	else
 		ANSIBLE_EXIT_CODE=$?
