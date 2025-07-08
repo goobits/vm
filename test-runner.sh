@@ -123,6 +123,15 @@ cleanup_test_env() {
         cd "$TEST_DIR"
         # Destroy VM without sudo
         vm destroy -f 2>/dev/null || true
+        
+        # Extract project name and ensure container is removed
+        local project_name=$(jq -r '.project.name' vm.json 2>/dev/null | tr -cd '[:alnum:]')
+        if [ -n "$project_name" ]; then
+            local container_name="${project_name}-dev"
+            # Force stop and remove container with both docker and sudo docker
+            docker stop "$container_name" 2>/dev/null || sudo docker stop "$container_name" 2>/dev/null || true
+            docker rm "$container_name" 2>/dev/null || sudo docker rm "$container_name" 2>/dev/null || true
+        fi
     fi
     
     # Remove test directory
@@ -147,6 +156,15 @@ create_test_vm() {
     else
         echo -e "${RED}Config file not found: $config_path${NC}"
         return 1
+    fi
+    
+    # Pre-emptively clean up any existing container with the same name
+    local project_name=$(jq -r '.project.name' "$TEST_DIR/vm.json" 2>/dev/null | tr -cd '[:alnum:]')
+    if [ -n "$project_name" ]; then
+        local container_name="${project_name}-dev"
+        echo -e "${BLUE}Cleaning up any existing container: $container_name${NC}"
+        docker stop "$container_name" 2>/dev/null || sudo docker stop "$container_name" 2>/dev/null || true
+        docker rm "$container_name" 2>/dev/null || sudo docker rm "$container_name" 2>/dev/null || true
     fi
     
     # Start VM with timeout
