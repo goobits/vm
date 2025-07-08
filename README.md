@@ -263,6 +263,12 @@ vm provision                 # Re-run provisioning
 vm logs                      # View service logs (Docker: container logs, Vagrant: journalctl)
 vm exec <command>            # Execute command in VM/container
 
+# Testing
+vm test                      # Run all tests
+vm test --suite minimal     # Run specific test suite
+vm test --suite services    # Test service configurations
+vm test --list              # Show available test suites
+
 # Use custom config file
 vm --config prod.json up     # Start with specific config
 vm --config dev.json ssh     # Any command works with --config

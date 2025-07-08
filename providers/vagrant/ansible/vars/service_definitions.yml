@@ -132,3 +132,14 @@ service_definitions:
     service_post_install_commands:
       - "usermod -a -G video,render {{ 'developer' if is_docker_container else 'vagrant' }}"
     service_ignore_errors: true
+
+  vm:
+    service_dependencies:
+      - curl
+      - gnupg
+      - ca-certificates
+    service_post_install_commands:
+      - "curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -"
+      - "apt-get install -y nodejs"
+      - "cd /workspace && npm link"
+    service_ignore_errors: true

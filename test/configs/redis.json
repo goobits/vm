@@ -1,7 +1,7 @@
 {
   "project": {
-    "name": "test-minimal",
-    "hostname": "dev.minimal.local",
+    "name": "test-redis",
+    "hostname": "dev.redis.local",
     "workspace_path": "/workspace"
   },
   "provider": "docker",
@@ -9,6 +9,10 @@
     "emoji": "🧪",
     "username": "test-dev"
   },
-  "services": {},
+  "services": {
+    "redis": {
+      "enabled": true
+    }
+  },
   "aliases": {}
 }
