@@ -59,6 +59,7 @@ show_usage() {
 	echo ""
 	echo "Commands:"
 	echo "  init                  Initialize a new vm.json configuration file"
+	echo "  generate              Generate vm.json by composing services"
 	echo "  validate              Validate VM configuration"
 	echo "  list                  List all VM instances"
 	echo "  up [args]            Start VM"
@@ -73,15 +74,15 @@ show_usage() {
 	echo "  kill                 Force kill VM processes"
 	echo ""
 	echo "Examples:"
-	echo "  $0 validate                    # Check configuration"
-	echo "  $0 list                        # List all VM instances"
-	echo "  $0 --config ./prod.json up     # Start VM with specific config"
-	echo "  $0 --config up                 # Start VM scanning up for vm.json"
-	echo "  $0 --dry-run ssh --config      # Show what would be executed"
-	echo "  $0 up                          # Start the VM (auto-find vm.json)"
-	echo "  $0 ssh                         # Connect to VM"
-	echo "  $0 halt                        # Stop the VM"
-	echo "  $0 kill                        # Kill stuck VM processes"
+	echo "  $0 generate --services postgresql,redis  # Generate config with services"
+	echo "  $0 generate --ports 3020 --name my-app   # Generate with custom ports/name"
+	echo "  $0 validate                              # Check configuration"
+	echo "  $0 list                                  # List all VM instances"
+	echo "  $0 --config ./prod.json up               # Start VM with specific config"
+	echo "  $0 --config up                           # Start VM scanning up for vm.json"
+	echo "  $0 up                                    # Start the VM (auto-find vm.json)"
+	echo "  $0 ssh                                   # Connect to VM"
+	echo "  $0 halt                                  # Stop the VM"
 	echo ""
 	echo "The provider (Vagrant or Docker) is determined by the 'provider' field in vm.json"
 }
@@ -430,7 +431,7 @@ while [[ $# -gt 0 ]]; do
 		-c|--config)
 			shift
 			# Check if next argument exists and is not a flag or command
-			if [[ $# -eq 0 ]] || [[ "$1" =~ ^- ]] || [[ "$1" =~ ^(init|validate|list|up|ssh|halt|destroy|status|reload|provision|logs|exec|kill|help)$ ]]; then
+			if [[ $# -eq 0 ]] || [[ "$1" =~ ^- ]] || [[ "$1" =~ ^(init|generate|validate|list|up|ssh|halt|destroy|status|reload|provision|logs|exec|kill|help)$ ]]; then
 				# No argument provided or next is a flag/command - use scan mode
 				CUSTOM_CONFIG="__SCAN__"
 			else
@@ -461,6 +462,14 @@ while [[ $# -gt 0 ]]; do
 			show_usage
 			exit 1
 			;;
+		generate)
+			# Special handling for generate command - pass all remaining args
+			ARGS+=("$1")
+			shift
+			# Add all remaining arguments without parsing
+			ARGS+=("$@")
+			break
+			;;
 		*)
 			# Collect remaining arguments (command and its args)
 			ARGS+=("$1")
@@ -482,6 +491,12 @@ case "${1:-}" in
 		else
 			"$SCRIPT_DIR/validate-config.sh" --init
 		fi
+		;;
+	"generate")
+		echo "🔧 Generating VM configuration..."
+		# Pass all remaining arguments to generate-config.sh
+		shift
+		"$SCRIPT_DIR/generate-config.sh" "$@"
 		;;
 	"validate")
 		echo "🔍 Validating VM configuration..."
