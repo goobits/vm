@@ -91,6 +91,7 @@
             show_git_branch: '{{ project_config.terminal.show_git_branch | default(true) }}'
             show_timestamp: '{{ project_config.terminal.show_timestamp | default(false) }}'
             terminal_colors: "{{ terminal_themes[project_config.terminal.theme | default('dracula')].colors | default(terminal_themes.dracula.colors) }}"
+            home_dir: "/home/{{ project_config.vm.user | default(default_user) }}"
 
   handlers:
       - name: restart postgresql
@@ -268,95 +269,14 @@
             name: '{{ project_user }}'
             shell: /usr/bin/zsh
 
-      - name: Setup NVM in shell
-        become_user: '{{ project_user }}'
-        blockinfile:
-            path: '/home/{{ project_user }}/.zshrc'
-            block: |
-                export NVM_DIR="$HOME/.nvm"
-                [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-                [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
-            marker: '# {mark} ANSIBLE MANAGED - NVM'
-            create: yes
-
-      - name: Setup locale environment variables
-        become_user: '{{ project_user }}'
-        blockinfile:
-            path: '/home/{{ project_user }}/.zshrc'
-            block: |
-                # Locale settings
-                export LANG=en_US.UTF-8
-                export LANGUAGE=en_US:en
-                export LC_ALL=en_US.UTF-8
-                export LC_CTYPE=en_US.UTF-8
-                
-                # Prevent Python from creating __pycache__ directories
-                export PYTHONDONTWRITEBYTECODE=1
-            marker: '# {mark} ANSIBLE MANAGED - LOCALE'
-            create: yes
-
-      - name: Setup custom zsh prompt with project branding
-        become_user: '{{ project_user }}'
-        blockinfile:
-            path: '/home/{{ project_user }}/.zshrc'
-            block: |
-                # Custom prompt function
-                function git_branch_name() {
-                  {% if show_git_branch %}
-                  git branch 2>/dev/null | grep '^*' | cut -c3- | sed 's/^/ (/' | sed 's/$/)/'
-                  {% endif %}
-                }
-
-                function format_timestamp() {
-                  {% if show_timestamp %}
-                  echo " [$(date '+%H:%M:%S')]"
-                  {% endif %}
-                }
-
-                # Set custom prompt: emoji username current-folder (branch) > 
-                setopt PROMPT_SUBST
-                PROMPT='{{ terminal_emoji }} {{ terminal_username }} %c$(git_branch_name)$(format_timestamp) > '
-            marker: '# {mark} ANSIBLE MANAGED - PROMPT'
-            create: yes
-
-      - name: Setup terminal color scheme
-        become_user: '{{ project_user }}'
-        blockinfile:
-            path: '/home/{{ project_user }}/.zshrc'
-            block: |
-                # Terminal color scheme: {{ terminal_theme_name }}
-                export TERM=xterm-256color
-                export LS_COLORS='di=1;34:ln=1;36:so=1;35:pi=1;33:ex=1;32:bd=1;33:cd=1;33:su=0;41:sg=0;46:tw=0;42:ow=0;43:'
-
-                # Enable colored output for common commands
-                alias ls='ls --color=auto'
-                alias grep='grep --color=auto'
-                alias fgrep='fgrep --color=auto'
-                alias egrep='egrep --color=auto'
-                alias diff='diff --color=auto'
-
-                # Theme colors for zsh syntax highlighting
-                if [[ -r /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]]; then
-                  source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-                  ZSH_HIGHLIGHT_HIGHLIGHTERS=(main brackets pattern cursor)
-                  
-                  # Apply theme colors - using simplified mappings
-                  ZSH_HIGHLIGHT_STYLES[default]='fg={{ terminal_colors.foreground }}'
-                  ZSH_HIGHLIGHT_STYLES[unknown-token]='fg={{ terminal_colors.red }}'
-                  ZSH_HIGHLIGHT_STYLES[reserved-word]='fg={{ terminal_colors.magenta }}'
-                  ZSH_HIGHLIGHT_STYLES[command]='fg={{ terminal_colors.green }}'
-                  ZSH_HIGHLIGHT_STYLES[builtin]='fg={{ terminal_colors.green }}'
-                  ZSH_HIGHLIGHT_STYLES[function]='fg={{ terminal_colors.green }}'
-                  ZSH_HIGHLIGHT_STYLES[alias]='fg={{ terminal_colors.green }}'
-                  ZSH_HIGHLIGHT_STYLES[path]='fg={{ terminal_colors.foreground }}'
-                  ZSH_HIGHLIGHT_STYLES[globbing]='fg={{ terminal_colors.magenta }}'
-                  ZSH_HIGHLIGHT_STYLES[single-quoted-argument]='fg={{ terminal_colors.yellow }}'
-                  ZSH_HIGHLIGHT_STYLES[double-quoted-argument]='fg={{ terminal_colors.yellow }}'
-                  ZSH_HIGHLIGHT_STYLES[back-quoted-argument]='fg={{ terminal_colors.cyan }}'
-                  ZSH_HIGHLIGHT_STYLES[comment]='fg={{ terminal_colors.bright_black }}'
-                fi
-            marker: '# {mark} ANSIBLE MANAGED - COLORS'
-            create: yes
+      - name: Generate .zshrc from template
+        template:
+            src: templates/zshrc.j2
+            dest: '/home/{{ project_user }}/.zshrc'
+            owner: '{{ project_user }}'
+            group: '{{ project_user }}'
+            mode: '0644'
+        become_user: root
 
       - name: Install Node.js
         shell: |
@@ -487,16 +407,6 @@
         loop: '{{ project_config.cargo_packages }}'
         when: project_config.cargo_packages is defined and project_config.cargo_packages | length > 0
 
-      - name: Setup Rust environment in shell
-        blockinfile:
-          path: '{{ home_dir }}/.zshrc'
-          block: |
-            # Rust environment
-            export PATH="$HOME/.cargo/bin:$PATH"
-          marker: '# {mark} ANSIBLE MANAGED - RUST'
-          create: yes
-        become_user: '{{ project_user }}'
-        when: project_config.cargo_packages is defined and project_config.cargo_packages | length > 0
 
       # Install Python via pyenv if pip_packages is defined
       - name: Check if pyenv is already installed
@@ -562,18 +472,6 @@
         loop: '{{ project_config.pip_packages }}'
         when: project_config.pip_packages is defined and project_config.pip_packages | length > 0
 
-      - name: Setup Python/pyenv environment in shell
-        blockinfile:
-          path: '{{ home_dir }}/.zshrc'
-          block: |
-            # Python/pyenv environment
-            export PYENV_ROOT="$HOME/.pyenv"
-            export PATH="$PYENV_ROOT/bin:$PATH"
-            eval "$(pyenv init -)"
-          marker: '# {mark} ANSIBLE MANAGED - PYTHON'
-          create: yes
-        become_user: '{{ project_user }}'
-        when: project_config.pip_packages is defined and project_config.pip_packages | length > 0
 
       # Load service definitions
       - name: Load service definitions
@@ -740,47 +638,6 @@
                 }
         when: not gemini_settings.stat.exists
 
-      # Universal aliases and environment
-      - name: Add universal aliases
-        become_user: '{{ project_user }}'
-        blockinfile:
-            path: '/home/{{ project_user }}/.zshrc'
-            block: |
-                # Universal aliases
-                alias ll='ls -la'
-                alias dev='cd {{ project_path }} && ls'
-                alias ports='netstat -tulpn | grep LISTEN'
-                alias services='systemctl list-units --type=service --state=running'
-
-                # Search tools
-                alias rg='rg --smart-case'
-                alias rgf='rg --files | rg'
-
-                # Git shortcuts
-                alias gs='git status'
-                alias ga='git add'
-                alias gc='git commit'
-                alias gp='git push'
-                alias gl='git log --oneline'
-
-                # Docker shortcuts
-                alias dps='docker ps'
-                alias dimg='docker images'
-
-                # Database shortcuts
-                alias psql='sudo -u postgres psql -p {{ project_config.ports.postgresql | default(5432) }}'
-                alias redis='redis-cli -p {{ project_config.ports.redis | default(6379) }}'
-                alias mongo='mongosh --port {{ project_config.ports.mongodb | default(27017) }}'
-                alias mysql='mysql -u root -p{{ project_config.services.mysql.password | default("mysql") }} -P {{ project_config.ports.mysql | default(3306) }}'
-
-                # Environment
-                export DISPLAY={{ project_config.services.headless_browser.display | default(':99') }}
-                export PUPPETEER_EXECUTABLE_PATH={{ project_config.services.headless_browser.executable_path | default('/usr/bin/chromium-browser') }}
-
-                # Auto-cd to workspace
-                cd {{ project_path }} 2>/dev/null || true
-            marker: '# {mark} ANSIBLE MANAGED - ALIASES'
-            create: yes
 
       # Project-specific environment setup
       - name: Check for .env template
@@ -819,30 +676,6 @@
             - env_template.stat.exists
             - project_config.services.redis.enabled | default(false)
 
-      # Project-specific aliases
-      - name: Generate project aliases
-        set_fact:
-            project_aliases_block: |
-                # Project aliases (from infrastructure.json)
-                {% for alias_name, alias_command in (project_config.aliases | default({})).items() %}
-                alias {{ alias_name }}='{{ alias_command }}'
-                {% endfor %}
-
-                # Port information
-                {% for service, port in (project_config.ports | default({})).items() %}
-                # {{ service }}: localhost:{{ port }} (or auto-corrected port)
-                {% endfor %}
-                # Note: Check 'vagrant up' output for actual port mappings if auto-corrected
-        when: config_file_stat.stat.exists
-
-      - name: Add project aliases to zshrc
-        become_user: '{{ project_user }}'
-        blockinfile:
-            path: '/home/{{ project_user }}/.zshrc'
-            block: '{{ project_aliases_block }}'
-            marker: '# {mark} ANSIBLE MANAGED - PROJECT'
-            create: yes
-        when: config_file_stat.stat.exists
 
       # Check for lock files
       - name: Check for pnpm-lock.yaml

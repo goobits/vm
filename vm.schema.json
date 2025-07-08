@@ -221,12 +221,17 @@
         },
         "docker": {
           "type": "object",
-          "description": "Docker inside VM configuration (Vagrant only)",
+          "description": "Docker advanced tools configuration",
           "properties": {
             "enabled": {
               "type": "boolean",
               "default": false,
-              "description": "Enable Docker installation inside the VM"
+              "description": "Enable Docker Compose and advanced Docker tools"
+            },
+            "buildx": {
+              "type": "boolean",
+              "default": true,
+              "description": "Enable Docker Buildx for multi-platform builds"
             }
           }
         },
