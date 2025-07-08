@@ -95,6 +95,38 @@ service_definitions:
 
   docker:
     service_packages:
-      - docker.io
       - docker-compose
-    # Note: Docker service management is handled separately due to user group requirements
+      - docker-buildx
+    service_post_install_commands:
+      - "usermod -a -G docker {{ 'developer' if is_docker_container else 'vagrant' }}"
+    service_ignore_errors: true
+    # Note: docker.io CLI is included in base Docker image
+
+  audio:
+    service_packages:
+      - pulseaudio
+      - pulseaudio-utils
+      - alsa-utils
+      - alsa-base
+    service_config_lines:
+      - path: "/etc/pulse/client.conf"
+        regexp: "^#?autospawn"
+        line: "autospawn = yes"
+      - path: "/etc/pulse/client.conf"
+        regexp: "^#?default-sink"
+        line: "# default-sink = auto"
+    service_post_install_commands:
+      - "usermod -a -G audio {{ 'developer' if is_docker_container else 'vagrant' }}"
+      - "pulseaudio --check -v || (pulseaudio --start && echo 'PulseAudio started')"
+    service_ignore_errors: true
+
+  gpu:
+    service_packages:
+      - mesa-utils
+      - vainfo
+      - vulkan-tools
+      - mesa-vulkan-drivers
+      - mesa-va-drivers
+    service_post_install_commands:
+      - "usermod -a -G video,render {{ 'developer' if is_docker_container else 'vagrant' }}"
+    service_ignore_errors: true

@@ -23,14 +23,14 @@ function generateDockerCompose(config, projectDir) {
     environment:
       - LANG=en_US.UTF-8
       - LC_ALL=en_US.UTF-8
-      - TZ={{TIMEZONE}}
+      - TZ={{TIMEZONE}}{{AUDIO_ENV}}{{GPU_ENV}}
     volumes:
       - {{PROJECT_PATH}}:{{WORKSPACE_PATH}}:delegated
       - {{VM_TOOL_PATH}}:/vm-tool:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - {{PROJECT_NAME}}_nvm:/home/{{PROJECT_USER}}/.nvm
       - {{PROJECT_NAME}}_cache:/home/{{PROJECT_USER}}/.cache
-      - {{PROJECT_NAME}}_config:/tmp{{CLAUDE_SYNC_VOLUME}}{{GEMINI_SYNC_VOLUME}}{{DATABASE_VOLUMES}}{{PORTS_SECTION}}
+      - {{PROJECT_NAME}}_config:/tmp{{CLAUDE_SYNC_VOLUME}}{{GEMINI_SYNC_VOLUME}}{{DATABASE_VOLUMES}}{{AUDIO_VOLUMES}}{{GPU_VOLUMES}}{{PORTS_SECTION}}{{AUDIO_DEVICES}}{{GPU_DEVICES}}{{AUDIO_GROUPS}}{{GPU_GROUPS}}
     networks:
       - {{PROJECT_NAME}}_network
     cap_add:
@@ -121,6 +121,58 @@ volumes:
     }
     // Always set DATABASE_VOLUMES (empty string if no databases to persist)
     data.DATABASE_VOLUMES = databaseVolumes;
+
+    // Handle audio and GPU support
+    let audioEnv = '';
+    let audioVolumes = '';
+    let devices = [];
+    let groups = [];
+    
+    if (config.services?.audio?.enabled) {
+        // PulseAudio environment variable
+        audioEnv = '\n      - PULSE_SERVER=unix:/run/user/1000/pulse/native';
+        
+        // PulseAudio socket mount
+        audioVolumes = '\n      - ${XDG_RUNTIME_DIR}/pulse:/run/user/1000/pulse';
+        
+        // Audio device access
+        devices.push('/dev/snd:/dev/snd');
+        
+        // Audio group membership
+        groups.push('audio');
+    }
+
+    // Handle GPU support
+    let gpuEnv = '';
+    let gpuVolumes = '';
+    
+    if (config.services?.gpu?.enabled) {
+        const gpuType = config.services.gpu.type || 'auto';
+        
+        // NVIDIA GPU support
+        if (gpuType === 'nvidia' || gpuType === 'auto') {
+            gpuEnv = '\n      - NVIDIA_VISIBLE_DEVICES=all\n      - NVIDIA_DRIVER_CAPABILITIES=all';
+        }
+        
+        // DRI devices for Intel/AMD GPU access
+        devices.push('/dev/dri:/dev/dri');
+        
+        // GPU-related groups
+        groups.push('video', 'render');
+    }
+    
+    // Build consolidated devices and groups sections
+    const devicesSection = devices.length > 0 ? '\n    devices:\n' + devices.map(d => `      - ${d}`).join('\n') : '';
+    const groupsSection = groups.length > 0 ? '\n    group_add:\n' + groups.map(g => `      - ${g}`).join('\n') : '';
+    
+    data.AUDIO_ENV = audioEnv;
+    data.AUDIO_VOLUMES = audioVolumes;
+    data.AUDIO_DEVICES = devicesSection;
+    data.AUDIO_GROUPS = groupsSection;
+    data.GPU_ENV = gpuEnv;
+    data.GPU_VOLUMES = gpuVolumes;
+    data.GPU_DEVICES = '';
+    data.GPU_GROUPS = '';
 
     // Simple replacement
     let result = template;
