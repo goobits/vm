@@ -250,6 +250,52 @@
               "description": "Path to Chrome/Chromium executable"
             }
           }
+        },
+        "audio": {
+          "type": "object",
+          "description": "Audio support configuration",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Enable audio device support for notifications and testing"
+            },
+            "driver": {
+              "type": "string",
+              "enum": ["pulse", "alsa"],
+              "default": "pulse",
+              "description": "Audio driver to use (PulseAudio or ALSA)"
+            },
+            "share_microphone": {
+              "type": "boolean",
+              "default": false,
+              "description": "Enable microphone access (Vagrant only)"
+            }
+          }
+        },
+        "gpu": {
+          "type": "object",
+          "description": "GPU acceleration configuration",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "Enable GPU acceleration for graphics and compute workloads"
+            },
+            "type": {
+              "type": "string",
+              "enum": ["auto", "nvidia", "amd", "intel", "virtualbox-3d"],
+              "default": "auto",
+              "description": "GPU type to optimize for"
+            },
+            "memory_mb": {
+              "type": "integer",
+              "minimum": 128,
+              "maximum": 1024,
+              "default": 256,
+              "description": "GPU memory allocation in MB (Vagrant only)"
+            }
+          }
         }
       }
     },

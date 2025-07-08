@@ -73,6 +73,23 @@ Vagrant.configure("2") do |config|
       vb.memory = vm_memory
       vb.cpus = vm_cpus
       vb.gui = false
+      
+      # Audio support configuration
+      if project_config.dig('services', 'audio', 'enabled') != false
+        vb.customize ["modifyvm", :id, "--audio", "default"]
+        vb.customize ["modifyvm", :id, "--audiocontroller", "hda"]
+        vb.customize ["modifyvm", :id, "--audioout", "on"]
+        if project_config.dig('services', 'audio', 'share_microphone')
+          vb.customize ["modifyvm", :id, "--audioin", "on"]
+        end
+      end
+      
+      # GPU acceleration configuration
+      if project_config.dig('services', 'gpu', 'enabled')
+        vb.customize ["modifyvm", :id, "--accelerate3d", "on"]
+        gpu_memory = project_config.dig('services', 'gpu', 'memory_mb') || 256
+        vb.customize ["modifyvm", :id, "--vram", gpu_memory]
+      end
     end
     
     # Parallels provider (alternative)
@@ -85,6 +102,21 @@ Vagrant.configure("2") do |config|
       
       # Ensure time synchronization
       prl.customize ["set", :id, "--time-sync", "on"]
+      
+      # Audio support configuration
+      if project_config.dig('services', 'audio', 'enabled') != false
+        prl.customize ["set", :id, "--sound-output", "on"]
+        if project_config.dig('services', 'audio', 'share_microphone')
+          prl.customize ["set", :id, "--sound-input", "on"]
+        end
+      end
+      
+      # GPU acceleration configuration
+      if project_config.dig('services', 'gpu', 'enabled')
+        prl.customize ["set", :id, "--3d-accelerate", "highest"]
+        gpu_memory = project_config.dig('services', 'gpu', 'memory_mb') || 256
+        prl.customize ["set", :id, "--video-memory", gpu_memory]
+      end
     end
   
     # SSH configuration
