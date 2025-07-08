@@ -195,7 +195,28 @@ docker_up() {
 	local project_name=$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')
 	local container_name="${project_name}-dev"
 	
-	# Copy config file to container
+	# Wait for container to be ready before proceeding
+	echo "⏳ Waiting for container to be ready..."
+	local max_attempts=30
+	local attempt=1
+	while [ $attempt -le $max_attempts ]; do
+		# Use docker_cmd to handle sudo if needed, and check container is running
+		if docker_cmd inspect "${container_name}" --format='{{.State.Status}}' 2>/dev/null | grep -q "running"; then
+			# Also verify we can exec into it
+			if docker_cmd exec "${container_name}" echo "ready" >/dev/null 2>&1; then
+				echo "✅ Container is ready"
+				break
+			fi
+		fi
+		if [ $attempt -eq $max_attempts ]; then
+			echo "❌ Container failed to become ready after ${max_attempts} attempts"
+			return 1
+		fi
+		echo "⏳ Waiting for container... (attempt $attempt/$max_attempts)"
+		sleep 2
+		((attempt++))
+	done
+	
 	# Copy config file to container
 	docker_cmd cp /tmp/vm-config.json "${container_name}:/tmp/vm-config.json"
 	
