@@ -49,6 +49,7 @@
 			"executable_path": "/usr/bin/chromium-browser"
 		}
 	},
+	"apt_packages": ["htop", "tree", "ncdu", "ripgrep", "nano"],
 	"npm_packages": ["@anthropic-ai/claude-code", "@google/gemini-cli", "npm-check-updates", "prettier", "eslint"],
 	"cargo_packages": [],
 	"aliases": {

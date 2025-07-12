@@ -199,7 +199,7 @@ load_and_merge_config() {
         fi
         
         # Check for valid top-level keys
-        local valid_keys='["$schema","provider","project","vm","versions","ports","services","npm_packages","cargo_packages","pip_packages","aliases","environment","terminal","claude_sync","gemini_sync","persist_databases"]'
+        local valid_keys='["$schema","provider","project","vm","versions","ports","services","apt_packages","npm_packages","cargo_packages","pip_packages","aliases","environment","terminal","claude_sync","gemini_sync","persist_databases"]'
         local user_keys="$(echo "$user_config" | jq -r 'keys[]')"
         local has_valid_keys="$(echo "$user_config" | jq --argjson valid "$valid_keys" 'keys as $uk | $valid as $vk | ($uk | map(. as $k | $vk | contains([$k])) | any)')"
         
