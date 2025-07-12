@@ -120,6 +120,8 @@ service_definitions:
     service_post_install_commands:
       - "usermod -a -G audio {{ 'developer' if is_docker_container else 'vagrant' }}"
       - "pulseaudio --check -v || (pulseaudio --start && echo 'PulseAudio started')"
+    service_supervisor_command: "/usr/bin/pulseaudio --system --disallow-exit --disallow-module-loading --log-target=stderr"
+    service_supervisor_user: "root"
     service_ignore_errors: true
 
   gpu:
