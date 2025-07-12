@@ -47,9 +47,13 @@
 			"enabled": false,
 			"display": ":99",
 			"executable_path": "/usr/bin/chromium-browser"
+		},
+		"audio": {
+			"enabled": true,
+			"driver": "pulse"
 		}
 	},
-	"apt_packages": ["htop", "tree", "ncdu", "ripgrep", "nano"],
+	"apt_packages": ["htop", "tree", "ncdu", "ripgrep", "nano", "sox"],
 	"npm_packages": ["@anthropic-ai/claude-code", "@google/gemini-cli", "npm-check-updates", "prettier", "eslint"],
 	"cargo_packages": [],
 	"aliases": {
