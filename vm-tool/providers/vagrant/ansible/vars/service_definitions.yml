@@ -1,0 +1,145 @@
+---
+# Service configuration definitions for the reusable service management task
+# Each service defines the variables needed by tasks/manage-service.yml
+
+service_definitions:
+  postgresql:
+    service_packages:
+      - postgresql
+      - postgresql-contrib
+    service_version_command: "ls /etc/postgresql/ | head -1"
+    service_versioned_config_lines:
+      - path: "/etc/postgresql/VERSION/main/postgresql.conf"
+        regexp: "^#?port ="
+        line: "port = {{ project_config.ports.postgresql | default(5432) }}"
+      - path: "/etc/postgresql/VERSION/main/postgresql.conf"
+        regexp: "^#?listen_addresses ="
+        line: "listen_addresses = 'localhost'"
+    service_systemd_name: "postgresql"
+    service_supervisor_command: "/usr/lib/postgresql/14/bin/postgres -D /var/lib/postgresql/14/main -c config_file=/etc/postgresql/14/main/postgresql.conf"
+    service_supervisor_user: "postgres"
+    service_supervisor_environment: "LC_ALL=\"en_US.UTF-8\",LC_CTYPE=\"en_US.UTF-8\""
+    service_port: "{{ project_config.ports.postgresql | default(5432) }}"
+    service_post_install_commands:
+      - "sudo -u postgres psql -p {{ project_config.ports.postgresql | default(5432) }} -c \"ALTER USER {{ project_config.services.postgresql.user | default('postgres') }} PASSWORD '{{ project_config.services.postgresql.password | default('postgres') }}';\""
+      - "sudo -u postgres createdb -p {{ project_config.ports.postgresql | default(5432) }} \"{{ project_config.services.postgresql.database }}\" || echo \"Database exists\""
+    service_ignore_errors: true
+
+  redis:
+    service_packages:
+      - redis-server
+      - redis-tools
+    service_config_lines:
+      - path: "/etc/redis/redis.conf"
+        regexp: "^bind"
+        line: "bind 127.0.0.1 ::1"
+      - path: "/etc/redis/redis.conf"
+        regexp: "^port"
+        line: "port {{ project_config.ports.redis | default(6379) }}"
+    service_systemd_name: "redis-server"
+    service_supervisor_command: "/usr/bin/redis-server --bind 127.0.0.1 ::1 --port {{ project_config.ports.redis | default(6379) }} --protected-mode yes"
+    service_supervisor_user: "redis"
+    service_port: "{{ project_config.ports.redis | default(6379) }}"
+
+  mongodb:
+    service_dependencies:
+      - gnupg
+      - curl
+    service_gpg_key_url: "https://pgp.mongodb.com/server-6.0.asc"
+    service_repository: "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/6.0 multiverse"
+    service_packages:
+      - mongodb-org
+    service_config_lines:
+      - path: "/etc/mongod.conf"
+        regexp: "^\\s*port:"
+        line: "  port: {{ project_config.ports.mongodb | default(project_config.services.mongodb.port | default(27017)) }}"
+      - path: "/etc/mongod.conf"
+        regexp: "^\\s*bindIp:"
+        line: "  bindIp: 127.0.0.1"
+    service_systemd_name: "mongod"
+    service_systemd_daemon_reload: true
+    service_supervisor_command: "/usr/bin/mongod --config /etc/mongod.conf"
+    service_supervisor_user: "mongodb"
+    service_port: "{{ project_config.ports.mongodb | default(project_config.services.mongodb.port | default(27017)) }}"
+    service_post_install_commands:
+      - "mongosh --port {{ project_config.ports.mongodb | default(project_config.services.mongodb.port | default(27017)) }} --eval \"db = db.getSiblingDB('{{ project_config.project.name }}_dev'); db.createCollection('init'); print('Database {{ project_config.project.name }}_dev created');\""
+    service_ignore_errors: true
+
+  headless_browser:
+    service_packages:
+      - chromium-browser
+      - xvfb
+    service_systemd_name: "xvfb"
+    service_supervisor_command: "/usr/bin/Xvfb :99 -screen 0 1024x768x24 -ac"
+    service_supervisor_user: "root"
+
+  mysql:
+    service_packages:
+      - mysql-server
+      - mysql-client
+    service_config_lines:
+      - path: "/etc/mysql/mysql.conf.d/mysqld.cnf"
+        regexp: "^bind-address"
+        line: "bind-address = 127.0.0.1"
+      - path: "/etc/mysql/mysql.conf.d/mysqld.cnf"
+        regexp: "^port"
+        line: "port = {{ project_config.ports.mysql | default(3306) }}"
+    service_systemd_name: "mysql"
+    service_supervisor_command: "/usr/sbin/mysqld --basedir=/usr --datadir=/var/lib/mysql --plugin-dir=/usr/lib/mysql/plugin --user=mysql --log-error=/var/log/mysql/error.log --pid-file=/var/run/mysqld/mysqld.pid"
+    service_supervisor_user: "mysql"
+    service_port: "{{ project_config.ports.mysql | default(3306) }}"
+    service_post_install_commands:
+      - "mysql -u root -e \"ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{{ project_config.services.mysql.password | default('mysql') }}';\""
+      - "mysql -u root -p{{ project_config.services.mysql.password | default('mysql') }} -e \"CREATE DATABASE IF NOT EXISTS {{ project_config.services.mysql.database | default(project_config.project.name + '_dev') }};\""
+    service_ignore_errors: true
+
+  docker:
+    service_packages:
+      - docker-compose
+    service_optional_packages:
+      buildx: docker-buildx
+    service_post_install_commands:
+      - "usermod -a -G docker {{ 'developer' if is_docker_container else 'vagrant' }}"
+      - "{{ 'docker buildx install' if project_config.services.docker.buildx | default(true) else 'echo \"Buildx disabled\"' }}"
+    service_ignore_errors: true
+    # Note: docker.io CLI is included in base Docker image for Docker provider
+
+  audio:
+    service_packages:
+      - pulseaudio
+      - pulseaudio-utils
+      - alsa-utils
+      - alsa-base
+    service_config_lines:
+      - path: "/etc/pulse/client.conf"
+        regexp: "^#?autospawn"
+        line: "autospawn = yes"
+      - path: "/etc/pulse/client.conf"
+        regexp: "^#?default-sink"
+        line: "# default-sink = auto"
+    service_post_install_commands:
+      - "usermod -a -G audio {{ 'developer' if is_docker_container else 'vagrant' }}"
+      - "pulseaudio --check -v || (pulseaudio --start && echo 'PulseAudio started')"
+    service_ignore_errors: true
+
+  gpu:
+    service_packages:
+      - mesa-utils
+      - vainfo
+      - vulkan-tools
+      - mesa-vulkan-drivers
+      - mesa-va-drivers
+    service_post_install_commands:
+      - "usermod -a -G video,render {{ 'developer' if is_docker_container else 'vagrant' }}"
+    service_ignore_errors: true
+
+  vm:
+    service_dependencies:
+      - curl
+      - gnupg
+      - ca-certificates
+    service_post_install_commands:
+      - "curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -"
+      - "apt-get install -y nodejs"
+      - "cd /workspace && npm link"
+    service_ignore_errors: true
