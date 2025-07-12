@@ -106,8 +106,20 @@ generate_docker_compose() {
     local groups=()
     
     if [[ "$(echo "$config" | jq -r '.services.audio.enabled // true')" == "true" ]]; then
-        audio_env="\\n      - PULSE_SERVER=unix:/run/user/1000/pulse/native"
-        audio_volumes="\\n      - \${XDG_RUNTIME_DIR}/pulse:/run/user/1000/pulse"
+        # Use proper UID and runtime directory with fallbacks
+        local runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$host_uid}"
+        local pulse_socket="$runtime_dir/pulse/native"
+        
+        # Verify host PulseAudio socket exists before mounting
+        if [[ -S "$pulse_socket" ]]; then
+            audio_env="\\n      - PULSE_SERVER=unix:/run/user/$host_uid/pulse/native"
+            audio_volumes="\\n      - $runtime_dir/pulse:/run/user/$host_uid/pulse"
+            echo "📢 Audio: Mounting PulseAudio socket from $pulse_socket"
+        else
+            audio_env="\\n      - PULSE_RUNTIME_PATH=/run/user/$host_uid/pulse"
+            echo "⚠️  Audio: Host PulseAudio socket not found at $pulse_socket, using system mode"
+        fi
+        
         devices+=("/dev/snd:/dev/snd")
         groups+=("audio")
     fi
