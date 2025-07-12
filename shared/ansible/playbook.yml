@@ -578,45 +578,12 @@
             owner: '{{ project_user }}'
             mode: '0755'
 
-      - name: Check for project Claude settings
-        stat:
-            path: '/vm-tool/shared/claude-settings/settings.json'
-        register: claude_settings
-
-      - name: Copy project Claude settings
+      - name: Copy shared Claude settings
         copy:
             src: '/vm-tool/shared/claude-settings/settings.json'
             dest: '/home/{{ project_user }}/.claude/settings.json'
             remote_src: yes
             owner: '{{ project_user }}'
-        when: claude_settings.stat.exists
-
-      - name: Use default Claude settings
-        copy:
-            dest: '/home/{{ project_user }}/.claude/settings.json'
-            owner: '{{ project_user }}'
-            content: |
-                {
-                  "permissions": {
-                    "allow": [
-                      "Read(/workspace/**)",
-                      "Write(/workspace/**)",
-                      "Edit(/workspace/**)",
-                      "MultiEdit(/workspace/**)",
-                      "Bash",
-                      "WebSearch",
-                      "WebFetch"
-                    ],
-                    "deny": [
-                      "Read(**/.env*)",
-                      "Read(**/*.key)",
-                      "Bash(sudo *)",
-                      "Bash(rm -rf /)"
-                    ]
-                  }
-                }
-        when: not claude_settings.stat.exists
-        no_log: true
 
       # Gemini CLI setup
       - name: Create Gemini settings directory
