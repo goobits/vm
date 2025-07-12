@@ -181,7 +181,7 @@ docker_up() {
 	local project_dir="$2"
 	shift 2
 	
-	echo "🐳 Starting Docker environment..."
+	echo "🚀 Starting development environment..."
 	
 	# Generate docker-compose.yml
 	echo "$config" > /tmp/vm-config.json
@@ -196,7 +196,7 @@ docker_up() {
 	local container_name="${project_name}-dev"
 	
 	# Wait for container to be ready before proceeding
-	echo "⏳ Waiting for container to be ready..."
+	echo "⏳ Initializing container..."
 	local max_attempts=30
 	local attempt=1
 	while [ $attempt -le $max_attempts ]; do
@@ -205,70 +205,48 @@ docker_up() {
 			# Also verify we can exec into it
 			if docker_cmd exec "${container_name}" echo "ready" >/dev/null 2>&1; then
 				echo "✅ Container is ready"
-				
-				# Copy vm-tool content into container to fix Docker-in-Docker mount issues
-				echo "🔧 Setting up vm-tool content in container..."
-				# Handle npm link case - use workspace path directly when available
-				local vm_tool_base_path="/workspace"
-				if [ ! -d "$vm_tool_base_path/providers" ]; then
-					# Fallback to script location if /workspace doesn't work
-					vm_tool_base_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-				fi
-				echo "🔧 Base path: $vm_tool_base_path"
-				docker_cmd exec "${container_name}" mkdir -p /workspace/vm-tool || true
-				docker_cmd exec "${container_name}" rm -rf /workspace/vm-tool/* || true
-				# Copy essential files
-				for item in providers vm.sh package.json generate-config.sh; do
-					if [ -e "$vm_tool_base_path/$item" ]; then
-						echo "🔧 Copying $item..."
-						docker_cmd cp "$vm_tool_base_path/$item" "${container_name}:/workspace/vm-tool/" || echo "❌ Failed to copy $item"
-					else
-						echo "⚠️ $item not found at $vm_tool_base_path/$item"
-					fi
-				done
-				echo "🔧 Checking copied content..."
-				docker_cmd exec "${container_name}" ls -la /workspace/vm-tool/ || echo "❌ Failed to list vm-tool contents"
-				echo "✅ vm-tool content setup complete"
-				
 				break
 			fi
 		fi
 		if [ $attempt -eq $max_attempts ]; then
-			echo "❌ Container failed to become ready after ${max_attempts} attempts"
+			echo "❌ Environment initialization failed"
 			return 1
 		fi
-		echo "⏳ Waiting for container... (attempt $attempt/$max_attempts)"
+		echo "⏳ Starting up... ($attempt/$max_attempts)"
 		sleep 2
 		((attempt++))
 	done
 	
 	# Copy config file to container
-	echo "🔧 Copying config file to container..."
+	echo "📋 Loading project configuration..."
 	if docker_cmd cp /tmp/vm-config.json "${container_name}:/tmp/vm-config.json"; then
-		echo "✅ Config file copied successfully"
+		echo "✅ Configuration loaded"
 	else
-		echo "❌ Failed to copy config file"
+		echo "❌ Configuration loading failed"
 		return 1
 	fi
 	
 	# Fix volume permissions before Ansible
-	echo "🔧 Fixing volume permissions..."
-	if docker_run "exec" "$config" "$project_dir" chown -R vagrant:vagrant /home/vagrant/.nvm /home/vagrant/.cache; then
-		echo "✅ Volume permissions fixed"
+	echo "🔑 Setting up permissions..."
+	local project_user=$(echo "$config" | jq -r '.vm.user // "vagrant"')
+	if docker_run "exec" "$config" "$project_dir" chown -R "$project_user:$project_user" "/home/$project_user/.nvm" "/home/$project_user/.cache"; then
+		echo "✅ Permissions configured"
 	else
-		echo "⚠️ Volume permissions fix failed (non-critical)"
+		echo "⚠️ Permission setup skipped (non-critical)"
 	fi
 	
 	# VM tool directory is already mounted read-only via docker-compose
 	
 	# Run Ansible playbook inside the container
-	echo "🔧 Running Ansible provisioning..."
+	echo "🔧 Provisioning development environment..."
 	
 	# Check if debug mode is enabled
 	ANSIBLE_VERBOSITY=""
+	ANSIBLE_DIFF=""
 	if [ "${VM_DEBUG:-}" = "true" ] || [ "${DEBUG:-}" = "true" ]; then
 		echo "🐛 Debug mode enabled - showing detailed Ansible output"
 		ANSIBLE_VERBOSITY="-vvv"
+		ANSIBLE_DIFF="--diff"
 	fi
 	
 	# Create log file path
@@ -278,12 +256,12 @@ docker_up() {
 		-i localhost, \
 		-c local \
 		$ANSIBLE_VERBOSITY \
-		--diff \
-		/workspace/vm-tool/providers/vagrant/ansible/playbook.yml 2>&1 | tee $ANSIBLE_LOG"; then
-		echo "✅ Ansible provisioning completed successfully!"
+		$ANSIBLE_DIFF \
+		/vm-tool/providers/vagrant/ansible/playbook.yml 2>&1 | tee $ANSIBLE_LOG"; then
+		echo "🎉 Development environment ready!"
 	else
 		ANSIBLE_EXIT_CODE=$?
-		echo "⚠️  Ansible provisioning had some issues (exit code: $ANSIBLE_EXIT_CODE)"
+		echo "⚠️ Provisioning completed with warnings (exit code: $ANSIBLE_EXIT_CODE)"
 		echo "📋 Full log saved in container at: $ANSIBLE_LOG"
 		echo "💡 Tips:"
 		echo "   - Run with VM_DEBUG=true vm up to see detailed error output"
@@ -292,18 +270,18 @@ docker_up() {
 	fi
 	
 	# Ensure supervisor services are started
-	echo "🔄 Starting services..."
+	echo "🚀 Starting services..."
 	docker_run "exec" "$config" "$project_dir" bash -c "supervisorctl reread && supervisorctl update" || true
 	
 	# Clean up generated docker-compose.yml since containers are now running
 	local compose_file="${project_dir}/docker-compose.yml"
 	if [ -f "$compose_file" ]; then
-		echo "🧹 Cleaning up generated docker-compose.yml..."
+		echo "✨ Cleanup complete"
 		rm "$compose_file"
 	fi
 	
-	echo "✅ Docker environment is running and provisioned!"
-	echo "🔗 Connecting to VM..."
+	echo "🎉 Environment ready!"
+	echo "🌟 Entering development environment..."
 	
 	# Automatically SSH into the container  
 	docker_ssh "$config" "" "."
@@ -359,7 +337,7 @@ docker_destroy() {
 	shift 2
 	
 	# Generate docker-compose.yml temporarily for destroy operation
-	echo "🔧 Regenerating docker-compose.yml for destroy operation..."
+	echo "🧹 Preparing cleanup..."
 	echo "$config" > /tmp/vm-config.json
 	"$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" /tmp/vm-config.json "$project_dir"
 	
@@ -369,7 +347,7 @@ docker_destroy() {
 	# Clean up the generated docker-compose.yml after destroy
 	local compose_file="${project_dir}/docker-compose.yml"
 	if [ -f "$compose_file" ]; then
-		echo "🧹 Cleaning up generated docker-compose.yml..."
+		echo "✨ Cleanup complete"
 		rm "$compose_file"
 	fi
 }
@@ -396,7 +374,7 @@ docker_provision() {
 	local project_dir="$2"
 	shift 2
 	
-	echo "🔄 Rebuilding Docker environment..."
+	echo "🔄 Rebuilding environment..."
 	
 	# Generate fresh docker-compose.yml for provisioning
 	echo "$config" > /tmp/vm-config.json
@@ -408,7 +386,7 @@ docker_provision() {
 	# Clean up generated docker-compose.yml since containers are now running
 	local compose_file="${project_dir}/docker-compose.yml"
 	if [ -f "$compose_file" ]; then
-		echo "🧹 Cleaning up generated docker-compose.yml..."
+		echo "✨ Cleanup complete"
 		rm "$compose_file"
 	fi
 }
@@ -429,7 +407,7 @@ docker_exec() {
 }
 
 docker_kill() {
-	echo "🔄 Stopping all Docker containers for this project..."
+	echo "⏹️ Stopping environment..."
 	local config="$1"
 	local project_name=$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')
 	
@@ -550,7 +528,7 @@ set -- "${ARGS[@]}"
 # Handle special commands
 case "${1:-}" in
 	"init")
-		echo "🚀 Initializing VM configuration..."
+		echo "✨ Creating new project configuration..."
 		# Use validate-config.sh with special init flag
 		if [ -n "$CUSTOM_CONFIG" ] && [ "$CUSTOM_CONFIG" != "__SCAN__" ]; then
 			"$SCRIPT_DIR/validate-config.sh" --init "$CUSTOM_CONFIG"
@@ -559,13 +537,13 @@ case "${1:-}" in
 		fi
 		;;
 	"generate")
-		echo "🔧 Generating VM configuration..."
+		echo "⚙️ Generating configuration..."
 		# Pass all remaining arguments to generate-config.sh
 		shift
 		"$SCRIPT_DIR/generate-config.sh" "$@"
 		;;
 	"validate")
-		echo "🔍 Validating VM configuration..."
+		echo "✅ Validating configuration..."
 		# Validate configuration using the centralized config manager
 		if [ -n "$CUSTOM_CONFIG" ]; then
 			"$SCRIPT_DIR/validate-config.sh" --validate "$CUSTOM_CONFIG"
@@ -580,7 +558,7 @@ case "${1:-}" in
 		# Load config to determine provider
 		CONFIG=$(load_config "$CUSTOM_CONFIG" "$CURRENT_DIR")
 		if [ $? -ne 0 ]; then
-			echo "❌ Configuration validation failed. Aborting."
+			echo "❌ Invalid configuration"
 			exit 1
 		fi
 		
@@ -602,7 +580,7 @@ case "${1:-}" in
 		fi
 		CONFIG=$(load_config "$CUSTOM_CONFIG" "$CURRENT_DIR")
 		if [ $? -ne 0 ]; then
-			echo "❌ Configuration validation failed. Aborting."
+			echo "❌ Invalid configuration"
 			exit 1
 		fi
 		
@@ -624,7 +602,7 @@ case "${1:-}" in
 			FULL_CONFIG_PATH=""
 		fi
 		
-		echo "🔧 Using provider: $PROVIDER"
+		echo "🐳 Using provider: $PROVIDER"
 		
 		# Show dry run information if enabled
 		if [ "$DRY_RUN" = "true" ]; then
