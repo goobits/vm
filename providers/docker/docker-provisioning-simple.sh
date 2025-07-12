@@ -37,15 +37,9 @@ generate_docker_compose() {
     # The VM tool is always in the workspace directory where vm.sh is located
     local vm_tool_base_path="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
     
-    # Handle Docker-in-Docker scenario - copy vm-tool content into project directory
-    # This avoids bind mount issues in nested Docker environments
-    mkdir -p "$project_dir"
-    mkdir -p "$project_dir/vm-tool"
-    echo "Copying vm-tool content from $vm_tool_base_path to $project_dir/vm-tool"
-    cp -r "$vm_tool_base_path"/{providers,vm.sh,package.json,generate-config.sh} "$project_dir/vm-tool/" 2>/dev/null || true
-    echo "Contents after copy: $(ls -la "$project_dir/vm-tool/" 2>/dev/null || echo "Failed to list")"
-    # vm-tool will be accessible as /workspace/vm-tool inside container
-    local vm_tool_path="/workspace/vm-tool"
+    # Use the vm-tool path directly from the host mount
+    # Mount the vm-tool directory directly instead of copying
+    local vm_tool_path="/vm-tool"
     
     # Generate ports section
     local ports_section=""
@@ -169,6 +163,7 @@ generate_docker_compose() {
       - TZ=$timezone$audio_env$gpu_env
     volumes:
       - $project_dir:$workspace_path:delegated
+      - $vm_tool_base_path:$vm_tool_path:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${project_name}_nvm:/home/$project_user/.nvm
       - ${project_name}_cache:/home/$project_user/.cache
@@ -192,7 +187,7 @@ volumes:
     # Write docker-compose.yml
     local output_path="$project_dir/docker-compose.yml"
     echo -e "$docker_compose_content" > "$output_path"
-    echo "Generated docker-compose.yml at $output_path"
+    echo "📄 Configuration generated at $output_path"
 }
 
 # Allow direct execution

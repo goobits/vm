@@ -1,10 +1,21 @@
 #!/bin/bash
 # This script sets up shell configurations dynamically based on project config
 
-echo "🔧 Running shell setup script..."
+echo "🐚 Configuring shell environment..."
 
 CONFIG_FILE="/tmp/vm-config.json"
-USER_HOME="/home/vagrant"
+
+# Detect the correct user (supports both vagrant and ubuntu)
+if [ "$USER" = "root" ]; then
+    # When running as root, detect the non-root user
+    DETECTED_USER=$(getent passwd 1000 | cut -d: -f1)
+    USER_HOME="/home/$DETECTED_USER"
+else
+    DETECTED_USER="$USER"
+    USER_HOME="$HOME"
+fi
+
+echo "👤 Configuring for user: $DETECTED_USER"
 
 # Default values
 EMOJI="🚀"
@@ -139,43 +150,43 @@ cd $WORKSPACE 2>/dev/null || true
 EOF
 
 # Set ownership
-chown vagrant:vagrant "$USER_HOME/.bashrc" "$USER_HOME/.zshrc"
+chown $DETECTED_USER:$DETECTED_USER "$USER_HOME/.bashrc" "$USER_HOME/.zshrc"
 
-echo "✅ Shell configuration completed! Created .bashrc and .zshrc with custom prompt: $EMOJI $USERNAME"
+echo "✨ Shell configured with prompt: $EMOJI $USERNAME"
 
 # Quick check if Node.js is available and install Claude if possible
 if [ -f "$USER_HOME/.nvm/nvm.sh" ]; then
-    echo "🔧 Setting up Node.js and Claude Code..."
+    echo "📦 Installing development tools..."
     
-    # Run as vagrant user to ensure proper environment
-    su - vagrant -c '
+    # Run as detected user to ensure proper environment
+    su - $DETECTED_USER -c '
         source ~/.nvm/nvm.sh
         
         # Check if claude is already installed
         if ! which claude > /dev/null 2>&1; then
-            echo "📦 Installing Claude Code CLI..."
+            echo "🤖 Installing Claude Code CLI..."
             npm install -g @anthropic-ai/claude-code
         else
-            echo "✅ Claude Code CLI is already installed"
+            echo "✅ Claude Code ready"
         fi
         
         # Check if gemini is already installed
         if ! which gemini > /dev/null 2>&1; then
-            echo "📦 Installing Gemini CLI..."
+            echo "💎 Installing Gemini CLI..."
             npm install -g @google/gemini-cli
         else
-            echo "✅ Gemini CLI is already installed"
+            echo "✅ Gemini ready"
         fi
         
         # Also try to install pnpm directly if corepack fails
         if ! which pnpm > /dev/null 2>&1; then
-            echo "📦 Installing pnpm via npm..."
+            echo "📋 Installing pnpm..."
             npm install -g pnpm@10.12.3
         fi
     '
 fi
 
 # Fix ownership of shell configuration files
-echo "🔧 Fixing shell configuration file ownership..."
-chown vagrant:vagrant "$USER_HOME/.bashrc" "$USER_HOME/.zshrc"
+echo "🔒 Setting file permissions..."
+chown $DETECTED_USER:$DETECTED_USER "$USER_HOME/.bashrc" "$USER_HOME/.zshrc"
 chmod 644 "$USER_HOME/.bashrc" "$USER_HOME/.zshrc"
