@@ -179,6 +179,7 @@
                 LC_ALL=en_US.UTF-8
                 LC_CTYPE=en_US.UTF-8
             mode: '0644'
+        no_log: true
 
       # Timezone configuration (unified method for both VM and container)
       - name: Set system timezone
@@ -277,6 +278,7 @@
             group: '{{ project_user }}'
             mode: '0644'
         become_user: root
+        no_log: true
 
       - name: Install Node.js
         shell: |
@@ -544,6 +546,7 @@
         when: 
           - project_config.services.headless_browser.enabled | default(false)
           - not is_docker_container
+        no_log: true
 
       # Handle database backup restoration for PostgreSQL
       - name: Check for database backup
@@ -588,23 +591,26 @@
             owner: '{{ project_user }}'
             content: |
                 {
-                  "allow": [
-                    "Read(/workspace/**)",
-                    "Write(/workspace/**)",
-                    "Edit(/workspace/**)",
-                    "MultiEdit(/workspace/**)",
-                    "Bash",
-                    "WebSearch",
-                    "WebFetch"
-                  ],
-                  "deny": [
-                    "Read(**/.env*)",
-                    "Read(**/*.key)",
-                    "Bash(sudo *)",
-                    "Bash(rm -rf /)"
-                  ]
+                  "permissions": {
+                    "allow": [
+                      "Read(/workspace/**)",
+                      "Write(/workspace/**)",
+                      "Edit(/workspace/**)",
+                      "MultiEdit(/workspace/**)",
+                      "Bash",
+                      "WebSearch",
+                      "WebFetch"
+                    ],
+                    "deny": [
+                      "Read(**/.env*)",
+                      "Read(**/*.key)",
+                      "Bash(sudo *)",
+                      "Bash(rm -rf /)"
+                    ]
+                  }
                 }
         when: not claude_settings.stat.exists
+        no_log: true
 
       # Gemini CLI setup
       - name: Create Gemini settings directory
@@ -637,6 +643,7 @@
                   "interactive": true
                 }
         when: not gemini_settings.stat.exists
+        no_log: true
 
 
       # Project-specific environment setup
@@ -789,15 +796,10 @@
       - name: Display completion message
         debug:
             msg: |
-                ✅ Universal Dev Environment Ready!
+                🎉 Development environment configured!
 
-                Project: {{ project_name }}
-                Path: {{ project_path }}
-
-                Services:
-                - PostgreSQL (postgres/postgres) on port {{ project_config.ports.postgresql | default(5432) }}
-                - Redis on port {{ project_config.ports.redis | default(6379) }}
-                - Docker
-                - Xvfb (display :99)
-
-                Run 'vagrant ssh' to enter the VM
+                📁 Project: {{ project_name }}
+                📍 Path: {{ project_path }}
+                🛠️ Tools: Node.js, Claude Code, Gemini CLI
+                
+                💡 Ready to code!

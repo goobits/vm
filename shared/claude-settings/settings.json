@@ -1,27 +1,29 @@
 {
-	"allow": [
-		"Read(/workspace/**)",
-		"Write(/workspace/**)",
-		"Edit(/workspace/**)",
-		"MultiEdit(/workspace/**)",
-		"Bash",
-		"WebSearch",
-		"WebFetch",
-		"Grep(/workspace/**)",
-		"Glob(/workspace/**)",
-		"LS(/workspace/**)"
-	],
-	"deny": [
-		"Bash(reboot)",
-		"Bash(shutdown *)",
-		"Bash(poweroff)",
-		"Bash(halt)",
-		"Bash(init 0)",
-		"Bash(init 6)",
-		"Bash(systemctl reboot)",
-		"Bash(systemctl poweroff)",
-		"Bash(systemctl halt)"
-	],
+	"permissions": {
+		"allow": [
+			"Read(/workspace/**)",
+			"Write(/workspace/**)",
+			"Edit(/workspace/**)",
+			"MultiEdit(/workspace/**)",
+			"Bash",
+			"WebSearch",
+			"WebFetch",
+			"Grep(/workspace/**)",
+			"Glob(/workspace/**)",
+			"LS(/workspace/**)"
+		],
+		"deny": [
+			"Bash(reboot)",
+			"Bash(shutdown *)",
+			"Bash(poweroff)",
+			"Bash(halt)",
+			"Bash(init 0)",
+			"Bash(init 6)",
+			"Bash(systemctl reboot)",
+			"Bash(systemctl poweroff)",
+			"Bash(systemctl halt)"
+		]
+	},
 	"includeCoAuthoredBy": false,
 	"cleanupPeriodDays": 30,
 	"env": {

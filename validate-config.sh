@@ -48,8 +48,9 @@ deep_merge() {
     echo "$base_config" | jq --argjson override "$override_config" '
         def deepmerge(a; b):
             if (a | type) == "object" and (b | type) == "object" then
-                reduce (a + b | keys_unsorted[]) as $key ({};
+                a + reduce (b | keys_unsorted[]) as $key ({}; 
                     .[$key] = deepmerge(a[$key]; b[$key]))
+            elif b == null then a
             else b end;
         deepmerge(.; $override)
     '
