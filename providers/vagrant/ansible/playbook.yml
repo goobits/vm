@@ -48,6 +48,7 @@
                     emoji: '🚀'
                     username: 'dev'
                     theme: 'dracula'
+                apt_packages: ['htop', 'tree', 'ncdu', 'ripgrep', 'nano']
                 aliases: {}
                 environment: {}
         when: not config_file_stat.stat.exists
@@ -202,15 +203,10 @@
                 - fail2ban
                 - unattended-upgrades
                 - jq
-                - htop
-                - tree
-                - ncdu
                 - python3-psycopg2
                 - zsh
                 - zsh-syntax-highlighting
-                - ripgrep
                 - supervisor
-                - nano
             state: present
         retries: 5
         delay: 10
@@ -326,6 +322,16 @@
             executable: /bin/bash
         become_user: '{{ project_user }}'
         when: corepack_result.failed | default(false)
+
+      - name: Install additional APT packages
+        apt:
+            name: '{{ project_config.apt_packages }}'
+            state: present
+        retries: 5
+        delay: 10
+        register: apt_packages_install
+        until: apt_packages_install is succeeded
+        when: project_config.apt_packages is defined and project_config.apt_packages | length > 0
 
       - name: Install global npm packages
         shell: |

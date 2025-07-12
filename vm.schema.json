@@ -345,6 +345,16 @@
         }
       }
     },
+    "apt_packages": {
+      "type": "array",
+      "description": "Additional APT packages to install",
+      "items": {
+        "type": "string"
+      },
+      "examples": [
+        ["htop", "tree", "curl", "vim"]
+      ]
+    },
     "npm_packages": {
       "type": "array",
       "description": "Global npm packages to install",
