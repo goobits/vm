@@ -268,7 +268,7 @@
 
       - name: Generate .zshrc from template
         template:
-            src: templates/zshrc.j2
+            src: /vm-tool/shared/templates/zshrc.j2
             dest: '/home/{{ project_user }}/.zshrc'
             owner: '{{ project_user }}'
             group: '{{ project_user }}'
@@ -483,7 +483,7 @@
 
       # Load service definitions
       - name: Load service definitions
-        include_vars: vars/service_definitions.yml
+        include_vars: /vm-tool/shared/services/service_definitions.yml
 
       # Install and configure all enabled services using reusable task
       - name: Install and configure enabled services
