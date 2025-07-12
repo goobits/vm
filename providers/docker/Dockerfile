@@ -1,7 +1,7 @@
 FROM ubuntu:24.04
 
-# Build arguments
-ARG PROJECT_USER=vagrant
+# Build arguments - passed from docker-compose.yml
+ARG PROJECT_USER
 ARG PROJECT_UID=1000
 ARG PROJECT_GID=1000
 

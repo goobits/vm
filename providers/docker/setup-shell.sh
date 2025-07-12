@@ -5,7 +5,7 @@ echo "🐚 Configuring shell environment..."
 
 CONFIG_FILE="/tmp/vm-config.json"
 
-# Detect the correct user (supports both vagrant and ubuntu)
+# Detect the correct user (works with any username)
 if [ "$USER" = "root" ]; then
     # When running as root, detect the non-root user
     DETECTED_USER=$(getent passwd 1000 | cut -d: -f1)
