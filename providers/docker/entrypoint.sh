@@ -1,10 +1,13 @@
 #!/bin/bash
 set -e
 
+# Get the project user from environment (set by docker-compose)
+PROJECT_USER="${PROJECT_USER:-developer}"
+
 # Ensure proper ownership of mounted Claude directory if it exists
-if [ -d "/home/vagrant/.claude" ]; then
-    chown -R vagrant:$(id -gn vagrant) /home/vagrant/.claude || true
-    chmod -R 755 /home/vagrant/.claude || true
+if [ -d "/home/$PROJECT_USER/.claude" ]; then
+    chown -R $PROJECT_USER:$(id -gn $PROJECT_USER) /home/$PROJECT_USER/.claude || true
+    chmod -R 755 /home/$PROJECT_USER/.claude || true
 fi
 
 # Run shell setup if config exists

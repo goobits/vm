@@ -30,7 +30,7 @@ generate_docker_compose() {
     local project_name="$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')"
     local project_hostname="$(echo "$config" | jq -r '.project.hostname')"
     local workspace_path="$(echo "$config" | jq -r '.project.workspace_path // "/workspace"')"
-    local project_user="$(echo "$config" | jq -r '.vm.user // "vagrant"')"
+    local project_user="$(echo "$config" | jq -r '.vm.user // "developer"')"
     local timezone="$(echo "$config" | jq -r '.vm.timezone // "UTC"')"
     
     # Get VM tool path (use absolute path to avoid relative path issues)
@@ -160,7 +160,8 @@ generate_docker_compose() {
     environment:
       - LANG=en_US.UTF-8
       - LC_ALL=en_US.UTF-8
-      - TZ=$timezone$audio_env$gpu_env
+      - TZ=$timezone
+      - PROJECT_USER=$project_user$audio_env$gpu_env
     volumes:
       - $project_dir:$workspace_path:delegated
       - $vm_tool_base_path:$vm_tool_path:ro

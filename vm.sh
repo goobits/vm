@@ -228,7 +228,7 @@ docker_up() {
 	
 	# Fix volume permissions before Ansible
 	echo "🔑 Setting up permissions..."
-	local project_user=$(echo "$config" | jq -r '.vm.user // "vagrant"')
+	local project_user=$(echo "$config" | jq -r '.vm.user // "developer"')
 	if docker_run "exec" "$config" "$project_dir" chown -R "$project_user:$project_user" "/home/$project_user/.nvm" "/home/$project_user/.cache"; then
 		echo "✅ Permissions configured"
 	else
@@ -293,8 +293,9 @@ docker_ssh() {
 	local relative_path="$3"
 	shift 3
 	
-	# Get workspace path from config, default to /workspace
+	# Get workspace path and user from config
 	local workspace_path=$(echo "$config" | jq -r '.project.workspace_path // "/workspace"')
+	local project_user=$(echo "$config" | jq -r '.vm.user // "developer"')
 	local target_dir="${workspace_path}"
 	
 	# If we have a relative path and it's not just ".", append it to workspace path
@@ -305,10 +306,10 @@ docker_ssh() {
 	# Handle -c flag specifically for command execution
 	if [ "$1" = "-c" ] && [ -n "$2" ]; then
 		# Run command non-interactively
-		docker_run "exec" "$config" "" su - vagrant -c "cd '$target_dir' && source ~/.zshrc && $2"
+		docker_run "exec" "$config" "" su - $project_user -c "cd '$target_dir' && source ~/.zshrc && $2"
 	elif [ $# -gt 0 ]; then
 		# Run with all arguments
-		docker_run "exec" "$config" "" su - vagrant -c "cd '$target_dir' && source ~/.zshrc && zsh $*"
+		docker_run "exec" "$config" "" su - $project_user -c "cd '$target_dir' && source ~/.zshrc && zsh $*"
 	else
 		# Interactive mode - use a simple approach that works
 		local project_name=$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')
@@ -317,8 +318,8 @@ docker_ssh() {
 		# Run an interactive shell that properly handles signals
 		docker_cmd exec -it "${container_name}" bash -c "
 			cd '$target_dir'
-			# Switch to vagrant user while preserving signal handling
-			exec sudo -u vagrant -i bash -c \"cd '$target_dir' && exec /bin/zsh\"
+			# Switch to project user while preserving signal handling
+			exec sudo -u $project_user -i bash -c \"cd '$target_dir' && exec /bin/zsh\"
 		"
 	fi
 }
