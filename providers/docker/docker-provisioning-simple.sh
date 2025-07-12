@@ -105,7 +105,7 @@ generate_docker_compose() {
     local devices=()
     local groups=()
     
-    if [[ "$(echo "$config" | jq -r '.services.audio.enabled // false')" == "true" ]]; then
+    if [[ "$(echo "$config" | jq -r '.services.audio.enabled // true')" == "true" ]]; then
         audio_env="\\n      - PULSE_SERVER=unix:/run/user/1000/pulse/native"
         audio_volumes="\\n      - \${XDG_RUNTIME_DIR}/pulse:/run/user/1000/pulse"
         devices+=("/dev/snd:/dev/snd")
