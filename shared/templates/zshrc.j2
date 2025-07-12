@@ -106,7 +106,6 @@ alias mysql='mysql -u root -p{{ project_config.services.mysql.password | default
 export DISPLAY={{ project_config.services.headless_browser.display | default(':99') }}
 export PUPPETEER_EXECUTABLE_PATH={{ project_config.services.headless_browser.executable_path | default('/usr/bin/chromium-browser') }}
 
-{% if config_file_stat.stat.exists %}
 # Project-Specific Aliases
 {% for alias_name, alias_command in (project_config.aliases | default({})).items() %}
 alias {{ alias_name }}='{{ alias_command }}'
@@ -116,7 +115,6 @@ alias {{ alias_name }}='{{ alias_command }}'
 {% for service, port in (project_config.ports | default({})).items() %}
 # {{ service }}: localhost:{{ port }}
 {% endfor %}
-{% endif %}
 
 # Auto-cd to workspace
 cd {{ project_path }} 2>/dev/null || true

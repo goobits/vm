@@ -5,20 +5,23 @@
 
 set -e
 
+# Get VM tool directory for accessing default config and utilities
+VM_TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+# Source the deep merge utility
+source "$VM_TOOL_DIR/shared/deep-merge.sh"
+
 # Function to generate docker-compose.yml
 generate_docker_compose() {
     local config_path="$1"
     local project_dir="${2:-$(pwd)}"
     
-    # Load and validate config
-    if [[ ! -f "$config_path" ]]; then
-        echo "Error: Config file not found: $config_path" >&2
-        return 1
-    fi
-    
+    # Load and merge config with defaults using standardized utility
+    local default_config_path="$VM_TOOL_DIR/vm.json"
     local config
-    if ! config="$(jq . "$config_path" 2>/dev/null)"; then
-        echo "Error: Invalid JSON in config file: $config_path" >&2
+    
+    if ! config="$(merge_project_config "$default_config_path" "$config_path")"; then
+        echo "❌ Failed to merge project configuration with defaults" >&2
         return 1
     fi
     
