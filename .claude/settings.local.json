@@ -12,7 +12,8 @@
       "Bash(grep:*)",
       "Bash(./vm.sh:*)",
       "Bash(./test-parity.sh:*)",
-      "Bash(VAGRANT_CWD=\"/home/miko/projects/vm/providers/vagrant\" vagrant destroy -f myproject)"
+      "Bash(VAGRANT_CWD=\"/home/miko/projects/vm/providers/vagrant\" vagrant destroy -f myproject)",
+      "Bash(git add:*)"
     ],
     "deny": []
   }
