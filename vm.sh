@@ -62,28 +62,30 @@ show_usage() {
 	echo "  generate              Generate vm.json by composing services"
 	echo "  validate              Validate VM configuration"
 	echo "  list                  List all VM instances"
-	echo "  up [args]            Start VM"
-	echo "  ssh [args]           SSH into VM"
-	echo "  halt [args]          Stop VM"
-	echo "  destroy [args]       Destroy VM"
-	echo "  status [args]        Check VM status"
-	echo "  reload [args]        Reload VM"
-	echo "  provision [args]     Reprovision VM"
-	echo "  logs [args]          View VM logs (Docker only)"
-	echo "  exec [args]          Execute command in VM (Docker only)"
-	echo "  test [args]          Run VM test suite"
-	echo "  kill                 Force kill VM processes"
+	echo "  create [args]         Create new VM with full provisioning"
+	echo "  start [args]          Start existing VM without provisioning"
+	echo "  stop [args]           Stop VM but keep data"
+	echo "  restart [args]        Restart VM without reprovisioning"
+	echo "  ssh [args]            SSH into VM"
+	echo "  destroy [args]        Destroy VM completely"
+	echo "  status [args]         Check VM status"
+	echo "  provision [args]      Re-run full provisioning on existing VM"
+	echo "  logs [args]           View VM logs (Docker only)"
+	echo "  exec [args]           Execute command in VM (Docker only)"
+	echo "  test [args]           Run VM test suite"
+	echo "  kill                  Force kill VM processes"
 	echo ""
 	echo "Examples:"
 	echo "  $0 generate --services postgresql,redis  # Generate config with services"
 	echo "  $0 generate --ports 3020 --name my-app   # Generate with custom ports/name"
 	echo "  $0 validate                              # Check configuration"
 	echo "  $0 list                                  # List all VM instances"
-	echo "  $0 --config ./prod.json up               # Start VM with specific config"
-	echo "  $0 --config up                           # Start VM scanning up for vm.json"
-	echo "  $0 up                                    # Start the VM (auto-find vm.json)"
+	echo "  $0 --config ./prod.json create           # Create VM with specific config"
+	echo "  $0 --config create                       # Create VM scanning up for vm.json"
+	echo "  $0 create                                # Create new VM (auto-find vm.json)"
+	echo "  $0 start                                 # Start existing VM (fast)"
 	echo "  $0 ssh                                   # Connect to VM"
-	echo "  $0 halt                                  # Stop the VM"
+	echo "  $0 stop                                  # Stop the VM"
 	echo ""
 	echo "The provider (Vagrant or Docker) is determined by the 'provider' field in vm.json"
 }
@@ -128,15 +130,15 @@ load_config() {
 	if [ -n "$config_path" ]; then
 		# Use custom config path
 		if [ "${VM_DEBUG:-}" = "true" ]; then
-			echo "DEBUG load_config: Running: cd '$original_dir' && '$SCRIPT_DIR/validate-config.sh' '$config_path'" >&2
+			echo "DEBUG load_config: Running: cd '$original_dir' && '$SCRIPT_DIR/validate-config.sh' --get-config '$config_path'" >&2
 		fi
-		(cd "$original_dir" && "$SCRIPT_DIR/validate-config.sh" "$config_path")
+		(cd "$original_dir" && "$SCRIPT_DIR/validate-config.sh" --get-config "$config_path")
 	else
 		# Use default discovery logic - run from the original directory
 		if [ "${VM_DEBUG:-}" = "true" ]; then
-			echo "DEBUG load_config: Running: cd '$original_dir' && '$SCRIPT_DIR/validate-config.sh'" >&2
+			echo "DEBUG load_config: Running: cd '$original_dir' && '$SCRIPT_DIR/validate-config.sh' --get-config" >&2
 		fi
-		(cd "$original_dir" && "$SCRIPT_DIR/validate-config.sh")
+		(cd "$original_dir" && "$SCRIPT_DIR/validate-config.sh" --get-config)
 	fi
 }
 
@@ -298,9 +300,18 @@ docker_ssh() {
 	local project_user=$(echo "$config" | jq -r '.vm.user // "developer"')
 	local target_dir="${workspace_path}"
 	
+	if [ "${VM_DEBUG:-}" = "true" ]; then
+		echo "DEBUG docker_ssh: relative_path='$relative_path'" >&2
+		echo "DEBUG docker_ssh: workspace_path='$workspace_path'" >&2
+	fi
+	
 	# If we have a relative path and it's not just ".", append it to workspace path
 	if [ -n "$relative_path" ] && [ "$relative_path" != "." ]; then
 		target_dir="${workspace_path}/${relative_path}"
+	fi
+	
+	if [ "${VM_DEBUG:-}" = "true" ]; then
+		echo "DEBUG docker_ssh: target_dir='$target_dir'" >&2
 	fi
 	
 	# Handle -c flag specifically for command execution
@@ -316,12 +327,62 @@ docker_ssh() {
 		local container_name="${project_name}-dev"
 		
 		# Run an interactive shell that properly handles signals
-		docker_cmd exec -it "${container_name}" bash -c "
-			cd '$target_dir'
-			# Switch to project user while preserving signal handling
-			exec sudo -u $project_user -i bash -c \"cd '$target_dir' && exec /bin/zsh\"
+		if [ "${VM_DEBUG:-}" = "true" ]; then
+			echo "DEBUG docker_ssh: Executing: docker exec -it -e VM_TARGET_DIR='$target_dir' ${container_name} sudo -u $project_user bash -c \"cd '$target_dir' && exec /bin/zsh\"" >&2
+		fi
+		# Set environment variable and use bash to ensure directory change
+		docker_cmd exec -it -e "VM_TARGET_DIR=$target_dir" "${container_name}" sudo -u "$project_user" bash -c "
+			cd '$target_dir' || exit 1
+			echo 'Starting in directory:' \$(pwd)
+			echo 'If you end up in the wrong directory, run: cd \$VM_TARGET_DIR'
+			exec /bin/zsh
 		"
 	fi
+}
+
+docker_start() {
+	local config="$1"
+	local project_dir="$2"
+	local relative_path="$3"
+	shift 3
+	
+	echo "🚀 Starting development environment..."
+	
+	# Get container name
+	local project_name=$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')
+	local container_name="${project_name}-dev"
+	
+	# Check if container exists
+	if ! docker_cmd inspect "${container_name}" >/dev/null 2>&1; then
+		echo "❌ Container doesn't exist. Use 'vm create' to set up the environment first."
+		return 1
+	fi
+	
+	# Start the container directly (not using docker-compose)
+	docker_cmd start "${container_name}" "$@"
+	
+	# Wait for container to be ready
+	echo "⏳ Starting up..."
+	local max_attempts=15
+	local attempt=1
+	while [ $attempt -le $max_attempts ]; do
+		if docker_cmd exec "${container_name}" echo "ready" >/dev/null 2>&1; then
+			echo "✅ Environment ready!"
+			break
+		fi
+		if [ $attempt -eq $max_attempts ]; then
+			echo "❌ Environment startup failed"
+			return 1
+		fi
+		sleep 1
+		((attempt++))
+	done
+	
+	echo "🎉 Environment started!"
+	echo "🌟 Entering development environment..."
+	
+	# Automatically SSH into the container  
+	docker_ssh "$config" "$project_dir" "$relative_path"
 }
 
 docker_halt() {
@@ -329,7 +390,10 @@ docker_halt() {
 	local project_dir="$2"
 	shift 2
 	
-	docker_run "stop" "$config" "$project_dir" "$@"
+	# Stop the container directly (not using docker-compose)
+	local project_name=$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')
+	local container_name="${project_name}-dev"
+	docker_cmd stop "${container_name}" "$@"
 }
 
 docker_destroy() {
@@ -367,7 +431,7 @@ docker_reload() {
 	shift 2
 	
 	docker_halt "$config" "$project_dir"
-	docker_up "$config" "$project_dir" "$@"
+	docker_start "$config" "$project_dir" "$@"
 }
 
 docker_provision() {
@@ -468,7 +532,7 @@ while [[ $# -gt 0 ]]; do
 		-c|--config)
 			shift
 			# Check if next argument exists and is not a flag or command
-			if [[ $# -eq 0 ]] || [[ "$1" =~ ^- ]] || [[ "$1" =~ ^(init|generate|validate|list|up|ssh|halt|destroy|status|reload|provision|logs|exec|kill|help)$ ]]; then
+			if [[ $# -eq 0 ]] || [[ "$1" =~ ^- ]] || [[ "$1" =~ ^(init|generate|validate|list|create|start|stop|restart|ssh|destroy|status|provision|logs|exec|kill|help)$ ]]; then
 				# No argument provided or next is a flag/command - use scan mode
 				CUSTOM_CONFIG="__SCAN__"
 			else
@@ -631,8 +695,40 @@ case "${1:-}" in
 		
 		if [ "$PROVIDER" = "docker" ]; then
 			case "$COMMAND" in
-				"up")
+				"create")
 					docker_up "$CONFIG" "$PROJECT_DIR" "$@"
+					;;
+				"start")
+					# Calculate relative path for start (same logic as SSH command)
+					if [ "$CUSTOM_CONFIG" = "__SCAN__" ]; then
+						# In scan mode, we need to figure out where we are relative to the found config
+						# Get the directory where vm.json was found from validate-config.js output
+						CONFIG_DIR=$(echo "$CONFIG" | jq -r '.__config_dir // empty' 2>/dev/null)
+						if [ "${VM_DEBUG:-}" = "true" ]; then
+							echo "DEBUG start: CUSTOM_CONFIG='$CUSTOM_CONFIG'" >&2
+							echo "DEBUG start: CONFIG_DIR='$CONFIG_DIR'" >&2
+							echo "DEBUG start: CURRENT_DIR='$CURRENT_DIR'" >&2
+						fi
+						if [ -n "$CONFIG_DIR" ] && [ "$CONFIG_DIR" != "$CURRENT_DIR" ]; then
+							# Calculate path from config dir to current dir
+							RELATIVE_PATH=$(realpath --relative-to="$CONFIG_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
+						else
+							RELATIVE_PATH="."
+						fi
+					else
+						# Normal mode: relative path from project dir to current dir
+						RELATIVE_PATH=$(realpath --relative-to="$PROJECT_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
+					fi
+					if [ "${VM_DEBUG:-}" = "true" ]; then
+						echo "DEBUG start: RELATIVE_PATH='$RELATIVE_PATH'" >&2
+					fi
+					docker_start "$CONFIG" "$PROJECT_DIR" "$RELATIVE_PATH" "$@"
+					;;
+				"stop")
+					docker_halt "$CONFIG" "$PROJECT_DIR" "$@"
+					;;
+				"restart")
+					docker_reload "$CONFIG" "$PROJECT_DIR" "$@"
 					;;
 				"ssh")
 					# Calculate relative path for SSH
@@ -660,17 +756,11 @@ case "${1:-}" in
 					fi
 					docker_ssh "$CONFIG" "$PROJECT_DIR" "$RELATIVE_PATH" "$@"
 					;;
-				"halt")
-					docker_halt "$CONFIG" "$PROJECT_DIR" "$@"
-					;;
 				"destroy")
 					docker_destroy "$CONFIG" "$PROJECT_DIR" "$@"
 					;;
 				"status")
 					docker_status "$CONFIG" "$PROJECT_DIR" "$@"
-					;;
-				"reload")
-					docker_reload "$CONFIG" "$PROJECT_DIR" "$@"
 					;;
 				"provision")
 					docker_provision "$CONFIG" "$PROJECT_DIR" "$@"
@@ -693,7 +783,7 @@ case "${1:-}" in
 		else
 			# Vagrant provider
 			case "$COMMAND" in
-				"up")
+				"create")
 					# Start VM and auto-SSH
 					if [ -n "$FULL_CONFIG_PATH" ]; then
 						VM_PROJECT_DIR="$PROJECT_DIR" VM_CONFIG="$FULL_CONFIG_PATH" VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant up "$@"
@@ -728,6 +818,19 @@ case "${1:-}" in
 					else
 						VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh
 					fi
+					;;
+				"start")
+					# Start existing VM (Vagrant equivalent of resume)
+					VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant resume "$@" || VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant up "$@"
+					;;
+				"stop")
+					# Stop VM but keep data
+					VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant halt "$@"
+					;;
+				"restart")
+					# Restart VM without reprovisioning
+					VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant halt "$@"
+					VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant resume "$@" || VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant up "$@"
 					;;
 				"exec")
 					# Execute command in Vagrant VM
