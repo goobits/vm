@@ -30,7 +30,7 @@ Beautiful development environments with one command. Choose between Docker (ligh
 npm install -g @goobits/vm
 
 # 2. Start immediately with defaults OR create custom vm.json
-vm up      # Works without any config! Uses smart defaults
+vm create  # Works without any config! Uses smart defaults
 vm ssh     # Enter your shiny new Ubuntu box
 
 # OR customize with vm.json
@@ -52,7 +52,7 @@ cd vm
 ./install.sh
 
 # 2. Use globally
-vm up
+vm create
 ```
 
 ### Option 3: Per-Project Installation
@@ -69,7 +69,7 @@ cp -r vm your-project/
 }
 
 # 3. Launch!
-pnpm vm up
+pnpm vm create
 ```
 
 ## 📦 What's Included
@@ -249,11 +249,12 @@ Result: `⚡ hacker my-app (main) >`
 ## 🎮 Commands
 
 ```bash
-vm up                        # Start VM/container
+vm create                    # Create new VM/container with full provisioning
+vm start                     # Start existing VM/container without provisioning
+vm stop                      # Stop VM/container but keep data
+vm restart                   # Restart VM/container without reprovisioning
 vm ssh                       # Connect to VM/container
-vm halt                      # Stop VM/container (keeps data)
-vm destroy                   # Delete VM/container
-vm reload                    # Restart with new config
+vm destroy                   # Delete VM/container completely
 vm status                    # Check if running
 vm validate                  # Check config
 vm kill                      # Force kill stuck processes
@@ -270,7 +271,7 @@ vm test --suite services    # Test service configurations
 vm test --list              # Show available test suites
 
 # Use custom config file
-vm --config prod.json up     # Start with specific config
+vm --config prod.json create # Create with specific config
 vm --config dev.json ssh     # Any command works with --config
 ```
 
@@ -283,7 +284,7 @@ The `vm` command automatically searches for `vm.json` configuration:
 3. **Grandparent directory**: `../../vm.json`
 4. **Defaults**: If no config found, uses built-in defaults
 
-This means you can run `vm up` from anywhere in your project tree, and it will find the right configuration!
+This means you can run `vm create` from anywhere in your project tree, and it will find the right configuration!
 
 ## 🔌 Port Strategy
 
@@ -359,7 +360,7 @@ Fixed port collision for 3000 => 3000. Now on port 2200.
 A: Check output for remapped ports (Vagrant) or adjust ports in vm.json
 
 **Q: VM/container won't start?**  
-A: `vm destroy` then `vm up`
+A: `vm destroy` then `vm create`
 
 **Q: Slow performance?**  
 A: Increase memory/CPUs in vm.json (or switch to Docker provider)
