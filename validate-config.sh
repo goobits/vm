@@ -301,6 +301,16 @@ main() {
     fi
     
     # Output final config (default behavior)
+    # Add __config_dir field if we're in scan mode
+    if [[ "$CUSTOM_CONFIG_PATH" == "__SCAN__" ]]; then
+        # Find where the config was located by scanning again
+        local config_location
+        if config_location="$(find_vm_json_upwards "$(pwd)")"; then
+            local config_dir="$(dirname "$config_location")"
+            final_config="$(echo "$final_config" | jq --arg dir "$config_dir" '. + {__config_dir: $dir}')"
+        fi
+    fi
+    
     echo "$final_config"
     return 0
 }

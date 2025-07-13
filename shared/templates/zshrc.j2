@@ -116,5 +116,9 @@ alias {{ alias_name }}='{{ alias_command }}'
 # {{ service }}: localhost:{{ port }}
 {% endfor %}
 
-# Auto-cd to workspace
-cd {{ project_path }} 2>/dev/null || true
+# Auto-cd to workspace (respect VM_TARGET_DIR for subdirectory support)
+if [ -n "$VM_TARGET_DIR" ]; then
+  cd "$VM_TARGET_DIR" 2>/dev/null || cd {{ project_path }} 2>/dev/null || true
+else
+  cd {{ project_path }} 2>/dev/null || true
+fi
