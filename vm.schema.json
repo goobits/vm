@@ -262,7 +262,7 @@
           "properties": {
             "enabled": {
               "type": "boolean",
-              "default": true,
+              "default": false,
               "description": "Enable audio device support for notifications and testing"
             },
             "driver": {
