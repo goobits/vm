@@ -37,6 +37,9 @@ RUN apt-get update && apt-get install -y \
     && update-locale LANG=en_US.UTF-8 \
     && rm -rf /var/lib/apt/lists/*
 
+# Create render group for GPU access
+RUN groupadd -f render
+
 # Create group and user with specific UID/GID to match host
 RUN set -e && \
     # Remove existing user with target UID if it exists (usually 'ubuntu' user in Ubuntu base image)
