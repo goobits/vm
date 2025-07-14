@@ -574,6 +574,13 @@
             remote_src: yes
             owner: '{{ project_user }}'
 
+      - name: Copy shared Claude memory file
+        copy:
+            src: '/vm-tool/shared/claude-settings/CLAUDE.md'
+            dest: '/home/{{ project_user }}/.claude/CLAUDE.md'
+            remote_src: yes
+            owner: '{{ project_user }}'
+
       # Gemini CLI setup
       - name: Create Gemini settings directory
         file:

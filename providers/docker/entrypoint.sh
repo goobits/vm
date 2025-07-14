@@ -10,6 +10,19 @@ if [ -d "/home/$PROJECT_USER/.claude" ]; then
     chmod -R 755 /home/$PROJECT_USER/.claude || true
 fi
 
+# Copy shared Claude settings and CLAUDE.md if they exist
+if [ -f "/vm-tool/shared/claude-settings/settings.json" ]; then
+    mkdir -p "/home/$PROJECT_USER/.claude"
+    cp "/vm-tool/shared/claude-settings/settings.json" "/home/$PROJECT_USER/.claude/" || true
+    chown $PROJECT_USER:$(id -gn $PROJECT_USER) "/home/$PROJECT_USER/.claude/settings.json" || true
+fi
+
+if [ -f "/vm-tool/shared/claude-settings/CLAUDE.md" ]; then
+    mkdir -p "/home/$PROJECT_USER/.claude"
+    cp "/vm-tool/shared/claude-settings/CLAUDE.md" "/home/$PROJECT_USER/.claude/" || true
+    chown $PROJECT_USER:$(id -gn $PROJECT_USER) "/home/$PROJECT_USER/.claude/CLAUDE.md" || true
+fi
+
 # Run shell setup if config exists
 if [ -f /tmp/vm-config.json ]; then
     echo "📄 Found config file, setting up shell..."
