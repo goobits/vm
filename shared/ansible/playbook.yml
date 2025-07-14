@@ -569,15 +569,8 @@
 
       - name: Copy shared Claude settings
         copy:
-            src: '/vm-tool/shared/claude-settings/settings.json'
-            dest: '/home/{{ project_user }}/.claude/settings.json'
-            remote_src: yes
-            owner: '{{ project_user }}'
-
-      - name: Copy shared Claude memory file
-        copy:
-            src: '/vm-tool/shared/claude-settings/CLAUDE.md'
-            dest: '/home/{{ project_user }}/.claude/CLAUDE.md'
+            src: '/vm-tool/shared/claude-settings/'
+            dest: '/home/{{ project_user }}/.claude/'
             remote_src: yes
             owner: '{{ project_user }}'
 
