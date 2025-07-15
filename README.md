@@ -311,6 +311,14 @@ Example allocation:
 
 **Network access?** Add `"port_binding": "0.0.0.0"` to share with your network.
 
+## 🔄 Advanced Features
+
+**Aliases**: Custom shell aliases from `vm.json` are applied via Ansible. To update without reprovisioning: edit `~/.zshrc` manually or run `vm provision`.
+
+**Claude Sync**: Add `"claude_sync": true` to sync Claude AI data to `~/.claude/vms/{project_name}/` on your host.
+
+**Database Persistence**: Add `"persist_databases": true` to store database data in `.vm/data/` (survives VM rebuilds). Add `.vm/` to `.gitignore`.
+
 ## 💡 Tips & Tricks
 
 ### 🔄 File Sync
