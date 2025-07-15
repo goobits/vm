@@ -172,7 +172,7 @@ if echo "$base_config" | jq . > "$OUTPUT_FILE"; then
     echo ""
     echo "Next steps:"
     echo "  1. Review and customize $OUTPUT_FILE as needed"
-    echo "  2. Run \"vm up\" to start your development environment"
+    echo "  2. Run \"vm create\" to start your development environment"
 else
     echo "❌ Failed to generate configuration" >&2
     exit 1

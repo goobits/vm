@@ -249,6 +249,9 @@ Result: `⚡ hacker my-app (main) >`
 ## 🎮 Commands
 
 ```bash
+vm init                      # Initialize a new vm.json configuration file
+vm generate                  # Generate vm.json by composing services
+vm list                      # List all VM instances
 vm create                    # Create new VM/container with full provisioning
 vm start                     # Start existing VM/container without provisioning
 vm stop                      # Stop VM/container but keep data
