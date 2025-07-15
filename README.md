@@ -1,4 +1,4 @@
-# 🚀 VM Infrastructure
+# 🚀 Goobits VM Infrastructure
 
 Beautiful development environments with one command. Choose between Docker (lightweight containers, default) or Vagrant (full VM isolation) based on your needs.
 
