@@ -56,6 +56,47 @@ deep_merge() {
     '
 }
 
+# Extract default values from schema
+extract_schema_defaults() {
+    local schema_path="$1"
+    
+    if [[ ! -f "$schema_path" ]]; then
+        echo "❌ Schema file not found: $schema_path" >&2
+        return 1
+    fi
+    
+    jq '
+    {
+      provider: .properties.provider.default,
+      project: {
+        workspace_path: .properties.project.properties.workspace_path.default,
+        backup_pattern: .properties.project.properties.backup_pattern.default
+      },
+      vm: {
+        box: .properties.vm.properties.box.default,
+        memory: .properties.vm.properties.memory.default,
+        cpus: .properties.vm.properties.cpus.default,
+        user: .properties.vm.properties.user.default,
+        port_binding: .properties.vm.properties.port_binding.default,
+        timezone: .properties.vm.properties.timezone.default
+      },
+      versions: {
+        node: .properties.versions.properties.node.default,
+        nvm: .properties.versions.properties.nvm.default,
+        pnpm: .properties.versions.properties.pnpm.default
+      },
+      terminal: {
+        emoji: .properties.terminal.properties.emoji.default,
+        username: .properties.terminal.properties.username.default,
+        theme: .properties.terminal.properties.theme.default,
+        show_git_branch: .properties.terminal.properties.show_git_branch.default
+      },
+      aliases: .properties.aliases.default,
+      claude_sync: .properties.claude_sync.default,
+      gemini_sync: .properties.gemini_sync.default
+    }' "$schema_path"
+}
+
 # Find vm.json upwards from directory
 find_vm_json_upwards() {
     local start_dir="$1"
@@ -81,7 +122,6 @@ find_vm_json_upwards() {
 # Initialize vm.json
 initialize_vm_json() {
     local target_path="$1"
-    local default_config_path="$SCRIPT_DIR/vm.json"
     local local_config_path="${target_path:-$(pwd)/vm.json}"
     
     # Check if vm.json already exists
@@ -91,13 +131,14 @@ initialize_vm_json() {
         return 1
     fi
     
-    # Load default configuration
-    if [[ ! -f "$default_config_path" ]]; then
-        echo "❌ Default configuration template not found at $default_config_path" >&2
+    # Load default configuration from schema
+    local schema_path="$SCRIPT_DIR/vm.schema.json"
+    if [[ ! -f "$schema_path" ]]; then
+        echo "❌ Schema file not found at $schema_path" >&2
         return 1
     fi
     
-    local default_config="$(cat "$default_config_path")"
+    local default_config="$(extract_schema_defaults "$schema_path")"
     local dir_name="$(basename "$(pwd)")"
     
     # Customize config for this directory
@@ -125,18 +166,18 @@ initialize_vm_json() {
 # Load and merge configuration
 load_and_merge_config() {
     local custom_config_path="$1"
-    local default_config_path="$SCRIPT_DIR/vm.json"
     local local_config_path="$(pwd)/vm.json"
     local config_file_to_load=""
     local config_dir_for_scan=""
     
-    # Load default config
-    if [[ ! -f "$default_config_path" ]]; then
-        echo "❌ Default configuration not found at $default_config_path" >&2
+    # Load default config from schema
+    local schema_path="$SCRIPT_DIR/vm.schema.json"
+    if [[ ! -f "$schema_path" ]]; then
+        echo "❌ Schema file not found at $schema_path" >&2
         return 1
     fi
     
-    local default_config="$(cat "$default_config_path")"
+    local default_config="$(extract_schema_defaults "$schema_path")"
     
     # Determine which config to load
     if [[ "$custom_config_path" == "__SCAN__" ]]; then
