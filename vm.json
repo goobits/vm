@@ -1,14 +1,16 @@
 {
   "$schema": "./vm.schema.json",
   "project": {
-    "name": "claudeflow",
-    "hostname": "dev.claudeflow.local"
+    "name": "vm",
+    "hostname": "dev.vm.local"
   },
   "vm": {
+    "box": "bento/ubuntu-24.04",
     "memory": 8192,
-    "cpus": 4
+    "cpus": 4,
+    "user": "developer"
   },
   "terminal": {
-    "username": "claudeflow-dev"
+    "username": "vm-dev"
   }
 }
