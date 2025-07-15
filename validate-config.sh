@@ -91,6 +91,8 @@ extract_schema_defaults() {
         theme: .properties.terminal.properties.theme.default,
         show_git_branch: .properties.terminal.properties.show_git_branch.default
       },
+      apt_packages: .properties.apt_packages.default,
+      npm_packages: .properties.npm_packages.default,
       aliases: .properties.aliases.default,
       claude_sync: .properties.claude_sync.default,
       gemini_sync: .properties.gemini_sync.default

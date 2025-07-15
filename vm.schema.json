@@ -348,6 +348,7 @@
     "apt_packages": {
       "type": "array",
       "description": "Additional APT packages to install",
+      "default": ["htop", "tree", "ncdu", "ripgrep", "nano", "sox", "pipx"],
       "items": {
         "type": "string"
       },
@@ -358,6 +359,7 @@
     "npm_packages": {
       "type": "array",
       "description": "Global npm packages to install",
+      "default": ["@anthropic-ai/claude-code", "@google/gemini-cli", "npm-check-updates", "prettier", "eslint"],
       "items": {
         "type": "string"
       },
