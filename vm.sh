@@ -266,7 +266,7 @@ docker_up() {
 		echo "⚠️ Provisioning completed with warnings (exit code: $ANSIBLE_EXIT_CODE)"
 		echo "📋 Full log saved in container at: $ANSIBLE_LOG"
 		echo "💡 Tips:"
-		echo "   - Run with VM_DEBUG=true vm up to see detailed error output"
+		echo "   - Run with VM_DEBUG=true vm create to see detailed error output"
 		echo "   - View the log: vm exec cat $ANSIBLE_LOG"
 		echo "   - Or copy it: docker cp ${container_name}:$ANSIBLE_LOG ./ansible-error.log"
 	fi
