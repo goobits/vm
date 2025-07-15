@@ -170,7 +170,7 @@ create_test_vm() {
     # Start VM with timeout
     cd "$TEST_DIR"
     # Try without sudo first since docker-compose is now available
-    cd /workspace && npm link && cd "$TEST_DIR" && timeout "$timeout" vm up || {
+    cd /workspace && npm link && cd "$TEST_DIR" && timeout "$timeout" vm create || {
         echo -e "${RED}Failed to create VM within ${timeout}s${NC}"
         return 1
     }
@@ -916,7 +916,7 @@ test_vm_lifecycle() {
     assert_vm_stopped
     
     # Test VM restart
-    vm up || return 1
+    vm create || return 1
     sleep 5
     assert_vm_running
     

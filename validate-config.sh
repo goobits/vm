@@ -114,7 +114,7 @@ initialize_vm_json() {
         echo ""
         echo "Next steps:"
         echo "  1. Review and customize vm.json as needed"
-        echo "  2. Run \"vm up\" to start your development environment"
+        echo "  2. Run \"vm create\" to start your development environment"
         return 0
     else
         echo "❌ Failed to create vm.json" >&2
