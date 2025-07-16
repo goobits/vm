@@ -16,6 +16,7 @@ Beautiful development environments with one command. Choose between Docker (ligh
     - [Full Reference](#-full-reference)
     - [Terminal Options](#-terminal-options)
 - [Commands](#-commands)
+- [Temporary VMs](#-temporary-vms)
 - [Port Strategy](#-port-strategy)
 - [Tips & Tricks](#-tips--tricks)
 - [Troubleshooting](#-troubleshooting)
@@ -252,6 +253,7 @@ Result: `⚡ hacker my-app (main) >`
 vm init                      # Initialize a new vm.json configuration file
 vm generate                  # Generate vm.json by composing services
 vm list                      # List all VM instances
+vm temp <folders>            # Create ephemeral VM with specific directory mounts
 vm create                    # Create new VM/container with full provisioning
 vm start                     # Start existing VM/container without provisioning
 vm stop                      # Stop VM/container but keep data
@@ -277,6 +279,68 @@ vm test --list              # Show available test suites
 vm --config prod.json create # Create with specific config
 vm --config dev.json ssh     # Any command works with --config
 ```
+
+## 🚀 Temporary VMs
+
+Need a quick, disposable environment for testing or experimentation? Use the temp VM feature - perfect for one-off tasks without creating a full vm.json configuration.
+
+### ✨ Features
+
+- **Zero configuration**: No vm.json needed
+- **Selective directory mounting**: Choose exactly which folders to include
+- **Auto-cleanup**: Container removes itself when you exit
+- **Collision handling**: Reuses existing temp VM if mounts match, recreates if different
+- **Lightweight**: Basic Ubuntu container for quick experiments
+
+### 🎯 Usage
+
+```bash
+# Create temp VM with specific directories
+vm temp ./src,./tests,./config
+
+# Mount with permissions (read-only/read-write)
+vm temp ./src:rw,./docs:ro,./tests
+
+# Destroy temp VM
+vm destroy vm-temp
+
+# Check if temp VM is running
+vm status vm-temp
+```
+
+### 🔄 Smart Collision Handling
+
+The temp VM automatically handles conflicts:
+
+- **Same mounts**: Connects to existing temp VM
+- **Different mounts**: Destroys old temp VM and creates new one with new mounts
+- **No temp VM**: Creates fresh temp VM
+
+```bash
+# First time - creates new temp VM
+vm temp ./client,./server
+
+# Same command - connects to existing temp VM
+vm temp ./client,./server
+
+# Different mounts - destroys and recreates
+vm temp ./frontend,./backend
+```
+
+### 💡 Use Cases
+
+- **Quick testing**: Test libraries or configurations without affecting main project
+- **Code reviews**: Safely explore PRs in isolation
+- **Experiments**: Try new tools or configurations
+- **Debugging**: Isolate issues with minimal setup
+- **Temporary work**: One-off tasks that don't need persistent environments
+
+### ⚠️ Limitations
+
+- **Docker only**: Temp VMs use Docker containers, not full Vagrant VMs
+- **Basic environment**: No services (PostgreSQL, Redis, etc.) - just Ubuntu + basic tools
+- **No persistence**: Data is lost when temp VM is destroyed
+- **No custom configuration**: Uses built-in minimal setup
 
 ## 🔍 Automatic vm.json Discovery
 

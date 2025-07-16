@@ -23,6 +23,53 @@ fi
 # Get the current working directory (where user ran the command)
 CURRENT_DIR="$(pwd)"
 
+# Parse comma-separated mount string into mount arguments
+parse_mount_string() {
+	local mount_str="$1"
+	local mount_args=""
+	
+	if [ -n "$mount_str" ]; then
+		# Split by comma and process each mount (save original IFS)
+		local old_ifs="$IFS"
+		IFS=','
+		local MOUNTS=($mount_str)
+		IFS="$old_ifs"
+		for mount in "${MOUNTS[@]}"; do
+			# Trim whitespace
+			mount=$(echo "$mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+			
+			# Handle mount:permission format (e.g., ./src:rw, ./config:ro)
+			if [[ "$mount" == *:* ]]; then
+				local source="${mount%:*}"
+				local perm="${mount##*:}"
+				# Check if source exists and is a directory
+				if [ ! -d "$source" ]; then
+					echo "❌ Error: Directory '$source' does not exist or is not a directory" >&2
+					return 1
+				fi
+				case "$perm" in
+					"ro"|"readonly")
+						mount_args="$mount_args -v $(realpath "$source"):/workspace/$(basename "$source"):ro"
+						;;
+					"rw"|"readwrite"|*)
+						mount_args="$mount_args -v $(realpath "$source"):/workspace/$(basename "$source")"
+						;;
+				esac
+			else
+				# Check if mount exists and is a directory
+				if [ ! -d "$mount" ]; then
+					echo "❌ Error: Directory '$mount' does not exist or is not a directory" >&2
+					return 1
+				fi
+				# Default to read-write mount
+				mount_args="$mount_args -v $(realpath "$mount"):/workspace/$(basename "$mount")"
+			fi
+		done
+	fi
+	
+	echo "$mount_args"
+}
+
 # Docker wrapper to handle sudo requirements
 docker_cmd() {
 	if ! docker version &>/dev/null 2>&1; then
@@ -62,6 +109,7 @@ show_usage() {
 	echo "  generate              Generate vm.json by composing services"
 	echo "  validate              Validate VM configuration"
 	echo "  list                  List all VM instances"
+	echo "  temp [mounts]         Create temporary VM with specific directory mounts"
 	echo "  create [args]         Create new VM with full provisioning"
 	echo "  start [args]          Start existing VM without provisioning"
 	echo "  stop [args]           Stop VM but keep data"
@@ -80,6 +128,9 @@ show_usage() {
 	echo "  $0 generate --ports 3020 --name my-app   # Generate with custom ports/name"
 	echo "  $0 validate                              # Check configuration"
 	echo "  $0 list                                  # List all VM instances"
+	echo "  $0 temp ./client,./server,./shared       # Create temp VM with specific folders"
+	echo "  $0 temp ./src:rw,./config:ro             # Temp VM with mount permissions"
+	echo "  $0 destroy vm-temp                       # Destroy temp VM"
 	echo "  $0 --config ./prod.json create           # Create VM with specific config"
 	echo "  $0 --config create                       # Create VM scanning up for vm.json"
 	echo "  $0 create                                # Create new VM (auto-find vm.json)"
@@ -532,7 +583,7 @@ while [[ $# -gt 0 ]]; do
 		-c|--config)
 			shift
 			# Check if next argument exists and is not a flag or command
-			if [[ $# -eq 0 ]] || [[ "$1" =~ ^- ]] || [[ "$1" =~ ^(init|generate|validate|list|create|start|stop|restart|ssh|destroy|status|provision|logs|exec|kill|help)$ ]]; then
+			if [[ $# -eq 0 ]] || [[ "$1" =~ ^- ]] || [[ "$1" =~ ^(init|generate|validate|list|temp|create|start|stop|restart|ssh|destroy|status|provision|logs|exec|kill|help)$ ]]; then
 				# No argument provided or next is a flag/command - use scan mode
 				CUSTOM_CONFIG="__SCAN__"
 			else
@@ -633,6 +684,65 @@ case "${1:-}" in
 			docker_kill "$CONFIG"
 		else
 			kill_virtualbox
+		fi
+		;;
+	"temp")
+		# Handle temp VM with dynamic mounts
+		shift
+		if [ $# -eq 0 ]; then
+			echo "❌ Usage: vm temp ./folder1,./folder2,./folder3"
+			echo "   Example: vm temp ./client,./server,./shared"
+			exit 1
+		fi
+		
+		# Parse mount string from first argument
+		MOUNT_STRING="$1"
+		if [ -z "$MOUNT_STRING" ]; then
+			echo "❌ Usage: vm temp ./folder1,./folder2,./folder3"
+			echo "   Example: vm temp ./client,./server,./shared"
+			exit 1
+		fi
+		MOUNT_ARGS=$(parse_mount_string "$MOUNT_STRING")
+		if [ $? -ne 0 ]; then
+			echo "❌ Mount parsing failed. Please check all directories exist."
+			exit 1
+		fi
+		
+		# Check if vm-temp already exists
+		TEMP_CONTAINER="vm-temp"
+		if docker_cmd inspect "$TEMP_CONTAINER" >/dev/null 2>&1; then
+			# Container exists - check if it has same mounts
+			EXISTING_MOUNTS=$(docker_cmd inspect "$TEMP_CONTAINER" --format='{{range .Mounts}}{{.Source}}:{{.Destination}},{{end}}' 2>/dev/null | sed 's/,$//')
+			
+			# Generate expected mounts from our mount string for comparison
+			EXPECTED_MOUNTS=""
+			IFS=','
+			MOUNTS=($MOUNT_STRING)
+			for mount in "${MOUNTS[@]}"; do
+				mount=$(echo "$mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+				if [[ "$mount" == *:* ]]; then
+					mount="${mount%:*}"
+				fi
+				REAL_PATH=$(realpath "$mount" 2>/dev/null || echo "$mount")
+				EXPECTED_MOUNTS="$EXPECTED_MOUNTS$REAL_PATH:/workspace/$(basename "$mount"),"
+			done
+			EXPECTED_MOUNTS=$(echo "$EXPECTED_MOUNTS" | sed 's/,$//')
+			
+			if [ "$EXISTING_MOUNTS" = "$EXPECTED_MOUNTS" ]; then
+				echo "🔄 vm-temp already running with same mounts - connecting..."
+				docker_cmd exec -it "$TEMP_CONTAINER" /bin/zsh
+			else
+				echo "🗑️ vm-temp exists with different mounts - destroying and recreating..."
+				docker_cmd rm -f "$TEMP_CONTAINER" >/dev/null 2>&1
+				
+				# Create new temp container
+				echo "🚀 Creating temp VM with mounts: $MOUNT_STRING"
+				docker_cmd run -it --name "$TEMP_CONTAINER" --rm $MOUNT_ARGS ubuntu:22.04 /bin/bash
+			fi
+		else
+			# Container doesn't exist - create it
+			echo "🚀 Creating temp VM with mounts: $MOUNT_STRING"
+			docker_cmd run -it --name "$TEMP_CONTAINER" --rm $MOUNT_ARGS ubuntu:22.04 /bin/bash
 		fi
 		;;
 	"help"|"-h"|"--help"|"")
