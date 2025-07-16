@@ -2,25 +2,202 @@
 
 Beautiful development environments with one command. Choose between Docker (lightweight containers, default) or Vagrant (full VM isolation) based on your needs.
 
-> **🔐 Built for Claude Code**: This infrastructure provides safe sandboxes for AI-assisted development. Choose your isolation level:
+> **🔐 Built for AI Agents**: This infrastructure provides safe sandboxes for AI-assisted development when you need system isolation. Choose your isolation level:
 > - **Docker (default)**: Lightweight containers with shared kernel - fast and resource-efficient for most workloads
-> - **Vagrant**: Full VM isolation with separate kernel - ideal for `claude --dangerously-skip-permissions`
+> - **Vagrant**: Full VM isolation with separate kernel - ideal for risky operations or when system security is a concern
+
+## 🏃 Quick Start
+
+### Option 1: npm Global Installation (Recommended)
+
+```bash
+# 1. Install globally via npm
+npm install -g @goobits/vm
+
+# 2. Start immediately with defaults OR create custom vm.json
+vm create  # Works without any config! Uses smart defaults
+vm ssh     # Enter your shiny new Ubuntu box
+
+# OR customize with vm.json
+{
+  "ports": {
+    "frontend": 3000,
+    "backend": 3001
+  }
+  # Default provider is Docker - add "provider": "vagrant" for full VM
+}
+```
+
+### Option 2: Manual Global Installation
+
+```bash
+# 1. Clone and install
+git clone <repo-url>
+cd vm
+./install.sh
+
+# 2. Use globally
+vm create
+```
+
+### Option 3: Per-Project Installation
+
+```bash
+# 1. Copy to your project
+cp -r vm your-project/
+
+# 2. Add to package.json
+{
+  "scripts": {
+    "vm": "./vm/vm.sh"
+  }
+}
+
+# 3. Launch!
+pnpm vm create
+```
+
+## 🎮 Commands
+
+```bash
+vm init                      # Initialize a new vm.json configuration file
+vm generate                  # Generate vm.json by composing services
+vm list                      # List all VM instances
+vm temp <folders>            # Create ephemeral VM with specific directory mounts
+vm create                    # Create new VM/container with full provisioning
+vm start                     # Start existing VM/container without provisioning
+vm stop                      # Stop VM/container but keep data
+vm restart                   # Restart VM/container without reprovisioning
+vm ssh                       # Connect to VM/container
+vm destroy                   # Delete VM/container completely
+vm status                    # Check if running
+vm validate                  # Check config
+vm kill                      # Force kill stuck processes
+vm provision                 # Re-run provisioning
+
+# Provider-specific commands
+vm logs                      # View service logs (Docker: container logs, Vagrant: journalctl)
+vm exec <command>            # Execute command in VM/container
+
+# Testing
+vm test                      # Run all tests
+vm test --suite minimal     # Run specific test suite
+vm test --suite services    # Test service configurations
+vm test --list              # Show available test suites
+
+# Use custom config file
+vm --config prod.json create # Create with specific config
+vm --config dev.json ssh     # Any command works with --config
+```
+
+## ⚙️ Configuration
+
+📖 **Full configuration reference**: See [CONFIGURATION.md](CONFIGURATION.md) for all available options.
+
+### 🎯 Minimal Setup
+
+Most projects just need ports. Everything else has smart defaults:
+
+```json
+{
+	"ports": {
+		"frontend": 3020,
+		"backend": 3022
+	}
+}
+```
+
+Want PostgreSQL? Just add:
+
+```json
+{
+	"ports": {
+		"frontend": 3020,
+		"backend": 3022,
+		"postgresql": 3025
+	},
+	"services": {
+		"postgresql": { "enabled": true }
+	}
+}
+```
+
+### 🚀 Automatic Language Installation
+
+Need Rust or Python? Just add packages and the VM automatically installs the language runtime:
+
+```json
+{
+	"cargo_packages": ["cargo-watch", "tokei"],     // Installs Rust + Cargo
+	"pip_packages": ["black", "pytest", "mypy"]     // Installs Python + pyenv
+}
+```
+
+The VM will:
+- **Rust**: Install via rustup with stable toolchain when `cargo_packages` is present
+- **Python**: Install pyenv + Python 3.11 when `pip_packages` is present
+- **Node.js**: Already included by default (configurable version)
+
+### 💻 Installation
+
+#### Prerequisites
+
+**For Vagrant provider**:
+- VirtualBox or Parallels
+- Vagrant
+
+**For Docker provider**:
+- Docker Desktop (macOS/Windows) or Docker Engine (Linux)
+- docker-compose
+
+#### macOS
+
+```bash
+# For Vagrant
+brew tap hashicorp/tap
+brew install hashicorp/tap/hashicorp-vagrant
+brew install --cask virtualbox
+
+# For Docker
+brew install --cask docker
+```
+
+#### Ubuntu/Debian
+
+```bash
+# For Vagrant
+wget -O- https://apt.releases.hashicorp.com/gpg | \
+  sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
+  https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
+  sudo tee /etc/apt/sources.list.d/hashicorp.list
+sudo apt update && sudo apt install vagrant virtualbox
+
+# For Docker
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+```
+
+#### Windows
+
+**Vagrant**: Download from [vagrant.com](https://www.vagrantup.com/downloads) and [virtualbox.org](https://www.virtualbox.org/wiki/Downloads)
+**Docker**: Install [Docker Desktop](https://www.docker.com/products/docker-desktop)
 
 ## 📚 Table of Contents
 
 - [Quick Start](#-quick-start)
-- [What's Included](#-whats-included)
-- [Terminal Themes](#-terminal-themes)
+- [Commands](#-commands)
 - [Configuration](#-configuration)
     - [Minimal Setup](#-minimal-setup)
     - [Full Reference](#-full-reference)
     - [Terminal Options](#-terminal-options)
-- [Commands](#-commands)
+- [Installation](#-installation)
+- [What's Included](#-whats-included)
+- [Terminal Themes](#-terminal-themes)
 - [Temporary VMs](#-temporary-vms)
 - [Port Strategy](#-port-strategy)
 - [Tips & Tricks](#-tips--tricks)
 - [Troubleshooting](#-troubleshooting)
-- [Installation](#-installation)
 
 ## 🏃 Quick Start
 
