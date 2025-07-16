@@ -411,8 +411,6 @@ docker_ssh() {
 		# Set environment variable and use bash to ensure directory change
 		docker_cmd exec -it -e "VM_TARGET_DIR=$target_dir" "${container_name}" sudo -u "$project_user" bash -c "
 			cd '$target_dir' || exit 1
-			echo 'Starting in directory:' \$(pwd)
-			echo 'If you end up in the wrong directory, run: cd \$VM_TARGET_DIR'
 			exec /bin/zsh
 		"
 	fi
@@ -913,6 +911,12 @@ case "${1:-}" in
 						echo "DEBUG ssh: CONFIG_DIR='$CONFIG_DIR'" >&2
 						echo "DEBUG ssh: RELATIVE_PATH='$RELATIVE_PATH'" >&2
 					fi
+					
+					# Get container name for connection message
+					project_name=$(echo "$CONFIG" | jq -r '.project.name' | tr -cd '[:alnum:]')
+					container_name="${project_name}-dev"
+					echo "🎯 Connected to $container_name"
+					
 					docker_ssh "$CONFIG" "$PROJECT_DIR" "$RELATIVE_PATH" "$@"
 					;;
 				"destroy")
