@@ -24,6 +24,7 @@ fi
 CURRENT_DIR="$(pwd)"
 
 # Parse comma-separated mount string into mount arguments
+# Note: Directory names containing commas are not supported due to parsing complexity
 parse_mount_string() {
 	local mount_str="$1"
 	local mount_args=""
@@ -32,8 +33,34 @@ parse_mount_string() {
 		# Split by comma and process each mount (save original IFS)
 		local old_ifs="$IFS"
 		IFS=','
-		local MOUNTS=($mount_str)
+		local MOUNTS=($mount_str)  # This is intentionally unquoted for word splitting
 		IFS="$old_ifs"
+		
+		# Pre-validate: Detect obvious comma-in-name issues  
+		# Check if any parsed fragment looks suspicious (very short, no path separators)
+		# and if so, warn about comma limitation
+		local suspicious_count=0
+		local total_count=${#MOUNTS[@]}
+		for test_mount in "${MOUNTS[@]}"; do
+			test_mount=$(echo "$test_mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+			# Remove permission suffix for testing
+			if [[ "$test_mount" == *:* ]]; then
+				test_mount="${test_mount%:*}"
+			fi
+			# Very short fragments (1-2 chars) without slashes are suspicious  
+			if [[ -n "$test_mount" ]] && [[ ${#test_mount} -le 2 ]] && [[ "$test_mount" != *"/"* ]] && [[ "$test_mount" != "."* ]]; then
+				((suspicious_count++))
+			fi
+		done
+		
+		# If more than half the fragments are suspicious short names, likely comma issue
+		if [[ $total_count -gt 2 ]] && [[ $suspicious_count -gt $((total_count / 2)) ]]; then
+			echo "❌ Error: Possible comma-containing directory names detected" >&2
+			echo "   Parsed fragments: ${MOUNTS[*]}" >&2  
+			echo "   Directory names containing commas are not supported" >&2
+			echo "   Tip: Use symlinks like: ln -s 'dir,with,commas' dir-without-commas" >&2
+			return 1
+		fi
 		for mount in "${MOUNTS[@]}"; do
 			# Trim whitespace
 			mount=$(echo "$mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
@@ -49,10 +76,10 @@ parse_mount_string() {
 				fi
 				case "$perm" in
 					"ro"|"readonly")
-						mount_args="$mount_args -v $(realpath "$source"):/workspace/$(basename "$source"):ro"
+						mount_args="$mount_args -v \"$(realpath "$source")\":\"/workspace/$(basename "$source")\":ro"
 						;;
 					"rw"|"readwrite"|*)
-						mount_args="$mount_args -v $(realpath "$source"):/workspace/$(basename "$source")"
+						mount_args="$mount_args -v \"$(realpath "$source")\":\"/workspace/$(basename "$source")\""
 						;;
 				esac
 			else
@@ -62,7 +89,7 @@ parse_mount_string() {
 					return 1
 				fi
 				# Default to read-write mount
-				mount_args="$mount_args -v $(realpath "$mount"):/workspace/$(basename "$mount")"
+				mount_args="$mount_args -v \"$(realpath "$mount")\":\"/workspace/$(basename "$mount")\""
 			fi
 		done
 	fi
@@ -716,8 +743,10 @@ case "${1:-}" in
 			
 			# Generate expected mounts from our mount string for comparison
 			EXPECTED_MOUNTS=""
+			local old_ifs="$IFS"
 			IFS=','
-			MOUNTS=($MOUNT_STRING)
+			MOUNTS=($MOUNT_STRING)  # This is intentionally unquoted for word splitting
+			IFS="$old_ifs"
 			for mount in "${MOUNTS[@]}"; do
 				mount=$(echo "$mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 				if [[ "$mount" == *:* ]]; then
@@ -806,6 +835,26 @@ case "${1:-}" in
 		if [ "$PROVIDER" = "docker" ]; then
 			case "$COMMAND" in
 				"create")
+					# Check if VM already exists and confirm before recreating
+					project_name=$(echo "$CONFIG" | jq -r '.project.name' | tr -cd '[:alnum:]')
+					container_name="${project_name}-dev"
+					
+					if docker_cmd inspect "${container_name}" >/dev/null 2>&1; then
+						echo "⚠️  VM '${container_name}' already exists."
+						echo -n "Are you sure you want to recreate it? This will destroy the existing VM and all its data. (y/N): "
+						read -r response
+						case "$response" in
+							[yY]|[yY][eE][sS])
+								echo "🗑️  Destroying existing VM first..."
+								docker_destroy "$CONFIG" "$PROJECT_DIR"
+								;;
+							*)
+								echo "❌ VM creation cancelled."
+								return 1
+								;;
+						esac
+					fi
+					
 					docker_up "$CONFIG" "$PROJECT_DIR" "$@"
 					;;
 				"start")
@@ -894,6 +943,23 @@ case "${1:-}" in
 			# Vagrant provider
 			case "$COMMAND" in
 				"create")
+					# Check if VM already exists and confirm before recreating
+					if VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant status default 2>/dev/null | grep -q "running\|poweroff\|saved"; then
+						echo "⚠️  Vagrant VM already exists."
+						echo -n "Are you sure you want to recreate it? This will destroy the existing VM and all its data. (y/N): "
+						read -r response
+						case "$response" in
+							[yY]|[yY][eE][sS])
+								echo "🗑️  Destroying existing VM first..."
+								VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant destroy -f
+								;;
+							*)
+								echo "❌ VM creation cancelled."
+								return 1
+								;;
+						esac
+					fi
+					
 					# Start VM and auto-SSH
 					if [ -n "$FULL_CONFIG_PATH" ]; then
 						VM_PROJECT_DIR="$PROJECT_DIR" VM_CONFIG="$FULL_CONFIG_PATH" VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant up "$@"
