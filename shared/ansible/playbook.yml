@@ -221,6 +221,8 @@
         with_dict: '{{ project_config.ports | default({}) }}'
         when: 
             - project_config.ports is defined
+            - project_config.ports is mapping
+            - project_config.ports | length > 0
             - not is_docker_container
 
       - name: Allow configured ports from Vagrant host
@@ -233,6 +235,8 @@
         with_dict: '{{ project_config.ports | default({}) }}'
         when: 
             - project_config.ports is defined
+            - project_config.ports is mapping
+            - project_config.ports | length > 0
             - not is_docker_container
 
       # Node.js via NVM

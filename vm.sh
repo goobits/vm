@@ -124,12 +124,13 @@ docker_compose() {
 
 # Show usage information
 show_usage() {
-	echo "Usage: $0 [--config [PATH]] [--debug] [--dry-run] [command] [args...]"
+	echo "Usage: $0 [--config [PATH]] [--debug] [--dry-run] [--auto-login [true|false]] [command] [args...]"
 	echo ""
 	echo "Options:"
 	echo "  --config [PATH]      Use specific vm.json file, or scan up directory tree if no path given"
 	echo "  --debug              Enable debug output"
 	echo "  --dry-run            Show what would be executed without actually running it"
+	echo "  --auto-login [BOOL]  Automatically SSH into VM after create/start (default: true)"
 	echo ""
 	echo "Commands:"
 	echo "  init                  Initialize a new vm.json configuration file"
@@ -162,7 +163,9 @@ show_usage() {
 	echo "  vm --config ./prod.json create           # Create VM with specific config"
 	echo "  vm --config create                       # Create VM scanning up for vm.json"
 	echo "  vm create                                # Create new VM (auto-find vm.json)"
+	echo "  vm create --auto-login=false             # Create VM without auto SSH"
 	echo "  vm start                                 # Start existing VM (fast)"
+	echo "  vm start --auto-login=false              # Start VM without auto SSH"
 	echo "  vm ssh                                   # Connect to VM"
 	echo "  vm stop                                  # Stop the VM"
 	echo ""
@@ -260,7 +263,8 @@ docker_run() {
 docker_up() {
 	local config="$1"
 	local project_dir="$2"
-	shift 2
+	local auto_login="$3"
+	shift 3
 	
 	echo "🚀 Starting development environment..."
 	
@@ -362,10 +366,14 @@ docker_up() {
 	fi
 	
 	echo "🎉 Environment ready!"
-	echo "🌟 Entering development environment..."
 	
-	# Automatically SSH into the container  
-	docker_ssh "$config" "" "."
+	# Automatically SSH into the container if auto-login is enabled
+	if [ "$auto_login" = "true" ]; then
+		echo "🌟 Entering development environment..."
+		docker_ssh "$config" "" "."
+	else
+		echo "💡 Use 'vm ssh' to connect to the environment"
+	fi
 }
 
 docker_ssh() {
@@ -421,7 +429,8 @@ docker_start() {
 	local config="$1"
 	local project_dir="$2"
 	local relative_path="$3"
-	shift 3
+	local auto_login="$4"
+	shift 4
 	
 	echo "🚀 Starting development environment..."
 	
@@ -456,10 +465,14 @@ docker_start() {
 	done
 	
 	echo "🎉 Environment started!"
-	echo "🌟 Entering development environment..."
 	
-	# Automatically SSH into the container  
-	docker_ssh "$config" "$project_dir" "$relative_path"
+	# Automatically SSH into the container if auto-login is enabled
+	if [ "$auto_login" = "true" ]; then
+		echo "🌟 Entering development environment..."
+		docker_ssh "$config" "$project_dir" "$relative_path"
+	else
+		echo "💡 Use 'vm ssh' to connect to the environment"
+	fi
 }
 
 docker_halt() {
@@ -607,6 +620,7 @@ vm_list() {
 CUSTOM_CONFIG=""
 DEBUG_MODE=""
 DRY_RUN=""
+AUTO_LOGIN="true"
 ARGS=()
 
 # Manual argument parsing - much simpler and more reliable than getopt
@@ -635,6 +649,26 @@ while [[ $# -gt 0 ]]; do
 			;;
 		--dry-run)
 			DRY_RUN="true"
+			shift
+			;;
+		--auto-login)
+			shift
+			# Check if next argument exists and is a boolean value
+			if [[ $# -gt 0 ]] && [[ "$1" =~ ^(true|false)$ ]]; then
+				AUTO_LOGIN="$1"
+				shift
+			else
+				# Default to true if no argument provided
+				AUTO_LOGIN="true"
+			fi
+			;;
+		--auto-login=*)
+			# Handle --auto-login=true/false format
+			AUTO_LOGIN="${1#*=}"
+			if [[ ! "$AUTO_LOGIN" =~ ^(true|false)$ ]]; then
+				echo "❌ Invalid value for --auto-login: $AUTO_LOGIN. Must be 'true' or 'false'." >&2
+				exit 1
+			fi
 			shift
 			;;
 		-h|--help)
@@ -855,7 +889,7 @@ EOF
 			
 			# Use the standard docker_up flow
 			echo "🚀 Creating temporary VM with full provisioning..."
-			docker_up "$CONFIG" "$TEMP_PROJECT_DIR"
+			docker_up "$CONFIG" "$TEMP_PROJECT_DIR" "true"
 			
 			# Clean up temp files
 			rm -f "$TEMP_CONFIG_FILE"
@@ -1011,7 +1045,7 @@ EOF
 						esac
 					fi
 					
-					docker_up "$CONFIG" "$PROJECT_DIR" "$@"
+					docker_up "$CONFIG" "$PROJECT_DIR" "$AUTO_LOGIN" "$@"
 					;;
 				"start")
 					# Calculate relative path for start (same logic as SSH command)
@@ -1037,7 +1071,7 @@ EOF
 					if [ "${VM_DEBUG:-}" = "true" ]; then
 						echo "DEBUG start: RELATIVE_PATH='$RELATIVE_PATH'" >&2
 					fi
-					docker_start "$CONFIG" "$PROJECT_DIR" "$RELATIVE_PATH" "$@"
+					docker_start "$CONFIG" "$PROJECT_DIR" "$RELATIVE_PATH" "$AUTO_LOGIN" "$@"
 					;;
 				"stop")
 					docker_halt "$CONFIG" "$PROJECT_DIR" "$@"
@@ -1122,14 +1156,20 @@ EOF
 						esac
 					fi
 					
-					# Start VM and auto-SSH
+					# Start VM
 					if [ -n "$FULL_CONFIG_PATH" ]; then
 						VM_PROJECT_DIR="$PROJECT_DIR" VM_CONFIG="$FULL_CONFIG_PATH" VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant up "$@"
 					else
 						VM_PROJECT_DIR="$PROJECT_DIR" VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant up "$@"
 					fi
-					echo "🔗 Connecting to VM..."
-					VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh
+					
+					# Auto-SSH if enabled
+					if [ "$AUTO_LOGIN" = "true" ]; then
+						echo "🔗 Connecting to VM..."
+						VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh
+					else
+						echo "💡 Use 'vm ssh' to connect to the VM"
+					fi
 					;;
 				"ssh")
 					# SSH into VM with relative path support
