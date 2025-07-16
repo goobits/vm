@@ -13,9 +13,9 @@ echo "🚀 Installing VM Infrastructure globally..."
 mkdir -p "$INSTALL_DIR"
 mkdir -p "$BIN_DIR"
 
-# Copy all files
+# Copy all files except development files
 echo "📁 Copying files to $INSTALL_DIR..."
-cp -r . "$INSTALL_DIR/"
+rsync -av --exclude='.git' --exclude='*.md' --exclude='test' --exclude='examples' --exclude='install.sh' . "$INSTALL_DIR/"
 
 # Create global vm command
 echo "🔗 Creating global 'vm' command in $BIN_DIR..."

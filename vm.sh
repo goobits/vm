@@ -786,9 +786,8 @@ EOF
 				docker_cmd rm -f "$TEMP_CONTAINER" >/dev/null 2>&1
 			fi
 		else
-			# Source the deep merge utility and schema defaults
+			# Source the deep merge utility
 			source "$SCRIPT_DIR/shared/deep-merge.sh"
-			source "$SCRIPT_DIR/validate-config.sh"
 			
 			# Generate minimal temporary vm.json config with just overrides
 			TEMP_CONFIG_FILE="/tmp/vm-temp-$$.json"
@@ -817,7 +816,7 @@ EOF
 EOF
 			
 			# Extract schema defaults and merge with temp overrides
-			SCHEMA_DEFAULTS=$(extract_schema_defaults "$SCRIPT_DIR/vm.schema.json")
+			SCHEMA_DEFAULTS=$("$SCRIPT_DIR/validate-config.sh" --extract-defaults "$SCRIPT_DIR/vm.schema.json")
 			CONFIG=$(echo "$SCHEMA_DEFAULTS" | jq --argjson temp "$(cat "$TEMP_CONFIG_FILE")" '
 				def deep_merge(a; b):
 					if (a | type) == "object" and (b | type) == "object" then
