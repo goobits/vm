@@ -76,10 +76,10 @@ parse_mount_string() {
 				fi
 				case "$perm" in
 					"ro"|"readonly")
-						mount_args="$mount_args -v \"$(realpath "$source")\":\"/workspace/$(basename "$source")\":ro"
+						mount_args="$mount_args -v $(realpath "$source"):/workspace/$(basename "$source"):ro"
 						;;
 					"rw"|"readwrite"|*)
-						mount_args="$mount_args -v \"$(realpath "$source")\":\"/workspace/$(basename "$source")\""
+						mount_args="$mount_args -v $(realpath "$source"):/workspace/$(basename "$source")"
 						;;
 				esac
 			else
@@ -89,7 +89,7 @@ parse_mount_string() {
 					return 1
 				fi
 				# Default to read-write mount
-				mount_args="$mount_args -v \"$(realpath "$mount")\":\"/workspace/$(basename "$mount")\""
+				mount_args="$mount_args -v $(realpath "$mount"):/workspace/$(basename "$mount")"
 			fi
 		done
 	fi
@@ -136,7 +136,7 @@ show_usage() {
 	echo "  generate              Generate vm.json by composing services"
 	echo "  validate              Validate VM configuration"
 	echo "  list                  List all VM instances"
-	echo "  temp [mounts]         Create temporary VM with specific directory mounts"
+	echo "  temp [mounts] [--auto-destroy]  Create temporary VM with specific directory mounts"
 	echo "  create [args]         Create new VM with full provisioning"
 	echo "  start [args]          Start existing VM without provisioning"
 	echo "  stop [args]           Stop VM but keep data"
@@ -157,6 +157,7 @@ show_usage() {
 	echo "  vm list                                  # List all VM instances"
 	echo "  vm temp ./client,./server,./shared       # Create temp VM with specific folders"
 	echo "  vm temp ./src:rw,./config:ro             # Temp VM with mount permissions"
+	echo "  vm temp ./src --auto-destroy             # Temp VM that destroys on exit"
 	echo "  vm destroy vm-temp                       # Destroy temp VM"
 	echo "  vm --config ./prod.json create           # Create VM with specific config"
 	echo "  vm --config create                       # Create VM scanning up for vm.json"
@@ -477,6 +478,12 @@ docker_destroy() {
 	local project_dir="$2"
 	shift 2
 	
+	# Get project name for user feedback
+	local project_name=$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')
+	local container_name="${project_name}-dev"
+	
+	echo "🗑️ Destroying VM: ${container_name}"
+	
 	# Generate docker-compose.yml temporarily for destroy operation
 	echo "🧹 Preparing cleanup..."
 	echo "$config" > /tmp/vm-config.json
@@ -712,66 +719,201 @@ case "${1:-}" in
 		fi
 		;;
 	"temp")
-		# Handle temp VM with dynamic mounts
+		# Handle temp VM with dynamic mounts using standard provisioning flow
 		shift
 		if [ $# -eq 0 ]; then
-			echo "❌ Usage: vm temp ./folder1,./folder2,./folder3"
+			echo "❌ Usage: vm temp ./folder1,./folder2,./folder3 [--auto-destroy]"
 			echo "   Example: vm temp ./client,./server,./shared"
+			echo "   Example: vm temp ./src --auto-destroy"
 			exit 1
 		fi
 		
 		# Parse mount string from first argument
 		MOUNT_STRING="$1"
-		if [ -z "$MOUNT_STRING" ]; then
-			echo "❌ Usage: vm temp ./folder1,./folder2,./folder3"
-			echo "   Example: vm temp ./client,./server,./shared"
-			exit 1
+		shift
+		
+		# Check for --auto-destroy flag
+		AUTO_DESTROY=""
+		if [ "${1:-}" = "--auto-destroy" ]; then
+			AUTO_DESTROY="true"
+			shift
 		fi
-		MOUNT_ARGS=$(parse_mount_string "$MOUNT_STRING")
-		if [ $? -ne 0 ]; then
-			echo "❌ Mount parsing failed. Please check all directories exist."
+		
+		if [ -z "$MOUNT_STRING" ]; then
+			echo "❌ Usage: vm temp ./folder1,./folder2,./folder3 [--auto-destroy]"
 			exit 1
 		fi
 		
+		# Validate mount directories exist
+		old_ifs="$IFS"
+		IFS=','
+		MOUNTS=($MOUNT_STRING)  # This is intentionally unquoted for word splitting
+		IFS="$old_ifs"
+		for mount in "${MOUNTS[@]}"; do
+			mount=$(echo "$mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+			if [[ "$mount" == *:* ]]; then
+				mount="${mount%:*}"
+			fi
+			if [ ! -d "$mount" ]; then
+				echo "❌ Error: Directory '$mount' does not exist" >&2
+				exit 1
+			fi
+		done
+		
 		# Check if vm-temp already exists
-		TEMP_CONTAINER="vm-temp"
+		TEMP_CONTAINER="vmtemp-dev"  # Use consistent naming with regular VMs
 		if docker_cmd inspect "$TEMP_CONTAINER" >/dev/null 2>&1; then
-			# Container exists - check if it has same mounts
-			EXISTING_MOUNTS=$(docker_cmd inspect "$TEMP_CONTAINER" --format='{{range .Mounts}}{{.Source}}:{{.Destination}},{{end}}' 2>/dev/null | sed 's/,$//')
+			echo "🔄 vm-temp already running - connecting..."
+			# Use the standard docker_ssh function
+			TEMP_CONFIG=$(cat <<EOF
+{
+  "project": {
+    "name": "vmtemp",
+    "hostname": "vm-temp.local",
+    "workspace_path": "/workspace"
+  },
+  "vm": {
+    "user": "developer"
+  }
+}
+EOF
+)
+			docker_ssh "$TEMP_CONFIG" "" "."
 			
-			# Generate expected mounts from our mount string for comparison
-			EXPECTED_MOUNTS=""
-			local old_ifs="$IFS"
-			IFS=','
-			MOUNTS=($MOUNT_STRING)  # This is intentionally unquoted for word splitting
-			IFS="$old_ifs"
+			# Handle auto-destroy if flag was set
+			if [ "$AUTO_DESTROY" = "true" ]; then
+				echo "🗑️ Auto-destroying temp VM..."
+				docker_cmd rm -f "$TEMP_CONTAINER" >/dev/null 2>&1
+			fi
+		else
+			# Generate temporary vm.json config
+			TEMP_CONFIG_FILE="/tmp/vm-temp-$$.json"
+			cat > "$TEMP_CONFIG_FILE" <<EOF
+{
+  "project": {
+    "name": "vmtemp",
+    "hostname": "vm-temp.local",
+    "workspace_path": "/workspace"
+  },
+  "vm": {
+    "box": "ubuntu:22.04",
+    "memory": 2048,
+    "cpus": 2,
+    "user": "developer"
+  },
+  "terminal": {
+    "username": "vm-temp"
+  },
+  "services": {
+    "postgresql": {
+      "enabled": false
+    },
+    "redis": {
+      "enabled": false
+    },
+    "mongodb": {
+      "enabled": false
+    }
+  }
+}
+EOF
+			
+			# Load the config
+			CONFIG=$(cat "$TEMP_CONFIG_FILE")
+			
+			# Create a temporary project directory for docker-compose generation
+			TEMP_PROJECT_DIR="/tmp/vm-temp-project-$$"
+			mkdir -p "$TEMP_PROJECT_DIR"
+			
+			# Create mount directories as symlinks in the temp project
 			for mount in "${MOUNTS[@]}"; do
 				mount=$(echo "$mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 				if [[ "$mount" == *:* ]]; then
 					mount="${mount%:*}"
 				fi
-				REAL_PATH=$(realpath "$mount" 2>/dev/null || echo "$mount")
-				EXPECTED_MOUNTS="$EXPECTED_MOUNTS$REAL_PATH:/workspace/$(basename "$mount"),"
+				# Get absolute path
+				REAL_PATH=$(realpath "$mount")
+				# Create symlink in temp project dir
+				ln -s "$REAL_PATH" "$TEMP_PROJECT_DIR/$(basename "$mount")"
 			done
-			EXPECTED_MOUNTS=$(echo "$EXPECTED_MOUNTS" | sed 's/,$//')
 			
-			if [ "$EXISTING_MOUNTS" = "$EXPECTED_MOUNTS" ]; then
-				echo "🔄 vm-temp already running with same mounts - connecting..."
-				docker_cmd exec -it "$TEMP_CONTAINER" /bin/zsh
-			else
-				echo "🗑️ vm-temp exists with different mounts - destroying and recreating..."
+			# Use the standard docker_up flow
+			echo "🚀 Creating temporary VM with full provisioning..."
+			docker_up "$CONFIG" "$TEMP_PROJECT_DIR"
+			
+			# Clean up temp files
+			rm -f "$TEMP_CONFIG_FILE"
+			rm -rf "$TEMP_PROJECT_DIR"
+			
+			# Handle auto-destroy if flag was set
+			if [ "$AUTO_DESTROY" = "true" ]; then
+				echo "🗑️ Auto-destroying temp VM..."
 				docker_cmd rm -f "$TEMP_CONTAINER" >/dev/null 2>&1
-				
-				# Create new temp container
-				echo "🚀 Creating temp VM with mounts: $MOUNT_STRING"
-				docker_cmd run -it --name "$TEMP_CONTAINER" --rm $MOUNT_ARGS ubuntu:22.04 /bin/bash
+				# Clean up volumes
+				docker_cmd volume rm vmtemp_nvm vmtemp_cache >/dev/null 2>&1 || true
 			fi
-		else
-			# Container doesn't exist - create it
-			echo "🚀 Creating temp VM with mounts: $MOUNT_STRING"
-			docker_cmd run -it --name "$TEMP_CONTAINER" --rm $MOUNT_ARGS ubuntu:22.04 /bin/bash
 		fi
 		;;
+	"destroy")
+		# Special handling for vm-temp
+		if [ "${2:-}" = "vm-temp" ]; then
+			echo "🗑️ Destroying temporary VM..."
+			# Try both old and new container names for compatibility
+			if docker_cmd rm -f "vmtemp-dev" >/dev/null 2>&1 || docker_cmd rm -f "vm-temp" >/dev/null 2>&1; then
+				# Also clean up volumes
+				docker_cmd volume rm vmtemp_nvm vmtemp_cache >/dev/null 2>&1 || true
+				echo "✅ vm-temp destroyed successfully"
+			else
+				echo "❌ vm-temp not found or already destroyed"
+			fi
+			exit 0
+		fi
+		
+		# If no VM name provided, load config from current directory and destroy
+		if [ $# -eq 1 ]; then
+			# Load and validate config
+			CONFIG=$(load_config "$CUSTOM_CONFIG" "$CURRENT_DIR")
+			if [ $? -ne 0 ]; then
+				echo "❌ No vm.json configuration file found. Run \"vm init\" to create one."
+				exit 1
+			fi
+			
+			PROVIDER=$(get_provider "$CONFIG")
+			
+			# Determine project directory
+			if [ "$CUSTOM_CONFIG" = "__SCAN__" ]; then
+				PROJECT_DIR="$CURRENT_DIR"
+			elif [ -n "$CUSTOM_CONFIG" ]; then
+				FULL_CONFIG_PATH="$(cd "$CURRENT_DIR" && readlink -f "$CUSTOM_CONFIG")"
+				PROJECT_DIR="$(dirname "$FULL_CONFIG_PATH")"
+			else
+				PROJECT_DIR="$CURRENT_DIR"
+			fi
+			
+			# Get project name for confirmation
+			project_name=$(echo "$CONFIG" | jq -r '.project.name' | tr -cd '[:alnum:]')
+			container_name="${project_name}-dev"
+			
+			echo "⚠️  About to destroy VM: ${container_name}"
+			echo -n "Are you sure? This will destroy the VM and all its data. (y/N): "
+			read -r response
+			case "$response" in
+				[yY]|[yY][eE][sS])
+					if [ "$PROVIDER" = "docker" ]; then
+						docker_destroy "$CONFIG" "$PROJECT_DIR"
+					else
+						VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant destroy -f
+					fi
+					;;
+				*)
+					echo "❌ Destroy cancelled."
+					exit 1
+					;;
+			esac
+			exit 0
+		fi
+		# Fall through to default case for destroy with arguments
+		;&
 	"help"|"-h"|"--help"|"")
 		show_usage
 		;;
