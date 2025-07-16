@@ -848,7 +848,7 @@ case "${1:-}" in
 								;;
 							*)
 								echo "❌ VM creation cancelled."
-								return 1
+								exit 1
 								;;
 						esac
 					fi
@@ -959,7 +959,7 @@ case "${1:-}" in
 								;;
 							*)
 								echo "❌ VM creation cancelled."
-								return 1
+								exit 1
 								;;
 						esac
 					fi
