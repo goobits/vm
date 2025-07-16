@@ -29,6 +29,15 @@ while [[ $# -gt 0 ]]; do
             INIT_FLAG="true"
             shift
             ;;
+        --extract-defaults)
+            shift
+            if [[ $# -eq 0 ]]; then
+                echo "Error: --extract-defaults requires a schema file path" >&2
+                exit 1
+            fi
+            extract_schema_defaults "$1"
+            exit 0
+            ;;
         --*)
             echo "Unknown option: $1" >&2
             exit 1
