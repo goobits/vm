@@ -786,23 +786,20 @@ EOF
 				docker_cmd rm -f "$TEMP_CONTAINER" >/dev/null 2>&1
 			fi
 		else
-			# Generate temporary vm.json config
+			# Source the deep merge utility
+			source "$SCRIPT_DIR/shared/deep-merge.sh"
+			
+			# Generate minimal temporary vm.json config with just overrides
 			TEMP_CONFIG_FILE="/tmp/vm-temp-$$.json"
 			cat > "$TEMP_CONFIG_FILE" <<EOF
 {
   "project": {
     "name": "vmtemp",
-    "hostname": "vm-temp.local",
-    "workspace_path": "/workspace"
-  },
-  "vm": {
-    "box": "ubuntu:22.04",
-    "memory": 2048,
-    "cpus": 2,
-    "user": "developer"
+    "hostname": "vm-temp.local"
   },
   "terminal": {
-    "username": "vm-temp"
+    "username": "vm-temp",
+    "emoji": "🔧"
   },
   "services": {
     "postgresql": {
@@ -818,8 +815,13 @@ EOF
 }
 EOF
 			
-			# Load the config
-			CONFIG=$(cat "$TEMP_CONFIG_FILE")
+			# Merge with defaults to get complete config
+			CONFIG=$(merge_project_config "$SCRIPT_DIR/vm.json" "$TEMP_CONFIG_FILE")
+			if [ $? -ne 0 ]; then
+				echo "❌ Failed to generate temp VM configuration"
+				rm -f "$TEMP_CONFIG_FILE"
+				exit 1
+			fi
 			
 			# Create a temporary project directory for docker-compose generation
 			TEMP_PROJECT_DIR="/tmp/vm-temp-project-$$"
