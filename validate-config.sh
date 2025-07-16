@@ -245,8 +245,11 @@ load_and_merge_config() {
     # Load and validate user config
     local user_config=""
     if [[ -f "$config_file_to_load" ]]; then
-        if ! user_config="$(jq . "$config_file_to_load" 2>/dev/null)"; then
+        local jq_error
+        if ! user_config="$(jq . "$config_file_to_load" 2>&1)"; then
+            jq_error="$(jq . "$config_file_to_load" 2>&1)"
             echo "❌ Invalid JSON in project config: $config_file_to_load" >&2
+            echo "   JSON parsing error: $jq_error" >&2
             return 1
         fi
         
@@ -278,6 +281,39 @@ load_and_merge_config() {
     echo "$final_config"
 }
 
+# Validate configuration against schema using ajv-cli
+validate_against_schema() {
+    local config="$1"
+    local schema_path="$2"
+    
+    if [[ ! -f "$schema_path" ]]; then
+        echo "Schema file not found: $schema_path"
+        return 1
+    fi
+    
+    # Use ajv-cli for proper JSON Schema validation
+    local ajv_cmd="ajv"
+    if ! command -v ajv >/dev/null 2>&1; then
+        ajv_cmd="npx ajv"
+    fi
+    
+    # Create temp file for config since ajv needs a file
+    local temp_config="/tmp/vm-config-validate-$$.json"
+    echo "$config" > "$temp_config"
+    
+    # Run ajv validation and capture output
+    local ajv_output
+    if ajv_output=$($ajv_cmd validate -s "$schema_path" -d "$temp_config" 2>&1); then
+        rm -f "$temp_config"
+        return 0
+    else
+        rm -f "$temp_config"
+        # Extract useful error messages from ajv output
+        echo "$ajv_output" | grep -E "(data|should|must)" | sed 's/^/  /' || echo "Schema validation failed"
+        return 1
+    fi
+}
+
 # Validate merged configuration
 validate_merged_config() {
     local config="$1"
@@ -298,10 +334,22 @@ validate_merged_config() {
         return 1
     fi
     
-    # Provider validation
-    local provider="$(echo "$config" | jq -r '.provider // "docker"')"
-    if [[ "$provider" != "vagrant" && "$provider" != "docker" ]]; then
-        errors+=("provider must be 'vagrant' or 'docker'")
+    # Schema-based validation using vm.schema.json
+    local schema_path="$SCRIPT_DIR/vm.schema.json"
+    if [[ -f "$schema_path" ]]; then
+        local schema_errors
+        schema_errors=$(validate_against_schema "$config" "$schema_path")
+        if [[ -n "$schema_errors" ]]; then
+            while IFS= read -r error; do
+                [[ -n "$error" ]] && errors+=("$error")
+            done <<< "$schema_errors"
+        fi
+    else
+        # Fallback to basic validation if schema not found
+        local provider="$(echo "$config" | jq -r '.provider // "docker"')"
+        if [[ "$provider" != "vagrant" && "$provider" != "docker" ]]; then
+            errors+=("provider must be 'vagrant' or 'docker'")
+        fi
     fi
     
     # Project validation
