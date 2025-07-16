@@ -281,7 +281,7 @@ load_and_merge_config() {
     echo "$final_config"
 }
 
-# Validate configuration against schema using ajv-cli
+# Validate configuration against schema using Python jsonschema
 validate_against_schema() {
     local config="$1"
     local schema_path="$2"
@@ -291,25 +291,19 @@ validate_against_schema() {
         return 1
     fi
     
-    # Use ajv-cli for proper JSON Schema validation
-    local ajv_cmd="ajv"
-    if ! command -v ajv >/dev/null 2>&1; then
-        ajv_cmd="npx ajv"
-    fi
-    
-    # Create temp file for config since ajv needs a file
+    # Create temp file for config since python3 -m jsonschema needs a file
     local temp_config="/tmp/vm-config-validate-$$.json"
     echo "$config" > "$temp_config"
     
-    # Run ajv validation and capture output
-    local ajv_output
-    if ajv_output=$($ajv_cmd validate -s "$schema_path" -d "$temp_config" 2>&1); then
+    # Run Python jsonschema validation and capture output
+    local validation_output
+    if validation_output=$(python3 -m jsonschema "$schema_path" -i "$temp_config" 2>&1); then
         rm -f "$temp_config"
         return 0
     else
         rm -f "$temp_config"
-        # Extract useful error messages from ajv output
-        echo "$ajv_output" | grep -E "(data|should|must)" | sed 's/^/  /' || echo "Schema validation failed"
+        # Clean up and format error messages
+        echo "$validation_output" | grep -E "(is not|should|must|Failed validating)" | sed 's/^/  /' || echo "Schema validation failed"
         return 1
     fi
 }
