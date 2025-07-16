@@ -11,3 +11,4 @@ yarn-error.log*
 
 # Test directories
 test-*/
+.test_artifacts/
