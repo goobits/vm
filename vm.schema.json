@@ -64,7 +64,7 @@
         },
         "user": {
           "type": "string",
-          "default": "vagrant",
+          "default": "developer",
           "description": "Default user inside the VM/container"
         },
         "port_binding": {

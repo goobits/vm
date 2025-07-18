@@ -778,7 +778,7 @@ case "${1:-}" in
 			exit 0
 		fi
 		
-		# Parse mount string from first argument
+		# Parse mount string from first argument (only if not destroy command)
 		MOUNT_STRING="$1"
 		shift
 		
