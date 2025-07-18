@@ -15,6 +15,7 @@ INIT_FLAG=""
 CUSTOM_CONFIG_PATH=""
 
 # Parse arguments
+EXTRACT_DEFAULTS_PATH=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --validate)
@@ -35,8 +36,8 @@ while [[ $# -gt 0 ]]; do
                 echo "Error: --extract-defaults requires a schema file path" >&2
                 exit 1
             fi
-            extract_schema_defaults "$1"
-            exit 0
+            EXTRACT_DEFAULTS_PATH="$1"
+            shift
             ;;
         --*)
             echo "Unknown option: $1" >&2
@@ -371,6 +372,12 @@ validate_merged_config() {
 
 # Main execution
 main() {
+    # Handle extract defaults command
+    if [[ -n "$EXTRACT_DEFAULTS_PATH" ]]; then
+        extract_schema_defaults "$EXTRACT_DEFAULTS_PATH"
+        return $?
+    fi
+    
     # Handle init command
     if [[ "$INIT_FLAG" == "true" ]]; then
         initialize_vm_json "$CUSTOM_CONFIG_PATH"

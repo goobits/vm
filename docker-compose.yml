@@ -1,0 +1,48 @@
+services:
+  vm:
+    build:
+      context: /workspace
+      dockerfile: providers/docker/Dockerfile
+      args:
+        PROJECT_USER: "developer"
+        PROJECT_UID: "1000"
+        PROJECT_GID: "1000"
+    container_name: vm-dev
+    hostname: dev.vm.local
+    tty: true
+    stdin_open: true
+    environment:
+      - LANG=en_US.UTF-8
+      - LC_ALL=en_US.UTF-8
+      - TZ=America/Los_Angeles
+      - PROJECT_USER=developer
+      - PULSE_SERVER=unix:/run/user/1000/pulse/native
+    volumes:
+      - /workspace:/workspace:delegated
+      - /workspace:/vm-tool:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - vm_nvm:/home/developer/.nvm
+      - vm_cache:/home/developer/.cache
+      - vm_config:/tmp
+      - /home/developer/.claude/vms/vm:/home/developer/.claude:delegated
+      - /home/developer/.gemini/vms/vm:/home/developer/.gemini:delegated
+      - /run/user/1000/pulse:/run/user/1000/pulse
+    devices:
+      - /dev/snd:/dev/snd
+    group_add:
+      - audio
+    networks:
+      - vm_network
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
+
+networks:
+  vm_network:
+    driver: bridge
+
+volumes:
+  vm_nvm:
+  vm_cache:
+  vm_config:
