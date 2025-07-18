@@ -138,6 +138,7 @@ show_usage() {
 	echo "  validate              Validate VM configuration"
 	echo "  list                  List all VM instances"
 	echo "  temp [mounts] [--auto-destroy]  Create temporary VM with specific directory mounts"
+	echo "  temp destroy                    Destroy the temporary VM"
 	echo "  create [args]         Create new VM with full provisioning"
 	echo "  start [args]          Start existing VM without provisioning"
 	echo "  stop [args]           Stop VM but keep data"
@@ -159,7 +160,7 @@ show_usage() {
 	echo "  vm temp ./client,./server,./shared       # Create temp VM with specific folders"
 	echo "  vm temp ./src:rw,./config:ro             # Temp VM with mount permissions"
 	echo "  vm temp ./src --auto-destroy             # Temp VM that destroys on exit"
-	echo "  vm destroy vm-temp                       # Destroy temp VM"
+	echo "  vm temp destroy                          # Destroy temp VM"
 	echo "  vm --config ./prod.json create           # Create VM with specific config"
 	echo "  vm --config create                       # Create VM scanning up for vm.json"
 	echo "  vm create                                # Create new VM (auto-find vm.json)"
@@ -753,13 +754,28 @@ case "${1:-}" in
 		fi
 		;;
 	"temp")
-		# Handle temp VM with dynamic mounts using standard provisioning flow
+		# Handle temp VM commands
 		shift
 		if [ $# -eq 0 ]; then
 			echo "❌ Usage: vm temp ./folder1,./folder2,./folder3 [--auto-destroy]"
 			echo "   Example: vm temp ./client,./server,./shared"
 			echo "   Example: vm temp ./src --auto-destroy"
+			echo "   Or: vm temp destroy"
 			exit 1
+		fi
+		
+		# Handle temp destroy subcommand
+		if [ "$1" = "destroy" ]; then
+			echo "🗑️ Destroying temporary VM..."
+			# Try both old and new container names for compatibility
+			if docker_cmd rm -f "vmtemp-dev" >/dev/null 2>&1 || docker_cmd rm -f "vm-temp" >/dev/null 2>&1; then
+				# Also clean up volumes
+				docker_cmd volume rm vmtemp_nvm vmtemp_cache >/dev/null 2>&1 || true
+				echo "✅ vm-temp destroyed successfully"
+			else
+				echo "❌ vm-temp not found or already destroyed"
+			fi
+			exit 0
 		fi
 		
 		# Parse mount string from first argument
