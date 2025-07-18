@@ -41,3 +41,6 @@
 ## Git & Commits
 - Never commit changes unless the user specifically requests it
 - Only commit when tests pass and code is working
+
+## Temporary Files
+When creating temporary debug or test scripts, use `/tmp` directory to keep the project clean.
