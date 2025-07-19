@@ -99,6 +99,19 @@ generate_docker_compose() {
         fi
     fi
     
+    # Handle VM temp mounts (for vm temp command)
+    local temp_mount_volumes=""
+    if [[ -n "${VM_TEMP_MOUNTS:-}" ]]; then
+        # VM_TEMP_MOUNTS contains space-separated "realpath:mountname" pairs
+        for mount_mapping in $VM_TEMP_MOUNTS; do
+            if [[ "$mount_mapping" == *:* ]]; then
+                local real_path="${mount_mapping%:*}"
+                local mount_name="${mount_mapping##*:}"
+                temp_mount_volumes+="\\n      - $real_path:$workspace_path/$mount_name:delegated"
+            fi
+        done
+    fi
+    
     # Handle audio and GPU support
     local audio_env=""
     local audio_volumes=""
@@ -177,13 +190,12 @@ generate_docker_compose() {
       - LC_ALL=en_US.UTF-8
       - TZ=$timezone
       - PROJECT_USER=$project_user$audio_env$gpu_env
-    volumes:
-      - $project_dir:$workspace_path:delegated
+    volumes:$(if [[ "${VM_IS_TEMP:-}" != "true" ]]; then echo -e "\n      - $project_dir:$workspace_path:delegated"; fi)
       - $vm_tool_base_path:$vm_tool_path:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${project_name}_nvm:/home/$project_user/.nvm
       - ${project_name}_cache:/home/$project_user/.cache
-      - ${project_name}_config:/tmp$claude_sync_volume$gemini_sync_volume$database_volumes$audio_volumes$gpu_volumes$ports_section$devices_section$groups_section
+      - ${project_name}_config:/tmp$claude_sync_volume$gemini_sync_volume$database_volumes$temp_mount_volumes$audio_volumes$gpu_volumes$ports_section$devices_section$groups_section
     networks:
       - ${project_name}_network
     cap_add:
