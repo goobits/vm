@@ -177,12 +177,6 @@ show_usage() {
 kill_virtualbox() {
 	echo "🔄 Terminating all VirtualBox processes..."
 	
-	# Clean up vagrant state first
-	echo "🧹 Cleaning up Vagrant state..."
-	if [ -d .vagrant ]; then
-		rm -rf .vagrant
-	fi
-	
 	# Force kill VirtualBox and ALL related processes
 	echo "🔪 Force killing ALL VirtualBox processes..."
 	pkill -9 -f "VBoxHeadless" || true
@@ -269,9 +263,14 @@ docker_up() {
 	
 	echo "🚀 Starting development environment..."
 	
+	# Create a secure temporary file for the config
+	TEMP_CONFIG_FILE=$(mktemp /tmp/vm-config.XXXXXX)
+	# Ensure the temp file is removed when the script exits
+	trap 'rm -f "$TEMP_CONFIG_FILE"' EXIT
+	
 	# Generate docker-compose.yml
-	echo "$config" > /tmp/vm-config.json
-	"$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" /tmp/vm-config.json "$project_dir"
+	echo "$config" > "$TEMP_CONFIG_FILE"
+	"$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" "$TEMP_CONFIG_FILE" "$project_dir"
 	
 	# Build and start containers
 	docker_run "compose" "$config" "$project_dir" build
@@ -305,7 +304,7 @@ docker_up() {
 	
 	# Copy config file to container
 	echo "📋 Loading project configuration..."
-	if docker_cmd cp /tmp/vm-config.json "${container_name}:/tmp/vm-config.json"; then
+	if docker_cmd cp "$TEMP_CONFIG_FILE" "${container_name}:/tmp/vm-config.json"; then
 		echo "✅ Configuration loaded"
 	else
 		echo "❌ Configuration loading failed"
@@ -498,10 +497,15 @@ docker_destroy() {
 	
 	echo "🗑️ Destroying VM: ${container_name}"
 	
+	# Create a secure temporary file for the config
+	TEMP_CONFIG_FILE=$(mktemp /tmp/vm-config.XXXXXX)
+	# Ensure the temp file is removed when the script exits
+	trap 'rm -f "$TEMP_CONFIG_FILE"' EXIT
+	
 	# Generate docker-compose.yml temporarily for destroy operation
 	echo "🧹 Preparing cleanup..."
-	echo "$config" > /tmp/vm-config.json
-	"$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" /tmp/vm-config.json "$project_dir"
+	echo "$config" > "$TEMP_CONFIG_FILE"
+	"$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" "$TEMP_CONFIG_FILE" "$project_dir"
 	
 	# Run docker compose down with volumes
 	docker_run "down" "$config" "$project_dir" -v "$@"
@@ -538,9 +542,14 @@ docker_provision() {
 	
 	echo "🔄 Rebuilding environment..."
 	
+	# Create a secure temporary file for the config
+	TEMP_CONFIG_FILE=$(mktemp /tmp/vm-config.XXXXXX)
+	# Ensure the temp file is removed when the script exits
+	trap 'rm -f "$TEMP_CONFIG_FILE"' EXIT
+	
 	# Generate fresh docker-compose.yml for provisioning
-	echo "$config" > /tmp/vm-config.json
-	"$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" /tmp/vm-config.json "$project_dir"
+	echo "$config" > "$TEMP_CONFIG_FILE"
+	"$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" "$TEMP_CONFIG_FILE" "$project_dir"
 	
 	docker_run "compose" "$config" "$project_dir" build --no-cache
 	docker_run "compose" "$config" "$project_dir" up -d "$@"
@@ -840,7 +849,10 @@ EOF
 			source "$SCRIPT_DIR/shared/deep-merge.sh"
 			
 			# Generate minimal temporary vm.json config with just overrides
-			TEMP_CONFIG_FILE="/tmp/vm-temp-$$.json"
+			TEMP_CONFIG_FILE=$(mktemp /tmp/vm-temp.XXXXXX.json)
+			# Ensure the temp file is removed when the script exits
+			trap 'rm -f "$TEMP_CONFIG_FILE"' EXIT
+			
 			cat > "$TEMP_CONFIG_FILE" <<EOF
 {
   "project": {
@@ -903,13 +915,32 @@ EOF
 				ln -s "$REAL_PATH" "$TEMP_PROJECT_DIR/$(basename "$mount")"
 			done
 			
+			# Store temp directory path for later cleanup
+			# Use secure user-specific directory for marker file
+			# Try XDG runtime dir first, then fall back to XDG state dir, then /tmp
+			if [ -n "$XDG_RUNTIME_DIR" ] && mkdir -p "$XDG_RUNTIME_DIR/vm" 2>/dev/null; then
+				MARKER_DIR="$XDG_RUNTIME_DIR/vm"
+			elif mkdir -p "$HOME/.local/state/vm" 2>/dev/null; then
+				MARKER_DIR="$HOME/.local/state/vm"
+			else
+				MARKER_DIR="/tmp"
+				echo "⚠️  Warning: Using /tmp for marker files (less secure)"
+			fi
+			# Include container name for unique identification
+			TEMP_DIR_MARKER="$MARKER_DIR/.vmtemp-${TEMP_CONTAINER}-marker"
+			echo "$TEMP_PROJECT_DIR" > "$TEMP_DIR_MARKER"
+			
+			# Log the temporary directory creation for security audit
+			if command -v logger >/dev/null 2>&1; then
+				logger -t vm-temp "Created temp directory: $TEMP_PROJECT_DIR (marker: $TEMP_DIR_MARKER)"
+			fi
+			
 			# Use the standard docker_up flow
 			echo "🚀 Creating temporary VM with full provisioning..."
 			docker_up "$CONFIG" "$TEMP_PROJECT_DIR" "true"
 			
-			# Clean up temp files
+			# Clean up temp config file only (keep project dir for mounts)
 			rm -f "$TEMP_CONFIG_FILE"
-			rm -rf "$TEMP_PROJECT_DIR"
 			
 			# Handle auto-destroy if flag was set
 			if [ "$AUTO_DESTROY" = "true" ]; then
@@ -917,6 +948,23 @@ EOF
 				docker_cmd rm -f "$TEMP_CONTAINER" >/dev/null 2>&1
 				# Clean up volumes
 				docker_cmd volume rm vmtemp_nvm vmtemp_cache >/dev/null 2>&1 || true
+				# Clean up temp project directory safely
+				# Resolve real path to prevent directory traversal
+				REAL_TEMP_DIR=$(realpath "$TEMP_PROJECT_DIR" 2>/dev/null)
+				if [[ "$REAL_TEMP_DIR" == /tmp/vm-temp-project-* ]]; then
+					rm -rf "$REAL_TEMP_DIR"
+					# Log cleanup
+					if command -v logger >/dev/null 2>&1; then
+						logger -t vm-temp "Auto-destroyed temp directory: $REAL_TEMP_DIR"
+					fi
+				else
+					echo "⚠️  Warning: Temp directory path resolved to unexpected location: $REAL_TEMP_DIR"
+					# Log security event
+					if command -v logger >/dev/null 2>&1; then
+						logger -t vm-temp-security "ALERT: Rejected suspicious temp path during auto-destroy: $TEMP_PROJECT_DIR (resolved to: $REAL_TEMP_DIR)"
+					fi
+				fi
+				rm -f "$TEMP_DIR_MARKER"
 			fi
 		fi
 		;;
@@ -928,7 +976,67 @@ EOF
 			if docker_cmd rm -f "vmtemp-dev" >/dev/null 2>&1 || docker_cmd rm -f "vm-temp" >/dev/null 2>&1; then
 				# Also clean up volumes
 				docker_cmd volume rm vmtemp_nvm vmtemp_cache >/dev/null 2>&1 || true
+				
+				# Clean up temp project directory if it exists
+				# Look for marker file in secure location (same logic as creation)
+				if [ -n "$XDG_RUNTIME_DIR" ] && [ -d "$XDG_RUNTIME_DIR/vm" ]; then
+					MARKER_DIR="$XDG_RUNTIME_DIR/vm"
+				elif [ -d "$HOME/.local/state/vm" ]; then
+					MARKER_DIR="$HOME/.local/state/vm"
+				else
+					MARKER_DIR="/tmp"
+				fi
+				# Find marker file for this container
+				TEMP_DIR_MARKER="$MARKER_DIR/.vmtemp-vmtemp-dev-marker"
+				
+				# Also check legacy location for backward compatibility
+				if [ ! -f "$TEMP_DIR_MARKER" ] && [ -f "/tmp/.vmtemp-project-dir" ]; then
+					TEMP_DIR_MARKER="/tmp/.vmtemp-project-dir"
+					echo "⚠️  Warning: Using legacy marker file location"
+				fi
+				
+				if [ -f "$TEMP_DIR_MARKER" ]; then
+					TEMP_PROJECT_DIR=$(cat "$TEMP_DIR_MARKER")
+					# Safety check: ensure it's a temp directory
+					if [ -d "$TEMP_PROJECT_DIR" ]; then
+						# Resolve the real path to prevent directory traversal attacks
+						# Use realpath to follow symlinks and get the canonical path
+						REAL_TEMP_DIR=$(realpath "$TEMP_PROJECT_DIR" 2>/dev/null)
+						if [[ "$REAL_TEMP_DIR" == /tmp/vm-temp-project-* ]]; then
+							# Additional safety: only remove if it contains symlinks (not real files)
+							if find "$REAL_TEMP_DIR" -maxdepth 1 -type f | grep -q .; then
+								echo "⚠️  Warning: Temp directory contains real files, not cleaning up: $TEMP_PROJECT_DIR"
+								# Log security event
+								if command -v logger >/dev/null 2>&1; then
+									logger -t vm-temp-security "WARN: Refused to delete temp directory with real files: $TEMP_PROJECT_DIR"
+								fi
+							else
+								rm -rf "$REAL_TEMP_DIR"
+								echo "🧹 Cleaned up temporary project directory"
+								# Log successful cleanup
+								if command -v logger >/dev/null 2>&1; then
+									logger -t vm-temp "Cleaned up temp directory: $REAL_TEMP_DIR"
+								fi
+							fi
+						else
+							echo "⚠️  Warning: Invalid temp directory path (resolved to $REAL_TEMP_DIR), not cleaning up: $TEMP_PROJECT_DIR"
+							# Log security event
+							if command -v logger >/dev/null 2>&1; then
+								logger -t vm-temp-security "ALERT: Rejected suspicious temp path: $TEMP_PROJECT_DIR (resolved to: $REAL_TEMP_DIR)"
+							fi
+						fi
+					else
+						echo "⚠️  Warning: Temp directory not found: $TEMP_PROJECT_DIR"
+					fi
+					rm -f "$TEMP_DIR_MARKER"
+				fi
+				
 				echo "✅ vm-temp destroyed successfully"
+				
+				# Clean up any stale marker files (older than 1 day)
+				if [ -d "$MARKER_DIR" ]; then
+					find "$MARKER_DIR" -name ".vmtemp-*-marker" -type f -mtime +1 -delete 2>/dev/null || true
+				fi
 			else
 				echo "❌ vm-temp not found or already destroyed"
 			fi
@@ -1012,6 +1120,22 @@ EOF
 			FULL_CONFIG_PATH=""
 		fi
 		
+		# --- INSERT THIS VALIDATION LOGIC ---
+		# Security: Validate that PROJECT_DIR is a legitimate project directory
+		# and not a sensitive system path.
+		if [[ -z "$PROJECT_DIR" ]] || [[ "$PROJECT_DIR" == "/" ]] || [[ "$PROJECT_DIR" == "/etc" ]] || [[ "$PROJECT_DIR" == "/usr" ]] || [[ "$PROJECT_DIR" == "/var" ]] || [[ "$PROJECT_DIR" == "/bin" ]] || [[ "$PROJECT_DIR" == "/sbin" ]]; then
+			echo "❌ Error: Refusing to operate on critical system directory '$PROJECT_DIR'." >&2
+			exit 1
+		fi
+
+		# Check for a project marker to prevent running in unintended locations.
+		if [ ! -d "$PROJECT_DIR/.git" ] && [ ! -f "$PROJECT_DIR/vm.json" ] && [ ! -f "$PROJECT_DIR/vm.schema.json" ]; then
+			echo "❌ Error: The specified directory '$PROJECT_DIR' does not appear to be a valid project root." >&2
+			echo "   (Missing a .git directory, vm.json, or vm.schema.json file to act as a safeguard)." >&2
+			exit 1
+		fi
+		# --- END OF VALIDATION LOGIC ---
+
 		echo "🐳 Using provider: $PROVIDER"
 		
 		# Show dry run information if enabled
