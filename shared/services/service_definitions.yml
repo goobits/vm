@@ -22,7 +22,7 @@ service_definitions:
     service_port: "{{ project_config.ports.postgresql | default(5432) }}"
     service_post_install_commands:
       - "sudo -u postgres psql -p {{ project_config.ports.postgresql | default(5432) }} -c \"ALTER USER {{ project_config.services.postgresql.user | default('postgres') }} PASSWORD '{{ project_config.services.postgresql.password | default('postgres') }}';\""
-      - "sudo -u postgres createdb -p {{ project_config.ports.postgresql | default(5432) }} \"{{ project_config.services.postgresql.database }}\" || echo \"Database exists\""
+      - "sudo -u postgres createdb -p {{ project_config.ports.postgresql | default(5432) }} \"{{ project_config.services.postgresql.database | default(project_config.project.name + '_dev') }}\" || echo \"Database exists\""
     service_ignore_errors: true
 
   redis:

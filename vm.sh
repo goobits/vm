@@ -903,7 +903,8 @@ EOF
 			TEMP_PROJECT_DIR="/tmp/vm-temp-project-$$"
 			mkdir -p "$TEMP_PROJECT_DIR"
 			
-			# Create mount directories as symlinks in the temp project
+			# Track the real paths for direct volume mounts
+			MOUNT_MAPPINGS=()
 			for mount in "${MOUNTS[@]}"; do
 				mount=$(echo "$mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 				if [[ "$mount" == *:* ]]; then
@@ -911,9 +912,15 @@ EOF
 				fi
 				# Get absolute path
 				REAL_PATH=$(realpath "$mount")
-				# Create symlink in temp project dir
-				ln -s "$REAL_PATH" "$TEMP_PROJECT_DIR/$(basename "$mount")"
+				MOUNT_NAME=$(basename "$mount")
+				# Store the mapping for Docker volumes
+				MOUNT_MAPPINGS+=("$REAL_PATH:$MOUNT_NAME")
 			done
+			
+			# Export mount mappings for docker provisioning script
+			export VM_TEMP_MOUNTS="${MOUNT_MAPPINGS[*]}"
+			# Mark this as a temp VM so docker provisioning knows to skip the main mount
+			export VM_IS_TEMP="true"
 			
 			# Store temp directory path for later cleanup
 			# Use secure user-specific directory for marker file
