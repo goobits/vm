@@ -63,8 +63,13 @@ pnpm vm create
 ```bash
 vm init                      # Initialize a new vm.yaml configuration file
 vm generate                  # Generate vm.yaml by composing services and configurations
+vm migrate                   # Convert vm.json to vm.yaml with version tracking
 vm list                      # List all VM instances
 vm temp <folders>            # Create ephemeral VM with specific directory mounts
+vm temp ssh [-c cmd]         # SSH into temp VM or run command
+vm temp status               # Show temp VM status and configuration
+vm temp destroy              # Destroy temp VM and clean up state
+vm tmp <folders>             # Alias for vm temp
 vm create                    # Create new VM/container with full provisioning
 vm start                     # Start existing VM/container without provisioning
 vm stop                      # Stop VM/container but keep data
@@ -187,6 +192,7 @@ sudo apt-get update && sudo apt-get install yq
     - [Minimal Setup](#-minimal-setup)
     - [Full Reference](#-full-reference)
     - [Terminal Options](#-terminal-options)
+- [Configuration Migration](#-configuration-migration)
 - [Installation](#-installation)
 - [What's Included](#-whats-included)
 - [Terminal Themes](#-terminal-themes)
@@ -398,13 +404,75 @@ terminal:
 
 Result: `⚡ hacker my-app (main) >`
 
+## 🔄 Configuration Migration
+
+If you have existing `vm.json` configuration files from previous versions, you can easily migrate them to the new YAML format with automatic version tracking.
+
+### Migration Commands
+
+```bash
+# Check if migration is needed
+vm migrate --check
+
+# Preview the migration (dry run)
+vm migrate --dry-run
+
+# Perform the migration
+vm migrate
+
+# Migration options
+vm migrate --input old-config.json --output new-config.yaml
+vm migrate --backup              # Create backup (default: enabled)
+vm migrate --no-backup           # Skip backup creation
+vm migrate --force               # Skip confirmation prompts
+```
+
+### What Migration Does
+
+1. **Converts JSON to YAML**: Transforms your `vm.json` into the more readable `vm.yaml` format
+2. **Adds Version Field**: Automatically injects `version: "1.0"` for future compatibility
+3. **Creates Backup**: Saves your original as `vm.json.bak` (unless --no-backup)
+4. **Validates Result**: Ensures the migrated configuration is valid
+5. **Preserves All Settings**: All your services, ports, aliases, and customizations are maintained
+
+### Example Migration
+
+Before (vm.json):
+```json
+{
+  "project": {
+    "name": "my-app"
+  },
+  "services": {
+    "postgresql": {
+      "enabled": true
+    }
+  }
+}
+```
+
+After (vm.yaml):
+```yaml
+version: "1.0"
+project:
+  name: my-app
+services:
+  postgresql:
+    enabled: true
+```
+
 ## 🎮 Commands
 
 ```bash
 vm init                      # Initialize a new vm.yaml configuration file
 vm generate                  # Generate vm.yaml by composing services and configurations
+vm migrate                   # Convert vm.json to vm.yaml with version tracking
 vm list                      # List all VM instances
 vm temp <folders>            # Create ephemeral VM with specific directory mounts
+vm temp ssh [-c cmd]         # SSH into temp VM or run command
+vm temp status               # Show temp VM status and configuration
+vm temp destroy              # Destroy temp VM and clean up state
+vm tmp <folders>             # Alias for vm temp
 vm create                    # Create new VM/container with full provisioning
 vm start                     # Start existing VM/container without provisioning
 vm stop                      # Stop VM/container but keep data
@@ -439,8 +507,10 @@ Need a quick, disposable environment for testing or experimentation? Use the tem
 
 - **Zero configuration**: No vm.yaml needed
 - **Selective directory mounting**: Choose exactly which folders to include
-- **Auto-cleanup**: Container removes itself when you exit
-- **Collision handling**: Reuses existing temp VM if mounts match, recreates if different
+- **State management**: Tracks temp VM state in `~/.vm/temp-vm.state`
+- **Smart collision handling**: Intelligently manages conflicts when mounts change
+- **Dedicated subcommands**: `ssh`, `status`, `destroy` for better control
+- **Alias support**: Use `vm tmp` as shorthand for `vm temp`
 - **Lightweight**: Basic Ubuntu container for quick experiments
 
 ### 🎯 Usage
@@ -449,23 +519,32 @@ Need a quick, disposable environment for testing or experimentation? Use the tem
 # Create temp VM with specific directories
 vm temp ./src,./tests,./config
 
+# Or use the shorthand alias
+vm tmp ./src,./tests,./config
+
 # Mount with permissions (read-only/read-write)
 vm temp ./src:rw,./docs:ro,./tests
 
-# Destroy temp VM
-vm destroy vm-temp
+# SSH into temp VM directly
+vm temp ssh
+vm temp ssh -c "npm test"  # Run command and exit
 
-# Check if temp VM is running
-vm status vm-temp
+# Check temp VM status
+vm temp status
+
+# Destroy temp VM
+vm temp destroy
 ```
 
 ### 🔄 Smart Collision Handling
 
-The temp VM automatically handles conflicts:
+The temp VM now intelligently handles conflicts when you try to create a new temp VM with different mounts:
 
-- **Same mounts**: Connects to existing temp VM
-- **Different mounts**: Destroys old temp VM and creates new one with new mounts
-- **No temp VM**: Creates fresh temp VM
+1. **Same mounts**: Automatically connects to existing temp VM
+2. **Different mounts**: Prompts you with options:
+   - **Connect anyway**: Use existing VM (mounts won't match)
+   - **Recreate**: Destroy old VM and create new one with correct mounts
+   - **Cancel**: Abort the operation
 
 ```bash
 # First time - creates new temp VM
@@ -474,8 +553,30 @@ vm temp ./client,./server
 # Same command - connects to existing temp VM
 vm temp ./client,./server
 
-# Different mounts - destroys and recreates
+# Different mounts - prompts for action
 vm temp ./frontend,./backend
+# > Temp VM exists with different mounts. What would you like to do?
+# > 1) Connect anyway  2) Recreate  3) Cancel
+```
+
+### 🚀 Enhanced Commands
+
+The temp VM feature now includes dedicated subcommands for better workflow:
+
+```bash
+# Quick SSH without checking mounts
+vm temp ssh
+
+# Run a command without entering interactive shell
+vm temp ssh -c "python3 test.py"
+vm temp ssh -c "npm run build"
+
+# Check detailed status
+vm temp status
+# Shows: container name, status, mounted directories, uptime
+
+# Clean destroy (also removes state file)
+vm temp destroy
 ```
 
 ### 💡 Use Cases

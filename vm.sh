@@ -153,9 +153,13 @@ show_usage() {
 	echo "  init                  Initialize a new vm.yaml configuration file"
 	echo "  generate              Generate vm.yaml by composing services"
 	echo "  validate              Validate VM configuration"
+	echo "  migrate [options]     Migrate a legacy vm.json to the new vm.yaml format"
 	echo "  list                  List all VM instances"
-	echo "  temp [mounts] [--auto-destroy]  Create temporary VM with specific directory mounts"
-	echo "  temp destroy                    Destroy the temporary VM"
+	echo "  temp/tmp <command>    Manage temporary VMs:"
+	echo "    <mounts> [--auto-destroy]  Create/connect temp VM with directory mounts"
+	echo "    ssh                        SSH into the active temp VM"
+	echo "    status                     Show status of the active temp VM"
+	echo "    destroy                    Destroy the active temp VM"
 	echo "  create [args]         Create new VM with full provisioning"
 	echo "  start [args]          Start existing VM without provisioning"
 	echo "  stop [args]           Stop VM but keep data"
@@ -177,7 +181,10 @@ show_usage() {
 	echo "  vm temp ./client,./server,./shared       # Create temp VM with specific folders"
 	echo "  vm temp ./src:rw,./config:ro             # Temp VM with mount permissions"
 	echo "  vm temp ./src --auto-destroy             # Temp VM that destroys on exit"
+	echo "  vm temp ssh                              # SSH into active temp VM"
+	echo "  vm temp status                           # Check temp VM status"
 	echo "  vm temp destroy                          # Destroy temp VM"
+	echo "  vm tmp ./src                             # 'tmp' is an alias for 'temp'"
 	echo "  vm --config ./prod.yaml create           # Create VM with specific config"
 	echo "  vm --config create                       # Create VM scanning up for vm.yaml"
 	echo "  vm create                                # Create new VM (auto-find vm.yaml)"
@@ -643,6 +650,335 @@ vm_list() {
 	echo ""
 }
 
+# Temp VM state management functions
+TEMP_STATE_DIR="$HOME/.vm"
+TEMP_STATE_FILE="$TEMP_STATE_DIR/temp-vm.state"
+
+# Save temporary VM state
+save_temp_state() {
+	local container_name="$1"
+	local mounts="$2"
+	local project_dir="$3"
+	
+	# Create state directory if it doesn't exist
+	mkdir -p "$TEMP_STATE_DIR"
+	
+	# Create state file with YAML format
+	cat > "$TEMP_STATE_FILE" <<-EOF
+	container_name: $container_name
+	created_at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+	project_dir: $project_dir
+	mounts:
+	EOF
+	
+	# Add mounts to the state file
+	if [ -n "$mounts" ]; then
+		# Split mounts by comma and add to state file
+		local old_ifs="$IFS"
+		IFS=','
+		local MOUNT_ARRAY=($mounts)
+		IFS="$old_ifs"
+		
+		for mount in "${MOUNT_ARRAY[@]}"; do
+			# Trim whitespace
+			mount=$(echo "$mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+			# Get absolute path for the source
+			local source="${mount%:*}"
+			if [[ "$mount" == *:* ]]; then
+				local perm="${mount##*:}"
+				local abs_source="$(cd "$project_dir" && realpath "$source" 2>/dev/null || echo "$source")"
+				echo "  - $abs_source:/workspace/$(basename "$source"):$perm" >> "$TEMP_STATE_FILE"
+			else
+				local abs_source="$(cd "$project_dir" && realpath "$source" 2>/dev/null || echo "$source")"
+				echo "  - $abs_source:/workspace/$(basename "$source"):rw" >> "$TEMP_STATE_FILE"
+			fi
+		done
+	fi
+}
+
+# Read temporary VM state
+read_temp_state() {
+	if [ ! -f "$TEMP_STATE_FILE" ]; then
+		return 1
+	fi
+	
+	# Check if yq is available for parsing YAML
+	if command -v yq &> /dev/null; then
+		yq . "$TEMP_STATE_FILE" 2>/dev/null
+	else
+		# Fallback to cat if yq is not available
+		cat "$TEMP_STATE_FILE"
+	fi
+}
+
+# Get temp VM container name from state
+get_temp_container_name() {
+	if [ ! -f "$TEMP_STATE_FILE" ]; then
+		echo ""
+		return 1
+	fi
+	
+	if command -v yq &> /dev/null; then
+		yq -r '.container_name // empty' "$TEMP_STATE_FILE" 2>/dev/null
+	else
+		# Fallback to grep if yq is not available
+		grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//'
+	fi
+}
+
+# Check if temp VM is running
+is_temp_vm_running() {
+	local container_name="$1"
+	if [ -z "$container_name" ]; then
+		return 1
+	fi
+	
+	docker_cmd inspect "$container_name" >/dev/null 2>&1
+}
+
+# Get mounts from state file
+get_temp_mounts() {
+	if [ ! -f "$TEMP_STATE_FILE" ]; then
+		echo ""
+		return 1
+	fi
+	
+	if command -v yq &> /dev/null; then
+		yq -r '.mounts[]? // empty' "$TEMP_STATE_FILE" 2>/dev/null | tr '\n' ',' | sed 's/,$//'
+	else
+		# Fallback to awk if yq is not available
+		awk '/^mounts:/{flag=1; next} /^[^ ]/{flag=0} flag && /^  -/{print substr($0, 5)}' "$TEMP_STATE_FILE" 2>/dev/null | tr '\n' ',' | sed 's/,$//'
+	fi
+}
+
+# Compare mount strings (normalized comparison)
+compare_mounts() {
+	local mounts1="$1"
+	local mounts2="$2"
+	
+	# Normalize and sort both mount strings for comparison
+	local norm1=$(echo "$mounts1" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort | tr '\n' ',' | sed 's/,$//')
+	local norm2=$(echo "$mounts2" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort | tr '\n' ',' | sed 's/,$//')
+	
+	[ "$norm1" = "$norm2" ]
+}
+
+# Migrate legacy vm.json to new vm.yaml format
+vm_migrate() {
+	# Default values
+	local INPUT_FILE=""
+	local OUTPUT_FILE="vm.yaml"
+	local BACKUP_ENABLED="true"
+	local DRY_RUN="false"
+	local FORCE="false"
+	local CHECK_MODE="false"
+	
+	# Parse options
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+			--input)
+				shift
+				INPUT_FILE="$1"
+				shift
+				;;
+			--output)
+				shift
+				OUTPUT_FILE="$1"
+				shift
+				;;
+			--backup)
+				shift
+				if [[ "$1" =~ ^(true|false)$ ]]; then
+					BACKUP_ENABLED="$1"
+					shift
+				else
+					BACKUP_ENABLED="true"
+				fi
+				;;
+			--no-backup)
+				BACKUP_ENABLED="false"
+				shift
+				;;
+			--dry-run)
+				DRY_RUN="true"
+				shift
+				;;
+			--force)
+				FORCE="true"
+				shift
+				;;
+			--check)
+				CHECK_MODE="true"
+				shift
+				;;
+			-h|--help)
+				echo "Usage: vm migrate [options]"
+				echo ""
+				echo "Options:"
+				echo "  --input FILE      Input JSON file (default: vm.json in current directory)"
+				echo "  --output FILE     Output YAML file (default: vm.yaml)"
+				echo "  --backup [BOOL]   Create backup of input file (default: true)"
+				echo "  --no-backup       Disable backup creation"
+				echo "  --dry-run         Show what would be done without making changes"
+				echo "  --force           Skip confirmation prompts"
+				echo "  --check           Check if migration is needed without performing it"
+				echo ""
+				echo "Examples:"
+				echo "  vm migrate                           # Migrate vm.json to vm.yaml"
+				echo "  vm migrate --input config.json       # Migrate specific file"
+				echo "  vm migrate --dry-run                 # Preview migration"
+				echo "  vm migrate --check                   # Check if migration is needed"
+				return 0
+				;;
+			*)
+				echo "❌ Unknown option: $1" >&2
+				echo "Use 'vm migrate --help' for usage information" >&2
+				return 1
+				;;
+		esac
+	done
+	
+	# Handle check mode
+	if [[ "$CHECK_MODE" == "true" ]]; then
+		if [[ -f "vm.json" ]] && [[ ! -f "vm.yaml" ]]; then
+			echo "✅ Migration needed: vm.json exists but vm.yaml does not"
+			echo "   Run 'vm migrate' to perform the migration"
+			return 0
+		elif [[ -f "vm.json" ]] && [[ -f "vm.yaml" ]]; then
+			echo "⚠️  Both vm.json and vm.yaml exist"
+			echo "   The vm.yaml file will be used by default"
+			echo "   Consider removing vm.json if it's no longer needed"
+			return 0
+		elif [[ ! -f "vm.json" ]] && [[ -f "vm.yaml" ]]; then
+			echo "✅ No migration needed: Already using vm.yaml"
+			return 0
+		else
+			echo "❌ No configuration files found (neither vm.json nor vm.yaml)"
+			return 1
+		fi
+	fi
+	
+	# Find source file if not specified
+	if [[ -z "$INPUT_FILE" ]]; then
+		if [[ -f "vm.json" ]]; then
+			INPUT_FILE="vm.json"
+		else
+			echo "❌ No vm.json file found in current directory" >&2
+			echo "   Use --input to specify a different file" >&2
+			return 1
+		fi
+	fi
+	
+	# Verify input file exists
+	if [[ ! -f "$INPUT_FILE" ]]; then
+		echo "❌ Input file not found: $INPUT_FILE" >&2
+		return 1
+	fi
+	
+	# Check if output file already exists
+	if [[ -f "$OUTPUT_FILE" ]] && [[ "$FORCE" != "true" ]] && [[ "$DRY_RUN" != "true" ]]; then
+		echo "⚠️  Output file already exists: $OUTPUT_FILE"
+		echo -n "Do you want to overwrite it? (y/N): "
+		read -r response
+		case "$response" in
+			[yY]|[yY][eE][sS])
+				;;
+			*)
+				echo "❌ Migration cancelled"
+				return 1
+				;;
+		esac
+	fi
+	
+	# Show migration plan if not forced
+	if [[ "$FORCE" != "true" ]] && [[ "$DRY_RUN" != "true" ]]; then
+		echo "📋 Migration Plan:"
+		echo "  • Input:  $INPUT_FILE"
+		echo "  • Output: $OUTPUT_FILE"
+		if [[ "$BACKUP_ENABLED" == "true" ]]; then
+			echo "  • Backup: ${INPUT_FILE}.bak"
+		fi
+		echo ""
+		echo -n "Do you want to proceed? (y/N): "
+		read -r response
+		case "$response" in
+			[yY]|[yY][eE][sS])
+				;;
+			*)
+				echo "❌ Migration cancelled"
+				return 1
+				;;
+		esac
+	fi
+	
+	# Create backup if enabled
+	if [[ "$BACKUP_ENABLED" == "true" ]] && [[ "$DRY_RUN" != "true" ]]; then
+		echo "📦 Creating backup: ${INPUT_FILE}.bak"
+		cp "$INPUT_FILE" "${INPUT_FILE}.bak"
+	fi
+	
+	# Convert JSON to YAML
+	echo "🔄 Converting JSON to YAML..."
+	local YAML_CONTENT
+	if ! YAML_CONTENT=$(yq -y . "$INPUT_FILE" 2>&1); then
+		echo "❌ Failed to convert JSON to YAML:" >&2
+		echo "   $YAML_CONTENT" >&2
+		return 1
+	fi
+	
+	# Add version field
+	echo "📝 Adding version field..."
+	YAML_CONTENT=$(echo "$YAML_CONTENT" | yq '. = {"version": "1.0"} + .' | yq -y .)
+	
+	# Handle dry run mode
+	if [[ "$DRY_RUN" == "true" ]]; then
+		echo ""
+		echo "📄 Preview of generated $OUTPUT_FILE:"
+		echo "======================================"
+		echo "$YAML_CONTENT"
+		echo "======================================"
+		echo ""
+		echo "✅ Dry run complete. No files were modified."
+		return 0
+	fi
+	
+	# Write the output file
+	echo "$YAML_CONTENT" > "$OUTPUT_FILE"
+	
+	# Validate the new configuration
+	echo "✅ Validating migrated configuration..."
+	if ! "$SCRIPT_DIR/validate-config.sh" --validate "$OUTPUT_FILE"; then
+		echo "❌ Migration completed but validation failed" >&2
+		echo "   Please review and fix $OUTPUT_FILE manually" >&2
+		return 1
+	fi
+	
+	echo "✅ Migration completed successfully!"
+	echo ""
+	echo "📋 Next steps:"
+	echo "  1. Review the migrated configuration: $OUTPUT_FILE"
+	echo "  2. Test your VM with the new configuration"
+	echo "  3. Once verified, you can remove the old file: $INPUT_FILE"
+	
+	# Ask about deleting the original file
+	if [[ "$FORCE" != "true" ]]; then
+		echo ""
+		echo -n "Would you like to delete the original $INPUT_FILE now? (y/N): "
+		read -r response
+		case "$response" in
+			[yY]|[yY][eE][sS])
+				rm "$INPUT_FILE"
+				echo "🗑️  Removed $INPUT_FILE"
+				;;
+			*)
+				echo "💡 Keeping $INPUT_FILE for now"
+				;;
+		esac
+	fi
+	
+	return 0
+}
+
 # Parse command line arguments manually for better control
 CUSTOM_CONFIG=""
 DEBUG_MODE=""
@@ -656,7 +992,7 @@ while [[ $# -gt 0 ]]; do
 		-c|--config)
 			shift
 			# Check if next argument exists and is not a flag or command
-			if [[ $# -eq 0 ]] || [[ "$1" =~ ^- ]] || [[ "$1" =~ ^(init|generate|validate|list|temp|create|start|stop|restart|ssh|destroy|status|provision|logs|exec|kill|help)$ ]]; then
+			if [[ $# -eq 0 ]] || [[ "$1" =~ ^- ]] || [[ "$1" =~ ^(init|generate|validate|migrate|list|temp|create|start|stop|restart|ssh|destroy|status|provision|logs|exec|kill|help)$ ]]; then
 				# No argument provided or next is a flag/command - use scan mode
 				CUSTOM_CONFIG="__SCAN__"
 			else
@@ -723,6 +1059,14 @@ while [[ $# -gt 0 ]]; do
 			ARGS+=("$@")
 			break
 			;;
+		migrate)
+			# Special handling for migrate command - pass all remaining args
+			ARGS+=("$1")
+			shift
+			# Add all remaining arguments without parsing
+			ARGS+=("$@")
+			break
+			;;
 		*)
 			# Collect remaining arguments (command and its args)
 			ARGS+=("$1")
@@ -760,6 +1104,10 @@ case "${1:-}" in
 			"$SCRIPT_DIR/validate-config.sh" --validate
 		fi
 		;;
+	"migrate")
+		shift
+		vm_migrate "$@"
+		;;
 	"list")
 		vm_list
 		;;
@@ -779,32 +1127,124 @@ case "${1:-}" in
 			kill_virtualbox
 		fi
 		;;
-	"temp")
-		# Handle temp VM commands
+	"temp"|"tmp")
+		# Handle temp VM commands (tmp is an alias for temp)
 		shift
 		if [ $# -eq 0 ]; then
-			echo "❌ Usage: vm temp ./folder1,./folder2,./folder3 [--auto-destroy]"
-			echo "   Example: vm temp ./client,./server,./shared"
-			echo "   Example: vm temp ./src --auto-destroy"
-			echo "   Or: vm temp destroy"
+			echo "❌ Usage: vm temp <command> [options]"
+			echo ""
+			echo "Commands:"
+			echo "  <mounts>              Create/connect to temp VM with specified mounts"
+			echo "  ssh                   SSH into the active temp VM"
+			echo "  status                Show status of the active temp VM"
+			echo "  destroy               Destroy the active temp VM"
+			echo ""
+			echo "Examples:"
+			echo "  vm temp ./client,./server,./shared"
+			echo "  vm temp ./src --auto-destroy"
+			echo "  vm temp ssh"
+			echo "  vm temp status"
+			echo "  vm temp destroy"
 			exit 1
 		fi
 		
-		# Handle temp destroy subcommand
-		if [ "$1" = "destroy" ]; then
-			echo "🗑️ Destroying temporary VM..."
-			# Try both old and new container names for compatibility
-			if docker_cmd rm -f "vmtemp-dev" >/dev/null 2>&1 || docker_cmd rm -f "vm-temp" >/dev/null 2>&1; then
-				# Also clean up volumes
-				docker_cmd volume rm vmtemp_nvm vmtemp_cache >/dev/null 2>&1 || true
-				echo "✅ vm-temp destroyed successfully"
-			else
-				echo "❌ vm-temp not found or already destroyed"
-			fi
-			exit 0
-		fi
+		# Handle subcommands
+		case "$1" in
+			"destroy")
+				echo "🗑️ Destroying temporary VM..."
+				# Get container name from state file
+				container_name=$(get_temp_container_name)
+				if [ -n "$container_name" ] && docker_cmd rm -f "$container_name" >/dev/null 2>&1; then
+					# Also clean up volumes
+					docker_cmd volume rm vmtemp_nvm vmtemp_cache >/dev/null 2>&1 || true
+					# Remove state file
+					rm -f "$TEMP_STATE_FILE"
+					echo "✅ $container_name destroyed successfully"
+				else
+					# Try legacy names for backward compatibility
+					if docker_cmd rm -f "vmtemp-dev" >/dev/null 2>&1 || docker_cmd rm -f "vm-temp" >/dev/null 2>&1; then
+						docker_cmd volume rm vmtemp_nvm vmtemp_cache >/dev/null 2>&1 || true
+						echo "✅ vm-temp destroyed successfully"
+					else
+						echo "❌ No active temp VM found"
+					fi
+				fi
+				exit 0
+				;;
+			"ssh")
+				# SSH into active temp VM
+				container_name=$(get_temp_container_name)
+				if [ -z "$container_name" ]; then
+					echo "❌ No active temp VM found"
+					echo "   Run 'vm temp <mounts>' to create one"
+					exit 1
+				fi
+				
+				if ! is_temp_vm_running "$container_name"; then
+					echo "❌ Temp VM '$container_name' exists but is not running"
+					echo "   Run 'vm temp destroy' to clean up"
+					exit 1
+				fi
+				
+				echo "🔗 Connecting to $container_name..."
+				# Use the standard docker_ssh function
+				TEMP_CONFIG=$(cat <<EOF
+{
+  "project": {
+    "name": "vmtemp",
+    "hostname": "vm-temp.local",
+    "workspace_path": "/workspace"
+  },
+  "vm": {
+    "user": "developer"
+  }
+}
+EOF
+)
+				docker_ssh "$TEMP_CONFIG" "" "."
+				exit 0
+				;;
+			"status")
+				# Show temp VM status
+				if [ ! -f "$TEMP_STATE_FILE" ]; then
+					echo "❌ No active temp VM found"
+					exit 0
+				fi
+				
+				container_name=$(get_temp_container_name)
+				echo "📋 Temp VM Status:"
+				echo "=================="
+				
+				if command -v yq &> /dev/null; then
+					echo "Container: $(yq -r '.container_name' "$TEMP_STATE_FILE")"
+					echo "Created: $(yq -r '.created_at' "$TEMP_STATE_FILE")"
+					echo "Project: $(yq -r '.project_dir' "$TEMP_STATE_FILE")"
+					echo ""
+					echo "Mounts:"
+					yq -r '.mounts[]?' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
+						echo "  • $mount"
+					done
+				else
+					# Fallback display without yq
+					cat "$TEMP_STATE_FILE"
+				fi
+				
+				# Check if container is actually running
+				if is_temp_vm_running "$container_name"; then
+					echo ""
+					echo "Status: ✅ Running"
+				else
+					echo ""
+					echo "Status: ❌ Not running (state file exists but container is gone)"
+				fi
+				exit 0
+				;;
+			*)
+				# Not a subcommand, treat as mount specification
+				;;
+		esac
 		
-		# Parse mount string from first argument (only if not destroy command)
+		# Parse mount string from first argument
 		MOUNT_STRING="$1"
 		shift
 		
@@ -836,12 +1276,32 @@ case "${1:-}" in
 			fi
 		done
 		
-		# Check if vm-temp already exists
-		TEMP_CONTAINER="vmtemp-dev"  # Use consistent naming with regular VMs
-		if docker_cmd inspect "$TEMP_CONTAINER" >/dev/null 2>&1; then
-			echo "🔄 vm-temp already running - connecting..."
-			# Use the standard docker_ssh function
-			TEMP_CONFIG=$(cat <<EOF
+		# Check for existing temp VM
+		existing_container=$(get_temp_container_name)
+		if [ -n "$existing_container" ] && is_temp_vm_running "$existing_container"; then
+			# Active temp VM exists - check if mounts match
+			existing_mounts=$(get_temp_mounts)
+			
+			# Normalize the requested mounts for comparison
+			normalized_mounts=""
+			for mount in "${MOUNTS[@]}"; do
+				mount=$(echo "$mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+				local source="${mount%:*}"
+				local perm="rw"
+				if [[ "$mount" == *:* ]]; then
+					perm="${mount##*:}"
+				fi
+				local abs_source="$(realpath "$source" 2>/dev/null || echo "$source")"
+				if [ -n "$normalized_mounts" ]; then
+					normalized_mounts="$normalized_mounts,"
+				fi
+				normalized_mounts="$normalized_mounts$abs_source:/workspace/$(basename "$source"):$perm"
+			done
+			
+			if compare_mounts "$existing_mounts" "$normalized_mounts"; then
+				# Same mounts - just connect
+				echo "🔄 Connecting to existing temp VM with matching mounts..."
+				TEMP_CONFIG=$(cat <<EOF
 {
   "project": {
     "name": "vmtemp",
@@ -854,23 +1314,89 @@ case "${1:-}" in
 }
 EOF
 )
-			docker_ssh "$TEMP_CONFIG" "" "."
-			
-			# Handle auto-destroy if flag was set
-			if [ "$AUTO_DESTROY" = "true" ]; then
-				echo "🗑️ Auto-destroying temp VM..."
-				docker_cmd rm -f "$TEMP_CONTAINER" >/dev/null 2>&1
+				docker_ssh "$TEMP_CONFIG" "" "."
+				
+				# Handle auto-destroy if flag was set
+				if [ "$AUTO_DESTROY" = "true" ]; then
+					echo "🗑️ Auto-destroying temp VM..."
+					docker_cmd rm -f "$existing_container" >/dev/null 2>&1
+					docker_cmd volume rm vmtemp_nvm vmtemp_cache >/dev/null 2>&1 || true
+					rm -f "$TEMP_STATE_FILE"
+				fi
+				exit 0
+			else
+				# Different mounts - show conflict options
+				echo "⚠️  Active temp VM exists with different mounts:"
+				echo ""
+				echo "Current mounts:"
+				if command -v yq &> /dev/null && [ -f "$TEMP_STATE_FILE" ]; then
+					yq -r '.mounts[]?' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
+						echo "  • $mount"
+					done
+				else
+					echo "  $existing_mounts"
+				fi
+				echo ""
+				echo "Requested mounts:"
+				for mount in "${MOUNTS[@]}"; do
+					mount=$(echo "$mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+					echo "  • $mount"
+				done
+				echo ""
+				echo "What would you like to do?"
+				echo "  1) Connect to existing VM anyway"
+				echo "  2) Destroy existing VM and create new one"
+				echo "  3) Cancel"
+				echo ""
+				echo -n "Choose an option (1-3): "
+				read -r choice
+				
+				case "$choice" in
+					1)
+						echo "🔗 Connecting to existing VM..."
+						TEMP_CONFIG=$(cat <<EOF
+{
+  "project": {
+    "name": "vmtemp",
+    "hostname": "vm-temp.local",
+    "workspace_path": "/workspace"
+  },
+  "vm": {
+    "user": "developer"
+  }
+}
+EOF
+)
+						docker_ssh "$TEMP_CONFIG" "" "."
+						exit 0
+						;;
+					2)
+						echo "🗑️ Destroying existing VM..."
+						docker_cmd rm -f "$existing_container" >/dev/null 2>&1
+						docker_cmd volume rm vmtemp_nvm vmtemp_cache >/dev/null 2>&1 || true
+						rm -f "$TEMP_STATE_FILE"
+						# Continue to create new VM
+						;;
+					*)
+						echo "❌ Operation cancelled"
+						exit 1
+						;;
+				esac
 			fi
-		else
-			# Source the deep merge utility
-			source "$SCRIPT_DIR/shared/deep-merge.sh"
-			
-			# Generate minimal temporary vm.yaml config with just overrides
-			TEMP_CONFIG_FILE=$(mktemp /tmp/vm-temp.XXXXXX.json)
-			# Ensure the temp file is removed when the script exits
-			trap 'rm -f "$TEMP_CONFIG_FILE"' EXIT
-			
-			cat > "$TEMP_CONFIG_FILE" <<EOF
+		fi
+		
+		# No existing VM or user chose to recreate - proceed with creation
+		TEMP_CONTAINER="vmtemp-dev"  # Use consistent naming with regular VMs
+		
+		# Source the deep merge utility
+		source "$SCRIPT_DIR/shared/deep-merge.sh"
+		
+		# Generate minimal temporary vm.yaml config with just overrides
+		TEMP_CONFIG_FILE=$(mktemp /tmp/vm-temp.XXXXXX.json)
+		# Ensure the temp file is removed when the script exits
+		trap 'rm -f "$TEMP_CONFIG_FILE"' EXIT
+		
+		cat > "$TEMP_CONFIG_FILE" <<EOF
 {
   "project": {
     "name": "vmtemp",
@@ -893,91 +1419,95 @@ EOF
   }
 }
 EOF
-			
-			# Extract schema defaults and merge with temp overrides
-			SCHEMA_DEFAULTS=$("$SCRIPT_DIR/validate-config.sh" --extract-defaults "$SCRIPT_DIR/vm.schema.yaml")
-			# Use yq to merge schema defaults with temp config
-			CONFIG=$(yq -s '.[0] * .[1]' <(echo "$SCHEMA_DEFAULTS") "$TEMP_CONFIG_FILE")
-			if [ $? -ne 0 ]; then
-				echo "❌ Failed to generate temp VM configuration"
-				rm -f "$TEMP_CONFIG_FILE"
-				exit 1
-			fi
-			
-			# Create a temporary project directory for docker-compose generation
-			TEMP_PROJECT_DIR="/tmp/vm-temp-project-$$"
-			mkdir -p "$TEMP_PROJECT_DIR"
-			
-			# Track the real paths for direct volume mounts
-			MOUNT_MAPPINGS=()
-			for mount in "${MOUNTS[@]}"; do
-				mount=$(echo "$mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-				if [[ "$mount" == *:* ]]; then
-					mount="${mount%:*}"
-				fi
-				# Get absolute path
-				REAL_PATH=$(realpath "$mount")
-				MOUNT_NAME=$(basename "$mount")
-				# Store the mapping for Docker volumes
-				MOUNT_MAPPINGS+=("$REAL_PATH:$MOUNT_NAME")
-			done
-			
-			# Export mount mappings for docker provisioning script
-			export VM_TEMP_MOUNTS="${MOUNT_MAPPINGS[*]}"
-			# Mark this as a temp VM so docker provisioning knows to skip the main mount
-			export VM_IS_TEMP="true"
-			
-			# Store temp directory path for later cleanup
-			# Use secure user-specific directory for marker file
-			# Try XDG runtime dir first, then fall back to XDG state dir, then /tmp
-			if [ -n "$XDG_RUNTIME_DIR" ] && mkdir -p "$XDG_RUNTIME_DIR/vm" 2>/dev/null; then
-				MARKER_DIR="$XDG_RUNTIME_DIR/vm"
-			elif mkdir -p "$HOME/.local/state/vm" 2>/dev/null; then
-				MARKER_DIR="$HOME/.local/state/vm"
-			else
-				MARKER_DIR="/tmp"
-				echo "⚠️  Warning: Using /tmp for marker files (less secure)"
-			fi
-			# Include container name for unique identification
-			TEMP_DIR_MARKER="$MARKER_DIR/.vmtemp-${TEMP_CONTAINER}-marker"
-			echo "$TEMP_PROJECT_DIR" > "$TEMP_DIR_MARKER"
-			
-			# Log the temporary directory creation for security audit
-			if command -v logger >/dev/null 2>&1; then
-				logger -t vm-temp "Created temp directory: $TEMP_PROJECT_DIR (marker: $TEMP_DIR_MARKER)"
-			fi
-			
-			# Use the standard docker_up flow
-			echo "🚀 Creating temporary VM with full provisioning..."
-			docker_up "$CONFIG" "$TEMP_PROJECT_DIR" "true"
-			
-			# Clean up temp config file only (keep project dir for mounts)
+		
+		# Extract schema defaults and merge with temp overrides
+		SCHEMA_DEFAULTS=$("$SCRIPT_DIR/validate-config.sh" --extract-defaults "$SCRIPT_DIR/vm.schema.yaml")
+		# Use yq to merge schema defaults with temp config
+		CONFIG=$(yq -s '.[0] * .[1]' <(echo "$SCHEMA_DEFAULTS") "$TEMP_CONFIG_FILE")
+		if [ $? -ne 0 ]; then
+			echo "❌ Failed to generate temp VM configuration"
 			rm -f "$TEMP_CONFIG_FILE"
-			
-			# Handle auto-destroy if flag was set
-			if [ "$AUTO_DESTROY" = "true" ]; then
-				echo "🗑️ Auto-destroying temp VM..."
-				docker_cmd rm -f "$TEMP_CONTAINER" >/dev/null 2>&1
-				# Clean up volumes
-				docker_cmd volume rm vmtemp_nvm vmtemp_cache >/dev/null 2>&1 || true
-				# Clean up temp project directory safely
-				# Resolve real path to prevent directory traversal
-				REAL_TEMP_DIR=$(realpath "$TEMP_PROJECT_DIR" 2>/dev/null)
-				if [[ "$REAL_TEMP_DIR" == /tmp/vm-temp-project-* ]]; then
-					rm -rf "$REAL_TEMP_DIR"
-					# Log cleanup
-					if command -v logger >/dev/null 2>&1; then
-						logger -t vm-temp "Auto-destroyed temp directory: $REAL_TEMP_DIR"
-					fi
-				else
-					echo "⚠️  Warning: Temp directory path resolved to unexpected location: $REAL_TEMP_DIR"
-					# Log security event
-					if command -v logger >/dev/null 2>&1; then
-						logger -t vm-temp-security "ALERT: Rejected suspicious temp path during auto-destroy: $TEMP_PROJECT_DIR (resolved to: $REAL_TEMP_DIR)"
-					fi
-				fi
-				rm -f "$TEMP_DIR_MARKER"
+			exit 1
+		fi
+		
+		# Create a temporary project directory for docker-compose generation
+		TEMP_PROJECT_DIR="/tmp/vm-temp-project-$$"
+		mkdir -p "$TEMP_PROJECT_DIR"
+		
+		# Track the real paths for direct volume mounts
+		MOUNT_MAPPINGS=()
+		for mount in "${MOUNTS[@]}"; do
+			mount=$(echo "$mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+			if [[ "$mount" == *:* ]]; then
+				mount="${mount%:*}"
 			fi
+			# Get absolute path
+			REAL_PATH=$(realpath "$mount")
+			MOUNT_NAME=$(basename "$mount")
+			# Store the mapping for Docker volumes
+			MOUNT_MAPPINGS+=("$REAL_PATH:$MOUNT_NAME")
+		done
+		
+		# Export mount mappings for docker provisioning script
+		export VM_TEMP_MOUNTS="${MOUNT_MAPPINGS[*]}"
+		# Mark this as a temp VM so docker provisioning knows to skip the main mount
+		export VM_IS_TEMP="true"
+		
+		# Store temp directory path for later cleanup
+		# Use secure user-specific directory for marker file
+		# Try XDG runtime dir first, then fall back to XDG state dir, then /tmp
+		if [ -n "$XDG_RUNTIME_DIR" ] && mkdir -p "$XDG_RUNTIME_DIR/vm" 2>/dev/null; then
+			MARKER_DIR="$XDG_RUNTIME_DIR/vm"
+		elif mkdir -p "$HOME/.local/state/vm" 2>/dev/null; then
+			MARKER_DIR="$HOME/.local/state/vm"
+		else
+			MARKER_DIR="/tmp"
+			echo "⚠️  Warning: Using /tmp for marker files (less secure)"
+		fi
+		# Include container name for unique identification
+		TEMP_DIR_MARKER="$MARKER_DIR/.vmtemp-${TEMP_CONTAINER}-marker"
+		echo "$TEMP_PROJECT_DIR" > "$TEMP_DIR_MARKER"
+		
+		# Log the temporary directory creation for security audit
+		if command -v logger >/dev/null 2>&1; then
+			logger -t vm-temp "Created temp directory: $TEMP_PROJECT_DIR (marker: $TEMP_DIR_MARKER)"
+		fi
+		
+		# Use the standard docker_up flow
+		echo "🚀 Creating temporary VM with full provisioning..."
+		docker_up "$CONFIG" "$TEMP_PROJECT_DIR" "true"
+		
+		# Save temp VM state
+		save_temp_state "$TEMP_CONTAINER" "$MOUNT_STRING" "$CURRENT_DIR"
+		
+		# Clean up temp config file only (keep project dir for mounts)
+		rm -f "$TEMP_CONFIG_FILE"
+		
+		# Handle auto-destroy if flag was set
+		if [ "$AUTO_DESTROY" = "true" ]; then
+			echo "🗑️ Auto-destroying temp VM..."
+			docker_cmd rm -f "$TEMP_CONTAINER" >/dev/null 2>&1
+			# Clean up volumes
+			docker_cmd volume rm vmtemp_nvm vmtemp_cache >/dev/null 2>&1 || true
+			# Remove state file
+			rm -f "$TEMP_STATE_FILE"
+			# Clean up temp project directory safely
+			# Resolve real path to prevent directory traversal
+			REAL_TEMP_DIR=$(realpath "$TEMP_PROJECT_DIR" 2>/dev/null)
+			if [[ "$REAL_TEMP_DIR" == /tmp/vm-temp-project-* ]]; then
+				rm -rf "$REAL_TEMP_DIR"
+				# Log cleanup
+				if command -v logger >/dev/null 2>&1; then
+					logger -t vm-temp "Auto-destroyed temp directory: $REAL_TEMP_DIR"
+				fi
+			else
+				echo "⚠️  Warning: Temp directory path resolved to unexpected location: $REAL_TEMP_DIR"
+				# Log security event
+				if command -v logger >/dev/null 2>&1; then
+					logger -t vm-temp-security "ALERT: Rejected suspicious temp path during auto-destroy: $TEMP_PROJECT_DIR (resolved to: $REAL_TEMP_DIR)"
+				fi
+			fi
+			rm -f "$TEMP_DIR_MARKER"
 		fi
 		;;
 	"destroy")

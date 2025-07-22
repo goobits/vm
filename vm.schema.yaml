@@ -3,6 +3,10 @@ title: VM Configuration Schema
 description: Configuration schema for the VM development environment tool
 type: object
 properties:
+  version:
+    type: string
+    description: Configuration format version.
+    default: '1.0'
   provider:
     type: string
     enum:
