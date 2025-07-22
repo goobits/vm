@@ -249,6 +249,8 @@ Result: `🚀 developer my-app (main) >`
 
 ## 🔄 Migration from JSON
 
+> **⚠️ Important**: JSON configuration files are no longer supported for direct use. You must migrate existing JSON configs to YAML format using the `vm migrate` command.
+
 If you have existing `vm.json` configuration files, easily migrate to YAML:
 
 ### Migration Commands
