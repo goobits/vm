@@ -903,6 +903,10 @@ vm_migrate() {
 		return 1
 	fi
 	
+	# Remove $schema field (not needed for user configs)
+	echo "🧹 Removing $schema field..."
+	YAML_CONTENT=$(echo "$YAML_CONTENT" | yq 'del(."$schema")' | yq -y .)
+	
 	# Add version field
 	echo "📝 Adding version field..."
 	YAML_CONTENT=$(echo "$YAML_CONTENT" | yq '. = {"version": "1.0"} + .' | yq -y .)
