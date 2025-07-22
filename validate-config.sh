@@ -1,9 +1,26 @@
 #!/bin/bash
 # VM Configuration Manager - Shell version
-# Purpose: Load, merge, validate, and output final configuration using jq
+# Purpose: Load, merge, validate, and output final configuration using yq for YAML
 # Usage: ./validate-config.sh [--validate] [--get-config] [--init] [config-path]
 
 set -e
+
+# Check for required tools
+if ! command -v yq &> /dev/null; then
+    echo "❌ Error: yq is not installed. This tool is required for YAML processing."
+    echo ""
+    echo "📦 To install yq on Ubuntu/Debian:"
+    echo "   sudo apt-get update"
+    echo "   sudo apt-get install yq"
+    echo ""
+    echo "📦 To install yq on macOS:"
+    echo "   brew install yq"
+    echo ""
+    echo "📦 To install yq on other systems:"
+    echo "   Visit: https://github.com/kislyuk/yq"
+    echo ""
+    exit 1
+fi
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -66,7 +83,7 @@ deep_merge() {
     '
 }
 
-# Extract default values from schema
+# Extract default values from YAML schema
 extract_schema_defaults() {
     local schema_path="$1"
     
@@ -75,76 +92,76 @@ extract_schema_defaults() {
         return 1
     fi
     
-    jq '
+    yq '
     {
-      provider: .properties.provider.default,
-      project: {
-        workspace_path: .properties.project.properties.workspace_path.default,
-        backup_pattern: .properties.project.properties.backup_pattern.default
+      "provider": .properties.provider.default,
+      "project": {
+        "workspace_path": .properties.project.properties.workspace_path.default,
+        "backup_pattern": .properties.project.properties.backup_pattern.default
       },
-      vm: {
-        box: .properties.vm.properties.box.default,
-        memory: .properties.vm.properties.memory.default,
-        cpus: .properties.vm.properties.cpus.default,
-        user: .properties.vm.properties.user.default,
-        port_binding: .properties.vm.properties.port_binding.default,
-        timezone: .properties.vm.properties.timezone.default
+      "vm": {
+        "box": .properties.vm.properties.box.default,
+        "memory": .properties.vm.properties.memory.default,
+        "cpus": .properties.vm.properties.cpus.default,
+        "user": .properties.vm.properties.user.default,
+        "port_binding": .properties.vm.properties.port_binding.default,
+        "timezone": .properties.vm.properties.timezone.default
       },
-      versions: {
-        node: .properties.versions.properties.node.default,
-        nvm: .properties.versions.properties.nvm.default,
-        pnpm: .properties.versions.properties.pnpm.default
+      "versions": {
+        "node": .properties.versions.properties.node.default,
+        "nvm": .properties.versions.properties.nvm.default,
+        "pnpm": .properties.versions.properties.pnpm.default
       },
-      terminal: {
-        emoji: .properties.terminal.properties.emoji.default,
-        username: .properties.terminal.properties.username.default,
-        theme: .properties.terminal.properties.theme.default,
-        show_git_branch: .properties.terminal.properties.show_git_branch.default
+      "terminal": {
+        "emoji": .properties.terminal.properties.emoji.default,
+        "username": .properties.terminal.properties.username.default,
+        "theme": .properties.terminal.properties.theme.default,
+        "show_git_branch": .properties.terminal.properties.show_git_branch.default
       },
-      apt_packages: .properties.apt_packages.default,
-      npm_packages: .properties.npm_packages.default,
-      aliases: .properties.aliases.default,
-      claude_sync: .properties.claude_sync.default,
-      gemini_sync: .properties.gemini_sync.default
+      "apt_packages": .properties.apt_packages.default,
+      "npm_packages": .properties.npm_packages.default,
+      "aliases": .properties.aliases.default,
+      "claude_sync": .properties.claude_sync.default,
+      "gemini_sync": .properties.gemini_sync.default
     }' "$schema_path"
 }
 
-# Find vm.json upwards from directory
-find_vm_json_upwards() {
+# Find vm.yaml upwards from directory
+find_vm_yaml_upwards() {
     local start_dir="$1"
     local current_dir="$(cd "$start_dir" && pwd)"
     
     while [[ "$current_dir" != "/" ]]; do
-        if [[ -f "$current_dir/vm.json" ]]; then
-            echo "$current_dir/vm.json"
+        if [[ -f "$current_dir/vm.yaml" ]]; then
+            echo "$current_dir/vm.yaml"
             return 0
         fi
         current_dir="$(dirname "$current_dir")"
     done
     
     # Check root directory
-    if [[ -f "/vm.json" ]]; then
-        echo "/vm.json"
+    if [[ -f "/vm.yaml" ]]; then
+        echo "/vm.yaml"
         return 0
     fi
     
     return 1
 }
 
-# Initialize vm.json
-initialize_vm_json() {
+# Initialize vm.yaml
+initialize_vm_yaml() {
     local target_path="$1"
-    local local_config_path="${target_path:-$(pwd)/vm.json}"
+    local local_config_path="${target_path:-$(pwd)/vm.yaml}"
     
-    # Check if vm.json already exists
+    # Check if vm.yaml already exists
     if [[ -f "$local_config_path" ]]; then
-        echo "❌ vm.json already exists at $local_config_path" >&2
+        echo "❌ vm.yaml already exists at $local_config_path" >&2
         echo "Use --config to specify a different location or remove the existing file." >&2
         return 1
     fi
     
     # Load default configuration from schema
-    local schema_path="$SCRIPT_DIR/vm.schema.json"
+    local schema_path="$SCRIPT_DIR/vm.schema.yaml"
     if [[ ! -f "$schema_path" ]]; then
         echo "❌ Schema file not found at $schema_path" >&2
         return 1
@@ -160,17 +177,17 @@ initialize_vm_json() {
         .terminal.username = $dirname + "-dev"
     ')"
     
-    # Write the customized config
-    if echo "$customized_config" | jq . > "$local_config_path"; then
-        echo "✅ Created vm.json for project: $dir_name"
+    # Write the customized config as YAML
+    if echo "$customized_config" | yq -y . > "$local_config_path"; then
+        echo "✅ Created vm.yaml for project: $dir_name"
         echo "📍 Configuration file: $local_config_path"
         echo ""
         echo "Next steps:"
-        echo "  1. Review and customize vm.json as needed"
+        echo "  1. Review and customize vm.yaml as needed"
         echo "  2. Run \"vm create\" to start your development environment"
         return 0
     else
-        echo "❌ Failed to create vm.json" >&2
+        echo "❌ Failed to create vm.yaml" >&2
         return 1
     fi
 }
@@ -178,12 +195,12 @@ initialize_vm_json() {
 # Load and merge configuration
 load_and_merge_config() {
     local custom_config_path="$1"
-    local local_config_path="$(pwd)/vm.json"
+    local local_config_path="$(pwd)/vm.yaml"
     local config_file_to_load=""
     local config_dir_for_scan=""
     
     # Load default config from schema
-    local schema_path="$SCRIPT_DIR/vm.schema.json"
+    local schema_path="$SCRIPT_DIR/vm.schema.yaml"
     if [[ ! -f "$schema_path" ]]; then
         echo "❌ Schema file not found at $schema_path" >&2
         return 1
@@ -193,13 +210,13 @@ load_and_merge_config() {
     
     # Determine which config to load
     if [[ "$custom_config_path" == "__SCAN__" ]]; then
-        # Scan upwards for vm.json
-        if config_file_to_load="$(find_vm_json_upwards "$(pwd)")"; then
+        # Scan upwards for vm.yaml
+        if config_file_to_load="$(find_vm_yaml_upwards "$(pwd)")"; then
             config_dir_for_scan="$(dirname "$config_file_to_load")"
         else
-            echo "❌ No vm.json found in current directory or parent directories" >&2
+            echo "❌ No vm.yaml found in current directory or parent directories" >&2
             echo "" >&2
-            echo "To create a vm.json file for this project, run:" >&2
+            echo "To create a vm.yaml file for this project, run:" >&2
             echo "  vm init" >&2
             return 1
         fi
@@ -211,11 +228,11 @@ load_and_merge_config() {
             config_file_to_load="$(pwd)/$custom_config_path"
         fi
         
-        # Handle directory path with vm.json
-        if [[ ! -f "$config_file_to_load" && "$config_file_to_load" == */vm.json ]]; then
+        # Handle directory path with vm.yaml
+        if [[ ! -f "$config_file_to_load" && "$config_file_to_load" == */vm.yaml ]]; then
             local dir_path="$(dirname "$config_file_to_load")"
             if [[ -d "$dir_path" ]]; then
-                echo "❌ No vm.json found in directory: $dir_path" >&2
+                echo "❌ No vm.yaml found in directory: $dir_path" >&2
                 return 1
             fi
         fi
@@ -225,19 +242,19 @@ load_and_merge_config() {
             return 1
         fi
     else
-        # Look for local vm.json
+        # Look for local vm.yaml
         if [[ -f "$local_config_path" ]]; then
             config_file_to_load="$local_config_path"
         else
             if [[ -t 0 && -t 1 ]]; then
                 # TTY mode
-                echo "❌ No vm.json configuration file found in $(pwd)" >&2
+                echo "❌ No vm.yaml configuration file found in $(pwd)" >&2
                 echo "" >&2
-                echo "To create a vm.json file for this project, run:" >&2
+                echo "To create a vm.yaml file for this project, run:" >&2
                 echo "  vm init" >&2
                 return 1
             else
-                echo "❌ No vm.json configuration file found in $(pwd). Run \"vm init\" to create one." >&2
+                echo "❌ No vm.yaml configuration file found in $(pwd). Run \"vm init\" to create one." >&2
                 return 1
             fi
         fi
@@ -246,11 +263,11 @@ load_and_merge_config() {
     # Load and validate user config
     local user_config=""
     if [[ -f "$config_file_to_load" ]]; then
-        local jq_error
-        if ! user_config="$(jq . "$config_file_to_load" 2>&1)"; then
-            jq_error="$(jq . "$config_file_to_load" 2>&1)"
-            echo "❌ Invalid JSON in project config: $config_file_to_load" >&2
-            echo "   JSON parsing error: $jq_error" >&2
+        local yq_error
+        if ! user_config="$(yq . "$config_file_to_load" 2>&1)"; then
+            yq_error="$(yq . "$config_file_to_load" 2>&1)"
+            echo "❌ Invalid YAML in project config: $config_file_to_load" >&2
+            echo "   YAML parsing error: $yq_error" >&2
             return 1
         fi
         
@@ -282,8 +299,8 @@ load_and_merge_config() {
     echo "$final_config"
 }
 
-# Validate configuration against schema using Python jsonschema
-validate_against_schema() {
+# Validate YAML configuration against YAML schema using Python
+validate_against_yaml_schema() {
     local config="$1"
     local schema_path="$2"
     
@@ -292,19 +309,43 @@ validate_against_schema() {
         return 1
     fi
     
-    # Create temp file for config since python3 -m jsonschema needs a file
-    local temp_config="/tmp/vm-config-validate-$$.json"
-    echo "$config" > "$temp_config"
+    # Create temp file for config
+    local temp_config="/tmp/vm-config-validate-$$.yaml"
+    echo "$config" | yq -y . > "$temp_config"
     
-    # Run Python jsonschema validation and capture output
+    # Use Python to validate YAML against YAML schema
     local validation_output
-    if validation_output=$(python3 -m jsonschema "$schema_path" -i "$temp_config" 2>&1); then
+    if validation_output=$(python3 -c "
+import yaml
+import jsonschema
+import sys
+
+try:
+    # Load YAML schema
+    with open('$schema_path', 'r') as f:
+        schema = yaml.safe_load(f)
+    
+    # Load YAML config
+    with open('$temp_config', 'r') as f:
+        config = yaml.safe_load(f)
+    
+    # Validate
+    jsonschema.validate(config, schema)
+    print('✅ Configuration is valid')
+except jsonschema.ValidationError as e:
+    print(f'❌ Validation error: {e.message}')
+    if e.path:
+        print(f'   at path: {\".\".join(str(p) for p in e.path)}')
+    sys.exit(1)
+except Exception as e:
+    print(f'❌ Error: {e}')
+    sys.exit(1)
+" 2>&1); then
         rm -f "$temp_config"
         return 0
     else
         rm -f "$temp_config"
-        # Clean up and format error messages
-        echo "$validation_output" | grep -E "(is not|should|must|Failed validating)" | sed 's/^/  /' || echo "Schema validation failed"
+        echo "$validation_output"
         return 1
     fi
 }
@@ -329,15 +370,13 @@ validate_merged_config() {
         return 1
     fi
     
-    # Schema-based validation using vm.schema.json
-    local schema_path="$SCRIPT_DIR/vm.schema.json"
+    # Schema-based validation using vm.schema.yaml
+    local schema_path="$SCRIPT_DIR/vm.schema.yaml"
     if [[ -f "$schema_path" ]]; then
         local schema_errors
-        schema_errors=$(validate_against_schema "$config" "$schema_path")
-        if [[ -n "$schema_errors" ]]; then
-            while IFS= read -r error; do
-                [[ -n "$error" ]] && errors+=("$error")
-            done <<< "$schema_errors"
+        if ! schema_errors=$(validate_against_yaml_schema "$config" "$schema_path"); then
+            # Schema validation failed, add to errors
+            errors+=("Schema validation failed: $schema_errors")
         fi
     else
         # Fallback to basic validation if schema not found
@@ -380,7 +419,7 @@ main() {
     
     # Handle init command
     if [[ "$INIT_FLAG" == "true" ]]; then
-        initialize_vm_json "$CUSTOM_CONFIG_PATH"
+        initialize_vm_yaml "$CUSTOM_CONFIG_PATH"
         return $?
     fi
     
@@ -406,7 +445,7 @@ main() {
     if [[ "$CUSTOM_CONFIG_PATH" == "__SCAN__" ]]; then
         # Find where the config was located by scanning again
         local config_location
-        if config_location="$(find_vm_json_upwards "$(pwd)")"; then
+        if config_location="$(find_vm_yaml_upwards "$(pwd)")"; then
             local config_dir="$(dirname "$config_location")"
             final_config="$(echo "$final_config" | jq --arg dir "$config_dir" '. + {__config_dir: $dir}')"
         fi

@@ -17,7 +17,7 @@ generate_docker_compose() {
     local project_dir="${2:-$(pwd)}"
     
     # Load and merge config with defaults using standardized utility
-    local default_config_path="$VM_TOOL_DIR/vm.json"
+    local default_config_path="$VM_TOOL_DIR/vm.yaml"
     local config
     
     if ! config="$(merge_project_config "$default_config_path" "$config_path")"; then

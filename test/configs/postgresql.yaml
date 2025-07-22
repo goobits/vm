@@ -1,0 +1,12 @@
+project:
+  name: test-postgresql
+  hostname: dev.postgresql.local
+  workspace_path: /workspace
+provider: docker
+terminal:
+  emoji: 🧪
+  username: test-dev
+services:
+  postgresql:
+    enabled: true
+aliases: {}

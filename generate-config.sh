@@ -4,17 +4,34 @@
 
 set -e
 
+# Check for required tools
+if ! command -v yq &> /dev/null; then
+    echo "❌ Error: yq is not installed. This tool is required for YAML processing."
+    echo ""
+    echo "📦 To install yq on Ubuntu/Debian:"
+    echo "   sudo apt-get update"
+    echo "   sudo apt-get install yq"
+    echo ""
+    echo "📦 To install yq on macOS:"
+    echo "   brew install yq"
+    echo ""
+    echo "📦 To install yq on other systems:"
+    echo "   Visit: https://github.com/kislyuk/yq"
+    echo ""
+    exit 1
+fi
+
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Default values
-DEFAULT_CONFIG="$SCRIPT_DIR/vm.json"
+DEFAULT_CONFIG="$SCRIPT_DIR/vm.yaml"
 SERVICES=""
 PORTS=""
 PROJECT_NAME=""
-OUTPUT_FILE="vm.json"
+OUTPUT_FILE="vm.yaml"
 
-# Available services (discovered from test/configs/services/)
+# Available services (discovered from configs/services/)
 AVAILABLE_SERVICES="postgresql redis mongodb docker vm"
 
 # Parse arguments
@@ -45,7 +62,7 @@ while [[ $# -gt 0 ]]; do
             echo "Examples:"
             echo "  $0 --services postgresql,redis"
             echo "  $0 --services postgresql --ports 3020 --name my-app"
-            echo "  $0 --name frontend-app my-frontend.json"
+            echo "  $0 --name frontend-app my-frontend.yaml"
             exit 0
             ;;
         --*)
@@ -72,7 +89,9 @@ if [[ ! -f "$DEFAULT_CONFIG" ]]; then
     exit 1
 fi
 
-base_config="$(cat "$DEFAULT_CONFIG")"
+# Create a working copy of the base config
+base_config_temp="$(mktemp)"
+cp "$DEFAULT_CONFIG" "$base_config_temp"
 
 # Apply services if specified
 if [[ -n "$SERVICES" ]]; then
@@ -91,28 +110,26 @@ if [[ -n "$SERVICES" ]]; then
         fi
         
         # Load service configuration
-        service_config_file="$SCRIPT_DIR/test/configs/services/${service}.json"
+        service_config_file="$SCRIPT_DIR/configs/services/${service}.yaml"
         if [[ ! -f "$service_config_file" ]]; then
             echo "❌ Service configuration not found: $service_config_file" >&2
             exit 1
         fi
         
-        service_config="$(cat "$service_config_file")"
+        # Extract the specific service configuration and merge it using yq
+        service_value="$(yq -r ".services.$service" "$service_config_file")"
         
-        # Only merge specific service, not overwrite all services
-        base_config="$(echo "$base_config" | jq --argjson service_cfg "$service_config" --arg service_name "$service" '
-            .services[$service_name] = $service_cfg.services[$service_name]
-        ')"
+        # Use yq to merge the service configuration into the base config
+        echo "$service_value" | yq -y . | yq -s '.[0].services["'$service'"] = .[1] | .[0]' "$base_config_temp" - > "${base_config_temp}.new"
+        mv "${base_config_temp}.new" "$base_config_temp"
     done
 fi
 
 # Apply project name if specified
 if [[ -n "$PROJECT_NAME" ]]; then
-    base_config="$(echo "$base_config" | jq --arg name "$PROJECT_NAME" '
-        .project.name = $name |
-        .project.hostname = "dev." + $name + ".local" |
-        .terminal.username = $name + "-dev"
-    ')"
+    yq -y ".project.name = \"$PROJECT_NAME\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
+    yq -y ".project.hostname = \"dev.$PROJECT_NAME.local\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
+    yq -y ".terminal.username = \"$PROJECT_NAME-dev\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
 fi
 
 # Apply port configuration if specified
@@ -130,41 +147,36 @@ if [[ -n "$PORTS" ]]; then
     redis_port="$((PORTS + 6))"
     mongodb_port="$((PORTS + 7))"
     
-    base_config="$(echo "$base_config" | jq --argjson web "$web_port" --argjson api "$api_port" --argjson pg "$postgres_port" --argjson redis "$redis_port" --argjson mongo "$mongodb_port" '
-        .ports = {
-            "web": $web,
-            "api": $api,
-            "postgresql": $pg,
-            "redis": $redis,
-            "mongodb": $mongo
-        }
-    ')"
+    # Set port configuration using yq
+    yq -y ".ports.web = $web_port" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
+    yq -y ".ports.api = $api_port" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
+    yq -y ".ports.postgresql = $postgres_port" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
+    yq -y ".ports.redis = $redis_port" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
+    yq -y ".ports.mongodb = $mongodb_port" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
 fi
 
 # Auto-generate project name from directory if not specified
 if [[ -z "$PROJECT_NAME" ]]; then
     dir_name="$(basename "$(pwd)")"
-    base_config="$(echo "$base_config" | jq --arg name "$dir_name" '
-        .project.name = $name |
-        .project.hostname = "dev." + $name + ".local" |
-        .terminal.username = $name + "-dev"
-    ')"
+    yq -y ".project.name = \"$dir_name\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
+    yq -y ".project.hostname = \"dev.$dir_name.local\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
+    yq -y ".terminal.username = \"$dir_name-dev\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
 fi
 
 # Write final configuration
-if echo "$base_config" | jq . > "$OUTPUT_FILE"; then
-    project_name="$(echo "$base_config" | jq -r '.project.name')"
+if cp "$base_config_temp" "$OUTPUT_FILE"; then
+    project_name="$(yq -r '.project.name' "$OUTPUT_FILE")"
     echo "✅ Generated configuration for project: $project_name"
     echo "📍 Configuration file: $OUTPUT_FILE"
     
-    # Show enabled services
-    enabled_services="$(echo "$base_config" | jq -r '.services | to_entries[] | select(.value.enabled == true) | .key' 2>/dev/null | tr '\n' ' ' || echo "none")"
+    # Show enabled services using yq
+    enabled_services="$(yq -r '.services | to_entries[] | select(.value.enabled == true) | .key' "$OUTPUT_FILE" 2>/dev/null | tr '\n' ' ' || echo "none")"
     if [[ "$enabled_services" != "none" ]]; then
         echo "🔧 Enabled services: $enabled_services"
     fi
     
-    # Show port allocations
-    ports="$(echo "$base_config" | jq -r '.ports // {} | to_entries[] | .key + ":" + (.value | tostring)' 2>/dev/null | tr '\n' ' ' || echo "")"
+    # Show port allocations using yq
+    ports="$(yq -r '.ports // {} | to_entries[] | .key + ":" + (.value | tostring)' "$OUTPUT_FILE" 2>/dev/null | tr '\n' ' ' || echo "")"
     if [[ -n "$ports" ]]; then
         echo "🔌 Port allocations: $ports"
     fi
@@ -173,7 +185,11 @@ if echo "$base_config" | jq . > "$OUTPUT_FILE"; then
     echo "Next steps:"
     echo "  1. Review and customize $OUTPUT_FILE as needed"
     echo "  2. Run \"vm create\" to start your development environment"
+    
+    # Clean up temporary file
+    rm -f "$base_config_temp"
 else
     echo "❌ Failed to generate configuration" >&2
+    rm -f "$base_config_temp"
     exit 1
 fi

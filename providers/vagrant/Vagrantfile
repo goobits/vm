@@ -2,6 +2,7 @@
 # vi: set ft=ruby :
 
 require 'json'
+require 'yaml'
 
 # Deep merge helper function
 def deep_merge(base, override)
@@ -16,13 +17,13 @@ end
 
 Vagrant.configure("2") do |config|
   # Load default configuration
-  defaults_file = File.expand_path("../../vm.json", File.dirname(__FILE__))
-  default_config = JSON.parse(File.read(defaults_file))
+  defaults_file = File.expand_path("../../vm.yaml", File.dirname(__FILE__))
+  default_config = YAML.load_file(defaults_file)
   
   # Load project-specific configuration
-  config_file = ENV['VM_CONFIG'] || File.expand_path("../../vm.json", File.dirname(__FILE__))
+  config_file = ENV['VM_CONFIG'] || File.expand_path("../../vm.yaml", File.dirname(__FILE__))
   if config_file && File.exist?(config_file)
-    user_config = JSON.parse(File.read(config_file))
+    user_config = YAML.load_file(config_file)
     # Merge user config with defaults
     project_config = deep_merge(default_config, user_config)
   else
@@ -182,7 +183,7 @@ Vagrant.configure("2") do |config|
       
       echo "Ansible playbook available at /vm-tool/shared/ansible/"
       
-      # Write merged configuration for Ansible (separate from project vm.json)
+      # Write merged configuration for Ansible (separate from project vm.yaml)
       cat > /tmp/vm-config.json << 'EOF'
 #{JSON.pretty_generate(project_config)}
 EOF

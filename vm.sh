@@ -4,6 +4,23 @@
 
 set -e
 
+# Check for required tools
+if ! command -v yq &> /dev/null; then
+    echo "❌ Error: yq is not installed. This tool is required for YAML processing."
+    echo ""
+    echo "📦 To install yq on Ubuntu/Debian:"
+    echo "   sudo apt-get update"
+    echo "   sudo apt-get install yq"
+    echo ""
+    echo "📦 To install yq on macOS:"
+    echo "   brew install yq"
+    echo ""
+    echo "📦 To install yq on other systems:"
+    echo "   Visit: https://github.com/kislyuk/yq"
+    echo ""
+    exit 1
+fi
+
 # Default port configuration
 DEFAULT_POSTGRES_PORT=5432
 DEFAULT_REDIS_PORT=6379
@@ -127,14 +144,14 @@ show_usage() {
 	echo "Usage: $0 [--config [PATH]] [--debug] [--dry-run] [--auto-login [true|false]] [command] [args...]"
 	echo ""
 	echo "Options:"
-	echo "  --config [PATH]      Use specific vm.json file, or scan up directory tree if no path given"
+	echo "  --config [PATH]      Use specific vm.yaml file, or scan up directory tree if no path given"
 	echo "  --debug              Enable debug output"
 	echo "  --dry-run            Show what would be executed without actually running it"
 	echo "  --auto-login [BOOL]  Automatically SSH into VM after create/start (default: true)"
 	echo ""
 	echo "Commands:"
-	echo "  init                  Initialize a new vm.json configuration file"
-	echo "  generate              Generate vm.json by composing services"
+	echo "  init                  Initialize a new vm.yaml configuration file"
+	echo "  generate              Generate vm.yaml by composing services"
 	echo "  validate              Validate VM configuration"
 	echo "  list                  List all VM instances"
 	echo "  temp [mounts] [--auto-destroy]  Create temporary VM with specific directory mounts"
@@ -161,16 +178,16 @@ show_usage() {
 	echo "  vm temp ./src:rw,./config:ro             # Temp VM with mount permissions"
 	echo "  vm temp ./src --auto-destroy             # Temp VM that destroys on exit"
 	echo "  vm temp destroy                          # Destroy temp VM"
-	echo "  vm --config ./prod.json create           # Create VM with specific config"
-	echo "  vm --config create                       # Create VM scanning up for vm.json"
-	echo "  vm create                                # Create new VM (auto-find vm.json)"
+	echo "  vm --config ./prod.yaml create           # Create VM with specific config"
+	echo "  vm --config create                       # Create VM scanning up for vm.yaml"
+	echo "  vm create                                # Create new VM (auto-find vm.yaml)"
 	echo "  vm create --auto-login=false             # Create VM without auto SSH"
 	echo "  vm start                                 # Start existing VM (fast)"
 	echo "  vm start --auto-login=false              # Start VM without auto SSH"
 	echo "  vm ssh                                   # Connect to VM"
 	echo "  vm stop                                  # Stop the VM"
 	echo ""
-	echo "The provider (Vagrant or Docker) is determined by the 'provider' field in vm.json"
+	echo "The provider (Vagrant or Docker) is determined by the 'provider' field in vm.yaml"
 }
 
 # Function to kill VirtualBox processes
@@ -222,7 +239,7 @@ load_config() {
 # Get provider from config
 get_provider() {
 	local config="$1"
-	echo "$config" | jq -r '.provider // "docker"'
+	echo "$config" | yq -r '.provider // "docker"'
 }
 
 # Docker helper function to reduce duplication
@@ -233,7 +250,7 @@ docker_run() {
 	shift 3
 	
 	# Extract project name once
-	local project_name=$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')
+	local project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
 	local container_name="${project_name}-dev"
 	
 	case "$action" in
@@ -277,7 +294,7 @@ docker_up() {
 	docker_run "compose" "$config" "$project_dir" up -d "$@"
 	
 	# Get container name
-	local project_name=$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')
+	local project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
 	local container_name="${project_name}-dev"
 	
 	# Wait for container to be ready before proceeding
@@ -313,7 +330,7 @@ docker_up() {
 	
 	# Fix volume permissions before Ansible
 	echo "🔑 Setting up permissions..."
-	local project_user=$(echo "$config" | jq -r '.vm.user // "developer"')
+	local project_user=$(echo "$config" | yq -r '.vm.user // "developer"')
 	if docker_run "exec" "$config" "$project_dir" chown -R "$project_user:$project_user" "/home/$project_user/.nvm" "/home/$project_user/.cache"; then
 		echo "✅ Permissions configured"
 	else
@@ -383,8 +400,8 @@ docker_ssh() {
 	shift 3
 	
 	# Get workspace path and user from config
-	local workspace_path=$(echo "$config" | jq -r '.project.workspace_path // "/workspace"')
-	local project_user=$(echo "$config" | jq -r '.vm.user // "developer"')
+	local workspace_path=$(echo "$config" | yq -r '.project.workspace_path // "/workspace"')
+	local project_user=$(echo "$config" | yq -r '.vm.user // "developer"')
 	local target_dir="${workspace_path}"
 	
 	if [ "${VM_DEBUG:-}" = "true" ]; then
@@ -410,7 +427,7 @@ docker_ssh() {
 		docker_run "exec" "$config" "" su - $project_user -c "cd '$target_dir' && source ~/.zshrc && zsh $*"
 	else
 		# Interactive mode - use a simple approach that works
-		local project_name=$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')
+		local project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
 		local container_name="${project_name}-dev"
 		
 		# Run an interactive shell that properly handles signals
@@ -435,7 +452,7 @@ docker_start() {
 	echo "🚀 Starting development environment..."
 	
 	# Get container name
-	local project_name=$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')
+	local project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
 	local container_name="${project_name}-dev"
 	
 	# Check if container exists
@@ -481,7 +498,7 @@ docker_halt() {
 	shift 2
 	
 	# Stop the container directly (not using docker-compose)
-	local project_name=$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')
+	local project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
 	local container_name="${project_name}-dev"
 	docker_cmd stop "${container_name}" "$@"
 }
@@ -492,7 +509,7 @@ docker_destroy() {
 	shift 2
 	
 	# Get project name for user feedback
-	local project_name=$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')
+	local project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
 	local container_name="${project_name}-dev"
 	
 	echo "🗑️ Destroying VM: ${container_name}"
@@ -580,7 +597,7 @@ docker_exec() {
 docker_kill() {
 	echo "⏹️ Stopping environment..."
 	local config="$1"
-	local project_name=$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')
+	local project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
 	
 	docker_cmd stop "${project_name}-dev" 2>/dev/null || true
 	docker_cmd stop "${project_name}-postgres" 2>/dev/null || true
@@ -645,7 +662,7 @@ while [[ $# -gt 0 ]]; do
 			else
 				# Argument provided - use it as config path
 				if [ -d "$1" ]; then
-					CUSTOM_CONFIG="$1/vm.json"
+					CUSTOM_CONFIG="$1/vm.yaml"
 				else
 					CUSTOM_CONFIG="$1"
 				fi
@@ -848,7 +865,7 @@ EOF
 			# Source the deep merge utility
 			source "$SCRIPT_DIR/shared/deep-merge.sh"
 			
-			# Generate minimal temporary vm.json config with just overrides
+			# Generate minimal temporary vm.yaml config with just overrides
 			TEMP_CONFIG_FILE=$(mktemp /tmp/vm-temp.XXXXXX.json)
 			# Ensure the temp file is removed when the script exits
 			trap 'rm -f "$TEMP_CONFIG_FILE"' EXIT
@@ -878,21 +895,9 @@ EOF
 EOF
 			
 			# Extract schema defaults and merge with temp overrides
-			SCHEMA_DEFAULTS=$("$SCRIPT_DIR/validate-config.sh" --extract-defaults "$SCRIPT_DIR/vm.schema.json")
-			CONFIG=$(echo "$SCHEMA_DEFAULTS" | jq --argjson temp "$(cat "$TEMP_CONFIG_FILE")" '
-				def deep_merge(a; b):
-					if (a | type) == "object" and (b | type) == "object" then
-						reduce (a + b | to_entries[]) as $item ({}; .[$item.key] = 
-							if ($item.key as $k | a | has($k)) and ($item.key as $k | b | has($k)) then
-								deep_merge(a[$item.key]; b[$item.key])
-							else
-								$item.value
-							end)
-					else
-						b
-					end;
-				deep_merge(.; $temp)
-			')
+			SCHEMA_DEFAULTS=$("$SCRIPT_DIR/validate-config.sh" --extract-defaults "$SCRIPT_DIR/vm.schema.yaml")
+			# Use yq to merge schema defaults with temp config
+			CONFIG=$(yq -s '.[0] * .[1]' <(echo "$SCHEMA_DEFAULTS") "$TEMP_CONFIG_FILE")
 			if [ $? -ne 0 ]; then
 				echo "❌ Failed to generate temp VM configuration"
 				rm -f "$TEMP_CONFIG_FILE"
@@ -1055,7 +1060,7 @@ EOF
 			# Load and validate config
 			CONFIG=$(load_config "$CUSTOM_CONFIG" "$CURRENT_DIR")
 			if [ $? -ne 0 ]; then
-				echo "❌ No vm.json configuration file found. Run \"vm init\" to create one."
+				echo "❌ No vm.yaml configuration file found. Run \"vm init\" to create one."
 				exit 1
 			fi
 			
@@ -1072,7 +1077,7 @@ EOF
 			fi
 			
 			# Get project name for confirmation
-			project_name=$(echo "$CONFIG" | jq -r '.project.name' | tr -cd '[:alnum:]')
+			project_name=$(echo "$CONFIG" | yq -r '.project.name' | tr -cd '[:alnum:]')
 			container_name="${project_name}-dev"
 			
 			echo "⚠️  About to destroy VM: ${container_name}"
@@ -1136,9 +1141,9 @@ EOF
 		fi
 
 		# Check for a project marker to prevent running in unintended locations.
-		if [ ! -d "$PROJECT_DIR/.git" ] && [ ! -f "$PROJECT_DIR/vm.json" ] && [ ! -f "$PROJECT_DIR/vm.schema.json" ]; then
+		if [ ! -d "$PROJECT_DIR/.git" ] && [ ! -f "$PROJECT_DIR/vm.yaml" ] && [ ! -f "$PROJECT_DIR/vm.schema.yaml" ]; then
 			echo "❌ Error: The specified directory '$PROJECT_DIR' does not appear to be a valid project root." >&2
-			echo "   (Missing a .git directory, vm.json, or vm.schema.json file to act as a safeguard)." >&2
+			echo "   (Missing a .git directory, vm.yaml, or vm.schema.yaml file to act as a safeguard)." >&2
 			exit 1
 		fi
 		# --- END OF VALIDATION LOGIC ---
@@ -1173,7 +1178,7 @@ EOF
 			case "$COMMAND" in
 				"create")
 					# Check if VM already exists and confirm before recreating
-					project_name=$(echo "$CONFIG" | jq -r '.project.name' | tr -cd '[:alnum:]')
+					project_name=$(echo "$CONFIG" | yq -r '.project.name' | tr -cd '[:alnum:]')
 					container_name="${project_name}-dev"
 					
 					if docker_cmd inspect "${container_name}" >/dev/null 2>&1; then
@@ -1198,8 +1203,8 @@ EOF
 					# Calculate relative path for start (same logic as SSH command)
 					if [ "$CUSTOM_CONFIG" = "__SCAN__" ]; then
 						# In scan mode, we need to figure out where we are relative to the found config
-						# Get the directory where vm.json was found from validate-config.js output
-						CONFIG_DIR=$(echo "$CONFIG" | jq -r '.__config_dir // empty' 2>/dev/null)
+						# Get the directory where vm.yaml was found from validate-config output
+						CONFIG_DIR=$(echo "$CONFIG" | yq -r '.__config_dir // empty' 2>/dev/null)
 						if [ "${VM_DEBUG:-}" = "true" ]; then
 							echo "DEBUG start: CUSTOM_CONFIG='$CUSTOM_CONFIG'" >&2
 							echo "DEBUG start: CONFIG_DIR='$CONFIG_DIR'" >&2
@@ -1230,8 +1235,8 @@ EOF
 					# Calculate relative path for SSH
 					if [ "$CUSTOM_CONFIG" = "__SCAN__" ]; then
 						# In scan mode, we need to figure out where we are relative to the found config
-						# Get the directory where vm.json was found from validate-config.js output
-						CONFIG_DIR=$(echo "$CONFIG" | jq -r '.__config_dir // empty' 2>/dev/null)
+						# Get the directory where vm.yaml was found from validate-config output
+						CONFIG_DIR=$(echo "$CONFIG" | yq -r '.__config_dir // empty' 2>/dev/null)
 						if [ -n "$CONFIG_DIR" ] && [ "$CONFIG_DIR" != "$CURRENT_DIR" ]; then
 							# Calculate path from config dir to current dir
 							RELATIVE_PATH=$(realpath --relative-to="$CONFIG_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
@@ -1252,7 +1257,7 @@ EOF
 					fi
 					
 					# Get container name for connection message
-					project_name=$(echo "$CONFIG" | jq -r '.project.name' | tr -cd '[:alnum:]')
+					project_name=$(echo "$CONFIG" | yq -r '.project.name' | tr -cd '[:alnum:]')
 					container_name="${project_name}-dev"
 					echo "🎯 Connected to $container_name"
 					
@@ -1323,7 +1328,7 @@ EOF
 					# Calculate relative path (similar to Docker SSH logic)
 					if [ "$CUSTOM_CONFIG" = "__SCAN__" ]; then
 						# In scan mode, figure out where we are relative to the found config
-						CONFIG_DIR=$(echo "$CONFIG" | jq -r '.__config_dir // empty' 2>/dev/null)
+						CONFIG_DIR=$(echo "$CONFIG" | yq -r '.__config_dir // empty' 2>/dev/null)
 						if [ -n "$CONFIG_DIR" ] && [ "$CONFIG_DIR" != "$CURRENT_DIR" ]; then
 							RELATIVE_PATH=$(realpath --relative-to="$CONFIG_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
 						else
@@ -1335,7 +1340,7 @@ EOF
 					fi
 					
 					# Get workspace path from config
-					WORKSPACE_PATH=$(echo "$CONFIG" | jq -r '.project.workspace_path // "/workspace"')
+					WORKSPACE_PATH=$(echo "$CONFIG" | yq -r '.project.workspace_path // "/workspace"')
 					
 					if [ "$RELATIVE_PATH" != "." ]; then
 						TARGET_DIR="${WORKSPACE_PATH}/${RELATIVE_PATH}"

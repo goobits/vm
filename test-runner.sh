@@ -119,13 +119,13 @@ cleanup_test_env() {
     done
     
     # Destroy VM if it exists
-    if [ -f "$TEST_DIR/vm.json" ]; then
+    if [ -f "$TEST_DIR/vm.yaml" ]; then
         cd "$TEST_DIR"
         # Destroy VM without sudo
         vm destroy -f 2>/dev/null || true
         
         # Extract project name and ensure container is removed
-        local project_name=$(jq -r '.project.name' vm.json 2>/dev/null | tr -cd '[:alnum:]')
+        local project_name=$(yq -r '.project.name' vm.yaml 2>/dev/null | tr -cd '[:alnum:]')
         if [ -n "$project_name" ]; then
             local container_name="${project_name}-dev"
             # Force stop and remove container with both docker and sudo docker
@@ -152,14 +152,14 @@ create_test_vm() {
     
     # Copy config to test directory
     if [ -f "$config_path" ]; then
-        cp "$config_path" "$TEST_DIR/vm.json"
+        cp "$config_path" "$TEST_DIR/vm.yaml"
     else
         echo -e "${RED}Config file not found: $config_path${NC}"
         return 1
     fi
     
     # Pre-emptively clean up any existing container with the same name
-    local project_name=$(jq -r '.project.name' "$TEST_DIR/vm.json" 2>/dev/null | tr -cd '[:alnum:]')
+    local project_name=$(yq -r '.project.name' "$TEST_DIR/vm.yaml" 2>/dev/null | tr -cd '[:alnum:]')
     if [ -n "$project_name" ]; then
         local container_name="${project_name}-dev"
         echo -e "${BLUE}Cleaning up any existing container: $container_name${NC}"
@@ -434,7 +434,7 @@ generate_all_configs() {
     mkdir -p "$CONFIG_DIR"
     
     # Generate minimal config
-    cat > "$CONFIG_DIR/minimal.json" << EOF
+    cat > "$CONFIG_DIR/minimal.yaml" << EOF
 {
   "project": {
     "name": "test-minimal",
@@ -453,25 +453,19 @@ EOF
     
     # Generate service configs
     for service in postgresql redis mongodb docker; do
-        cat > "$CONFIG_DIR/$service.json" << EOF
-{
-  "project": {
-    "name": "test-$service",
-    "hostname": "dev.$service.local",
-    "workspace_path": "/workspace"
-  },
-  "provider": "docker",
-  "terminal": {
-    "emoji": "🧪",
-    "username": "test-dev"
-  },
-  "services": {
-    "$service": {
-      "enabled": true
-    }
-  },
-  "aliases": {}
-}
+        cat > "$CONFIG_DIR/$service.yaml" << EOF
+project:
+  name: test-$service
+  hostname: dev.$service.local
+  workspace_path: /workspace
+provider: docker
+terminal:
+  emoji: 🧪
+  username: test-dev
+services:
+  $service:
+    enabled: true
+aliases: {}
 EOF
     done
     
@@ -493,11 +487,11 @@ test_config_generator() {
     fi
     
     # Test minimal config exists and is valid
-    if [ -f "$CONFIG_DIR/minimal.json" ]; then
+    if [ -f "$CONFIG_DIR/minimal.yaml" ]; then
         echo -e "${GREEN}✓ Minimal config exists${NC}"
         
         # Validate it has correct structure
-        local project_name=$(jq -r '.project.name' "$CONFIG_DIR/minimal.json")
+        local project_name=$(yq -r '.project.name' "$CONFIG_DIR/minimal.yaml")
         if [ "$project_name" = "test-minimal" ]; then
             echo -e "${GREEN}✓ Config has correct project name${NC}"
         else
@@ -511,8 +505,8 @@ test_config_generator() {
     
     # Test service configs exist
     for service in postgresql redis mongodb docker; do
-        if [ -f "$CONFIG_DIR/$service.json" ]; then
-            local enabled=$(jq -r ".services.$service.enabled" "$CONFIG_DIR/$service.json")
+        if [ -f "$CONFIG_DIR/$service.yaml" ]; then
+            local enabled=$(yq -r ".services.$service.enabled" "$CONFIG_DIR/$service.yaml")
             if [ "$enabled" = "true" ]; then
                 echo -e "${GREEN}✓ $service config is valid${NC}"
             else
@@ -565,7 +559,7 @@ test_validation() {
     cd "$test_dir"
     
     # Test with no config
-    /workspace/vm.sh validate 2>&1 | grep -q "No vm.json"
+    /workspace/vm.sh validate 2>&1 | grep -q "No vm.yaml"
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✓ Validation detects missing config${NC}"
     else
@@ -576,7 +570,7 @@ test_validation() {
     fi
     
     # Test with valid config
-    cp /workspace/vm.json "$test_dir/"
+    cp /workspace/vm.yaml "$test_dir/"
     /workspace/vm.sh validate
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✓ Validation passes with valid config${NC}"
@@ -599,13 +593,13 @@ test_generated_configs_valid() {
     # Validate each generated config
     local failed=0
     
-    for config in $(find "$CONFIG_DIR" -name "*.json" -type f); do
+    for config in $(find "$CONFIG_DIR" -name "*.yaml" -type f); do
         echo -n "Validating $(basename "$config")... "
         
         # Create temp dir for validation
         local temp_dir="/tmp/validate-$$"
         mkdir -p "$temp_dir"
-        cp "$config" "$temp_dir/vm.json"
+        cp "$config" "$temp_dir/vm.yaml"
         
         cd "$temp_dir"
         if /workspace/vm.sh validate > /dev/null 2>&1; then
@@ -637,7 +631,7 @@ test_minimal_boot() {
     echo "Testing VM boot with minimal configuration..."
     
     # Create VM with minimal config - with shorter timeout for debugging
-    create_test_vm "$CONFIG_DIR/minimal.json" 180 || return 1
+    create_test_vm "$CONFIG_DIR/minimal.yaml" 180 || return 1
     
     # If we get here, the VM started successfully
     echo -e "${GREEN}✓ VM created successfully${NC}"
@@ -655,7 +649,7 @@ test_minimal_boot() {
 test_minimal_functionality() {
     echo "Testing basic functionality..."
     
-    create_test_vm "$CONFIG_DIR/minimal.json" || return 1
+    create_test_vm "$CONFIG_DIR/minimal.yaml" || return 1
     
     # Check basic commands work
     assert_command_succeeds "ls -la" "List files"
@@ -672,7 +666,7 @@ test_minimal_functionality() {
 test_no_services_installed() {
     echo "Testing that no services are installed..."
     
-    create_test_vm "$CONFIG_DIR/minimal.json" || return 1
+    create_test_vm "$CONFIG_DIR/minimal.yaml" || return 1
     
     # Check services are NOT installed
     assert_service_not_enabled "postgresql" "PostgreSQL should not be installed"
@@ -694,7 +688,7 @@ test_no_services_installed() {
 test_postgresql_service() {
     echo "Testing PostgreSQL service..."
     
-    create_test_vm "$CONFIG_DIR/postgresql.json" || return 1
+    create_test_vm "$CONFIG_DIR/postgresql.yaml" || return 1
     
     # Check PostgreSQL is installed and running
     assert_service_enabled "postgresql" "PostgreSQL should be installed"
@@ -708,7 +702,7 @@ test_postgresql_service() {
 test_redis_service() {
     echo "Testing Redis service..."
     
-    create_test_vm "$CONFIG_DIR/redis.json" || return 1
+    create_test_vm "$CONFIG_DIR/redis.yaml" || return 1
     
     # Check Redis is installed and running
     assert_service_enabled "redis" "Redis should be installed"
@@ -722,7 +716,7 @@ test_redis_service() {
 test_mongodb_service() {
     echo "Testing MongoDB service..."
     
-    create_test_vm "$CONFIG_DIR/mongodb.json" || return 1
+    create_test_vm "$CONFIG_DIR/mongodb.yaml" || return 1
     
     # Check MongoDB is installed and running
     assert_service_enabled "mongodb" "MongoDB should be installed"
@@ -736,7 +730,7 @@ test_mongodb_service() {
 test_docker_service() {
     echo "Testing Docker service..."
     
-    create_test_vm "$CONFIG_DIR/docker.json" || return 1
+    create_test_vm "$CONFIG_DIR/docker.yaml" || return 1
     
     # Check Docker is installed and running
     assert_service_enabled "docker" "Docker should be installed"
@@ -769,14 +763,14 @@ test_vm_init() {
         return 1
     fi
     
-    # Check vm.json was created
-    if [ ! -f "vm.json" ]; then
-        echo -e "${RED}✗ vm.json was not created${NC}"
+    # Check vm.yaml was created
+    if [ ! -f "vm.yaml" ]; then
+        echo -e "${RED}✗ vm.yaml was not created${NC}"
         return 1
     fi
     
     # Check content is customized
-    local project_name=$(jq -r '.project.name' vm.json)
+    local project_name=$(yq -r '.project.name' vm.yaml)
     if [ "$project_name" != "init-test" ]; then
         echo -e "${RED}✗ Project name not customized (got: $project_name)${NC}"
         return 1
@@ -800,7 +794,7 @@ test_vm_validate() {
     
     # Test with valid config
     cd "$TEST_DIR"
-    cp "$CONFIG_DIR/minimal.json" vm.json
+    cp "$CONFIG_DIR/minimal.yaml" vm.yaml
     
     vm validate
     if [ $? -eq 0 ]; then
@@ -811,7 +805,7 @@ test_vm_validate() {
     fi
     
     # Test with invalid config
-    echo '{"invalid": "config"}' > vm.json
+    echo 'invalid: config' > vm.yaml
     vm validate 2>&1 | grep -q -E "(error|invalid|failed)"
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✓ vm validate detects invalid config${NC}"
@@ -821,8 +815,8 @@ test_vm_validate() {
     fi
     
     # Test with missing config
-    rm -f vm.json
-    vm validate 2>&1 | grep -q "No vm.json"
+    rm -f vm.yaml
+    vm validate 2>&1 | grep -q "No vm.yaml"
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✓ vm validate reports missing config${NC}"
     else
@@ -835,7 +829,7 @@ test_vm_validate() {
 test_vm_status() {
     echo "Testing vm status command..."
     
-    create_test_vm "$CONFIG_DIR/minimal.json" || return 1
+    create_test_vm "$CONFIG_DIR/minimal.yaml" || return 1
     
     # Check status when running
     cd "$TEST_DIR"
@@ -868,7 +862,7 @@ test_vm_status() {
 test_vm_exec() {
     echo "Testing vm exec command..."
     
-    create_test_vm "$CONFIG_DIR/minimal.json" || return 1
+    create_test_vm "$CONFIG_DIR/minimal.yaml" || return 1
     
     cd "$TEST_DIR"
     
@@ -900,7 +894,7 @@ test_vm_exec() {
 test_vm_lifecycle() {
     echo "Testing VM lifecycle..."
     
-    create_test_vm "$CONFIG_DIR/minimal.json" || return 1
+    create_test_vm "$CONFIG_DIR/minimal.yaml" || return 1
     
     cd "$TEST_DIR"
     
@@ -937,7 +931,7 @@ test_vm_lifecycle() {
 test_vm_reload() {
     echo "Testing VM reload..."
     
-    create_test_vm "$CONFIG_DIR/minimal.json" || return 1
+    create_test_vm "$CONFIG_DIR/minimal.yaml" || return 1
     
     cd "$TEST_DIR"
     
@@ -945,8 +939,8 @@ test_vm_reload() {
     vm exec "echo 'before reload' > /tmp/reload-test"
     
     # Modify config (add an alias)
-    jq '.aliases.testreload = "echo reload-success"' vm.json > vm.json.tmp
-    mv vm.json.tmp vm.json
+    yq -y '.aliases.testreload = "echo reload-success"' vm.yaml > vm.yaml.tmp
+    mv vm.yaml.tmp vm.yaml
     
     # Reload VM
     vm reload || return 1
@@ -973,7 +967,7 @@ test_vm_reload() {
 test_nodejs_support() {
     echo "Testing Node.js support..."
     
-    create_test_vm "$CONFIG_DIR/minimal.json" || return 1
+    create_test_vm "$CONFIG_DIR/minimal.yaml" || return 1
     
     # Check Node.js is installed
     assert_command_succeeds "source ~/.zshrc && node --version" "Node.js should be available"
@@ -987,7 +981,7 @@ test_nodejs_support() {
 test_python_support() {
     echo "Testing Python support..."
     
-    create_test_vm "$CONFIG_DIR/minimal.json" || return 1
+    create_test_vm "$CONFIG_DIR/minimal.yaml" || return 1
     
     # Check Python is installed
     assert_command_succeeds "python3 --version" "Python3 should be available"

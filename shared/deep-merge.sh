@@ -70,16 +70,16 @@ merge_project_config() {
         return 1
     fi
     
-    # Load configurations
+    # Load configurations (convert YAML to JSON for processing)
     local default_config
-    if ! default_config="$(jq . "$default_config_path" 2>/dev/null)"; then
-        echo "❌ Invalid JSON in default config: $default_config_path" >&2
+    if ! default_config="$(yq . "$default_config_path" 2>/dev/null)"; then
+        echo "❌ Invalid YAML in default config: $default_config_path" >&2
         return 1
     fi
     
     local project_config
-    if ! project_config="$(jq . "$project_config_path" 2>/dev/null)"; then
-        echo "❌ Invalid JSON in project config: $project_config_path" >&2
+    if ! project_config="$(yq . "$project_config_path" 2>/dev/null)"; then
+        echo "❌ Invalid YAML in project config: $project_config_path" >&2
         return 1
     fi
     
@@ -90,7 +90,7 @@ merge_project_config() {
 # Main function for command line usage
 main() {
     if [[ $# -ne 2 ]]; then
-        echo "Usage: $0 <default-config.json> <project-config.json>" >&2
+        echo "Usage: $0 <default-config.yaml> <project-config.yaml>" >&2
         echo "Outputs merged configuration to stdout" >&2
         return 1
     fi

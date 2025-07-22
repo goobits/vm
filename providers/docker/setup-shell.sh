@@ -81,7 +81,7 @@ alias gl='git log --oneline'
 alias dps='docker ps'
 alias dimg='docker images'
 
-# Project aliases (from vm.json)
+# Project aliases (from vm.yaml)
 $ALIASES
 
 # Environment
@@ -137,7 +137,7 @@ alias gl='git log --oneline'
 alias dps='docker ps'
 alias dimg='docker images'
 
-# Project aliases (from vm.json)
+# Project aliases (from vm.yaml)
 $ALIASES
 
 # Environment

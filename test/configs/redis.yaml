@@ -1,0 +1,12 @@
+project:
+  name: test-redis
+  hostname: dev.redis.local
+  workspace_path: /workspace
+provider: docker
+terminal:
+  emoji: 🧪
+  username: test-dev
+services:
+  redis:
+    enabled: true
+aliases: {}
