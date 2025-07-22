@@ -65,7 +65,9 @@ read_temp_state() {
 
 # Get temp VM container name from state
 get_temp_container_name() {
+	echo "DEBUG: Inside get_temp_container_name at $(date)" >> /tmp/vm-temp-debug.log
 	if [ ! -f "$TEMP_STATE_FILE" ]; then
+		echo "DEBUG: State file not found" >> /tmp/vm-temp-debug.log
 		echo ""
 		return 1
 	fi
@@ -170,7 +172,15 @@ handle_temp_command() {
 				exit 0
 			fi
 			
-			container_name=$(get_temp_container_name)
+			# Inline container name retrieval to avoid command substitution issues
+			container_name=""
+			if [ -f "$TEMP_STATE_FILE" ]; then
+				if command -v yq &> /dev/null; then
+					container_name=$(yq -r '.container_name // empty' "$TEMP_STATE_FILE" 2>/dev/null)
+				else
+					container_name=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
+				fi
+			fi
 			echo "🗑️ Destroying temp VM: $container_name"
 			docker_cmd rm -f "$container_name" >/dev/null 2>&1
 			# Clean up volumes
@@ -189,7 +199,15 @@ handle_temp_command() {
 				exit 1
 			fi
 			
-			container_name=$(get_temp_container_name)
+			# Inline container name retrieval to avoid command substitution issues
+			container_name=""
+			if [ -f "$TEMP_STATE_FILE" ]; then
+				if command -v yq &> /dev/null; then
+					container_name=$(yq -r '.container_name // empty' "$TEMP_STATE_FILE" 2>/dev/null)
+				else
+					container_name=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
+				fi
+			fi
 			if ! is_temp_vm_running "$container_name"; then
 				echo "❌ Temp VM exists but is not running"
 				echo "💡 Check status with: vm temp status"
@@ -221,7 +239,15 @@ EOF
 				exit 0
 			fi
 			
-			container_name=$(get_temp_container_name)
+			# Inline container name retrieval to avoid command substitution issues
+			container_name=""
+			if [ -f "$TEMP_STATE_FILE" ]; then
+				if command -v yq &> /dev/null; then
+					container_name=$(yq -r '.container_name // empty' "$TEMP_STATE_FILE" 2>/dev/null)
+				else
+					container_name=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
+				fi
+			fi
 			echo "📋 Temp VM Status:"
 			echo "=================="
 			
@@ -308,14 +334,23 @@ EOF
 	# Check for existing temp VM
 	if [ "${VM_DEBUG:-}" = "true" ]; then
 		echo "DEBUG: About to get temp container name" >&2
+		if type -t get_temp_container_name >/dev/null 2>&1; then
+			echo "DEBUG: Function get_temp_container_name is defined" >&2
+		else
+			echo "DEBUG: ERROR - Function get_temp_container_name is NOT defined!" >&2
+		fi
 	fi
-	# Temporarily disable set -x to avoid command substitution deadlock
-	SAVE_OPTS=$(set +o)
-	set +x
-	existing_container=$(get_temp_container_name)
+	# Get container name without command substitution to avoid issues
+	existing_container=""
+	if [ -f "$TEMP_STATE_FILE" ]; then
+		if command -v yq &> /dev/null; then
+			existing_container=$(yq -r '.container_name // empty' "$TEMP_STATE_FILE" 2>/dev/null)
+		else
+			# Fallback to grep if yq is not available
+			existing_container=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
+		fi
+	fi
 	TEMP_RET=$?
-	# Restore previous options
-	eval "$SAVE_OPTS"
 	if [ "${VM_DEBUG:-}" = "true" ]; then
 		echo "DEBUG: get_temp_container_name returned: $TEMP_RET" >&2
 		echo "DEBUG: existing_container='$existing_container'" >&2
@@ -453,32 +488,24 @@ EOF
 	source "$SCRIPT_DIR/shared/deep-merge.sh"
 	
 	# Generate minimal temporary vm.yaml config with just overrides
-	TEMP_CONFIG_FILE=$(mktemp /tmp/vm-temp.XXXXXX.json)
+	TEMP_CONFIG_FILE=$(mktemp /tmp/vm-temp.XXXXXX.yaml)
 	# Ensure the temp file is removed when the script exits
 	trap 'rm -f "$TEMP_CONFIG_FILE"' EXIT
 	
 	cat > "$TEMP_CONFIG_FILE" <<EOF
-{
-  "project": {
-    "name": "vmtemp",
-    "hostname": "vm-temp.local"
-  },
-  "terminal": {
-    "username": "vm-temp",
-    "emoji": "🔧"
-  },
-  "services": {
-    "postgresql": {
-      "enabled": false
-    },
-    "redis": {
-      "enabled": false
-    },
-    "mongodb": {
-      "enabled": false
-    }
-  }
-}
+project:
+  name: vmtemp
+  hostname: vm-temp.local
+terminal:
+  username: vm-temp
+  emoji: "🔧"
+services:
+  postgresql:
+    enabled: false
+  redis:
+    enabled: false
+  mongodb:
+    enabled: false
 EOF
 	
 	# Extract schema defaults and merge with temp overrides

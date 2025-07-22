@@ -8,57 +8,33 @@ Beautiful development environments with one command. Choose between Docker (ligh
 
 ## 🏃 Quick Start
 
-### Option 1: npm Global Installation (Recommended)
-
 ```bash
-# 1. Install globally via npm
+# Install globally via npm
 npm install -g @goobits/vm
 
-# 2. Start immediately with defaults OR create custom vm.yaml
+# Start immediately with defaults
 vm create  # Works without any config! Uses smart defaults
 vm ssh     # Enter your shiny new Ubuntu box
-
-# OR customize with vm.yaml
 ```
 
-Create a vm.yaml file (or use `vm init`):
+📖 **Need help installing?** See the complete [Installation Guide](INSTALLATION.md) for all installation options and troubleshooting.
+
+## ⚙️ Configuration
+
+Create a `vm.yaml` file to customize your environment:
+
 ```yaml
 project:
   name: my-project
 ports:
   frontend: 3000
   backend: 3001
-# Default provider is Docker - add "provider": "vagrant" for full VM isolation
+services:
+  postgresql:
+    enabled: true
 ```
 
-### Option 2: Manual Global Installation
-
-```bash
-# 1. Clone and install
-git clone <repo-url>
-cd vm
-./install.sh
-
-# 2. Use globally
-vm create
-```
-
-### Option 3: Per-Project Installation
-
-```bash
-# 1. Copy to your project
-cp -r vm your-project/
-
-# 2. Add to package.json
-{
-  "scripts": {
-    "vm": "./vm/vm.sh"
-  }
-}
-
-# 3. Launch!
-pnpm vm create
-```
+📖 **Full configuration guide**: See [CONFIGURATION.md](CONFIGURATION.md) for complete reference, examples, and migration from JSON.
 
 ## 🎮 Commands
 
@@ -98,110 +74,11 @@ vm --config prod.json create # Create with specific config
 vm --config dev.json ssh     # Any command works with --config
 ```
 
-## ⚙️ Configuration
+## 📚 Documentation
 
-📖 **Full configuration reference**: See [CONFIGURATION.md](CONFIGURATION.md) for all available options.
-
-### 🎯 Minimal Setup
-
-Most projects just need ports. Everything else has smart defaults:
-
-```yaml
-ports:
-  frontend: 3020
-  backend: 3022
-```
-
-Want PostgreSQL? Just add:
-
-```yaml
-ports:
-  frontend: 3020
-  backend: 3022
-  postgresql: 3025
-services:
-  postgresql:
-    enabled: true
-```
-
-### 🚀 Automatic Language Installation
-
-Need Rust or Python? Just add packages and the VM automatically installs the language runtime:
-
-```yaml
-cargo_packages: ["cargo-watch", "tokei"]     # Installs Rust + Cargo
-pip_packages: ["black", "pytest", "mypy"]     # Installs Python + pyenv
-```
-
-The VM will:
-- **Rust**: Install via rustup with stable toolchain when `cargo_packages` is present
-- **Python**: Install pyenv + Python 3.11 when `pip_packages` is present
-- **Node.js**: Already included by default (configurable version)
-
-### 💻 Installation
-
-#### Prerequisites
-
-**For Vagrant provider**:
-- VirtualBox or Parallels
-- Vagrant
-
-**For Docker provider**:
-- Docker Desktop (macOS/Windows) or Docker Engine (Linux)
-- docker-compose
-- yq (YAML processor)
-
-#### macOS
-
-```bash
-# For Vagrant
-brew tap hashicorp/tap
-brew install hashicorp/tap/hashicorp-vagrant
-brew install --cask virtualbox
-
-# For Docker
-brew install --cask docker
-brew install yq
-```
-
-#### Ubuntu/Debian
-
-```bash
-# For Vagrant
-wget -O- https://apt.releases.hashicorp.com/gpg | \
-  sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
-  https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
-  sudo tee /etc/apt/sources.list.d/hashicorp.list
-sudo apt update && sudo apt install vagrant virtualbox
-
-# For Docker
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
-sudo apt-get update && sudo apt-get install yq
-```
-
-#### Windows
-
-**Vagrant**: Download from [vagrant.com](https://www.vagrantup.com/downloads) and [virtualbox.org](https://www.virtualbox.org/wiki/Downloads)
-**Docker**: Install [Docker Desktop](https://www.docker.com/products/docker-desktop)
-
-## 📚 Table of Contents
-
-- [Quick Start](#-quick-start)
-- [Commands](#-commands)
-- [Configuration](#-configuration)
-    - [Minimal Setup](#-minimal-setup)
-    - [Full Reference](#-full-reference)
-    - [Terminal Options](#-terminal-options)
-- [Configuration Migration](#-configuration-migration)
-- [Installation](#-installation)
-- [What's Included](#-whats-included)
-- [Terminal Themes](#-terminal-themes)
-- [Temporary VMs](#-temporary-vms)
-- [Port Strategy](#-port-strategy)
-- [Tips & Tricks](#-tips--tricks)
-- [Troubleshooting](#-troubleshooting)
+- 📖 [Installation Guide](INSTALLATION.md) - Complete installation instructions for all platforms
+- ⚙️ [Configuration Reference](CONFIGURATION.md) - Full configuration options and examples
+- 🔄 [Changelog](CHANGELOG.md) - Recent updates and version history
 
 ## 📦 What's Included
 
@@ -230,226 +107,6 @@ All themes include syntax highlighting and git-aware prompts!
 - `one_dark` - Atom's gift
 - `catppuccin_mocha` - Smooth pastels
 - `tokyo_night` - Neon dreams
-
-## ⚙️ Configuration
-
-📖 **Full configuration reference**: See [CONFIGURATION.md](CONFIGURATION.md) for all available options.
-
-### 🎯 Minimal Setup
-
-Most projects just need ports. Everything else has smart defaults:
-
-```yaml
-ports:
-  frontend: 3020
-  backend: 3022
-```
-
-Want PostgreSQL? Just add:
-
-```yaml
-ports:
-  frontend: 3020
-  backend: 3022
-  postgresql: 3025
-services:
-  postgresql:
-    enabled: true
-```
-
-### 🚀 Automatic Language Installation
-
-Need Rust or Python? Just add packages and the VM automatically installs the language runtime:
-
-```yaml
-cargo_packages: ["cargo-watch", "tokei"]     # Installs Rust + Cargo
-pip_packages: ["black", "pytest", "mypy"]     # Installs Python + pyenv
-```
-
-The VM will:
-- **Rust**: Install via rustup with stable toolchain when `cargo_packages` is present
-- **Python**: Install pyenv + Python 3.11 when `pip_packages` is present
-- **Node.js**: Already included by default (configurable version)
-
-### 📋 IDE Support
-
-For autocompletion and validation in your editor:
-
-```yaml
-# yaml-language-server: $schema=./vm.schema.yaml
-ports:
-  frontend: 3020
-```
-
-### 📋 Full Reference
-
-```yaml
-provider: docker  # or "vagrant" - defaults to "docker"
-project:
-  name: my-app  # VM/container name & prompt
-  hostname: dev.my-app.local  # VM/container hostname
-  workspace_path: /workspace  # Sync path in VM/container
-  env_template_path: null  # e.g. "backend/.env.template"
-  backup_pattern: "*backup*.sql.gz"  # For auto-restore
-vm:
-  box: bento/ubuntu-24.04  # Vagrant box (Vagrant only)
-  memory: 4096  # RAM in MB
-  cpus: 2  # CPU cores
-  user: vagrant  # VM/container user
-  port_binding: 127.0.0.1  # or "0.0.0.0" for network
-versions:
-  node: 22.11.0  # Node version
-  nvm: v0.40.3  # NVM version
-  pnpm: latest  # pnpm version
-ports:
-  frontend: 3000
-  backend: 3001
-  postgresql: 5432
-  redis: 6379
-services:
-  postgresql:
-    enabled: true
-    database: myapp_dev
-    user: postgres
-    password: postgres
-  redis:
-    enabled: true
-  mongodb:
-    enabled: false
-  docker:
-    enabled: true
-  headless_browser:
-    enabled: false
-npm_packages:
-  # Global npm packages
-  - prettier
-  - eslint
-cargo_packages:
-  # Global Cargo packages (triggers Rust installation)
-  - cargo-watch
-  - tokei
-pip_packages:
-  # Global pip packages (triggers Python/pyenv installation)
-  - black
-  - pytest
-aliases:
-  # Custom aliases
-  dev: pnpm dev
-  test: pnpm test
-environment:
-  # ENV vars
-  NODE_ENV: development
-```
-
-### 🎭 Terminal Options
-
-Make your prompt uniquely yours:
-
-```yaml
-terminal:
-  emoji: "⚡"  # Prompt emoji
-  username: hacker  # Prompt name
-  theme: tokyo_night  # Color theme
-  show_git_branch: true  # Show branch
-  show_timestamp: false  # Show time
-```
-
-Result: `⚡ hacker my-app (main) >`
-
-## 🔄 Configuration Migration
-
-If you have existing `vm.json` configuration files from previous versions, you can easily migrate them to the new YAML format with automatic version tracking.
-
-### Migration Commands
-
-```bash
-# Check if migration is needed
-vm migrate --check
-
-# Preview the migration (dry run)
-vm migrate --dry-run
-
-# Perform the migration
-vm migrate
-
-# Migration options
-vm migrate --input old-config.json --output new-config.yaml
-vm migrate --backup              # Create backup (default: enabled)
-vm migrate --no-backup           # Skip backup creation
-vm migrate --force               # Skip confirmation prompts
-```
-
-### What Migration Does
-
-1. **Converts JSON to YAML**: Transforms your `vm.json` into the more readable `vm.yaml` format
-2. **Adds Version Field**: Automatically injects `version: "1.0"` for future compatibility
-3. **Creates Backup**: Saves your original as `vm.json.bak` (unless --no-backup)
-4. **Validates Result**: Ensures the migrated configuration is valid
-5. **Preserves All Settings**: All your services, ports, aliases, and customizations are maintained
-
-### Example Migration
-
-Before (vm.json):
-```json
-{
-  "project": {
-    "name": "my-app"
-  },
-  "services": {
-    "postgresql": {
-      "enabled": true
-    }
-  }
-}
-```
-
-After (vm.yaml):
-```yaml
-version: "1.0"
-project:
-  name: my-app
-services:
-  postgresql:
-    enabled: true
-```
-
-## 🎮 Commands
-
-```bash
-vm init                      # Initialize a new vm.yaml configuration file
-vm generate                  # Generate vm.yaml by composing services and configurations
-vm migrate                   # Convert vm.json to vm.yaml with version tracking
-vm list                      # List all VM instances
-vm temp <folders>            # Create ephemeral VM with specific directory mounts
-vm temp ssh [-c cmd]         # SSH into temp VM or run command
-vm temp status               # Show temp VM status and configuration
-vm temp destroy              # Destroy temp VM and clean up state
-vm tmp <folders>             # Alias for vm temp
-vm create                    # Create new VM/container with full provisioning
-vm start                     # Start existing VM/container without provisioning
-vm stop                      # Stop VM/container but keep data
-vm restart                   # Restart VM/container without reprovisioning
-vm ssh                       # Connect to VM/container
-vm destroy                   # Delete VM/container completely
-vm status                    # Check if running
-vm validate                  # Check config
-vm kill                      # Force kill stuck processes
-vm provision                 # Re-run provisioning
-
-# Provider-specific commands
-vm logs                      # View service logs (Docker: container logs, Vagrant: journalctl)
-vm exec <command>            # Execute command in VM/container
-
-# Testing
-vm test                      # Run all tests
-vm test --suite minimal     # Run specific test suite
-vm test --suite services    # Test service configurations
-vm test --list              # Show available test suites
-
-# Use custom config file
-vm --config prod.json create # Create with specific config
-vm --config dev.json ssh     # Any command works with --config
-```
 
 ## 🚀 Temporary VMs
 
@@ -511,26 +168,6 @@ vm temp ./frontend,./backend
 # > 1) Connect anyway  2) Recreate  3) Cancel
 ```
 
-### 🚀 Enhanced Commands
-
-The temp VM feature now includes dedicated subcommands for better workflow:
-
-```bash
-# Quick SSH without checking mounts
-vm temp ssh
-
-# Run a command without entering interactive shell
-vm temp ssh -c "python3 test.py"
-vm temp ssh -c "npm run build"
-
-# Check detailed status
-vm temp status
-# Shows: container name, status, mounted directories, uptime
-
-# Clean destroy (also removes state file)
-vm temp destroy
-```
-
 ### 💡 Use Cases
 
 - **Quick testing**: Test libraries or configurations without affecting main project
@@ -546,58 +183,7 @@ vm temp destroy
 - **No persistence**: Data is lost when temp VM is destroyed
 - **No custom configuration**: Uses built-in minimal setup
 
-## 🔍 Automatic vm.yaml Discovery
-
-The `vm` command automatically searches for `vm.yaml` configuration:
-
-1. **Current directory**: `./vm.yaml`
-2. **Parent directory**: `../vm.yaml`
-3. **Grandparent directory**: `../../vm.yaml`
-4. **Defaults**: If no config found, uses built-in defaults
-
-This means you can run `vm create` from anywhere in your project tree, and it will find the right configuration!
-
-## 🔌 Port Strategy
-
-Avoid conflicts by giving each project 10 ports:
-
-- **Project 1**: 3000-3009
-- **Project 2**: 3010-3019
-- **Project 3**: 3020-3029
-- **Project 4**: 3030-3039
-
-Example allocation:
-
-```yaml
-ports:
-  frontend: 3020  # Main app
-  backend: 3022  # API
-  postgresql: 3025  # Database
-  redis: 3026  # Cache
-  docs: 3028  # Documentation
-```
-
-**Network access?** Add `port_binding: "0.0.0.0"` to share with your network.
-
-## 🔄 Advanced Features
-
-**Aliases**: Custom shell aliases from `vm.yaml` are applied via Ansible. To update without reprovisioning: edit `~/.zshrc` manually or run `vm provision`.
-
-**Claude Sync**: Add `"claude_sync": true` to sync Claude AI data to `~/.claude/vms/{project_name}/` on your host.
-
-**Database Persistence**: Add `"persist_databases": true` to store database data in `.vm/data/` (survives VM rebuilds). Add `.vm/` to `.gitignore`.
-
-## 💡 Tips & Tricks
-
-### 🔄 File Sync
-
-```
-Mac: ~/your-project/src/app.js
- ↕️ (instant sync)
-VM:  /workspace/src/app.js
-```
-
-### 🧪 Docker vs Vagrant: Which to Choose?
+## 🧪 Docker vs Vagrant: Which to Choose?
 
 **Both providers now offer identical development environments!** Services run on localhost, commands work the same, and Ansible handles all provisioning. The only differences are:
 
@@ -617,6 +203,16 @@ VM:  /workspace/src/app.js
 - ❌ Slower startup times (~2-3 minutes)
 
 **The development experience is now identical**: Same commands, same localhost connections, same Ansible provisioning. Choose based on your security/performance needs.
+
+## 💡 Tips & Tricks
+
+### 🔄 File Sync
+
+```
+Mac: ~/your-project/src/app.js
+ ↕️ (instant sync)
+VM:  /workspace/src/app.js
+```
 
 ### 🐘 Database Backups
 
@@ -655,54 +251,6 @@ A: Check Ansible output - it handles provisioning for both providers:
 ```bash
 vm provision  # Re-run Ansible playbook
 ```
-
-## 💻 Installation
-
-### Prerequisites
-
-**For Vagrant provider**:
-- VirtualBox or Parallels
-- Vagrant
-
-**For Docker provider**:
-- Docker Desktop (macOS/Windows) or Docker Engine (Linux)
-- docker-compose
-- yq (YAML processor)
-
-### macOS
-
-```bash
-# For Vagrant
-brew tap hashicorp/tap
-brew install hashicorp/tap/hashicorp-vagrant
-brew install --cask virtualbox
-
-# For Docker
-brew install --cask docker
-brew install yq
-```
-
-### Ubuntu/Debian
-
-```bash
-# For Vagrant
-wget -O- https://apt.releases.hashicorp.com/gpg | \
-  sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
-  https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
-  sudo tee /etc/apt/sources.list.d/hashicorp.list
-sudo apt update && sudo apt install vagrant virtualbox
-
-# For Docker
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
-sudo apt-get update && sudo apt-get install yq
-```
-
-### Windows
-
-**Vagrant**: Download from [vagrant.com](https://www.vagrantup.com/downloads) and [virtualbox.org](https://www.virtualbox.org/wiki/Downloads)
-**Docker**: Install [Docker Desktop](https://www.docker.com/products/docker-desktop)
 
 ## 🏗️ Technical Architecture
 
