@@ -1337,8 +1337,8 @@ case "${1:-}" in
 					docker_exec "$CONFIG" "$@"
 					;;
 				"test")
-					# Run tests using test-runner.sh
-					"$SCRIPT_DIR/test-runner.sh" "$@"
+					# Run tests using test.sh
+					"$SCRIPT_DIR/test.sh" "$@"
 					;;
 				*)
 					echo "❌ Unknown command for Docker provider: $COMMAND"
@@ -1430,8 +1430,8 @@ case "${1:-}" in
 					VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh -c "sudo journalctl -u postgresql -u redis-server -u mongod -f"
 					;;
 				"test")
-					# Run tests using test-runner.sh
-					"$SCRIPT_DIR/test-runner.sh" "$@"
+					# Run tests using test.sh
+					"$SCRIPT_DIR/test.sh" "$@"
 					;;
 				*)
 					# Pass through to vagrant command
