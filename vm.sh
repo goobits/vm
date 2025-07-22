@@ -141,6 +141,17 @@ docker_compose() {
 
 # Show usage information
 show_usage() {
+	# Try to get version from package.json
+	local version=""
+	if [ -f "$SCRIPT_DIR/package.json" ]; then
+		version=$(grep '"version"' "$SCRIPT_DIR/package.json" | head -1 | cut -d'"' -f4)
+	fi
+	
+	if [ -n "$version" ]; then
+		echo "VM Tool v$version"
+		echo ""
+	fi
+	
 	echo "Usage: $0 [--config [PATH]] [--debug] [--dry-run] [--auto-login [true|false]] [command] [args...]"
 	echo ""
 	echo "Options:"
