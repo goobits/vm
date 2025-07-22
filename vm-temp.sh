@@ -310,7 +310,7 @@ EOF
 		echo "DEBUG: About to get temp container name" >&2
 	fi
 	# Temporarily disable set -x to avoid command substitution deadlock
-	local SAVE_OPTS=$(set +o)
+	SAVE_OPTS=$(set +o)
 	set +x
 	existing_container=$(get_temp_container_name)
 	TEMP_RET=$?
