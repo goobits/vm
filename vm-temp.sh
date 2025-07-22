@@ -65,7 +65,9 @@ read_temp_state() {
 
 # Get temp VM container name from state
 get_temp_container_name() {
+	echo "DEBUG: Inside get_temp_container_name" >&2
 	if [ ! -f "$TEMP_STATE_FILE" ]; then
+		echo "DEBUG: State file not found" >&2
 		echo ""
 		return 1
 	fi
@@ -310,11 +312,18 @@ EOF
 		echo "DEBUG: About to get temp container name" >&2
 	fi
 	existing_container=$(get_temp_container_name)
+	TEMP_RET=$?
+	echo "DEBUG: IMMEDIATE TEST - Assignment complete" >&2
 	if [ "${VM_DEBUG:-}" = "true" ]; then
+		echo "DEBUG: get_temp_container_name returned: $TEMP_RET" >&2
 		echo "DEBUG: existing_container='$existing_container'" >&2
 		echo "DEBUG: Checking if container exists and is running" >&2
+		echo "DEBUG: About to check if block condition" >&2
 	fi
 	if [ -n "$existing_container" ] && is_temp_vm_running "$existing_container"; then
+		if [ "${VM_DEBUG:-}" = "true" ]; then
+			echo "DEBUG: Inside if block - existing container found" >&2
+		fi
 		# Active temp VM exists - check if mounts match
 		existing_mounts=$(get_temp_mounts)
 		
@@ -419,6 +428,10 @@ EOF
 					exit 1
 					;;
 			esac
+		fi
+	else
+		if [ "${VM_DEBUG:-}" = "true" ]; then
+			echo "DEBUG: No existing container or not running" >&2
 		fi
 	fi
 	

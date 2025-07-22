@@ -1,132 +1,115 @@
 # VM Test Suite
 
-Comprehensive test suite for the VM tool, ensuring both Docker and Vagrant providers work correctly across various configurations.
+Test suite for the VM tool, focusing on configuration validation and core functionality testing.
 
 ## Structure
 
 ```
-test/
-├── test-suite.sh           # Main test runner
-├── lib/
-│   ├── test-helpers.sh     # Common test functions
-│   └── config-generator.sh # Generate test configurations
-├── configs/                # Generated test configurations
-└── suites/                 # Test suites
-    ├── 01-minimal.sh       # Minimal configuration tests
-    ├── 02-services.sh      # Service toggle tests
-    ├── 03-languages.sh     # Language package tests
-    ├── 04-cli.sh           # CLI command tests
-    └── 05-lifecycle.sh     # VM lifecycle tests
+/workspace/
+├── test.sh                 # Main unified test runner (root level)
+└── test/
+    ├── README.md           # This file
+    ├── configs/            # Test configuration files (YAML format)
+    │   ├── minimal.yaml
+    │   ├── docker.yaml
+    │   ├── services/       # Service-specific configs
+    │   └── languages/      # Language package configs
+    ├── docker-wrapper.sh   # Docker testing utilities
+    └── test-migrate-temp.sh # Migration and temp VM tests
 ```
+
+## Available Test Suites
+
+The test runner supports these suites:
+- `framework` - Basic framework functionality
+- `minimal` - Minimal configuration tests  
+- `services` - Service integration tests
+- `languages` - Language package tests
+- `cli` - Command-line interface tests
+- `lifecycle` - VM lifecycle management
+- `migrate-temp` - Migration and temporary VM tests
 
 ## Running Tests
 
 ### Run all tests
 ```bash
-./test/test-suite.sh
+./test.sh
 ```
 
 ### Run specific test suite
 ```bash
-./test/test-suite.sh minimal      # Run only minimal config tests
-./test/test-suite.sh services     # Run only service tests
-./test/test-suite.sh languages    # Run only language tests
-./test/test-suite.sh cli          # Run only CLI tests
-./test/test-suite.sh lifecycle    # Run only lifecycle tests
+./test.sh --suite minimal      # Run only minimal config tests
+./test.sh --suite services     # Run only service tests  
+./test.sh --suite languages    # Run only language tests
+./test.sh --suite cli          # Run only CLI tests
+./test.sh --suite migrate-temp # Run migration and temp VM tests
+./test.sh --suite lifecycle    # Run only lifecycle tests
 ```
 
 ### Run with specific provider
 ```bash
-./test/test-suite.sh all docker   # Run all tests with Docker only
-./test/test-suite.sh all vagrant  # Run all tests with Vagrant only
-./test/test-suite.sh all both     # Run all tests with both providers
+./test.sh --provider docker   # Run with Docker only
+./test.sh --provider vagrant  # Run with Vagrant only
 ```
 
-## Test Suites
+### List available test suites
+```bash
+./test.sh --list
+```
 
-### 1. Minimal Configuration Tests (`01-minimal.sh`)
-- Tests VM works with absolute minimum configuration
-- Verifies no unnecessary services are installed
-- Ensures basic functionality (shell, workspace mounting)
-- Tests extensibility of minimal configs
+## Test Configuration
 
-### 2. Service Toggle Tests (`02-services.sh`)
-- Tests each service (PostgreSQL, Redis, MongoDB, Docker) in isolation
-- Verifies services can be enabled/disabled independently
-- Tests multiple services together
-- Verifies custom port configurations
-- Tests service persistence across VM restarts
+The test suite uses YAML configuration files in `/workspace/test/configs/`:
 
-### 3. Language Package Tests (`03-languages.sh`)
-- Tests npm package installation
-- Tests cargo packages trigger Rust installation
-- Tests pip packages trigger Python/pyenv installation
-- Verifies empty package arrays don't install runtimes
-- Tests multiple languages together
+- **`minimal.yaml`** - Minimal VM configuration for basic testing
+- **`docker.yaml`** - Docker-specific configuration 
+- **`services/`** - Service-specific test configs (PostgreSQL, Redis, MongoDB)
+- **`languages/`** - Language package test configs (npm, cargo, pip)
 
-### 4. CLI Command Tests (`04-cli.sh`)
-- Tests `vm init` creates customized configurations
-- Tests `vm validate` detects valid/invalid configs
-- Tests `vm status` reports correct VM state
-- Tests `vm list` shows running VMs
-- Tests `vm exec` runs commands correctly
-- Tests `vm reload` applies configuration changes
-- Tests `vm destroy` removes VMs cleanly
+## Test Implementation
 
-### 5. Lifecycle Tests (`05-lifecycle.sh`)
-- Tests halt/resume preserves VM state
-- Tests configuration reload applies changes
-- Tests adding services via reload
-- Tests workspace synchronization
-- Tests rapid lifecycle transitions
-- Tests destroy and recreate workflows
+### Migration and Temp VM Tests (`test-migrate-temp.sh`)
+Located at `/workspace/test/test-migrate-temp.sh`, this script tests:
+- `vm migrate --check` functionality
+- `vm migrate --dry-run` and live migration
+- `vm temp` creation, status, SSH, and destroy operations
+- Collision handling for existing temp VMs
+- Mount validation and permissions
 
-## Test Helpers
+### Docker Wrapper (`docker-wrapper.sh`) 
+Utility script for Docker-specific test operations and container management.
 
-The test suite includes helper functions for common assertions:
+## Test Results
 
-- `assert_vm_running` - Verify VM is running
-- `assert_vm_stopped` - Verify VM is stopped
-- `assert_command_succeeds` - Verify command exits with 0
-- `assert_command_fails` - Verify command exits with non-0
-- `assert_file_exists` - Verify file exists in VM
-- `assert_output_contains` - Verify command output contains string
-- `assert_service_enabled` - Verify service is installed and available
-- `assert_service_not_enabled` - Verify service is not installed
+Tests use color-coded output:
+- 🟢 **Green**: Passed tests
+- 🔴 **Red**: Failed tests  
+- 🟡 **Yellow**: Warnings or skipped tests
+- 🔵 **Blue**: Test execution status
 
 ## Adding New Tests
 
-1. Create a new test suite file in `suites/` (e.g., `06-newfeature.sh`)
-2. Source the test helpers at the top
-3. Write test functions prefixed with `test_`
-4. Use assertion helpers for consistency
-5. Make the file executable: `chmod +x suites/06-newfeature.sh`
+To add new functionality testing:
+
+1. **For migrate/temp features**: Add test functions to `test-migrate-temp.sh`
+2. **For new suites**: The test runner supports adding new suite names to `AVAILABLE_SUITES`
+3. **For configs**: Add new YAML configs to the appropriate subdirectory in `test/configs/`
 
 Example test function:
 ```bash
-test_my_feature() {
-    echo "Testing my new feature..."
+test_new_feature() {
+    local test_name="Testing new feature"
+    echo -e "\n${BLUE}$test_name${NC}"
     
-    create_test_vm "$CONFIG_DIR/my-config.yaml" || return 1
-    
-    assert_command_succeeds "my-command" "Command should work"
-    assert_output_contains "my-command" "expected output" "Output check"
+    # Test implementation here
+    if command_succeeds; then
+        echo -e "${GREEN}✓ $test_name passed${NC}"
+        return 0
+    else
+        echo -e "${RED}✗ $test_name failed${NC}"
+        return 1
+    fi
 }
-```
-
-## Configuration Generator
-
-The test suite can generate configurations programmatically:
-
-```bash
-# Generate a custom config
-generate_config "my-test" 'project:\n  name: custom' "/tmp/custom.yaml"
-
-# Generate service-specific config
-generate_service_config "postgresql" true
-
-# Generate package config
-generate_package_config "npm_packages" '["prettier", "eslint"]'
 ```
 
 ## Prerequisites
