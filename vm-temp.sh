@@ -65,9 +65,7 @@ read_temp_state() {
 
 # Get temp VM container name from state
 get_temp_container_name() {
-	echo "DEBUG: Inside get_temp_container_name" >&2
 	if [ ! -f "$TEMP_STATE_FILE" ]; then
-		echo "DEBUG: State file not found" >&2
 		echo ""
 		return 1
 	fi
@@ -311,9 +309,13 @@ EOF
 	if [ "${VM_DEBUG:-}" = "true" ]; then
 		echo "DEBUG: About to get temp container name" >&2
 	fi
+	# Temporarily disable set -x to avoid command substitution deadlock
+	local SAVE_OPTS=$(set +o)
+	set +x
 	existing_container=$(get_temp_container_name)
 	TEMP_RET=$?
-	echo "DEBUG: IMMEDIATE TEST - Assignment complete" >&2
+	# Restore previous options
+	eval "$SAVE_OPTS"
 	if [ "${VM_DEBUG:-}" = "true" ]; then
 		echo "DEBUG: get_temp_container_name returned: $TEMP_RET" >&2
 		echo "DEBUG: existing_container='$existing_container'" >&2
