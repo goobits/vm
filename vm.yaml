@@ -1,4 +1,5 @@
 # VM Configuration File
+version: "1.0"
 project:
   name: vm
   hostname: dev.vm.local
