@@ -4,6 +4,11 @@
 
 set -e
 
+# Enable debug mode if VM_DEBUG is set
+if [ "${VM_DEBUG:-}" = "true" ]; then
+	set -x
+fi
+
 # Check for required tools
 if ! command -v yq &> /dev/null; then
     echo "❌ Error: yq is not installed. This tool is required for YAML processing."
@@ -1141,6 +1146,31 @@ case "${1:-}" in
 	"temp"|"tmp")
 		# Handle temp VM commands (tmp is an alias for temp)
 		shift
+		
+		# Add debug output for temp command
+		if [ "${VM_DEBUG:-}" = "true" ]; then
+			echo "DEBUG: temp command called with args: $*" >&2
+			echo "DEBUG: Current directory: $(pwd)" >&2
+			echo "DEBUG: SCRIPT_DIR: $SCRIPT_DIR" >&2
+		fi
+		
+		# Check if Docker is available
+		if ! command -v docker &> /dev/null; then
+			echo "❌ Docker is required for temporary VMs but is not installed"
+			echo "💡 Install Docker to use temp VMs: https://docs.docker.com/get-docker/"
+			exit 1
+		fi
+		
+		# Check if Docker daemon is running
+		if ! docker_cmd version >/dev/null 2>&1; then
+			echo "❌ Docker daemon is not running or not accessible"
+			echo "💡 Tips:"
+			echo "   - Start Docker Desktop (if on macOS/Windows)"
+			echo "   - Run: sudo systemctl start docker (if on Linux)"
+			echo "   - Check permissions: groups | grep docker"
+			exit 1
+		fi
+		
 		if [ $# -eq 0 ]; then
 			echo "❌ Usage: vm temp <command> [options]"
 			echo ""
@@ -1272,17 +1302,36 @@ EOF
 		fi
 		
 		# Validate mount directories exist
+		if [ "${VM_DEBUG:-}" = "true" ]; then
+			echo "DEBUG: Validating mounts: $MOUNT_STRING" >&2
+		fi
+		
 		old_ifs="$IFS"
 		IFS=','
 		MOUNTS=($MOUNT_STRING)  # This is intentionally unquoted for word splitting
 		IFS="$old_ifs"
+		
+		if [ "${VM_DEBUG:-}" = "true" ]; then
+			echo "DEBUG: Parsed ${#MOUNTS[@]} mounts" >&2
+		fi
+		
 		for mount in "${MOUNTS[@]}"; do
 			mount=$(echo "$mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+			original_mount="$mount"
 			if [[ "$mount" == *:* ]]; then
 				mount="${mount%:*}"
 			fi
+			
+			if [ "${VM_DEBUG:-}" = "true" ]; then
+				echo "DEBUG: Checking mount: '$mount' (original: '$original_mount')" >&2
+				echo "DEBUG: Directory exists: $([ -d "$mount" ] && echo "yes" || echo "no")" >&2
+				echo "DEBUG: Full path would be: $(realpath "$mount" 2>/dev/null || echo "INVALID")" >&2
+			fi
+			
 			if [ ! -d "$mount" ]; then
-				echo "❌ Error: Directory '$mount' does not exist" >&2
+				echo "❌ Error: Directory '$mount' does not exist"
+				echo "📂 Current directory: $(pwd)"
+				echo "💡 Make sure the directory exists or use an absolute path"
 				exit 1
 			fi
 		done
@@ -1400,6 +1449,11 @@ EOF
 		TEMP_CONTAINER="vmtemp-dev"  # Use consistent naming with regular VMs
 		
 		# Source the deep merge utility
+		if [ ! -f "$SCRIPT_DIR/shared/deep-merge.sh" ]; then
+			echo "❌ Error: Required file not found: $SCRIPT_DIR/shared/deep-merge.sh"
+			echo "💡 Make sure the VM tool is properly installed"
+			exit 1
+		fi
 		source "$SCRIPT_DIR/shared/deep-merge.sh"
 		
 		# Generate minimal temporary vm.yaml config with just overrides
@@ -1432,11 +1486,24 @@ EOF
 EOF
 		
 		# Extract schema defaults and merge with temp overrides
-		SCHEMA_DEFAULTS=$("$SCRIPT_DIR/validate-config.sh" --extract-defaults "$SCRIPT_DIR/vm.schema.yaml")
+		if [ "${VM_DEBUG:-}" = "true" ]; then
+			echo "DEBUG: Extracting schema defaults from: $SCRIPT_DIR/vm.schema.yaml" >&2
+		fi
+		
+		SCHEMA_DEFAULTS=$("$SCRIPT_DIR/validate-config.sh" --extract-defaults "$SCRIPT_DIR/vm.schema.yaml" 2>&1)
+		if [ $? -ne 0 ]; then
+			echo "❌ Failed to extract schema defaults"
+			echo "📋 Error output: $SCHEMA_DEFAULTS"
+			rm -f "$TEMP_CONFIG_FILE"
+			exit 1
+		fi
+		
 		# Use yq to merge schema defaults with temp config
-		CONFIG=$(yq -s '.[0] * .[1]' <(echo "$SCHEMA_DEFAULTS") "$TEMP_CONFIG_FILE")
+		CONFIG=$(yq -s '.[0] * .[1]' <(echo "$SCHEMA_DEFAULTS") "$TEMP_CONFIG_FILE" 2>&1)
 		if [ $? -ne 0 ]; then
 			echo "❌ Failed to generate temp VM configuration"
+			echo "📋 Error merging configs: $CONFIG"
+			echo "💡 Check that yq is installed and working: yq --version"
 			rm -f "$TEMP_CONFIG_FILE"
 			exit 1
 		fi
@@ -1486,7 +1553,25 @@ EOF
 		
 		# Use the standard docker_up flow
 		echo "🚀 Creating temporary VM with full provisioning..."
-		docker_up "$CONFIG" "$TEMP_PROJECT_DIR" "true"
+		if [ "${VM_DEBUG:-}" = "true" ]; then
+			echo "DEBUG: Calling docker_up with:" >&2
+			echo "DEBUG:   CONFIG: [truncated for brevity]" >&2
+			echo "DEBUG:   TEMP_PROJECT_DIR: $TEMP_PROJECT_DIR" >&2
+			echo "DEBUG:   VM_TEMP_MOUNTS: $VM_TEMP_MOUNTS" >&2
+		fi
+		
+		# Call docker_up and capture any errors
+		if ! docker_up "$CONFIG" "$TEMP_PROJECT_DIR" "true"; then
+			echo "❌ Failed to create temporary VM"
+			echo "💡 Tips:"
+			echo "   - Run with VM_DEBUG=true for more details"
+			echo "   - Check Docker is running: docker ps"
+			echo "   - Check disk space: df -h"
+			# Clean up on failure
+			rm -f "$TEMP_CONFIG_FILE" "$TEMP_DIR_MARKER"
+			rm -rf "$TEMP_PROJECT_DIR"
+			exit 1
+		fi
 		
 		# Save temp VM state
 		save_temp_state "$TEMP_CONTAINER" "$MOUNT_STRING" "$CURRENT_DIR"
