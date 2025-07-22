@@ -21,7 +21,7 @@ rsync -av --exclude='.git' --exclude='*.md' --exclude='test' --exclude='examples
 echo "🔗 Creating global 'vm' command in $BIN_DIR..."
 cat > "$BIN_DIR/vm" << 'EOF'
 #!/bin/bash
-# Global VM wrapper - automatically finds vm.json in current directory or upward
+# Global VM wrapper - automatically finds vm.yaml in current directory or upward
 exec "$HOME/.local/share/vm/vm.sh" "$@"
 EOF
 
@@ -43,13 +43,13 @@ echo ""
 echo "🎉 Installation complete!"
 echo ""
 echo "Usage:"
-echo "  vm create    # Create and start VM (looks for vm.json in current dir or upward)"
+echo "  vm create    # Create and start VM (looks for vm.yaml in current dir or upward)"
 echo "  vm ssh       # Connect to VM"
 echo "  vm validate  # Check configuration"
 echo "  vm halt      # Stop VM"
 echo "  vm destroy   # Delete VM"
 echo ""
-echo "The 'vm' command will automatically search for vm.json in:"
+echo "The 'vm' command will automatically search for vm.yaml in:"
 echo "  1. Current directory"
 echo "  2. Parent directory"
 echo "  3. Grandparent directory"

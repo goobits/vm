@@ -14,18 +14,19 @@ Beautiful development environments with one command. Choose between Docker (ligh
 # 1. Install globally via npm
 npm install -g @goobits/vm
 
-# 2. Start immediately with defaults OR create custom vm.json
+# 2. Start immediately with defaults OR create custom vm.yaml
 vm create  # Works without any config! Uses smart defaults
 vm ssh     # Enter your shiny new Ubuntu box
 
-# OR customize with vm.json
-{
-  "ports": {
-    "frontend": 3000,
-    "backend": 3001
-  }
-  # Default provider is Docker - add "provider": "vagrant" for full VM
-}
+# OR customize with vm.yaml
+```
+
+Create a vm.yaml file:
+```yaml
+ports:
+  frontend: 3000
+  backend: 3001
+# Default provider is Docker - add "provider": "vagrant" for full VM
 ```
 
 ### Option 2: Manual Global Installation
@@ -60,8 +61,8 @@ pnpm vm create
 ## 🎮 Commands
 
 ```bash
-vm init                      # Initialize a new vm.json configuration file
-vm generate                  # Generate vm.json by composing services
+vm init                      # Initialize a new vm.yaml configuration file
+vm generate                  # Generate vm.yaml by composing services and configurations
 vm list                      # List all VM instances
 vm temp <folders>            # Create ephemeral VM with specific directory mounts
 vm create                    # Create new VM/container with full provisioning
@@ -98,39 +99,31 @@ vm --config dev.json ssh     # Any command works with --config
 
 Most projects just need ports. Everything else has smart defaults:
 
-```json
-{
-	"ports": {
-		"frontend": 3020,
-		"backend": 3022
-	}
-}
+```yaml
+ports:
+  frontend: 3020
+  backend: 3022
 ```
 
 Want PostgreSQL? Just add:
 
-```json
-{
-	"ports": {
-		"frontend": 3020,
-		"backend": 3022,
-		"postgresql": 3025
-	},
-	"services": {
-		"postgresql": { "enabled": true }
-	}
-}
+```yaml
+ports:
+  frontend: 3020
+  backend: 3022
+  postgresql: 3025
+services:
+  postgresql:
+    enabled: true
 ```
 
 ### 🚀 Automatic Language Installation
 
 Need Rust or Python? Just add packages and the VM automatically installs the language runtime:
 
-```json
-{
-	"cargo_packages": ["cargo-watch", "tokei"],     // Installs Rust + Cargo
-	"pip_packages": ["black", "pytest", "mypy"]     // Installs Python + pyenv
-}
+```yaml
+cargo_packages: ["cargo-watch", "tokei"]     # Installs Rust + Cargo
+pip_packages: ["black", "pytest", "mypy"]     # Installs Python + pyenv
 ```
 
 The VM will:
@@ -149,6 +142,7 @@ The VM will:
 **For Docker provider**:
 - Docker Desktop (macOS/Windows) or Docker Engine (Linux)
 - docker-compose
+- yq (YAML processor)
 
 #### macOS
 
@@ -160,6 +154,7 @@ brew install --cask virtualbox
 
 # For Docker
 brew install --cask docker
+brew install yq
 ```
 
 #### Ubuntu/Debian
@@ -176,6 +171,7 @@ sudo apt update && sudo apt install vagrant virtualbox
 # For Docker
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
+sudo apt-get update && sudo apt-get install yq
 ```
 
 #### Windows
@@ -207,18 +203,19 @@ sudo usermod -aG docker $USER
 # 1. Install globally via npm
 npm install -g @goobits/vm
 
-# 2. Start immediately with defaults OR create custom vm.json
+# 2. Start immediately with defaults OR create custom vm.yaml
 vm create  # Works without any config! Uses smart defaults
 vm ssh     # Enter your shiny new Ubuntu box
 
-# OR customize with vm.json
-{
-  "ports": {
-    "frontend": 3000,
-    "backend": 3001
-  }
-  # Default provider is Docker - add "provider": "vagrant" for full VM
-}
+# OR customize with vm.yaml
+```
+
+Create a vm.yaml file:
+```yaml
+ports:
+  frontend: 3000
+  backend: 3001
+# Default provider is Docker - add "provider": "vagrant" for full VM
 ```
 
 ### Option 2: Manual Global Installation
@@ -284,39 +281,31 @@ All themes include syntax highlighting and git-aware prompts!
 
 Most projects just need ports. Everything else has smart defaults:
 
-```json
-{
-	"ports": {
-		"frontend": 3020,
-		"backend": 3022
-	}
-}
+```yaml
+ports:
+  frontend: 3020
+  backend: 3022
 ```
 
 Want PostgreSQL? Just add:
 
-```json
-{
-	"ports": {
-		"frontend": 3020,
-		"backend": 3022,
-		"postgresql": 3025
-	},
-	"services": {
-		"postgresql": { "enabled": true }
-	}
-}
+```yaml
+ports:
+  frontend: 3020
+  backend: 3022
+  postgresql: 3025
+services:
+  postgresql:
+    enabled: true
 ```
 
 ### 🚀 Automatic Language Installation
 
 Need Rust or Python? Just add packages and the VM automatically installs the language runtime:
 
-```json
-{
-	"cargo_packages": ["cargo-watch", "tokei"],     // Installs Rust + Cargo
-	"pip_packages": ["black", "pytest", "mypy"]     // Installs Python + pyenv
-}
+```yaml
+cargo_packages: ["cargo-watch", "tokei"]     # Installs Rust + Cargo
+pip_packages: ["black", "pytest", "mypy"]     # Installs Python + pyenv
 ```
 
 The VM will:
@@ -328,98 +317,83 @@ The VM will:
 
 For autocompletion and validation in your editor:
 
-```json
-{
-	"$schema": "./vm.schema.json",
-	"ports": {
-		"frontend": 3020
-	}
-}
+```yaml
+# yaml-language-server: $schema=./vm.schema.yaml
+ports:
+  frontend: 3020
 ```
 
 ### 📋 Full Reference
 
-```json
-{
-	"provider": "docker", // or "vagrant" - defaults to "docker"
-	"project": {
-		"name": "my-app", // VM/container name & prompt
-		"hostname": "dev.my-app.local", // VM/container hostname
-		"workspace_path": "/workspace", // Sync path in VM/container
-		"env_template_path": null, // e.g. "backend/.env.template"
-		"backup_pattern": "*backup*.sql.gz" // For auto-restore
-	},
-	"vm": {
-		"box": "bento/ubuntu-24.04", // Vagrant box (Vagrant only)
-		"memory": 4096, // RAM in MB
-		"cpus": 2, // CPU cores
-		"user": "vagrant", // VM/container user
-		"port_binding": "127.0.0.1" // or "0.0.0.0" for network
-	},
-	"versions": {
-		"node": "22.11.0", // Node version
-		"nvm": "v0.40.3", // NVM version
-		"pnpm": "latest" // pnpm version
-	},
-	"ports": {
-		"frontend": 3000,
-		"backend": 3001,
-		"postgresql": 5432,
-		"redis": 6379
-	},
-	"services": {
-		"postgresql": {
-			"enabled": true,
-			"database": "myapp_dev",
-			"user": "postgres",
-			"password": "postgres"
-		},
-		"redis": { "enabled": true },
-		"mongodb": { "enabled": false },
-		"docker": { "enabled": true },
-		"headless_browser": { "enabled": false }
-	},
-	"npm_packages": [
-		// Global npm packages
-		"prettier",
-		"eslint"
-	],
-	"cargo_packages": [
-		// Global Cargo packages (triggers Rust installation)
-		"cargo-watch",
-		"tokei"
-	],
-	"pip_packages": [
-		// Global pip packages (triggers Python/pyenv installation)
-		"black",
-		"pytest"
-	],
-	"aliases": {
-		// Custom aliases
-		"dev": "pnpm dev",
-		"test": "pnpm test"
-	},
-	"environment": {
-		// ENV vars
-		"NODE_ENV": "development"
-	}
-}
+```yaml
+provider: docker  # or "vagrant" - defaults to "docker"
+project:
+  name: my-app  # VM/container name & prompt
+  hostname: dev.my-app.local  # VM/container hostname
+  workspace_path: /workspace  # Sync path in VM/container
+  env_template_path: null  # e.g. "backend/.env.template"
+  backup_pattern: "*backup*.sql.gz"  # For auto-restore
+vm:
+  box: bento/ubuntu-24.04  # Vagrant box (Vagrant only)
+  memory: 4096  # RAM in MB
+  cpus: 2  # CPU cores
+  user: vagrant  # VM/container user
+  port_binding: 127.0.0.1  # or "0.0.0.0" for network
+versions:
+  node: 22.11.0  # Node version
+  nvm: v0.40.3  # NVM version
+  pnpm: latest  # pnpm version
+ports:
+  frontend: 3000
+  backend: 3001
+  postgresql: 5432
+  redis: 6379
+services:
+  postgresql:
+    enabled: true
+    database: myapp_dev
+    user: postgres
+    password: postgres
+  redis:
+    enabled: true
+  mongodb:
+    enabled: false
+  docker:
+    enabled: true
+  headless_browser:
+    enabled: false
+npm_packages:
+  # Global npm packages
+  - prettier
+  - eslint
+cargo_packages:
+  # Global Cargo packages (triggers Rust installation)
+  - cargo-watch
+  - tokei
+pip_packages:
+  # Global pip packages (triggers Python/pyenv installation)
+  - black
+  - pytest
+aliases:
+  # Custom aliases
+  dev: pnpm dev
+  test: pnpm test
+environment:
+  # ENV vars
+  NODE_ENV: development
 ```
 
 ### 🎭 Terminal Options
 
 Make your prompt uniquely yours:
 
-```json
-{
-	"terminal": {
-		"emoji": "⚡", // Prompt emoji
-		"username": "hacker", // Prompt name
-		"theme": "tokyo_night", // Color theme
-		"show_git_branch": true, // Show branch
-		"show_timestamp": false // Show time
-	}
-}
+```yaml
+terminal:
+  emoji: "⚡"  # Prompt emoji
+  username: hacker  # Prompt name
+  theme: tokyo_night  # Color theme
+  show_git_branch: true  # Show branch
+  show_timestamp: false  # Show time
 ```
 
 Result: `⚡ hacker my-app (main) >`
@@ -427,8 +401,8 @@ Result: `⚡ hacker my-app (main) >`
 ## 🎮 Commands
 
 ```bash
-vm init                      # Initialize a new vm.json configuration file
-vm generate                  # Generate vm.json by composing services
+vm init                      # Initialize a new vm.yaml configuration file
+vm generate                  # Generate vm.yaml by composing services and configurations
 vm list                      # List all VM instances
 vm temp <folders>            # Create ephemeral VM with specific directory mounts
 vm create                    # Create new VM/container with full provisioning
@@ -459,11 +433,11 @@ vm --config dev.json ssh     # Any command works with --config
 
 ## 🚀 Temporary VMs
 
-Need a quick, disposable environment for testing or experimentation? Use the temp VM feature - perfect for one-off tasks without creating a full vm.json configuration.
+Need a quick, disposable environment for testing or experimentation? Use the temp VM feature - perfect for one-off tasks without creating a full vm.yaml configuration.
 
 ### ✨ Features
 
-- **Zero configuration**: No vm.json needed
+- **Zero configuration**: No vm.yaml needed
 - **Selective directory mounting**: Choose exactly which folders to include
 - **Auto-cleanup**: Container removes itself when you exit
 - **Collision handling**: Reuses existing temp VM if mounts match, recreates if different
@@ -519,13 +493,13 @@ vm temp ./frontend,./backend
 - **No persistence**: Data is lost when temp VM is destroyed
 - **No custom configuration**: Uses built-in minimal setup
 
-## 🔍 Automatic vm.json Discovery
+## 🔍 Automatic vm.yaml Discovery
 
-The `vm` command automatically searches for `vm.json` configuration:
+The `vm` command automatically searches for `vm.yaml` configuration:
 
-1. **Current directory**: `./vm.json`
-2. **Parent directory**: `../vm.json`
-3. **Grandparent directory**: `../../vm.json`
+1. **Current directory**: `./vm.yaml`
+2. **Parent directory**: `../vm.yaml`
+3. **Grandparent directory**: `../../vm.yaml`
 4. **Defaults**: If no config found, uses built-in defaults
 
 This means you can run `vm create` from anywhere in your project tree, and it will find the right configuration!
@@ -541,23 +515,20 @@ Avoid conflicts by giving each project 10 ports:
 
 Example allocation:
 
-```json
-{
-	"ports": {
-		"frontend": 3020, // Main app
-		"backend": 3022, // API
-		"postgresql": 3025, // Database
-		"redis": 3026, // Cache
-		"docs": 3028 // Documentation
-	}
-}
+```yaml
+ports:
+  frontend: 3020  # Main app
+  backend: 3022  # API
+  postgresql: 3025  # Database
+  redis: 3026  # Cache
+  docs: 3028  # Documentation
 ```
 
-**Network access?** Add `"port_binding": "0.0.0.0"` to share with your network.
+**Network access?** Add `port_binding: "0.0.0.0"` to share with your network.
 
 ## 🔄 Advanced Features
 
-**Aliases**: Custom shell aliases from `vm.json` are applied via Ansible. To update without reprovisioning: edit `~/.zshrc` manually or run `vm provision`.
+**Aliases**: Custom shell aliases from `vm.yaml` are applied via Ansible. To update without reprovisioning: edit `~/.zshrc` manually or run `vm provision`.
 
 **Claude Sync**: Add `"claude_sync": true` to sync Claude AI data to `~/.claude/vms/{project_name}/` on your host.
 
@@ -609,17 +580,17 @@ Fixed port collision for 3000 => 3000. Now on port 2200.
 ## 🚨 Troubleshooting
 
 **Q: Port conflicts?**  
-A: Check output for remapped ports (Vagrant) or adjust ports in vm.json
+A: Check output for remapped ports (Vagrant) or adjust ports in vm.yaml
 
 **Q: VM/container won't start?**  
 A: `vm destroy` then `vm create`
 
 **Q: Slow performance?**  
-A: Increase memory/CPUs in vm.json (or switch to Docker provider)
+A: Increase memory/CPUs in vm.yaml (or switch to Docker provider)
 
 **Q: Can't connect to service?**  
 A: 
-- Check service is enabled in vm.json
+- Check service is enabled in vm.yaml
 - Verify service is running: `vm exec 'systemctl status postgresql'`
 - All services use localhost (not container names)
 
@@ -643,6 +614,7 @@ vm provision  # Re-run Ansible playbook
 **For Docker provider**:
 - Docker Desktop (macOS/Windows) or Docker Engine (Linux)
 - docker-compose
+- yq (YAML processor)
 
 ### macOS
 
@@ -654,6 +626,7 @@ brew install --cask virtualbox
 
 # For Docker
 brew install --cask docker
+brew install yq
 ```
 
 ### Ubuntu/Debian
@@ -670,6 +643,7 @@ sudo apt update && sudo apt install vagrant virtualbox
 # For Docker
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
+sudo apt-get update && sudo apt-get install yq
 ```
 
 ### Windows
@@ -690,11 +664,11 @@ vm.sh → Provider (Vagrant/Docker) → Ansible Playbook → Configured Environm
 All services (PostgreSQL, Redis, MongoDB) run **inside** the VM/container and are accessed via `localhost`. No more confusion about container hostnames vs localhost!
 
 ### Configuration Flow
-1. `vm.json` defines your requirements
+1. `vm.yaml` defines your requirements
 2. `validate-config.sh` merges with defaults and validates
 3. Provider-specific setup (Vagrantfile or docker-compose.yml)
 4. Ansible playbook provisions everything identically
 
 ---
 
-**Pro tip**: The package includes `vm.json` with sensible defaults. Your project's `vm.json` only needs what's different! 🎪
+**Pro tip**: The package includes `vm.yaml` with sensible defaults. Your project's `vm.yaml` only needs what's different! 🎪

@@ -8,7 +8,7 @@
   },
   "files": [
     "vm.sh",
-    "vm.json",
+    "vm.yaml",
     "validate-config.sh",
     "providers/",
     "shared/",

@@ -1,0 +1,12 @@
+# VM Configuration File
+project:
+  name: vm
+  hostname: dev.vm.local
+  workspace_path: /workspace
+vm:
+  box: bento/ubuntu-24.04
+  memory: 8192
+  cpus: 4
+  user: developer
+terminal:
+  username: vm-dev

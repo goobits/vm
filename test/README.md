@@ -107,7 +107,7 @@ Example test function:
 test_my_feature() {
     echo "Testing my new feature..."
     
-    create_test_vm "$CONFIG_DIR/my-config.json" || return 1
+    create_test_vm "$CONFIG_DIR/my-config.yaml" || return 1
     
     assert_command_succeeds "my-command" "Command should work"
     assert_output_contains "my-command" "expected output" "Output check"
@@ -120,7 +120,7 @@ The test suite can generate configurations programmatically:
 
 ```bash
 # Generate a custom config
-generate_config "my-test" '{"project":{"name":"custom"}}' "/tmp/custom.json"
+generate_config "my-test" 'project:\n  name: custom' "/tmp/custom.yaml"
 
 # Generate service-specific config
 generate_service_config "postgresql" true
