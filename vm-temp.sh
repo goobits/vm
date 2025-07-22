@@ -117,6 +117,25 @@ compare_mounts() {
 	[ "$sorted_existing" = "$sorted_requested" ]
 }
 
+# Clean up orphaned Docker resources from previous temp VM runs
+cleanup_orphaned_temp_resources() {
+	# Remove orphaned temp VM networks that don't have running containers
+	docker network ls --filter "name=vm-temp-project" -q | while read network_id; do
+		# Check if any container is using this network
+		if ! docker ps -q --filter "network=$network_id" | grep -q .; then
+			docker network rm "$network_id" 2>/dev/null || true
+		fi
+	done
+	
+	# Remove orphaned temp VM volumes that aren't in use
+	docker volume ls --filter "name=vm-temp-project" -q | xargs -r docker volume rm 2>/dev/null || true
+	
+	# Clean up old vmtemp volumes if no vmtemp container exists
+	if ! docker ps -a --filter "name=vmtemp" -q | grep -q .; then
+		docker volume rm vmtemp_nvm vmtemp_cache vmtemp_config 2>/dev/null || true
+	fi
+}
+
 # Handle temp VM commands
 handle_temp_command() {
 	local args=("$@")
@@ -280,6 +299,9 @@ EOF
 			;;
 	esac
 	
+	# Clean up any orphaned resources before creating new temp VM
+	cleanup_orphaned_temp_resources
+	
 	# Parse mount string from first argument
 	MOUNT_STRING="$1"
 	shift
@@ -408,16 +430,18 @@ EOF
 			
 			exit 0
 		else
-			# Different mounts - ask user what to do
-			echo "⚠️ Active temp VM exists with different mounts."
+			# Different mounts - show options to user
+			echo "⚠️  Temp VM already exists with different mounts"
 			echo ""
-			echo "Existing mounts:"
+			echo "Current mounts:"
 			if command -v yq &> /dev/null && [ -f "$TEMP_STATE_FILE" ]; then
 				yq -r '.mounts[]?' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
-					echo "  • $mount"
+					# Extract just the source path for readability
+					source_path=$(echo "$mount" | cut -d: -f1)
+					echo "  • $(basename "$source_path")"
 				done
 			else
-				echo "  (Unable to display without yq)"
+				echo "  • (Unable to display without yq)"
 			fi
 			echo ""
 			echo "Requested mounts:"
@@ -425,6 +449,10 @@ EOF
 				mount=$(echo "$mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 				echo "  • $mount"
 			done
+			echo ""
+			echo "Options:"
+			echo "  1. vm temp destroy && vm temp $MOUNT_STRING"
+			echo "  2. vm temp ssh (to connect to existing VM)"
 			echo ""
 			echo "What would you like to do?"
 			echo "  1) Connect to existing VM anyway"
@@ -489,8 +517,31 @@ EOF
 	
 	# Generate minimal temporary vm.yaml config with just overrides
 	TEMP_CONFIG_FILE=$(mktemp /tmp/vm-temp.XXXXXX.yaml)
-	# Ensure the temp file is removed when the script exits
+	
+	# Setup cleanup function for interruptions
+	cleanup_on_interrupt() {
+		echo ""
+		echo "🛑 Interrupted! Cleaning up..."
+		# Remove temp container if it was created
+		if [ -n "${TEMP_CONTAINER:-}" ]; then
+			docker_cmd rm -f "$TEMP_CONTAINER" >/dev/null 2>&1 || true
+		fi
+		# Clean up volumes
+		docker_cmd volume rm vmtemp_nvm vmtemp_cache vmtemp_config 2>/dev/null || true
+		# Clean up network
+		docker_cmd network rm vm-temp-project_vmtemp_network 2>/dev/null || true
+		# Remove state file
+		rm -f "$TEMP_STATE_FILE"
+		# Remove temp files
+		rm -f "$TEMP_CONFIG_FILE"
+		rm -rf "$TEMP_PROJECT_DIR"
+		echo "✅ Cleanup complete"
+		exit 1
+	}
+	
+	# Ensure cleanup happens on exit or interrupt
 	trap 'rm -f "$TEMP_CONFIG_FILE"' EXIT
+	trap 'cleanup_on_interrupt' INT TERM
 	
 	cat > "$TEMP_CONFIG_FILE" <<EOF
 project:
@@ -532,7 +583,8 @@ EOF
 	fi
 	
 	# Create a temporary project directory for docker-compose generation
-	TEMP_PROJECT_DIR="/tmp/vm-temp-project-$$"
+	# Use a fixed name instead of PID to avoid multiple projects
+	TEMP_PROJECT_DIR="/tmp/vm-temp-project"
 	mkdir -p "$TEMP_PROJECT_DIR"
 	
 	# Track the real paths for direct volume mounts
@@ -613,7 +665,7 @@ EOF
 		# Clean up temp project directory safely
 		# Resolve real path to prevent directory traversal
 		REAL_TEMP_DIR=$(realpath "$TEMP_PROJECT_DIR" 2>/dev/null)
-		if [[ "$REAL_TEMP_DIR" == /tmp/vm-temp-project-* ]]; then
+		if [[ "$REAL_TEMP_DIR" == "/tmp/vm-temp-project" ]]; then
 			rm -rf "$REAL_TEMP_DIR"
 			# Log cleanup
 			if command -v logger >/dev/null 2>&1; then

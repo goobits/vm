@@ -637,21 +637,93 @@ vm_list() {
 	
 	# Check if Docker is available
 	if command -v docker &> /dev/null; then
+		# First, show main project VMs
 		echo ""
-		echo "🐳 Docker VMs:"
-		echo "--------------"
+		echo "🐳 Project VMs:"
+		echo "---------------"
 		
-		# Get all containers and filter for VM-like names
-		local vm_containers=$(docker_cmd ps -a --format "{{.Names}}\t{{.Status}}\t{{.CreatedAt}}" | awk '$1 ~ /-dev$/ || $1 ~ /postgres/ || $1 ~ /redis/ || $1 ~ /mongodb/ {print}' 2>/dev/null || true)
+		# Get all containers and filter for main project VMs
+		local main_vms=$(docker_cmd ps -a --format "{{.Names}}\t{{.Status}}\t{{.CreatedAt}}" | awk '$1 ~ /-dev$/ && $1 !~ /^vmtemp/ {print}' 2>/dev/null || true)
 		
-		if [ -n "$vm_containers" ]; then
+		if [ -n "$main_vms" ]; then
 			echo "NAME                    STATUS                       CREATED"
 			echo "================================================================"
-			echo "$vm_containers" | while IFS=$'\t' read -r name status created; do
+			echo "$main_vms" | while IFS=$'\t' read -r name status created; do
 				printf "%-22s %-28s %s\n" "$name" "$status" "$created"
 			done
 		else
-			echo "No Docker VMs found"
+			echo "No project VMs found"
+		fi
+		
+		# Show temp VMs separately
+		echo ""
+		echo "🚀 Temporary VMs:"
+		echo "-----------------"
+		
+		# Check for temp VM from state file
+		local TEMP_STATE_FILE="$HOME/.vm/temp-vm.state"
+		if [ -f "$TEMP_STATE_FILE" ]; then
+			local temp_container=""
+			local created_at=""
+			local project_dir=""
+			
+			if command -v yq &> /dev/null; then
+				temp_container=$(yq -r '.container_name // empty' "$TEMP_STATE_FILE" 2>/dev/null)
+				created_at=$(yq -r '.created_at // empty' "$TEMP_STATE_FILE" 2>/dev/null)
+				project_dir=$(yq -r '.project_dir // empty' "$TEMP_STATE_FILE" 2>/dev/null)
+			else
+				temp_container=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
+			fi
+			
+			if [ -n "$temp_container" ]; then
+				# Check if container actually exists
+				local temp_status=$(docker_cmd ps -a --filter "name=^${temp_container}$" --format "{{.Status}}" 2>/dev/null || echo "Not found")
+				
+				echo "NAME            TYPE    STATUS           MOUNTS                  CREATED"
+				echo "======================================================================"
+				
+				# Get mounts in a more readable format
+				local mounts=""
+				if command -v yq &> /dev/null; then
+					mounts=$(yq -r '.mounts[]?' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
+						source_path=$(echo "$mount" | cut -d: -f1)
+						echo -n "$(basename "$source_path"), "
+					done | sed 's/, $//')
+				fi
+				
+				if [ -z "$mounts" ]; then
+					mounts="(unknown)"
+				fi
+				
+				printf "%-14s  temp    %-16s %-22s %s\n" "$temp_container" "$temp_status" "$mounts" "$created_at"
+				
+				echo ""
+				echo "💡 Commands:"
+				echo "  vm temp ssh              # Connect to temp VM"
+				echo "  vm temp status           # Show detailed status"
+				echo "  vm temp destroy          # Destroy temp VM"
+			else
+				echo "No temp VMs found"
+			fi
+		else
+			echo "No temp VMs found"
+		fi
+		
+		# Show service containers
+		echo ""
+		echo "🔧 Service Containers:"
+		echo "---------------------"
+		
+		local service_containers=$(docker_cmd ps -a --format "{{.Names}}\t{{.Status}}\t{{.CreatedAt}}" | awk '$1 ~ /postgres|redis|mongodb/ && $1 !~ /-dev$/ {print}' 2>/dev/null || true)
+		
+		if [ -n "$service_containers" ]; then
+			echo "NAME                    STATUS                       CREATED"
+			echo "================================================================"
+			echo "$service_containers" | while IFS=$'\t' read -r name status created; do
+				printf "%-22s %-28s %s\n" "$name" "$status" "$created"
+			done
+		else
+			echo "No service containers found"
 		fi
 	fi
 	
