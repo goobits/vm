@@ -6,41 +6,19 @@ Beautiful development environments with one command. Choose between Docker (ligh
 > - **Docker (default)**: Lightweight containers with shared kernel - fast and resource-efficient for most workloads
 > - **Vagrant**: Full VM isolation with separate kernel - ideal for risky operations or when system security is a concern
 
-## 🆕 Recent Updates
-
-**🔧 Modular Architecture**: Extracted temporary VM functionality into separate modules for better maintainability and debugging.
-
-**📋 Configuration Migration**: Full support for migrating legacy JSON configs to modern YAML format with versioning:
-- `vm migrate --check` - Check if migration is needed
-- `vm migrate --dry-run` - Preview migration changes  
-- `vm migrate` - Perform the migration with automatic backup
-
-**🚀 Enhanced Temporary VMs**: Improved temp VM workflow with dedicated subcommands:
-- `vm temp ./src,./config` - Create temp VM with specific directory mounts
-- `vm temp ssh` - Direct SSH into active temp VM
-- `vm temp status` - View temp VM configuration and state
-- `vm temp destroy` - Clean up temp VM and all resources
-- `vm tmp` - Short alias for `vm temp`
-
-**📦 YAML Configuration**: Modern YAML-based configuration with comments, better readability, and schema validation.
-
 ## 🏃 Quick Start
 
-### Option 1: Manual Installation (Current)
+### Option 1: npm Global Installation (Recommended)
 
 ```bash
-# 1. Clone and install globally
-git clone <repo-url>
-cd vm
-./install.sh
+# 1. Install globally via npm
+npm install -g @goobits/vm
 
-# 2. Create a vm.yaml configuration  
-vm init     # Initialize with guided setup
-# OR create manually (see Configuration section)
+# 2. Start immediately with defaults OR create custom vm.yaml
+vm create  # Works without any config! Uses smart defaults
+vm ssh     # Enter your shiny new Ubuntu box
 
-# 3. Start your development environment
-vm create   # Create and provision VM
-vm ssh      # Enter your development environment
+# OR customize with vm.yaml
 ```
 
 Create a vm.yaml file (or use `vm init`):
@@ -225,58 +203,6 @@ sudo apt-get update && sudo apt-get install yq
 - [Tips & Tricks](#-tips--tricks)
 - [Troubleshooting](#-troubleshooting)
 
-## 🏃 Quick Start
-
-### Option 1: npm Global Installation (Recommended)
-
-```bash
-# 1. Install globally via npm
-npm install -g @goobits/vm
-
-# 2. Start immediately with defaults OR create custom vm.yaml
-vm create  # Works without any config! Uses smart defaults
-vm ssh     # Enter your shiny new Ubuntu box
-
-# OR customize with vm.yaml
-```
-
-Create a vm.yaml file:
-```yaml
-ports:
-  frontend: 3000
-  backend: 3001
-# Default provider is Docker - add "provider": "vagrant" for full VM
-```
-
-### Option 2: Manual Global Installation
-
-```bash
-# 1. Clone and install
-git clone <repo-url>
-cd vm
-./install.sh
-
-# 2. Use globally
-vm create
-```
-
-### Option 3: Per-Project Installation
-
-```bash
-# 1. Copy to your project
-cp -r vm your-project/
-
-# 2. Add to package.json
-{
-  "scripts": {
-    "vm": "./vm/vm.sh"
-  }
-}
-
-# 3. Launch!
-pnpm vm create
-```
-
 ## 📦 What's Included
 
 - **Ubuntu 24.04 LTS** with Zsh + syntax highlighting
@@ -286,9 +212,11 @@ pnpm vm create
 - **Optional services**: PostgreSQL, Redis, MongoDB, Docker, Headless Browser
 - **Auto-sync**: Edit locally, run in VM
 - **Claude-ready**: Safe sandbox for AI experiments
-- **Provider choice**: Docker (default, lightweight) or Vagrant (full isolation)
+- **Provider choice**: Docker (default, lightweight) or Vagrant (full isolation)  
 - **Unified architecture**: Both providers use identical Ansible provisioning
+- **Modular bash architecture**: Clean, maintainable scripts with extracted modules
 - **Automatic language installation**: Rust (via cargo_packages) and Python (via pip_packages)
+- **Configuration migration**: Easy upgrade from JSON to YAML with versioning
 
 ## 🎨 Terminal Themes
 
