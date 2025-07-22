@@ -326,6 +326,50 @@ EOF
     rm -rf "$test_dir"
 }
 
+# Test JSON config rejection
+test_json_config_rejection() {
+    echo "Testing JSON config rejection..."
+    
+    # Create test directory
+    local test_dir="/tmp/json-reject-test-$$"
+    mkdir -p "$test_dir"
+    cd "$test_dir"
+    
+    # Create a JSON config file
+    cat > config.json << 'EOF'
+{
+  "project": {
+    "name": "test-project"
+  },
+  "provider": "docker"
+}
+EOF
+    
+    # Try to use JSON config - should fail
+    if vm --config config.json status 2>&1 | grep -q "JSON configs are no longer supported"; then
+        echo -e "${GREEN}✓ JSON config was properly rejected with helpful message${NC}"
+    else
+        echo -e "${RED}✗ JSON config should be rejected with migration message${NC}"
+        cd - > /dev/null
+        rm -rf "$test_dir"
+        return 1
+    fi
+    
+    # Verify migration suggestion is shown
+    if vm --config config.json status 2>&1 | grep -q "vm migrate --input"; then
+        echo -e "${GREEN}✓ Migration command suggestion shown${NC}"
+    else
+        echo -e "${RED}✗ Should show migration command suggestion${NC}"
+        cd - > /dev/null
+        rm -rf "$test_dir"
+        return 1
+    fi
+    
+    # Cleanup
+    cd - > /dev/null
+    rm -rf "$test_dir"
+}
+
 # ============================================================================
 # Test Suite: vm temp Tests
 # ============================================================================
@@ -565,6 +609,10 @@ main() {
     run_test "migrate-check-with-both" test_migrate_check_with_both
     run_test "migrate-dry-run" test_migrate_dry_run
     run_test "migrate-live" test_migrate_live
+    
+    # Run JSON deprecation test
+    echo -e "\n${BLUE}Running JSON deprecation test...${NC}"
+    run_test "json-config-rejection" test_json_config_rejection
     
     # Run vm temp tests
     echo -e "\n${BLUE}Running vm temp tests...${NC}"

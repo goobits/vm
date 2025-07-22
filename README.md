@@ -70,8 +70,8 @@ vm test --suite services    # Test service configurations
 vm test --list              # Show available test suites
 
 # Use custom config file
-vm --config prod.json create # Create with specific config
-vm --config dev.json ssh     # Any command works with --config
+vm --config prod.yaml create # Create with specific config
+vm --config dev.yaml ssh     # Any command works with --config
 ```
 
 ## 📚 Documentation

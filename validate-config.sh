@@ -264,6 +264,18 @@ load_and_merge_config() {
     # Load and validate user config
     local user_config=""
     if [[ -f "$config_file_to_load" ]]; then
+        # Check if this is a JSON file before attempting to parse
+        if [[ "$config_file_to_load" == *.json ]]; then
+            echo "❌ Failed to parse configuration file: $config_file_to_load" >&2
+            echo "" >&2
+            echo "   JSON configuration files are no longer supported." >&2
+            echo "" >&2
+            echo "   To migrate your configuration, run:" >&2
+            echo "     vm migrate --input $config_file_to_load" >&2
+            echo "" >&2
+            return 1
+        fi
+        
         local yq_error
         if ! user_config="$(yq . "$config_file_to_load" 2>&1)"; then
             yq_error="$(yq . "$config_file_to_load" 2>&1)"

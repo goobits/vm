@@ -12,3 +12,6 @@ yarn-error.log*
 # Test directories
 test-*/
 .test_artifacts/
+
+# Generated files
+docker-compose.yml
