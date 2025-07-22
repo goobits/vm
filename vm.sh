@@ -1346,12 +1346,12 @@ EOF
 			normalized_mounts=""
 			for mount in "${MOUNTS[@]}"; do
 				mount=$(echo "$mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-				local source="${mount%:*}"
-				local perm="rw"
+				source="${mount%:*}"
+				perm="rw"
 				if [[ "$mount" == *:* ]]; then
 					perm="${mount##*:}"
 				fi
-				local abs_source="$(realpath "$source" 2>/dev/null || echo "$source")"
+				abs_source="$(realpath "$source" 2>/dev/null || echo "$source")"
 				if [ -n "$normalized_mounts" ]; then
 					normalized_mounts="$normalized_mounts,"
 				fi
