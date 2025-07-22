@@ -4,10 +4,21 @@
 
 set -e
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Verify we're in the right directory
+if [ ! -f "$SCRIPT_DIR/vm.sh" ]; then
+    echo "❌ Error: Cannot find vm.sh in $SCRIPT_DIR"
+    echo "💡 Make sure you're running install.sh from the vm directory"
+    exit 1
+fi
+
 INSTALL_DIR="${HOME}/.local/share/vm"
 BIN_DIR="${HOME}/.local/bin"
 
 echo "🚀 Installing VM Infrastructure globally..."
+echo "📂 Installing from: $SCRIPT_DIR"
 
 # Create directories
 mkdir -p "$INSTALL_DIR"
@@ -15,7 +26,34 @@ mkdir -p "$BIN_DIR"
 
 # Copy all files except development files
 echo "📁 Copying files to $INSTALL_DIR..."
-rsync -av --exclude='.git' --exclude='*.md' --exclude='test' --exclude='examples' --exclude='install.sh' . "$INSTALL_DIR/"
+
+# Check if rsync is available
+if command -v rsync &> /dev/null; then
+    rsync -av --exclude='.git' --exclude='*.md' --exclude='test' --exclude='examples' --exclude='install.sh' "$SCRIPT_DIR/" "$INSTALL_DIR/"
+else
+    # Fallback to cp if rsync is not available
+    echo "📋 Using cp instead of rsync..."
+    # Remove old installation if it exists
+    rm -rf "$INSTALL_DIR"
+    mkdir -p "$INSTALL_DIR"
+    
+    # Copy directories
+    for dir in providers shared configs; do
+        if [ -d "$SCRIPT_DIR/$dir" ]; then
+            cp -r "$SCRIPT_DIR/$dir" "$INSTALL_DIR/"
+        fi
+    done
+    
+    # Copy individual files
+    for file in vm.sh validate-config.sh generate-config.sh vm.yaml package.json *.json *.yaml; do
+        if [ -f "$SCRIPT_DIR/$file" ]; then
+            cp "$SCRIPT_DIR/$file" "$INSTALL_DIR/"
+        fi
+    done
+    
+    # Make scripts executable
+    chmod +x "$INSTALL_DIR"/*.sh
+fi
 
 # Create global vm command
 echo "🔗 Creating global 'vm' command in $BIN_DIR..."
