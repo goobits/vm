@@ -306,7 +306,14 @@ EOF
 	done
 	
 	# Check for existing temp VM
+	if [ "${VM_DEBUG:-}" = "true" ]; then
+		echo "DEBUG: About to get temp container name" >&2
+	fi
 	existing_container=$(get_temp_container_name)
+	if [ "${VM_DEBUG:-}" = "true" ]; then
+		echo "DEBUG: existing_container='$existing_container'" >&2
+		echo "DEBUG: Checking if container exists and is running" >&2
+	fi
 	if [ -n "$existing_container" ] && is_temp_vm_running "$existing_container"; then
 		# Active temp VM exists - check if mounts match
 		existing_mounts=$(get_temp_mounts)
@@ -413,6 +420,10 @@ EOF
 					;;
 			esac
 		fi
+	fi
+	
+	if [ "${VM_DEBUG:-}" = "true" ]; then
+		echo "DEBUG: Proceeding to create new temp VM" >&2
 	fi
 	
 	# No existing VM or user chose to recreate - proceed with creation
