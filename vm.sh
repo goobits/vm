@@ -96,6 +96,18 @@ parse_mount_string() {
 					echo "❌ Error: Directory '$source' does not exist or is not a directory" >&2
 					return 1
 				fi
+				
+				# Validate directory name for security
+				if [[ "$source" =~ [\;\`\$\"] ]]; then
+					echo "❌ Error: Directory name contains potentially dangerous characters" >&2
+					echo "💡 Directory names cannot contain: ; \` $ \"" >&2
+					return 1
+				fi
+				
+				if [[ "$source" =~ \.\./|/\.\. ]]; then
+					echo "❌ Error: Directory path traversal not allowed" >&2
+					return 1
+				fi
 				case "$perm" in
 					"ro"|"readonly")
 						mount_args="$mount_args -v $(realpath "$source"):/workspace/$(basename "$source"):ro"
@@ -110,6 +122,19 @@ parse_mount_string() {
 					echo "❌ Error: Directory '$mount' does not exist or is not a directory" >&2
 					return 1
 				fi
+				
+				# Validate directory name for security
+				if [[ "$mount" =~ [\;\`\$\"] ]]; then
+					echo "❌ Error: Directory name contains potentially dangerous characters" >&2
+					echo "💡 Directory names cannot contain: ; \` $ \"" >&2
+					return 1
+				fi
+				
+				if [[ "$mount" =~ \.\./|/\.\. ]]; then
+					echo "❌ Error: Directory path traversal not allowed" >&2
+					return 1
+				fi
+				
 				# Default to read-write mount
 				mount_args="$mount_args -v $(realpath "$mount"):/workspace/$(basename "$mount")"
 			fi

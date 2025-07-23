@@ -14,6 +14,26 @@ yq_raw() {
 	yq "$filter" "$file" 2>/dev/null | jq -r '.' 2>/dev/null || echo ""
 }
 
+# Validate directory name for security
+validate_directory_name() {
+	local dir="$1"
+	
+	# Check for dangerous characters that could cause shell injection
+	if [[ "$dir" =~ [\;\`\$\"] ]]; then
+		echo "❌ Error: Directory name contains potentially dangerous characters"
+		echo "💡 Directory names cannot contain: ; \` $ \""
+		return 1
+	fi
+	
+	# Check for directory traversal attempts
+	if [[ "$dir" =~ \.\./|/\.\. ]]; then
+		echo "❌ Error: Directory path traversal not allowed"
+		return 1
+	fi
+	
+	return 0
+}
+
 # Save temporary VM state
 save_temp_state() {
 	local container_name="$1"
@@ -555,6 +575,11 @@ EOF
 				exit 1
 			fi
 			
+			# Validate directory name for security
+			if ! validate_directory_name "$source"; then
+				exit 1
+			fi
+			
 			# Get absolute path
 			local abs_source=$(cd "$source" && pwd)
 			local target="/workspace/$(basename "$abs_source")"
@@ -592,8 +617,10 @@ EOF
 				local temp_file=$(mktemp)
 				cp "$TEMP_STATE_FILE" "$temp_file"
 				
-				# Add the new mount in new format
-				yq '.mounts += [{"source": "'"$abs_source"'", "target": "'"$target"'", "permissions": "'"$perm"'"}]' "$temp_file" > "$TEMP_STATE_FILE"
+				# Add the new mount in new format - SECURE: use yq --arg to prevent shell injection
+				yq --arg source "$abs_source" --arg target "$target" --arg perm "$perm" \
+					'.mounts += [{"source": $source, "target": $target, "permissions": $perm}]' \
+					"$temp_file" > "$TEMP_STATE_FILE"
 				
 				rm -f "$temp_file"
 			else
@@ -659,6 +686,11 @@ EOF
 				esac
 			done
 			
+			# Validate directory name for security
+			if ! validate_directory_name "$UNMOUNT_PATH"; then
+				exit 1
+			fi
+			
 			# Get absolute path if it's a directory
 			local abs_path="$UNMOUNT_PATH"
 			if [ -d "$UNMOUNT_PATH" ]; then
@@ -718,8 +750,9 @@ EOF
 				local temp_file=$(mktemp)
 				cp "$TEMP_STATE_FILE" "$temp_file"
 				
-				# Remove the mount
-				yq 'del(.mounts[] | select(.source == "'"$abs_path"'"))' "$temp_file" > "$TEMP_STATE_FILE"
+				# Remove the mount - SECURE: use yq --arg to prevent shell injection
+				yq --arg path "$abs_path" 'del(.mounts[] | select(.source == $path))' \
+					"$temp_file" > "$TEMP_STATE_FILE"
 				
 				rm -f "$temp_file"
 			else
