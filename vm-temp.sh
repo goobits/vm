@@ -263,12 +263,12 @@ cleanup_orphaned_temp_resources() {
 	fi
 }
 
-# Recreate temp VM with updated mounts
-recreate_temp_vm_with_mounts() {
+# Update temp VM with new mounts (preserves container)
+update_temp_vm_with_mounts() {
 	local container_name="$1"
 	local start_time=$(date +%s)
 	
-	echo "🔄 Recreating container with updated mounts..."
+	echo "🔄 Updating container with new mounts..."
 	
 	# Get current state
 	local project_dir=$(yq_raw '.project_dir' "$TEMP_STATE_FILE")
@@ -280,72 +280,71 @@ recreate_temp_vm_with_mounts() {
 		return 1
 	fi
 	
-	# Read current mount configuration
+	# Read current mount configuration and build mount string for docker provisioning
 	local mount_string=""
 	if command -v yq &> /dev/null; then
-		# Check format and build mount string
+		# Check format and build mount string (space-separated realpath:basename pairs)
 		if yq -r '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
-			# New format - reconstruct mount string with permissions
-			mount_string=$(yq -r '.mounts[] | "\(.source):\(.permissions)"' "$TEMP_STATE_FILE" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+			# New format - extract source paths and create realpath:basename format
+			mount_string=$(yq -r '.mounts[] | .source' "$TEMP_STATE_FILE" 2>/dev/null | while read -r source; do
+				echo -n "$(realpath "$source" 2>/dev/null || echo "$source"):$(basename "$source") "
+			done | sed 's/ $//')
 		else
-			# Old format
-			mount_string=$(yq -r '.mounts[]' "$TEMP_STATE_FILE" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+			# Old format - parse and convert to expected format
+			mount_string=$(yq -r '.mounts[]' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
+				# Extract source from old format mount string
+				source="${mount%%:*}"
+				echo -n "$(realpath "$source" 2>/dev/null || echo "$source"):$(basename "$source") "
+			done | sed 's/ $//')
 		fi
 	fi
 	
 	echo "🛑 Stopping container..."
 	docker_cmd stop "$container_name" > /dev/null 2>&1 || true
 	
-	echo "🗑️  Removing old container..."
-	docker_cmd rm -f "$container_name" > /dev/null 2>&1 || true
-	
-	# Set environment variable for mounts
+	# Set environment variables for temp VM
 	export VM_TEMP_MOUNTS="$mount_string"
+	export VM_IS_TEMP="true"
 	
-	# Create the container configuration
-	local config=$(yq -n \
-		--arg project_name "vm-temp-project" \
-		--arg container_name "$container_name" \
-		--arg init_script "/opt/provision.sh" \
-		'{
-			"project": {
-				"name": $project_name,
-				"type": "single"
-			},
-			"settings": {
-				"ssh_port": 2222,
-				"providers": "docker"
-			},
-			"environments": {
-				"dev": {
-					"type": "ubuntu",
-					"providers": {
-						"docker": {
-							"image": "vm-ubuntu-24.04:latest",
-							"container_name": $container_name,
-							"init_script": $init_script,
-							"privileged": true,
-							"network_mode": "bridge",
-							"volumes": [
-								{
-									"type": "volume",
-									"source": "vmtemp_home",
-									"target": "/home/developer"
-								}
-							]
-						}
-					}
-				}
-			}
-		}')
+	# Create the container configuration in YAML format
+	local config="version: '1.0'
+project:
+  name: vm-temp-project
+  type: single
+settings:
+  ssh_port: 2222
+  providers: docker
+environments:
+  dev:
+    type: ubuntu
+    providers:
+      docker:
+        image: vm-ubuntu-24.04:latest
+        container_name: $container_name
+        init_script: /opt/provision.sh
+        privileged: true
+        network_mode: bridge
+        volumes:
+          - type: volume
+            source: vmtemp_home
+            target: /home/developer"
 	
-	echo "🚀 Creating container with new mounts..."
+	echo "🔄 Updating container configuration..."
 	
-	# Use docker-compose to recreate the container
-	"$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" <(echo "$config") "$project_dir"
+	# Create temporary config file with .yaml extension
+	local temp_config_file=$(mktemp /tmp/vm-temp-config.XXXXXX.yaml)
+	setup_temp_file_cleanup "$temp_config_file"
+	echo "$config" > "$temp_config_file"
 	
-	# Start the new container
-	docker_cmd start "$container_name" > /dev/null 2>&1
+	# Generate docker-compose.yml
+	"$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" "$temp_config_file" "$project_dir"
+	
+	# Clean up temp file
+	rm -f "$temp_config_file"
+	
+	# Apply the new configuration using docker-compose
+	echo "🚀 Applying new mount configuration..."
+	(cd "$project_dir" && docker-compose up -d --no-recreate 2>/dev/null || docker-compose up -d)
 	
 	# Wait for container to be ready
 	echo "⏳ Waiting for container to be ready..."
@@ -362,7 +361,7 @@ recreate_temp_vm_with_mounts() {
 	local end_time=$(date +%s)
 	local elapsed=$((end_time - start_time))
 	
-	echo "✅ Container recreated with updated mounts in ${elapsed} seconds"
+	echo "✅ Container updated with new mounts in ${elapsed} seconds"
 	return 0
 }
 
@@ -688,8 +687,8 @@ EOF
 				EOF
 			fi
 			
-			# Recreate the container
-			recreate_temp_vm_with_mounts "$container_name"
+			# Update the container with new mounts
+			update_temp_vm_with_mounts "$container_name"
 			
 			echo ""
 			echo "📁 Mount added successfully:"
@@ -857,8 +856,8 @@ EOF
 				exit 1
 			fi
 			
-			# Recreate the container
-			recreate_temp_vm_with_mounts "$container_name"
+			# Update the container with new mounts
+			update_temp_vm_with_mounts "$container_name"
 			
 			echo ""
 			echo "📁 Mount removed successfully:"

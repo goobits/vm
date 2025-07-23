@@ -710,10 +710,19 @@ vm_list() {
 				# Get mounts in a more readable format
 				local mounts=""
 				if command -v yq &> /dev/null; then
-					mounts=$(yq -r '.mounts[]?' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
-						source_path=$(echo "$mount" | cut -d: -f1)
-						echo -n "$(basename "$source_path"), "
-					done | sed 's/, $//')
+					# Check if new format (objects with source/target/permissions) exists
+					if yq -r '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
+						# New format - extract source paths
+						mounts=$(yq -r '.mounts[].source' "$TEMP_STATE_FILE" 2>/dev/null | while read -r source; do
+							echo -n "$(basename "$source"), "
+						done | sed 's/, $//')
+					else
+						# Old format fallback (simple strings)
+						mounts=$(yq -r '.mounts[]?' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
+							source_path=$(echo "$mount" | cut -d: -f1)
+							echo -n "$(basename "$source_path"), "
+						done | sed 's/, $//')
+					fi
 				fi
 				
 				if [ -z "$mounts" ]; then
