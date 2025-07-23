@@ -324,7 +324,8 @@ handle_temp_command() {
 		echo "  destroy               Destroy the active temp VM"
 		echo "  mount <path>          Add a mount to running temp VM"
 		echo "  unmount <path>        Remove a mount from running temp VM"
-		echo "  mounts [--volumes] [--clean] List current mounts and volumes"
+		echo "  unmount --all         Remove all mounts and destroy temp VM"
+		echo "  mounts                List current mounts"
 		echo "  list                  List active temp VM instances"
 		echo ""
 		echo "Lifecycle Commands:"
@@ -343,11 +344,10 @@ handle_temp_command() {
 		echo "  vm temp ./app --auto-destroy    # Auto-cleanup on exit"
 		echo "  vm temp ssh                     # Connect to existing temp VM"
 		echo "  vm temp mount ./docs            # Add mount to running VM"
-		echo "  vm temp unmount ./src           # Remove mount from running VM"
 		echo "  vm temp list                    # List active temp VMs"
 		echo "  vm temp mounts                  # Show current mounts"
-		echo "  vm temp mounts --volumes        # Show mounts and Docker volumes"
-		echo "  vm temp mounts --clean          # Clean up orphaned volumes"
+		echo "  vm temp unmount ./src           # Remove specific mount"
+		echo "  vm temp unmount --all           # Remove all mounts and cleanup"
 		echo "  vm temp stop                    # Stop temp VM"
 		echo "  vm temp start                   # Start stopped temp VM"
 		echo "  vm temp exec pwd                # Execute command in temp VM"
@@ -648,6 +648,7 @@ EOF
 			shift
 			if [ $# -eq 0 ]; then
 				echo "❌ Usage: vm temp unmount <path> [--yes]"
+				echo "❌ Usage: vm temp unmount --all [--yes]"
 				exit 1
 			fi
 			
@@ -670,7 +671,58 @@ EOF
 				exit 1
 			fi
 			
-			# Parse arguments
+			# Handle --all flag first
+			if [ "$1" = "--all" ]; then
+				shift
+				local AUTO_YES=""
+				
+				# Check for --yes flag after --all
+				while [[ $# -gt 0 ]]; do
+					case "$1" in
+						--yes|-y)
+							AUTO_YES="true"
+							shift
+							;;
+						*)
+							echo "❌ Unknown option: $1"
+							exit 1
+							;;
+					esac
+				done
+				
+				echo "🗑️  Removing all mounts and cleaning up temp VM..."
+				echo ""
+				
+				# Show what will be removed
+				if command -v yq &> /dev/null; then
+					local mount_count=$(yq -r '.mounts | length' "$TEMP_STATE_FILE" 2>/dev/null)
+					echo "This will remove $mount_count mount(s) and clean up volumes:"
+					yq -r '.mounts[]? | "  📂 \(.source)"' "$TEMP_STATE_FILE" 2>/dev/null
+				fi
+				
+				# Get confirmation
+				if [ "$AUTO_YES" != "true" ]; then
+					echo ""
+					echo "⚠️  This will destroy the temp VM entirely. Continue? (y/N): "
+					read -r response
+					case "$response" in
+						[yY]|[yY][eE][sS])
+							;;
+						*)
+							echo "❌ Operation cancelled"
+							exit 1
+							;;
+					esac
+				fi
+				
+				# Just call destroy since that does a complete cleanup
+				echo ""
+				echo "🧹 Destroying temp VM and cleaning up all resources..."
+				handle_temp_command "destroy"
+				exit 0
+			fi
+			
+			# Parse arguments for single path unmount
 			local UNMOUNT_PATH="$1"
 			local AUTO_YES=""
 			shift
@@ -772,120 +824,41 @@ EOF
 			exit 0
 			;;
 		"mounts")
-			# List current mounts and volumes for temp VM
-			shift
-			local SHOW_VOLUMES=""
-			local CLEAN_ORPHANED=""
+			# List current directory mounts for temp VM
+			if [ ! -f "$TEMP_STATE_FILE" ]; then
+				echo "📁 No active temp VM found"
+				echo "💡 Create one with: vm temp ./your-directory"
+				exit 1
+			fi
 			
-			# Check for flags
-			while [[ $# -gt 0 ]]; do
-				case "$1" in
-					--volumes)
-						SHOW_VOLUMES="true"
-						shift
-						;;
-					--clean)
-						CLEAN_ORPHANED="true"
-						shift
-						;;
-					*)
-						echo "❌ Unknown option: $1"
-						echo "💡 Usage: vm temp mounts [--volumes] [--clean]"
-						exit 1
-						;;
-				esac
-			done
+			echo "📁 Current Mounts:"
+			echo "=================="
 			
-			if [ -f "$TEMP_STATE_FILE" ]; then
-				echo "📁 Current Mounts:"
-				echo "=================="
+			if command -v yq &> /dev/null; then
+				local container_name=$(yq_raw '.container_name' "$TEMP_STATE_FILE")
+				echo "Container: $container_name"
+				echo ""
 				
-				if command -v yq &> /dev/null; then
-					local container_name=$(yq_raw '.container_name' "$TEMP_STATE_FILE")
-					echo "Container: $container_name"
-					echo ""
-					
-					# Check if new format exists
-					if yq -r '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
-						# New format
-						yq -r '.mounts[]? | "  📂 \(.source) → \(.target) (\(.permissions))"' "$TEMP_STATE_FILE" 2>/dev/null
-					else
-						# Old format
-						yq -r '.mounts[]?' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
-							echo "  📂 $mount"
-						done
-					fi
+				# Check if new format exists
+				if yq -r '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
+					# New format
+					yq -r '.mounts[]? | "  📂 \(.source) → \(.target) (\(.permissions))"' "$TEMP_STATE_FILE" 2>/dev/null
 				else
-					# Fallback display
-					echo "  (install yq for better formatting)"
-					grep "^  - " "$TEMP_STATE_FILE" | sed 's/^  - /  📂 /'
+					# Old format
+					yq -r '.mounts[]?' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
+						echo "  📂 $mount"
+					done
 				fi
 			else
-				echo "📁 No active temp VM found"
+				# Fallback display
+				echo "  (install yq for better formatting)"
+				grep "^  - " "$TEMP_STATE_FILE" | sed 's/^  - /  📂 /'
 			fi
 			
-			# Show volumes if requested
-			if [ "$SHOW_VOLUMES" = "true" ] || [ "$CLEAN_ORPHANED" = "true" ]; then
-				echo ""
-				echo "💾 Docker Volumes:"
-				echo "=================="
-				
-				# Get all temp VM related volumes (avoid duplication by using more specific filter)
-				local temp_volumes=$(docker_cmd volume ls --filter "name=vm-temp-project" --format "{{.Name}}" 2>/dev/null | grep -v "^vmtemp$" || true)
-				local vmtemp_volumes=$(docker_cmd volume ls --format "{{.Name}}" 2>/dev/null | grep "^vmtemp" || true)
-				
-				# Combine and deduplicate
-				local all_volumes=""
-				if [ -n "$temp_volumes" ]; then
-					all_volumes="$temp_volumes"
-				fi
-				if [ -n "$vmtemp_volumes" ]; then
-					if [ -n "$all_volumes" ]; then
-						all_volumes="$all_volumes"$'\n'"$vmtemp_volumes"
-					else
-						all_volumes="$vmtemp_volumes"
-					fi
-				fi
-				
-				if [ -n "$all_volumes" ]; then
-					all_volumes=$(echo "$all_volumes" | sort -u)
-					echo "$all_volumes" | while read -r vol; do
-						if [ -n "$vol" ]; then
-							echo "  💾 $vol"
-						fi
-					done
-					
-					# Cleanup orphaned volumes if requested
-					if [ "$CLEAN_ORPHANED" = "true" ]; then
-						echo ""
-						echo "🧹 Analyzing volumes for cleanup..."
-						echo "$all_volumes" | while read -r vol; do
-							if [ -n "$vol" ]; then
-								local containers_using=$(docker_cmd ps -a --filter "volume=$vol" --format "{{.Names}} ({{.Status}})" 2>/dev/null || true)
-								if [ -n "$containers_using" ]; then
-									echo "  🔗 $vol - Used by: $containers_using"
-								else
-									echo "  🗑️  $vol - Orphaned, attempting removal..."
-									if docker_cmd volume rm "$vol" >/dev/null 2>&1; then
-										echo "      ✅ Successfully removed"
-									else
-										echo "      ❌ Could not remove (check Docker logs)"
-									fi
-								fi
-							fi
-						done
-					fi
-				else
-					echo "  No temp VM volumes found"
-				fi
-			fi
-			
-			# Show usage tips
-			if [ "$SHOW_VOLUMES" != "true" ]; then
-				echo ""
-				echo "💡 Use 'vm temp mounts --volumes' to see Docker volumes"
-				echo "💡 Use 'vm temp mounts --clean' to clean up orphaned volumes"
-			fi
+			echo ""
+			echo "💡 Use 'vm temp mount <path>' to add more directories"
+			echo "💡 Use 'vm temp unmount <path>' to remove a directory"
+			echo "💡 Use 'vm temp unmount --all' to remove all mounts and clean up"
 			
 			exit 0
 			;;

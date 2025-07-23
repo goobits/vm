@@ -174,11 +174,12 @@ vm temp unmount ./old-code
 
 # List current mounts  
 vm temp mounts
-vm temp mounts --volumes     # Show mounts and Docker volumes
-vm temp mounts --clean       # Clean up orphaned volumes
 
 # List active temp VMs
 vm temp list
+
+# Clean up and remove all mounts
+vm temp unmount --all
 ```
 
 ### 🔄 Lifecycle Management
