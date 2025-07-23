@@ -47,6 +47,15 @@ vm temp <folders>            # Create ephemeral VM with specific directory mount
 vm temp ssh [-c cmd]         # SSH into temp VM or run command
 vm temp status               # Show temp VM status and configuration
 vm temp destroy              # Destroy temp VM and clean up state
+vm temp mount <path>         # Add mount to running temp VM
+vm temp unmount <path>       # Remove mount from running temp VM
+vm temp mounts               # List current mounts
+vm temp start                # Start stopped temp VM
+vm temp stop                 # Stop temp VM (preserves state)
+vm temp restart              # Restart temp VM
+vm temp logs                 # View container logs
+vm temp exec <command>       # Execute command in temp VM
+vm temp provision            # Re-run provisioning
 vm tmp <folders>             # Alias for vm temp
 vm create                    # Create new VM/container with full provisioning
 vm start                     # Start existing VM/container without provisioning
@@ -110,31 +119,33 @@ All themes include syntax highlighting and git-aware prompts!
 
 ## 🚀 Temporary VMs
 
-Need a quick, disposable environment for testing or experimentation? Use the temp VM feature - perfect for one-off tasks without creating a full vm.yaml configuration.
+Create lightweight VMs for experiments and code reviews without any configuration. Perfect for quick testing, exploring PRs, or trying new tools in isolation.
 
 ### ✨ Features
 
 - **Zero configuration**: No vm.yaml needed
-- **Selective directory mounting**: Choose exactly which folders to include
+- **Modern syntax**: Space-separated directory mounting
+- **Permission support**: Read-only (`:ro`) and read-write (`:rw`) access
+- **Dynamic mount management**: Add/remove mounts without losing work
+- **Full lifecycle control**: Start, stop, restart VMs
+- **Command execution**: Run commands without SSH
 - **State management**: Tracks temp VM state in `~/.vm/temp-vm.state`
-- **Smart collision handling**: Intelligently manages conflicts when mounts change
-- **Dedicated subcommands**: `ssh`, `status`, `destroy` for better control
 - **Alias support**: Use `vm tmp` as shorthand for `vm temp`
 - **Lightweight**: Basic Ubuntu container for quick experiments
 
-### 🎯 Usage
+### 🎯 Basic Usage
 
 ```bash
-# Create temp VM with specific directories
-vm temp ./src,./tests,./config
+# Create temp VM with multiple mounts (modern syntax)
+vm temp ./src ./tests ./docs:ro
 
 # Or use the shorthand alias
-vm tmp ./src,./tests,./config
+vm tmp ./src ./tests ./config
 
-# Mount with permissions (read-only/read-write)
-vm temp ./src:rw,./docs:ro,./tests
+# Mount with explicit permissions
+vm temp ./src:rw ./config:ro ./tests:rw
 
-# SSH into temp VM directly
+# SSH into temp VM
 vm temp ssh
 vm temp ssh -c "npm test"  # Run command and exit
 
@@ -145,43 +156,98 @@ vm temp status
 vm temp destroy
 ```
 
-### 🔄 Smart Collision Handling
+### 🛠️ Dynamic Mount Management
 
-The temp VM now intelligently handles conflicts when you try to create a new temp VM with different mounts:
-
-1. **Same mounts**: Automatically connects to existing temp VM
-2. **Different mounts**: Prompts you with options:
-   - **Connect anyway**: Use existing VM (mounts won't match)
-   - **Recreate**: Destroy old VM and create new one with correct mounts
-   - **Cancel**: Abort the operation
+Add and remove mounts from running temp VMs without losing your work:
 
 ```bash
-# First time - creates new temp VM
-vm temp ./client,./server
+# Start with basic mounts
+vm temp ./src ./tests
 
-# Same command - connects to existing temp VM
-vm temp ./client,./server
+# Add a new directory while working
+vm temp mount ./new-feature
+vm temp mount ./docs:ro
 
-# Different mounts - prompts for action
-vm temp ./frontend,./backend
-# > Temp VM exists with different mounts. What would you like to do?
-# > 1) Connect anyway  2) Recreate  3) Cancel
+# Remove directories you no longer need
+vm temp unmount ./old-code
+
+# List current mounts
+vm temp mounts
+```
+
+### 🔄 Lifecycle Management
+
+Full control over your temp VM lifecycle:
+
+```bash
+# Stop temp VM (preserves all data and state)
+vm temp stop
+
+# Start stopped temp VM
+vm temp start
+
+# Restart temp VM
+vm temp restart
+
+# View container logs
+vm temp logs
+vm temp logs -f  # Follow logs in real-time
+
+# Execute commands without SSH
+vm temp exec pwd
+vm temp exec "cd /workspace && npm install"
+
+# Re-run provisioning if needed
+vm temp provision
+```
+
+### 🔄 Container Recreation
+
+When adding or removing mounts, the temp VM automatically recreates the container while preserving your `/home/developer` directory:
+
+```bash
+# Start working
+vm temp ./src ./tests
+vm temp ssh  # Do some work, install packages, etc.
+
+# Add new mount - container recreates but /home/developer preserved
+vm temp mount ./docs
+# 🔄 Recreating container with updated mounts...
+# ✅ Container recreated with updated mounts in 5 seconds
+
+# Your work and installed packages are still there!
 ```
 
 ### 💡 Use Cases
 
 - **Quick testing**: Test libraries or configurations without affecting main project
 - **Code reviews**: Safely explore PRs in isolation
-- **Experiments**: Try new tools or configurations
+- **Experiments**: Try new tools or configurations with full lifecycle control
 - **Debugging**: Isolate issues with minimal setup
-- **Temporary work**: One-off tasks that don't need persistent environments
+- **Iterative development**: Add/remove project directories as you work
+- **Log monitoring**: Real-time log viewing during development
+- **Command execution**: Run builds, tests, or scripts without SSH overhead
 
 ### ⚠️ Limitations
 
 - **Docker only**: Temp VMs use Docker containers, not full Vagrant VMs
 - **Basic environment**: No services (PostgreSQL, Redis, etc.) - just Ubuntu + basic tools
-- **No persistence**: Data is lost when temp VM is destroyed
+- **Home directory persistence**: Only `/home/developer` is preserved during mount changes
 - **No custom configuration**: Uses built-in minimal setup
+
+### 🔄 Backward Compatibility
+
+The old comma-separated syntax still works but shows a deprecation warning:
+
+```bash
+# Old syntax (still works)
+vm temp ./src,./tests,./docs:ro
+# ⚠️  Warning: Comma-separated mounts are deprecated
+#    Please use: vm temp ./src ./tests ./docs:ro
+
+# New syntax (recommended)
+vm temp ./src ./tests ./docs:ro
+```
 
 ## 🧪 Docker vs Vagrant: Which to Choose?
 

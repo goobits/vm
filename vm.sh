@@ -1015,6 +1015,14 @@ while [[ $# -gt 0 ]]; do
 			fi
 			shift
 			;;
+		temp|tmp)
+			# Special handling for temp/tmp command - pass all remaining args
+			ARGS+=("$1")
+			shift
+			# Add all remaining arguments without parsing
+			ARGS+=("$@")
+			break
+			;;
 		-h|--help)
 			show_usage
 			exit 0
