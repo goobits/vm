@@ -50,6 +50,7 @@ vm temp destroy              # Destroy temp VM and clean up state
 vm temp mount <path>         # Add mount to running temp VM
 vm temp unmount <path>       # Remove mount from running temp VM
 vm temp mounts               # List current mounts
+vm temp list                 # List active temp VM instances  
 vm temp start                # Start stopped temp VM
 vm temp stop                 # Stop temp VM (preserves state)
 vm temp restart              # Restart temp VM
@@ -171,8 +172,13 @@ vm temp mount ./docs:ro
 # Remove directories you no longer need
 vm temp unmount ./old-code
 
-# List current mounts
+# List current mounts  
 vm temp mounts
+vm temp mounts --volumes     # Show mounts and Docker volumes
+vm temp mounts --clean       # Clean up orphaned volumes
+
+# List active temp VMs
+vm temp list
 ```
 
 ### 🔄 Lifecycle Management
