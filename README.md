@@ -55,7 +55,6 @@ vm temp start                # Start stopped temp VM
 vm temp stop                 # Stop temp VM (preserves state)
 vm temp restart              # Restart temp VM
 vm temp logs                 # View container logs
-vm temp exec <command>       # Execute command in temp VM
 vm temp provision            # Re-run provisioning
 vm tmp <folders>             # Alias for vm temp
 vm create                    # Create new VM/container with full provisioning
@@ -199,10 +198,6 @@ vm temp restart
 # View container logs
 vm temp logs
 vm temp logs -f  # Follow logs in real-time
-
-# Execute commands without SSH
-vm temp exec pwd
-vm temp exec "cd /workspace && npm install"
 
 # Re-run provisioning if needed
 vm temp provision

@@ -34,6 +34,87 @@ validate_directory_name() {
 	return 0
 }
 
+# Get container name from state file with comprehensive error handling
+get_container_name() {
+	if [ ! -f "$TEMP_STATE_FILE" ]; then
+		echo "❌ No temp VM found" >&2
+		echo "💡 Create one with: vm temp ./your-directory" >&2
+		return 1
+	fi
+
+	# Validate state file integrity
+	if ! validate_state_file; then
+		return 1
+	fi
+
+	local container_name=""
+	if command -v yq &> /dev/null; then
+		container_name=$(yq_raw '.container_name // empty' "$TEMP_STATE_FILE")
+	else
+		container_name=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
+	fi
+
+	if [ -z "$container_name" ]; then
+		echo "❌ Error: Could not read container name from state file" >&2
+		echo "📁 State file: $TEMP_STATE_FILE" >&2
+		return 1
+	fi
+
+	echo "$container_name"
+}
+
+# Validate that temp VM state file exists
+require_temp_vm() {
+	if [ ! -f "$TEMP_STATE_FILE" ]; then
+		echo "❌ No active temp VM found"
+		echo "💡 Create one with: vm temp ./your-directory"
+		return 1
+	fi
+	
+	# Validate state file integrity
+	if ! validate_state_file; then
+		return 1
+	fi
+	
+	return 0
+}
+
+# Add temp file cleanup with trap handlers
+setup_temp_file_cleanup() {
+	local temp_file="$1"
+	trap "rm -f '$temp_file' 2>/dev/null" EXIT INT TERM
+}
+
+# Validate state file is not corrupted
+validate_state_file() {
+	if [ ! -f "$TEMP_STATE_FILE" ]; then
+		return 1
+	fi
+
+	# Test if file is valid YAML
+	if command -v yq &> /dev/null; then
+		if ! yq . "$TEMP_STATE_FILE" >/dev/null 2>&1; then
+			echo "❌ State file is corrupted or invalid YAML" >&2
+			echo "📁 File: $TEMP_STATE_FILE" >&2
+			echo "💡 Try 'vm temp destroy' to clean up" >&2
+			return 1
+		fi
+	fi
+
+	return 0
+}
+
+# Standard error message functions for consistency
+vm_not_found_error() {
+	echo "❌ No temp VM found"
+	echo "💡 Create one with: vm temp ./your-directory"
+}
+
+vm_not_running_error() {
+	echo "❌ Temp VM is not running"
+	echo "💡 Start it with: vm temp start"
+}
+
 # Save temporary VM state
 save_temp_state() {
 	local container_name="$1"
@@ -89,7 +170,7 @@ read_temp_state() {
 	
 	# Check if yq is available for parsing YAML
 	if command -v yq &> /dev/null; then
-		yq . "$TEMP_STATE_FILE" 2>/dev/null
+		yq_raw '.' "$TEMP_STATE_FILE"
 	else
 		# Fallback to cat if yq is not available
 		cat "$TEMP_STATE_FILE"
@@ -106,7 +187,7 @@ get_temp_container_name() {
 	fi
 	
 	if command -v yq &> /dev/null; then
-		yq -r '.container_name // empty' "$TEMP_STATE_FILE" 2>/dev/null
+		yq_raw '.container_name // empty' "$TEMP_STATE_FILE"
 	else
 		# Fallback to grep if yq is not available
 		grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//'
@@ -336,7 +417,6 @@ handle_temp_command() {
 		echo "Management Commands:"
 		echo "  provision             Re-run provisioning"
 		echo "  logs                  View container logs"
-		echo "  exec <command>        Execute command in temp VM"
 		echo ""
 		echo "Examples:"
 		echo "  vm temp ./src ./tests           # Mount multiple directories"
@@ -350,7 +430,6 @@ handle_temp_command() {
 		echo "  vm temp unmount --all           # Remove all mounts and cleanup"
 		echo "  vm temp stop                    # Stop temp VM"
 		echo "  vm temp start                   # Start stopped temp VM"
-		echo "  vm temp exec pwd                # Execute command in temp VM"
 		echo "  vm temp logs -f                 # View and follow container logs"
 		echo ""
 		echo "Mount Permissions:"
@@ -366,16 +445,13 @@ handle_temp_command() {
 	case "$1" in
 		"destroy")
 			# Destroy temp VM
-			if [ ! -f "$TEMP_STATE_FILE" ]; then
-				echo "❌ No active temp VM found"
-				exit 0
-			fi
+			require_temp_vm || exit 0
 			
 			# Inline container name retrieval to avoid command substitution issues
 			container_name=""
 			if [ -f "$TEMP_STATE_FILE" ]; then
 				if command -v yq &> /dev/null; then
-					container_name=$(yq -r '.container_name // empty' "$TEMP_STATE_FILE" 2>/dev/null)
+					container_name=$(yq_raw '.container_name // empty' "$TEMP_STATE_FILE")
 				else
 					container_name=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
 				fi
@@ -392,17 +468,13 @@ handle_temp_command() {
 		"ssh")
 			shift
 			# SSH into temp VM
-			if [ ! -f "$TEMP_STATE_FILE" ]; then
-				echo "❌ No active temp VM found"
-				echo "💡 Create one with: vm temp ./your-directory"
-				exit 1
-			fi
+			require_temp_vm || exit 1
 			
 			# Inline container name retrieval to avoid command substitution issues
 			container_name=""
 			if [ -f "$TEMP_STATE_FILE" ]; then
 				if command -v yq &> /dev/null; then
-					container_name=$(yq -r '.container_name // empty' "$TEMP_STATE_FILE" 2>/dev/null)
+					container_name=$(yq_raw '.container_name // empty' "$TEMP_STATE_FILE")
 				else
 					container_name=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
 				fi
@@ -433,16 +505,13 @@ EOF
 			;;
 		"status")
 			# Show temp VM status
-			if [ ! -f "$TEMP_STATE_FILE" ]; then
-				echo "❌ No active temp VM found"
-				exit 0
-			fi
+			require_temp_vm || exit 0
 			
 			# Inline container name retrieval to avoid command substitution issues
 			container_name=""
 			if [ -f "$TEMP_STATE_FILE" ]; then
 				if command -v yq &> /dev/null; then
-					container_name=$(yq -r '.container_name // empty' "$TEMP_STATE_FILE" 2>/dev/null)
+					container_name=$(yq_raw '.container_name // empty' "$TEMP_STATE_FILE")
 				else
 					container_name=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
 				fi
@@ -490,28 +559,11 @@ EOF
 			fi
 			
 			# Check if temp VM exists
-			if [ ! -f "$TEMP_STATE_FILE" ]; then
-				echo "❌ No active temp VM found"
-				echo "💡 Create one with: vm temp ./your-directory"
-				exit 1
-			fi
+			require_temp_vm || exit 1
 			
 			# Get existing container
-			local container_name=""
-			if command -v yq &> /dev/null; then
-				container_name=$(yq_raw '.container_name // empty' "$TEMP_STATE_FILE")
-			else
-				container_name=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
-			fi
-			
-			# Debug: Check if container name was read correctly
-			if [ -z "$container_name" ]; then
-				echo "❌ Error: Could not read container name from state file"
-				echo "📁 State file: $TEMP_STATE_FILE"
-				echo "🔍 Contents:"
-				cat "$TEMP_STATE_FILE" 2>/dev/null || echo "   (file not readable)"
-				exit 1
-			fi
+			local container_name
+			container_name=$(get_container_name) || exit 1
 			
 			if ! is_temp_vm_running "$container_name"; then
 				echo "🚀 Temp VM is stopped. Starting it first..."
@@ -618,6 +670,7 @@ EOF
 			if command -v yq &> /dev/null; then
 				# Create temporary file for the update
 				local temp_file=$(mktemp)
+				setup_temp_file_cleanup "$temp_file"
 				cp "$TEMP_STATE_FILE" "$temp_file"
 				
 				# Add the new mount in new format - SECURE: use yq --arg to prevent shell injection
@@ -652,19 +705,9 @@ EOF
 				exit 1
 			fi
 			
-			# Check if temp VM exists
-			if [ ! -f "$TEMP_STATE_FILE" ]; then
-				echo "❌ No active temp VM found"
-				exit 1
-			fi
-			
 			# Get existing container
-			local container_name=""
-			if command -v yq &> /dev/null; then
-				container_name=$(yq_raw '.container_name // empty' "$TEMP_STATE_FILE")
-			else
-				container_name=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
-			fi
+			local container_name
+			container_name=$(get_container_name) || exit 1
 			
 			if ! is_temp_vm_running "$container_name"; then
 				echo "❌ Temp VM exists but is not running"
@@ -803,13 +846,12 @@ EOF
 			if command -v yq &> /dev/null; then
 				# Create temporary file for the update
 				local temp_file=$(mktemp)
+				setup_temp_file_cleanup "$temp_file"
 				cp "$TEMP_STATE_FILE" "$temp_file"
 				
 				# Remove the mount - SECURE: use yq --arg to prevent shell injection
 				yq --arg path "$abs_path" 'del(.mounts[] | select(.source == $path))' \
 					"$temp_file" > "$TEMP_STATE_FILE"
-				
-				rm -f "$temp_file"
 			else
 				echo "❌ yq is required for unmount operation"
 				exit 1
@@ -825,11 +867,7 @@ EOF
 			;;
 		"mounts")
 			# List current directory mounts for temp VM
-			if [ ! -f "$TEMP_STATE_FILE" ]; then
-				echo "📁 No active temp VM found"
-				echo "💡 Create one with: vm temp ./your-directory"
-				exit 1
-			fi
+			require_temp_vm || exit 1
 			
 			echo "📁 Current Mounts:"
 			echo "=================="
@@ -932,24 +970,9 @@ EOF
 			;;
 		"start")
 			# Start stopped temp VM
-			if [ ! -f "$TEMP_STATE_FILE" ]; then
-				echo "❌ No temp VM found"
-				echo "💡 Create one with: vm temp ./your-directory"
-				exit 1
-			fi
-
 			# Get container name
-			local container_name=""
-			if command -v yq &> /dev/null; then
-				container_name=$(yq_raw '.container_name // empty' "$TEMP_STATE_FILE")
-			else
-				container_name=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
-			fi
-
-			if [ -z "$container_name" ]; then
-				echo "❌ Error: Could not read container name from state file"
-				exit 1
-			fi
+			local container_name
+			container_name=$(get_container_name) || exit 1
 
 			# Check if already running
 			if is_temp_vm_running "$container_name"; then
@@ -978,23 +1001,9 @@ EOF
 			;;
 		"stop")
 			# Stop temp VM
-			if [ ! -f "$TEMP_STATE_FILE" ]; then
-				echo "❌ No temp VM found"
-				exit 1
-			fi
-
 			# Get container name
-			local container_name=""
-			if command -v yq &> /dev/null; then
-				container_name=$(yq_raw '.container_name // empty' "$TEMP_STATE_FILE")
-			else
-				container_name=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
-			fi
-
-			if [ -z "$container_name" ]; then
-				echo "❌ Error: Could not read container name from state file"
-				exit 1
-			fi
+			local container_name
+			container_name=$(get_container_name) || exit 1
 
 			# Check if running
 			if ! is_temp_vm_running "$container_name"; then
@@ -1009,24 +1018,9 @@ EOF
 			;;
 		"restart")
 			# Restart temp VM
-			if [ ! -f "$TEMP_STATE_FILE" ]; then
-				echo "❌ No temp VM found"
-				echo "💡 Create one with: vm temp ./your-directory"
-				exit 1
-			fi
-
 			# Get container name
-			local container_name=""
-			if command -v yq &> /dev/null; then
-				container_name=$(yq_raw '.container_name // empty' "$TEMP_STATE_FILE")
-			else
-				container_name=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
-			fi
-
-			if [ -z "$container_name" ]; then
-				echo "❌ Error: Could not read container name from state file"
-				exit 1
-			fi
+			local container_name
+			container_name=$(get_container_name) || exit 1
 
 			echo "🔄 Restarting temp VM..."
 			
@@ -1056,86 +1050,20 @@ EOF
 			;;
 		"logs")
 			# View container logs
-			if [ ! -f "$TEMP_STATE_FILE" ]; then
-				echo "❌ No temp VM found"
-				exit 1
-			fi
-
 			# Get container name
-			local container_name=""
-			if command -v yq &> /dev/null; then
-				container_name=$(yq_raw '.container_name // empty' "$TEMP_STATE_FILE")
-			else
-				container_name=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
-			fi
-
-			if [ -z "$container_name" ]; then
-				echo "❌ Error: Could not read container name from state file"
-				exit 1
-			fi
+			local container_name
+			container_name=$(get_container_name) || exit 1
 
 			# Pass through any additional arguments (like -f for follow)
 			shift
 			docker_cmd logs "$container_name" "$@"
 			exit 0
 			;;
-		"exec")
-			# Execute command in temp VM
-			shift
-			if [ $# -eq 0 ]; then
-				echo "❌ Usage: vm temp exec <command>"
-				echo "💡 Example: vm temp exec pwd"
-				exit 1
-			fi
-
-			if [ ! -f "$TEMP_STATE_FILE" ]; then
-				echo "❌ No temp VM found"
-				exit 1
-			fi
-
-			# Get container name
-			local container_name=""
-			if command -v yq &> /dev/null; then
-				container_name=$(yq_raw '.container_name // empty' "$TEMP_STATE_FILE")
-			else
-				container_name=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
-			fi
-
-			if [ -z "$container_name" ]; then
-				echo "❌ Error: Could not read container name from state file"
-				exit 1
-			fi
-
-			# Check if container is running
-			if ! is_temp_vm_running "$container_name"; then
-				echo "❌ Temp VM is not running"
-				echo "💡 Start it with: vm temp start"
-				exit 1
-			fi
-
-			# Execute command as developer user
-			docker_cmd exec "$container_name" su - developer -c "$*"
-			exit $?
-			;;
 		"provision")
 			# Re-run provisioning
-			if [ ! -f "$TEMP_STATE_FILE" ]; then
-				echo "❌ No temp VM found"
-				exit 1
-			fi
-
 			# Get container name
-			local container_name=""
-			if command -v yq &> /dev/null; then
-				container_name=$(yq_raw '.container_name // empty' "$TEMP_STATE_FILE")
-			else
-				container_name=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
-			fi
-
-			if [ -z "$container_name" ]; then
-				echo "❌ Error: Could not read container name from state file"
-				exit 1
-			fi
+			local container_name
+			container_name=$(get_container_name) || exit 1
 
 			# Check if container is running
 			if ! is_temp_vm_running "$container_name"; then
@@ -1264,7 +1192,7 @@ EOF
 	existing_container=""
 	if [ -f "$TEMP_STATE_FILE" ]; then
 		if command -v yq &> /dev/null; then
-			existing_container=$(yq -r '.container_name // empty' "$TEMP_STATE_FILE" 2>/dev/null)
+			existing_container=$(yq_raw '.container_name // empty' "$TEMP_STATE_FILE")
 		else
 			# Fallback to grep if yq is not available
 			existing_container=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
