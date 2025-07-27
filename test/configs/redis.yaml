@@ -1,3 +1,4 @@
+---
 project:
   name: test-redis
   hostname: dev.redis.local

@@ -1,3 +1,4 @@
+---
 provider: docker
 project:
   name: test-docker

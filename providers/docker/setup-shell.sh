@@ -150,7 +150,7 @@ cd $WORKSPACE 2>/dev/null || true
 EOF
 
 # Set ownership
-chown $DETECTED_USER:$DETECTED_USER "$USER_HOME/.bashrc" "$USER_HOME/.zshrc"
+chown "$DETECTED_USER:$DETECTED_USER" "$USER_HOME/.bashrc" "$USER_HOME/.zshrc"
 
 echo "✨ Shell configured with prompt: $EMOJI $USERNAME"
 
@@ -159,7 +159,7 @@ if [ -f "$USER_HOME/.nvm/nvm.sh" ]; then
     echo "📦 Installing development tools..."
     
     # Run as detected user to ensure proper environment
-    su - $DETECTED_USER -c '
+    su - "$DETECTED_USER" -c '
         source ~/.nvm/nvm.sh
         
         # Check if claude is already installed
@@ -188,5 +188,5 @@ fi
 
 # Fix ownership of shell configuration files
 echo "🔒 Setting file permissions..."
-chown $DETECTED_USER:$DETECTED_USER "$USER_HOME/.bashrc" "$USER_HOME/.zshrc"
+chown "$DETECTED_USER:$DETECTED_USER" "$USER_HOME/.bashrc" "$USER_HOME/.zshrc"
 chmod 644 "$USER_HOME/.bashrc" "$USER_HOME/.zshrc"

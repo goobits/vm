@@ -26,19 +26,27 @@ generate_docker_compose() {
     fi
     
     # Get host user/group IDs for proper file permissions
-    local host_uid="$(id -u)"
-    local host_gid="$(id -g)"
+    local host_uid
+    host_uid="$(id -u)"
+    local host_gid
+    host_gid="$(id -g)"
     
     # Extract basic project data using jq
-    local project_name="$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')"
-    local project_hostname="$(echo "$config" | jq -r '.project.hostname')"
-    local workspace_path="$(echo "$config" | jq -r '.project.workspace_path // "/workspace"')"
-    local project_user="$(echo "$config" | jq -r '.vm.user // "developer"')"
-    local timezone="$(echo "$config" | jq -r '.vm.timezone // "UTC"')"
+    local project_name
+    project_name="$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')"
+    local project_hostname
+    project_hostname="$(echo "$config" | jq -r '.project.hostname')"
+    local workspace_path
+    workspace_path="$(echo "$config" | jq -r '.project.workspace_path // "/workspace"')"
+    local project_user
+    project_user="$(echo "$config" | jq -r '.vm.user // "developer"')"
+    local timezone
+    timezone="$(echo "$config" | jq -r '.vm.timezone // "UTC"')"
     
     # Get VM tool path (use absolute path to avoid relative path issues)
     # The VM tool is always in the workspace directory where vm.sh is located
-    local vm_tool_base_path="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    local vm_tool_base_path
+    vm_tool_base_path="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
     
     # Use the vm-tool path directly from the host mount
     # Mount the vm-tool directory directly instead of copying
@@ -46,9 +54,11 @@ generate_docker_compose() {
     
     # Generate ports section
     local ports_section=""
-    local ports_count="$(echo "$config" | jq '.ports // {} | length')"
+    local ports_count
+    ports_count="$(echo "$config" | jq '.ports // {} | length')"
     if [[ "$ports_count" -gt 0 ]]; then
-        local host_ip="$(echo "$config" | jq -r '.vm.port_binding // "127.0.0.1"')"
+        local host_ip
+        host_ip="$(echo "$config" | jq -r '.vm.port_binding // "127.0.0.1"')"
         ports_section="$(echo "$config" | jq -r --arg hostip "$host_ip" '
             .ports // {} | 
             to_entries | 
@@ -59,7 +69,8 @@ generate_docker_compose() {
     
     # Generate Claude sync volume
     local claude_sync_volume=""
-    local claude_sync="$(echo "$config" | jq -r '.claude_sync // false')"
+    local claude_sync
+    claude_sync="$(echo "$config" | jq -r '.claude_sync // false')"
     if [[ "$claude_sync" == "true" ]]; then
         local host_path="$HOME/.claude/vms/$project_name"
         local container_path="/home/$project_user/.claude"
@@ -68,7 +79,8 @@ generate_docker_compose() {
     
     # Generate Gemini sync volume
     local gemini_sync_volume=""
-    local gemini_sync="$(echo "$config" | jq -r '.gemini_sync // false')"
+    local gemini_sync
+    gemini_sync="$(echo "$config" | jq -r '.gemini_sync // false')"
     if [[ "$gemini_sync" == "true" ]]; then
         local host_path="$HOME/.gemini/vms/$project_name"
         local container_path="/home/$project_user/.gemini"
@@ -77,7 +89,8 @@ generate_docker_compose() {
     
     # Generate database persistence volumes
     local database_volumes=""
-    local persist_databases="$(echo "$config" | jq -r '.persist_databases // false')"
+    local persist_databases
+    persist_databases="$(echo "$config" | jq -r '.persist_databases // false')"
     if [[ "$persist_databases" == "true" ]]; then
         local vm_data_path="$project_dir/.vm/data"
         
@@ -142,7 +155,8 @@ generate_docker_compose() {
     local gpu_volumes=""
     
     if [[ "$(echo "$config" | jq -r '.services.gpu.enabled // false')" == "true" ]]; then
-        local gpu_type="$(echo "$config" | jq -r '.services.gpu.type // "auto"')"
+        local gpu_type
+        gpu_type="$(echo "$config" | jq -r '.services.gpu.type // "auto"')"
         
         # NVIDIA GPU support
         if [[ "$gpu_type" == "nvidia" || "$gpu_type" == "auto" ]]; then
@@ -172,7 +186,8 @@ generate_docker_compose() {
     fi
     
     # Create docker-compose.yml content
-    local docker_compose_content="services:
+    local docker_compose_content
+    docker_compose_content="services:
   $project_name:
     build:
       context: $vm_tool_base_path

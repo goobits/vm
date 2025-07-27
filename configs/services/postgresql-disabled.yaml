@@ -1,3 +1,4 @@
+---
 $schema: ./vm.schema.yaml
 provider: docker
 project:

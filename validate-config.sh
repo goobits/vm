@@ -130,7 +130,8 @@ extract_schema_defaults() {
 # Find vm.yaml upwards from directory
 find_vm_yaml_upwards() {
     local start_dir="$1"
-    local current_dir="$(cd "$start_dir" && pwd)"
+    local current_dir
+    current_dir="$(cd "$start_dir" && pwd)"
     
     while [[ "$current_dir" != "/" ]]; do
         if [[ -f "$current_dir/vm.yaml" ]]; then
@@ -168,11 +169,14 @@ initialize_vm_yaml() {
         return 1
     fi
     
-    local default_config="$(extract_schema_defaults "$schema_path")"
-    local dir_name="$(basename "$(pwd)")"
+    local default_config
+    default_config="$(extract_schema_defaults "$schema_path")"
+    local dir_name
+    dir_name="$(basename "$(pwd)")"
     
     # Customize config for this directory
-    local customized_config="$(echo "$default_config" | jq --arg dirname "$dir_name" '
+    local customized_config
+    customized_config="$(echo "$default_config" | jq --arg dirname "$dir_name" '
         .project.name = $dirname |
         .project.hostname = "dev." + $dirname + ".local" |
         .terminal.username = $dirname + "-dev"
@@ -196,7 +200,8 @@ initialize_vm_yaml() {
 # Load and merge configuration
 load_and_merge_config() {
     local custom_config_path="$1"
-    local local_config_path="$(pwd)/vm.yaml"
+    local local_config_path
+    local_config_path="$(pwd)/vm.yaml"
     local config_file_to_load=""
     local config_dir_for_scan=""
     
@@ -207,7 +212,8 @@ load_and_merge_config() {
         return 1
     fi
     
-    local default_config="$(extract_schema_defaults "$schema_path")"
+    local default_config
+    default_config="$(extract_schema_defaults "$schema_path")"
     
     # Determine which config to load
     if [[ "$custom_config_path" == "__SCAN__" ]]; then
@@ -231,7 +237,8 @@ load_and_merge_config() {
         
         # Handle directory path with vm.yaml
         if [[ ! -f "$config_file_to_load" && "$config_file_to_load" == */vm.yaml ]]; then
-            local dir_path="$(dirname "$config_file_to_load")"
+            local dir_path
+            dir_path="$(dirname "$config_file_to_load")"
             if [[ -d "$dir_path" ]]; then
                 echo "❌ No vm.yaml found in directory: $dir_path" >&2
                 return 1
@@ -286,11 +293,14 @@ load_and_merge_config() {
         
         # Check for valid top-level keys
         local valid_keys='["$schema","version","provider","project","vm","versions","ports","services","apt_packages","npm_packages","cargo_packages","pip_packages","aliases","environment","terminal","claude_sync","gemini_sync","persist_databases"]'
-        local user_keys="$(echo "$user_config" | jq -r 'keys[]')"
-        local has_valid_keys="$(echo "$user_config" | jq --argjson valid "$valid_keys" 'keys as $uk | $valid as $vk | ($uk | map(. as $k | $vk | contains([$k])) | any)')"
+        local user_keys
+        user_keys="$(echo "$user_config" | jq -r 'keys[]')"
+        local has_valid_keys
+        has_valid_keys="$(echo "$user_config" | jq --argjson valid "$valid_keys" 'keys as $uk | $valid as $vk | ($uk | map(. as $k | $vk | contains([$k])) | any)')"
         
         if [[ "$has_valid_keys" == "false" && -n "$user_keys" ]]; then
-            local user_keys_str="$(echo "$user_config" | jq -r 'keys | join(", ")')"
+            local user_keys_str
+            user_keys_str="$(echo "$user_config" | jq -r 'keys | join(", ")')"
             echo "❌ Invalid configuration structure. No recognized configuration keys found. Got: $user_keys_str" >&2
             return 1
         fi
@@ -393,14 +403,16 @@ validate_merged_config() {
         fi
     else
         # Fallback to basic validation if schema not found
-        local provider="$(echo "$config" | jq -r '.provider // "docker"')"
+        local provider
+        provider="$(echo "$config" | jq -r '.provider // "docker"')"
         if [[ "$provider" != "vagrant" && "$provider" != "docker" ]]; then
             errors+=("provider must be 'vagrant' or 'docker'")
         fi
     fi
     
     # Project validation
-    local project_name="$(echo "$config" | jq -r '.project.name // ""')"
+    local project_name
+    project_name="$(echo "$config" | jq -r '.project.name // ""')"
     if [[ -z "$project_name" ]]; then
         errors+=("project.name is required")
     elif ! echo "$project_name" | grep -qE '^[a-zA-Z0-9_-]+$'; then
@@ -459,7 +471,8 @@ main() {
         # Find where the config was located by scanning again
         local config_location
         if config_location="$(find_vm_yaml_upwards "$(pwd)")"; then
-            local config_dir="$(dirname "$config_location")"
+            local config_dir
+            config_dir="$(dirname "$config_location")"
             final_config="$(echo "$final_config" | jq --arg dir "$config_dir" '. + {__config_dir: $dir}')"
         fi
     fi
