@@ -1,3 +1,4 @@
+---
 provider: vagrant
 project:
   name: my-vagrant-project

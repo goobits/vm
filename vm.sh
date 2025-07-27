@@ -26,10 +26,7 @@ if ! command -v yq &> /dev/null; then
     exit 1
 fi
 
-# Default port configuration
-DEFAULT_POSTGRES_PORT=5432
-DEFAULT_REDIS_PORT=6379
-DEFAULT_MONGODB_PORT=27017
+# Default port configuration (removed unused variables)
 
 # Get the directory where this script is located (packages/vm)
 # Handle both direct execution and npm link scenarios
@@ -55,7 +52,8 @@ parse_mount_string() {
 		# Split by comma and process each mount (save original IFS)
 		local old_ifs="$IFS"
 		IFS=','
-		local MOUNTS=($mount_str)  # This is intentionally unquoted for word splitting
+		local MOUNTS
+		IFS=',' read -r -a MOUNTS <<< "$mount_str"  # Proper array assignment
 		IFS="$old_ifs"
 		
 		# Pre-validate: Detect obvious comma-in-name issues  
@@ -89,8 +87,10 @@ parse_mount_string() {
 			
 			# Handle mount:permission format (e.g., ./src:rw, ./config:ro)
 			if [[ "$mount" == *:* ]]; then
-				local source="${mount%:*}"
-				local perm="${mount##*:}"
+				local source
+				source="${mount%:*}"
+				local perm
+				perm="${mount##*:}"
 				# Check if source exists and is a directory
 				if [ ! -d "$source" ]; then
 					echo "❌ Error: Directory '$source' does not exist or is not a directory" >&2
@@ -156,15 +156,24 @@ docker_cmd() {
 # Docker compose wrapper to handle both docker-compose and docker compose
 docker_compose() {
 	# Check if we need sudo for docker
-	local docker_prefix=""
+	local docker_prefix
+	docker_prefix=""
 	if ! docker version &>/dev/null 2>&1; then
 		docker_prefix="sudo"
 	fi
 	
 	if command -v docker-compose &> /dev/null; then
-		$docker_prefix docker-compose "$@"
+		if [ -n "$docker_prefix" ]; then
+			$docker_prefix docker-compose "$@"
+		else
+			docker-compose "$@"
+		fi
 	else
-		$docker_prefix docker compose "$@"
+		if [ -n "$docker_prefix" ]; then
+			$docker_prefix docker compose "$@"
+		else
+			docker compose "$@"
+		fi
 	fi
 }
 
@@ -172,7 +181,8 @@ docker_compose() {
 # Show usage information
 show_usage() {
 	# Try to get version from package.json
-	local version=""
+	local version
+	version=""
 	if [ -f "$SCRIPT_DIR/package.json" ]; then
 		version=$(grep '"version"' "$SCRIPT_DIR/package.json" | head -1 | cut -d'"' -f4)
 	fi
@@ -298,8 +308,10 @@ docker_run() {
 	shift 3
 	
 	# Extract project name once
-	local project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
-	local container_name="${project_name}-dev"
+	local project_name
+	project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
+	local container_name
+	container_name="${project_name}-dev"
 	
 	case "$action" in
 		"compose")
@@ -342,8 +354,10 @@ docker_up() {
 	docker_run "compose" "$config" "$project_dir" up -d "$@"
 	
 	# Get container name
-	local project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
-	local container_name="${project_name}-dev"
+	local project_name
+	project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
+	local container_name
+	container_name="${project_name}-dev"
 	
 	# Wait for container to be ready before proceeding
 	echo "⏳ Initializing container..."
@@ -378,7 +392,8 @@ docker_up() {
 	
 	# Fix volume permissions before Ansible
 	echo "🔑 Setting up permissions..."
-	local project_user=$(echo "$config" | yq -r '.vm.user // "developer"')
+	local project_user
+	project_user=$(echo "$config" | yq -r '.vm.user // "developer"')
 	if docker_run "exec" "$config" "$project_dir" chown -R "$project_user:$project_user" "/home/$project_user/.nvm" "/home/$project_user/.cache"; then
 		echo "✅ Permissions configured"
 	else
@@ -424,7 +439,8 @@ docker_up() {
 	docker_run "exec" "$config" "$project_dir" bash -c "supervisorctl reread && supervisorctl update" || true
 	
 	# Clean up generated docker-compose.yml since containers are now running
-	local compose_file="${project_dir}/docker-compose.yml"
+	local compose_file
+	compose_file="${project_dir}/docker-compose.yml"
 	if [ -f "$compose_file" ]; then
 		echo "✨ Cleanup complete"
 		rm "$compose_file"
@@ -448,8 +464,10 @@ docker_ssh() {
 	shift 3
 	
 	# Get workspace path and user from config
-	local workspace_path=$(echo "$config" | yq -r '.project.workspace_path // "/workspace"')
-	local project_user=$(echo "$config" | yq -r '.vm.user // "developer"')
+	local workspace_path
+	workspace_path=$(echo "$config" | yq -r '.project.workspace_path // "/workspace"')
+	local project_user
+	project_user=$(echo "$config" | yq -r '.vm.user // "developer"')
 	local target_dir="${workspace_path}"
 	
 	if [ "${VM_DEBUG:-}" = "true" ]; then
@@ -469,13 +487,14 @@ docker_ssh() {
 	# Handle -c flag specifically for command execution
 	if [ "$1" = "-c" ] && [ -n "$2" ]; then
 		# Run command non-interactively
-		docker_run "exec" "$config" "" su - $project_user -c "cd '$target_dir' && source ~/.zshrc && $2"
+		docker_run "exec" "$config" "" su - "$project_user" -c "cd '$target_dir' && source ~/.zshrc && $2"
 	elif [ $# -gt 0 ]; then
 		# Run with all arguments
-		docker_run "exec" "$config" "" su - $project_user -c "cd '$target_dir' && source ~/.zshrc && zsh $*"
+		docker_run "exec" "$config" "" su - "$project_user" -c "cd '$target_dir' && source ~/.zshrc && zsh $*"
 	else
 		# Interactive mode - use a simple approach that works
-		local project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
+		local project_name
+	project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
 		local container_name="${project_name}-dev"
 		
 		# Run an interactive shell that properly handles signals
@@ -500,8 +519,10 @@ docker_start() {
 	echo "🚀 Starting development environment..."
 	
 	# Get container name
-	local project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
-	local container_name="${project_name}-dev"
+	local project_name
+	project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
+	local container_name
+	container_name="${project_name}-dev"
 	
 	# Check if container exists
 	if ! docker_cmd inspect "${container_name}" >/dev/null 2>&1; then
@@ -546,8 +567,10 @@ docker_halt() {
 	shift 2
 	
 	# Stop the container directly (not using docker-compose)
-	local project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
-	local container_name="${project_name}-dev"
+	local project_name
+	project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
+	local container_name
+	container_name="${project_name}-dev"
 	docker_cmd stop "${container_name}" "$@"
 }
 
@@ -557,8 +580,10 @@ docker_destroy() {
 	shift 2
 	
 	# Get project name for user feedback
-	local project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
-	local container_name="${project_name}-dev"
+	local project_name
+	project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
+	local container_name
+	container_name="${project_name}-dev"
 	
 	echo "🗑️ Destroying VM: ${container_name}"
 	
@@ -576,7 +601,8 @@ docker_destroy() {
 	docker_run "down" "$config" "$project_dir" -v "$@"
 	
 	# Clean up the generated docker-compose.yml after destroy
-	local compose_file="${project_dir}/docker-compose.yml"
+	local compose_file
+	compose_file="${project_dir}/docker-compose.yml"
 	if [ -f "$compose_file" ]; then
 		echo "✨ Cleanup complete"
 		rm "$compose_file"
@@ -620,7 +646,8 @@ docker_provision() {
 	docker_run "compose" "$config" "$project_dir" up -d "$@"
 	
 	# Clean up generated docker-compose.yml since containers are now running
-	local compose_file="${project_dir}/docker-compose.yml"
+	local compose_file
+	compose_file="${project_dir}/docker-compose.yml"
 	if [ -f "$compose_file" ]; then
 		echo "✨ Cleanup complete"
 		rm "$compose_file"
@@ -645,7 +672,8 @@ docker_exec() {
 docker_kill() {
 	echo "⏹️ Stopping environment..."
 	local config="$1"
-	local project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
+	local project_name
+	project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
 	
 	docker_cmd stop "${project_name}-dev" 2>/dev/null || true
 	docker_cmd stop "${project_name}-postgres" 2>/dev/null || true
@@ -668,7 +696,8 @@ vm_list() {
 		echo "---------------"
 		
 		# Get all containers and filter for main project VMs
-		local main_vms=$(docker_cmd ps -a --format "{{.Names}}\t{{.Status}}\t{{.CreatedAt}}" | awk '$1 ~ /-dev$/ && $1 !~ /^vmtemp/ {print}' 2>/dev/null || true)
+		local main_vms
+		main_vms=$(docker_cmd ps -a --format "{{.Names}}\t{{.Status}}\t{{.CreatedAt}}" | awk '$1 ~ /-dev$/ && $1 !~ /^vmtemp/ {print}' 2>/dev/null || true)
 		
 		if [ -n "$main_vms" ]; then
 			echo "NAME                    STATUS                       CREATED"
@@ -688,9 +717,12 @@ vm_list() {
 		# Check for temp VM from state file
 		local TEMP_STATE_FILE="$HOME/.vm/temp-vm.state"
 		if [ -f "$TEMP_STATE_FILE" ]; then
-			local temp_container=""
-			local created_at=""
-			local project_dir=""
+			local temp_container
+			local created_at
+			local project_dir
+			temp_container=""
+			created_at=""
+			project_dir=""
 			
 			if command -v yq &> /dev/null; then
 				temp_container=$(yq -r '.container_name // empty' "$TEMP_STATE_FILE" 2>/dev/null)
@@ -702,7 +734,8 @@ vm_list() {
 			
 			if [ -n "$temp_container" ]; then
 				# Check if container actually exists
-				local temp_status=$(docker_cmd ps -a --filter "name=^${temp_container}$" --format "{{.Status}}" 2>/dev/null || echo "Not found")
+				local temp_status
+				temp_status=$(docker_cmd ps -a --filter "name=^${temp_container}$" --format "{{.Status}}" 2>/dev/null || echo "Not found")
 				
 				echo "NAME            TYPE    STATUS           MOUNTS                  CREATED"
 				echo "======================================================================"
@@ -748,7 +781,8 @@ vm_list() {
 		echo "🔧 Service Containers:"
 		echo "---------------------"
 		
-		local service_containers=$(docker_cmd ps -a --format "{{.Names}}\t{{.Status}}\t{{.CreatedAt}}" | awk '$1 ~ /postgres|redis|mongodb/ && $1 !~ /-dev$/ {print}' 2>/dev/null || true)
+		local service_containers
+		service_containers=$(docker_cmd ps -a --format "{{.Names}}\t{{.Status}}\t{{.CreatedAt}}" | awk '$1 ~ /postgres|redis|mongodb/ && $1 !~ /-dev$/ {print}' 2>/dev/null || true)
 		
 		if [ -n "$service_containers" ]; then
 			echo "NAME                    STATUS                       CREATED"
@@ -938,7 +972,7 @@ vm_migrate() {
 	fi
 	
 	# Remove $schema field (not needed for user configs)
-	echo "🧹 Removing $schema field..."
+	echo "🧹 Removing \$schema field..."
 	YAML_CONTENT=$(echo "$YAML_CONTENT" | yq 'del(."$schema")' | yq -y .)
 	
 	# Add version field
@@ -996,8 +1030,8 @@ vm_migrate() {
 
 # Parse command line arguments manually for better control
 CUSTOM_CONFIG=""
-DEBUG_MODE=""
-DRY_RUN=""
+# DEBUG_MODE is deprecated, using VM_DEBUG instead
+DRY_RUN="false"
 AUTO_LOGIN="true"
 ARGS=()
 
@@ -1021,7 +1055,7 @@ while [[ $# -gt 0 ]]; do
 			fi
 			;;
 		-d|--debug)
-			DEBUG_MODE="true"
+			# DEBUG_MODE variable is deprecated, using VM_DEBUG instead
 			export VM_DEBUG="true"
 			shift
 			;;
@@ -1136,8 +1170,7 @@ case "${1:-}" in
 		;;
 	"kill")
 		# Load config to determine provider
-		CONFIG=$(load_config "$CUSTOM_CONFIG" "$CURRENT_DIR")
-		if [ $? -ne 0 ]; then
+		if ! CONFIG=$(load_config "$CUSTOM_CONFIG" "$CURRENT_DIR"); then
 			echo "❌ Invalid configuration"
 			exit 1
 		fi
@@ -1192,7 +1225,7 @@ case "${1:-}" in
 						REAL_TEMP_DIR=$(realpath "$TEMP_PROJECT_DIR" 2>/dev/null)
 						if [[ "$REAL_TEMP_DIR" == /tmp/vm-temp-project-* ]]; then
 							# Additional safety: only remove if it contains symlinks (not real files)
-							if find "$REAL_TEMP_DIR" -maxdepth 1 -type f | grep -q .; then
+							if find "$REAL_TEMP_DIR" -maxdepth 1 -type f -print -quit | grep -q .; then
 								echo "⚠️  Warning: Temp directory contains real files, not cleaning up: $TEMP_PROJECT_DIR"
 								# Log security event
 								if command -v logger >/dev/null 2>&1; then
@@ -1234,8 +1267,7 @@ case "${1:-}" in
 		# If no VM name provided, load config from current directory and destroy
 		if [ $# -eq 1 ]; then
 			# Load and validate config
-			CONFIG=$(load_config "$CUSTOM_CONFIG" "$CURRENT_DIR")
-			if [ $? -ne 0 ]; then
+			if ! CONFIG=$(load_config "$CUSTOM_CONFIG" "$CURRENT_DIR"); then
 				echo "❌ No vm.yaml configuration file found. Run \"vm init\" to create one."
 				exit 1
 			fi
@@ -1284,8 +1316,7 @@ case "${1:-}" in
 		if [ "${VM_DEBUG:-}" = "true" ]; then
 			echo "DEBUG main: CUSTOM_CONFIG='$CUSTOM_CONFIG'" >&2
 		fi
-		CONFIG=$(load_config "$CUSTOM_CONFIG" "$CURRENT_DIR")
-		if [ $? -ne 0 ]; then
+		if ! CONFIG=$(load_config "$CUSTOM_CONFIG" "$CURRENT_DIR"); then
 			echo "❌ Invalid configuration"
 			exit 1
 		fi
@@ -1333,7 +1364,7 @@ case "${1:-}" in
 			echo "   Project directory: $PROJECT_DIR"
 			echo "   Provider: $PROVIDER"
 			echo "   Command: $1"
-			echo "   Arguments: ${@:2}"
+			echo "   Arguments: $*"
 			if [ "$CUSTOM_CONFIG" = "__SCAN__" ]; then
 				echo "   Config mode: Scanning up directory tree"
 			elif [ -n "$CUSTOM_CONFIG" ]; then

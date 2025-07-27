@@ -51,7 +51,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --verbose)
-            VERBOSE=true
+            export VERBOSE=true
             shift
             ;;
         --help|-h)
@@ -94,8 +94,10 @@ setup_test_env() {
     local test_name="$1"
     local provider="${2:-docker}"
     
-    TEST_NAME="$test_name"
-    TEST_PROVIDER="$provider"
+    local TEST_NAME="$test_name"
+    local TEST_PROVIDER="$provider"
+    export TEST_NAME
+    export TEST_PROVIDER
     TEST_DIR="/workspace/.test_artifacts/vm-test-${test_name}-$$"
     
     # Ensure test runs directory exists
@@ -125,7 +127,8 @@ cleanup_test_env() {
         vm destroy -f 2>/dev/null || true
         
         # Extract project name and ensure container is removed
-        local project_name=$(yq -r '.project.name' vm.yaml 2>/dev/null | tr -cd '[:alnum:]')
+        local project_name
+        project_name=$(yq -r '.project.name' vm.yaml 2>/dev/null | tr -cd '[:alnum:]')
         if [ -n "$project_name" ]; then
             local container_name="${project_name}-dev"
             # Force stop and remove container with both docker and sudo docker
@@ -159,7 +162,8 @@ create_test_vm() {
     fi
     
     # Pre-emptively clean up any existing container with the same name
-    local project_name=$(yq -r '.project.name' "$TEST_DIR/vm.yaml" 2>/dev/null | tr -cd '[:alnum:]')
+    local project_name
+    project_name=$(yq -r '.project.name' "$TEST_DIR/vm.yaml" 2>/dev/null | tr -cd '[:alnum:]')
     if [ -n "$project_name" ]; then
         local container_name="${project_name}-dev"
         echo -e "${BLUE}Cleaning up any existing container: $container_name${NC}"
@@ -170,10 +174,10 @@ create_test_vm() {
     # Start VM with timeout
     cd "$TEST_DIR"
     # Try without sudo first since docker-compose is now available
-    cd /workspace && npm link && cd "$TEST_DIR" && timeout "$timeout" vm create || {
+    if ! (cd /workspace && npm link && cd "$TEST_DIR" && timeout "$timeout" vm create); then
         echo -e "${RED}Failed to create VM within ${timeout}s${NC}"
         return 1
-    }
+    fi
     
     # Give VM a moment to stabilize
     sleep 5
@@ -192,7 +196,7 @@ run_in_vm() {
     vm exec "$command"
     local exit_code=$?
     
-    if [ "$expected_exit" != "any" ] && [ $exit_code -ne $expected_exit ]; then
+    if [ "$expected_exit" != "any" ] && [ $exit_code -ne "$expected_exit" ]; then
         echo -e "${RED}Command failed with exit code $exit_code (expected $expected_exit): $command${NC}"
         return 1
     fi
@@ -255,11 +259,9 @@ assert_command_fails() {
     local command="$1"
     local description="${2:-Command should fail}"
     
-    if run_in_vm "$command" any; then
-        if [ $? -ne 0 ]; then
-            echo -e "${GREEN}✓ $description${NC}"
-            return 0
-        fi
+    if ! run_in_vm "$command" any; then
+        echo -e "${GREEN}✓ $description${NC}"
+        return 0
     fi
     
     echo -e "${RED}✗ $description (command succeeded unexpectedly)${NC}"
@@ -285,7 +287,7 @@ assert_file_not_exists() {
     local file="$1"
     local description="${2:-File should not exist: $file}"
     
-    if run_in_vm "test -f $file" any && [ $? -ne 0 ]; then
+    if ! run_in_vm "test -f $file" 0; then
         echo -e "${GREEN}✓ $description${NC}"
         return 0
     else
@@ -300,7 +302,8 @@ assert_output_contains() {
     local expected="$2"
     local description="${3:-Output should contain: $expected}"
     
-    local output=$(get_vm_output "$command")
+    local output
+    output=$(get_vm_output "$command")
     if echo "$output" | grep -q "$expected"; then
         echo -e "${GREEN}✓ $description${NC}"
         return 0
@@ -317,7 +320,8 @@ assert_output_not_contains() {
     local unexpected="$2"
     local description="${3:-Output should not contain: $unexpected}"
     
-    local output=$(get_vm_output "$command")
+    local output
+    output=$(get_vm_output "$command")
     if echo "$output" | grep -q "$unexpected"; then
         echo -e "${RED}✗ $description${NC}"
         echo "  Output: $output"
@@ -417,7 +421,7 @@ generate_test_report() {
     echo -e "${GREEN}Passed: $passed${NC}"
     echo -e "${RED}Failed: $failed${NC}"
     
-    if [ $failed -eq 0 ]; then
+    if [ "$failed" -eq 0 ]; then
         echo -e "\n${GREEN}✓ All tests passed!${NC}"
         return 0
     else
@@ -491,7 +495,8 @@ test_config_generator() {
         echo -e "${GREEN}✓ Minimal config exists${NC}"
         
         # Validate it has correct structure
-        local project_name=$(yq -r '.project.name' "$CONFIG_DIR/minimal.yaml")
+        local project_name
+        project_name=$(yq -r '.project.name' "$CONFIG_DIR/minimal.yaml")
         if [ "$project_name" = "test-minimal" ]; then
             echo -e "${GREEN}✓ Config has correct project name${NC}"
         else
@@ -506,7 +511,8 @@ test_config_generator() {
     # Test service configs exist
     for service in postgresql redis mongodb docker; do
         if [ -f "$CONFIG_DIR/$service.yaml" ]; then
-            local enabled=$(yq -r ".services.$service.enabled" "$CONFIG_DIR/$service.yaml")
+            local enabled
+            enabled=$(yq -r ".services.$service.enabled" "$CONFIG_DIR/$service.yaml")
             if [ "$enabled" = "true" ]; then
                 echo -e "${GREEN}✓ $service config is valid${NC}"
             else
@@ -536,8 +542,7 @@ test_vm_command() {
         fi
         
         # Test vm init command exists
-        /workspace/vm.sh help 2>&1 | grep -q "init"
-        if [ $? -eq 0 ]; then
+        if /workspace/vm.sh help 2>&1 | grep -q "init"; then
             echo -e "${GREEN}✓ vm init command is available${NC}"
         else
             echo -e "${RED}✗ vm init command not found in help${NC}"
@@ -559,8 +564,7 @@ test_validation() {
     cd "$test_dir"
     
     # Test with no config
-    /workspace/vm.sh validate 2>&1 | grep -q "No vm.yaml"
-    if [ $? -eq 0 ]; then
+    if /workspace/vm.sh validate 2>&1 | grep -q "No vm.yaml"; then
         echo -e "${GREEN}✓ Validation detects missing config${NC}"
     else
         echo -e "${RED}✗ Validation should detect missing config${NC}"
@@ -571,8 +575,7 @@ test_validation() {
     
     # Test with valid config
     cp /workspace/vm.yaml "$test_dir/"
-    /workspace/vm.sh validate
-    if [ $? -eq 0 ]; then
+    if /workspace/vm.sh validate; then
         echo -e "${GREEN}✓ Validation passes with valid config${NC}"
     else
         echo -e "${RED}✗ Validation failed with valid config${NC}"
@@ -593,27 +596,30 @@ test_generated_configs_valid() {
     # Validate each generated config
     local failed=0
     
-    for config in $(find "$CONFIG_DIR" -name "*.yaml" -type f); do
+    find "$CONFIG_DIR" -name "*.yaml" -type f -exec bash -c '
+        config="$1"
         echo -n "Validating $(basename "$config")... "
         
         # Create temp dir for validation
-        local temp_dir="/tmp/validate-$$"
+        temp_dir="/tmp/validate-$$-$(basename "$config" .yaml)"
         mkdir -p "$temp_dir"
         cp "$config" "$temp_dir/vm.yaml"
         
         cd "$temp_dir"
         if /workspace/vm.sh validate > /dev/null 2>&1; then
-            echo -e "${GREEN}✓${NC}"
+            echo -e "\\033[0;32m✓\\033[0m"
+            cd - > /dev/null
+            rm -rf "$temp_dir"
+            exit 0
         else
-            echo -e "${RED}✗${NC}"
-            failed=$((failed + 1))
+            echo -e "\\033[0;31m✗\\033[0m"
+            cd - > /dev/null
+            rm -rf "$temp_dir"
+            exit 1
         fi
-        
-        cd - > /dev/null
-        rm -rf "$temp_dir"
-    done
+    ' bash {} \; || failed=$((failed + 1))
     
-    if [ $failed -eq 0 ]; then
+    if [ "$failed" -eq 0 ]; then
         echo -e "${GREEN}✓ All generated configs are valid${NC}"
         return 0
     else
@@ -770,7 +776,8 @@ test_vm_init() {
     fi
     
     # Check content is customized
-    local project_name=$(yq -r '.project.name' vm.yaml)
+    local project_name
+    project_name=$(yq -r '.project.name' vm.yaml)
     if [ "$project_name" != "init-test" ]; then
         echo -e "${RED}✗ Project name not customized (got: $project_name)${NC}"
         return 1
@@ -779,8 +786,7 @@ test_vm_init() {
     echo -e "${GREEN}✓ vm init creates customized config${NC}"
     
     # Test init with existing file
-    vm init 2>&1 | grep -q "already exists"
-    if [ $? -eq 0 ]; then
+    if vm init 2>&1 | grep -q "already exists"; then
         echo -e "${GREEN}✓ vm init prevents overwriting existing config${NC}"
     else
         echo -e "${RED}✗ vm init should prevent overwriting${NC}"
@@ -796,8 +802,7 @@ test_vm_validate() {
     cd "$TEST_DIR"
     cp "$CONFIG_DIR/minimal.yaml" vm.yaml
     
-    vm validate
-    if [ $? -eq 0 ]; then
+    if vm validate; then
         echo -e "${GREEN}✓ vm validate succeeds with valid config${NC}"
     else
         echo -e "${RED}✗ vm validate failed with valid config${NC}"
@@ -806,8 +811,7 @@ test_vm_validate() {
     
     # Test with invalid config
     echo 'invalid: config' > vm.yaml
-    vm validate 2>&1 | grep -q -E "(error|invalid|failed)"
-    if [ $? -eq 0 ]; then
+    if vm validate 2>&1 | grep -q -E "(error|invalid|failed)"; then
         echo -e "${GREEN}✓ vm validate detects invalid config${NC}"
     else
         echo -e "${RED}✗ vm validate should detect invalid config${NC}"
@@ -816,8 +820,7 @@ test_vm_validate() {
     
     # Test with missing config
     rm -f vm.yaml
-    vm validate 2>&1 | grep -q "No vm.yaml"
-    if [ $? -eq 0 ]; then
+    if vm validate 2>&1 | grep -q "No vm.yaml"; then
         echo -e "${GREEN}✓ vm validate reports missing config${NC}"
     else
         echo -e "${RED}✗ vm validate should report missing config${NC}"
@@ -833,7 +836,8 @@ test_vm_status() {
     
     # Check status when running
     cd "$TEST_DIR"
-    local status_output=$(vm status 2>&1)
+    local status_output
+    status_output=$(vm status 2>&1)
     
     if echo "$status_output" | grep -q "running"; then
         echo -e "${GREEN}✓ vm status shows running state${NC}"
@@ -867,7 +871,8 @@ test_vm_exec() {
     cd "$TEST_DIR"
     
     # Test simple command
-    local output=$(vm exec "echo hello" 2>&1)
+    local output
+    output=$(vm exec "echo hello" 2>&1)
     if echo "$output" | grep -q "hello"; then
         echo -e "${GREEN}✓ vm exec runs commands${NC}"
     else
@@ -877,8 +882,7 @@ test_vm_exec() {
     fi
     
     # Test command with exit code
-    vm exec "exit 0"
-    if [ $? -eq 0 ]; then
+    if vm exec "exit 0"; then
         echo -e "${GREEN}✓ vm exec preserves exit codes${NC}"
     else
         echo -e "${RED}✗ vm exec should preserve exit codes${NC}"
@@ -918,8 +922,7 @@ test_vm_lifecycle() {
     vm destroy -f || return 1
     
     # Check VM is gone
-    vm status 2>&1 | grep -q -E "(not created|not found|no such)"
-    if [ $? -eq 0 ]; then
+    if vm status 2>&1 | grep -q -E "(not created|not found|no such)"; then
         echo -e "${GREEN}✓ VM destroyed successfully${NC}"
     else
         echo -e "${RED}✗ VM should be destroyed${NC}"
@@ -950,8 +953,7 @@ test_vm_reload() {
     assert_vm_running
     
     # Check new alias is available
-    vm exec "source ~/.zshrc && type testreload" 2>&1 | grep -q "alias"
-    if [ $? -eq 0 ]; then
+    if vm exec "source ~/.zshrc && type testreload" 2>&1 | grep -q "alias"; then
         echo -e "${GREEN}✓ vm reload applies config changes${NC}"
     else
         echo -e "${RED}✗ vm reload should apply config changes${NC}"
@@ -1141,7 +1143,7 @@ main() {
     # Run test suites
     if [ -n "$SUITE_FILTER" ]; then
         # Run specific test suite
-        if [[ " $AVAILABLE_SUITES " =~ " $SUITE_FILTER " ]]; then
+        if [[ " $AVAILABLE_SUITES " =~ $SUITE_FILTER ]]; then
             run_test_suite "$SUITE_FILTER"
         else
             echo -e "${RED}Unknown test suite: $SUITE_FILTER${NC}"

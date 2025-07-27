@@ -82,7 +82,7 @@ require_temp_vm() {
 # Add temp file cleanup with trap handlers
 setup_temp_file_cleanup() {
 	local temp_file="$1"
-	trap "rm -f '$temp_file' 2>/dev/null" EXIT INT TERM
+	trap 'rm -f "$temp_file" 2>/dev/null' EXIT INT TERM
 }
 
 # Validate state file is not corrupted
@@ -137,7 +137,8 @@ save_temp_state() {
 		# Split mounts by comma and add to state file
 		local old_ifs="$IFS"
 		IFS=','
-		local MOUNT_ARRAY=($mounts)
+		local MOUNT_ARRAY
+		IFS=',' read -ra MOUNT_ARRAY <<< "$mounts"
 		IFS="$old_ifs"
 		
 		for mount in "${MOUNT_ARRAY[@]}"; do
@@ -149,8 +150,10 @@ save_temp_state() {
 			if [[ "$mount" == *:* ]]; then
 				perm="${mount##*:}"
 			fi
-			local abs_source="$(cd "$project_dir" && realpath "$source" 2>/dev/null || echo "$source")"
-			local target="/workspace/$(basename "$source")"
+			local abs_source
+			abs_source="$(cd "$project_dir" && realpath "$source" 2>/dev/null || echo "$source")"
+			local target
+			target="/workspace/$(basename "$source")"
 			
 			# Use new explicit format
 			cat >> "$TEMP_STATE_FILE" <<-EOF
@@ -214,7 +217,8 @@ get_temp_mounts() {
 	if command -v yq &> /dev/null; then
 		# Handle both old and new formats
 		# First try old format (simple string)
-		local old_format=$(yq -r '.mounts[]? // empty' "$TEMP_STATE_FILE" 2>/dev/null | grep -E '^[^:]+:[^:]+:[^:]+$' | tr '\n' ',' | sed 's/,$//')
+		local old_format
+		old_format=$(yq -r '.mounts[]? // empty' "$TEMP_STATE_FILE" 2>/dev/null | grep -E '^[^:]+:[^:]+:[^:]+$' | tr '\n' ',' | sed 's/,$//')
 		if [ -n "$old_format" ]; then
 			echo "$old_format"
 		else
@@ -236,8 +240,10 @@ compare_mounts() {
 	local requested="$2"
 	
 	# Sort both mount strings and compare
-	local sorted_existing=$(echo "$existing" | tr ',' '\n' | sort | tr '\n' ',' | sed 's/,$//')
-	local sorted_requested=$(echo "$requested" | tr ',' '\n' | sort | tr '\n' ',' | sed 's/,$//')
+	local sorted_existing
+	sorted_existing=$(echo "$existing" | tr ',' '\n' | sort | tr '\n' ',' | sed 's/,$//')
+	local sorted_requested
+	sorted_requested=$(echo "$requested" | tr ',' '\n' | sort | tr '\n' ',' | sed 's/,$//')
 	
 	[ "$sorted_existing" = "$sorted_requested" ]
 }
@@ -246,7 +252,7 @@ compare_mounts() {
 cleanup_orphaned_temp_resources() {
 	# Remove orphaned temp VM networks that don't have running containers  
 	{
-		docker network ls --filter "name=vm-temp-project" -q | while read network_id; do
+		docker network ls --filter "name=vm-temp-project" -q | while read -r network_id; do
 			# Check if any container is using this network
 			if ! docker ps -q --filter "network=$network_id" | grep -q .; then
 				docker network rm "$network_id" 2>/dev/null || true
@@ -266,12 +272,14 @@ cleanup_orphaned_temp_resources() {
 # Update temp VM with new mounts (preserves container)
 update_temp_vm_with_mounts() {
 	local container_name="$1"
-	local start_time=$(date +%s)
+	local start_time
+	start_time=$(date +%s)
 	
 	echo "🔄 Updating container with new mounts..."
 	
 	# Get current state
-	local project_dir=$(yq_raw '.project_dir' "$TEMP_STATE_FILE")
+	local project_dir
+	project_dir=$(yq_raw '.project_dir' "$TEMP_STATE_FILE")
 	if [ -z "$project_dir" ]; then
 		project_dir=""
 	fi
@@ -332,7 +340,8 @@ environments:
 	echo "🔄 Updating container configuration..."
 	
 	# Create temporary config file with .yaml extension
-	local temp_config_file=$(mktemp /tmp/vm-temp-config.XXXXXX.yaml)
+	local temp_config_file
+	temp_config_file=$(mktemp /tmp/vm-temp-config.XXXXXX.yaml)
 	setup_temp_file_cleanup "$temp_config_file"
 	echo "$config" > "$temp_config_file"
 	
@@ -344,7 +353,9 @@ environments:
 	
 	# Apply the new configuration using docker-compose
 	echo "🚀 Applying new mount configuration..."
-	(cd "$project_dir" && docker-compose up -d --no-recreate 2>/dev/null || docker-compose up -d)
+	if ! (cd "$project_dir" && docker-compose up -d --no-recreate 2>/dev/null); then
+		(cd "$project_dir" && docker-compose up -d)
+	fi
 	
 	# Wait for container to be ready
 	echo "⏳ Waiting for container to be ready..."
@@ -358,7 +369,8 @@ environments:
 		((attempt++))
 	done
 	
-	local end_time=$(date +%s)
+	local end_time
+	end_time=$(date +%s)
 	local elapsed=$((end_time - start_time))
 	
 	echo "✅ Container updated with new mounts in ${elapsed} seconds"
@@ -367,7 +379,6 @@ environments:
 
 # Handle temp VM commands
 handle_temp_command() {
-	local args=("$@")
 	
 	# Add debug output for temp command
 	if [ "${VM_DEBUG:-}" = "true" ]; then
@@ -635,8 +646,10 @@ EOF
 			fi
 			
 			# Get absolute path
-			local abs_source=$(cd "$source" && pwd)
-			local target="/workspace/$(basename "$abs_source")"
+			local abs_source
+			abs_source=$(cd "$source" && pwd)
+			local target
+			target="/workspace/$(basename "$abs_source")"
 			
 			# Check if already mounted
 			if command -v yq &> /dev/null; then
@@ -653,7 +666,7 @@ EOF
 			if [ "$AUTO_YES" != "true" ]; then
 				echo "⚠️  This will restart the container (takes ~5 seconds)"
 				echo "   Your work will be preserved. Continue? (y/N): "
-				read -r response
+				read -rr response
 				case "$response" in
 					[yY]|[yY][eE][sS])
 						;;
@@ -668,7 +681,8 @@ EOF
 			echo "📝 Updating mount configuration..."
 			if command -v yq &> /dev/null; then
 				# Create temporary file for the update
-				local temp_file=$(mktemp)
+				local temp_file
+				temp_file=$(mktemp)
 				setup_temp_file_cleanup "$temp_file"
 				cp "$TEMP_STATE_FILE" "$temp_file"
 				
@@ -737,7 +751,8 @@ EOF
 				
 				# Show what will be removed
 				if command -v yq &> /dev/null; then
-					local mount_count=$(yq -r '.mounts | length' "$TEMP_STATE_FILE" 2>/dev/null)
+					local mount_count
+				mount_count=$(yq -r '.mounts | length' "$TEMP_STATE_FILE" 2>/dev/null)
 					echo "This will remove $mount_count mount(s) and clean up volumes:"
 					yq -r '.mounts[]? | "  📂 \(.source)"' "$TEMP_STATE_FILE" 2>/dev/null
 				fi
@@ -746,7 +761,7 @@ EOF
 				if [ "$AUTO_YES" != "true" ]; then
 					echo ""
 					echo "⚠️  This will destroy the temp VM entirely. Continue? (y/N): "
-					read -r response
+					read -rr response
 					case "$response" in
 						[yY]|[yY][eE][sS])
 							;;
@@ -789,7 +804,8 @@ EOF
 			fi
 			
 			# Get absolute path if it's a directory
-			local abs_path="$UNMOUNT_PATH"
+			local abs_path
+			abs_path="$UNMOUNT_PATH"
 			if [ -d "$UNMOUNT_PATH" ]; then
 				abs_path=$(cd "$UNMOUNT_PATH" && pwd)
 			fi
@@ -829,7 +845,7 @@ EOF
 			if [ "$AUTO_YES" != "true" ]; then
 				echo "⚠️  This will restart the container (takes ~5 seconds)"
 				echo "   Your work will be preserved. Continue? (y/N): "
-				read -r response
+				read -rr response
 				case "$response" in
 					[yY]|[yY][eE][sS])
 						;;
@@ -844,7 +860,8 @@ EOF
 			echo "📝 Updating mount configuration..."
 			if command -v yq &> /dev/null; then
 				# Create temporary file for the update
-				local temp_file=$(mktemp)
+				local temp_file
+				temp_file=$(mktemp)
 				setup_temp_file_cleanup "$temp_file"
 				cp "$TEMP_STATE_FILE" "$temp_file"
 				
@@ -872,7 +889,8 @@ EOF
 			echo "=================="
 			
 			if command -v yq &> /dev/null; then
-				local container_name=$(yq_raw '.container_name' "$TEMP_STATE_FILE")
+				local container_name
+				container_name=$(yq_raw '.container_name' "$TEMP_STATE_FILE")
 				echo "Container: $container_name"
 				echo ""
 				
@@ -907,7 +925,8 @@ EOF
 			# Show active temp VM from state file
 			if [ -f "$TEMP_STATE_FILE" ]; then
 				if command -v yq &> /dev/null; then
-					local container_name=$(yq_raw '.container_name' "$TEMP_STATE_FILE")
+					local container_name
+				container_name=$(yq_raw '.container_name' "$TEMP_STATE_FILE")
 					if [ -n "$container_name" ]; then
 						local status="stopped"
 						if is_temp_vm_running "$container_name"; then
@@ -952,9 +971,10 @@ EOF
 			echo ""
 			echo "🐋 All Temp VM Containers:"
 			echo "-------------------------"
-			local all_containers=$(docker_cmd ps -a --filter "name=vmtemp" --format "{{.Names}}\t{{.Status}}\t{{.CreatedAt}}" 2>/dev/null || true)
+			local all_containers
+			all_containers=$(docker_cmd ps -a --filter "name=vmtemp" --format "{{.Names}}\t{{.Status}}\t{{.CreatedAt}}" 2>/dev/null || true)
 			if [ -n "$all_containers" ]; then
-				echo "$all_containers" | while IFS=$'\t' read -r name status created; do
+				echo "$all_containers" | while IFS=$'\t' read -rr name status _; do
 					if [[ "$status" == *"Up"* ]]; then
 						echo "  🟢 $name - $status"
 					else
@@ -1131,7 +1151,7 @@ EOF
 		# Convert comma to array for processing
 		old_ifs="$IFS"
 		IFS=','
-		MOUNT_ARGS=(${MOUNT_ARGS[0]})  # Intentionally unquoted for word splitting
+		IFS=',' read -ra MOUNT_ARGS <<< "${MOUNT_ARGS[0]}"
 		IFS="$old_ifs"
 	fi
 	
@@ -1384,8 +1404,7 @@ EOF
 		echo "DEBUG: Extracting schema defaults from: $SCRIPT_DIR/vm.schema.yaml" >&2
 	fi
 	
-	SCHEMA_DEFAULTS=$("$SCRIPT_DIR/validate-config.sh" --extract-defaults "$SCRIPT_DIR/vm.schema.yaml" 2>&1)
-	if [ $? -ne 0 ]; then
+	if ! SCHEMA_DEFAULTS=$("$SCRIPT_DIR/validate-config.sh" --extract-defaults "$SCRIPT_DIR/vm.schema.yaml" 2>&1); then
 		echo "❌ Failed to extract schema defaults"
 		echo "📋 Error output: $SCHEMA_DEFAULTS"
 		rm -f "$TEMP_CONFIG_FILE"
@@ -1393,8 +1412,7 @@ EOF
 	fi
 	
 	# Use yq to merge schema defaults with temp config
-	CONFIG=$(yq -s '.[0] * .[1]' <(echo "$SCHEMA_DEFAULTS") "$TEMP_CONFIG_FILE" 2>&1)
-	if [ $? -ne 0 ]; then
+	if ! CONFIG=$(yq -s '.[0] * .[1]' <(echo "$SCHEMA_DEFAULTS") "$TEMP_CONFIG_FILE" 2>&1); then
 		echo "❌ Failed to generate temp VM configuration"
 		echo "📋 Error merging configs: $CONFIG"
 		echo "💡 Check that yq is installed and working: yq --version"

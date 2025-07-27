@@ -103,7 +103,7 @@ if [[ -n "$SERVICES" ]]; then
         service="$(echo "$service" | xargs)"
         
         # Validate service exists
-        if [[ ! " $AVAILABLE_SERVICES " =~ " $service " ]]; then
+        if [[ ! " $AVAILABLE_SERVICES " =~ \ ${service}\  ]]; then
             echo "❌ Unknown service: $service" >&2
             echo "Available services: $AVAILABLE_SERVICES" >&2
             exit 1
@@ -120,7 +120,7 @@ if [[ -n "$SERVICES" ]]; then
         service_value="$(yq -r ".services.$service" "$service_config_file")"
         
         # Use yq to merge the service configuration into the base config
-        echo "$service_value" | yq -y . | yq -s '.[0].services["'$service'"] = .[1] | .[0]' "$base_config_temp" - > "${base_config_temp}.new"
+        echo "$service_value" | yq -y . | yq -s '.[0].services["'"$service"'"] = .[1] | .[0]' "$base_config_temp" - > "${base_config_temp}.new"
         mv "${base_config_temp}.new" "$base_config_temp"
     done
 fi

@@ -1,3 +1,4 @@
+---
 project:
   name: test-mongodb
   hostname: dev.mongodb.local

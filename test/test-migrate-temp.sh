@@ -11,8 +11,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Get script directory
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Get script directory (removed unused variable)
 
 # Test results
 TOTAL_TESTS=0
@@ -102,7 +101,8 @@ assert_output_contains() {
     local expected="$2"
     local description="${3:-Output should contain: $expected}"
     
-    local output=$($command 2>&1)
+    local output
+    output=$($command 2>&1)
     if echo "$output" | grep -q "$expected"; then
         echo -e "${GREEN}✓ $description${NC}"
         return 0
@@ -217,7 +217,8 @@ test_migrate_dry_run() {
 EOF
     
     # Test dry run - capture output
-    local output=$(vm migrate --dry-run 2>&1)
+    local output
+    output=$(vm migrate --dry-run 2>&1)
     
     # Check output contains YAML
     if echo "$output" | grep -q "version: \"1.0\""; then
@@ -292,7 +293,8 @@ EOF
     assert_file_not_exists "vm.json" "Migration should remove original (with --force)"
     
     # Check version field exists
-    local version=$(yq -r '.version' vm.yaml)
+    local version
+    version=$(yq -r '.version' vm.yaml)
     if [ "$version" = "1.0" ]; then
         echo -e "${GREEN}✓ Version field is present and correct${NC}"
     else
@@ -301,7 +303,8 @@ EOF
     fi
     
     # Check content was preserved
-    local project_name=$(yq -r '.project.name' vm.yaml)
+    local project_name
+    project_name=$(yq -r '.project.name' vm.yaml)
     if [ "$project_name" = "test-project" ]; then
         echo -e "${GREEN}✓ Project name was preserved${NC}"
     else
@@ -310,7 +313,8 @@ EOF
     fi
     
     # Check services
-    local pg_enabled=$(yq -r '.services.postgresql.enabled' vm.yaml)
+    local pg_enabled
+    pg_enabled=$(yq -r '.services.postgresql.enabled' vm.yaml)
     if [ "$pg_enabled" = "true" ]; then
         echo -e "${GREEN}✓ Service configuration was preserved${NC}"
     else
@@ -405,7 +409,8 @@ test_temp_creation() {
     
     # Check state file contains correct info
     if [ -f "$HOME/.vm/temp-vm.state" ]; then
-        local container_name=$(yq -r '.container_name' "$HOME/.vm/temp-vm.state")
+        local container_name
+        container_name=$(yq -r '.container_name' "$HOME/.vm/temp-vm.state")
         if [[ "$container_name" =~ ^temp-vm- ]]; then
             echo -e "${GREEN}✓ State file contains valid container name${NC}"
         else
@@ -429,7 +434,8 @@ test_temp_status() {
     fi
     
     # Test status command
-    local output=$(vm temp status 2>&1)
+    local output
+    output=$(vm temp status 2>&1)
     
     # Check output contains expected information
     if echo "$output" | grep -q "Running"; then
@@ -459,7 +465,8 @@ test_temp_ssh() {
     fi
     
     # Test SSH with command
-    local output=$(vm temp ssh -c "echo hello from temp vm" 2>&1)
+    local output
+    output=$(vm temp ssh -c "echo hello from temp vm" 2>&1)
     
     if echo "$output" | grep -q "hello from temp vm"; then
         echo -e "${GREEN}✓ SSH command execution works${NC}"
@@ -493,7 +500,8 @@ test_temp_collision_same() {
     cd "$TEMP_TEST_DIR"
     
     # Try to create another temp VM with same mount
-    local output=$(vm temp ./src 2>&1)
+    local output
+    output=$(vm temp ./src 2>&1)
     
     if echo "$output" | grep -q "Connecting to existing"; then
         echo -e "${GREEN}✓ Detects and reuses existing VM with same mounts${NC}"
@@ -515,7 +523,8 @@ test_temp_destroy() {
     fi
     
     # Get container name before destroy
-    local container_name=$(yq -r '.container_name' "$HOME/.vm/temp-vm.state")
+    local container_name
+    container_name=$(yq -r '.container_name' "$HOME/.vm/temp-vm.state")
     
     # Destroy temp VM
     vm temp destroy
@@ -575,7 +584,7 @@ generate_test_report() {
     echo -e "${GREEN}Passed: $passed${NC}"
     echo -e "${RED}Failed: $failed${NC}"
     
-    if [ $failed -eq 0 ]; then
+    if [ "$failed" -eq 0 ]; then
         echo -e "\n${GREEN}✓ All tests passed!${NC}"
         return 0
     else

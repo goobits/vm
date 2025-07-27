@@ -1,3 +1,4 @@
+---
 $schema: http://json-schema.org/draft-07/schema#
 title: VM Configuration Schema
 description: Configuration schema for the VM development environment tool
