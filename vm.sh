@@ -531,9 +531,9 @@ docker_ssh() {
 			echo "DEBUG docker_ssh: Executing: docker exec -it ${container_name} su - $project_user -c \"VM_TARGET_DIR='$target_dir' exec zsh\"" >&2
 		fi
 		
-		# Use su - with -c to set VM_TARGET_DIR and exec zsh
-		# This ensures the environment variable is available to .zshrc
-		docker_cmd exec -it "${container_name}" su - "$project_user" -c "VM_TARGET_DIR='$target_dir' exec zsh"
+		# Use su without - to preserve Docker's signal handling
+		# This ensures proper Ctrl+C behavior (double tap to detach)
+		docker_cmd exec -it "${container_name}" su "$project_user" -c "VM_TARGET_DIR='$target_dir' exec zsh"
 	fi
 }
 
