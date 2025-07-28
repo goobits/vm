@@ -77,7 +77,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # List available suites
-if [ "$LIST_SUITES" = true ]; then
+if [[ "$LIST_SUITES" = true ]]; then
     echo "Available test suites:"
     for suite in $AVAILABLE_SUITES; do
         echo "  $suite"
@@ -121,7 +121,7 @@ cleanup_test_env() {
     done
     
     # Destroy VM if it exists
-    if [ -f "$TEST_DIR/vm.yaml" ]; then
+    if [[ -f "$TEST_DIR/vm.yaml" ]]; then
         cd "$TEST_DIR"
         # Destroy VM without sudo
         vm destroy -f 2>/dev/null || true
@@ -129,7 +129,7 @@ cleanup_test_env() {
         # Extract project name and ensure container is removed
         local project_name
         project_name=$(yq -r '.project.name' vm.yaml 2>/dev/null | tr -cd '[:alnum:]')
-        if [ -n "$project_name" ]; then
+        if [[ -n "$project_name" ]]; then
             local container_name="${project_name}-dev"
             # Force stop and remove container with both docker and sudo docker
             docker stop "$container_name" 2>/dev/null || sudo docker stop "$container_name" 2>/dev/null || true
@@ -154,7 +154,7 @@ create_test_vm() {
     echo -e "${BLUE}Creating test VM with config: $config_path${NC}"
     
     # Copy config to test directory
-    if [ -f "$config_path" ]; then
+    if [[ -f "$config_path" ]]; then
         cp "$config_path" "$TEST_DIR/vm.yaml"
     else
         echo -e "${RED}Config file not found: $config_path${NC}"
@@ -164,7 +164,7 @@ create_test_vm() {
     # Pre-emptively clean up any existing container with the same name
     local project_name
     project_name=$(yq -r '.project.name' "$TEST_DIR/vm.yaml" 2>/dev/null | tr -cd '[:alnum:]')
-    if [ -n "$project_name" ]; then
+    if [[ -n "$project_name" ]]; then
         local container_name="${project_name}-dev"
         echo -e "${BLUE}Cleaning up any existing container: $container_name${NC}"
         docker stop "$container_name" 2>/dev/null || sudo docker stop "$container_name" 2>/dev/null || true
@@ -196,7 +196,7 @@ run_in_vm() {
     vm exec "$command"
     local exit_code=$?
     
-    if [ "$expected_exit" != "any" ] && [ $exit_code -ne "$expected_exit" ]; then
+    if [[ "$expected_exit" != "any" ]] && [[ $exit_code -ne "$expected_exit" ]]; then
         echo -e "${RED}Command failed with exit code $exit_code (expected $expected_exit): $command${NC}"
         return 1
     fi
@@ -421,7 +421,7 @@ generate_test_report() {
     echo -e "${GREEN}Passed: $passed${NC}"
     echo -e "${RED}Failed: $failed${NC}"
     
-    if [ "$failed" -eq 0 ]; then
+    if [[ "$failed" -eq 0 ]]; then
         echo -e "\n${GREEN}✓ All tests passed!${NC}"
         return 0
     else
@@ -485,19 +485,19 @@ test_config_generator() {
     echo "Testing configuration generator..."
     
     # Test that configs directory exists
-    if [ ! -d "$CONFIG_DIR" ]; then
+    if [[ ! -d "$CONFIG_DIR" ]]; then
         echo -e "${RED}✗ Config directory not found: $CONFIG_DIR${NC}"
         return 1
     fi
     
     # Test minimal config exists and is valid
-    if [ -f "$CONFIG_DIR/minimal.yaml" ]; then
+    if [[ -f "$CONFIG_DIR/minimal.yaml" ]]; then
         echo -e "${GREEN}✓ Minimal config exists${NC}"
         
         # Validate it has correct structure
         local project_name
         project_name=$(yq -r '.project.name' "$CONFIG_DIR/minimal.yaml")
-        if [ "$project_name" = "test-minimal" ]; then
+        if [[ "$project_name" = "test-minimal" ]]; then
             echo -e "${GREEN}✓ Config has correct project name${NC}"
         else
             echo -e "${RED}✗ Config has wrong project name: $project_name${NC}"
@@ -510,10 +510,10 @@ test_config_generator() {
     
     # Test service configs exist
     for service in postgresql redis mongodb docker; do
-        if [ -f "$CONFIG_DIR/$service.yaml" ]; then
+        if [[ -f "$CONFIG_DIR/$service.yaml" ]]; then
             local enabled
             enabled=$(yq -r ".services.$service.enabled" "$CONFIG_DIR/$service.yaml")
-            if [ "$enabled" = "true" ]; then
+            if [[ "$enabled" = "true" ]]; then
                 echo -e "${GREEN}✓ $service config is valid${NC}"
             else
                 echo -e "${RED}✗ $service not enabled in config${NC}"
@@ -530,11 +530,11 @@ test_config_generator() {
 test_vm_command() {
     echo "Testing vm.sh availability..."
     
-    if [ -f "/workspace/vm.sh" ]; then
+    if [[ -f "/workspace/vm.sh" ]]; then
         echo -e "${GREEN}✓ vm.sh exists${NC}"
         
         # Test vm.sh is executable
-        if [ -x "/workspace/vm.sh" ]; then
+        if [[ -x "/workspace/vm.sh" ]]; then
             echo -e "${GREEN}✓ vm.sh is executable${NC}"
         else
             echo -e "${RED}✗ vm.sh is not executable${NC}"
@@ -619,7 +619,7 @@ test_generated_configs_valid() {
         fi
     ' bash {} \; || failed=$((failed + 1))
     
-    if [ "$failed" -eq 0 ]; then
+    if [[ "$failed" -eq 0 ]]; then
         echo -e "${GREEN}✓ All generated configs are valid${NC}"
         return 0
     else
@@ -764,13 +764,13 @@ test_vm_init() {
     local exit_code=$?
     
     # Check exit code
-    if [ $exit_code -ne 0 ]; then
+    if [[ $exit_code -ne 0 ]]; then
         echo -e "${RED}✗ vm init failed with exit code $exit_code${NC}"
         return 1
     fi
     
     # Check vm.yaml was created
-    if [ ! -f "vm.yaml" ]; then
+    if [[ ! -f "vm.yaml" ]]; then
         echo -e "${RED}✗ vm.yaml was not created${NC}"
         return 1
     fi
@@ -778,7 +778,7 @@ test_vm_init() {
     # Check content is customized
     local project_name
     project_name=$(yq -r '.project.name' vm.yaml)
-    if [ "$project_name" != "init-test" ]; then
+    if [[ "$project_name" != "init-test" ]]; then
         echo -e "${RED}✗ Project name not customized (got: $project_name)${NC}"
         return 1
     fi
@@ -1004,7 +1004,7 @@ check_prerequisites() {
     # Check for vm command
     if ! command -v vm &> /dev/null; then
         # Try using the local vm.sh
-        if [ -f "/workspace/vm.sh" ]; then
+        if [[ -f "/workspace/vm.sh" ]]; then
             export PATH="/workspace:$PATH"
         else
             echo -e "${RED}❌ vm command not found${NC}"
@@ -1105,7 +1105,7 @@ run_test_suite() {
             "$SCRIPT_DIR/test/test-migrate-temp.sh"
             # Capture exit code and update counters
             local exit_code=$?
-            if [ $exit_code -eq 0 ]; then
+            if [[ $exit_code -eq 0 ]]; then
                 echo -e "${GREEN}✓ Migrate-temp test suite passed${NC}"
             else
                 echo -e "${RED}✗ Migrate-temp test suite failed${NC}"
@@ -1141,7 +1141,7 @@ main() {
     export PATH="/workspace:$PATH"
     
     # Run test suites
-    if [ -n "$SUITE_FILTER" ]; then
+    if [[ -n "$SUITE_FILTER" ]]; then
         # Run specific test suite
         if [[ " $AVAILABLE_SUITES " =~ $SUITE_FILTER ]]; then
             run_test_suite "$SUITE_FILTER"
@@ -1162,7 +1162,7 @@ main() {
     generate_test_report $PASSED_TESTS $FAILED_TESTS
     
     # Show failed tests if any
-    if [ ${#FAILED_TEST_NAMES[@]} -gt 0 ]; then
+    if [[ ${#FAILED_TEST_NAMES[@]} -gt 0 ]]; then
         echo -e "\n${RED}Failed tests:${NC}"
         for test_name in "${FAILED_TEST_NAMES[@]}"; do
             echo -e "  ${RED}✗ $test_name${NC}"

@@ -93,7 +93,8 @@ fi
 base_config_temp="$(mktemp)"
 cp "$DEFAULT_CONFIG" "$base_config_temp"
 
-# Apply services if specified
+# Apply service configurations by merging individual service YAML files
+# Each service in the comma-separated list is validated and merged into base config
 if [[ -n "$SERVICES" ]]; then
     # Split services by comma and process each
     IFS=',' read -ra service_list <<< "$SERVICES"
@@ -125,14 +126,16 @@ if [[ -n "$SERVICES" ]]; then
     done
 fi
 
-# Apply project name if specified
+# Apply project name and generate derived values (hostname, username)
+# Updates project.name, project.hostname, and terminal.username fields
 if [[ -n "$PROJECT_NAME" ]]; then
     yq -y ".project.name = \"$PROJECT_NAME\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
     yq -y ".project.hostname = \"dev.$PROJECT_NAME.local\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
     yq -y ".terminal.username = \"$PROJECT_NAME-dev\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
 fi
 
-# Apply port configuration if specified
+# Apply port configuration starting from specified base port
+# Allocates 10 sequential ports for different services (web, api, databases)
 if [[ -n "$PORTS" ]]; then
     # Validate port number
     if ! [[ "$PORTS" =~ ^[0-9]+$ ]] || [[ "$PORTS" -lt 1024 ]] || [[ "$PORTS" -gt 65535 ]]; then
@@ -155,7 +158,8 @@ if [[ -n "$PORTS" ]]; then
     yq -y ".ports.mongodb = $mongodb_port" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
 fi
 
-# Auto-generate project name from directory if not specified
+# Auto-generate project name from current directory when not specified
+# Uses basename of current working directory for project naming
 if [[ -z "$PROJECT_NAME" ]]; then
     dir_name="$(basename "$(pwd)")"
     yq -y ".project.name = \"$dir_name\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"

@@ -1,4 +1,3 @@
----
 project:
   name: test-docker
   hostname: dev.docker.local
