@@ -9,7 +9,7 @@ vm:
   box: bento/ubuntu-24.04
   memory: 6144
   cpus: 4
-  user: vagrant
+  user: developer
   port_binding: 127.0.0.1
   timezone: America/Los_Angeles
 versions:

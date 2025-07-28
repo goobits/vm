@@ -5,7 +5,7 @@
 set -e
 
 # Enable debug mode if VM_DEBUG is set
-if [ "${VM_DEBUG:-}" = "true" ]; then
+if [[ "${VM_DEBUG:-}" = "true" ]]; then
 	set -x
 fi
 
@@ -30,7 +30,7 @@ fi
 
 # Get the directory where this script is located (packages/vm)
 # Handle both direct execution and npm link scenarios
-if [ -L "$0" ]; then
+if [[ -L "$0" ]]; then
 	# If this is a symlink (npm link), resolve the real path
 	REAL_SCRIPT="$(readlink -f "$0")"
 	SCRIPT_DIR="$(cd "$(dirname "$REAL_SCRIPT")" && pwd)"
@@ -48,7 +48,7 @@ parse_mount_string() {
 	local mount_str="$1"
 	local mount_args=""
 	
-	if [ -n "$mount_str" ]; then
+	if [[ -n "$mount_str" ]]; then
 		# Split by comma and process each mount (save original IFS)
 		local old_ifs="$IFS"
 		IFS=','
@@ -92,7 +92,7 @@ parse_mount_string() {
 				local perm
 				perm="${mount##*:}"
 				# Check if source exists and is a directory
-				if [ ! -d "$source" ]; then
+				if [[ ! -d "$source" ]]; then
 					echo "❌ Error: Directory '$source' does not exist or is not a directory" >&2
 					return 1
 				fi
@@ -110,15 +110,27 @@ parse_mount_string() {
 				fi
 				case "$perm" in
 					"ro"|"readonly")
-						mount_args="$mount_args -v $(realpath "$source"):/workspace/$(basename "$source"):ro"
+						# Validate and quote the realpath to prevent command injection
+						local real_source
+						if ! real_source=$(realpath "$source" 2>/dev/null); then
+							echo "❌ Error: Cannot resolve path '$source'" >&2
+							return 1
+						fi
+						mount_args="$mount_args -v $(printf '%q' "$real_source"):/workspace/$(basename "$source"):ro"
 						;;
 					"rw"|"readwrite"|*)
-						mount_args="$mount_args -v $(realpath "$source"):/workspace/$(basename "$source")"
+						# Validate and quote the realpath to prevent command injection
+						local real_source
+						if ! real_source=$(realpath "$source" 2>/dev/null); then
+							echo "❌ Error: Cannot resolve path '$source'" >&2
+							return 1
+						fi
+						mount_args="$mount_args -v $(printf '%q' "$real_source"):/workspace/$(basename "$source")"
 						;;
 				esac
 			else
 				# Check if mount exists and is a directory
-				if [ ! -d "$mount" ]; then
+				if [[ ! -d "$mount" ]]; then
 					echo "❌ Error: Directory '$mount' does not exist or is not a directory" >&2
 					return 1
 				fi
@@ -136,7 +148,13 @@ parse_mount_string() {
 				fi
 				
 				# Default to read-write mount
-				mount_args="$mount_args -v $(realpath "$mount"):/workspace/$(basename "$mount")"
+				# Validate and quote the realpath to prevent command injection
+				local real_mount
+				if ! real_mount=$(realpath "$mount" 2>/dev/null); then
+					echo "❌ Error: Cannot resolve path '$mount'" >&2
+					return 1
+				fi
+				mount_args="$mount_args -v $(printf '%q' "$real_mount"):/workspace/$(basename "$mount")"
 			fi
 		done
 	fi
@@ -163,13 +181,13 @@ docker_compose() {
 	fi
 	
 	if command -v docker-compose &> /dev/null; then
-		if [ -n "$docker_prefix" ]; then
+		if [[ -n "$docker_prefix" ]]; then
 			$docker_prefix docker-compose "$@"
 		else
 			docker-compose "$@"
 		fi
 	else
-		if [ -n "$docker_prefix" ]; then
+		if [[ -n "$docker_prefix" ]]; then
 			$docker_prefix docker compose "$@"
 		else
 			docker compose "$@"
@@ -183,11 +201,11 @@ show_usage() {
 	# Try to get version from package.json
 	local version
 	version=""
-	if [ -f "$SCRIPT_DIR/package.json" ]; then
+	if [[ -f "$SCRIPT_DIR/package.json" ]]; then
 		version=$(grep '"version"' "$SCRIPT_DIR/package.json" | head -1 | cut -d'"' -f4)
 	fi
 	
-	if [ -n "$version" ]; then
+	if [[ -n "$version" ]]; then
 		echo "VM Tool v$version"
 		echo ""
 	fi
@@ -274,20 +292,20 @@ load_config() {
 	local original_dir="$2"
 	
 	# Debug output if --debug flag is set
-	if [ "${VM_DEBUG:-}" = "true" ]; then
+	if [[ "${VM_DEBUG:-}" = "true" ]]; then
 		echo "DEBUG load_config: config_path='$config_path', original_dir='$original_dir'" >&2
 		echo "DEBUG load_config: SCRIPT_DIR='$SCRIPT_DIR'" >&2
 	fi
 	
-	if [ -n "$config_path" ]; then
+	if [[ -n "$config_path" ]]; then
 		# Use custom config path
-		if [ "${VM_DEBUG:-}" = "true" ]; then
+		if [[ "${VM_DEBUG:-}" = "true" ]]; then
 			echo "DEBUG load_config: Running: cd '$original_dir' && '$SCRIPT_DIR/validate-config.sh' --get-config '$config_path'" >&2
 		fi
 		(cd "$original_dir" && "$SCRIPT_DIR/validate-config.sh" --get-config "$config_path")
 	else
 		# Use default discovery logic - run from the original directory
-		if [ "${VM_DEBUG:-}" = "true" ]; then
+		if [[ "${VM_DEBUG:-}" = "true" ]]; then
 			echo "DEBUG load_config: Running: cd '$original_dir' && '$SCRIPT_DIR/validate-config.sh' --get-config" >&2
 		fi
 		(cd "$original_dir" && "$SCRIPT_DIR/validate-config.sh" --get-config)
@@ -300,6 +318,22 @@ get_provider() {
 	echo "$config" | yq -r '.provider // "docker"'
 }
 
+# Extract project name from config
+# This centralizes the project name extraction logic to reduce duplication
+get_project_name() {
+	local config="$1"
+	echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]'
+}
+
+# Extract project name from config and generate container name
+# This centralizes the logic for creating container names to reduce duplication
+get_project_container_name() {
+	local config="$1"
+	local project_name
+	project_name=$(get_project_name "$config")
+	echo "${project_name}-dev"
+}
+
 # Docker helper function to reduce duplication
 docker_run() {
 	local action="$1"
@@ -307,11 +341,9 @@ docker_run() {
 	local project_dir="$3"
 	shift 3
 	
-	# Extract project name once
-	local project_name
-	project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
+	# Get container name using shared function
 	local container_name
-	container_name="${project_name}-dev"
+	container_name=$(get_project_container_name "$config")
 	
 	case "$action" in
 		"compose")
@@ -353,17 +385,15 @@ docker_up() {
 	docker_run "compose" "$config" "$project_dir" build
 	docker_run "compose" "$config" "$project_dir" up -d "$@"
 	
-	# Get container name
-	local project_name
-	project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
+	# Get container name using shared function
 	local container_name
-	container_name="${project_name}-dev"
+	container_name=$(get_project_container_name "$config")
 	
 	# Wait for container to be ready before proceeding
 	echo "⏳ Initializing container..."
 	local max_attempts=30
 	local attempt=1
-	while [ $attempt -le $max_attempts ]; do
+	while [[ $attempt -le $max_attempts ]]; do
 		# Use docker_cmd to handle sudo if needed, and check container is running
 		if docker_cmd inspect "${container_name}" --format='{{.State.Status}}' 2>/dev/null | grep -q "running"; then
 			# Also verify we can exec into it
@@ -372,7 +402,7 @@ docker_up() {
 				break
 			fi
 		fi
-		if [ $attempt -eq $max_attempts ]; then
+		if [[ $attempt -eq $max_attempts ]]; then
 			echo "❌ Environment initialization failed"
 			return 1
 		fi
@@ -408,7 +438,7 @@ docker_up() {
 	# Check if debug mode is enabled
 	ANSIBLE_VERBOSITY=""
 	ANSIBLE_DIFF=""
-	if [ "${VM_DEBUG:-}" = "true" ] || [ "${DEBUG:-}" = "true" ]; then
+	if [[ "${VM_DEBUG:-}" = "true" ]] || [[ "${DEBUG:-}" = "true" ]]; then
 		echo "🐛 Debug mode enabled - showing detailed Ansible output"
 		ANSIBLE_VERBOSITY="-vvv"
 		ANSIBLE_DIFF="--diff"
@@ -441,7 +471,7 @@ docker_up() {
 	# Clean up generated docker-compose.yml since containers are now running
 	local compose_file
 	compose_file="${project_dir}/docker-compose.yml"
-	if [ -f "$compose_file" ]; then
+	if [[ -f "$compose_file" ]]; then
 		echo "✨ Cleanup complete"
 		rm "$compose_file"
 	fi
@@ -449,7 +479,7 @@ docker_up() {
 	echo "🎉 Environment ready!"
 	
 	# Automatically SSH into the container if auto-login is enabled
-	if [ "$auto_login" = "true" ]; then
+	if [[ "$auto_login" = "true" ]]; then
 		echo "🌟 Entering development environment..."
 		docker_ssh "$config" "" "."
 	else
@@ -470,35 +500,34 @@ docker_ssh() {
 	project_user=$(echo "$config" | yq -r '.vm.user // "developer"')
 	local target_dir="${workspace_path}"
 	
-	if [ "${VM_DEBUG:-}" = "true" ]; then
+	if [[ "${VM_DEBUG:-}" = "true" ]]; then
 		echo "DEBUG docker_ssh: relative_path='$relative_path'" >&2
 		echo "DEBUG docker_ssh: workspace_path='$workspace_path'" >&2
 	fi
 	
 	# If we have a relative path and it's not just ".", append it to workspace path
-	if [ -n "$relative_path" ] && [ "$relative_path" != "." ]; then
+	if [[ -n "$relative_path" ]] && [[ "$relative_path" != "." ]]; then
 		target_dir="${workspace_path}/${relative_path}"
 	fi
 	
-	if [ "${VM_DEBUG:-}" = "true" ]; then
+	if [[ "${VM_DEBUG:-}" = "true" ]]; then
 		echo "DEBUG docker_ssh: target_dir='$target_dir'" >&2
 	fi
 	
 	# Handle -c flag specifically for command execution
-	if [ "$1" = "-c" ] && [ -n "$2" ]; then
+	if [[ "$1" = "-c" ]] && [[ -n "$2" ]]; then
 		# Run command non-interactively
 		docker_run "exec" "$config" "" su - "$project_user" -c "cd '$target_dir' && source ~/.zshrc && $2"
-	elif [ $# -gt 0 ]; then
+	elif [[ $# -gt 0 ]]; then
 		# Run with all arguments
 		docker_run "exec" "$config" "" su - "$project_user" -c "cd '$target_dir' && source ~/.zshrc && zsh $*"
 	else
 		# Interactive mode - use a simple approach that works
-		local project_name
-	project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
-		local container_name="${project_name}-dev"
+		local container_name
+		container_name=$(get_project_container_name "$config")
 		
 		# Run an interactive shell with the working directory set
-		if [ "${VM_DEBUG:-}" = "true" ]; then
+		if [[ "${VM_DEBUG:-}" = "true" ]]; then
 			echo "DEBUG docker_ssh: Executing: docker exec -it ${container_name} su - $project_user -c \"VM_TARGET_DIR='$target_dir' exec zsh\"" >&2
 		fi
 		
@@ -517,11 +546,9 @@ docker_start() {
 	
 	echo "🚀 Starting development environment..."
 	
-	# Get container name
-	local project_name
-	project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
+	# Get container name using shared function
 	local container_name
-	container_name="${project_name}-dev"
+	container_name=$(get_project_container_name "$config")
 	
 	# Check if container exists
 	if ! docker_cmd inspect "${container_name}" >/dev/null 2>&1; then
@@ -536,12 +563,12 @@ docker_start() {
 	echo "⏳ Starting up..."
 	local max_attempts=15
 	local attempt=1
-	while [ $attempt -le $max_attempts ]; do
+	while [[ $attempt -le $max_attempts ]]; do
 		if docker_cmd exec "${container_name}" echo "ready" >/dev/null 2>&1; then
 			echo "✅ Environment ready!"
 			break
 		fi
-		if [ $attempt -eq $max_attempts ]; then
+		if [[ $attempt -eq $max_attempts ]]; then
 			echo "❌ Environment startup failed"
 			return 1
 		fi
@@ -552,7 +579,7 @@ docker_start() {
 	echo "🎉 Environment started!"
 	
 	# Automatically SSH into the container if auto-login is enabled
-	if [ "$auto_login" = "true" ]; then
+	if [[ "$auto_login" = "true" ]]; then
 		echo "🌟 Entering development environment..."
 		docker_ssh "$config" "$project_dir" "$relative_path"
 	else
@@ -566,10 +593,8 @@ docker_halt() {
 	shift 2
 	
 	# Stop the container directly (not using docker-compose)
-	local project_name
-	project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
 	local container_name
-	container_name="${project_name}-dev"
+	container_name=$(get_project_container_name "$config")
 	docker_cmd stop "${container_name}" "$@"
 }
 
@@ -578,11 +603,9 @@ docker_destroy() {
 	local project_dir="$2"
 	shift 2
 	
-	# Get project name for user feedback
-	local project_name
-	project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
+	# Get container name for user feedback
 	local container_name
-	container_name="${project_name}-dev"
+	container_name=$(get_project_container_name "$config")
 	
 	echo "🗑️ Destroying VM: ${container_name}"
 	
@@ -602,7 +625,7 @@ docker_destroy() {
 	# Clean up the generated docker-compose.yml after destroy
 	local compose_file
 	compose_file="${project_dir}/docker-compose.yml"
-	if [ -f "$compose_file" ]; then
+	if [[ -f "$compose_file" ]]; then
 		echo "✨ Cleanup complete"
 		rm "$compose_file"
 	fi
@@ -647,7 +670,7 @@ docker_provision() {
 	# Clean up generated docker-compose.yml since containers are now running
 	local compose_file
 	compose_file="${project_dir}/docker-compose.yml"
-	if [ -f "$compose_file" ]; then
+	if [[ -f "$compose_file" ]]; then
 		echo "✨ Cleanup complete"
 		rm "$compose_file"
 	fi
@@ -672,7 +695,7 @@ docker_kill() {
 	echo "⏹️ Stopping environment..."
 	local config="$1"
 	local project_name
-	project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
+	project_name=$(get_project_name "$config")
 	
 	docker_cmd stop "${project_name}-dev" 2>/dev/null || true
 	docker_cmd stop "${project_name}-postgres" 2>/dev/null || true
@@ -698,7 +721,7 @@ vm_list() {
 		local main_vms
 		main_vms=$(docker_cmd ps -a --format "{{.Names}}\t{{.Status}}\t{{.CreatedAt}}" | awk '$1 ~ /-dev$/ && $1 !~ /^vmtemp/ {print}' 2>/dev/null || true)
 		
-		if [ -n "$main_vms" ]; then
+		if [[ -n "$main_vms" ]]; then
 			echo "NAME                    STATUS                       CREATED"
 			echo "================================================================"
 			echo "$main_vms" | while IFS=$'\t' read -r name status created; do
@@ -715,7 +738,7 @@ vm_list() {
 		
 		# Check for temp VM from state file
 		local TEMP_STATE_FILE="$HOME/.vm/temp-vm.state"
-		if [ -f "$TEMP_STATE_FILE" ]; then
+		if [[ -f "$TEMP_STATE_FILE" ]]; then
 			local temp_container
 			local created_at
 			local project_dir
@@ -731,7 +754,7 @@ vm_list() {
 				temp_container=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
 			fi
 			
-			if [ -n "$temp_container" ]; then
+			if [[ -n "$temp_container" ]]; then
 				# Check if container actually exists
 				local temp_status
 				temp_status=$(docker_cmd ps -a --filter "name=^${temp_container}$" --format "{{.Status}}" 2>/dev/null || echo "Not found")
@@ -757,7 +780,7 @@ vm_list() {
 					fi
 				fi
 				
-				if [ -z "$mounts" ]; then
+				if [[ -z "$mounts" ]]; then
 					mounts="(unknown)"
 				fi
 				
@@ -783,7 +806,7 @@ vm_list() {
 		local service_containers
 		service_containers=$(docker_cmd ps -a --format "{{.Names}}\t{{.Status}}\t{{.CreatedAt}}" | awk '$1 ~ /postgres|redis|mongodb/ && $1 !~ /-dev$/ {print}' 2>/dev/null || true)
 		
-		if [ -n "$service_containers" ]; then
+		if [[ -n "$service_containers" ]]; then
 			echo "NAME                    STATUS                       CREATED"
 			echo "================================================================"
 			echo "$service_containers" | while IFS=$'\t' read -r name status created; do
@@ -1045,7 +1068,7 @@ while [[ $# -gt 0 ]]; do
 				CUSTOM_CONFIG="__SCAN__"
 			else
 				# Argument provided - use it as config path
-				if [ -d "$1" ]; then
+				if [[ -d "$1" ]]; then
 					CUSTOM_CONFIG="$1/vm.yaml"
 				else
 					CUSTOM_CONFIG="$1"
@@ -1139,7 +1162,7 @@ case "${1:-}" in
 	"init")
 		echo "✨ Creating new project configuration..."
 		# Use validate-config.sh with special init flag
-		if [ -n "$CUSTOM_CONFIG" ] && [ "$CUSTOM_CONFIG" != "__SCAN__" ]; then
+		if [[ -n "$CUSTOM_CONFIG" ]] && [[ "$CUSTOM_CONFIG" != "__SCAN__" ]]; then
 			"$SCRIPT_DIR/validate-config.sh" --init "$CUSTOM_CONFIG"
 		else
 			"$SCRIPT_DIR/validate-config.sh" --init
@@ -1154,7 +1177,7 @@ case "${1:-}" in
 	"validate")
 		echo "✅ Validating configuration..."
 		# Validate configuration using the centralized config manager
-		if [ -n "$CUSTOM_CONFIG" ]; then
+		if [[ -n "$CUSTOM_CONFIG" ]]; then
 			"$SCRIPT_DIR/validate-config.sh" --validate "$CUSTOM_CONFIG"
 		else
 			"$SCRIPT_DIR/validate-config.sh" --validate
@@ -1176,7 +1199,7 @@ case "${1:-}" in
 		
 		PROVIDER=$(get_provider "$CONFIG")
 		
-		if [ "$PROVIDER" = "docker" ]; then
+		if [[ "$PROVIDER" = "docker" ]]; then
 			docker_kill "$CONFIG"
 		else
 			kill_virtualbox
@@ -1190,7 +1213,7 @@ case "${1:-}" in
 		;;
 	"destroy")
 		# Special handling for vm-temp
-		if [ "${2:-}" = "vm-temp" ]; then
+		if [[ "${2:-}" = "vm-temp" ]]; then
 			echo "🗑️ Destroying temporary VM..."
 			# Try both old and new container names for compatibility
 			if docker_cmd rm -f "vmtemp-dev" >/dev/null 2>&1 || docker_cmd rm -f "vm-temp" >/dev/null 2>&1; then
@@ -1199,9 +1222,9 @@ case "${1:-}" in
 				
 				# Clean up temp project directory if it exists
 				# Look for marker file in secure location (same logic as creation)
-				if [ -n "$XDG_RUNTIME_DIR" ] && [ -d "$XDG_RUNTIME_DIR/vm" ]; then
+				if [[ -n "$XDG_RUNTIME_DIR" ]] && [[ -d "$XDG_RUNTIME_DIR/vm" ]]; then
 					MARKER_DIR="$XDG_RUNTIME_DIR/vm"
-				elif [ -d "$HOME/.local/state/vm" ]; then
+				elif [[ -d "$HOME/.local/state/vm" ]]; then
 					MARKER_DIR="$HOME/.local/state/vm"
 				else
 					MARKER_DIR="/tmp"
@@ -1210,15 +1233,15 @@ case "${1:-}" in
 				TEMP_DIR_MARKER="$MARKER_DIR/.vmtemp-vmtemp-dev-marker"
 				
 				# Also check legacy location for backward compatibility
-				if [ ! -f "$TEMP_DIR_MARKER" ] && [ -f "/tmp/.vmtemp-project-dir" ]; then
+				if [[ ! -f "$TEMP_DIR_MARKER" ]] && [[ -f "/tmp/.vmtemp-project-dir" ]]; then
 					TEMP_DIR_MARKER="/tmp/.vmtemp-project-dir"
 					echo "⚠️  Warning: Using legacy marker file location"
 				fi
 				
-				if [ -f "$TEMP_DIR_MARKER" ]; then
+				if [[ -f "$TEMP_DIR_MARKER" ]]; then
 					TEMP_PROJECT_DIR=$(cat "$TEMP_DIR_MARKER")
 					# Safety check: ensure it's a temp directory
-					if [ -d "$TEMP_PROJECT_DIR" ]; then
+					if [[ -d "$TEMP_PROJECT_DIR" ]]; then
 						# Resolve the real path to prevent directory traversal attacks
 						# Use realpath to follow symlinks and get the canonical path
 						REAL_TEMP_DIR=$(realpath "$TEMP_PROJECT_DIR" 2>/dev/null)
@@ -1254,7 +1277,7 @@ case "${1:-}" in
 				echo "✅ vm-temp destroyed successfully"
 				
 				# Clean up any stale marker files (older than 1 day)
-				if [ -d "$MARKER_DIR" ]; then
+				if [[ -d "$MARKER_DIR" ]]; then
 					find "$MARKER_DIR" -name ".vmtemp-*-marker" -type f -mtime +1 -delete 2>/dev/null || true
 				fi
 			else
@@ -1264,7 +1287,7 @@ case "${1:-}" in
 		fi
 		
 		# If no VM name provided, load config from current directory and destroy
-		if [ $# -eq 1 ]; then
+		if [[ $# -eq 1 ]]; then
 			# Load and validate config
 			if ! CONFIG=$(load_config "$CUSTOM_CONFIG" "$CURRENT_DIR"); then
 				echo "❌ No vm.yaml configuration file found. Run \"vm init\" to create one."
@@ -1274,31 +1297,30 @@ case "${1:-}" in
 			PROVIDER=$(get_provider "$CONFIG")
 			
 			# Determine project directory
-			if [ "$CUSTOM_CONFIG" = "__SCAN__" ]; then
+			if [[ "$CUSTOM_CONFIG" = "__SCAN__" ]]; then
 				# In scan mode, get the directory where config was found
 				CONFIG_DIR=$(echo "$CONFIG" | yq -r '.__config_dir // empty' 2>/dev/null)
-				if [ -n "$CONFIG_DIR" ]; then
+				if [[ -n "$CONFIG_DIR" ]]; then
 					PROJECT_DIR="$CONFIG_DIR"
 				else
 					PROJECT_DIR="$CURRENT_DIR"
 				fi
-			elif [ -n "$CUSTOM_CONFIG" ]; then
+			elif [[ -n "$CUSTOM_CONFIG" ]]; then
 				FULL_CONFIG_PATH="$(cd "$CURRENT_DIR" && readlink -f "$CUSTOM_CONFIG")"
 				PROJECT_DIR="$(dirname "$FULL_CONFIG_PATH")"
 			else
 				PROJECT_DIR="$CURRENT_DIR"
 			fi
 			
-			# Get project name for confirmation
-			project_name=$(echo "$CONFIG" | yq -r '.project.name' | tr -cd '[:alnum:]')
-			container_name="${project_name}-dev"
+			# Get container name for confirmation
+			container_name=$(get_project_container_name "$CONFIG")
 			
 			echo "⚠️  About to destroy VM: ${container_name}"
 			echo -n "Are you sure? This will destroy the VM and all its data. (y/N): "
 			read -r response
 			case "$response" in
 				[yY]|[yY][eE][sS])
-					if [ "$PROVIDER" = "docker" ]; then
+					if [[ "$PROVIDER" = "docker" ]]; then
 						docker_destroy "$CONFIG" "$PROJECT_DIR"
 					else
 						VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant destroy -f
@@ -1318,7 +1340,7 @@ case "${1:-}" in
 		;;
 	*)
 		# Load and validate config (discovery handled by validate-config.js)
-		if [ "${VM_DEBUG:-}" = "true" ]; then
+		if [[ "${VM_DEBUG:-}" = "true" ]]; then
 			echo "DEBUG main: CUSTOM_CONFIG='$CUSTOM_CONFIG'" >&2
 		fi
 		if ! CONFIG=$(load_config "$CUSTOM_CONFIG" "$CURRENT_DIR"); then
@@ -1329,11 +1351,11 @@ case "${1:-}" in
 		PROVIDER=$(get_provider "$CONFIG")
 		
 		# Determine project directory and config path
-		if [ "$CUSTOM_CONFIG" = "__SCAN__" ]; then
+		if [[ "$CUSTOM_CONFIG" = "__SCAN__" ]]; then
 			# Scan mode: project dir is where user ran the command
 			PROJECT_DIR="$CURRENT_DIR"
 			FULL_CONFIG_PATH=""
-		elif [ -n "$CUSTOM_CONFIG" ]; then
+		elif [[ -n "$CUSTOM_CONFIG" ]]; then
 			# If using custom config, project dir is where the config file is located
 			# Resolve the path from the original directory where user ran the command
 			FULL_CONFIG_PATH="$(cd "$CURRENT_DIR" && readlink -f "$CUSTOM_CONFIG")"
@@ -1353,7 +1375,7 @@ case "${1:-}" in
 		fi
 
 		# Check for a project marker to prevent running in unintended locations.
-		if [ ! -d "$PROJECT_DIR/.git" ] && [ ! -f "$PROJECT_DIR/vm.yaml" ] && [ ! -f "$PROJECT_DIR/vm.schema.yaml" ]; then
+		if [[ ! -d "$PROJECT_DIR/.git" ]] && [[ ! -f "$PROJECT_DIR/vm.yaml" ]] && [[ ! -f "$PROJECT_DIR/vm.schema.yaml" ]]; then
 			echo "❌ Error: The specified directory '$PROJECT_DIR' does not appear to be a valid project root." >&2
 			echo "   (Missing a .git directory, vm.yaml, or vm.schema.yaml file to act as a safeguard)." >&2
 			exit 1
@@ -1363,16 +1385,16 @@ case "${1:-}" in
 		echo "🐳 Using provider: $PROVIDER"
 		
 		# Show dry run information if enabled
-		if [ "$DRY_RUN" = "true" ]; then
+		if [[ "$DRY_RUN" = "true" ]]; then
 			echo ""
 			echo "🔍 DRY RUN MODE - showing what would be executed:"
 			echo "   Project directory: $PROJECT_DIR"
 			echo "   Provider: $PROVIDER"
 			echo "   Command: $1"
 			echo "   Arguments: $*"
-			if [ "$CUSTOM_CONFIG" = "__SCAN__" ]; then
+			if [[ "$CUSTOM_CONFIG" = "__SCAN__" ]]; then
 				echo "   Config mode: Scanning up directory tree"
-			elif [ -n "$CUSTOM_CONFIG" ]; then
+			elif [[ -n "$CUSTOM_CONFIG" ]]; then
 				echo "   Config mode: Explicit config ($CUSTOM_CONFIG)"
 			else
 				echo "   Config mode: Default discovery"
@@ -1386,12 +1408,11 @@ case "${1:-}" in
 		COMMAND="$1"
 		shift
 		
-		if [ "$PROVIDER" = "docker" ]; then
+		if [[ "$PROVIDER" = "docker" ]]; then
 			case "$COMMAND" in
 				"create")
 					# Check if VM already exists and confirm before recreating
-					project_name=$(echo "$CONFIG" | yq -r '.project.name' | tr -cd '[:alnum:]')
-					container_name="${project_name}-dev"
+					container_name=$(get_project_container_name "$CONFIG")
 					
 					if docker_cmd inspect "${container_name}" >/dev/null 2>&1; then
 						echo "⚠️  VM '${container_name}' already exists."
@@ -1413,16 +1434,16 @@ case "${1:-}" in
 					;;
 				"start")
 					# Calculate relative path for start (same logic as SSH command)
-					if [ "$CUSTOM_CONFIG" = "__SCAN__" ]; then
+					if [[ "$CUSTOM_CONFIG" = "__SCAN__" ]]; then
 						# In scan mode, we need to figure out where we are relative to the found config
 						# Get the directory where vm.yaml was found from validate-config output
 						CONFIG_DIR=$(echo "$CONFIG" | yq -r '.__config_dir // empty' 2>/dev/null)
-						if [ "${VM_DEBUG:-}" = "true" ]; then
+						if [[ "${VM_DEBUG:-}" = "true" ]]; then
 							echo "DEBUG start: CUSTOM_CONFIG='$CUSTOM_CONFIG'" >&2
 							echo "DEBUG start: CONFIG_DIR='$CONFIG_DIR'" >&2
 							echo "DEBUG start: CURRENT_DIR='$CURRENT_DIR'" >&2
 						fi
-						if [ -n "$CONFIG_DIR" ] && [ "$CONFIG_DIR" != "$CURRENT_DIR" ]; then
+						if [[ -n "$CONFIG_DIR" ]] && [[ "$CONFIG_DIR" != "$CURRENT_DIR" ]]; then
 							# Calculate path from config dir to current dir
 							RELATIVE_PATH=$(realpath --relative-to="$CONFIG_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
 						else
@@ -1432,7 +1453,7 @@ case "${1:-}" in
 						# Normal mode: relative path from project dir to current dir
 						RELATIVE_PATH=$(realpath --relative-to="$PROJECT_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
 					fi
-					if [ "${VM_DEBUG:-}" = "true" ]; then
+					if [[ "${VM_DEBUG:-}" = "true" ]]; then
 						echo "DEBUG start: RELATIVE_PATH='$RELATIVE_PATH'" >&2
 					fi
 					docker_start "$CONFIG" "$PROJECT_DIR" "$RELATIVE_PATH" "$AUTO_LOGIN" "$@"
@@ -1445,11 +1466,11 @@ case "${1:-}" in
 					;;
 				"ssh")
 					# Calculate relative path for SSH
-					if [ "$CUSTOM_CONFIG" = "__SCAN__" ]; then
+					if [[ "$CUSTOM_CONFIG" = "__SCAN__" ]]; then
 						# In scan mode, we need to figure out where we are relative to the found config
 						# Get the directory where vm.yaml was found from validate-config output
 						CONFIG_DIR=$(echo "$CONFIG" | yq -r '.__config_dir // empty' 2>/dev/null)
-						if [ -n "$CONFIG_DIR" ] && [ "$CONFIG_DIR" != "$CURRENT_DIR" ]; then
+						if [[ -n "$CONFIG_DIR" ]] && [[ "$CONFIG_DIR" != "$CURRENT_DIR" ]]; then
 							# Calculate path from config dir to current dir
 							RELATIVE_PATH=$(realpath --relative-to="$CONFIG_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
 						else
@@ -1460,7 +1481,7 @@ case "${1:-}" in
 						RELATIVE_PATH=$(realpath --relative-to="$PROJECT_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
 					fi
 					
-					if [ "${VM_DEBUG:-}" = "true" ]; then
+					if [[ "${VM_DEBUG:-}" = "true" ]]; then
 						echo "DEBUG ssh: CURRENT_DIR='$CURRENT_DIR'" >&2
 						echo "DEBUG ssh: PROJECT_DIR='$PROJECT_DIR'" >&2
 						echo "DEBUG ssh: CUSTOM_CONFIG='$CUSTOM_CONFIG'" >&2
@@ -1469,8 +1490,7 @@ case "${1:-}" in
 					fi
 					
 					# Get container name for connection message
-					project_name=$(echo "$CONFIG" | yq -r '.project.name' | tr -cd '[:alnum:]')
-					container_name="${project_name}-dev"
+					container_name=$(get_project_container_name "$CONFIG")
 					echo "🎯 Connected to $container_name"
 					
 					docker_ssh "$CONFIG" "$PROJECT_DIR" "$RELATIVE_PATH" "$@"
@@ -1521,14 +1541,14 @@ case "${1:-}" in
 					fi
 					
 					# Start VM
-					if [ -n "$FULL_CONFIG_PATH" ]; then
+					if [[ -n "$FULL_CONFIG_PATH" ]]; then
 						VM_PROJECT_DIR="$PROJECT_DIR" VM_CONFIG="$FULL_CONFIG_PATH" VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant up "$@"
 					else
 						VM_PROJECT_DIR="$PROJECT_DIR" VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant up "$@"
 					fi
 					
 					# Auto-SSH if enabled
-					if [ "$AUTO_LOGIN" = "true" ]; then
+					if [[ "$AUTO_LOGIN" = "true" ]]; then
 						echo "🔗 Connecting to VM..."
 						VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh
 					else
@@ -1538,10 +1558,10 @@ case "${1:-}" in
 				"ssh")
 					# SSH into VM with relative path support
 					# Calculate relative path (similar to Docker SSH logic)
-					if [ "$CUSTOM_CONFIG" = "__SCAN__" ]; then
+					if [[ "$CUSTOM_CONFIG" = "__SCAN__" ]]; then
 						# In scan mode, figure out where we are relative to the found config
 						CONFIG_DIR=$(echo "$CONFIG" | yq -r '.__config_dir // empty' 2>/dev/null)
-						if [ -n "$CONFIG_DIR" ] && [ "$CONFIG_DIR" != "$CURRENT_DIR" ]; then
+						if [[ -n "$CONFIG_DIR" ]] && [[ "$CONFIG_DIR" != "$CURRENT_DIR" ]]; then
 							RELATIVE_PATH=$(realpath --relative-to="$CONFIG_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
 						else
 							RELATIVE_PATH="."
@@ -1554,7 +1574,7 @@ case "${1:-}" in
 					# Get workspace path from config
 					WORKSPACE_PATH=$(echo "$CONFIG" | yq -r '.project.workspace_path // "/workspace"')
 					
-					if [ "$RELATIVE_PATH" != "." ]; then
+					if [[ "$RELATIVE_PATH" != "." ]]; then
 						TARGET_DIR="${WORKSPACE_PATH}/${RELATIVE_PATH}"
 						VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh -c "cd '$TARGET_DIR' && exec /bin/zsh"
 					else
@@ -1589,7 +1609,7 @@ case "${1:-}" in
 					;;
 				*)
 					# Pass through to vagrant command
-					if [ -n "$FULL_CONFIG_PATH" ]; then
+					if [[ -n "$FULL_CONFIG_PATH" ]]; then
 						VM_PROJECT_DIR="$PROJECT_DIR" VM_CONFIG="$FULL_CONFIG_PATH" VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant "$COMMAND" "$@"
 					else
 						VM_PROJECT_DIR="$PROJECT_DIR" VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant "$COMMAND" "$@"

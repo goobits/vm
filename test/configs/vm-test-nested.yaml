@@ -7,7 +7,7 @@ project:
 vm:
   memory: 2048
   cpus: 2
-  user: vagrant
+  user: developer
 services:
   docker:
     enabled: true

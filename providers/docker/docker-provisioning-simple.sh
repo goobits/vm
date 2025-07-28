@@ -11,7 +11,9 @@ VM_TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # Source the deep merge utility
 source "$VM_TOOL_DIR/shared/deep-merge.sh"
 
-# Function to generate docker-compose.yml
+# Generate docker-compose.yml from VM configuration
+# Args: config_path (required), project_dir (optional, defaults to pwd)
+# Creates docker-compose.yml with proper volumes, environment, and service configuration
 generate_docker_compose() {
     local config_path="$1"
     local project_dir="${2:-$(pwd)}"

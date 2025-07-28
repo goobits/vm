@@ -5,7 +5,7 @@ services:
       context: /workspace
       dockerfile: providers/docker/Dockerfile
       args:
-        PROJECT_USER: "vagrant"
+        PROJECT_USER: "developer"
         PROJECT_UID: "1000"
         PROJECT_GID: "1000"
     container_name: testminimalvm-dev
@@ -20,8 +20,8 @@ services:
       - /workspace/test/configs:/workspace:delegated
       - /workspace:/vm-tool:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - testminimalvm_nvm:/home/vagrant/.nvm
-      - testminimalvm_cache:/home/vagrant/.cache
+      - testminimalvm_nvm:/home/developer/.nvm
+      - testminimalvm_cache:/home/developer/.cache
       - testminimalvm_config:/tmp
     networks:
       - testminimalvm_network

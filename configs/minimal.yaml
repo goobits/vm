@@ -6,7 +6,7 @@ project:
   hostname: dev.test-minimal.local
   workspace_path: /workspace
 vm:
-  user: vagrant
+  user: developer
 services: {}
 npm_packages: []
 cargo_packages: []

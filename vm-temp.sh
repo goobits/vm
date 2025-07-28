@@ -34,9 +34,21 @@ validate_directory_name() {
 	return 0
 }
 
+# Extract container name from state file
+# This centralizes the container name retrieval logic to reduce duplication
+get_container_name_from_state() {
+	local container_name=""
+	if command -v yq &> /dev/null; then
+		container_name=$(yq_raw '.container_name // empty' "$TEMP_STATE_FILE")
+	else
+		container_name=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
+	fi
+	echo "$container_name"
+}
+
 # Get container name from state file with comprehensive error handling
 get_container_name() {
-	if [ ! -f "$TEMP_STATE_FILE" ]; then
+	if [[ ! -f "$TEMP_STATE_FILE" ]]; then
 		echo "❌ No temp VM found" >&2
 		echo "💡 Create one with: vm temp ./your-directory" >&2
 		return 1
@@ -47,14 +59,10 @@ get_container_name() {
 		return 1
 	fi
 
-	local container_name=""
-	if command -v yq &> /dev/null; then
-		container_name=$(yq_raw '.container_name // empty' "$TEMP_STATE_FILE")
-	else
-		container_name=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
-	fi
+	local container_name
+	container_name=$(get_container_name_from_state)
 
-	if [ -z "$container_name" ]; then
+	if [[ -z "$container_name" ]]; then
 		echo "❌ Error: Could not read container name from state file" >&2
 		echo "📁 State file: $TEMP_STATE_FILE" >&2
 		return 1
@@ -65,7 +73,7 @@ get_container_name() {
 
 # Validate that temp VM state file exists
 require_temp_vm() {
-	if [ ! -f "$TEMP_STATE_FILE" ]; then
+	if [[ ! -f "$TEMP_STATE_FILE" ]]; then
 		echo "❌ No active temp VM found"
 		echo "💡 Create one with: vm temp ./your-directory"
 		return 1
@@ -87,7 +95,7 @@ setup_temp_file_cleanup() {
 
 # Validate state file is not corrupted
 validate_state_file() {
-	if [ ! -f "$TEMP_STATE_FILE" ]; then
+	if [[ ! -f "$TEMP_STATE_FILE" ]]; then
 		return 1
 	fi
 
@@ -133,7 +141,7 @@ save_temp_state() {
 	EOF
 	
 	# Add mounts to the state file
-	if [ -n "$mounts" ]; then
+	if [[ -n "$mounts" ]]; then
 		# Split mounts by comma and add to state file
 		local old_ifs="$IFS"
 		IFS=','
@@ -167,7 +175,7 @@ save_temp_state() {
 
 # Read temporary VM state
 read_temp_state() {
-	if [ ! -f "$TEMP_STATE_FILE" ]; then
+	if [[ ! -f "$TEMP_STATE_FILE" ]]; then
 		return 1
 	fi
 	
@@ -182,25 +190,24 @@ read_temp_state() {
 
 # Get temp VM container name from state
 get_temp_container_name() {
-	echo "DEBUG: Inside get_temp_container_name at $(date)" >> /tmp/vm-temp-debug.log
-	if [ ! -f "$TEMP_STATE_FILE" ]; then
-		echo "DEBUG: State file not found" >> /tmp/vm-temp-debug.log
+	if [[ "${VM_DEBUG:-}" = "true" ]]; then
+		echo "DEBUG get_temp_container_name: called at $(date)" >&2
+	fi
+	if [[ ! -f "$TEMP_STATE_FILE" ]]; then
+		if [[ "${VM_DEBUG:-}" = "true" ]]; then
+			echo "DEBUG get_temp_container_name: state file not found" >&2
+		fi
 		echo ""
 		return 1
 	fi
 	
-	if command -v yq &> /dev/null; then
-		yq_raw '.container_name // empty' "$TEMP_STATE_FILE"
-	else
-		# Fallback to grep if yq is not available
-		grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//'
-	fi
+	get_container_name_from_state
 }
 
 # Check if temp VM is running
 is_temp_vm_running() {
 	local container_name="$1"
-	if [ -z "$container_name" ]; then
+	if [[ -z "$container_name" ]]; then
 		return 1
 	fi
 	
@@ -209,7 +216,7 @@ is_temp_vm_running() {
 
 # Get mounts from state file
 get_temp_mounts() {
-	if [ ! -f "$TEMP_STATE_FILE" ]; then
+	if [[ ! -f "$TEMP_STATE_FILE" ]]; then
 		echo ""
 		return 1
 	fi
@@ -219,7 +226,7 @@ get_temp_mounts() {
 		# First try old format (simple string)
 		local old_format
 		old_format=$(yq -r '.mounts[]? // empty' "$TEMP_STATE_FILE" 2>/dev/null | grep -E '^[^:]+:[^:]+:[^:]+$' | tr '\n' ',' | sed 's/,$//')
-		if [ -n "$old_format" ]; then
+		if [[ -n "$old_format" ]]; then
 			echo "$old_format"
 		else
 			# New format - construct mount string
@@ -280,10 +287,10 @@ update_temp_vm_with_mounts() {
 	# Get current state
 	local project_dir
 	project_dir=$(yq_raw '.project_dir' "$TEMP_STATE_FILE")
-	if [ -z "$project_dir" ]; then
+	if [[ -z "$project_dir" ]]; then
 		project_dir=""
 	fi
-	if [ -z "$project_dir" ]; then
+	if [[ -z "$project_dir" ]]; then
 		echo "❌ Error: Could not read project directory from state file"
 		return 1
 	fi
@@ -361,7 +368,7 @@ environments:
 	echo "⏳ Waiting for container to be ready..."
 	local max_attempts=30
 	local attempt=1
-	while [ $attempt -le $max_attempts ]; do
+	while [[ $attempt -le $max_attempts ]]; do
 		if docker_cmd exec "$container_name" test -f /tmp/provisioning_complete 2>/dev/null; then
 			break
 		fi
@@ -381,10 +388,10 @@ environments:
 handle_temp_command() {
 	
 	# Add debug output for temp command
-	if [ "${VM_DEBUG:-}" = "true" ]; then
-		echo "DEBUG: temp command called with args: $*" >&2
-		echo "DEBUG: Current directory: $(pwd)" >&2
-		echo "DEBUG: SCRIPT_DIR: $SCRIPT_DIR" >&2
+	if [[ "${VM_DEBUG:-}" = "true" ]]; then
+		echo "DEBUG handle_temp_command: called with args: $*" >&2
+		echo "DEBUG handle_temp_command: current directory: $(pwd)" >&2
+		echo "DEBUG handle_temp_command: SCRIPT_DIR: $SCRIPT_DIR" >&2
 	fi
 	
 	# Check if Docker is available
@@ -405,7 +412,7 @@ handle_temp_command() {
 	fi
 	
 	# Show help if no arguments or --help flag
-	if [ $# -eq 0 ] || [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+	if [[ $# -eq 0 ]] || [[ "$1" = "--help" ]] || [[ "$1" = "-h" ]]; then
 		echo "❌ Usage: vm temp <command> [options]"
 		echo ""
 		echo "Commands:"
@@ -457,15 +464,8 @@ handle_temp_command() {
 			# Destroy temp VM
 			require_temp_vm || exit 0
 			
-			# Inline container name retrieval to avoid command substitution issues
-			container_name=""
-			if [ -f "$TEMP_STATE_FILE" ]; then
-				if command -v yq &> /dev/null; then
-					container_name=$(yq_raw '.container_name // empty' "$TEMP_STATE_FILE")
-				else
-					container_name=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
-				fi
-			fi
+			# Get container name using shared function
+			container_name=$(get_container_name_from_state)
 			echo "🗑️ Destroying temp VM: $container_name"
 			docker_cmd rm -f "$container_name" >/dev/null 2>&1
 			# Clean up volumes
@@ -480,15 +480,8 @@ handle_temp_command() {
 			# SSH into temp VM
 			require_temp_vm || exit 1
 			
-			# Inline container name retrieval to avoid command substitution issues
-			container_name=""
-			if [ -f "$TEMP_STATE_FILE" ]; then
-				if command -v yq &> /dev/null; then
-					container_name=$(yq_raw '.container_name // empty' "$TEMP_STATE_FILE")
-				else
-					container_name=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
-				fi
-			fi
+			# Get container name using shared function
+			container_name=$(get_container_name_from_state)
 			if ! is_temp_vm_running "$container_name"; then
 				echo "❌ Temp VM exists but is not running"
 				echo "💡 Check status with: vm temp status"
@@ -517,20 +510,13 @@ EOF
 			# Show temp VM status
 			require_temp_vm || exit 0
 			
-			# Inline container name retrieval to avoid command substitution issues
-			container_name=""
-			if [ -f "$TEMP_STATE_FILE" ]; then
-				if command -v yq &> /dev/null; then
-					container_name=$(yq_raw '.container_name // empty' "$TEMP_STATE_FILE")
-				else
-					container_name=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
-				fi
-			fi
+			# Get container name using shared function
+			container_name=$(get_container_name_from_state)
 			echo "📋 Temp VM Status:"
 			echo "=================="
 			
 			if command -v yq &> /dev/null; then
-				echo "Container: $(yq_raw '.container_name' "$TEMP_STATE_FILE")"
+				echo "Container: $(get_container_name_from_state)"
 				echo "Created: $(yq_raw '.created_at' "$TEMP_STATE_FILE")"
 				echo "Project: $(yq_raw '.project_dir' "$TEMP_STATE_FILE")"
 				echo ""
@@ -563,7 +549,7 @@ EOF
 		"mount")
 			# Add a new mount to running temp VM
 			shift
-			if [ $# -eq 0 ]; then
+			if [[ $# -eq 0 ]]; then
 				echo "❌ Usage: vm temp mount <path>[:ro|:rw] [--yes]"
 				exit 1
 			fi
@@ -583,7 +569,7 @@ EOF
 				echo "⏳ Waiting for container to be ready..."
 				local max_attempts=15
 				local attempt=1
-				while [ $attempt -le $max_attempts ]; do
+				while [[ $attempt -le $max_attempts ]]; do
 					if docker_cmd exec "$container_name" echo "ready" >/dev/null 2>&1; then
 						echo "✅ Temp VM started! Now adding mount..."
 						break
@@ -592,7 +578,7 @@ EOF
 					((attempt++))
 				done
 				
-				if [ $attempt -gt $max_attempts ]; then
+				if [[ $attempt -gt $max_attempts ]]; then
 					echo "❌ Failed to start temp VM"
 					exit 1
 				fi
@@ -635,7 +621,7 @@ EOF
 			fi
 			
 			# Validate source directory exists
-			if [ ! -d "$source" ]; then
+			if [[ ! -d "$source" ]]; then
 				echo "❌ Error: Directory '$source' does not exist"
 				exit 1
 			fi
@@ -663,7 +649,7 @@ EOF
 			fi
 			
 			# Show warning and get confirmation
-			if [ "$AUTO_YES" != "true" ]; then
+			if [[ "$AUTO_YES" != "true" ]]; then
 				echo "⚠️  This will restart the container (takes ~5 seconds)"
 				echo "   Your work will be preserved. Continue? (y/N): "
 				read -rr response
@@ -712,7 +698,7 @@ EOF
 		"unmount")
 			# Remove a mount from running temp VM
 			shift
-			if [ $# -eq 0 ]; then
+			if [[ $# -eq 0 ]]; then
 				echo "❌ Usage: vm temp unmount <path> [--yes]"
 				echo "❌ Usage: vm temp unmount --all [--yes]"
 				exit 1
@@ -728,7 +714,7 @@ EOF
 			fi
 			
 			# Handle --all flag first
-			if [ "$1" = "--all" ]; then
+			if [[ "$1" = "--all" ]]; then
 				shift
 				local AUTO_YES=""
 				
@@ -758,7 +744,7 @@ EOF
 				fi
 				
 				# Get confirmation
-				if [ "$AUTO_YES" != "true" ]; then
+				if [[ "$AUTO_YES" != "true" ]]; then
 					echo ""
 					echo "⚠️  This will destroy the temp VM entirely. Continue? (y/N): "
 					read -rr response
@@ -806,7 +792,7 @@ EOF
 			# Get absolute path if it's a directory
 			local abs_path
 			abs_path="$UNMOUNT_PATH"
-			if [ -d "$UNMOUNT_PATH" ]; then
+			if [[ -d "$UNMOUNT_PATH" ]]; then
 				abs_path=$(cd "$UNMOUNT_PATH" && pwd)
 			fi
 			
@@ -819,7 +805,7 @@ EOF
 				fi
 			fi
 			
-			if [ -z "$mount_found" ]; then
+			if [[ -z "$mount_found" ]]; then
 				echo "❌ Mount '$abs_path' not found"
 				echo ""
 				echo "Current mounts:"
@@ -835,14 +821,14 @@ EOF
 				mount_count=$(yq -r '.mounts | length' "$TEMP_STATE_FILE" 2>/dev/null)
 			fi
 			
-			if [ "$mount_count" -le 1 ]; then
+			if [[ "$mount_count" -le 1 ]]; then
 				echo "❌ Cannot remove the last mount"
 				echo "💡 Use 'vm temp destroy' to remove the temp VM entirely"
 				exit 1
 			fi
 			
 			# Show warning and get confirmation
-			if [ "$AUTO_YES" != "true" ]; then
+			if [[ "$AUTO_YES" != "true" ]]; then
 				echo "⚠️  This will restart the container (takes ~5 seconds)"
 				echo "   Your work will be preserved. Continue? (y/N): "
 				read -rr response
@@ -890,7 +876,7 @@ EOF
 			
 			if command -v yq &> /dev/null; then
 				local container_name
-				container_name=$(yq_raw '.container_name' "$TEMP_STATE_FILE")
+				container_name=$(get_container_name_from_state)
 				echo "Container: $container_name"
 				echo ""
 				
@@ -923,11 +909,11 @@ EOF
 			echo "==================="
 			
 			# Show active temp VM from state file
-			if [ -f "$TEMP_STATE_FILE" ]; then
+			if [[ -f "$TEMP_STATE_FILE" ]]; then
 				if command -v yq &> /dev/null; then
 					local container_name
-				container_name=$(yq_raw '.container_name' "$TEMP_STATE_FILE")
-					if [ -n "$container_name" ]; then
+				container_name=$(get_container_name_from_state)
+					if [[ -n "$container_name" ]]; then
 						local status="stopped"
 						if is_temp_vm_running "$container_name"; then
 							status="running"
@@ -948,7 +934,7 @@ EOF
 						fi
 						echo "   Mounts: $mount_count directories"
 						
-						if [ "$status" = "running" ]; then
+						if [[ "$status" = "running" ]]; then
 							echo "   💡 Use 'vm temp ssh' to connect"
 						else
 							echo "   💡 Use 'vm temp start' to start"
@@ -973,7 +959,7 @@ EOF
 			echo "-------------------------"
 			local all_containers
 			all_containers=$(docker_cmd ps -a --filter "name=vmtemp" --format "{{.Names}}\t{{.Status}}\t{{.CreatedAt}}" 2>/dev/null || true)
-			if [ -n "$all_containers" ]; then
+			if [[ -n "$all_containers" ]]; then
 				echo "$all_containers" | while IFS=$'\t' read -rr name status _; do
 					if [[ "$status" == *"Up"* ]]; then
 						echo "  🟢 $name - $status"
@@ -1006,7 +992,7 @@ EOF
 			echo "⏳ Waiting for container to be ready..."
 			local max_attempts=15
 			local attempt=1
-			while [ $attempt -le $max_attempts ]; do
+			while [[ $attempt -le $max_attempts ]]; do
 				if docker_cmd exec "$container_name" echo "ready" >/dev/null 2>&1; then
 					echo "✅ Temp VM started!"
 					exit 0
@@ -1055,7 +1041,7 @@ EOF
 			echo "⏳ Waiting for container to be ready..."
 			local max_attempts=15
 			local attempt=1
-			while [ $attempt -le $max_attempts ]; do
+			while [[ $attempt -le $max_attempts ]]; do
 				if docker_cmd exec "$container_name" echo "ready" >/dev/null 2>&1; then
 					echo "✅ Temp VM restarted!"
 					exit 0
@@ -1137,14 +1123,14 @@ EOF
 		esac
 	done
 	
-	if [ ${#MOUNT_ARGS[@]} -eq 0 ]; then
+	if [[ ${#MOUNT_ARGS[@]} -eq 0 ]]; then
 		echo "❌ Usage: vm temp <mounts> [--auto-destroy]"
 		echo "Example: vm temp ./src ./tests ./docs"
 		exit 1
 	fi
 	
 	# Check for backward compatibility with comma-separated mounts
-	if [ ${#MOUNT_ARGS[@]} -eq 1 ] && [[ "${MOUNT_ARGS[0]}" == *,* ]]; then
+	if [[ ${#MOUNT_ARGS[@]} -eq 1 ]] && [[ "${MOUNT_ARGS[0]}" == *,* ]]; then
 		echo "⚠️  Warning: Comma-separated mounts are deprecated"
 		echo "   Please use: vm temp ${MOUNT_ARGS[0]//,/ }"
 		echo ""
@@ -1156,8 +1142,8 @@ EOF
 	fi
 	
 	# Validate mount directories exist
-	if [ "${VM_DEBUG:-}" = "true" ]; then
-		echo "DEBUG: Validating ${#MOUNT_ARGS[@]} mounts" >&2
+	if [[ "${VM_DEBUG:-}" = "true" ]]; then
+		echo "DEBUG handle_temp_command: validating ${#MOUNT_ARGS[@]} mounts" >&2
 	fi
 	
 	# Process and validate each mount
@@ -1181,13 +1167,13 @@ EOF
 			source="$mount"
 		fi
 		
-		if [ "${VM_DEBUG:-}" = "true" ]; then
-			echo "DEBUG: Checking mount: '$source' (original: '$original_mount', perm: '$perm')" >&2
-			echo "DEBUG: Directory exists: $([ -d "$source" ] && echo "yes" || echo "no")" >&2
-			echo "DEBUG: Full path would be: $(realpath "$source" 2>/dev/null || echo "INVALID")" >&2
+		if [[ "${VM_DEBUG:-}" = "true" ]]; then
+			echo "DEBUG handle_temp_command: checking mount: '$source' (original: '$original_mount', perm: '$perm')" >&2
+			echo "DEBUG handle_temp_command: directory exists: $([ -d "$source" ] && echo "yes" || echo "no")" >&2
+			echo "DEBUG handle_temp_command: full path would be: $(realpath "$source" 2>/dev/null || echo "INVALID")" >&2
 		fi
 		
-		if [ ! -d "$source" ]; then
+		if [[ ! -d "$source" ]]; then
 			echo "❌ Error: Directory '$source' does not exist"
 			echo "📂 Current directory: $(pwd)"
 			echo "💡 Make sure the directory exists or use an absolute path"
@@ -1199,34 +1185,29 @@ EOF
 	done
 	
 	# Check for existing temp VM
-	if [ "${VM_DEBUG:-}" = "true" ]; then
-		echo "DEBUG: About to get temp container name" >&2
+	if [[ "${VM_DEBUG:-}" = "true" ]]; then
+		echo "DEBUG handle_temp_command: about to get temp container name" >&2
 		if type -t get_temp_container_name >/dev/null 2>&1; then
-			echo "DEBUG: Function get_temp_container_name is defined" >&2
+			echo "DEBUG handle_temp_command: function get_temp_container_name is defined" >&2
 		else
-			echo "DEBUG: ERROR - Function get_temp_container_name is NOT defined!" >&2
+			echo "DEBUG handle_temp_command: ERROR - function get_temp_container_name is NOT defined!" >&2
 		fi
 	fi
-	# Get container name without command substitution to avoid issues
+	# Get container name using shared function
 	existing_container=""
-	if [ -f "$TEMP_STATE_FILE" ]; then
-		if command -v yq &> /dev/null; then
-			existing_container=$(yq_raw '.container_name // empty' "$TEMP_STATE_FILE")
-		else
-			# Fallback to grep if yq is not available
-			existing_container=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
-		fi
+	if [[ -f "$TEMP_STATE_FILE" ]]; then
+		existing_container=$(get_container_name_from_state)
 	fi
 	TEMP_RET=$?
-	if [ "${VM_DEBUG:-}" = "true" ]; then
-		echo "DEBUG: get_temp_container_name returned: $TEMP_RET" >&2
-		echo "DEBUG: existing_container='$existing_container'" >&2
-		echo "DEBUG: Checking if container exists and is running" >&2
-		echo "DEBUG: About to check if block condition" >&2
+	if [[ "${VM_DEBUG:-}" = "true" ]]; then
+		echo "DEBUG handle_temp_command: get_temp_container_name returned: $TEMP_RET" >&2
+		echo "DEBUG handle_temp_command: existing_container='$existing_container'" >&2
+		echo "DEBUG handle_temp_command: checking if container exists and is running" >&2
+		echo "DEBUG handle_temp_command: about to check if block condition" >&2
 	fi
-	if [ -n "$existing_container" ] && is_temp_vm_running "$existing_container"; then
-		if [ "${VM_DEBUG:-}" = "true" ]; then
-			echo "DEBUG: Inside if block - existing container found" >&2
+	if [[ -n "$existing_container" ]] && is_temp_vm_running "$existing_container"; then
+		if [[ "${VM_DEBUG:-}" = "true" ]]; then
+			echo "DEBUG handle_temp_command: inside if block - existing container found" >&2
 		fi
 		# Active temp VM exists - check if mounts match
 		existing_mounts=$(get_temp_mounts)
@@ -1237,7 +1218,7 @@ EOF
 			source="${mount%:*}"
 			perm="${mount##*:}"
 			abs_source="$(realpath "$source" 2>/dev/null || echo "$source")"
-			if [ -n "$normalized_mounts" ]; then
+			if [[ -n "$normalized_mounts" ]]; then
 				normalized_mounts="$normalized_mounts,"
 			fi
 			normalized_mounts="$normalized_mounts$abs_source:/workspace/$(basename "$source"):$perm"
@@ -1262,7 +1243,7 @@ EOF
 			docker_ssh "$TEMP_CONFIG" "" "."
 			
 			# Handle auto-destroy if flag was set
-			if [ "$AUTO_DESTROY" = "true" ]; then
+			if [[ "$AUTO_DESTROY" = "true" ]]; then
 				echo "🗑️ Auto-destroying temp VM..."
 				docker_cmd rm -f "$existing_container" >/dev/null 2>&1
 				docker_cmd volume rm vmtemp_nvm vmtemp_cache >/dev/null 2>&1 || true
@@ -1275,7 +1256,7 @@ EOF
 			echo "⚠️  Temp VM already exists with different mounts"
 			echo ""
 			echo "Current mounts:"
-			if command -v yq &> /dev/null && [ -f "$TEMP_STATE_FILE" ]; then
+			if command -v yq &> /dev/null && [[ -f "$TEMP_STATE_FILE" ]]; then
 				yq -r '.mounts[]?' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
 					# Extract just the source path for readability
 					source_path=$(echo "$mount" | cut -d: -f1)
@@ -1335,20 +1316,20 @@ EOF
 			esac
 		fi
 	else
-		if [ "${VM_DEBUG:-}" = "true" ]; then
-			echo "DEBUG: No existing container or not running" >&2
+		if [[ "${VM_DEBUG:-}" = "true" ]]; then
+			echo "DEBUG handle_temp_command: no existing container or not running" >&2
 		fi
 	fi
 	
-	if [ "${VM_DEBUG:-}" = "true" ]; then
-		echo "DEBUG: Proceeding to create new temp VM" >&2
+	if [[ "${VM_DEBUG:-}" = "true" ]]; then
+		echo "DEBUG handle_temp_command: proceeding to create new temp VM" >&2
 	fi
 	
 	# No existing VM or user chose to recreate - proceed with creation
 	TEMP_CONTAINER="vmtemp-dev"  # Use consistent naming with regular VMs
 	
 	# Source the deep merge utility
-	if [ ! -f "$SCRIPT_DIR/shared/deep-merge.sh" ]; then
+	if [[ ! -f "$SCRIPT_DIR/shared/deep-merge.sh" ]]; then
 		echo "❌ Error: Required file not found: $SCRIPT_DIR/shared/deep-merge.sh"
 		echo "💡 Make sure the VM tool is properly installed"
 		exit 1
@@ -1363,7 +1344,7 @@ EOF
 		echo ""
 		echo "🛑 Interrupted! Cleaning up..."
 		# Remove temp container if it was created
-		if [ -n "${TEMP_CONTAINER:-}" ]; then
+		if [[ -n "${TEMP_CONTAINER:-}" ]]; then
 			docker_cmd rm -f "$TEMP_CONTAINER" >/dev/null 2>&1 || true
 		fi
 		# Clean up volumes
@@ -1374,7 +1355,12 @@ EOF
 		rm -f "$TEMP_STATE_FILE"
 		# Remove temp files
 		rm -f "$TEMP_CONFIG_FILE"
-		rm -rf "$TEMP_PROJECT_DIR"
+		# Safely remove temp project directory with validation
+		if [[ -n "$TEMP_PROJECT_DIR" ]] && [[ "$TEMP_PROJECT_DIR" == "/tmp/vm-temp-project" ]]; then
+			rm -rf "$TEMP_PROJECT_DIR"
+		else
+			echo "⚠️  Warning: Skipping cleanup of unexpected temp dir: $TEMP_PROJECT_DIR" >&2
+		fi
 		echo "✅ Cleanup complete"
 		exit 1
 	}
@@ -1400,8 +1386,8 @@ services:
 EOF
 	
 	# Extract schema defaults and merge with temp overrides
-	if [ "${VM_DEBUG:-}" = "true" ]; then
-		echo "DEBUG: Extracting schema defaults from: $SCRIPT_DIR/vm.schema.yaml" >&2
+	if [[ "${VM_DEBUG:-}" = "true" ]]; then
+		echo "DEBUG handle_temp_command: extracting schema defaults from: $SCRIPT_DIR/vm.schema.yaml" >&2
 	fi
 	
 	if ! SCHEMA_DEFAULTS=$("$SCRIPT_DIR/validate-config.sh" --extract-defaults "$SCRIPT_DIR/vm.schema.yaml" 2>&1); then
@@ -1450,7 +1436,7 @@ EOF
 	# Store temp directory path for later cleanup
 	# Use secure user-specific directory for marker file
 	# Try XDG runtime dir first, then fall back to XDG state dir, then /tmp
-	if [ -n "$XDG_RUNTIME_DIR" ] && mkdir -p "$XDG_RUNTIME_DIR/vm" 2>/dev/null; then
+	if [[ -n "$XDG_RUNTIME_DIR" ]] && mkdir -p "$XDG_RUNTIME_DIR/vm" 2>/dev/null; then
 		MARKER_DIR="$XDG_RUNTIME_DIR/vm"
 	elif mkdir -p "$HOME/.local/state/vm" 2>/dev/null; then
 		MARKER_DIR="$HOME/.local/state/vm"
@@ -1469,11 +1455,11 @@ EOF
 	
 	# Use the standard docker_up flow
 	echo "🚀 Creating temporary VM with full provisioning..."
-	if [ "${VM_DEBUG:-}" = "true" ]; then
-		echo "DEBUG: Calling docker_up with:" >&2
-		echo "DEBUG:   CONFIG: [truncated for brevity]" >&2
-		echo "DEBUG:   TEMP_PROJECT_DIR: $TEMP_PROJECT_DIR" >&2
-		echo "DEBUG:   VM_TEMP_MOUNTS: $VM_TEMP_MOUNTS" >&2
+	if [[ "${VM_DEBUG:-}" = "true" ]]; then
+		echo "DEBUG handle_temp_command: calling docker_up with:" >&2
+		echo "DEBUG handle_temp_command:   CONFIG: [truncated for brevity]" >&2
+		echo "DEBUG handle_temp_command:   TEMP_PROJECT_DIR: $TEMP_PROJECT_DIR" >&2
+		echo "DEBUG handle_temp_command:   VM_TEMP_MOUNTS: $VM_TEMP_MOUNTS" >&2
 	fi
 	
 	# Call docker_up and capture any errors
@@ -1485,7 +1471,12 @@ EOF
 		echo "   - Check disk space: df -h"
 		# Clean up on failure
 		rm -f "$TEMP_CONFIG_FILE" "$TEMP_DIR_MARKER"
-		rm -rf "$TEMP_PROJECT_DIR"
+		# Safely remove temp project directory with validation
+		if [[ -n "$TEMP_PROJECT_DIR" ]] && [[ "$TEMP_PROJECT_DIR" == "/tmp/vm-temp-project" ]]; then
+			rm -rf "$TEMP_PROJECT_DIR"
+		else
+			echo "⚠️  Warning: Skipping cleanup of unexpected temp dir: $TEMP_PROJECT_DIR" >&2
+		fi
 		exit 1
 	fi
 	
@@ -1493,7 +1484,7 @@ EOF
 	# Will be updated to new format when we update save_temp_state function
 	MOUNT_STRING=""
 	for mount in "${PROCESSED_MOUNTS[@]}"; do
-		if [ -n "$MOUNT_STRING" ]; then
+		if [[ -n "$MOUNT_STRING" ]]; then
 			MOUNT_STRING="$MOUNT_STRING,$mount"
 		else
 			MOUNT_STRING="$mount"
@@ -1505,7 +1496,7 @@ EOF
 	rm -f "$TEMP_CONFIG_FILE"
 	
 	# Handle auto-destroy if flag was set
-	if [ "$AUTO_DESTROY" = "true" ]; then
+	if [[ "$AUTO_DESTROY" = "true" ]]; then
 		echo "🗑️ Auto-destroying temp VM..."
 		docker_cmd rm -f "$TEMP_CONTAINER" >/dev/null 2>&1
 		# Clean up volumes

@@ -4,7 +4,9 @@
 
 set -e
 
-# Function to perform deep merge with mixin semantics
+# Perform deep merge of two JSON configurations with mixin semantics
+# Args: base_config (JSON string), override_config (JSON string)
+# Returns: Merged JSON configuration with override values taking precedence
 deep_merge_configs() {
     local base_config="$1"
     local override_config="$2"
@@ -54,7 +56,9 @@ deep_merge_configs() {
     '
 }
 
-# Function to merge a project config with default config
+# Merge project configuration with default configuration files
+# Args: default_config_path (YAML file), project_config_path (YAML file)
+# Returns: Merged JSON configuration, validates files and converts YAML to JSON
 merge_project_config() {
     local default_config_path="$1"
     local project_config_path="$2"
@@ -88,6 +92,8 @@ merge_project_config() {
 }
 
 # Main function for command line usage
+# Args: default_config_path, project_config_path
+# Validates arguments and calls merge_project_config
 main() {
     if [[ $# -ne 2 ]]; then
         echo "Usage: $0 <default-config.yaml> <project-config.yaml>" >&2
