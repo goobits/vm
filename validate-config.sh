@@ -314,11 +314,6 @@ load_and_merge_config() {
         final_config="$default_config"
     fi
     
-    # Add metadata for scan mode
-    if [[ -n "$config_dir_for_scan" ]]; then
-        final_config="$(echo "$final_config" | jq --arg dir "$config_dir_for_scan" '. + {"__config_dir": $dir}')"
-    fi
-    
     echo "$final_config"
 }
 

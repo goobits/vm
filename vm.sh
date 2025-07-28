@@ -497,15 +497,14 @@ docker_ssh() {
 	project_name=$(echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]')
 		local container_name="${project_name}-dev"
 		
-		# Run an interactive shell that properly handles signals
+		# Run an interactive shell with the working directory set
 		if [ "${VM_DEBUG:-}" = "true" ]; then
-			echo "DEBUG docker_ssh: Executing: docker exec -it -e VM_TARGET_DIR='$target_dir' ${container_name} sudo -u $project_user bash -c \"cd '$target_dir' && exec /bin/zsh\"" >&2
+			echo "DEBUG docker_ssh: Executing: docker exec -it ${container_name} su - $project_user -c \"VM_TARGET_DIR='$target_dir' exec zsh\"" >&2
 		fi
-		# Set environment variable and use bash to ensure directory change
-		docker_cmd exec -it -e "VM_TARGET_DIR=$target_dir" "${container_name}" sudo -u "$project_user" bash -c "
-			cd '$target_dir' || exit 1
-			exec /bin/zsh
-		"
+		
+		# Use su - with -c to set VM_TARGET_DIR and exec zsh
+		# This ensures the environment variable is available to .zshrc
+		docker_cmd exec -it "${container_name}" su - "$project_user" -c "VM_TARGET_DIR='$target_dir' exec zsh"
 	fi
 }
 
@@ -1276,7 +1275,13 @@ case "${1:-}" in
 			
 			# Determine project directory
 			if [ "$CUSTOM_CONFIG" = "__SCAN__" ]; then
-				PROJECT_DIR="$CURRENT_DIR"
+				# In scan mode, get the directory where config was found
+				CONFIG_DIR=$(echo "$CONFIG" | yq -r '.__config_dir // empty' 2>/dev/null)
+				if [ -n "$CONFIG_DIR" ]; then
+					PROJECT_DIR="$CONFIG_DIR"
+				else
+					PROJECT_DIR="$CURRENT_DIR"
+				fi
 			elif [ -n "$CUSTOM_CONFIG" ]; then
 				FULL_CONFIG_PATH="$(cd "$CURRENT_DIR" && readlink -f "$CUSTOM_CONFIG")"
 				PROJECT_DIR="$(dirname "$FULL_CONFIG_PATH")"
