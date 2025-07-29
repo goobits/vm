@@ -122,3 +122,31 @@ if [ -n "$VM_TARGET_DIR" ]; then
 else
   cd {{ project_path }} 2>/dev/null || true
 fi
+
+# Directory sync: Save current directory on exit to sync with host
+# Only saves directory if we're inside the workspace
+save_current_directory() {
+  local current_dir="$(pwd)"
+  local workspace_path="{{ project_path }}"
+  
+  # Check if current directory is inside workspace
+  case "$current_dir" in
+    "$workspace_path"*)
+      # Calculate relative path from workspace root
+      local relative_path="${current_dir#$workspace_path}"
+      # Remove leading slash if present
+      relative_path="${relative_path#/}"
+      # Save to shared temp location that host can access
+      echo "$relative_path" > /tmp/vm-exit-directory 2>/dev/null || echo "$relative_path" > ~/.vm-exit-directory 2>/dev/null || true
+      ;;
+    *)
+      # Outside workspace - remove any existing state file (no-op on host)
+      rm -f /tmp/vm-exit-directory ~/.vm-exit-directory 2>/dev/null || true
+      ;;
+  esac
+}
+
+# Set up zsh hook to save directory on shell exit (works with exec)
+zshexit() {
+  save_current_directory
+}
