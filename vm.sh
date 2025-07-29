@@ -240,6 +240,7 @@ show_usage() {
 	echo "  logs [args]           View VM logs (Docker only)"
 	echo "  exec [args]           Execute command in VM (Docker only)"
 	echo "  test [args]           Run VM test suite"
+	echo "  get-sync-directory    Get current VM directory for shell integration"
 	echo "  kill                  Force kill VM processes"
 	echo ""
 	echo "Examples:"
@@ -262,6 +263,7 @@ show_usage() {
 	echo "  vm start --auto-login=false              # Start VM without auto SSH"
 	echo "  vm ssh                                   # Connect to VM"
 	echo "  vm stop                                  # Stop the VM"
+	echo "  vm get-sync-directory                    # Get VM's current directory for cd"
 	echo ""
 	echo "The provider (Vagrant or Docker) is determined by the 'provider' field in vm.yaml"
 }
@@ -487,6 +489,51 @@ docker_up() {
 	fi
 }
 
+# Sync directory after VM exit - change to corresponding host directory if inside workspace
+sync_directory_after_exit() {
+	local config="$1"
+	local project_dir="$2"
+	local container_name
+	container_name=$(get_project_container_name "$config")
+	
+	# Try to read the saved directory state from the container
+	local vm_exit_dir=""
+	if vm_exit_dir=$(docker_cmd exec "${container_name}" cat /tmp/vm-exit-directory 2>/dev/null || docker_cmd exec "${container_name}" cat ~/.vm-exit-directory 2>/dev/null); then
+		# Remove any trailing whitespace/newlines
+		vm_exit_dir=$(echo "$vm_exit_dir" | tr -d '\n\r')
+		
+		if [[ "${VM_DEBUG:-}" = "true" ]]; then
+			echo "DEBUG sync_directory_after_exit: vm_exit_dir='$vm_exit_dir'" >&2
+			echo "DEBUG sync_directory_after_exit: project_dir='$project_dir'" >&2
+		fi
+		
+		# If we have a relative path, construct the target host directory
+		if [[ -n "$vm_exit_dir" ]]; then
+			local target_host_dir="$project_dir/$vm_exit_dir"
+			
+			# Verify the target directory exists on the host
+			if [[ -d "$target_host_dir" ]]; then
+				if [[ "${VM_DEBUG:-}" = "true" ]]; then
+					echo "DEBUG sync_directory_after_exit: Target directory exists: '$target_host_dir'" >&2
+				fi
+				# Note: We can't change the parent shell's directory from here
+				# The vm get-sync-directory command or shell wrapper should be used
+			else
+				if [[ "${VM_DEBUG:-}" = "true" ]]; then
+					echo "DEBUG sync_directory_after_exit: Target directory does not exist: '$target_host_dir'" >&2
+				fi
+			fi
+		fi
+		
+		# Clean up the temporary files
+		docker_cmd exec "${container_name}" rm -f /tmp/vm-exit-directory ~/.vm-exit-directory 2>/dev/null || true
+	else
+		if [[ "${VM_DEBUG:-}" = "true" ]]; then
+			echo "DEBUG sync_directory_after_exit: No exit directory state found" >&2
+		fi
+	fi
+}
+
 docker_ssh() {
 	local config="$1"
 	local project_dir="$2"
@@ -534,6 +581,9 @@ docker_ssh() {
 		# Use sudo for proper signal handling
 		# This ensures proper Ctrl+C behavior (single tap interrupts, double tap to detach)
 		docker_cmd exec -it "${container_name}" sudo -u "$project_user" sh -c "VM_TARGET_DIR='$target_dir' exec zsh"
+		
+		# After SSH session ends, check if we should change to a different directory
+		sync_directory_after_exit "$config" "$project_dir"
 	fi
 }
 
@@ -644,8 +694,24 @@ docker_reload() {
 	local project_dir="$2"
 	shift 2
 	
-	docker_halt "$config" "$project_dir"
-	docker_start "$config" "$project_dir" "$@"
+	echo "🔄 Restarting VM..."
+	
+	# Stop the container with error handling
+	if ! docker_halt "$config" "$project_dir"; then
+		echo "❌ Failed to stop VM"
+		return 1
+	fi
+	
+	echo "✅ VM stopped successfully"
+	
+	# Start the container with error handling
+	# docker_start expects: config, project_dir, relative_path, auto_login, then any extra args
+	if ! docker_start "$config" "$project_dir" "." "false" "$@"; then
+		echo "❌ Failed to start VM"
+		return 1
+	fi
+	
+	echo "🎉 VM restarted successfully!"
 }
 
 docker_provision() {
@@ -1189,6 +1255,40 @@ case "${1:-}" in
 		;;
 	"list")
 		vm_list
+		;;
+	"get-sync-directory")
+		# Load config to get container info
+		if ! CONFIG=$(load_config "$CUSTOM_CONFIG" "$CURRENT_DIR"); then
+			exit 1
+		fi
+		
+		PROVIDER=$(get_provider "$CONFIG")
+		if [[ "$PROVIDER" != "docker" ]]; then
+			echo "❌ Directory sync only supported for Docker provider" >&2
+			exit 1
+		fi
+		
+		# Determine project directory
+		if [[ "$CUSTOM_CONFIG" = "__SCAN__" ]]; then
+			PROJECT_DIR="$CURRENT_DIR"
+		elif [[ -n "$CUSTOM_CONFIG" ]]; then
+			FULL_CONFIG_PATH="$(cd "$CURRENT_DIR" && readlink -f "$CUSTOM_CONFIG")"
+			PROJECT_DIR="$(dirname "$FULL_CONFIG_PATH")"
+		else
+			PROJECT_DIR="$CURRENT_DIR"
+		fi
+		
+		# Get the sync directory and output absolute host path
+		container_name=$(get_project_container_name "$CONFIG")
+		if vm_exit_dir=$(docker_cmd exec "${container_name}" cat /tmp/vm-exit-directory 2>/dev/null || docker_cmd exec "${container_name}" cat ~/.vm-exit-directory 2>/dev/null); then
+			vm_exit_dir=$(echo "$vm_exit_dir" | tr -d '\n\r')
+			if [[ -n "$vm_exit_dir" ]]; then
+				target_host_dir="$PROJECT_DIR/$vm_exit_dir"
+				if [[ -d "$target_host_dir" ]]; then
+					echo "$target_host_dir"
+				fi
+			fi
+		fi
 		;;
 	"kill")
 		# Load config to determine provider
