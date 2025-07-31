@@ -25,6 +25,9 @@ fi
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# Source shared deep merge utilities
+source "$SCRIPT_DIR/shared/deep-merge.sh"
+
 # Initialize variables
 VALIDATE_FLAG=""
 GET_CONFIG_FLAG=""
@@ -67,21 +70,6 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Deep merge function using jq
-deep_merge() {
-    local base_config="$1"
-    local override_config="$2"
-    
-    echo "$base_config" | jq --argjson override "$override_config" '
-        def deepmerge(a; b):
-            if (a | type) == "object" and (b | type) == "object" then
-                reduce (b | keys_unsorted[]) as $key (a; 
-                    .[$key] = deepmerge(.[$key]; b[$key]))
-            elif b == null then a
-            else b end;
-        deepmerge(.; $override)
-    '
-}
 
 # Extract default values from YAML schema
 extract_schema_defaults() {
@@ -309,7 +297,7 @@ load_and_merge_config() {
     # Merge configurations
     local final_config
     if [[ -n "$user_config" ]]; then
-        final_config="$(deep_merge "$default_config" "$user_config")"
+        final_config="$(deep_merge_configs "$default_config" "$user_config")"
     else
         final_config="$default_config"
     fi

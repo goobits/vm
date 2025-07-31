@@ -138,7 +138,7 @@ cleanup_test_env() {
     fi
     
     # Remove test directory
-    rm -rf "$TEST_DIR"
+    rm -rf "$TEST_DIR" || true
 }
 
 # Register a cleanup command
@@ -568,8 +568,8 @@ test_validation() {
         echo -e "${GREEN}✓ Validation detects missing config${NC}"
     else
         echo -e "${RED}✗ Validation should detect missing config${NC}"
-        cd - > /dev/null
-        rm -rf "$test_dir"
+        cd - > /dev/null || true
+        rm -rf "$test_dir" || true
         return 1
     fi
     
@@ -579,14 +579,14 @@ test_validation() {
         echo -e "${GREEN}✓ Validation passes with valid config${NC}"
     else
         echo -e "${RED}✗ Validation failed with valid config${NC}"
-        cd - > /dev/null
-        rm -rf "$test_dir"
+        cd - > /dev/null || true
+        rm -rf "$test_dir" || true
         return 1
     fi
     
     # Cleanup
-    cd - > /dev/null
-    rm -rf "$test_dir"
+    cd - > /dev/null || true
+    rm -rf "$test_dir" || true
 }
 
 # Test all generated configs are valid
@@ -609,12 +609,12 @@ test_generated_configs_valid() {
         if /workspace/vm.sh validate > /dev/null 2>&1; then
             echo -e "\\033[0;32m✓\\033[0m"
             cd - > /dev/null
-            rm -rf "$temp_dir"
+            rm -rf "$temp_dir" || true
             exit 0
         else
             echo -e "\\033[0;31m✗\\033[0m"
             cd - > /dev/null
-            rm -rf "$temp_dir"
+            rm -rf "$temp_dir" || true
             exit 1
         fi
     ' bash {} \; || failed=$((failed + 1))

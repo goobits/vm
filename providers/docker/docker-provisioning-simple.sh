@@ -8,8 +8,9 @@ set -e
 # Get VM tool directory for accessing default config and utilities
 VM_TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# Source the deep merge utility
+# Source shared utilities
 source "$VM_TOOL_DIR/shared/deep-merge.sh"
+source "$VM_TOOL_DIR/shared/npm-utils.sh"
 
 # Generate docker-compose.yml from VM configuration
 # Args: config_path (required), project_dir (optional, defaults to pwd)
@@ -172,25 +173,25 @@ generate_docker_compose() {
     
     # NPM linked packages volumes
     local npm_link_volumes=""
-    if command -v npm >/dev/null 2>&1; then
+    if command -v npm >/dev/null 2>&1 && declare -f detect_npm_linked_packages >/dev/null 2>&1; then
+        local npm_packages_array=()
         local npm_packages
         npm_packages="$(echo "$config" | jq -r '.npm_packages[]? // empty')"
         if [[ -n "$npm_packages" ]]; then
-            local npm_root
-            npm_root="$(npm root -g 2>/dev/null)"
-            if [[ -n "$npm_root" && -d "$npm_root" ]]; then
-                while IFS= read -r package; do
-                    [[ -z "$package" ]] && continue
-                    local link_path="$npm_root/$package"
-                    if [[ -L "$link_path" ]]; then
-                        local target_path
-                        target_path="$(readlink -f "$link_path")"
-                        # Sanitize package name for mount path (replace @ and / with -)
-                        local safe_package_name="${package//[@\/]/-}"
-                        npm_link_volumes+="\\n      - $target_path:/workspace/.npm_links/$safe_package_name:delegated"
-                        echo "📦 Found linked package: $package -> $target_path" >&2
-                    fi
-                done <<< "$npm_packages"
+            while IFS= read -r package; do
+                [[ -z "$package" ]] && continue
+                npm_packages_array+=("$package")
+            done <<< "$npm_packages"
+            
+            # Use the shared function to detect linked packages
+            local linked_volumes
+            linked_volumes=$(detect_npm_linked_packages "${npm_packages_array[@]}")
+            if [[ -n "$linked_volumes" ]]; then
+                while IFS= read -r volume; do
+                    [[ -z "$volume" ]] && continue
+                    # Extract just the volume mapping part and format for docker-compose
+                    npm_link_volumes+="\\n      - $volume"
+                done <<< "$linked_volumes"
             fi
         fi
     fi

@@ -1328,13 +1328,6 @@ EOF
 	# No existing VM or user chose to recreate - proceed with creation
 	TEMP_CONTAINER="vmtemp-dev"  # Use consistent naming with regular VMs
 	
-	# Source the deep merge utility
-	if [[ ! -f "$SCRIPT_DIR/shared/deep-merge.sh" ]]; then
-		echo "❌ Error: Required file not found: $SCRIPT_DIR/shared/deep-merge.sh"
-		echo "💡 Make sure the VM tool is properly installed"
-		exit 1
-	fi
-	source "$SCRIPT_DIR/shared/deep-merge.sh"
 	
 	# Generate minimal temporary vm.yaml config with just overrides
 	TEMP_CONFIG_FILE=$(mktemp /tmp/vm-temp.XXXXXX.yaml)

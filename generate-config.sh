@@ -121,7 +121,11 @@ if [[ -n "$SERVICES" ]]; then
         service_value="$(yq -r ".services.$service" "$service_config_file")"
         
         # Use yq to merge the service configuration into the base config
-        echo "$service_value" | yq -y . | yq -s '.[0].services["'"$service"'"] = .[1] | .[0]' "$base_config_temp" - > "${base_config_temp}.new"
+        if ! echo "$service_value" | yq -y . | yq -s '.[0].services["'"$service"'"] = .[1] | .[0]' "$base_config_temp" - > "${base_config_temp}.new"; then
+            echo "❌ Error: Failed to merge service configuration for: $service" >&2
+            rm -f "$base_config_temp" "${base_config_temp}.new" || true
+            exit 1
+        fi
         mv "${base_config_temp}.new" "$base_config_temp"
     done
 fi
@@ -129,9 +133,9 @@ fi
 # Apply project name and generate derived values (hostname, username)
 # Updates project.name, project.hostname, and terminal.username fields
 if [[ -n "$PROJECT_NAME" ]]; then
-    yq -y ".project.name = \"$PROJECT_NAME\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
-    yq -y ".project.hostname = \"dev.$PROJECT_NAME.local\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
-    yq -y ".terminal.username = \"$PROJECT_NAME-dev\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
+    yq -y ".project.name = \"$PROJECT_NAME\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp" || { rm -f "${base_config_temp}.tmp" || true; exit 1; }
+    yq -y ".project.hostname = \"dev.$PROJECT_NAME.local\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp" || { rm -f "${base_config_temp}.tmp" || true; exit 1; }
+    yq -y ".terminal.username = \"$PROJECT_NAME-dev\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp" || { rm -f "${base_config_temp}.tmp" || true; exit 1; }
 fi
 
 # Apply port configuration starting from specified base port
@@ -151,20 +155,20 @@ if [[ -n "$PORTS" ]]; then
     mongodb_port="$((PORTS + 7))"
     
     # Set port configuration using yq
-    yq -y ".ports.web = $web_port" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
-    yq -y ".ports.api = $api_port" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
-    yq -y ".ports.postgresql = $postgres_port" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
-    yq -y ".ports.redis = $redis_port" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
-    yq -y ".ports.mongodb = $mongodb_port" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
+    yq -y ".ports.web = $web_port" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp" || { rm -f "${base_config_temp}.tmp" || true; exit 1; }
+    yq -y ".ports.api = $api_port" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp" || { rm -f "${base_config_temp}.tmp" || true; exit 1; }
+    yq -y ".ports.postgresql = $postgres_port" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp" || { rm -f "${base_config_temp}.tmp" || true; exit 1; }
+    yq -y ".ports.redis = $redis_port" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp" || { rm -f "${base_config_temp}.tmp" || true; exit 1; }
+    yq -y ".ports.mongodb = $mongodb_port" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp" || { rm -f "${base_config_temp}.tmp" || true; exit 1; }
 fi
 
 # Auto-generate project name from current directory when not specified
 # Uses basename of current working directory for project naming
 if [[ -z "$PROJECT_NAME" ]]; then
     dir_name="$(basename "$(pwd)")"
-    yq -y ".project.name = \"$dir_name\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
-    yq -y ".project.hostname = \"dev.$dir_name.local\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
-    yq -y ".terminal.username = \"$dir_name-dev\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp"
+    yq -y ".project.name = \"$dir_name\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp" || { rm -f "${base_config_temp}.tmp" || true; exit 1; }
+    yq -y ".project.hostname = \"dev.$dir_name.local\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp" || { rm -f "${base_config_temp}.tmp" || true; exit 1; }
+    yq -y ".terminal.username = \"$dir_name-dev\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp" || { rm -f "${base_config_temp}.tmp" || true; exit 1; }
 fi
 
 # Write final configuration
@@ -191,9 +195,9 @@ if cp "$base_config_temp" "$OUTPUT_FILE"; then
     echo "  2. Run \"vm create\" to start your development environment"
     
     # Clean up temporary file
-    rm -f "$base_config_temp"
+    rm -f "$base_config_temp" || true
 else
     echo "❌ Failed to generate configuration" >&2
-    rm -f "$base_config_temp"
+    rm -f "$base_config_temp" || true
     exit 1
 fi
