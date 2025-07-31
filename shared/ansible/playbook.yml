@@ -326,10 +326,20 @@
         until: apt_packages_install is succeeded
         when: project_config.apt_packages is defined and project_config.apt_packages | length > 0
 
-      - name: Install global npm packages
+      - name: Install global npm packages (with link detection)
         shell: |
             source ~/.nvm/nvm.sh
-            npm install -g {{ item }}
+            package="{{ item }}"
+            # Sanitize package name to match mount path (replace @ and / with -)
+            safe_package_name="${package//[@\/]/-}"
+            if [ -d "/workspace/.npm_links/$safe_package_name" ]; then
+                echo "🔗 Linking local package: $package"
+                cd "/workspace/.npm_links/$safe_package_name" && npm link
+                # The package is now globally available via the link 
+            else
+                echo "📦 Installing from registry: $package"
+                npm install -g "$package"
+            fi
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'

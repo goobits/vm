@@ -314,6 +314,26 @@ load_config() {
 	fi
 }
 
+# Detect npm linked packages and generate volume mounts
+detect_npm_linked_packages() {
+	local npm_packages_array=("$@")
+	local npm_root=$(npm root -g 2>/dev/null)
+	local additional_volumes=()
+	
+	if [[ -n "$npm_root" && -d "$npm_root" ]]; then
+		for package in "${npm_packages_array[@]}"; do
+			local link_path="$npm_root/$package"
+			if [[ -L "$link_path" ]]; then
+				local target_path=$(readlink -f "$link_path")
+				additional_volumes+=("$target_path:/workspace/.npm_links/$package:delegated")
+				echo "📦 Found linked package: $package -> $target_path" >&2
+			fi
+		done
+	fi
+	
+	printf '%s\n' "${additional_volumes[@]}"
+}
+
 # Get provider from config
 get_provider() {
 	local config="$1"

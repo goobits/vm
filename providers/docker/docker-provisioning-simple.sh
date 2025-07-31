@@ -170,6 +170,31 @@ generate_docker_compose() {
         groups+=("video" "render")
     fi
     
+    # NPM linked packages volumes
+    local npm_link_volumes=""
+    if command -v npm >/dev/null 2>&1; then
+        local npm_packages
+        npm_packages="$(echo "$config" | jq -r '.npm_packages[]? // empty')"
+        if [[ -n "$npm_packages" ]]; then
+            local npm_root
+            npm_root="$(npm root -g 2>/dev/null)"
+            if [[ -n "$npm_root" && -d "$npm_root" ]]; then
+                while IFS= read -r package; do
+                    [[ -z "$package" ]] && continue
+                    local link_path="$npm_root/$package"
+                    if [[ -L "$link_path" ]]; then
+                        local target_path
+                        target_path="$(readlink -f "$link_path")"
+                        # Sanitize package name for mount path (replace @ and / with -)
+                        local safe_package_name="${package//[@\/]/-}"
+                        npm_link_volumes+="\\n      - $target_path:/workspace/.npm_links/$safe_package_name:delegated"
+                        echo "📦 Found linked package: $package -> $target_path" >&2
+                    fi
+                done <<< "$npm_packages"
+            fi
+        fi
+    fi
+
     # Build consolidated devices and groups sections
     local devices_section=""
     if [[ ${#devices[@]} -gt 0 ]]; then
@@ -212,7 +237,7 @@ generate_docker_compose() {
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${project_name}_nvm:/home/$project_user/.nvm
       - ${project_name}_cache:/home/$project_user/.cache
-      - ${project_name}_config:/tmp$claude_sync_volume$gemini_sync_volume$database_volumes$temp_mount_volumes$audio_volumes$gpu_volumes$ports_section$devices_section$groups_section
+      - ${project_name}_config:/tmp$claude_sync_volume$gemini_sync_volume$database_volumes$temp_mount_volumes$npm_link_volumes$audio_volumes$gpu_volumes$ports_section$devices_section$groups_section
     networks:
       - ${project_name}_network
     cap_add:
