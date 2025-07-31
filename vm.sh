@@ -2,6 +2,13 @@
 # VM wrapper script for Goobits - supports both Vagrant and Docker
 # Usage: ./packages/vm/vm.sh [command] [args...]
 
+# Check if being sourced for functions only
+if [[ "$1" == "--source-only" ]]; then
+	# Don't execute main logic, just define functions
+	# Skip to the end after function definitions
+	SKIP_MAIN_EXECUTION=true
+fi
+
 set -e
 
 # Enable debug mode if VM_DEBUG is set
@@ -42,6 +49,131 @@ fi
 # Get the current working directory (where user ran the command)
 CURRENT_DIR="$(pwd)"
 
+# Source shared utilities
+source "$SCRIPT_DIR/shared/npm-utils.sh"
+
+# Validate mount directory security (dangerous characters and path traversal)
+validate_mount_security() {
+	local dir_path="$1"
+	
+	# Check for dangerous characters
+	if [[ "$dir_path" =~ [\;\`\$\"] ]]; then
+		echo "❌ Error: Directory name contains potentially dangerous characters" >&2
+		echo "💡 Directory names cannot contain: ; \` $ \"" >&2
+		return 1
+	fi
+	
+	# Check for path traversal attempts
+	if [[ "$dir_path" =~ \.\./ ]] || [[ "$dir_path" =~ /\.\. ]]; then
+		echo "❌ Error: Directory path traversal not allowed" >&2
+		return 1
+	fi
+	
+	return 0
+}
+
+# Detect potential comma-in-directory-name issues by analyzing parsed fragments
+detect_comma_in_paths() {
+	local -n mounts_array="$1"
+	local suspicious_count=0
+	local total_count=${#mounts_array[@]}
+	
+	# Check if any parsed fragment looks suspicious (very short, no path separators)
+	for test_mount in "${mounts_array[@]}"; do
+		test_mount=$(echo "$test_mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+		# Remove permission suffix for testing
+		if [[ "$test_mount" == *:* ]]; then
+			test_mount="${test_mount%:*}"
+		fi
+		# Very short fragments (1-2 chars) without slashes are suspicious  
+		if [[ -n "$test_mount" ]] && [[ ${#test_mount} -le 2 ]] && [[ "$test_mount" != *"/"* ]] && [[ "$test_mount" != "."* ]]; then
+			((suspicious_count++))
+		fi
+	done
+	
+	# If more than half the fragments are suspicious short names, likely comma issue
+	if [[ $total_count -gt 2 ]] && [[ $suspicious_count -gt $((total_count / 2)) ]]; then
+		echo "❌ Error: Possible comma-containing directory names detected" >&2
+		echo "   Parsed fragments: ${mounts_array[*]}" >&2  
+		echo "   Directory names containing commas are not supported" >&2
+		echo "   Tip: Use symlinks like: ln -s 'dir,with,commas' dir-without-commas" >&2
+		return 1
+	fi
+	
+	return 0
+}
+
+# Parse mount permissions and return appropriate Docker mount flags
+parse_mount_permissions() {
+	local perm="$1"
+	local mount_flags=""
+	
+	case "$perm" in
+		"ro"|"readonly")
+			mount_flags=":ro"
+			;;
+		"rw"|"readwrite"|*)
+			# Default to read-write (no additional flags)
+			mount_flags=""
+			;;
+	esac
+	
+	echo "$mount_flags"
+}
+
+# Construct Docker mount argument for a validated directory and permissions
+construct_mount_argument() {
+	local source_dir="$1"
+	local permission_flags="$2"
+	
+	# Validate and quote the realpath to prevent command injection
+	local real_source
+	if ! real_source=$(realpath "$source_dir" 2>/dev/null); then
+		echo "❌ Error: Cannot resolve path '$source_dir'" >&2
+		return 1
+	fi
+	
+	# Build the mount argument
+	echo "-v $(printf '%q' "$real_source"):/workspace/$(basename "$source_dir")${permission_flags}"
+}
+
+# Process a single mount specification (with or without permissions)
+process_single_mount() {
+	local mount="$1"
+	local source=""
+	local perm=""
+	
+	# Trim whitespace
+	mount=$(echo "$mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+	
+	# Handle mount:permission format (e.g., ./src:rw, ./config:ro)
+	if [[ "$mount" == *:* ]]; then
+		source="${mount%:*}"
+		perm="${mount##*:}"
+	else
+		source="$mount"
+		perm="rw"  # Default to read-write
+	fi
+	
+	# Check if source exists and is a directory
+	if [[ ! -d "$source" ]]; then
+		echo "❌ Error: Directory '$source' does not exist or is not a directory" >&2
+		return 1
+	fi
+	
+	# Validate directory security
+	if ! validate_mount_security "$source"; then
+		return 1
+	fi
+	
+	# Parse permissions and construct mount argument
+	local permission_flags
+	permission_flags=$(parse_mount_permissions "$perm")
+	
+	# Construct and return the mount argument
+	construct_mount_argument "$source" "$permission_flags"
+}
+
 # Parse comma-separated mount string into mount arguments
 # Note: Directory names containing commas are not supported due to parsing complexity
 parse_mount_string() {
@@ -56,105 +188,18 @@ parse_mount_string() {
 		IFS=',' read -r -a MOUNTS <<< "$mount_str"  # Proper array assignment
 		IFS="$old_ifs"
 		
-		# Pre-validate: Detect obvious comma-in-name issues  
-		# Check if any parsed fragment looks suspicious (very short, no path separators)
-		# and if so, warn about comma limitation
-		local suspicious_count=0
-		local total_count=${#MOUNTS[@]}
-		for test_mount in "${MOUNTS[@]}"; do
-			test_mount=$(echo "$test_mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-			# Remove permission suffix for testing
-			if [[ "$test_mount" == *:* ]]; then
-				test_mount="${test_mount%:*}"
-			fi
-			# Very short fragments (1-2 chars) without slashes are suspicious  
-			if [[ -n "$test_mount" ]] && [[ ${#test_mount} -le 2 ]] && [[ "$test_mount" != *"/"* ]] && [[ "$test_mount" != "."* ]]; then
-				((suspicious_count++))
-			fi
-		done
-		
-		# If more than half the fragments are suspicious short names, likely comma issue
-		if [[ $total_count -gt 2 ]] && [[ $suspicious_count -gt $((total_count / 2)) ]]; then
-			echo "❌ Error: Possible comma-containing directory names detected" >&2
-			echo "   Parsed fragments: ${MOUNTS[*]}" >&2  
-			echo "   Directory names containing commas are not supported" >&2
-			echo "   Tip: Use symlinks like: ln -s 'dir,with,commas' dir-without-commas" >&2
+		# Pre-validate: Detect comma-in-directory-name issues
+		if ! detect_comma_in_paths MOUNTS; then
 			return 1
 		fi
+		
+		# Process each mount using dedicated sub-function
 		for mount in "${MOUNTS[@]}"; do
-			# Trim whitespace
-			mount=$(echo "$mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-			
-			# Handle mount:permission format (e.g., ./src:rw, ./config:ro)
-			if [[ "$mount" == *:* ]]; then
-				local source
-				source="${mount%:*}"
-				local perm
-				perm="${mount##*:}"
-				# Check if source exists and is a directory
-				if [[ ! -d "$source" ]]; then
-					echo "❌ Error: Directory '$source' does not exist or is not a directory" >&2
-					return 1
-				fi
-				
-				# Validate directory name for security
-				if [[ "$source" =~ [\;\`\$\"] ]]; then
-					echo "❌ Error: Directory name contains potentially dangerous characters" >&2
-					echo "💡 Directory names cannot contain: ; \` $ \"" >&2
-					return 1
-				fi
-				
-				if [[ "$source" =~ \.\./|/\.\. ]]; then
-					echo "❌ Error: Directory path traversal not allowed" >&2
-					return 1
-				fi
-				case "$perm" in
-					"ro"|"readonly")
-						# Validate and quote the realpath to prevent command injection
-						local real_source
-						if ! real_source=$(realpath "$source" 2>/dev/null); then
-							echo "❌ Error: Cannot resolve path '$source'" >&2
-							return 1
-						fi
-						mount_args="$mount_args -v $(printf '%q' "$real_source"):/workspace/$(basename "$source"):ro"
-						;;
-					"rw"|"readwrite"|*)
-						# Validate and quote the realpath to prevent command injection
-						local real_source
-						if ! real_source=$(realpath "$source" 2>/dev/null); then
-							echo "❌ Error: Cannot resolve path '$source'" >&2
-							return 1
-						fi
-						mount_args="$mount_args -v $(printf '%q' "$real_source"):/workspace/$(basename "$source")"
-						;;
-				esac
+			local mount_arg
+			if mount_arg=$(process_single_mount "$mount"); then
+				mount_args="$mount_args $mount_arg"
 			else
-				# Check if mount exists and is a directory
-				if [[ ! -d "$mount" ]]; then
-					echo "❌ Error: Directory '$mount' does not exist or is not a directory" >&2
-					return 1
-				fi
-				
-				# Validate directory name for security
-				if [[ "$mount" =~ [\;\`\$\"] ]]; then
-					echo "❌ Error: Directory name contains potentially dangerous characters" >&2
-					echo "💡 Directory names cannot contain: ; \` $ \"" >&2
-					return 1
-				fi
-				
-				if [[ "$mount" =~ \.\./|/\.\. ]]; then
-					echo "❌ Error: Directory path traversal not allowed" >&2
-					return 1
-				fi
-				
-				# Default to read-write mount
-				# Validate and quote the realpath to prevent command injection
-				local real_mount
-				if ! real_mount=$(realpath "$mount" 2>/dev/null); then
-					echo "❌ Error: Cannot resolve path '$mount'" >&2
-					return 1
-				fi
-				mount_args="$mount_args -v $(printf '%q' "$real_mount"):/workspace/$(basename "$mount")"
+				return 1
 			fi
 		done
 	fi
@@ -314,25 +359,6 @@ load_config() {
 	fi
 }
 
-# Detect npm linked packages and generate volume mounts
-detect_npm_linked_packages() {
-	local npm_packages_array=("$@")
-	local npm_root=$(npm root -g 2>/dev/null)
-	local additional_volumes=()
-	
-	if [[ -n "$npm_root" && -d "$npm_root" ]]; then
-		for package in "${npm_packages_array[@]}"; do
-			local link_path="$npm_root/$package"
-			if [[ -L "$link_path" ]]; then
-				local target_path=$(readlink -f "$link_path")
-				additional_volumes+=("$target_path:/workspace/.npm_links/$package:delegated")
-				echo "📦 Found linked package: $package -> $target_path" >&2
-			fi
-		done
-	fi
-	
-	printf '%s\n' "${additional_volumes[@]}"
-}
 
 # Get provider from config
 get_provider() {
@@ -723,6 +749,13 @@ docker_reload() {
 	fi
 	
 	echo "✅ VM stopped successfully"
+	
+	# Regenerate docker-compose.yml to pick up config changes (npm links, etc.)
+	echo "🔄 Updating configuration..."
+	TEMP_CONFIG_FILE=$(mktemp /tmp/vm-config.XXXXXX)
+	trap 'rm -f "$TEMP_CONFIG_FILE"' EXIT
+	echo "$config" > "$TEMP_CONFIG_FILE"
+	"$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" "$TEMP_CONFIG_FILE" "$project_dir"
 	
 	# Start the container with error handling
 	# docker_start expects: config, project_dir, relative_path, auto_login, then any extra args
