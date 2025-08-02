@@ -204,14 +204,33 @@ get_temp_container_name() {
 	get_container_name_from_state
 }
 
-# Check if temp VM is running
+# Check if temp VM is running with comprehensive error handling
 is_temp_vm_running() {
 	local container_name="$1"
 	if [[ -z "$container_name" ]]; then
+		if [[ "${VM_DEBUG:-}" = "true" ]]; then
+			echo "DEBUG is_temp_vm_running: empty container name provided" >&2
+		fi
 		return 1
 	fi
 	
-	docker_cmd inspect "$container_name" >/dev/null 2>&1
+	# Check if container exists and is running
+	local container_status
+	if ! container_status=$(docker_cmd inspect "$container_name" --format='{{.State.Status}}' 2>/dev/null); then
+		if [[ "${VM_DEBUG:-}" = "true" ]]; then
+			echo "DEBUG is_temp_vm_running: container '$container_name' not found" >&2
+		fi
+		return 1
+	fi
+	
+	if [[ "$container_status" = "running" ]]; then
+		return 0
+	else
+		if [[ "${VM_DEBUG:-}" = "true" ]]; then
+			echo "DEBUG is_temp_vm_running: container '$container_name' status: $container_status" >&2
+		fi
+		return 1
+	fi
 }
 
 # Get mounts from state file
@@ -276,13 +295,34 @@ cleanup_orphaned_temp_resources() {
 	fi
 }
 
-# Update temp VM with new mounts (preserves container)
+# Update temp VM with new mounts (preserves container) with comprehensive error recovery
 update_temp_vm_with_mounts() {
 	local container_name="$1"
 	local start_time
 	start_time=$(date +%s)
 	
+	# Validate input
+	if [[ -z "$container_name" ]]; then
+		echo "❌ Error: Container name is required" >&2
+		return 1
+	fi
+	
+	# Validate state file exists and is readable
+	if [[ ! -f "$TEMP_STATE_FILE" ]]; then
+		echo "❌ Error: Temp VM state file not found: $TEMP_STATE_FILE" >&2
+		return 1
+	fi
+	
+	if ! validate_state_file; then
+		echo "❌ Error: Temp VM state file is corrupted" >&2
+		return 1
+	fi
+	
 	echo "🔄 Updating container with new mounts..."
+	
+	# Save current container state for rollback
+	local container_backup_state
+	container_backup_state=$(docker_cmd inspect "$container_name" --format='{{.State.Status}}' 2>/dev/null || echo "unknown")
 	
 	# Get current state
 	local project_dir
@@ -291,7 +331,14 @@ update_temp_vm_with_mounts() {
 		project_dir=""
 	fi
 	if [[ -z "$project_dir" ]]; then
-		echo "❌ Error: Could not read project directory from state file"
+		echo "❌ Error: Could not read project directory from state file" >&2
+		echo "📁 State file: $TEMP_STATE_FILE" >&2
+		return 1
+	fi
+	
+	# Validate project directory exists
+	if [[ ! -d "$project_dir" ]]; then
+		echo "❌ Error: Project directory from state file does not exist: $project_dir" >&2
 		return 1
 	fi
 	
@@ -315,7 +362,17 @@ update_temp_vm_with_mounts() {
 	fi
 	
 	echo "🛑 Stopping container..."
-	docker_cmd stop "$container_name" > /dev/null 2>&1 || true
+	local stop_success=true
+	if ! docker_cmd stop "$container_name" > /dev/null 2>&1; then
+		echo "⚠️ Warning: Failed to stop container gracefully, trying force stop..." >&2
+		if ! docker_cmd kill "$container_name" > /dev/null 2>&1; then
+			echo "❌ Error: Failed to stop container '$container_name'" >&2
+			echo "💡 Container may be unresponsive. Try: vm temp destroy" >&2
+			stop_success=false
+		else
+			echo "⚠️ Container force stopped" >&2
+		fi
+	fi
 	
 	# Set environment variables for temp VM
 	export VM_TEMP_MOUNTS="$mount_string"
@@ -337,7 +394,13 @@ environments:
         image: vm-ubuntu-24.04:latest
         container_name: $container_name
         init_script: /opt/provision.sh
-        privileged: true
+        # Security: Removed privileged mode - creates container escape risks
+        # Instead use minimal capabilities for development workflows:
+        cap_add:
+          - CHOWN        # Change file ownership (needed for development file operations)
+          - SETUID       # Set user ID (needed for sudo and user switching)  
+          - SETGID       # Set group ID (needed for proper group permissions)
+        # privileged: true
         network_mode: bridge
         volumes:
           - type: volume
@@ -355,26 +418,87 @@ environments:
 	# Generate docker-compose.yml
 	"$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" "$temp_config_file" "$project_dir"
 	
-	# Clean up temp file
-	rm -f "$temp_config_file"
+	# Temp file will be cleaned up automatically by trap handler
 	
-	# Apply the new configuration using docker-compose
+	# Apply the new configuration using docker-compose with error recovery
 	echo "🚀 Applying new mount configuration..."
-	if ! (cd "$project_dir" && docker-compose up -d --no-recreate 2>/dev/null); then
-		(cd "$project_dir" && docker-compose up -d)
+	local compose_success=false
+	local compose_attempts=0
+	local max_compose_attempts=2
+	
+	while [[ $compose_attempts -lt $max_compose_attempts ]] && [[ $compose_success == false ]]; do
+		((compose_attempts++))
+		
+		if [[ $compose_attempts -eq 1 ]]; then
+			# First attempt: try with --no-recreate
+			if (cd "$project_dir" && docker-compose up -d --no-recreate 2>/dev/null); then
+				compose_success=true
+			fi
+		else
+			# Second attempt: full recreate
+			echo "🔄 Retrying with full container recreation..." >&2
+			if (cd "$project_dir" && docker-compose up -d 2>&1); then
+				compose_success=true
+			fi
+		fi
+	done
+	
+	if [[ $compose_success == false ]]; then
+		echo "❌ Error: Failed to apply new mount configuration after $compose_attempts attempts" >&2
+		echo "🧩 Attempting to restore container to previous state..." >&2
+		
+		# Try to restart the original container
+		if [[ "$container_backup_state" == "running" ]]; then
+			if docker_cmd start "$container_name" >/dev/null 2>&1; then
+				echo "⚠️ Container restored to previous running state" >&2
+				echo "💡 Mount update failed but container is accessible" >&2
+				return 1
+			fi
+		fi
+		
+		echo "❌ Error: Failed to restore container. Manual intervention may be required" >&2
+		echo "💡 Try: vm temp destroy && vm temp <your-mounts>" >&2
+		return 1
 	fi
 	
-	# Wait for container to be ready
+	# Wait for container to be ready with timeout and health checks
 	echo "⏳ Waiting for container to be ready..."
 	local max_attempts=30
 	local attempt=1
+	local container_ready=false
+	
 	while [[ $attempt -le $max_attempts ]]; do
-		if docker_cmd exec "$container_name" test -f /tmp/provisioning_complete 2>/dev/null; then
+		# First check if container is still running
+		if ! is_temp_vm_running "$container_name"; then
+			echo "❌ Error: Container stopped unexpectedly during update" >&2
+			echo "💡 Check logs: vm temp logs" >&2
 			break
 		fi
+		
+		# Check if provisioning is complete
+		if docker_cmd exec "$container_name" test -f /tmp/provisioning_complete 2>/dev/null; then
+			container_ready=true
+			break
+		fi
+		
+		# Also check if container is responding to basic commands
+		if docker_cmd exec "$container_name" echo "health-check" >/dev/null 2>&1; then
+			if [[ "${VM_DEBUG:-}" = "true" ]]; then
+				echo "DEBUG: Container responding but provisioning not complete (attempt $attempt/$max_attempts)" >&2
+			fi
+		else
+			echo "⚠️ Container not responding to exec commands (attempt $attempt/$max_attempts)" >&2
+		fi
+		
 		sleep 1
 		((attempt++))
 	done
+	
+	if [[ $container_ready == false ]]; then
+		echo "❌ Error: Container did not become ready within timeout" >&2
+		echo "💡 Container may be unhealthy. Check logs: vm temp logs" >&2
+		return 1
+	fi
 	
 	local end_time
 	end_time=$(date +%s)
@@ -467,11 +591,30 @@ handle_temp_command() {
 			# Get container name using shared function
 			container_name=$(get_container_name_from_state)
 			echo "🗑️ Destroying temp VM: $container_name"
-			docker_cmd rm -f "$container_name" >/dev/null 2>&1
-			# Clean up volumes
+			
+			# Stop container first if running
+			if is_temp_vm_running "$container_name"; then
+				echo "🛑 Stopping container..."
+				if ! docker_cmd stop "$container_name" >/dev/null 2>&1; then
+					echo "⚠️  Failed to stop container gracefully, forcing..."
+					docker_cmd kill "$container_name" >/dev/null 2>&1 || true
+				fi
+			fi
+			
+			# Remove container
+			if ! docker_cmd rm -f "$container_name" >/dev/null 2>&1; then
+				echo "⚠️  Failed to remove container '$container_name'"
+				echo "💡 Container may already be removed or you may need sudo access"
+			fi
+			
+			# Clean up volumes (non-critical, continue on failure)
 			docker_cmd volume rm vmtemp_nvm vmtemp_cache >/dev/null 2>&1 || true
+			
 			# Remove state file
-			rm -f "$TEMP_STATE_FILE"
+			if ! rm -f "$TEMP_STATE_FILE"; then
+				echo "⚠️  Failed to remove state file: $TEMP_STATE_FILE"
+			fi
+			
 			echo "✅ Temp VM destroyed"
 			exit 0
 			;;
@@ -986,13 +1129,24 @@ EOF
 			fi
 
 			echo "🚀 Starting temp VM..."
-			docker_cmd start "$container_name"
+			if ! docker_cmd start "$container_name"; then
+				echo "❌ Failed to start container '$container_name'"
+				echo "💡 Container may be corrupted. Try: vm temp destroy && vm temp <mounts>"
+				exit 1
+			fi
 
 			# Wait for ready
 			echo "⏳ Waiting for container to be ready..."
 			local max_attempts=15
 			local attempt=1
 			while [[ $attempt -le $max_attempts ]]; do
+				# Check if container is still running
+				if ! is_temp_vm_running "$container_name"; then
+					echo "❌ Container stopped unexpectedly during startup"
+					echo "💡 Check logs: vm temp logs"
+					exit 1
+				fi
+				
 				if docker_cmd exec "$container_name" echo "ready" >/dev/null 2>&1; then
 					echo "✅ Temp VM started!"
 					exit 0
@@ -1001,7 +1155,8 @@ EOF
 				((attempt++))
 			done
 
-			echo "❌ Failed to start temp VM"
+			echo "❌ Failed to start temp VM - container not responding"
+			echo "💡 Check logs: vm temp logs"
 			exit 1
 			;;
 		"stop")
@@ -1017,8 +1172,17 @@ EOF
 			fi
 
 			echo "🛑 Stopping temp VM..."
-			docker_cmd stop "$container_name"
-			echo "✅ Temp VM stopped"
+			if ! docker_cmd stop "$container_name"; then
+				echo "⚠️  Failed to stop container gracefully, trying force stop..."
+				if ! docker_cmd kill "$container_name" 2>/dev/null; then
+					echo "❌ Failed to stop container"
+					echo "💡 Container may already be stopped or you may need sudo access"
+					exit 1
+				fi
+				echo "⚠️  Container force stopped"
+			else
+				echo "✅ Temp VM stopped"
+			fi
 			exit 0
 			;;
 		"restart")
@@ -1084,7 +1248,7 @@ EOF
 			case "$response" in
 				[yY]|[yY][eE][sS])
 					# Run ansible playbook inside container
-					docker_cmd exec "$container_name" bash -c "
+					docker_cmd exec "$(printf '%q' "$container_name")" bash -c "
 						ansible-playbook -i localhost, -c local \\
 						/vm-tool/shared/ansible/playbook.yml
 					"

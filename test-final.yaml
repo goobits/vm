@@ -1,13 +1,11 @@
----
 version: '1.0'
 project:
-  name: vm
-  hostname: dev.vm.local
-  workspace_path: /workspace
+  name: test-final
+  hostname: dev.test-final.local
 vm:
   box: bento/ubuntu-24.04
   memory: 8192
   cpus: 4
   user: developer
 terminal:
-  username: vm-dev
+  username: test-final-dev

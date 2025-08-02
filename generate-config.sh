@@ -4,6 +4,15 @@
 
 set -e
 
+# Get script directory early for importing utilities
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Source temporary file utilities for secure temp file handling
+source "$SCRIPT_DIR/shared/temp-file-utils.sh"
+
+# Set up proper cleanup handlers
+setup_temp_file_handlers
+
 # Check for required tools
 if ! command -v yq &> /dev/null; then
     echo "❌ Error: yq is not installed. This tool is required for YAML processing."
@@ -21,8 +30,6 @@ if ! command -v yq &> /dev/null; then
     exit 1
 fi
 
-# Get script directory
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Default values
 DEFAULT_CONFIG="$SCRIPT_DIR/vm.yaml"
@@ -89,8 +96,8 @@ if [[ ! -f "$DEFAULT_CONFIG" ]]; then
     exit 1
 fi
 
-# Create a working copy of the base config
-base_config_temp="$(mktemp)"
+# Create a secure working copy of the base config
+base_config_temp="$(create_temp_file "vm-config.XXXXXX")"
 cp "$DEFAULT_CONFIG" "$base_config_temp"
 
 # Apply service configurations by merging individual service YAML files
@@ -121,21 +128,40 @@ if [[ -n "$SERVICES" ]]; then
         service_value="$(yq -r ".services.$service" "$service_config_file")"
         
         # Use yq to merge the service configuration into the base config
-        if ! echo "$service_value" | yq -y . | yq -s '.[0].services["'"$service"'"] = .[1] | .[0]' "$base_config_temp" - > "${base_config_temp}.new"; then
+        base_config_new="$(create_temp_file "vm-config-new.XXXXXX")"
+        if ! echo "$service_value" | yq -y . | yq -s '.[0].services["'"$service"'"] = .[1] | .[0]' "$base_config_temp" - > "$base_config_new"; then
             echo "❌ Error: Failed to merge service configuration for: $service" >&2
-            rm -f "$base_config_temp" "${base_config_temp}.new" || true
             exit 1
         fi
-        mv "${base_config_temp}.new" "$base_config_temp"
+        mv "$base_config_new" "$base_config_temp"
+        untrack_temp_file "$base_config_new"  # No longer needed since content moved
     done
 fi
+
+# Helper function for safe yq operations
+safe_yq_update() {
+    local temp_file="$1"
+    local yq_expression="$2"
+    local error_message="$3"
+    
+    local temp_output
+    temp_output="$(create_temp_file "yq-update.XXXXXX")"
+    
+    if ! yq -y "$yq_expression" "$temp_file" > "$temp_output"; then
+        echo "❌ Error: $error_message" >&2
+        exit 1
+    fi
+    
+    mv "$temp_output" "$temp_file"
+    untrack_temp_file "$temp_output"  # No longer needed since content moved
+}
 
 # Apply project name and generate derived values (hostname, username)
 # Updates project.name, project.hostname, and terminal.username fields
 if [[ -n "$PROJECT_NAME" ]]; then
-    yq -y ".project.name = \"$PROJECT_NAME\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp" || { rm -f "${base_config_temp}.tmp" || true; exit 1; }
-    yq -y ".project.hostname = \"dev.$PROJECT_NAME.local\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp" || { rm -f "${base_config_temp}.tmp" || true; exit 1; }
-    yq -y ".terminal.username = \"$PROJECT_NAME-dev\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp" || { rm -f "${base_config_temp}.tmp" || true; exit 1; }
+    safe_yq_update "$base_config_temp" ".project.name = \"$PROJECT_NAME\"" "Failed to set project name"
+    safe_yq_update "$base_config_temp" ".project.hostname = \"dev.$PROJECT_NAME.local\"" "Failed to set project hostname"
+    safe_yq_update "$base_config_temp" ".terminal.username = \"$PROJECT_NAME-dev\"" "Failed to set terminal username"
 fi
 
 # Apply port configuration starting from specified base port
@@ -154,21 +180,21 @@ if [[ -n "$PORTS" ]]; then
     redis_port="$((PORTS + 6))"
     mongodb_port="$((PORTS + 7))"
     
-    # Set port configuration using yq
-    yq -y ".ports.web = $web_port" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp" || { rm -f "${base_config_temp}.tmp" || true; exit 1; }
-    yq -y ".ports.api = $api_port" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp" || { rm -f "${base_config_temp}.tmp" || true; exit 1; }
-    yq -y ".ports.postgresql = $postgres_port" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp" || { rm -f "${base_config_temp}.tmp" || true; exit 1; }
-    yq -y ".ports.redis = $redis_port" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp" || { rm -f "${base_config_temp}.tmp" || true; exit 1; }
-    yq -y ".ports.mongodb = $mongodb_port" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp" || { rm -f "${base_config_temp}.tmp" || true; exit 1; }
+    # Set port configuration using safe yq operations
+    safe_yq_update "$base_config_temp" ".ports.web = $web_port" "Failed to set web port"
+    safe_yq_update "$base_config_temp" ".ports.api = $api_port" "Failed to set API port"
+    safe_yq_update "$base_config_temp" ".ports.postgresql = $postgres_port" "Failed to set PostgreSQL port"
+    safe_yq_update "$base_config_temp" ".ports.redis = $redis_port" "Failed to set Redis port"
+    safe_yq_update "$base_config_temp" ".ports.mongodb = $mongodb_port" "Failed to set MongoDB port"
 fi
 
 # Auto-generate project name from current directory when not specified
 # Uses basename of current working directory for project naming
 if [[ -z "$PROJECT_NAME" ]]; then
     dir_name="$(basename "$(pwd)")"
-    yq -y ".project.name = \"$dir_name\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp" || { rm -f "${base_config_temp}.tmp" || true; exit 1; }
-    yq -y ".project.hostname = \"dev.$dir_name.local\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp" || { rm -f "${base_config_temp}.tmp" || true; exit 1; }
-    yq -y ".terminal.username = \"$dir_name-dev\"" "$base_config_temp" > "${base_config_temp}.tmp" && mv "${base_config_temp}.tmp" "$base_config_temp" || { rm -f "${base_config_temp}.tmp" || true; exit 1; }
+    safe_yq_update "$base_config_temp" ".project.name = \"$dir_name\"" "Failed to set auto-generated project name"
+    safe_yq_update "$base_config_temp" ".project.hostname = \"dev.$dir_name.local\"" "Failed to set auto-generated project hostname"
+    safe_yq_update "$base_config_temp" ".terminal.username = \"$dir_name-dev\"" "Failed to set auto-generated terminal username"
 fi
 
 # Write final configuration
@@ -194,10 +220,8 @@ if cp "$base_config_temp" "$OUTPUT_FILE"; then
     echo "  1. Review and customize $OUTPUT_FILE as needed"
     echo "  2. Run \"vm create\" to start your development environment"
     
-    # Clean up temporary file
-    rm -f "$base_config_temp" || true
+    # Temporary files will be cleaned up automatically by trap handlers
 else
     echo "❌ Failed to generate configuration" >&2
-    rm -f "$base_config_temp" || true
     exit 1
 fi

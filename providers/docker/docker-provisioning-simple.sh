@@ -241,10 +241,16 @@ generate_docker_compose() {
       - ${project_name}_config:/tmp$claude_sync_volume$gemini_sync_volume$database_volumes$temp_mount_volumes$npm_link_volumes$audio_volumes$gpu_volumes$ports_section$devices_section$groups_section
     networks:
       - ${project_name}_network
+    # Security: Removed dangerous capabilities that create container escape risks
+    # - SYS_PTRACE: Allows debugging/tracing processes, potential security risk
+    # - seccomp:unconfined: Disables syscall filtering, removes critical security layer
+    # 
+    # Minimal capabilities for development workflows:
     cap_add:
-      - SYS_PTRACE
-    security_opt:
-      - seccomp:unconfined
+      - CHOWN        # Change file ownership (needed for development file operations)
+      - SETUID       # Set user ID (needed for sudo and user switching)
+      - SETGID       # Set group ID (needed for proper group permissions)
+    # Note: Default seccomp profile remains enabled for security
 
 networks:
   ${project_name}_network:
