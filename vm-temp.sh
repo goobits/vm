@@ -582,14 +582,137 @@ handle_temp_command() {
 		exit 1
 	fi
 	
+	# Check for running processes in the container
+	check_running_processes() {
+		local container_name="$1"
+		
+		# Get process list with detailed information
+		local process_output
+		if ! process_output=$(docker_cmd exec "$container_name" ps -eo pid,cmd --no-headers 2>/dev/null); then
+			echo "Unable to check processes"
+			return 1
+		fi
+		
+		# Filter out standard container processes
+		local filtered_processes
+		filtered_processes=$(echo "$process_output" | grep -v -E '(^[[:space:]]*1[[:space:]]+/(bin/|usr/bin/)?bash|^[[:space:]]*[0-9]+[[:space:]]+/usr/sbin/sshd|^[[:space:]]*[0-9]+[[:space:]]+sshd:|^[[:space:]]*[0-9]+[[:space:]]+/opt/provision\.sh|^[[:space:]]*[0-9]+[[:space:]]+ps -eo)' || true)
+		
+		if [[ -n "$filtered_processes" ]]; then
+			echo "$filtered_processes"
+			return 0
+		else
+			echo ""
+			return 1
+		fi
+	}
+	
+	# Confirm destruction with user-friendly output
+	confirm_destroy() {
+		local container_name="$1"
+		local force_flag="$2"
+		
+		echo "🔍 Checking temp VM status..."
+		
+		# Check if container is running
+		local container_status="Stopped"
+		local uptime_info=""
+		
+		if is_temp_vm_running "$container_name"; then
+			container_status="Running"
+			
+			# Get container uptime
+			local started_at
+			if started_at=$(docker_cmd inspect "$container_name" --format='{{.State.StartedAt}}' 2>/dev/null); then
+				# Convert to seconds since epoch for calculation
+				local start_epoch current_epoch
+				if start_epoch=$(date -d "$started_at" +%s 2>/dev/null) && current_epoch=$(date +%s); then
+					local uptime_seconds=$((current_epoch - start_epoch))
+					local hours=$((uptime_seconds / 3600))
+					local minutes=$(((uptime_seconds % 3600) / 60))
+					
+					if [[ $hours -gt 0 ]]; then
+						uptime_info=", ${hours}h ${minutes}m uptime"
+					else
+						uptime_info=", ${minutes}m uptime"
+					fi
+				fi
+			fi
+		fi
+		
+		echo "📦 Container: $container_name ($container_status$uptime_info)"
+		
+		# Check for active processes if running
+		if [[ "$container_status" = "Running" ]]; then
+			local processes
+			if processes=$(check_running_processes "$container_name"); then
+				echo "🏃 Active processes:"
+				echo "$processes" | while IFS= read -r line; do
+					local pid cmd
+					read -r pid cmd <<< "$line"
+					echo "   • $cmd (PID $pid)"
+				done
+			fi
+		fi
+		
+		echo "🗑️  Will be deleted:"
+		echo "   ✗ Container and its filesystem"
+		echo "   ✗ Cached data (node_modules, npm cache, etc.)"
+		echo "✅ Your project files will remain safe on the host machine."
+		
+		if [[ "$container_status" = "Running" ]]; then
+			echo "⚠️  WARNING: Running processes will be terminated."
+		fi
+		
+		# Skip prompt if force flag is true
+		if [[ "$force_flag" = "true" ]]; then
+			return 0
+		fi
+		
+		echo -n "Destroy temp VM? (y/N): "
+		read -r response
+		case "$response" in
+			[yY]|[yY][eE][sS])
+				return 0
+				;;
+			*)
+				return 1
+				;;
+		esac
+	}
+	
 	# Handle subcommands
 	case "$1" in
 		"destroy")
 			# Destroy temp VM
+			shift
+			
+			# Parse flags
+			local FORCE_DESTROY=""
+			while [[ $# -gt 0 ]]; do
+				case "$1" in
+					--force|-f)
+						FORCE_DESTROY="true"
+						shift
+						;;
+					*)
+						echo "❌ Unknown option: $1"
+						exit 1
+						;;
+				esac
+			done
+			
 			require_temp_vm || exit 0
 			
 			# Get container name using shared function
 			container_name=$(get_container_name_from_state)
+			
+			# Show confirmation dialog and get user consent
+			if ! confirm_destroy "$container_name" "$FORCE_DESTROY"; then
+				echo "❌ Operation cancelled"
+				exit 0
+			fi
+			
+			echo ""
 			echo "🗑️ Destroying temp VM: $container_name"
 			
 			# Stop container first if running
