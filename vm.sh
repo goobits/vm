@@ -57,6 +57,97 @@ source "$SCRIPT_DIR/shared/temp-file-utils.sh"
 # Set up proper cleanup handlers for temporary files
 setup_temp_file_handlers
 
+# Lightweight atomic security validation for TOCTOU prevention
+# This function performs essential security checks on already-resolved paths
+validate_mount_security_atomic() {
+    local resolved_path="$1"
+    
+    # Validate input
+    if [[ -z "$resolved_path" ]]; then
+        echo "❌ Error: Empty resolved path provided" >&2
+        return 1
+    fi
+    
+    # 1. Protect system-critical paths (check resolved real path)
+    local protected_paths=(
+        '/'                 # Root filesystem
+        '/root'             # Root user home
+        '/boot'             # Boot files
+        '/proc'             # Process information
+        '/sys'              # System information
+        '/dev'              # Device files
+        '/var/log'          # System logs
+        '/etc'              # System configuration
+        '/bin'              # Essential binaries
+        '/sbin'             # System binaries
+        '/usr/bin'          # User binaries
+        '/usr/sbin'         # System administration binaries
+        '/lib'              # Essential libraries
+        '/lib64'            # 64-bit libraries
+        '/usr/lib'          # User libraries
+        '/var/lib'          # Variable state information
+        '/var/cache'        # Cache files
+        '/var/spool'        # Spool files
+        '/var/run'          # Runtime files
+        '/run'              # Runtime files (modern)
+        '/snap'             # Snap packages
+        '/media'            # Removable media
+        '/mnt'              # Mount points (could be system mounts)
+    )
+    
+    for protected in "${protected_paths[@]}"; do
+        # Check if the real path starts with or equals the protected path
+        if [[ "$resolved_path" == "$protected" ]] || [[ "$resolved_path" == "$protected"/* ]]; then
+            echo "❌ Error: Cannot mount system-critical path" >&2
+            echo "💡 Path '$resolved_path' is within protected system directory '$protected'" >&2
+            return 1
+        fi
+    done
+
+    # 2. Whitelist approach - only allow common development directories
+    local allowed_path_prefixes=(
+        "/home/"            # User home directories
+        "/tmp/"             # Temporary files
+        "/var/tmp/"         # Temporary files
+        "/workspace/"       # Common workspace
+        "/opt/"             # Optional software
+        "/srv/"             # Service data
+        "/usr/local/"       # User-installed software
+        "/data/"            # Common data directory
+        "/projects/"        # Common projects directory
+    )
+    
+    # Special case: allow current working directory and its subdirectories
+    local current_dir
+    current_dir=$(pwd)
+    allowed_path_prefixes+=("$current_dir/")
+    
+    # Check if the path is in an allowed directory
+    local path_allowed=false
+    for allowed_prefix in "${allowed_path_prefixes[@]}"; do
+        if [[ "$resolved_path" == "$allowed_prefix"* ]] || [[ "$resolved_path" == "${allowed_prefix%/}" ]]; then
+            path_allowed=true
+            break
+        fi
+    done
+    
+    if [[ "$path_allowed" == false ]]; then
+        echo "❌ Error: Directory path not in allowed locations" >&2
+        echo "💡 Only directories under these paths are allowed:" >&2
+        printf "   %s\n" "${allowed_path_prefixes[@]}" >&2
+        echo "   Current directory: $current_dir" >&2
+        return 1
+    fi
+
+    # 3. Additional validation for absolute paths
+    if [[ "$resolved_path" == "/" ]]; then
+        echo "❌ Error: Cannot mount root filesystem" >&2
+        return 1
+    fi
+
+    return 0
+}
+
 # Validate mount directory security (dangerous characters and path traversal)
 validate_mount_security() {
     local dir_path="$1"
@@ -77,7 +168,7 @@ validate_mount_security() {
             ;;
     esac
 
-    # 2. Check for path traversal attempts (including encoded variants)
+    # 2. Check for path traversal attempts (including encoded variants and Unicode)
     local path_patterns=(
         '\.\.'              # Basic ..
         '%2e%2e'            # URL encoded ..
@@ -91,6 +182,7 @@ validate_mount_security() {
         '%2e%2e%5c'         # Full URL encoded ..\
     )
     
+    # First check ASCII patterns
     for pattern in "${path_patterns[@]}"; do
         if [[ "$dir_path" =~ $pattern ]]; then
             echo "❌ Error: Directory path traversal attempt detected" >&2
@@ -98,6 +190,102 @@ validate_mount_security() {
             return 1
         fi
     done
+    
+    # Unicode normalization security check using Python for comprehensive coverage
+    # This handles Unicode-encoded dots and other Unicode normalization attacks
+    if command -v python3 >/dev/null 2>&1; then
+        local unicode_check_result
+        unicode_check_result=$(python3 -c "
+import unicodedata
+import sys
+import re
+
+path = sys.argv[1] if len(sys.argv) > 1 else ''
+
+# Normalize the path using different Unicode normalization forms
+normalized_nfc = unicodedata.normalize('NFC', path)
+normalized_nfd = unicodedata.normalize('NFD', path) 
+normalized_nfkc = unicodedata.normalize('NFKC', path)
+normalized_nfkd = unicodedata.normalize('NFKD', path)
+
+# Define dangerous Unicode patterns
+unicode_patterns = [
+    # Unicode-encoded dots (various forms)
+    r'\\u002e\\u002e',          # Unicode-encoded ..
+    r'\\uff0e\\uff0e',          # Fullwidth Unicode dots
+    r'\\u2024\\u2024',          # One-dot leaders
+    r'\\u2025\\u2025',          # Two-dot leaders  
+    r'\\u22ef',                 # Midline horizontal ellipsis
+    r'\\u2026',                 # Horizontal ellipsis
+    # Mixed Unicode/ASCII combinations
+    r'\\u002e\.',               # Unicode dot + ASCII dot
+    r'\.\\u002e',               # ASCII dot + Unicode dot
+    r'\\uff0e\.',               # Fullwidth + ASCII
+    r'\.\\uff0e',               # ASCII + Fullwidth
+]
+
+# Check all normalized forms
+all_forms = [path, normalized_nfc, normalized_nfd, normalized_nfkc, normalized_nfkd]
+
+for form in all_forms:
+    # Check for literal Unicode sequences in the string
+    for pattern in unicode_patterns:
+        if re.search(pattern, form):
+            print('UNICODE_ATTACK_DETECTED')
+            sys.exit(1)
+    
+    # Check if normalization reveals .. patterns
+    if '..' in form and form != path:
+        print('UNICODE_NORMALIZATION_ATTACK')
+        sys.exit(1)
+        
+    # Check for encoded Unicode dot sequences that normalize to ..
+    if re.search(r'\.{2,}', form) and '.' not in path:
+        print('UNICODE_DOT_ATTACK')
+        sys.exit(1)
+
+print('UNICODE_SAFE')
+" "$dir_path" 2>/dev/null)
+
+        case "$unicode_check_result" in
+            "UNICODE_ATTACK_DETECTED")
+                echo "❌ Error: Unicode-encoded path traversal attempt detected" >&2
+                echo "💡 Path contains Unicode-encoded dangerous characters" >&2
+                return 1
+                ;;
+            "UNICODE_NORMALIZATION_ATTACK")
+                echo "❌ Error: Unicode normalization attack detected" >&2
+                echo "💡 Path normalizes to contain path traversal sequences" >&2
+                return 1
+                ;;
+            "UNICODE_DOT_ATTACK")
+                echo "❌ Error: Unicode dot sequence attack detected" >&2
+                echo "💡 Hidden Unicode characters normalize to path traversal" >&2
+                return 1
+                ;;
+            "UNICODE_SAFE")
+                # Path passed Unicode checks, continue
+                ;;
+            *)
+                # Python check failed, fall back to basic validation but warn
+                if [[ "${VM_DEBUG:-}" = "true" ]]; then
+                    echo "⚠️ Warning: Unicode validation unavailable, using basic checks only" >&2
+                fi
+                ;;
+        esac
+    else
+        # Python not available, use simpler fallback checks
+        if [[ "${VM_DEBUG:-}" = "true" ]]; then
+            echo "⚠️ Warning: Python3 not available, Unicode attack detection limited" >&2
+        fi
+        
+        # Basic Unicode pattern detection using grep (limited but better than nothing)
+        if echo "$dir_path" | grep -qE '\\u[0-9a-fA-F]{4}|\\uff[0-9a-fA-F]{2}|\\u202[4-6]|\\u22ef'; then
+            echo "❌ Error: Possible Unicode-encoded characters detected" >&2
+            echo "💡 Install python3 for comprehensive Unicode attack detection" >&2
+            return 1
+        fi
+    fi
 
     # 3. Protect system-critical paths (check resolved real path)
     local protected_paths=(
@@ -241,10 +429,19 @@ construct_mount_argument() {
     local source_dir="$1"
     local permission_flags="$2"
 
-    # Get the realpath (already validated in validate_mount_security)
+    # SECURITY: Re-validate the path immediately before use to prevent TOCTOU attacks
+    # The symlink target could have changed between initial validation and mount construction
     local real_source
     if ! real_source=$(realpath "$source_dir" 2>/dev/null); then
         echo "❌ Error: Cannot resolve path '$source_dir'" >&2
+        return 1
+    fi
+    
+    # Re-run security validation on the resolved path to prevent TOCTOU
+    # This ensures the symlink hasn't been changed to point to a dangerous location
+    if ! validate_mount_security_atomic "$real_source"; then
+        echo "❌ Error: Mount security re-validation failed for '$source_dir'" >&2
+        echo "💡 The target may have changed since initial validation (TOCTOU protection)" >&2
         return 1
     fi
 
