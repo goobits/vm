@@ -162,17 +162,30 @@ initialize_vm_yaml() {
     local dir_name
     dir_name="$(basename "$(pwd)")"
     
+    # Sanitize directory name for use as project name
+    # Replace dots, spaces, and other invalid characters with hyphens
+    # Then remove any consecutive hyphens and trim leading/trailing hyphens
+    local sanitized_name
+    sanitized_name="$(echo "$dir_name" | sed 's/[^a-zA-Z0-9_-]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//')"
+    
+    # If the sanitized name is different, inform the user
+    if [[ "$sanitized_name" != "$dir_name" ]]; then
+        echo "📝 Note: Directory name '$dir_name' contains invalid characters for project names."
+        echo "   Using sanitized name: '$sanitized_name'"
+        echo ""
+    fi
+    
     # Customize config for this directory
     local customized_config
-    customized_config="$(echo "$default_config" | jq --arg dirname "$dir_name" '
+    customized_config="$(echo "$default_config" | jq --arg dirname "$sanitized_name" '
         .project.name = $dirname |
         .project.hostname = "dev." + $dirname + ".local" |
-        .terminal.username = $dirname + "-dev"
+        .terminal.username = ($dirname + "-dev")
     ')"
     
     # Write the customized config as YAML
     if echo "$customized_config" | yq -y . > "$local_config_path"; then
-        echo "✅ Created vm.yaml for project: $dir_name"
+        echo "✅ Created vm.yaml for project: $sanitized_name"
         echo "📍 Configuration file: $local_config_path"
         echo ""
         echo "Next steps:"
@@ -399,7 +412,7 @@ validate_merged_config() {
     if [[ -z "$project_name" ]]; then
         errors+=("project.name is required")
     elif ! echo "$project_name" | grep -qE '^[a-zA-Z0-9_-]+$'; then
-        errors+=("project.name must contain only alphanumeric characters, hyphens, and underscores")
+        errors+=("project.name must contain only alphanumeric characters, hyphens, and underscores (got: '$project_name')")
     fi
     
     # Print errors and warnings
