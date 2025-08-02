@@ -5,6 +5,9 @@
 # File-based tracking for temp files (works across process boundaries)
 TEMP_FILES_REGISTRY="${TMPDIR:-/tmp}/.vm-temp-files-$$"
 
+# Cleanup mutex to prevent signal handler race conditions
+CLEANUP_MUTEX="${TMPDIR:-/tmp}/.vm-cleanup-mutex-$$"
+
 # Initialize the registry file
 init_temp_registry() {
     if [[ ! -f "$TEMP_FILES_REGISTRY" ]]; then
@@ -65,12 +68,69 @@ unregister_temp_file() {
     fi
 }
 
+# Acquire cleanup mutex to prevent race conditions
+acquire_cleanup_mutex() {
+    local max_attempts=10
+    local attempt=1
+    local our_pid=$$
+    
+    while [[ $attempt -le $max_attempts ]]; do
+        # Try to acquire mutex atomically
+        if (set -C; echo "$our_pid" > "$CLEANUP_MUTEX") 2>/dev/null; then
+            return 0  # Successfully acquired mutex
+        fi
+        
+        # Check if existing mutex holder is still alive
+        if [[ -f "$CLEANUP_MUTEX" ]]; then
+            local mutex_pid
+            mutex_pid=$(cat "$CLEANUP_MUTEX" 2>/dev/null)
+            
+            # If PID is empty or process doesn't exist, remove stale mutex
+            if [[ -z "$mutex_pid" ]] || ! kill -0 "$mutex_pid" 2>/dev/null; then
+                rm -f "$CLEANUP_MUTEX" 2>/dev/null || true
+                continue  # Try again
+            fi
+        fi
+        
+        # Wait a short time before retrying
+        sleep 0.1
+        ((attempt++))
+    done
+    
+    return 1  # Failed to acquire mutex
+}
+
+# Release cleanup mutex
+release_cleanup_mutex() {
+    local our_pid=$$
+    
+    # Only remove if we own the mutex
+    if [[ -f "$CLEANUP_MUTEX" ]]; then
+        local mutex_pid
+        mutex_pid=$(cat "$CLEANUP_MUTEX" 2>/dev/null)
+        if [[ "$mutex_pid" == "$our_pid" ]]; then
+            rm -f "$CLEANUP_MUTEX" 2>/dev/null || true
+        fi
+    fi
+}
+
 # Atomic cleanup function that removes all tracked temporary files with validation
 cleanup_temp_files() {
     local exit_code=${1:-0}
     local signal_name=${2:-""}
     local cleanup_errors=0
     local cleanup_failures=()
+    
+    # Acquire mutex to prevent concurrent cleanup (race condition protection)
+    if ! acquire_cleanup_mutex; then
+        if [[ "${VM_DEBUG:-}" = "true" ]]; then
+            echo "⚠️ Warning: Could not acquire cleanup mutex, another cleanup may be in progress" >&2
+        fi
+        # Still proceed but note the potential race
+    fi
+    
+    # Ensure mutex is released on function exit
+    trap 'release_cleanup_mutex' RETURN
     
     if [[ -f "$TEMP_FILES_REGISTRY" ]] && [[ -s "$TEMP_FILES_REGISTRY" ]]; then
         local file_count
