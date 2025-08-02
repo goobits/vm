@@ -52,21 +52,135 @@ CURRENT_DIR="$(pwd)"
 # Source shared utilities
 source "$SCRIPT_DIR/shared/npm-utils.sh"
 source "$SCRIPT_DIR/shared/docker-utils.sh"
+source "$SCRIPT_DIR/shared/temp-file-utils.sh"
+
+# Set up proper cleanup handlers for temporary files
+setup_temp_file_handlers
 
 # Validate mount directory security (dangerous characters and path traversal)
 validate_mount_security() {
     local dir_path="$1"
-
-    # Check for dangerous characters
-    if [[ "$dir_path" =~ [\;\`\$\"] ]]; then
-        echo "❌ Error: Directory name contains potentially dangerous characters" >&2
-        echo "💡 Directory names cannot contain: ; \` $ \"" >&2
+    
+    # Resolve the real path to handle symlinks and get canonical path
+    local real_path
+    if ! real_path=$(realpath "$dir_path" 2>/dev/null); then
+        echo "❌ Error: Cannot resolve path '$dir_path'" >&2
         return 1
     fi
 
-    # Check for path traversal attempts
-    if [[ "$dir_path" =~ \.\./ ]] || [[ "$dir_path" =~ /\.\. ]]; then
-        echo "❌ Error: Directory path traversal not allowed" >&2
+    # 1. Check for dangerous shell metacharacters using case statement for reliability
+    case "$dir_path" in
+        *\;* | *\`* | *\$* | *\"* | *\|* | *\&* | *\>* | *\<* | *\(* | *\)* | *\{* | *\}* | *\** | *\?* | *\[* | *\]* | *~* | *@* | *#* | *%*)
+            echo "❌ Error: Directory path contains potentially dangerous characters" >&2
+            echo "💡 Directory paths cannot contain: ; \` $ \" | & > < ( ) { } * ? [ ] ~ @ # %" >&2
+            return 1
+            ;;
+    esac
+
+    # 2. Check for path traversal attempts (including encoded variants)
+    local path_patterns=(
+        '\.\.'              # Basic ..
+        '%2e%2e'            # URL encoded ..
+        '%252e%252e'        # Double URL encoded ..
+        '\.%2e'             # Mixed encoding
+        '%2e\.'             # Mixed encoding
+        '\x2e\x2e'          # Hex encoded ..
+        '..%2f'             # .. with encoded slash
+        '..%5c'             # .. with encoded backslash
+        '%2e%2e%2f'         # Full URL encoded ../
+        '%2e%2e%5c'         # Full URL encoded ..\
+    )
+    
+    for pattern in "${path_patterns[@]}"; do
+        if [[ "$dir_path" =~ $pattern ]]; then
+            echo "❌ Error: Directory path traversal attempt detected" >&2
+            echo "💡 Path contains suspicious pattern: $pattern" >&2
+            return 1
+        fi
+    done
+
+    # 3. Protect system-critical paths (check resolved real path)
+    local protected_paths=(
+        '/'                 # Root filesystem
+        '/root'             # Root user home
+        '/boot'             # Boot files
+        '/proc'             # Process information
+        '/sys'              # System information
+        '/dev'              # Device files
+        '/var/log'          # System logs
+        '/etc'              # System configuration
+        '/bin'              # Essential binaries
+        '/sbin'             # System binaries
+        '/usr/bin'          # User binaries
+        '/usr/sbin'         # System administration binaries
+        '/lib'              # Essential libraries
+        '/lib64'            # 64-bit libraries
+        '/usr/lib'          # User libraries
+        '/var/lib'          # Variable state information
+        '/var/cache'        # Cache files
+        '/var/spool'        # Spool files
+        '/var/run'          # Runtime files
+        '/run'              # Runtime files (modern)
+        '/snap'             # Snap packages
+        '/media'            # Removable media
+        '/mnt'              # Mount points (could be system mounts)
+    )
+    
+    for protected in "${protected_paths[@]}"; do
+        # Check if the real path starts with or equals the protected path
+        if [[ "$real_path" == "$protected" ]] || [[ "$real_path" == "$protected"/* ]]; then
+            echo "❌ Error: Cannot mount system-critical path" >&2
+            echo "💡 Path '$real_path' is within protected system directory '$protected'" >&2
+            return 1
+        fi
+    done
+
+    # 4. Whitelist approach - only allow common development directories
+    local allowed_path_prefixes=(
+        "/home/"            # User home directories
+        "/tmp/"             # Temporary files
+        "/var/tmp/"         # Temporary files
+        "/workspace/"       # Common workspace
+        "/opt/"             # Optional software
+        "/srv/"             # Service data
+        "/usr/local/"       # User-installed software
+        "/data/"            # Common data directory
+        "/projects/"        # Common projects directory
+    )
+    
+    # Special case: allow current working directory and its subdirectories
+    local current_dir
+    current_dir=$(pwd)
+    allowed_path_prefixes+=("$current_dir/")
+    
+    # Check if the path is in an allowed directory
+    local path_allowed=false
+    for allowed_prefix in "${allowed_path_prefixes[@]}"; do
+        if [[ "$real_path" == "$allowed_prefix"* ]] || [[ "$real_path" == "${allowed_prefix%/}" ]]; then
+            path_allowed=true
+            break
+        fi
+    done
+    
+    if [[ "$path_allowed" == false ]]; then
+        echo "❌ Error: Directory path not in allowed locations" >&2
+        echo "💡 Only directories under these paths are allowed:" >&2
+        printf "   %s\n" "${allowed_path_prefixes[@]}" >&2
+        echo "   Current directory: $current_dir" >&2
+        return 1
+    fi
+
+    # 5. Additional validation for absolute paths
+    if [[ "$real_path" == "/" ]]; then
+        echo "❌ Error: Cannot mount root filesystem" >&2
+        return 1
+    fi
+
+    # 6. Check for dangerous control characters using length check
+    # If the string length changes when we remove dangerous chars, they were present
+    local clean_path="${dir_path//[$'\0\n\r']/}"
+    if [[ ${#clean_path} -ne ${#dir_path} ]]; then
+        echo "❌ Error: Directory path contains dangerous control characters" >&2
         return 1
     fi
 
@@ -127,22 +241,28 @@ construct_mount_argument() {
     local source_dir="$1"
     local permission_flags="$2"
 
-    # Validate and quote the realpath to prevent command injection
+    # Get the realpath (already validated in validate_mount_security)
     local real_source
     if ! real_source=$(realpath "$source_dir" 2>/dev/null); then
         echo "❌ Error: Cannot resolve path '$source_dir'" >&2
         return 1
     fi
 
-    # Build the mount argument
+    # Build the mount argument with proper quoting to prevent command injection
     echo "-v $(printf '%q' "$real_source"):/workspace/$(basename "$source_dir")${permission_flags}"
 }
 
-# Process a single mount specification (with or without permissions)
+# Process a single mount specification (with or without permissions) with enhanced error handling
 process_single_mount() {
     local mount="$1"
     local source=""
     local perm=""
+
+    # Validate input
+    if [[ -z "$mount" ]]; then
+        echo "❌ Error: Empty mount specification provided" >&2
+        return 1
+    fi
 
     # Trim whitespace
     mount=$(echo "$mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
@@ -151,58 +271,153 @@ process_single_mount() {
     if [[ "$mount" == *:* ]]; then
         source="${mount%:*}"
         perm="${mount##*:}"
+        
+        # Validate permission format
+        if [[ "$perm" != "rw" ]] && [[ "$perm" != "ro" ]] && [[ "$perm" != "readonly" ]] && [[ "$perm" != "readwrite" ]]; then
+            echo "❌ Error: Invalid permission '$perm' in mount '$mount'" >&2
+            echo "💡 Valid permissions: rw (read-write), ro (read-only)" >&2
+            return 1
+        fi
     else
         source="$mount"
         perm="rw"  # Default to read-write
     fi
 
+    # Validate source path
+    if [[ -z "$source" ]]; then
+        echo "❌ Error: Empty source path in mount specification: '$mount'" >&2
+        return 1
+    fi
+
     # Check if source exists and is a directory
+    if [[ ! -e "$source" ]]; then
+        echo "❌ Error: Path '$source' does not exist" >&2
+        echo "💡 Current directory: $(pwd)" >&2
+        echo "💡 Available paths: $(ls -la 2>/dev/null | head -5 | tail -n +2 | awk '{print $NF}' | tr '\n' ' ')" >&2
+        return 1
+    fi
+    
     if [[ ! -d "$source" ]]; then
-        echo "❌ Error: Directory '$source' does not exist or is not a directory" >&2
+        echo "❌ Error: Path '$source' exists but is not a directory" >&2
+        echo "💡 File type: $(file "$source" 2>/dev/null || echo 'unknown')" >&2
         return 1
     fi
 
-    # Validate directory security
+    # Validate directory security with enhanced error messages and recovery suggestions
     if ! validate_mount_security "$source"; then
+        local security_error_code=$?
+        echo "❌ Error: Mount security validation failed for '$source'" >&2
+        echo "🔒 Security validation error code: $security_error_code" >&2
+        echo "💡 Common causes and solutions:" >&2
+        echo "   - Dangerous characters in path → Use only alphanumeric, hyphens, underscores, and slashes" >&2
+        echo "   - Path traversal attempts → Avoid '..' sequences and encoded characters" >&2
+        echo "   - System-critical directory → Only mount user directories and project files" >&2
+        echo "   - Path not in allowed locations → Use directories under /home, /workspace, /tmp, or current directory" >&2
+        echo "💡 For paths with special characters, try creating a symbolic link:" >&2
+        echo "     ln -s 'problematic,path' safe-path && vm temp safe-path" >&2
+        
+        # Log security validation failure for auditing
+        if command -v logger >/dev/null 2>&1; then
+            logger -t vm-security "SECURITY: Mount validation failed for path: $source (error: $security_error_code)"
+        fi
+        
         return 1
     fi
 
-    # Parse permissions and construct mount argument
+    # Parse permissions and construct mount argument with detailed error handling
     local permission_flags
-    permission_flags=$(parse_mount_permissions "$perm")
+    if ! permission_flags=$(parse_mount_permissions "$perm"); then
+        echo "❌ Error: Failed to parse mount permissions for '$perm'" >&2
+        echo "💡 Valid permission values: rw, ro, readwrite, readonly" >&2
+        echo "💡 Example: ./src:rw or ./config:ro" >&2
+        return 1
+    fi
 
-    # Construct and return the mount argument
-    construct_mount_argument "$source" "$permission_flags"
+    # Construct mount argument with comprehensive error handling
+    local mount_arg
+    if ! mount_arg=$(construct_mount_argument "$source" "$permission_flags"); then
+        echo "❌ Error: Failed to construct mount argument for '$source'" >&2
+        echo "💡 This could indicate:" >&2
+        echo "   - Path resolution issues" >&2
+        echo "   - Special characters in path" >&2
+        echo "   - Permission problems" >&2
+        echo "💡 Try using absolute paths or check file permissions" >&2
+        return 1
+    fi
+    
+    echo "$mount_arg"
 }
 
-# Parse comma-separated mount string into mount arguments
+# Parse comma-separated mount string into mount arguments with comprehensive error handling
 # Note: Directory names containing commas are not supported due to parsing complexity
 parse_mount_string() {
     local mount_str="$1"
     local mount_args=""
+    local failed_mounts=()
+    local successful_mounts=()
 
-    if [[ -n "$mount_str" ]]; then
-        # Split by comma and process each mount (save original IFS)
-        local old_ifs="$IFS"
-        IFS=','
-        local MOUNTS
-        IFS=',' read -r -a MOUNTS <<< "$mount_str"  # Proper array assignment
-        IFS="$old_ifs"
+    # Validate input
+    if [[ -z "$mount_str" ]]; then
+        echo "⚠️ Warning: Empty mount string provided" >&2
+        return 0  # Empty is valid, just return empty args
+    fi
 
-        # Pre-validate: Detect comma-in-directory-name issues
-        if ! detect_comma_in_paths MOUNTS; then
-            return 1
+    # Split by comma and process each mount (save original IFS)
+    local old_ifs="$IFS"
+    IFS=','
+    local MOUNTS
+    IFS=',' read -r -a MOUNTS <<< "$mount_str"  # Proper array assignment
+    IFS="$old_ifs"
+
+    # Validate we have at least one mount
+    if [[ ${#MOUNTS[@]} -eq 0 ]]; then
+        echo "❌ Error: No mounts found in mount string: '$mount_str'" >&2
+        return 1
+    fi
+
+    # Pre-validate: Detect comma-in-directory-name issues
+    if ! detect_comma_in_paths MOUNTS; then
+        echo "❌ Error: Mount string parsing failed - possible comma in directory names" >&2
+        echo "💡 Directory names containing commas are not supported" >&2
+        echo "💡 Use symbolic links to work around this: ln -s 'dir,with,commas' dir-no-commas" >&2
+        return 1
+    fi
+
+    # Process each mount using dedicated sub-function
+    for mount in "${MOUNTS[@]}"; do
+        local mount_arg
+        if mount_arg=$(process_single_mount "$mount"); then
+            mount_args="$mount_args $mount_arg"
+            successful_mounts+=("$mount")
+        else
+            failed_mounts+=("$mount")
         fi
-
-        # Process each mount using dedicated sub-function
-        for mount in "${MOUNTS[@]}"; do
-            local mount_arg
-            if mount_arg=$(process_single_mount "$mount"); then
-                mount_args="$mount_args $mount_arg"
-            else
-                return 1
-            fi
+    done
+    
+    # Report results with detailed error analysis
+    if [[ ${#failed_mounts[@]} -gt 0 ]]; then
+        echo "❌ Error: Failed to process ${#failed_mounts[@]} mount(s):" >&2
+        for failed_mount in "${failed_mounts[@]}"; do
+            echo "  ❌ $failed_mount" >&2
         done
+        
+        if [[ ${#successful_mounts[@]} -gt 0 ]]; then
+            echo "" >&2
+            echo "⚠️ Successfully processed ${#successful_mounts[@]} mount(s):" >&2
+            for successful_mount in "${successful_mounts[@]}"; do
+                echo "  ✅ $successful_mount" >&2
+            done
+            echo "" >&2
+            echo "⚠️ Cannot continue with partial mount failure (security requirement)" >&2
+        fi
+        
+        echo "💡 Mount processing failed - check the specific error messages above" >&2
+        echo "💡 All mount points must be valid for security reasons" >&2
+        return 1
+    fi
+    
+    if [[ ${#successful_mounts[@]} -gt 0 ]] && [[ "${VM_DEBUG:-}" = "true" ]]; then
+        echo "✅ Successfully processed ${#successful_mounts[@]} mount(s)" >&2
     fi
 
     echo "$mount_args"
@@ -391,58 +606,201 @@ docker_up() {
     echo "🚀 Starting development environment..."
 
     # Create a secure temporary file for the config
-    TEMP_CONFIG_FILE=$(mktemp /tmp/vm-config.XXXXXX)
-    # Ensure the temp file is removed when the script exits
-    trap 'rm -f "$TEMP_CONFIG_FILE"' EXIT
+    TEMP_CONFIG_FILE=$(create_temp_file "vm-config.XXXXXX")
 
     # Generate docker-compose.yml
     echo "$config" > "$TEMP_CONFIG_FILE"
     "$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" "$TEMP_CONFIG_FILE" "$project_dir"
 
-    # Build and start containers
-    docker_run "compose" "$config" "$project_dir" build
-    docker_run "compose" "$config" "$project_dir" up -d "$@"
+    # Build and start containers with enhanced error handling and rollback
+    echo "🚀 Building container..."
+    if ! docker_run "compose" "$config" "$project_dir" build; then
+        local build_error_code=$?
+        echo "❌ Container build failed (exit code: $build_error_code)"
+        echo "🧹 Performing build cleanup rollback..."
+        
+        # Enhanced cleanup with error checking
+        if docker_run "compose" "$config" "$project_dir" down --remove-orphans 2>/dev/null; then
+            echo "✅ Build artifacts cleaned up successfully"
+        else
+            echo "⚠️ Warning: Some build artifacts may not have been cleaned up"
+            echo "💡 You may need to run 'docker system prune' manually"
+        fi
+        
+        # Clean up temp config file on build failure
+        if [[ -f "$TEMP_CONFIG_FILE" ]]; then
+            rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
+        fi
+        
+        return $build_error_code
+    fi
+    
+    echo "🚀 Starting containers..."
+    if ! docker_run "compose" "$config" "$project_dir" up -d "$@"; then
+        local startup_error_code=$?
+        echo "❌ Container startup failed (exit code: $startup_error_code)"
+        echo "🧹 Performing startup rollback - stopping any running containers..."
+        
+        # Enhanced rollback with verification
+        if docker_run "compose" "$config" "$project_dir" down 2>/dev/null; then
+            echo "✅ Containers stopped successfully during rollback"
+        else
+            echo "⚠️ Warning: Rollback may be incomplete - some containers might still be running"
+            echo "💡 Check with 'docker ps' and manually stop containers if needed"
+        fi
+        
+        # Clean up temp config file on startup failure
+        if [[ -f "$TEMP_CONFIG_FILE" ]]; then
+            rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
+        fi
+        
+        return $startup_error_code
+    fi
 
     # Get container name using shared function
     local container_name
     container_name=$(get_project_container_name "$config")
 
-    # Wait for container to be ready before proceeding
+    # Wait for container to be ready with enhanced error checking
     echo "⏳ Initializing container..."
     local max_attempts=30
     local attempt=1
+    local container_ready=false
+    
     while [[ $attempt -le $max_attempts ]]; do
+        # Check if container exists first
+        if ! docker_cmd inspect "${container_name}" >/dev/null 2>&1; then
+            echo "❌ Container '${container_name}' does not exist"
+            echo "💡 The container may have failed to create or was removed"
+            return 1
+        fi
+        
         # Use docker_cmd to handle sudo if needed, and check container is running
-        if docker_cmd inspect "${container_name}" --format='{{.State.Status}}' 2>/dev/null | grep -q "running"; then
+        local container_status
+        if ! container_status=$(docker_cmd inspect "${container_name}" --format='{{.State.Status}}' 2>/dev/null); then
+            echo "❌ Failed to check container status"
+            return 1
+        fi
+        
+        if [[ "$container_status" != "running" ]]; then
+            if [[ $attempt -eq $max_attempts ]]; then
+                echo "❌ Container failed to start or is not running (status: $container_status)"
+                echo "💡 Check container logs: vm logs"
+                echo "💡 Try rebuilding: vm provision"
+                echo "💡 Container may have exited due to configuration errors"
+                
+                # Show container exit code if available
+                local exit_code
+                if exit_code=$(docker_cmd inspect "${container_name}" --format='{{.State.ExitCode}}' 2>/dev/null); then
+                    echo "💡 Container exit code: $exit_code"
+                fi
+                return 1
+            fi
+        else
             # Also verify we can exec into it
             if docker_cmd exec "${container_name}" echo "ready" >/dev/null 2>&1; then
                 echo "✅ Container is ready"
+                container_ready=true
                 break
+            elif [[ $attempt -eq $max_attempts ]]; then
+                echo "❌ Container is running but not responding to exec commands"
+                echo "💡 Container may be starting up. Try again in a moment."
+                echo "💡 Check container logs: vm logs"
+                echo "💡 Container processes may not be fully initialized"
+                return 1
             fi
         fi
-        if [[ $attempt -eq $max_attempts ]]; then
-            echo "❌ Environment initialization failed"
-            return 1
-        fi
-        echo "⏳ Starting up... ($attempt/$max_attempts)"
+        
+        echo "⏳ Starting up... ($attempt/$max_attempts) [status: $container_status]"
         sleep 2
         ((attempt++))
     done
-
-    # Copy config file to container
-    echo "📋 Loading project configuration..."
-    if docker_cmd cp "$TEMP_CONFIG_FILE" "${container_name}:/tmp/vm-config.json"; then
-        echo "✅ Configuration loaded"
-    else
-        echo "❌ Configuration loading failed"
+    
+    if [[ "$container_ready" != "true" ]]; then
+        echo "❌ Environment initialization failed after $max_attempts attempts"
+        echo "💡 Container startup timed out"
         return 1
     fi
+
+    # Copy config file to container with enhanced error handling and validation
+    echo "📋 Loading project configuration..."
+    
+    # Validate temp config file exists and is readable
+    if [[ ! -f "$TEMP_CONFIG_FILE" ]]; then
+        echo "❌ Temporary configuration file not found: $TEMP_CONFIG_FILE"
+        return 1
+    fi
+    
+    if [[ ! -r "$TEMP_CONFIG_FILE" ]]; then
+        echo "❌ Cannot read temporary configuration file: $TEMP_CONFIG_FILE"
+        return 1
+    fi
+    
+    # First attempt to copy configuration
+    if ! docker_cmd cp "$TEMP_CONFIG_FILE" "$(printf '%q' "${container_name}"):/tmp/vm-config.json" 2>/dev/null; then
+        echo "❌ Configuration loading failed on first attempt"
+        echo "💡 Diagnosing container state..."
+        
+        # Enhanced container diagnostics
+        local container_status
+        if ! container_status=$(docker_cmd inspect "${container_name}" --format='{{.State.Status}}' 2>/dev/null); then
+            echo "❌ Cannot inspect container - it may have been removed"
+            return 1
+        fi
+        
+        if [[ "$container_status" != "running" ]]; then
+            echo "❌ Container has stopped unexpectedly (status: $container_status)"
+            echo "💡 Check container logs: vm logs"
+            
+            # Show container exit details if available
+            local exit_code
+            if exit_code=$(docker_cmd inspect "${container_name}" --format='{{.State.ExitCode}}' 2>/dev/null); then
+                echo "💡 Container exit code: $exit_code"
+            fi
+            return 1
+        fi
+        
+        # Check if container filesystem is accessible
+        if ! docker_cmd exec "${container_name}" test -w /tmp 2>/dev/null; then
+            echo "❌ Container /tmp directory is not writable"
+            echo "💡 Container may have filesystem issues or security restrictions"
+            return 1
+        fi
+        
+        # Retry the copy operation with detailed error reporting
+        echo "🔄 Retrying configuration copy (container status: $container_status)..."
+        sleep 2
+        
+        if ! docker_cmd cp "$TEMP_CONFIG_FILE" "$(printf '%q' "${container_name}"):/tmp/vm-config.json" 2>&1; then
+            echo "❌ Configuration loading failed after retry"
+            echo "💡 Possible causes:"
+            echo "   - Container filesystem permissions"
+            echo "   - Docker daemon issues"
+            echo "   - Container security policies"
+            echo "   - Insufficient disk space in container"
+            return 1
+        fi
+    fi
+    
+    # Validate that the file was actually copied successfully
+    if ! docker_cmd exec "${container_name}" test -f /tmp/vm-config.json 2>/dev/null; then
+        echo "❌ Configuration file validation failed - file not found in container"
+        return 1
+    fi
+    
+    # Verify file is readable in container
+    if ! docker_cmd exec "${container_name}" test -r /tmp/vm-config.json 2>/dev/null; then
+        echo "❌ Configuration file is not readable in container"
+        return 1
+    fi
+    
+    echo "✅ Configuration loaded and validated"
 
     # Fix volume permissions before Ansible
     echo "🔑 Setting up permissions..."
     local project_user
     project_user=$(echo "$config" | yq -r '.vm.user // "developer"')
-    if docker_run "exec" "$config" "$project_dir" chown -R "$project_user:$project_user" "/home/$project_user/.nvm" "/home/$project_user/.cache"; then
+    if docker_run "exec" "$config" "$project_dir" chown -R "$(printf '%q' "$project_user"):$(printf '%q' "$project_user")" "/home/$(printf '%q' "$project_user")/.nvm" "/home/$(printf '%q' "$project_user")/.cache"; then
         echo "✅ Permissions configured"
     else
         echo "⚠️ Permission setup skipped (non-critical)"
@@ -479,7 +837,7 @@ docker_up() {
         echo "💡 Tips:"
         echo "   - Run with VM_DEBUG=true vm create to see detailed error output"
         echo "   - View the log: vm exec cat $ANSIBLE_LOG"
-        echo "   - Or copy it: docker cp ${container_name}:$ANSIBLE_LOG ./ansible-error.log"
+        echo "   - Or copy it: docker cp $(printf '%q' "${container_name}"):$(printf '%q' "$ANSIBLE_LOG") ./ansible-error.log"
     fi
 
     # Ensure supervisor services are started
@@ -580,10 +938,15 @@ docker_ssh() {
     # Handle -c flag specifically for command execution
     if [[ "$1" = "-c" ]] && [[ -n "$2" ]]; then
         # Run command non-interactively
-        docker_run "exec" "$config" "" su - "$project_user" -c "cd '$target_dir' && source ~/.zshrc && $2"
+        docker_run "exec" "$config" "" su - "$project_user" -c "cd $(printf '%q' "$target_dir") && source ~/.zshrc && $(printf '%q' "$2")"
     elif [[ $# -gt 0 ]]; then
         # Run with all arguments
-        docker_run "exec" "$config" "" su - "$project_user" -c "cd '$target_dir' && source ~/.zshrc && zsh $*"
+        # Escape all arguments individually
+        local escaped_args=""
+        for arg in "$@"; do
+            escaped_args="$escaped_args $(printf '%q' "$arg")"
+        done
+        docker_run "exec" "$config" "" su - "$project_user" -c "cd $(printf '%q' "$target_dir") && source ~/.zshrc && zsh$escaped_args"
     else
         # Interactive mode - use a simple approach that works
         local container_name
@@ -591,12 +954,12 @@ docker_ssh() {
 
         # Run an interactive shell with the working directory set
         if [[ "${VM_DEBUG:-}" = "true" ]]; then
-            echo "DEBUG docker_ssh: Executing: docker exec -it ${container_name} su - $project_user -c \"VM_TARGET_DIR='$target_dir' exec zsh\"" >&2
+            echo "DEBUG docker_ssh: Executing: docker exec -it ${container_name} su - $project_user -c \"VM_TARGET_DIR=$(printf '%q' \"$target_dir\") exec zsh\"" >&2
         fi
 
         # Use sudo for proper signal handling
         # This ensures proper Ctrl+C behavior (single tap interrupts, double tap to detach)
-        docker_cmd exec -it "${container_name}" sudo -u "$project_user" sh -c "VM_TARGET_DIR='$target_dir' exec zsh"
+        docker_cmd exec -it "${container_name}" sudo -u "$project_user" sh -c "VM_TARGET_DIR=$(printf '%q' \"$target_dir\") exec zsh"
 
         # After SSH session ends, check if we should change to a different directory
         sync_directory_after_exit "$config" "$project_dir"
@@ -616,31 +979,103 @@ docker_start() {
     local container_name
     container_name=$(get_project_container_name "$config")
 
-    # Check if container exists
+    # Check if container exists with enhanced diagnostics
     if ! docker_cmd inspect "${container_name}" >/dev/null 2>&1; then
-        echo "❌ Container doesn't exist. Use 'vm create' to set up the environment first."
+        echo "❌ Container '${container_name}' doesn't exist"
+        echo "💡 Use 'vm create' to set up the environment first"
+        echo "💡 Or check if you're in the correct project directory"
         return 1
     fi
+    
+    # Get current container status for better error reporting
+    local current_status
+    if ! current_status=$(docker_cmd inspect "${container_name}" --format='{{.State.Status}}' 2>/dev/null); then
+        echo "❌ Cannot determine container status"
+        return 1
+    fi
+    
+    # Check if container is already running
+    if [[ "$current_status" == "running" ]]; then
+        echo "✅ Container '${container_name}' is already running"
+        # Skip to ready check
+    else
+        echo "🚀 Starting container '${container_name}' (current status: $current_status)..."
+        
+        # Start the container with enhanced error handling
+        if ! docker_cmd start "${container_name}" "$@"; then
+            local start_error_code=$?
+            echo "❌ Failed to start container '${container_name}' (exit code: $start_error_code)"
+            
+            # Provide specific troubleshooting based on container state
+            local exit_code
+            if exit_code=$(docker_cmd inspect "${container_name}" --format='{{.State.ExitCode}}' 2>/dev/null); then
+                echo "💡 Container exit code: $exit_code"
+            fi
+            
+            echo "💡 Troubleshooting steps:"
+            echo "   1. Check container logs: vm logs"
+            echo "   2. Try recreating: vm destroy && vm create"
+            echo "   3. Check Docker daemon status"
+            echo "   4. Verify disk space and permissions"
+            
+            return $start_error_code
+        fi
+    fi
 
-    # Start the container directly (not using docker-compose)
-    docker_cmd start "${container_name}" "$@"
-
-    # Wait for container to be ready
-    echo "⏳ Starting up..."
+    # Wait for container to be ready with enhanced monitoring
+    echo "⏳ Verifying container readiness..."
     local max_attempts=15
     local attempt=1
+    local container_ready=false
+    
     while [[ $attempt -le $max_attempts ]]; do
-        if docker_cmd exec "${container_name}" echo "ready" >/dev/null 2>&1; then
-            echo "✅ Environment ready!"
-            break
-        fi
-        if [[ $attempt -eq $max_attempts ]]; then
-            echo "❌ Environment startup failed"
+        # First verify container is still running
+        local runtime_status
+        if ! runtime_status=$(docker_cmd inspect "${container_name}" --format='{{.State.Status}}' 2>/dev/null); then
+            echo "❌ Cannot check container status during startup"
             return 1
         fi
+        
+        if [[ "$runtime_status" != "running" ]]; then
+            echo "❌ Container stopped during startup (status: $runtime_status)"
+            
+            # Show exit details
+            local exit_code
+            if exit_code=$(docker_cmd inspect "${container_name}" --format='{{.State.ExitCode}}' 2>/dev/null); then
+                echo "💡 Container exit code: $exit_code"
+            fi
+            
+            echo "💡 Check container logs: vm logs"
+            return 1
+        fi
+        
+        # Test if container is responsive
+        if docker_cmd exec "${container_name}" echo "ready" >/dev/null 2>&1; then
+            echo "✅ Environment ready!"
+            container_ready=true
+            break
+        fi
+        
+        if [[ $attempt -eq $max_attempts ]]; then
+            echo "❌ Environment startup failed - container not responding"
+            echo "💡 Container is running but not accepting exec commands"
+            echo "💡 This may indicate:"
+            echo "   - Container processes still starting"
+            echo "   - Security policies blocking exec"
+            echo "   - Container in unhealthy state"
+            echo "💡 Try: vm logs to see container output"
+            return 1
+        fi
+        
+        echo "⏳ Waiting for container readiness... ($attempt/$max_attempts)"
         sleep 1
         ((attempt++))
     done
+    
+    if [[ "$container_ready" != "true" ]]; then
+        echo "❌ Container startup verification failed"
+        return 1
+    fi
 
     echo "🎉 Environment started!"
 
@@ -658,10 +1093,30 @@ docker_halt() {
     local project_dir="$2"
     shift 2
 
-    # Stop the container directly (not using docker-compose)
+    # Stop the container directly (not using docker-compose) with error handling
     local container_name
     container_name=$(get_project_container_name "$config")
-    docker_cmd stop "${container_name}" "$@"
+    
+    # Check if container exists and is running
+    if ! docker_cmd inspect "${container_name}" >/dev/null 2>&1; then
+        echo "⚠️  Container '${container_name}' does not exist"
+        return 0
+    fi
+    
+    if ! docker_cmd inspect "${container_name}" --format='{{.State.Status}}' 2>/dev/null | grep -q "running"; then
+        echo "⚠️  Container '${container_name}' is already stopped"
+        return 0
+    fi
+    
+    if ! docker_cmd stop "${container_name}" "$@"; then
+        echo "❌ Failed to stop container gracefully"
+        echo "💡 Trying force stop..."
+        if ! docker_cmd kill "${container_name}" 2>/dev/null; then
+            echo "❌ Failed to force stop container"
+            return 1
+        fi
+        echo "⚠️  Container force stopped"
+    fi
 }
 
 docker_destroy() {
@@ -676,9 +1131,7 @@ docker_destroy() {
     echo "🗑️ Destroying VM: ${container_name}"
 
     # Create a secure temporary file for the config
-    TEMP_CONFIG_FILE=$(mktemp /tmp/vm-config.XXXXXX)
-    # Ensure the temp file is removed when the script exits
-    trap 'rm -f "$TEMP_CONFIG_FILE"' EXIT
+    TEMP_CONFIG_FILE=$(create_temp_file "vm-config.XXXXXX")
 
     # Generate docker-compose.yml temporarily for destroy operation
     echo "🧹 Preparing cleanup..."
@@ -722,8 +1175,7 @@ docker_reload() {
 
     # Regenerate docker-compose.yml to pick up config changes (npm links, etc.)
     echo "🔄 Updating configuration..."
-    TEMP_CONFIG_FILE=$(mktemp /tmp/vm-config.XXXXXX)
-    trap 'rm -f "$TEMP_CONFIG_FILE"' EXIT
+    TEMP_CONFIG_FILE=$(create_temp_file "vm-config.XXXXXX")
     echo "$config" > "$TEMP_CONFIG_FILE"
     "$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" "$TEMP_CONFIG_FILE" "$project_dir"
 
@@ -745,16 +1197,55 @@ docker_provision() {
     echo "🔄 Rebuilding environment..."
 
     # Create a secure temporary file for the config
-    TEMP_CONFIG_FILE=$(mktemp /tmp/vm-config.XXXXXX)
-    # Ensure the temp file is removed when the script exits
-    trap 'rm -f "$TEMP_CONFIG_FILE"' EXIT
+    TEMP_CONFIG_FILE=$(create_temp_file "vm-config.XXXXXX")
 
     # Generate fresh docker-compose.yml for provisioning
     echo "$config" > "$TEMP_CONFIG_FILE"
     "$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" "$TEMP_CONFIG_FILE" "$project_dir"
 
-    docker_run "compose" "$config" "$project_dir" build --no-cache
-    docker_run "compose" "$config" "$project_dir" up -d "$@"
+    # Build with enhanced rollback on failure
+    if ! docker_run "compose" "$config" "$project_dir" build --no-cache; then
+        local provision_build_error=$?
+        echo "❌ Provisioning build failed (exit code: $provision_build_error)"
+        echo "🧹 Performing provisioning build rollback..."
+        
+        # Enhanced cleanup with verification
+        if docker_run "compose" "$config" "$project_dir" down --remove-orphans 2>/dev/null; then
+            echo "✅ Failed build artifacts cleaned up successfully"
+        else
+            echo "⚠️ Warning: Provisioning cleanup may be incomplete"
+            echo "💡 Manual cleanup may be required: docker system prune"
+        fi
+        
+        # Clean up temp config file on provision failure
+        if [[ -f "$TEMP_CONFIG_FILE" ]]; then
+            rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
+        fi
+        
+        return $provision_build_error
+    fi
+    
+    # Start containers with enhanced rollback on failure
+    if ! docker_run "compose" "$config" "$project_dir" up -d "$@"; then
+        local provision_startup_error=$?
+        echo "❌ Provisioning startup failed (exit code: $provision_startup_error)"
+        echo "🧹 Performing provisioning startup rollback..."
+        
+        # Enhanced rollback with status verification
+        if docker_run "compose" "$config" "$project_dir" down 2>/dev/null; then
+            echo "✅ Failed containers cleaned up successfully"
+        else
+            echo "⚠️ Warning: Provisioning rollback may be incomplete"
+            echo "💡 Some containers may still be running - check with 'docker ps'"
+        fi
+        
+        # Clean up temp config file on provision failure
+        if [[ -f "$TEMP_CONFIG_FILE" ]]; then
+            rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
+        fi
+        
+        return $provision_startup_error
+    fi
 
     # Clean up generated docker-compose.yml since containers are now running
     local compose_file
@@ -1246,6 +1737,11 @@ done
 # Restore positional parameters to the command and its arguments
 set -- "${ARGS[@]}"
 
+# Skip main execution if only sourcing functions
+if [[ "${SKIP_MAIN_EXECUTION:-}" == "true" ]]; then
+    return 0 2>/dev/null || exit 0
+fi
+
 # Handle special commands
 case "${1:-}" in
     "init")
@@ -1699,7 +2195,7 @@ case "${1:-}" in
 
                     if [[ "$RELATIVE_PATH" != "." ]]; then
                         TARGET_DIR="${WORKSPACE_PATH}/${RELATIVE_PATH}"
-                        VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh -c "cd '$TARGET_DIR' && exec /bin/zsh"
+                        VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh -c "cd $(printf '%q' \"$TARGET_DIR\") && exec /bin/zsh"
                     else
                         VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh
                     fi
@@ -1719,11 +2215,16 @@ case "${1:-}" in
                     ;;
                 "exec")
                     # Execute command in Vagrant VM
-                    VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh -c "$@"
+                    # Escape all arguments individually for safe passing to vagrant ssh -c
+                    local escaped_command=""
+                    for arg in "$@"; do
+                        escaped_command="$escaped_command $(printf '%q' "$arg")"
+                    done
+                    VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh -c "$escaped_command"
                     ;;
                 "logs")
                     # Show service logs in Vagrant VM
-                    echo "📋 Showing service logs (Ctrl+C to stop)..."
+                    echo "Showing service logs - Press Ctrl+C to stop..."
                     VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant ssh -c "sudo journalctl -u postgresql -u redis-server -u mongod -f"
                     ;;
                 "test")

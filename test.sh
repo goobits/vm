@@ -117,7 +117,8 @@ cleanup_test_env() {
 
     # Run any registered cleanup commands
     for cmd in "${CLEANUP_COMMANDS[@]}"; do
-        eval "$cmd" 2>/dev/null || true
+        # Execute each command safely in a subshell
+        bash -c "$(printf '%q' "$cmd")" 2>/dev/null || true
     done
 
     # Destroy VM if it exists
