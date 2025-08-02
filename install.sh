@@ -36,21 +36,21 @@ else
     # Remove old installation if it exists
     rm -rf "$INSTALL_DIR"
     mkdir -p "$INSTALL_DIR"
-    
+
     # Copy directories
     for dir in providers shared configs; do
         if [ -d "$SCRIPT_DIR/$dir" ]; then
             cp -r "$SCRIPT_DIR/$dir" "$INSTALL_DIR/"
         fi
     done
-    
+
     # Copy individual files
     for file in vm.sh validate-config.sh generate-config.sh vm.yaml package.json *.json *.yaml; do
         if [ -f "$SCRIPT_DIR/$file" ]; then
             cp "$SCRIPT_DIR/$file" "$INSTALL_DIR/"
         fi
     done
-    
+
     # Make scripts executable
     chmod +x "$INSTALL_DIR"/*.sh
 fi
@@ -67,14 +67,14 @@ chmod +x "$BIN_DIR/vm"
 
 # Check if ~/.local/bin is in PATH
 if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
-	echo "⚠️  $BIN_DIR is not in your PATH."
-	echo "Add this to your ~/.bashrc or ~/.zshrc:"
-	echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
-	echo ""
-	echo "Or run now:"
-	echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
+    echo "⚠️  $BIN_DIR is not in your PATH."
+    echo "Add this to your ~/.bashrc or ~/.zshrc:"
+    echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
+    echo ""
+    echo "Or run now:"
+    echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
 else
-	echo "✅ $BIN_DIR is already in your PATH"
+    echo "✅ $BIN_DIR is already in your PATH"
 fi
 
 echo ""

@@ -100,7 +100,8 @@ alias dimg='docker images'
 alias psql='sudo -u postgres psql -p {{ project_config.ports.postgresql | default(5432) }}'
 alias redis='redis-cli -p {{ project_config.ports.redis | default(6379) }}'
 alias mongo='mongosh --port {{ project_config.ports.mongodb | default(27017) }}'
-alias mysql='mysql -u root -p{{ project_config.services.mysql.password | default("mysql") }} -P {{ project_config.ports.mysql | default(3306) }}'
+# SECURITY: MySQL password should be provided via environment variable MYSQL_ROOT_PASSWORD
+alias mysql='mysql -u root -p${MYSQL_ROOT_PASSWORD:-mysql} -P {{ project_config.ports.mysql | default(3306) }}'
 
 # Environment Variables
 export DISPLAY={{ project_config.services.headless_browser.display | default(':99') }}

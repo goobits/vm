@@ -26,7 +26,8 @@ services:
     enabled: true
     database: vm_dev
     user: postgres
-    password: postgres
+    # SECURITY: Password should be provided via environment variable POSTGRES_PASSWORD
+    password: ${POSTGRES_PASSWORD:-postgres}
     port: 3005
   redis:
     enabled: false
