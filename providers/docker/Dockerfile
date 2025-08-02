@@ -62,9 +62,11 @@ RUN set -e && \
     echo "${PROJECT_USER} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 # Configure SSH for Ansible access (optional - can use docker connection plugin instead)
+# SECURITY: Passwords should be provided via environment variables, not hardcoded
 RUN mkdir /var/run/sshd && \
-    echo 'root:root' | chpasswd && \
-    echo "${PROJECT_USER}:${PROJECT_USER}" | chpasswd && \
+    # Note: SSH_ROOT_PASSWORD and SSH_USER_PASSWORD should be set via docker-compose environment
+    echo "root:${SSH_ROOT_PASSWORD:-changeme}" | chpasswd && \
+    echo "${PROJECT_USER}:${SSH_USER_PASSWORD:-changeme}" | chpasswd && \
     sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
     sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
 

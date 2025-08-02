@@ -74,12 +74,12 @@ done
 # Extract default values from YAML schema
 extract_schema_defaults() {
     local schema_path="$1"
-    
+
     if [[ ! -f "$schema_path" ]]; then
         echo "❌ Schema file not found: $schema_path" >&2
         return 1
     fi
-    
+
     yq '
     {
       "version": .properties.version.default,
@@ -120,7 +120,7 @@ find_vm_yaml_upwards() {
     local start_dir="$1"
     local current_dir
     current_dir="$(cd "$start_dir" && pwd)"
-    
+
     while [[ "$current_dir" != "/" ]]; do
         if [[ -f "$current_dir/vm.yaml" ]]; then
             echo "$current_dir/vm.yaml"
@@ -128,13 +128,13 @@ find_vm_yaml_upwards() {
         fi
         current_dir="$(dirname "$current_dir")"
     done
-    
+
     # Check root directory
     if [[ -f "/vm.yaml" ]]; then
         echo "/vm.yaml"
         return 0
     fi
-    
+
     return 1
 }
 
@@ -142,39 +142,39 @@ find_vm_yaml_upwards() {
 initialize_vm_yaml() {
     local target_path="$1"
     local local_config_path="${target_path:-$(pwd)/vm.yaml}"
-    
+
     # Check if vm.yaml already exists
     if [[ -f "$local_config_path" ]]; then
         echo "❌ vm.yaml already exists at $local_config_path" >&2
         echo "Use --config to specify a different location or remove the existing file." >&2
         return 1
     fi
-    
+
     # Load default configuration from schema
     local schema_path="$SCRIPT_DIR/vm.schema.yaml"
     if [[ ! -f "$schema_path" ]]; then
         echo "❌ Schema file not found at $schema_path" >&2
         return 1
     fi
-    
+
     local default_config
     default_config="$(extract_schema_defaults "$schema_path")"
     local dir_name
     dir_name="$(basename "$(pwd)")"
-    
+
     # Sanitize directory name for use as project name
     # Replace dots, spaces, and other invalid characters with hyphens
     # Then remove any consecutive hyphens and trim leading/trailing hyphens
     local sanitized_name
     sanitized_name="$(echo "$dir_name" | sed 's/[^a-zA-Z0-9_-]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//')"
-    
+
     # If the sanitized name is different, inform the user
     if [[ "$sanitized_name" != "$dir_name" ]]; then
         echo "📝 Note: Directory name '$dir_name' contains invalid characters for project names."
         echo "   Using sanitized name: '$sanitized_name'"
         echo ""
     fi
-    
+
     # Customize config for this directory
     local customized_config
     customized_config="$(echo "$default_config" | jq --arg dirname "$sanitized_name" '
@@ -182,7 +182,7 @@ initialize_vm_yaml() {
         .project.hostname = "dev." + $dirname + ".local" |
         .terminal.username = ($dirname + "-dev")
     ')"
-    
+
     # Write the customized config as YAML
     if echo "$customized_config" | yq -y . > "$local_config_path"; then
         echo "✅ Created vm.yaml for project: $sanitized_name"
@@ -205,17 +205,17 @@ load_and_merge_config() {
     local_config_path="$(pwd)/vm.yaml"
     local config_file_to_load=""
     local config_dir_for_scan=""
-    
+
     # Load default config from schema
     local schema_path="$SCRIPT_DIR/vm.schema.yaml"
     if [[ ! -f "$schema_path" ]]; then
         echo "❌ Schema file not found at $schema_path" >&2
         return 1
     fi
-    
+
     local default_config
     default_config="$(extract_schema_defaults "$schema_path")"
-    
+
     # Determine which config to load
     if [[ "$custom_config_path" == "__SCAN__" ]]; then
         # Scan upwards for vm.yaml
@@ -235,7 +235,7 @@ load_and_merge_config() {
         else
             config_file_to_load="$(pwd)/$custom_config_path"
         fi
-        
+
         # Handle directory path with vm.yaml
         if [[ ! -f "$config_file_to_load" && "$config_file_to_load" == */vm.yaml ]]; then
             local dir_path
@@ -245,7 +245,7 @@ load_and_merge_config() {
                 return 1
             fi
         fi
-        
+
         if [[ ! -f "$config_file_to_load" ]]; then
             echo "❌ Custom config file not found: $config_file_to_load" >&2
             return 1
@@ -268,7 +268,7 @@ load_and_merge_config() {
             fi
         fi
     fi
-    
+
     # Load and validate user config
     local user_config=""
     if [[ -f "$config_file_to_load" ]]; then
@@ -283,7 +283,7 @@ load_and_merge_config() {
             echo "" >&2
             return 1
         fi
-        
+
         local yq_error
         if ! user_config="$(yq . "$config_file_to_load" 2>&1)"; then
             yq_error="$(yq . "$config_file_to_load" 2>&1)"
@@ -291,14 +291,14 @@ load_and_merge_config() {
             echo "   YAML parsing error: $yq_error" >&2
             return 1
         fi
-        
+
         # Check for valid top-level keys
         local valid_keys='["$schema","version","provider","project","vm","versions","ports","services","apt_packages","npm_packages","cargo_packages","pip_packages","aliases","environment","terminal","claude_sync","gemini_sync","persist_databases"]'
         local user_keys
         user_keys="$(echo "$user_config" | jq -r 'keys[]')"
         local has_valid_keys
         has_valid_keys="$(echo "$user_config" | jq --argjson valid "$valid_keys" 'keys as $uk | $valid as $vk | ($uk | map(. as $k | $vk | contains([$k])) | any)')"
-        
+
         if [[ "$has_valid_keys" == "false" && -n "$user_keys" ]]; then
             local user_keys_str
             user_keys_str="$(echo "$user_config" | jq -r 'keys | join(", ")')"
@@ -306,7 +306,7 @@ load_and_merge_config() {
             return 1
         fi
     fi
-    
+
     # Merge configurations
     local final_config
     if [[ -n "$user_config" ]]; then
@@ -314,7 +314,7 @@ load_and_merge_config() {
     else
         final_config="$default_config"
     fi
-    
+
     echo "$final_config"
 }
 
@@ -322,16 +322,16 @@ load_and_merge_config() {
 validate_against_yaml_schema() {
     local config="$1"
     local schema_path="$2"
-    
+
     if [[ ! -f "$schema_path" ]]; then
         echo "Schema file not found: $schema_path"
         return 1
     fi
-    
+
     # Create temp file for config
     local temp_config="/tmp/vm-config-validate-$$.yaml"
     echo "$config" | yq -y . > "$temp_config"
-    
+
     # Use Python to validate YAML against YAML schema
     local validation_output
     if validation_output=$(python3 -c "
@@ -343,11 +343,11 @@ try:
     # Load YAML schema
     with open('$schema_path', 'r') as f:
         schema = yaml.safe_load(f)
-    
+
     # Load YAML config
     with open('$temp_config', 'r') as f:
         config = yaml.safe_load(f)
-    
+
     # Validate
     jsonschema.validate(config, schema)
     print('✅ Configuration is valid')
@@ -374,21 +374,21 @@ validate_merged_config() {
     local config="$1"
     local errors=()
     local warnings=()
-    
+
     # Check if config is valid object
     if ! echo "$config" | jq -e 'type == "object"' >/dev/null 2>&1; then
         errors+=("Configuration must be a valid JSON object")
         printf '%s\n' "${errors[@]}" >&2
         return 1
     fi
-    
+
     # Check for required project section
     if ! echo "$config" | jq -e '.project | type == "object"' >/dev/null 2>&1; then
         errors+=("project section is required and must be an object")
         printf '%s\n' "${errors[@]}" >&2
         return 1
     fi
-    
+
     # Schema-based validation using vm.schema.yaml
     local schema_path="$SCRIPT_DIR/vm.schema.yaml"
     if [[ -f "$schema_path" ]]; then
@@ -405,7 +405,7 @@ validate_merged_config() {
             errors+=("provider must be 'vagrant' or 'docker'")
         fi
     fi
-    
+
     # Project validation
     local project_name
     project_name="$(echo "$config" | jq -r '.project.name // ""')"
@@ -414,19 +414,19 @@ validate_merged_config() {
     elif ! echo "$project_name" | grep -qE '^[a-zA-Z0-9_-]+$'; then
         errors+=("project.name must contain only alphanumeric characters, hyphens, and underscores (got: '$project_name')")
     fi
-    
+
     # Print errors and warnings
     if [[ ${#errors[@]} -gt 0 ]]; then
         echo "❌ Configuration validation failed:" >&2
         printf '  - %s\n' "${errors[@]}" >&2
         return 1
     fi
-    
+
     if [[ ${#warnings[@]} -gt 0 ]]; then
         echo "⚠️  Configuration warnings:" >&2
         printf '  - %s\n' "${warnings[@]}" >&2
     fi
-    
+
     return 0
 }
 
@@ -437,30 +437,30 @@ main() {
         extract_schema_defaults "$EXTRACT_DEFAULTS_PATH"
         return $?
     fi
-    
+
     # Handle init command
     if [[ "$INIT_FLAG" == "true" ]]; then
         initialize_vm_yaml "$CUSTOM_CONFIG_PATH"
         return $?
     fi
-    
+
     # Load and merge config
     local final_config
     if ! final_config="$(load_and_merge_config "$CUSTOM_CONFIG_PATH")"; then
         return 1
     fi
-    
+
     # Validate config
     if ! validate_merged_config "$final_config"; then
         return 1
     fi
-    
+
     # Handle validation-only mode
     if [[ "$VALIDATE_FLAG" == "true" ]]; then
         echo "✅ Configuration is valid"
         return 0
     fi
-    
+
     # Output final config (default behavior)
     # Add __config_dir field if we're in scan mode
     if [[ "$CUSTOM_CONFIG_PATH" == "__SCAN__" ]]; then
@@ -472,7 +472,7 @@ main() {
             final_config="$(echo "$final_config" | jq --arg dir "$config_dir" '. + {__config_dir: $dir}')"
         fi
     fi
-    
+
     echo "$final_config"
     return 0
 }
