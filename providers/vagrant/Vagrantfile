@@ -2,43 +2,28 @@
 # vi: set ft=ruby :
 
 require 'json'
-require 'yaml'
-
-# Deep merge helper function
-def deep_merge(base, override)
-  base.merge(override) do |key, base_val, override_val|
-    if base_val.is_a?(Hash) && override_val.is_a?(Hash)
-      deep_merge(base_val, override_val)
-    else
-      override_val
-    end
-  end
-end
 
 Vagrant.configure("2") do |config|
-  # Load default configuration
-  defaults_file = File.expand_path("../../vm.yaml", File.dirname(__FILE__))
-  default_config = YAML.load_file(defaults_file)
+  # Use the shared config processor for unified configuration loading
+  # This replaces the Ruby deep_merge logic with the unified bash processor
+  config_processor = File.expand_path("../../shared/config-processor.sh", File.dirname(__FILE__))
+  config_file = ENV['VM_CONFIG'] || "__SCAN__"
   
-  # Load project-specific configuration
-  config_file = ENV['VM_CONFIG'] || File.expand_path("../../vm.yaml", File.dirname(__FILE__))
-  if config_file && File.exist?(config_file)
-    user_config = YAML.load_file(config_file)
-    # Merge user config with defaults
-    project_config = deep_merge(default_config, user_config)
-  else
-    # Use defaults only
-    project_config = default_config
+  # Load and validate configuration using shared config processor
+  config_json = `"#{config_processor}" load-config "#{config_file}" 2>&1`
+  config_exit_code = $?.exitstatus
+  
+  if config_exit_code != 0
+    puts config_json
+    abort "VM configuration loading failed"
   end
   
-  # Validate configuration using the validation script
-  validation_script = File.expand_path("../../validate-config.sh", File.dirname(__FILE__))
-  validation_result = `"#{validation_script}" "#{config_file}" 2>&1`
-  validation_exit_code = $?.exitstatus
-  
-  if validation_exit_code != 0
-    puts validation_result
-    abort "VM configuration validation failed"
+  # Parse the JSON configuration
+  begin
+    project_config = JSON.parse(config_json)
+  rescue JSON::ParserError => e
+    puts "❌ Failed to parse configuration JSON: #{e.message}"
+    abort "VM configuration parsing failed"
   end
   
   # Extract configuration values after validation
@@ -168,6 +153,95 @@ Vagrant.configure("2") do |config|
       if project_config.dig('services', 'mysql', 'enabled')
         machine.vm.synced_folder "#{vm_data_path}/mysql", "/var/lib/mysql", 
           create: true, owner: "mysql", group: "mysql"
+      end
+    end
+
+    # NPM linked packages support
+    if project_config['npm_packages'] && !project_config['npm_packages'].empty?
+      puts "🔗 Checking for linked npm packages..."
+      
+      # Load shared utilities
+      npm_utils_script = File.join(File.dirname(__FILE__), '..', '..', 'shared', 'npm-utils.sh')
+      security_utils_script = File.join(File.dirname(__FILE__), '..', '..', 'shared', 'security-utils.sh')
+      mount_utils_script = File.join(File.dirname(__FILE__), '..', '..', 'shared', 'mount-utils.sh')
+      
+      if File.exist?(npm_utils_script)
+        # Convert npm_packages array to space-separated string for bash
+        npm_packages_str = project_config['npm_packages'].map { |pkg| "'#{pkg}'" }.join(' ')
+        
+        # Use shared npm-utils.sh to detect linked packages with error output for user feedback
+        npm_detection_cmd = "bash -c \"source '#{npm_utils_script}' && detect_npm_linked_packages #{npm_packages_str}\""
+        linked_volumes_output = `#{npm_detection_cmd} 2>&1`
+        exit_status = $?.exitstatus
+        
+        # Extract volume mappings (stdout) and user messages (stderr)
+        linked_volumes = linked_volumes_output.lines.select { |line| line.include?(':') && !line.include?('📦') }.join.strip
+        user_messages = linked_volumes_output.lines.select { |line| line.include?('📦') }.join
+        
+        # Display user messages
+        print user_messages unless user_messages.empty?
+        
+        if exit_status == 0 && !linked_volumes.empty?
+          linked_volumes.split("\n").each do |volume_mapping|
+            next if volume_mapping.empty?
+            
+            # Parse Docker volume format: source:target:permissions
+            parts = volume_mapping.split(':')
+            next unless parts.length >= 2
+            
+            source_path = parts[0]
+            target_path = parts[1]
+            permissions = parts[2] || 'delegated'
+            
+            # Convert target path to match Ansible expectations
+            # Ansible expects /workspace/.npm_links/<safe_package_name>
+            # Extract package name from target path and apply same sanitization as Ansible
+            package_name = File.basename(target_path)
+            safe_package_name = package_name.gsub(/[@\/]/, '-')
+            sanitized_target_path = "/workspace/.npm_links/#{safe_package_name}"
+            
+            # Basic security validation for source path
+            begin
+              resolved_source = File.realpath(source_path)
+              
+              # Validate source path exists and is readable
+              if File.directory?(resolved_source) && File.readable?(resolved_source)
+                # Additional security check: ensure not mounting system paths
+                if resolved_source.start_with?('/etc/') || resolved_source.start_with?('/usr/bin/') || 
+                   resolved_source.start_with?('/bin/') || resolved_source.start_with?('/sbin/')
+                  puts "⚠️  Skipping system path: #{resolved_source}"
+                  next
+                end
+                
+                # Use appropriate sync type based on permissions
+                sync_options = {
+                  type: "virtualbox",
+                  create: true,
+                  owner: vm_user,
+                  group: vm_user
+                }
+                
+                # For read-only mounts, use rsync for better performance
+                if permissions == 'ro'
+                  sync_options[:type] = "rsync"
+                  sync_options[:rsync__exclude] = [".git/", "node_modules/", ".DS_Store"]
+                  sync_options[:rsync__args] = ["--verbose", "--archive", "--delete", "-z"]
+                end
+                
+                machine.vm.synced_folder resolved_source, sanitized_target_path, sync_options
+                puts "📦 Linked package: #{package_name} -> #{sanitized_target_path}"
+              else
+                puts "⚠️  Warning: NPM linked package path not accessible: #{source_path}"
+              end
+            rescue => e
+              puts "⚠️  Error processing NPM linked package path #{source_path}: #{e.message}"
+            end
+          end
+        elsif !project_config['npm_packages'].empty?
+          puts "ℹ️  No linked NPM packages found for: #{project_config['npm_packages'].join(', ')}"
+        end
+      else
+        puts "⚠️  Warning: NPM utilities not found at #{npm_utils_script}"
       end
     end
   

@@ -503,3 +503,27 @@ force_cleanup_temp_files() {
     
     return 0
 }
+
+# Simple temp file cleanup with trap handlers (for backward compatibility)
+# This provides a simpler interface for setting up cleanup of a single temporary file
+# Usage: setup_temp_file_cleanup /path/to/temp/file
+setup_temp_file_cleanup() {
+    local temp_file="$1"
+    
+    # Validate input
+    if [[ -z "$temp_file" ]]; then
+        echo "❌ Error: No temp file path provided for cleanup setup" >&2
+        return 1
+    fi
+    
+    # Set up trap for this specific file
+    # Note: This will override any existing EXIT trap, so use with caution
+    trap "rm -f \"$temp_file\" 2>/dev/null" EXIT INT TERM
+    
+    # Log setup if debugging is enabled
+    if [[ "${VM_DEBUG:-}" = "true" ]] || [[ "${TEMP_FILE_LOG:-}" = "true" ]]; then
+        echo "🗑️  Set up cleanup trap for: $temp_file" >&2
+    fi
+    
+    return 0
+}
