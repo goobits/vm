@@ -231,8 +231,8 @@ end
 # Command-line interface for testing
 if __FILE__ == $0
   if ARGV.length < 1
-    puts "Usage: ruby vagrant-temp-config.rb <vm-name> [mount1] [mount2] ..."
-    puts "Example: ruby vagrant-temp-config.rb vmtemp-123 ./src:rw ./docs:ro"
+    puts "Usage: ruby vagrant-dynamic-config.rb <vm-name> [mount1] [mount2] ..."
+    puts "Example: ruby vagrant-dynamic-config.rb vmtemp-123 ./src:rw ./docs:ro"
     exit 1
   end
   

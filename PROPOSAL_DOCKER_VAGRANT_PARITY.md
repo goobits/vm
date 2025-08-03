@@ -11,7 +11,7 @@ This proposal outlines a comprehensive plan to achieve feature parity between Do
 #### 1. **Temporary VM Functionality**
 - **Status**: Docker ✅ | Vagrant ❌
 - **Impact**: Critical productivity feature missing
-- **Location**: `vm-temp.sh` (1,805 lines of functionality)
+- **Location**: `vm-temporary.sh` (1,805 lines of functionality)
 
 #### 2. **NPM Linked Package Support**
 - **Status**: Docker ✅ | Vagrant ❌  
@@ -83,13 +83,13 @@ This proposal outlines a comprehensive plan to achieve feature parity between Do
 ```
 
 **Implementation Strategy:**
-1. **Reuse `vm-temp.sh` logic**: Extract provider-agnostic functions
+1. **Reuse `vm-temporary.sh` logic**: Extract provider-agnostic functions
 2. **Vagrant multi-machine**: Use dynamic machine definitions
 3. **Shared state management**: Extend existing state file format
 4. **Mount handling**: Leverage Vagrant's synced_folder feature
 
 **Code Reuse Opportunities:**
-- 90% of `vm-temp.sh` validation and state management
+- 90% of `vm-temporary.sh` validation and state management
 - Existing mount security validation
 - State file format and management
 - User interaction patterns

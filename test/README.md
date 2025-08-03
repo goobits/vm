@@ -15,7 +15,7 @@ Test suite for the VM tool, focusing on configuration validation and core functi
     │   ├── services/       # Service-specific configs
     │   └── languages/      # Language package configs
     ├── docker-wrapper.sh   # Docker testing utilities
-    └── test-migrate-temp.sh # Migration and temp VM tests
+    └── test-migrate-temporary.sh # Migration and temporary VM tests
 ```
 
 ## Available Test Suites
@@ -27,7 +27,7 @@ The test runner supports these suites:
 - `languages` - Language package tests
 - `cli` - Command-line interface tests
 - `lifecycle` - VM lifecycle management
-- `migrate-temp` - Migration and temporary VM tests
+- `migrate-temporary` - Migration and temporary VM tests
 
 ## Running Tests
 
@@ -42,7 +42,7 @@ The test runner supports these suites:
 ./test.sh --suite services     # Run only service tests  
 ./test.sh --suite languages    # Run only language tests
 ./test.sh --suite cli          # Run only CLI tests
-./test.sh --suite migrate-temp # Run migration and temp VM tests
+./test.sh --suite migrate-temporary # Run migration and temporary VM tests
 ./test.sh --suite lifecycle    # Run only lifecycle tests
 ```
 
@@ -68,8 +68,8 @@ The test suite uses YAML configuration files in `/workspace/test/configs/`:
 
 ## Test Implementation
 
-### Migration and Temp VM Tests (`test-migrate-temp.sh`)
-Located at `/workspace/test/test-migrate-temp.sh`, this script tests:
+### Migration and Temporary VM Tests (`test-migrate-temporary.sh`)
+Located at `/workspace/test/test-migrate-temporary.sh`, this script tests:
 - `vm migrate --check` functionality
 - `vm migrate --dry-run` and live migration
 - `vm temp` creation, status, SSH, and destroy operations
@@ -91,7 +91,7 @@ Tests use color-coded output:
 
 To add new functionality testing:
 
-1. **For migrate/temp features**: Add test functions to `test-migrate-temp.sh`
+1. **For migrate/temporary features**: Add test functions to `test-migrate-temporary.sh`
 2. **For new suites**: The test runner supports adding new suite names to `AVAILABLE_SUITES`
 3. **For configs**: Add new YAML configs to the appropriate subdirectory in `test/configs/`
 

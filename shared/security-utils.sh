@@ -1,6 +1,6 @@
 #!/bin/bash
 # Shared Security Utilities
-# Extracted from vm.sh and vm-temp.sh for use by both Docker and Vagrant providers
+# Extracted from vm.sh and vm-temporary.sh for use by both Docker and Vagrant providers
 #
 # This module provides provider-agnostic security validation utilities
 # for path validation, name sanitization, and general security checks.

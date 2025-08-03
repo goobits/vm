@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **JSON Configuration Deprecation**: JSON configuration files (`.json`) are no longer supported for direct use. Users must migrate existing JSON configs to YAML format using `vm migrate` command. This simplifies the configuration system while maintaining backward compatibility through migration.
 
 ### Added
-- **Modular Architecture**: Extracted temporary VM functionality into separate `vm-temp.sh` module for better maintainability and debugging
+- **Modular Architecture**: Extracted temporary VM functionality into separate `vm-temporary.sh` module for better maintainability and debugging
 - **Configuration Migration**: Full support for migrating legacy JSON configs to modern YAML format with versioning
   - `vm migrate --check` - Check if migration is needed
   - `vm migrate --dry-run` - Preview migration changes  

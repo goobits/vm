@@ -1,7 +1,7 @@
 #!/bin/bash
 # VM Configuration Processor - Unified config loading and processing
 # Purpose: Provide a single, shared configuration processing layer for both Docker and Vagrant
-# Eliminates code duplication across vm.sh, Vagrantfile, and vm-temp.sh
+# Eliminates code duplication across vm.sh, Vagrantfile, and vm-temporary.sh
 
 set -e
 
@@ -15,7 +15,7 @@ fi
 
 #=============================================================================
 # YQ WRAPPER UTILITIES
-# Extracted and unified from vm-temp.sh
+# Extracted and unified from vm-temporary.sh
 #=============================================================================
 
 # Wrapper function for yq to handle different versions and provide consistent output
