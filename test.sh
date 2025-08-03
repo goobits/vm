@@ -28,7 +28,7 @@ FAILED_TESTS=0
 FAILED_TEST_NAMES=()
 
 # Available test suites
-AVAILABLE_SUITES="framework minimal services languages cli lifecycle migrate-temp"
+AVAILABLE_SUITES="framework minimal services languages cli lifecycle migrate-temporary"
 
 # Parse command line arguments
 SUITE_FILTER=""
@@ -1101,9 +1101,9 @@ run_test_suite() {
             run_test "vm-lifecycle" test_vm_lifecycle
             run_test "vm-reload" test_vm_reload
             ;;
-        migrate-temp)
-            # Run the dedicated migrate-temp test script
-            "$SCRIPT_DIR/test/test-migrate-temp.sh"
+        migrate-temporary)
+            # Run the dedicated migrate-temporary test script
+            "$SCRIPT_DIR/test/test-migrate-temporary.sh"
             # Capture exit code and update counters
             local exit_code=$?
             if [[ $exit_code -eq 0 ]]; then
@@ -1111,7 +1111,7 @@ run_test_suite() {
             else
                 echo -e "${RED}✗ Migrate-temp test suite failed${NC}"
                 FAILED_TESTS=$((FAILED_TESTS + 1))
-                FAILED_TEST_NAMES+=("migrate-temp-suite")
+                FAILED_TEST_NAMES+=("migrate-temporary-suite")
             fi
             return $exit_code
             ;;

@@ -6,7 +6,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source shared utilities
-source "$SCRIPT_DIR/shared/temp-file-utils.sh"
+source "$SCRIPT_DIR/shared/temporary-file-utils.sh"
 source "$SCRIPT_DIR/shared/security-utils.sh"
 source "$SCRIPT_DIR/shared/config-processor.sh"
 source "$SCRIPT_DIR/shared/provider-interface.sh"
@@ -371,7 +371,7 @@ vagrant_temp_create() {
 	fi
 	
 	# Generate Vagrantfile using Ruby config generator
-	local config_generator="$SCRIPT_DIR/providers/vagrant/vagrant-temp-config.rb"
+	local config_generator="$SCRIPT_DIR/providers/vagrant/vagrant-dynamic-config.rb"
 	if [[ ! -f "$config_generator" ]]; then
 		echo "❌ Vagrant temp config generator not found: $config_generator" >&2
 		return 1

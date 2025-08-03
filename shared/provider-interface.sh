@@ -19,8 +19,8 @@ fi
 if [[ -f "$SHARED_DIR/security-utils.sh" ]]; then
     source "$SHARED_DIR/security-utils.sh"
 fi
-if [[ -f "$SHARED_DIR/temp-file-utils.sh" ]]; then
-    source "$SHARED_DIR/temp-file-utils.sh"
+if [[ -f "$SHARED_DIR/temporary-file-utils.sh" ]]; then
+    source "$SHARED_DIR/temporary-file-utils.sh"
 fi
 
 #=============================================================================

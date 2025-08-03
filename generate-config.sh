@@ -8,7 +8,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Source temporary file utilities for secure temp file handling
-source "$SCRIPT_DIR/shared/temp-file-utils.sh"
+source "$SCRIPT_DIR/shared/temporary-file-utils.sh"
 
 # Set up proper cleanup handlers
 setup_temp_file_handlers

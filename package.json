@@ -8,7 +8,7 @@
   },
   "files": [
     "vm.sh",
-    "vm-temp.sh",
+    "vm-temporary.sh",
     "vm.yaml",
     "validate-config.sh",
     "providers/",

@@ -52,7 +52,7 @@ CURRENT_DIR="$(pwd)"
 # Source shared utilities
 source "$SCRIPT_DIR/shared/npm-utils.sh"
 source "$SCRIPT_DIR/shared/docker-utils.sh"
-source "$SCRIPT_DIR/shared/temp-file-utils.sh"
+source "$SCRIPT_DIR/shared/temporary-file-utils.sh"
 source "$SCRIPT_DIR/shared/mount-utils.sh"
 source "$SCRIPT_DIR/shared/security-utils.sh"
 source "$SCRIPT_DIR/shared/config-processor.sh"
@@ -1702,9 +1702,9 @@ case "${1:-}" in
         fi
         ;;
     "temp"|"tmp")
-        # Handle temp VM commands - delegate to vm-temp.sh module
+        # Handle temp VM commands - delegate to vm-temporary.sh module
         shift
-        source "$SCRIPT_DIR/vm-temp.sh"
+        source "$SCRIPT_DIR/vm-temporary.sh"
         handle_temp_command "$@"
         ;;
     "destroy")
