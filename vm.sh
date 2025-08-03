@@ -53,327 +53,25 @@ CURRENT_DIR="$(pwd)"
 source "$SCRIPT_DIR/shared/npm-utils.sh"
 source "$SCRIPT_DIR/shared/docker-utils.sh"
 source "$SCRIPT_DIR/shared/temp-file-utils.sh"
+source "$SCRIPT_DIR/shared/mount-utils.sh"
+source "$SCRIPT_DIR/shared/security-utils.sh"
+source "$SCRIPT_DIR/shared/config-processor.sh"
+source "$SCRIPT_DIR/shared/provider-interface.sh"
 
 # Set up proper cleanup handlers for temporary files
 setup_temp_file_handlers
 
-# Lightweight atomic security validation for TOCTOU prevention
-# This function performs essential security checks on already-resolved paths
-validate_mount_security_atomic() {
-    local resolved_path="$1"
-    
-    # Validate input
-    if [[ -z "$resolved_path" ]]; then
-        echo "❌ Error: Empty resolved path provided" >&2
-        return 1
-    fi
-    
-    # 1. Protect system-critical paths (check resolved real path)
-    local protected_paths=(
-        '/'                 # Root filesystem
-        '/root'             # Root user home
-        '/boot'             # Boot files
-        '/proc'             # Process information
-        '/sys'              # System information
-        '/dev'              # Device files
-        '/var/log'          # System logs
-        '/etc'              # System configuration
-        '/bin'              # Essential binaries
-        '/sbin'             # System binaries
-        '/usr/bin'          # User binaries
-        '/usr/sbin'         # System administration binaries
-        '/lib'              # Essential libraries
-        '/lib64'            # 64-bit libraries
-        '/usr/lib'          # User libraries
-        '/var/lib'          # Variable state information
-        '/var/cache'        # Cache files
-        '/var/spool'        # Spool files
-        '/var/run'          # Runtime files
-        '/run'              # Runtime files (modern)
-        '/snap'             # Snap packages
-        '/media'            # Removable media
-        '/mnt'              # Mount points (could be system mounts)
-    )
-    
-    for protected in "${protected_paths[@]}"; do
-        # Check if the real path starts with or equals the protected path
-        if [[ "$resolved_path" == "$protected" ]] || [[ "$resolved_path" == "$protected"/* ]]; then
-            echo "❌ Error: Cannot mount system-critical path" >&2
-            echo "💡 Path '$resolved_path' is within protected system directory '$protected'" >&2
-            return 1
-        fi
-    done
+# Export environment variables needed by provider interface
+export CURRENT_DIR
+export CUSTOM_CONFIG
+export FULL_CONFIG_PATH
 
-    # 2. Whitelist approach - only allow common development directories
-    local allowed_path_prefixes=(
-        "/home/"            # User home directories
-        "/tmp/"             # Temporary files
-        "/var/tmp/"         # Temporary files
-        "/workspace/"       # Common workspace
-        "/opt/"             # Optional software
-        "/srv/"             # Service data
-        "/usr/local/"       # User-installed software
-        "/data/"            # Common data directory
-        "/projects/"        # Common projects directory
-    )
-    
-    # Special case: allow current working directory and its subdirectories
-    local current_dir
-    current_dir=$(pwd)
-    allowed_path_prefixes+=("$current_dir/")
-    
-    # Check if the path is in an allowed directory
-    local path_allowed=false
-    for allowed_prefix in "${allowed_path_prefixes[@]}"; do
-        if [[ "$resolved_path" == "$allowed_prefix"* ]] || [[ "$resolved_path" == "${allowed_prefix%/}" ]]; then
-            path_allowed=true
-            break
-        fi
-    done
-    
-    if [[ "$path_allowed" == false ]]; then
-        echo "❌ Error: Directory path not in allowed locations" >&2
-        echo "💡 Only directories under these paths are allowed:" >&2
-        printf "   %s\n" "${allowed_path_prefixes[@]}" >&2
-        echo "   Current directory: $current_dir" >&2
-        return 1
-    fi
+# Mount validation functions moved to shared/mount-utils.sh
 
-    # 3. Additional validation for absolute paths
-    if [[ "$resolved_path" == "/" ]]; then
-        echo "❌ Error: Cannot mount root filesystem" >&2
-        return 1
-    fi
+# Mount validation functions are now available from shared/mount-utils.sh
+# All mount processing functions (validate_mount_security, parse_mount_string, etc.) 
+# have been moved to shared/mount-utils.sh and are automatically sourced above.
 
-    return 0
-}
-
-# Validate mount directory security (dangerous characters and path traversal)
-validate_mount_security() {
-    local dir_path="$1"
-    
-    # Resolve the real path to handle symlinks and get canonical path
-    local real_path
-    if ! real_path=$(realpath "$dir_path" 2>/dev/null); then
-        echo "❌ Error: Cannot resolve path '$dir_path'" >&2
-        return 1
-    fi
-
-    # 1. Check for dangerous shell metacharacters using case statement for reliability
-    case "$dir_path" in
-        *\;* | *\`* | *\$* | *\"* | *\|* | *\&* | *\>* | *\<* | *\(* | *\)* | *\{* | *\}* | *\** | *\?* | *\[* | *\]* | *~* | *@* | *#* | *%*)
-            echo "❌ Error: Directory path contains potentially dangerous characters" >&2
-            echo "💡 Directory paths cannot contain: ; \` $ \" | & > < ( ) { } * ? [ ] ~ @ # %" >&2
-            return 1
-            ;;
-    esac
-
-    # 2. Check for path traversal attempts (including encoded variants and Unicode)
-    local path_patterns=(
-        '\.\.'              # Basic ..
-        '%2e%2e'            # URL encoded ..
-        '%252e%252e'        # Double URL encoded ..
-        '\.%2e'             # Mixed encoding
-        '%2e\.'             # Mixed encoding
-        '\x2e\x2e'          # Hex encoded ..
-        '..%2f'             # .. with encoded slash
-        '..%5c'             # .. with encoded backslash
-        '%2e%2e%2f'         # Full URL encoded ../
-        '%2e%2e%5c'         # Full URL encoded ..\
-    )
-    
-    # First check ASCII patterns
-    for pattern in "${path_patterns[@]}"; do
-        if [[ "$dir_path" =~ $pattern ]]; then
-            echo "❌ Error: Directory path traversal attempt detected" >&2
-            echo "💡 Path contains suspicious pattern: $pattern" >&2
-            return 1
-        fi
-    done
-    
-    # Unicode normalization security check using Python for comprehensive coverage
-    # This handles Unicode-encoded dots and other Unicode normalization attacks
-    if command -v python3 >/dev/null 2>&1; then
-        local unicode_check_result
-        unicode_check_result=$(python3 -c "
-import unicodedata
-import sys
-import re
-
-path = sys.argv[1] if len(sys.argv) > 1 else ''
-
-# Normalize the path using different Unicode normalization forms
-normalized_nfc = unicodedata.normalize('NFC', path)
-normalized_nfd = unicodedata.normalize('NFD', path) 
-normalized_nfkc = unicodedata.normalize('NFKC', path)
-normalized_nfkd = unicodedata.normalize('NFKD', path)
-
-# Define dangerous Unicode patterns
-unicode_patterns = [
-    # Unicode-encoded dots (various forms)
-    r'\\u002e\\u002e',          # Unicode-encoded ..
-    r'\\uff0e\\uff0e',          # Fullwidth Unicode dots
-    r'\\u2024\\u2024',          # One-dot leaders
-    r'\\u2025\\u2025',          # Two-dot leaders  
-    r'\\u22ef',                 # Midline horizontal ellipsis
-    r'\\u2026',                 # Horizontal ellipsis
-    # Mixed Unicode/ASCII combinations
-    r'\\u002e\.',               # Unicode dot + ASCII dot
-    r'\.\\u002e',               # ASCII dot + Unicode dot
-    r'\\uff0e\.',               # Fullwidth + ASCII
-    r'\.\\uff0e',               # ASCII + Fullwidth
-]
-
-# Check all normalized forms
-all_forms = [path, normalized_nfc, normalized_nfd, normalized_nfkc, normalized_nfkd]
-
-for form in all_forms:
-    # Check for literal Unicode sequences in the string
-    for pattern in unicode_patterns:
-        if re.search(pattern, form):
-            print('UNICODE_ATTACK_DETECTED')
-            sys.exit(1)
-    
-    # Check if normalization reveals .. patterns
-    if '..' in form and form != path:
-        print('UNICODE_NORMALIZATION_ATTACK')
-        sys.exit(1)
-        
-    # Check for encoded Unicode dot sequences that normalize to ..
-    if re.search(r'\.{2,}', form) and '.' not in path:
-        print('UNICODE_DOT_ATTACK')
-        sys.exit(1)
-
-print('UNICODE_SAFE')
-" "$dir_path" 2>/dev/null)
-
-        case "$unicode_check_result" in
-            "UNICODE_ATTACK_DETECTED")
-                echo "❌ Error: Unicode-encoded path traversal attempt detected" >&2
-                echo "💡 Path contains Unicode-encoded dangerous characters" >&2
-                return 1
-                ;;
-            "UNICODE_NORMALIZATION_ATTACK")
-                echo "❌ Error: Unicode normalization attack detected" >&2
-                echo "💡 Path normalizes to contain path traversal sequences" >&2
-                return 1
-                ;;
-            "UNICODE_DOT_ATTACK")
-                echo "❌ Error: Unicode dot sequence attack detected" >&2
-                echo "💡 Hidden Unicode characters normalize to path traversal" >&2
-                return 1
-                ;;
-            "UNICODE_SAFE")
-                # Path passed Unicode checks, continue
-                ;;
-            *)
-                # Python check failed, fall back to basic validation but warn
-                if [[ "${VM_DEBUG:-}" = "true" ]]; then
-                    echo "⚠️ Warning: Unicode validation unavailable, using basic checks only" >&2
-                fi
-                ;;
-        esac
-    else
-        # Python not available, use simpler fallback checks
-        if [[ "${VM_DEBUG:-}" = "true" ]]; then
-            echo "⚠️ Warning: Python3 not available, Unicode attack detection limited" >&2
-        fi
-        
-        # Basic Unicode pattern detection using grep (limited but better than nothing)
-        if echo "$dir_path" | grep -qE '\\u[0-9a-fA-F]{4}|\\uff[0-9a-fA-F]{2}|\\u202[4-6]|\\u22ef'; then
-            echo "❌ Error: Possible Unicode-encoded characters detected" >&2
-            echo "💡 Install python3 for comprehensive Unicode attack detection" >&2
-            return 1
-        fi
-    fi
-
-    # 3. Protect system-critical paths (check resolved real path)
-    local protected_paths=(
-        '/'                 # Root filesystem
-        '/root'             # Root user home
-        '/boot'             # Boot files
-        '/proc'             # Process information
-        '/sys'              # System information
-        '/dev'              # Device files
-        '/var/log'          # System logs
-        '/etc'              # System configuration
-        '/bin'              # Essential binaries
-        '/sbin'             # System binaries
-        '/usr/bin'          # User binaries
-        '/usr/sbin'         # System administration binaries
-        '/lib'              # Essential libraries
-        '/lib64'            # 64-bit libraries
-        '/usr/lib'          # User libraries
-        '/var/lib'          # Variable state information
-        '/var/cache'        # Cache files
-        '/var/spool'        # Spool files
-        '/var/run'          # Runtime files
-        '/run'              # Runtime files (modern)
-        '/snap'             # Snap packages
-        '/media'            # Removable media
-        '/mnt'              # Mount points (could be system mounts)
-    )
-    
-    for protected in "${protected_paths[@]}"; do
-        # Check if the real path starts with or equals the protected path
-        if [[ "$real_path" == "$protected" ]] || [[ "$real_path" == "$protected"/* ]]; then
-            echo "❌ Error: Cannot mount system-critical path" >&2
-            echo "💡 Path '$real_path' is within protected system directory '$protected'" >&2
-            return 1
-        fi
-    done
-
-    # 4. Whitelist approach - only allow common development directories
-    local allowed_path_prefixes=(
-        "/home/"            # User home directories
-        "/tmp/"             # Temporary files
-        "/var/tmp/"         # Temporary files
-        "/workspace/"       # Common workspace
-        "/opt/"             # Optional software
-        "/srv/"             # Service data
-        "/usr/local/"       # User-installed software
-        "/data/"            # Common data directory
-        "/projects/"        # Common projects directory
-    )
-    
-    # Special case: allow current working directory and its subdirectories
-    local current_dir
-    current_dir=$(pwd)
-    allowed_path_prefixes+=("$current_dir/")
-    
-    # Check if the path is in an allowed directory
-    local path_allowed=false
-    for allowed_prefix in "${allowed_path_prefixes[@]}"; do
-        if [[ "$real_path" == "$allowed_prefix"* ]] || [[ "$real_path" == "${allowed_prefix%/}" ]]; then
-            path_allowed=true
-            break
-        fi
-    done
-    
-    if [[ "$path_allowed" == false ]]; then
-        echo "❌ Error: Directory path not in allowed locations" >&2
-        echo "💡 Only directories under these paths are allowed:" >&2
-        printf "   %s\n" "${allowed_path_prefixes[@]}" >&2
-        echo "   Current directory: $current_dir" >&2
-        return 1
-    fi
-
-    # 5. Additional validation for absolute paths
-    if [[ "$real_path" == "/" ]]; then
-        echo "❌ Error: Cannot mount root filesystem" >&2
-        return 1
-    fi
-
-    # 6. Check for dangerous control characters using length check
-    # If the string length changes when we remove dangerous chars, they were present
-    local clean_path="${dir_path//[$'\0\n\r']/}"
-    if [[ ${#clean_path} -ne ${#dir_path} ]]; then
-        echo "❌ Error: Directory path contains dangerous control characters" >&2
-        return 1
-    fi
-
-    return 0
-}
 
 # Detect potential comma-in-directory-name issues by analyzing parsed fragments
 detect_comma_in_paths() {
@@ -715,44 +413,26 @@ kill_virtualbox() {
     echo "ℹ️ or run 'vagrant up' to start your VM again."
 }
 
-# Function to load and validate config (delegated to validate-config.sh)
+# Function to load and validate config (now uses shared config processor)
 load_config() {
     local config_path="$1"
     local original_dir="$2"
 
-    # Debug output if --debug flag is set
-    if [[ "${VM_DEBUG:-}" = "true" ]]; then
-        echo "DEBUG load_config: config_path='$config_path', original_dir='$original_dir'" >&2
-        echo "DEBUG load_config: SCRIPT_DIR='$SCRIPT_DIR'" >&2
-    fi
-
-    if [[ -n "$config_path" ]]; then
-        # Use custom config path
-        if [[ "${VM_DEBUG:-}" = "true" ]]; then
-            echo "DEBUG load_config: Running: cd '$original_dir' && '$SCRIPT_DIR/validate-config.sh' --get-config '$config_path'" >&2
-        fi
-        (cd "$original_dir" && "$SCRIPT_DIR/validate-config.sh" --get-config "$config_path")
-    else
-        # Use default discovery logic - run from the original directory
-        if [[ "${VM_DEBUG:-}" = "true" ]]; then
-            echo "DEBUG load_config: Running: cd '$original_dir' && '$SCRIPT_DIR/validate-config.sh' --get-config" >&2
-        fi
-        (cd "$original_dir" && "$SCRIPT_DIR/validate-config.sh" --get-config)
-    fi
+    # Use the shared config processor for unified config loading
+    load_and_merge_config "$config_path" "$original_dir"
 }
 
 
-# Get provider from config
+# Get provider from config (now uses shared config processor)
 get_provider() {
     local config="$1"
-    echo "$config" | yq -r '.provider // "docker"'
+    get_config_provider "$config"
 }
 
-# Extract project name from config
-# This centralizes the project name extraction logic to reduce duplication
+# Extract project name from config (now uses shared config processor)
 get_project_name() {
     local config="$1"
-    echo "$config" | yq -r '.project.name' | tr -cd '[:alnum:]'
+    get_config_project_name "$config"
 }
 
 # Extract project name from config and generate container name
@@ -1943,11 +1623,11 @@ fi
 case "${1:-}" in
     "init")
         echo "✨ Creating new project configuration..."
-        # Use validate-config.sh with special init flag
+        # Use shared config processor for init
         if [[ -n "$CUSTOM_CONFIG" ]] && [[ "$CUSTOM_CONFIG" != "__SCAN__" ]]; then
-            "$SCRIPT_DIR/validate-config.sh" --init "$CUSTOM_CONFIG"
+            init_config_file "$CUSTOM_CONFIG"
         else
-            "$SCRIPT_DIR/validate-config.sh" --init
+            init_config_file
         fi
         ;;
     "generate")
@@ -1958,11 +1638,11 @@ case "${1:-}" in
         ;;
     "validate")
         echo "✅ Validating configuration..."
-        # Validate configuration using the centralized config manager
+        # Validate configuration using the shared config processor
         if [[ -n "$CUSTOM_CONFIG" ]]; then
-            "$SCRIPT_DIR/validate-config.sh" --validate "$CUSTOM_CONFIG"
+            validate_config_file "$CUSTOM_CONFIG"
         else
-            "$SCRIPT_DIR/validate-config.sh" --validate
+            validate_config_file
         fi
         ;;
     "migrate")

@@ -2,6 +2,15 @@
 # VM Temporary VM Management Module
 # Extracted from vm.sh to improve maintainability
 
+# Get the script directory for sourcing shared utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source shared utilities
+source "$SCRIPT_DIR/shared/temp-file-utils.sh"
+source "$SCRIPT_DIR/shared/security-utils.sh"
+source "$SCRIPT_DIR/shared/config-processor.sh"
+source "$SCRIPT_DIR/shared/provider-interface.sh"
+
 # Temp VM state management constants and functions
 TEMP_STATE_DIR="$HOME/.vm"
 TEMP_STATE_FILE="$TEMP_STATE_DIR/temp-vm.state"
@@ -14,25 +23,7 @@ yq_raw() {
 	yq "$filter" "$file" 2>/dev/null | jq -r '.' 2>/dev/null || echo ""
 }
 
-# Validate directory name for security
-validate_directory_name() {
-	local dir="$1"
-	
-	# Check for dangerous characters that could cause shell injection
-	if [[ "$dir" =~ [\;\`\$\"] ]]; then
-		echo "❌ Error: Directory name contains potentially dangerous characters"
-		echo "💡 Directory names cannot contain: ; \` $ \""
-		return 1
-	fi
-	
-	# Check for directory traversal attempts
-	if [[ "$dir" =~ \.\./|/\.\. ]]; then
-		echo "❌ Error: Directory path traversal not allowed"
-		return 1
-	fi
-	
-	return 0
-}
+# Directory validation functions moved to shared/security-utils.sh
 
 # Extract container name from state file
 # This centralizes the container name retrieval logic to reduce duplication
@@ -87,11 +78,7 @@ require_temp_vm() {
 	return 0
 }
 
-# Add temp file cleanup with trap handlers
-setup_temp_file_cleanup() {
-	local temp_file="$1"
-	trap 'rm -f "$temp_file" 2>/dev/null' EXIT INT TERM
-}
+# Temp file cleanup functions moved to shared/temp-file-utils.sh
 
 # Validate state file is not corrupted
 validate_state_file() {
@@ -128,6 +115,7 @@ save_temp_state() {
 	local container_name="$1"
 	local mounts="$2"
 	local project_dir="$3"
+	local provider="${4:-docker}"  # Default to docker for backwards compatibility
 	
 	# Create state directory if it doesn't exist
 	mkdir -p "$TEMP_STATE_DIR"
@@ -135,6 +123,7 @@ save_temp_state() {
 	# Create state file with YAML format
 	cat > "$TEMP_STATE_FILE" <<-EOF
 	container_name: $container_name
+	provider: $provider
 	created_at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 	project_dir: $project_dir
 	mounts:
@@ -204,9 +193,33 @@ get_temp_container_name() {
 	get_container_name_from_state
 }
 
+# Get provider from temp VM state
+get_temp_provider() {
+	if [[ ! -f "$TEMP_STATE_FILE" ]]; then
+		echo "docker"  # Default to docker for backwards compatibility
+		return 1
+	fi
+	
+	local provider=""
+	if command -v yq &> /dev/null; then
+		provider=$(yq_raw '.provider // empty' "$TEMP_STATE_FILE")
+	else
+		provider=$(grep "^provider:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
+	fi
+	
+	# Default to docker if not specified (backwards compatibility)
+	if [[ -z "$provider" ]]; then
+		provider="docker"
+	fi
+	
+	echo "$provider"
+}
+
 # Check if temp VM is running with comprehensive error handling
 is_temp_vm_running() {
 	local container_name="$1"
+	local provider="${2:-}"
+	
 	if [[ -z "$container_name" ]]; then
 		if [[ "${VM_DEBUG:-}" = "true" ]]; then
 			echo "DEBUG is_temp_vm_running: empty container name provided" >&2
@@ -214,23 +227,56 @@ is_temp_vm_running() {
 		return 1
 	fi
 	
-	# Check if container exists and is running
-	local container_status
-	if ! container_status=$(docker_cmd inspect "$container_name" --format='{{.State.Status}}' 2>/dev/null); then
-		if [[ "${VM_DEBUG:-}" = "true" ]]; then
-			echo "DEBUG is_temp_vm_running: container '$container_name' not found" >&2
-		fi
-		return 1
+	# Get provider if not provided
+	if [[ -z "$provider" ]]; then
+		provider=$(get_temp_provider)
 	fi
 	
-	if [[ "$container_status" = "running" ]]; then
-		return 0
-	else
-		if [[ "${VM_DEBUG:-}" = "true" ]]; then
-			echo "DEBUG is_temp_vm_running: container '$container_name' status: $container_status" >&2
-		fi
-		return 1
-	fi
+	case "$provider" in
+		"docker")
+			# Check if container exists and is running
+			local container_status
+			if ! container_status=$(docker_cmd inspect "$container_name" --format='{{.State.Status}}' 2>/dev/null); then
+				if [[ "${VM_DEBUG:-}" = "true" ]]; then
+					echo "DEBUG is_temp_vm_running: container '$container_name' not found" >&2
+				fi
+				return 1
+			fi
+			
+			if [[ "$container_status" = "running" ]]; then
+				return 0
+			else
+				if [[ "${VM_DEBUG:-}" = "true" ]]; then
+					echo "DEBUG is_temp_vm_running: container '$container_name' status: $container_status" >&2
+				fi
+				return 1
+			fi
+			;;
+		"vagrant")
+			# Check if Vagrant VM exists and is running
+			local vagrant_dir="$SCRIPT_DIR/providers/vagrant"
+			local vm_status
+			if ! vm_status=$(cd "$vagrant_dir" && vagrant status "$container_name" 2>/dev/null | grep "$container_name" | awk '{print $2}'); then
+				if [[ "${VM_DEBUG:-}" = "true" ]]; then
+					echo "DEBUG is_temp_vm_running: vagrant VM '$container_name' not found" >&2
+				fi
+				return 1
+			fi
+			
+			if [[ "$vm_status" = "running" ]]; then
+				return 0
+			else
+				if [[ "${VM_DEBUG:-}" = "true" ]]; then
+					echo "DEBUG is_temp_vm_running: vagrant VM '$container_name' status: $vm_status" >&2
+				fi
+				return 1
+			fi
+			;;
+		*)
+			echo "❌ Unsupported provider: $provider" >&2
+			return 1
+			;;
+	esac
 }
 
 # Get mounts from state file
@@ -294,6 +340,197 @@ cleanup_orphaned_temp_resources() {
 		docker volume rm vmtemp_nvm vmtemp_cache vmtemp_config 2>/dev/null || true
 	fi
 }
+
+#=============================================================================
+# VAGRANT TEMP VM FUNCTIONS
+# Vagrant-specific implementations for temp VM lifecycle
+#=============================================================================
+
+# Create Vagrant temp VM with mounts
+vagrant_temp_create() {
+	local vm_name="$1"
+	local mount_string="$2"
+	local project_dir="$3"
+	
+	if [[ "${VM_DEBUG:-}" = "true" ]]; then
+		echo "DEBUG vagrant_temp_create: vm_name='$vm_name', mount_string='$mount_string', project_dir='$project_dir'" >&2
+	fi
+	
+	# Create temporary directory for Vagrant configuration
+	local temp_vagrant_dir
+	temp_vagrant_dir=$(mktemp -d "/tmp/vagrant-temp-${vm_name}.XXXXXX")
+	setup_temp_file_cleanup "$temp_vagrant_dir"
+	
+	# Parse mount string into array
+	local mount_array=()
+	if [[ -n "$mount_string" ]]; then
+		local old_ifs="$IFS"
+		IFS=','
+		IFS=',' read -ra mount_array <<< "$mount_string"
+		IFS="$old_ifs"
+	fi
+	
+	# Generate Vagrantfile using Ruby config generator
+	local config_generator="$SCRIPT_DIR/providers/vagrant/vagrant-temp-config.rb"
+	if [[ ! -f "$config_generator" ]]; then
+		echo "❌ Vagrant temp config generator not found: $config_generator" >&2
+		return 1
+	fi
+	
+	# Generate Vagrantfile
+	if [[ "${VM_DEBUG:-}" = "true" ]]; then
+		echo "DEBUG vagrant_temp_create: generating Vagrantfile with: ruby '$config_generator' '$vm_name' ${mount_array[*]}" >&2
+	fi
+	
+	if ! ruby "$config_generator" "$vm_name" "${mount_array[@]}" > "$temp_vagrant_dir/Vagrantfile"; then
+		echo "❌ Failed to generate Vagrantfile for temp VM" >&2
+		return 1
+	fi
+	
+	# Start the Vagrant VM
+	echo "🚀 Creating Vagrant temp VM: $vm_name"
+	cd "$temp_vagrant_dir"
+	
+	export VM_PROJECT_DIR="$project_dir"
+	
+	if ! vagrant up "$vm_name" 2>&1; then
+		echo "❌ Failed to create Vagrant temp VM" >&2
+		return 1
+	fi
+	
+	# Wait for VM to be ready
+	echo "⏳ Waiting for VM to be ready..."
+	local max_attempts=30
+	local attempt=1
+	
+	while [[ $attempt -le $max_attempts ]]; do
+		if vagrant ssh "$vm_name" -c "test -f /tmp/provisioning_complete" >/dev/null 2>&1; then
+			echo "✅ Vagrant temp VM ready!"
+			return 0
+		fi
+		
+		echo "⏳ Provisioning in progress... ($attempt/$max_attempts)"
+		sleep 2
+		((attempt++))
+	done
+	
+	echo "❌ Vagrant temp VM creation timed out" >&2
+	return 1
+}
+
+# SSH into Vagrant temp VM
+vagrant_temp_ssh() {
+	local vm_name="$1"
+	
+	# Find the temp Vagrant directory
+	local vagrant_dir
+	vagrant_dir=$(find /tmp -maxdepth 1 -type d -name "vagrant-temp-${vm_name}.*" 2>/dev/null | head -1)
+	
+	if [[ -z "$vagrant_dir" ]]; then
+		echo "❌ Vagrant temp VM directory not found for $vm_name" >&2
+		echo "💡 The VM may have been destroyed or cleaned up" >&2
+		return 1
+	fi
+	
+	echo "🔗 Connecting to Vagrant temp VM: $vm_name"
+	cd "$vagrant_dir"
+	vagrant ssh "$vm_name" "$@"
+}
+
+# Destroy Vagrant temp VM
+vagrant_temp_destroy() {
+	local vm_name="$1"
+	
+	# Find the temp Vagrant directory
+	local vagrant_dir
+	vagrant_dir=$(find /tmp -maxdepth 1 -type d -name "vagrant-temp-${vm_name}.*" 2>/dev/null | head -1)
+	
+	if [[ -n "$vagrant_dir" ]] && [[ -d "$vagrant_dir" ]]; then
+		echo "🗑️ Destroying Vagrant temp VM: $vm_name"
+		cd "$vagrant_dir"
+		vagrant destroy -f "$vm_name" >/dev/null 2>&1 || true
+		
+		# Clean up temp directory
+		cd /tmp
+		rm -rf "$vagrant_dir" 2>/dev/null || true
+		echo "✅ Vagrant temp VM destroyed"
+	else
+		echo "⚠️ Vagrant temp VM directory not found, may already be destroyed"
+	fi
+}
+
+# Get Vagrant temp VM status
+vagrant_temp_status() {
+	local vm_name="$1"
+	
+	# Find the temp Vagrant directory
+	local vagrant_dir
+	vagrant_dir=$(find /tmp -maxdepth 1 -type d -name "vagrant-temp-${vm_name}.*" 2>/dev/null | head -1)
+	
+	if [[ -z "$vagrant_dir" ]]; then
+		echo "not found"
+		return 1
+	fi
+	
+	cd "$vagrant_dir"
+	local status
+	status=$(vagrant status "$vm_name" 2>/dev/null | grep "$vm_name" | awk '{print $2}' || echo "unknown")
+	echo "$status"
+}
+
+# Start Vagrant temp VM
+vagrant_temp_start() {
+	local vm_name="$1"
+	
+	# Find the temp Vagrant directory
+	local vagrant_dir
+	vagrant_dir=$(find /tmp -maxdepth 1 -type d -name "vagrant-temp-${vm_name}.*" 2>/dev/null | head -1)
+	
+	if [[ -z "$vagrant_dir" ]]; then
+		echo "❌ Vagrant temp VM directory not found for $vm_name" >&2
+		return 1
+	fi
+	
+	echo "🚀 Starting Vagrant temp VM: $vm_name"
+	cd "$vagrant_dir"
+	vagrant up "$vm_name"
+}
+
+# Stop Vagrant temp VM
+vagrant_temp_stop() {
+	local vm_name="$1"
+	
+	# Find the temp Vagrant directory
+	local vagrant_dir
+	vagrant_dir=$(find /tmp -maxdepth 1 -type d -name "vagrant-temp-${vm_name}.*" 2>/dev/null | head -1)
+	
+	if [[ -z "$vagrant_dir" ]]; then
+		echo "❌ Vagrant temp VM directory not found for $vm_name" >&2
+		return 1
+	fi
+	
+	echo "🛑 Stopping Vagrant temp VM: $vm_name"
+	cd "$vagrant_dir"
+	vagrant halt "$vm_name"
+}
+
+# Update Vagrant temp VM with new mounts (requires recreation)
+vagrant_temp_update_mounts() {
+	local vm_name="$1"
+	local new_mount_string="$2"
+	local project_dir="$3"
+	
+	echo "🔄 Updating Vagrant temp VM mounts (requires recreation)..."
+	echo "⚠️ This will restart the VM to apply new mount configuration"
+	
+	# Destroy and recreate with new mounts
+	vagrant_temp_destroy "$vm_name"
+	vagrant_temp_create "$vm_name" "$new_mount_string" "$project_dir"
+}
+
+#=============================================================================
+# DOCKER TEMP VM FUNCTIONS (EXISTING)
+#=============================================================================
 
 # Update temp VM with new mounts (preserves container) with comprehensive error recovery
 update_temp_vm_with_mounts() {
@@ -518,22 +755,78 @@ handle_temp_command() {
 		echo "DEBUG handle_temp_command: SCRIPT_DIR: $SCRIPT_DIR" >&2
 	fi
 	
-	# Check if Docker is available
-	if ! command -v docker &> /dev/null; then
-		echo "❌ Docker is required for temporary VMs but is not installed"
-		echo "💡 Install Docker to use temp VMs: https://docs.docker.com/get-docker/"
+	# Detect the provider to use for temp VMs
+	# Priority: 1) Provider from existing temp VM state, 2) PROVIDER env var, 3) Default config scan
+	local temp_provider="docker"  # Default to docker
+	
+	# First check if there's an existing temp VM with a provider set
+	if [[ -f "$TEMP_STATE_FILE" ]]; then
+		temp_provider=$(get_temp_provider)
+		if [[ "${VM_DEBUG:-}" = "true" ]]; then
+			echo "DEBUG handle_temp_command: using provider from existing temp VM state: $temp_provider" >&2
+		fi
+	else
+		# Check for explicit provider environment variable
+		if [[ -n "${PROVIDER:-}" ]]; then
+			temp_provider="$PROVIDER"
+			if [[ "${VM_DEBUG:-}" = "true" ]]; then
+				echo "DEBUG handle_temp_command: using provider from PROVIDER env var: $temp_provider" >&2
+			fi
+		else
+			# Try to detect from current directory config (scan mode)
+			local current_config
+			if current_config=$(load_and_merge_config "__SCAN__" "$(pwd)" 2>/dev/null); then
+				temp_provider=$(get_config_provider "$current_config")
+				if [[ "${VM_DEBUG:-}" = "true" ]]; then
+					echo "DEBUG handle_temp_command: detected provider from config scan: $temp_provider" >&2
+				fi
+			fi
+		fi
+	fi
+	
+	# Validate and check provider availability
+	if ! validate_provider "$temp_provider"; then
 		exit 1
 	fi
 	
-	# Check if Docker daemon is running
-	if ! docker_cmd version >/dev/null 2>&1; then
-		echo "❌ Docker daemon is not running or not accessible"
-		echo "💡 Tips:"
-		echo "   - Start Docker Desktop (if on macOS/Windows)"
-		echo "   - Run: sudo systemctl start docker (if on Linux)"
-		echo "   - Check permissions: groups | grep docker"
+	if ! is_provider_available "$temp_provider"; then
+		echo "❌ Error: Provider '$temp_provider' is not available on this system" >&2
+		case "$temp_provider" in
+			"docker")
+				echo "💡 Install Docker to use temp VMs: https://docs.docker.com/get-docker/" >&2
+				;;
+			"vagrant")
+				echo "💡 Install Vagrant to use temp VMs: https://www.vagrantup.com/downloads" >&2
+				;;
+		esac
 		exit 1
 	fi
+	
+	# Provider-specific health checks
+	case "$temp_provider" in
+		"docker")
+			# Check if Docker daemon is running
+			if ! docker_cmd version >/dev/null 2>&1; then
+				echo "❌ Docker daemon is not running or not accessible"
+				echo "💡 Tips:"
+				echo "   - Start Docker Desktop (if on macOS/Windows)"
+				echo "   - Run: sudo systemctl start docker (if on Linux)"
+				echo "   - Check permissions: groups | grep docker"
+				exit 1
+			fi
+			;;
+		"vagrant")
+			# Check if Vagrant is working properly
+			if ! vagrant version >/dev/null 2>&1; then
+				echo "❌ Vagrant is not working properly"
+				echo "💡 Try: vagrant --version"
+				exit 1
+			fi
+			;;
+	esac
+	
+	# Export provider for use by other functions
+	export TEMP_VM_PROVIDER="$temp_provider"
 	
 	# Show help if no arguments or --help flag
 	if [[ $# -eq 0 ]] || [[ "$1" = "--help" ]] || [[ "$1" = "-h" ]]; then
@@ -703,8 +996,10 @@ handle_temp_command() {
 			
 			require_temp_vm || exit 0
 			
-			# Get container name using shared function
+			# Get container name and provider
 			container_name=$(get_container_name_from_state)
+			local provider
+			provider=$(get_temp_provider)
 			
 			# Show confirmation dialog and get user consent
 			if ! confirm_destroy "$container_name" "$FORCE_DESTROY"; then
@@ -713,25 +1008,38 @@ handle_temp_command() {
 			fi
 			
 			echo ""
-			echo "🗑️ Destroying temp VM: $container_name"
+			echo "🗑️ Destroying temp VM: $container_name (provider: $provider)"
 			
-			# Stop container first if running
-			if is_temp_vm_running "$container_name"; then
-				echo "🛑 Stopping container..."
-				if ! docker_cmd stop "$container_name" >/dev/null 2>&1; then
-					echo "⚠️  Failed to stop container gracefully, forcing..."
-					docker_cmd kill "$container_name" >/dev/null 2>&1 || true
-				fi
-			fi
-			
-			# Remove container
-			if ! docker_cmd rm -f "$container_name" >/dev/null 2>&1; then
-				echo "⚠️  Failed to remove container '$container_name'"
-				echo "💡 Container may already be removed or you may need sudo access"
-			fi
-			
-			# Clean up volumes (non-critical, continue on failure)
-			docker_cmd volume rm vmtemp_nvm vmtemp_cache >/dev/null 2>&1 || true
+			# Provider-specific destroy logic
+			case "$provider" in
+				"docker")
+					# Stop container first if running
+					if is_temp_vm_running "$container_name" "$provider"; then
+						echo "🛑 Stopping container..."
+						if ! docker_cmd stop "$container_name" >/dev/null 2>&1; then
+							echo "⚠️  Failed to stop container gracefully, forcing..."
+							docker_cmd kill "$container_name" >/dev/null 2>&1 || true
+						fi
+					fi
+					
+					# Remove container
+					if ! docker_cmd rm -f "$container_name" >/dev/null 2>&1; then
+						echo "⚠️  Failed to remove container '$container_name'"
+						echo "💡 Container may already be removed or you may need sudo access"
+					fi
+					
+					# Clean up volumes (non-critical, continue on failure)
+					docker_cmd volume rm vmtemp_nvm vmtemp_cache >/dev/null 2>&1 || true
+					;;
+				"vagrant")
+					# Use Vagrant-specific destroy function
+					vagrant_temp_destroy "$container_name"
+					;;
+				*)
+					echo "❌ Unsupported provider: $provider" >&2
+					exit 1
+					;;
+			esac
 			
 			# Remove state file
 			if ! rm -f "$TEMP_STATE_FILE"; then
@@ -746,17 +1054,24 @@ handle_temp_command() {
 			# SSH into temp VM
 			require_temp_vm || exit 1
 			
-			# Get container name using shared function
+			# Get container name and provider
 			container_name=$(get_container_name_from_state)
-			if ! is_temp_vm_running "$container_name"; then
+			local provider
+			provider=$(get_temp_provider)
+			
+			if ! is_temp_vm_running "$container_name" "$provider"; then
 				echo "❌ Temp VM exists but is not running"
 				echo "💡 Check status with: vm temp status"
 				exit 1
 			fi
 			
-			echo "🔗 Connecting to $container_name..."
-			# Use the standard docker_ssh function
-			TEMP_CONFIG=$(cat <<EOF
+			echo "🔗 Connecting to $container_name (provider: $provider)..."
+			
+			# Provider-specific SSH logic
+			case "$provider" in
+				"docker")
+					# Use the standard docker_ssh function
+					TEMP_CONFIG=$(cat <<EOF
 {
   "project": {
     "name": "vmtemp",
@@ -769,20 +1084,34 @@ handle_temp_command() {
 }
 EOF
 )
-			docker_ssh "$TEMP_CONFIG" "" "." "$@"
+					docker_ssh "$TEMP_CONFIG" "" "." "$@"
+					;;
+				"vagrant")
+					# Use Vagrant-specific SSH function
+					vagrant_temp_ssh "$container_name" "$@"
+					;;
+				*)
+					echo "❌ Unsupported provider: $provider" >&2
+					exit 1
+					;;
+			esac
 			exit 0
 			;;
 		"status")
 			# Show temp VM status
 			require_temp_vm || exit 0
 			
-			# Get container name using shared function
+			# Get container name and provider
 			container_name=$(get_container_name_from_state)
+			local provider
+			provider=$(get_temp_provider)
+			
 			echo "📋 Temp VM Status:"
 			echo "=================="
 			
 			if command -v yq &> /dev/null; then
 				echo "Container: $(get_container_name_from_state)"
+				echo "Provider: $provider"
 				echo "Created: $(yq_raw '.created_at' "$TEMP_STATE_FILE")"
 				echo "Project: $(yq_raw '.project_dir' "$TEMP_STATE_FILE")"
 				echo ""
@@ -802,13 +1131,13 @@ EOF
 				cat "$TEMP_STATE_FILE"
 			fi
 			
-			# Check if container is actually running
-			if is_temp_vm_running "$container_name"; then
+			# Check if VM is actually running (provider-specific)
+			if is_temp_vm_running "$container_name" "$provider"; then
 				echo ""
 				echo "Status: ✅ Running"
 			else
 				echo ""
-				echo "Status: ❌ Not running (state file exists but container is gone)"
+				echo "Status: ❌ Not running (state file exists but VM is gone)"
 			fi
 			exit 0
 			;;
@@ -953,8 +1282,34 @@ EOF
 				EOF
 			fi
 			
-			# Update the container with new mounts
-			update_temp_vm_with_mounts "$container_name"
+			# Update the VM with new mounts (provider-specific)
+			local provider
+			provider=$(get_temp_provider)
+			
+			case "$provider" in
+				"docker")
+					update_temp_vm_with_mounts "$container_name"
+					;;
+				"vagrant")
+					# Get current mount string and add new mount
+					local current_mounts
+					current_mounts=$(get_temp_mounts)
+					local new_mount_string="$current_mounts,$abs_source:$perm"
+					if [[ -z "$current_mounts" ]]; then
+						new_mount_string="$abs_source:$perm"
+					fi
+					
+					# Get project dir from state
+					local project_dir
+					project_dir=$(yq_raw '.project_dir' "$TEMP_STATE_FILE")
+					
+					vagrant_temp_update_mounts "$container_name" "$new_mount_string" "$project_dir"
+					;;
+				*)
+					echo "❌ Unsupported provider: $provider" >&2
+					exit 1
+					;;
+			esac
 			
 			echo ""
 			echo "📁 Mount added successfully:"
@@ -1125,8 +1480,30 @@ EOF
 				exit 1
 			fi
 			
-			# Update the container with new mounts
-			update_temp_vm_with_mounts "$container_name"
+			# Update the VM with new mounts (provider-specific)
+			local provider
+			provider=$(get_temp_provider)
+			
+			case "$provider" in
+				"docker")
+					update_temp_vm_with_mounts "$container_name"
+					;;
+				"vagrant")
+					# Get updated mount string without the removed mount
+					local updated_mounts
+					updated_mounts=$(get_temp_mounts)
+					
+					# Get project dir from state
+					local project_dir
+					project_dir=$(yq_raw '.project_dir' "$TEMP_STATE_FILE")
+					
+					vagrant_temp_update_mounts "$container_name" "$updated_mounts" "$project_dir"
+					;;
+				*)
+					echo "❌ Unsupported provider: $provider" >&2
+					exit 1
+					;;
+			esac
 			
 			echo ""
 			echo "📁 Mount removed successfully:"
@@ -1241,140 +1618,237 @@ EOF
 			;;
 		"start")
 			# Start stopped temp VM
-			# Get container name
+			# Get container name and provider
 			local container_name
 			container_name=$(get_container_name) || exit 1
+			local provider
+			provider=$(get_temp_provider)
 
 			# Check if already running
-			if is_temp_vm_running "$container_name"; then
+			if is_temp_vm_running "$container_name" "$provider"; then
 				echo "✅ Temp VM is already running"
 				exit 0
 			fi
 
-			echo "🚀 Starting temp VM..."
-			if ! docker_cmd start "$container_name"; then
-				echo "❌ Failed to start container '$container_name'"
-				echo "💡 Container may be corrupted. Try: vm temp destroy && vm temp <mounts>"
-				exit 1
-			fi
+			echo "🚀 Starting temp VM (provider: $provider)..."
+			
+			case "$provider" in
+				"docker")
+					if ! docker_cmd start "$container_name"; then
+						echo "❌ Failed to start container '$container_name'"
+						echo "💡 Container may be corrupted. Try: vm temp destroy && vm temp <mounts>"
+						exit 1
+					fi
 
-			# Wait for ready
-			echo "⏳ Waiting for container to be ready..."
-			local max_attempts=15
-			local attempt=1
-			while [[ $attempt -le $max_attempts ]]; do
-				# Check if container is still running
-				if ! is_temp_vm_running "$container_name"; then
-					echo "❌ Container stopped unexpectedly during startup"
+					# Wait for ready
+					echo "⏳ Waiting for container to be ready..."
+					local max_attempts=15
+					local attempt=1
+					while [[ $attempt -le $max_attempts ]]; do
+						# Check if container is still running
+						if ! is_temp_vm_running "$container_name" "$provider"; then
+							echo "❌ Container stopped unexpectedly during startup"
+							echo "💡 Check logs: vm temp logs"
+							exit 1
+						fi
+						
+						if docker_cmd exec "$container_name" echo "ready" >/dev/null 2>&1; then
+							echo "✅ Temp VM started!"
+							exit 0
+						fi
+						sleep 1
+						((attempt++))
+					done
+
+					echo "❌ Failed to start temp VM - container not responding"
 					echo "💡 Check logs: vm temp logs"
 					exit 1
-				fi
-				
-				if docker_cmd exec "$container_name" echo "ready" >/dev/null 2>&1; then
-					echo "✅ Temp VM started!"
+					;;
+				"vagrant")
+					vagrant_temp_start "$container_name"
+					echo "✅ Vagrant temp VM started!"
 					exit 0
-				fi
-				sleep 1
-				((attempt++))
-			done
-
-			echo "❌ Failed to start temp VM - container not responding"
-			echo "💡 Check logs: vm temp logs"
-			exit 1
+					;;
+				*)
+					echo "❌ Unsupported provider: $provider" >&2
+					exit 1
+					;;
+			esac
 			;;
 		"stop")
 			# Stop temp VM
-			# Get container name
+			# Get container name and provider
 			local container_name
 			container_name=$(get_container_name) || exit 1
+			local provider
+			provider=$(get_temp_provider)
 
 			# Check if running
-			if ! is_temp_vm_running "$container_name"; then
+			if ! is_temp_vm_running "$container_name" "$provider"; then
 				echo "⚠️  Temp VM is not running"
 				exit 0
 			fi
 
-			echo "🛑 Stopping temp VM..."
-			if ! docker_cmd stop "$container_name"; then
-				echo "⚠️  Failed to stop container gracefully, trying force stop..."
-				if ! docker_cmd kill "$container_name" 2>/dev/null; then
-					echo "❌ Failed to stop container"
-					echo "💡 Container may already be stopped or you may need sudo access"
+			echo "🛑 Stopping temp VM (provider: $provider)..."
+			
+			case "$provider" in
+				"docker")
+					if ! docker_cmd stop "$container_name"; then
+						echo "⚠️  Failed to stop container gracefully, trying force stop..."
+						if ! docker_cmd kill "$container_name" 2>/dev/null; then
+							echo "❌ Failed to stop container"
+							echo "💡 Container may already be stopped or you may need sudo access"
+							exit 1
+						fi
+						echo "⚠️  Container force stopped"
+					else
+						echo "✅ Temp VM stopped"
+					fi
+					;;
+				"vagrant")
+					vagrant_temp_stop "$container_name"
+					echo "✅ Vagrant temp VM stopped"
+					;;
+				*)
+					echo "❌ Unsupported provider: $provider" >&2
 					exit 1
-				fi
-				echo "⚠️  Container force stopped"
-			else
-				echo "✅ Temp VM stopped"
-			fi
+					;;
+			esac
 			exit 0
 			;;
 		"restart")
 			# Restart temp VM
-			# Get container name
+			# Get container name and provider
 			local container_name
 			container_name=$(get_container_name) || exit 1
+			local provider
+			provider=$(get_temp_provider)
 
-			echo "🔄 Restarting temp VM..."
+			echo "🔄 Restarting temp VM (provider: $provider)..."
 			
-			# Stop if running
-			if is_temp_vm_running "$container_name"; then
-				docker_cmd stop "$container_name" > /dev/null 2>&1
-			fi
+			case "$provider" in
+				"docker")
+					# Stop if running
+					if is_temp_vm_running "$container_name" "$provider"; then
+						docker_cmd stop "$container_name" > /dev/null 2>&1
+					fi
 
-			# Start
-			docker_cmd start "$container_name"
+					# Start
+					docker_cmd start "$container_name"
 
-			# Wait for ready
-			echo "⏳ Waiting for container to be ready..."
-			local max_attempts=15
-			local attempt=1
-			while [[ $attempt -le $max_attempts ]]; do
-				if docker_cmd exec "$container_name" echo "ready" >/dev/null 2>&1; then
-					echo "✅ Temp VM restarted!"
+					# Wait for ready
+					echo "⏳ Waiting for container to be ready..."
+					local max_attempts=15
+					local attempt=1
+					while [[ $attempt -le $max_attempts ]]; do
+						if docker_cmd exec "$container_name" echo "ready" >/dev/null 2>&1; then
+							echo "✅ Temp VM restarted!"
+							exit 0
+						fi
+						sleep 1
+						((attempt++))
+					done
+
+					echo "❌ Failed to restart temp VM"
+					exit 1
+					;;
+				"vagrant")
+					# For Vagrant, we restart by halting then bringing back up
+					vagrant_temp_stop "$container_name"
+					vagrant_temp_start "$container_name"
+					echo "✅ Vagrant temp VM restarted!"
 					exit 0
-				fi
-				sleep 1
-				((attempt++))
-			done
-
-			echo "❌ Failed to restart temp VM"
-			exit 1
+					;;
+				*)
+					echo "❌ Unsupported provider: $provider" >&2
+					exit 1
+					;;
+			esac
 			;;
 		"logs")
-			# View container logs
-			# Get container name
+			# View VM logs
+			# Get container name and provider
 			local container_name
 			container_name=$(get_container_name) || exit 1
+			local provider
+			provider=$(get_temp_provider)
 
 			# Pass through any additional arguments (like -f for follow)
 			shift
-			docker_cmd logs "$container_name" "$@"
+			
+			case "$provider" in
+				"docker")
+					docker_cmd logs "$container_name" "$@"
+					;;
+				"vagrant")
+					echo "📋 Viewing Vagrant VM logs..."
+					echo "💡 For detailed logs, you can SSH into the VM and use journalctl"
+					
+					# Find the temp Vagrant directory
+					local vagrant_dir
+					vagrant_dir=$(find /tmp -maxdepth 1 -type d -name "vagrant-temp-${container_name}.*" 2>/dev/null | head -1)
+					
+					if [[ -n "$vagrant_dir" ]] && [[ -d "$vagrant_dir" ]]; then
+						cd "$vagrant_dir"
+						vagrant ssh "$container_name" -c "sudo journalctl -f" 2>/dev/null || echo "⚠️ Unable to access VM logs"
+					else
+						echo "❌ Vagrant temp VM directory not found"
+					fi
+					;;
+				*)
+					echo "❌ Unsupported provider: $provider" >&2
+					exit 1
+					;;
+			esac
 			exit 0
 			;;
 		"provision")
 			# Re-run provisioning
-			# Get container name
+			# Get container name and provider
 			local container_name
 			container_name=$(get_container_name) || exit 1
+			local provider
+			provider=$(get_temp_provider)
 
-			# Check if container is running
-			if ! is_temp_vm_running "$container_name"; then
+			# Check if VM is running
+			if ! is_temp_vm_running "$container_name" "$provider"; then
 				echo "❌ Temp VM is not running"
 				echo "💡 Start it with: vm temp start"
 				exit 1
 			fi
 
-			echo "🔧 Re-running provisioning..."
+			echo "🔧 Re-running provisioning (provider: $provider)..."
 			echo "⚠️  Warning: This will reinstall all packages and may take several minutes"
 			echo -n "Continue? (y/N): "
 			read -r response
 			case "$response" in
 				[yY]|[yY][eE][sS])
-					# Run ansible playbook inside container
-					docker_cmd exec "$(printf '%q' "$container_name")" bash -c "
-						ansible-playbook -i localhost, -c local \\
-						/vm-tool/shared/ansible/playbook.yml
-					"
+					case "$provider" in
+						"docker")
+							# Run ansible playbook inside container
+							docker_cmd exec "$(printf '%q' "$container_name")" bash -c "
+								ansible-playbook -i localhost, -c local \\
+								/vm-tool/shared/ansible/playbook.yml
+							"
+							;;
+						"vagrant")
+							# Find the temp Vagrant directory
+							local vagrant_dir
+							vagrant_dir=$(find /tmp -maxdepth 1 -type d -name "vagrant-temp-${container_name}.*" 2>/dev/null | head -1)
+							
+							if [[ -n "$vagrant_dir" ]] && [[ -d "$vagrant_dir" ]]; then
+								cd "$vagrant_dir"
+								vagrant provision "$container_name"
+							else
+								echo "❌ Vagrant temp VM directory not found"
+								exit 1
+							fi
+							;;
+						*)
+							echo "❌ Unsupported provider: $provider" >&2
+							exit 1
+							;;
+					esac
 					;;
 				*)
 					echo "❌ Cancelled"
@@ -1613,8 +2087,39 @@ EOF
 	fi
 	
 	# No existing VM or user chose to recreate - proceed with creation
-	TEMP_CONTAINER="vmtemp-dev"  # Use consistent naming with regular VMs
+	# Generate unique VM name with timestamp
+	local timestamp
+	timestamp=$(date +%s)
+	TEMP_CONTAINER="vmtemp-${timestamp}"
 	
+	# Route to provider-specific creation logic
+	echo "🚀 Creating temporary VM with provider: $temp_provider"
+	
+	case "$temp_provider" in
+		"docker")
+			# Use existing Docker creation logic (unchanged)
+			create_docker_temp_vm "$TEMP_CONTAINER" "${PROCESSED_MOUNTS[@]}"
+			;;
+		"vagrant")
+			# Use new Vagrant creation logic
+			create_vagrant_temp_vm "$TEMP_CONTAINER" "${PROCESSED_MOUNTS[@]}"
+			;;
+		*)
+			echo "❌ Unsupported provider: $temp_provider" >&2
+			exit 1
+			;;
+	esac
+}
+
+#=============================================================================
+# PROVIDER-SPECIFIC TEMP VM CREATION FUNCTIONS
+#=============================================================================
+
+# Create Docker temp VM (extracted from original logic)
+create_docker_temp_vm() {
+	local container_name="$1"
+	shift
+	local mount_array=("$@")
 	
 	# Generate minimal temporary vm.yaml config with just overrides
 	TEMP_CONFIG_FILE=$(mktemp /tmp/vm-temp.XXXXXX.yaml)
@@ -1624,8 +2129,8 @@ EOF
 		echo ""
 		echo "🛑 Interrupted! Cleaning up..."
 		# Remove temp container if it was created
-		if [[ -n "${TEMP_CONTAINER:-}" ]]; then
-			docker_cmd rm -f "$TEMP_CONTAINER" >/dev/null 2>&1 || true
+		if [[ -n "${container_name:-}" ]]; then
+			docker_cmd rm -f "$container_name" >/dev/null 2>&1 || true
 		fi
 		# Clean up volumes
 		docker_cmd volume rm vmtemp_nvm vmtemp_cache vmtemp_config 2>/dev/null || true
@@ -1734,12 +2239,12 @@ EOF
 	fi
 	
 	# Use the standard docker_up flow
-	echo "🚀 Creating temporary VM with full provisioning..."
+	echo "🚀 Creating Docker temporary VM with full provisioning..."
 	if [[ "${VM_DEBUG:-}" = "true" ]]; then
-		echo "DEBUG handle_temp_command: calling docker_up with:" >&2
-		echo "DEBUG handle_temp_command:   CONFIG: [truncated for brevity]" >&2
-		echo "DEBUG handle_temp_command:   TEMP_PROJECT_DIR: $TEMP_PROJECT_DIR" >&2
-		echo "DEBUG handle_temp_command:   VM_TEMP_MOUNTS: $VM_TEMP_MOUNTS" >&2
+		echo "DEBUG create_docker_temp_vm: calling docker_up with:" >&2
+		echo "DEBUG create_docker_temp_vm:   CONFIG: [truncated for brevity]" >&2
+		echo "DEBUG create_docker_temp_vm:   TEMP_PROJECT_DIR: $TEMP_PROJECT_DIR" >&2
+		echo "DEBUG create_docker_temp_vm:   VM_TEMP_MOUNTS: $VM_TEMP_MOUNTS" >&2
 	fi
 	
 	# Call docker_up and capture any errors
@@ -1757,28 +2262,27 @@ EOF
 		else
 			echo "⚠️  Warning: Skipping cleanup of unexpected temp dir: $TEMP_PROJECT_DIR" >&2
 		fi
-		exit 1
+		return 1
 	fi
 	
-	# Save temp VM state - convert processed mounts back to string for legacy compatibility
-	# Will be updated to new format when we update save_temp_state function
+	# Save temp VM state with Docker provider
 	MOUNT_STRING=""
-	for mount in "${PROCESSED_MOUNTS[@]}"; do
+	for mount in "${mount_array[@]}"; do
 		if [[ -n "$MOUNT_STRING" ]]; then
 			MOUNT_STRING="$MOUNT_STRING,$mount"
 		else
 			MOUNT_STRING="$mount"
 		fi
 	done
-	save_temp_state "$TEMP_CONTAINER" "$MOUNT_STRING" "$CURRENT_DIR"
+	save_temp_state "$container_name" "$MOUNT_STRING" "$(pwd)" "docker"
 	
 	# Clean up temp config file only (keep project dir for mounts)
 	rm -f "$TEMP_CONFIG_FILE"
 	
 	# Handle auto-destroy if flag was set
-	if [[ "$AUTO_DESTROY" = "true" ]]; then
+	if [[ "${AUTO_DESTROY:-}" = "true" ]]; then
 		echo "🗑️ Auto-destroying temp VM..."
-		docker_cmd rm -f "$TEMP_CONTAINER" >/dev/null 2>&1
+		docker_cmd rm -f "$container_name" >/dev/null 2>&1
 		# Clean up volumes
 		docker_cmd volume rm vmtemp_nvm vmtemp_cache >/dev/null 2>&1 || true
 		# Remove state file
@@ -1801,4 +2305,49 @@ EOF
 		fi
 		rm -f "$TEMP_DIR_MARKER"
 	fi
+	
+	echo "✅ Docker temp VM created successfully!"
+}
+
+# Create Vagrant temp VM
+create_vagrant_temp_vm() {
+	local vm_name="$1"
+	shift
+	local mount_array=("$@")
+	
+	# Convert mount array to mount string for Vagrant config generator
+	local mount_string=""
+	for mount in "${mount_array[@]}"; do
+		if [[ -n "$mount_string" ]]; then
+			mount_string="$mount_string,$mount"
+		else
+			mount_string="$mount"
+		fi
+	done
+	
+	echo "🚀 Creating Vagrant temporary VM..."
+	if [[ "${VM_DEBUG:-}" = "true" ]]; then
+		echo "DEBUG create_vagrant_temp_vm: vm_name='$vm_name'" >&2
+		echo "DEBUG create_vagrant_temp_vm: mount_string='$mount_string'" >&2
+		echo "DEBUG create_vagrant_temp_vm: current_dir='$(pwd)'" >&2
+	fi
+	
+	# Use Vagrant-specific creation function
+	if ! vagrant_temp_create "$vm_name" "$mount_string" "$(pwd)"; then
+		echo "❌ Failed to create Vagrant temporary VM" >&2
+		return 1
+	fi
+	
+	# Save temp VM state with Vagrant provider
+	save_temp_state "$vm_name" "$mount_string" "$(pwd)" "vagrant"
+	
+	# Handle auto-destroy if flag was set
+	if [[ "${AUTO_DESTROY:-}" = "true" ]]; then
+		echo "🗑️ Auto-destroying temp VM..."
+		vagrant_temp_destroy "$vm_name"
+		# Remove state file
+		rm -f "$TEMP_STATE_FILE"
+	fi
+	
+	echo "✅ Vagrant temp VM created successfully!"
 }
