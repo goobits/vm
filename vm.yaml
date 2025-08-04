@@ -1,13 +1,42 @@
----
 version: '1.0'
+provider: docker
 project:
+  workspace_path: /workspace
+  backup_pattern: '*backup*.sql.gz'
   name: vm
   hostname: dev.vm.local
-  workspace_path: /workspace
 vm:
-  box: bento/ubuntu-24.04
-  memory: 8192
-  cpus: 4
+  box: ubuntu/jammy64
+  memory: 2048
+  cpus: 2
   user: developer
+  port_binding: 127.0.0.1
+  timezone: America/Los_Angeles
+versions:
+  node: '22'
+  nvm: v0.40.3
+  pnpm: 10.12.3
 terminal:
+  emoji: 🚀
   username: vm-dev
+  theme: dracula
+  show_git_branch: true
+apt_packages:
+  - htop
+  - tree
+  - ncdu
+  - ripgrep
+  - nano
+  - sox
+  - pipx
+npm_packages:
+  - '@anthropic-ai/claude-code'
+  - '@google/gemini-cli'
+  - npm-check-updates
+  - prettier
+  - eslint
+aliases:
+  claudeyolo: claude --dangerously-skip-permissions
+  geminiyolo: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini
+claude_sync: true
+gemini_sync: true
