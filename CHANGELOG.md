@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-08-02
+
+### Added
+- **Smart Preset System**: A major new feature that provides a "zero-config" startup experience.
+  - **Automatic Project Detection**: Scans project files to identify frameworks (React, Django, Rails, Vue, etc.) and tools (Docker, Kubernetes).
+  - **Preset Application**: Automatically applies a layered configuration based on detected technologies.
+  - **Multi-Technology Support**: Intelligently merges presets for complex projects (e.g., a React frontend with a Django backend).
+  - **User Control Flags**:
+    - `--no-preset`: Disables the preset system entirely for manual configuration.
+    - `--preset <name>`: Forces a specific preset, overriding detection.
+    - `--interactive`: Provides an interactive menu to review, add, or remove presets before VM creation.
+  - **Preset Management Commands**:
+    - `vm preset list`: Shows all available presets with descriptions.
+    - `vm preset show <name>`: Displays the full configuration of a specific preset.
+- **New Presets**: Added presets for `react`, `vue`, `next`, `angular`, `django`, `flask`, `rails`, `docker`, and `kubernetes`.
+- **Comprehensive Test Suite**: Added `test/test-presets.sh` to validate all aspects of the new preset system.
+- **Documentation**:
+  - Created `PRESETS.md` with a detailed guide to the new system and customization examples.
+  - Updated `README.md` to highlight the new feature.
+
+### Changed
+- The `load_config` function in `vm.sh` now delegates to a more powerful `load_config_with_presets` function in `shared/config-processor.sh`.
+- The `detect_project_type` function in `shared/project-detector.sh` is now significantly more advanced, capable of identifying specific frameworks.
+
 ## [Unreleased]
 
 ### Changed
