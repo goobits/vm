@@ -30,10 +30,10 @@ if [ -f "$CONFIG_FILE" ]; then
     SHOW_GIT_BRANCH=$(jq -r '.terminal.show_git_branch // true' "$CONFIG_FILE")
     SHOW_TIMESTAMP=$(jq -r '.terminal.show_timestamp // false' "$CONFIG_FILE")
     WORKSPACE=$(jq -r '.project.workspace_path // "/workspace"' "$CONFIG_FILE")
-    
+
     # Extract environment variables
     ENV_VARS=$(jq -r '.environment // {} | to_entries | .[] | "export \(.key)=\"\(.value)\""' "$CONFIG_FILE")
-    
+
     # Extract aliases
     ALIASES=$(jq -r '.aliases // {} | to_entries | .[] | "alias \(.key)='\''\(.value)'\''"' "$CONFIG_FILE")
 fi
@@ -157,11 +157,11 @@ echo "✨ Shell configured with prompt: $EMOJI $USERNAME"
 # Quick check if Node.js is available and install Claude if possible
 if [ -f "$USER_HOME/.nvm/nvm.sh" ]; then
     echo "📦 Installing development tools..."
-    
+
     # Run as detected user to ensure proper environment
     su - "$DETECTED_USER" -c '
         source ~/.nvm/nvm.sh
-        
+
         # Check if claude is already installed
         if ! which claude > /dev/null 2>&1; then
             echo "🤖 Installing Claude Code CLI..."
@@ -169,7 +169,7 @@ if [ -f "$USER_HOME/.nvm/nvm.sh" ]; then
         else
             echo "✅ Claude Code ready"
         fi
-        
+
         # Check if gemini is already installed
         if ! which gemini > /dev/null 2>&1; then
             echo "💎 Installing Gemini CLI..."
@@ -177,7 +177,7 @@ if [ -f "$USER_HOME/.nvm/nvm.sh" ]; then
         else
             echo "✅ Gemini ready"
         fi
-        
+
         # Also try to install pnpm directly if corepack fails
         if ! which pnpm > /dev/null 2>&1; then
             echo "📋 Installing pnpm..."

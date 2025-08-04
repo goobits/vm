@@ -118,20 +118,20 @@ route_command() {
     local config="$2"
     local project_dir="$3"
     shift 3
-    
+
     local provider
     provider=$(detect_provider "$config")
-    
+
     if ! validate_provider "$provider"; then
         return 1
     fi
-    
+
     if ! is_provider_available "$provider"; then
         echo "❌ Error: Provider '$provider' is not available on this system" >&2
         echo "💡 Please install the required tools for '$provider' provider" >&2
         return 1
     fi
-    
+
     case "$provider" in
         "docker")
             docker_command_wrapper "$command" "$config" "$project_dir" "$@"
@@ -157,7 +157,7 @@ docker_command_wrapper() {
     local config="$2"
     local project_dir="$3"
     shift 3
-    
+
     case "$command" in
         "create"|"up")
             docker_up "$config" "$project_dir" "false" "$@"
@@ -215,17 +215,17 @@ vagrant_command_wrapper() {
     local config="$2"
     local project_dir="$3"
     shift 3
-    
+
     # Set up Vagrant environment
     local vagrant_dir="$SCRIPT_DIR/../providers/vagrant"
     export VAGRANT_CWD="$vagrant_dir"
     export VM_PROJECT_DIR="$project_dir"
-    
+
     # Set VM_CONFIG if we have a full config path
     if [[ -n "${FULL_CONFIG_PATH:-}" ]]; then
         export VM_CONFIG="$FULL_CONFIG_PATH"
     fi
-    
+
     case "$command" in
         "create"|"up")
             vagrant_create "$config" "$project_dir" "$@"
@@ -273,7 +273,7 @@ vagrant_create() {
     local config="$1"
     local project_dir="$2"
     shift 2
-    
+
     # Check if VM already exists and confirm before recreating
     if vagrant status default 2>/dev/null | grep -q "running\|poweroff\|saved"; then
         echo "⚠️  Vagrant VM already exists."
@@ -290,10 +290,10 @@ vagrant_create() {
                 ;;
         esac
     fi
-    
+
     # Start VM
     vagrant up "$@"
-    
+
     # Auto-SSH if enabled
     local auto_login
     auto_login=$(echo "$config" | jq -r '.vm.auto_login // false' 2>/dev/null || echo "false")
@@ -310,7 +310,7 @@ vagrant_ssh() {
     local config="$1"
     local project_dir="$2"
     shift 2
-    
+
     # Calculate relative path (similar to existing vm.sh logic)
     local relative_path="."
     if [[ -n "${CURRENT_DIR:-}" ]]; then
@@ -326,11 +326,11 @@ vagrant_ssh() {
             relative_path=$(realpath --relative-to="$project_dir" "$CURRENT_DIR" 2>/dev/null || echo ".")
         fi
     fi
-    
+
     # Get workspace path from config
     local workspace_path
     workspace_path=$(echo "$config" | jq -r '.project.workspace_path // "/workspace"' 2>/dev/null)
-    
+
     if [[ "$relative_path" != "." ]]; then
         local target_dir="${workspace_path}/${relative_path}"
         vagrant ssh -c "cd $(printf '%q' \"$target_dir\") && exec /bin/zsh"
@@ -344,7 +344,7 @@ vagrant_restart() {
     local config="$1"
     local project_dir="$2"
     shift 2
-    
+
     vagrant halt "$@"
     vagrant resume "$@" || vagrant up "$@"
 }
@@ -354,7 +354,7 @@ vagrant_logs() {
     local config="$1"
     local project_dir="$2"
     shift 2
-    
+
     echo "Showing service logs - Press Ctrl+C to stop..."
     vagrant ssh -c "sudo journalctl -u postgresql -u redis-server -u mongod -f"
 }
@@ -364,7 +364,7 @@ vagrant_exec() {
     local config="$1"
     local project_dir="$2"
     shift 2
-    
+
     # Escape all arguments individually for safe passing to vagrant ssh -c
     local escaped_command=""
     for arg in "$@"; do
@@ -384,7 +384,7 @@ vm_create() {
     local project_dir="$2"
     local auto_login="${3:-false}"
     shift 3
-    
+
     route_command "create" "$config" "$project_dir" "$@"
 }
 
@@ -394,7 +394,7 @@ vm_ssh() {
     local config="$1"
     local project_dir="$2"
     shift 2
-    
+
     route_command "ssh" "$config" "$project_dir" "$@"
 }
 
@@ -404,7 +404,7 @@ vm_start() {
     local config="$1"
     local project_dir="$2"
     shift 2
-    
+
     route_command "start" "$config" "$project_dir" "$@"
 }
 
@@ -414,7 +414,7 @@ vm_halt() {
     local config="$1"
     local project_dir="$2"
     shift 2
-    
+
     route_command "halt" "$config" "$project_dir" "$@"
 }
 
@@ -424,7 +424,7 @@ vm_destroy() {
     local config="$1"
     local project_dir="$2"
     shift 2
-    
+
     route_command "destroy" "$config" "$project_dir" "$@"
 }
 
@@ -434,7 +434,7 @@ vm_status() {
     local config="$1"
     local project_dir="$2"
     shift 2
-    
+
     route_command "status" "$config" "$project_dir" "$@"
 }
 
@@ -444,7 +444,7 @@ vm_restart() {
     local config="$1"
     local project_dir="$2"
     shift 2
-    
+
     route_command "restart" "$config" "$project_dir" "$@"
 }
 
@@ -454,7 +454,7 @@ vm_provision() {
     local config="$1"
     local project_dir="$2"
     shift 2
-    
+
     route_command "provision" "$config" "$project_dir" "$@"
 }
 
@@ -464,7 +464,7 @@ vm_logs() {
     local config="$1"
     local project_dir="$2"
     shift 2
-    
+
     route_command "logs" "$config" "$project_dir" "$@"
 }
 
@@ -474,7 +474,7 @@ vm_exec() {
     local config="$1"
     local project_dir="$2"
     shift 2
-    
+
     route_command "exec" "$config" "$project_dir" "$@"
 }
 
@@ -488,9 +488,9 @@ show_provider_info() {
     local config="$1"
     local provider
     provider=$(detect_provider "$config")
-    
+
     echo "🔧 Provider: $provider"
-    
+
     if is_provider_available "$provider"; then
         echo "✅ Provider tools are available"
         local capabilities
@@ -506,9 +506,9 @@ show_provider_info() {
 # Args: provider_name
 provider_health_check() {
     local provider="$1"
-    
+
     echo "🔍 Checking $provider provider health..."
-    
+
     case "$provider" in
         "docker")
             if command -v docker >/dev/null 2>&1; then
@@ -523,7 +523,7 @@ provider_health_check() {
                 echo "❌ Docker command not found"
                 return 1
             fi
-            
+
             if command -v docker-compose >/dev/null 2>&1; then
                 echo "✅ Docker Compose available"
             else
@@ -545,7 +545,7 @@ provider_health_check() {
             return 1
             ;;
     esac
-    
+
     echo "✅ Provider $provider health check completed"
 }
 
@@ -559,7 +559,7 @@ provider_error() {
     local command="$2"
     local message="$3"
     local exit_code="${4:-1}"
-    
+
     echo "❌ Error: $provider provider failed to execute '$command'" >&2
     if [[ -n "$message" ]]; then
         echo "💡 $message" >&2
@@ -571,7 +571,7 @@ provider_error() {
 check_provider_functions() {
     local provider="$1"
     local missing_functions=()
-    
+
     case "$provider" in
         "docker")
             local required_functions=(
@@ -589,19 +589,19 @@ check_provider_functions() {
             return 1
             ;;
     esac
-    
+
     for func in "${required_functions[@]}"; do
         if ! declare -f "$func" >/dev/null 2>&1; then
             missing_functions+=("$func")
         fi
     done
-    
+
     if [[ ${#missing_functions[@]} -gt 0 ]]; then
         echo "❌ Missing required functions for $provider provider:" >&2
         printf '  %s\n' "${missing_functions[@]}" >&2
         return 1
     fi
-    
+
     echo "✅ All required functions available for $provider provider"
     return 0
 }
