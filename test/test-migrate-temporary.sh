@@ -23,11 +23,11 @@ FAILED_TEST_NAMES=()
 run_test() {
     local test_name="$1"
     local test_function="$2"
-    
+
     echo -e "\n${BLUE}Running test: $test_name${NC}"
-    
+
     TOTAL_TESTS=$((TOTAL_TESTS + 1))
-    
+
     # Run test in a subshell to isolate failures
     if (
         set -e
@@ -47,7 +47,7 @@ run_test() {
 assert_file_exists() {
     local file="$1"
     local description="${2:-File should exist: $file}"
-    
+
     if [ -f "$file" ]; then
         echo -e "${GREEN}✓ $description${NC}"
         return 0
@@ -60,7 +60,7 @@ assert_file_exists() {
 assert_file_not_exists() {
     local file="$1"
     local description="${2:-File should not exist: $file}"
-    
+
     if [ ! -f "$file" ]; then
         echo -e "${GREEN}✓ $description${NC}"
         return 0
@@ -73,7 +73,7 @@ assert_file_not_exists() {
 assert_command_succeeds() {
     local command="$1"
     local description="${2:-Command should succeed}"
-    
+
     if $command > /dev/null 2>&1; then
         echo -e "${GREEN}✓ $description${NC}"
         return 0
@@ -86,7 +86,7 @@ assert_command_succeeds() {
 assert_command_fails() {
     local command="$1"
     local description="${2:-Command should fail}"
-    
+
     if ! $command > /dev/null 2>&1; then
         echo -e "${GREEN}✓ $description${NC}"
         return 0
@@ -100,7 +100,7 @@ assert_output_contains() {
     local command="$1"
     local expected="$2"
     local description="${3:-Output should contain: $expected}"
-    
+
     local output
     output=$($command 2>&1)
     if echo "$output" | grep -q "$expected"; then
@@ -120,16 +120,16 @@ assert_output_contains() {
 # Test vm migrate --check with no files
 test_migrate_check_no_files() {
     echo "Testing vm migrate --check with no files..."
-    
+
     # Create test directory
     local test_dir="/tmp/migrate-test-$$"
     mkdir -p "$test_dir"
     cd "$test_dir"
-    
+
     # Test when neither file exists
     assert_output_contains "vm migrate --check" "No migration needed" \
         "Should report no migration needed when no files exist"
-    
+
     # Cleanup
     cd - > /dev/null
     rm -rf "$test_dir"
@@ -138,12 +138,12 @@ test_migrate_check_no_files() {
 # Test vm migrate --check with vm.json
 test_migrate_check_with_json() {
     echo "Testing vm migrate --check with vm.json..."
-    
+
     # Create test directory
     local test_dir="/tmp/migrate-test-$$"
     mkdir -p "$test_dir"
     cd "$test_dir"
-    
+
     # Create sample vm.json
     cat > vm.json << 'EOF'
 {
@@ -159,11 +159,11 @@ test_migrate_check_with_json() {
   }
 }
 EOF
-    
+
     # Test check mode
     assert_output_contains "vm migrate --check" "Migration recommended" \
         "Should recommend migration when vm.json exists"
-    
+
     # Cleanup
     cd - > /dev/null
     rm -rf "$test_dir"
@@ -172,20 +172,20 @@ EOF
 # Test vm migrate --check with both files
 test_migrate_check_with_both() {
     echo "Testing vm migrate --check with both files..."
-    
+
     # Create test directory
     local test_dir="/tmp/migrate-test-$$"
     mkdir -p "$test_dir"
     cd "$test_dir"
-    
+
     # Create both files
     echo '{"project": {"name": "test"}}' > vm.json
     echo 'version: "1.0"' > vm.yaml
-    
+
     # Test check mode
     assert_output_contains "vm migrate --check" "Both vm.json and vm.yaml exist" \
         "Should detect when both files exist"
-    
+
     # Cleanup
     cd - > /dev/null
     rm -rf "$test_dir"
@@ -194,12 +194,12 @@ test_migrate_check_with_both() {
 # Test vm migrate --dry-run
 test_migrate_dry_run() {
     echo "Testing vm migrate --dry-run..."
-    
+
     # Create test directory
     local test_dir="/tmp/migrate-test-$$"
     mkdir -p "$test_dir"
     cd "$test_dir"
-    
+
     # Create sample vm.json
     cat > vm.json << 'EOF'
 {
@@ -215,11 +215,11 @@ test_migrate_dry_run() {
   }
 }
 EOF
-    
+
     # Test dry run - capture output
     local output
     output=$(vm migrate --dry-run 2>&1)
-    
+
     # Check output contains YAML
     if echo "$output" | grep -q "version: \"1.0\""; then
         echo -e "${GREEN}✓ Dry run output contains version field${NC}"
@@ -228,7 +228,7 @@ EOF
         echo "Output: $output"
         return 1
     fi
-    
+
     # Check output contains original data
     if echo "$output" | grep -q "test-project"; then
         echo -e "${GREEN}✓ Dry run output contains project name${NC}"
@@ -236,11 +236,11 @@ EOF
         echo -e "${RED}✗ Dry run output should contain project name${NC}"
         return 1
     fi
-    
+
     # Ensure no files were created
     assert_file_not_exists "vm.yaml" "Dry run should not create vm.yaml"
     assert_file_exists "vm.json" "Dry run should not modify vm.json"
-    
+
     # Cleanup
     cd - > /dev/null
     rm -rf "$test_dir"
@@ -249,12 +249,12 @@ EOF
 # Test live migration
 test_migrate_live() {
     echo "Testing live migration..."
-    
+
     # Create test directory
     local test_dir="/tmp/migrate-test-$$"
     mkdir -p "$test_dir"
     cd "$test_dir"
-    
+
     # Create sample vm.json
     cat > vm.json << 'EOF'
 {
@@ -283,15 +283,15 @@ test_migrate_live() {
   }
 }
 EOF
-    
+
     # Run migration (force to skip prompt)
     vm migrate --force
-    
+
     # Check files were created
     assert_file_exists "vm.yaml" "Migration should create vm.yaml"
     assert_file_exists "vm.json.bak" "Migration should create backup"
     assert_file_not_exists "vm.json" "Migration should remove original (with --force)"
-    
+
     # Check version field exists
     local version
     version=$(yq -r '.version' vm.yaml)
@@ -301,7 +301,7 @@ EOF
         echo -e "${RED}✗ Version field should be '1.0', got: $version${NC}"
         return 1
     fi
-    
+
     # Check content was preserved
     local project_name
     project_name=$(yq -r '.project.name' vm.yaml)
@@ -311,7 +311,7 @@ EOF
         echo -e "${RED}✗ Project name should be preserved${NC}"
         return 1
     fi
-    
+
     # Check services
     local pg_enabled
     pg_enabled=$(yq -r '.services.postgresql.enabled' vm.yaml)
@@ -321,10 +321,10 @@ EOF
         echo -e "${RED}✗ Service configuration should be preserved${NC}"
         return 1
     fi
-    
+
     # Validate the migrated config
     assert_command_succeeds "vm validate" "Migrated config should be valid"
-    
+
     # Cleanup
     cd - > /dev/null
     rm -rf "$test_dir"
@@ -333,12 +333,12 @@ EOF
 # Test JSON config rejection
 test_json_config_rejection() {
     echo "Testing JSON config rejection..."
-    
+
     # Create test directory
     local test_dir="/tmp/json-reject-test-$$"
     mkdir -p "$test_dir"
     cd "$test_dir"
-    
+
     # Create a JSON config file
     cat > config.json << 'EOF'
 {
@@ -348,7 +348,7 @@ test_json_config_rejection() {
   "provider": "docker"
 }
 EOF
-    
+
     # Try to use JSON config - should fail
     if vm --config config.json status 2>&1 | grep -q "JSON configs are no longer supported"; then
         echo -e "${GREEN}✓ JSON config was properly rejected with helpful message${NC}"
@@ -358,7 +358,7 @@ EOF
         rm -rf "$test_dir"
         return 1
     fi
-    
+
     # Verify migration suggestion is shown
     if vm --config config.json status 2>&1 | grep -q "vm migrate --input"; then
         echo -e "${GREEN}✓ Migration command suggestion shown${NC}"
@@ -368,7 +368,7 @@ EOF
         rm -rf "$test_dir"
         return 1
     fi
-    
+
     # Cleanup
     cd - > /dev/null
     rm -rf "$test_dir"
@@ -381,21 +381,21 @@ EOF
 # Test vm temp creation
 test_temp_creation() {
     echo "Testing vm temp creation..."
-    
+
     # Clean up any existing temp VM state
     rm -f ~/.vm/temp-vm.state
-    
+
     # Create test directory to mount
     local test_dir="/tmp/temp-test-$$"
     mkdir -p "$test_dir/src"
     echo "test file" > "$test_dir/src/test.txt"
-    
+
     cd "$test_dir"
-    
+
     # Create temp VM
     vm temp ./src
     local exit_code=$?
-    
+
     if [ $exit_code -eq 0 ]; then
         echo -e "${GREEN}✓ Temp VM created successfully${NC}"
     else
@@ -403,10 +403,10 @@ test_temp_creation() {
         rm -rf "$test_dir"
         return 1
     fi
-    
+
     # Check state file exists
     assert_file_exists "$HOME/.vm/temp-vm.state" "State file should be created"
-    
+
     # Check state file contains correct info
     if [ -f "$HOME/.vm/temp-vm.state" ]; then
         local container_name
@@ -418,7 +418,7 @@ test_temp_creation() {
             return 1
         fi
     fi
-    
+
     # Cleanup will be done after all temp tests
     TEMP_TEST_DIR="$test_dir"
 }
@@ -426,17 +426,17 @@ test_temp_creation() {
 # Test vm temp status
 test_temp_status() {
     echo "Testing vm temp status..."
-    
+
     # Requires temp VM from previous test
     if [ ! -f "$HOME/.vm/temp-vm.state" ]; then
         echo -e "${YELLOW}⚠ Skipping - no temp VM exists${NC}"
         return 0
     fi
-    
+
     # Test status command
     local output
     output=$(vm temp status 2>&1)
-    
+
     # Check output contains expected information
     if echo "$output" | grep -q "Running"; then
         echo -e "${GREEN}✓ Status shows VM is running${NC}"
@@ -445,7 +445,7 @@ test_temp_status() {
         echo "Output: $output"
         return 1
     fi
-    
+
     if echo "$output" | grep -q "temp-vm-"; then
         echo -e "${GREEN}✓ Status shows container name${NC}"
     else
@@ -457,17 +457,17 @@ test_temp_status() {
 # Test vm temp ssh
 test_temp_ssh() {
     echo "Testing vm temp ssh..."
-    
+
     # Requires temp VM from previous test
     if [ ! -f "$HOME/.vm/temp-vm.state" ]; then
         echo -e "${YELLOW}⚠ Skipping - no temp VM exists${NC}"
         return 0
     fi
-    
+
     # Test SSH with command
     local output
     output=$(vm temp ssh -c "echo hello from temp vm" 2>&1)
-    
+
     if echo "$output" | grep -q "hello from temp vm"; then
         echo -e "${GREEN}✓ SSH command execution works${NC}"
     else
@@ -475,10 +475,10 @@ test_temp_ssh() {
         echo "Output: $output"
         return 1
     fi
-    
+
     # Test file is accessible
     output=$(vm temp ssh -c "cat /workspace/src/test.txt" 2>&1)
-    
+
     if echo "$output" | grep -q "test file"; then
         echo -e "${GREEN}✓ Mounted files are accessible${NC}"
     else
@@ -490,19 +490,19 @@ test_temp_ssh() {
 # Test vm temp collision (same mounts)
 test_temp_collision_same() {
     echo "Testing vm temp collision with same mounts..."
-    
+
     # Requires temp VM from previous test
     if [ ! -f "$HOME/.vm/temp-vm.state" ] || [ -z "$TEMP_TEST_DIR" ]; then
         echo -e "${YELLOW}⚠ Skipping - no temp VM exists${NC}"
         return 0
     fi
-    
+
     cd "$TEMP_TEST_DIR"
-    
+
     # Try to create another temp VM with same mount
     local output
     output=$(vm temp ./src 2>&1)
-    
+
     if echo "$output" | grep -q "Connecting to existing"; then
         echo -e "${GREEN}✓ Detects and reuses existing VM with same mounts${NC}"
     else
@@ -515,23 +515,23 @@ test_temp_collision_same() {
 # Test vm temp destroy
 test_temp_destroy() {
     echo "Testing vm temp destroy..."
-    
+
     # Requires temp VM from previous test
     if [ ! -f "$HOME/.vm/temp-vm.state" ]; then
         echo -e "${YELLOW}⚠ Skipping - no temp VM exists${NC}"
         return 0
     fi
-    
+
     # Get container name before destroy
     local container_name
     container_name=$(yq -r '.container_name' "$HOME/.vm/temp-vm.state")
-    
+
     # Destroy temp VM
     vm temp destroy
-    
+
     # Check state file is removed
     assert_file_not_exists "$HOME/.vm/temp-vm.state" "State file should be removed"
-    
+
     # Check container is removed
     if docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
         echo -e "${RED}✗ Container should be removed${NC}"
@@ -539,7 +539,7 @@ test_temp_destroy() {
     else
         echo -e "${GREEN}✓ Container was removed${NC}"
     fi
-    
+
     # Cleanup test directory
     if [ -n "$TEMP_TEST_DIR" ]; then
         rm -rf "$TEMP_TEST_DIR"
@@ -549,20 +549,20 @@ test_temp_destroy() {
 # Test vm tmp alias
 test_tmp_alias() {
     echo "Testing vm tmp alias..."
-    
+
     # Create test directory
     local test_dir="/tmp/tmp-alias-test-$$"
     mkdir -p "$test_dir/data"
     echo "alias test" > "$test_dir/data/test.txt"
-    
+
     cd "$test_dir"
-    
+
     # Test tmp alias
     vm tmp ./data
-    
+
     # Check it created temp VM
     assert_file_exists "$HOME/.vm/temp-vm.state" "tmp alias should create temp VM"
-    
+
     # Cleanup
     vm temp destroy
     rm -rf "$test_dir"
@@ -576,14 +576,14 @@ generate_test_report() {
     local passed=$1
     local failed=$2
     local total=$((passed + failed))
-    
+
     echo -e "\n${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${BLUE}Test Summary${NC}"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "Total tests: $total"
     echo -e "${GREEN}Passed: $passed${NC}"
     echo -e "${RED}Failed: $failed${NC}"
-    
+
     if [ "$failed" -eq 0 ]; then
         echo -e "\n${GREEN}✓ All tests passed!${NC}"
         return 0
@@ -601,16 +601,16 @@ main() {
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${BLUE}VM Migrate and Temp Commands Test Suite${NC}"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    
+
     # Make vm command available
     export PATH="/workspace:$PATH"
-    
+
     # Clean up any existing temp VMs before starting
     if [ -f "$HOME/.vm/temp-vm.state" ]; then
         echo "Cleaning up existing temp VM..."
         vm temp destroy 2>/dev/null || true
     fi
-    
+
     # Run vm migrate tests
     echo -e "\n${BLUE}Running vm migrate tests...${NC}"
     run_test "migrate-check-no-files" test_migrate_check_no_files
@@ -618,11 +618,11 @@ main() {
     run_test "migrate-check-with-both" test_migrate_check_with_both
     run_test "migrate-dry-run" test_migrate_dry_run
     run_test "migrate-live" test_migrate_live
-    
+
     # Run JSON deprecation test
     echo -e "\n${BLUE}Running JSON deprecation test...${NC}"
     run_test "json-config-rejection" test_json_config_rejection
-    
+
     # Run vm temp tests
     echo -e "\n${BLUE}Running vm temp tests...${NC}"
     run_test "temp-creation" test_temp_creation
@@ -631,10 +631,10 @@ main() {
     run_test "temp-collision-same" test_temp_collision_same
     run_test "temp-destroy" test_temp_destroy
     run_test "tmp-alias" test_tmp_alias
-    
+
     # Generate final report
     generate_test_report $PASSED_TESTS $FAILED_TESTS
-    
+
     # Exit with appropriate code
     [ $FAILED_TESTS -eq 0 ]
 }

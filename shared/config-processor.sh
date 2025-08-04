@@ -25,12 +25,12 @@ fi
 yq_raw() {
     local filter="$1"
     local file="$2"
-    
+
     if [[ ! -f "$file" ]]; then
         echo ""
         return 1
     fi
-    
+
     # Use yq to process YAML, then jq to extract raw values
     yq "$filter" "$file" 2>/dev/null | jq -r '.' 2>/dev/null || echo ""
 }
@@ -41,12 +41,12 @@ yq_raw() {
 yq_json() {
     local filter="$1"
     local file="$2"
-    
+
     if [[ ! -f "$file" ]]; then
         echo "null"
         return 1
     fi
-    
+
     yq "$filter" "$file" 2>/dev/null || echo "null"
 }
 
@@ -62,7 +62,7 @@ yq_json() {
 deep_merge_bash() {
     local base_config="$1"
     local override_config="$2"
-    
+
     # Use jq for deep merging - similar to Ruby's deep_merge behavior
     echo "$base_config" | jq --argjson override "$override_config" '
         def deep_merge(base; override):
@@ -81,7 +81,7 @@ deep_merge_bash() {
                 # For primitives, override wins (Ruby behavior)
                 override
             end;
-        
+
         deep_merge(.; $override)
     ' 2>/dev/null || echo "{}"
 }
@@ -92,31 +92,31 @@ deep_merge_bash() {
 deep_merge_files() {
     local base_config_path="$1"
     local override_config_path="$2"
-    
+
     # Validate inputs
     if [[ ! -f "$base_config_path" ]]; then
         echo "❌ Base configuration not found: $base_config_path" >&2
         return 1
     fi
-    
+
     if [[ ! -f "$override_config_path" ]]; then
         echo "❌ Override configuration not found: $override_config_path" >&2
         return 1
     fi
-    
+
     # Load configurations (convert YAML to JSON)
     local base_json
     if ! base_json="$(yq_json '.' "$base_config_path")"; then
         echo "❌ Invalid YAML in base config: $base_config_path" >&2
         return 1
     fi
-    
+
     local override_json
     if ! override_json="$(yq_json '.' "$override_config_path")"; then
         echo "❌ Invalid YAML in override config: $override_config_path" >&2
         return 1
     fi
-    
+
     # Perform deep merge
     deep_merge_bash "$base_json" "$override_json"
 }
@@ -166,7 +166,7 @@ get_config_project_name() {
     local config="$1"
     local project_name
     project_name="$(echo "$config" | jq -r '.project.name // empty' 2>/dev/null || echo "")"
-    
+
     # Sanitize project name to alphanumeric only (matching vm.sh behavior)
     echo "$project_name" | tr -cd '[:alnum:]'
 }
@@ -178,10 +178,10 @@ extract_config_value() {
     local config="$1"
     local jq_path="$2"
     local fallback="${3:-}"
-    
+
     local value
     value="$(echo "$config" | jq -r "$jq_path // empty" 2>/dev/null || echo "")"
-    
+
     if [[ -z "$value" || "$value" == "null" ]]; then
         echo "$fallback"
     else
@@ -199,30 +199,30 @@ extract_config_value() {
 # Returns: 0 if partial, 1 if complete
 is_partial_config() {
     local config="$1"
-    
+
     # Check for required fields
     local project_name
     project_name="$(echo "$config" | jq -r '.project.name // empty' 2>/dev/null || echo "")"
-    
+
     # If project.name is missing or empty, it's a partial config
     if [[ -z "$project_name" || "$project_name" == "null" ]]; then
         return 0  # partial
     fi
-    
+
     # Check if config explicitly requests preset inheritance
     local use_preset
     use_preset="$(echo "$config" | jq -r '.use_preset // empty' 2>/dev/null || echo "")"
     if [[ -n "$use_preset" && "$use_preset" != "null" && "$use_preset" != "false" ]]; then
         return 0  # partial - wants preset
     fi
-    
+
     # Check if config has a preset field
     local preset_name
     preset_name="$(echo "$config" | jq -r '.preset // empty' 2>/dev/null || echo "")"
     if [[ -n "$preset_name" && "$preset_name" != "null" ]]; then
         return 0  # partial - specifies preset
     fi
-    
+
     return 1  # complete
 }
 
@@ -232,13 +232,13 @@ is_partial_config() {
 get_preset_name() {
     local config="$1"
     local project_dir="$2"
-    
+
     # First check for forced preset from environment
     if [[ -n "${VM_FORCED_PRESET:-}" ]]; then
         echo "$VM_FORCED_PRESET"
         return 0
     fi
-    
+
     # Then check if config explicitly specifies a preset
     local preset_name
     preset_name="$(echo "$config" | jq -r '.preset // empty' 2>/dev/null || echo "")"
@@ -246,19 +246,19 @@ get_preset_name() {
         echo "$preset_name"
         return 0
     fi
-    
+
     # Otherwise, detect from project type
     if [[ -f "$CONFIG_SCRIPT_DIR/project-detector.sh" ]]; then
         source "$CONFIG_SCRIPT_DIR/project-detector.sh"
         local detected_type
         detected_type="$(detect_project_type "$project_dir")"
-        
+
         # Handle multi-type projects by taking the first type
         if [[ "$detected_type" == multi:* ]]; then
             detected_type="${detected_type#multi:}"
             detected_type="${detected_type%% *}"
         fi
-        
+
         echo "$detected_type"
     else
         echo "base"  # fallback to base preset
@@ -273,7 +273,7 @@ load_preset() {
     local parent_dir
     parent_dir="$(dirname "$CONFIG_SCRIPT_DIR")"
     local preset_path="$parent_dir/configs/presets/${preset_name}.yaml"
-    
+
     if [[ -f "$preset_path" ]]; then
         yq_json '.' "$preset_path" 2>/dev/null || echo "{}"
     else
@@ -290,7 +290,7 @@ get_schema_defaults() {
     local parent_dir
     parent_dir="$(dirname "$CONFIG_SCRIPT_DIR")"
     local schema_path="$parent_dir/vm.schema.yaml"
-    
+
     if [[ ! -f "$schema_path" ]]; then
         if [[ "${VM_DEBUG:-}" = "true" ]]; then
             echo "DEBUG config-processor: Schema file not found: $schema_path" >&2
@@ -298,7 +298,7 @@ get_schema_defaults() {
         echo "{}"
         return
     fi
-    
+
     # Extract defaults from schema using validate-config.sh
     local validate_script="$parent_dir/validate-config.sh"
     if [[ -f "$validate_script" ]]; then
@@ -334,32 +334,32 @@ get_schema_defaults() {
 load_config_with_presets() {
     local config_path="$1"
     local project_dir="${2:-$(pwd)}"
-    
+
     # Debug output
     if [[ "${VM_DEBUG:-}" = "true" ]]; then
         echo "DEBUG config-processor: load_config_with_presets called" >&2
         echo "  config_path='$config_path'" >&2
         echo "  project_dir='$project_dir'" >&2
     fi
-    
+
     # Step 1: Get schema defaults
     local schema_defaults
     schema_defaults="$(get_schema_defaults)"
     if [[ "${VM_DEBUG:-}" = "true" ]]; then
         echo "DEBUG config-processor: Schema defaults loaded" >&2
     fi
-    
+
     # Step 2: Load base preset
     local base_preset
     base_preset="$(load_preset "base")"
     if [[ "${VM_DEBUG:-}" = "true" ]]; then
         echo "DEBUG config-processor: Base preset loaded" >&2
     fi
-    
+
     # Step 3: Try to load user config if it exists
     local user_config="{}"
     local config_exists=false
-    
+
     if [[ -n "$config_path" && "$config_path" != "__SCAN__" && -f "$config_path" ]]; then
         user_config="$(yq_json '.' "$config_path" 2>/dev/null || echo "{}")"
         config_exists=true
@@ -375,7 +375,7 @@ load_config_with_presets() {
         user_config="$(yq_json '.' "$project_dir/vm.yaml" 2>/dev/null || echo "{}")"
         config_exists=true
     fi
-    
+
     # Step 4: Determine if we need to load a detected preset
     local detected_preset="{}"
     if [[ "$config_exists" = "true" ]] && is_partial_config "$user_config"; then
@@ -391,7 +391,7 @@ load_config_with_presets() {
     elif [[ "$config_exists" = "false" ]]; then
         # No config - use forced preset or detect from project
         local detected_type
-        
+
         if [[ -n "${VM_FORCED_PRESET:-}" ]]; then
             detected_type="$VM_FORCED_PRESET"
             if [[ "${VM_DEBUG:-}" = "true" ]]; then
@@ -400,42 +400,42 @@ load_config_with_presets() {
         else
             source "$CONFIG_SCRIPT_DIR/project-detector.sh"
             detected_type="$(detect_project_type "$project_dir")"
-            
+
             # Handle multi-type projects
             if [[ "$detected_type" == multi:* ]]; then
                 detected_type="${detected_type#multi:}"
                 detected_type="${detected_type%% *}"
             fi
-            
+
             if [[ "${VM_DEBUG:-}" = "true" ]]; then
                 echo "DEBUG config-processor: No config found, detected type: $detected_type" >&2
             fi
         fi
-        
+
         if [[ "$detected_type" != "generic" ]]; then
             detected_preset="$(load_preset "$detected_type")"
         fi
     fi
-    
+
     # Step 5: Perform the merge chain
     # Order: Schema defaults -> Base preset -> Detected preset -> User config
     local merged_config="$schema_defaults"
-    
+
     # Merge base preset
     if [[ "$base_preset" != "{}" ]]; then
         merged_config="$(deep_merge_bash "$merged_config" "$base_preset")"
     fi
-    
+
     # Merge detected preset
     if [[ "$detected_preset" != "{}" ]]; then
         merged_config="$(deep_merge_bash "$merged_config" "$detected_preset")"
     fi
-    
+
     # Merge user config (if exists)
     if [[ "$config_exists" = "true" && "$user_config" != "{}" ]]; then
         merged_config="$(deep_merge_bash "$merged_config" "$user_config")"
     fi
-    
+
     # Add project name if missing (from directory name)
     local project_name
     project_name="$(echo "$merged_config" | jq -r '.project.name // empty' 2>/dev/null || echo "")"
@@ -446,7 +446,7 @@ load_config_with_presets() {
             merged_config="$(echo "$merged_config" | jq --arg name "$project_name" '.project.name = $name')"
         fi
     fi
-    
+
     echo "$merged_config"
 }
 
@@ -462,10 +462,10 @@ load_config_with_presets() {
 load_and_merge_config() {
     local config_path="$1"
     local original_dir="${2:-$(pwd)}"
-    
+
     # Check if we should use preset-aware loading
     local use_presets="${VM_USE_PRESETS:-true}"
-    
+
     if [[ "$use_presets" == "true" ]]; then
         # Use the new preset-aware loading
         load_config_with_presets "$config_path" "$original_dir"
@@ -475,20 +475,20 @@ load_and_merge_config() {
         local parent_script_dir
         parent_script_dir="$(dirname "$CONFIG_SCRIPT_DIR")"
         local validate_script="$parent_script_dir/validate-config.sh"
-        
+
         # Debug output if --debug flag is set
         if [[ "${VM_DEBUG:-}" = "true" ]]; then
             echo "DEBUG config-processor: load_and_merge_config called with config_path='$config_path'" >&2
             echo "DEBUG config-processor: original_dir='$original_dir'" >&2
             echo "DEBUG config-processor: validate_script='$validate_script'" >&2
         fi
-        
+
         # Check if validate-config.sh exists
         if [[ ! -f "$validate_script" ]]; then
             echo "❌ Configuration validator not found: $validate_script" >&2
             return 1
         fi
-        
+
         local config_result
         if [[ -n "$config_path" ]]; then
             # Use custom config path or scan mode
@@ -509,7 +509,7 @@ load_and_merge_config() {
                 return 1
             fi
         fi
-        
+
         # Return the validated and merged configuration
         echo "$config_result"
     fi
@@ -520,17 +520,17 @@ load_and_merge_config() {
 # Returns: 0 on success, 1 on failure
 validate_config_file() {
     local config_path="$1"
-    
+
     # Get the parent script directory to find validate-config.sh
     local parent_script_dir
     parent_script_dir="$(dirname "$CONFIG_SCRIPT_DIR")"
     local validate_script="$parent_script_dir/validate-config.sh"
-    
+
     if [[ ! -f "$validate_script" ]]; then
         echo "❌ Configuration validator not found: $validate_script" >&2
         return 1
     fi
-    
+
     if [[ -n "$config_path" ]]; then
         "$validate_script" --validate "$config_path"
     else
@@ -543,17 +543,17 @@ validate_config_file() {
 # Returns: 0 on success, 1 on failure
 init_config_file() {
     local config_path="$1"
-    
+
     # Get the parent script directory to find validate-config.sh
     local parent_script_dir
     parent_script_dir="$(dirname "$CONFIG_SCRIPT_DIR")"
     local validate_script="$parent_script_dir/validate-config.sh"
-    
+
     if [[ ! -f "$validate_script" ]]; then
         echo "❌ Configuration validator not found: $validate_script" >&2
         return 1
     fi
-    
+
     if [[ -n "$config_path" ]]; then
         "$validate_script" --init "$config_path"
     else
@@ -572,12 +572,12 @@ init_config_file() {
 get_provider() {
     local config_path="$1"
     local original_dir="${2:-$(pwd)}"
-    
+
     local config
     if ! config="$(load_and_merge_config "$config_path" "$original_dir")"; then
         return 1
     fi
-    
+
     get_config_provider "$config"
 }
 
@@ -587,12 +587,12 @@ get_provider() {
 get_project_name() {
     local config_path="$1"
     local original_dir="${2:-$(pwd)}"
-    
+
     local config
     if ! config="$(load_and_merge_config "$config_path" "$original_dir")"; then
         return 1
     fi
-    
+
     get_config_project_name "$config"
 }
 
@@ -601,7 +601,7 @@ get_project_name() {
 # Returns: 0 if config exists, 1 if not found
 config_exists() {
     local config_path="$1"
-    
+
     if [[ "$config_path" == "__SCAN__" ]]; then
         # Use scanning logic
         find_vm_yaml_upwards "$(pwd)" >/dev/null 2>&1
@@ -623,7 +623,7 @@ config_exists() {
 main() {
     local command="${1:-}"
     local config_path="${2:-}"
-    
+
     case "$command" in
         "load"|"load-config")
             load_and_merge_config "$config_path"

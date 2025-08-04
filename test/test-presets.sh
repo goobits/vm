@@ -31,7 +31,7 @@ setup_test_env() {
     echo -e "${BLUE}Setting up test environment...${NC}"
     rm -rf "$TEST_TEMP_DIR"
     mkdir -p "$TEST_TEMP_DIR"
-    
+
     # Source the project detector for testing
     if [[ -f "$PROJECT_DETECTOR" ]]; then
         source "$PROJECT_DETECTOR"
@@ -66,9 +66,9 @@ assert_equals() {
     local expected="$1"
     local actual="$2"
     local test_name="$3"
-    
+
     ((TESTS_RUN++))
-    
+
     if [[ "$expected" == "$actual" ]]; then
         pass_test "$test_name"
         return 0
@@ -82,9 +82,9 @@ assert_contains() {
     local haystack="$1"
     local needle="$2"
     local test_name="$3"
-    
+
     ((TESTS_RUN++))
-    
+
     if [[ "$haystack" == *"$needle"* ]]; then
         pass_test "$test_name"
         return 0
@@ -98,9 +98,9 @@ assert_not_contains() {
     local haystack="$1"
     local needle="$2"
     local test_name="$3"
-    
+
     ((TESTS_RUN++))
-    
+
     if [[ "$haystack" != *"$needle"* ]]; then
         pass_test "$test_name"
         return 0
@@ -113,9 +113,9 @@ assert_not_contains() {
 assert_file_exists() {
     local file_path="$1"
     local test_name="$2"
-    
+
     ((TESTS_RUN++))
-    
+
     if [[ -f "$file_path" ]]; then
         pass_test "$test_name"
         return 0
@@ -130,9 +130,9 @@ create_test_project() {
     local project_name="$1"
     local project_type="$2"
     local project_dir="$TEST_TEMP_DIR/$project_name"
-    
+
     mkdir -p "$project_dir"
-    
+
     case "$project_type" in
         "react")
             cat > "$project_dir/package.json" <<EOF
@@ -356,105 +356,105 @@ EOF
 EOF
             ;;
     esac
-    
+
     echo "$project_dir"
 }
 
 # Framework Detection Tests
 test_framework_detection() {
     echo -e "\n${PURPLE}=== Framework Detection Tests ===${NC}"
-    
+
     # Test React detection
     local react_dir
     react_dir=$(create_test_project "react-project" "react")
     local detected_type
     detected_type=$(detect_project_type "$react_dir")
     assert_equals "react" "$detected_type" "React project detection"
-    
+
     # Test Vue detection
     local vue_dir
     vue_dir=$(create_test_project "vue-project" "vue")
     detected_type=$(detect_project_type "$vue_dir")
     assert_equals "vue" "$detected_type" "Vue project detection"
-    
+
     # Test Next.js detection (should override React)
     local next_dir
     next_dir=$(create_test_project "next-project" "next")
     detected_type=$(detect_project_type "$next_dir")
     assert_equals "next" "$detected_type" "Next.js project detection"
-    
+
     # Test Angular detection
     local angular_dir
     angular_dir=$(create_test_project "angular-project" "angular")
     detected_type=$(detect_project_type "$angular_dir")
     assert_equals "angular" "$detected_type" "Angular project detection"
-    
+
     # Test Django detection
     local django_dir
     django_dir=$(create_test_project "django-project" "django")
     detected_type=$(detect_project_type "$django_dir")
     assert_equals "django" "$detected_type" "Django project detection"
-    
+
     # Test Flask detection
     local flask_dir
     flask_dir=$(create_test_project "flask-project" "flask")
     detected_type=$(detect_project_type "$flask_dir")
     assert_equals "flask" "$detected_type" "Flask project detection"
-    
+
     # Test Rails detection
     local rails_dir
     rails_dir=$(create_test_project "rails-project" "rails")
     detected_type=$(detect_project_type "$rails_dir")
     assert_equals "rails" "$detected_type" "Rails project detection"
-    
+
     # Test generic Node.js detection
     local nodejs_dir
     nodejs_dir=$(create_test_project "nodejs-project" "nodejs")
     detected_type=$(detect_project_type "$nodejs_dir")
     assert_equals "nodejs" "$detected_type" "Node.js project detection"
-    
+
     # Test Python detection
     local python_dir
     python_dir=$(create_test_project "python-project" "python")
     detected_type=$(detect_project_type "$python_dir")
     assert_equals "python" "$detected_type" "Python project detection"
-    
+
     # Test Docker detection
     local docker_dir
     docker_dir=$(create_test_project "docker-project" "docker")
     detected_type=$(detect_project_type "$docker_dir")
     assert_equals "docker" "$detected_type" "Docker project detection"
-    
+
     # Test Kubernetes detection
     local k8s_dir
     k8s_dir=$(create_test_project "k8s-project" "kubernetes")
     detected_type=$(detect_project_type "$k8s_dir")
     assert_equals "kubernetes" "$detected_type" "Kubernetes project detection"
-    
+
     # Test Rust detection
     local rust_dir
     rust_dir=$(create_test_project "rust-project" "rust")
     detected_type=$(detect_project_type "$rust_dir")
     assert_equals "rust" "$detected_type" "Rust project detection"
-    
+
     # Test Go detection
     local go_dir
     go_dir=$(create_test_project "go-project" "go")
     detected_type=$(detect_project_type "$go_dir")
     assert_equals "go" "$detected_type" "Go project detection"
-    
+
     # Test multi-technology project
     local multi_dir
     multi_dir=$(create_test_project "multi-project" "multi-react-django")
     detected_type=$(detect_project_type "$multi_dir")
     assert_equals "multi:react django" "$detected_type" "Multi-tech project detection (React + Django)"
-    
+
     # Test multi-tech with Docker
     local multi_docker_dir
     multi_docker_dir=$(create_test_project "multi-docker-project" "multi-docker-react")
     detected_type=$(detect_project_type "$multi_docker_dir")
     assert_equals "multi:react docker" "$detected_type" "Multi-tech project detection (React + Docker)"
-    
+
     # Test empty directory (generic)
     local empty_dir
     empty_dir=$(create_test_project "empty-project" "empty")
@@ -465,33 +465,33 @@ test_framework_detection() {
 # Test preset application functionality
 test_preset_application() {
     echo -e "\n${PURPLE}=== Preset Application Tests ===${NC}"
-    
+
     # Test React preset dry-run
     local react_dir
     react_dir=$(create_test_project "preset-react-test" "react")
     cd "$react_dir"
-    
+
     local dry_run_output
     dry_run_output=$("$VM_TOOL" --dry-run --no-preset create 2>&1 || true)
     assert_contains "$dry_run_output" "Dry run mode" "React preset dry-run execution"
-    
+
     # Test forced preset override
     local forced_output
     forced_output=$("$VM_TOOL" --dry-run --preset django create 2>&1 || true)
     assert_contains "$forced_output" "forced preset: django" "Forced preset override"
-    
+
     # Test no-preset flag
     local no_preset_output
     no_preset_output=$("$VM_TOOL" --dry-run --no-preset create 2>&1 || true)
     assert_not_contains "$no_preset_output" "Detecting project type" "No-preset flag disables detection"
-    
+
     cd "$SCRIPT_DIR"
 }
 
 # Test vm preset commands
 test_preset_commands() {
     echo -e "\n${PURPLE}=== Preset Commands Tests ===${NC}"
-    
+
     # Test preset list command
     local list_output
     list_output=$("$VM_TOOL" preset list 2>&1 || true)
@@ -499,37 +499,37 @@ test_preset_commands() {
     assert_contains "$list_output" "react" "Preset list contains react"
     assert_contains "$list_output" "django" "Preset list contains django"
     assert_contains "$list_output" "base" "Preset list contains base"
-    
+
     # Test preset show command for react
     local show_react_output
     show_react_output=$("$VM_TOOL" preset show react 2>&1 || true)
     assert_contains "$show_react_output" "React Development" "Preset show react contains title"
     assert_contains "$show_react_output" "npm_packages" "Preset show react contains npm packages"
     assert_contains "$show_react_output" "ports" "Preset show react contains ports"
-    
+
     # Test preset show command for django
     local show_django_output
     show_django_output=$("$VM_TOOL" preset show django 2>&1 || true)
     assert_contains "$show_django_output" "Django" "Preset show django contains Django"
     assert_contains "$show_django_output" "pip_packages" "Preset show django contains pip packages"
-    
+
     # Test preset show with .yaml extension
     local show_yaml_output
     show_yaml_output=$("$VM_TOOL" preset show react.yaml 2>&1 || true)
     assert_contains "$show_yaml_output" "React Development" "Preset show with .yaml extension works"
-    
+
     # Test preset show with non-existent preset
     local show_missing_output
     show_missing_output=$("$VM_TOOL" preset show nonexistent 2>&1 || true)
     assert_contains "$show_missing_output" "not found" "Preset show handles missing preset"
-    
+
     # Test preset command without subcommand
     local no_subcommand_output
     no_subcommand_output=$("$VM_TOOL" preset 2>&1 || true)
     assert_contains "$no_subcommand_output" "Missing preset subcommand" "Preset command without subcommand shows error"
     assert_contains "$no_subcommand_output" "list" "Preset help shows list subcommand"
     assert_contains "$no_subcommand_output" "show" "Preset help shows show subcommand"
-    
+
     # Test preset command with invalid subcommand
     local invalid_subcommand_output
     invalid_subcommand_output=$("$VM_TOOL" preset invalid 2>&1 || true)
@@ -539,44 +539,44 @@ test_preset_commands() {
 # Test flag functionality
 test_flag_functionality() {
     echo -e "\n${PURPLE}=== Flag Functionality Tests ===${NC}"
-    
+
     # Create test project
     local test_dir
     test_dir=$(create_test_project "flag-test" "react")
     cd "$test_dir"
-    
+
     # Test --no-preset flag
     local no_preset_output
     no_preset_output=$("$VM_TOOL" --dry-run --no-preset create 2>&1 || true)
     assert_not_contains "$no_preset_output" "Detecting project type" "--no-preset disables detection"
     assert_not_contains "$no_preset_output" "Applying.*preset" "--no-preset disables preset application"
-    
+
     # Test --preset NAME flag
     local forced_preset_output
     forced_preset_output=$("$VM_TOOL" --dry-run --preset python create 2>&1 || true)
     assert_contains "$forced_preset_output" "forced preset: python" "--preset forces specific preset"
-    
+
     # Test multiple flags together (should prioritize --no-preset)
-    local conflicting_flags_output  
+    local conflicting_flags_output
     conflicting_flags_output=$("$VM_TOOL" --dry-run --no-preset --preset django create 2>&1 || true)
     assert_not_contains "$conflicting_flags_output" "Detecting project type" "Conflicting flags: --no-preset takes priority"
-    
+
     cd "$SCRIPT_DIR"
 }
 
 # Test edge cases and error handling
 test_edge_cases() {
     echo -e "\n${PURPLE}=== Edge Cases Tests ===${NC}"
-    
+
     # Test malformed package.json
     local malformed_dir
     malformed_dir=$(create_test_project "malformed-json" "malformed-json")
-    
+
     # Detection should handle malformed JSON gracefully
     local detected_type
     detected_type=$(detect_project_type "$malformed_dir" 2>/dev/null || echo "generic")
     assert_equals "generic" "$detected_type" "Malformed JSON handled gracefully"
-    
+
     # Test missing presets directory (simulate by temporarily moving it)
     if [[ -d "$PRESETS_DIR" ]]; then
         mv "$PRESETS_DIR" "${PRESETS_DIR}.backup"
@@ -585,16 +585,16 @@ test_edge_cases() {
         assert_contains "$missing_presets_output" "not found" "Missing presets directory handled"
         mv "${PRESETS_DIR}.backup" "$PRESETS_DIR"
     fi
-    
+
     # Test detection with unreadable directory
     local unreadable_dir="$TEST_TEMP_DIR/unreadable"
     mkdir -p "$unreadable_dir"
     chmod 000 "$unreadable_dir" 2>/dev/null || true
-    
+
     local unreadable_type
     unreadable_type=$(detect_project_type "$unreadable_dir" 2>/dev/null || echo "error")
     chmod 755 "$unreadable_dir" 2>/dev/null || true
-    
+
     # Should handle permission errors gracefully
     ((TESTS_RUN++))
     if [[ "$unreadable_type" == "error" || "$unreadable_type" == "generic" ]]; then
@@ -602,7 +602,7 @@ test_edge_cases() {
     else
         fail_test "Unreadable directory handling" "Expected 'error' or 'generic', got '$unreadable_type'"
     fi
-    
+
     # Test project detection with non-existent directory
     local nonexistent_type
     nonexistent_type=$(detect_project_type "/path/that/does/not/exist" 2>/dev/null || echo "error")
@@ -617,20 +617,20 @@ test_edge_cases() {
 # Test preset file validation
 test_preset_files() {
     echo -e "\n${PURPLE}=== Preset Files Validation ===${NC}"
-    
+
     # Check that all expected preset files exist
     local expected_presets=("base" "react" "vue" "django" "flask" "rails" "nodejs" "python" "docker" "kubernetes")
-    
+
     for preset in "${expected_presets[@]}"; do
         assert_file_exists "$PRESETS_DIR/${preset}.yaml" "Preset file exists: $preset"
     done
-    
+
     # Validate preset file structure (basic YAML syntax)
     for preset_file in "$PRESETS_DIR"/*.yaml; do
         if [[ -f "$preset_file" ]]; then
             local preset_name
             preset_name=$(basename "$preset_file" .yaml)
-            
+
             # Check if file is readable and contains expected sections
             ((TESTS_RUN++))
             if grep -q "preset:" "$preset_file" 2>/dev/null; then
@@ -645,7 +645,7 @@ test_preset_files() {
 # Test project info functionality
 test_project_info() {
     echo -e "\n${PURPLE}=== Project Info Tests ===${NC}"
-    
+
     # Test project info for React project
     local react_dir
     react_dir=$(create_test_project "info-react" "react")
@@ -653,22 +653,22 @@ test_project_info() {
     react_info=$(get_project_info "$react_dir")
     assert_contains "$react_info" "Project Type: react" "Project info shows React type"
     assert_contains "$react_info" "Package Manager: npm" "Project info shows npm as package manager"
-    
-    # Test project info for Django project  
+
+    # Test project info for Django project
     local django_dir
     django_dir=$(create_test_project "info-django" "django")
     local django_info
     django_info=$(get_project_info "$django_dir")
     assert_contains "$django_info" "Project Type: django" "Project info shows Django type"
     assert_contains "$django_info" "Framework: django" "Project info shows Django framework"
-    
+
     # Test project info for multi-tech project
     local multi_dir
     multi_dir=$(create_test_project "info-multi" "multi-react-django")
     local multi_info
     multi_info=$(get_project_info "$multi_dir")
     assert_contains "$multi_info" "Multi-language project" "Project info shows multi-language"
-    
+
     # Test version control detection
     local git_dir
     git_dir=$(create_test_project "info-git" "react")
@@ -683,27 +683,27 @@ test_project_info() {
 # Test VM resource suggestions
 test_vm_resources() {
     echo -e "\n${PURPLE}=== VM Resource Suggestions Tests ===${NC}"
-    
+
     # Test resource suggestions for different project types
     local react_resources
     react_resources=$(suggest_vm_resources "react")
     assert_contains "$react_resources" "memory=2048" "React suggests 2GB memory"
     assert_contains "$react_resources" "cpus=2" "React suggests 2 CPUs"
-    
+
     local rust_resources
     rust_resources=$(suggest_vm_resources "rust")
     assert_contains "$rust_resources" "memory=4096" "Rust suggests 4GB memory"
     assert_contains "$rust_resources" "cpus=4" "Rust suggests 4 CPUs"
-    
+
     local docker_resources
     docker_resources=$(suggest_vm_resources "docker")
     assert_contains "$docker_resources" "memory=4096" "Docker suggests 4GB memory"
     assert_contains "$docker_resources" "disk_size=40" "Docker suggests 40GB disk"
-    
+
     local multi_resources
     multi_resources=$(suggest_vm_resources "multi:react django")
     assert_contains "$multi_resources" "memory=4096" "Multi-tech suggests 4GB memory"
-    
+
     local generic_resources
     generic_resources=$(suggest_vm_resources "generic")
     assert_contains "$generic_resources" "memory=2048" "Generic suggests 2GB memory"
@@ -713,28 +713,28 @@ test_vm_resources() {
 run_all_tests() {
     echo -e "${CYAN}Smart Preset System Test Suite${NC}"
     echo -e "${CYAN}================================${NC}"
-    
+
     setup_test_env
-    
+
     # Set up trap for cleanup
     trap cleanup_test_env EXIT
-    
+
     # Run all test suites
     test_framework_detection
-    test_preset_application  
+    test_preset_application
     test_preset_commands
     test_flag_functionality
     test_edge_cases
     test_preset_files
     test_project_info
     test_vm_resources
-    
+
     # Print summary
     echo -e "\n${CYAN}=== Test Summary ===${NC}"
     echo -e "Tests run: $TESTS_RUN"
     echo -e "${GREEN}Passed: $TESTS_PASSED${NC}"
     echo -e "${RED}Failed: $TESTS_FAILED${NC}"
-    
+
     if [[ $TESTS_FAILED -gt 0 ]]; then
         echo -e "\n${RED}Failed tests:${NC}"
         for failed_test in "${FAILED_TESTS[@]}"; do
@@ -827,7 +827,7 @@ if [[ "${1:-}" != "" ]]; then
     echo -e "Tests run: $TESTS_RUN"
     echo -e "${GREEN}Passed: $TESTS_PASSED${NC}"
     echo -e "${RED}Failed: $TESTS_FAILED${NC}"
-    
+
     if [[ $TESTS_FAILED -gt 0 ]]; then
         echo -e "\n${RED}Failed tests:${NC}"
         for failed_test in "${FAILED_TESTS[@]}"; do

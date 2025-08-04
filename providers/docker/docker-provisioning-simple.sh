@@ -18,22 +18,22 @@ source "$VM_TOOL_DIR/shared/npm-utils.sh"
 generate_docker_compose() {
     local config_path="$1"
     local project_dir="${2:-$(pwd)}"
-    
+
     # Load and merge config with defaults using standardized utility
     local default_config_path="$VM_TOOL_DIR/vm.yaml"
     local config
-    
+
     if ! config="$(merge_project_config "$default_config_path" "$config_path")"; then
         echo "❌ Failed to merge project configuration with defaults" >&2
         return 1
     fi
-    
+
     # Get host user/group IDs for proper file permissions
     local host_uid
     host_uid="$(id -u)"
     local host_gid
     host_gid="$(id -g)"
-    
+
     # Extract basic project data using jq
     local project_name
     project_name="$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')"
@@ -45,16 +45,16 @@ generate_docker_compose() {
     project_user="$(echo "$config" | jq -r '.vm.user // "developer"')"
     local timezone
     timezone="$(echo "$config" | jq -r '.vm.timezone // "UTC"')"
-    
+
     # Get VM tool path (use absolute path to avoid relative path issues)
     # The VM tool is always in the workspace directory where vm.sh is located
     local vm_tool_base_path
     vm_tool_base_path="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-    
+
     # Use the vm-tool path directly from the host mount
     # Mount the vm-tool directory directly instead of copying
     local vm_tool_path="/vm-tool"
-    
+
     # Generate ports section
     local ports_section=""
     local ports_count
@@ -63,13 +63,13 @@ generate_docker_compose() {
         local host_ip
         host_ip="$(echo "$config" | jq -r '.vm.port_binding // "127.0.0.1"')"
         ports_section="$(echo "$config" | jq -r --arg hostip "$host_ip" '
-            .ports // {} | 
-            to_entries | 
-            map("      - \"" + $hostip + ":" + (.value | tostring) + ":" + (.value | tostring) + "\"") | 
+            .ports // {} |
+            to_entries |
+            map("      - \"" + $hostip + ":" + (.value | tostring) + ":" + (.value | tostring) + "\"") |
             if length > 0 then "\n    ports:\n" + join("\n") else "" end
         ')"
     fi
-    
+
     # Generate Claude sync volume
     local claude_sync_volume=""
     local claude_sync
@@ -79,7 +79,7 @@ generate_docker_compose() {
         local container_path="/home/$project_user/.claude"
         claude_sync_volume="\\n      - $host_path:$container_path:delegated"
     fi
-    
+
     # Generate Gemini sync volume
     local gemini_sync_volume=""
     local gemini_sync
@@ -89,32 +89,32 @@ generate_docker_compose() {
         local container_path="/home/$project_user/.gemini"
         gemini_sync_volume="\\n      - $host_path:$container_path:delegated"
     fi
-    
+
     # Generate database persistence volumes
     local database_volumes=""
     local persist_databases
     persist_databases="$(echo "$config" | jq -r '.persist_databases // false')"
     if [[ "$persist_databases" == "true" ]]; then
         local vm_data_path="$project_dir/.vm/data"
-        
+
         # Check each database service
         if [[ "$(echo "$config" | jq -r '.services.postgresql.enabled // false')" == "true" ]]; then
             database_volumes+="\\n      - $vm_data_path/postgres:/var/lib/postgresql:delegated"
         fi
-        
+
         if [[ "$(echo "$config" | jq -r '.services.redis.enabled // false')" == "true" ]]; then
             database_volumes+="\\n      - $vm_data_path/redis:/var/lib/redis:delegated"
         fi
-        
+
         if [[ "$(echo "$config" | jq -r '.services.mongodb.enabled // false')" == "true" ]]; then
             database_volumes+="\\n      - $vm_data_path/mongodb:/var/lib/mongodb:delegated"
         fi
-        
+
         if [[ "$(echo "$config" | jq -r '.services.mysql.enabled // false')" == "true" ]]; then
             database_volumes+="\\n      - $vm_data_path/mysql:/var/lib/mysql:delegated"
         fi
     fi
-    
+
     # Handle VM temp mounts (for vm temp command)
     local temp_mount_volumes=""
     if [[ -n "${VM_TEMP_MOUNTS:-}" ]]; then
@@ -127,18 +127,18 @@ generate_docker_compose() {
             fi
         done
     fi
-    
+
     # Handle audio and GPU support
     local audio_env=""
     local audio_volumes=""
     local devices=()
     local groups=()
-    
+
     if [[ "$(echo "$config" | jq -r '.services.audio.enabled // true')" == "true" ]]; then
         # Use proper UID and runtime directory with fallbacks
         local runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$host_uid}"
         local pulse_socket="$runtime_dir/pulse/native"
-        
+
         # Verify host PulseAudio socket exists before mounting
         if [[ -S "$pulse_socket" ]]; then
             audio_env="\\n      - PULSE_SERVER=unix:/run/user/$host_uid/pulse/native"
@@ -148,29 +148,29 @@ generate_docker_compose() {
             audio_env="\\n      - PULSE_RUNTIME_PATH=/run/user/$host_uid/pulse"
             echo "⚠️  Audio: Host PulseAudio socket not found at $pulse_socket, using system mode"
         fi
-        
+
         devices+=("/dev/snd:/dev/snd")
         groups+=("audio")
     fi
-    
+
     # Handle GPU support
     local gpu_env=""
     local gpu_volumes=""
-    
+
     if [[ "$(echo "$config" | jq -r '.services.gpu.enabled // false')" == "true" ]]; then
         local gpu_type
         gpu_type="$(echo "$config" | jq -r '.services.gpu.type // "auto"')"
-        
+
         # NVIDIA GPU support
         if [[ "$gpu_type" == "nvidia" || "$gpu_type" == "auto" ]]; then
             gpu_env="\\n      - NVIDIA_VISIBLE_DEVICES=all\\n      - NVIDIA_DRIVER_CAPABILITIES=all"
         fi
-        
+
         # DRI devices for Intel/AMD GPU access
         devices+=("/dev/dri:/dev/dri")
         groups+=("video" "render")
     fi
-    
+
     # NPM linked packages volumes
     local npm_link_volumes=""
     if command -v npm >/dev/null 2>&1 && declare -f detect_npm_linked_packages >/dev/null 2>&1; then
@@ -182,7 +182,7 @@ generate_docker_compose() {
                 [[ -z "$package" ]] && continue
                 npm_packages_array+=("$package")
             done <<< "$npm_packages"
-            
+
             # Use the shared function to detect linked packages
             local linked_volumes
             linked_volumes=$(detect_npm_linked_packages "${npm_packages_array[@]}")
@@ -204,7 +204,7 @@ generate_docker_compose() {
             devices_section+="\\n      - $device"
         done
     fi
-    
+
     local groups_section=""
     if [[ ${#groups[@]} -gt 0 ]]; then
         groups_section="\\n    group_add:"
@@ -212,7 +212,7 @@ generate_docker_compose() {
             groups_section+="\\n      - $group"
         done
     fi
-    
+
     # Create docker-compose.yml content
     local docker_compose_content
     docker_compose_content="services:
@@ -244,7 +244,7 @@ generate_docker_compose() {
     # Security: Removed dangerous capabilities that create container escape risks
     # - SYS_PTRACE: Allows debugging/tracing processes, potential security risk
     # - seccomp:unconfined: Disables syscall filtering, removes critical security layer
-    # 
+    #
     # Minimal capabilities for development workflows:
     cap_add:
       - CHOWN        # Change file ownership (needed for development file operations)
@@ -260,7 +260,7 @@ volumes:
   ${project_name}_nvm:
   ${project_name}_cache:
   ${project_name}_config:"
-    
+
     # Write docker-compose.yml
     local output_path="$project_dir/docker-compose.yml"
     echo -e "$docker_compose_content" > "$output_path"
@@ -271,11 +271,11 @@ volumes:
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     config_path="$1"
     project_dir="${2:-$(pwd)}"
-    
+
     if [[ -z "$config_path" ]]; then
         echo "Usage: $0 <config-path> [project-dir]" >&2
         exit 1
     fi
-    
+
     generate_docker_compose "$config_path" "$project_dir"
 fi
