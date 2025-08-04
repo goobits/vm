@@ -1,10 +1,10 @@
 # 🚀 Goobits VM Infrastructure
 
-Beautiful development environments with one command. Choose between Docker (lightweight containers, default) or Vagrant (full VM isolation) based on your needs.
+Beautiful development environments with one command. **Zero configuration required** - just run `vm create` and get a perfectly configured environment based on your project type.
 
-> **🔐 Built for AI Agents**: This infrastructure provides safe sandboxes for AI-assisted development when you need system isolation. Choose your isolation level:
-> - **Docker (default)**: Lightweight containers with shared kernel - fast and resource-efficient for most workloads
-> - **Vagrant**: Full VM isolation with separate kernel - ideal for risky operations or when system security is a concern
+> **🔐 Built for AI Agents**: Safe sandboxes for AI-assisted development with two isolation levels:
+> - **Docker (default)**: Fast, lightweight containers (~500MB RAM)
+> - **Vagrant**: Full VM isolation with separate kernel for maximum security
 
 ## 🏃 Quick Start
 
@@ -12,47 +12,93 @@ Beautiful development environments with one command. Choose between Docker (ligh
 # Install globally via npm
 npm install -g @goobits/vm
 
-# Start immediately with smart preset detection
-vm create  # Automatically detects and configures for your project type!
-vm ssh     # Enter your perfectly configured development environment
+# Zero-config startup - works instantly!
+vm create  # Detects your project type and configures everything
+vm ssh     # Enter your development environment
 ```
 
-📖 **Need help installing?** See the complete [Installation Guide](INSTALLATION.md) for all installation options and troubleshooting.
+**That's it!** The tool automatically detects React, Django, Rails, Vue, and 20+ other frameworks, then configures the perfect environment with all the tools you need.
 
-## 🎯 Smart Preset System
+📖 **Need help installing?** See the [Installation Guide](INSTALLATION.md).
 
-The VM Tool includes an intelligent preset system that automatically configures virtual machines based on your project type. No more manual configuration - just point the tool at your project and get a perfectly configured development environment.
+## 🎯 How It Works
 
-### Key Features
-
-- **🔍 Automatic Detection**: Analyzes your project files to detect frameworks (React, Django, Rails, etc.)
-- **⚡ One-Command Setup**: `vm create` automatically applies the right preset for your project
-- **🎛️ Interactive Mode**: `vm --interactive create` lets you customize preset selection
-- **📦 Multiple Presets**: Handles complex projects with multiple technologies (e.g., React + Docker)
-- **🔧 Fully Customizable**: Override any preset setting in your `vm.yaml`
-
-### Quick Start
+**Smart Preset System**: Analyzes your project files and automatically configures the perfect environment.
 
 ```bash
-# Automatic preset detection
-cd my-react-project && vm create
+# Detects React project → installs Node.js, npm, dev server, testing tools
+cd my-react-app && vm create
 
-# Interactive preset selection  
-vm --interactive create
+# Detects Django project → installs Python, PostgreSQL, Redis, Django tools  
+cd my-api && vm create
 
-# Force specific preset
-vm --preset django create
-
-# Explore available presets
-vm preset list
-vm preset show react
+# Multiple technologies → applies multiple presets intelligently
+cd fullstack-app && vm create  # React frontend + Django backend
 ```
 
-For detailed preset documentation, see [PRESETS.md](PRESETS.md).
+**Override when needed:**
+```bash
+vm --preset django create        # Force specific preset
+vm --interactive create          # Choose presets interactively
+vm --no-preset create            # Manual configuration only
+```
 
-## ⚙️ Configuration
+📖 **Available presets**: React, Vue, Django, Rails, Node.js, Python, Rust, Docker, Kubernetes, and more. See [PRESETS.md](PRESETS.md).
 
-Create a `vm.yaml` file to customize your environment:
+## 🧪 Provider Choice: Docker vs Vagrant
+
+**Both providers offer identical development environments** - same commands, same services, same provisioning. Choose based on your needs:
+
+| Feature | Docker (Default) | Vagrant |
+|---------|------------------|----------|
+| **Speed** | ⚡ 10-30 seconds | 🐌 2-3 minutes |
+| **Resources** | 💾 ~500MB RAM | 💾 ~2GB RAM |
+| **Isolation** | 🔒 Container-level | 🔐 Full VM kernel |
+| **Best for** | Daily development | AI agents, risky ops |
+
+```bash
+# Uses Docker by default
+vm create
+
+# Force Vagrant for maximum isolation  
+echo "provider: vagrant" > vm.yaml && vm create
+```
+
+## 🎮 Essential Commands
+
+**Main workflow:**
+```bash
+vm create        # Create and configure VM based on your project
+vm ssh           # Enter the VM  
+vm stop          # Stop VM (keeps data)
+vm destroy       # Delete VM completely
+```
+
+**Quick experiments:**
+```bash
+vm temp ./src ./tests     # Instant VM with specific folders mounted
+vm temp ssh               # Enter temp VM
+vm temp destroy          # Clean up
+```
+
+**Project management:**
+```bash
+vm list          # Show all VMs
+vm status        # Check if running
+vm logs          # View container/VM logs
+vm exec "cmd"    # Run command in VM
+```
+
+**Configuration:**
+```bash
+vm init          # Create vm.yaml config file
+vm validate      # Check config
+vm preset list   # Show available presets
+```
+
+## ⚙️ Optional Configuration
+
+**Works without any config**, but you can customize with `vm.yaml`:
 
 ```yaml
 project:
@@ -63,323 +109,119 @@ ports:
 services:
   postgresql:
     enabled: true
+vm:
+  memory: 4096    # 4GB RAM
+  cpus: 2
 ```
 
-📖 **Full configuration guide**: See [CONFIGURATION.md](CONFIGURATION.md) for complete reference, examples, and migration from JSON.
+📖 **Full guides**: [Configuration](CONFIGURATION.md) | [Presets](PRESETS.md) | [Installation](INSTALLATION.md)
 
-## 🎮 Commands
+## 📋 Complete Command Reference
 
+<details>
+<summary><strong>Click to expand all commands</strong></summary>
+
+### Main VM Lifecycle
 ```bash
-vm init                      # Initialize a new vm.yaml configuration file
-vm generate                  # Generate vm.yaml by composing services and configurations
-vm migrate                   # Convert vm.json to vm.yaml with version tracking
+vm create                    # Create new VM with full provisioning
+vm start                     # Start existing VM without provisioning  
+vm stop                      # Stop VM but keep data
+vm restart                   # Restart VM without reprovisioning
+vm ssh                       # Connect to VM
+vm destroy                   # Delete VM completely
+vm status                    # Check if running
+vm kill                      # Force kill stuck processes
+vm provision                 # Re-run provisioning
+```
+
+### Configuration & Setup
+```bash
+vm init                      # Initialize new vm.yaml config file
+vm generate                  # Generate vm.yaml by composing services
+vm migrate                   # Convert vm.json to vm.yaml with versioning
+vm validate                  # Check config
 vm list                      # List all VM instances
-vm temp <folders>            # Create ephemeral VM with specific directory mounts
+```
+
+### Temporary VMs
+```bash
+vm temp <folders>            # Create ephemeral VM with directory mounts
 vm temp ssh [-c cmd]         # SSH into temp VM or run command
-vm temp status               # Show temp VM status and configuration
+vm temp status               # Show temp VM status and configuration  
 vm temp destroy              # Destroy temp VM and clean up state
 vm temp mount <path>         # Add mount to running temp VM
 vm temp unmount <path>       # Remove mount from running temp VM
 vm temp mounts               # List current mounts
-vm temp list                 # List active temp VM instances  
+vm temp list                 # List active temp VM instances
 vm temp start                # Start stopped temp VM
 vm temp stop                 # Stop temp VM (preserves state)
 vm temp restart              # Restart temp VM
 vm temp logs                 # View container logs
 vm temp provision            # Re-run provisioning
 vm tmp <folders>             # Alias for vm temp
-vm create                    # Create new VM/container with full provisioning
-vm start                     # Start existing VM/container without provisioning
-vm stop                      # Stop VM/container but keep data
-vm restart                   # Restart VM/container without reprovisioning
-vm ssh                       # Connect to VM/container
-vm destroy                   # Delete VM/container completely
-vm status                    # Check if running
-vm validate                  # Check config
-vm kill                      # Force kill stuck processes
-vm provision                 # Re-run provisioning
+```
 
-# Provider-specific commands
-vm logs                      # View service logs (Docker: container logs, Vagrant: journalctl)
-vm exec <command>            # Execute command in VM/container
-
-# Testing
-vm test                      # Run all tests
-vm test --suite minimal     # Run specific test suite
-vm test --suite services    # Test service configurations
-vm test --list              # Show available test suites
-
-# Preset commands
+### Presets & Project Detection
+```bash
 vm preset list               # List all available presets
 vm preset show <name>        # Show detailed preset configuration
 vm --preset <name> create    # Force specific preset
 vm --interactive create      # Interactive preset selection
 vm --no-preset create        # Disable preset detection
+```
 
-# Use custom config file
+### Advanced Usage
+```bash
+vm logs                      # View service logs
+vm exec <command>            # Execute command in VM
+vm test                      # Run all tests
+vm test --suite minimal     # Run specific test suite
+vm test --suite services    # Test service configurations
+vm test --list              # Show available test suites
 vm --config prod.yaml create # Create with specific config
 vm --config dev.yaml ssh     # Any command works with --config
 ```
 
-## 📚 Documentation
-
-- 📖 [Installation Guide](INSTALLATION.md) - Complete installation instructions for all platforms
-- ⚙️ [Configuration Reference](CONFIGURATION.md) - Full configuration options and examples
-- 🎯 [Preset System Guide](PRESETS.md) - Smart preset system and customization options
-- 🔄 [Changelog](CHANGELOG.md) - Recent updates and version history
-
-## 📦 What's Included
-
-- **Ubuntu 24.04 LTS** with Zsh + syntax highlighting
-- **Node.js v22** via NVM (configurable)
-- **pnpm** via Corepack
-- **Beautiful terminals** with 8 themes
-- **Smart preset system** with automatic project detection
-- **Framework-specific environments**: React, Django, Rails, Vue, Next.js, and more
-- **Interactive preset customization** for complex projects
-- **Optional services**: PostgreSQL, Redis, MongoDB, Docker, Headless Browser
-- **Auto-sync**: Edit locally, run in VM
-- **Claude-ready**: Safe sandbox for AI experiments
-- **Provider choice**: Docker (default, lightweight) or Vagrant (full isolation)  
-- **Unified architecture**: Both providers use identical Ansible provisioning
-- **Modular bash architecture**: Clean, maintainable scripts with extracted modules
-- **Automatic language installation**: Rust (via cargo_packages) and Python (via pip_packages)
-- **Configuration migration**: Easy upgrade from JSON to YAML with versioning
-
-## 🎨 Terminal Themes
-
-All themes include syntax highlighting and git-aware prompts!
-
-- `dracula` ⭐ - Purple magic (default)
-- `gruvbox_dark` - Retro warmth
-- `solarized_dark` - Science-backed colors
-- `nord` - Arctic vibes
-- `monokai` - Classic vibrance
-- `one_dark` - Atom's gift
-- `catppuccin_mocha` - Smooth pastels
-- `tokyo_night` - Neon dreams
+</details>
 
 ## 🚀 Temporary VMs
 
-Create lightweight VMs for experiments and code reviews without any configuration. Perfect for quick testing, exploring PRs, or trying new tools in isolation.
-
-### ✨ Features
-
-- **Zero configuration**: No vm.yaml needed
-- **Modern syntax**: Space-separated directory mounting
-- **Permission support**: Read-only (`:ro`) and read-write (`:rw`) access
-- **Dynamic mount management**: Add/remove mounts without losing work
-- **Full lifecycle control**: Start, stop, restart VMs
-- **Command execution**: Run commands without SSH
-- **State management**: Tracks temp VM state in `~/.vm/temp-vm.state`
-- **Alias support**: Use `vm tmp` as shorthand for `vm temp`
-- **Lightweight**: Basic Ubuntu container for quick experiments
-
-### 🎯 Basic Usage
+**Perfect for quick experiments** - no configuration needed, instant setup:
 
 ```bash
-# Create temp VM with multiple mounts (modern syntax)
+# Mount specific directories and get working environment
 vm temp ./src ./tests ./docs:ro
+vm temp ssh              # Enter and start coding
+vm temp destroy          # Clean up when done
 
-# Or use the shorthand alias
-vm tmp ./src ./tests ./config
-
-# Mount with explicit permissions
-vm temp ./src:rw ./config:ro ./tests:rw
-
-# SSH into temp VM
-vm temp ssh
-vm temp ssh -c "npm test"  # Run command and exit
-
-# Check temp VM status
-vm temp status
-
-# Destroy temp VM
-vm temp destroy
+# Dynamic mount management
+vm temp mount ./new-feature    # Add directories while working  
+vm temp unmount ./old-code     # Remove when not needed
+vm temp mounts                 # List current mounts
 ```
 
-### 🛠️ Dynamic Mount Management
+**Use cases**: Code reviews, testing libraries, debugging, trying new tools in isolation.
 
-Add and remove mounts from running temp VMs without losing your work:
 
-```bash
-# Start with basic mounts
-vm temp ./src ./tests
 
-# Add a new directory while working
-vm temp mount ./new-feature
-vm temp mount ./docs:ro
+## 📦 What's Included
 
-# Remove directories you no longer need
-vm temp unmount ./old-code
+- **Ubuntu 24.04 LTS** with Zsh and syntax highlighting
+- **Smart preset system** with 20+ framework presets  
+- **Language runtimes**: Node.js, Python, Rust (auto-installed based on your project)
+- **Services**: PostgreSQL, Redis, MongoDB, Docker (configurable)
+- **8 beautiful terminal themes** with git-aware prompts
+- **Auto-sync**: Edit locally, run in VM with instant file sync
+- **Package managers**: npm, pnpm, pip, cargo (as needed)
 
-# List current mounts  
-vm temp mounts
+## 🚨 Common Issues
 
-# List active temp VMs
-vm temp list
-
-# Clean up and remove all mounts
-vm temp unmount --all
-```
-
-### 🔄 Lifecycle Management
-
-Full control over your temp VM lifecycle:
-
-```bash
-# Stop temp VM (preserves all data and state)
-vm temp stop
-
-# Start stopped temp VM
-vm temp start
-
-# Restart temp VM
-vm temp restart
-
-# View container logs
-vm temp logs
-vm temp logs -f  # Follow logs in real-time
-
-# Re-run provisioning if needed
-vm temp provision
-```
-
-### 🔄 Container Recreation
-
-When adding or removing mounts, the temp VM automatically recreates the container while preserving your `/home/developer` directory:
-
-```bash
-# Start working
-vm temp ./src ./tests
-vm temp ssh  # Do some work, install packages, etc.
-
-# Add new mount - container recreates but /home/developer preserved
-vm temp mount ./docs
-# 🔄 Recreating container with updated mounts...
-# ✅ Container recreated with updated mounts in 5 seconds
-
-# Your work and installed packages are still there!
-```
-
-### 💡 Use Cases
-
-- **Quick testing**: Test libraries or configurations without affecting main project
-- **Code reviews**: Safely explore PRs in isolation
-- **Experiments**: Try new tools or configurations with full lifecycle control
-- **Debugging**: Isolate issues with minimal setup
-- **Iterative development**: Add/remove project directories as you work
-- **Log monitoring**: Real-time log viewing during development
-- **Command execution**: Run builds, tests, or scripts without SSH overhead
-
-### ⚠️ Limitations
-
-- **Docker only**: Temp VMs use Docker containers, not full Vagrant VMs
-- **Basic environment**: No services (PostgreSQL, Redis, etc.) - just Ubuntu + basic tools
-- **Home directory persistence**: Only `/home/developer` is preserved during mount changes
-- **No custom configuration**: Uses built-in minimal setup
-
-### 🔄 Backward Compatibility
-
-The old comma-separated syntax still works but shows a deprecation warning:
-
-```bash
-# Old syntax (deprecated)
-vm temp ./src,./tests,./docs:ro
-# ⚠️  Warning: Comma-separated mounts are deprecated
-#    Please use: vm temp ./src ./tests ./docs:ro
-
-# Current syntax (recommended)
-vm temp ./src ./tests ./docs:ro
-```
-
-## 🧪 Docker vs Vagrant: Which to Choose?
-
-**Both providers now offer identical development environments!** Services run on localhost, commands work the same, and Ansible handles all provisioning. The only differences are:
-
-**Docker (Default - Container Isolation)**:
-- ✅ Lightweight and fast
-- ✅ Minimal resource usage (~500MB RAM)
-- ✅ Quick startup/teardown (~10-30 seconds)
-- ✅ Perfect for most development needs
-- ❌ Shared kernel with host
-- ❌ Less isolation for risky operations
-
-**Vagrant (Full VM Isolation)**:
-- ✅ Separate kernel = maximum security
-- ✅ Perfect for `claude --dangerously-skip-permissions`
-- ✅ Complete OS-level isolation
-- ❌ Higher resource usage (~2GB RAM)
-- ❌ Slower startup times (~2-3 minutes)
-
-**The development experience is now identical**: Same commands, same localhost connections, same Ansible provisioning. Choose based on your security/performance needs.
-
-## 💡 Tips & Tricks
-
-### 🔄 File Sync
-
-```
-Mac: ~/your-project/src/app.js
- ↕️ (instant sync)
-VM:  /workspace/src/app.js
-```
-
-### 🐘 Database Backups
-
-Drop `.sql.gz` files matching your `backup_pattern` in the project - they'll auto-restore on provision!
-
-### 🚪 Port Conflicts
-
-See "port collision" in output? Vagrant auto-remapped it:
-
-```
-Fixed port collision for 3000 => 3000. Now on port 2200.
-```
-
-## 🚨 Troubleshooting
-
-**Q: Port conflicts?**  
-A: Check output for remapped ports (Vagrant) or adjust ports in vm.yaml
-
-**Q: VM/container won't start?**  
-A: `vm destroy` then `vm create`
-
-**Q: Slow performance?**  
-A: Increase memory/CPUs in vm.yaml (or switch to Docker provider)
-
-**Q: Can't connect to service?**  
-A: 
-- Check service is enabled in vm.yaml
-- Verify service is running: `vm exec 'systemctl status postgresql'`
-- All services use localhost (not container names)
-
-**Q: VirtualBox stuck?**  
-A: `vm kill` to force cleanup
-
-**Q: Provisioning failed?**  
-A: Check Ansible output - it handles provisioning for both providers:
-```bash
-vm provision  # Re-run Ansible playbook
-```
-
-## 🏗️ Technical Architecture
-
-### Unified Provisioning
-Both Vagrant and Docker providers use the **same Ansible playbook** for provisioning. This ensures identical environments regardless of provider choice:
-
-```
-vm.sh → Provider (Vagrant/Docker) → Ansible Playbook → Configured Environment
-```
-
-### Service Architecture
-All services (PostgreSQL, Redis, MongoDB) run **inside** the VM/container and are accessed via `localhost`. No more confusion about container hostnames vs localhost!
-
-### Configuration Flow
-1. `vm.yaml` defines your requirements
-2. `validate-config.sh` merges with defaults and validates
-3. Provider-specific setup (Vagrantfile or docker-compose.yml)
-4. Ansible playbook provisions everything identically
+- **VM won't start?** → `vm destroy && vm create`
+- **Port conflicts?** → Check output for remapped ports or adjust in vm.yaml  
+- **Can't connect to database?** → All services use `localhost` (not container names)
+- **Slow performance?** → Increase memory/CPUs in vm.yaml or switch to Docker
+- **Need more help?** → Check `vm logs` or see [troubleshooting guide](INSTALLATION.md#troubleshooting)
 
 ---
 
-**Pro tip**: The package includes `vm.yaml` with sensible defaults. Your project's `vm.yaml` only needs what's different! 🎪
+**Files are synced instantly** between your local machine and VM. Edit locally, run in VM - it just works! 🎪
