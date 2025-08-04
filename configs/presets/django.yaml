@@ -1,0 +1,37 @@
+---
+# Django Development Preset
+preset:
+  name: "Django Development"
+  description: "Optimized for Django web development"
+
+pip_packages:
+  - django
+  - djangorestframework
+  - django-cors-headers
+  - django-extensions
+  - python-decouple
+  - psycopg2-binary
+  - redis
+  - celery
+  - django-debug-toolbar
+  - pytest-django
+  - factory-boy
+
+npm_packages:
+  - prettier  # For frontend assets
+
+ports:
+  - 8000  # Django dev server default
+  - 8001  # Alternative Django port
+  - 5555  # Celery flower monitoring
+
+services:
+  postgresql:
+    enabled: true  # Primary database for Django
+  redis:
+    enabled: true  # For caching and Celery
+
+environment:
+  DJANGO_SETTINGS_MODULE: "settings.development"
+  DEBUG: "True"
+  PYTHONDONTWRITEBYTECODE: "1"

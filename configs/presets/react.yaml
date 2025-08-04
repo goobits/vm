@@ -1,0 +1,34 @@
+---
+# React Development Preset
+preset:
+  name: "React Development"
+  description: "Optimized for React/Next.js development"
+
+npm_packages:
+  - create-react-app
+  - react-router-dom
+  - react-dev-utils
+  - webpack-dev-server
+  - @vitejs/plugin-react
+  - vite
+  - react-testing-library
+  - jest
+
+pip_packages:
+  - git-filter-repo
+
+ports:
+  - 3000  # React dev server default
+  - 3001  # Alternative React port
+  - 5173  # Vite dev server
+
+services:
+  redis:
+    enabled: true  # Common for session storage
+  postgresql:
+    enabled: false  # Optional for React apps
+
+environment:
+  NODE_ENV: development
+  REACT_APP_ENV: development
+  FAST_REFRESH: true

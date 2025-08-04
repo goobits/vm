@@ -1,0 +1,40 @@
+---
+# Docker Development Preset
+preset:
+  name: "Docker Development"
+  description: "Optimized for Docker containerization and development"
+
+apt_packages:
+  - docker.io
+  - docker-compose
+  - docker-buildx
+
+pip_packages:
+  - docker-compose
+  - docker
+  - portainer-py
+
+npm_packages:
+  - dockerfile-language-server
+
+aliases:
+  dc: "docker-compose"
+  dps: "docker ps"
+  di: "docker images"
+  dlog: "docker logs"
+  dexec: "docker exec -it"
+
+ports:
+  - 2375  # Docker daemon API (non-TLS)
+  - 2376  # Docker daemon API (TLS)
+  - 9000  # Portainer web UI
+
+services:
+  postgresql:
+    enabled: false  # Docker manages its own containers
+  redis:
+    enabled: false  # Docker manages its own containers
+
+environment:
+  DOCKER_BUILDKIT: "1"
+  COMPOSE_DOCKER_CLI_BUILD: "1"

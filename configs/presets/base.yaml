@@ -1,0 +1,23 @@
+---
+# Generic Development Preset
+preset:
+  name: "Generic Development"
+  description: "General-purpose development environment"
+
+pip_packages:
+  - git-filter-repo
+  - httpie
+  - tldr
+
+npm_packages:
+  - prettier  # Works with many file types
+
+aliases:
+  ll: "ls -la"
+  gs: "git status"
+
+services:
+  postgresql:
+    enabled: false  # Let user opt-in
+  redis:
+    enabled: false

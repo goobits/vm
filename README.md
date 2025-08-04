@@ -12,12 +12,43 @@ Beautiful development environments with one command. Choose between Docker (ligh
 # Install globally via npm
 npm install -g @goobits/vm
 
-# Start immediately with defaults
-vm create  # Works without any config! Uses smart defaults
-vm ssh     # Enter your shiny new Ubuntu box
+# Start immediately with smart preset detection
+vm create  # Automatically detects and configures for your project type!
+vm ssh     # Enter your perfectly configured development environment
 ```
 
 📖 **Need help installing?** See the complete [Installation Guide](INSTALLATION.md) for all installation options and troubleshooting.
+
+## 🎯 Smart Preset System
+
+The VM Tool includes an intelligent preset system that automatically configures virtual machines based on your project type. No more manual configuration - just point the tool at your project and get a perfectly configured development environment.
+
+### Key Features
+
+- **🔍 Automatic Detection**: Analyzes your project files to detect frameworks (React, Django, Rails, etc.)
+- **⚡ One-Command Setup**: `vm create` automatically applies the right preset for your project
+- **🎛️ Interactive Mode**: `vm --interactive create` lets you customize preset selection
+- **📦 Multiple Presets**: Handles complex projects with multiple technologies (e.g., React + Docker)
+- **🔧 Fully Customizable**: Override any preset setting in your `vm.yaml`
+
+### Quick Start
+
+```bash
+# Automatic preset detection
+cd my-react-project && vm create
+
+# Interactive preset selection  
+vm --interactive create
+
+# Force specific preset
+vm --preset django create
+
+# Explore available presets
+vm preset list
+vm preset show react
+```
+
+For detailed preset documentation, see [PRESETS.md](PRESETS.md).
 
 ## ⚙️ Configuration
 
@@ -78,6 +109,13 @@ vm test --suite minimal     # Run specific test suite
 vm test --suite services    # Test service configurations
 vm test --list              # Show available test suites
 
+# Preset commands
+vm preset list               # List all available presets
+vm preset show <name>        # Show detailed preset configuration
+vm --preset <name> create    # Force specific preset
+vm --interactive create      # Interactive preset selection
+vm --no-preset create        # Disable preset detection
+
 # Use custom config file
 vm --config prod.yaml create # Create with specific config
 vm --config dev.yaml ssh     # Any command works with --config
@@ -87,6 +125,7 @@ vm --config dev.yaml ssh     # Any command works with --config
 
 - 📖 [Installation Guide](INSTALLATION.md) - Complete installation instructions for all platforms
 - ⚙️ [Configuration Reference](CONFIGURATION.md) - Full configuration options and examples
+- 🎯 [Preset System Guide](PRESETS.md) - Smart preset system and customization options
 - 🔄 [Changelog](CHANGELOG.md) - Recent updates and version history
 
 ## 📦 What's Included
@@ -95,6 +134,9 @@ vm --config dev.yaml ssh     # Any command works with --config
 - **Node.js v22** via NVM (configurable)
 - **pnpm** via Corepack
 - **Beautiful terminals** with 8 themes
+- **Smart preset system** with automatic project detection
+- **Framework-specific environments**: React, Django, Rails, Vue, Next.js, and more
+- **Interactive preset customization** for complex projects
 - **Optional services**: PostgreSQL, Redis, MongoDB, Docker, Headless Browser
 - **Auto-sync**: Edit locally, run in VM
 - **Claude-ready**: Safe sandbox for AI experiments

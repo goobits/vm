@@ -1,0 +1,42 @@
+---
+# Ruby on Rails Development Preset
+preset:
+  name: "Ruby on Rails Development"
+  description: "Optimized for Ruby on Rails development"
+
+apt_packages:
+  - ruby-dev
+  - build-essential
+  - libpq-dev
+  - nodejs
+  - yarn
+
+gem_packages:
+  - rails
+  - pg
+  - redis
+  - sidekiq
+  - rspec-rails
+  - factory_bot_rails
+  - rubocop
+  - brakeman
+  - bundler-audit
+
+npm_packages:
+  - prettier  # For frontend assets
+  - webpack
+
+ports:
+  - 3000  # Rails server default
+  - 3001  # Alternative Rails port
+  - 4567  # Sidekiq web UI
+
+services:
+  postgresql:
+    enabled: true  # Primary database for Rails
+  redis:
+    enabled: true  # For ActionCable and Sidekiq
+
+environment:
+  RAILS_ENV: development
+  BUNDLE_PATH: vendor/bundle
