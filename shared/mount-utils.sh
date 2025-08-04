@@ -9,13 +9,13 @@
 # This function performs essential security checks on already-resolved paths
 validate_mount_security_atomic() {
     local resolved_path="$1"
-    
+
     # Validate input
     if [[ -z "$resolved_path" ]]; then
         echo "❌ Error: Empty resolved path provided" >&2
         return 1
     fi
-    
+
     # 1. Protect system-critical paths (check resolved real path)
     local protected_paths=(
         '/'                 # Root filesystem
@@ -42,7 +42,7 @@ validate_mount_security_atomic() {
         '/media'            # Removable media
         '/mnt'              # Mount points (could be system mounts)
     )
-    
+
     for protected in "${protected_paths[@]}"; do
         # Check if the real path starts with or equals the protected path
         if [[ "$resolved_path" == "$protected" ]] || [[ "$resolved_path" == "$protected"/* ]]; then
@@ -64,12 +64,12 @@ validate_mount_security_atomic() {
         "/data/"            # Common data directory
         "/projects/"        # Common projects directory
     )
-    
+
     # Special case: allow current working directory and its subdirectories
     local current_dir
     current_dir=$(pwd)
     allowed_path_prefixes+=("$current_dir/")
-    
+
     # Check if the path is in an allowed directory
     local path_allowed=false
     for allowed_prefix in "${allowed_path_prefixes[@]}"; do
@@ -78,7 +78,7 @@ validate_mount_security_atomic() {
             break
         fi
     done
-    
+
     if [[ "$path_allowed" == false ]]; then
         echo "❌ Error: Directory path not in allowed locations" >&2
         echo "💡 Only directories under these paths are allowed:" >&2
@@ -99,14 +99,14 @@ validate_mount_security_atomic() {
 # Validate mount directory security (dangerous characters and path traversal)
 validate_mount_security() {
     local dir_path="$1"
-    
+
     # Resolve the real path to handle symlinks and get canonical path
     local real_path
     if ! real_path=$(realpath "$dir_path" 2>/dev/null); then
         echo "❌ Error: Cannot resolve path '$dir_path'" >&2
         return 1
     fi
-    
+
     # 1. Check for dangerous shell metacharacters using case statement for reliability
     case "$dir_path" in
         *\;* | *\`* | *\$* | *\"* | *\|* | *\&* | *\>* | *\<* | *\(* | *\)* | *\{* | *\}* | *\** | *\?* | *\[* | *\]* | *~* | *@* | *#* | *%*)
@@ -115,7 +115,7 @@ validate_mount_security() {
             return 1
             ;;
     esac
-    
+
     # 2. Check for path traversal attempts (including encoded variants and Unicode)
     local path_patterns=(
         '\.\.'              # Basic ..
@@ -129,7 +129,7 @@ validate_mount_security() {
         '%2e%2e%2f'         # Full URL encoded ../
         '%2e%2e%5c'         # Full URL encoded ..\
     )
-    
+
     # First check ASCII patterns
     for pattern in "${path_patterns[@]}"; do
         if [[ "$dir_path" =~ $pattern ]]; then
@@ -138,7 +138,7 @@ validate_mount_security() {
             return 1
         fi
     done
-    
+
     # Unicode normalization security check using Python for comprehensive coverage
     # This handles Unicode-encoded dots and other Unicode normalization attacks
     if command -v python3 >/dev/null 2>&1; then
@@ -152,7 +152,7 @@ path = sys.argv[1] if len(sys.argv) > 1 else ''
 
 # Normalize the path using different Unicode normalization forms
 normalized_nfc = unicodedata.normalize('NFC', path)
-normalized_nfd = unicodedata.normalize('NFD', path) 
+normalized_nfd = unicodedata.normalize('NFD', path)
 normalized_nfkc = unicodedata.normalize('NFKC', path)
 normalized_nfkd = unicodedata.normalize('NFKD', path)
 
@@ -162,7 +162,7 @@ unicode_patterns = [
     r'\\\\u002e\\\\u002e',          # Unicode-encoded ..
     r'\\\\uff0e\\\\uff0e',          # Fullwidth Unicode dots
     r'\\\\u2024\\\\u2024',          # One-dot leaders
-    r'\\\\u2025\\\\u2025',          # Two-dot leaders  
+    r'\\\\u2025\\\\u2025',          # Two-dot leaders
     r'\\\\u22ef',                 # Midline horizontal ellipsis
     r'\\\\u2026',                 # Horizontal ellipsis
     # Mixed Unicode/ASCII combinations
@@ -181,12 +181,12 @@ for form in all_forms:
         if re.search(pattern, form):
             print('UNICODE_ATTACK_DETECTED')
             sys.exit(1)
-    
+
     # Check if normalization reveals .. patterns
     if '..' in form and form != path:
         print('UNICODE_NORMALIZATION_ATTACK')
         sys.exit(1)
-        
+
     # Check for encoded Unicode dot sequences that normalize to ..
     if re.search(r'\\.{2,}', form) and '.' not in path:
         print('UNICODE_DOT_ATTACK')
@@ -226,7 +226,7 @@ print('UNICODE_SAFE')
         if [[ "${VM_DEBUG:-}" = "true" ]]; then
             echo "⚠️ Warning: Python3 not available, Unicode attack detection limited" >&2
         fi
-        
+
         # Basic Unicode pattern detection using grep (limited but better than nothing)
         if echo "$dir_path" | grep -qE '\\u[0-9a-fA-F]{4}|\\uff[0-9a-fA-F]{2}|\\u202[4-6]|\\u22ef'; then
             echo "❌ Error: Possible Unicode-encoded characters detected" >&2
@@ -261,7 +261,7 @@ print('UNICODE_SAFE')
         '/media'            # Removable media
         '/mnt'              # Mount points (could be system mounts)
     )
-    
+
     for protected in "${protected_paths[@]}"; do
         # Check if the real path starts with or equals the protected path
         if [[ "$real_path" == "$protected" ]] || [[ "$real_path" == "$protected"/* ]]; then
@@ -283,12 +283,12 @@ print('UNICODE_SAFE')
         "/data/"            # Common data directory
         "/projects/"        # Common projects directory
     )
-    
+
     # Special case: allow current working directory and its subdirectories
     local current_dir
     current_dir=$(pwd)
     allowed_path_prefixes+=("$current_dir/")
-    
+
     # Check if the path is in an allowed directory
     local path_allowed=false
     for allowed_prefix in "${allowed_path_prefixes[@]}"; do
@@ -297,7 +297,7 @@ print('UNICODE_SAFE')
             break
         fi
     done
-    
+
     if [[ "$path_allowed" == false ]]; then
         echo "❌ Error: Directory path not in allowed locations" >&2
         echo "💡 Only directories under these paths are allowed:" >&2
@@ -386,7 +386,7 @@ construct_mount_argument() {
         echo "❌ Error: Cannot resolve path '$source_dir'" >&2
         return 1
     fi
-    
+
     # Re-run security validation on the resolved path to prevent TOCTOU
     # This ensures the symlink hasn't been changed to point to a dangerous location
     if ! validate_mount_security_atomic "$real_source"; then
@@ -418,7 +418,7 @@ process_single_mount() {
     if [[ "$mount" == *:* ]]; then
         source="${mount%:*}"
         perm="${mount##*:}"
-        
+
         # Validate permission format
         if [[ "$perm" != "rw" ]] && [[ "$perm" != "ro" ]] && [[ "$perm" != "readonly" ]] && [[ "$perm" != "readwrite" ]]; then
             echo "❌ Error: Invalid permission '$perm' in mount '$mount'" >&2
@@ -440,10 +440,11 @@ process_single_mount() {
     if [[ ! -e "$source" ]]; then
         echo "❌ Error: Path '$source' does not exist" >&2
         echo "💡 Current directory: $(pwd)" >&2
+        # shellcheck disable=SC2012  # ls is appropriate here for human-readable error output
         echo "💡 Available paths: $(ls -la 2>/dev/null | head -5 | tail -n +2 | awk '{print $NF}' | tr '\n' ' ')" >&2
         return 1
     fi
-    
+
     if [[ ! -d "$source" ]]; then
         echo "❌ Error: Path '$source' exists but is not a directory" >&2
         echo "💡 File type: $(file "$source" 2>/dev/null || echo 'unknown')" >&2
@@ -462,12 +463,12 @@ process_single_mount() {
         echo "   - Path not in allowed locations → Use directories under /home, /workspace, /tmp, or current directory" >&2
         echo "💡 For paths with special characters, try creating a symbolic link:" >&2
         echo "     ln -s 'problematic,path' safe-path && vm temp safe-path" >&2
-        
+
         # Log security validation failure for auditing
         if command -v logger >/dev/null 2>&1; then
             logger -t vm-security "SECURITY: Mount validation failed for path: $source (error: $security_error_code)"
         fi
-        
+
         return 1
     fi
 
@@ -491,7 +492,7 @@ process_single_mount() {
         echo "💡 Try using absolute paths or check file permissions" >&2
         return 1
     fi
-    
+
     echo "$mount_arg"
 }
 
@@ -540,14 +541,14 @@ parse_mount_string() {
             failed_mounts+=("$mount")
         fi
     done
-    
+
     # Report results with detailed error analysis
     if [[ ${#failed_mounts[@]} -gt 0 ]]; then
         echo "❌ Error: Failed to process ${#failed_mounts[@]} mount(s):" >&2
         for failed_mount in "${failed_mounts[@]}"; do
             echo "  ❌ $failed_mount" >&2
         done
-        
+
         if [[ ${#successful_mounts[@]} -gt 0 ]]; then
             echo "" >&2
             echo "⚠️ Successfully processed ${#successful_mounts[@]} mount(s):" >&2
@@ -557,12 +558,12 @@ parse_mount_string() {
             echo "" >&2
             echo "⚠️ Cannot continue with partial mount failure (security requirement)" >&2
         fi
-        
+
         echo "💡 Mount processing failed - check the specific error messages above" >&2
         echo "💡 All mount points must be valid for security reasons" >&2
         return 1
     fi
-    
+
     if [[ ${#successful_mounts[@]} -gt 0 ]] && [[ "${VM_DEBUG:-}" = "true" ]]; then
         echo "✅ Successfully processed ${#successful_mounts[@]} mount(s)" >&2
     fi

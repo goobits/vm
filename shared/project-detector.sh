@@ -7,20 +7,23 @@
 detect_project_type() {
     local detected_types=()
     local project_dir="${1:-.}"
-    
+
     # Change to project directory for detection
     pushd "$project_dir" > /dev/null 2>&1 || return 1
-    
+
     # Node.js detection with framework detection
     if [[ -f "package.json" ]]; then
         local framework="nodejs"
         # Parse package.json to detect frameworks
         if command -v jq >/dev/null 2>&1; then
             # Use jq if available for robust JSON parsing
-            local deps=$(jq -r '.dependencies // {} | keys[]' package.json 2>/dev/null)
-            local devdeps=$(jq -r '.devDependencies // {} | keys[]' package.json 2>/dev/null)
-            local all_deps=$(echo -e "$deps\n$devdeps")
-            
+            local deps
+            deps=$(jq -r '.dependencies // {} | keys[]' package.json 2>/dev/null)
+            local devdeps
+            devdeps=$(jq -r '.devDependencies // {} | keys[]' package.json 2>/dev/null)
+            local all_deps
+            all_deps=$(echo -e "$deps\n$devdeps")
+
             # Check for more specific frameworks first
             if echo "$all_deps" | grep -q "^next$"; then
                 framework="next"
@@ -46,17 +49,17 @@ detect_project_type() {
         fi
         detected_types+=("$framework")
     fi
-    
+
     # Python detection with framework detection
     if [[ -f "requirements.txt" ]] || [[ -f "pyproject.toml" ]] || \
        [[ -f "setup.py" ]] || [[ -f "Pipfile" ]]; then
         local framework="python"
-        
+
         # Helper function to detect Python framework from file
         detect_python_framework() {
             local file="$1"
             local pattern_prefix="$2"  # e.g., "^" for requirements.txt, "" for others
-            
+
             if [[ -f "$file" ]]; then
                 if grep -iq "${pattern_prefix}django" "$file" 2>/dev/null; then
                     echo "django"
@@ -68,25 +71,25 @@ detect_project_type() {
             fi
             echo "python"
         }
-        
+
         # Check files in order of preference (requirements.txt first as most explicit)
         framework=$(detect_python_framework "requirements.txt" "^")
         [[ "$framework" == "python" ]] && framework=$(detect_python_framework "pyproject.toml" "")
         [[ "$framework" == "python" ]] && framework=$(detect_python_framework "Pipfile" "")
-        
+
         detected_types+=("$framework")
     fi
-    
+
     # Rust detection
     if [[ -f "Cargo.toml" ]]; then
         detected_types+=("rust")
     fi
-    
+
     # Go detection
     if [[ -f "go.mod" ]]; then
         detected_types+=("go")
     fi
-    
+
     # Ruby detection with Rails framework detection
     if [[ -f "Gemfile" ]]; then
         local framework="ruby"
@@ -96,30 +99,30 @@ detect_project_type() {
         fi
         detected_types+=("$framework")
     fi
-    
+
     # PHP detection
     if [[ -f "composer.json" ]]; then
         detected_types+=("php")
     fi
-    
+
     # Docker detection (additional, not a language but important for environment)
     if [[ -f "docker-compose.yml" ]] || [[ -f "docker-compose.yaml" ]] || \
        [[ -f "Dockerfile" ]]; then
         detected_types+=("docker")
     fi
-    
+
     # Kubernetes detection
     if [[ -d "kubernetes" ]] || [[ -d "k8s" ]] || \
        [[ -f "k8s.yaml" ]] || [[ -f "k8s.yml" ]]; then
         detected_types+=("kubernetes")
     fi
-    
+
     # Return to original directory
     popd > /dev/null 2>&1
-    
+
     # Process results
     local type_count=${#detected_types[@]}
-    
+
     if [[ $type_count -eq 0 ]]; then
         echo "generic"
     elif [[ $type_count -eq 1 ]]; then
@@ -140,15 +143,15 @@ has_version_control() {
 get_project_info() {
     local project_dir="${1:-.}"
     local project_type=$(detect_project_type "$project_dir")
-    
+
     echo "Project Type: $project_type"
-    
+
     if has_version_control "$project_dir"; then
         echo "Version Control: Git"
     else
         echo "Version Control: None"
     fi
-    
+
     # Additional details based on project type
     case "$project_type" in
         nodejs|react|vue|next|angular)
@@ -180,7 +183,7 @@ get_project_info() {
 # Function to suggest VM resources based on project type
 suggest_vm_resources() {
     local project_type="$1"
-    
+
     case "$project_type" in
         nodejs|react|vue|next|angular|python|django|flask|ruby|rails|php)
             echo "memory=2048 cpus=2 disk_size=20"
