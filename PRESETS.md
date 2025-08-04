@@ -135,12 +135,12 @@ Configured for data analysis, machine learning, and scientific computing.
 
 ### Automatic Detection (Default)
 
-The preset system automatically detects the appropriate preset based on your configuration:
+The preset system automatically detects the appropriate preset based on your project files:
 
 ```bash
-# config/web-app.yaml contains nginx or React references
-./vm.sh -c config/web-app.yaml create my-web-vm
-# Automatically applies web preset
+# Project contains package.json with React dependencies
+vm create
+# Automatically applies react preset
 ```
 
 ### Disabling Presets
@@ -148,8 +148,8 @@ The preset system automatically detects the appropriate preset based on your con
 Use the `--no-preset` flag to disable all preset enhancements:
 
 ```bash
-./vm.sh -c config/minimal.yaml --no-preset create my-minimal-vm
-# Only uses configuration from minimal.yaml
+vm --no-preset create
+# Only uses configuration from vm.yaml without any preset enhancements
 ```
 
 ### Forcing a Specific Preset
@@ -157,8 +157,8 @@ Use the `--no-preset` flag to disable all preset enhancements:
 Use the `--preset` flag to force a specific preset regardless of configuration content:
 
 ```bash
-./vm.sh -c config/app.yaml --preset backend create my-api-vm
-# Forces backend preset even if config suggests otherwise
+vm --preset backend create
+# Forces backend preset even if project files suggest otherwise
 ```
 
 ### Creating Partial Configurations
@@ -166,10 +166,16 @@ Use the `--preset` flag to force a specific preset regardless of configuration c
 Leverage presets to create minimal configuration files:
 
 ```yaml
-# config/my-web-app.yaml
-VM_NAME="my-web-app"
-TOOLS="react postgresql"  # Preset will add nginx, nodejs, npm, etc.
-PORTS="5000"              # Preset will add 80, 443, 3000, etc.
+# vm.yaml
+project:
+  name: "my-web-app"
+npm_packages:
+  - create-react-app
+services:
+  postgresql:
+    enabled: true
+ports:
+  - 5000              # Preset will add 3000, 3001, etc.
 ```
 
 ## Examples and Use Cases
@@ -178,32 +184,38 @@ PORTS="5000"              # Preset will add 80, 443, 3000, etc.
 
 Create a simple configuration file:
 ```yaml
-# config/react-app.yaml
-VM_NAME="react-dev"
-TOOLS="react"
+# vm.yaml
+project:
+  name: "react-dev"
+npm_packages:
+  - create-react-app
 ```
 
 Run:
 ```bash
-./vm.sh -c config/react-app.yaml create react-dev
+vm create
 ```
 
-Result: VM with React, Node.js, npm, yarn, nginx, and all standard web development ports.
+Result: VM with React, Node.js, npm, yarn, nginx, and all standard web development ports through automatic preset detection.
 
 ### Example 2: Custom Backend API VM
 
 Create a configuration with specific requirements:
 ```yaml
-# config/api-server.yaml
-VM_NAME="api-prod"
-VM_MEMORY="8192"
-TOOLS="python3 fastapi"
-PORTS="8000"
+# vm.yaml
+project:
+  name: "api-prod"
+vm:
+  memory: 8192
+pip_packages:
+  - fastapi
+ports:
+  - 8000
 ```
 
 Run:
 ```bash
-./vm.sh -c config/api-server.yaml --preset backend create api-prod
+vm --preset backend create
 ```
 
 Result: VM with 8GB RAM, Python, FastAPI, plus Docker, PostgreSQL, Redis, and other backend tools.
@@ -212,36 +224,41 @@ Result: VM with 8GB RAM, Python, FastAPI, plus Docker, PostgreSQL, Redis, and ot
 
 Create a bare-bones configuration:
 ```yaml
-# config/minimal.yaml
-VM_NAME="test-vm"
-VM_MEMORY="1024"
-VM_CPUS="1"
-TOOLS="vim curl"
+# vm.yaml
+project:
+  name: "test-vm"
+vm:
+  memory: 1024
+  cpus: 1
 ```
 
 Run:
 ```bash
-./vm.sh -c config/minimal.yaml --no-preset create test-vm
+vm --no-preset create
 ```
 
-Result: VM with exactly 1GB RAM, 1 CPU, and only vim and curl installed.
+Result: VM with exactly 1GB RAM, 1 CPU, and minimal tooling.
 
 ### Example 4: Data Science Workstation
 
 Create a configuration for ML development:
 ```yaml
-# config/ml-workstation.yaml
-VM_NAME="ml-dev"
-TOOLS="jupyter tensorflow"
-MOUNTS="./datasets:/data"
+# vm.yaml
+project:
+  name: "ml-dev"
+pip_packages:
+  - jupyter
+  - tensorflow
+ports:
+  - 8888  # Jupyter
 ```
 
 Run:
 ```bash
-./vm.sh -c config/ml-workstation.yaml create ml-dev
+vm create
 ```
 
-Result: VM with 8GB+ RAM, 4+ CPUs, 50GB+ disk, full data science stack, and mounted datasets.
+Result: VM with appropriate resources, full data science stack through preset detection.
 
 ## Best Practices
 

@@ -284,12 +284,12 @@ vm temp mount ./docs
 The old comma-separated syntax still works but shows a deprecation warning:
 
 ```bash
-# Old syntax (still works)
+# Old syntax (deprecated)
 vm temp ./src,./tests,./docs:ro
 # ⚠️  Warning: Comma-separated mounts are deprecated
 #    Please use: vm temp ./src ./tests ./docs:ro
 
-# New syntax (recommended)
+# Current syntax (recommended)
 vm temp ./src ./tests ./docs:ro
 ```
 
