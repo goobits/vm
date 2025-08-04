@@ -578,6 +578,97 @@ docker_run() {
 }
 
 # Docker functions
+
+# Shared function for container startup and readiness check
+docker_startup_and_wait() {
+    local config="$1"
+    local project_dir="$2"
+    local auto_login="$3"
+    shift 3
+
+    echo "🚀 Starting containers..."
+    if ! docker_run "compose" "$config" "$project_dir" up -d "$@"; then
+        local startup_error_code=$?
+        echo "❌ Container startup failed (exit code: $startup_error_code)"
+        echo "🧹 Performing startup rollback - stopping any running containers..."
+        
+        # Enhanced rollback with verification
+        if docker_run "compose" "$config" "$project_dir" down 2>/dev/null; then
+            echo "✅ Containers stopped successfully during rollback"
+        else
+            echo "⚠️ Warning: Rollback may be incomplete - some containers might still be running"
+            echo "💡 Check with 'docker ps' and manually stop containers if needed"
+        fi
+        
+        return $startup_error_code
+    fi
+
+    # Get container name using shared function
+    local container_name
+    container_name=$(get_project_container_name "$config")
+    
+    # Wait for container to be responsive with timeout
+    local max_attempts=30
+    local attempt=1
+    local container_ready=false
+    
+    echo "⏳ Waiting for environment to be ready..."
+    while [[ $attempt -le $max_attempts ]]; do
+        if [[ $attempt -gt 1 ]]; then
+            sleep 1
+        fi
+        
+        # Check if container is still running first
+        if ! docker_cmd ps --format "table {{.Names}}" | grep -q "^${container_name}$"; then
+            echo "❌ Container stopped unexpectedly during startup"
+            echo "💡 Check logs with: vm logs"
+            return 1
+        fi
+        
+        # Test if container is responsive
+        if docker_cmd exec "${container_name}" echo "ready" >/dev/null 2>&1; then
+            echo "✅ Environment ready!"
+            container_ready=true
+            break
+        fi
+        
+        if [[ $attempt -eq $max_attempts ]]; then
+            echo "❌ Environment startup failed - container not responding"
+            echo "💡 Container is running but not accepting exec commands"
+            echo "💡 This may indicate:"
+            echo "   - Container processes still starting"
+            echo "   - Security policies blocking exec" 
+            echo "   - Try: docker logs ${container_name}"
+            return 1
+        fi
+        
+        ((attempt++))
+    done
+    
+    if [[ "$container_ready" != "true" ]]; then
+        echo "❌ Environment startup failed - container not ready"
+        return 1
+    fi
+
+    # Clean up generated docker-compose.yml since containers are now running
+    local compose_file
+    compose_file="${project_dir}/docker-compose.yml"
+    if [[ -f "$compose_file" ]]; then
+        echo "✨ Cleanup complete"
+        rm "$compose_file"
+    fi
+    
+    echo "🎉 Environment ready!"
+    
+    # Automatically SSH into the container if auto-login is enabled
+    if [[ "$auto_login" = "true" ]]; then
+        echo "🌟 Entering development environment..."
+        docker_ssh "$config" "$project_dir" "."
+    else
+        echo "💡 Use 'vm ssh' to connect to the environment"
+    fi
+}
+
 docker_up() {
     local config="$1"
     local project_dir="$2"
@@ -1228,6 +1319,58 @@ docker_provision() {
         return $provision_startup_error
     fi
 
+    # Wait for container to be ready (critical missing step!)
+    local container_name
+    container_name=$(get_project_container_name "$config")
+    
+    echo "⏳ Waiting for environment to be ready..."
+    local max_attempts=30
+    local attempt=1
+    local container_ready=false
+    
+    while [[ $attempt -le $max_attempts ]]; do
+        if [[ $attempt -gt 1 ]]; then
+            sleep 1
+        fi
+        
+        # Check if container is still running
+        if ! docker_cmd ps --format "table {{.Names}}" | grep -q "^${container_name}$"; then
+            echo "❌ Container stopped unexpectedly during provisioning"
+            echo "💡 Check logs with: vm logs"
+            if [[ -f "$TEMP_CONFIG_FILE" ]]; then
+                rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
+            fi
+            return 1
+        fi
+        
+        # Test if container is responsive
+        if docker_cmd exec "${container_name}" echo "ready" >/dev/null 2>&1; then
+            echo "✅ Environment ready!"
+            container_ready=true
+            break
+        fi
+        
+        if [[ $attempt -eq $max_attempts ]]; then
+            echo "❌ Provisioning failed - container not responding"
+            echo "💡 Container is running but not accepting exec commands"
+            echo "💡 Try: docker logs ${container_name}"
+            if [[ -f "$TEMP_CONFIG_FILE" ]]; then  
+                rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
+            fi
+            return 1
+        fi
+        
+        ((attempt++))
+    done
+    
+    if [[ "$container_ready" != "true" ]]; then
+        echo "❌ Provisioning failed - container not ready"
+        if [[ -f "$TEMP_CONFIG_FILE" ]]; then
+            rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
+        fi
+        return 1
+    fi
+
     # Clean up generated docker-compose.yml since containers are now running
     local compose_file
     compose_file="${project_dir}/docker-compose.yml"
@@ -1235,6 +1378,14 @@ docker_provision() {
         echo "✨ Cleanup complete"
         rm "$compose_file"
     fi
+    
+    # Clean up temp config file after successful provisioning
+    if [[ -f "$TEMP_CONFIG_FILE" ]]; then
+        rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
+    fi
+
+    echo "🎉 Environment ready!"
+    echo "💡 Use 'vm ssh' to connect to the environment"
 }
 
 docker_logs() {
