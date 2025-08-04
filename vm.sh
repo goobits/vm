@@ -1276,7 +1276,7 @@ docker_provision() {
     "$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" "$TEMP_CONFIG_FILE" "$project_dir"
 
     # Build with enhanced rollback on failure
-    if ! docker_run "compose" "$config" "$project_dir" build --no-cache; then
+    if ! docker_run "compose" "$config" "$project_dir" build; then
         local provision_build_error=$?
         echo "❌ Provisioning build failed (exit code: $provision_build_error)"
         echo "🧹 Performing provisioning build rollback..."
@@ -1345,7 +1345,7 @@ docker_provision() {
         
         # Test if container is responsive
         if docker_cmd exec "${container_name}" echo "ready" >/dev/null 2>&1; then
-            echo "✅ Environment ready!"
+            echo "✅ Container is ready"
             container_ready=true
             break
         fi
@@ -1369,6 +1369,54 @@ docker_provision() {
             rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
         fi
         return 1
+    fi
+
+    echo "📋 Loading project configuration..."
+    
+    # Validate temp config file exists and is readable
+    if [[ ! -f "$TEMP_CONFIG_FILE" ]]; then
+        echo "❌ Temporary configuration file not found: $TEMP_CONFIG_FILE"
+        return 1
+    fi
+    
+    if [[ ! -r "$TEMP_CONFIG_FILE" ]]; then
+        echo "❌ Cannot read temporary configuration file: $TEMP_CONFIG_FILE"
+        return 1
+    fi
+    
+    # Copy configuration to container
+    if ! docker_cmd cp "$TEMP_CONFIG_FILE" "$(printf '%q' "${container_name}"):/tmp/vm-config.json" 2>/dev/null; then
+        echo "❌ Configuration loading failed - retrying..."
+        sleep 2
+        
+        if ! docker_cmd cp "$TEMP_CONFIG_FILE" "$(printf '%q' "${container_name}"):/tmp/vm-config.json" 2>&1; then
+            echo "❌ Configuration loading failed after retry"
+            if [[ -f "$TEMP_CONFIG_FILE" ]]; then
+                rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
+            fi
+            return 1
+        fi
+    fi
+    
+    # Validate that the file was actually copied successfully
+    if ! docker_cmd exec "${container_name}" test -f /tmp/vm-config.json 2>/dev/null; then
+        echo "❌ Configuration file validation failed - file not found in container"
+        if [[ -f "$TEMP_CONFIG_FILE" ]]; then
+            rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
+        fi
+        return 1
+    fi
+    
+    echo "✅ Configuration loaded and validated"
+
+    # Fix volume permissions before Ansible
+    echo "🔑 Setting up permissions..."
+    local project_user
+    project_user=$(echo "$config" | yq -r '.vm.user // "developer"')
+    if docker_run "exec" "$config" "$project_dir" chown -R "$(printf '%q' "$project_user"):$(printf '%q' "$project_user")" "/home/$(printf '%q' "$project_user")/.nvm" "/home/$(printf '%q' "$project_user")/.cache"; then
+        echo "✅ Permissions configured"
+    else
+        echo "⚠️ Permission setup skipped (non-critical)"
     fi
 
     # Clean up generated docker-compose.yml since containers are now running
