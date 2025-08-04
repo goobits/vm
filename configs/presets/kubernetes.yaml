@@ -1,0 +1,48 @@
+---
+# Kubernetes Development Preset
+preset:
+  name: "Kubernetes Development"
+  description: "Optimized for Kubernetes development and management"
+
+apt_packages:
+  - curl
+  - gnupg2
+  - software-properties-common
+
+# Note: kubectl and helm should be installed via their official installation methods
+snap_packages:
+  - kubectl --classic
+  - helm --classic
+
+pip_packages:
+  - kubernetes
+  - pykube-ng
+
+npm_packages:
+  - kubernetes-yaml-completion
+
+aliases:
+  k: "kubectl"
+  kgp: "kubectl get pods"
+  kgs: "kubectl get services"
+  kgd: "kubectl get deployments"
+  kdesc: "kubectl describe"
+  klog: "kubectl logs"
+  kexec: "kubectl exec -it"
+
+ports:
+  - 8080  # Kubernetes dashboard
+  - 6443  # Kubernetes API server
+  - 10250 # Kubelet API
+  - 9090  # Prometheus (common in k8s)
+  - 3000  # Grafana (common in k8s)
+
+services:
+  postgresql:
+    enabled: false  # Kubernetes manages its own workloads
+  redis:
+    enabled: false  # Kubernetes manages its own workloads
+
+environment:
+  KUBECONFIG: "~/.kube/config"
+  KUBE_EDITOR: "nano"

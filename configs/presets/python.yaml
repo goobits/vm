@@ -1,0 +1,26 @@
+---
+# Python Development Preset
+preset:
+  name: "Python Development"
+  description: "Optimized for Python projects"
+
+pip_packages:
+  - black
+  - flake8
+  - pytest
+  - ipython
+  - pip-tools
+  - git-filter-repo
+  - pre-commit
+
+npm_packages:
+  - pyright  # Python LSP
+
+services:
+  postgresql:
+    enabled: true
+  redis:
+    enabled: true
+
+environment:
+  PYTHONDONTWRITEBYTECODE: "1"

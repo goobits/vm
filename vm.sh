@@ -46,7 +46,10 @@ else
     SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 fi
 
-# Get the current working directory (where user ran the command)
+# Global variables - defined at script level for use across functions
+# SCRIPT_DIR: Directory containing this script and shared utilities
+# CURRENT_DIR: User's working directory when script was invoked  
+# Used by provider interface and config processing
 CURRENT_DIR="$(pwd)"
 
 # Source shared utilities
@@ -57,6 +60,7 @@ source "$SCRIPT_DIR/shared/mount-utils.sh"
 source "$SCRIPT_DIR/shared/security-utils.sh"
 source "$SCRIPT_DIR/shared/config-processor.sh"
 source "$SCRIPT_DIR/shared/provider-interface.sh"
+source "$SCRIPT_DIR/shared/project-detector.sh"
 
 # Set up proper cleanup handlers for temporary files
 setup_temp_file_handlers
@@ -73,252 +77,9 @@ export FULL_CONFIG_PATH
 # have been moved to shared/mount-utils.sh and are automatically sourced above.
 
 
-# Detect potential comma-in-directory-name issues by analyzing parsed fragments
-detect_comma_in_paths() {
-    local -n mounts_array="$1"
-    local suspicious_count=0
-    local total_count=${#mounts_array[@]}
-
-    # Check if any parsed fragment looks suspicious (very short, no path separators)
-    for test_mount in "${mounts_array[@]}"; do
-        test_mount=$(echo "$test_mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-        # Remove permission suffix for testing
-        if [[ "$test_mount" == *:* ]]; then
-            test_mount="${test_mount%:*}"
-        fi
-        # Very short fragments (1-2 chars) without slashes are suspicious
-        if [[ -n "$test_mount" ]] && [[ ${#test_mount} -le 2 ]] && [[ "$test_mount" != *"/"* ]] && [[ "$test_mount" != "."* ]]; then
-            ((suspicious_count++))
-        fi
-    done
-
-    # If more than half the fragments are suspicious short names, likely comma issue
-    if [[ $total_count -gt 2 ]] && [[ $suspicious_count -gt $((total_count / 2)) ]]; then
-        echo "❌ Error: Possible comma-containing directory names detected" >&2
-        echo "   Parsed fragments: ${mounts_array[*]}" >&2
-        echo "   Directory names containing commas are not supported" >&2
-        echo "   Tip: Use symlinks like: ln -s 'dir,with,commas' dir-without-commas" >&2
-        return 1
-    fi
-
-    return 0
-}
-
-# Parse mount permissions and return appropriate Docker mount flags
-parse_mount_permissions() {
-    local perm="$1"
-    local mount_flags=""
-
-    case "$perm" in
-        "ro"|"readonly")
-            mount_flags=":ro"
-            ;;
-        "rw"|"readwrite"|*)
-            # Default to read-write (no additional flags)
-            mount_flags=""
-            ;;
-    esac
-
-    echo "$mount_flags"
-}
-
-# Construct Docker mount argument for a validated directory and permissions
-construct_mount_argument() {
-    local source_dir="$1"
-    local permission_flags="$2"
-
-    # SECURITY: Re-validate the path immediately before use to prevent TOCTOU attacks
-    # The symlink target could have changed between initial validation and mount construction
-    local real_source
-    if ! real_source=$(realpath "$source_dir" 2>/dev/null); then
-        echo "❌ Error: Cannot resolve path '$source_dir'" >&2
-        return 1
-    fi
-    
-    # Re-run security validation on the resolved path to prevent TOCTOU
-    # This ensures the symlink hasn't been changed to point to a dangerous location
-    if ! validate_mount_security_atomic "$real_source"; then
-        echo "❌ Error: Mount security re-validation failed for '$source_dir'" >&2
-        echo "💡 The target may have changed since initial validation (TOCTOU protection)" >&2
-        return 1
-    fi
-
-    # Build the mount argument with proper quoting to prevent command injection
-    echo "-v $(printf '%q' "$real_source"):/workspace/$(basename "$source_dir")${permission_flags}"
-}
-
-# Process a single mount specification (with or without permissions) with enhanced error handling
-process_single_mount() {
-    local mount="$1"
-    local source=""
-    local perm=""
-
-    # Validate input
-    if [[ -z "$mount" ]]; then
-        echo "❌ Error: Empty mount specification provided" >&2
-        return 1
-    fi
-
-    # Trim whitespace
-    mount=$(echo "$mount" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-
-    # Handle mount:permission format (e.g., ./src:rw, ./config:ro)
-    if [[ "$mount" == *:* ]]; then
-        source="${mount%:*}"
-        perm="${mount##*:}"
-        
-        # Validate permission format
-        if [[ "$perm" != "rw" ]] && [[ "$perm" != "ro" ]] && [[ "$perm" != "readonly" ]] && [[ "$perm" != "readwrite" ]]; then
-            echo "❌ Error: Invalid permission '$perm' in mount '$mount'" >&2
-            echo "💡 Valid permissions: rw (read-write), ro (read-only)" >&2
-            return 1
-        fi
-    else
-        source="$mount"
-        perm="rw"  # Default to read-write
-    fi
-
-    # Validate source path
-    if [[ -z "$source" ]]; then
-        echo "❌ Error: Empty source path in mount specification: '$mount'" >&2
-        return 1
-    fi
-
-    # Check if source exists and is a directory
-    if [[ ! -e "$source" ]]; then
-        echo "❌ Error: Path '$source' does not exist" >&2
-        echo "💡 Current directory: $(pwd)" >&2
-        echo "💡 Available paths: $(ls -la 2>/dev/null | head -5 | tail -n +2 | awk '{print $NF}' | tr '\n' ' ')" >&2
-        return 1
-    fi
-    
-    if [[ ! -d "$source" ]]; then
-        echo "❌ Error: Path '$source' exists but is not a directory" >&2
-        echo "💡 File type: $(file "$source" 2>/dev/null || echo 'unknown')" >&2
-        return 1
-    fi
-
-    # Validate directory security with enhanced error messages and recovery suggestions
-    if ! validate_mount_security "$source"; then
-        local security_error_code=$?
-        echo "❌ Error: Mount security validation failed for '$source'" >&2
-        echo "🔒 Security validation error code: $security_error_code" >&2
-        echo "💡 Common causes and solutions:" >&2
-        echo "   - Dangerous characters in path → Use only alphanumeric, hyphens, underscores, and slashes" >&2
-        echo "   - Path traversal attempts → Avoid '..' sequences and encoded characters" >&2
-        echo "   - System-critical directory → Only mount user directories and project files" >&2
-        echo "   - Path not in allowed locations → Use directories under /home, /workspace, /tmp, or current directory" >&2
-        echo "💡 For paths with special characters, try creating a symbolic link:" >&2
-        echo "     ln -s 'problematic,path' safe-path && vm temp safe-path" >&2
-        
-        # Log security validation failure for auditing
-        if command -v logger >/dev/null 2>&1; then
-            logger -t vm-security "SECURITY: Mount validation failed for path: $source (error: $security_error_code)"
-        fi
-        
-        return 1
-    fi
-
-    # Parse permissions and construct mount argument with detailed error handling
-    local permission_flags
-    if ! permission_flags=$(parse_mount_permissions "$perm"); then
-        echo "❌ Error: Failed to parse mount permissions for '$perm'" >&2
-        echo "💡 Valid permission values: rw, ro, readwrite, readonly" >&2
-        echo "💡 Example: ./src:rw or ./config:ro" >&2
-        return 1
-    fi
-
-    # Construct mount argument with comprehensive error handling
-    local mount_arg
-    if ! mount_arg=$(construct_mount_argument "$source" "$permission_flags"); then
-        echo "❌ Error: Failed to construct mount argument for '$source'" >&2
-        echo "💡 This could indicate:" >&2
-        echo "   - Path resolution issues" >&2
-        echo "   - Special characters in path" >&2
-        echo "   - Permission problems" >&2
-        echo "💡 Try using absolute paths or check file permissions" >&2
-        return 1
-    fi
-    
-    echo "$mount_arg"
-}
-
-# Parse comma-separated mount string into mount arguments with comprehensive error handling
-# Note: Directory names containing commas are not supported due to parsing complexity
-parse_mount_string() {
-    local mount_str="$1"
-    local mount_args=""
-    local failed_mounts=()
-    local successful_mounts=()
-
-    # Validate input
-    if [[ -z "$mount_str" ]]; then
-        echo "⚠️ Warning: Empty mount string provided" >&2
-        return 0  # Empty is valid, just return empty args
-    fi
-
-    # Split by comma and process each mount (save original IFS)
-    local old_ifs="$IFS"
-    IFS=','
-    local MOUNTS
-    IFS=',' read -r -a MOUNTS <<< "$mount_str"  # Proper array assignment
-    IFS="$old_ifs"
-
-    # Validate we have at least one mount
-    if [[ ${#MOUNTS[@]} -eq 0 ]]; then
-        echo "❌ Error: No mounts found in mount string: '$mount_str'" >&2
-        return 1
-    fi
-
-    # Pre-validate: Detect comma-in-directory-name issues
-    if ! detect_comma_in_paths MOUNTS; then
-        echo "❌ Error: Mount string parsing failed - possible comma in directory names" >&2
-        echo "💡 Directory names containing commas are not supported" >&2
-        echo "💡 Use symbolic links to work around this: ln -s 'dir,with,commas' dir-no-commas" >&2
-        return 1
-    fi
-
-    # Process each mount using dedicated sub-function
-    for mount in "${MOUNTS[@]}"; do
-        local mount_arg
-        if mount_arg=$(process_single_mount "$mount"); then
-            mount_args="$mount_args $mount_arg"
-            successful_mounts+=("$mount")
-        else
-            failed_mounts+=("$mount")
-        fi
-    done
-    
-    # Report results with detailed error analysis
-    if [[ ${#failed_mounts[@]} -gt 0 ]]; then
-        echo "❌ Error: Failed to process ${#failed_mounts[@]} mount(s):" >&2
-        for failed_mount in "${failed_mounts[@]}"; do
-            echo "  ❌ $failed_mount" >&2
-        done
-        
-        if [[ ${#successful_mounts[@]} -gt 0 ]]; then
-            echo "" >&2
-            echo "⚠️ Successfully processed ${#successful_mounts[@]} mount(s):" >&2
-            for successful_mount in "${successful_mounts[@]}"; do
-                echo "  ✅ $successful_mount" >&2
-            done
-            echo "" >&2
-            echo "⚠️ Cannot continue with partial mount failure (security requirement)" >&2
-        fi
-        
-        echo "💡 Mount processing failed - check the specific error messages above" >&2
-        echo "💡 All mount points must be valid for security reasons" >&2
-        return 1
-    fi
-    
-    if [[ ${#successful_mounts[@]} -gt 0 ]] && [[ "${VM_DEBUG:-}" = "true" ]]; then
-        echo "✅ Successfully processed ${#successful_mounts[@]} mount(s)" >&2
-    fi
-
-    echo "$mount_args"
-}
-
-# Docker utility functions moved to shared/docker-utils.sh
+# All mount processing functions have been moved to shared/mount-utils.sh
+# Functions available: detect_comma_in_paths, parse_mount_permissions, construct_mount_argument,
+# process_single_mount, parse_mount_string, validate_mount_security, validate_mount_security_atomic
 
 
 # Show usage information
@@ -335,18 +96,22 @@ show_usage() {
         echo ""
     fi
 
-    echo "Usage: $0 [--config [PATH]] [--debug] [--dry-run] [--auto-login [true|false]] [command] [args...]"
+    echo "Usage: $0 [--config [PATH]] [--debug] [--dry-run] [--auto-login [true|false]] [--no-preset] [--preset NAME] [--interactive] [command] [args...]"
     echo ""
     echo "Options:"
     echo "  --config [PATH]      Use specific vm.yaml file, or scan up directory tree if no path given"
     echo "  --debug              Enable debug output"
     echo "  --dry-run            Show what would be executed without actually running it"
     echo "  --auto-login [BOOL]  Automatically SSH into VM after create/start (default: true)"
+    echo "  --no-preset          Disable automatic preset detection and application"
+    echo "  --preset NAME        Force a specific preset (base, nodejs, python, etc.)"
+    echo "  --interactive        Enable interactive mode for preset selection"
     echo ""
     echo "Commands:"
     echo "  init                  Initialize a new vm.yaml configuration file"
     echo "  generate              Generate vm.yaml by composing services"
     echo "  validate              Validate VM configuration"
+    echo "  preset <subcommand>   Manage configuration presets"
     echo "  migrate [options]     Migrate a legacy vm.json to the new vm.yaml format"
     echo "  list                  List all VM instances"
     echo "  temp/tmp <command>    Manage temporary VMs:"
@@ -418,10 +183,349 @@ load_config() {
     local config_path="$1"
     local original_dir="$2"
 
-    # Use the shared config processor for unified config loading
-    load_and_merge_config "$config_path" "$original_dir"
+    # Use enhanced config loading with preset support if presets are enabled
+    if [[ "${VM_USE_PRESETS:-true}" = "true" ]]; then
+        load_config_with_presets "$config_path" "$original_dir"
+    else
+        # Use standard config loading without presets
+        load_and_merge_config "$config_path" "$original_dir"
+    fi
 }
 
+
+# Helper functions for interactive preset selection
+get_available_presets() {
+    local presets_dir="$SCRIPT_DIR/configs/presets"
+    local available_presets=()
+    
+    if [[ -d "$presets_dir" ]]; then
+        for preset_file in "$presets_dir"/*.yaml; do
+            if [[ -f "$preset_file" ]]; then
+                local preset_name
+                preset_name=$(basename "$preset_file" .yaml)
+                # Skip base preset as it's always included
+                if [[ "$preset_name" != "base" ]]; then
+                    available_presets+=("$preset_name")
+                fi
+            fi
+        done
+    fi
+    
+    printf '%s\n' "${available_presets[@]}" | sort
+}
+
+# Display preset file contents for user review
+show_preset_details() {
+    local preset_name="$1"
+    local preset_file="$SCRIPT_DIR/configs/presets/${preset_name}.yaml"
+    
+    if [[ -f "$preset_file" ]]; then
+        echo ""
+        echo "📄 Contents of $preset_name preset:"
+        echo "────────────────────────────────────"
+        cat "$preset_file"
+        echo "────────────────────────────────────"
+        echo ""
+    else
+        echo "❌ Preset file not found: $preset_name"
+    fi
+}
+
+# Check if preset is in array (utility function)
+preset_in_array() {
+    local preset="$1"
+    shift
+    local arr=("$@")
+    
+    for item in "${arr[@]}"; do
+        if [[ "$item" == "$preset" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Interactive preset selection menu
+# Provides a user-friendly interface for customizing preset selection.
+# Allows users to add/remove presets, view details, and finalize their selection.
+# This improves user experience when the automatic detection needs manual refinement.
+# Args: initial_presets (array passed by reference)
+# Modifies the array with user's final selection
+interactive_preset_selection() {
+    local -n initial_presets_ref="$1"
+    
+    echo ""
+    echo "🔍 Detected presets: ${initial_presets_ref[*]}"
+    echo ""
+    
+    local menu_running=true
+    local current_presets=("${initial_presets_ref[@]}")
+    
+    while [[ "$menu_running" == true ]]; do
+        echo "Interactive Preset Selection:"
+        echo "Current selection: ${current_presets[*]:-none}"
+        echo ""
+        
+        local PS3="Choice: "
+        local options=(
+            "Use current selection and proceed"
+            "Add additional preset"
+            "Remove preset"
+            "View preset details"
+            "Reset to detected presets"
+        )
+        
+        select choice in "${options[@]}"; do
+            case $REPLY in
+                1)
+                    menu_running=false
+                    break
+                    ;;
+                2)
+                    # Add additional preset
+                    echo ""
+                    echo "Available presets to add:"
+                    local available_presets
+                    mapfile -t available_presets < <(get_available_presets)
+                    
+                    if [[ ${#available_presets[@]} -eq 0 ]]; then
+                        echo "❌ No additional presets available"
+                        break
+                    fi
+                    
+                    local add_options=("${available_presets[@]}" "Cancel")
+                    local PS3="Select preset to add: "
+                    
+                    select add_preset in "${add_options[@]}"; do
+                        if [[ "$add_preset" == "Cancel" ]]; then
+                            break
+                        elif [[ -n "$add_preset" ]]; then
+                            if preset_in_array "$add_preset" "${current_presets[@]}"; then
+                                echo "⚠️  $add_preset is already selected"
+                            else
+                                current_presets+=("$add_preset")
+                                echo "✅ Added $add_preset to selection"
+                            fi
+                            break
+                        else
+                            echo "❌ Invalid selection. Please try again."
+                        fi
+                    done
+                    break
+                    ;;
+                3)
+                    # Remove preset
+                    if [[ ${#current_presets[@]} -eq 0 ]]; then
+                        echo "❌ No presets selected to remove"
+                        break
+                    fi
+                    
+                    echo ""
+                    echo "Current presets:"
+                    local remove_options=("${current_presets[@]}" "Cancel")
+                    local PS3="Select preset to remove: "
+                    
+                    select remove_preset in "${remove_options[@]}"; do
+                        if [[ "$remove_preset" == "Cancel" ]]; then
+                            break
+                        elif [[ -n "$remove_preset" ]]; then
+                            # Remove preset from array
+                            local new_presets=()
+                            for preset in "${current_presets[@]}"; do
+                                if [[ "$preset" != "$remove_preset" ]]; then
+                                    new_presets+=("$preset")
+                                fi
+                            done
+                            current_presets=("${new_presets[@]}")
+                            echo "✅ Removed $remove_preset from selection"
+                            break
+                        else
+                            echo "❌ Invalid selection. Please try again."
+                        fi
+                    done
+                    break
+                    ;;
+                4)
+                    # View preset details
+                    echo ""
+                    echo "Available presets:"
+                    local available_presets
+                    mapfile -t available_presets < <(get_available_presets)
+                    
+                    if [[ ${#available_presets[@]} -eq 0 ]]; then
+                        echo "❌ No presets available to view"
+                        break
+                    fi
+                    
+                    local view_options=("${available_presets[@]}" "Cancel")
+                    local PS3="Select preset to view: "
+                    
+                    select view_preset in "${view_options[@]}"; do
+                        if [[ "$view_preset" == "Cancel" ]]; then
+                            break
+                        elif [[ -n "$view_preset" ]]; then
+                            show_preset_details "$view_preset"
+                            echo "Press Enter to continue..."
+                            read -r
+                            break
+                        else
+                            echo "❌ Invalid selection. Please try again."
+                        fi
+                    done
+                    break
+                    ;;
+                5)
+                    # Reset to detected presets
+                    current_presets=("${initial_presets_ref[@]}")
+                    echo "✅ Reset to detected presets: ${current_presets[*]}"
+                    break
+                    ;;
+                *)
+                    echo "❌ Invalid selection. Please choose 1-5."
+                    ;;
+            esac
+        done
+        echo ""
+    done
+    
+    # Update the reference array with user selection
+    initial_presets_ref=("${current_presets[@]}")
+    
+    if [[ ${#initial_presets_ref[@]} -eq 0 ]]; then
+        echo "⚠️  No presets selected. Using base preset only."
+    else
+        echo "✅ Final preset selection: ${initial_presets_ref[*]}"
+    fi
+    echo ""
+}
+
+# Apply smart preset when no vm.yaml exists
+apply_smart_preset() {
+    local project_dir="$1"
+    
+    # Use forced preset if specified, otherwise detect
+    local detected_type
+    local preset_types=()
+    
+    if [[ -n "${VM_FORCED_PRESET:-}" ]]; then
+        detected_type="$VM_FORCED_PRESET"
+        preset_types=("$VM_FORCED_PRESET")
+        echo "🎯 Using forced preset: $VM_FORCED_PRESET"
+    else
+        # Detect project type
+        detected_type=$(detect_project_type "$project_dir")
+        echo "🔍 Detecting project type..."
+        echo "✅ Detected: $detected_type"
+        
+        # Parse multi-preset strings or single preset
+        if [[ "$detected_type" == multi:* ]]; then
+            # Extract types from multi:type1 type2 type3 format
+            local multi_types="${detected_type#multi:}"
+            # Split by spaces into array
+            IFS=' ' read -ra preset_types <<< "$multi_types"
+        else
+            # Single preset type
+            preset_types=("$detected_type")
+        fi
+        
+        # Interactive preset selection when VM_INTERACTIVE="true"
+        if [[ "${VM_INTERACTIVE:-false}" == "true" ]]; then
+            interactive_preset_selection preset_types
+        fi
+    fi
+    
+    # Define base preset file
+    local base_preset_file="$SCRIPT_DIR/configs/presets/base.yaml"
+    
+    # Check if base preset exists
+    if [[ ! -f "$base_preset_file" ]]; then
+        echo "❌ Base preset file not found: $base_preset_file" >&2
+        return 1
+    fi
+    
+    # Start with the base preset (foundation layer)
+    local merged_config
+    merged_config=$(cat "$base_preset_file")
+    echo "📦 Applying base development preset..."
+    
+    # Determine merge order strategy for multi-preset scenarios
+    local ordered_presets=()
+    local framework_presets=()
+    local environment_presets=()
+    
+    # Categorize presets for proper merge order
+    for preset_type in "${preset_types[@]}"; do
+        case "$preset_type" in
+            react|vue|next|angular|django|flask|rails|nodejs|python|ruby|php|rust|go)
+                framework_presets+=("$preset_type")
+                ;;
+            docker|kubernetes)
+                environment_presets+=("$preset_type")
+                ;;
+            generic)
+                # Skip generic as base already provides foundation
+                ;;
+            *)
+                # Unknown preset types go to framework layer
+                framework_presets+=("$preset_type")
+                ;;
+        esac
+    done
+    
+    # Merge framework presets first (after base)
+    for preset_type in "${framework_presets[@]}"; do
+        local preset_file="$SCRIPT_DIR/configs/presets/${preset_type}.yaml"
+        if [[ -f "$preset_file" ]]; then
+            echo "📦 Applying $preset_type development preset..."
+            local temp_preset
+            temp_preset=$(cat "$preset_file")
+            merged_config=$(echo -e "$merged_config\n---\n$temp_preset")
+        else
+            echo "⚠️  Warning: Preset file not found for '$preset_type', skipping..."
+        fi
+    done
+    
+    # Merge environment presets last (override framework settings)
+    for preset_type in "${environment_presets[@]}"; do
+        local preset_file="$SCRIPT_DIR/configs/presets/${preset_type}.yaml"
+        if [[ -f "$preset_file" ]]; then
+            echo "📦 Applying $preset_type environment preset..."
+            local temp_preset
+            temp_preset=$(cat "$preset_file")
+            merged_config=$(echo -e "$merged_config\n---\n$temp_preset")
+        else
+            echo "⚠️  Warning: Preset file not found for '$preset_type', skipping..."
+        fi
+    done
+    
+    # Log final merge summary
+    local applied_count=$((${#framework_presets[@]} + ${#environment_presets[@]}))
+    if [[ $applied_count -eq 0 ]]; then
+        echo "📦 Applied base preset only (generic development environment)"
+    elif [[ $applied_count -eq 1 ]]; then
+        echo "📦 Applied base + 1 additional preset"
+    else
+        echo "📦 Applied base + $applied_count additional presets"
+        echo "   Merge order: base → frameworks [${framework_presets[*]}] → environments [${environment_presets[*]}]"
+    fi
+    
+    # Extract schema defaults and merge with preset
+    local schema_defaults
+    if ! schema_defaults=$("$SCRIPT_DIR/validate-config.sh" --extract-defaults "$SCRIPT_DIR/vm.schema.yaml" 2>&1); then
+        echo "❌ Failed to extract schema defaults" >&2
+        return 1
+    fi
+    
+    # Merge schema defaults with preset (schema defaults first, then preset overrides)
+    local final_config
+    final_config=$(echo -e "$schema_defaults\n---\n$merged_config")
+    
+    echo "💡 You can customize this by creating a vm.yaml file"
+    echo ""
+    
+    # Return the merged configuration
+    echo "$final_config"
+}
 
 # Get provider from config (now uses shared config processor)
 get_provider() {
@@ -1507,11 +1611,264 @@ vm_migrate() {
     return 0
 }
 
+# Handle preset commands - Phase B implementation point
+handle_preset_command() {
+    local subcommand="${1:-}"
+    shift
+    
+    case "$subcommand" in
+        "list")
+            preset_list_command
+            ;;
+        "show")
+            preset_show_command "$@"
+            ;;
+        "")
+            echo "❌ Missing preset subcommand" >&2
+            echo ""
+            echo "Usage: vm preset <subcommand>"
+            echo ""
+            echo "Available subcommands:"
+            echo "  list              List all available presets"
+            echo "  show <name>       Show detailed configuration for a preset"
+            echo ""
+            echo "Examples:"
+            echo "  vm preset list"
+            echo "  vm preset show react"
+            echo "  vm preset show django.yaml"
+            return 1
+            ;;
+        *)
+            echo "❌ Unknown preset subcommand: $subcommand" >&2
+            echo ""
+            echo "Available subcommands:"
+            echo "  list              List all available presets"
+            echo "  show <name>       Show detailed configuration for a preset"
+            echo ""
+            echo "Use 'vm preset list' to see available presets"
+            return 1
+            ;;
+    esac
+}
+
+# List all available presets with descriptions
+preset_list_command() {
+    local presets_dir="$SCRIPT_DIR/configs/presets"
+    
+    # Check if presets directory exists
+    if [[ ! -d "$presets_dir" ]]; then
+        echo "❌ Presets directory not found: $presets_dir" >&2
+        return 1
+    fi
+    
+    # Check if directory is empty
+    local preset_files=($(find "$presets_dir" -name "*.yaml" -type f 2>/dev/null))
+    if [[ ${#preset_files[@]} -eq 0 ]]; then
+        echo "ℹ️  No presets found in $presets_dir"
+        return 0
+    fi
+    
+    echo "Available Configuration Presets:"
+    echo "================================="
+    echo ""
+    
+    # Table header
+    printf "%-15s %-12s %s\n" "Name" "Type" "Description"
+    printf "%-15s %-12s %s\n" "----" "----" "-----------"
+    
+    # Process each preset file
+    for preset_file in "${preset_files[@]}"; do
+        local preset_name=$(basename "$preset_file" .yaml)
+        local preset_type="General"
+        local description="No description available"
+        
+        # Extract metadata from the preset file
+        if [[ -r "$preset_file" ]]; then
+            # Try to extract the preset name and description from YAML
+            local yaml_name=$(grep -E "^\s*name:\s*[\"']?(.+)[\"']?\s*$" "$preset_file" 2>/dev/null | sed -E 's/^\s*name:\s*[\"'"'"']?(.+)[\"'"'"']?\s*$/\1/' | head -1)
+            local yaml_desc=$(grep -E "^\s*description:\s*[\"']?(.+)[\"']?\s*$" "$preset_file" 2>/dev/null | sed -E 's/^\s*description:\s*[\"'"'"']?(.+)[\"'"'"']?\s*$/\1/' | head -1)
+            
+            # Use extracted values if available
+            [[ -n "$yaml_desc" ]] && description="$yaml_desc"
+            
+            # Determine preset type based on content and name
+            if grep -q "django\|flask\|fastapi" "$preset_file" 2>/dev/null; then
+                preset_type="Python Web"
+            elif grep -q "react\|vue\|angular\|next" "$preset_file" 2>/dev/null; then
+                preset_type="Frontend"
+            elif grep -q "nodejs\|express\|npm" "$preset_file" 2>/dev/null; then
+                preset_type="Node.js"
+            elif grep -q "rails\|ruby" "$preset_file" 2>/dev/null; then
+                preset_type="Ruby"
+            elif grep -q "docker\|kubernetes" "$preset_file" 2>/dev/null; then
+                preset_type="DevOps"
+            elif grep -q "python" "$preset_file" 2>/dev/null; then
+                preset_type="Python"
+            fi
+        fi
+        
+        # Truncate description if too long
+        if [[ ${#description} -gt 50 ]]; then
+            description="${description:0:47}..."
+        fi
+        
+        printf "%-15s %-12s %s\n" "$preset_name" "$preset_type" "$description"
+    done
+    
+    echo ""
+    echo "Use 'vm preset show <name>' to view detailed configuration for any preset."
+}
+
+# Show detailed configuration for a specific preset
+preset_show_command() {
+    local preset_name="${1:-}"
+    
+    if [[ -z "$preset_name" ]]; then
+        echo "❌ Missing preset name" >&2
+        echo ""
+        echo "Usage: vm preset show <name>"
+        echo ""
+        echo "Examples:"
+        echo "  vm preset show react"
+        echo "  vm preset show django.yaml"
+        echo ""
+        echo "Use 'vm preset list' to see available presets."
+        return 1
+    fi
+    
+    local presets_dir="$SCRIPT_DIR/configs/presets"
+    
+    # Handle preset name with or without .yaml extension
+    local preset_file
+    if [[ "$preset_name" == *.yaml ]]; then
+        preset_file="$presets_dir/$preset_name"
+    else
+        preset_file="$presets_dir/$preset_name.yaml"
+    fi
+    
+    # Check if preset file exists
+    if [[ ! -f "$preset_file" ]]; then
+        echo "❌ Preset not found: $preset_name" >&2
+        echo ""
+        
+        # Suggest similar presets
+        local available_presets=($(find "$presets_dir" -name "*.yaml" -type f 2>/dev/null | xargs -I {} basename {} .yaml))
+        if [[ ${#available_presets[@]} -gt 0 ]]; then
+            echo "Available presets:"
+            for available in "${available_presets[@]}"; do
+                echo "  - $available"
+            done
+            echo ""
+            echo "Use 'vm preset list' for detailed information."
+        else
+            echo "No presets available in $presets_dir"
+        fi
+        return 1
+    fi
+    
+    # Check file permissions
+    if [[ ! -r "$preset_file" ]]; then
+        echo "❌ Cannot read preset file: $preset_file" >&2
+        echo "Check file permissions." >&2
+        return 1
+    fi
+    
+    echo "Preset Configuration: $(basename "$preset_file" .yaml)"
+    echo "======================================================"
+    echo ""
+    
+    # Display file with helpful annotations
+    local in_section=""
+    local line_number=0
+    
+    while IFS= read -r line; do
+        ((line_number++))
+        
+        # Skip YAML document separator and comments at the start
+        if [[ "$line" =~ ^---$ ]] || [[ "$line" =~ ^#.*$ && $line_number -le 5 ]]; then
+            continue
+        fi
+        
+        # Detect sections and add explanatory comments
+        if [[ "$line" =~ ^[a-zA-Z_][a-zA-Z0-9_]*: ]]; then
+            local section=$(echo "$line" | cut -d: -f1)
+            
+            case "$section" in
+                "preset")
+                    if [[ "$in_section" != "preset" ]]; then
+                        echo "# Preset metadata and information"
+                        in_section="preset"
+                    fi
+                    ;;
+                "npm_packages")
+                    if [[ "$in_section" != "npm_packages" ]]; then
+                        echo ""
+                        echo "# Node.js packages to install globally"
+                        in_section="npm_packages"
+                    fi
+                    ;;
+                "pip_packages")
+                    if [[ "$in_section" != "pip_packages" ]]; then
+                        echo ""
+                        echo "# Python packages to install"
+                        in_section="pip_packages"
+                    fi
+                    ;;
+                "cargo_packages")
+                    if [[ "$in_section" != "cargo_packages" ]]; then
+                        echo ""
+                        echo "# Rust packages to install"
+                        in_section="cargo_packages"
+                    fi
+                    ;;
+                "ports")
+                    if [[ "$in_section" != "ports" ]]; then
+                        echo ""
+                        echo "# Network ports to expose from the VM"
+                        in_section="ports"
+                    fi
+                    ;;
+                "services")
+                    if [[ "$in_section" != "services" ]]; then
+                        echo ""
+                        echo "# System services configuration (databases, caches, etc.)"
+                        in_section="services"
+                    fi
+                    ;;
+                "environment")
+                    if [[ "$in_section" != "environment" ]]; then
+                        echo ""
+                        echo "# Environment variables to set"
+                        in_section="environment"
+                    fi
+                    ;;
+                "aliases")
+                    if [[ "$in_section" != "aliases" ]]; then
+                        echo ""
+                        echo "# Shell aliases to create"
+                        in_section="aliases"
+                    fi
+                    ;;
+            esac
+        fi
+        
+        echo "$line"
+    done < "$preset_file"
+    
+    echo ""
+    echo "To use this preset:"
+    echo "  vm --preset $(basename "$preset_file" .yaml) create"
+    echo "  vm --preset $(basename "$preset_file" .yaml) --config path/to/vm.yaml create"
+}
+
 # Parse command line arguments manually for better control
 CUSTOM_CONFIG=""
 # DEBUG_MODE is deprecated, using VM_DEBUG instead
 DRY_RUN="false"
 AUTO_LOGIN="true"
+USE_PRESETS="true"
+VM_INTERACTIVE="false"
+FORCED_PRESET=""
 ARGS=()
 
 # Manual argument parsing - much simpler and more reliable than getopt
@@ -1520,7 +1877,7 @@ while [[ $# -gt 0 ]]; do
         -c|--config)
             shift
             # Check if next argument exists and is not a flag or command
-            if [[ $# -eq 0 ]] || [[ "$1" =~ ^- ]] || [[ "$1" =~ ^(init|generate|validate|migrate|list|temp|create|start|stop|restart|ssh|destroy|status|provision|logs|exec|kill|help)$ ]]; then
+            if [[ $# -eq 0 ]] || [[ "$1" =~ ^- ]] || [[ "$1" =~ ^(init|generate|validate|preset|migrate|list|temp|create|start|stop|restart|ssh|destroy|status|provision|logs|exec|kill|help)$ ]]; then
                 # No argument provided or next is a flag/command - use scan mode
                 CUSTOM_CONFIG="__SCAN__"
             else
@@ -1560,6 +1917,23 @@ while [[ $# -gt 0 ]]; do
                 echo "❌ Invalid value for --auto-login: $AUTO_LOGIN. Must be 'true' or 'false'." >&2
                 exit 1
             fi
+            shift
+            ;;
+        --no-preset)
+            USE_PRESETS="false"
+            shift
+            ;;
+        --interactive)
+            VM_INTERACTIVE="true"
+            shift
+            ;;
+        --preset)
+            shift
+            if [[ $# -eq 0 ]] || [[ "$1" =~ ^- ]]; then
+                echo "❌ --preset requires a preset name (nodejs, python, etc.)" >&2
+                exit 1
+            fi
+            FORCED_PRESET="$1"
             shift
             ;;
         temp|tmp)
@@ -1644,6 +2018,11 @@ case "${1:-}" in
         else
             validate_config_file
         fi
+        ;;
+    "preset")
+        # Handle preset commands - delegate to preset handler
+        shift
+        handle_preset_command "$@"
         ;;
     "migrate")
         shift
@@ -1838,7 +2217,16 @@ case "${1:-}" in
         # Load and validate config (discovery handled by validate-config.js)
         if [[ "${VM_DEBUG:-}" = "true" ]]; then
             echo "DEBUG main: CUSTOM_CONFIG='$CUSTOM_CONFIG'" >&2
+            echo "DEBUG main: USE_PRESETS='$USE_PRESETS', FORCED_PRESET='$FORCED_PRESET'" >&2
         fi
+        
+        # Export preset configuration for config-processor.sh
+        export VM_USE_PRESETS="$USE_PRESETS"
+        if [[ -n "$FORCED_PRESET" ]]; then
+            export VM_FORCED_PRESET="$FORCED_PRESET"
+        fi
+        
+        # Use enhanced config loading with preset support
         if ! CONFIG=$(load_config "$CUSTOM_CONFIG" "$CURRENT_DIR"); then
             echo "❌ Invalid configuration"
             exit 1
