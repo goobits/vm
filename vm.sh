@@ -61,6 +61,8 @@ source "$SCRIPT_DIR/shared/security-utils.sh"
 source "$SCRIPT_DIR/shared/config-processor.sh"
 source "$SCRIPT_DIR/shared/provider-interface.sh"
 source "$SCRIPT_DIR/shared/project-detector.sh"
+source "$SCRIPT_DIR/lib/progress-reporter.sh"
+source "$SCRIPT_DIR/lib/docker-compose-progress.sh"
 
 # Set up proper cleanup handlers for temporary files
 setup_temp_file_handlers
@@ -675,8 +677,20 @@ docker_up() {
     local auto_login="$3"
     shift 3
 
-    echo "🚀 Starting development environment..."
-
+    # Get container name for display
+    local container_name
+    container_name=$(get_project_container_name "$config")
+    
+    # Initialize progress reporter
+    progress_init "VM Operation" "$container_name"
+    
+    # CREATE PHASE
+    progress_phase "🚀" "CREATE PHASE"
+    
+    # Show provider
+    progress_task "🐳 Provider: docker"
+    progress_done
+    
     # Create a secure temporary file for the config
     TEMP_CONFIG_FILE=$(create_temp_file "vm-config.XXXXXX")
 
@@ -684,19 +698,52 @@ docker_up() {
     echo "$config" > "$TEMP_CONFIG_FILE"
     "$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" "$TEMP_CONFIG_FILE" "$project_dir"
 
-    # Build and start containers with enhanced error handling and rollback
-    echo "🚀 Building container..."
-    if ! docker_run "compose" "$config" "$project_dir" build; then
-        local build_error_code=$?
-        echo "❌ Container build failed (exit code: $build_error_code)"
-        echo "🧹 Performing build cleanup rollback..."
+    # Build container phase
+    progress_phase "🔨" "Building container..." "├─"
+    
+    # Track build start time
+    local build_start=$(date +%s)
+    
+    # Run docker compose build with progress tracking
+    local build_output=""
+    local build_success=true
+    
+    # Capture build output while showing progress
+    while IFS= read -r line; do
+        build_output+="$line"$'\n'
+        case "$line" in
+            *"[internal]"*)
+                progress_subtask_done "Loading build definitions"
+                ;;
+            *"FROM"*"ubuntu"*)
+                progress_subtask_done "Using Ubuntu 24.04 base"
+                ;;
+            "#"*"["*"/"*"]"*)
+                # Extract step info
+                if [[ "$line" =~ \[([0-9]+)/([0-9]+)\] ]]; then
+                    current="${BASH_REMATCH[1]}"
+                    total="${BASH_REMATCH[2]}"
+                    progress_subtask_done "Building layers ($current/$total)"
+                fi
+                ;;
+            *"naming to"*)
+                progress_subtask_done "Image built"
+                ;;
+        esac
+    done < <(docker_run "compose" "$config" "$project_dir" build 2>&1 || echo "BUILD_FAILED:$?")
+    
+    # Check if build failed
+    if [[ "$build_output" =~ BUILD_FAILED:([0-9]+) ]]; then
+        local build_error_code="${BASH_REMATCH[1]}"
+        progress_fail "Build failed (exit code: $build_error_code)"
         
-        # Enhanced cleanup with error checking
+        progress_phase "🧹" "Cleanup" "├─"
+        progress_task "Removing build artifacts"
+        
         if docker_run "compose" "$config" "$project_dir" down --remove-orphans 2>/dev/null; then
-            echo "✅ Build artifacts cleaned up successfully"
+            progress_done
         else
-            echo "⚠️ Warning: Some build artifacts may not have been cleaned up"
-            echo "💡 You may need to run 'docker system prune' manually"
+            progress_fail "Some artifacts may remain"
         fi
         
         # Clean up temp config file on build failure
@@ -704,21 +751,48 @@ docker_up() {
             rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
         fi
         
+        progress_phase_done
+        progress_complete "Build failed"
         return $build_error_code
     fi
     
-    echo "🚀 Starting containers..."
-    if ! docker_run "compose" "$config" "$project_dir" up -d "$@"; then
-        local startup_error_code=$?
-        echo "❌ Container startup failed (exit code: $startup_error_code)"
-        echo "🧹 Performing startup rollback - stopping any running containers..."
+    progress_phase_done "Build complete"
+    
+    # Start services phase
+    progress_phase "📦" "Starting services..." "├─"
+    
+    # Run docker compose up with progress tracking
+    local startup_output=""
+    while IFS= read -r line; do
+        startup_output+="$line"$'\n'
+        case "$line" in
+            *"Network"*"Created"*)
+                progress_subtask_done "Network created"
+                ;;
+            *"Volume"*"Created"*)
+                # Count volumes
+                volume_count=$(echo "$line" | grep -o "Volume" | wc -l)
+                progress_subtask_done "Volumes created ($volume_count)"
+                ;;
+            *"Container"*"Started"*)
+                progress_subtask_done "Container started"
+                ;;
+        esac
+    done < <(docker_run "compose" "$config" "$project_dir" up -d "$@" 2>&1 || echo "STARTUP_FAILED:$?")
+    
+    # Check if startup failed
+    if [[ "$startup_output" =~ STARTUP_FAILED:([0-9]+) ]]; then
+        local startup_error_code="${BASH_REMATCH[1]}"
+        progress_fail "Startup failed (exit code: $startup_error_code)"
+        
+        progress_phase "🧹" "Rollback" "├─"
+        progress_task "Stopping containers"
         
         # Enhanced rollback with verification
         if docker_run "compose" "$config" "$project_dir" down 2>/dev/null; then
-            echo "✅ Containers stopped successfully during rollback"
+            progress_done
         else
-            echo "⚠️ Warning: Rollback may be incomplete - some containers might still be running"
-            echo "💡 Check with 'docker ps' and manually stop containers if needed"
+            progress_fail "Some containers may still be running"
         fi
         
         # Clean up temp config file on startup failure
@@ -726,15 +800,18 @@ docker_up() {
             rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
         fi
         
+        progress_phase_done
+        progress_complete "Startup failed"
         return $startup_error_code
     fi
+    
+    progress_phase_done "Services started"
 
-    # Get container name using shared function
-    local container_name
-    container_name=$(get_project_container_name "$config")
-
+    # Provisioning phase
+    progress_phase "🔧" "Provisioning environment..." "└─"
+    
     # Wait for container to be ready with enhanced error checking
-    echo "⏳ Initializing container..."
+    progress_task "Initializing container"
     local max_attempts=30
     local attempt=1
     local container_ready=false
@@ -742,15 +819,18 @@ docker_up() {
     while [[ $attempt -le $max_attempts ]]; do
         # Check if container exists first
         if ! docker_cmd inspect "${container_name}" >/dev/null 2>&1; then
-            echo "❌ Container '${container_name}' does not exist"
-            echo "💡 The container may have failed to create or was removed"
+            progress_fail "Container '${container_name}' does not exist"
+            progress_phase_done
+            progress_complete "Container initialization failed"
             return 1
         fi
         
         # Use docker_cmd to handle sudo if needed, and check container is running
         local container_status
         if ! container_status=$(docker_cmd inspect "${container_name}" --format='{{.State.Status}}' 2>/dev/null); then
-            echo "❌ Failed to check container status"
+            progress_fail "Failed to check container status"
+            progress_phase_done
+            progress_complete "Container initialization failed"
             return 1
         fi
         
@@ -771,7 +851,7 @@ docker_up() {
         else
             # Also verify we can exec into it
             if docker_cmd exec "${container_name}" echo "ready" >/dev/null 2>&1; then
-                echo "✅ Container is ready"
+                progress_done
                 container_ready=true
                 break
             elif [[ $attempt -eq $max_attempts ]]; then
@@ -783,14 +863,15 @@ docker_up() {
             fi
         fi
         
-        echo "⏳ Starting up... ($attempt/$max_attempts) [status: $container_status]"
+        progress_update "."
         sleep 2
         ((attempt++))
     done
     
     if [[ "$container_ready" != "true" ]]; then
-        echo "❌ Environment initialization failed after $max_attempts attempts"
-        echo "💡 Container startup timed out"
+        progress_fail "Initialization timed out after $max_attempts attempts"
+        progress_phase_done
+        progress_complete "Container initialization failed"
         return 1
     fi
 
@@ -866,65 +947,107 @@ docker_up() {
         return 1
     fi
     
-    echo "✅ Configuration loaded and validated"
+    progress_done
 
     # Fix volume permissions before Ansible
-    echo "🔑 Setting up permissions..."
+    progress_task "Setting up permissions"
     local project_user
     project_user=$(echo "$config" | yq -r '.vm.user // "developer"')
     if docker_run "exec" "$config" "$project_dir" chown -R "$(printf '%q' "$project_user"):$(printf '%q' "$project_user")" "/home/$(printf '%q' "$project_user")/.nvm" "/home/$(printf '%q' "$project_user")/.cache"; then
-        echo "✅ Permissions configured"
+        progress_done
     else
-        echo "⚠️ Permission setup skipped (non-critical)"
+        progress_done  # Non-critical, so we still mark as done
     fi
 
     # VM tool directory is already mounted read-only via docker-compose
 
-    # Run Ansible playbook inside the container
-    echo "🔧 Provisioning development environment..."
+    # Run Ansible provisioning
+    progress_task "Running Ansible provisioning"
 
     # Check if debug mode is enabled
     ANSIBLE_VERBOSITY=""
     ANSIBLE_DIFF=""
+    
     if [[ "${VM_DEBUG:-}" = "true" ]] || [[ "${DEBUG:-}" = "true" ]]; then
+        progress_done
         echo "🐛 Debug mode enabled - showing detailed Ansible output"
         ANSIBLE_VERBOSITY="-vvv"
         ANSIBLE_DIFF="--diff"
-    fi
-
-    # Create log file path
-    ANSIBLE_LOG="/tmp/ansible-provision-$(date +%Y%m%d-%H%M%S).log"
-
-    if docker_run "exec" "$config" "$project_dir" bash -c "ansible-playbook \
-        -i localhost, \
-        -c local \
-        $ANSIBLE_VERBOSITY \
-        $ANSIBLE_DIFF \
-        /vm-tool/shared/ansible/playbook.yml 2>&1 | tee $ANSIBLE_LOG"; then
-        echo "🎉 Development environment ready!"
+        # In debug mode, show output directly
+        if docker_run "exec" "$config" "$project_dir" bash -c "
+            ansible-playbook \
+                -i localhost, \
+                -c local \
+                $ANSIBLE_VERBOSITY \
+                $ANSIBLE_DIFF \
+                /vm-tool/shared/ansible/playbook.yml"; then
+            echo "✅ Ansible provisioning completed successfully"
+        else
+            ANSIBLE_EXIT_CODE=$?
+            echo "❌ Ansible provisioning failed (exit code: $ANSIBLE_EXIT_CODE)"
+        fi
     else
-        ANSIBLE_EXIT_CODE=$?
-        echo "⚠️ Provisioning completed with warnings (exit code: $ANSIBLE_EXIT_CODE)"
-        echo "📋 Full log saved in container at: $ANSIBLE_LOG"
-        echo "💡 Tips:"
-        echo "   - Run with VM_DEBUG=true vm create to see detailed error output"
-        echo "   - View the log: vm exec cat $ANSIBLE_LOG"
-        echo "   - Or copy it: docker cp $(printf '%q' "${container_name}"):$(printf '%q' "$ANSIBLE_LOG") ./ansible-error.log"
+        # Create log file path
+        ANSIBLE_LOG="/tmp/ansible-create-$(date +%Y%m%d-%H%M%S).log"
+        
+        # In normal mode, show progress dots while running
+        docker_run "exec" "$config" "$project_dir" bash -c "
+            ansible-playbook \
+                -i localhost, \
+                -c local \
+                /vm-tool/shared/ansible/playbook.yml > $ANSIBLE_LOG 2>&1" &
+        
+        # Get the PID of the background process
+        local ansible_pid=$!
+        
+        # Show progress dots while Ansible is running
+        while kill -0 $ansible_pid 2>/dev/null; do
+            progress_update "."
+            sleep 2
+        done
+        
+        # Wait for the process to complete and get exit status
+        wait $ansible_pid
+        local ansible_exit=$?
+        
+        if [[ $ansible_exit -eq 0 ]]; then
+            progress_done
+            # Show summary of what was provisioned
+            progress_subtask_done "System Configuration (hostname, locale, timezone)"
+            progress_subtask_done "Development Tools (Node.js, npm, pnpm)"
+            progress_subtask_done "Global packages installed"
+            progress_subtask_done "Shell configuration complete"
+        else
+            progress_fail "Provisioning failed (exit code: $ansible_exit)"
+            echo "📋 Full log saved in container at: $ANSIBLE_LOG"
+            echo "💡 Tips:"
+            echo "   - Run with VM_DEBUG=true vm create to see detailed error output"
+            echo "   - View the log: vm exec cat $ANSIBLE_LOG"
+            echo "   - Or copy it: docker cp $(printf '%q' "${container_name}"):$(printf '%q' "$ANSIBLE_LOG") ./ansible-error.log"
+        fi
     fi
 
     # Ensure supervisor services are started
-    echo "🚀 Starting services..."
-    docker_run "exec" "$config" "$project_dir" bash -c "supervisorctl reread && supervisorctl update" || true
+    progress_task "Starting services"
+    docker_run "exec" "$config" "$project_dir" bash -c "supervisorctl reread && supervisorctl update" >/dev/null 2>&1 || true
+    progress_done
 
     # Clean up generated docker-compose.yml since containers are now running
     local compose_file
     compose_file="${project_dir}/docker-compose.yml"
     if [[ -f "$compose_file" ]]; then
-        echo "✨ Cleanup complete"
         rm "$compose_file"
     fi
 
-    echo "🎉 Environment ready!"
+    # Complete the phase
+    progress_phase_done "Environment ready"
+    
+    # Calculate total time
+    local end_time=$(date +%s)
+    local total_time=$((end_time - ${build_start:-$end_time}))
+    local time_str="${total_time}s"
+    
+    progress_complete "VM $container_name ready!" "$time_str"
 
     # Automatically SSH into the container if auto-login is enabled
     if [[ "$auto_login" = "true" ]]; then
@@ -1200,26 +1323,57 @@ docker_destroy() {
     local container_name
     container_name=$(get_project_container_name "$config")
 
-    echo "🗑️ Destroying VM: ${container_name}"
+    # Check if progress reporter is already initialized
+    if [[ -z "$PROGRESS_IN_PROGRESS" ]] && [[ -z "$PROGRESS_LAST_LINE" ]]; then
+        # Initialize progress reporter only if not already initialized
+        progress_init "VM Operation" "$container_name"
+    fi
+    
+    # DESTROY PHASE
+    progress_phase "🗑️" "DESTROY PHASE"
 
     # Create a secure temporary file for the config
     TEMP_CONFIG_FILE=$(create_temp_file "vm-config.XXXXXX")
 
     # Generate docker-compose.yml temporarily for destroy operation
-    echo "🧹 Preparing cleanup..."
+    progress_task "Preparing cleanup"
     echo "$config" > "$TEMP_CONFIG_FILE"
-    "$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" "$TEMP_CONFIG_FILE" "$project_dir"
+    "$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" "$TEMP_CONFIG_FILE" "$project_dir" >/dev/null 2>&1
+    progress_done
 
-    # Run docker compose down with volumes
-    docker_run "down" "$config" "$project_dir" -v "$@"
+    # Run docker compose down with volumes and parse output
+    progress_task "Cleaning up resources"
+    
+    # Run docker compose down and capture output for progress
+    local destroy_output=""
+    while IFS= read -r line; do
+        destroy_output+="$line"$'\n'
+        case "$line" in
+            *"Container"*"Removed"*)
+                progress_subtask_done "Container removed"
+                ;;
+            *"Volume"*"Removed"*)
+                # Count volumes being removed
+                if [[ "$line" =~ "Volume.*Removed" ]]; then
+                    volume_count=$(echo "$line" | grep -o "Removed" | wc -l)
+                    progress_subtask_done "Volumes removed ($volume_count)"
+                fi
+                ;;
+            *"Network"*"Removed"*)
+                progress_subtask_done "Network removed"
+                ;;
+        esac
+    done < <(docker_run "down" "$config" "$project_dir" -v "$@" 2>&1)
 
     # Clean up the generated docker-compose.yml after destroy
     local compose_file
     compose_file="${project_dir}/docker-compose.yml"
     if [[ -f "$compose_file" ]]; then
-        echo "✨ Cleanup complete"
         rm "$compose_file"
     fi
+    
+    progress_phase_done "Destruction complete"
+    progress_complete "VM $container_name destroyed"
 }
 
 docker_status() {
@@ -1266,27 +1420,71 @@ docker_provision() {
     local project_dir="$2"
     shift 2
 
-    echo "🔄 Rebuilding environment..."
+    # Get container name for display
+    local container_name
+    container_name=$(get_project_container_name "$config")
+    
+    # Initialize progress reporter
+    progress_init "VM Provision" "$container_name"
+    
+    # REBUILD PHASE
+    progress_phase "🔄" "REBUILD PHASE"
 
     # Create a secure temporary file for the config
     TEMP_CONFIG_FILE=$(create_temp_file "vm-config.XXXXXX")
 
     # Generate fresh docker-compose.yml for provisioning
+    progress_task "Preparing configuration"
     echo "$config" > "$TEMP_CONFIG_FILE"
-    "$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" "$TEMP_CONFIG_FILE" "$project_dir"
+    "$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" "$TEMP_CONFIG_FILE" "$project_dir" >/dev/null 2>&1
+    progress_done
 
-    # Build with enhanced rollback on failure
-    if ! docker_run "compose" "$config" "$project_dir" build; then
-        local provision_build_error=$?
-        echo "❌ Provisioning build failed (exit code: $provision_build_error)"
-        echo "🧹 Performing provisioning build rollback..."
+    # Build container phase
+    progress_phase "🔨" "Rebuilding container..." "├─"
+    
+    # Track build start time
+    local build_start=$(date +%s)
+    
+    # Run docker compose build with progress tracking
+    local build_output=""
+    local build_success=true
+    
+    # Capture build output while showing progress
+    while IFS= read -r line; do
+        build_output+="$line"$'\n'
+        case "$line" in
+            *"[internal]"*)
+                progress_subtask_done "Loading build definitions"
+                ;;
+            *"FROM"*"ubuntu"*)
+                progress_subtask_done "Using Ubuntu 24.04 base"
+                ;;
+            "#"*"["*"/"*"]"*)
+                # Extract step info
+                if [[ "$line" =~ \[([0-9]+)/([0-9]+)\] ]]; then
+                    current="${BASH_REMATCH[1]}"
+                    total="${BASH_REMATCH[2]}"
+                    progress_subtask_done "Building layers ($current/$total)"
+                fi
+                ;;
+            *"naming to"*)
+                progress_subtask_done "Image rebuilt"
+                ;;
+        esac
+    done < <(docker_run "compose" "$config" "$project_dir" build 2>&1 || echo "BUILD_FAILED:$?")
+    
+    # Check if build failed
+    if [[ "$build_output" =~ BUILD_FAILED:([0-9]+) ]]; then
+        local build_error_code="${BASH_REMATCH[1]}"
+        progress_fail "Build failed (exit code: $build_error_code)"
         
-        # Enhanced cleanup with verification
+        progress_phase "🧹" "Cleanup" "├─"
+        progress_task "Removing build artifacts"
+        
         if docker_run "compose" "$config" "$project_dir" down --remove-orphans 2>/dev/null; then
-            echo "✅ Failed build artifacts cleaned up successfully"
+            progress_done
         else
-            echo "⚠️ Warning: Provisioning cleanup may be incomplete"
-            echo "💡 Manual cleanup may be required: docker system prune"
+            progress_fail "Some artifacts may remain"
         fi
         
         # Clean up temp config file on provision failure
@@ -1294,21 +1492,39 @@ docker_provision() {
             rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
         fi
         
-        return $provision_build_error
+        progress_phase_done
+        progress_complete "Provision failed"
+        return $build_error_code
     fi
     
-    # Start containers with enhanced rollback on failure
-    if ! docker_run "compose" "$config" "$project_dir" up -d "$@"; then
-        local provision_startup_error=$?
-        echo "❌ Provisioning startup failed (exit code: $provision_startup_error)"
-        echo "🧹 Performing provisioning startup rollback..."
+    progress_phase_done "Build complete"
+    
+    # Start services phase
+    progress_phase "📦" "Restarting services..." "├─"
+    
+    # Run docker compose up with progress tracking
+    local startup_output=""
+    while IFS= read -r line; do
+        startup_output+="$line"$'\n'
+        case "$line" in
+            *"Container"*"Started"*)
+                progress_subtask_done "Container restarted"
+                ;;
+        esac
+    done < <(docker_run "compose" "$config" "$project_dir" up -d "$@" 2>&1 || echo "STARTUP_FAILED:$?")
+    
+    # Check if startup failed
+    if [[ "$startup_output" =~ STARTUP_FAILED:([0-9]+) ]]; then
+        local startup_error_code="${BASH_REMATCH[1]}"
+        progress_fail "Startup failed (exit code: $startup_error_code)"
         
-        # Enhanced rollback with status verification
+        progress_phase "🧹" "Rollback" "├─"
+        progress_task "Stopping containers"
+        
         if docker_run "compose" "$config" "$project_dir" down 2>/dev/null; then
-            echo "✅ Failed containers cleaned up successfully"
+            progress_done
         else
-            echo "⚠️ Warning: Provisioning rollback may be incomplete"
-            echo "💡 Some containers may still be running - check with 'docker ps'"
+            progress_fail "Some containers may still be running"
         fi
         
         # Clean up temp config file on provision failure
@@ -1316,14 +1532,18 @@ docker_provision() {
             rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
         fi
         
-        return $provision_startup_error
+        progress_phase_done
+        progress_complete "Provision failed"
+        return $startup_error_code
     fi
-
-    # Wait for container to be ready (critical missing step!)
-    local container_name
-    container_name=$(get_project_container_name "$config")
     
-    echo "⏳ Waiting for environment to be ready..."
+    progress_phase_done "Services restarted"
+
+    # Provisioning phase
+    progress_phase "🔧" "Re-provisioning environment..." "└─"
+    
+    # Wait for container to be ready
+    progress_task "Waiting for container readiness"
     local max_attempts=30
     local attempt=1
     local container_ready=false
@@ -1335,28 +1555,31 @@ docker_provision() {
         
         # Check if container is still running
         if ! docker_cmd ps --format "table {{.Names}}" | grep -q "^${container_name}$"; then
-            echo "❌ Container stopped unexpectedly during provisioning"
-            echo "💡 Check logs with: vm logs"
+            progress_fail "Container stopped unexpectedly"
             if [[ -f "$TEMP_CONFIG_FILE" ]]; then
                 rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
             fi
+            progress_phase_done
+            progress_complete "Provision failed"
             return 1
         fi
         
         # Test if container is responsive
         if docker_cmd exec "${container_name}" echo "ready" >/dev/null 2>&1; then
-            echo "✅ Container is ready"
+            progress_done
             container_ready=true
             break
         fi
         
+        progress_update "."
+        
         if [[ $attempt -eq $max_attempts ]]; then
-            echo "❌ Provisioning failed - container not responding"
-            echo "💡 Container is running but not accepting exec commands"
-            echo "💡 Try: docker logs ${container_name}"
+            progress_fail "Container not responding after $max_attempts attempts"
             if [[ -f "$TEMP_CONFIG_FILE" ]]; then  
                 rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
             fi
+            progress_phase_done
+            progress_complete "Provision failed"
             return 1
         fi
         
@@ -1364,66 +1587,144 @@ docker_provision() {
     done
     
     if [[ "$container_ready" != "true" ]]; then
-        echo "❌ Provisioning failed - container not ready"
+        progress_fail "Container not ready"
         if [[ -f "$TEMP_CONFIG_FILE" ]]; then
             rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
         fi
+        progress_phase_done
+        progress_complete "Provision failed"
         return 1
     fi
 
-    echo "📋 Loading project configuration..."
+    progress_task "Loading project configuration"
     
     # Validate temp config file exists and is readable
     if [[ ! -f "$TEMP_CONFIG_FILE" ]]; then
-        echo "❌ Temporary configuration file not found: $TEMP_CONFIG_FILE"
+        progress_fail "Temporary configuration file not found"
+        progress_phase_done
+        progress_complete "Configuration loading failed"
         return 1
     fi
     
     if [[ ! -r "$TEMP_CONFIG_FILE" ]]; then
-        echo "❌ Cannot read temporary configuration file: $TEMP_CONFIG_FILE"
+        progress_fail "Cannot read temporary configuration file"
+        progress_phase_done
+        progress_complete "Configuration loading failed"
         return 1
     fi
     
     # Copy configuration to container
     if ! docker_cmd cp "$TEMP_CONFIG_FILE" "$(printf '%q' "${container_name}"):/tmp/vm-config.json" 2>/dev/null; then
-        echo "❌ Configuration loading failed - retrying..."
         sleep 2
-        
         if ! docker_cmd cp "$TEMP_CONFIG_FILE" "$(printf '%q' "${container_name}"):/tmp/vm-config.json" 2>&1; then
-            echo "❌ Configuration loading failed after retry"
+            progress_fail "Configuration loading failed"
             if [[ -f "$TEMP_CONFIG_FILE" ]]; then
                 rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
             fi
+            progress_phase_done
+            progress_complete "Configuration loading failed"
             return 1
         fi
     fi
     
     # Validate that the file was actually copied successfully
     if ! docker_cmd exec "${container_name}" test -f /tmp/vm-config.json 2>/dev/null; then
-        echo "❌ Configuration file validation failed - file not found in container"
+        progress_fail "Configuration file not found in container"
         if [[ -f "$TEMP_CONFIG_FILE" ]]; then
             rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
         fi
+        progress_phase_done
+        progress_complete "Configuration validation failed"
         return 1
     fi
     
-    echo "✅ Configuration loaded and validated"
+    progress_done
 
     # Fix volume permissions before Ansible
-    echo "🔑 Setting up permissions..."
+    progress_task "Setting up permissions"
     local project_user
     project_user=$(echo "$config" | yq -r '.vm.user // "developer"')
     if docker_run "exec" "$config" "$project_dir" chown -R "$(printf '%q' "$project_user"):$(printf '%q' "$project_user")" "/home/$(printf '%q' "$project_user")/.nvm" "/home/$(printf '%q' "$project_user")/.cache"; then
-        echo "✅ Permissions configured"
+        progress_done
     else
-        echo "⚠️ Permission setup skipped (non-critical)"
+        progress_done  # Non-critical, so we still mark as done
     fi
+
+    # Run Ansible provisioning
+    progress_task "Running Ansible provisioning"
+
+    # Check if debug mode is enabled
+    ANSIBLE_VERBOSITY=""
+    ANSIBLE_DIFF=""
+    
+    if [[ "${VM_DEBUG:-}" = "true" ]] || [[ "${DEBUG:-}" = "true" ]]; then
+        progress_done
+        echo "🐛 Debug mode enabled - showing detailed Ansible output"
+        ANSIBLE_VERBOSITY="-vvv"
+        ANSIBLE_DIFF="--diff"
+        # In debug mode, show output directly
+        if docker_run "exec" "$config" "$project_dir" bash -c "
+            ansible-playbook \
+                -i localhost, \
+                -c local \
+                $ANSIBLE_VERBOSITY \
+                $ANSIBLE_DIFF \
+                /vm-tool/shared/ansible/playbook.yml"; then
+            echo "✅ Ansible provisioning completed successfully"
+        else
+            ANSIBLE_EXIT_CODE=$?
+            echo "❌ Ansible provisioning failed (exit code: $ANSIBLE_EXIT_CODE)"
+        fi
+    else
+        # Create log file path
+        ANSIBLE_LOG="/tmp/ansible-provision-$(date +%Y%m%d-%H%M%S).log"
+        
+        # In normal mode, show progress dots while running
+        docker_run "exec" "$config" "$project_dir" bash -c "
+            ansible-playbook \
+                -i localhost, \
+                -c local \
+                /vm-tool/shared/ansible/playbook.yml > $ANSIBLE_LOG 2>&1" &
+        
+        # Get the PID of the background process
+        local ansible_pid=$!
+        
+        # Show progress dots while Ansible is running
+        while kill -0 $ansible_pid 2>/dev/null; do
+            progress_update "."
+            sleep 2
+        done
+        
+        # Wait for the process to complete and get exit status
+        wait $ansible_pid
+        local ansible_exit=$?
+        
+        if [[ $ansible_exit -eq 0 ]]; then
+            progress_done
+            # Show summary of what was provisioned
+            progress_subtask_done "System Configuration (hostname, locale, timezone)"
+            progress_subtask_done "Development Tools (Node.js, npm, pnpm)"
+            progress_subtask_done "Global packages installed"
+            progress_subtask_done "Shell configuration complete"
+        else
+            progress_fail "Provisioning failed (exit code: $ansible_exit)"
+            echo "📋 Full log saved in container at: $ANSIBLE_LOG"
+            echo "💡 Tips:"
+            echo "   - Run with VM_DEBUG=true vm provision to see detailed error output"
+            echo "   - View the log: vm exec cat $ANSIBLE_LOG"
+            echo "   - Or copy it: docker cp $(printf '%q' "${container_name}"):$(printf '%q' "$ANSIBLE_LOG") ./ansible-error.log"
+        fi
+    fi
+
+    # Ensure supervisor services are started
+    progress_task "Starting services"
+    docker_run "exec" "$config" "$project_dir" bash -c "supervisorctl reread && supervisorctl update" >/dev/null 2>&1 || true
+    progress_done
 
     # Clean up generated docker-compose.yml since containers are now running
     local compose_file
     compose_file="${project_dir}/docker-compose.yml"
     if [[ -f "$compose_file" ]]; then
-        echo "✨ Cleanup complete"
         rm "$compose_file"
     fi
     
@@ -1432,7 +1733,16 @@ docker_provision() {
         rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
     fi
 
-    echo "🎉 Environment ready!"
+    # Complete the phase
+    progress_phase_done "Environment ready"
+    
+    # Calculate total time
+    local end_time=$(date +%s)
+    local total_time=$((end_time - ${build_start:-$end_time}))
+    local time_str="${total_time}s"
+    
+    progress_complete "VM $container_name re-provisioned!" "$time_str"
+    
     echo "💡 Use 'vm ssh' to connect to the environment"
 }
 
@@ -2389,19 +2699,28 @@ case "${1:-}" in
             # Get container name for confirmation
             container_name=$(get_project_container_name "$CONFIG")
 
-            echo "⚠️  About to destroy VM: ${container_name}"
-            echo -n "Are you sure? This will destroy the VM and all its data. (y/N): "
+            # Initialize progress reporter for destroy operation
+            progress_init "VM Operation" "$container_name"
+            
+            # Show confirmation in destroy phase
+            echo -e "├─ ⚠️  Confirm destruction of $container_name? (y/N): \c"
             read -r response
             case "$response" in
                 [yY]|[yY][eE][sS])
                     if [[ "$PROVIDER" = "docker" ]]; then
+                        # The docker_destroy function will handle the rest of the progress reporting
                         docker_destroy "$CONFIG" "$PROJECT_DIR"
                     else
-                        VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant destroy -f
+                        progress_phase "🗑️" "DESTROY PHASE"
+                        progress_task "Destroying Vagrant VM"
+                        VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant destroy -f >/dev/null 2>&1
+                        progress_done
+                        progress_phase_done "Destruction complete"
+                        progress_complete "Vagrant VM destroyed"
                     fi
                     ;;
                 *)
-                    echo "❌ Destroy cancelled."
+                    echo "└─ ❌ Destruction cancelled"
                     exit 1
                     ;;
             esac
