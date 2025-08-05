@@ -2198,23 +2198,18 @@ EOF
 	
 	# Track the real paths for direct volume mounts
 	MOUNT_MAPPINGS=()
-	MOUNT_PERMISSIONS=()
 	for mount in "${PROCESSED_MOUNTS[@]}"; do
 		source="${mount%:*}"
 		perm="${mount##*:}"
 		# Get absolute path
 		REAL_PATH=$(realpath "$source")
 		MOUNT_NAME=$(basename "$source")
-		# Store the mapping for Docker volumes (without permission for compatibility)
-		MOUNT_MAPPINGS+=("$REAL_PATH:$MOUNT_NAME")
-		# Store permissions separately if needed in future
-		MOUNT_PERMISSIONS+=("$perm")
+		# Store the mapping WITH permission for Phase 2
+		MOUNT_MAPPINGS+=("$REAL_PATH:$MOUNT_NAME:$perm")
 	done
 	
 	# Export mount mappings for docker provisioning script
 	export VM_TEMP_MOUNTS="${MOUNT_MAPPINGS[*]}"
-	# TODO: In Phase 2, pass mount permissions to docker provisioning
-	# export VM_TEMP_MOUNT_PERMISSIONS="${MOUNT_PERMISSIONS[*]}"
 	# Mark this as a temp VM so docker provisioning knows to skip the main mount
 	export VM_IS_TEMP="true"
 	
