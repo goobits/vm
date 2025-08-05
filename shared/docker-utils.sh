@@ -42,3 +42,28 @@ docker_compose() {
         fi
     fi
 }
+
+# Construct Docker-specific mount argument for a validated directory and permissions
+construct_mount_argument() {
+    local source_dir="$1"
+    local permission_flags="$2"
+
+    # SECURITY: Re-validate the path immediately before use to prevent TOCTOU attacks
+    # The symlink target could have changed between initial validation and mount construction
+    local real_source
+    if ! real_source=$(realpath "$source_dir" 2>/dev/null); then
+        echo "❌ Error: Cannot resolve path '$source_dir'" >&2
+        return 1
+    fi
+
+    # Re-run security validation on the resolved path to prevent TOCTOU
+    # This ensures the symlink hasn't been changed to point to a dangerous location
+    if ! validate_mount_security_atomic "$real_source"; then
+        echo "❌ Error: Mount security re-validation failed for '$source_dir'" >&2
+        echo "💡 The target may have changed since initial validation (TOCTOU protection)" >&2
+        return 1
+    fi
+
+    # Build the mount argument with proper quoting to prevent command injection
+    echo "-v $(printf '%q' "$real_source"):/workspace/$(basename "$source_dir")${permission_flags}"
+}

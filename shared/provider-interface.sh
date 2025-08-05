@@ -13,6 +13,9 @@ SHARED_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -f "$SHARED_DIR/config-processor.sh" ]]; then
     source "$SHARED_DIR/config-processor.sh"
 fi
+if [[ -f "$SHARED_DIR/docker-utils.sh" ]]; then
+    source "$SHARED_DIR/docker-utils.sh"
+fi
 if [[ -f "$SHARED_DIR/mount-utils.sh" ]]; then
     source "$SHARED_DIR/mount-utils.sh"
 fi

@@ -118,12 +118,33 @@ generate_docker_compose() {
     # Handle VM temp mounts (for vm temp command)
     local temp_mount_volumes=""
     if [[ -n "${VM_TEMP_MOUNTS:-}" ]]; then
-        # VM_TEMP_MOUNTS contains space-separated "realpath:mountname" pairs
+        # VM_TEMP_MOUNTS contains space-separated "realpath:mountname:permission" pairs
+        # Also supports legacy "realpath:mountname" format for backward compatibility
         for mount_mapping in $VM_TEMP_MOUNTS; do
             if [[ "$mount_mapping" == *:* ]]; then
-                local real_path="${mount_mapping%:*}"
-                local mount_name="${mount_mapping##*:}"
-                temp_mount_volumes+="\\n      - $real_path:$workspace_path/$mount_name:delegated"
+                # Check if the last part is a valid permission (ro or rw)
+                local last_part="${mount_mapping##*:}"
+                if [[ "$last_part" == "ro" || "$last_part" == "rw" ]]; then
+                    # New 3-part format: realpath:mountname:permission
+                    # Remove the permission part to get realpath:mountname
+                    local path_and_name="${mount_mapping%:*}"
+                    local real_path="${path_and_name%:*}"
+                    local mount_name="${path_and_name##*:}"
+                    local permission="$last_part"
+                    
+                    # Apply permissions to Docker volume syntax
+                    if [[ "$permission" == "ro" ]]; then
+                        temp_mount_volumes+="\\n      - $real_path:$workspace_path/$mount_name:ro:delegated"
+                    else
+                        # Default to read-write for "rw"
+                        temp_mount_volumes+="\\n      - $real_path:$workspace_path/$mount_name:delegated"
+                    fi
+                else
+                    # Legacy 2-part format: realpath:mountname (default to rw)
+                    local real_path="${mount_mapping%:*}"
+                    local mount_name="${mount_mapping##*:}"
+                    temp_mount_volumes+="\\n      - $real_path:$workspace_path/$mount_name:delegated"
+                fi
             fi
         done
     fi

@@ -96,6 +96,43 @@ vm validate      # Check config
 vm preset list   # Show available presets
 ```
 
+## 🔄 Shell Integration
+
+When you SSH into a VM and change directories, those changes are lost when you exit back to your host shell. This is a fundamental limitation - the VM can't change your parent shell's current directory.
+
+**The Problem:**
+```bash
+vm ssh
+# Inside VM: cd /workspace/src/components  
+# Exit VM
+pwd  # Still in original directory, not /workspace/src/components
+```
+
+**The Solution:** Use the `vm-cd` shell function to sync directories after exiting SSH.
+
+### Setup
+
+Add this function to your `~/.bashrc` or `~/.zshrc`:
+
+```bash
+vm-cd() {
+    local sync_dir=$(vm get-sync-directory 2>/dev/null)
+    [[ -n "$sync_dir" ]] && cd "$sync_dir"
+}
+```
+
+### Usage
+
+```bash
+vm ssh
+# Inside VM: cd src/components && exit
+vm-cd  # Now you're in ./src/components on your host!
+```
+
+The VM automatically tracks your last directory when you exit SSH. The `vm get-sync-directory` command retrieves the corresponding host path, and `vm-cd` changes to that directory.
+
+**Note:** This feature only works with the Docker provider, as it requires container-level directory tracking.
+
 ## ⚙️ Optional Configuration
 
 **Works without any config**, but you can customize with `vm.yaml`:
