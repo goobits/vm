@@ -80,7 +80,7 @@ extract_schema_defaults() {
         return 1
     fi
 
-    yq '
+    yq -o json '
     {
       "version": .properties.version.default,
       "provider": .properties.provider.default,
@@ -141,7 +141,15 @@ find_vm_yaml_upwards() {
 # Initialize vm.yaml
 initialize_vm_yaml() {
     local target_path="$1"
-    local local_config_path="${target_path:-$(pwd)/vm.yaml}"
+    local local_config_path
+    
+    if [[ -n "$target_path" ]]; then
+        # Create directory if it doesn't exist
+        mkdir -p "$target_path"
+        local_config_path="$target_path/vm.yaml"
+    else
+        local_config_path="$(pwd)/vm.yaml"
+    fi
 
     # Check if vm.yaml already exists
     if [[ -f "$local_config_path" ]]; then
@@ -184,7 +192,7 @@ initialize_vm_yaml() {
     ')"
 
     # Write the customized config as YAML
-    if echo "$customized_config" | yq -y . > "$local_config_path"; then
+    if echo "$customized_config" | yq -p json -o yaml . > "$local_config_path"; then
         echo "✅ Created vm.yaml for project: $sanitized_name"
         echo "📍 Configuration file: $local_config_path"
         echo ""

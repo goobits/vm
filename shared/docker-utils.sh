@@ -8,7 +8,7 @@
 # Usage: docker_cmd [docker arguments...]
 # Example: docker_cmd ps -a
 docker_cmd() {
-    if ! docker version &>/dev/null 2>&1; then
+    if ! docker version >/dev/null; then
         sudo docker "$@"
     else
         docker "$@"
@@ -24,7 +24,7 @@ docker_compose() {
     # Check if we need sudo for docker
     local docker_prefix
     docker_prefix=""
-    if ! docker version &>/dev/null 2>&1; then
+    if ! docker version >/dev/null; then
         docker_prefix="sudo"
     fi
 

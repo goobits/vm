@@ -192,7 +192,7 @@ class VagrantTempConfig
       # Set ownership after synced folders are mounted
       machine.vm.provision "shell", run: "always", inline: <<-SHELL
         # Fix ownership of mounted directories
-        sudo chown -R "#{vm_user}:#{vm_user}" "#{@config['project']['workspace_path']}" 2>/dev/null || true
+        sudo chown -R "#{vm_user}:#{vm_user}" "#{@config['project']['workspace_path']}" || true
       SHELL
     PROVISION
   end

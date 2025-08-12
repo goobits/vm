@@ -595,7 +595,7 @@ docker_startup_and_wait() {
         echo "🧹 Performing startup rollback - stopping any running containers..."
         
         # Enhanced rollback with verification
-        if docker_run "compose" "$config" "$project_dir" down 2>/dev/null; then
+        if docker_run "compose" "$config" "$project_dir" down; then
             echo "✅ Containers stopped successfully during rollback"
         else
             echo "⚠️ Warning: Rollback may be incomplete - some containers might still be running"
@@ -740,7 +740,7 @@ docker_up() {
         progress_phase "🧹" "Cleanup" "├─"
         progress_task "Removing build artifacts"
         
-        if docker_run "compose" "$config" "$project_dir" down --remove-orphans 2>/dev/null; then
+        if docker_run "compose" "$config" "$project_dir" down --remove-orphans; then
             progress_done
         else
             progress_fail "Some artifacts may remain"
@@ -789,7 +789,7 @@ docker_up() {
         progress_task "Stopping containers"
         
         # Enhanced rollback with verification
-        if docker_run "compose" "$config" "$project_dir" down 2>/dev/null; then
+        if docker_run "compose" "$config" "$project_dir" down; then
             progress_done
         else
             progress_fail "Some containers may still be running"
@@ -1338,7 +1338,7 @@ docker_destroy() {
     # Generate docker-compose.yml temporarily for destroy operation
     progress_task "Preparing cleanup"
     echo "$config" > "$TEMP_CONFIG_FILE"
-    "$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" "$TEMP_CONFIG_FILE" "$project_dir" >/dev/null 2>&1
+    "$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" "$TEMP_CONFIG_FILE" "$project_dir"
     progress_done
 
     # Run docker compose down with volumes and parse output
@@ -1436,7 +1436,7 @@ docker_provision() {
     # Generate fresh docker-compose.yml for provisioning
     progress_task "Preparing configuration"
     echo "$config" > "$TEMP_CONFIG_FILE"
-    "$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" "$TEMP_CONFIG_FILE" "$project_dir" >/dev/null 2>&1
+    "$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" "$TEMP_CONFIG_FILE" "$project_dir"
     progress_done
 
     # Build container phase
@@ -1481,7 +1481,7 @@ docker_provision() {
         progress_phase "🧹" "Cleanup" "├─"
         progress_task "Removing build artifacts"
         
-        if docker_run "compose" "$config" "$project_dir" down --remove-orphans 2>/dev/null; then
+        if docker_run "compose" "$config" "$project_dir" down --remove-orphans; then
             progress_done
         else
             progress_fail "Some artifacts may remain"
@@ -1521,7 +1521,7 @@ docker_provision() {
         progress_phase "🧹" "Rollback" "├─"
         progress_task "Stopping containers"
         
-        if docker_run "compose" "$config" "$project_dir" down 2>/dev/null; then
+        if docker_run "compose" "$config" "$project_dir" down; then
             progress_done
         else
             progress_fail "Some containers may still be running"
@@ -2713,7 +2713,7 @@ case "${1:-}" in
                     else
                         progress_phase "🗑️" "DESTROY PHASE"
                         progress_task "Destroying Vagrant VM"
-                        VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant destroy -f >/dev/null 2>&1
+                        VAGRANT_CWD="$SCRIPT_DIR/providers/vagrant" vagrant destroy -f
                         progress_done
                         progress_phase_done "Destruction complete"
                         progress_complete "Vagrant VM destroyed"
