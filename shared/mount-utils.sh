@@ -5,6 +5,10 @@
 # This module provides provider-agnostic mount validation, security checking,
 # and mount argument construction utilities.
 
+# Source docker-utils.sh for construct_mount_argument function
+MOUNT_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$MOUNT_UTILS_DIR/docker-utils.sh"
+
 # Lightweight atomic security validation for TOCTOU prevention
 # This function performs essential security checks on already-resolved paths
 validate_mount_security_atomic() {

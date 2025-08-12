@@ -25,7 +25,7 @@ detect_npm_linked_packages() {
 
 	# Check current npm root first
 	local npm_root
-	npm_root=$(npm root -g 2>/dev/null)
+	npm_root=$(npm root -g)
 	if [[ -n "$npm_root" && -d "$npm_root" ]]; then
 		for package in "${npm_packages_array[@]}"; do
 			local link_path="$npm_root/$package"
