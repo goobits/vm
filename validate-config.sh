@@ -80,8 +80,7 @@ extract_schema_defaults() {
         return 1
     fi
 
-    yq -o json '
-    {
+    yq eval -o json '{
       "version": .properties.version.default,
       "provider": .properties.provider.default,
       "project": {
