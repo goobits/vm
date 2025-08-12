@@ -783,13 +783,127 @@ docker_up() {
     # Check if startup failed
     if [[ "$startup_output" =~ STARTUP_FAILED:([0-9]+) ]]; then
         local startup_error_code="${BASH_REMATCH[1]}"
-        progress_fail "Startup failed (exit code: $startup_error_code)"
+        
+        # Extract the actual error message from Docker output
+        local error_message=""
+        local error_type="Unknown"
+        
+        # Parse common Docker errors
+        if [[ "$startup_output" =~ "Error response from daemon: "(.+) ]]; then
+            error_message="${BASH_REMATCH[1]}"
+            
+            # Identify specific error types
+            if [[ "$error_message" =~ "all predefined address pools have been fully subnetted" ]]; then
+                error_type="Network Pool Exhausted"
+            elif [[ "$error_message" =~ "port is already allocated" ]]; then
+                error_type="Port Conflict"
+            elif [[ "$error_message" =~ "permission denied" ]]; then
+                error_type="Permission Denied"
+            elif [[ "$error_message" =~ "Cannot connect to the Docker daemon" ]]; then
+                error_type="Docker Daemon Not Running"
+            fi
+        elif [[ "$startup_output" =~ "Error: "(.+) ]]; then
+            error_message="${BASH_REMATCH[1]}"
+        else
+            # Fallback to showing last meaningful line
+            error_message=$(echo "$startup_output" | grep -v "^$" | tail -n 1)
+        fi
+        
+        # Display enhanced error report
+        echo ""
+        echo "================================================================================"
+        echo "❌ VM CREATE FAILED: Container Startup Error"
+        echo "================================================================================"
+        echo ""
+        echo "📍 Error Location: Docker Compose startup"
+        echo "🔴 Error Type: $error_type"
+        echo ""
+        echo "💬 Error Details:"
+        echo "   $error_message"
+        echo ""
+        
+        # Provide specific diagnostic help based on error type
+        case "$error_type" in
+            "Network Pool Exhausted")
+                echo "🔍 Diagnosis:"
+                echo "   Docker has exhausted all available network address pools."
+                echo "   This happens when many Docker networks exist without being cleaned up."
+                echo ""
+                echo "💡 Suggested Solutions:"
+                echo "   1. Clean up unused Docker networks:"
+                echo "      $ docker network prune -f"
+                echo ""
+                echo "   2. Check existing networks (limit is ~31):"
+                echo "      $ docker network ls | wc -l"
+                echo ""
+                echo "   3. Remove all non-default networks:"
+                echo "      $ docker network rm \$(docker network ls -q --filter type=custom)"
+                ;;
+            "Port Conflict")
+                local port=$(echo "$error_message" | grep -oE '[0-9]+' | head -n 1)
+                echo "🔍 Diagnosis:"
+                echo "   Port $port is already in use by another process."
+                echo ""
+                echo "💡 Suggested Solutions:"
+                echo "   1. Find what's using the port:"
+                echo "      $ sudo lsof -i :$port"
+                echo ""
+                echo "   2. Stop the conflicting service, or"
+                echo "   3. Change the port in your vm.yaml configuration"
+                ;;
+            "Permission Denied")
+                echo "🔍 Diagnosis:"
+                echo "   Docker requires proper permissions to run."
+                echo ""
+                echo "💡 Suggested Solutions:"
+                echo "   1. Add your user to the docker group:"
+                echo "      $ sudo usermod -aG docker \$USER"
+                echo "      $ newgrp docker"
+                echo ""
+                echo "   2. Or run with sudo (not recommended):"
+                echo "      $ sudo vm create"
+                ;;
+            "Docker Daemon Not Running")
+                echo "🔍 Diagnosis:"
+                echo "   The Docker daemon is not running on your system."
+                echo ""
+                echo "💡 Suggested Solutions:"
+                echo "   1. Start Docker service:"
+                echo "      $ sudo systemctl start docker"
+                echo ""
+                echo "   2. Enable Docker to start on boot:"
+                echo "      $ sudo systemctl enable docker"
+                ;;
+            *)
+                echo "💡 Suggested Solutions:"
+                echo "   1. Check Docker status:"
+                echo "      $ docker ps"
+                echo ""
+                echo "   2. View full error details:"
+                echo "      $ vm create --debug 2>&1 | tee vm-error.log"
+                echo ""
+                echo "   3. Try manual startup:"
+                echo "      $ cd $project_dir"
+                echo "      $ docker compose up"
+                ;;
+        esac
+        
+        echo ""
+        echo "📋 Debug Information:"
+        echo "   • Config file: $project_dir/vm.yaml"
+        echo "   • Docker compose: $project_dir/docker-compose.yml"  
+        echo "   • Container name: $(get_project_container_name "$config")"
+        echo "   • Exit code: $startup_error_code"
+        echo ""
+        echo "================================================================================"
+        
+        progress_fail "Startup failed"
         
         progress_phase "🧹" "Rollback" "├─"
         progress_task "Stopping containers"
         
         # Enhanced rollback with verification
-        if docker_run "compose" "$config" "$project_dir" down; then
+        if docker_run "compose" "$config" "$project_dir" down 2>/dev/null; then
             progress_done
         else
             progress_fail "Some containers may still be running"
