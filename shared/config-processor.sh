@@ -47,7 +47,7 @@ yq_json() {
         return 1
     fi
 
-    yq "$filter" "$file" 2>/dev/null || echo "null"
+    yq -o json "$filter" "$file" 2>/dev/null || echo "null"
 }
 
 #=============================================================================

@@ -292,8 +292,8 @@ load_and_merge_config() {
         fi
 
         local yq_error
-        if ! user_config="$(yq . "$config_file_to_load" 2>&1)"; then
-            yq_error="$(yq . "$config_file_to_load" 2>&1)"
+        if ! user_config="$(yq -o json . "$config_file_to_load" 2>&1)"; then
+            yq_error="$(yq -o json . "$config_file_to_load" 2>&1)"
             echo "❌ Invalid YAML in project config: $config_file_to_load" >&2
             echo "   YAML parsing error: $yq_error" >&2
             return 1
