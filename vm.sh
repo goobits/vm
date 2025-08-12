@@ -1332,45 +1332,32 @@ docker_destroy() {
     # DESTROY PHASE
     progress_phase "🗑️" "DESTROY PHASE"
 
-    # Create a secure temporary file for the config
-    TEMP_CONFIG_FILE=$(create_temp_file "vm-config.XXXXXX")
+    # Get project name for volume/network cleanup
+    local project_name
+    project_name=$(get_project_name "$config")
 
-    # Generate docker-compose.yml temporarily for destroy operation
-    progress_task "Preparing cleanup"
-    echo "$config" > "$TEMP_CONFIG_FILE"
-    "$SCRIPT_DIR/providers/docker/docker-provisioning-simple.sh" "$TEMP_CONFIG_FILE" "$project_dir"
-    progress_done
-
-    # Run docker compose down with volumes and parse output
     progress_task "Cleaning up resources"
     
-    # Run docker compose down and capture output for progress
-    local destroy_output=""
-    while IFS= read -r line; do
-        destroy_output+="$line"$'\n'
-        case "$line" in
-            *"Container"*"Removed"*)
-                progress_subtask_done "Container removed"
-                ;;
-            *"Volume"*"Removed"*)
-                # Count volumes being removed
-                if [[ "$line" =~ "Volume.*Removed" ]]; then
-                    volume_count=$(echo "$line" | grep -o "Removed" | wc -l)
-                    progress_subtask_done "Volumes removed ($volume_count)"
-                fi
-                ;;
-            *"Network"*"Removed"*)
-                progress_subtask_done "Network removed"
-                ;;
-        esac
-    done < <(docker_run "down" "$config" "$project_dir" -v "$@" 2>&1)
-
-    # Clean up the generated docker-compose.yml after destroy
-    local compose_file
-    compose_file="${project_dir}/docker-compose.yml"
-    if [[ -f "$compose_file" ]]; then
-        rm "$compose_file"
+    # Stop and remove container directly
+    if docker_cmd stop "$container_name" >/dev/null 2>&1; then
+        progress_subtask_done "Container stopped"
     fi
+
+    if docker_cmd rm -f "$container_name" >/dev/null 2>&1; then
+        progress_subtask_done "Container removed"
+    fi
+
+    # Clean up project volumes
+    if docker_cmd volume ls -q --filter "name=${project_name}_" 2>/dev/null | xargs -r docker_cmd volume rm >/dev/null 2>&1; then
+        progress_subtask_done "Volumes removed"
+    fi
+
+    # Clean up project networks  
+    if docker_cmd network ls -q --filter "name=${project_name}_" 2>/dev/null | xargs -r docker_cmd network rm >/dev/null 2>&1; then
+        progress_subtask_done "Networks removed"
+    fi
+
+    progress_done
     
     progress_phase_done "Destruction complete"
     progress_complete "VM $container_name destroyed"
