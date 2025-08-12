@@ -110,6 +110,19 @@
             state: restarted
         when: not is_docker_container
 
+      - name: restart audio
+        systemd:
+            name: pulseaudio
+            state: restarted
+            scope: user
+        when: not is_docker_container
+        ignore_errors: yes
+
+      - name: restart audio
+        command: supervisorctl restart audio
+        when: is_docker_container
+        ignore_errors: yes
+
       - name: restart supervisor
         command: supervisorctl reload
         when: is_docker_container
