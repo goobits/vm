@@ -16,6 +16,7 @@ versions:
   node: '22'
   nvm: v0.40.3
   pnpm: 10.12.3
+  python: '3.11'
 terminal:
   emoji: 🚀
   username: vm-dev
@@ -35,8 +36,13 @@ npm_packages:
   - npm-check-updates
   - prettier
   - eslint
+  - '@goobits/agentflow'
 aliases:
   claudeyolo: claude --dangerously-skip-permissions
   geminiyolo: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini
 claude_sync: true
 gemini_sync: true
+package_linking:
+  npm: true
+  pip: false
+  cargo: false

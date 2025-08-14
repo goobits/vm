@@ -53,7 +53,7 @@ fi
 CURRENT_DIR="$(pwd)"
 
 # Source shared utilities
-source "$SCRIPT_DIR/shared/npm-utils.sh"
+source "$SCRIPT_DIR/shared/link-detector.sh"
 source "$SCRIPT_DIR/shared/docker-utils.sh"
 source "$SCRIPT_DIR/shared/temporary-file-utils.sh"
 source "$SCRIPT_DIR/shared/mount-utils.sh"
@@ -1451,6 +1451,7 @@ docker_destroy() {
     project_name=$(get_project_name "$config")
 
     progress_task "Cleaning up resources"
+    progress_done
     
     # Stop and remove container directly
     if docker_cmd stop "$container_name" >/dev/null 2>&1; then

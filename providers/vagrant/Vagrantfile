@@ -156,21 +156,21 @@ Vagrant.configure("2") do |config|
       end
     end
 
-    # NPM linked packages support
+    # Package linking support (npm, pip, cargo)
     if project_config['npm_packages'] && !project_config['npm_packages'].empty?
       puts "🔗 Checking for linked npm packages..."
       
       # Load shared utilities
-      npm_utils_script = File.join(File.dirname(__FILE__), '..', '..', 'shared', 'npm-utils.sh')
+      link_detector_script = File.join(File.dirname(__FILE__), '..', '..', 'shared', 'link-detector.sh')
       security_utils_script = File.join(File.dirname(__FILE__), '..', '..', 'shared', 'security-utils.sh')
       mount_utils_script = File.join(File.dirname(__FILE__), '..', '..', 'shared', 'mount-utils.sh')
       
-      if File.exist?(npm_utils_script)
+      if File.exist?(link_detector_script)
         # Convert npm_packages array to space-separated string for bash
         npm_packages_str = project_config['npm_packages'].map { |pkg| "'#{pkg}'" }.join(' ')
         
-        # Use shared npm-utils.sh to detect linked packages with error output for user feedback
-        npm_detection_cmd = "bash -c \"source '#{npm_utils_script}' && detect_npm_linked_packages #{npm_packages_str}\""
+        # Use shared link-detector.sh to detect linked packages with error output for user feedback
+        npm_detection_cmd = "bash -c \"source '#{link_detector_script}' && generate_package_mounts npm #{npm_packages_str}\""
         linked_volumes_output = `#{npm_detection_cmd} 2>&1`
         exit_status = $?.exitstatus
         

@@ -432,69 +432,30 @@
         when: project_config.cargo_packages is defined and project_config.cargo_packages | length > 0
 
 
-      # Install Python via pyenv if pip_packages is defined
-      - name: Check if pyenv is already installed
-        stat:
-          path: '{{ home_dir }}/.pyenv/bin/pyenv'
-        register: pyenv_installed
-        become_user: '{{ project_user }}'
-        when: project_config.pip_packages is defined and project_config.pip_packages | length > 0
-
-      - name: Install pyenv dependencies
-        apt:
-          name:
-            - make
-            - build-essential
-            - libssl-dev
-            - zlib1g-dev
-            - libbz2-dev
-            - libreadline-dev
-            - libsqlite3-dev
-            - wget
-            - curl
-            - llvm
-            - libncursesw5-dev
-            - xz-utils
-            - tk-dev
-            - libxml2-dev
-            - libxmlsec1-dev
-            - libffi-dev
-            - liblzma-dev
-          state: present
-        when: project_config.pip_packages is defined and project_config.pip_packages | length > 0 and not pyenv_installed.stat.exists
-
-      - name: Install pyenv
-        when: project_config.pip_packages is defined and project_config.pip_packages | length > 0 and not pyenv_installed.stat.exists
-        block:
-          - name: Clone pyenv repository
-            git:
-              repo: https://github.com/pyenv/pyenv.git
-              dest: '{{ home_dir }}/.pyenv'
-              version: master
-            become_user: '{{ project_user }}'
-
-          - name: Install Python version
-            shell: |
-              export PYENV_ROOT="$HOME/.pyenv"
-              export PATH="$PYENV_ROOT/bin:$PATH"
-              eval "$(pyenv init -)"
-              pyenv install {{ project_config.versions.python | default('3.11') }}
-              pyenv global {{ project_config.versions.python | default('3.11') }}
-            args:
-              executable: /bin/bash
-            become_user: '{{ project_user }}'
-
-      - name: Install pip packages
+      # Install pip packages using pipx (with link detection)
+      - name: Install pip packages with pipx (with link detection)
         shell: |
-          export PYENV_ROOT="$HOME/.pyenv"
-          export PATH="$PYENV_ROOT/bin:$PATH"
-          eval "$(pyenv init -)"
-          pip install {{ item }}
+            package="{{ item }}"
+            # Sanitize package name to match mount path (replace - with _ and handle case)
+            safe_package_name="${package//-/_}"
+            safe_package_name="${safe_package_name,,}"
+            if [ -d "/workspace/.links/pip/$package" ]; then
+                echo "🔗 Linking local package: $package"
+                pipx install -e "/workspace/.links/pip/$package"
+            elif [ -d "/workspace/.links/pip/$safe_package_name" ]; then
+                echo "🔗 Linking local package: $safe_package_name"
+                pipx install -e "/workspace/.links/pip/$safe_package_name"
+            else
+                echo "📦 Installing from registry: $package"
+                pipx install "$package"
+            fi
         args:
-          executable: /bin/bash
+            executable: /bin/bash
         become_user: '{{ project_user }}'
         loop: '{{ project_config.pip_packages }}'
         when: project_config.pip_packages is defined and project_config.pip_packages | length > 0
+        register: pipx_install_result
+        failed_when: pipx_install_result.rc != 0
 
 
       # Load service definitions

@@ -10,7 +10,7 @@ VM_TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # Source shared utilities
 source "$VM_TOOL_DIR/shared/deep-merge.sh"
-source "$VM_TOOL_DIR/shared/npm-utils.sh"
+source "$VM_TOOL_DIR/shared/link-detector.sh"
 
 # Generate docker-compose.yml from VM configuration
 # Args: config_path (required), project_dir (optional, defaults to pwd)
@@ -192,30 +192,65 @@ generate_docker_compose() {
         groups+=("video" "render")
     fi
 
-    # NPM linked packages volumes
-    local npm_link_volumes=""
-    if command -v npm >/dev/null 2>&1 && declare -f detect_npm_linked_packages >/dev/null 2>&1; then
-        local npm_packages_array=()
-        local npm_packages
-        npm_packages="$(echo "$config" | jq -r '.npm_packages[]? // empty')"
-        if [[ -n "$npm_packages" ]]; then
-            while IFS= read -r package; do
-                [[ -z "$package" ]] && continue
-                npm_packages_array+=("$package")
-            done <<< "$npm_packages"
-
-            # Use the shared function to detect linked packages
-            local linked_volumes
-            linked_volumes=$(detect_npm_linked_packages "${npm_packages_array[@]}")
-            if [[ -n "$linked_volumes" ]]; then
-                while IFS= read -r volume; do
-                    [[ -z "$volume" ]] && continue
-                    # Extract just the volume mapping part and format for docker-compose
-                    npm_link_volumes+="\\n      - $volume"
-                done <<< "$linked_volumes"
+    # Package linking volumes (npm, pip, cargo)
+    local package_link_volumes=""
+    
+    # Check each package manager if enabled and packages are configured
+    for pm in "npm" "pip" "cargo"; do
+        local pm_enabled=""
+        local packages_array=()
+        
+        # Check if this package manager is enabled
+        case "$pm" in
+            "npm")
+                pm_enabled="$(echo "$config" | jq -r '.package_linking.npm // true')"
+                local npm_packages
+                npm_packages="$(echo "$config" | jq -r '.npm_packages[]? // empty')"
+                if [[ -n "$npm_packages" ]]; then
+                    while IFS= read -r package; do
+                        [[ -z "$package" ]] && continue
+                        packages_array+=("$package")
+                    done <<< "$npm_packages"
+                fi
+                ;;
+            "pip")
+                pm_enabled="$(echo "$config" | jq -r '.package_linking.pip // false')"
+                local pip_packages
+                pip_packages="$(echo "$config" | jq -r '.pip_packages[]? // empty')"
+                if [[ -n "$pip_packages" ]]; then
+                    while IFS= read -r package; do
+                        [[ -z "$package" ]] && continue
+                        packages_array+=("$package")
+                    done <<< "$pip_packages"
+                fi
+                ;;
+            "cargo")
+                pm_enabled="$(echo "$config" | jq -r '.package_linking.cargo // false')"
+                local cargo_packages
+                cargo_packages="$(echo "$config" | jq -r '.cargo_packages[]? // empty')"
+                if [[ -n "$cargo_packages" ]]; then
+                    while IFS= read -r package; do
+                        [[ -z "$package" ]] && continue
+                        packages_array+=("$package")
+                    done <<< "$cargo_packages"
+                fi
+                ;;
+        esac
+        
+        # Generate mounts if enabled and packages exist
+        if [[ "$pm_enabled" == "true" ]] && [[ ${#packages_array[@]} -gt 0 ]] && command -v "$pm" >/dev/null 2>&1; then
+            if declare -f generate_package_mounts >/dev/null 2>&1; then
+                local linked_volumes
+                linked_volumes=$(generate_package_mounts "$pm" "${packages_array[@]}")
+                if [[ -n "$linked_volumes" ]]; then
+                    while IFS= read -r volume; do
+                        [[ -z "$volume" ]] && continue
+                        package_link_volumes+="\\n      - $volume"
+                    done <<< "$linked_volumes"
+                fi
             fi
         fi
-    fi
+    done
 
     # Build consolidated devices and groups sections
     local devices_section=""
@@ -259,7 +294,7 @@ generate_docker_compose() {
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${project_name}_nvm:/home/$project_user/.nvm
       - ${project_name}_cache:/home/$project_user/.cache
-      - ${project_name}_config:/tmp$claude_sync_volume$gemini_sync_volume$database_volumes$temp_mount_volumes$npm_link_volumes$audio_volumes$gpu_volumes$ports_section$devices_section$groups_section
+      - ${project_name}_config:/tmp$claude_sync_volume$gemini_sync_volume$database_volumes$temp_mount_volumes$package_link_volumes$audio_volumes$gpu_volumes$ports_section$devices_section$groups_section
     networks:
       - ${project_name}_network
     # Security: Removed dangerous capabilities that create container escape risks
