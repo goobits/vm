@@ -94,6 +94,10 @@ properties:
         type: string
         default: 10.12.3
         description: pnpm package manager version
+      python:
+        type: string
+        default: "3.11"
+        description: Python version to install via pyenv (e.g., '3.11', '3.12.0')
   ports:
     type: object
     description: Port forwarding configuration. Maps service names to host ports.
@@ -368,6 +372,22 @@ properties:
     type: boolean
     default: false
     description: Enable persistent database storage in .vm/data/ directory
+  package_linking:
+    type: object
+    description: Package linking detection configuration
+    properties:
+      npm:
+        type: boolean
+        default: true
+        description: Enable automatic detection and mounting of npm linked packages
+      pip:
+        type: boolean
+        default: false
+        description: Enable automatic detection and mounting of pip editable packages
+      cargo:
+        type: boolean
+        default: false
+        description: Enable automatic detection and mounting of cargo path-based packages
 required:
   - project
 additionalProperties: false
