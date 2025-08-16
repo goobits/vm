@@ -9,6 +9,7 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source shared utilities
+source "$SCRIPT_DIR/shared/logging-utils.sh"
 source "$SCRIPT_DIR/shared/temporary-file-utils.sh"
 source "$SCRIPT_DIR/shared/security-utils.sh"
 source "$SCRIPT_DIR/shared/config-processor.sh"
@@ -57,8 +58,7 @@ get_container_name() {
 	container_name=$(get_container_name_from_state)
 
 	if [[ -z "$container_name" ]]; then
-		echo "❌ Error: Could not read container name from state file" >&2
-		echo "📁 State file: $TEMP_STATE_FILE" >&2
+		vm_error "Could not read container name from state file" "state_file=$TEMP_STATE_FILE"
 		return 1
 	fi
 
@@ -543,13 +543,13 @@ update_temp_vm_with_mounts() {
 	
 	# Validate input
 	if [[ -z "$container_name" ]]; then
-		echo "❌ Error: Container name is required" >&2
+		vm_error "Container name is required" "operation=update_temp_vm_mounts"
 		return 1
 	fi
 	
 	# Validate state file exists and is readable
 	if [[ ! -f "$TEMP_STATE_FILE" ]]; then
-		echo "❌ Error: Temp VM state file not found: $TEMP_STATE_FILE" >&2
+		vm_error "Temp VM state file not found" "state_file=$TEMP_STATE_FILE operation=update_temp_vm_mounts"
 		return 1
 	fi
 	
@@ -744,7 +744,7 @@ environments:
 	end_time=$(date +%s)
 	local elapsed=$((end_time - start_time))
 	
-	echo "✅ Container updated with new mounts in ${elapsed} seconds"
+	vm_info "Container updated with new mounts" "duration=${elapsed}s container_name=$container_name"
 	return 0
 }
 
@@ -1049,7 +1049,7 @@ handle_temp_command() {
 				echo "⚠️  Failed to remove state file: $TEMP_STATE_FILE"
 			fi
 			
-			echo "✅ Temp VM destroyed"
+			vm_info "Temp VM destroyed" "container_name=$container_name provider=$provider"
 			exit 0
 			;;
 		"ssh")
