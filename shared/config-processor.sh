@@ -133,9 +133,18 @@ find_vm_yaml_upwards() {
     local start_dir="$1"
     local current_dir
     current_dir="$(cd "$start_dir" && pwd)"
+    
+    # Get the VM tool's workspace directory to exclude it
+    local vm_tool_workspace
+    vm_tool_workspace="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
     while [[ "$current_dir" != "/" ]]; do
         if [[ -f "$current_dir/vm.yaml" ]]; then
+            # Skip the VM tool's own vm.yaml
+            if [[ "$current_dir" == "$vm_tool_workspace" ]]; then
+                current_dir="$(dirname "$current_dir")"
+                continue
+            fi
             echo "$current_dir/vm.yaml"
             return 0
         fi

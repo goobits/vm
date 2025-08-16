@@ -840,7 +840,16 @@ docker_up() {
                 echo "      $ docker network rm \$(docker network ls -q --filter type=custom)"
                 ;;
             "Port Conflict")
-                local port=$(echo "$error_message" | grep -oE '[0-9]+' | head -n 1)
+                # Extract port number from error message like "Bind for 127.0.0.1:3150 failed"
+                local port=""
+                if [[ "$error_message" =~ :([0-9]+)[[:space:]]failed ]]; then
+                    port="${BASH_REMATCH[1]}"
+                elif [[ "$error_message" =~ port[[:space:]]([0-9]+) ]]; then
+                    port="${BASH_REMATCH[1]}"
+                else
+                    # Fallback to first number
+                    port=$(echo "$error_message" | grep -oE '[0-9]+' | head -n 1)
+                fi
                 echo "🔍 Diagnosis:"
                 echo "   Port $port is already in use by another process."
                 echo ""
