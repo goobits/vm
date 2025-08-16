@@ -48,6 +48,8 @@ package_linking:
   npm: true
   pip: true
   cargo: true
-# Ports 3150-3159 reserved for vm
-ports:
-  www_dev: 3150
+# Note: Projects should define their own ports in their vm.yaml
+# Example port ranges by project:
+#   Project 1: 3000-3009
+#   Project 2: 3010-3019
+#   Project 3: 3020-3029
