@@ -31,8 +31,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Port Conflict Resolution**: Fixed issue where VM tool's own configuration was incorrectly inherited by user projects, causing port 3150 conflicts
+- **Config Scanning**: Updated configuration discovery to exclude VM tool's workspace directory from upward scanning
+- **Error Messages**: Fixed port conflict error messages showing incorrect port numbers (was showing container ID fragments)
+- **Hostname Validation**: Added proper error handling for missing hostname field in Docker provisioning
+
 ### Changed
 - **JSON Configuration Deprecation**: JSON configuration files (`.json`) are no longer supported for direct use. Users must migrate existing JSON configs to YAML format using `vm migrate` command. This simplifies the configuration system while maintaining backward compatibility through migration.
+- **Default Ports**: Removed hardcoded port 3150 from VM tool's default configuration to prevent conflicts with user projects
 
 ### Added
 - **Modular Architecture**: Extracted temporary VM functionality into separate `vm-temporary.sh` module for better maintainability and debugging
