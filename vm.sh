@@ -18,7 +18,7 @@ fi
 
 # Check for required tools
 if ! command -v yq &> /dev/null; then
-    echo "❌ Error: yq is not installed. This tool is required for YAML processing."
+    vm_error "yq is not installed" "component=yaml_processor"
     echo ""
     echo "📦 To install yq on Ubuntu/Debian:"
     echo "   sudo apt-get update"
@@ -48,6 +48,9 @@ fi
 
 # Global variables - defined at script level for use across functions
 # SCRIPT_DIR: Directory containing this script and shared utilities
+
+# Source shared logging utilities
+source "$SCRIPT_DIR/shared/logging-utils.sh"
 # CURRENT_DIR: User's working directory when script was invoked  
 # Used by provider interface and config processing
 CURRENT_DIR="$(pwd)"
