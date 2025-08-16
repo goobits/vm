@@ -290,12 +290,12 @@ get_temp_mounts() {
 		# Handle both old and new formats
 		# First try old format (simple string)
 		local old_format
-		old_format=$(yq -r '.mounts[]? // empty' "$TEMP_STATE_FILE" 2>/dev/null | grep -E '^[^:]+:[^:]+:[^:]+$' | tr '\n' ',' | sed 's/,$//')
+		old_format=$(yq eval '.mounts[]? // empty' "$TEMP_STATE_FILE" 2>/dev/null | grep -E '^[^:]+:[^:]+:[^:]+$' | tr '\n' ',' | sed 's/,$//')
 		if [[ -n "$old_format" ]]; then
 			echo "$old_format"
 		else
 			# New format - construct mount string
-			yq -r '.mounts[]? | "\(.source):\(.target):\(.permissions)"' "$TEMP_STATE_FILE" 2>/dev/null | tr '\n' ',' | sed 's/,$//'
+			yq eval '.mounts[]? | "\(.source):\(.target):\(.permissions)"' "$TEMP_STATE_FILE" 2>/dev/null | tr '\n' ',' | sed 's/,$//'
 		fi
 	else
 		# Fallback to awk if yq is not available
@@ -583,14 +583,14 @@ update_temp_vm_with_mounts() {
 	local mount_string=""
 	if command -v yq &> /dev/null; then
 		# Check format and build mount string (space-separated realpath:basename pairs)
-		if yq -r '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
+		if yq eval '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
 			# New format - extract source paths and create realpath:basename format
-			mount_string=$(yq -r '.mounts[] | .source' "$TEMP_STATE_FILE" 2>/dev/null | while read -r source; do
+			mount_string=$(yq eval '.mounts[] | .source' "$TEMP_STATE_FILE" 2>/dev/null | while read -r source; do
 				echo -n "$(realpath "$source" 2>/dev/null || echo "$source"):$(basename "$source") "
 			done | sed 's/ $//')
 		else
 			# Old format - parse and convert to expected format
-			mount_string=$(yq -r '.mounts[]' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
+			mount_string=$(yq eval '.mounts[]' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
 				# Extract source from old format mount string
 				source="${mount%%:*}"
 				echo -n "$(realpath "$source" 2>/dev/null || echo "$source"):$(basename "$source") "
@@ -1117,12 +1117,12 @@ EOF
 				echo ""
 				echo "Mounts:"
 				# Try to detect format and display accordingly
-				if yq -r '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
+				if yq eval '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
 					# New format
-					yq -r '.mounts[]? | "  • \(.source) → \(.target) [\(.permissions)]"' "$TEMP_STATE_FILE" 2>/dev/null
+					yq eval '.mounts[]? | "  • \(.source) → \(.target) [\(.permissions)]"' "$TEMP_STATE_FILE" 2>/dev/null
 				else
 					# Old format
-					yq -r '.mounts[]?' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
+					yq eval '.mounts[]?' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
 						echo "  • $mount"
 					done
 				fi
@@ -1234,9 +1234,9 @@ EOF
 			
 			# Check if already mounted
 			if command -v yq &> /dev/null; then
-				if yq -r '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
+				if yq eval '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
 					# New format
-					if yq -r '.mounts[] | select(.source == "'"$abs_source"'") | .source' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "$abs_source"; then
+					if yq eval '.mounts[] | select(.source == "'"$abs_source"'") | .source' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "$abs_source"; then
 						echo "❌ Directory '$abs_source' is already mounted"
 						exit 1
 					fi
@@ -1359,9 +1359,9 @@ EOF
 				# Show what will be removed
 				if command -v yq &> /dev/null; then
 					local mount_count
-				mount_count=$(yq -r '.mounts | length' "$TEMP_STATE_FILE" 2>/dev/null)
+				mount_count=$(yq eval '.mounts | length' "$TEMP_STATE_FILE" 2>/dev/null)
 					echo "This will remove $mount_count mount(s) and clean up volumes:"
-					yq -r '.mounts[]? | "  📂 \(.source)"' "$TEMP_STATE_FILE" 2>/dev/null
+					yq eval '.mounts[]? | "  📂 \(.source)"' "$TEMP_STATE_FILE" 2>/dev/null
 				fi
 				
 				# Get confirmation
@@ -1420,9 +1420,9 @@ EOF
 			# Check if mount exists
 			local mount_found=""
 			if command -v yq &> /dev/null; then
-				if yq -r '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
+				if yq eval '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
 					# New format - check if mount exists
-					mount_found=$(yq -r '.mounts[] | select(.source == "'"$abs_path"'") | .source' "$TEMP_STATE_FILE" 2>/dev/null)
+					mount_found=$(yq eval '.mounts[] | select(.source == "'"$abs_path"'") | .source' "$TEMP_STATE_FILE" 2>/dev/null)
 				fi
 			fi
 			
@@ -1431,7 +1431,7 @@ EOF
 				echo ""
 				echo "Current mounts:"
 				if command -v yq &> /dev/null; then
-					yq -r '.mounts[]? | "  • \(.source)"' "$TEMP_STATE_FILE" 2>/dev/null
+					yq eval '.mounts[]? | "  • \(.source)"' "$TEMP_STATE_FILE" 2>/dev/null
 				fi
 				exit 1
 			fi
@@ -1439,7 +1439,7 @@ EOF
 			# Check if it's the last mount
 			local mount_count=0
 			if command -v yq &> /dev/null; then
-				mount_count=$(yq -r '.mounts | length' "$TEMP_STATE_FILE" 2>/dev/null)
+				mount_count=$(yq eval '.mounts | length' "$TEMP_STATE_FILE" 2>/dev/null)
 			fi
 			
 			if [[ "$mount_count" -le 1 ]]; then
@@ -1524,12 +1524,12 @@ EOF
 				echo ""
 				
 				# Check if new format exists
-				if yq -r '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
+				if yq eval '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
 					# New format
-					yq -r '.mounts[]? | "  📂 \(.source) → \(.target) (\(.permissions))"' "$TEMP_STATE_FILE" 2>/dev/null
+					yq eval '.mounts[]? | "  📂 \(.source) → \(.target) (\(.permissions))"' "$TEMP_STATE_FILE" 2>/dev/null
 				else
 					# Old format
-					yq -r '.mounts[]?' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
+					yq eval '.mounts[]?' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
 						echo "  📂 $mount"
 					done
 				fi
@@ -1568,12 +1568,12 @@ EOF
 						
 						# Show mount count
 						local mount_count=0
-						if yq -r '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
+						if yq eval '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
 							# New format
-							mount_count=$(yq -r '.mounts | length' "$TEMP_STATE_FILE" 2>/dev/null)
+							mount_count=$(yq eval '.mounts | length' "$TEMP_STATE_FILE" 2>/dev/null)
 						else
 							# Old format  
-							mount_count=$(yq -r '.mounts | length' "$TEMP_STATE_FILE" 2>/dev/null)
+							mount_count=$(yq eval '.mounts | length' "$TEMP_STATE_FILE" 2>/dev/null)
 						fi
 						echo "   Mounts: $mount_count directories"
 						
@@ -2018,7 +2018,7 @@ EOF
 			echo ""
 			echo "Current mounts:"
 			if command -v yq &> /dev/null && [[ -f "$TEMP_STATE_FILE" ]]; then
-				yq -r '.mounts[]?' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
+				yq eval '.mounts[]?' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
 					# Extract just the source path for readability
 					source_path=$(echo "$mount" | cut -d: -f1)
 					echo "  • $(basename "$source_path")"
@@ -2183,7 +2183,7 @@ EOF
 	fi
 	
 	# Use yq to merge schema defaults with temp config
-	if ! CONFIG=$(yq -s '.[0] * .[1]' <(echo "$SCHEMA_DEFAULTS") "$TEMP_CONFIG_FILE" 2>&1); then
+	if ! CONFIG=$(yq eval-all '.[0] * .[1]' <(echo "$SCHEMA_DEFAULTS") "$TEMP_CONFIG_FILE" 2>&1); then
 		echo "❌ Failed to generate temp VM configuration"
 		echo "📋 Error merging configs: $CONFIG"
 		echo "💡 Check that yq is installed and working: yq --version"

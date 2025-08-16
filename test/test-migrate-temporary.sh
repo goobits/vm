@@ -294,7 +294,7 @@ EOF
 
     # Check version field exists
     local version
-    version=$(yq -r '.version' vm.yaml)
+    version=$(yq eval '.version' vm.yaml)
     if [ "$version" = "1.0" ]; then
         echo -e "${GREEN}✓ Version field is present and correct${NC}"
     else
@@ -304,7 +304,7 @@ EOF
 
     # Check content was preserved
     local project_name
-    project_name=$(yq -r '.project.name' vm.yaml)
+    project_name=$(yq eval '.project.name' vm.yaml)
     if [ "$project_name" = "test-project" ]; then
         echo -e "${GREEN}✓ Project name was preserved${NC}"
     else
@@ -314,7 +314,7 @@ EOF
 
     # Check services
     local pg_enabled
-    pg_enabled=$(yq -r '.services.postgresql.enabled' vm.yaml)
+    pg_enabled=$(yq eval '.services.postgresql.enabled' vm.yaml)
     if [ "$pg_enabled" = "true" ]; then
         echo -e "${GREEN}✓ Service configuration was preserved${NC}"
     else
@@ -410,7 +410,7 @@ test_temp_creation() {
     # Check state file contains correct info
     if [ -f "$HOME/.vm/temp-vm.state" ]; then
         local container_name
-        container_name=$(yq -r '.container_name' "$HOME/.vm/temp-vm.state")
+        container_name=$(yq eval '.container_name' "$HOME/.vm/temp-vm.state")
         if [[ "$container_name" =~ ^temp-vm- ]]; then
             echo -e "${GREEN}✓ State file contains valid container name${NC}"
         else
@@ -524,7 +524,7 @@ test_temp_destroy() {
 
     # Get container name before destroy
     local container_name
-    container_name=$(yq -r '.container_name' "$HOME/.vm/temp-vm.state")
+    container_name=$(yq eval '.container_name' "$HOME/.vm/temp-vm.state")
 
     # Destroy temp VM
     vm temp destroy
