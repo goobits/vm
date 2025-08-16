@@ -140,6 +140,7 @@ The VM automatically tracks your last directory when you exit SSH. The `vm get-s
 ```yaml
 project:
   name: my-project
+  hostname: dev.my-project.local
 ports:
   frontend: 3000
   backend: 3001

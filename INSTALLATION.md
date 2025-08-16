@@ -21,6 +21,7 @@ Create a vm.yaml file (or use `vm init`):
 ```yaml
 project:
   name: my-project
+  hostname: dev.my-project.local
 ports:
   frontend: 3000
   backend: 3001
