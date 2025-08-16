@@ -125,11 +125,11 @@ if [[ -n "$SERVICES" ]]; then
         fi
         
         # Extract the specific service configuration and merge it using yq
-        service_value="$(yq -r ".services.$service" "$service_config_file")"
+        service_value="$(yq eval ".services.$service" "$service_config_file")"
         
         # Use yq to merge the service configuration into the base config
         base_config_new="$(create_temp_file "vm-config-new.XXXXXX")"
-        if ! echo "$service_value" | yq -y . | yq -s '.[0].services["'"$service"'"] = .[1] | .[0]' "$base_config_temp" - > "$base_config_new"; then
+        if ! echo "$service_value" | yq -o yaml . | yq eval-all '.[0].services["'"$service"'"] = .[1] | .[0]' "$base_config_temp" - > "$base_config_new"; then
             echo "❌ Error: Failed to merge service configuration for: $service" >&2
             exit 1
         fi
@@ -147,7 +147,7 @@ safe_yq_update() {
     local temp_output
     temp_output="$(create_temp_file "yq-update.XXXXXX")"
     
-    if ! yq -y "$yq_expression" "$temp_file" > "$temp_output"; then
+    if ! yq -o yaml "$yq_expression" "$temp_file" > "$temp_output"; then
         echo "❌ Error: $error_message" >&2
         exit 1
     fi
@@ -199,18 +199,18 @@ fi
 
 # Write final configuration
 if cp "$base_config_temp" "$OUTPUT_FILE"; then
-    project_name="$(yq -r '.project.name' "$OUTPUT_FILE")"
+    project_name="$(yq eval '.project.name' "$OUTPUT_FILE")"
     echo "✅ Generated configuration for project: $project_name"
     echo "📍 Configuration file: $OUTPUT_FILE"
     
     # Show enabled services using yq
-    enabled_services="$(yq -r '.services | to_entries[] | select(.value.enabled == true) | .key' "$OUTPUT_FILE" 2>/dev/null | tr '\n' ' ' || echo "none")"
+    enabled_services="$(yq eval '.services | to_entries[] | select(.value.enabled == true) | .key' "$OUTPUT_FILE" 2>/dev/null | tr '\n' ' ' || echo "none")"
     if [[ "$enabled_services" != "none" ]]; then
         echo "🔧 Enabled services: $enabled_services"
     fi
     
     # Show port allocations using yq
-    ports="$(yq -r '.ports // {} | to_entries[] | .key + ":" + (.value | tostring)' "$OUTPUT_FILE" 2>/dev/null | tr '\n' ' ' || echo "")"
+    ports="$(yq eval '.ports // {} | to_entries[] | .key + ":" + (.value | tostring)' "$OUTPUT_FILE" 2>/dev/null | tr '\n' ' ' || echo "")"
     if [[ -n "$ports" ]]; then
         echo "🔌 Port allocations: $ports"
     fi

@@ -337,7 +337,7 @@ validate_against_yaml_schema() {
 
     # Create temp file for config
     local temp_config="/tmp/vm-config-validate-$$.yaml"
-    echo "$config" | yq -y . > "$temp_config"
+    echo "$config" | yq -o yaml . > "$temp_config"
 
     # Use Python to validate YAML against YAML schema
     local validation_output

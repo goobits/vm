@@ -1075,7 +1075,7 @@ docker_up() {
     # Fix volume permissions before Ansible
     progress_task "Setting up permissions"
     local project_user
-    project_user=$(echo "$config" | yq -r '.vm.user // "developer"')
+    project_user=$(echo "$config" | yq eval '.vm.user // "developer"')
     if docker_run "exec" "$config" "$project_dir" chown -R "$(printf '%q' "$project_user"):$(printf '%q' "$project_user")" "/home/$(printf '%q' "$project_user")/.nvm" "/home/$(printf '%q' "$project_user")/.cache"; then
         progress_done
     else
@@ -1234,9 +1234,9 @@ docker_ssh() {
 
     # Get workspace path and user from config
     local workspace_path
-    workspace_path=$(echo "$config" | yq -r '.project.workspace_path // "/workspace"')
+    workspace_path=$(echo "$config" | yq eval '.project.workspace_path // "/workspace"')
     local project_user
-    project_user=$(echo "$config" | yq -r '.vm.user // "developer"')
+    project_user=$(echo "$config" | yq eval '.vm.user // "developer"')
     local target_dir="${workspace_path}"
 
     if [[ "${VM_DEBUG:-}" = "true" ]]; then
@@ -1754,7 +1754,7 @@ docker_provision() {
     # Fix volume permissions before Ansible
     progress_task "Setting up permissions"
     local project_user
-    project_user=$(echo "$config" | yq -r '.vm.user // "developer"')
+    project_user=$(echo "$config" | yq eval '.vm.user // "developer"')
     if docker_run "exec" "$config" "$project_dir" chown -R "$(printf '%q' "$project_user"):$(printf '%q' "$project_user")" "/home/$(printf '%q' "$project_user")/.nvm" "/home/$(printf '%q' "$project_user")/.cache"; then
         progress_done
     else
@@ -1928,9 +1928,9 @@ vm_list() {
             project_dir=""
 
             if command -v yq &> /dev/null; then
-                temp_container=$(yq -r '.container_name // empty' "$TEMP_STATE_FILE" 2>/dev/null)
-                created_at=$(yq -r '.created_at // empty' "$TEMP_STATE_FILE" 2>/dev/null)
-                project_dir=$(yq -r '.project_dir // empty' "$TEMP_STATE_FILE" 2>/dev/null)
+                temp_container=$(yq eval '.container_name // empty' "$TEMP_STATE_FILE" 2>/dev/null)
+                created_at=$(yq eval '.created_at // empty' "$TEMP_STATE_FILE" 2>/dev/null)
+                project_dir=$(yq eval '.project_dir // empty' "$TEMP_STATE_FILE" 2>/dev/null)
             else
                 temp_container=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
             fi
@@ -1947,14 +1947,14 @@ vm_list() {
                 local mounts=""
                 if command -v yq &> /dev/null; then
                     # Check if new format (objects with source/target/permissions) exists
-                    if yq -r '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
+                    if yq eval '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
                         # New format - extract source paths
-                        mounts=$(yq -r '.mounts[].source' "$TEMP_STATE_FILE" 2>/dev/null | while read -r source; do
+                        mounts=$(yq eval '.mounts[].source' "$TEMP_STATE_FILE" 2>/dev/null | while read -r source; do
                             echo -n "$(basename "$source"), "
                         done | sed 's/, $//')
                     else
                         # Old format fallback (simple strings)
-                        mounts=$(yq -r '.mounts[]?' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
+                        mounts=$(yq eval '.mounts[]?' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
                             source_path=$(echo "$mount" | cut -d: -f1)
                             echo -n "$(basename "$source_path"), "
                         done | sed 's/, $//')
@@ -2168,7 +2168,7 @@ vm_migrate() {
     # Convert JSON to YAML
     echo "🔄 Converting JSON to YAML..."
     local YAML_CONTENT
-    if ! YAML_CONTENT=$(yq -y . "$INPUT_FILE" 2>&1); then
+    if ! YAML_CONTENT=$(yq -o yaml . "$INPUT_FILE" 2>&1); then
         echo "❌ Failed to convert JSON to YAML:" >&2
         echo "   $YAML_CONTENT" >&2
         return 1
@@ -2176,11 +2176,11 @@ vm_migrate() {
 
     # Remove $schema field (not needed for user configs)
     echo "🧹 Removing \$schema field..."
-    YAML_CONTENT=$(echo "$YAML_CONTENT" | yq 'del(."$schema")' | yq -y .)
+    YAML_CONTENT=$(echo "$YAML_CONTENT" | yq 'del(."$schema")' | yq -o yaml .)
 
     # Add version field
     echo "📝 Adding version field..."
-    YAML_CONTENT=$(echo "$YAML_CONTENT" | yq '. = {"version": "1.0"} + .' | yq -y .)
+    YAML_CONTENT=$(echo "$YAML_CONTENT" | yq '. = {"version": "1.0"} + .' | yq -o yaml .)
 
     # Handle dry run mode
     if [[ "$DRY_RUN" == "true" ]]; then
@@ -2794,7 +2794,7 @@ case "${1:-}" in
             # Determine project directory
             if [[ "$CUSTOM_CONFIG" = "__SCAN__" ]]; then
                 # In scan mode, get the directory where config was found
-                CONFIG_DIR=$(echo "$CONFIG" | yq -r '.__config_dir // empty' 2>/dev/null)
+                CONFIG_DIR=$(echo "$CONFIG" | yq eval '.__config_dir // empty' 2>/dev/null)
                 if [[ -n "$CONFIG_DIR" ]]; then
                     PROJECT_DIR="$CONFIG_DIR"
                 else
@@ -2950,7 +2950,7 @@ case "${1:-}" in
                     if [[ "$CUSTOM_CONFIG" = "__SCAN__" ]]; then
                         # In scan mode, we need to figure out where we are relative to the found config
                         # Get the directory where vm.yaml was found from validate-config output
-                        CONFIG_DIR=$(echo "$CONFIG" | yq -r '.__config_dir // empty' 2>/dev/null)
+                        CONFIG_DIR=$(echo "$CONFIG" | yq eval '.__config_dir // empty' 2>/dev/null)
                         if [[ "${VM_DEBUG:-}" = "true" ]]; then
                             echo "DEBUG start: CUSTOM_CONFIG='$CUSTOM_CONFIG'" >&2
                             echo "DEBUG start: CONFIG_DIR='$CONFIG_DIR'" >&2
@@ -2982,7 +2982,7 @@ case "${1:-}" in
                     if [[ "$CUSTOM_CONFIG" = "__SCAN__" ]]; then
                         # In scan mode, we need to figure out where we are relative to the found config
                         # Get the directory where vm.yaml was found from validate-config output
-                        CONFIG_DIR=$(echo "$CONFIG" | yq -r '.__config_dir // empty' 2>/dev/null)
+                        CONFIG_DIR=$(echo "$CONFIG" | yq eval '.__config_dir // empty' 2>/dev/null)
                         if [[ -n "$CONFIG_DIR" ]] && [[ "$CONFIG_DIR" != "$CURRENT_DIR" ]]; then
                             # Calculate path from config dir to current dir
                             RELATIVE_PATH=$(realpath --relative-to="$CONFIG_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
@@ -3073,7 +3073,7 @@ case "${1:-}" in
                     # Calculate relative path (similar to Docker SSH logic)
                     if [[ "$CUSTOM_CONFIG" = "__SCAN__" ]]; then
                         # In scan mode, figure out where we are relative to the found config
-                        CONFIG_DIR=$(echo "$CONFIG" | yq -r '.__config_dir // empty' 2>/dev/null)
+                        CONFIG_DIR=$(echo "$CONFIG" | yq eval '.__config_dir // empty' 2>/dev/null)
                         if [[ -n "$CONFIG_DIR" ]] && [[ "$CONFIG_DIR" != "$CURRENT_DIR" ]]; then
                             RELATIVE_PATH=$(realpath --relative-to="$CONFIG_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
                         else
@@ -3085,7 +3085,7 @@ case "${1:-}" in
                     fi
 
                     # Get workspace path from config
-                    WORKSPACE_PATH=$(echo "$CONFIG" | yq -r '.project.workspace_path // "/workspace"')
+                    WORKSPACE_PATH=$(echo "$CONFIG" | yq eval '.project.workspace_path // "/workspace"')
 
                     if [[ "$RELATIVE_PATH" != "." ]]; then
                         TARGET_DIR="${WORKSPACE_PATH}/${RELATIVE_PATH}"
