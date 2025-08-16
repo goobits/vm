@@ -1,6 +1,6 @@
 #!/bin/bash
 # Unified Test Runner - Consolidates all test functionality
-# Usage: ./test.sh [--suite <suite>] [--list] [--help]
+# Usage: ./run-tests.sh [--suite <suite>] [--list] [--help]
 
 set -e
 set -u

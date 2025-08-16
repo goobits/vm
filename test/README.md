@@ -68,20 +68,20 @@ test/
 
 ### Main Test Runner
 
-The main test runner (`./test.sh`) still provides comprehensive testing:
+The main test runner (`./run-tests.sh`) still provides comprehensive testing:
 
 ```bash
 # Run all test suites
-./test.sh
+./run-tests.sh
 
 # Run specific test suite
-./test.sh --suite framework     # Framework validation tests
-./test.sh --suite minimal       # Minimal VM functionality
-./test.sh --suite services      # Service integration tests
-./test.sh --suite languages     # Language support tests
-./test.sh --suite cli           # CLI command tests
-./test.sh --suite lifecycle     # Calls system/vm-lifecycle.test.sh
-./test.sh --suite migrate-temporary # Calls integration/migration.test.sh
+./run-tests.sh --suite framework     # Framework validation tests
+./run-tests.sh --suite minimal       # Minimal VM functionality
+./run-tests.sh --suite services      # Service integration tests
+./run-tests.sh --suite languages     # Language support tests
+./run-tests.sh --suite cli           # CLI command tests
+./run-tests.sh --suite lifecycle     # Calls system/vm-lifecycle.test.sh
+./run-tests.sh --suite migrate-temporary # Calls integration/migration.test.sh
 ```
 
 ### Individual Test Categories
@@ -187,7 +187,7 @@ The previous test structure has been reorganized:
 
 ### Running Reorganized Tests
 
-The main `test.sh` runner has been updated to work with the new structure:
+The main `run-tests.sh` runner has been updated to work with the new structure:
 
 - Framework detection is now separated into unit tests
 - VM lifecycle tests are properly categorized as system tests
