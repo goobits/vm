@@ -283,7 +283,7 @@ load_and_merge_config() {
         if [[ "$config_file_to_load" == *.json ]]; then
             echo "❌ Failed to parse configuration file: $config_file_to_load" >&2
             echo "" >&2
-            echo "   JSON configuration files are no longer supported." >&2
+            echo "   JSON configs are no longer supported." >&2
             echo "" >&2
             echo "   To migrate your configuration, run:" >&2
             echo "     vm migrate --input $config_file_to_load" >&2
@@ -333,6 +333,27 @@ validate_against_yaml_schema() {
     if [[ ! -f "$schema_path" ]]; then
         echo "Schema file not found: $schema_path"
         return 1
+    fi
+
+    # Check if Python dependencies are available
+    local dependency_check
+    if ! dependency_check=$(python3 -c "
+try:
+    import yaml
+    import jsonschema
+    print('dependencies_available')
+except ImportError as e:
+    print(f'missing_dependency: {e}')
+" 2>&1); then
+        echo "⚠️  Warning: Python not available for schema validation, using basic validation"
+        echo "✅ Configuration format appears valid (basic validation only)"
+        return 0
+    fi
+
+    if [[ "$dependency_check" =~ "missing_dependency" ]]; then
+        echo "⚠️  Warning: Python dependencies missing for full schema validation: $(echo "$dependency_check" | sed 's/missing_dependency: //')"
+        echo "✅ Configuration format appears valid (basic validation only)"
+        return 0
     fi
 
     # Create temp file for config

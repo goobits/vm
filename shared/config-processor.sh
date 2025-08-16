@@ -370,6 +370,17 @@ load_config_with_presets() {
     local config_exists=false
 
     if [[ -n "$config_path" && "$config_path" != "__SCAN__" && -f "$config_path" ]]; then
+        # Check if this is a JSON file before attempting to parse
+        if [[ "$config_path" == *.json ]]; then
+            echo "❌ Failed to parse configuration file: $config_path" >&2
+            echo "" >&2
+            echo "   JSON configs are no longer supported." >&2
+            echo "" >&2
+            echo "   To migrate your configuration, run:" >&2
+            echo "     vm migrate --input $config_path" >&2
+            echo "" >&2
+            return 1
+        fi
         user_config="$(yq_json '.' "$config_path" 2>/dev/null || echo "{}")"
         config_exists=true
     elif [[ "$config_path" == "__SCAN__" ]]; then
@@ -377,10 +388,32 @@ load_config_with_presets() {
         local found_config
         found_config="$(find_vm_yaml_upwards "$project_dir")"
         if [[ -n "$found_config" ]]; then
+            # Check if this is a JSON file before attempting to parse
+            if [[ "$found_config" == *.json ]]; then
+                echo "❌ Failed to parse configuration file: $found_config" >&2
+                echo "" >&2
+                echo "   JSON configs are no longer supported." >&2
+                echo "" >&2
+                echo "   To migrate your configuration, run:" >&2
+                echo "     vm migrate --input $found_config" >&2
+                echo "" >&2
+                return 1
+            fi
             user_config="$(yq_json '.' "$found_config" 2>/dev/null || echo "{}")"
             config_exists=true
         fi
     elif [[ -f "$project_dir/vm.yaml" ]]; then
+        # Check if this is a JSON file before attempting to parse (though unlikely with .yaml extension)
+        if [[ "$project_dir/vm.yaml" == *.json ]]; then
+            echo "❌ Failed to parse configuration file: $project_dir/vm.yaml" >&2
+            echo "" >&2
+            echo "   JSON configs are no longer supported." >&2
+            echo "" >&2
+            echo "   To migrate your configuration, run:" >&2
+            echo "     vm migrate --input $project_dir/vm.yaml" >&2
+            echo "" >&2
+            return 1
+        fi
         user_config="$(yq_json '.' "$project_dir/vm.yaml" 2>/dev/null || echo "{}")"
         config_exists=true
     fi
