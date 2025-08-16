@@ -11,13 +11,20 @@
     "vm-temporary.sh",
     "vm.yaml",
     "validate-config.sh",
+    "generate-config.sh",
+    "install.sh",
+    "test.sh",
     "providers/",
     "shared/",
-    "examples/"
+    "examples/",
+    "configs/",
+    "lib/",
+    "test/"
   ],
   "scripts": {
-    "test": "./validate-config.sh --validate",
-    "postinstall": "chmod +x vm.sh validate-config.sh"
+    "test": "./test.sh",
+    "validate": "./validate-config.sh --validate",
+    "postinstall": "chmod +x vm.sh vm-temporary.sh validate-config.sh test.sh install.sh generate-config.sh"
   },
   "keywords": [
     "vagrant",

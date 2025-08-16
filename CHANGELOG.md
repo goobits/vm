@@ -31,6 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Container-Friendly Structured Logging**: Implemented production-ready logging system with `shared/logging-utils.sh`
+  - Support for `LOG_LEVEL` environment variable (DEBUG, INFO, WARN, ERROR)
+  - Automatic routing: WARN/ERROR to stderr, INFO/DEBUG to stdout for container compatibility
+  - Consistent log format: `timestamp | level | message | key=value context`
+  - Simple logging functions: `vm_error()`, `vm_warn()`, `vm_info()`, `vm_debug()`
+  - Integration into core scripts (vm.sh, vm-temporary.sh) with structured error reporting
+
 ### Fixed
 - **Port Conflict Resolution**: Fixed issue where VM tool's own configuration was incorrectly inherited by user projects, causing port 3150 conflicts
 - **Config Scanning**: Updated configuration discovery to exclude VM tool's workspace directory from upward scanning

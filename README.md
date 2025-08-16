@@ -260,6 +260,21 @@ vm temp mounts                 # List current mounts
 - **Slow performance?** → Increase memory/CPUs in vm.yaml or switch to Docker
 - **Need more help?** → Check `vm logs` or see [troubleshooting guide](INSTALLATION.md#troubleshooting)
 
+## 📊 Logging & Debugging
+
+The VM tool includes structured logging for production deployments and debugging:
+
+```bash
+# Set log level for more detailed output
+LOG_LEVEL=DEBUG vm create
+LOG_LEVEL=ERROR vm temp destroy  # Only show errors
+
+# Container-friendly logging (INFO/DEBUG → stdout, WARN/ERROR → stderr)
+vm create 2>errors.log 1>info.log
+```
+
+Available log levels: `DEBUG`, `INFO` (default), `WARN`, `ERROR`
+
 ---
 
 **Files are synced instantly** between your local machine and VM. Edit locally, run in VM - it just works! 🎪
