@@ -4,6 +4,7 @@
 # Provides security-hardened detection with whitelist validation
 
 set -e
+set -u
 
 # Source existing security utilities
 DETECTOR_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

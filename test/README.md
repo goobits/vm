@@ -1,128 +1,245 @@
-# VM Test Suite
+# Test Suite Documentation
 
-Test suite for the VM tool, focusing on configuration validation and core functionality testing.
+This directory contains the reorganized test suite for the VM development environment tool. The tests are organized into logical categories for better maintainability and clarity.
 
-## Structure
+## Directory Structure
 
 ```
-/workspace/
-├── test.sh                 # Main unified test runner (root level)
-└── test/
-    ├── README.md           # This file
-    ├── configs/            # Test configuration files (YAML format)
-    │   ├── minimal.yaml
-    │   ├── docker.yaml
-    │   ├── services/       # Service-specific configs
-    │   └── languages/      # Language package configs
-    ├── docker-wrapper.sh   # Docker testing utilities
-    └── test-migrate-temporary.sh # Migration and temporary VM tests
+test/
+├── unit/
+│   ├── config-validation.test.sh    # Configuration validation unit tests
+│   └── preset-detection.test.sh     # Framework detection unit tests
+├── integration/
+│   ├── migration.test.sh            # VM migration system tests
+│   └── preset-system.test.sh        # Preset application integration tests
+├── system/
+│   └── vm-lifecycle.test.sh         # VM lifecycle and operations tests
+├── configs/                         # Test configuration files
+└── README.md                        # This documentation
 ```
 
-## Available Test Suites
+## Test Categories
 
-The test runner supports these suites:
-- `framework` - Basic framework functionality
-- `minimal` - Minimal configuration tests  
-- `services` - Service integration tests
-- `languages` - Language package tests
-- `cli` - Command-line interface tests
-- `lifecycle` - VM lifecycle management
-- `migrate-temporary` - Migration and temporary VM tests
+### Unit Tests (`test/unit/`)
 
-## Running Tests
+**Purpose**: Test individual components and functions in isolation.
 
-### Run all tests
+- **`config-validation.test.sh`**: Tests configuration validation logic
+  - JSON schema validation
+  - Configuration file parsing
+  - Error handling for malformed configs
+  
+- **`preset-detection.test.sh`**: Tests framework detection functionality
+  - React, Vue, Angular, Next.js detection
+  - Python (Django, Flask) detection
+  - Node.js, Rust, Go detection
+  - Multi-technology project detection
+  - Edge cases and error handling
+
+### Integration Tests (`test/integration/`)
+
+**Purpose**: Test how components work together and integrate with external systems.
+
+- **`migration.test.sh`**: Tests the VM migration system
+  - JSON to YAML config migration
+  - Migration dry-run functionality
+  - Backup creation and validation
+  - JSON config rejection handling
+
+- **`preset-system.test.sh`**: Tests preset application and system integration
+  - Preset application workflows
+  - VM tool preset commands (`vm preset list`, `vm preset show`)
+  - Flag functionality (`--preset`, `--no-preset`)
+  - Preset file validation
+  - Project info and resource suggestions
+
+### System Tests (`test/system/`)
+
+**Purpose**: Test complete system functionality and end-to-end workflows.
+
+- **`vm-lifecycle.test.sh`**: Tests full VM lifecycle operations
+  - VM creation and destruction
+  - VM status monitoring
+  - Command execution in VMs
+  - VM reload functionality
+  - Docker integration testing
+
+## Running All Tests
+
+### Main Test Runner
+
+The main test runner (`./test.sh`) still provides comprehensive testing:
+
 ```bash
+# Run all test suites
 ./test.sh
+
+# Run specific test suite
+./test.sh --suite framework     # Framework validation tests
+./test.sh --suite minimal       # Minimal VM functionality
+./test.sh --suite services      # Service integration tests
+./test.sh --suite languages     # Language support tests
+./test.sh --suite cli           # CLI command tests
+./test.sh --suite lifecycle     # Calls system/vm-lifecycle.test.sh
+./test.sh --suite migrate-temporary # Calls integration/migration.test.sh
 ```
 
-### Run specific test suite
+### Individual Test Categories
+
 ```bash
-./test.sh --suite minimal      # Run only minimal config tests
-./test.sh --suite services     # Run only service tests  
-./test.sh --suite languages    # Run only language tests
-./test.sh --suite cli          # Run only CLI tests
-./test.sh --suite migrate-temporary # Run migration and temporary VM tests
-./test.sh --suite lifecycle    # Run only lifecycle tests
+# Unit tests
+./test/unit/config-validation.test.sh
+./test/unit/preset-detection.test.sh
+
+# Integration tests  
+./test/integration/migration.test.sh
+./test/integration/preset-system.test.sh
+
+# System tests
+./test/system/vm-lifecycle.test.sh
 ```
 
-### Run with specific provider
+### Specific Test Examples
+
+**Run unit tests**:
 ```bash
-./test.sh --provider docker   # Run with Docker only
-./test.sh --provider vagrant  # Run with Vagrant only
+# All unit tests
+./test/unit/config-validation.test.sh
+./test/unit/preset-detection.test.sh
+
+# Specific framework detection tests
+./test/unit/preset-detection.test.sh --detection
+./test/unit/preset-detection.test.sh --edge-cases
 ```
 
-### List available test suites
+**Run integration tests**:
 ```bash
-./test.sh --list
+# All integration tests
+./test/integration/migration.test.sh
+./test/integration/preset-system.test.sh
+
+# Specific preset tests
+./test/integration/preset-system.test.sh --application
+./test/integration/preset-system.test.sh --commands
+./test/integration/preset-system.test.sh --flags
 ```
 
-## Test Configuration
-
-The test suite uses YAML configuration files in `/workspace/test/configs/`:
-
-- **`minimal.yaml`** - Minimal VM configuration for basic testing
-- **`docker.yaml`** - Docker-specific configuration 
-- **`services/`** - Service-specific test configs (PostgreSQL, Redis, MongoDB)
-- **`languages/`** - Language package test configs (npm, cargo, pip)
-
-## Test Implementation
-
-### Migration and Temporary VM Tests (`test-migrate-temporary.sh`)
-Located at `/workspace/test/test-migrate-temporary.sh`, this script tests:
-- `vm migrate --check` functionality
-- `vm migrate --dry-run` and live migration
-- `vm temp` creation, status, SSH, and destroy operations
-- Collision handling for existing temp VMs
-- Mount validation and permissions
-
-### Docker Wrapper (`docker-wrapper.sh`) 
-Utility script for Docker-specific test operations and container management.
-
-## Test Results
-
-Tests use color-coded output:
-- 🟢 **Green**: Passed tests
-- 🔴 **Red**: Failed tests  
-- 🟡 **Yellow**: Warnings or skipped tests
-- 🔵 **Blue**: Test execution status
-
-## Adding New Tests
-
-To add new functionality testing:
-
-1. **For migrate/temporary features**: Add test functions to `test-migrate-temporary.sh`
-2. **For new suites**: The test runner supports adding new suite names to `AVAILABLE_SUITES`
-3. **For configs**: Add new YAML configs to the appropriate subdirectory in `test/configs/`
-
-Example test function:
+**Run system tests**:
 ```bash
-test_new_feature() {
-    local test_name="Testing new feature"
-    echo -e "\n${BLUE}$test_name${NC}"
-    
-    # Test implementation here
-    if command_succeeds; then
-        echo -e "${GREEN}✓ $test_name passed${NC}"
-        return 0
-    else
-        echo -e "${RED}✗ $test_name failed${NC}"
-        return 1
-    fi
-}
+# All VM lifecycle tests
+./test/system/vm-lifecycle.test.sh
+
+# Individual VM operations
+./test/system/vm-lifecycle.test.sh minimal-boot
+./test/system/vm-lifecycle.test.sh vm-status
+./test/system/vm-lifecycle.test.sh vm-exec
+./test/system/vm-lifecycle.test.sh vm-lifecycle
+./test/system/vm-lifecycle.test.sh vm-reload
 ```
 
-## Prerequisites
+## Test Dependencies
 
-- Docker and/or Vagrant installed
-- jq for JSON manipulation
-- timeout command (part of coreutils)
-- Basic Unix tools (grep, sed, awk)
+### Prerequisites
+
+- **Docker**: Required for VM lifecycle and system tests
+- **yq**: YAML processing tool
+- **jq**: JSON processing tool  
+- **timeout**: Command timeout utility
+
+### Docker Permissions
+
+Many tests require Docker access. If tests are skipped with Docker permission warnings:
+
+```bash
+# Add user to docker group
+sudo usermod -aG docker $USER
+
+# Restart session
+newgrp docker
+
+# Or ensure Docker daemon is running and accessible
+sudo systemctl start docker
+```
+
+## Configuration Files
+
+Test configuration files are located in `test/configs/`:
+
+- Service-specific configs (postgresql.yaml, redis.yaml, etc.)
+- Minimal configuration for basic testing
+- Test-specific VM configurations
+
+These are automatically generated by the test framework when needed.
+
+## Migration Guide
+
+### From Old Structure
+
+The previous test structure has been reorganized:
+
+| Old Location | New Location | Notes |
+|--------------|--------------|-------|
+| `test/test-presets.sh` (detection) | `test/unit/preset-detection.test.sh` | Framework detection only |
+| `test/test-presets.sh` (system) | `test/integration/preset-system.test.sh` | Preset application & commands |
+| `test/test-migrate-temporary.sh` | `test/integration/migration.test.sh` | Migration functionality |
+| `test.sh` (VM lifecycle) | `test/system/vm-lifecycle.test.sh` | VM operations extracted |
+| `test/unit/config-validation.test.sh` | ✓ Already exists | No change |
+
+### Running Reorganized Tests
+
+The main `test.sh` runner has been updated to work with the new structure:
+
+- Framework detection is now separated into unit tests
+- VM lifecycle tests are properly categorized as system tests
+- Integration tests focus on component interaction
+- All existing test functionality is preserved
+
+## Test Development Guidelines
+
+### Adding New Tests
+
+1. **Unit Tests**: Add to `test/unit/` for isolated component testing
+2. **Integration Tests**: Add to `test/integration/` for component interaction testing  
+3. **System Tests**: Add to `test/system/` for end-to-end workflow testing
+
+### Test Naming Convention
+
+- Use descriptive test function names: `test_framework_detection()`, `test_vm_lifecycle()`
+- Use clear assertion messages that explain what should happen
+- Group related tests in logical test suites
+
+### Best Practices
+
+- Keep unit tests fast and isolated
+- Use appropriate test category for the scope of testing
+- Include both positive and negative test cases
+- Provide clear error messages and debugging output
+- Clean up resources in test teardown
 
 ## Troubleshooting
 
-- Tests create VMs in `/tmp/vm-test-*` directories
-- Each test cleans up after itself via trap handlers
-- If cleanup fails, manually remove test directories and destroy test VMs
-- Use `vm list` to see any leftover test VMs
-- Check test output for specific failure reasons
+### Common Issues
+
+1. **Docker Permission Denied**: See Docker Permissions section above
+2. **Missing Dependencies**: Install required tools (yq, jq, timeout)
+3. **Test Timeouts**: Increase timeout values for slower systems
+4. **Container Conflicts**: Tests automatically clean up containers but manual cleanup may be needed:
+   ```bash
+   docker ps -a | grep "test-" | awk '{print $1}' | xargs docker rm -f
+   ```
+
+### Debug Mode
+
+Most tests support verbose output:
+```bash
+VERBOSE=true ./test/unit/preset-detection.test.sh
+```
+
+### Getting Help
+
+Each test script includes help documentation:
+```bash
+./test/unit/preset-detection.test.sh --help
+./test/integration/migration.test.sh --help
+./test/system/vm-lifecycle.test.sh --help
+```

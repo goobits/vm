@@ -3,6 +3,7 @@
 # Implements proper mixin semantics for configuration inheritance
 
 set -e
+set -u
 
 # Perform deep merge of two JSON configurations with mixin semantics
 # Args: base_config (JSON string), override_config (JSON string)

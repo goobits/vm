@@ -4,6 +4,7 @@
 # Usage: ./validate-config.sh [--validate] [--get-config] [--init] [config-path]
 
 set -e
+set -u
 
 # Check for required tools
 if ! command -v yq &> /dev/null; then

@@ -3,6 +3,7 @@
 # Usage: ./generate-config.sh [--services service1,service2] [--ports start] [--name project] [output-file]
 
 set -e
+set -u
 
 # Get script directory early for importing utilities
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

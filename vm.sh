@@ -2068,7 +2068,7 @@ vm_migrate() {
                 echo "  --backup [BOOL]   Create backup of input file (default: true)"
                 echo "  --no-backup       Disable backup creation"
                 echo "  --dry-run         Show what would be done without making changes"
-                echo "  --force           Skip confirmation prompts"
+                echo "  --force           Skip confirmation prompts and remove original file"
                 echo "  --check           Check if migration is needed without performing it"
                 echo ""
                 echo "Examples:"
@@ -2210,10 +2210,17 @@ vm_migrate() {
     echo "📋 Next steps:"
     echo "  1. Review the migrated configuration: $OUTPUT_FILE"
     echo "  2. Test your VM with the new configuration"
-    echo "  3. Once verified, you can remove the old file: $INPUT_FILE"
-
-    # Ask about deleting the original file
     if [[ "$FORCE" != "true" ]]; then
+        echo "  3. Once verified, you can remove the old file: $INPUT_FILE"
+    fi
+
+    # Handle original file deletion
+    if [[ "$FORCE" == "true" ]]; then
+        # With --force, automatically remove the original file
+        rm "$INPUT_FILE"
+        echo "🗑️  Removed original file: $INPUT_FILE"
+    else
+        # Ask about deleting the original file
         echo ""
         echo -n "Would you like to delete the original $INPUT_FILE now? (y/N): "
         read -r response

@@ -1,15 +1,13 @@
 #!/bin/bash
-# test-presets.sh - Comprehensive test suite for smart preset system
-# Tests framework detection, preset application, and preset commands
+# Unit tests for framework detection functionality
+# Extracted from comprehensive preset test suite to focus on detection logic only
 
 set -euo pipefail
 
 # Script directory and paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VM_TOOL="$SCRIPT_DIR/../vm.sh"
-PROJECT_DETECTOR="$SCRIPT_DIR/../shared/project-detector.sh"
-PRESETS_DIR="$SCRIPT_DIR/../configs/presets"
-TEST_TEMP_DIR="/tmp/vm-preset-tests"
+PROJECT_DETECTOR="$SCRIPT_DIR/../../shared/project-detector.sh"
+TEST_TEMP_DIR="/tmp/vm-preset-detection-tests"
 
 # Color codes for output
 RED='\033[0;31m'
@@ -74,53 +72,6 @@ assert_equals() {
         return 0
     else
         fail_test "$test_name" "Expected '$expected', got '$actual'"
-        return 1
-    fi
-}
-
-assert_contains() {
-    local haystack="$1"
-    local needle="$2"
-    local test_name="$3"
-
-    ((TESTS_RUN++))
-
-    if [[ "$haystack" == *"$needle"* ]]; then
-        pass_test "$test_name"
-        return 0
-    else
-        fail_test "$test_name" "Expected to find '$needle' in output"
-        return 1
-    fi
-}
-
-assert_not_contains() {
-    local haystack="$1"
-    local needle="$2"
-    local test_name="$3"
-
-    ((TESTS_RUN++))
-
-    if [[ "$haystack" != *"$needle"* ]]; then
-        pass_test "$test_name"
-        return 0
-    else
-        fail_test "$test_name" "Did not expect to find '$needle' in output"
-        return 1
-    fi
-}
-
-assert_file_exists() {
-    local file_path="$1"
-    local test_name="$2"
-
-    ((TESTS_RUN++))
-
-    if [[ -f "$file_path" ]]; then
-        pass_test "$test_name"
-        return 0
-    else
-        fail_test "$test_name" "File does not exist: $file_path"
         return 1
     fi
 }
@@ -360,7 +311,7 @@ EOF
     echo "$project_dir"
 }
 
-# Framework Detection Tests
+# Framework Detection Tests - Core unit test functionality
 test_framework_detection() {
     echo -e "\n${PURPLE}=== Framework Detection Tests ===${NC}"
 
@@ -462,111 +413,9 @@ test_framework_detection() {
     assert_equals "generic" "$detected_type" "Empty directory detection (generic)"
 }
 
-# Test preset application functionality
-test_preset_application() {
-    echo -e "\n${PURPLE}=== Preset Application Tests ===${NC}"
-
-    # Test React preset dry-run
-    local react_dir
-    react_dir=$(create_test_project "preset-react-test" "react")
-    cd "$react_dir"
-
-    local dry_run_output
-    dry_run_output=$("$VM_TOOL" --dry-run --no-preset create 2>&1 || true)
-    assert_contains "$dry_run_output" "Dry run mode" "React preset dry-run execution"
-
-    # Test forced preset override
-    local forced_output
-    forced_output=$("$VM_TOOL" --dry-run --preset django create 2>&1 || true)
-    assert_contains "$forced_output" "forced preset: django" "Forced preset override"
-
-    # Test no-preset flag
-    local no_preset_output
-    no_preset_output=$("$VM_TOOL" --dry-run --no-preset create 2>&1 || true)
-    assert_not_contains "$no_preset_output" "Detecting project type" "No-preset flag disables detection"
-
-    cd "$SCRIPT_DIR"
-}
-
-# Test vm preset commands
-test_preset_commands() {
-    echo -e "\n${PURPLE}=== Preset Commands Tests ===${NC}"
-
-    # Test preset list command
-    local list_output
-    list_output=$("$VM_TOOL" preset list 2>&1 || true)
-    assert_contains "$list_output" "Available VM Presets" "Preset list command header"
-    assert_contains "$list_output" "react" "Preset list contains react"
-    assert_contains "$list_output" "django" "Preset list contains django"
-    assert_contains "$list_output" "base" "Preset list contains base"
-
-    # Test preset show command for react
-    local show_react_output
-    show_react_output=$("$VM_TOOL" preset show react 2>&1 || true)
-    assert_contains "$show_react_output" "React Development" "Preset show react contains title"
-    assert_contains "$show_react_output" "npm_packages" "Preset show react contains npm packages"
-    assert_contains "$show_react_output" "ports" "Preset show react contains ports"
-
-    # Test preset show command for django
-    local show_django_output
-    show_django_output=$("$VM_TOOL" preset show django 2>&1 || true)
-    assert_contains "$show_django_output" "Django" "Preset show django contains Django"
-    assert_contains "$show_django_output" "pip_packages" "Preset show django contains pip packages"
-
-    # Test preset show with .yaml extension
-    local show_yaml_output
-    show_yaml_output=$("$VM_TOOL" preset show react.yaml 2>&1 || true)
-    assert_contains "$show_yaml_output" "React Development" "Preset show with .yaml extension works"
-
-    # Test preset show with non-existent preset
-    local show_missing_output
-    show_missing_output=$("$VM_TOOL" preset show nonexistent 2>&1 || true)
-    assert_contains "$show_missing_output" "not found" "Preset show handles missing preset"
-
-    # Test preset command without subcommand
-    local no_subcommand_output
-    no_subcommand_output=$("$VM_TOOL" preset 2>&1 || true)
-    assert_contains "$no_subcommand_output" "Missing preset subcommand" "Preset command without subcommand shows error"
-    assert_contains "$no_subcommand_output" "list" "Preset help shows list subcommand"
-    assert_contains "$no_subcommand_output" "show" "Preset help shows show subcommand"
-
-    # Test preset command with invalid subcommand
-    local invalid_subcommand_output
-    invalid_subcommand_output=$("$VM_TOOL" preset invalid 2>&1 || true)
-    assert_contains "$invalid_subcommand_output" "Unknown preset subcommand" "Invalid preset subcommand shows error"
-}
-
-# Test flag functionality
-test_flag_functionality() {
-    echo -e "\n${PURPLE}=== Flag Functionality Tests ===${NC}"
-
-    # Create test project
-    local test_dir
-    test_dir=$(create_test_project "flag-test" "react")
-    cd "$test_dir"
-
-    # Test --no-preset flag
-    local no_preset_output
-    no_preset_output=$("$VM_TOOL" --dry-run --no-preset create 2>&1 || true)
-    assert_not_contains "$no_preset_output" "Detecting project type" "--no-preset disables detection"
-    assert_not_contains "$no_preset_output" "Applying.*preset" "--no-preset disables preset application"
-
-    # Test --preset NAME flag
-    local forced_preset_output
-    forced_preset_output=$("$VM_TOOL" --dry-run --preset python create 2>&1 || true)
-    assert_contains "$forced_preset_output" "forced preset: python" "--preset forces specific preset"
-
-    # Test multiple flags together (should prioritize --no-preset)
-    local conflicting_flags_output
-    conflicting_flags_output=$("$VM_TOOL" --dry-run --no-preset --preset django create 2>&1 || true)
-    assert_not_contains "$conflicting_flags_output" "Detecting project type" "Conflicting flags: --no-preset takes priority"
-
-    cd "$SCRIPT_DIR"
-}
-
-# Test edge cases and error handling
-test_edge_cases() {
-    echo -e "\n${PURPLE}=== Edge Cases Tests ===${NC}"
+# Test edge cases in detection
+test_detection_edge_cases() {
+    echo -e "\n${PURPLE}=== Detection Edge Cases Tests ===${NC}"
 
     # Test malformed package.json
     local malformed_dir
@@ -576,15 +425,6 @@ test_edge_cases() {
     local detected_type
     detected_type=$(detect_project_type "$malformed_dir" 2>/dev/null || echo "generic")
     assert_equals "generic" "$detected_type" "Malformed JSON handled gracefully"
-
-    # Test missing presets directory (simulate by temporarily moving it)
-    if [[ -d "$PRESETS_DIR" ]]; then
-        mv "$PRESETS_DIR" "${PRESETS_DIR}.backup"
-        local missing_presets_output
-        missing_presets_output=$("$VM_TOOL" preset list 2>&1 || true)
-        assert_contains "$missing_presets_output" "not found" "Missing presets directory handled"
-        mv "${PRESETS_DIR}.backup" "$PRESETS_DIR"
-    fi
 
     # Test detection with unreadable directory
     local unreadable_dir="$TEST_TEMP_DIR/unreadable"
@@ -614,120 +454,19 @@ test_edge_cases() {
     fi
 }
 
-# Test preset file validation
-test_preset_files() {
-    echo -e "\n${PURPLE}=== Preset Files Validation ===${NC}"
-
-    # Check that all expected preset files exist
-    local expected_presets=("base" "react" "vue" "django" "flask" "rails" "nodejs" "python" "docker" "kubernetes")
-
-    for preset in "${expected_presets[@]}"; do
-        assert_file_exists "$PRESETS_DIR/${preset}.yaml" "Preset file exists: $preset"
-    done
-
-    # Validate preset file structure (basic YAML syntax)
-    for preset_file in "$PRESETS_DIR"/*.yaml; do
-        if [[ -f "$preset_file" ]]; then
-            local preset_name
-            preset_name=$(basename "$preset_file" .yaml)
-
-            # Check if file is readable and contains expected sections
-            ((TESTS_RUN++))
-            if grep -q "preset:" "$preset_file" 2>/dev/null; then
-                pass_test "Preset file structure valid: $preset_name"
-            else
-                fail_test "Preset file structure invalid: $preset_name" "Missing 'preset:' section"
-            fi
-        fi
-    done
-}
-
-# Test project info functionality
-test_project_info() {
-    echo -e "\n${PURPLE}=== Project Info Tests ===${NC}"
-
-    # Test project info for React project
-    local react_dir
-    react_dir=$(create_test_project "info-react" "react")
-    local react_info
-    react_info=$(get_project_info "$react_dir")
-    assert_contains "$react_info" "Project Type: react" "Project info shows React type"
-    assert_contains "$react_info" "Package Manager: npm" "Project info shows npm as package manager"
-
-    # Test project info for Django project
-    local django_dir
-    django_dir=$(create_test_project "info-django" "django")
-    local django_info
-    django_info=$(get_project_info "$django_dir")
-    assert_contains "$django_info" "Project Type: django" "Project info shows Django type"
-    assert_contains "$django_info" "Framework: django" "Project info shows Django framework"
-
-    # Test project info for multi-tech project
-    local multi_dir
-    multi_dir=$(create_test_project "info-multi" "multi-react-django")
-    local multi_info
-    multi_info=$(get_project_info "$multi_dir")
-    assert_contains "$multi_info" "Multi-language project" "Project info shows multi-language"
-
-    # Test version control detection
-    local git_dir
-    git_dir=$(create_test_project "info-git" "react")
-    cd "$git_dir"
-    git init --quiet 2>/dev/null || true
-    local git_info
-    git_info=$(get_project_info "$git_dir")
-    assert_contains "$git_info" "Version Control: Git" "Project info detects Git"
-    cd "$SCRIPT_DIR"
-}
-
-# Test VM resource suggestions
-test_vm_resources() {
-    echo -e "\n${PURPLE}=== VM Resource Suggestions Tests ===${NC}"
-
-    # Test resource suggestions for different project types
-    local react_resources
-    react_resources=$(suggest_vm_resources "react")
-    assert_contains "$react_resources" "memory=2048" "React suggests 2GB memory"
-    assert_contains "$react_resources" "cpus=2" "React suggests 2 CPUs"
-
-    local rust_resources
-    rust_resources=$(suggest_vm_resources "rust")
-    assert_contains "$rust_resources" "memory=4096" "Rust suggests 4GB memory"
-    assert_contains "$rust_resources" "cpus=4" "Rust suggests 4 CPUs"
-
-    local docker_resources
-    docker_resources=$(suggest_vm_resources "docker")
-    assert_contains "$docker_resources" "memory=4096" "Docker suggests 4GB memory"
-    assert_contains "$docker_resources" "disk_size=40" "Docker suggests 40GB disk"
-
-    local multi_resources
-    multi_resources=$(suggest_vm_resources "multi:react django")
-    assert_contains "$multi_resources" "memory=4096" "Multi-tech suggests 4GB memory"
-
-    local generic_resources
-    generic_resources=$(suggest_vm_resources "generic")
-    assert_contains "$generic_resources" "memory=2048" "Generic suggests 2GB memory"
-}
-
-# Main test runner
-run_all_tests() {
-    echo -e "${CYAN}Smart Preset System Test Suite${NC}"
-    echo -e "${CYAN}================================${NC}"
+# Main test runner for detection-focused tests
+run_detection_tests() {
+    echo -e "${CYAN}Framework Detection Unit Tests${NC}"
+    echo -e "${CYAN}==============================${NC}"
 
     setup_test_env
 
     # Set up trap for cleanup
     trap cleanup_test_env EXIT
 
-    # Run all test suites
+    # Run detection-focused test suites
     test_framework_detection
-    test_preset_application
-    test_preset_commands
-    test_flag_functionality
-    test_edge_cases
-    test_preset_files
-    test_project_info
-    test_vm_resources
+    test_detection_edge_cases
 
     # Print summary
     echo -e "\n${CYAN}=== Test Summary ===${NC}"
@@ -743,32 +482,26 @@ run_all_tests() {
         echo ""
         exit 1
     else
-        echo -e "\n${GREEN}All tests passed! 🎉${NC}"
+        echo -e "\n${GREEN}All detection tests passed! 🎉${NC}"
         exit 0
     fi
 }
 
 # Help function
 show_help() {
-    echo "Smart Preset System Test Suite"
+    echo "Framework Detection Unit Test Suite"
     echo ""
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
     echo "  --help, -h          Show this help message"
-    echo "  --framework         Run only framework detection tests"
-    echo "  --application       Run only preset application tests"
-    echo "  --commands          Run only preset command tests"
-    echo "  --flags             Run only flag functionality tests"
-    echo "  --edge-cases        Run only edge case tests"
-    echo "  --preset-files      Run only preset file validation tests"
-    echo "  --project-info      Run only project info tests"
-    echo "  --vm-resources      Run only VM resource suggestion tests"
+    echo "  --detection         Run framework detection tests"
+    echo "  --edge-cases        Run edge case tests"
     echo ""
     echo "Examples:"
-    echo "  $0                  Run all tests"
-    echo "  $0 --framework      Run only framework detection tests"
-    echo "  $0 --commands       Run only preset command tests"
+    echo "  $0                  Run all detection tests"
+    echo "  $0 --detection      Run only framework detection tests"
+    echo "  $0 --edge-cases     Run only edge case tests"
 }
 
 # Parse command line arguments
@@ -777,42 +510,18 @@ case "${1:-}" in
         show_help
         exit 0
         ;;
-    --framework)
+    --detection)
         setup_test_env
         trap cleanup_test_env EXIT
         test_framework_detection
         ;;
-    --application)
-        setup_test_env
-        trap cleanup_test_env EXIT
-        test_preset_application
-        ;;
-    --commands)
-        test_preset_commands
-        ;;
-    --flags)
-        setup_test_env
-        trap cleanup_test_env EXIT
-        test_flag_functionality
-        ;;
     --edge-cases)
         setup_test_env
         trap cleanup_test_env EXIT
-        test_edge_cases
-        ;;
-    --preset-files)
-        test_preset_files
-        ;;
-    --project-info)
-        setup_test_env
-        trap cleanup_test_env EXIT
-        test_project_info
-        ;;
-    --vm-resources)
-        test_vm_resources
+        test_detection_edge_cases
         ;;
     "")
-        run_all_tests
+        run_detection_tests
         ;;
     *)
         echo "Unknown option: $1"

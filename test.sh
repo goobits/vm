@@ -3,6 +3,7 @@
 # Usage: ./test.sh [--suite <suite>] [--list] [--help]
 
 set -e
+set -u
 
 # Colors for output
 RED='\033[0;31m'
@@ -14,6 +15,9 @@ NC='\033[0m' # No Color
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONFIG_DIR="$SCRIPT_DIR/test/configs"
+
+# Source shared utilities
+source "$SCRIPT_DIR/shared/docker-utils.sh"
 
 # Test state
 TEST_DIR=""
@@ -88,17 +92,6 @@ fi
 # ============================================================================
 # Test Framework Helper Functions
 # ============================================================================
-
-# Check if Docker is accessible without sudo (required for VM operations)
-check_docker_access() {
-    # VM operations require docker without sudo
-    if docker version &>/dev/null 2>&1; then
-        return 0
-    fi
-    
-    # Docker is not accessible without sudo
-    return 1
-}
 
 # Skip test with helpful message about Docker access
 skip_docker_test() {
@@ -1217,7 +1210,7 @@ run_test_suite() {
             ;;
         migrate-temporary)
             # Run the dedicated migrate-temporary test script
-            "$SCRIPT_DIR/test/test-migrate-temporary.sh"
+            "$SCRIPT_DIR/test/integration/migration.test.sh"
             # Capture exit code and update counters
             local exit_code=$?
             if [[ $exit_code -eq 0 ]]; then
