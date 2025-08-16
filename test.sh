@@ -89,6 +89,28 @@ fi
 # Test Framework Helper Functions
 # ============================================================================
 
+# Check if Docker is accessible without sudo (required for VM operations)
+check_docker_access() {
+    # VM operations require docker without sudo
+    if docker version &>/dev/null 2>&1; then
+        return 0
+    fi
+    
+    # Docker is not accessible without sudo
+    return 1
+}
+
+# Skip test with helpful message about Docker access
+skip_docker_test() {
+    local test_name="$1"
+    echo -e "${YELLOW}⚠ Skipping $test_name: Docker access unavailable${NC}"
+    echo -e "${YELLOW}  To enable this test:${NC}"
+    echo -e "${YELLOW}    1. Add user to docker group: sudo usermod -aG docker \$USER${NC}"
+    echo -e "${YELLOW}    2. Restart session: newgrp docker${NC}"
+    echo -e "${YELLOW}    3. Or ensure Docker daemon is running and accessible${NC}"
+    return 0
+}
+
 # Initialize test environment
 setup_test_env() {
     local test_name="$1"
@@ -637,6 +659,12 @@ test_generated_configs_valid() {
 test_minimal_boot() {
     echo "Testing VM boot with minimal configuration..."
 
+    # Check Docker access before attempting VM creation
+    if ! check_docker_access; then
+        skip_docker_test "minimal VM boot test"
+        return 0
+    fi
+
     # Create VM with minimal config - with shorter timeout for debugging
     create_test_vm "$CONFIG_DIR/minimal.yaml" 180 || return 1
 
@@ -656,6 +684,12 @@ test_minimal_boot() {
 test_minimal_functionality() {
     echo "Testing basic functionality..."
 
+    # Check Docker access before attempting VM creation
+    if ! check_docker_access; then
+        skip_docker_test "minimal functionality test"
+        return 0
+    fi
+
     create_test_vm "$CONFIG_DIR/minimal.yaml" || return 1
 
     # Check basic commands work
@@ -672,6 +706,12 @@ test_minimal_functionality() {
 # Test that no services are installed
 test_no_services_installed() {
     echo "Testing that no services are installed..."
+
+    # Check Docker access before attempting VM creation
+    if ! check_docker_access; then
+        skip_docker_test "no services installed test"
+        return 0
+    fi
 
     create_test_vm "$CONFIG_DIR/minimal.yaml" || return 1
 
@@ -695,6 +735,12 @@ test_no_services_installed() {
 test_postgresql_service() {
     echo "Testing PostgreSQL service..."
 
+    # Check Docker access before attempting VM creation
+    if ! check_docker_access; then
+        skip_docker_test "PostgreSQL service test"
+        return 0
+    fi
+
     create_test_vm "$CONFIG_DIR/postgresql.yaml" || return 1
 
     # Check PostgreSQL is installed and running
@@ -708,6 +754,12 @@ test_postgresql_service() {
 # Test Redis service
 test_redis_service() {
     echo "Testing Redis service..."
+
+    # Check Docker access before attempting VM creation
+    if ! check_docker_access; then
+        skip_docker_test "Redis service test"
+        return 0
+    fi
 
     create_test_vm "$CONFIG_DIR/redis.yaml" || return 1
 
@@ -723,6 +775,12 @@ test_redis_service() {
 test_mongodb_service() {
     echo "Testing MongoDB service..."
 
+    # Check Docker access before attempting VM creation
+    if ! check_docker_access; then
+        skip_docker_test "MongoDB service test"
+        return 0
+    fi
+
     create_test_vm "$CONFIG_DIR/mongodb.yaml" || return 1
 
     # Check MongoDB is installed and running
@@ -736,6 +794,12 @@ test_mongodb_service() {
 # Test Docker service
 test_docker_service() {
     echo "Testing Docker service..."
+
+    # Check Docker access before attempting VM creation
+    if ! check_docker_access; then
+        skip_docker_test "Docker service test"
+        return 0
+    fi
 
     create_test_vm "$CONFIG_DIR/docker.yaml" || return 1
 
@@ -833,6 +897,12 @@ test_vm_validate() {
 test_vm_status() {
     echo "Testing vm status command..."
 
+    # Check Docker access before attempting VM creation
+    if ! check_docker_access; then
+        skip_docker_test "VM status test"
+        return 0
+    fi
+
     create_test_vm "$CONFIG_DIR/minimal.yaml" || return 1
 
     # Check status when running
@@ -867,6 +937,12 @@ test_vm_status() {
 test_vm_exec() {
     echo "Testing vm exec command..."
 
+    # Check Docker access before attempting VM creation
+    if ! check_docker_access; then
+        skip_docker_test "VM exec test"
+        return 0
+    fi
+
     create_test_vm "$CONFIG_DIR/minimal.yaml" || return 1
 
     cd "$TEST_DIR"
@@ -898,6 +974,12 @@ test_vm_exec() {
 # Test VM creation and destruction
 test_vm_lifecycle() {
     echo "Testing VM lifecycle..."
+
+    # Check Docker access before attempting VM operations
+    if ! check_docker_access; then
+        skip_docker_test "VM lifecycle test"
+        return 0
+    fi
 
     create_test_vm "$CONFIG_DIR/minimal.yaml" || return 1
 
@@ -935,6 +1017,12 @@ test_vm_lifecycle() {
 test_vm_reload() {
     echo "Testing VM reload..."
 
+    # Check Docker access before attempting VM creation
+    if ! check_docker_access; then
+        skip_docker_test "VM reload test"
+        return 0
+    fi
+
     create_test_vm "$CONFIG_DIR/minimal.yaml" || return 1
 
     cd "$TEST_DIR"
@@ -970,6 +1058,12 @@ test_vm_reload() {
 test_nodejs_support() {
     echo "Testing Node.js support..."
 
+    # Check Docker access before attempting VM creation
+    if ! check_docker_access; then
+        skip_docker_test "Node.js support test"
+        return 0
+    fi
+
     create_test_vm "$CONFIG_DIR/minimal.yaml" || return 1
 
     # Check Node.js is installed
@@ -983,6 +1077,12 @@ test_nodejs_support() {
 # Test Python support
 test_python_support() {
     echo "Testing Python support..."
+
+    # Check Docker access before attempting VM creation
+    if ! check_docker_access; then
+        skip_docker_test "Python support test"
+        return 0
+    fi
 
     create_test_vm "$CONFIG_DIR/minimal.yaml" || return 1
 
