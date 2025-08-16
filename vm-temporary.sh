@@ -2,6 +2,9 @@
 # VM Temporary VM Management Module
 # Extracted from vm.sh to improve maintainability
 
+set -e
+set -u
+
 # Get the script directory for sourcing shared utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -69,12 +72,12 @@ require_temp_vm() {
 		echo "💡 Create one with: vm temp ./your-directory"
 		return 1
 	fi
-	
+
 	# Validate state file integrity
 	if ! validate_state_file; then
 		return 1
 	fi
-	
+
 	return 0
 }
 

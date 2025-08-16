@@ -1,0 +1,12 @@
+{
+  "project": {
+    "name": "test-project",
+    "workspace_path": "/workspace"
+  },
+  "provider": "docker",
+  "services": {
+    "postgresql": {
+      "enabled": true
+    }
+  }
+}

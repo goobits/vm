@@ -5,6 +5,7 @@
 # Part of: Docker-Vagrant Parity Enhancement (Phase 1A)
 
 set -e
+set -u
 
 # Get shared utilities directory
 SHARED_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

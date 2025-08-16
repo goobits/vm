@@ -67,3 +67,16 @@ construct_mount_argument() {
     # Build the mount argument with proper quoting to prevent command injection
     echo "-v $(printf '%q' "$real_source"):/workspace/$(basename "$source_dir")${permission_flags}"
 }
+
+# Check if Docker is accessible without sudo
+# This function is used by test scripts to determine if Docker operations can proceed
+# Returns 0 if Docker is accessible, 1 if it requires sudo or is not available
+check_docker_access() {
+    # VM operations require docker without sudo
+    if docker version &>/dev/null 2>&1; then
+        return 0
+    fi
+    
+    # Docker is not accessible without sudo
+    return 1
+}

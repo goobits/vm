@@ -4,6 +4,7 @@
 # Usage: ./docker-provisioning-simple.sh <config-path> [project-dir]
 
 set -e
+set -u
 
 # Get VM tool directory for accessing default config and utilities
 VM_TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

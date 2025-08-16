@@ -4,6 +4,7 @@
 # Eliminates code duplication across vm.sh, Vagrantfile, and vm-temporary.sh
 
 set -e
+set -u
 
 # Get shared utilities directory
 CONFIG_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

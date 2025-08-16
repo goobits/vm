@@ -3,12 +3,13 @@
 # Usage: ./install.sh
 
 set -e
+set -u
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Verify we're in the right directory
-if [ ! -f "$SCRIPT_DIR/vm.sh" ]; then
+if [[ ! -f "$SCRIPT_DIR/vm.sh" ]]; then
     echo "❌ Error: Cannot find vm.sh in $SCRIPT_DIR"
     echo "💡 Make sure you're running install.sh from the vm directory"
     exit 1
@@ -39,14 +40,14 @@ else
 
     # Copy directories
     for dir in providers shared configs; do
-        if [ -d "$SCRIPT_DIR/$dir" ]; then
+        if [[ -d "$SCRIPT_DIR/$dir" ]]; then
             cp -r "$SCRIPT_DIR/$dir" "$INSTALL_DIR/"
         fi
     done
 
     # Copy individual files
     for file in vm.sh validate-config.sh generate-config.sh vm.yaml package.json *.json *.yaml; do
-        if [ -f "$SCRIPT_DIR/$file" ]; then
+        if [[ -f "$SCRIPT_DIR/$file" ]]; then
             cp "$SCRIPT_DIR/$file" "$INSTALL_DIR/"
         fi
     done
