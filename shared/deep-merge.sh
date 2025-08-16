@@ -71,6 +71,18 @@ merge_project_config() {
 
     if [[ ! -f "$project_config_path" ]]; then
         echo "❌ Project configuration not found: $project_config_path" >&2
+        echo "" >&2
+        echo "Please ensure that vm.yaml exists in your project directory." >&2
+        echo "" >&2
+        echo "To create a vm.yaml file, you can:" >&2
+        echo "  1. Copy an example configuration:" >&2
+        echo "     cp $default_config_path vm.yaml" >&2
+        echo "" >&2
+        echo "  2. Or create a minimal vm.yaml with:" >&2
+        echo "     echo 'project:' > vm.yaml" >&2
+        echo "     echo '  name: $(basename $(pwd))' >> vm.yaml" >&2
+        echo "     echo '  hostname: dev.$(basename $(pwd)).local' >> vm.yaml" >&2
+        echo "" >&2
         return 1
     fi
 

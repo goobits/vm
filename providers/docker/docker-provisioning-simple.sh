@@ -38,10 +38,18 @@ generate_docker_compose() {
     local project_name
     project_name="$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')"
     local project_hostname
-    project_hostname="$(echo "$config" | jq -r '.project.hostname // empty')"
-    # If hostname is null or empty, generate a default one
+    project_hostname="$(echo "$config" | jq -r '.project.hostname')"
+    
+    # Check if hostname is missing or null
     if [[ -z "$project_hostname" || "$project_hostname" == "null" ]]; then
-        project_hostname="dev.${project_name}.local"
+        echo "❌ Error: Missing 'project.hostname' in vm.yaml" >&2
+        echo "" >&2
+        echo "Please add a hostname to your vm.yaml file:" >&2
+        echo "" >&2
+        echo "  project:" >&2
+        echo "    hostname: dev.${project_name}.local" >&2
+        echo "" >&2
+        return 1
     fi
     local workspace_path
     workspace_path="$(echo "$config" | jq -r '.project.workspace_path // "/workspace"')"
