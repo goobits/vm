@@ -42,7 +42,12 @@ aliases:
   geminiyolo: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini
 claude_sync: true
 gemini_sync: true
+pip_packages:
+  - claudeflow
 package_linking:
   npm: true
-  pip: false
-  cargo: false
+  pip: true
+  cargo: true
+# Ports 3150-3159 reserved for vm
+ports:
+  www_dev: 3150

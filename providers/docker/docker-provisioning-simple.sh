@@ -38,7 +38,11 @@ generate_docker_compose() {
     local project_name
     project_name="$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')"
     local project_hostname
-    project_hostname="$(echo "$config" | jq -r '.project.hostname')"
+    project_hostname="$(echo "$config" | jq -r '.project.hostname // empty')"
+    # If hostname is null or empty, generate a default one
+    if [[ -z "$project_hostname" || "$project_hostname" == "null" ]]; then
+        project_hostname="dev.${project_name}.local"
+    fi
     local workspace_path
     workspace_path="$(echo "$config" | jq -r '.project.workspace_path // "/workspace"')"
     local project_user
