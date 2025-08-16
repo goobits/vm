@@ -1045,6 +1045,7 @@ check_prerequisites() {
                     echo -e "${YELLOW}⚠ Docker requires sudo (user not in docker group)${NC}"
                     echo -e "${YELLOW}  To fix: sudo usermod -aG docker \$USER && newgrp docker${NC}"
                     echo -e "${YELLOW}  Some tests may fail due to permission issues${NC}"
+                    echo -e "${YELLOW}  Affected tests: minimal-boot, postgresql-service, vm-lifecycle${NC}"
                 fi
             else
                 echo -e "${GREEN}✓ Docker access works without sudo${NC}"
