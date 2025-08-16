@@ -71,7 +71,7 @@ provider: docker  # or "vagrant" - defaults to "docker"
 
 project:
   name: my-app  # VM/container name & prompt
-  hostname: dev.my-app.local  # VM/container hostname
+  hostname: dev.my-app.local  # VM/container hostname (required)
   workspace_path: /workspace  # Sync path in VM/container
   env_template_path: null  # e.g. "backend/.env.template"
   backup_pattern: "*backup*.sql.gz"  # For auto-restore
@@ -377,6 +377,7 @@ They'll auto-restore on provision!
 ```yaml
 project:
   name: my-frontend
+  hostname: dev.my-frontend.local
 ports:
   dev: 3000
   storybook: 6006
@@ -390,6 +391,7 @@ npm_packages:
 ```yaml
 project:
   name: fullstack-app
+  hostname: dev.fullstack-app.local
 ports:
   frontend: 3000
   backend: 3001
@@ -414,6 +416,7 @@ aliases:
 ```yaml
 project:
   name: polyglot-project
+  hostname: dev.polyglot-project.local
 cargo_packages:
   - cargo-watch
   - serde_json
@@ -434,6 +437,7 @@ aliases:
 ```yaml
 project:
   name: mobile-backend
+  hostname: dev.mobile-backend.local
 vm:
   memory: 6144  # More RAM for mobile tooling
 services:
