@@ -1,6 +1,9 @@
 # Vagrant
 .vagrant/
 
+# VM links (symlinked packages)
+.links/
+
 # Node modules (if installing dependencies locally)
 node_modules/
 
