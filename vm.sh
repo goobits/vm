@@ -1257,7 +1257,7 @@ docker_ssh() {
     fi
 
     # Handle -c flag specifically for command execution
-    if [[ "$1" = "-c" ]] && [[ -n "$2" ]]; then
+    if [[ $# -gt 0 ]] && [[ "$1" = "-c" ]] && [[ -n "${2:-}" ]]; then
         # Run command non-interactively
         docker_run "exec" "$config" "" su - "$project_user" -c "cd $(printf '%q' "$target_dir") && source ~/.zshrc && $(printf '%q' "$2")"
     elif [[ $# -gt 0 ]]; then
