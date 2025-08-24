@@ -209,19 +209,11 @@
                 - zsh
                 - zsh-syntax-highlighting
                 - supervisor
-                - pipx
             state: present
         retries: 5
         delay: 10
         register: base_packages_install
         until: base_packages_install is succeeded
-
-      # Ensure pipx bin directory is in PATH for all shells
-      - name: Ensure pipx PATH is configured
-        shell: |
-            pipx ensurepath
-        become_user: '{{ project_user }}'
-        ignore_errors: yes
 
       # Security setup - Configure rules first, enable last
       - name: Allow SSH (critical - must be first)
@@ -396,7 +388,12 @@
         become_user: '{{ project_user }}'
         when: project_config.versions.pnpm is defined
 
-      # Install Rust if cargo_packages is defined
+      # ================================================================================
+      # CONDITIONAL PACKAGE MANAGER INSTALLATIONS
+      # Only install package managers when their respective packages are defined
+      # ================================================================================
+
+      # Install Rust/Cargo if cargo_packages is defined
       - name: Check if Rust is already installed
         stat:
           path: '{{ home_dir }}/.cargo/bin/cargo'
@@ -439,6 +436,35 @@
         loop: '{{ project_config.cargo_packages }}'
         when: project_config.cargo_packages is defined and project_config.cargo_packages | length > 0
 
+      # Install pipx if pip_packages is defined
+      - name: Check if pipx is installed
+        command: which pipx
+        register: pipx_check
+        failed_when: false
+        changed_when: false
+        when: project_config.pip_packages is defined and project_config.pip_packages | length > 0
+
+      - name: Install pipx for Python package management
+        apt:
+            name: pipx
+            state: present
+        when: 
+          - project_config.pip_packages is defined and project_config.pip_packages | length > 0
+          - pipx_check is defined and pipx_check.rc != 0
+
+      - name: Ensure pipx PATH is configured
+        shell: |
+            pipx ensurepath
+        become_user: '{{ project_user }}'
+        when: 
+          - project_config.pip_packages is defined and project_config.pip_packages | length > 0
+          - pipx_check is defined and pipx_check.rc != 0
+        ignore_errors: yes
+
+      # ================================================================================
+      # PACKAGE INSTALLATIONS
+      # Install packages for each configured package manager
+      # ================================================================================
 
       # Install pip packages using pipx (with link detection)
       - name: Install pip packages with pipx (with link detection)
