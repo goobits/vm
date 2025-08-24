@@ -209,11 +209,19 @@
                 - zsh
                 - zsh-syntax-highlighting
                 - supervisor
+                - pipx
             state: present
         retries: 5
         delay: 10
         register: base_packages_install
         until: base_packages_install is succeeded
+
+      # Ensure pipx bin directory is in PATH for all shells
+      - name: Ensure pipx PATH is configured
+        shell: |
+            pipx ensurepath
+        become_user: '{{ project_user }}'
+        ignore_errors: yes
 
       # Security setup - Configure rules first, enable last
       - name: Allow SSH (critical - must be first)
@@ -435,19 +443,20 @@
       # Install pip packages using pipx (with link detection)
       - name: Install pip packages with pipx (with link detection)
         shell: |
+            export PATH="$HOME/.local/bin:$PATH"
             package="{{ item }}"
             # Sanitize package name to match mount path (replace - with _ and handle case)
             safe_package_name="${package//-/_}"
             safe_package_name="${safe_package_name,,}"
             if [ -d "/workspace/.links/pip/$package" ]; then
                 echo "🔗 Linking local package: $package"
-                pipx install -e "/workspace/.links/pip/$package"
+                /usr/bin/pipx install -e "/workspace/.links/pip/$package"
             elif [ -d "/workspace/.links/pip/$safe_package_name" ]; then
                 echo "🔗 Linking local package: $safe_package_name"
-                pipx install -e "/workspace/.links/pip/$safe_package_name"
+                /usr/bin/pipx install -e "/workspace/.links/pip/$safe_package_name"
             else
                 echo "📦 Installing from registry: $package"
-                pipx install "$package"
+                /usr/bin/pipx install "$package"
             fi
         args:
             executable: /bin/bash
