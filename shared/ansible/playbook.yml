@@ -252,19 +252,21 @@
             - project_config.ports | length > 0
             - not is_docker_container
 
-      # Node.js via NVM
+      # Install Node.js/npm if npm_packages is defined
       - name: Download NVM installer
         get_url:
             url: "https://raw.githubusercontent.com/nvm-sh/nvm/{{ project_config.versions.nvm | default('v0.40.3') }}/install.sh"
             dest: /tmp/install_nvm.sh
             mode: '0755'
         become_user: '{{ project_user }}'
+        when: project_config.npm_packages is defined and project_config.npm_packages | length > 0
 
       - name: Install NVM
         shell: /tmp/install_nvm.sh
         args:
             creates: '/home/{{ project_user }}/.nvm/nvm.sh'
         become_user: '{{ project_user }}'
+        when: project_config.npm_packages is defined and project_config.npm_packages | length > 0
 
       # Change default shell to zsh
       - name: Change vagrant user shell to zsh
@@ -291,6 +293,7 @@
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
+        when: project_config.npm_packages is defined and project_config.npm_packages | length > 0
 
       - name: Update npm to latest version
         shell: |
@@ -299,6 +302,7 @@
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
+        when: project_config.npm_packages is defined and project_config.npm_packages | length > 0
         ignore_errors: yes
 
       - name: Enable corepack for pnpm
@@ -308,6 +312,7 @@
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
+        when: project_config.npm_packages is defined and project_config.npm_packages | length > 0
 
       - name: Install pnpm via corepack
         shell: |
@@ -317,6 +322,7 @@
             executable: /bin/bash
         become_user: '{{ project_user }}'
         register: corepack_result
+        when: project_config.npm_packages is defined and project_config.npm_packages | length > 0
         ignore_errors: yes
 
       - name: Install pnpm via npm if corepack failed
@@ -327,7 +333,9 @@
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
-        when: corepack_result.failed | default(false)
+        when: 
+          - project_config.npm_packages is defined and project_config.npm_packages | length > 0
+          - corepack_result.failed | default(false)
 
       - name: Install additional APT packages
         apt:
@@ -366,6 +374,9 @@
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
+        when: 
+          - project_config.npm_packages is defined and project_config.npm_packages | length > 0
+          - project_config.claude_sync | default(false)
         ignore_errors: yes
 
       - name: Install Gemini CLI
@@ -375,6 +386,9 @@
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
+        when: 
+          - project_config.npm_packages is defined and project_config.npm_packages | length > 0
+          - project_config.gemini_sync | default(false)
         ignore_errors: yes
 
       - name: Install pnpm via npm as fallback
