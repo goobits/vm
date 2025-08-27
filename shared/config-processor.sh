@@ -585,7 +585,7 @@ validate_config_file() {
 # Args: config_path (optional)
 # Returns: 0 on success, 1 on failure
 init_config_file() {
-    local config_path="$1"
+    local config_path="${1:-}"
 
     # Get the parent script directory to find validate-config.sh
     local parent_script_dir

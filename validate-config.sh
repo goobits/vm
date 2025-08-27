@@ -507,7 +507,7 @@ main() {
 }
 
 # Debug output if VM_DEBUG is set
-if [[ -n "$VM_DEBUG" ]]; then
+if [[ -n "${VM_DEBUG:-}" ]]; then
     echo "DEBUG validate-config.sh: CUSTOM_CONFIG_PATH='$CUSTOM_CONFIG_PATH'" >&2
     echo "DEBUG validate-config.sh: VALIDATE_FLAG='$VALIDATE_FLAG'" >&2
     echo "DEBUG validate-config.sh: GET_CONFIG_FLAG='$GET_CONFIG_FLAG'" >&2
