@@ -193,8 +193,8 @@ generate_package_mounts() {
         # Convert detected packages to volume mount strings
         while IFS=: read -r package_name package_path; do
             if [[ -n "$package_name" && -n "$package_path" ]]; then
-                # Use hierarchical mount structure: /workspace/.links/pm/package
-                echo "$package_path:/workspace/.links/$package_manager/$package_name:delegated"
+                # Use hierarchical mount structure: /home/developer/.links/pm/package
+                echo "$package_path:/home/developer/.links/$package_manager/$package_name:delegated"
                 echo "📦 Found linked package ($package_manager): $package_name -> $package_path" >&2
             fi
         done <<< "$detection_output"

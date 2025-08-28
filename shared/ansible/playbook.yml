@@ -481,7 +481,7 @@
             state: present
         when: 
           - project_config.pip_packages is defined and project_config.pip_packages | length > 0
-          - pipx_check is defined and pipx_check.rc != 0
+          - pipx_check.rc != 0
 
       - name: Ensure pipx PATH is configured
         shell: |
@@ -489,7 +489,6 @@
         become_user: '{{ project_user }}'
         when: 
           - project_config.pip_packages is defined and project_config.pip_packages | length > 0
-          - pipx_check is defined and pipx_check.rc != 0
         ignore_errors: yes
 
       # ================================================================================
@@ -505,12 +504,12 @@
             # Sanitize package name to match mount path (replace - with _ and handle case)
             safe_package_name="${package//-/_}"
             safe_package_name="${safe_package_name,,}"
-            if [ -d "/workspace/.links/pip/$package" ]; then
+            if [ -d "/home/{{ project_user }}/.links/pip/$package" ]; then
                 echo "🔗 Linking local package: $package"
-                /usr/bin/pipx install -e "/workspace/.links/pip/$package"
-            elif [ -d "/workspace/.links/pip/$safe_package_name" ]; then
+                /usr/bin/pipx install -e "/home/{{ project_user }}/.links/pip/$package"
+            elif [ -d "/home/{{ project_user }}/.links/pip/$safe_package_name" ]; then
                 echo "🔗 Linking local package: $safe_package_name"
-                /usr/bin/pipx install -e "/workspace/.links/pip/$safe_package_name"
+                /usr/bin/pipx install -e "/home/{{ project_user }}/.links/pip/$safe_package_name"
             else
                 echo "📦 Installing from registry: $package"
                 /usr/bin/pipx install "$package"

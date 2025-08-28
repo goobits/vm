@@ -1,7 +1,7 @@
 # Vagrant
 .vagrant/
 
-# VM links (symlinked packages)
+# VM links (symlinked packages) - moved to /home/developer/.links/
 .links/
 
 # Node modules (if installing dependencies locally)
