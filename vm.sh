@@ -64,6 +64,7 @@ source "$SCRIPT_DIR/shared/security-utils.sh"
 source "$SCRIPT_DIR/shared/config-processor.sh"
 source "$SCRIPT_DIR/shared/provider-interface.sh"
 source "$SCRIPT_DIR/shared/project-detector.sh"
+source "$SCRIPT_DIR/shared/port-manager.sh"
 source "$SCRIPT_DIR/lib/progress-reporter.sh"
 source "$SCRIPT_DIR/lib/docker-compose-progress.sh"
 
@@ -693,6 +694,32 @@ docker_up() {
     # Show provider
     progress_task "🐳 Provider: docker"
     progress_done
+    
+    # Check and register port range if specified
+    local port_range
+    local project_name
+    project_name=$(echo "$config" | yq eval '.project.name // "project"')
+    port_range=$(echo "$config" | yq eval '.port_range // empty')
+    
+    if [[ -n "$port_range" ]]; then
+        progress_task "📡 Checking port range $port_range"
+        
+        # Check for conflicts
+        local conflicts
+        if conflicts=$(check_port_conflicts "$port_range" "$project_name"); then
+            # Register the range
+            if register_port_range "$project_name" "$port_range" "$project_dir"; then
+                progress_done
+            else
+                progress_fail "Failed to register port range"
+            fi
+        else
+            progress_fail "Port range conflicts with: $conflicts"
+            progress_phase_done
+            progress_complete "Port conflict detected"
+            return 1
+        fi
+    fi
     
     # Create a secure temporary file for the config
     TEMP_CONFIG_FILE=$(create_temp_file "vm-config.XXXXXX")
@@ -1461,6 +1488,15 @@ docker_destroy() {
     # Get project name for volume/network cleanup
     local project_name
     project_name=$(get_project_name "$config")
+    
+    # Unregister port range if it exists
+    local port_range
+    port_range=$(echo "$config" | yq eval '.port_range // empty')
+    if [[ -n "$port_range" ]]; then
+        progress_task "📡 Unregistering port range"
+        unregister_port_range "$project_name"
+        progress_done
+    fi
 
     progress_task "Cleaning up resources"
     progress_done
@@ -1495,7 +1531,45 @@ docker_status() {
     local project_dir="$2"
     shift 2
 
+    # Show container status
     docker_run "ps" "$config" "$project_dir" "$@"
+    
+    # Show port range info if configured
+    local port_range
+    local project_name
+    project_name=$(echo "$config" | yq eval '.project.name // "project"')
+    port_range=$(echo "$config" | yq eval '.port_range // empty')
+    
+    if [[ -n "$port_range" ]]; then
+        echo ""
+        echo "📡 Port Range: $port_range"
+        
+        # Count used ports in range
+        local ports_list
+        ports_list=$(echo "$config" | yq eval '.ports // {} | to_entries | .[].value')
+        
+        if [[ -n "$ports_list" ]]; then
+            local range_start range_end
+            range_start=$(echo "$port_range" | cut -d'-' -f1)
+            range_end=$(echo "$port_range" | cut -d'-' -f2)
+            
+            local used_count=0
+            while read -r port; do
+                if [[ $port -ge $range_start && $port -le $range_end ]]; then
+                    ((used_count++))
+                fi
+            done <<< "$ports_list"
+            
+            local total_ports=$((range_end - range_start + 1))
+            echo "   Used: $used_count/$total_ports ports"
+        fi
+        
+        # Check for conflicts
+        local conflicts
+        if ! conflicts=$(check_port_conflicts "$port_range" "$project_name" 2>/dev/null); then
+            echo "   ⚠️  Conflicts with: $conflicts"
+        fi
+    fi
 }
 
 docker_reload() {
