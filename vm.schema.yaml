@@ -98,6 +98,14 @@ properties:
         type: string
         default: "3.11"
         description: Python version to install via pyenv (e.g., '3.11', '3.12.0')
+  port_range:
+    type: string
+    description: Reserved port range for this project (e.g., "3170-3179")
+    pattern: '^[0-9]+-[0-9]+$'
+    examples:
+      - "3170-3179"
+      - "8080-8089"
+      - "3000-3009"
   ports:
     type: object
     description: Port forwarding configuration. Maps service names to host ports.
