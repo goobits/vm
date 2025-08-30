@@ -481,7 +481,11 @@
             state: present
         when: 
           - project_config.pip_packages is defined and project_config.pip_packages | length > 0
-          - pipx_check.rc != 0
+          - pipx_check is defined and pipx_check.rc != 0
+        retries: 5
+        delay: 10
+        register: pipx_install
+        until: pipx_install is succeeded
 
       - name: Ensure pipx PATH is configured
         shell: |
