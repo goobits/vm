@@ -83,6 +83,43 @@ generate_docker_compose() {
         ')"
     fi
 
+    # Collect explicit port mappings to avoid conflicts with port range
+    local explicit_ports=""
+    if [[ "$ports_count" -gt 0 ]]; then
+        explicit_ports="$(echo "$config" | jq -r '.ports // {} | to_entries[] | .value' | tr '\n' ' ')"
+    fi
+
+    # Generate port range forwarding (skip explicit ports to avoid conflicts)
+    local port_range
+    port_range="$(echo "$config" | jq -r '.port_range // ""')"
+    if [[ -n "$port_range" && "$port_range" =~ ^[0-9]+-[0-9]+$ ]]; then
+        local range_start range_end
+        range_start="$(echo "$port_range" | cut -d'-' -f1)"
+        range_end="$(echo "$port_range" | cut -d'-' -f2)"
+        local host_ip
+        host_ip="$(echo "$config" | jq -r '.vm.port_binding // "127.0.0.1"')"
+        
+        if [[ $range_start -lt $range_end && $range_start -ge 1 && $range_end -le 65535 ]]; then
+            local range_ports=""
+            for port in $(seq "$range_start" "$range_end"); do
+                # Skip if port already explicitly mapped in ports: section
+                if [[ ! " $explicit_ports " =~ " $port " ]]; then
+                    range_ports+="\n      - \"$host_ip:$port:$port\""
+                fi
+            done
+            
+            if [[ -n "$range_ports" ]]; then
+                if [[ -n "$ports_section" ]]; then
+                    # Append to existing ports section
+                    ports_section="${ports_section}${range_ports}"
+                else
+                    # Create new ports section
+                    ports_section="\n    ports:${range_ports}"
+                fi
+            fi
+        fi
+    fi
+
     # Generate Claude sync volume
     local claude_sync_volume=""
     local claude_sync
@@ -307,7 +344,7 @@ generate_docker_compose() {
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${project_name}_nvm:/home/$project_user/.nvm
       - ${project_name}_cache:/home/$project_user/.cache
-      - ${project_name}_config:/tmp$claude_sync_volume$gemini_sync_volume$database_volumes$temp_mount_volumes$package_link_volumes$audio_volumes$gpu_volumes$ports_section$devices_section$groups_section
+      - ${project_name}_config:/tmp$claude_sync_volume$gemini_sync_volume$database_volumes$temp_mount_volumes$package_link_volumes$audio_volumes$gpu_volumes$devices_section$groups_section$ports_section
     networks:
       - ${project_name}_network
     # Security: Removed dangerous capabilities that create container escape risks

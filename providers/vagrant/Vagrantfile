@@ -2,6 +2,7 @@
 # vi: set ft=ruby :
 
 require 'json'
+require 'set'
 
 Vagrant.configure("2") do |config|
   # Use the shared config processor for unified configuration loading
@@ -41,13 +42,38 @@ Vagrant.configure("2") do |config|
     # Forward ports from config
     # Default to localhost-only for security (override with vm.port_binding)
     port_binding = project_config.dig('vm', 'port_binding') || "127.0.0.1"
+    
+    # Collect explicit ports to avoid conflicts with port range
+    explicit_ports = Set.new
     (project_config['ports'] || {}).each do |service, port|
+      explicit_ports.add(port)
       if port_binding == "0.0.0.0"
         # Explicitly bind to all interfaces if requested
         machine.vm.network "forwarded_port", guest: port, host: port, auto_correct: true
       else
         # Default: bind to specified IP (localhost by default)
         machine.vm.network "forwarded_port", guest: port, host: port, host_ip: port_binding, auto_correct: true
+      end
+    end
+    
+    # Forward port range if specified (skip explicit ports to avoid conflicts)
+    port_range = project_config['port_range']
+    if port_range && port_range.match?(/^\d+-\d+$/)
+      range_parts = port_range.split('-')
+      range_start = range_parts[0].to_i  
+      range_end = range_parts[1].to_i
+      
+      if range_start < range_end && range_start >= 1 && range_end <= 65535
+        (range_start..range_end).each do |port|
+          # Skip if port already explicitly mapped in ports: section
+          next if explicit_ports.include?(port)
+          
+          if port_binding == "0.0.0.0"
+            machine.vm.network "forwarded_port", guest: port, host: port, auto_correct: true
+          else
+            machine.vm.network "forwarded_port", guest: port, host: port, host_ip: port_binding, auto_correct: true  
+          end
+        end
       end
     end
   
