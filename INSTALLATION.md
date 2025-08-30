@@ -62,7 +62,7 @@ pnpm vm create
 ### For Docker Provider (Default)
 - **Docker Desktop** (macOS/Windows) or **Docker Engine** (Linux)
 - **docker-compose**
-- **yq** (YAML processor)
+- **yq v4+** (mikefarah/yq - YAML processor)
 
 ### For Vagrant Provider
 - **VirtualBox** or **Parallels**
@@ -75,7 +75,7 @@ pnpm vm create
 # Install Docker Desktop
 brew install --cask docker
 
-# Install YAML processor
+# Install YAML processor (mikefarah/yq v4+)
 brew install yq
 ```
 
@@ -95,8 +95,12 @@ brew install --cask virtualbox
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
 
-# Install yq
-sudo apt-get update && sudo apt-get install yq
+# Install yq (mikefarah/yq v4+)
+# Remove old Python yq if installed
+sudo apt remove yq 2>/dev/null || true
+# Install mikefarah/yq
+sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+sudo chmod +x /usr/local/bin/yq
 
 # Log out and back in for docker group changes to take effect
 ```
@@ -153,8 +157,9 @@ vm create  # Should work with defaults
 - **Permissions**: Make sure your user is in the docker group: `groups | grep docker`
 
 ### yq Issues
-- **Ubuntu older than 20.04**: Install from [GitHub releases](https://github.com/mikefarah/yq/releases)
-- **Snap installation**: `sudo snap install yq`
+- **Wrong yq version**: Make sure you have mikefarah/yq v4+, not kislyuk/yq (Python version)
+- **Check version**: `yq --version` should show v4+ without "yq (https://github.com/kislyuk/yq)"
+- **Manual install**: Download from [mikefarah/yq releases](https://github.com/mikefarah/yq/releases)
 
 ### Vagrant Issues
 - **VirtualBox conflicts**: Disable Hyper-V on Windows, or use Parallels on macOS

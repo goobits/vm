@@ -10,15 +10,18 @@ set -u
 if ! command -v yq &> /dev/null; then
     echo "❌ Error: yq is not installed. This tool is required for YAML processing."
     echo ""
-    echo "📦 To install yq on Ubuntu/Debian:"
-    echo "   sudo apt-get update"
-    echo "   sudo apt-get install yq"
+    echo "📦 To install yq (mikefarah/yq v4+):"
+    echo "   # Remove old Python yq if installed"
+    echo "   sudo apt remove yq 2>/dev/null || true"
+    echo "   # Install mikefarah/yq"
+    echo "   sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64"
+    echo "   sudo chmod +x /usr/local/bin/yq"
     echo ""
     echo "📦 To install yq on macOS:"
     echo "   brew install yq"
     echo ""
     echo "📦 To install yq on other systems:"
-    echo "   Visit: https://github.com/kislyuk/yq"
+    echo "   Visit: https://github.com/mikefarah/yq/releases"
     echo ""
     exit 1
 fi
@@ -28,6 +31,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Source shared deep merge utilities
 source "$SCRIPT_DIR/shared/deep-merge.sh"
+
+# Source port management functions for auto-suggesting port ranges
+source "$SCRIPT_DIR/shared/port-manager.sh"
 
 # Initialize variables
 VALIDATE_FLAG=""
@@ -81,7 +87,7 @@ extract_schema_defaults() {
         return 1
     fi
 
-    yq eval -o json '{
+    yq -o json '{
       "version": .properties.version.default,
       "provider": .properties.provider.default,
       "project": {
@@ -191,6 +197,14 @@ initialize_vm_yaml() {
         .terminal.username = ($dirname + "-dev")
     ')"
 
+    # Auto-suggest port range for the project
+    local suggested_range
+    if suggested_range="$(suggest_next_range 10 3000 2>/dev/null)"; then
+        customized_config="$(echo "$customized_config" | jq --arg range "$suggested_range" '.port_range = $range')"
+        echo "🔢 Auto-suggested port range: $suggested_range"
+        echo ""
+    fi
+
     # Write the customized config as YAML
     if echo "$customized_config" | yq -p json -o yaml . > "$local_config_path"; then
         echo "✅ Created vm.yaml for project: $sanitized_name"
@@ -293,8 +307,8 @@ load_and_merge_config() {
         fi
 
         local yq_error
-        if ! user_config="$(yq -o json . "$config_file_to_load" 2>&1)"; then
-            yq_error="$(yq -o json . "$config_file_to_load" 2>&1)"
+        if ! user_config="$(yq . "$config_file_to_load" -o json 2>&1)"; then
+            yq_error="$(yq . "$config_file_to_load" -o json 2>&1)"
             echo "❌ Invalid YAML in project config: $config_file_to_load" >&2
             echo "   YAML parsing error: $yq_error" >&2
             return 1
@@ -359,7 +373,7 @@ except ImportError as e:
 
     # Create temp file for config
     local temp_config="/tmp/vm-config-validate-$$.yaml"
-    echo "$config" | yq -o yaml . > "$temp_config"
+    echo "$config" | yq -p json -o yaml . > "$temp_config"
 
     # Use Python to validate YAML against YAML schema
     local validation_output
