@@ -18,15 +18,16 @@ setup_temp_file_handlers
 if ! command -v yq &> /dev/null; then
     echo "❌ Error: yq is not installed. This tool is required for YAML processing."
     echo ""
-    echo "📦 To install yq on Ubuntu/Debian:"
-    echo "   sudo apt-get update"
-    echo "   sudo apt-get install yq"
+    echo "📦 To install yq (mikefarah/yq v4+):"
+    echo "   sudo apt remove yq 2>/dev/null || true"
+    echo "   sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64"
+    echo "   sudo chmod +x /usr/local/bin/yq"
     echo ""
     echo "📦 To install yq on macOS:"
     echo "   brew install yq"
     echo ""
     echo "📦 To install yq on other systems:"
-    echo "   Visit: https://github.com/kislyuk/yq"
+    echo "   Visit: https://github.com/mikefarah/yq/releases"
     echo ""
     exit 1
 fi
@@ -126,11 +127,11 @@ if [[ -n "$SERVICES" ]]; then
         fi
         
         # Extract the specific service configuration and merge it using yq
-        service_value="$(yq eval ".services.$service" "$service_config_file")"
+        service_value="$(yq ".services.$service" "$service_config_file")"
         
         # Use yq to merge the service configuration into the base config
         base_config_new="$(create_temp_file "vm-config-new.XXXXXX")"
-        if ! echo "$service_value" | yq -o yaml . | yq eval-all '.[0].services["'"$service"'"] = .[1] | .[0]' "$base_config_temp" - > "$base_config_new"; then
+        if ! echo "$service_value" | yq -p json -o yaml . | yq eval-all 'select(fileIndex == 0).services["'"$service"'"] = select(fileIndex == 1) | select(fileIndex == 0)' "$base_config_temp" - > "$base_config_new"; then
             echo "❌ Error: Failed to merge service configuration for: $service" >&2
             exit 1
         fi
@@ -148,7 +149,7 @@ safe_yq_update() {
     local temp_output
     temp_output="$(create_temp_file "yq-update.XXXXXX")"
     
-    if ! yq -o yaml "$yq_expression" "$temp_file" > "$temp_output"; then
+    if ! yq "$yq_expression" "$temp_file" -o yaml > "$temp_output"; then
         echo "❌ Error: $error_message" >&2
         exit 1
     fi
@@ -200,18 +201,18 @@ fi
 
 # Write final configuration
 if cp "$base_config_temp" "$OUTPUT_FILE"; then
-    project_name="$(yq eval '.project.name' "$OUTPUT_FILE")"
+    project_name="$(yq '.project.name' "$OUTPUT_FILE")"
     echo "✅ Generated configuration for project: $project_name"
     echo "📍 Configuration file: $OUTPUT_FILE"
     
     # Show enabled services using yq
-    enabled_services="$(yq eval '.services | to_entries[] | select(.value.enabled == true) | .key' "$OUTPUT_FILE" 2>/dev/null | tr '\n' ' ' || echo "none")"
+    enabled_services="$(yq '.services | to_entries[] | select(.value.enabled == true) | .key' "$OUTPUT_FILE" 2>/dev/null | tr '\n' ' ' || echo "none")"
     if [[ "$enabled_services" != "none" ]]; then
         echo "🔧 Enabled services: $enabled_services"
     fi
     
     # Show port allocations using yq
-    ports="$(yq eval '.ports // {} | to_entries[] | .key + ":" + (.value | tostring)' "$OUTPUT_FILE" 2>/dev/null | tr '\n' ' ' || echo "")"
+    ports="$(yq '.ports // {} | to_entries[] | .key + ":" + (.value | tostring)' "$OUTPUT_FILE" 2>/dev/null | tr '\n' ' ' || echo "")"
     if [[ -n "$ports" ]]; then
         echo "🔌 Port allocations: $ports"
     fi

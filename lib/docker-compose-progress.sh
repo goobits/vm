@@ -22,9 +22,9 @@ docker_compose_with_progress() {
             local compose_file="${args[-1]}"
             if [[ -f "$compose_file" ]]; then
                 # Try to parse compose file for resource counts
-                local container_count=$(yq eval '.services | length' "$compose_file" 2>/dev/null || echo 1)
-                local volume_count=$(yq eval '.volumes | length' "$compose_file" 2>/dev/null || echo 0)
-                local network_count=$(yq eval '.networks | length' "$compose_file" 2>/dev/null || echo 0)
+                local container_count=$(yq '.services | length' "$compose_file" 2>/dev/null || echo 1)
+                local volume_count=$(yq '.volumes | length' "$compose_file" 2>/dev/null || echo 0)
+                local network_count=$(yq '.networks | length' "$compose_file" 2>/dev/null || echo 0)
             else
                 local container_count=1
                 local volume_count=0

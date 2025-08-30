@@ -89,13 +89,13 @@ merge_project_config() {
 
     # Load configurations (convert YAML to JSON for processing)
     local default_config
-    if ! default_config="$(yq -o json . "$default_config_path" 2>/dev/null)"; then
+    if ! default_config="$(yq . -o json "$default_config_path" 2>/dev/null)"; then
         echo "❌ Invalid YAML in default config: $default_config_path" >&2
         return 1
     fi
 
     local project_config
-    if ! project_config="$(yq -o json . "$project_config_path" 2>/dev/null)"; then
+    if ! project_config="$(yq . -o json "$project_config_path" 2>/dev/null)"; then
         echo "❌ Invalid YAML in project config: $project_config_path" >&2
         return 1
     fi
