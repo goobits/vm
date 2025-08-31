@@ -4,11 +4,13 @@ Beautiful development environments with one command. Choose between Docker (ligh
 
 ## 🏃 Quick Start
 
-### Option 1: npm Global Installation (Recommended)
+### Option 1: Clone and Install (Recommended)
 
 ```bash
-# 1. Install globally via npm
-npm install -g @goobits/vm
+# 1. Clone repository and install globally
+git clone <repository-url>
+cd vm
+./install.sh
 
 # 2. Start immediately with defaults OR create custom vm.yaml
 vm create  # Works without any config! Uses smart defaults
@@ -28,32 +30,33 @@ ports:
 # Default provider is Docker - add "provider": "vagrant" for full VM isolation
 ```
 
-### Option 2: Manual Global Installation
+### Option 2: Per-Project Installation
 
 ```bash
-# 1. Clone and install
-git clone <repo-url>
+# 1. Clone to your project directory
+git clone <repository-url> vm
 cd vm
-./install.sh
 
-# 2. Use globally
-vm create
+# 2. Use directly without global installation
+./vm.sh create
 ```
 
-### Option 3: Per-Project Installation
+### Option 3: Package.json Integration
 
 ```bash
-# 1. Copy to your project
-cp -r vm your-project/
+# 1. Clone to your project
+git clone <repository-url> vm
 
-# 2. Add to package.json
+# 2. Add to package.json scripts
 {
   "scripts": {
     "vm": "./vm/vm.sh"
   }
 }
 
-# 3. Launch!
+# 3. Launch via package manager
+npm run vm create
+# or
 pnpm vm create
 ```
 
@@ -63,6 +66,7 @@ pnpm vm create
 - **Docker Desktop** (macOS/Windows) or **Docker Engine** (Linux)
 - **docker-compose**
 - **yq v4+** (mikefarah/yq - YAML processor)
+- **Python3** (macOS only - for cross-platform path operations)
 
 ### For Vagrant Provider
 - **VirtualBox** or **Parallels**
@@ -98,8 +102,18 @@ sudo usermod -aG docker $USER
 # Install yq (mikefarah/yq v4+)
 # Remove old Python yq if installed
 sudo apt remove yq 2>/dev/null || true
-# Install mikefarah/yq
-sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+# Detect architecture and install appropriate yq binary
+ARCH=$(uname -m)
+case "$ARCH" in
+    x86_64) YQ_ARCH="amd64" ;;
+    aarch64|arm64) YQ_ARCH="arm64" ;;
+    *) 
+        echo "❌ Error: Unsupported Linux architecture: $ARCH" >&2
+        echo "Supported: x86_64, aarch64/arm64" >&2
+        exit 1
+        ;;
+esac
+sudo wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${YQ_ARCH}"
 sudo chmod +x /usr/local/bin/yq
 
 # Log out and back in for docker group changes to take effect

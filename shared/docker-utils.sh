@@ -3,6 +3,10 @@
 # These functions handle Docker command execution with automatic sudo detection
 # and provide compatibility between docker-compose and docker compose commands
 
+# Get the script directory for sourcing shared utilities
+DOCKER_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$DOCKER_UTILS_DIR/platform-utils.sh"
+
 # Docker wrapper to handle sudo requirements
 # This function automatically detects if Docker requires sudo and executes accordingly
 # Usage: docker_cmd [docker arguments...]
@@ -51,7 +55,7 @@ construct_mount_argument() {
     # SECURITY: Re-validate the path immediately before use to prevent TOCTOU attacks
     # The symlink target could have changed between initial validation and mount construction
     local real_source
-    if ! real_source=$(realpath "$source_dir" 2>/dev/null); then
+    if ! real_source=$(portable_readlink "$source_dir"); then
         echo "❌ Error: Cannot resolve path '$source_dir'" >&2
         return 1
     fi

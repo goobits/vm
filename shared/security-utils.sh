@@ -1,9 +1,13 @@
 #!/bin/bash
 # Shared Security Utilities
-# Extracted from vm.sh and vm-temporary.sh for use by both Docker and Vagrant providers
+# Extracted from vm.sh and shared/temporary-vm-utils.sh for use by both Docker and Vagrant providers
 #
 # This module provides provider-agnostic security validation utilities
 # for path validation, name sanitization, and general security checks.
+
+# Get the script directory for sourcing shared utilities
+SECURITY_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SECURITY_UTILS_DIR/platform-utils.sh"
 
 # Validate directory name for security (basic validation for temp VM usage)
 # This is a lighter validation compared to full mount security validation
@@ -143,7 +147,7 @@ resolve_path_secure() {
     local resolved_path
     if [[ "$must_exist" == "true" ]]; then
         # Path must exist for resolution
-        if ! resolved_path=$(realpath "$input_path" 2>/dev/null); then
+        if ! resolved_path=$(portable_readlink "$input_path"); then
             echo "❌ Error: Cannot resolve path '$input_path' (path may not exist)" >&2
             return 1
         fi
@@ -154,7 +158,7 @@ resolve_path_secure() {
         parent_dir=$(dirname "$input_path")
         filename=$(basename "$input_path")
 
-        if ! parent_dir=$(realpath "$parent_dir" 2>/dev/null); then
+        if ! parent_dir=$(portable_readlink "$parent_dir"); then
             echo "❌ Error: Cannot resolve parent directory of '$input_path'" >&2
             return 1
         fi

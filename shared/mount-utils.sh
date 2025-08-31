@@ -5,8 +5,9 @@
 # This module provides provider-agnostic mount validation, security checking,
 # and mount argument construction utilities.
 
-# Source docker-utils.sh for construct_mount_argument function
+# Source shared utilities
 MOUNT_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$MOUNT_UTILS_DIR/platform-utils.sh"
 source "$MOUNT_UTILS_DIR/docker-utils.sh"
 
 # Lightweight atomic security validation for TOCTOU prevention
@@ -106,7 +107,7 @@ validate_mount_security() {
 
     # Resolve the real path to handle symlinks and get canonical path
     local real_path
-    if ! real_path=$(realpath "$dir_path" 2>/dev/null); then
+    if ! real_path=$(portable_readlink "$dir_path"); then
         echo "❌ Error: Cannot resolve path '$dir_path'" >&2
         return 1
     fi

@@ -22,7 +22,7 @@ if ! command -v yq &> /dev/null; then
     echo ""
     echo "📦 To install yq (mikefarah/yq v4+):"
     echo "   sudo apt remove yq 2>/dev/null || true"
-    echo "   sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64"
+    echo "   sudo wget -qO /usr/local/bin/yq $(get_yq_download_url)"
     echo "   sudo chmod +x /usr/local/bin/yq"
     echo ""
     echo "📦 To install yq on macOS:"
@@ -40,7 +40,7 @@ fi
 # Handle both direct execution and npm link scenarios
 if [[ -L "$0" ]]; then
     # If this is a symlink (npm link), resolve the real path
-    REAL_SCRIPT="$(readlink -f "$0")"
+    REAL_SCRIPT="$(portable_readlink "$0")"
     SCRIPT_DIR="$(cd "$(dirname "$REAL_SCRIPT")" && pwd)"
 else
     # Direct execution
@@ -51,6 +51,7 @@ fi
 # SCRIPT_DIR: Directory containing this script and shared utilities
 
 # Source shared logging utilities
+source "$SCRIPT_DIR/shared/platform-utils.sh"
 source "$SCRIPT_DIR/shared/logging-utils.sh"
 # CURRENT_DIR: User's working directory when script was invoked  
 # Used by provider interface and config processing
@@ -2752,7 +2753,7 @@ case "${1:-}" in
         if [[ "$CUSTOM_CONFIG" = "__SCAN__" ]]; then
             PROJECT_DIR="$CURRENT_DIR"
         elif [[ -n "$CUSTOM_CONFIG" ]]; then
-            FULL_CONFIG_PATH="$(cd "$CURRENT_DIR" && readlink -f "$CUSTOM_CONFIG")"
+            FULL_CONFIG_PATH="$(cd "$CURRENT_DIR" && portable_readlink "$CUSTOM_CONFIG")"
             PROJECT_DIR="$(dirname "$FULL_CONFIG_PATH")"
         else
             PROJECT_DIR="$CURRENT_DIR"
@@ -2786,9 +2787,9 @@ case "${1:-}" in
         fi
         ;;
     "temp"|"tmp")
-        # Handle temp VM commands - delegate to vm-temporary.sh module
+        # Handle temp VM commands - delegate to shared/temporary-vm-utils.sh module
         shift
-        source "$SCRIPT_DIR/vm-temporary.sh"
+        source "$SCRIPT_DIR/shared/temporary-vm-utils.sh"
         handle_temp_command "$@"
         ;;
     "destroy")
@@ -2823,8 +2824,8 @@ case "${1:-}" in
                     # Safety check: ensure it's a temp directory
                     if [[ -d "$TEMP_PROJECT_DIR" ]]; then
                         # Resolve the real path to prevent directory traversal attacks
-                        # Use realpath to follow symlinks and get the canonical path
-                        REAL_TEMP_DIR=$(realpath "$TEMP_PROJECT_DIR" 2>/dev/null)
+                        # Use portable_readlink to follow symlinks and get the canonical path
+                        REAL_TEMP_DIR=$(portable_readlink "$TEMP_PROJECT_DIR")
                         if [[ "$REAL_TEMP_DIR" == /tmp/vm-temp-project-* ]]; then
                             # Additional safety: only remove if it contains symlinks (not real files)
                             if find "$REAL_TEMP_DIR" -maxdepth 1 -type f -print -quit | grep -q .; then
@@ -2886,7 +2887,7 @@ case "${1:-}" in
                     PROJECT_DIR="$CURRENT_DIR"
                 fi
             elif [[ -n "$CUSTOM_CONFIG" ]]; then
-                FULL_CONFIG_PATH="$(cd "$CURRENT_DIR" && readlink -f "$CUSTOM_CONFIG")"
+                FULL_CONFIG_PATH="$(cd "$CURRENT_DIR" && portable_readlink "$CUSTOM_CONFIG")"
                 PROJECT_DIR="$(dirname "$FULL_CONFIG_PATH")"
             else
                 PROJECT_DIR="$CURRENT_DIR"
@@ -2956,7 +2957,7 @@ case "${1:-}" in
         elif [[ -n "$CUSTOM_CONFIG" ]]; then
             # If using custom config, project dir is where the config file is located
             # Resolve the path from the original directory where user ran the command
-            FULL_CONFIG_PATH="$(cd "$CURRENT_DIR" && readlink -f "$CUSTOM_CONFIG")"
+            FULL_CONFIG_PATH="$(cd "$CURRENT_DIR" && portable_readlink "$CUSTOM_CONFIG")"
             PROJECT_DIR="$(dirname "$FULL_CONFIG_PATH")"
         else
             # Default: current directory, no explicit config path (uses discovery)
@@ -3043,13 +3044,13 @@ case "${1:-}" in
                         fi
                         if [[ -n "$CONFIG_DIR" ]] && [[ "$CONFIG_DIR" != "$CURRENT_DIR" ]]; then
                             # Calculate path from config dir to current dir
-                            RELATIVE_PATH=$(realpath --relative-to="$CONFIG_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
+                            RELATIVE_PATH=$(portable_relative_path "$CONFIG_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
                         else
                             RELATIVE_PATH="."
                         fi
                     else
                         # Normal mode: relative path from project dir to current dir
-                        RELATIVE_PATH=$(realpath --relative-to="$PROJECT_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
+                        RELATIVE_PATH=$(portable_relative_path "$PROJECT_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
                     fi
                     if [[ "${VM_DEBUG:-}" = "true" ]]; then
                         echo "DEBUG start: RELATIVE_PATH='$RELATIVE_PATH'" >&2
@@ -3070,13 +3071,13 @@ case "${1:-}" in
                         CONFIG_DIR=$(echo "$CONFIG" | yq '.__config_dir // ""' 2>/dev/null)
                         if [[ -n "$CONFIG_DIR" ]] && [[ "$CONFIG_DIR" != "$CURRENT_DIR" ]]; then
                             # Calculate path from config dir to current dir
-                            RELATIVE_PATH=$(realpath --relative-to="$CONFIG_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
+                            RELATIVE_PATH=$(portable_relative_path "$CONFIG_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
                         else
                             RELATIVE_PATH="."
                         fi
                     else
                         # Normal mode: relative path from project dir to current dir
-                        RELATIVE_PATH=$(realpath --relative-to="$PROJECT_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
+                        RELATIVE_PATH=$(portable_relative_path "$PROJECT_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
                     fi
 
                     if [[ "${VM_DEBUG:-}" = "true" ]]; then
@@ -3160,13 +3161,13 @@ case "${1:-}" in
                         # In scan mode, figure out where we are relative to the found config
                         CONFIG_DIR=$(echo "$CONFIG" | yq '.__config_dir // ""' 2>/dev/null)
                         if [[ -n "$CONFIG_DIR" ]] && [[ "$CONFIG_DIR" != "$CURRENT_DIR" ]]; then
-                            RELATIVE_PATH=$(realpath --relative-to="$CONFIG_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
+                            RELATIVE_PATH=$(portable_relative_path "$CONFIG_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
                         else
                             RELATIVE_PATH="."
                         fi
                     else
                         # Normal mode: relative path from project dir to current dir
-                        RELATIVE_PATH=$(realpath --relative-to="$PROJECT_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
+                        RELATIVE_PATH=$(portable_relative_path "$PROJECT_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
                     fi
 
                     # Get workspace path from config
