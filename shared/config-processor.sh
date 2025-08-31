@@ -1,7 +1,7 @@
 #!/bin/bash
 # VM Configuration Processor - Unified config loading and processing
 # Purpose: Provide a single, shared configuration processing layer for both Docker and Vagrant
-# Eliminates code duplication across vm.sh, Vagrantfile, and vm-temporary.sh
+# Eliminates code duplication across vm.sh, Vagrantfile, and shared/temporary-vm-utils.sh
 
 set -e
 set -u
@@ -16,7 +16,7 @@ fi
 
 #=============================================================================
 # YQ WRAPPER UTILITIES
-# Extracted and unified from vm-temporary.sh
+# Extracted and unified from shared/temporary-vm-utils.sh
 #=============================================================================
 
 # Wrapper function for yq to handle different versions and provide consistent output
@@ -562,7 +562,7 @@ load_and_merge_config() {
 # Args: config_path
 # Returns: 0 on success, 1 on failure
 validate_config_file() {
-    local config_path="$1"
+    local config_path="${1:-}"
 
     # Get the parent script directory to find validate-config.sh
     local parent_script_dir

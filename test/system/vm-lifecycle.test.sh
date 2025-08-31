@@ -54,10 +54,10 @@ setup_test_env() {
     local TEST_PROVIDER="$provider"
     export TEST_NAME
     export TEST_PROVIDER
-    TEST_DIR="/workspace/.test_artifacts/vm-test-${test_name}-$$"
+    TEST_DIR="$SCRIPT_DIR/../.test_artifacts/vm-test-${test_name}-$$"
 
     # Ensure test runs directory exists
-    mkdir -p "/workspace/.test_artifacts"
+    mkdir -p "$SCRIPT_DIR/../.test_artifacts"
     mkdir -p "$TEST_DIR"
     cd "$TEST_DIR"
 
@@ -131,7 +131,7 @@ create_test_vm() {
     # Start VM with timeout
     cd "$TEST_DIR"
     # Try without sudo first since docker-compose is now available
-    if ! (cd /workspace && npm link && cd "$TEST_DIR" && timeout "$timeout" vm create); then
+    if ! (cd "$SCRIPT_DIR/.." && npm link && cd "$TEST_DIR" && timeout "$timeout" vm create); then
         echo -e "${RED}Failed to create VM within ${timeout}s${NC}"
         return 1
     fi
@@ -482,7 +482,7 @@ main() {
     generate_configs
 
     # Make vm.sh available as 'vm' command
-    export PATH="/workspace:$PATH"
+    export PATH="$SCRIPT_DIR/..:$PATH"
 
     # Run VM lifecycle tests
     run_test "minimal-boot" test_minimal_boot
@@ -528,27 +528,27 @@ case "${1:-}" in
         ;;
     minimal-boot)
         generate_configs
-        export PATH="/workspace:$PATH"
+        export PATH="$SCRIPT_DIR/..:$PATH"
         run_test "minimal-boot" test_minimal_boot
         ;;
     vm-status)
         generate_configs
-        export PATH="/workspace:$PATH"
+        export PATH="$SCRIPT_DIR/..:$PATH"
         run_test "vm-status" test_vm_status
         ;;
     vm-exec)
         generate_configs
-        export PATH="/workspace:$PATH"
+        export PATH="$SCRIPT_DIR/..:$PATH"
         run_test "vm-exec" test_vm_exec
         ;;
     vm-lifecycle)
         generate_configs
-        export PATH="/workspace:$PATH"
+        export PATH="$SCRIPT_DIR/..:$PATH"
         run_test "vm-lifecycle" test_vm_lifecycle
         ;;
     vm-reload)
         generate_configs
-        export PATH="/workspace:$PATH"
+        export PATH="$SCRIPT_DIR/..:$PATH"
         run_test "vm-reload" test_vm_reload
         ;;
     "")

@@ -628,7 +628,7 @@ main() {
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
     # Make vm command available
-    export PATH="/workspace:$PATH"
+    export PATH="$SCRIPT_DIR/../..:$PATH"
 
     # Clean up any existing temp VMs before starting
     if [ -f "$HOME/.vm/temp-vm.state" ]; then

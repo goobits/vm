@@ -11,6 +11,9 @@ set -u
 SHARED_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source shared utilities
+if [[ -f "$SHARED_DIR/platform-utils.sh" ]]; then
+    source "$SHARED_DIR/platform-utils.sh"
+fi
 if [[ -f "$SHARED_DIR/config-processor.sh" ]]; then
     source "$SHARED_DIR/config-processor.sh"
 fi
@@ -170,7 +173,7 @@ docker_command_wrapper() {
             # Calculate relative path (similar to existing vm.sh logic)
             local relative_path="."
             if [[ -n "${CURRENT_DIR:-}" ]] && [[ -n "$project_dir" ]]; then
-                relative_path=$(realpath --relative-to="$project_dir" "$CURRENT_DIR" 2>/dev/null || echo ".")
+                relative_path=$(portable_relative_path "$project_dir" "$CURRENT_DIR" 2>/dev/null || echo ".")
             fi
             docker_ssh "$config" "$project_dir" "$relative_path" "$@"
             ;;
@@ -323,11 +326,11 @@ vagrant_ssh() {
             local config_dir
             config_dir=$(echo "$config" | jq -r '.__config_dir // empty' 2>/dev/null)
             if [[ -n "$config_dir" ]] && [[ "$config_dir" != "$CURRENT_DIR" ]]; then
-                relative_path=$(realpath --relative-to="$config_dir" "$CURRENT_DIR" 2>/dev/null || echo ".")
+                relative_path=$(portable_relative_path "$config_dir" "$CURRENT_DIR" 2>/dev/null || echo ".")
             fi
         else
             # Normal mode: relative path from project dir to current dir
-            relative_path=$(realpath --relative-to="$project_dir" "$CURRENT_DIR" 2>/dev/null || echo ".")
+            relative_path=$(portable_relative_path "$project_dir" "$CURRENT_DIR" 2>/dev/null || echo ".")
         fi
     fi
 

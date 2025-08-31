@@ -8,6 +8,9 @@ set -u
 # Get script directory early for importing utilities
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# Source platform utilities
+source "$SCRIPT_DIR/shared/platform-utils.sh"
+
 # Source temporary file utilities for secure temp file handling
 source "$SCRIPT_DIR/shared/temporary-file-utils.sh"
 
@@ -20,7 +23,7 @@ if ! command -v yq &> /dev/null; then
     echo ""
     echo "📦 To install yq (mikefarah/yq v4+):"
     echo "   sudo apt remove yq 2>/dev/null || true"
-    echo "   sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64"
+    echo "   sudo wget -qO /usr/local/bin/yq $(get_yq_download_url)"
     echo "   sudo chmod +x /usr/local/bin/yq"
     echo ""
     echo "📦 To install yq on macOS:"

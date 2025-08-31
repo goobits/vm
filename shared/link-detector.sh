@@ -8,6 +8,7 @@ set -u
 
 # Source existing security utilities
 DETECTOR_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$DETECTOR_SCRIPT_DIR/platform-utils.sh"
 source "$DETECTOR_SCRIPT_DIR/security-utils.sh"
 
 # Whitelist of allowed package managers for security
@@ -49,7 +50,7 @@ detect_npm_packages() {
             local link_path="$npm_root/$package"
             if [[ -L "$link_path" ]] && ! package_already_found "$package"; then
                 local target_path
-                if target_path=$(readlink -f "$link_path" 2>/dev/null) && [[ -n "$target_path" ]]; then
+                if target_path=$(portable_readlink "$link_path" 2>/dev/null) && [[ -n "$target_path" ]]; then
                     echo "$package:$target_path"
                     found_packages+=("$package")
                 fi
@@ -70,7 +71,7 @@ detect_npm_packages() {
                     local link_path="$node_version/lib/node_modules/$package"
                     if [[ -L "$link_path" ]]; then
                         local target_path
-                        if target_path=$(readlink -f "$link_path" 2>/dev/null) && [[ -n "$target_path" ]]; then
+                        if target_path=$(portable_readlink "$link_path" 2>/dev/null) && [[ -n "$target_path" ]]; then
                             echo "$package:$target_path"
                             found_packages+=("$package")
                         fi

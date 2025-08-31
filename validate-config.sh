@@ -14,7 +14,7 @@ if ! command -v yq &> /dev/null; then
     echo "   # Remove old Python yq if installed"
     echo "   sudo apt remove yq 2>/dev/null || true"
     echo "   # Install mikefarah/yq"
-    echo "   sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64"
+    echo "   sudo wget -qO /usr/local/bin/yq $(get_yq_download_url)"
     echo "   sudo chmod +x /usr/local/bin/yq"
     echo ""
     echo "📦 To install yq on macOS:"
@@ -28,6 +28,9 @@ fi
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Source shared platform utilities
+source "$SCRIPT_DIR/shared/platform-utils.sh"
 
 # Source shared deep merge utilities
 source "$SCRIPT_DIR/shared/deep-merge.sh"

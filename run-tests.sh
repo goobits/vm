@@ -113,10 +113,10 @@ setup_test_env() {
     local TEST_PROVIDER="$provider"
     export TEST_NAME
     export TEST_PROVIDER
-    TEST_DIR="/workspace/.test_artifacts/vm-test-${test_name}-$$"
+    TEST_DIR="$SCRIPT_DIR/.test_artifacts/vm-test-${test_name}-$$"
 
     # Ensure test runs directory exists
-    mkdir -p "/workspace/.test_artifacts"
+    mkdir -p "$SCRIPT_DIR/.test_artifacts"
     mkdir -p "$TEST_DIR"
     cd "$TEST_DIR"
 
@@ -140,7 +140,7 @@ cleanup_test_env() {
     if [[ -f "$TEST_DIR/vm.yaml" ]]; then
         cd "$TEST_DIR"
         # Destroy VM without sudo
-        vm destroy -f 2>/dev/null || true
+        $SCRIPT_DIR/vm.sh destroy -f 2>/dev/null || true
 
         # Extract project name and ensure container is removed
         local project_name
@@ -190,7 +190,7 @@ create_test_vm() {
     # Start VM with timeout
     cd "$TEST_DIR"
     # Try without sudo first since docker-compose is now available
-    if ! (cd /workspace && npm link && cd "$TEST_DIR" && timeout "$timeout" vm create); then
+    if ! (cd /workspace && npm link && cd "$TEST_DIR" && timeout "$timeout" $SCRIPT_DIR/vm.sh create); then
         echo -e "${RED}Failed to create VM within ${timeout}s${NC}"
         return 1
     fi
@@ -209,7 +209,7 @@ run_in_vm() {
 
     cd "$TEST_DIR"
     # Execute command in VM
-    vm exec "$command"
+    $SCRIPT_DIR/vm.sh exec "$command"
     local exit_code=$?
 
     if [[ "$expected_exit" != "any" ]] && [[ $exit_code -ne "$expected_exit" ]]; then
@@ -224,14 +224,14 @@ run_in_vm() {
 get_vm_output() {
     local command="$1"
     cd "$TEST_DIR"
-    vm exec "$command" 2>/dev/null
+    $SCRIPT_DIR/vm.sh exec "$command" 2>/dev/null
 }
 
 # Check if VM is running
 is_vm_running() {
     cd "$TEST_DIR"
     # Check VM status directly
-    vm status 2>/dev/null | grep -q "running"
+    $SCRIPT_DIR/vm.sh status 2>/dev/null | grep -q "running"
 }
 
 # Assert VM is running
@@ -546,11 +546,11 @@ test_config_generator() {
 test_vm_command() {
     echo "Testing vm.sh availability..."
 
-    if [[ -f "/workspace/vm.sh" ]]; then
+    if [[ -f "$SCRIPT_DIR/vm.sh" ]]; then
         echo -e "${GREEN}✓ vm.sh exists${NC}"
 
         # Test vm.sh is executable
-        if [[ -x "/workspace/vm.sh" ]]; then
+        if [[ -x "$SCRIPT_DIR/vm.sh" ]]; then
             echo -e "${GREEN}✓ vm.sh is executable${NC}"
         else
             echo -e "${RED}✗ vm.sh is not executable${NC}"
@@ -558,7 +558,7 @@ test_vm_command() {
         fi
 
         # Test vm init command exists
-        if /workspace/vm.sh help 2>&1 | grep -q "init"; then
+        if $SCRIPT_DIR/vm.sh help 2>&1 | grep -q "init"; then
             echo -e "${GREEN}✓ vm init command is available${NC}"
         else
             echo -e "${RED}✗ vm init command not found in help${NC}"
@@ -580,7 +580,7 @@ test_validation() {
     cd "$test_dir"
 
     # Test with no config
-    if /workspace/vm.sh validate 2>&1 | grep -q "No vm.yaml"; then
+    if $SCRIPT_DIR/vm.sh validate 2>&1 | grep -q "No vm.yaml"; then
         echo -e "${GREEN}✓ Validation detects missing config${NC}"
     else
         echo -e "${RED}✗ Validation should detect missing config${NC}"
@@ -590,8 +590,8 @@ test_validation() {
     fi
 
     # Test with valid config
-    cp /workspace/vm.yaml "$test_dir/"
-    if /workspace/vm.sh validate; then
+    cp $SCRIPT_DIR/vm.yaml "$test_dir/"
+    if $SCRIPT_DIR/vm.sh validate; then
         echo -e "${GREEN}✓ Validation passes with valid config${NC}"
     else
         echo -e "${RED}✗ Validation failed with valid config${NC}"
@@ -622,7 +622,7 @@ test_generated_configs_valid() {
         cp "$config" "$temp_dir/vm.yaml"
 
         cd "$temp_dir"
-        if /workspace/vm.sh validate > /dev/null 2>&1; then
+        if $SCRIPT_DIR/vm.sh validate > /dev/null 2>&1; then
             echo -e "\\033[0;32m✓\\033[0m"
             cd - > /dev/null
             rm -rf "$temp_dir" || true
@@ -666,7 +666,7 @@ test_minimal_boot() {
 
     # Basic checks - but let's simplify to avoid more recursion
     cd "$TEST_DIR"
-    if vm status 2>&1 | grep -q -E "(running|up|started)"; then
+    if $SCRIPT_DIR/vm.sh status 2>&1 | grep -q -E "(running|up|started)"; then
         echo -e "${GREEN}✓ VM is running${NC}"
     else
         echo -e "${YELLOW}⚠ VM status unclear, but creation succeeded${NC}"
@@ -693,7 +693,7 @@ test_minimal_functionality() {
 
     # Check workspace is mounted
     assert_command_succeeds "ls /workspace" "Workspace mounted"
-    assert_file_exists "/workspace/vm.sh" "VM tool available in workspace"
+    assert_file_exists "$SCRIPT_DIR/vm.sh" "VM tool available in workspace"
 }
 
 # Test that no services are installed
@@ -818,7 +818,7 @@ test_vm_init() {
     cd "$init_dir"
 
     # Run vm init
-    vm init
+    $SCRIPT_DIR/vm.sh init
     local exit_code=$?
 
     # Check exit code
@@ -844,7 +844,7 @@ test_vm_init() {
     echo -e "${GREEN}✓ vm init creates customized config${NC}"
 
     # Test init with existing file
-    if vm init 2>&1 | grep -q "already exists"; then
+    if $SCRIPT_DIR/vm.sh init 2>&1 | grep -q "already exists"; then
         echo -e "${GREEN}✓ vm init prevents overwriting existing config${NC}"
     else
         echo -e "${RED}✗ vm init should prevent overwriting${NC}"
@@ -860,7 +860,7 @@ test_vm_validate() {
     cd "$TEST_DIR"
     cp "$CONFIG_DIR/minimal.yaml" vm.yaml
 
-    if vm validate; then
+    if $SCRIPT_DIR/vm.sh validate; then
         echo -e "${GREEN}✓ vm validate succeeds with valid config${NC}"
     else
         echo -e "${RED}✗ vm validate failed with valid config${NC}"
@@ -869,7 +869,7 @@ test_vm_validate() {
 
     # Test with invalid config
     echo 'invalid: config' > vm.yaml
-    if vm validate 2>&1 | grep -q -E "(error|invalid|failed)"; then
+    if $SCRIPT_DIR/vm.sh validate 2>&1 | grep -q -E "(error|invalid|failed)"; then
         echo -e "${GREEN}✓ vm validate detects invalid config${NC}"
     else
         echo -e "${RED}✗ vm validate should detect invalid config${NC}"
@@ -878,7 +878,7 @@ test_vm_validate() {
 
     # Test with missing config
     rm -f vm.yaml
-    if vm validate 2>&1 | grep -q "No vm.yaml"; then
+    if $SCRIPT_DIR/vm.sh validate 2>&1 | grep -q "No vm.yaml"; then
         echo -e "${GREEN}✓ vm validate reports missing config${NC}"
     else
         echo -e "${RED}✗ vm validate should report missing config${NC}"
@@ -912,7 +912,7 @@ test_vm_status() {
     fi
 
     # Halt VM
-    vm halt || return 1
+    $SCRIPT_DIR/vm.sh halt || return 1
     sleep 5
 
     # Check status when stopped
@@ -952,7 +952,7 @@ test_vm_exec() {
     fi
 
     # Test command with exit code
-    if vm exec "exit 0"; then
+    if $SCRIPT_DIR/vm.sh exec "exit 0"; then
         echo -e "${GREEN}✓ vm exec preserves exit codes${NC}"
     else
         echo -e "${RED}✗ vm exec should preserve exit codes${NC}"
@@ -985,20 +985,20 @@ test_vm_lifecycle() {
     assert_command_succeeds "echo 'lifecycle test'" "Execute command in running VM"
 
     # Test VM halt
-    vm halt || return 1
+    $SCRIPT_DIR/vm.sh halt || return 1
     sleep 5
     assert_vm_stopped
 
     # Test VM restart
-    vm create || return 1
+    $SCRIPT_DIR/vm.sh create || return 1
     sleep 5
     assert_vm_running
 
     # Test VM destroy
-    vm destroy -f || return 1
+    $SCRIPT_DIR/vm.sh destroy -f || return 1
 
     # Check VM is gone
-    if vm status 2>&1 | grep -q -E "(not created|not found|no such)"; then
+    if $SCRIPT_DIR/vm.sh status 2>&1 | grep -q -E "(not created|not found|no such)"; then
         echo -e "${GREEN}✓ VM destroyed successfully${NC}"
     else
         echo -e "${RED}✗ VM should be destroyed${NC}"
@@ -1021,21 +1021,21 @@ test_vm_reload() {
     cd "$TEST_DIR"
 
     # Create a test file in VM
-    vm exec "echo 'before reload' > /tmp/reload-test"
+    $SCRIPT_DIR/vm.sh exec "echo 'before reload' > /tmp/reload-test"
 
     # Modify config (add an alias)
     yq '.aliases.testreload = "echo reload-success"' vm.yaml -o yaml > vm.yaml.tmp
     mv vm.yaml.tmp vm.yaml
 
     # Reload VM
-    vm reload || return 1
+    $SCRIPT_DIR/vm.sh reload || return 1
     sleep 10  # Give time for provisioning
 
     # Check VM is still running
     assert_vm_running
 
     # Check new alias is available
-    if vm exec "source ~/.zshrc && type testreload" 2>&1 | grep -q "alias"; then
+    if $SCRIPT_DIR/vm.sh exec "source ~/.zshrc && type testreload" 2>&1 | grep -q "alias"; then
         echo -e "${GREEN}✓ vm reload applies config changes${NC}"
     else
         echo -e "${RED}✗ vm reload should apply config changes${NC}"
@@ -1098,7 +1098,7 @@ check_prerequisites() {
     # Check for vm command
     if ! command -v vm &> /dev/null; then
         # Try using the local vm.sh
-        if [[ -f "/workspace/vm.sh" ]]; then
+        if [[ -f "$SCRIPT_DIR/vm.sh" ]]; then
             export PATH="/workspace:$PATH"
         else
             echo -e "${RED}❌ vm command not found${NC}"

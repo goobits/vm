@@ -4,10 +4,13 @@
 
 set -e
 
+# Get project root directory
+PROJECT_ROOT="$PROJECT_ROOT"
+
 echo "=== JSON Config Rejection Test Suite ==="
 
 # Setup test directory
-cd /workspace/test/configs/test-json-reject
+cd "$PROJECT_ROOT/test/configs/test-json-reject"
 
 echo -e "\n--- Test 1: JSON rejection via vm command ---"
 echo "Running: vm --config config.json status"
@@ -37,7 +40,7 @@ echo -e "\n--- Test 2: JSON rejection via validate-config.sh ---"
 echo "Running: validate-config.sh --get-config config.json"
 
 # Test validate-config.sh directly
-output2=$(/workspace/validate-config.sh --get-config config.json 2>&1) || exit_code2=$?
+output2=$($PROJECT_ROOT/validate-config.sh --get-config config.json 2>&1) || exit_code2=$?
 
 echo "Exit code: ${exit_code2:-0}"
 echo "Output:"
@@ -51,11 +54,11 @@ else
 fi
 
 echo -e "\n--- Test 3: JSON rejection via config-processor.sh ---"
-echo "Running: config-processor.sh load /workspace/test/configs/test-json-reject/config.json"
+echo "Running: config-processor.sh load $PROJECT_ROOT/test/configs/test-json-reject/config.json"
 
 # Test config-processor.sh directly with presets enabled (default behavior)
 export VM_USE_PRESETS=true
-output3=$(cd /workspace && /workspace/shared/config-processor.sh load /workspace/test/configs/test-json-reject/config.json 2>&1) || exit_code3=$?
+output3=$(cd $PROJECT_ROOT && $PROJECT_ROOT/shared/config-processor.sh load $PROJECT_ROOT/test/configs/test-json-reject/config.json 2>&1) || exit_code3=$?
 
 echo "Exit code: ${exit_code3:-0}"
 echo "Output:"
