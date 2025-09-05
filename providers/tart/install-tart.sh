@@ -15,7 +15,7 @@ install_tart() {
     fi
     
     if [[ "$(uname -m)" != "arm64" ]]; then
-        echo "❌ Tart requires Apple Silicon Mac (M1/M2/M3)"
+        echo "❌ Tart requires Apple Silicon Mac (M1/M2/M3/M4)"
         echo "   Current architecture: $(uname -m)"
         echo ""
         echo "💡 For Intel Macs, consider using:"

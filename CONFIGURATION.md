@@ -15,28 +15,49 @@ Complete reference for configuring your VM development environment with YAML.
 
 ## 🚀 Quick Start
 
-### Minimal Setup
+### Simplest Setup (Recommended)
 
-Most projects just need ports. Everything else has smart defaults:
+Just specify your OS - everything else is auto-configured:
 
 ```yaml
+# That's it! Provider, memory, and tools auto-selected
+os: ubuntu
+```
+
+### Add Ports
+
+Need specific ports? Just add them:
+
+```yaml
+os: ubuntu
 ports:
   frontend: 3020
   backend: 3022
 ```
 
-### Add PostgreSQL
+### Add Services
 
-Want PostgreSQL? Just add:
+Want PostgreSQL? Just enable it:
 
 ```yaml
+os: ubuntu
 ports:
-  frontend: 3020
   backend: 3022
   postgresql: 3025
 services:
   postgresql:
     enabled: true
+```
+
+### Advanced: Explicit Provider
+
+When you need specific provider features:
+
+```yaml
+provider: docker  # Force Docker provider
+vm:
+  memory: 8192   # 8GB RAM
+  cpus: 4        # 4 CPU cores
 ```
 
 ## 📁 Configuration Files
@@ -67,7 +88,14 @@ ports:
 ```yaml
 version: "1.0"  # Configuration format version
 
-provider: docker  # or "vagrant" - defaults to "docker"
+# Simple mode (recommended)
+os: ubuntu  # Options: ubuntu, macos, debian, alpine, linux, auto
+           # Provider auto-selected based on your platform
+           # 'auto' detects OS from your project files
+
+# Advanced mode (when you need specific control)
+provider: docker  # Options: docker, vagrant, tart
+                 # Note: Use 'os' field for simpler setup
 
 project:
   name: my-app  # VM/container name & prompt
@@ -194,6 +222,47 @@ services:
   headless_browser:
     enabled: true  # Installs Chrome/Chromium for testing
 ```
+
+## 🖥️ Operating System Configuration
+
+### OS Field (Recommended)
+
+The `os` field provides automatic provider selection and optimized settings:
+
+```yaml
+os: ubuntu   # Docker/Vagrant, 4GB RAM, full dev stack
+os: macos    # Tart on Apple Silicon, 8GB RAM
+os: debian   # Docker/Vagrant, 2GB RAM, lightweight
+os: alpine   # Docker only, 1GB RAM, minimal
+os: linux    # Docker/Vagrant, 4GB RAM, generic Linux
+os: auto     # Auto-detect from project files
+```
+
+**Note**: OS-specific settings override the schema defaults (2GB RAM, 2 CPUs)
+
+**Auto-detection**: The system automatically selects the best provider:
+- **Apple Silicon Mac + `os: macos`** → Tart provider
+- **Apple Silicon Mac + `os: ubuntu`** → Docker provider
+- **Intel/AMD + any OS** → Docker or Vagrant based on availability
+
+### Tart Provider (Apple Silicon)
+
+Native virtualization for Apple Silicon Macs:
+
+```yaml
+# Automatic with OS field
+os: macos  # Automatically uses Tart on M1/M2/M3
+
+# Or explicit configuration
+provider: tart
+tart:
+  image: ghcr.io/cirruslabs/macos-sonoma-base:latest
+  rosetta: true  # Enable x86 emulation for Linux VMs
+  disk_size: 60  # GB
+  ssh_user: admin
+```
+
+**Requirements**: Apple Silicon Mac (M1/M2/M3/M4), Tart installed via `brew install cirruslabs/cli/tart`
 
 ## 🗣️ Language Runtimes
 

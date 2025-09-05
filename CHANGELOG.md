@@ -31,6 +31,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2025-09-05
+
+### Added
+- **Simple OS Configuration**: New `os` field for simplified VM setup
+  - `os: ubuntu` → Docker provider with 4GB RAM, optimized for development
+  - `os: macos` → Tart provider with 8GB RAM, native Apple Silicon support
+  - `os: debian` → Docker provider with 2GB RAM, lightweight setup
+  - `os: alpine` → Docker provider with 1GB RAM, minimal footprint
+- **Tart Provider Support**: Native macOS/Linux virtualization on Apple Silicon
+  - Automatic Tart provider selection for `os: macos`
+  - ARM64 native performance with Rosetta 2 x86 emulation
+  - SSH access and folder sharing configured automatically
+  - Presets for Tart Ubuntu, macOS, and Linux configurations
+- **Provider Auto-detection**: Intelligent provider selection based on OS and platform
+  - Apple Silicon Mac + `os: macos` → Tart provider
+  - Any platform + `os: ubuntu` → Docker provider (or Vagrant if specified)
+  - Backward compatible with explicit `provider:` field
+
+### Changed
+- **Documentation Focus**: Repositioned `provider` field as advanced/explicit control option
+- **Configuration Examples**: All basic examples now use simple `os` field approach
+- **README**: Simplified quick start with `os:` field, moved provider details to advanced section
+- **Zero-Config Claims**: Softened to "minimal configuration" for more accuracy
+
+### Fixed
+- **Tart Provider**: Added `vm logs` support for both macOS and Linux VMs
+  - macOS: Uses `log stream` or `/var/log/system.log`
+  - Linux: Uses `journalctl` or `/var/log/syslog`
+
 ### Added
 - **Container-Friendly Structured Logging**: Implemented production-ready logging system with `shared/logging-utils.sh`
   - Support for `LOG_LEVEL` environment variable (DEBUG, INFO, WARN, ERROR)

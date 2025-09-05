@@ -117,7 +117,7 @@ get_provider_capabilities() {
         "tart")
             echo '{
                 "supports_ssh": true,
-                "supports_logs": false,
+                "supports_logs": true,
                 "supports_exec": true,
                 "supports_provision": true,
                 "supports_snapshots": true,

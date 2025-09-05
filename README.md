@@ -1,9 +1,9 @@
 # 🚀 Goobits VM Infrastructure
 
-Beautiful development environments with one command. **Zero configuration required** - just run `vm create` and get a perfectly configured environment based on your project type.
+Beautiful development environments with one command. **Minimal configuration** - just run `vm create` and get a perfectly configured environment based on your project type.
 
 > **🔐 Built for AI Agents**: Safe sandboxes for AI-assisted development with two isolation levels:
-> - **Docker (default)**: Fast, lightweight containers (~500MB RAM)
+> - **Docker (default)**: Fast, lightweight containers (configurable 1-4GB RAM)
 > - **Vagrant**: Full VM isolation with separate kernel for maximum security
 
 ## 🏃 Quick Start
@@ -12,9 +12,15 @@ Beautiful development environments with one command. **Zero configuration requir
 # Install globally via npm
 npm install -g @goobits/vm
 
-# Zero-config startup - works instantly!
+# Minimal config startup - works instantly!
 vm create  # Detects your project type and configures everything
 vm ssh     # Enter your development environment
+```
+
+**Even simpler with OS field:**
+```yaml
+# Create a vm.yaml with just:
+os: ubuntu  # Everything else auto-configured!
 ```
 
 **That's it!** The tool automatically detects React, Django, Rails, Vue, and 20+ other frameworks, then configures the perfect environment with all the tools you need.
@@ -45,22 +51,29 @@ vm --no-preset create            # Manual configuration only
 
 📖 **Available presets**: React, Vue, Django, Rails, Node.js, Python, Rust, Docker, Kubernetes, and more. See [PRESETS.md](PRESETS.md).
 
-## 🧪 Provider Choice: Docker vs Vagrant
+## 🧪 Choose Your Environment
 
-**Both providers offer identical development environments** - same commands, same services, same provisioning. Choose based on your needs:
+### Simple Way: Just Pick Your OS
+```yaml
+# Just specify the OS - provider auto-selected!
+os: ubuntu   # → Docker/Vagrant, 4GB RAM, full dev stack
+os: macos    # → Tart on Apple Silicon, 8GB RAM
+os: debian   # → Docker/Vagrant, 2GB RAM, lightweight
+os: alpine   # → Docker, 1GB RAM, minimal
+os: linux    # → Docker/Vagrant, 4GB RAM, generic Linux
+```
 
-| Feature | Docker (Default) | Vagrant |
-|---------|------------------|----------|
-| **Speed** | ⚡ 10-30 seconds | 🐌 2-3 minutes |
-| **Resources** | 💾 ~500MB RAM | 💾 ~2GB RAM |
-| **Isolation** | 🔒 Container-level | 🔐 Full VM kernel |
-| **Best for** | Daily development | AI agents, risky ops |
+### Advanced: Explicit Provider Control
+When you need specific provider features:
+
+| Provider | Best For | Setup Time | Memory Allocation |
+|----------|----------|------------|-------------------|
+| **Docker** | Daily development | ⚡ 10-30s | 1-4GB (OS dependent) |
+| **Vagrant** | Full isolation | 🐌 2-3min | 2-8GB (configurable) |
+| **Tart** | Apple Silicon native | ⚡ 30-60s | 4-8GB (OS dependent) |
 
 ```bash
-# Uses Docker by default
-vm create
-
-# Force Vagrant for maximum isolation  
+# Force specific provider (advanced)
 echo "provider: vagrant" > vm.yaml && vm create
 ```
 
@@ -137,13 +150,24 @@ The VM automatically tracks your last directory when you exit SSH. The `vm get-s
 
 **Works without any config**, but you can customize with `vm.yaml`:
 
+### Simple Configuration
 ```yaml
-project:
-  name: my-project
-  hostname: dev.my-project.local
+# Minimal - just choose your OS!
+os: ubuntu
+
+# Add ports if needed
 ports:
   frontend: 3000
   backend: 3001
+```
+
+### Advanced Configuration
+```yaml
+# Full control when you need it
+provider: docker  # Explicit provider choice
+project:
+  name: my-project
+  hostname: dev.my-project.local
 services:
   postgresql:
     enabled: true

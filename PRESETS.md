@@ -180,11 +180,35 @@ ports:
 
 ## Examples and Use Cases
 
+### Simple OS-Based Configuration (Recommended)
+
+The easiest way to get started - just specify your OS:
+
+```yaml
+# Minimal setup - everything auto-configured!
+os: ubuntu
+```
+
+```yaml
+# Add your project specifics
+os: ubuntu
+project:
+  name: my-app
+ports:
+  frontend: 3000
+```
+
+```yaml
+# Apple Silicon native development
+os: macos  # Uses Tart provider automatically
+```
+
 ### Example 1: Quick Web Development VM
 
 Create a simple configuration file:
 ```yaml
 # vm.yaml
+os: ubuntu  # Simple!
 project:
   name: "react-dev"
 npm_packages:

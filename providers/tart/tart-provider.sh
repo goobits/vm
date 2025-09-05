@@ -29,7 +29,7 @@ check_tart_installed() {
 # Check if running on Apple Silicon
 check_apple_silicon() {
     if [[ "$(uname -s)" != "Darwin" ]] || [[ "$(uname -m)" != "arm64" ]]; then
-        echo "❌ Tart requires Apple Silicon Mac (M1/M2/M3)" >&2
+        echo "❌ Tart requires Apple Silicon Mac (M1/M2/M3/M4)" >&2
         echo "💡 Current system: $(uname -s) $(uname -m)" >&2
         return 1
     fi
@@ -144,7 +144,7 @@ tart_command_wrapper_impl() {
         "ssh")
             tart_ssh "$config" "$project_dir" "$@"
             ;;
-        "start")
+        "start"|"resume")
             tart_start "$config" "$project_dir" "$@"
             ;;
         "stop"|"halt")
@@ -166,9 +166,7 @@ tart_command_wrapper_impl() {
             tart_restart "$config" "$project_dir" "$@"
             ;;
         "logs")
-            echo "❌ Logs command not supported for Tart provider" >&2
-            echo "💡 Use 'vm exec journalctl -f' to view system logs" >&2
-            return 1
+            tart_logs "$config" "$project_dir" "$@"
             ;;
         "kill")
             tart_stop "$config" "$project_dir" "$@"
@@ -555,6 +553,70 @@ tart_exec() {
     # Execute command via SSH
     ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
         "${ssh_user}@${vm_ip}" "$@"
+}
+
+# View VM logs
+tart_logs() {
+    local config="$1"
+    local project_dir="$2"
+    shift 2
+    
+    local vm_name=$(get_tart_vm_name "$config")
+    
+    # Set up custom storage if specified
+    setup_tart_storage "$config" >/dev/null 2>&1
+    
+    # Check if VM exists
+    if ! tart list 2>/dev/null | grep -q "^${vm_name}"; then
+        echo "❌ VM '$vm_name' does not exist" >&2
+        return 1
+    fi
+    
+    # Get VM IP
+    local vm_ip=$(tart ip "$vm_name" 2>/dev/null)
+    if [[ -z "$vm_ip" ]]; then
+        echo "❌ VM not running or IP not available" >&2
+        echo "💡 Run 'vm start' first" >&2
+        return 1
+    fi
+    
+    local guest_os=$(detect_guest_os "$config")
+    local ssh_user=$(echo "$config" | jq -r '.tart.ssh_user // empty')
+    
+    if [[ -z "$ssh_user" ]]; then
+        case "$guest_os" in
+            "macos") ssh_user="admin" ;;
+            "linux") ssh_user="ubuntu" ;;
+        esac
+    fi
+    
+    echo "📋 Viewing logs from $vm_name..."
+    echo "💡 Press Ctrl+C to stop following logs"
+    echo ""
+    
+    # Based on guest OS, show appropriate logs
+    case "$guest_os" in
+        "macos")
+            # macOS system logs
+            ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+                "${ssh_user}@${vm_ip}" "log stream --style compact --info --debug" 2>/dev/null || \
+            ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+                "${ssh_user}@${vm_ip}" "tail -f /var/log/system.log" 2>/dev/null || \
+            echo "❌ Could not access macOS logs"
+            ;;
+        "linux")
+            # Linux system logs via journalctl or syslog
+            ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+                "${ssh_user}@${vm_ip}" "sudo journalctl -f --no-pager" 2>/dev/null || \
+            ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+                "${ssh_user}@${vm_ip}" "sudo tail -f /var/log/syslog" 2>/dev/null || \
+            echo "❌ Could not access Linux logs"
+            ;;
+        *)
+            echo "❌ Unknown guest OS: $guest_os" >&2
+            return 1
+            ;;
+    esac
 }
 
 # Provision VM

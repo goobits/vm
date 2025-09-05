@@ -72,6 +72,11 @@ pnpm vm create
 - **VirtualBox** or **Parallels**
 - **Vagrant**
 
+### For Tart Provider (Apple Silicon Macs)
+- **macOS** on Apple Silicon (M1/M2/M3/M4)
+- **Tart** virtualization tool (`brew install cirruslabs/cli/tart`)
+- **SSH client** (included in macOS)
+
 ## 🍎 macOS Installation
 
 ### Docker Provider
@@ -89,6 +94,18 @@ brew install yq
 brew tap hashicorp/tap
 brew install hashicorp/tap/hashicorp-vagrant
 brew install --cask virtualbox
+```
+
+### Tart Provider (Apple Silicon Only)
+```bash
+# Install Tart for native macOS/Linux VMs
+brew install cirruslabs/cli/tart
+
+# Verify installation
+tart --version
+
+# That's it! Use with:
+# echo "os: macos" > vm.yaml && vm create
 ```
 
 ## 🐧 Ubuntu/Debian Installation
