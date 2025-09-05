@@ -163,7 +163,10 @@ show_usage() {
     echo "  vm stop                                  # Stop the VM"
     echo "  vm get-sync-directory                    # Get VM's current directory for cd"
     echo ""
-    echo "The provider (Vagrant or Docker) is determined by the 'provider' field in vm.yaml"
+    echo "The provider (Docker, Vagrant, or Tart) is determined by the 'provider' field in vm.yaml"
+    echo "  - Docker: Lightweight Linux containers (default)"
+    echo "  - Vagrant: Full VM isolation with VirtualBox/VMware"
+    echo "  - Tart: Native VMs on Apple Silicon (macOS/Linux)"
 }
 
 # Function to kill VirtualBox processes

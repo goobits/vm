@@ -166,7 +166,51 @@ find_vm_yaml_upwards() {
 # Returns: Provider name (defaults to "docker")
 get_config_provider() {
     local config="$1"
-    echo "$config" | jq -r '.provider // "docker"' 2>/dev/null || echo "docker"
+    local provider=$(echo "$config" | jq -r '.provider // "auto"' 2>/dev/null || echo "auto")
+    
+    # Auto-detect best provider if set to "auto"
+    if [[ "$provider" == "auto" ]]; then
+        # Check if OS is specified
+        local os=$(echo "$config" | jq -r '.os // "auto"' 2>/dev/null)
+        
+        if [[ "$os" != "auto" ]] && [[ "$os" != "null" ]]; then
+            # Source OS config processor if available
+            if [[ -f "$CONFIG_PROCESSOR_DIR/os-config-processor.sh" ]]; then
+                source "$CONFIG_PROCESSOR_DIR/os-config-processor.sh"
+                provider=$(select_provider_for_os "$os")
+                
+                # Handle error cases
+                if [[ "$provider" == error:* ]]; then
+                    echo "docker"  # Safe fallback
+                    return
+                fi
+            fi
+        else
+            # Original auto-detection logic
+            # Check for Apple Silicon Mac with Tart installed
+            if [[ "$(uname -s)" == "Darwin" ]] && [[ "$(uname -m)" == "arm64" ]] && command -v tart >/dev/null 2>&1; then
+                # Check if the preset or config suggests macOS guest
+                local guest_os=$(echo "$config" | jq -r '.tart.guest_os // empty' 2>/dev/null)
+                if [[ "$guest_os" == "macos" ]]; then
+                    provider="tart"
+                elif command -v docker >/dev/null 2>&1; then
+                    # Default to Docker for Linux containers even on Apple Silicon
+                    provider="docker"
+                else
+                    provider="tart"
+                fi
+            elif command -v docker >/dev/null 2>&1; then
+                provider="docker"
+            elif command -v vagrant >/dev/null 2>&1; then
+                provider="vagrant"
+            else
+                # Default fallback
+                provider="docker"
+            fi
+        fi
+    fi
+    
+    echo "$provider"
 }
 
 # Extract project name from config
@@ -460,8 +504,27 @@ load_config_with_presets() {
         fi
     fi
 
-    # Step 5: Perform the merge chain
-    # Order: Schema defaults -> Base preset -> Detected preset -> User config
+    # Step 5: Check for OS-based configuration
+    local os_config="{}"
+    if [[ "$config_exists" = "true" ]]; then
+        local os_field=$(echo "$user_config" | jq -r '.os // empty' 2>/dev/null)
+        if [[ -n "$os_field" ]] && [[ "$os_field" != "null" ]] && [[ "$os_field" != "auto" ]]; then
+            # Load OS config processor if available
+            if [[ -f "$CONFIG_PROCESSOR_DIR/os-config-processor.sh" ]]; then
+                source "$CONFIG_PROCESSOR_DIR/os-config-processor.sh"
+                
+                # Get OS-specific defaults
+                os_config=$(get_os_defaults "$os_field" "$user_config")
+                
+                if [[ "${VM_DEBUG:-}" = "true" ]]; then
+                    echo "DEBUG config-processor: Applying OS-based config for: $os_field" >&2
+                fi
+            fi
+        fi
+    fi
+
+    # Step 6: Perform the merge chain
+    # Order: Schema defaults -> Base preset -> OS config -> Detected preset -> User config
     local merged_config="$schema_defaults"
 
     # Merge base preset
@@ -469,12 +532,17 @@ load_config_with_presets() {
         merged_config="$(deep_merge_bash "$merged_config" "$base_preset")"
     fi
 
+    # Merge OS-specific config (comes before detected preset)
+    if [[ "$os_config" != "{}" ]]; then
+        merged_config="$(deep_merge_bash "$merged_config" "$os_config")"
+    fi
+
     # Merge detected preset
     if [[ "$detected_preset" != "{}" ]]; then
         merged_config="$(deep_merge_bash "$merged_config" "$detected_preset")"
     fi
 
-    # Merge user config (if exists)
+    # Merge user config (if exists) - user config always wins
     if [[ "$config_exists" = "true" && "$user_config" != "{}" ]]; then
         merged_config="$(deep_merge_bash "$merged_config" "$user_config")"
     fi

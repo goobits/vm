@@ -48,11 +48,11 @@ detect_provider() {
 validate_provider() {
     local provider="$1"
     case "$provider" in
-        "docker"|"vagrant")
+        "docker"|"vagrant"|"tart")
             return 0
             ;;
         *)
-            echo "❌ Error: Unsupported provider '$provider'. Supported providers: docker, vagrant" >&2
+            echo "❌ Error: Unsupported provider '$provider'. Supported providers: docker, vagrant, tart" >&2
             return 1
             ;;
     esac
@@ -69,6 +69,12 @@ is_provider_available() {
             ;;
         "vagrant")
             command -v vagrant >/dev/null 2>&1
+            ;;
+        "tart")
+            # Check for Apple Silicon Mac and Tart installation
+            [[ "$(uname -s)" == "Darwin" ]] && \
+            [[ "$(uname -m)" == "arm64" ]] && \
+            command -v tart >/dev/null 2>&1
             ;;
         *)
             return 1
@@ -108,6 +114,21 @@ get_provider_capabilities() {
                 "networking": "nat"
             }'
             ;;
+        "tart")
+            echo '{
+                "supports_ssh": true,
+                "supports_logs": false,
+                "supports_exec": true,
+                "supports_provision": true,
+                "supports_snapshots": true,
+                "supports_suspend": true,
+                "fast_startup": true,
+                "resource_isolation": "vm",
+                "networking": "nat",
+                "guest_os": ["macos", "linux"],
+                "host_requirements": "Apple Silicon Mac"
+            }'
+            ;;
         *)
             echo '{}'
             ;;
@@ -145,6 +166,9 @@ route_command() {
             ;;
         "vagrant")
             vagrant_command_wrapper "$command" "$config" "$project_dir" "$@"
+            ;;
+        "tart")
+            tart_command_wrapper "$command" "$config" "$project_dir" "$@"
             ;;
         *)
             echo "❌ Error: Unknown provider '$provider'" >&2
@@ -378,6 +402,32 @@ vagrant_exec() {
         escaped_command="$escaped_command $(printf '%q' "$arg")"
     done
     vagrant ssh -c "$escaped_command"
+}
+
+#=============================================================================
+# TART PROVIDER WRAPPER
+#=============================================================================
+
+# Tart command wrapper for Apple Silicon Macs
+# Args: command, config, project_dir, [additional_args...]
+tart_command_wrapper() {
+    local command="$1"
+    local config="$2"
+    local project_dir="$3"
+    shift 3
+    
+    # Source Tart provider implementation
+    local tart_provider_script="$SCRIPT_DIR/providers/tart/tart-provider.sh"
+    if [[ ! -f "$tart_provider_script" ]]; then
+        echo "❌ Error: Tart provider implementation not found" >&2
+        echo "💡 Expected location: $tart_provider_script" >&2
+        return 1
+    fi
+    
+    source "$tart_provider_script"
+    
+    # Execute the command via Tart provider
+    tart_command_wrapper_impl "$command" "$config" "$project_dir" "$@"
 }
 
 #=============================================================================

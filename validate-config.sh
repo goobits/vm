@@ -208,14 +208,48 @@ initialize_vm_yaml() {
         echo ""
     fi
 
-    # Write the customized config as YAML
-    if echo "$customized_config" | yq -p json -o yaml . > "$local_config_path"; then
+    # Create a simplified config focused on the OS field
+    cat > "$local_config_path" << EOF
+# VM Configuration - Simple and powerful!
+# Just specify the OS you want to run:
+
+os: ubuntu  # Options: ubuntu, debian, alpine, macos (on Apple Silicon)
+
+# Everything else is auto-configured based on your OS choice!
+# - Ubuntu: 4GB RAM, 2 CPUs, Docker provider
+# - macOS: 8GB RAM, 4 CPUs, Tart provider (Apple Silicon only)
+# - Debian: 2GB RAM, 2 CPUs, Docker provider
+# - Alpine: 1GB RAM, 1 CPU, Docker provider
+
+# Optional: Override defaults by adding vm section
+# vm:
+#   memory: 8192  # Custom RAM in MB
+#   cpus: 4       # Custom CPU cores
+
+# Optional: Store VMs on external drive (for Tart provider)
+# tart:
+#   storage_path: /Volumes/ExternalSSD/VMs
+
+# Project settings (auto-generated)
+project:
+  name: $sanitized_name
+  hostname: dev.$sanitized_name.local
+
+# Port range for this project
+$(if [[ -n "$suggested_range" ]]; then echo "port_range: $suggested_range"; else echo "# port_range: 3000-3009  # Uncomment to reserve ports"; fi)
+EOF
+
+    if [[ -f "$local_config_path" ]]; then
         echo "✅ Created vm.yaml for project: $sanitized_name"
         echo "📍 Configuration file: $local_config_path"
         echo ""
+        echo "🎯 The new simple way:"
+        echo "   Just set 'os: ubuntu' (or macos, debian, alpine)"
+        echo "   Everything else is auto-configured!"
+        echo ""
         echo "Next steps:"
-        echo "  1. Review and customize vm.yaml as needed"
-        echo "  2. Run \"vm create\" to start your development environment"
+        echo "  1. Review vm.yaml (it's really simple now!)"
+        echo "  2. Run \"vm create\" to start your environment"
         return 0
     else
         echo "❌ Failed to create vm.yaml" >&2
@@ -447,8 +481,8 @@ validate_merged_config() {
         # Fallback to basic validation if schema not found
         local provider
         provider="$(echo "$config" | jq -r '.provider // "docker"')"
-        if [[ "$provider" != "vagrant" && "$provider" != "docker" ]]; then
-            errors+=("provider must be 'vagrant' or 'docker'")
+        if [[ "$provider" != "vagrant" && "$provider" != "docker" && "$provider" != "tart" ]]; then
+            errors+=("provider must be 'vagrant', 'docker', or 'tart'")
         fi
     fi
 

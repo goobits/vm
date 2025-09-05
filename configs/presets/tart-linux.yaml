@@ -1,0 +1,66 @@
+---
+preset:
+  name: "Tart Linux"
+  description: "ARM64 Linux with Rosetta 2 for x86 emulation on Apple Silicon"
+  detection:
+    host_platform: darwin
+    host_arch: arm64
+    provider_available: tart
+    files:
+      - "*.sh"
+      - "Makefile"
+      - "CMakeLists.txt"
+
+provider: tart
+
+tart:
+  guest_os: linux
+  image: ghcr.io/cirruslabs/ubuntu:latest
+  rosetta: true
+  disk_size: 30
+  ssh_user: ubuntu
+  install_docker: true
+
+vm:
+  memory: 4096
+  cpus: 4
+  auto_login: false
+
+project:
+  workspace_path: /home/ubuntu/workspace
+
+# Common services for Linux development
+services:
+  postgresql:
+    enabled: false
+    version: 15
+  redis:
+    enabled: false
+    version: 7
+  mongodb:
+    enabled: false
+    version: 6
+  docker:
+    enabled: false
+
+# Package installation for Linux
+packages:
+  apt:
+    - build-essential
+    - git
+    - curl
+    - wget
+    - htop
+    - jq
+    - ripgrep
+    - tree
+    - vim
+    - tmux
+
+# Terminal configuration for Linux
+terminal:
+  theme: dracula
+  show_git_branch: true
+  show_timestamp: false
+  emoji: 🐧
+  username: ubuntu

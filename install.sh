@@ -30,7 +30,7 @@ echo "📁 Copying files to $INSTALL_DIR..."
 
 # Check if rsync is available
 if command -v rsync &> /dev/null; then
-    rsync -av --exclude='.git' --exclude='*.md' --exclude='test' --exclude='examples' --exclude='install.sh' "$SCRIPT_DIR/" "$INSTALL_DIR/"
+    rsync -av --exclude='.git' --exclude='*.md' --exclude='test' --exclude='install.sh' "$SCRIPT_DIR/" "$INSTALL_DIR/"
 else
     # Fallback to cp if rsync is not available
     echo "📋 Using cp instead of rsync..."
