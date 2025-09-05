@@ -220,7 +220,10 @@ generate_docker_compose() {
             echo "⚠️  Audio: Host PulseAudio socket not found at $pulse_socket, using system mode"
         fi
 
-        devices+=("/dev/snd:/dev/snd")
+        # Only add /dev/snd on Linux systems (doesn't exist on macOS)
+        if [[ "$(uname -s)" == "Linux" ]]; then
+            devices+=("/dev/snd:/dev/snd")
+        fi
         groups+=("audio")
     fi
 

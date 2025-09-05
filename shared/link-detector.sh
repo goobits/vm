@@ -12,7 +12,8 @@ source "$DETECTOR_SCRIPT_DIR/platform-utils.sh"
 source "$DETECTOR_SCRIPT_DIR/security-utils.sh"
 
 # Whitelist of allowed package managers for security
-declare -ra ALLOWED_PACKAGE_MANAGERS=("npm" "pip" "cargo")
+# Note: Using readonly without -a flag for Bash 3.2 compatibility
+readonly ALLOWED_PACKAGE_MANAGERS=("npm" "pip" "cargo")
 
 # Validate package manager is in whitelist
 validate_package_manager() {
@@ -37,7 +38,8 @@ detect_npm_packages() {
     package_already_found() {
         local pkg="$1"
         local found
-        for found in "${found_packages[@]}"; do
+        # Use :- to provide empty default when array is empty (for set -u compatibility)
+        for found in "${found_packages[@]:-}"; do
             [[ "$found" == "$pkg" ]] && return 0
         done
         return 1

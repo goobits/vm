@@ -2923,8 +2923,11 @@ case "${1:-}" in
             esac
             exit 0
         fi
-        # Fall through to default case for destroy with arguments
-        ;&
+        # For destroy with additional arguments (e.g., vm destroy --force)
+        # we need to continue to the default handling below
+        # Since we can't use ;& fall-through (Bash 4.0+), we'll duplicate the logic
+        COMMAND="$1"
+        ;;
     "help"|"-h"|"--help"|"")
         show_usage
         ;;

@@ -28,8 +28,8 @@ if [[ -z "${PROGRESS_COLORS_DEFINED:-}" ]]; then
 fi
 
 # Progress tracking variables
-declare -A PROGRESS_TASKS=()
-declare -A PROGRESS_STATUS=()
+# Note: Removed associative arrays for Bash 3.2 compatibility
+# These weren't actively used in the script
 PROGRESS_INDENT_LEVEL=0
 PROGRESS_LAST_LINE=""
 PROGRESS_IN_PROGRESS=""
