@@ -10,15 +10,15 @@
 
 ## 🔧 Future Enhancements (Lower Priority)
 
-### Mount Permissions System
-- [ ] Implement :ro/:rw suffix parsing for mount permissions
+### ✅ COMPLETED: Mount Permissions System
+- [x] ~~Implement :ro/:rw suffix parsing for mount permissions~~ - Fully implemented in mount-utils.sh and temporary-vm-utils.sh
 - [ ] Add smart defaults for common read-only paths (.git, node_modules, vendor)
 - [ ] Consider permission inheritance from parent directories
 - [ ] Add `vm temp protect` / `vm temp unprotect` commands for changing permissions without remount
 
 ### Multiple Temp VMs
 - [ ] Support multiple named temp VMs (vm temp create --name review)
-- [ ] Implement `vm temp list` to show all temp VMs
+- [ ] Implement `vm temp list` to show all temp VMs - **Note: Command shown in help but NOT implemented**
 - [ ] Add temp VM naming conventions and validation
 
 ### Performance Optimizations

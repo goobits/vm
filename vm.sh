@@ -167,6 +167,9 @@ show_usage() {
     echo "  - Docker: Lightweight Linux containers (default)"
     echo "  - Vagrant: Full VM isolation with VirtualBox/VMware"
     echo "  - Tart: Native VMs on Apple Silicon (macOS/Linux)"
+    echo ""
+    echo "macOS Audio Setup:"
+    echo "  providers/docker/setup-macos-audio.sh    # Configure audio for Docker on macOS"
 }
 
 # Function to kill VirtualBox processes

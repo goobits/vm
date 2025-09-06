@@ -205,23 +205,52 @@ generate_docker_compose() {
     local devices=()
     local groups=()
 
-    if [[ "$(echo "$config" | jq -r '.services.audio.enabled // true')" == "true" ]]; then
-        # Use proper UID and runtime directory with fallbacks
-        local runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$host_uid}"
-        local pulse_socket="$runtime_dir/pulse/native"
-
-        # Verify host PulseAudio socket exists before mounting
-        if [[ -S "$pulse_socket" ]]; then
-            audio_env="\\n      - PULSE_SERVER=unix:/run/user/$host_uid/pulse/native"
-            audio_volumes="\\n      - $runtime_dir/pulse:/run/user/$host_uid/pulse"
-            echo "📢 Audio: Mounting PulseAudio socket from $pulse_socket"
+    # Smart audio detection: only enable if explicitly requested
+    local audio_enabled="$(echo "$config" | jq -r '.services.audio.enabled // false')"
+    
+    # Only set up audio if explicitly enabled
+    # Note: sox/ffmpeg are often used for file processing, not audio output
+    # Users who need audio output should set: services.audio.enabled: true
+    
+    if [[ "$audio_enabled" == "true" ]]; then
+        if [[ "$(uname -s)" == "Darwin" ]]; then
+            # macOS: Try to automatically set up audio
+            if command -v pulseaudio >/dev/null 2>&1; then
+                # PulseAudio is installed
+                audio_env="\\n      - PULSE_SERVER=tcp:host.docker.internal:4713"
+                
+                # Auto-start PulseAudio if not running
+                if ! pgrep -x "pulseaudio" > /dev/null; then
+                    # Try to start PulseAudio silently with network access
+                    pulseaudio --start --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1;172.16.0.0/12 auth-anonymous=1" --exit-idle-time=-1 2>/dev/null || true
+                    sleep 1
+                    
+                    # Check if it started
+                    if ! pgrep -x "pulseaudio" > /dev/null; then
+                        echo "⚠️  Audio: Could not auto-start PulseAudio"
+                    fi
+                fi
+            else
+                # No PulseAudio installed, user explicitly wants audio
+                audio_env="\\n      - AUDIO_BACKEND=none"
+                echo "ℹ️  Audio enabled but PulseAudio not found. To set up: brew install pulseaudio"
+            fi
         else
-            audio_env="\\n      - PULSE_RUNTIME_PATH=/run/user/$host_uid/pulse"
-            echo "⚠️  Audio: Host PulseAudio socket not found at $pulse_socket, using system mode"
-        fi
+            # Linux: Use standard PulseAudio socket mounting
+            local runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$host_uid}"
+            local pulse_socket="$runtime_dir/pulse/native"
 
-        # Only add /dev/snd on Linux systems (doesn't exist on macOS)
-        if [[ "$(uname -s)" == "Linux" ]]; then
+            # Verify host PulseAudio socket exists before mounting
+            if [[ -S "$pulse_socket" ]]; then
+                audio_env="\\n      - PULSE_SERVER=unix:/run/user/$host_uid/pulse/native"
+                audio_volumes="\\n      - $runtime_dir/pulse:/run/user/$host_uid/pulse"
+                echo "📢 Audio: Mounting PulseAudio socket from $pulse_socket"
+            else
+                audio_env="\\n      - PULSE_RUNTIME_PATH=/run/user/$host_uid/pulse"
+                echo "⚠️  Audio: PulseAudio socket not found at $pulse_socket"
+            fi
+
+            # Add ALSA devices on Linux
             devices+=("/dev/snd:/dev/snd")
         fi
         groups+=("audio")

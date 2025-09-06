@@ -92,20 +92,35 @@ detect_pip_packages() {
     for pip_cmd in pip pip3 python3 python; do
         if command -v $pip_cmd >/dev/null 2>&1; then
             local pip_output
-            # Try different approaches for editable packages
-            if pip_output=$(timeout 5 $pip_cmd -m pip list -e --format=json 2>/dev/null) || \
-               pip_output=$(timeout 5 $pip_cmd list -e --format=json 2>/dev/null); then
-                
+            # Try different approaches for editable packages based on command type
+            case "$pip_cmd" in
+                pip|pip3)
+                    # Direct pip commands don't use -m flag
+                    pip_output=$($pip_cmd list -e --format=json 2>/dev/null)
+                    ;;
+                python|python3)
+                    # Python commands need -m pip
+                    pip_output=$($pip_cmd -m pip list -e --format=json 2>/dev/null)
+                    ;;
+            esac
+            
+            if [[ -n "$pip_output" ]]; then
                 # Parse JSON output for editable packages
                 if command -v jq >/dev/null 2>&1; then
                     echo "$pip_output" | jq -r '.[]? | select(.editable_project_location) | "\(.name):\(.editable_project_location)"' 2>/dev/null | while IFS=: read -r name location; do
                         if [[ -n "$name" && -n "$location" && -d "$location" ]]; then
                             # Check if this package matches requested packages (case-insensitive, handle dashes/underscores)
                             for requested_pkg in "${pip_packages_array[@]}"; do
-                                if [[ "${name,,}" == "${requested_pkg,,}" ]] || \
-                                   [[ "${name,,}" == "${requested_pkg,,/-/_}" ]] || \
-                                   [[ "${name,,/-/_}" == "${requested_pkg,,}" ]] || \
-                                   [[ "${name,,/-/_}" == "${requested_pkg,,/-/_}" ]]; then
+                                # Bash 3.2 compatible lowercase comparison
+                                local name_lower="$(echo "$name" | tr '[:upper:]' '[:lower:]')"
+                                local req_lower="$(echo "$requested_pkg" | tr '[:upper:]' '[:lower:]')"
+                                local req_normalized="${req_lower//-/_}"
+                                local name_normalized="${name_lower//-/_}"
+                                
+                                if [[ "$name_lower" == "$req_lower" ]] || \
+                                   [[ "$name_lower" == "$req_normalized" ]] || \
+                                   [[ "$name_normalized" == "$req_lower" ]] || \
+                                   [[ "$name_normalized" == "$req_normalized" ]]; then
                                     echo "$name:$location"
                                     break
                                 fi
