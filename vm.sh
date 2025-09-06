@@ -593,6 +593,62 @@ docker_run() {
 
 # Docker functions
 
+# macOS PulseAudio management for audio support
+manage_macos_pulseaudio() {
+    local action="$1"  # start or stop
+    local config="$2"
+    
+    # Only manage PulseAudio on macOS
+    if [[ "$(uname -s)" != "Darwin" ]]; then
+        return 0
+    fi
+    
+    # Check if audio is enabled in config
+    local audio_enabled
+    audio_enabled="$(echo "$config" | jq -r '.services.audio.enabled // false')"
+    
+    if [[ "$audio_enabled" != "true" ]]; then
+        return 0  # Audio not enabled, nothing to do
+    fi
+    
+    # Check if PulseAudio is installed
+    if ! command -v pulseaudio >/dev/null 2>&1; then
+        return 0  # PulseAudio not installed, skip silently
+    fi
+    
+    case "$action" in
+        "start")
+            # Check if PulseAudio is already running
+            if pgrep -x "pulseaudio" > /dev/null; then
+                # Already running, check if it has network module loaded
+                if pactl list modules short 2>/dev/null | grep -q "module-native-protocol-tcp"; then
+                    return 0  # Already running with network access
+                else
+                    # Running but might not have network access, add the module
+                    pactl load-module module-native-protocol-tcp "auth-ip-acl=127.0.0.1;172.16.0.0/12" auth-anonymous=1 2>/dev/null || true
+                fi
+            else
+                # Not running, start it with network access
+                pulseaudio --start --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1;172.16.0.0/12 auth-anonymous=1" --exit-idle-time=-1 2>/dev/null || true
+                
+                # Give it a moment to start
+                sleep 1
+                
+                # Verify it started
+                if ! pgrep -x "pulseaudio" > /dev/null; then
+                    echo "⚠️  Audio: Could not start PulseAudio (audio may not work)"
+                fi
+            fi
+            ;;
+        "stop")
+            # Note: We don't stop PulseAudio as user might be using it for other things
+            # Just noting this action exists for future use if needed
+            ;;
+    esac
+    
+    return 0
+}
+
 # Shared function for container startup and readiness check
 docker_startup_and_wait() {
     local config="$1"
@@ -728,6 +784,10 @@ docker_up() {
             return 1
         fi
     fi
+    
+    # Start PulseAudio if needed (macOS only, when audio is enabled)
+    # Do this before generating docker-compose.yml so the service is ready
+    manage_macos_pulseaudio "start" "$config"
     
     # Create a secure temporary file for the config
     TEMP_CONFIG_FILE=$(create_temp_file "vm-config.XXXXXX")
@@ -1330,6 +1390,9 @@ docker_start() {
     shift 4
 
     echo "🚀 Starting development environment..."
+    
+    # Start PulseAudio if needed (macOS only, when audio is enabled)
+    manage_macos_pulseaudio "start" "$config"
 
     # Get container name using shared function
     local container_name

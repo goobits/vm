@@ -214,22 +214,11 @@ generate_docker_compose() {
     
     if [[ "$audio_enabled" == "true" ]]; then
         if [[ "$(uname -s)" == "Darwin" ]]; then
-            # macOS: Try to automatically set up audio
+            # macOS: Set up audio environment (actual startup happens at runtime)
             if command -v pulseaudio >/dev/null 2>&1; then
-                # PulseAudio is installed
+                # PulseAudio is installed - configure for network access
                 audio_env="\\n      - PULSE_SERVER=tcp:host.docker.internal:4713"
-                
-                # Auto-start PulseAudio if not running
-                if ! pgrep -x "pulseaudio" > /dev/null; then
-                    # Try to start PulseAudio silently with network access
-                    pulseaudio --start --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1;172.16.0.0/12 auth-anonymous=1" --exit-idle-time=-1 2>/dev/null || true
-                    sleep 1
-                    
-                    # Check if it started
-                    if ! pgrep -x "pulseaudio" > /dev/null; then
-                        echo "⚠️  Audio: Could not auto-start PulseAudio"
-                    fi
-                fi
+                # Note: PulseAudio will be started when container starts (vm start/create)
             else
                 # No PulseAudio installed, user explicitly wants audio
                 audio_env="\\n      - AUDIO_BACKEND=none"
