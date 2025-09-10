@@ -467,7 +467,7 @@
         loop: '{{ project_config.cargo_packages }}'
         when: project_config.cargo_packages is defined and project_config.cargo_packages | length > 0
 
-      # Install pipx if pip_packages is defined
+      # Install pip and pipx if pip_packages is defined
       - name: Check if pipx is installed
         command: which pipx
         register: pipx_check
@@ -495,36 +495,74 @@
           - project_config.pip_packages is defined and project_config.pip_packages | length > 0
         ignore_errors: yes
 
+      - name: Ensure pip is installed for Python libraries
+        apt:
+            name: python3-pip
+            state: present
+        when: project_config.pip_packages is defined and project_config.pip_packages | length > 0
+        retries: 5
+        delay: 10
+        register: pip_install_apt
+        until: pip_install_apt is succeeded
+
       # ================================================================================
       # PACKAGE INSTALLATIONS
       # Install packages for each configured package manager
       # ================================================================================
 
-      # Install pip packages using pipx (with link detection)
-      - name: Install pip packages with pipx (with link detection)
+      # Install pip packages with smart detection (pipx for CLI tools, pip for libraries)
+      - name: Install pip packages with smart pipx/pip detection
         shell: |
             export PATH="$HOME/.local/bin:$PATH"
             package="{{ item }}"
             # Sanitize package name to match mount path (replace - with _ and handle case)
             safe_package_name="${package//-/_}"
             safe_package_name="${safe_package_name,,}"
-            if [ -d "/home/{{ project_user }}/.links/pip/$package" ]; then
-                echo "🔗 Linking local package: $package"
-                /usr/bin/pipx install -e "/home/{{ project_user }}/.links/pip/$package"
-            elif [ -d "/home/{{ project_user }}/.links/pip/$safe_package_name" ]; then
-                echo "🔗 Linking local package: $safe_package_name"
-                /usr/bin/pipx install -e "/home/{{ project_user }}/.links/pip/$safe_package_name"
+            
+            # Check if this is a linked local package
+            if [ -d "/home/{{ project_user }}/.links/pip/$package" ] || [ -d "/home/{{ project_user }}/.links/pip/$safe_package_name" ]; then
+                # Local packages are always installed with pip in editable mode
+                if [ -d "/home/{{ project_user }}/.links/pip/$package" ]; then
+                    echo "🔗 Linking local package with pip: $package"
+                    python3 -m pip install --user --break-system-packages -e "/home/{{ project_user }}/.links/pip/$package"
+                else
+                    echo "🔗 Linking local package with pip: $safe_package_name"
+                    python3 -m pip install --user --break-system-packages -e "/home/{{ project_user }}/.links/pip/$safe_package_name"
+                fi
             else
-                echo "📦 Installing from registry: $package"
-                /usr/bin/pipx install "$package"
+                # For registry packages, try pipx first (for CLI tools), fallback to pip (for libraries)
+                echo "📦 Attempting to install $package from registry..."
+                
+                # First try with pipx (good for CLI tools)
+                if /usr/bin/pipx install "$package" 2>/tmp/pipx_error_$$.log; then
+                    echo "✅ Installed $package as CLI tool with pipx"
+                else
+                    # Check if it failed because it's a library (not a CLI tool)
+                    if grep -q "No apps associated with package\|not a valid package\|library" /tmp/pipx_error_$$.log 2>/dev/null; then
+                        echo "📚 $package appears to be a library, installing with pip..."
+                        if python3 -m pip install --user --break-system-packages "$package"; then
+                            echo "✅ Installed $package as library with pip"
+                        else
+                            echo "❌ Failed to install $package with both pipx and pip"
+                            rm -f /tmp/pipx_error_$$.log
+                            exit 1
+                        fi
+                    else
+                        # Some other pipx error - show it and fail
+                        cat /tmp/pipx_error_$$.log
+                        rm -f /tmp/pipx_error_$$.log
+                        exit 1
+                    fi
+                fi
+                rm -f /tmp/pipx_error_$$.log
             fi
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
         loop: '{{ project_config.pip_packages }}'
         when: project_config.pip_packages is defined and project_config.pip_packages | length > 0
-        register: pipx_install_result
-        failed_when: pipx_install_result.rc != 0
+        register: pip_install_result
+        failed_when: pip_install_result.rc != 0
 
 
       # Load service definitions

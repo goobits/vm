@@ -58,6 +58,14 @@ generate_docker_compose() {
     project_user="$(echo "$config" | jq -r '.vm.user // "developer"')"
     local timezone
     timezone="$(echo "$config" | jq -r '.vm.timezone // "UTC"')"
+    
+    # Extract memory and swap settings
+    local memory
+    memory="$(echo "$config" | jq -r '.vm.memory // 2048')"
+    local swap
+    swap="$(echo "$config" | jq -r '.vm.swap // 0')"
+    local swappiness
+    swappiness="$(echo "$config" | jq -r '.vm.swappiness // 60')"
 
     # Get VM tool path (use absolute path to avoid relative path issues)
     # The VM tool is always in the workspace directory where vm.sh is located
@@ -339,6 +347,23 @@ generate_docker_compose() {
             groups_section+="\\n      - $group"
         done
     fi
+    
+    # Build memory and swap configuration
+    local memory_section=""
+    if [[ "$memory" -gt 0 ]]; then
+        memory_section="\\n    mem_limit: ${memory}m"
+        
+        # Add swap configuration if specified
+        if [[ "$swap" -gt 0 ]]; then
+            local total_memory=$((memory + swap))
+            memory_section+="\\n    memswap_limit: ${total_memory}m"
+        fi
+        
+        # Add swappiness if not default
+        if [[ "$swappiness" != "60" ]]; then
+            memory_section+="\\n    mem_swappiness: $swappiness"
+        fi
+    fi
 
     # Create docker-compose.yml content
     local docker_compose_content
@@ -365,7 +390,8 @@ generate_docker_compose() {
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${project_name}_nvm:/home/$project_user/.nvm
       - ${project_name}_cache:/home/$project_user/.cache
-      - ${project_name}_config:/tmp$claude_sync_volume$gemini_sync_volume$database_volumes$temp_mount_volumes$package_link_volumes$audio_volumes$gpu_volumes$devices_section$groups_section$ports_section
+      - ${project_name}_pipx:/home/$project_user/.local
+      - ${project_name}_config:/tmp$claude_sync_volume$gemini_sync_volume$database_volumes$temp_mount_volumes$package_link_volumes$audio_volumes$gpu_volumes$devices_section$groups_section$memory_section$ports_section
     networks:
       - ${project_name}_network
     # Security: Removed dangerous capabilities that create container escape risks
@@ -386,6 +412,7 @@ networks:
 volumes:
   ${project_name}_nvm:
   ${project_name}_cache:
+  ${project_name}_pipx:
   ${project_name}_config:"
 
     # Write docker-compose.yml
