@@ -202,31 +202,98 @@ chmod +x "$BIN_DIR/vm"
 if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
     echo -e "${YELLOW}⚠️  $BIN_DIR is not in your PATH${NC}"
 
-    # Detect shell and provide specific instructions
+    # Detect shell and update config file
     SHELL_NAME=$(basename "$SHELL")
     case "$SHELL_NAME" in
         zsh)
-            RC_FILE="~/.zshrc"
+            RC_FILE="$HOME/.zshrc"
             ;;
         bash)
-            RC_FILE="~/.bashrc"
+            RC_FILE="$HOME/.bashrc"
+            ;;
+        fish)
+            RC_FILE="$HOME/.config/fish/config.fish"
             ;;
         *)
-            RC_FILE="~/.bashrc or ~/.zshrc"
+            RC_FILE="$HOME/.bashrc"
             ;;
     esac
 
     echo ""
-    echo "To use the 'vm' command, add this to your $RC_FILE:"
-    echo -e "${GREEN}    export PATH=\"\$HOME/.local/bin:\$PATH\"${NC}"
-    echo ""
-    echo "Then reload your shell:"
-    echo -e "${GREEN}    source $RC_FILE${NC}"
-    echo ""
-    echo "Or for immediate use, run:"
-    echo -e "${GREEN}    export PATH=\"\$HOME/.local/bin:\$PATH\"${NC}"
+    echo -n "Would you like to add $BIN_DIR to your PATH automatically? (y/N): "
+    read -r ADD_TO_PATH
+
+    if [[ "$ADD_TO_PATH" =~ ^[Yy]$ ]]; then
+        # Check if PATH export already exists in file
+        if [[ "$SHELL_NAME" == "fish" ]]; then
+            # Fish shell syntax
+            if ! grep -q "fish_add_path.*\.local/bin" "$RC_FILE" 2>/dev/null; then
+                echo "" >> "$RC_FILE"
+                echo "# Added by VM tool installer" >> "$RC_FILE"
+                echo "fish_add_path -p \$HOME/.local/bin" >> "$RC_FILE"
+                echo -e "${GREEN}✅ Added PATH to $RC_FILE${NC}"
+            else
+                echo -e "${YELLOW}PATH entry already exists in $RC_FILE${NC}"
+            fi
+        else
+            # Bash/Zsh syntax
+            if ! grep -q "\.local/bin" "$RC_FILE" 2>/dev/null; then
+                echo "" >> "$RC_FILE"
+                echo "# Added by VM tool installer" >> "$RC_FILE"
+                echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC_FILE"
+                echo -e "${GREEN}✅ Added PATH to $RC_FILE${NC}"
+            else
+                echo -e "${YELLOW}PATH entry already exists in $RC_FILE${NC}"
+            fi
+        fi
+
+        # Also export for current session
+        export PATH="$HOME/.local/bin:$PATH"
+
+        echo ""
+        echo -e "${GREEN}The 'vm' command is now available!${NC}"
+        echo "Note: New terminal windows will have the vm command available."
+    else
+        echo ""
+        echo "To use the 'vm' command, add this to your $RC_FILE:"
+        if [[ "$SHELL_NAME" == "fish" ]]; then
+            echo -e "${GREEN}    fish_add_path -p \$HOME/.local/bin${NC}"
+        else
+            echo -e "${GREEN}    export PATH=\"\$HOME/.local/bin:\$PATH\"${NC}"
+        fi
+        echo ""
+        echo "Then reload your shell:"
+        echo -e "${GREEN}    source $RC_FILE${NC}"
+    fi
 else
     echo -e "${GREEN}✅ $BIN_DIR is already in your PATH${NC}"
+
+    # Double-check it's in shell config for persistence
+    SHELL_NAME=$(basename "$SHELL")
+    case "$SHELL_NAME" in
+        zsh)
+            RC_FILE="$HOME/.zshrc"
+            ;;
+        bash)
+            RC_FILE="$HOME/.bashrc"
+            ;;
+        *)
+            RC_FILE="$HOME/.bashrc"
+            ;;
+    esac
+
+    if ! grep -q "\.local/bin" "$RC_FILE" 2>/dev/null; then
+        echo -e "${YELLOW}Note: PATH is set for this session but not in $RC_FILE${NC}"
+        echo -n "Add to $RC_FILE for permanent access? (y/N): "
+        read -r ADD_PERMANENT
+
+        if [[ "$ADD_PERMANENT" =~ ^[Yy]$ ]]; then
+            echo "" >> "$RC_FILE"
+            echo "# Added by VM tool installer" >> "$RC_FILE"
+            echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC_FILE"
+            echo -e "${GREEN}✅ Added to $RC_FILE for permanent access${NC}"
+        fi
+    fi
 fi
 
 echo ""
