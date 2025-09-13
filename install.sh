@@ -115,7 +115,17 @@ echo "📁 Copying files to $INSTALL_DIR..."
 
 # Check if rsync is available
 if command -v rsync &> /dev/null; then
-    rsync -av --exclude='.git' --exclude='*.md' --exclude='test' --exclude='install.sh' "$SCRIPT_DIR/" "$INSTALL_DIR/"
+    rsync -av \
+        --exclude='.git' \
+        --exclude='*.md' \
+        --exclude='test' \
+        --exclude='install.sh' \
+        --exclude='rust/target/' \
+        --exclude='rust/*/target/debug' \
+        --exclude='rust/*/target/deps' \
+        --exclude='rust/*/target/.rustc_info.json' \
+        --exclude='rust/*/target/CACHEDIR.TAG' \
+        "$SCRIPT_DIR/" "$INSTALL_DIR/"
 else
     # Fallback to cp if rsync is not available
     echo "📋 Using cp instead of rsync..."
