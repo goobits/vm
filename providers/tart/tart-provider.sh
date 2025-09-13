@@ -12,6 +12,9 @@ SCRIPT_DIR="$(cd "$TART_PROVIDER_DIR/../.." && pwd)"
 source "$SCRIPT_DIR/shared/platform-utils.sh"
 source "$SCRIPT_DIR/shared/logging-utils.sh"
 
+# Initialize vm-config binary path
+VM_CONFIG="$SCRIPT_DIR/rust/target/release/vm-config"
+
 # Tart installation check
 check_tart_installed() {
     if ! command -v tart >/dev/null 2>&1; then
@@ -42,18 +45,8 @@ get_config() {
     local path="$2"
     local default="$3"
     # Use vm-config query directly on the merged config
-    if [[ -n "${VM_CONFIG:-}" ]] && [[ -x "${VM_CONFIG}" ]]; then
-        "$VM_CONFIG" query <(echo "$config") "$path" --raw --default "$default" 2>/dev/null || echo "$default"
-    else
-        # Fallback to yq
-        local value
-        value="$(echo "$config" | yq eval "$path" - 2>/dev/null)"
-        if [[ -z "$value" || "$value" == "null" ]]; then
-            echo "$default"
-        else
-            echo "$value"
-        fi
-    fi
+    # Use vm-config to query the configuration
+    "$VM_CONFIG" query <(echo "$config") "$path" --raw --default "$default" 2>/dev/null || echo "$default"
 }
 
 # Get VM name from config
@@ -711,7 +704,6 @@ sudo apt-get update
 echo "Installing development tools..."
 sudo apt-get install -y \
     git \
-    jq \
     curl \
     wget \
     htop \

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Simplified Docker provisioning script - Shell version
-# Purpose: Generate docker-compose.yml from VM configuration using jq
+# Purpose: Generate docker-compose.yml from VM configuration
 # Usage: ./docker-provisioning-simple.sh <config-path> [project-dir]
 
 set -e
@@ -55,7 +55,7 @@ generate_docker_compose() {
     local host_gid
     host_gid="$(id -g)"
 
-    # Extract basic project data using yq
+    # Extract basic project data
     local project_name
     project_name="$(get_config '.project.name' '' | tr -cd '[:alnum:]')"
     local project_hostname
@@ -118,7 +118,7 @@ generate_docker_compose() {
     if [[ "$ports_section_raw" == "{}" || "$ports_section_raw" == "null" || -z "$ports_section_raw" ]]; then
         ports_count=0
     else
-        ports_count="$(echo "$ports_section_raw" | yq eval 'length' - 2>/dev/null || echo \"0\")"
+        ports_count="$(echo "$ports_section_raw" | "$VM_CONFIG" array-length - "" 2>/dev/null || echo "0")"
     fi
     if [[ "$ports_count" -gt 0 ]]; then
         local host_ip
@@ -127,11 +127,12 @@ generate_docker_compose() {
         local ports_raw
         ports_raw="$(get_config '.ports' '{}')"
         if [[ "$ports_raw" != "{}" && "$ports_raw" != "null" && -n "$ports_raw" ]]; then
-            ports_section="$(echo "$ports_raw" | yq eval --arg hostip "$host_ip" '
-                to_entries |
-                map("      - \"" + $hostip + ":" + (.value | tostring) + ":" + (.value | tostring) + "\"") |
-                if length > 0 then "\n    ports:\n" + join("\n") else "" end
-            ' - 2>/dev/null || echo '')"
+            # Build ports using vm-config transform
+            local port_lines
+            port_lines="$(echo "$ports_raw" | "$VM_CONFIG" transform - 'to_entries[] | "      - \"'$host_ip':\(.value):\(.value)\""' --format lines 2>/dev/null || echo '')"
+            if [[ -n "$port_lines" ]]; then
+                ports_section="\n    ports:\n$port_lines"
+            fi"
         fi
     fi
 

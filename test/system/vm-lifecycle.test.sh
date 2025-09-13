@@ -18,6 +18,10 @@ CONFIG_DIR="$SCRIPT_DIR/../configs"
 # Source shared utilities
 source "$SCRIPT_DIR/../../shared/docker-utils.sh"
 
+# Set up vm-config path
+VM_TOOL_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+VM_CONFIG="$VM_TOOL_DIR/rust/target/release/vm-config"
+
 # Test state
 TEST_DIR=""
 TEST_NAME=""
@@ -85,7 +89,7 @@ cleanup_test_env() {
 
         # Extract project name and ensure container is removed
         local project_name
-        project_name=$(yq '.project.name' vm.yaml 2>/dev/null | tr -cd '[:alnum:]')
+        project_name=$("$VM_CONFIG" query vm.yaml "project.name" --raw 2>/dev/null | tr -cd '[:alnum:]')
         if [[ -n "$project_name" ]]; then
             local container_name="${project_name}-dev"
             # Force stop and remove container with both docker and sudo docker
@@ -120,7 +124,7 @@ create_test_vm() {
 
     # Pre-emptively clean up any existing container with the same name
     local project_name
-    project_name=$(yq '.project.name' "$TEST_DIR/vm.yaml" 2>/dev/null | tr -cd '[:alnum:]')
+    project_name=$("$VM_CONFIG" query "$TEST_DIR/vm.yaml" "project.name" --raw 2>/dev/null | tr -cd '[:alnum:]')
     if [[ -n "$project_name" ]]; then
         local container_name="${project_name}-dev"
         echo -e "${BLUE}Cleaning up any existing container: $container_name${NC}"
@@ -424,8 +428,7 @@ test_vm_reload() {
     vm exec "echo 'before reload' > /tmp/reload-test"
 
     # Modify config (add an alias)
-    yq '.aliases.testreload = "echo reload-success"' vm.yaml -o yaml > vm.yaml.tmp
-    mv vm.yaml.tmp vm.yaml
+    "$VM_CONFIG" modify vm.yaml "aliases.testreload" "echo reload-success" || return 1
 
     # Reload VM
     vm reload || return 1

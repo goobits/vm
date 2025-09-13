@@ -35,7 +35,7 @@ find_config_processor() {
     fi
 
     # Check for compiled binary in vm-tool directory
-    local rust_binary="$VM_TOOL_DIR/rust/vm-config/target/release/vm-config"
+    local rust_binary="$VM_TOOL_DIR/rust/target/release/vm-config"
     if [[ -x "$rust_binary" ]]; then
         echo "$rust_binary"
         return 0
@@ -153,20 +153,6 @@ detect_preset() {
 # COMPATIBILITY FUNCTIONS (for backward compatibility)
 #=============================================================================
 
-# Legacy yq_raw function
-yq_raw() {
-    local filter="$1"
-    local file="$2"
-    query_config "$file" "$filter"
-}
-
-# Legacy yq_json function
-yq_json() {
-    local filter="$1"
-    local file="$2"
-
-    "$VM_CONFIG" query "$file" "$filter" 2>/dev/null || echo "null"
-}
 
 # Legacy validate_config_file function for vm.sh compatibility
 validate_config_file() {

@@ -4,14 +4,17 @@
 
 set -e
 
+# Get the VM tool directory dynamically
+VM_TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 # Path to the Rust binary
-VM_CONFIG_BIN="${VM_CONFIG_BIN:-/workspace/rust/vm-config/target/release/vm-config}"
+VM_CONFIG_BIN="${VM_CONFIG_BIN:-$VM_TOOL_DIR/rust/target/release/vm-config}"
 
 # Check if binary exists - no external fallbacks
 if [[ ! -x "$VM_CONFIG_BIN" ]]; then
     echo "Error: vm-config binary not found" >&2
     echo "Please build the vm-config binary:" >&2
-    echo "  cd /workspace/rust/vm-config" >&2
+    echo "  cd $VM_TOOL_DIR/rust/vm-config" >&2
     echo "  cargo build --release" >&2
     echo "" >&2
     echo "Or run the installer: ./install.sh" >&2
@@ -81,7 +84,7 @@ case "$1" in
     process)
         # Full processing with defaults and presets
         shift
-        defaults="${1:-/workspace/vm.yaml}"
+        defaults="${1:-$VM_TOOL_DIR/vm.yaml}"
         config="${2:-}"
         if [[ -n "$config" ]]; then
             "$VM_CONFIG_BIN" process --defaults "$defaults" --config "$config" -f yaml
