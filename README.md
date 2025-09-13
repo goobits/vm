@@ -8,16 +8,30 @@ Beautiful development environments with one command. **Minimal configuration** -
 
 ## 🏃 Quick Start
 
+### Option 1: Install from npm
 ```bash
-# Install globally via npm
+# Requires: yq (install with: brew install yq)
 npm install -g @goobits/vm
 
-# Minimal config startup - works instantly!
 vm create  # Detects your project type and configures everything
 vm ssh     # Enter your development environment
 ```
 
-**Even simpler with OS field:**
+### Option 2: Install from source
+```bash
+# Clone the repository
+git clone https://github.com/goobits/vm.git
+cd vm
+
+# Run installer (checks dependencies and guides you)
+./install.sh
+
+# Start using
+vm create  # Detects your project type and configures everything
+vm ssh     # Enter your development environment
+```
+
+**Minimal configuration needed:**
 ```yaml
 # Create a vm.yaml with just:
 os: ubuntu  # Everything else auto-configured!
@@ -25,7 +39,7 @@ os: ubuntu  # Everything else auto-configured!
 
 **That's it!** The tool automatically detects React, Django, Rails, Vue, and 20+ other frameworks, then configures the perfect environment with all the tools you need.
 
-📖 **Need help installing?** See the [Installation Guide](INSTALLATION.md).
+📖 **Troubleshooting:** See the [Installation Guide](INSTALLATION.md) for detailed instructions.
 
 ## 🎯 How It Works
 
