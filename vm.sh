@@ -119,7 +119,6 @@ show_usage() {
     echo "  generate              Generate vm.yaml by composing services"
     echo "  validate              Validate VM configuration"
     echo "  preset <subcommand>   Manage configuration presets"
-    echo "  migrate [options]     Migrate a legacy vm.json to the new vm.yaml format"
     echo "  list                  List all VM instances"
     echo "  temp/tmp <command>    Manage temporary VMs:"
     echo "    <mounts> [--auto-destroy]  Create/connect temp VM with directory mounts"
@@ -750,8 +749,8 @@ docker_up() {
     # Check and register port range if specified
     local port_range
     local project_name
-    project_name=$(echo "$config" | yq '.project.name // "project"')
-    port_range=$(echo "$config" | yq '.port_range // ""')
+    project_name=$(echo "$config" | yq -r '.project.name // "project"')
+    port_range=$(echo "$config" | yq -r '.port_range // ""')
     
     if [[ -n "$port_range" ]]; then
         progress_task "📡 Checking port range $port_range"
@@ -1600,8 +1599,8 @@ docker_status() {
     # Show port range info if configured
     local port_range
     local project_name
-    project_name=$(echo "$config" | yq '.project.name // "project"')
-    port_range=$(echo "$config" | yq '.port_range // ""')
+    project_name=$(echo "$config" | yq -r '.project.name // "project"')
+    port_range=$(echo "$config" | yq -r '.port_range // ""')
     
     if [[ -n "$port_range" ]]; then
         echo ""
@@ -2170,232 +2169,7 @@ vm_list() {
 
 
 
-# Migrate legacy vm.json to new vm.yaml format
-vm_migrate() {
-    # Default values
-    local INPUT_FILE=""
-    local OUTPUT_FILE="vm.yaml"
-    local BACKUP_ENABLED="true"
-    local DRY_RUN="false"
-    local FORCE="false"
-    local CHECK_MODE="false"
 
-    # Parse options
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --input)
-                shift
-                INPUT_FILE="$1"
-                shift
-                ;;
-            --output)
-                shift
-                OUTPUT_FILE="$1"
-                shift
-                ;;
-            --backup)
-                shift
-                if [[ "$1" =~ ^(true|false)$ ]]; then
-                    BACKUP_ENABLED="$1"
-                    shift
-                else
-                    BACKUP_ENABLED="true"
-                fi
-                ;;
-            --no-backup)
-                BACKUP_ENABLED="false"
-                shift
-                ;;
-            --dry-run)
-                DRY_RUN="true"
-                shift
-                ;;
-            --force)
-                FORCE="true"
-                shift
-                ;;
-            --check)
-                CHECK_MODE="true"
-                shift
-                ;;
-            -h|--help)
-                echo "Usage: vm migrate [options]"
-                echo ""
-                echo "Options:"
-                echo "  --input FILE      Input JSON file (default: vm.json in current directory)"
-                echo "  --output FILE     Output YAML file (default: vm.yaml)"
-                echo "  --backup [BOOL]   Create backup of input file (default: true)"
-                echo "  --no-backup       Disable backup creation"
-                echo "  --dry-run         Show what would be done without making changes"
-                echo "  --force           Skip confirmation prompts and remove original file"
-                echo "  --check           Check if migration is needed without performing it"
-                echo ""
-                echo "Examples:"
-                echo "  vm migrate                           # Migrate vm.json to vm.yaml"
-                echo "  vm migrate --input config.json       # Migrate specific file"
-                echo "  vm migrate --dry-run                 # Preview migration"
-                echo "  vm migrate --check                   # Check if migration is needed"
-                return 0
-                ;;
-            *)
-                echo "❌ Unknown option: $1" >&2
-                echo "Use 'vm migrate --help' for usage information" >&2
-                return 1
-                ;;
-        esac
-    done
-
-    # Handle check mode
-    if [[ "$CHECK_MODE" == "true" ]]; then
-        if [[ -f "vm.json" ]] && [[ ! -f "vm.yaml" ]]; then
-            echo "✅ Migration needed: vm.json exists but vm.yaml does not"
-            echo "   Run 'vm migrate' to perform the migration"
-            return 0
-        elif [[ -f "vm.json" ]] && [[ -f "vm.yaml" ]]; then
-            echo "⚠️  Both vm.json and vm.yaml exist"
-            echo "   The vm.yaml file will be used by default"
-            echo "   Consider removing vm.json if it's no longer needed"
-            return 0
-        elif [[ ! -f "vm.json" ]] && [[ -f "vm.yaml" ]]; then
-            echo "✅ No migration needed: Already using vm.yaml"
-            return 0
-        else
-            echo "❌ No configuration files found (neither vm.json nor vm.yaml)"
-            return 1
-        fi
-    fi
-
-    # Find source file if not specified
-    if [[ -z "$INPUT_FILE" ]]; then
-        if [[ -f "vm.json" ]]; then
-            INPUT_FILE="vm.json"
-        else
-            echo "❌ No vm.json file found in current directory" >&2
-            echo "   Use --input to specify a different file" >&2
-            return 1
-        fi
-    fi
-
-    # Verify input file exists
-    if [[ ! -f "$INPUT_FILE" ]]; then
-        echo "❌ Input file not found: $INPUT_FILE" >&2
-        return 1
-    fi
-
-    # Check if output file already exists
-    if [[ -f "$OUTPUT_FILE" ]] && [[ "$FORCE" != "true" ]] && [[ "$DRY_RUN" != "true" ]]; then
-        echo "⚠️  Output file already exists: $OUTPUT_FILE"
-        echo -n "Do you want to overwrite it? (y/N): "
-        read -r response
-        case "$response" in
-            [yY]|[yY][eE][sS])
-                ;;
-            *)
-                echo "❌ Migration cancelled"
-                return 1
-                ;;
-        esac
-    fi
-
-    # Show migration plan if not forced
-    if [[ "$FORCE" != "true" ]] && [[ "$DRY_RUN" != "true" ]]; then
-        echo "📋 Migration Plan:"
-        echo "  • Input:  $INPUT_FILE"
-        echo "  • Output: $OUTPUT_FILE"
-        if [[ "$BACKUP_ENABLED" == "true" ]]; then
-            echo "  • Backup: ${INPUT_FILE}.bak"
-        fi
-        echo ""
-        echo -n "Do you want to proceed? (y/N): "
-        read -r response
-        case "$response" in
-            [yY]|[yY][eE][sS])
-                ;;
-            *)
-                echo "❌ Migration cancelled"
-                return 1
-                ;;
-        esac
-    fi
-
-    # Create backup if enabled
-    if [[ "$BACKUP_ENABLED" == "true" ]] && [[ "$DRY_RUN" != "true" ]]; then
-        echo "📦 Creating backup: ${INPUT_FILE}.bak"
-        cp "$INPUT_FILE" "${INPUT_FILE}.bak"
-    fi
-
-    # Convert JSON to YAML
-    echo "🔄 Converting JSON to YAML..."
-    local YAML_CONTENT
-    if ! YAML_CONTENT=$(yq -o yaml . "$INPUT_FILE" 2>&1); then
-        echo "❌ Failed to convert JSON to YAML:" >&2
-        echo "   $YAML_CONTENT" >&2
-        return 1
-    fi
-
-    # Remove $schema field (not needed for user configs)
-    echo "🧹 Removing \$schema field..."
-    YAML_CONTENT=$(echo "$YAML_CONTENT" | yq 'del(."$schema")' | yq -o yaml .)
-
-    # Add version field
-    echo "📝 Adding version field..."
-    YAML_CONTENT=$(echo "$YAML_CONTENT" | yq '. = {"version": "1.0"} + .' | yq -o yaml .)
-
-    # Handle dry run mode
-    if [[ "$DRY_RUN" == "true" ]]; then
-        echo ""
-        echo "📄 Preview of generated $OUTPUT_FILE:"
-        echo "======================================"
-        echo "$YAML_CONTENT"
-        echo "======================================"
-        echo ""
-        echo "✅ Dry run complete. No files were modified."
-        return 0
-    fi
-
-    # Write the output file
-    echo "$YAML_CONTENT" > "$OUTPUT_FILE"
-
-    # Validate the new configuration
-    echo "✅ Validating migrated configuration..."
-    if ! "$SCRIPT_DIR/validate-config.sh" --validate "$OUTPUT_FILE"; then
-        echo "❌ Migration completed but validation failed" >&2
-        echo "   Please review and fix $OUTPUT_FILE manually" >&2
-        return 1
-    fi
-
-    echo "✅ Migration completed successfully!"
-    echo ""
-    echo "📋 Next steps:"
-    echo "  1. Review the migrated configuration: $OUTPUT_FILE"
-    echo "  2. Test your VM with the new configuration"
-    if [[ "$FORCE" != "true" ]]; then
-        echo "  3. Once verified, you can remove the old file: $INPUT_FILE"
-    fi
-
-    # Handle original file deletion
-    if [[ "$FORCE" == "true" ]]; then
-        # With --force, automatically remove the original file
-        rm "$INPUT_FILE"
-        echo "🗑️  Removed original file: $INPUT_FILE"
-    else
-        # Ask about deleting the original file
-        echo ""
-        echo -n "Would you like to delete the original $INPUT_FILE now? (y/N): "
-        read -r response
-        case "$response" in
-            [yY]|[yY][eE][sS])
-                rm "$INPUT_FILE"
-                echo "🗑️  Removed $INPUT_FILE"
-                ;;
-            *)
-                echo "💡 Keeping $INPUT_FILE for now"
-                ;;
-        esac
-    fi
-
-    return 0
-}
 
 # Handle preset commands - Phase B implementation point
 handle_preset_command() {
@@ -2734,14 +2508,7 @@ while [[ $# -gt 0 ]]; do
             ARGS+=("$@")
             break
             ;;
-        migrate)
-            # Special handling for migrate command - pass all remaining args
-            ARGS+=("$1")
-            shift
-            # Add all remaining arguments without parsing
-            ARGS+=("$@")
-            break
-            ;;
+        
         *)
             # Collect remaining arguments (command and its args)
             ARGS+=("$1")
@@ -2796,10 +2563,7 @@ case "${1:-}" in
         shift
         handle_preset_command "$@"
         ;;
-    "migrate")
-        shift
-        vm_migrate "$@"
-        ;;
+    
     "list")
         vm_list
         ;;

@@ -90,7 +90,7 @@ extract_schema_defaults() {
         return 1
     fi
 
-    yq -o json '{
+    yq '{
       "version": .properties.version.default,
       "provider": .properties.provider.default,
       "project": {
@@ -344,8 +344,8 @@ load_and_merge_config() {
         fi
 
         local yq_error
-        if ! user_config="$(yq . "$config_file_to_load" -o json 2>&1)"; then
-            yq_error="$(yq . "$config_file_to_load" -o json 2>&1)"
+        if ! user_config="$(yq . "$config_file_to_load" 2>&1)"; then
+            yq_error="$(yq . "$config_file_to_load" 2>&1)"
             echo "❌ Invalid YAML in project config: $config_file_to_load" >&2
             echo "   YAML parsing error: $yq_error" >&2
             return 1
@@ -410,7 +410,7 @@ except ImportError as e:
 
     # Create temp file for config
     local temp_config="/tmp/vm-config-validate-$$.yaml"
-    echo "$config" | yq -p json -o yaml . > "$temp_config"
+    echo "$config" | yq -y . > "$temp_config"
 
     # Use Python to validate YAML against YAML schema
     local validation_output

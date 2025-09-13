@@ -329,7 +329,7 @@ generate_docker_compose() {
         esac
         
         # Generate mounts if enabled and packages exist
-        if [[ "$pm_enabled" == "true" ]] && [[ ${#packages_array[@]} -gt 0 ]] && command -v "$pm" >/dev/null 2>&1; then
+        if [[ "$pm_enabled" == "true" ]] && [[ ${#packages_array[@]} -gt 0 ]]; then
             if declare -f generate_package_mounts >/dev/null 2>&1; then
                 local linked_volumes
                 linked_volumes=$(generate_package_mounts "$pm" "${packages_array[@]}")
