@@ -80,8 +80,11 @@ fn check_npm_directory(npm_root: &Path, package_set: &HashSet<&String>) -> Resul
                         npm_root.join(target_path)
                     };
 
-                    if absolute_target.exists() {
-                        return Some(((*package).clone(), absolute_target.to_string_lossy().to_string()));
+                    // Canonicalize to resolve all symbolic links and relative components
+                    if let Ok(canonical_path) = absolute_target.canonicalize() {
+                        if canonical_path.exists() {
+                            return Some(((*package).clone(), canonical_path.to_string_lossy().to_string()));
+                        }
                     }
                 }
             }
@@ -142,8 +145,11 @@ fn check_nvm_directories(
                                 node_modules.join(target_path)
                             };
 
-                            if absolute_target.exists() {
-                                return Some(((*package).clone(), absolute_target.to_string_lossy().to_string()));
+                            // Canonicalize to resolve all symbolic links and relative components
+                            if let Ok(canonical_path) = absolute_target.canonicalize() {
+                                if canonical_path.exists() {
+                                    return Some(((*package).clone(), canonical_path.to_string_lossy().to_string()));
+                                }
                             }
                         }
                     }
