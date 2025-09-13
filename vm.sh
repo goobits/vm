@@ -2761,7 +2761,14 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Restore positional parameters to the command and its arguments
-set -- "${ARGS[@]}"
+# Use ${ARGS[@]+"${ARGS[@]}"} to handle empty array case
+if [[ ${#ARGS[@]} -eq 0 ]]; then
+    # No arguments provided - show help
+    show_usage
+    exit 0
+else
+    set -- "${ARGS[@]}"
+fi
 
 # Skip main execution if only sourcing functions
 if [[ "${SKIP_MAIN_EXECUTION:-}" == "true" ]]; then
