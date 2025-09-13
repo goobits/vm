@@ -514,7 +514,7 @@
       - name: Install pip packages with smart pipx/pip detection
         shell: |
             export PATH="$HOME/.local/bin:$PATH"
-            package="{{ item }}"
+            package='{{ item }}'
             # Sanitize package name to match mount path (replace - with _ and handle case)
             safe_package_name="${package//-/_}"
             safe_package_name="${safe_package_name,,}"

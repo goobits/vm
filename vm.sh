@@ -1217,14 +1217,33 @@ docker_up() {
                 -i localhost, \
                 -c local \
                 /vm-tool/shared/ansible/playbook.yml > $ANSIBLE_LOG 2>&1" &
-        
+
         # Get the PID of the background process
         local ansible_pid=$!
-        
+
+        # Add timeout handling (5 minutes max for provisioning)
+        local timeout=300
+        local elapsed=0
+
         # Show progress dots while Ansible is running
         while kill -0 $ansible_pid 2>/dev/null; do
             progress_update "."
             sleep 2
+            elapsed=$((elapsed + 2))
+
+            # Check for timeout
+            if [[ $elapsed -ge $timeout ]]; then
+                progress_fail "Timeout after ${timeout} seconds"
+                kill $ansible_pid 2>/dev/null
+                echo "⏱️  Provisioning timed out. This may indicate:"
+                echo "   - Network issues downloading packages"
+                echo "   - A package installation hanging"
+                echo "   - Insufficient resources"
+                echo ""
+                echo "💡 Try running with debug mode to see what's happening:"
+                echo "   $ VM_DEBUG=true vm provision"
+                return 1
+            fi
         done
         
         # Wait for the process to complete and get exit status
@@ -1944,14 +1963,33 @@ docker_provision() {
                 -i localhost, \
                 -c local \
                 /vm-tool/shared/ansible/playbook.yml > $ANSIBLE_LOG 2>&1" &
-        
+
         # Get the PID of the background process
         local ansible_pid=$!
-        
+
+        # Add timeout handling (5 minutes max for provisioning)
+        local timeout=300
+        local elapsed=0
+
         # Show progress dots while Ansible is running
         while kill -0 $ansible_pid 2>/dev/null; do
             progress_update "."
             sleep 2
+            elapsed=$((elapsed + 2))
+
+            # Check for timeout
+            if [[ $elapsed -ge $timeout ]]; then
+                progress_fail "Timeout after ${timeout} seconds"
+                kill $ansible_pid 2>/dev/null
+                echo "⏱️  Provisioning timed out. This may indicate:"
+                echo "   - Network issues downloading packages"
+                echo "   - A package installation hanging"
+                echo "   - Insufficient resources"
+                echo ""
+                echo "💡 Try running with debug mode to see what's happening:"
+                echo "   $ VM_DEBUG=true vm provision"
+                return 1
+            fi
         done
         
         # Wait for the process to complete and get exit status

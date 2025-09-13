@@ -56,8 +56,20 @@ generate_docker_compose() {
     workspace_path="$(echo "$config" | jq -r '.project.workspace_path // "/workspace"')"
     local project_user
     project_user="$(echo "$config" | jq -r '.vm.user // "developer"')"
+
+    # Get timezone from config or detect from host
     local timezone
-    timezone="$(echo "$config" | jq -r '.vm.timezone // "UTC"')"
+    timezone="$(echo "$config" | jq -r '.vm.timezone // "auto"')"
+    if [[ "$timezone" == "auto" ]] || [[ "$timezone" == "null" ]]; then
+        # Detect host timezone
+        if [[ -L /etc/localtime ]]; then
+            timezone="$(readlink /etc/localtime | sed 's|.*/zoneinfo/||')"
+        elif command -v timedatectl >/dev/null 2>&1; then
+            timezone="$(timedatectl | grep 'Time zone' | awk '{print $3}')"
+        else
+            timezone="UTC"
+        fi
+    fi
     
     # Extract memory and swap settings
     local memory

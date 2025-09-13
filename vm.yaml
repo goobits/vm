@@ -13,7 +13,7 @@ vm:
   swappiness: 60  # Swappiness value 0-100 (optional, defaults to 60)
   user: developer
   port_binding: 127.0.0.1
-  timezone: America/Los_Angeles
+  # timezone: auto  # Auto-detects from host (default)
 versions:
   node: '22'
   nvm: v0.40.3
@@ -42,8 +42,8 @@ aliases:
   geminiyolo: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini
 claude_sync: true
 gemini_sync: true
-pip_packages:
-  - claudeflow
+# pip_packages:
+#   - example-package  # Add Python packages here if needed
 package_linking:
   npm: true
   pip: true

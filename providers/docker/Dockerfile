@@ -59,7 +59,11 @@ RUN set -e && \
     # Create new group and user cleanly
     groupadd -g ${PROJECT_GID} ${PROJECT_USER} && \
     useradd -m -u ${PROJECT_UID} -g ${PROJECT_USER} -s /bin/zsh -G sudo ${PROJECT_USER} && \
-    echo "${PROJECT_USER} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+    echo "${PROJECT_USER} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
+    # Pre-create pipx directories with correct permissions to avoid Ansible issues
+    mkdir -p /home/${PROJECT_USER}/.local/state/pipx/log && \
+    mkdir -p /home/${PROJECT_USER}/.local/bin && \
+    chown -R ${PROJECT_USER}:${PROJECT_USER} /home/${PROJECT_USER}/.local
 
 # Configure SSH for Ansible access (optional - can use docker connection plugin instead)
 # SECURITY: Passwords should be provided via environment variables, not hardcoded
