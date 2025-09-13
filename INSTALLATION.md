@@ -65,7 +65,6 @@ pnpm vm create
 ### For Docker Provider (Default)
 - **Docker Desktop** (macOS/Windows) or **Docker Engine** (Linux)
 - **docker-compose**
-- **yq v4+** (mikefarah/yq - YAML processor)
 - **Python3** (macOS only - for cross-platform path operations)
 
 ### For Vagrant Provider
@@ -84,8 +83,6 @@ pnpm vm create
 # Install Docker Desktop
 brew install --cask docker
 
-# Install YAML processor (mikefarah/yq v4+)
-brew install yq
 ```
 
 ### Vagrant Provider  
@@ -116,22 +113,6 @@ tart --version
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
 
-# Install yq (mikefarah/yq v4+)
-# Remove old Python yq if installed
-sudo apt remove yq 2>/dev/null || true
-# Detect architecture and install appropriate yq binary
-ARCH=$(uname -m)
-case "$ARCH" in
-    x86_64) YQ_ARCH="amd64" ;;
-    aarch64|arm64) YQ_ARCH="arm64" ;;
-    *) 
-        echo "❌ Error: Unsupported Linux architecture: $ARCH" >&2
-        echo "Supported: x86_64, aarch64/arm64" >&2
-        exit 1
-        ;;
-esac
-sudo wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${YQ_ARCH}"
-sudo chmod +x /usr/local/bin/yq
 
 # Log out and back in for docker group changes to take effect
 ```
@@ -187,10 +168,6 @@ vm create  # Should work with defaults
 - **Linux**: Check if docker service is started: `sudo systemctl start docker`
 - **Permissions**: Make sure your user is in the docker group: `groups | grep docker`
 
-### yq Issues
-- **Wrong yq version**: Make sure you have mikefarah/yq v4+, not kislyuk/yq (Python version)
-- **Check version**: `yq --version` should show v4+ without "yq (https://github.com/kislyuk/yq)"
-- **Manual install**: Download from [mikefarah/yq releases](https://github.com/mikefarah/yq/releases)
 
 ### Vagrant Issues
 - **VirtualBox conflicts**: Disable Hyper-V on Windows, or use Parallels on macOS

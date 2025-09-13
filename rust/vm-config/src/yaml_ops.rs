@@ -2,7 +2,7 @@ use anyhow::{Result, Context};
 use serde_yaml::{Value, Mapping};
 use std::path::PathBuf;
 use std::fs;
-use crate::cli::OutputFormat;
+use crate::cli::{OutputFormat, TransformFormat};
 
 /// YAML operations for yq replacement functionality
 pub struct YamlOperations;
@@ -248,5 +248,404 @@ impl YamlOperations {
 
         // Fallback: return the whole value
         Ok(value.clone())
+    }
+
+    /// Merge files using eval-all syntax (replaces yq eval-all)
+    pub fn merge_eval_all(files: &[PathBuf], format: &OutputFormat) -> Result<()> {
+        if files.len() < 2 {
+            return Err(anyhow::anyhow!("Need at least 2 files to merge"));
+        }
+
+        // Load first file as base
+        let mut result = Self::load_yaml_file(&files[0])?;
+
+        // Merge subsequent files
+        for file in &files[1..] {
+            let overlay = Self::load_yaml_file(file)?;
+            result = Self::deep_merge_values(result, overlay);
+        }
+
+        // Output result
+        match format {
+            OutputFormat::Yaml => {
+                let yaml = serde_yaml::to_string(&result)?;
+                print!("{}", yaml);
+            }
+            OutputFormat::Json => {
+                let json = serde_json::to_string(&result)?;
+                println!("{}", json);
+            }
+            OutputFormat::JsonPretty => {
+                let json = serde_json::to_string_pretty(&result)?;
+                println!("{}", json);
+            }
+        }
+
+        Ok(())
+    }
+
+
+    /// Modify YAML file in-place
+    pub fn modify_file(file: &PathBuf, field: &str, new_value: &str, stdout: bool) -> Result<()> {
+        let mut value = Self::load_yaml_file(file)?;
+
+        // Parse new value as YAML
+        let parsed_value: Value = serde_yaml::from_str(new_value)
+            .with_context(|| format!("Failed to parse new value: {}", new_value))?;
+
+        // Set the field
+        Self::set_field_value(&mut value, field, parsed_value)?;
+
+        if stdout {
+            let yaml = serde_yaml::to_string(&value)?;
+            print!("{}", yaml);
+        } else {
+            let yaml = serde_yaml::to_string(&value)?;
+            fs::write(file, yaml)
+                .with_context(|| format!("Failed to write file: {:?}", file))?;
+        }
+
+        Ok(())
+    }
+
+    /// Get array length
+    pub fn array_length(file: &PathBuf, path: &str) -> Result<usize> {
+        let value = Self::load_yaml_file(file)?;
+
+        let target = if path.is_empty() {
+            &value
+        } else {
+            Self::get_nested_field(&value, path)?
+        };
+
+        match target {
+            Value::Sequence(seq) => Ok(seq.len()),
+            Value::Mapping(map) => Ok(map.len()),
+            _ => Ok(0),
+        }
+    }
+
+    /// Transform data with expressions
+    pub fn transform(file: &PathBuf, expression: &str, format: &TransformFormat) -> Result<()> {
+        let value = Self::load_yaml_file(file)?;
+
+        let results = if expression.contains("to_entries[]") {
+            // Handle to_entries transformations
+            Self::transform_to_entries(&value, expression)?
+        } else if expression.contains(".[]") {
+            // Handle array iteration
+            Self::transform_array_items(&value, expression)?
+        } else {
+            vec![expression.to_string()]
+        };
+
+        // Output in requested format
+        match format {
+            TransformFormat::Lines => {
+                for result in results {
+                    println!("{}", result);
+                }
+            }
+            TransformFormat::Space => {
+                println!("{}", results.join(" "));
+            }
+            TransformFormat::Comma => {
+                println!("{}", results.join(","));
+            }
+            TransformFormat::Json => {
+                let json = serde_json::to_string(&results)?;
+                println!("{}", json);
+            }
+            TransformFormat::Yaml => {
+                let yaml = serde_yaml::to_string(&results)?;
+                print!("{}", yaml);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Check if field exists and has subfield
+    pub fn has_field(file: &PathBuf, field: &str, subfield: &str) -> Result<bool> {
+        let value = Self::load_yaml_file(file)?;
+
+        let target = Self::get_nested_field(&value, field)?;
+
+        match target {
+            Value::Mapping(map) => {
+                let subfield_key = Value::String(subfield.to_string());
+                Ok(map.contains_key(&subfield_key))
+            }
+            _ => Ok(false),
+        }
+    }
+
+    /// Add object to array at specified path
+    pub fn add_to_array_path(file: &PathBuf, path: &str, object_json: &str, stdout: bool) -> Result<()> {
+        let mut value = Self::load_yaml_file(file)?;
+
+        // Parse the JSON object and convert to YAML
+        let json_value: serde_json::Value = serde_json::from_str(object_json)
+            .with_context(|| format!("Failed to parse JSON object: {}", object_json))?;
+
+        // Convert via string to avoid type compatibility issues
+        let yaml_string = serde_yaml::to_string(&json_value)?;
+        let yaml_value: Value = serde_yaml::from_str(&yaml_string)
+            .with_context(|| "Failed to convert JSON to YAML")?;
+
+        // Navigate to the path and add the object
+        let path_parts: Vec<&str> = path.split('.').collect();
+        Self::add_object_to_array_at_path(&mut value, &path_parts, yaml_value)?;
+
+        if stdout {
+            let yaml = serde_yaml::to_string(&value)?;
+            print!("{}", yaml);
+        } else {
+            let yaml = serde_yaml::to_string(&value)?;
+            fs::write(file, yaml)
+                .with_context(|| format!("Failed to write file: {:?}", file))?;
+        }
+
+        Ok(())
+    }
+
+    /// Select items from array where field matches value
+    pub fn select_where(file: &PathBuf, path: &str, field: &str, match_value: &str, format: &OutputFormat) -> Result<()> {
+        let value = Self::load_yaml_file(file)?;
+
+        let target = if path.is_empty() {
+            &value
+        } else {
+            Self::get_nested_field(&value, path)?
+        };
+
+        let results = match target {
+            Value::Sequence(seq) => {
+                let mut matching_items = Vec::new();
+                for item in seq {
+                    if let Value::Mapping(map) = item {
+                        let field_key = Value::String(field.to_string());
+                        if let Some(field_value) = map.get(&field_key) {
+                            if let Some(field_str) = field_value.as_str() {
+                                if field_str == match_value {
+                                    matching_items.push(item.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+                Value::Sequence(matching_items)
+            }
+            _ => return Err(anyhow::anyhow!("Path does not point to an array")),
+        };
+
+        // Output results
+        match format {
+            OutputFormat::Yaml => {
+                let yaml = serde_yaml::to_string(&results)?;
+                print!("{}", yaml);
+            }
+            OutputFormat::Json => {
+                let json = serde_json::to_string(&results)?;
+                println!("{}", json);
+            }
+            OutputFormat::JsonPretty => {
+                let json = serde_json::to_string_pretty(&results)?;
+                println!("{}", json);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Count items in array or object
+    pub fn count_items(file: &PathBuf, path: &str) -> Result<usize> {
+        let value = Self::load_yaml_file(file)?;
+
+        let target = if path.is_empty() {
+            &value
+        } else {
+            Self::get_nested_field(&value, path)?
+        };
+
+        match target {
+            Value::Sequence(seq) => Ok(seq.len()),
+            Value::Mapping(map) => Ok(map.len()),
+            _ => Ok(0),
+        }
+    }
+
+    // Helper functions
+
+    fn load_yaml_file(file: &PathBuf) -> Result<Value> {
+        let content = fs::read_to_string(file)
+            .with_context(|| format!("Failed to read file: {:?}", file))?;
+
+        serde_yaml::from_str(&content)
+            .with_context(|| format!("Failed to parse YAML: {:?}", file))
+    }
+
+    fn deep_merge_values(base: Value, overlay: Value) -> Value {
+        match (base, overlay) {
+            (Value::Mapping(mut base_map), Value::Mapping(overlay_map)) => {
+                for (key, overlay_value) in overlay_map {
+                    match base_map.get(&key) {
+                        Some(base_value) => {
+                            let merged = Self::deep_merge_values(base_value.clone(), overlay_value);
+                            base_map.insert(key, merged);
+                        }
+                        None => {
+                            base_map.insert(key, overlay_value);
+                        }
+                    }
+                }
+                Value::Mapping(base_map)
+            }
+            (_, overlay) => overlay,
+        }
+    }
+
+    fn set_field_value(value: &mut Value, field: &str, new_value: Value) -> Result<()> {
+        let parts: Vec<&str> = field.split('.').collect();
+        if parts.is_empty() {
+            return Err(anyhow::anyhow!("Empty field path"));
+        }
+
+        Self::set_nested_field(value, &parts, new_value)
+    }
+
+    fn set_nested_field(value: &mut Value, parts: &[&str], new_value: Value) -> Result<()> {
+        if parts.len() == 1 {
+            match value {
+                Value::Mapping(map) => {
+                    let key = Value::String(parts[0].to_string());
+                    map.insert(key, new_value);
+                    return Ok(());
+                }
+                _ => return Err(anyhow::anyhow!("Cannot set field on non-object")),
+            }
+        }
+
+        match value {
+            Value::Mapping(map) => {
+                let key = Value::String(parts[0].to_string());
+                match map.get_mut(&key) {
+                    Some(nested) => Self::set_nested_field(nested, &parts[1..], new_value)?,
+                    None => {
+                        let mut nested = Value::Mapping(Mapping::new());
+                        Self::set_nested_field(&mut nested, &parts[1..], new_value)?;
+                        map.insert(key, nested);
+                    }
+                }
+            }
+            _ => return Err(anyhow::anyhow!("Cannot navigate path on non-object")),
+        }
+
+        Ok(())
+    }
+
+    fn get_nested_field<'a>(value: &'a Value, field: &str) -> Result<&'a Value> {
+        let parts: Vec<&str> = field.split('.').collect();
+        let mut current = value;
+
+        for part in parts {
+            match current {
+                Value::Mapping(map) => {
+                    let key = Value::String(part.to_string());
+                    current = map.get(&key)
+                        .ok_or_else(|| anyhow::anyhow!("Field '{}' not found", part))?;
+                }
+                _ => return Err(anyhow::anyhow!("Cannot navigate field '{}' on non-object", part)),
+            }
+        }
+
+        Ok(current)
+    }
+
+    fn transform_to_entries(value: &Value, expression: &str) -> Result<Vec<String>> {
+        match value {
+            Value::Mapping(map) => {
+                let mut results = Vec::new();
+                for (key, val) in map {
+                    if let Value::String(key_str) = key {
+                        if let Some(template) = expression.split(" | ").nth(1) {
+                            // Simple template replacement
+                            let result = template
+                                .replace("\\(.key)", key_str)
+                                .replace("\\(.value)", &format!("{:?}", val))
+                                .replace("\"", "");
+                            results.push(result);
+                        }
+                    }
+                }
+                Ok(results)
+            }
+            _ => Ok(vec![]),
+        }
+    }
+
+    fn transform_array_items(value: &Value, _expression: &str) -> Result<Vec<String>> {
+        // Simple array transformation - can be enhanced
+        match value {
+            Value::Sequence(seq) => {
+                let mut results = Vec::new();
+                for item in seq {
+                    results.push(format!("{:?}", item));
+                }
+                Ok(results)
+            }
+            _ => Ok(vec![]),
+        }
+    }
+
+    fn add_object_to_array_at_path(value: &mut Value, path: &[&str], object: Value) -> Result<()> {
+        if path.is_empty() {
+            return Err(anyhow::anyhow!("Empty path"));
+        }
+
+        if path.len() == 1 {
+            // We're at the target array
+            match value {
+                Value::Sequence(seq) => {
+                    seq.push(object);
+                    return Ok(());
+                }
+                Value::Mapping(map) => {
+                    let key = Value::String(path[0].to_string());
+                    match map.get_mut(&key) {
+                        Some(Value::Sequence(seq)) => {
+                            seq.push(object);
+                            return Ok(());
+                        }
+                        Some(_) => return Err(anyhow::anyhow!("Path '{}' is not an array", path[0])),
+                        None => {
+                            // Create new array
+                            map.insert(key, Value::Sequence(vec![object]));
+                            return Ok(());
+                        }
+                    }
+                }
+                _ => return Err(anyhow::anyhow!("Cannot navigate path on non-object")),
+            }
+        }
+
+        // Navigate deeper
+        match value {
+            Value::Mapping(map) => {
+                let key = Value::String(path[0].to_string());
+                match map.get_mut(&key) {
+                    Some(nested) => Self::add_object_to_array_at_path(nested, &path[1..], object)?,
+                    None => {
+                        // Create nested structure
+                        let mut nested = Value::Mapping(Mapping::new());
+                        Self::add_object_to_array_at_path(&mut nested, &path[1..], object)?;
+                        map.insert(key, nested);
+                    }
+                }
+            }
+            _ => return Err(anyhow::anyhow!("Cannot navigate path on non-object")),
+        }
+
+        Ok(())
     }
 }

@@ -150,6 +150,113 @@ pub enum Command {
         /// YAML file to check
         file: PathBuf,
     },
+
+    /// Merge files using eval-all syntax (replaces yq eval-all)
+    MergeEvalAll {
+        /// Files to merge
+        files: Vec<PathBuf>,
+
+        /// Output format
+        #[arg(short = 'f', long, default_value = "yaml")]
+        format: OutputFormat,
+    },
+
+
+    /// Modify YAML file in-place
+    Modify {
+        /// YAML file to modify
+        file: PathBuf,
+
+        /// Field path to set (dot notation)
+        field: String,
+
+        /// New value
+        value: String,
+
+        /// Output to stdout instead of modifying file
+        #[arg(long)]
+        stdout: bool,
+    },
+
+    /// Get array length
+    ArrayLength {
+        /// Config file
+        file: PathBuf,
+
+        /// Path to array (dot notation, empty for root)
+        #[arg(default_value = "")]
+        path: String,
+    },
+
+    /// Transform data with expressions
+    Transform {
+        /// Input file
+        file: PathBuf,
+
+        /// Transform expression
+        expression: String,
+
+        /// Output format
+        #[arg(short = 'f', long, default_value = "lines")]
+        format: TransformFormat,
+    },
+
+    /// Check if field exists and has subfield
+    HasField {
+        /// Config file
+        file: PathBuf,
+
+        /// Field path to check
+        field: String,
+
+        /// Subfield to check for existence
+        subfield: String,
+    },
+
+    /// Add object to array
+    AddToArray {
+        /// YAML file to modify
+        file: PathBuf,
+
+        /// Path to array (dot notation)
+        path: String,
+
+        /// JSON object to add
+        object: String,
+
+        /// Output to stdout instead of modifying file
+        #[arg(long)]
+        stdout: bool,
+    },
+
+    /// Select items from array where field matches value
+    SelectWhere {
+        /// Config file
+        file: PathBuf,
+
+        /// Path to array (dot notation)
+        path: String,
+
+        /// Field name to match
+        field: String,
+
+        /// Value to match
+        value: String,
+
+        /// Output format
+        #[arg(short = 'f', long, default_value = "yaml")]
+        format: OutputFormat,
+    },
+
+    /// Count items in array or object
+    Count {
+        /// Config file
+        file: PathBuf,
+
+        /// Path to count (dot notation, empty for root)
+        #[arg(default_value = "")]
+        path: String,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -157,6 +264,30 @@ pub enum OutputFormat {
     Yaml,
     Json,
     JsonPretty,
+}
+
+#[derive(Clone, Debug)]
+pub enum TransformFormat {
+    Lines,
+    Space,
+    Comma,
+    Json,
+    Yaml,
+}
+
+impl std::str::FromStr for TransformFormat {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "lines" => Ok(TransformFormat::Lines),
+            "space" => Ok(TransformFormat::Space),
+            "comma" => Ok(TransformFormat::Comma),
+            "json" => Ok(TransformFormat::Json),
+            "yaml" => Ok(TransformFormat::Yaml),
+            _ => Err(format!("Unknown transform format: {}", s)),
+        }
+    }
 }
 
 impl std::str::FromStr for OutputFormat {
@@ -331,6 +462,62 @@ pub fn execute(args: Args) -> Result<()> {
                     std::process::exit(1);
                 }
             }
+        }
+
+        Command::MergeEvalAll { files, format } => {
+            use crate::yaml_ops::YamlOperations;
+            YamlOperations::merge_eval_all(&files, &format)?;
+        }
+
+
+        Command::Modify { file, field, value, stdout } => {
+            use crate::yaml_ops::YamlOperations;
+            YamlOperations::modify_file(&file, &field, &value, stdout)?;
+        }
+
+        Command::ArrayLength { file, path } => {
+            use crate::yaml_ops::YamlOperations;
+            let length = YamlOperations::array_length(&file, &path)?;
+            println!("{}", length);
+        }
+
+        Command::Transform { file, expression, format } => {
+            use crate::yaml_ops::YamlOperations;
+            YamlOperations::transform(&file, &expression, &format)?;
+        }
+
+        Command::HasField { file, field, subfield } => {
+            use crate::yaml_ops::YamlOperations;
+            match YamlOperations::has_field(&file, &field, &subfield) {
+                Ok(true) => {
+                    println!("true");
+                    std::process::exit(0);
+                }
+                Ok(false) => {
+                    println!("false");
+                    std::process::exit(1);
+                }
+                Err(e) => {
+                    eprintln!("❌ Error checking field: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Command::AddToArray { file, path, object, stdout } => {
+            use crate::yaml_ops::YamlOperations;
+            YamlOperations::add_to_array_path(&file, &path, &object, stdout)?;
+        }
+
+        Command::SelectWhere { file, path, field, value, format } => {
+            use crate::yaml_ops::YamlOperations;
+            YamlOperations::select_where(&file, &path, &field, &value, &format)?;
+        }
+
+        Command::Count { file, path } => {
+            use crate::yaml_ops::YamlOperations;
+            let count = YamlOperations::count_items(&file, &path)?;
+            println!("{}", count);
         }
     }
 

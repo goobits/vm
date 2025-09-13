@@ -28,8 +28,7 @@ source "$SCRIPT_DIR/shared/platform-utils.sh"
 # Source shared deep merge utilities
 source "$SCRIPT_DIR/shared/deep-merge.sh"
 
-# Source port management functions for auto-suggesting port ranges
-source "$SCRIPT_DIR/shared/port-manager.sh"
+# Port management now handled by vm-ports binary
 
 # Initialize variables
 VALIDATE_FLAG=""
@@ -169,7 +168,7 @@ initialize_vm_yaml() {
 
     # Auto-suggest port range for the project
     local suggested_range
-    if suggested_range="$(suggest_next_range 10 3000 2>/dev/null)"; then
+    if suggested_range="$("$SCRIPT_DIR/rust/target/release/vm-ports" suggest 10 2>/dev/null)"; then
         # Add port range to config
         customized_config="${customized_config}
 port_range: $suggested_range"

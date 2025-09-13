@@ -679,7 +679,7 @@ brew update
 
 # Install basic packages
 echo "Installing development tools..."
-brew install git jq yq htop ripgrep tree wget curl
+brew install git htop ripgrep tree wget curl
 
 echo "✅ macOS provisioning complete!"
 '

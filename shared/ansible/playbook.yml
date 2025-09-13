@@ -204,7 +204,6 @@
                 - ufw
                 - fail2ban
                 - unattended-upgrades
-                - jq
                 - python3-psycopg2
                 - zsh
                 - zsh-syntax-highlighting

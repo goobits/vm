@@ -41,6 +41,11 @@ pub enum Command {
     },
     /// List all registered port ranges
     List,
+    /// Unregister a project's port range
+    Unregister {
+        /// Project name
+        project: String,
+    },
 }
 
 fn main() -> Result<()> {
@@ -84,6 +89,11 @@ fn main() -> Result<()> {
         Command::List => {
             let registry = PortRegistry::load()?;
             registry.list();
+        }
+        Command::Unregister { project } => {
+            let mut registry = PortRegistry::load()?;
+            registry.unregister(&project)?;
+            println!("✅ Unregistered port range for project '{}'", project);
         }
     }
 

@@ -11,7 +11,8 @@ VM_TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # Source shared utilities
 source "$VM_TOOL_DIR/shared/deep-merge.sh"
-source "$VM_TOOL_DIR/shared/link-detector.sh"
+# Link detection now handled by vm-links binary
+# source "$VM_TOOL_DIR/shared/link-detector.sh"
 
 # Generate docker-compose.yml from VM configuration
 # Args: config_path (required), project_dir (optional, defaults to pwd)
@@ -34,12 +35,8 @@ generate_docker_compose() {
         local path="$1"
         local default="$2"
         # Use vm-config query directly on the merged config
-        if [[ -n "${VM_CONFIG:-}" ]] && [[ -x "${VM_CONFIG}" ]]; then
-            "$VM_CONFIG" query <(echo "$config") "$path" --raw --default "$default" 2>/dev/null || echo "$default"
-        else
-            # Fallback to yq
-            local value
-            value="$(echo "$config" | yq eval "$path" - 2>/dev/null)"
+        # Use vm-config directly
+        "${VM_CONFIG:-$VM_TOOL_DIR/rust/vm-config/target/release/vm-config}" query <(echo "$config") "$path" --raw --default "$default"
             if [[ -z "$value" || "$value" == "null" ]]; then
                 echo "$default"
             else
@@ -137,8 +134,8 @@ generate_docker_compose() {
     # Collect explicit port mappings to avoid conflicts with port range
     local explicit_ports=""
     if [[ "$ports_count" -gt 0 ]]; then
-        # Get explicit port values using proper yq syntax
-        explicit_ports="$(get_config '.ports' '{}' | yq eval 'to_entries[] | .value' - 2>/dev/null | tr '\n' ' ' || echo '')"
+        # Get explicit port values using vm-config
+        explicit_ports="$("$VM_TOOL_DIR/rust/vm-config/target/release/vm-config" transform <(echo "$config") 'ports | to_entries[] | .value' --format space)"
     fi
 
     # Generate port range forwarding (skip explicit ports to avoid conflicts)
@@ -328,8 +325,8 @@ generate_docker_compose() {
             "npm")
                 pm_enabled="$(get_config '.package_linking.npm' 'true')"
                 local npm_packages
-                # Get npm packages list
-                npm_packages="$(get_config '.npm_packages' '' | yq eval '.[]' - 2>/dev/null | tr '\n' ' ' || echo '')"
+                # Get npm packages list using vm-config
+                npm_packages="$("$VM_TOOL_DIR/rust/vm-config/target/release/vm-config" transform <(echo "$config") 'npm_packages[]' --format space)"
                 if [[ -n "$npm_packages" ]]; then
                     while IFS= read -r package; do
                         [[ -z "$package" ]] && continue
@@ -340,8 +337,8 @@ generate_docker_compose() {
             "pip")
                 pm_enabled="$(get_config '.package_linking.pip' 'false')"
                 local pip_packages
-                # Get pip packages list
-                pip_packages="$(get_config '.pip_packages' '' | yq eval '.[]' - 2>/dev/null | tr '\n' ' ' || echo '')"
+                # Get pip packages list using vm-config
+                pip_packages="$("$VM_TOOL_DIR/rust/vm-config/target/release/vm-config" transform <(echo "$config") 'pip_packages[]' --format space)"
                 if [[ -n "$pip_packages" ]]; then
                     while IFS= read -r package; do
                         [[ -z "$package" ]] && continue
@@ -352,8 +349,8 @@ generate_docker_compose() {
             "cargo")
                 pm_enabled="$(get_config '.package_linking.cargo' 'false')"
                 local cargo_packages
-                # Get cargo packages list
-                cargo_packages="$(get_config '.cargo_packages' '' | yq eval '.[]' - 2>/dev/null | tr '\n' ' ' || echo '')"
+                # Get cargo packages list using vm-config
+                cargo_packages="$("$VM_TOOL_DIR/rust/vm-config/target/release/vm-config" transform <(echo "$config") 'cargo_packages[]' --format space)"
 
                 if [[ -n "$cargo_packages" ]]; then
                     while IFS= read -r package; do
@@ -366,9 +363,9 @@ generate_docker_compose() {
         
         # Generate mounts if enabled and packages exist
         if [[ "$pm_enabled" == "true" ]] && [[ ${#packages_array[@]} -gt 0 ]]; then
-            if declare -f generate_package_mounts >/dev/null 2>&1; then
-                local linked_volumes
-                linked_volumes=$(generate_package_mounts "$pm" "${packages_array[@]}")
+            # Use vm-links binary to generate mounts
+            local linked_volumes
+            if linked_volumes=$("$VM_TOOL_DIR/rust/target/release/vm-links" mounts "$pm" "${packages_array[@]}" 2>/dev/null); then
                 if [[ -n "$linked_volumes" ]]; then
                     while IFS= read -r volume; do
                         [[ -z "$volume" ]] && continue

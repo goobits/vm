@@ -141,8 +141,7 @@ The main test runner (`./run-tests.sh`) still provides comprehensive testing:
 ### Prerequisites
 
 - **Docker**: Required for VM lifecycle and system tests
-- **yq**: YAML processing tool
-- **jq**: JSON processing tool  
+  
 - **timeout**: Command timeout utility
 
 ### Docker Permissions
@@ -219,7 +218,7 @@ The main `run-tests.sh` runner has been updated to work with the new structure:
 ### Common Issues
 
 1. **Docker Permission Denied**: See Docker Permissions section above
-2. **Missing Dependencies**: Install required tools (yq, jq, timeout)
+2. **Missing Dependencies**: Install required tools (timeout)
 3. **Test Timeouts**: Increase timeout values for slower systems
 4. **Container Conflicts**: Tests automatically clean up containers but manual cleanup may be needed:
    ```bash

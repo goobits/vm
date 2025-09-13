@@ -58,7 +58,6 @@ packages:
     - nodejs
     - npm
     - htop
-    - jq
     - ripgrep
     - tree
     - vim

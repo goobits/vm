@@ -84,6 +84,11 @@ impl PortRegistry {
         self.save()
     }
 
+    pub fn unregister(&mut self, project: &str) -> Result<()> {
+        self.entries.remove(project);
+        self.save()
+    }
+
     pub fn list(&self) {
         if self.entries.is_empty() {
             println!("📡 No port ranges registered yet");

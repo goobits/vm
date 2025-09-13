@@ -191,9 +191,13 @@ detect_editable_pip_packages() {
             esac
 
             if [[ -n "$pip_output" ]]; then
-                # Parse JSON output for editable packages
-                if command -v jq >/dev/null 2>&1; then
-                    echo "$pip_output" | jq -r '.[]? | select(.editable_project_location) | "\(.name):\(.editable_project_location)"' 2>/dev/null | while IFS=: read -r name location; do
+                # Parse JSON output for editable packages using basic shell parsing
+                # Extract name:location pairs from JSON without jq dependency
+                echo "$pip_output" | grep -o '"name":[^,}]*' | cut -d'"' -f4 > /tmp/pip_names_$$
+                echo "$pip_output" | grep -o '"editable_project_location":[^,}]*' | cut -d'"' -f4 > /tmp/pip_locations_$$
+
+                if [[ -s /tmp/pip_names_$$ ]] && [[ -s /tmp/pip_locations_$$ ]]; then
+                    paste /tmp/pip_names_$$ /tmp/pip_locations_$$ | while IFS=$'\t' read -r name location; do
                         if [[ -n "$name" && -n "$location" && -d "$location" ]]; then
                             # Check if this package matches requested packages
                             if package_matches_request "$name" "${pip_packages_array[@]}"; then
@@ -202,6 +206,7 @@ detect_editable_pip_packages() {
                         fi
                     done
                 fi
+                rm -f /tmp/pip_names_$$ /tmp/pip_locations_$$
                 break  # Exit loop if we found a working pip command
             fi
         fi

@@ -50,7 +50,6 @@ packages:
     - curl
     - wget
     - htop
-    - jq
     - ripgrep
     - tree
     - vim

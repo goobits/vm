@@ -25,17 +25,36 @@ SHOW_TIMESTAMP="false"
 
 # Extract values from config if available
 if [ -f "$CONFIG_FILE" ]; then
-    EMOJI=$(yq eval '.terminal.emoji // "🚀"' "$CONFIG_FILE")
-    USERNAME=$(yq eval '.terminal.username // "dev"' "$CONFIG_FILE")
-    SHOW_GIT_BRANCH=$(yq eval '.terminal.show_git_branch // true' "$CONFIG_FILE")
-    SHOW_TIMESTAMP=$(yq eval '.terminal.show_timestamp // false' "$CONFIG_FILE")
-    WORKSPACE=$(yq eval '.project.workspace_path // "/workspace"' "$CONFIG_FILE")
+    # vm-config is always available at known location
+    VM_CONFIG_BIN="/usr/local/bin/vm-config"
 
-    # Extract environment variables
-    ENV_VARS=$(yq eval '.environment // {} | to_entries | .[] | "export \(.key)=\"\(.value)\""' "$CONFIG_FILE")
+    EMOJI=$("$VM_CONFIG_BIN" query "$CONFIG_FILE" "terminal.emoji" --raw --default "🚀")
+    USERNAME=$("$VM_CONFIG_BIN" query "$CONFIG_FILE" "terminal.username" --raw --default "dev")
+    SHOW_GIT_BRANCH=$("$VM_CONFIG_BIN" query "$CONFIG_FILE" "terminal.show_git_branch" --raw --default "true")
+    SHOW_TIMESTAMP=$("$VM_CONFIG_BIN" query "$CONFIG_FILE" "terminal.show_timestamp" --raw --default "false")
+    WORKSPACE=$("$VM_CONFIG_BIN" query "$CONFIG_FILE" "project.workspace_path" --raw --default "/workspace")
 
-    # Extract aliases
-    ALIASES=$(yq eval '.aliases // {} | to_entries | .[] | "alias \(.key)='\''\(.value)'\''"' "$CONFIG_FILE")
+    # Extract environment variables using shell loop
+    ENV_VARS=""
+    env_keys=$("$VM_CONFIG_BIN" transform "$CONFIG_FILE" 'environment | keys | .[]' --format lines)
+    if [ -n "$env_keys" ]; then
+        while IFS= read -r key; do
+            [ -z "$key" ] && continue
+            value=$("$VM_CONFIG_BIN" query "$CONFIG_FILE" "environment.$key" --raw --default "")
+            ENV_VARS="$ENV_VARS"$'\n'"export $key=\"$value\""
+        done <<< "$env_keys"
+    fi
+
+    # Extract aliases using shell loop
+    ALIASES=""
+    alias_keys=$("$VM_CONFIG_BIN" transform "$CONFIG_FILE" 'aliases | keys | .[]' --format lines)
+    if [ -n "$alias_keys" ]; then
+        while IFS= read -r key; do
+            [ -z "$key" ] && continue
+            value=$("$VM_CONFIG_BIN" query "$CONFIG_FILE" "aliases.$key" --raw --default "")
+            ALIASES="$ALIASES"$'\n'"alias $key='$value'"
+        done <<< "$alias_keys"
+    fi
 fi
 
 # Create .bashrc

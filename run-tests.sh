@@ -144,7 +144,7 @@ cleanup_test_env() {
 
         # Extract project name and ensure container is removed
         local project_name
-        project_name=$(yq '.project.name' vm.yaml 2>/dev/null | tr -cd '[:alnum:]')
+        project_name=$("$SCRIPT_DIR/rust/vm-config/target/release/vm-config" query vm.yaml 'project.name' --raw | tr -cd '[:alnum:]')
         if [[ -n "$project_name" ]]; then
             local container_name="${project_name}-dev"
             # Force stop and remove container with both docker and sudo docker
@@ -179,7 +179,7 @@ create_test_vm() {
 
     # Pre-emptively clean up any existing container with the same name
     local project_name
-    project_name=$(yq '.project.name' "$TEST_DIR/vm.yaml" 2>/dev/null | tr -cd '[:alnum:]')
+    project_name=$("$SCRIPT_DIR/rust/vm-config/target/release/vm-config" query "$TEST_DIR/vm.yaml" 'project.name' --raw | tr -cd '[:alnum:]')
     if [[ -n "$project_name" ]]; then
         local container_name="${project_name}-dev"
         echo -e "${BLUE}Cleaning up any existing container: $container_name${NC}"
@@ -512,7 +512,7 @@ test_config_generator() {
 
         # Validate it has correct structure
         local project_name
-        project_name=$(yq '.project.name' "$CONFIG_DIR/minimal.yaml")
+        project_name=$("$SCRIPT_DIR/rust/vm-config/target/release/vm-config" query "$CONFIG_DIR/minimal.yaml" 'project.name' --raw)
         if [[ "$project_name" = "test-minimal" ]]; then
             echo -e "${GREEN}✓ Config has correct project name${NC}"
         else
@@ -528,7 +528,7 @@ test_config_generator() {
     for service in postgresql redis mongodb docker; do
         if [[ -f "$CONFIG_DIR/$service.yaml" ]]; then
             local enabled
-            enabled=$(yq ".services.$service.enabled" "$CONFIG_DIR/$service.yaml")
+            enabled=$("$SCRIPT_DIR/rust/vm-config/target/release/vm-config" query "$CONFIG_DIR/$service.yaml" "services.$service.enabled" --raw)
             if [[ "$enabled" = "true" ]]; then
                 echo -e "${GREEN}✓ $service config is valid${NC}"
             else
@@ -835,7 +835,7 @@ test_vm_init() {
 
     # Check content is customized
     local project_name
-    project_name=$(yq '.project.name' vm.yaml)
+    project_name=$("$SCRIPT_DIR/rust/vm-config/target/release/vm-config" query vm.yaml 'project.name' --raw)
     if [[ "$project_name" != "init-test" ]]; then
         echo -e "${RED}✗ Project name not customized (got: $project_name)${NC}"
         return 1
@@ -1024,7 +1024,7 @@ test_vm_reload() {
     $SCRIPT_DIR/vm.sh exec "echo 'before reload' > /tmp/reload-test"
 
     # Modify config (add an alias)
-    yq '.aliases.testreload = "echo reload-success"' vm.yaml -o yaml > vm.yaml.tmp
+    "$SCRIPT_DIR/rust/vm-config/target/release/vm-config" modify vm.yaml 'aliases.testreload' '"echo reload-success"' --stdout > vm.yaml.tmp
     mv vm.yaml.tmp vm.yaml
 
     # Reload VM

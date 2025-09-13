@@ -134,7 +134,7 @@ else
     mkdir -p "$INSTALL_DIR"
 
     # Copy directories
-    for dir in providers shared configs; do
+    for dir in providers shared configs rust lib; do
         if [[ -d "$SCRIPT_DIR/$dir" ]]; then
             cp -r "$SCRIPT_DIR/$dir" "$INSTALL_DIR/"
         fi

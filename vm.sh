@@ -43,7 +43,8 @@ source "$SCRIPT_DIR/shared/logging-utils.sh"
 CURRENT_DIR="$(pwd)"
 
 # Source shared utilities
-source "$SCRIPT_DIR/shared/link-detector.sh"
+# Link detection now handled by vm-links binary
+# source "$SCRIPT_DIR/shared/link-detector.sh"
 source "$SCRIPT_DIR/shared/docker-utils.sh"
 source "$SCRIPT_DIR/shared/temporary-file-utils.sh"
 source "$SCRIPT_DIR/shared/mount-utils.sh"
@@ -51,7 +52,7 @@ source "$SCRIPT_DIR/shared/security-utils.sh"
 source "$SCRIPT_DIR/shared/config-processor.sh"
 source "$SCRIPT_DIR/shared/provider-interface.sh"
 source "$SCRIPT_DIR/shared/project-detector.sh"
-source "$SCRIPT_DIR/shared/port-manager.sh"
+# Port management now handled by vm-ports binary
 source "$SCRIPT_DIR/lib/progress-reporter.sh"
 source "$SCRIPT_DIR/lib/docker-compose-progress.sh"
 
@@ -784,9 +785,9 @@ docker_up() {
         
         # Check for conflicts
         local conflicts
-        if conflicts=$(check_port_conflicts "$port_range" "$project_name"); then
+        if conflicts=$("$SCRIPT_DIR/rust/target/release/vm-ports" check "$port_range" "$project_name"); then
             # Register the range
-            if register_port_range "$project_name" "$port_range" "$project_dir"; then
+            if "$SCRIPT_DIR/rust/target/release/vm-ports" register "$port_range" "$project_name" "$project_dir" >/dev/null; then
                 progress_done
             else
                 progress_fail "Failed to register port range"
@@ -1583,7 +1584,7 @@ docker_destroy() {
     port_range="$(query_config_field "$config" 'port_range' '')"
     if [[ -n "$port_range" ]]; then
         progress_task "📡 Unregistering port range"
-        unregister_port_range "$project_name"
+        "$SCRIPT_DIR/rust/target/release/vm-ports" unregister "$project_name" >/dev/null
         progress_done
     fi
 
@@ -1660,7 +1661,7 @@ docker_status() {
         
         # Check for conflicts
         local conflicts
-        if ! conflicts=$(check_port_conflicts "$port_range" "$project_name" 2>/dev/null); then
+        if ! conflicts=$("$SCRIPT_DIR/rust/target/release/vm-ports" check "$port_range" "$project_name" 2>/dev/null); then
             echo "   ⚠️  Conflicts with: $conflicts"
         fi
     fi
