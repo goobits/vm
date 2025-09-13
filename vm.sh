@@ -50,9 +50,14 @@ source "$SCRIPT_DIR/shared/temporary-file-utils.sh"
 source "$SCRIPT_DIR/shared/mount-utils.sh"
 source "$SCRIPT_DIR/shared/security-utils.sh"
 source "$SCRIPT_DIR/shared/config-processor.sh"
+
+# Initialize Rust binary paths (these are bundled with the project)
+VM_PORTS="$SCRIPT_DIR/rust/target/release/vm-ports"
+VM_LINKS="$SCRIPT_DIR/rust/target/release/vm-links"
+# VM_CONFIG is already set by config-processor.sh
+
 source "$SCRIPT_DIR/shared/provider-interface.sh"
 source "$SCRIPT_DIR/shared/project-detector.sh"
-# Port management now handled by vm-ports binary
 source "$SCRIPT_DIR/lib/progress-reporter.sh"
 source "$SCRIPT_DIR/lib/docker-compose-progress.sh"
 
@@ -67,10 +72,10 @@ query_config_field() {
     echo "$config" > "$temp_config"
 
     local result
-    if [[ -f "$SCRIPT_DIR/rust/vm-config/target/release/vm-config" ]]; then
-        result="$("$SCRIPT_DIR/rust/vm-config/target/release/vm-config" query "$temp_config" "$field" --raw --default "$default" 2>/dev/null || echo "$default")"
-    else
-        # Fallback: basic YAML parsing with grep/awk
+    # Use vm-config binary (required, no fallback)
+    result="$("$VM_CONFIG" query "$temp_config" "$field" --raw --default "$default" 2>/dev/null || echo "$default")"
+    if [[ -z "$result" ]]; then
+        # If vm-config fails, use the default
         case "$field" in
             "project.name")
                 result="$(grep -A 5 '^project:' "$temp_config" | grep 'name:' | awk '{print $2}' | head -1)"
@@ -91,10 +96,9 @@ query_config_field() {
                 result="$(grep '^__config_dir:' "$temp_config" | awk '{print $2}' | head -1)"
                 ;;
             *)
-                result=""
+                result="$default"
                 ;;
         esac
-        [[ -z "$result" ]] && result="$default"
     fi
 
     rm -f "$temp_config"
@@ -785,9 +789,9 @@ docker_up() {
         
         # Check for conflicts
         local conflicts
-        if conflicts=$("$SCRIPT_DIR/rust/target/release/vm-ports" check "$port_range" "$project_name"); then
+        if conflicts=$("$VM_PORTS" check "$port_range" "$project_name"); then
             # Register the range
-            if "$SCRIPT_DIR/rust/target/release/vm-ports" register "$port_range" "$project_name" "$project_dir" >/dev/null; then
+            if "$VM_PORTS" register "$port_range" "$project_name" "$project_dir" >/dev/null; then
                 progress_done
             else
                 progress_fail "Failed to register port range"
@@ -1584,7 +1588,7 @@ docker_destroy() {
     port_range="$(query_config_field "$config" 'port_range' '')"
     if [[ -n "$port_range" ]]; then
         progress_task "📡 Unregistering port range"
-        "$SCRIPT_DIR/rust/target/release/vm-ports" unregister "$project_name" >/dev/null
+        "$VM_PORTS" unregister "$project_name" >/dev/null
         progress_done
     fi
 
@@ -1661,7 +1665,7 @@ docker_status() {
         
         # Check for conflicts
         local conflicts
-        if ! conflicts=$("$SCRIPT_DIR/rust/target/release/vm-ports" check "$port_range" "$project_name" 2>/dev/null); then
+        if ! conflicts=$("$VM_PORTS" check "$port_range" "$project_name" 2>/dev/null); then
             echo "   ⚠️  Conflicts with: $conflicts"
         fi
     fi
@@ -2120,13 +2124,9 @@ vm_list() {
 
             # Use temporary-vm-utils functions for state file operations
             temp_container=$(get_container_name_from_state 2>/dev/null)
-            if [[ -f "$SCRIPT_DIR/rust/vm-config/target/release/vm-config" ]]; then
-                created_at="$("$SCRIPT_DIR/rust/vm-config/target/release/vm-config" query "$TEMP_STATE_FILE" 'created_at' --raw --default '' 2>/dev/null)"
-                project_dir="$("$SCRIPT_DIR/rust/vm-config/target/release/vm-config" query "$TEMP_STATE_FILE" 'project_dir' --raw --default '' 2>/dev/null)"
-            else
-                created_at="$(grep '^created_at:' "$TEMP_STATE_FILE" 2>/dev/null | awk '{print $2}')"
-                project_dir="$(grep '^project_dir:' "$TEMP_STATE_FILE" 2>/dev/null | awk '{print $2}')"
-            fi
+            # Use vm-config binary to query state file
+            created_at="$("$VM_CONFIG" query "$TEMP_STATE_FILE" 'created_at' --raw --default '' 2>/dev/null)"
+            project_dir="$("$VM_CONFIG" query "$TEMP_STATE_FILE" 'project_dir' --raw --default '' 2>/dev/null)"
 
             if [[ -n "$temp_container" ]]; then
                 # Check if container actually exists

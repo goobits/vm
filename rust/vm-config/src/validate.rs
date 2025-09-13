@@ -181,7 +181,7 @@ mod tests {
         config.project = Some(crate::config::ProjectConfig {
             name: Some("test-project".to_string()),
             hostname: Some("test.local".to_string()),
-            workspace_path: Some("/workspace".to_string()),
+            workspace_path: Some(crate::paths::get_default_workspace_path().to_string_lossy().to_string()),
             backup_pattern: None,
         });
 

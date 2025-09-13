@@ -6,21 +6,13 @@
 set -e
 set -u
 
-# Check for required tools - vm-config binary
-VM_CONFIG_BINARY="$SCRIPT_DIR/rust/vm-config/target/release/vm-config"
-if [[ ! -x "$VM_CONFIG_BINARY" ]]; then
-    echo "❌ Error: vm-config binary is not available."
-    echo ""
-    echo "📦 To build vm-config:"
-    echo "   cd $SCRIPT_DIR/rust/vm-config"
-    echo "   cargo build --release"
-    echo ""
-    echo "Or run the installer: ./install.sh"
-    exit 1
-fi
-
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Initialize Rust binary paths (these are bundled with the project)
+VM_CONFIG="$SCRIPT_DIR/rust/target/release/vm-config"
+VM_PORTS="$SCRIPT_DIR/rust/target/release/vm-ports"
+VM_LINKS="$SCRIPT_DIR/rust/target/release/vm-links"
 
 # Source shared platform utilities
 source "$SCRIPT_DIR/shared/platform-utils.sh"
@@ -168,7 +160,7 @@ initialize_vm_yaml() {
 
     # Auto-suggest port range for the project
     local suggested_range
-    if suggested_range="$("$SCRIPT_DIR/rust/target/release/vm-ports" suggest 10 2>/dev/null)"; then
+    if suggested_range="$("$VM_PORTS" suggest 10 2>/dev/null)"; then
         # Add port range to config
         customized_config="${customized_config}
 port_range: $suggested_range"
@@ -302,8 +294,8 @@ load_and_merge_config() {
         
 
         # Validate file and load content
-        if [[ -x "$VM_CONFIG_BINARY" ]]; then
-            if ! "$VM_CONFIG_BINARY" validate "$config_file_to_load" >/dev/null 2>&1; then
+        # Use vm-config binary to validate
+        if ! "$VM_CONFIG" validate "$config_file_to_load" >/dev/null 2>&1; then
                 echo "❌ Invalid YAML in project config: $config_file_to_load" >&2
                 return 1
             fi
@@ -448,8 +440,8 @@ validate_merged_config() {
         local temp_config
         temp_config=$(mktemp)
         echo "$config" > "$temp_config"
-        if [[ -x "$VM_CONFIG_BINARY" ]]; then
-            provider="$("$VM_CONFIG_BINARY" query "$temp_config" 'provider' --raw --default 'docker' 2>/dev/null || echo 'docker')"
+        # Query provider from config
+        provider="$("$VM_CONFIG" query "$temp_config" 'provider' --raw --default 'docker' 2>/dev/null || echo 'docker')"
         else
             provider="$(grep '^provider:' "$temp_config" | awk '{print $2}' | head -1)"
             [[ -z "$provider" ]] && provider="docker"
@@ -465,8 +457,8 @@ validate_merged_config() {
     local temp_config
     temp_config=$(mktemp)
     echo "$config" > "$temp_config"
-    if [[ -x "$VM_CONFIG_BINARY" ]]; then
-        project_name="$("$VM_CONFIG_BINARY" query "$temp_config" 'project.name' --raw --default '' 2>/dev/null || echo '')"
+    # Query project name from config
+    project_name="$("$VM_CONFIG" query "$temp_config" 'project.name' --raw --default '' 2>/dev/null || echo '')"
     else
         project_name="$(grep -A 5 '^project:' "$temp_config" | grep 'name:' | awk '{print $2}' | head -1)"
     fi

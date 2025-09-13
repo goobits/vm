@@ -4,6 +4,7 @@ mod preset;
 mod validate;
 mod cli;
 mod yaml_ops;
+mod paths;
 
 use anyhow::Result;
 use clap::Parser;

@@ -8,6 +8,9 @@ set -e
 OS_CONFIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$OS_CONFIG_DIR/platform-utils.sh"
 
+# Initialize Rust binary paths (these are bundled with the project)
+VM_CONFIG="$OS_CONFIG_DIR/../rust/target/release/vm-config"
+
 # Detect required OS from config or project
 detect_required_os() {
     local config="$1"
@@ -271,7 +274,7 @@ apply_os_config() {
     echo "$config" > "$temp_user"
 
     # Use vm-config to merge configurations
-    if "$OS_CONFIG_DIR/../rust/vm-config/target/release/vm-config" merge --base "$temp_defaults" --overlay "$temp_user" -f yaml > "$temp_merged"; then
+    if "$VM_CONFIG" merge --base "$temp_defaults" --overlay "$temp_user" -f yaml > "$temp_merged"; then
         # Set the detected/selected provider in the merged config
         echo "provider: $provider" >> "$temp_merged"
         cat "$temp_merged"

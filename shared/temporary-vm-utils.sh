@@ -9,10 +9,14 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source shared utilities
-source "$SCRIPT_DIR/shared/platform-utils.sh"
-source "$SCRIPT_DIR/shared/logging-utils.sh"
-source "$SCRIPT_DIR/shared/temporary-file-utils.sh"
-source "$SCRIPT_DIR/shared/security-utils.sh"
+source "$SCRIPT_DIR/platform-utils.sh"
+source "$SCRIPT_DIR/logging-utils.sh"
+source "$SCRIPT_DIR/temporary-file-utils.sh"
+source "$SCRIPT_DIR/security-utils.sh"
+
+# Initialize Rust binary paths (these are bundled with the project)
+VM_TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VM_CONFIG="$VM_TOOL_DIR/rust/target/release/vm-config"
 source "$SCRIPT_DIR/shared/config-processor.sh"
 source "$SCRIPT_DIR/shared/provider-interface.sh"
 
@@ -26,13 +30,8 @@ vm_config_query() {
 	local file="$2"
 	local default="${3:-""}"
 
-	# Use vm-config if available, fallback to empty string
-	if [[ -f "$VM_TOOL_DIR/rust/vm-config/target/release/vm-config" ]]; then
-		"$VM_TOOL_DIR/rust/vm-config/target/release/vm-config" query "$file" "$filter" --raw --default "$default" 2>/dev/null || echo "$default"
-	else
-		# Fallback for systems without vm-config (should be rare after full migration)
-		echo "$default"
-	fi
+	# Use vm-config binary to query
+	"$VM_CONFIG" query "$file" "$filter" --raw --default "$default" 2>/dev/null || echo "$default"
 }
 
 # Directory validation functions moved to shared/security-utils.sh
@@ -94,8 +93,8 @@ validate_state_file() {
 	fi
 
 	# Test if file is valid YAML using vm-config
-	if [[ -f "$VM_TOOL_DIR/rust/vm-config/target/release/vm-config" ]]; then
-		if ! "$VM_TOOL_DIR/rust/vm-config/target/release/vm-config" validate "$TEMP_STATE_FILE" >/dev/null 2>&1; then
+	# Validate state file with vm-config
+	if ! "$VM_CONFIG" validate "$TEMP_STATE_FILE" >/dev/null 2>&1; then
 			echo "❌ State file is corrupted or invalid YAML" >&2
 			echo "📁 File: $TEMP_STATE_FILE" >&2
 			echo "💡 Try 'vm temp destroy' to clean up" >&2

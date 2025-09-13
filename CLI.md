@@ -38,21 +38,17 @@ vm restart                       # Restart VM
 ### destroy
 ```bash
 vm destroy                       # Remove VM completely
-vm destroy --force              # Skip confirmation
 ```
 
 ### status / list
 ```bash
 vm status                        # Check if running
 vm list                          # Show all VMs
-vm list --verbose               # Detailed info
 ```
 
 ### logs
 ```bash
 vm logs                          # View logs
-vm logs -f                       # Follow logs
-vm logs --tail 100              # Last 100 lines
 ```
 
 ### exec
@@ -137,7 +133,7 @@ vm preset show django            # Show preset details
 vm preset show react --yaml      # As YAML
 ```
 
-**Available:** react, vue, angular, django, rails, fastapi, express, nodejs, python, rust, go, docker, kubernetes, postgresql, mongodb
+**Available:** base, django, docker, kubernetes, nodejs, python, rails, react, tart-linux, tart-macos, tart-ubuntu
 
 ---
 

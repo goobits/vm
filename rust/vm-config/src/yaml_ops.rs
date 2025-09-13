@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::fs;
 use crate::cli::{OutputFormat, TransformFormat};
 
-/// YAML operations for yq replacement functionality
+/// YAML operations for configuration processing
 pub struct YamlOperations;
 
 impl YamlOperations {
@@ -250,7 +250,7 @@ impl YamlOperations {
         Ok(value.clone())
     }
 
-    /// Merge files using eval-all syntax (replaces yq eval-all)
+    /// Merge multiple YAML files with deep merging
     pub fn merge_eval_all(files: &[PathBuf], format: &OutputFormat) -> Result<()> {
         if files.len() < 2 {
             return Err(anyhow::anyhow!("Need at least 2 files to merge"));

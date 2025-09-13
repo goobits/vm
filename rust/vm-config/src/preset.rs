@@ -201,7 +201,7 @@ mod tests {
     fn test_preset_detection() {
         let temp_dir = TempDir::new().unwrap();
         let project_dir = temp_dir.path().to_path_buf();
-        let presets_dir = PathBuf::from("/workspace/configs/presets");
+        let presets_dir = crate::paths::get_presets_dir();
 
         // Create Django indicators
         fs::write(project_dir.join("manage.py"), "").unwrap();
@@ -216,7 +216,7 @@ mod tests {
     fn test_react_detection() {
         let temp_dir = TempDir::new().unwrap();
         let project_dir = temp_dir.path().to_path_buf();
-        let presets_dir = PathBuf::from("/workspace/configs/presets");
+        let presets_dir = crate::paths::get_presets_dir();
 
         // Create package.json with React
         let package_json = r#"{

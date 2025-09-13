@@ -9,6 +9,11 @@ set -u
 # Get VM tool directory for accessing default config and utilities
 VM_TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+# Initialize Rust binary paths (these are bundled with the project)
+VM_CONFIG="$VM_TOOL_DIR/rust/target/release/vm-config"
+VM_PORTS="$VM_TOOL_DIR/rust/target/release/vm-ports"
+VM_LINKS="$VM_TOOL_DIR/rust/target/release/vm-links"
+
 # Source shared utilities
 source "$VM_TOOL_DIR/shared/deep-merge.sh"
 # Link detection now handled by vm-links binary
@@ -34,9 +39,8 @@ generate_docker_compose() {
     get_config() {
         local path="$1"
         local default="$2"
-        # Use vm-config query directly on the merged config
-        # Use vm-config directly
-        "${VM_CONFIG:-$VM_TOOL_DIR/rust/vm-config/target/release/vm-config}" query <(echo "$config") "$path" --raw --default "$default"
+        # Use vm-config binary to query merged config
+        "$VM_CONFIG" query <(echo "$config") "$path" --raw --default "$default"
             if [[ -z "$value" || "$value" == "null" ]]; then
                 echo "$default"
             else
@@ -365,7 +369,7 @@ generate_docker_compose() {
         if [[ "$pm_enabled" == "true" ]] && [[ ${#packages_array[@]} -gt 0 ]]; then
             # Use vm-links binary to generate mounts
             local linked_volumes
-            if linked_volumes=$("$VM_TOOL_DIR/rust/target/release/vm-links" mounts "$pm" "${packages_array[@]}" 2>/dev/null); then
+            if linked_volumes=$("$VM_LINKS" mounts "$pm" "${packages_array[@]}" 2>/dev/null); then
                 if [[ -n "$linked_volumes" ]]; then
                     while IFS= read -r volume; do
                         [[ -z "$volume" ]] && continue

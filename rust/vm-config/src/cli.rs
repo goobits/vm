@@ -1,11 +1,11 @@
-use crate::{config::VmConfig, merge, preset::PresetDetector, validate::ConfigValidator};
+use crate::{config::VmConfig, merge, preset::PresetDetector, validate::ConfigValidator, paths};
 use anyhow::{Result, Context};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "vm-config")]
-#[command(about = "High-performance YAML configuration processor for VM Tool")]
+#[command(about = "Configuration processor for VM Tool")]
 #[command(version)]
 pub struct Args {
     #[command(subcommand)]
@@ -45,9 +45,9 @@ pub enum Command {
         #[arg(short, long, default_value = ".")]
         dir: PathBuf,
 
-        /// Presets directory
-        #[arg(long, default_value = "/workspace/configs/presets")]
-        presets_dir: PathBuf,
+        /// Presets directory (defaults to configs/presets relative to tool dir)
+        #[arg(long)]
+        presets_dir: Option<PathBuf>,
 
         /// Just detect, don't apply
         #[arg(long)]
@@ -70,9 +70,9 @@ pub enum Command {
 
     /// Process config with full VM Tool logic (merge defaults, presets, user config)
     Process {
-        /// Default config
-        #[arg(short, long, default_value = "/workspace/vm.yaml")]
-        defaults: PathBuf,
+        /// Default config (defaults to vm.yaml in tool directory)
+        #[arg(short, long)]
+        defaults: Option<PathBuf>,
 
         /// User config (optional)
         #[arg(short, long)]
@@ -82,9 +82,9 @@ pub enum Command {
         #[arg(short, long, default_value = ".")]
         project_dir: PathBuf,
 
-        /// Presets directory
-        #[arg(long, default_value = "/workspace/configs/presets")]
-        presets_dir: PathBuf,
+        /// Presets directory (defaults to configs/presets relative to tool dir)
+        #[arg(long)]
+        presets_dir: Option<PathBuf>,
 
         /// Output format
         #[arg(short = 'f', long, default_value = "yaml")]
@@ -151,7 +151,7 @@ pub enum Command {
         file: PathBuf,
     },
 
-    /// Merge files using eval-all syntax (replaces yq eval-all)
+    /// Merge multiple configuration files with deep merging
     MergeEvalAll {
         /// Files to merge
         files: Vec<PathBuf>,
@@ -343,6 +343,7 @@ pub fn execute(args: Args) -> Result<()> {
         }
 
         Command::Preset { dir, presets_dir, detect_only, list } => {
+            let presets_dir = presets_dir.unwrap_or_else(paths::get_presets_dir);
             let detector = PresetDetector::new(dir.clone(), presets_dir);
 
             if list {
@@ -377,6 +378,10 @@ pub fn execute(args: Args) -> Result<()> {
         }
 
         Command::Process { defaults, config, project_dir, presets_dir, format } => {
+            // Use default paths if not specified
+            let defaults = defaults.unwrap_or_else(|| paths::resolve_tool_path("vm.yaml"));
+            let presets_dir = presets_dir.unwrap_or_else(paths::get_presets_dir);
+
             // Load default config
             let default_config = VmConfig::from_file(&defaults)
                 .with_context(|| format!("Failed to load defaults: {:?}", defaults))?;

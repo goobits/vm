@@ -92,25 +92,7 @@ check_vm_config() {
     fi
 }
 
-# Check for port conflicts
-check_port_conflicts() {
-    echo -n "  Checking for port conflicts... "
-    local common_ports=(3000 3001 5000 5432 6379 8000 8080)
-    local conflicts=""
-
-    for port in "${common_ports[@]}"; do
-        if lsof -i ":$port" >/dev/null 2>&1; then
-            conflicts="$conflicts $port"
-        fi
-    done
-
-    if [[ -n "$conflicts" ]]; then
-        echo -e "${YELLOW}⚠${NC} Ports in use:$conflicts"
-        echo "    💡 These may conflict if configured in vm.yaml"
-    else
-        echo -e "${GREEN}✓${NC}"
-    fi
-}
+# Port conflict checking now handled by vm-ports binary
 
 # Main execution
 main() {
@@ -121,7 +103,7 @@ main() {
     check_required_tools
     check_ansible_syntax "$script_dir"
     check_vm_config
-    check_port_conflicts
+    # Port conflicts checked during vm create via vm-ports binary
 
     echo ""
     if [[ "$CHECKS_PASSED" == "true" ]]; then
