@@ -84,11 +84,22 @@ detect_npm_packages() {
     fi
 }
 
-# Detect pip editable packages
+# Detect pip and pipx packages (both editable and regular installs)
 detect_pip_packages() {
     local pip_packages_array=("$@")
-    
-    # Try multiple pip commands and environments
+
+    # Source the consolidated pip detector if available
+    local pip_detector_script="$DETECTOR_SCRIPT_DIR/pip-detector.sh"
+    if [[ -f "$pip_detector_script" ]]; then
+        source "$pip_detector_script"
+        detect_all_pip_packages "${pip_packages_array[@]}"
+        return $?
+    fi
+
+    # Fallback to legacy detection method if consolidated detector not found
+    echo "⚠️  Warning: Consolidated pip detector not found at $pip_detector_script" >&2
+    echo "⚠️  Falling back to legacy editable-only detection" >&2
+
     for pip_cmd in pip pip3 python3 python; do
         if command -v $pip_cmd >/dev/null 2>&1; then
             local pip_output
@@ -103,7 +114,7 @@ detect_pip_packages() {
                     pip_output=$($pip_cmd -m pip list -e --format=json 2>/dev/null)
                     ;;
             esac
-            
+
             if [[ -n "$pip_output" ]]; then
                 # Parse JSON output for editable packages
                 if command -v jq >/dev/null 2>&1; then
@@ -116,7 +127,7 @@ detect_pip_packages() {
                                 local req_lower="$(echo "$requested_pkg" | tr '[:upper:]' '[:lower:]')"
                                 local req_normalized="${req_lower//-/_}"
                                 local name_normalized="${name_lower//-/_}"
-                                
+
                                 if [[ "$name_lower" == "$req_lower" ]] || \
                                    [[ "$name_lower" == "$req_normalized" ]] || \
                                    [[ "$name_normalized" == "$req_lower" ]] || \
@@ -204,8 +215,18 @@ generate_package_mounts() {
     local package_manager="$1"
     shift
     local packages_array=("$@")
-    
-    # Detect linked packages
+
+    # Use specialized pip detector for pip packages
+    if [[ "$package_manager" == "pip" ]]; then
+        local pip_detector_script="$DETECTOR_SCRIPT_DIR/pip-detector.sh"
+        if [[ -f "$pip_detector_script" ]]; then
+            source "$pip_detector_script"
+            generate_pip_volume_mounts "${packages_array[@]}"
+            return $?
+        fi
+    fi
+
+    # For other package managers or fallback, use generic detection
     local detection_output
     if detection_output=$(detect_linked_packages "$package_manager" "${packages_array[@]}"); then
         # Convert detected packages to volume mount strings

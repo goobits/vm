@@ -89,15 +89,36 @@ merge_project_config() {
 
     # Load configurations (convert YAML to JSON for processing)
     local default_config
-    if ! default_config="$(yq . -o json "$default_config_path" 2>/dev/null)"; then
-        echo "❌ Invalid YAML in default config: $default_config_path" >&2
+    # Try both yq syntaxes for compatibility with different versions
+    if command -v yq >/dev/null 2>&1; then
+        # Try Go-based yq syntax first
+        if default_config="$(yq . -o json "$default_config_path" 2>/dev/null)"; then
+            : # Success with Go yq
+        # Try Python-based yq syntax (kislyuk/yq)
+        elif default_config="$(yq '.' "$default_config_path" 2>/dev/null)"; then
+            : # Success with Python yq
+        else
+            echo "❌ Invalid YAML in default config: $default_config_path" >&2
+            return 1
+        fi
+    else
+        echo "❌ yq is not installed. Please install yq to use this script." >&2
         return 1
     fi
 
     local project_config
-    if ! project_config="$(yq . -o json "$project_config_path" 2>/dev/null)"; then
-        echo "❌ Invalid YAML in project config: $project_config_path" >&2
-        return 1
+    # Try both yq syntaxes for compatibility with different versions
+    if command -v yq >/dev/null 2>&1; then
+        # Try Go-based yq syntax first
+        if project_config="$(yq . -o json "$project_config_path" 2>/dev/null)"; then
+            : # Success with Go yq
+        # Try Python-based yq syntax (kislyuk/yq)
+        elif project_config="$(yq '.' "$project_config_path" 2>/dev/null)"; then
+            : # Success with Python yq
+        else
+            echo "❌ Invalid YAML in project config: $project_config_path" >&2
+            return 1
+        fi
     fi
 
     # Perform deep merge
