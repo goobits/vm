@@ -41,7 +41,7 @@ check_docker_resources() {
 
 # Check for required tools
 check_required_tools() {
-    local tools=("yq" "jq")
+    local tools=("yq")
     for tool in "${tools[@]}"; do
         echo -n "  Checking $tool... "
         if ! command -v "$tool" >/dev/null 2>&1; then

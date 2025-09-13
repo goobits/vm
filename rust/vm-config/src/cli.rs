@@ -102,6 +102,10 @@ pub enum Command {
         /// Raw output (no quotes for strings)
         #[arg(short, long)]
         raw: bool,
+
+        /// Default value if field is missing or null
+        #[arg(short, long)]
+        default: Option<String>,
     },
 }
 
@@ -228,13 +232,27 @@ pub fn execute(args: Args) -> Result<()> {
             output_config(&merged, &format)?;
         }
 
-        Command::Query { config, field, raw } => {
+        Command::Query { config, field, raw, default } => {
             let config = VmConfig::from_file(&config)
                 .with_context(|| format!("Failed to load config: {:?}", config))?;
 
             let json_value = serde_json::to_value(&config)?;
-            let value = query_field(&json_value, &field)
-                .with_context(|| format!("Field not found: {}", field))?;
+            let value = match query_field(&json_value, &field) {
+                Ok(val) => {
+                    if val.is_null() && default.is_some() {
+                        serde_json::Value::String(default.unwrap())
+                    } else {
+                        val
+                    }
+                },
+                Err(_) => {
+                    if let Some(default_val) = default {
+                        serde_json::Value::String(default_val)
+                    } else {
+                        return Err(anyhow::anyhow!("Field not found: {}", field));
+                    }
+                }
+            };
 
             if raw && value.is_string() {
                 println!("{}", value.as_str().unwrap());

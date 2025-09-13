@@ -29,17 +29,36 @@ generate_docker_compose() {
         return 1
     fi
 
+    # Helper function to query config using vm-config binary directly
+    get_config() {
+        local path="$1"
+        local default="$2"
+        # Use vm-config query directly on the merged config
+        if [[ -n "${VM_CONFIG:-}" ]] && [[ -x "${VM_CONFIG}" ]]; then
+            "$VM_CONFIG" query <(echo "$config") "$path" --raw --default "$default" 2>/dev/null || echo "$default"
+        else
+            # Fallback to yq
+            local value
+            value="$(echo "$config" | yq eval "$path" - 2>/dev/null)"
+            if [[ -z "$value" || "$value" == "null" ]]; then
+                echo "$default"
+            else
+                echo "$value"
+            fi
+        fi
+    }
+
     # Get host user/group IDs for proper file permissions
     local host_uid
     host_uid="$(id -u)"
     local host_gid
     host_gid="$(id -g)"
 
-    # Extract basic project data using jq
+    # Extract basic project data using yq
     local project_name
-    project_name="$(echo "$config" | jq -r '.project.name' | tr -cd '[:alnum:]')"
+    project_name="$(get_config '.project.name' '' | tr -cd '[:alnum:]')"
     local project_hostname
-    project_hostname="$(echo "$config" | jq -r '.project.hostname')"
+    project_hostname="$(get_config '.project.hostname' '')"
     
     # Check if hostname is missing or null
     if [[ -z "$project_hostname" || "$project_hostname" == "null" ]]; then
@@ -53,13 +72,13 @@ generate_docker_compose() {
         return 1
     fi
     local workspace_path
-    workspace_path="$(echo "$config" | jq -r '.project.workspace_path // "/workspace"')"
+    workspace_path="$(get_config '.project.workspace_path' '/workspace')"
     local project_user
-    project_user="$(echo "$config" | jq -r '.vm.user // "developer"')"
+    project_user="$(get_config '.vm.user' 'developer')"
 
     # Get timezone from config or detect from host
     local timezone
-    timezone="$(echo "$config" | jq -r '.vm.timezone // "auto"')"
+    timezone="$(get_config '.vm.timezone' 'auto')"
     if [[ "$timezone" == "auto" ]] || [[ "$timezone" == "null" ]]; then
         # Detect host timezone
         if [[ -L /etc/localtime ]]; then
@@ -73,11 +92,11 @@ generate_docker_compose() {
     
     # Extract memory and swap settings
     local memory
-    memory="$(echo "$config" | jq -r '.vm.memory // 2048')"
+    memory="$(get_config '.vm.memory' '2048')"
     local swap
-    swap="$(echo "$config" | jq -r '.vm.swap // 0')"
+    swap="$(get_config '.vm.swap' '0')"
     local swappiness
-    swappiness="$(echo "$config" | jq -r '.vm.swappiness // 60')"
+    swappiness="$(get_config '.vm.swappiness' '60')"
 
     # Get VM tool path (use absolute path to avoid relative path issues)
     # The VM tool is always in the workspace directory where vm.sh is located
@@ -91,33 +110,46 @@ generate_docker_compose() {
     # Generate ports section
     local ports_section=""
     local ports_count
-    ports_count="$(echo "$config" | jq '.ports // {} | length')"
+    # Count ports using get_config helper
+    local ports_section_raw
+    ports_section_raw="$(get_config '.ports' '{}')"
+    local ports_count
+    if [[ "$ports_section_raw" == "{}" || "$ports_section_raw" == "null" || -z "$ports_section_raw" ]]; then
+        ports_count=0
+    else
+        ports_count="$(echo "$ports_section_raw" | yq eval 'length' - 2>/dev/null || echo \"0\")"
+    fi
     if [[ "$ports_count" -gt 0 ]]; then
         local host_ip
-        host_ip="$(echo "$config" | jq -r '.vm.port_binding // "127.0.0.1"')"
-        ports_section="$(echo "$config" | jq -r --arg hostip "$host_ip" '
-            .ports // {} |
-            to_entries |
-            map("      - \"" + $hostip + ":" + (.value | tostring) + ":" + (.value | tostring) + "\"") |
-            if length > 0 then "\n    ports:\n" + join("\n") else "" end
-        ')"
+        host_ip="$(get_config '.vm.port_binding' '127.0.0.1')"
+        # Build ports section from config
+        local ports_raw
+        ports_raw="$(get_config '.ports' '{}')"
+        if [[ "$ports_raw" != "{}" && "$ports_raw" != "null" && -n "$ports_raw" ]]; then
+            ports_section="$(echo "$ports_raw" | yq eval --arg hostip "$host_ip" '
+                to_entries |
+                map("      - \"" + $hostip + ":" + (.value | tostring) + ":" + (.value | tostring) + "\"") |
+                if length > 0 then "\n    ports:\n" + join("\n") else "" end
+            ' - 2>/dev/null || echo '')"
+        fi
     fi
 
     # Collect explicit port mappings to avoid conflicts with port range
     local explicit_ports=""
     if [[ "$ports_count" -gt 0 ]]; then
-        explicit_ports="$(echo "$config" | jq -r '.ports // {} | to_entries[] | .value' | tr '\n' ' ')"
+        # Get explicit port values using proper yq syntax
+        explicit_ports="$(get_config '.ports' '{}' | yq eval 'to_entries[] | .value' - 2>/dev/null | tr '\n' ' ' || echo '')"
     fi
 
     # Generate port range forwarding (skip explicit ports to avoid conflicts)
     local port_range
-    port_range="$(echo "$config" | jq -r '.port_range // ""')"
+    port_range="$(get_config '.port_range' '')"
     if [[ -n "$port_range" && "$port_range" =~ ^[0-9]+-[0-9]+$ ]]; then
         local range_start range_end
         range_start="$(echo "$port_range" | cut -d'-' -f1)"
         range_end="$(echo "$port_range" | cut -d'-' -f2)"
         local host_ip
-        host_ip="$(echo "$config" | jq -r '.vm.port_binding // "127.0.0.1"')"
+        host_ip="$(get_config '.vm.port_binding' '127.0.0.1')"
         
         if [[ $range_start -lt $range_end && $range_start -ge 1 && $range_end -le 65535 ]]; then
             local range_ports=""
@@ -143,7 +175,7 @@ generate_docker_compose() {
     # Generate Claude sync volume
     local claude_sync_volume=""
     local claude_sync
-    claude_sync="$(echo "$config" | jq -r '.claude_sync // false')"
+    claude_sync="$(get_config '.claude_sync' 'false')"
     if [[ "$claude_sync" == "true" ]]; then
         local host_path="$HOME/.claude/vms/$project_name"
         local container_path="/home/$project_user/.claude"
@@ -153,7 +185,7 @@ generate_docker_compose() {
     # Generate Gemini sync volume
     local gemini_sync_volume=""
     local gemini_sync
-    gemini_sync="$(echo "$config" | jq -r '.gemini_sync // false')"
+    gemini_sync="$(get_config '.gemini_sync' 'false')"
     if [[ "$gemini_sync" == "true" ]]; then
         local host_path="$HOME/.gemini/vms/$project_name"
         local container_path="/home/$project_user/.gemini"
@@ -163,24 +195,24 @@ generate_docker_compose() {
     # Generate database persistence volumes
     local database_volumes=""
     local persist_databases
-    persist_databases="$(echo "$config" | jq -r '.persist_databases // false')"
+    persist_databases="$(get_config '.persist_databases' 'false')"
     if [[ "$persist_databases" == "true" ]]; then
         local vm_data_path="$project_dir/.vm/data"
 
         # Check each database service
-        if [[ "$(echo "$config" | jq -r '.services.postgresql.enabled // false')" == "true" ]]; then
+        if [[ "$(get_config '.services.postgresql.enabled' 'false')" == "true" ]]; then
             database_volumes+="\\n      - $vm_data_path/postgres:/var/lib/postgresql:delegated"
         fi
 
-        if [[ "$(echo "$config" | jq -r '.services.redis.enabled // false')" == "true" ]]; then
+        if [[ "$(get_config '.services.redis.enabled' 'false')" == "true" ]]; then
             database_volumes+="\\n      - $vm_data_path/redis:/var/lib/redis:delegated"
         fi
 
-        if [[ "$(echo "$config" | jq -r '.services.mongodb.enabled // false')" == "true" ]]; then
+        if [[ "$(get_config '.services.mongodb.enabled' 'false')" == "true" ]]; then
             database_volumes+="\\n      - $vm_data_path/mongodb:/var/lib/mongodb:delegated"
         fi
 
-        if [[ "$(echo "$config" | jq -r '.services.mysql.enabled // false')" == "true" ]]; then
+        if [[ "$(get_config '.services.mysql.enabled' 'false')" == "true" ]]; then
             database_volumes+="\\n      - $vm_data_path/mysql:/var/lib/mysql:delegated"
         fi
     fi
@@ -226,7 +258,7 @@ generate_docker_compose() {
     local groups=()
 
     # Smart audio detection: only enable if explicitly requested
-    local audio_enabled="$(echo "$config" | jq -r '.services.audio.enabled // false')"
+    local audio_enabled="$(get_config '.services.audio.enabled' 'false')"
     
     # Only set up audio if explicitly enabled
     # Note: sox/ffmpeg are often used for file processing, not audio output
@@ -269,9 +301,9 @@ generate_docker_compose() {
     local gpu_env=""
     local gpu_volumes=""
 
-    if [[ "$(echo "$config" | jq -r '.services.gpu.enabled // false')" == "true" ]]; then
+    if [[ "$(get_config '.services.gpu.enabled' 'false')" == "true" ]]; then
         local gpu_type
-        gpu_type="$(echo "$config" | jq -r '.services.gpu.type // "auto"')"
+        gpu_type="$(get_config '.services.gpu.type' 'auto')"
 
         # NVIDIA GPU support
         if [[ "$gpu_type" == "nvidia" || "$gpu_type" == "auto" ]]; then
@@ -294,9 +326,10 @@ generate_docker_compose() {
         # Check if this package manager is enabled
         case "$pm" in
             "npm")
-                pm_enabled="$(echo "$config" | jq -r '.package_linking.npm // true')"
+                pm_enabled="$(get_config '.package_linking.npm' 'true')"
                 local npm_packages
-                npm_packages="$(echo "$config" | jq -r '.npm_packages[]? // empty')"
+                # Get npm packages list
+                npm_packages="$(get_config '.npm_packages' '' | yq eval '.[]' - 2>/dev/null | tr '\n' ' ' || echo '')"
                 if [[ -n "$npm_packages" ]]; then
                     while IFS= read -r package; do
                         [[ -z "$package" ]] && continue
@@ -305,9 +338,10 @@ generate_docker_compose() {
                 fi
                 ;;
             "pip")
-                pm_enabled="$(echo "$config" | jq -r '.package_linking.pip // false')"
+                pm_enabled="$(get_config '.package_linking.pip' 'false')"
                 local pip_packages
-                pip_packages="$(echo "$config" | jq -r '.pip_packages[]? // empty')"
+                # Get pip packages list
+                pip_packages="$(get_config '.pip_packages' '' | yq eval '.[]' - 2>/dev/null | tr '\n' ' ' || echo '')"
                 if [[ -n "$pip_packages" ]]; then
                     while IFS= read -r package; do
                         [[ -z "$package" ]] && continue
@@ -316,9 +350,11 @@ generate_docker_compose() {
                 fi
                 ;;
             "cargo")
-                pm_enabled="$(echo "$config" | jq -r '.package_linking.cargo // false')"
+                pm_enabled="$(get_config '.package_linking.cargo' 'false')"
                 local cargo_packages
-                cargo_packages="$(echo "$config" | jq -r '.cargo_packages[]? // empty')"
+                # Get cargo packages list
+                cargo_packages="$(get_config '.cargo_packages' '' | yq eval '.[]' - 2>/dev/null | tr '\n' ' ' || echo '')"
+
                 if [[ -n "$cargo_packages" ]]; then
                     while IFS= read -r package; do
                         [[ -z "$package" ]] && continue

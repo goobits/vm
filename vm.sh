@@ -601,7 +601,7 @@ manage_macos_pulseaudio() {
     
     # Check if audio is enabled in config
     local audio_enabled
-    audio_enabled="$(echo "$config" | jq -r '.services.audio.enabled // false')"
+    audio_enabled="$(echo "$config" | yq eval '.services.audio.enabled // false')"
     
     if [[ "$audio_enabled" != "true" ]]; then
         return 0  # Audio not enabled, nothing to do
@@ -1098,7 +1098,7 @@ docker_up() {
     fi
     
     # First attempt to copy configuration
-    if ! docker_cmd cp "$TEMP_CONFIG_FILE" "$(printf '%q' "${container_name}"):/tmp/vm-config.json" 2>/dev/null; then
+    if ! docker_cmd cp "$TEMP_CONFIG_FILE" "$(printf '%q' "${container_name}"):/tmp/vm-config.yaml" 2>/dev/null; then
         echo "❌ Configuration loading failed on first attempt"
         echo "💡 Diagnosing container state..."
         
@@ -1132,7 +1132,7 @@ docker_up() {
         echo "🔄 Retrying configuration copy (container status: $container_status)..."
         sleep 2
         
-        if ! docker_cmd cp "$TEMP_CONFIG_FILE" "$(printf '%q' "${container_name}"):/tmp/vm-config.json" 2>&1; then
+        if ! docker_cmd cp "$TEMP_CONFIG_FILE" "$(printf '%q' "${container_name}"):/tmp/vm-config.yaml" 2>&1; then
             echo "❌ Configuration loading failed after retry"
             echo "💡 Possible causes:"
             echo "   - Container filesystem permissions"
@@ -1144,13 +1144,13 @@ docker_up() {
     fi
     
     # Validate that the file was actually copied successfully
-    if ! docker_cmd exec "${container_name}" test -f /tmp/vm-config.json 2>/dev/null; then
+    if ! docker_cmd exec "${container_name}" test -f /tmp/vm-config.yaml 2>/dev/null; then
         echo "❌ Configuration file validation failed - file not found in container"
         return 1
     fi
     
     # Verify file is readable in container
-    if ! docker_cmd exec "${container_name}" test -r /tmp/vm-config.json 2>/dev/null; then
+    if ! docker_cmd exec "${container_name}" test -r /tmp/vm-config.yaml 2>/dev/null; then
         echo "❌ Configuration file is not readable in container"
         return 1
     fi
@@ -1864,9 +1864,9 @@ docker_provision() {
     fi
     
     # Copy configuration to container
-    if ! docker_cmd cp "$TEMP_CONFIG_FILE" "$(printf '%q' "${container_name}"):/tmp/vm-config.json" 2>/dev/null; then
+    if ! docker_cmd cp "$TEMP_CONFIG_FILE" "$(printf '%q' "${container_name}"):/tmp/vm-config.yaml" 2>/dev/null; then
         sleep 2
-        if ! docker_cmd cp "$TEMP_CONFIG_FILE" "$(printf '%q' "${container_name}"):/tmp/vm-config.json" 2>&1; then
+        if ! docker_cmd cp "$TEMP_CONFIG_FILE" "$(printf '%q' "${container_name}"):/tmp/vm-config.yaml" 2>&1; then
             progress_fail "Configuration loading failed"
             if [[ -f "$TEMP_CONFIG_FILE" ]]; then
                 rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
@@ -1878,7 +1878,7 @@ docker_provision() {
     fi
     
     # Validate that the file was actually copied successfully
-    if ! docker_cmd exec "${container_name}" test -f /tmp/vm-config.json 2>/dev/null; then
+    if ! docker_cmd exec "${container_name}" test -f /tmp/vm-config.yaml 2>/dev/null; then
         progress_fail "Configuration file not found in container"
         if [[ -f "$TEMP_CONFIG_FILE" ]]; then
             rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true

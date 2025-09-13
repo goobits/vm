@@ -18,9 +18,9 @@ detect_project_type() {
         if command -v jq >/dev/null 2>&1; then
             # Use jq if available for robust JSON parsing
             local deps
-            deps=$(jq -r '.dependencies // {} | keys[]' package.json 2>/dev/null)
+            deps=$(yq eval '.dependencies // {} | keys[]' package.json 2>/dev/null)
             local devdeps
-            devdeps=$(jq -r '.devDependencies // {} | keys[]' package.json 2>/dev/null)
+            devdeps=$(yq eval '.devDependencies // {} | keys[]' package.json 2>/dev/null)
             local all_deps
             all_deps=$(echo -e "$deps\n$devdeps")
 

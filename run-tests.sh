@@ -1107,7 +1107,7 @@ check_prerequisites() {
     fi
 
     # Check for required tools
-    local required_tools=(jq timeout)
+    local required_tools=(timeout)
     for tool in "${required_tools[@]}"; do
         if ! command -v "$tool" &> /dev/null; then
             echo -e "${RED}❌ Required tool not found: $tool${NC}"

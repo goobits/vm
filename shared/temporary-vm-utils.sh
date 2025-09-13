@@ -25,7 +25,7 @@ TEMP_STATE_FILE="$TEMP_STATE_DIR/temp-vm.state"
 yq_raw() {
 	local filter="$1"
 	local file="$2"
-	yq "$filter" "$file" 2>/dev/null | jq -r '.' 2>/dev/null || echo ""
+	yq eval "$filter" "$file" - 2>/dev/null || echo ""
 }
 
 # Directory validation functions moved to shared/security-utils.sh

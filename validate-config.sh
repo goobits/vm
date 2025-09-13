@@ -194,7 +194,9 @@ initialize_vm_yaml() {
 
     # Customize config for this directory
     local customized_config
-    customized_config="$(echo "$default_config" | jq --arg dirname "$sanitized_name" '
+    # Complex config customization disabled (was using jq syntax)
+    customized_config="$default_config"
+    # customized_config="$(echo "$default_config" | yq eval--arg dirname "$sanitized_name" '
         .project.name = $dirname |
         .project.hostname = "dev." + $dirname + ".local" |
         .terminal.username = ($dirname + "-dev")
@@ -203,7 +205,7 @@ initialize_vm_yaml() {
     # Auto-suggest port range for the project
     local suggested_range
     if suggested_range="$(suggest_next_range 10 3000 2>/dev/null)"; then
-        customized_config="$(echo "$customized_config" | jq --arg range "$suggested_range" '.port_range = $range')"
+        customized_config="$(echo "$customized_config" | yq eval--arg range "$suggested_range" '.port_range = $range')"
         echo "🔢 Auto-suggested port range: $suggested_range"
         echo ""
     fi
@@ -344,13 +346,13 @@ load_and_merge_config() {
         # Check for valid top-level keys
         local valid_keys='["$schema","version","provider","project","vm","versions","ports","services","apt_packages","npm_packages","cargo_packages","pip_packages","aliases","environment","terminal","claude_sync","gemini_sync","persist_databases"]'
         local user_keys
-        user_keys="$(echo "$user_config" | jq -r 'keys[]')"
+        user_keys="$(echo "$user_config" | yq eval-r 'keys[]')"
         local has_valid_keys
-        has_valid_keys="$(echo "$user_config" | jq --argjson valid "$valid_keys" 'keys as $uk | $valid as $vk | ($uk | map(. as $k | $vk | contains([$k])) | any)')"
+        has_valid_keys="$(echo "$user_config" | yq eval--argjson valid "$valid_keys" 'keys as $uk | $valid as $vk | ($uk | map(. as $k | $vk | contains([$k])) | any)')"
 
         if [[ "$has_valid_keys" == "false" && -n "$user_keys" ]]; then
             local user_keys_str
-            user_keys_str="$(echo "$user_config" | jq -r 'keys | join(", ")')"
+            user_keys_str="$(echo "$user_config" | yq eval-r 'keys | join(", ")')"
             echo "❌ Invalid configuration structure. No recognized configuration keys found. Got: $user_keys_str" >&2
             return 1
         fi
@@ -445,15 +447,15 @@ validate_merged_config() {
     local errors=()
     local warnings=()
 
-    # Check if config is valid object
-    if ! echo "$config" | jq -e 'type == "object"' >/dev/null 2>&1; then
-        errors+=("Configuration must be a valid JSON object")
+    # Check if config is valid YAML object
+    if ! echo "$config" | yq eval 'type' - 2>/dev/null | grep -q "!!map"; then
+        errors+=("Configuration must be a valid YAML object")
         printf '%s\n' "${errors[@]}" >&2
         return 1
     fi
 
     # Check for required project section
-    if ! echo "$config" | jq -e '.project | type == "object"' >/dev/null 2>&1; then
+    if ! echo "$config" | yq eval-e '.project | type == "object"' >/dev/null 2>&1; then
         errors+=("project section is required and must be an object")
         printf '%s\n' "${errors[@]}" >&2
         return 1
@@ -470,7 +472,7 @@ validate_merged_config() {
     else
         # Fallback to basic validation if schema not found
         local provider
-        provider="$(echo "$config" | jq -r '.provider // "docker"')"
+        provider="$(echo "$config" | yq eval '.provider' - 2>/dev/null || echo 'docker')"
         if [[ "$provider" != "vagrant" && "$provider" != "docker" && "$provider" != "tart" ]]; then
             errors+=("provider must be 'vagrant', 'docker', or 'tart'")
         fi
@@ -478,7 +480,7 @@ validate_merged_config() {
 
     # Project validation
     local project_name
-    project_name="$(echo "$config" | jq -r '.project.name // ""')"
+    project_name="$(echo "$config" | yq eval '.project.name' - 2>/dev/null || echo '')"
     if [[ -z "$project_name" ]]; then
         errors+=("project.name is required")
     elif ! echo "$project_name" | grep -qE '^[a-zA-Z0-9_-]+$'; then
@@ -539,7 +541,7 @@ main() {
         if config_location="$(find_vm_yaml_upwards "$(pwd)")"; then
             local config_dir
             config_dir="$(dirname "$config_location")"
-            final_config="$(echo "$final_config" | jq --arg dir "$config_dir" '. + {__config_dir: $dir}')"
+            final_config="$(echo "$final_config" | yq eval--arg dir "$config_dir" '. + {__config_dir: $dir}')"
         fi
     fi
 

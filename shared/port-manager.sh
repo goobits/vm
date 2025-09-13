@@ -79,7 +79,7 @@ check_port_conflicts() {
     if [[ -f "$REGISTRY_FILE" ]]; then
         # Get all projects from registry
         local projects
-        projects=$(jq -r 'keys[]' "$REGISTRY_FILE" 2>/dev/null || echo "")
+        projects=$(yq eval 'keys[]' "$REGISTRY_FILE" 2>/dev/null || echo "")
         
         for other_project in $projects; do
             # Skip checking against self
@@ -89,7 +89,7 @@ check_port_conflicts() {
             
             # Get the other project's range
             local other_range
-            other_range=$(jq -r ".\"$other_project\".range // empty" "$REGISTRY_FILE")
+            other_range=$(yq eval ".\"$other_project\".range // empty" "$REGISTRY_FILE")
             
             if [[ -n "$other_range" ]]; then
                 local other_parts
@@ -178,7 +178,7 @@ get_project_range() {
     init_port_registry
     
     if [[ -f "$REGISTRY_FILE" ]]; then
-        jq -r ".\"$project_name\".range // empty" "$REGISTRY_FILE"
+        yq eval ".\"$project_name\".range // empty" "$REGISTRY_FILE"
     fi
 }
 
@@ -190,7 +190,7 @@ list_port_ranges() {
         echo "📡 Registered port ranges:"
         echo ""
         
-        jq -r 'to_entries[] | "  \(.key): \(.value.range) → \(.value.path)"' "$REGISTRY_FILE" 2>/dev/null || echo "  (none)"
+        yq eval 'to_entries[] | "  \(.key): \(.value.range) → \(.value.path)"' "$REGISTRY_FILE" 2>/dev/null || echo "  (none)"
     else
         echo "📡 No port ranges registered yet"
     fi
@@ -206,7 +206,7 @@ suggest_next_range() {
     # Collect all used ranges
     local used_ranges=""
     if [[ -f "$REGISTRY_FILE" ]]; then
-        used_ranges=$(jq -r '.[].range // empty' "$REGISTRY_FILE" 2>/dev/null | sort -n)
+        used_ranges=$(yq eval '.[].range // empty' "$REGISTRY_FILE" 2>/dev/null | sort -n)
     fi
     
     # Find first available range

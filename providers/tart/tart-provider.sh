@@ -36,10 +36,30 @@ check_apple_silicon() {
     return 0
 }
 
+# Helper function to query config using vm-config binary directly
+get_config() {
+    local config="$1"
+    local path="$2"
+    local default="$3"
+    # Use vm-config query directly on the merged config
+    if [[ -n "${VM_CONFIG:-}" ]] && [[ -x "${VM_CONFIG}" ]]; then
+        "$VM_CONFIG" query <(echo "$config") "$path" --raw --default "$default" 2>/dev/null || echo "$default"
+    else
+        # Fallback to yq
+        local value
+        value="$(echo "$config" | yq eval "$path" - 2>/dev/null)"
+        if [[ -z "$value" || "$value" == "null" ]]; then
+            echo "$default"
+        else
+            echo "$value"
+        fi
+    fi
+}
+
 # Get VM name from config
 get_tart_vm_name() {
     local config="$1"
-    local project_name=$(echo "$config" | jq -r '.project.name // "default"')
+    local project_name=$(get_config "$config" ".project.name" "default")
     # Sanitize name for Tart (alphanumeric and hyphens only)
     project_name=$(echo "$project_name" | tr -cd '[:alnum:]-' | tr '[:upper:]' '[:lower:]')
     echo "vm-${project_name}"
@@ -50,7 +70,7 @@ detect_guest_os() {
     local config="$1"
     
     # Check if OS field is set (new simple configuration)
-    local os=$(echo "$config" | jq -r '.os // empty')
+    local os=$(get_config "$config" '.os' '')
     if [[ -n "$os" ]] && [[ "$os" != "auto" ]]; then
         case "$os" in
             macos)
@@ -65,14 +85,14 @@ detect_guest_os() {
     fi
     
     # Check if explicitly set in tart config
-    local guest_os=$(echo "$config" | jq -r '.tart.guest_os // empty')
+    local guest_os=$(get_config "$config" '.tart.guest_os' '')
     if [[ -n "$guest_os" ]]; then
         echo "$guest_os"
         return
     fi
     
     # Check if using a known image
-    local image=$(echo "$config" | jq -r '.tart.image // empty')
+    local image=$(get_config "$config" '.tart.image' '')
     case "$image" in
         *ubuntu*|*debian*|*linux*)
             echo "linux"
@@ -91,7 +111,7 @@ setup_tart_storage() {
     local config="$1"
     
     # Check for custom storage path in config
-    local storage_path=$(echo "$config" | jq -r '.tart.storage_path // empty' 2>/dev/null)
+    local storage_path=$(get_config "$config" '.tart.storage_path' '')
     
     if [[ -n "$storage_path" ]] && [[ "$storage_path" != "null" ]]; then
         # Expand tilde if present
@@ -204,10 +224,10 @@ tart_create() {
     fi
     
     # Get configuration values
-    local image=$(echo "$config" | jq -r '.tart.image // empty')
-    local cpu=$(echo "$config" | jq -r '.vm.cpus // 4')
-    local memory=$(echo "$config" | jq -r '.vm.memory // 4096')
-    local disk_size=$(echo "$config" | jq -r '.tart.disk_size // 50')
+    local image=$(get_config "$config" '.tart.image' '')
+    local cpu=$(get_config "$config" '.vm.cpus // 4')
+    local memory=$(get_config "$config" '.vm.memory // 4096')
+    local disk_size=$(get_config "$config" '.tart.disk_size // 50')
     
     # Convert memory from MB to GB
     local memory_gb=$((memory / 1024))
@@ -307,7 +327,7 @@ create_linux_vm() {
     tart set "$vm_name" --cpu "$cpu" --memory "$memory"
     
     # Enable Rosetta for x86 emulation if requested
-    local enable_rosetta=$(echo "$config" | jq -r '.tart.rosetta // true')
+    local enable_rosetta=$(get_config "$config" '.tart.rosetta // true')
     if [[ "$enable_rosetta" == "true" ]]; then
         echo "🔄 Enabling Rosetta 2 for x86 emulation..."
         tart set "$vm_name" --rosetta
@@ -361,7 +381,7 @@ tart_ssh() {
     done
     
     local guest_os=$(detect_guest_os "$config")
-    local ssh_user=$(echo "$config" | jq -r '.tart.ssh_user // empty')
+    local ssh_user=$(get_config "$config" '.tart.ssh_user // empty')
     
     # Default SSH users
     if [[ -z "$ssh_user" ]]; then
@@ -382,7 +402,7 @@ tart_ssh() {
     fi
     
     # Get workspace path
-    local workspace_path=$(echo "$config" | jq -r '.project.workspace_path // "/workspace"')
+    local workspace_path=$(get_config "$config" '.project.workspace_path // "/workspace"')
     
     echo "🔗 Connecting to $vm_name at $vm_ip..."
     
@@ -523,7 +543,7 @@ tart_exec() {
     fi
     
     local guest_os=$(detect_guest_os "$config")
-    local ssh_user=$(echo "$config" | jq -r '.tart.ssh_user // empty')
+    local ssh_user=$(get_config "$config" '.tart.ssh_user // empty')
     
     if [[ -z "$ssh_user" ]]; then
         case "$guest_os" in
@@ -563,7 +583,7 @@ tart_logs() {
     fi
     
     local guest_os=$(detect_guest_os "$config")
-    local ssh_user=$(echo "$config" | jq -r '.tart.ssh_user // empty')
+    local ssh_user=$(get_config "$config" '.tart.ssh_user // empty')
     
     if [[ -z "$ssh_user" ]]; then
         case "$guest_os" in
@@ -713,7 +733,7 @@ echo "✅ Linux provisioning complete!"
 '
     
     # Check if Docker should be installed
-    local install_docker=$(echo "$config" | jq -r '.tart.install_docker // false')
+    local install_docker=$(get_config "$config" '.tart.install_docker // false')
     
     # Execute provisioning script
     if ! INSTALL_DOCKER="$install_docker" tart_exec "$config" "" bash -c "$provision_script"; then

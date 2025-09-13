@@ -3,7 +3,7 @@
 
 echo "🐚 Configuring shell environment..."
 
-CONFIG_FILE="/tmp/vm-config.json"
+CONFIG_FILE="/tmp/vm-config.yaml"
 
 # Detect the correct user (works with any username)
 if [ "$USER" = "root" ]; then
@@ -25,17 +25,17 @@ SHOW_TIMESTAMP="false"
 
 # Extract values from config if available
 if [ -f "$CONFIG_FILE" ]; then
-    EMOJI=$(jq -r '.terminal.emoji // "🚀"' "$CONFIG_FILE")
-    USERNAME=$(jq -r '.terminal.username // "dev"' "$CONFIG_FILE")
-    SHOW_GIT_BRANCH=$(jq -r '.terminal.show_git_branch // true' "$CONFIG_FILE")
-    SHOW_TIMESTAMP=$(jq -r '.terminal.show_timestamp // false' "$CONFIG_FILE")
-    WORKSPACE=$(jq -r '.project.workspace_path // "/workspace"' "$CONFIG_FILE")
+    EMOJI=$(yq eval '.terminal.emoji // "🚀"' "$CONFIG_FILE")
+    USERNAME=$(yq eval '.terminal.username // "dev"' "$CONFIG_FILE")
+    SHOW_GIT_BRANCH=$(yq eval '.terminal.show_git_branch // true' "$CONFIG_FILE")
+    SHOW_TIMESTAMP=$(yq eval '.terminal.show_timestamp // false' "$CONFIG_FILE")
+    WORKSPACE=$(yq eval '.project.workspace_path // "/workspace"' "$CONFIG_FILE")
 
     # Extract environment variables
-    ENV_VARS=$(jq -r '.environment // {} | to_entries | .[] | "export \(.key)=\"\(.value)\""' "$CONFIG_FILE")
+    ENV_VARS=$(yq eval '.environment // {} | to_entries | .[] | "export \(.key)=\"\(.value)\""' "$CONFIG_FILE")
 
     # Extract aliases
-    ALIASES=$(jq -r '.aliases // {} | to_entries | .[] | "alias \(.key)='\''\(.value)'\''"' "$CONFIG_FILE")
+    ALIASES=$(yq eval '.aliases // {} | to_entries | .[] | "alias \(.key)='\''\(.value)'\''"' "$CONFIG_FILE")
 fi
 
 # Create .bashrc

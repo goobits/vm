@@ -14,7 +14,7 @@ detect_required_os() {
     local project_dir="${2:-$(pwd)}"
     
     # Check if explicitly specified in config
-    local os=$(echo "$config" | jq -r '.os // empty' 2>/dev/null)
+    local os=$(echo "$config" | yq eval '.os' - - 2>/dev/null || echo '' || echo '')
     
     if [[ -n "$os" ]] && [[ "$os" != "auto" ]]; then
         echo "$os"
@@ -24,7 +24,7 @@ detect_required_os() {
     # Auto-detect from project files
     if [[ -d "$project_dir" ]]; then
         # iOS/macOS development
-        if find "$project_dir" -maxdepth 2 -name "*.xcodeproj" -o -name "*.xcworkspace" 2>/dev/null | grep -q .; then
+        if find "$project_dir" -maxdepth 2 -name "*.xcodeproj" -o -name "*.xcworkspace" - 2>/dev/null || echo '' | grep -q .; then
             echo "macos"
             return
         fi
@@ -38,7 +38,7 @@ detect_required_os() {
         # Has specific Linux preference
         if [[ -f "$project_dir/Dockerfile" ]]; then
             # Check what the Dockerfile uses
-            local base_image=$(grep "^FROM" "$project_dir/Dockerfile" 2>/dev/null | head -1 || true)
+            local base_image=$(grep "^FROM" "$project_dir/Dockerfile" - 2>/dev/null || echo '' | head -1 || true)
             case "$base_image" in
                 *alpine*) echo "alpine" ;;
                 *debian*) echo "debian" ;;
@@ -59,10 +59,10 @@ get_os_defaults() {
     local user_config="$2"
     
     # Extract user's vm settings if provided
-    local user_memory=$(echo "$user_config" | jq -r '.vm.memory // empty' 2>/dev/null)
-    local user_cpus=$(echo "$user_config" | jq -r '.vm.cpus // empty' 2>/dev/null)
-    local user_disk=$(echo "$user_config" | jq -r '.vm.disk_size // empty' 2>/dev/null)
-    local user_username=$(echo "$user_config" | jq -r '.vm.user // empty' 2>/dev/null)
+    local user_memory=$(echo "$user_config" | yq eval '.vm.memory' - 2>/dev/null || echo '')
+    local user_cpus=$(echo "$user_config" | yq eval '.vm.cpus' - 2>/dev/null || echo '')
+    local user_disk=$(echo "$user_config" | yq eval '.vm.disk_size' - 2>/dev/null || echo '')
+    local user_username=$(echo "$user_config" | yq eval '.vm.user' - 2>/dev/null || echo '')
     
     case "$os" in
         macos)
@@ -73,7 +73,7 @@ get_os_defaults() {
             local username="${user_username:-admin}"
             
             # Check if user specified a storage path
-            local user_storage_path=$(echo "$user_config" | jq -r '.tart.storage_path // empty' 2>/dev/null)
+            local user_storage_path=$(echo "$user_config" | yq eval '.tart.storage_path' - 2>/dev/null || echo '')
             local storage_json=""
             if [[ -n "$user_storage_path" ]] && [[ "$user_storage_path" != "null" ]]; then
                 storage_json=",\"storage_path\": \"$user_storage_path\""
@@ -227,7 +227,7 @@ apply_os_config() {
     local os_defaults=$(get_os_defaults "$os" "$config")
     
     # Select provider if not explicitly set
-    local provider=$(echo "$config" | jq -r '.provider // empty' 2>/dev/null)
+    local provider=$(echo "$config" | yq eval '.provider' - 2>/dev/null || echo '')
     if [[ -z "$provider" ]] || [[ "$provider" == "auto" ]]; then
         provider=$(select_provider_for_os "$os")
         
@@ -240,7 +240,7 @@ apply_os_config() {
     
     # Merge configurations: user config overrides OS defaults
     # This ensures user's vm settings are respected
-    echo "$os_defaults" | jq --argjson user "$config" '
+    echo "$os_defaults" | yq eval --argjson user "$config" '
         # Start with OS defaults
         . as $defaults |
         
@@ -265,7 +265,7 @@ process_os_config() {
     # Read config
     local config
     if [[ -f "$config_file" ]]; then
-        config=$(cat "$config_file" | yq eval -o=json 2>/dev/null || echo '{}')
+        config=$(cat "$config_file" | yq eval -o=json - 2>/dev/null || echo '' || echo '{}')
     else
         config='{}'
     fi

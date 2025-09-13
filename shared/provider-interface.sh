@@ -340,7 +340,7 @@ vagrant_ssh() {
         if [[ "${CUSTOM_CONFIG:-}" = "__SCAN__" ]]; then
             # In scan mode, figure out where we are relative to the found config
             local config_dir
-            config_dir=$(echo "$config" | jq -r '.__config_dir // empty' 2>/dev/null)
+            config_dir=$(echo "$config" | yq eval '.__config_dir // empty' 2>/dev/null)
             if [[ -n "$config_dir" ]] && [[ "$config_dir" != "$CURRENT_DIR" ]]; then
                 relative_path=$(portable_relative_path "$config_dir" "$CURRENT_DIR" 2>/dev/null || echo ".")
             fi
@@ -352,7 +352,7 @@ vagrant_ssh() {
 
     # Get workspace path from config
     local workspace_path
-    workspace_path=$(echo "$config" | jq -r '.project.workspace_path // "/workspace"' 2>/dev/null)
+    workspace_path=$(echo "$config" | yq eval '.project.workspace_path // "/workspace"' 2>/dev/null)
 
     if [[ "$relative_path" != "." ]]; then
         local target_dir="${workspace_path}/${relative_path}"
@@ -544,7 +544,7 @@ show_provider_info() {
         local capabilities
         capabilities=$(get_provider_capabilities "$provider")
         echo "📋 Capabilities:"
-        echo "$capabilities" | jq -r 'to_entries[] | "  \(.key): \(.value)"' 2>/dev/null || echo "  (capabilities info unavailable)"
+        echo "$capabilities" | yq eval 'to_entries[] | "  \(.key): \(.value)"' 2>/dev/null || echo "  (capabilities info unavailable)"
     else
         echo "❌ Provider tools are not available"
     fi

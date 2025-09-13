@@ -72,7 +72,7 @@ fi
 
 # Process VM configuration with full merge logic
 # Args: [config_path] [project_dir]
-# Returns: Merged JSON configuration
+# Returns: Merged YAML configuration
 process_vm_config() {
     local config_path="${1:-}"
     local project_dir="${2:-.}"
@@ -95,7 +95,7 @@ process_vm_config() {
 
         cmd+=("--project-dir" "$project_dir")
         cmd+=("--presets-dir" "$VM_TOOL_DIR/configs/presets")
-        cmd+=("--format" "json")
+        cmd+=("--format" "yaml")
 
         "${cmd[@]}"
     else
@@ -106,10 +106,8 @@ process_vm_config() {
         if [[ -f "$config_path" ]]; then
             # Simple merge without preset detection
             yq eval-all 'select(fileIndex == 0) * select(fileIndex == 1)' \
-                "$defaults_path" "$config_path" -o json
-        else
-            yq eval '.' "$defaults_path" -o json
-        fi
+                "$defaults_path" "$config_path"        else
+            yq eval '.' "$defaults_path"        fi
     fi
 }
 
@@ -160,7 +158,7 @@ query_config() {
 
 # Merge multiple configurations
 # Args: base_config overlay_config...
-# Returns: Merged JSON
+# Returns: Merged YAML
 merge_configs() {
     local base="$1"
     shift
@@ -170,7 +168,7 @@ merge_configs() {
         for overlay in "$@"; do
             cmd+=("--overlay" "$overlay")
         done
-        cmd+=("--format" "json")
+        cmd+=("--format" "yaml")
         "${cmd[@]}"
     else
         # Fallback to yq merge
@@ -183,8 +181,7 @@ merge_configs() {
             ((index++))
         done
 
-        $merge_cmd "$merge_expr" "$base" "$@" -o json
-    fi
+        $merge_cmd "$merge_expr" "$base" "$@"    fi
 }
 
 # Detect preset for project
@@ -241,7 +238,7 @@ yq_json() {
     if [[ "$USE_RUST_CONFIG" == "true" ]]; then
         "$VM_CONFIG" query "$file" "$filter" 2>/dev/null || echo "null"
     else
-        yq eval "$filter" "$file" -o json 2>/dev/null || echo "null"
+        yq eval "$filter" "$file" 2>/dev/null || echo "null"
     fi
 }
 
