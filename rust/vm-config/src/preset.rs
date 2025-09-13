@@ -1,6 +1,6 @@
 use crate::config::VmConfig;
 use anyhow::{Result, Context};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use glob::glob;
 use which::which;
 
@@ -134,8 +134,10 @@ impl PresetDetector {
 }
 
 /// Detect installed tools/languages for smart preset selection
+#[allow(dead_code)]
 pub struct ToolDetector;
 
+#[allow(dead_code)]
 impl ToolDetector {
     /// Check if a command is available in PATH
     pub fn has_command(cmd: &str) -> bool {

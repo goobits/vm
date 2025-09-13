@@ -3,6 +3,7 @@ mod merge;
 mod preset;
 mod validate;
 mod cli;
+mod yaml_ops;
 
 use anyhow::Result;
 use clap::Parser;

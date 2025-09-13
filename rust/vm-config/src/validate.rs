@@ -86,8 +86,8 @@ impl ConfigValidator {
     fn validate_ports(&self) -> Result<()> {
         // Validate individual port mappings
         for (name, port) in &self.config.ports {
-            if *port < 1 || *port > 65535 {
-                anyhow::bail!("Invalid port {} for {}: must be between 1 and 65535", port, name);
+            if *port == 0 {
+                anyhow::bail!("Invalid port {} for {}: port 0 is reserved", port, name);
             }
         }
 
@@ -103,8 +103,8 @@ impl ConfigValidator {
                 if start >= end {
                     anyhow::bail!("Invalid port range: start must be less than end");
                 }
-                if start < 1 || end > 65535 {
-                    anyhow::bail!("Port range must be between 1 and 65535");
+                if start == 0 {
+                    anyhow::bail!("Port range start cannot be 0 (reserved port)");
                 }
             } else {
                 anyhow::bail!("Invalid port range format: {}. Expected format: START-END", range);
@@ -119,8 +119,8 @@ impl ConfigValidator {
         for (name, service) in &self.config.services {
             // Validate service port if specified
             if let Some(port) = service.port {
-                if port < 1 || port > 65535 {
-                    anyhow::bail!("Invalid port {} for service {}: must be between 1 and 65535", port, name);
+                if port == 0 {
+                    anyhow::bail!("Invalid port {} for service {}: port 0 is reserved", port, name);
                 }
             }
 
@@ -169,12 +169,6 @@ impl ConfigValidator {
     }
 }
 
-/// Quick validation without full deserialization
-pub fn validate_yaml_syntax(yaml_content: &str) -> Result<()> {
-    serde_yaml::from_str::<serde_yaml::Value>(yaml_content)
-        .context("Invalid YAML syntax")?;
-    Ok(())
-}
 
 #[cfg(test)]
 mod tests {

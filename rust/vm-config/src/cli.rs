@@ -107,6 +107,49 @@ pub enum Command {
         #[arg(short, long)]
         default: Option<String>,
     },
+
+    /// Add an item to a YAML array
+    ArrayAdd {
+        /// YAML file to modify
+        file: PathBuf,
+
+        /// Path to array (dot notation)
+        path: String,
+
+        /// YAML item to add (as string)
+        item: String,
+    },
+
+    /// Remove items from a YAML array
+    ArrayRemove {
+        /// YAML file to modify
+        file: PathBuf,
+
+        /// Path to array (dot notation)
+        path: String,
+
+        /// Filter expression to match items to remove
+        filter: String,
+    },
+
+    /// Query with conditional filtering
+    Filter {
+        /// YAML file to query
+        file: PathBuf,
+
+        /// Filter expression
+        expression: String,
+
+        /// Output format
+        #[arg(short = 'f', long, default_value = "yaml")]
+        output_format: OutputFormat,
+    },
+
+    /// Check if file is valid YAML
+    CheckFile {
+        /// YAML file to check
+        file: PathBuf,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -260,6 +303,35 @@ pub fn execute(args: Args) -> Result<()> {
                 println!("{}", serde_json::to_string(&value)?);
             }
         }
+
+        Command::ArrayAdd { file, path, item } => {
+            use crate::yaml_ops::YamlOperations;
+            YamlOperations::array_add(&file, &path, &item)?;
+        }
+
+        Command::ArrayRemove { file, path, filter } => {
+            use crate::yaml_ops::YamlOperations;
+            YamlOperations::array_remove(&file, &path, &filter)?;
+        }
+
+        Command::Filter { file, expression, output_format } => {
+            use crate::yaml_ops::YamlOperations;
+            YamlOperations::filter(&file, &expression, &output_format)?;
+        }
+
+        Command::CheckFile { file } => {
+            use crate::yaml_ops::YamlOperations;
+            match YamlOperations::validate_file(&file) {
+                Ok(_) => {
+                    println!("✅ File is valid YAML");
+                    std::process::exit(0);
+                }
+                Err(e) => {
+                    eprintln!("❌ File validation failed: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
     }
 
     Ok(())
@@ -276,7 +348,7 @@ fn output_config(config: &VmConfig, format: &OutputFormat) -> Result<()> {
             println!("{}", json);
         }
         OutputFormat::JsonPretty => {
-            let json = serde_json::to_string_pretty(config)?;
+            let json = config.to_json()?;
             println!("{}", json);
         }
     }

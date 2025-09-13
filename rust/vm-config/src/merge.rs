@@ -13,7 +13,7 @@ impl ConfigMerger {
     }
 
     /// Merge another config into the base, with overlay taking precedence
-    pub fn merge(mut self, overlay: VmConfig) -> Result<VmConfig> {
+    pub fn merge(self, overlay: VmConfig) -> Result<VmConfig> {
         // Convert to JSON values for deep merging
         let mut base_value = serde_json::to_value(&self.base)?;
         let overlay_value = serde_json::to_value(&overlay)?;
@@ -71,7 +71,7 @@ pub fn merge_configs(
     user: Option<VmConfig>,
 ) -> Result<VmConfig> {
     let base = default.unwrap_or_default();
-    let mut merger = ConfigMerger::new(base);
+    let merger = ConfigMerger::new(base);
 
     let mut overlays = Vec::new();
     if let Some(p) = preset {

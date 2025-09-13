@@ -184,13 +184,6 @@ impl VmConfig {
         Ok(serde_yaml::from_str(&content)?)
     }
 
-    /// Save config to YAML file
-    pub fn to_file(&self, path: &PathBuf) -> anyhow::Result<()> {
-        let yaml = serde_yaml::to_string(self)?;
-        std::fs::write(path, yaml)?;
-        Ok(())
-    }
-
     /// Convert to JSON string
     pub fn to_json(&self) -> anyhow::Result<String> {
         Ok(serde_json::to_string_pretty(self)?)
