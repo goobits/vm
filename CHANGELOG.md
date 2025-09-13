@@ -75,15 +75,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Hostname Validation**: Added proper error handling for missing hostname field in Docker provisioning
 
 ### Changed
-- **JSON Configuration Deprecation**: JSON configuration files (`.json`) are no longer supported for direct use. Users must migrate existing JSON configs to YAML format using `vm migrate` command. This simplifies the configuration system while maintaining backward compatibility through migration.
+- **JSON Configuration Deprecation**: JSON configuration files (`.json`) are no longer supported. The project now exclusively uses YAML format (`vm.yaml`) for configuration files.
 - **Default Ports**: Removed hardcoded port 3150 from VM tool's default configuration to prevent conflicts with user projects
 
 ### Added
 - **Modular Architecture**: Extracted temporary VM functionality into separate `vm-temporary.sh` module for better maintainability and debugging
-- **Configuration Migration**: Full support for migrating legacy JSON configs to modern YAML format with versioning
-  - `vm migrate --check` - Check if migration is needed
-  - `vm migrate --dry-run` - Preview migration changes  
-  - `vm migrate` - Perform the migration with automatic backup
 - **Enhanced Temporary VMs**: Improved temp VM workflow with dedicated subcommands
   - `vm temp ./src,./config` - Create temp VM with specific directory mounts
   - `vm temp ssh` - Direct SSH into active temp VM

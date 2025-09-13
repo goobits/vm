@@ -10,7 +10,6 @@ Complete reference for configuring your VM development environment with YAML.
 - [Services](#-services)
 - [Language Runtimes](#-language-runtimes)
 - [Terminal Customization](#-terminal-customization)
-- [Migration from JSON](#-migration-from-json)
 - [Examples](#-examples)
 
 ## 🚀 Quick Start
@@ -315,65 +314,6 @@ terminal:
 ```
 
 Result: `🚀 developer my-app (main) >`
-
-## 🔄 Migration from JSON
-
-> **⚠️ Important**: JSON configuration files are no longer supported for direct use. You must migrate existing JSON configs to YAML format using the `vm migrate` command.
-
-If you have existing `vm.json` configuration files, easily migrate to YAML:
-
-### Migration Commands
-
-```bash
-# Check if migration is needed
-vm migrate --check
-
-# Preview the migration (dry run)
-vm migrate --dry-run
-
-# Perform the migration
-vm migrate
-
-# Migration options
-vm migrate --input old-config.json --output new-config.yaml
-vm migrate --backup              # Create backup (default: enabled)
-vm migrate --no-backup           # Skip backup creation
-vm migrate --force               # Skip confirmation prompts
-```
-
-### What Migration Does
-
-1. **Converts JSON to YAML**: Transforms your `vm.json` into readable `vm.yaml`
-2. **Adds Version Field**: Automatically injects `version: "1.0"` for compatibility
-3. **Creates Backup**: Saves original as `vm.json.bak` (unless --no-backup)
-4. **Validates Result**: Ensures migrated configuration is valid
-5. **Preserves Settings**: All services, ports, aliases, and customizations maintained
-
-### Example Migration
-
-**Before (vm.json):**
-```json
-{
-  "project": {
-    "name": "my-app"
-  },
-  "services": {
-    "postgresql": {
-      "enabled": true
-    }
-  }
-}
-```
-
-**After (vm.yaml):**
-```yaml
-version: "1.0"
-project:
-  name: my-app
-services:
-  postgresql:
-    enabled: true
-```
 
 ## 🔌 Port Strategy
 

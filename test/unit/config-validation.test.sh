@@ -29,11 +29,11 @@ else
     echo "❌ JSON rejection message NOT found in vm command"
 fi
 
-# Check for migration suggestion from vm command
-if echo "$output1" | grep -q "vm migrate --input"; then
-    echo "✅ Migration suggestion found in vm command"
+# JSON files should be rejected without migration suggestion
+if echo "$output1" | grep -q "JSON configuration files are no longer supported"; then
+    echo "✅ JSON rejection message found in vm command"
 else
-    echo "❌ Migration suggestion NOT found in vm command"
+    echo "❌ JSON rejection message NOT found in vm command"
 fi
 
 echo -e "\n--- Test 2: JSON rejection via validate-config.sh ---"

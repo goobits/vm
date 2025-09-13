@@ -1208,20 +1208,6 @@ run_test_suite() {
             run_test "vm-lifecycle" test_vm_lifecycle
             run_test "vm-reload" test_vm_reload
             ;;
-        migrate-temporary)
-            # Run the dedicated migrate-temporary test script
-            "$SCRIPT_DIR/test/integration/migration.test.sh"
-            # Capture exit code and update counters
-            local exit_code=$?
-            if [[ $exit_code -eq 0 ]]; then
-                echo -e "${GREEN}✓ Migrate-temp test suite passed${NC}"
-            else
-                echo -e "${RED}✗ Migrate-temp test suite failed${NC}"
-                FAILED_TESTS=$((FAILED_TESTS + 1))
-                FAILED_TEST_NAMES+=("migrate-temporary-suite")
-            fi
-            return $exit_code
-            ;;
         *)
             echo -e "${RED}Unknown test suite: $suite_name${NC}"
             return 1

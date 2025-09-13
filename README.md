@@ -214,7 +214,6 @@ vm provision                 # Re-run provisioning
 ```bash
 vm init                      # Initialize new vm.yaml config file
 vm generate                  # Generate vm.yaml by composing services
-vm migrate                   # Convert vm.json to vm.yaml with versioning
 vm validate                  # Check config
 vm list                      # List all VM instances
 ```

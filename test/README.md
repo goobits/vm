@@ -81,7 +81,6 @@ The main test runner (`./run-tests.sh`) still provides comprehensive testing:
 ./run-tests.sh --suite languages     # Language support tests
 ./run-tests.sh --suite cli           # CLI command tests
 ./run-tests.sh --suite lifecycle     # Calls system/vm-lifecycle.test.sh
-./run-tests.sh --suite migrate-temporary # Calls integration/migration.test.sh
 ```
 
 ### Individual Test Categories
@@ -181,7 +180,6 @@ The previous test structure has been reorganized:
 |--------------|--------------|-------|
 | `test/test-presets.sh` (detection) | `test/unit/preset-detection.test.sh` | Framework detection only |
 | `test/test-presets.sh` (system) | `test/integration/preset-system.test.sh` | Preset application & commands |
-| `test/test-migrate-temporary.sh` | `test/integration/migration.test.sh` | Migration functionality |
 | `test.sh` (VM lifecycle) | `test/system/vm-lifecycle.test.sh` | VM operations extracted |
 | `test/unit/config-validation.test.sh` | ✓ Already exists | No change |
 
