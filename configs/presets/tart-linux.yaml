@@ -24,7 +24,6 @@ tart:
 vm:
   memory: 4096
   cpus: 4
-  auto_login: false
 
 project:
   workspace_path: /home/ubuntu/workspace

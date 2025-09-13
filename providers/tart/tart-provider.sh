@@ -272,19 +272,10 @@ create_macos_vm() {
     echo "⏳ Waiting for VM to boot (this may take a minute)..."
     sleep 10
     
-    # Get auto-login setting
-    local auto_login=$(echo "$config" | jq -r '.vm.auto_login // false')
-    
-    if [[ "$auto_login" == "true" ]]; then
-        echo "🔗 Auto-connecting to VM..."
-        sleep 5
-        tart_ssh "$config" "$project_dir"
-    else
-        echo ""
-        echo "✅ macOS VM created successfully!"
-        echo "💡 Use 'vm ssh' to connect"
-        echo "   Default user: admin, password: admin"
-    fi
+    echo ""
+    echo "✅ macOS VM created successfully!"
+    echo "💡 Use 'vm ssh' to connect"
+    echo "   Default user: admin, password: admin"
 }
 
 # Create Linux VM
@@ -330,18 +321,9 @@ create_linux_vm() {
     echo "⏳ Waiting for VM to boot..."
     sleep 8
     
-    # Get auto-login setting
-    local auto_login=$(echo "$config" | jq -r '.vm.auto_login // false')
-    
-    if [[ "$auto_login" == "true" ]]; then
-        echo "🔗 Auto-connecting to VM..."
-        sleep 5
-        tart_ssh "$config" "$project_dir"
-    else
-        echo ""
-        echo "✅ Linux VM created successfully!"
-        echo "💡 Use 'vm ssh' to connect"
-    fi
+    echo ""
+    echo "✅ Linux VM created successfully!"
+    echo "💡 Use 'vm ssh' to connect"
 }
 
 # SSH into VM

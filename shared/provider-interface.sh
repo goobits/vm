@@ -325,15 +325,7 @@ vagrant_create() {
     # Start VM
     vagrant up "$@"
 
-    # Auto-SSH if enabled
-    local auto_login
-    auto_login=$(echo "$config" | jq -r '.vm.auto_login // false' 2>/dev/null || echo "false")
-    if [[ "$auto_login" = "true" ]]; then
-        echo "🔗 Connecting to VM..."
-        vagrant ssh
-    else
-        echo "💡 Use 'vm ssh' to connect to the VM"
-    fi
+    echo "💡 Use 'vm ssh' to connect to the VM"
 }
 
 # Vagrant SSH with relative path support
@@ -435,12 +427,11 @@ tart_command_wrapper() {
 #=============================================================================
 
 # Unified VM create command
-# Args: config, project_dir, auto_login, [additional_args...]
+# Args: config, project_dir, [additional_args...]
 vm_create() {
     local config="$1"
     local project_dir="$2"
-    local auto_login="${3:-false}"
-    shift 3
+    shift 2
 
     route_command "create" "$config" "$project_dir" "$@"
 }

@@ -18,7 +18,6 @@ tart:
 vm:
   memory: 8192
   cpus: 4
-  auto_login: false
   
 project:
   workspace_path: /Users/admin/workspace
