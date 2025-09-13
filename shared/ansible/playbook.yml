@@ -534,27 +534,28 @@
                 echo "📦 Attempting to install $package from registry..."
                 
                 # First try with pipx (good for CLI tools)
-                if /usr/bin/pipx install "$package" 2>/tmp/pipx_error_$$.log; then
+                pipx_error_file="/tmp/pipx_error_$$.log"
+                if /usr/bin/pipx install "$package" 2>"$pipx_error_file"; then
                     echo "✅ Installed $package as CLI tool with pipx"
                 else
                     # Check if it failed because it's a library (not a CLI tool)
-                    if grep -q "No apps associated with package\|not a valid package\|library" /tmp/pipx_error_$$.log 2>/dev/null; then
+                    if grep -q "No apps associated with package\|not a valid package\|library" "$pipx_error_file" 2>/dev/null; then
                         echo "📚 $package appears to be a library, installing with pip..."
                         if python3 -m pip install --user --break-system-packages "$package"; then
                             echo "✅ Installed $package as library with pip"
                         else
                             echo "❌ Failed to install $package with both pipx and pip"
-                            rm -f /tmp/pipx_error_$$.log
+                            rm -f "$pipx_error_file"
                             exit 1
                         fi
                     else
                         # Some other pipx error - show it and fail
-                        cat /tmp/pipx_error_$$.log
-                        rm -f /tmp/pipx_error_$$.log
+                        cat "$pipx_error_file"
+                        rm -f "$pipx_error_file"
                         exit 1
                     fi
                 fi
-                rm -f /tmp/pipx_error_$$.log
+                rm -f "$pipx_error_file"
             fi
         args:
             executable: /bin/bash

@@ -41,9 +41,23 @@ package_matches_request() {
 # Detect pipx packages installed in isolated environments
 detect_pipx_packages() {
     local pip_packages_array=("$@")
-    local pipx_home="$HOME/.local/share/pipx/venvs"
+    local pipx_home=""
 
-    if [[ ! -d "$pipx_home" ]]; then
+    # Try different possible pipx venv locations
+    local possible_paths=(
+        "$HOME/.local/share/pipx/venvs"  # Linux/standard
+        "$HOME/.local/pipx/venvs"        # macOS/alternative
+        "${PIPX_HOME:-}/venvs"           # Custom PIPX_HOME
+    )
+
+    for path in "${possible_paths[@]}"; do
+        if [[ -n "$path" && -d "$path" ]]; then
+            pipx_home="$path"
+            break
+        fi
+    done
+
+    if [[ -z "$pipx_home" ]]; then
         return 0
     fi
 
@@ -194,20 +208,29 @@ detect_editable_pip_packages() {
     done
 }
 
+# Helper function to check if package was already found (bash 3.x compatible)
+package_already_found() {
+    local package_name="$1"
+    local found_list="$2"
+
+    # Check if package name appears in space-separated list
+    case " $found_list " in
+        *" $package_name "*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # Main detection function - combines all detection methods
 detect_all_pip_packages() {
     local pip_packages_array=("$@")
-    local all_found=()
-
-    # Track found packages to avoid duplicates
-    declare -A found_packages
+    local found_packages=""  # Space-separated list for bash 3.x compatibility
 
     # 1. First try pipx packages (highest priority for CLI tools)
     while IFS=: read -r package_name package_path; do
         if [[ -n "$package_name" && -n "$package_path" ]]; then
-            if [[ -z "${found_packages[$package_name]:-}" ]]; then
+            if ! package_already_found "$package_name" "$found_packages"; then
                 echo "$package_name:$package_path"
-                found_packages[$package_name]=1
+                found_packages="$found_packages $package_name"
             fi
         fi
     done < <(detect_pipx_packages "${pip_packages_array[@]}")
@@ -215,9 +238,9 @@ detect_all_pip_packages() {
     # 2. Then try editable packages (second priority for development)
     while IFS=: read -r package_name package_path; do
         if [[ -n "$package_name" && -n "$package_path" ]]; then
-            if [[ -z "${found_packages[$package_name]:-}" ]]; then
+            if ! package_already_found "$package_name" "$found_packages"; then
                 echo "$package_name:$package_path"
-                found_packages[$package_name]=1
+                found_packages="$found_packages $package_name"
             fi
         fi
     done < <(detect_editable_pip_packages "${pip_packages_array[@]}")
@@ -225,9 +248,9 @@ detect_all_pip_packages() {
     # 3. Finally try regular pip packages (lowest priority)
     while IFS=: read -r package_name package_path; do
         if [[ -n "$package_name" && -n "$package_path" ]]; then
-            if [[ -z "${found_packages[$package_name]:-}" ]]; then
+            if ! package_already_found "$package_name" "$found_packages"; then
                 echo "$package_name:$package_path"
-                found_packages[$package_name]=1
+                found_packages="$found_packages $package_name"
             fi
         fi
     done < <(detect_regular_pip_packages "${pip_packages_array[@]}")
