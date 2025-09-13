@@ -32,7 +32,7 @@ FAILED_TESTS=0
 FAILED_TEST_NAMES=()
 
 # Available test suites
-AVAILABLE_SUITES="framework minimal services languages cli lifecycle migrate-temporary"
+AVAILABLE_SUITES="framework minimal services languages cli lifecycle"
 
 # Parse command line arguments
 SUITE_FILTER=""

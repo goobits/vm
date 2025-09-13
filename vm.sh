@@ -2436,7 +2436,7 @@ while [[ $# -gt 0 ]]; do
         -c|--config)
             shift
             # Check if next argument exists and is not a flag or command
-            if [[ $# -eq 0 ]] || [[ "$1" =~ ^- ]] || [[ "$1" =~ ^(init|generate|validate|preset|migrate|list|temp|create|start|stop|restart|ssh|destroy|status|provision|logs|exec|kill|help)$ ]]; then
+            if [[ $# -eq 0 ]] || [[ "$1" =~ ^- ]] || [[ "$1" =~ ^(init|generate|validate|preset|list|temp|create|start|stop|restart|ssh|destroy|status|provision|logs|exec|kill|help)$ ]]; then
                 # No argument provided or next is a flag/command - use scan mode
                 CUSTOM_CONFIG="__SCAN__"
             else
