@@ -136,7 +136,6 @@ sudo apt update && sudo apt install vagrant virtualbox
 
 ### Docker Provider
 1. Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop)
-2. Install yq via package manager or download binary
 
 ### Vagrant Provider
 1. Download **Vagrant** from [vagrant.com](https://www.vagrantup.com/downloads)
@@ -150,7 +149,6 @@ After installation, verify everything works:
 # Check Docker (if using Docker provider)
 docker --version
 docker-compose --version
-yq --version
 
 # Check Vagrant (if using Vagrant provider)  
 vagrant --version

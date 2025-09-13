@@ -8,23 +8,25 @@
   },
   "files": [
     "vm.sh",
-    "vm-temporary.sh",
+    "vm",
     "vm.yaml",
+    "vm.schema.yaml",
     "validate-config.sh",
     "generate-config.sh",
     "install.sh",
     "run-tests.sh",
     "providers/",
     "shared/",
-    "examples/",
     "configs/",
     "lib/",
-    "test/"
+    "test/",
+    "rust/",
+    "bin/"
   ],
   "scripts": {
     "test": "./run-tests.sh",
     "validate": "./validate-config.sh --validate",
-    "postinstall": "chmod +x vm.sh vm-temporary.sh validate-config.sh run-tests.sh install.sh generate-config.sh"
+    "postinstall": "chmod +x vm.sh vm validate-config.sh run-tests.sh install.sh generate-config.sh"
   },
   "keywords": [
     "vagrant",

@@ -66,7 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Automatic routing: WARN/ERROR to stderr, INFO/DEBUG to stdout for container compatibility
   - Consistent log format: `timestamp | level | message | key=value context`
   - Simple logging functions: `vm_error()`, `vm_warn()`, `vm_info()`, `vm_debug()`
-  - Integration into core scripts (vm.sh, vm-temporary.sh) with structured error reporting
+  - Integration into core scripts (vm.sh, shared/temporary-vm-utils.sh) with structured error reporting
 
 ### Fixed
 - **Port Conflict Resolution**: Fixed issue where VM tool's own configuration was incorrectly inherited by user projects, causing port 3150 conflicts
@@ -79,7 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Default Ports**: Removed hardcoded port 3150 from VM tool's default configuration to prevent conflicts with user projects
 
 ### Added
-- **Modular Architecture**: Extracted temporary VM functionality into separate `vm-temporary.sh` module for better maintainability and debugging
+- **Modular Architecture**: Extracted temporary VM functionality into `shared/temporary-vm-utils.sh` module for better maintainability and debugging
 - **Enhanced Temporary VMs**: Improved temp VM workflow with dedicated subcommands
   - `vm temp ./src,./config` - Create temp VM with specific directory mounts
   - `vm temp ssh` - Direct SSH into active temp VM
