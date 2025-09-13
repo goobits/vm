@@ -12,6 +12,10 @@ NC='\033[0m' # No Color
 
 echo "🔍 Running pre-flight checks..."
 
+# Initialize vm-config path
+VM_TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VM_CONFIG="$VM_TOOL_DIR/rust/target/release/vm-config"
+
 # Track if any checks fail
 CHECKS_PASSED=true
 
@@ -41,17 +45,15 @@ check_docker_resources() {
 
 # Check for required tools
 check_required_tools() {
-    local tools=("yq")
-    for tool in "${tools[@]}"; do
-        echo -n "  Checking $tool... "
-        if ! command -v "$tool" >/dev/null 2>&1; then
-            echo -e "${RED}✗${NC} $tool not found"
-            echo "    💡 Install with: brew install $tool"
-            CHECKS_PASSED=false
-        else
-            echo -e "${GREEN}✓${NC}"
-        fi
-    done
+    # No external tools required anymore - vm-config handles everything
+    echo -n "  Checking vm-config... "
+    if [[ -x "$VM_CONFIG" ]]; then
+        echo -e "${GREEN}✓${NC}"
+    else
+        echo -e "${RED}✗${NC} vm-config not found"
+        echo "    💡 Build with: cd rust/vm-config && cargo build --release"
+        CHECKS_PASSED=false
+    fi
 }
 
 # Check Ansible playbook syntax
@@ -60,7 +62,7 @@ check_ansible_syntax() {
     local playbook_path="$1/shared/ansible/playbook.yml"
     if [[ -f "$playbook_path" ]]; then
         # Do a basic YAML syntax check
-        if ! yq eval '.' "$playbook_path" >/dev/null 2>&1; then
+        if ! "$VM_CONFIG" validate "$playbook_path" >/dev/null 2>&1; then
             echo -e "${RED}✗${NC} Invalid YAML syntax"
             echo "    💡 Check $playbook_path for syntax errors"
             CHECKS_PASSED=false
@@ -77,7 +79,7 @@ check_vm_config() {
     echo -n "  Checking vm.yaml configuration... "
     if [[ -f "vm.yaml" ]]; then
         # Check for common package name issues
-        local pip_packages=$(yq eval '.pip_packages[]' vm.yaml 2>/dev/null || true)
+        local pip_packages=$("$VM_CONFIG" transform vm.yaml 'pip_packages[]' --format lines 2>/dev/null || true)
         if [[ -n "$pip_packages" ]]; then
             while IFS= read -r package; do
                 if [[ "$package" == "claudeflow" ]]; then

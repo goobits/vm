@@ -10,6 +10,10 @@ set -u
 # Get shared utilities directory
 SHARED_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Initialize vm-config path
+VM_TOOL_DIR="$(cd "$SHARED_DIR/.." && pwd)"
+VM_CONFIG="$VM_TOOL_DIR/rust/target/release/vm-config"
+
 # Source shared utilities
 if [[ -f "$SHARED_DIR/platform-utils.sh" ]]; then
     source "$SHARED_DIR/platform-utils.sh"
@@ -340,7 +344,7 @@ vagrant_ssh() {
         if [[ "${CUSTOM_CONFIG:-}" = "__SCAN__" ]]; then
             # In scan mode, figure out where we are relative to the found config
             local config_dir
-            config_dir=$(echo "$config" | yq eval '.__config_dir // empty' 2>/dev/null)
+            config_dir=$(echo "$config" | "$VM_CONFIG" query - "__config_dir" --raw 2>/dev/null || echo "")
             if [[ -n "$config_dir" ]] && [[ "$config_dir" != "$CURRENT_DIR" ]]; then
                 relative_path=$(portable_relative_path "$config_dir" "$CURRENT_DIR" 2>/dev/null || echo ".")
             fi
@@ -352,7 +356,7 @@ vagrant_ssh() {
 
     # Get workspace path from config
     local workspace_path
-    workspace_path=$(echo "$config" | yq eval '.project.workspace_path // "/workspace"' 2>/dev/null)
+    workspace_path=$(echo "$config" | "$VM_CONFIG" query - "project.workspace_path" --raw --default "/workspace" 2>/dev/null)
 
     if [[ "$relative_path" != "." ]]; then
         local target_dir="${workspace_path}/${relative_path}"
@@ -544,7 +548,7 @@ show_provider_info() {
         local capabilities
         capabilities=$(get_provider_capabilities "$provider")
         echo "📋 Capabilities:"
-        echo "$capabilities" | yq eval 'to_entries[] | "  \(.key): \(.value)"' 2>/dev/null || echo "  (capabilities info unavailable)"
+        echo "$capabilities" | "$VM_CONFIG" transform - 'to_entries[] | "  \(.key): \(.value)"' --format lines 2>/dev/null || echo "  (capabilities info unavailable)"
     else
         echo "❌ Provider tools are not available"
     fi

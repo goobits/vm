@@ -286,23 +286,13 @@ get_temp_mounts() {
 		return 1
 	fi
 	
-	if command -v yq &> /dev/null; then
-		# Handle both old and new formats
-		# First try old format (simple string)
-		local old_format
-		old_format=$(yq '.mounts[]? // ""' "$TEMP_STATE_FILE" 2>/dev/null | grep -E '^[^:]+:[^:]+:[^:]+$' | tr '\n' ',' | sed 's/,$//')
-		if [[ -n "$old_format" ]]; then
-			echo "$old_format"
-		else
-			# New format - construct mount string
-			yq '.mounts[]? | "\(.source):\(.target):\(.permissions)"' "$TEMP_STATE_FILE" 2>/dev/null | tr '\n' ',' | sed 's/,$//'
-		fi
+	# Use vm-config to extract mounts
+	if "$VM_CONFIG" has-field "$TEMP_STATE_FILE" "mounts.0" "source" 2>/dev/null; then
+		# New format - construct mount string
+		"$VM_CONFIG" transform "$TEMP_STATE_FILE" 'mounts[] | "\(.source):\(.target):\(.permissions)"' --format comma 2>/dev/null
 	else
-		# Fallback to awk if yq is not available
-		# This will work for old format, new format requires parsing
-		awk '/^mounts:/{flag=1; next} /^[^ ]/{flag=0} flag && /^  - /{print}' "$TEMP_STATE_FILE" 2>/dev/null | 
-			awk -F': ' '/source:/{s=$2} /target:/{t=$2} /permissions:/{p=$2; print s":"t":"p}' | 
-			tr '\n' ',' | sed 's/,$//'
+		# Old format - direct strings
+		"$VM_CONFIG" transform "$TEMP_STATE_FILE" 'mounts[]' --format comma 2>/dev/null
 	fi
 }
 
@@ -578,31 +568,29 @@ update_temp_vm_with_mounts() {
 	
 	# Read current mount configuration and build mount string for docker provisioning
 	local mount_string=""
-	if command -v yq &> /dev/null; then
-		# Check format and build mount string (space-separated realpath:basename pairs)
-		if yq '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
-			# New format - extract source paths and create realpath:basename format
-			mount_string=$(yq '.mounts[] | .source' "$TEMP_STATE_FILE" 2>/dev/null | while read -r source; do
-				# Get absolute path, fallback to source if resolution fails
-				if abs_path=$(portable_readlink "$source" 2>/dev/null); then
-					echo -n "$abs_path:$(basename "$source") "
-				else
-					echo -n "$source:$(basename "$source") "
-				fi
-			done | sed 's/ $//')
-		else
-			# Old format - parse and convert to expected format
-			mount_string=$(yq '.mounts[]' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
-				# Extract source from old format mount string
-				source="${mount%%:*}"
-				# Get absolute path, fallback to source if resolution fails
-				if abs_path=$(portable_readlink "$source" 2>/dev/null); then
-					echo -n "$abs_path:$(basename "$source") "
-				else
-					echo -n "$source:$(basename "$source") "
-				fi
-			done | sed 's/ $//')
-		fi
+	# Check format and build mount string (space-separated realpath:basename pairs)
+	if "$VM_CONFIG" has-field "$TEMP_STATE_FILE" "mounts.0" "source" 2>/dev/null; then
+		# New format - extract source paths and create realpath:basename format
+		mount_string=$("$VM_CONFIG" transform "$TEMP_STATE_FILE" 'mounts[].source' --format lines 2>/dev/null | while read -r source; do
+			# Get absolute path, fallback to source if resolution fails
+			if abs_path=$(portable_readlink "$source" 2>/dev/null); then
+				echo -n "$abs_path:$(basename "$source") "
+			else
+				echo -n "$source:$(basename "$source") "
+			fi
+		done | sed 's/ $//')
+	else
+		# Old format - parse and convert to expected format
+		mount_string=$("$VM_CONFIG" transform "$TEMP_STATE_FILE" 'mounts[]' --format lines 2>/dev/null | while read -r mount; do
+			# Extract source from old format mount string
+			source="${mount%%:*}"
+			# Get absolute path, fallback to source if resolution fails
+			if abs_path=$(portable_readlink "$source" 2>/dev/null); then
+				echo -n "$abs_path:$(basename "$source") "
+			else
+				echo -n "$source:$(basename "$source") "
+			fi
+		done | sed 's/ $//')
 	fi
 	
 	echo "🛑 Stopping container..."
@@ -1124,17 +1112,17 @@ EOF
 				echo ""
 				echo "Mounts:"
 				# Try to detect format and display accordingly
-				if yq '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
+				if "$VM_CONFIG" has-field "$TEMP_STATE_FILE" "mounts.0" "source" 2>/dev/null; then
 					# New format
-					yq '.mounts[]? | "  • \(.source) → \(.target) [\(.permissions)]"' "$TEMP_STATE_FILE" 2>/dev/null
+					"$VM_CONFIG" transform "$TEMP_STATE_FILE" 'mounts[] | "  • \(.source) → \(.target) [\(.permissions)]"' --format lines 2>/dev/null
 				else
 					# Old format
-					yq '.mounts[]?' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
+					"$VM_CONFIG" transform "$TEMP_STATE_FILE" 'mounts[]' --format lines 2>/dev/null | while read -r mount; do
 						echo "  • $mount"
 					done
 				fi
 			else
-				# Fallback display without yq
+				# Fallback display
 				cat "$TEMP_STATE_FILE"
 			fi
 			
@@ -1542,7 +1530,6 @@ EOF
 				fi
 			else
 				# Fallback display
-				echo "  (install yq for better formatting)"
 				grep "^  - " "$TEMP_STATE_FILE" | sed 's/^  - /  📂 /'
 			fi
 			
@@ -2196,7 +2183,7 @@ EOF
 	if ! CONFIG=$(yq eval-all 'select(fileIndex == 0) * select(fileIndex == 1)' <(echo "$SCHEMA_DEFAULTS") "$TEMP_CONFIG_FILE" 2>&1); then
 		echo "❌ Failed to generate temp VM configuration"
 		echo "📋 Error merging configs: $CONFIG"
-		echo "💡 Check that yq is installed and working: yq --version"
+		echo "💡 Check that vm-config is installed and working: $VM_CONFIG --version"
 		rm -f "$TEMP_CONFIG_FILE"
 		exit 1
 	fi
