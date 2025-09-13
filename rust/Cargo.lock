@@ -437,7 +437,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "vm-common"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -447,7 +447,7 @@ dependencies = [
 
 [[package]]
 name = "vm-config"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -463,7 +463,7 @@ dependencies = [
 
 [[package]]
 name = "vm-links"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -478,7 +478,7 @@ dependencies = [
 
 [[package]]
 name = "vm-ports"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "clap",
