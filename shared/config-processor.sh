@@ -26,7 +26,7 @@ VM_TOOL_DIR="${VM_TOOL_DIR:-$(cd "$CONFIG_PROCESSOR_DIR/.." && pwd)}"
 # 1. Environment variable VM_CONFIG_BIN
 # 2. Compiled binary in the vm-tool directory
 # 3. System-installed vm-config
-# 4. Fall back to traditional yq
+# vm-config binary is required - no fallbacks
 find_config_processor() {
     # Check environment variable first
     if [[ -n "${VM_CONFIG_BIN:-}" ]] && [[ -x "$VM_CONFIG_BIN" ]]; then
@@ -51,20 +51,14 @@ find_config_processor() {
     return 1
 }
 
-# Initialize the config processor
-VM_CONFIG=""
-if VM_CONFIG="$(find_config_processor)"; then
-    USE_RUST_CONFIG=true
-else
-    USE_RUST_CONFIG=false
-    # Fall back to yq if available
-    if ! command -v yq >/dev/null 2>&1; then
-        echo "❌ Error: Neither vm-config nor yq is available" >&2
-        echo "   Install the Rust config processor by running:" >&2
-        echo "   cd $VM_TOOL_DIR/rust/vm-config && cargo build --release" >&2
-        exit 1
-    fi
-fi
+# Initialize the config processor - vm-config is required
+VM_CONFIG="$(find_config_processor)" || {
+    echo "❌ Error: vm-config binary is not available" >&2
+    echo "   Install the Rust config processor by running:" >&2
+    echo "   cd $VM_TOOL_DIR/rust/vm-config && cargo build --release" >&2
+    echo "   Or run the installer: ./install.sh" >&2
+    exit 1
+}
 
 #=============================================================================
 # MAIN CONFIG PROCESSING FUNCTIONS
@@ -84,31 +78,19 @@ process_vm_config() {
         return 1
     fi
 
-    if [[ "$USE_RUST_CONFIG" == "true" ]]; then
-        # Use Rust implementation
-        local cmd=("$VM_CONFIG" "process")
-        cmd+=("--defaults" "$defaults_path")
+    # Use Rust implementation
+    local cmd=("$VM_CONFIG" "process")
+    cmd+=("--defaults" "$defaults_path")
 
-        if [[ -n "$config_path" ]] && [[ -f "$config_path" ]]; then
-            cmd+=("--config" "$config_path")
-        fi
-
-        cmd+=("--project-dir" "$project_dir")
-        cmd+=("--presets-dir" "$VM_TOOL_DIR/configs/presets")
-        cmd+=("--format" "yaml")
-
-        "${cmd[@]}"
-    else
-        # Fallback to shell/yq implementation
-        # This is a simplified version - the full implementation would need more logic
-        echo "⚠️  Using fallback yq implementation (limited functionality)" >&2
-
-        if [[ -f "$config_path" ]]; then
-            # Simple merge without preset detection
-            yq eval-all 'select(fileIndex == 0) * select(fileIndex == 1)' \
-                "$defaults_path" "$config_path"        else
-            yq eval '.' "$defaults_path"        fi
+    if [[ -n "$config_path" ]] && [[ -f "$config_path" ]]; then
+        cmd+=("--config" "$config_path")
     fi
+
+    cmd+=("--project-dir" "$project_dir")
+    cmd+=("--presets-dir" "$VM_TOOL_DIR/configs/presets")
+    cmd+=("--format" "yaml")
+
+    "${cmd[@]}"
 }
 
 # Validate configuration
@@ -122,18 +104,7 @@ validate_config() {
         return 1
     fi
 
-    if [[ "$USE_RUST_CONFIG" == "true" ]]; then
-        "$VM_CONFIG" validate "$config_path"
-    else
-        # Basic validation with yq
-        if yq eval '.' "$config_path" >/dev/null 2>&1; then
-            echo "✅ Configuration syntax is valid"
-            return 0
-        else
-            echo "❌ Invalid YAML syntax in $config_path" >&2
-            return 1
-        fi
-    fi
+    "$VM_CONFIG" validate "$config_path"
 }
 
 # Query a specific field from configuration
@@ -148,12 +119,7 @@ query_config() {
         return 1
     fi
 
-    if [[ "$USE_RUST_CONFIG" == "true" ]]; then
-        "$VM_CONFIG" query "$config_path" "$field_path" --raw 2>/dev/null || echo ""
-    else
-        # Fallback to yq
-        yq eval "$field_path" "$config_path" 2>/dev/null || echo ""
-    fi
+    "$VM_CONFIG" query "$config_path" "$field_path" --raw 2>/dev/null || echo ""
 }
 
 # Merge multiple configurations
@@ -163,25 +129,12 @@ merge_configs() {
     local base="$1"
     shift
 
-    if [[ "$USE_RUST_CONFIG" == "true" ]]; then
-        local cmd=("$VM_CONFIG" "merge" "--base" "$base")
-        for overlay in "$@"; do
-            cmd+=("--overlay" "$overlay")
-        done
-        cmd+=("--format" "yaml")
-        "${cmd[@]}"
-    else
-        # Fallback to yq merge
-        local merge_cmd="yq eval-all"
-        local merge_expr="select(fileIndex == 0)"
-        local index=1
-
-        for overlay in "$@"; do
-            merge_expr+=" * select(fileIndex == $index)"
-            ((index++))
-        done
-
-        $merge_cmd "$merge_expr" "$base" "$@"    fi
+    local cmd=("$VM_CONFIG" "merge" "--base" "$base")
+    for overlay in "$@"; do
+        cmd+=("--overlay" "$overlay")
+    done
+    cmd+=("--format" "yaml")
+    "${cmd[@]}"
 }
 
 # Detect preset for project
@@ -190,33 +143,10 @@ merge_configs() {
 detect_preset() {
     local project_dir="${1:-.}"
 
-    if [[ "$USE_RUST_CONFIG" == "true" ]]; then
-        "$VM_CONFIG" preset \
-            --dir "$project_dir" \
-            --presets-dir "$VM_TOOL_DIR/configs/presets" \
-            --detect-only
-    else
-        # Simplified preset detection
-        if [[ -f "$project_dir/package.json" ]]; then
-            if grep -q '"react"' "$project_dir/package.json" 2>/dev/null; then
-                echo "react"
-            else
-                echo "nodejs"
-            fi
-        elif [[ -f "$project_dir/requirements.txt" ]] || [[ -f "$project_dir/setup.py" ]]; then
-            echo "python"
-        elif [[ -f "$project_dir/Cargo.toml" ]]; then
-            echo "rust"
-        elif [[ -f "$project_dir/go.mod" ]]; then
-            echo "go"
-        elif [[ -f "$project_dir/Gemfile" ]]; then
-            echo "rails"
-        elif [[ -f "$project_dir/manage.py" ]]; then
-            echo "django"
-        else
-            echo "base"
-        fi
-    fi
+    "$VM_CONFIG" preset \
+        --dir "$project_dir" \
+        --presets-dir "$VM_TOOL_DIR/configs/presets" \
+        --detect-only
 }
 
 #=============================================================================
@@ -235,11 +165,7 @@ yq_json() {
     local filter="$1"
     local file="$2"
 
-    if [[ "$USE_RUST_CONFIG" == "true" ]]; then
-        "$VM_CONFIG" query "$file" "$filter" 2>/dev/null || echo "null"
-    else
-        yq eval "$filter" "$file" 2>/dev/null || echo "null"
-    fi
+    "$VM_CONFIG" query "$file" "$filter" 2>/dev/null || echo "null"
 }
 
 # Legacy validate_config_file function for vm.sh compatibility
@@ -313,11 +239,7 @@ EOF
 #=============================================================================
 
 if [[ "${CONFIG_PROCESSOR_DEBUG:-}" == "true" ]]; then
-    if [[ "$USE_RUST_CONFIG" == "true" ]]; then
-        echo "🚀 Using Rust config processor: $VM_CONFIG" >&2
-    else
-        echo "⚠️  Using fallback yq implementation" >&2
-    fi
+    echo "🚀 Using Rust config processor: $VM_CONFIG" >&2
 fi
 
 # Note: Function exporting works differently in bash vs zsh

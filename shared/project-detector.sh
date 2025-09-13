@@ -15,37 +15,27 @@ detect_project_type() {
     if [[ -f "package.json" ]]; then
         local framework="nodejs"
         # Parse package.json to detect frameworks
-        if command -v jq >/dev/null 2>&1; then
-            # Use jq if available for robust JSON parsing
-            local deps
-            deps=$(yq eval '.dependencies // {} | keys[]' package.json 2>/dev/null)
-            local devdeps
-            devdeps=$(yq eval '.devDependencies // {} | keys[]' package.json 2>/dev/null)
-            local all_deps
-            all_deps=$(echo -e "$deps\n$devdeps")
+        # Parse package.json using standard text processing (no external dependencies)
+        # Extract dependencies and devDependencies using grep and sed
+        local deps=$(grep -A 100 '"dependencies"' package.json 2>/dev/null | \
+                     sed -n '/^[[:space:]]*"[^"]*":[[:space:]]*{/,/^[[:space:]]*}/p' | \
+                     grep -E '^[[:space:]]*"[^"]*"[[:space:]]*:' | \
+                     sed 's/^[[:space:]]*"\([^"]*\)".*/\1/')
+        local devdeps=$(grep -A 100 '"devDependencies"' package.json 2>/dev/null | \
+                        sed -n '/^[[:space:]]*"[^"]*":[[:space:]]*{/,/^[[:space:]]*}/p' | \
+                        grep -E '^[[:space:]]*"[^"]*"[[:space:]]*:' | \
+                        sed 's/^[[:space:]]*"\([^"]*\)".*/\1/')
+        local all_deps=$(echo -e "$deps\n$devdeps")
 
-            # Check for more specific frameworks first
-            if echo "$all_deps" | grep -q "^next$"; then
-                framework="next"
-            elif echo "$all_deps" | grep -q "^@angular/core$"; then
-                framework="angular"
-            elif echo "$all_deps" | grep -q "^vue$"; then
-                framework="vue"
-            elif echo "$all_deps" | grep -q "^react$"; then
-                framework="react"
-            fi
-        else
-            # Fallback: simple grep-based detection (less reliable but works without jq)
-            # Check for more specific frameworks first
-            if grep -q '"next"' package.json 2>/dev/null; then
-                framework="next"
-            elif grep -q '"@angular/core"' package.json 2>/dev/null; then
-                framework="angular"
-            elif grep -q '"vue"' package.json 2>/dev/null; then
-                framework="vue"
-            elif grep -q '"react"' package.json 2>/dev/null; then
-                framework="react"
-            fi
+        # Check for more specific frameworks first
+        if echo "$all_deps" | grep -q "^next$"; then
+            framework="next"
+        elif echo "$all_deps" | grep -q "^@angular/core$"; then
+            framework="angular"
+        elif echo "$all_deps" | grep -q "^vue$"; then
+            framework="vue"
+        elif echo "$all_deps" | grep -q "^react$"; then
+            framework="react"
         fi
         detected_types+=("$framework")
     fi

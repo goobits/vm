@@ -41,113 +41,66 @@ echo "🚀 Installing VM Infrastructure..."
 echo "📂 Installing from: $SCRIPT_DIR"
 echo ""
 
-# Check for required dependency: yq
+# Check for required dependencies: Rust and Cargo
 echo "🔍 Checking dependencies..."
-if ! command_exists yq; then
-    echo -e "${YELLOW}⚠️  yq is not installed (required for VM tool)${NC}"
+if ! command_exists rustc || ! command_exists cargo; then
+    echo -e "${YELLOW}⚠️  Rust is not installed (required for VM tool)${NC}"
     echo ""
 
     # Offer to install automatically
-    echo -n "Would you like to install yq automatically? (y/N): "
-    read -r INSTALL_YQ
+    echo -n "Would you like to install Rust automatically? (y/N): "
+    read -r INSTALL_RUST
 
-    if [[ "$INSTALL_YQ" =~ ^[Yy]$ ]]; then
-        echo "📦 Installing yq..."
+    if [[ "$INSTALL_RUST" =~ ^[Yy]$ ]]; then
+        echo "📦 Installing Rust..."
 
-        if [[ "$OS" == "macos" ]]; then
-            # Try brew first if available
-            if command_exists brew; then
-                echo "Using Homebrew to install yq..."
-                brew install yq
-            else
-                # Direct download for macOS
-                ARCH=$(uname -m)
-                if [[ "$ARCH" == "arm64" ]]; then
-                    YQ_URL="https://github.com/mikefarah/yq/releases/latest/download/yq_darwin_arm64"
-                else
-                    YQ_URL="https://github.com/mikefarah/yq/releases/latest/download/yq_darwin_amd64"
-                fi
+        # Install Rust using rustup
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
-                echo "Downloading yq for macOS ($ARCH)..."
-                if command_exists sudo; then
-                    sudo curl -L "$YQ_URL" -o /usr/local/bin/yq
-                    sudo chmod +x /usr/local/bin/yq
-                else
-                    # Try user's local bin
-                    mkdir -p "$HOME/.local/bin"
-                    curl -L "$YQ_URL" -o "$HOME/.local/bin/yq"
-                    chmod +x "$HOME/.local/bin/yq"
-                fi
-            fi
-        elif [[ "$OS" == "linux" ]]; then
-            # Detect Linux architecture
-            ARCH=$(uname -m)
-            case "$ARCH" in
-                x86_64)  YQ_BINARY="yq_linux_amd64";;
-                aarch64) YQ_BINARY="yq_linux_arm64";;
-                armv7l)  YQ_BINARY="yq_linux_arm";;
-                *)       YQ_BINARY="yq_linux_amd64";;
-            esac
+        # Source the Rust environment
+        source "$HOME/.cargo/env" 2>/dev/null || true
 
-            YQ_URL="https://github.com/mikefarah/yq/releases/latest/download/$YQ_BINARY"
-
-            echo "Downloading yq for Linux ($ARCH)..."
-            if command_exists sudo; then
-                sudo curl -L "$YQ_URL" -o /usr/local/bin/yq
-                sudo chmod +x /usr/local/bin/yq
-            else
-                # Try user's local bin
-                mkdir -p "$HOME/.local/bin"
-                curl -L "$YQ_URL" -o "$HOME/.local/bin/yq"
-                chmod +x "$HOME/.local/bin/yq"
-            fi
-        fi
-
-        # Verify installation
-        if command_exists yq; then
-            echo -e "${GREEN}✅ yq installed successfully${NC}"
+        # Verify Rust installation
+        if command_exists rustc && command_exists cargo; then
+            echo -e "${GREEN}✅ Rust installed successfully${NC}"
         else
-            echo -e "${RED}❌ Failed to install yq${NC}"
+            echo -e "${RED}❌ Failed to install Rust${NC}"
             echo ""
-            echo "Please install manually:"
-            if [[ "$OS" == "macos" ]]; then
-                echo "  brew install yq"
-            else
-                echo "  Visit: https://github.com/mikefarah/yq/releases"
-            fi
+            echo "Please install Rust manually:"
+            echo -e "${GREEN}  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh${NC}"
+            echo ""
+            echo "After installing Rust, run this installer again."
             exit 1
         fi
     else
+        echo -e "${RED}❌ Rust is required for the VM tool${NC}"
         echo ""
-        echo "To install yq manually:"
-        if [[ "$OS" == "macos" ]]; then
-            echo -e "${GREEN}  brew install yq${NC}"
-            echo ""
-            echo "Or download directly:"
-            ARCH=$(uname -m)
-            if [[ "$ARCH" == "arm64" ]]; then
-                echo -e "${GREEN}  sudo curl -L https://github.com/mikefarah/yq/releases/latest/download/yq_darwin_arm64 -o /usr/local/bin/yq${NC}"
-            else
-                echo -e "${GREEN}  sudo curl -L https://github.com/mikefarah/yq/releases/latest/download/yq_darwin_amd64 -o /usr/local/bin/yq${NC}"
-            fi
-            echo -e "${GREEN}  sudo chmod +x /usr/local/bin/yq${NC}"
-        elif [[ "$OS" == "linux" ]]; then
-            ARCH=$(uname -m)
-            case "$ARCH" in
-                x86_64)  YQ_BINARY="yq_linux_amd64";;
-                aarch64) YQ_BINARY="yq_linux_arm64";;
-                *)       YQ_BINARY="yq_linux_amd64";;
-            esac
-            echo -e "${GREEN}  sudo curl -L https://github.com/mikefarah/yq/releases/latest/download/$YQ_BINARY -o /usr/local/bin/yq${NC}"
-            echo -e "${GREEN}  sudo chmod +x /usr/local/bin/yq${NC}"
-        fi
+        echo "Install Rust manually:"
+        echo -e "${GREEN}  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh${NC}"
         echo ""
-        echo "After installing yq, run this installer again."
+        echo "After installing Rust, run this installer again."
         exit 1
     fi
 fi
 
 echo -e "${GREEN}✅ Dependencies satisfied${NC}"
+echo ""
+
+# Build the vm-config binary
+echo "🔧 Building vm-config binary..."
+if [[ -d "$SCRIPT_DIR/rust/vm-config" ]]; then
+    cd "$SCRIPT_DIR/rust/vm-config"
+    if cargo build --release; then
+        echo -e "${GREEN}✅ vm-config binary built successfully${NC}"
+    else
+        echo -e "${RED}❌ Failed to build vm-config binary${NC}"
+        exit 1
+    fi
+    cd "$SCRIPT_DIR"
+else
+    echo -e "${RED}❌ vm-config source not found at: $SCRIPT_DIR/rust/vm-config${NC}"
+    exit 1
+fi
 echo ""
 
 INSTALL_DIR="${HOME}/.local/share/vm"

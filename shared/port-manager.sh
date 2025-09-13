@@ -79,7 +79,7 @@ check_port_conflicts() {
     if [[ -f "$REGISTRY_FILE" ]]; then
         # Get all projects from registry
         local projects
-        projects=$(yq eval 'keys[]' "$REGISTRY_FILE" 2>/dev/null || echo "")
+        projects=$(grep -o '"[^"]*"[[:space:]]*:' "$REGISTRY_FILE" 2>/dev/null | sed 's/^"\(.*\)"[[:space:]]*:.*/\1/' || echo "")
         
         for other_project in $projects; do
             # Skip checking against self
@@ -89,7 +89,7 @@ check_port_conflicts() {
             
             # Get the other project's range
             local other_range
-            other_range=$(yq eval ".\"$other_project\".range // empty" "$REGISTRY_FILE")
+            other_range=$(grep -A 10 "\"$other_project\"" "$REGISTRY_FILE" 2>/dev/null | grep '"range"' | sed 's/.*"range"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' || echo "")
             
             if [[ -n "$other_range" ]]; then
                 local other_parts
@@ -136,12 +136,20 @@ register_port_range() {
         local temp_file
         temp_file=$(mktemp)
         
-        # Update the registry
-        jq --arg project "$project_name" \
-           --arg range "$range" \
-           --arg path "$project_path" \
-           '.[$project] = {range: $range, path: $path}' \
-           "$REGISTRY_FILE" > "$temp_file"
+        # Update the registry using sed (safe JSON manipulation for simple case)
+        if [[ -s "$REGISTRY_FILE" ]] && ! grep -q '^[[:space:]]*{[[:space:]]*}[[:space:]]*$' "$REGISTRY_FILE"; then
+            # File has existing content, add comma and new entry
+            sed '$s/}$//' "$REGISTRY_FILE" > "$temp_file"
+            echo "  ,\"$project_name\": {\"range\": \"$range\", \"path\": \"$project_path\"}" >> "$temp_file"
+            echo "}" >> "$temp_file"
+        else
+            # Empty or minimal file, create new structure
+            cat > "$temp_file" <<EOF
+{
+  "$project_name": {"range": "$range", "path": "$project_path"}
+}
+EOF
+        fi
         
         mv "$temp_file" "$REGISTRY_FILE"
         
@@ -163,8 +171,10 @@ unregister_port_range() {
         local temp_file
         temp_file=$(mktemp)
         
-        # Remove the project from registry
-        jq --arg project "$project_name" 'del(.[$project])' "$REGISTRY_FILE" > "$temp_file"
+        # Remove the project from registry using sed
+        # Remove the project entry and handle comma cleanup
+        sed "/\"$project_name\"[[:space:]]*:[[:space:]]*{[^}]*}/d" "$REGISTRY_FILE" | \
+        sed 's/,[[:space:]]*,/,/g; s/{[[:space:]]*,/{/; s/,[[:space:]]*}$/}/' > "$temp_file"
         mv "$temp_file" "$REGISTRY_FILE"
         
         echo "✅ Unregistered port range for project '$project_name'"
@@ -178,7 +188,7 @@ get_project_range() {
     init_port_registry
     
     if [[ -f "$REGISTRY_FILE" ]]; then
-        yq eval ".\"$project_name\".range // empty" "$REGISTRY_FILE"
+        grep -A 10 "\"$project_name\"" "$REGISTRY_FILE" 2>/dev/null | grep '"range"' | sed 's/.*"range"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' || echo ""
     fi
 }
 
@@ -190,7 +200,12 @@ list_port_ranges() {
         echo "📡 Registered port ranges:"
         echo ""
         
-        yq eval 'to_entries[] | "  \(.key): \(.value.range) → \(.value.path)"' "$REGISTRY_FILE" 2>/dev/null || echo "  (none)"
+        grep -o '"[^"]*"[[:space:]]*:[[:space:]]*{[^}]*}' "$REGISTRY_FILE" 2>/dev/null | while read -r entry; do
+            project=$(echo "$entry" | sed 's/^"\([^"]*\)".*/\1/')
+            range=$(echo "$entry" | sed 's/.*"range"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+            path=$(echo "$entry" | sed 's/.*"path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+            echo "  $project: $range → $path"
+        done || echo "  (none)"
     else
         echo "📡 No port ranges registered yet"
     fi
@@ -206,7 +221,7 @@ suggest_next_range() {
     # Collect all used ranges
     local used_ranges=""
     if [[ -f "$REGISTRY_FILE" ]]; then
-        used_ranges=$(yq eval '.[].range // empty' "$REGISTRY_FILE" 2>/dev/null | sort -n)
+        used_ranges=$(grep '"range"' "$REGISTRY_FILE" 2>/dev/null | sed 's/.*"range"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | sort -n)
     fi
     
     # Find first available range

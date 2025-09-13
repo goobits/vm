@@ -19,34 +19,22 @@ merge_project_config() {
     local default_config_path="$1"
     local project_config_path="$2"
 
-    # Use Rust config processor if available
-    if [[ "$USE_RUST_CONFIG" == "true" ]]; then
-        # Use Rust implementation for fast, reliable merging
-        "$VM_CONFIG" process \
-            --defaults "$default_config_path" \
-            --config "$project_config_path" \
-            --format yaml
-    else
-        # Fallback to yq-based merging
-        if [[ ! -f "$default_config_path" ]]; then
-            echo "❌ Default configuration not found: $default_config_path" >&2
-            return 1
-        fi
-
-        if [[ ! -f "$project_config_path" ]]; then
-            echo "❌ Project configuration not found: $project_config_path" >&2
-            return 1
-        fi
-
-        # Simple merge with yq
-        if command -v yq >/dev/null 2>&1; then
-            yq eval-all 'select(fileIndex == 0) * select(fileIndex == 1)' \
-                "$default_config_path" "$project_config_path"
-        else
-            echo "❌ Neither vm-config nor yq is available" >&2
-            return 1
-        fi
+    # Always use Rust config processor
+    if [[ ! -f "$default_config_path" ]]; then
+        echo "❌ Default configuration not found: $default_config_path" >&2
+        return 1
     fi
+
+    if [[ ! -f "$project_config_path" ]]; then
+        echo "❌ Project configuration not found: $project_config_path" >&2
+        return 1
+    fi
+
+    # Use Rust implementation for fast, reliable merging
+    "$VM_CONFIG" process \
+        --defaults "$default_config_path" \
+        --config "$project_config_path" \
+        --format yaml
 }
 
 # Main function for command line usage

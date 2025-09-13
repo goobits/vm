@@ -20,12 +20,19 @@ source "$SCRIPT_DIR/shared/provider-interface.sh"
 TEMP_STATE_DIR="$HOME/.vm"
 TEMP_STATE_FILE="$TEMP_STATE_DIR/temp-vm.state"
 
-# Wrapper function for yq to handle different versions
-# This system has Python yq (kislyuk/yq) which outputs JSON, not raw strings
-yq_raw() {
+# Wrapper function for vm-config to replace yq functionality
+vm_config_query() {
 	local filter="$1"
 	local file="$2"
-	yq eval "$filter" "$file" - 2>/dev/null || echo ""
+	local default="${3:-""}"
+
+	# Use vm-config if available, fallback to empty string
+	if [[ -f "$VM_TOOL_DIR/rust/vm-config/target/release/vm-config" ]]; then
+		"$VM_TOOL_DIR/rust/vm-config/target/release/vm-config" query "$file" "$filter" --raw --default "$default" 2>/dev/null || echo "$default"
+	else
+		# Fallback for systems without vm-config (should be rare after full migration)
+		echo "$default"
+	fi
 }
 
 # Directory validation functions moved to shared/security-utils.sh
@@ -34,11 +41,7 @@ yq_raw() {
 # This centralizes the container name retrieval logic to reduce duplication
 get_container_name_from_state() {
 	local container_name=""
-	if command -v yq &> /dev/null; then
-		container_name=$(yq_raw '.container_name // ""' "$TEMP_STATE_FILE")
-	else
-		container_name=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
-	fi
+	container_name=$(vm_config_query 'container_name' "$TEMP_STATE_FILE" "")
 	echo "$container_name"
 }
 
@@ -90,9 +93,9 @@ validate_state_file() {
 		return 1
 	fi
 
-	# Test if file is valid YAML
-	if command -v yq &> /dev/null; then
-		if ! yq . "$TEMP_STATE_FILE" >/dev/null 2>&1; then
+	# Test if file is valid YAML using vm-config
+	if [[ -f "$VM_TOOL_DIR/rust/vm-config/target/release/vm-config" ]]; then
+		if ! "$VM_TOOL_DIR/rust/vm-config/target/release/vm-config" validate "$TEMP_STATE_FILE" >/dev/null 2>&1; then
 			echo "❌ State file is corrupted or invalid YAML" >&2
 			echo "📁 File: $TEMP_STATE_FILE" >&2
 			echo "💡 Try 'vm temp destroy' to clean up" >&2
@@ -174,14 +177,9 @@ read_temp_state() {
 	if [[ ! -f "$TEMP_STATE_FILE" ]]; then
 		return 1
 	fi
-	
-	# Check if yq is available for parsing YAML
-	if command -v yq &> /dev/null; then
-		yq_raw '.' "$TEMP_STATE_FILE"
-	else
-		# Fallback to cat if yq is not available
-		cat "$TEMP_STATE_FILE"
-	fi
+
+	# Just output the file contents - no processing needed
+	cat "$TEMP_STATE_FILE"
 }
 
 # Get temp VM container name from state
@@ -206,19 +204,15 @@ get_temp_provider() {
 		echo "docker"  # Default to docker for backwards compatibility
 		return 1
 	fi
-	
-	local provider=""
-	if command -v yq &> /dev/null; then
-		provider=$(yq_raw '.provider // ""' "$TEMP_STATE_FILE")
-	else
-		provider=$(grep "^provider:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
-	fi
-	
+
+	local provider
+	provider=$(vm_config_query 'provider' "$TEMP_STATE_FILE" "docker")
+
 	# Default to docker if not specified (backwards compatibility)
 	if [[ -z "$provider" ]]; then
 		provider="docker"
 	fi
-	
+
 	echo "$provider"
 }
 
@@ -570,10 +564,7 @@ update_temp_vm_with_mounts() {
 	
 	# Get current state
 	local project_dir
-	project_dir=$(yq_raw '.project_dir' "$TEMP_STATE_FILE")
-	if [[ -z "$project_dir" ]]; then
-		project_dir=""
-	fi
+	project_dir=$(vm_config_query 'project_dir' "$TEMP_STATE_FILE" "")
 	if [[ -z "$project_dir" ]]; then
 		echo "❌ Error: Could not read project directory from state file" >&2
 		echo "📁 State file: $TEMP_STATE_FILE" >&2

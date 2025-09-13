@@ -16,23 +16,8 @@ if [[ "${VM_DEBUG:-}" = "true" ]]; then
     set -x
 fi
 
-# Check for required tools
-if ! command -v yq &> /dev/null; then
-    vm_error "yq is not installed" "component=yaml_processor"
-    echo ""
-    echo "📦 To install yq (mikefarah/yq v4+):"
-    echo "   sudo apt remove yq 2>/dev/null || true"
-    echo "   sudo wget -qO /usr/local/bin/yq $(get_yq_download_url)"
-    echo "   sudo chmod +x /usr/local/bin/yq"
-    echo ""
-    echo "📦 To install yq on macOS:"
-    echo "   brew install yq"
-    echo ""
-    echo "📦 To install yq on other systems:"
-    echo "   Visit: https://github.com/mikefarah/yq/releases"
-    echo ""
-    exit 1
-fi
+# Check for required tools - vm-config binary (handled by config-processor.sh)
+# The config-processor.sh module handles vm-config availability and fallbacks
 
 # Default port configuration (removed unused variables)
 
@@ -69,6 +54,51 @@ source "$SCRIPT_DIR/shared/project-detector.sh"
 source "$SCRIPT_DIR/shared/port-manager.sh"
 source "$SCRIPT_DIR/lib/progress-reporter.sh"
 source "$SCRIPT_DIR/lib/docker-compose-progress.sh"
+
+# Helper function to query config with fallback parsing
+query_config_field() {
+    local config="$1"
+    local field="$2"
+    local default="$3"
+
+    local temp_config
+    temp_config=$(mktemp)
+    echo "$config" > "$temp_config"
+
+    local result
+    if [[ -f "$SCRIPT_DIR/rust/vm-config/target/release/vm-config" ]]; then
+        result="$("$SCRIPT_DIR/rust/vm-config/target/release/vm-config" query "$temp_config" "$field" --raw --default "$default" 2>/dev/null || echo "$default")"
+    else
+        # Fallback: basic YAML parsing with grep/awk
+        case "$field" in
+            "project.name")
+                result="$(grep -A 5 '^project:' "$temp_config" | grep 'name:' | awk '{print $2}' | head -1)"
+                ;;
+            "port_range")
+                result="$(grep '^port_range:' "$temp_config" | awk '{print $2}' | head -1)"
+                ;;
+            "vm.user")
+                result="$(grep -A 5 '^vm:' "$temp_config" | grep 'user:' | awk '{print $2}' | head -1)"
+                ;;
+            "project.workspace_path")
+                result="$(grep -A 5 '^project:' "$temp_config" | grep 'workspace_path:' | awk '{print $2}' | head -1)"
+                ;;
+            "services.audio.enabled")
+                result="$(grep -A 10 '^services:' "$temp_config" | grep -A 5 'audio:' | grep 'enabled:' | awk '{print $2}' | head -1)"
+                ;;
+            "__config_dir")
+                result="$(grep '^__config_dir:' "$temp_config" | awk '{print $2}' | head -1)"
+                ;;
+            *)
+                result=""
+                ;;
+        esac
+        [[ -z "$result" ]] && result="$default"
+    fi
+
+    rm -f "$temp_config"
+    echo "$result"
+}
 
 # Set up proper cleanup handlers for temporary files
 setup_temp_file_handlers
@@ -193,13 +223,8 @@ load_config() {
     local config_path="$1"
     local original_dir="$2"
 
-    # Use enhanced config loading with preset support if presets are enabled
-    if [[ "${VM_USE_PRESETS:-true}" = "true" ]]; then
-        load_config_with_presets "$config_path" "$original_dir"
-    else
-        # Use standard config loading without presets
-        load_and_merge_config "$config_path" "$original_dir"
-    fi
+    # Use Rust-based config processing (always includes preset support)
+    process_vm_config "$config_path" "$original_dir"
 }
 
 
@@ -601,7 +626,7 @@ manage_macos_pulseaudio() {
     
     # Check if audio is enabled in config
     local audio_enabled
-    audio_enabled="$(echo "$config" | yq eval '.services.audio.enabled // false')"
+    audio_enabled="$(query_config_field "$config" 'services.audio.enabled' 'false')"
     
     if [[ "$audio_enabled" != "true" ]]; then
         return 0  # Audio not enabled, nothing to do
@@ -749,8 +774,10 @@ docker_up() {
     # Check and register port range if specified
     local port_range
     local project_name
-    project_name=$(echo "$config" | yq -r '.project.name // "project"')
-    port_range=$(echo "$config" | yq -r '.port_range // ""')
+
+    # Query config using helper function
+    project_name="$(query_config_field "$config" 'project.name' 'project')"
+    port_range="$(query_config_field "$config" 'port_range' '')"
     
     if [[ -n "$port_range" ]]; then
         progress_task "📡 Checking port range $port_range"
@@ -1160,7 +1187,7 @@ docker_up() {
     # Fix volume permissions before Ansible
     progress_task "Setting up permissions"
     local project_user
-    project_user=$(echo "$config" | yq '.vm.user // "developer"')
+    project_user="$(query_config_field "$config" 'vm.user' 'developer')"
     if docker_run "exec" "$config" "$project_dir" chown -R "$(printf '%q' "$project_user"):$(printf '%q' "$project_user")" "/home/$(printf '%q' "$project_user")/.nvm" "/home/$(printf '%q' "$project_user")/.cache"; then
         progress_done
     else
@@ -1331,9 +1358,9 @@ docker_ssh() {
 
     # Get workspace path and user from config
     local workspace_path
-    workspace_path=$(echo "$config" | yq '.project.workspace_path // "/workspace"')
+    workspace_path="$(query_config_field "$config" 'project.workspace_path' '/workspace')"
     local project_user
-    project_user=$(echo "$config" | yq '.vm.user // "developer"')
+    project_user="$(query_config_field "$config" 'vm.user' 'developer')"
     local target_dir="${workspace_path}"
 
     if [[ "${VM_DEBUG:-}" = "true" ]]; then
@@ -1553,7 +1580,7 @@ docker_destroy() {
     
     # Unregister port range if it exists
     local port_range
-    port_range=$(echo "$config" | yq '.port_range // ""')
+    port_range="$(query_config_field "$config" 'port_range' '')"
     if [[ -n "$port_range" ]]; then
         progress_task "📡 Unregistering port range"
         unregister_port_range "$project_name"
@@ -1599,8 +1626,8 @@ docker_status() {
     # Show port range info if configured
     local port_range
     local project_name
-    project_name=$(echo "$config" | yq -r '.project.name // "project"')
-    port_range=$(echo "$config" | yq -r '.port_range // ""')
+    project_name="$(query_config_field "$config" 'project.name' 'project')"
+    port_range="$(query_config_field "$config" 'port_range' '')"
     
     if [[ -n "$port_range" ]]; then
         echo ""
@@ -1608,7 +1635,12 @@ docker_status() {
         
         # Count used ports in range
         local ports_list
-        ports_list=$(echo "$config" | yq '.ports // {} | to_entries | .[].value')
+        local temp_config
+        temp_config=$(mktemp)
+        echo "$config" > "$temp_config"
+        # Extract port values from YAML ports section
+        ports_list="$(grep -A 20 '^ports:' "$temp_config" | grep ':' | grep -v '^ports:' | awk '{print $2}' | tr '\n' ' ')"
+        rm -f "$temp_config"
         
         if [[ -n "$ports_list" ]]; then
             local range_start range_end
@@ -1893,7 +1925,7 @@ docker_provision() {
     # Fix volume permissions before Ansible
     progress_task "Setting up permissions"
     local project_user
-    project_user=$(echo "$config" | yq '.vm.user // "developer"')
+    project_user="$(query_config_field "$config" 'vm.user' 'developer')"
     if docker_run "exec" "$config" "$project_dir" chown -R "$(printf '%q' "$project_user"):$(printf '%q' "$project_user")" "/home/$(printf '%q' "$project_user")/.nvm" "/home/$(printf '%q' "$project_user")/.cache"; then
         progress_done
     else
@@ -2085,12 +2117,14 @@ vm_list() {
             created_at=""
             project_dir=""
 
-            if command -v yq &> /dev/null; then
-                temp_container=$(yq '.container_name // ""' "$TEMP_STATE_FILE" 2>/dev/null)
-                created_at=$(yq '.created_at // ""' "$TEMP_STATE_FILE" 2>/dev/null)
-                project_dir=$(yq '.project_dir // ""' "$TEMP_STATE_FILE" 2>/dev/null)
+            # Use temporary-vm-utils functions for state file operations
+            temp_container=$(get_container_name_from_state 2>/dev/null)
+            if [[ -f "$SCRIPT_DIR/rust/vm-config/target/release/vm-config" ]]; then
+                created_at="$("$SCRIPT_DIR/rust/vm-config/target/release/vm-config" query "$TEMP_STATE_FILE" 'created_at' --raw --default '' 2>/dev/null)"
+                project_dir="$("$SCRIPT_DIR/rust/vm-config/target/release/vm-config" query "$TEMP_STATE_FILE" 'project_dir' --raw --default '' 2>/dev/null)"
             else
-                temp_container=$(grep "^container_name:" "$TEMP_STATE_FILE" 2>/dev/null | cut -d: -f2- | sed 's/^[[:space:]]*//')
+                created_at="$(grep '^created_at:' "$TEMP_STATE_FILE" 2>/dev/null | awk '{print $2}')"
+                project_dir="$(grep '^project_dir:' "$TEMP_STATE_FILE" 2>/dev/null | awk '{print $2}')"
             fi
 
             if [[ -n "$temp_container" ]]; then
@@ -2103,20 +2137,18 @@ vm_list() {
 
                 # Get mounts in a more readable format
                 local mounts=""
-                if command -v yq &> /dev/null; then
-                    # Check if new format (objects with source/target/permissions) exists
-                    if yq '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
-                        # New format - extract source paths
-                        mounts=$(yq '.mounts[].source' "$TEMP_STATE_FILE" 2>/dev/null | while read -r source; do
-                            echo -n "$(basename "$source"), "
-                        done | sed 's/, $//')
-                    else
-                        # Old format fallback (simple strings)
-                        mounts=$(yq '.mounts[]?' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
-                            source_path=$(echo "$mount" | cut -d: -f1)
-                            echo -n "$(basename "$source_path"), "
-                        done | sed 's/, $//')
-                    fi
+                # Parse mounts from YAML - look for either new format (source:) or old format
+                if grep -q 'source:' "$TEMP_STATE_FILE" 2>/dev/null; then
+                    # New format - extract source paths
+                    mounts="$(grep -A 3 'source:' "$TEMP_STATE_FILE" | grep 'source:' | awk '{print $2}' | while read -r source; do
+                        echo -n "$(basename "$source"), "
+                    done | sed 's/, $//')"
+                else
+                    # Old format or simple parsing
+                    mounts="$(grep -A 10 '^mounts:' "$TEMP_STATE_FILE" | grep -E '^  - ' | sed 's/^  - //' | while read -r mount; do
+                        source_path=$(echo "$mount" | cut -d: -f1)
+                        echo -n "$(basename "$source_path"), "
+                    done | sed 's/, $//')"
                 fi
 
                 if [[ -z "$mounts" ]]; then
@@ -2710,7 +2742,7 @@ case "${1:-}" in
             # Determine project directory
             if [[ "$CUSTOM_CONFIG" = "__SCAN__" ]]; then
                 # In scan mode, get the directory where config was found
-                CONFIG_DIR=$(echo "$CONFIG" | yq '.__config_dir // ""' 2>/dev/null)
+                CONFIG_DIR="$(query_config_field "$CONFIG" '__config_dir' '')"
                 if [[ -n "$CONFIG_DIR" ]]; then
                     PROJECT_DIR="$CONFIG_DIR"
                 else
@@ -2869,7 +2901,7 @@ case "${1:-}" in
                     if [[ "$CUSTOM_CONFIG" = "__SCAN__" ]]; then
                         # In scan mode, we need to figure out where we are relative to the found config
                         # Get the directory where vm.yaml was found from validate-config output
-                        CONFIG_DIR=$(echo "$CONFIG" | yq '.__config_dir // ""' 2>/dev/null)
+                        CONFIG_DIR="$(query_config_field "$CONFIG" '__config_dir' '')"
                         if [[ "${VM_DEBUG:-}" = "true" ]]; then
                             echo "DEBUG start: CUSTOM_CONFIG='$CUSTOM_CONFIG'" >&2
                             echo "DEBUG start: CONFIG_DIR='$CONFIG_DIR'" >&2
@@ -2901,7 +2933,7 @@ case "${1:-}" in
                     if [[ "$CUSTOM_CONFIG" = "__SCAN__" ]]; then
                         # In scan mode, we need to figure out where we are relative to the found config
                         # Get the directory where vm.yaml was found from validate-config output
-                        CONFIG_DIR=$(echo "$CONFIG" | yq '.__config_dir // ""' 2>/dev/null)
+                        CONFIG_DIR="$(query_config_field "$CONFIG" '__config_dir' '')"
                         if [[ -n "$CONFIG_DIR" ]] && [[ "$CONFIG_DIR" != "$CURRENT_DIR" ]]; then
                             # Calculate path from config dir to current dir
                             RELATIVE_PATH=$(portable_relative_path "$CONFIG_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
@@ -2986,7 +3018,7 @@ case "${1:-}" in
                     # Calculate relative path (similar to Docker SSH logic)
                     if [[ "$CUSTOM_CONFIG" = "__SCAN__" ]]; then
                         # In scan mode, figure out where we are relative to the found config
-                        CONFIG_DIR=$(echo "$CONFIG" | yq '.__config_dir // ""' 2>/dev/null)
+                        CONFIG_DIR="$(query_config_field "$CONFIG" '__config_dir' '')"
                         if [[ -n "$CONFIG_DIR" ]] && [[ "$CONFIG_DIR" != "$CURRENT_DIR" ]]; then
                             RELATIVE_PATH=$(portable_relative_path "$CONFIG_DIR" "$CURRENT_DIR" 2>/dev/null || echo ".")
                         else
@@ -2998,7 +3030,7 @@ case "${1:-}" in
                     fi
 
                     # Get workspace path from config
-                    WORKSPACE_PATH=$(echo "$CONFIG" | yq '.project.workspace_path // "/workspace"')
+                    WORKSPACE_PATH="$(query_config_field "$CONFIG" 'project.workspace_path' '/workspace')"
 
                     if [[ "$RELATIVE_PATH" != "." ]]; then
                         TARGET_DIR="${WORKSPACE_PATH}/${RELATIVE_PATH}"

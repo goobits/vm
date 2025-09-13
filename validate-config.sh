@@ -1,28 +1,21 @@
 #!/bin/bash
 # VM Configuration Manager - Shell version
-# Purpose: Load, merge, validate, and output final configuration using yq for YAML
+# Purpose: Load, merge, validate, and output final configuration using vm-config for YAML
 # Usage: ./validate-config.sh [--validate] [--get-config] [--init] [config-path]
 
 set -e
 set -u
 
-# Check for required tools
-if ! command -v yq &> /dev/null; then
-    echo "❌ Error: yq is not installed. This tool is required for YAML processing."
+# Check for required tools - vm-config binary
+VM_CONFIG_BINARY="$SCRIPT_DIR/rust/vm-config/target/release/vm-config"
+if [[ ! -x "$VM_CONFIG_BINARY" ]]; then
+    echo "❌ Error: vm-config binary is not available."
     echo ""
-    echo "📦 To install yq (mikefarah/yq v4+):"
-    echo "   # Remove old Python yq if installed"
-    echo "   sudo apt remove yq 2>/dev/null || true"
-    echo "   # Install mikefarah/yq"
-    echo "   sudo wget -qO /usr/local/bin/yq $(get_yq_download_url)"
-    echo "   sudo chmod +x /usr/local/bin/yq"
+    echo "📦 To build vm-config:"
+    echo "   cd $SCRIPT_DIR/rust/vm-config"
+    echo "   cargo build --release"
     echo ""
-    echo "📦 To install yq on macOS:"
-    echo "   brew install yq"
-    echo ""
-    echo "📦 To install yq on other systems:"
-    echo "   Visit: https://github.com/mikefarah/yq/releases"
-    echo ""
+    echo "Or run the installer: ./install.sh"
     exit 1
 fi
 
@@ -90,38 +83,14 @@ extract_schema_defaults() {
         return 1
     fi
 
-    yq '{
-      "version": .properties.version.default,
-      "provider": .properties.provider.default,
-      "project": {
-        "workspace_path": .properties.project.properties.workspace_path.default,
-        "backup_pattern": .properties.project.properties.backup_pattern.default
-      },
-      "vm": {
-        "box": .properties.vm.properties.box.default,
-        "memory": .properties.vm.properties.memory.default,
-        "cpus": .properties.vm.properties.cpus.default,
-        "user": .properties.vm.properties.user.default,
-        "port_binding": .properties.vm.properties.port_binding.default,
-        "timezone": .properties.vm.properties.timezone.default
-      },
-      "versions": {
-        "node": .properties.versions.properties.node.default,
-        "nvm": .properties.versions.properties.nvm.default,
-        "pnpm": .properties.versions.properties.pnpm.default
-      },
-      "terminal": {
-        "emoji": .properties.terminal.properties.emoji.default,
-        "username": .properties.terminal.properties.username.default,
-        "theme": .properties.terminal.properties.theme.default,
-        "show_git_branch": .properties.terminal.properties.show_git_branch.default
-      },
-      "apt_packages": .properties.apt_packages.default,
-      "npm_packages": .properties.npm_packages.default,
-      "aliases": .properties.aliases.default,
-      "claude_sync": .properties.claude_sync.default,
-      "gemini_sync": .properties.gemini_sync.default
-    }' "$schema_path"
+    # Use the default vm.yaml file as the source of defaults
+    # This is simpler and more reliable than parsing the JSON schema
+    if [[ -f "$SCRIPT_DIR/vm.yaml" ]]; then
+        cat "$SCRIPT_DIR/vm.yaml"
+    else
+        echo "❌ Default vm.yaml not found at $SCRIPT_DIR/vm.yaml" >&2
+        return 1
+    fi
 }
 
 # Find vm.yaml upwards from directory
@@ -196,16 +165,14 @@ initialize_vm_yaml() {
     local customized_config
     # Complex config customization disabled (was using jq syntax)
     customized_config="$default_config"
-    # customized_config="$(echo "$default_config" | yq eval--arg dirname "$sanitized_name" '
-        .project.name = $dirname |
-        .project.hostname = "dev." + $dirname + ".local" |
-        .terminal.username = ($dirname + "-dev")
-    ')"
+    # Note: Complex config customization disabled for simplicity
 
     # Auto-suggest port range for the project
     local suggested_range
     if suggested_range="$(suggest_next_range 10 3000 2>/dev/null)"; then
-        customized_config="$(echo "$customized_config" | yq eval--arg range "$suggested_range" '.port_range = $range')"
+        # Add port range to config
+        customized_config="${customized_config}
+port_range: $suggested_range"
         echo "🔢 Auto-suggested port range: $suggested_range"
         echo ""
     fi
@@ -335,25 +302,32 @@ load_and_merge_config() {
     if [[ -f "$config_file_to_load" ]]; then
         
 
-        local yq_error
-        if ! user_config="$(yq . "$config_file_to_load" 2>&1)"; then
-            yq_error="$(yq . "$config_file_to_load" 2>&1)"
-            echo "❌ Invalid YAML in project config: $config_file_to_load" >&2
-            echo "   YAML parsing error: $yq_error" >&2
-            return 1
+        # Validate file and load content
+        if [[ -x "$VM_CONFIG_BINARY" ]]; then
+            if ! "$VM_CONFIG_BINARY" validate "$config_file_to_load" >/dev/null 2>&1; then
+                echo "❌ Invalid YAML in project config: $config_file_to_load" >&2
+                return 1
+            fi
+            user_config="$(cat "$config_file_to_load")"
+        else
+            # Fallback: just read the file
+            user_config="$(cat "$config_file_to_load")"
         fi
 
         # Check for valid top-level keys
         local valid_keys='["$schema","version","provider","project","vm","versions","ports","services","apt_packages","npm_packages","cargo_packages","pip_packages","aliases","environment","terminal","claude_sync","gemini_sync","persist_databases"]'
         local user_keys
-        user_keys="$(echo "$user_config" | yq eval-r 'keys[]')"
-        local has_valid_keys
-        has_valid_keys="$(echo "$user_config" | yq eval--argjson valid "$valid_keys" 'keys as $uk | $valid as $vk | ($uk | map(. as $k | $vk | contains([$k])) | any)')"
+        # Basic key validation using grep - check for at least one valid key
+        local valid_keys_found=false
+        for key in version provider project vm versions ports services apt_packages npm_packages cargo_packages pip_packages aliases environment terminal claude_sync gemini_sync persist_databases; do
+            if grep -q "^${key}:" "$config_file_to_load"; then
+                valid_keys_found=true
+                break
+            fi
+        done
 
-        if [[ "$has_valid_keys" == "false" && -n "$user_keys" ]]; then
-            local user_keys_str
-            user_keys_str="$(echo "$user_config" | yq eval-r 'keys | join(", ")')"
-            echo "❌ Invalid configuration structure. No recognized configuration keys found. Got: $user_keys_str" >&2
+        if [[ "$valid_keys_found" == "false" ]] && [[ -s "$config_file_to_load" ]]; then
+            echo "❌ Invalid configuration structure. No recognized configuration keys found." >&2
             return 1
         fi
     fi
@@ -402,7 +376,7 @@ except ImportError as e:
 
     # Create temp file for config
     local temp_config="/tmp/vm-config-validate-$$.yaml"
-    echo "$config" | yq -y . > "$temp_config"
+    echo "$config" > "$temp_config"
 
     # Use Python to validate YAML against YAML schema
     local validation_output
@@ -447,19 +421,19 @@ validate_merged_config() {
     local errors=()
     local warnings=()
 
-    # Check if config is valid YAML object
-    if ! echo "$config" | yq eval 'type' - 2>/dev/null | grep -q "!!map"; then
-        errors+=("Configuration must be a valid YAML object")
-        printf '%s\n' "${errors[@]}" >&2
-        return 1
-    fi
+    # Basic validation that we have a YAML object with a project section
+    local temp_config
+    temp_config=$(mktemp)
+    echo "$config" > "$temp_config"
 
-    # Check for required project section
-    if ! echo "$config" | yq eval-e '.project | type == "object"' >/dev/null 2>&1; then
+    # Check for required project section using grep
+    if ! grep -q '^project:' "$temp_config"; then
         errors+=("project section is required and must be an object")
         printf '%s\n' "${errors[@]}" >&2
+        rm -f "$temp_config"
         return 1
     fi
+    rm -f "$temp_config"
 
     # Schema-based validation using vm.schema.yaml
     local schema_path="$SCRIPT_DIR/vm.schema.yaml"
@@ -472,7 +446,16 @@ validate_merged_config() {
     else
         # Fallback to basic validation if schema not found
         local provider
-        provider="$(echo "$config" | yq eval '.provider' - 2>/dev/null || echo 'docker')"
+        local temp_config
+        temp_config=$(mktemp)
+        echo "$config" > "$temp_config"
+        if [[ -x "$VM_CONFIG_BINARY" ]]; then
+            provider="$("$VM_CONFIG_BINARY" query "$temp_config" 'provider' --raw --default 'docker' 2>/dev/null || echo 'docker')"
+        else
+            provider="$(grep '^provider:' "$temp_config" | awk '{print $2}' | head -1)"
+            [[ -z "$provider" ]] && provider="docker"
+        fi
+        rm -f "$temp_config"
         if [[ "$provider" != "vagrant" && "$provider" != "docker" && "$provider" != "tart" ]]; then
             errors+=("provider must be 'vagrant', 'docker', or 'tart'")
         fi
@@ -480,7 +463,15 @@ validate_merged_config() {
 
     # Project validation
     local project_name
-    project_name="$(echo "$config" | yq eval '.project.name' - 2>/dev/null || echo '')"
+    local temp_config
+    temp_config=$(mktemp)
+    echo "$config" > "$temp_config"
+    if [[ -x "$VM_CONFIG_BINARY" ]]; then
+        project_name="$("$VM_CONFIG_BINARY" query "$temp_config" 'project.name' --raw --default '' 2>/dev/null || echo '')"
+    else
+        project_name="$(grep -A 5 '^project:' "$temp_config" | grep 'name:' | awk '{print $2}' | head -1)"
+    fi
+    rm -f "$temp_config"
     if [[ -z "$project_name" ]]; then
         errors+=("project.name is required")
     elif ! echo "$project_name" | grep -qE '^[a-zA-Z0-9_-]+$'; then
@@ -541,7 +532,9 @@ main() {
         if config_location="$(find_vm_yaml_upwards "$(pwd)")"; then
             local config_dir
             config_dir="$(dirname "$config_location")"
-            final_config="$(echo "$final_config" | yq eval--arg dir "$config_dir" '. + {__config_dir: $dir}')"
+            # Add config directory metadata to the final config
+            final_config="${final_config}
+__config_dir: $config_dir"
         fi
     fi
 

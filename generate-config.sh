@@ -17,21 +17,16 @@ source "$SCRIPT_DIR/shared/temporary-file-utils.sh"
 # Set up proper cleanup handlers
 setup_temp_file_handlers
 
-# Check for required tools
-if ! command -v yq &> /dev/null; then
-    echo "❌ Error: yq is not installed. This tool is required for YAML processing."
+# Check for required tools - vm-config binary
+VM_CONFIG_BINARY="$SCRIPT_DIR/rust/vm-config/target/release/vm-config"
+if [[ ! -x "$VM_CONFIG_BINARY" ]]; then
+    echo "❌ Error: vm-config binary is not available."
     echo ""
-    echo "📦 To install yq (mikefarah/yq v4+):"
-    echo "   sudo apt remove yq 2>/dev/null || true"
-    echo "   sudo wget -qO /usr/local/bin/yq $(get_yq_download_url)"
-    echo "   sudo chmod +x /usr/local/bin/yq"
+    echo "📦 To build vm-config:"
+    echo "   cd $SCRIPT_DIR/rust/vm-config"
+    echo "   cargo build --release"
     echo ""
-    echo "📦 To install yq on macOS:"
-    echo "   brew install yq"
-    echo ""
-    echo "📦 To install yq on other systems:"
-    echo "   Visit: https://github.com/mikefarah/yq/releases"
-    echo ""
+    echo "Or run the installer: ./install.sh"
     exit 1
 fi
 
@@ -129,12 +124,9 @@ if [[ -n "$SERVICES" ]]; then
             exit 1
         fi
         
-        # Extract the specific service configuration and merge it using yq
-        service_value="$(yq ".services.$service" "$service_config_file")"
-        
-        # Use yq to merge the service configuration into the base config
+        # Merge service configuration using vm-config
         base_config_new="$(create_temp_file "vm-config-new.XXXXXX")"
-        if ! echo "$service_value" | yq -p json -o yaml . | yq eval-all 'select(fileIndex == 0).services["'"$service"'"] = select(fileIndex == 1) | select(fileIndex == 0)' "$base_config_temp" - > "$base_config_new"; then
+        if ! "$VM_CONFIG_BINARY" merge --base "$base_config_temp" --overlay "$service_config_file" -f yaml > "$base_config_new"; then
             echo "❌ Error: Failed to merge service configuration for: $service" >&2
             exit 1
         fi
@@ -143,30 +135,37 @@ if [[ -n "$SERVICES" ]]; then
     done
 fi
 
-# Helper function for safe yq operations
-safe_yq_update() {
+# Helper function for safe vm-config operations (simplified)
+safe_config_update() {
     local temp_file="$1"
-    local yq_expression="$2"
-    local error_message="$3"
-    
-    local temp_output
-    temp_output="$(create_temp_file "yq-update.XXXXXX")"
-    
-    if ! yq "$yq_expression" "$temp_file" -o yaml > "$temp_output"; then
-        echo "❌ Error: $error_message" >&2
-        exit 1
-    fi
-    
-    mv "$temp_output" "$temp_file"
-    untrack_temp_file "$temp_output"  # No longer needed since content moved
+    local field_path="$2"
+    local new_value="$3"
+
+    # Simple approach: append field to config
+    echo "${field_path}: ${new_value}" >> "$temp_file"
 }
 
 # Apply project name and generate derived values (hostname, username)
 # Updates project.name, project.hostname, and terminal.username fields
 if [[ -n "$PROJECT_NAME" ]]; then
-    safe_yq_update "$base_config_temp" ".project.name = \"$PROJECT_NAME\"" "Failed to set project name"
-    safe_yq_update "$base_config_temp" ".project.hostname = \"dev.$PROJECT_NAME.local\"" "Failed to set project hostname"
-    safe_yq_update "$base_config_temp" ".terminal.username = \"$PROJECT_NAME-dev\"" "Failed to set terminal username"
+    # Create project override file for merging
+    project_override="$(create_temp_file "project-override.XXXXXX")"
+    cat > "$project_override" <<EOF
+project:
+  name: $PROJECT_NAME
+  hostname: dev.$PROJECT_NAME.local
+terminal:
+  username: $PROJECT_NAME-dev
+EOF
+
+    # Merge project configuration using vm-config
+    base_config_new="$(create_temp_file "vm-config-project.XXXXXX")"
+    if ! "$VM_CONFIG_BINARY" merge --base "$base_config_temp" --overlay "$project_override" -f yaml > "$base_config_new"; then
+        echo "❌ Error: Failed to merge project configuration" >&2
+        exit 1
+    fi
+    mv "$base_config_new" "$base_config_temp"
+    untrack_temp_file "$base_config_new"
 fi
 
 # Apply port configuration starting from specified base port
@@ -185,37 +184,65 @@ if [[ -n "$PORTS" ]]; then
     redis_port="$((PORTS + 6))"
     mongodb_port="$((PORTS + 7))"
     
-    # Set port configuration using safe yq operations
-    safe_yq_update "$base_config_temp" ".ports.web = $web_port" "Failed to set web port"
-    safe_yq_update "$base_config_temp" ".ports.api = $api_port" "Failed to set API port"
-    safe_yq_update "$base_config_temp" ".ports.postgresql = $postgres_port" "Failed to set PostgreSQL port"
-    safe_yq_update "$base_config_temp" ".ports.redis = $redis_port" "Failed to set Redis port"
-    safe_yq_update "$base_config_temp" ".ports.mongodb = $mongodb_port" "Failed to set MongoDB port"
+    # Set port configuration using vm-config merge
+    port_override="$(create_temp_file "port-override.XXXXXX")"
+    cat > "$port_override" <<EOF
+ports:
+  web: $web_port
+  api: $api_port
+  postgresql: $postgres_port
+  redis: $redis_port
+  mongodb: $mongodb_port
+EOF
+
+    # Merge port configuration using vm-config
+    base_config_new="$(create_temp_file "vm-config-ports.XXXXXX")"
+    if ! "$VM_CONFIG_BINARY" merge --base "$base_config_temp" --overlay "$port_override" -f yaml > "$base_config_new"; then
+        echo "❌ Error: Failed to merge port configuration" >&2
+        exit 1
+    fi
+    mv "$base_config_new" "$base_config_temp"
+    untrack_temp_file "$base_config_new"
 fi
 
 # Auto-generate project name from current directory when not specified
 # Uses basename of current working directory for project naming
 if [[ -z "$PROJECT_NAME" ]]; then
     dir_name="$(basename "$(pwd)")"
-    safe_yq_update "$base_config_temp" ".project.name = \"$dir_name\"" "Failed to set auto-generated project name"
-    safe_yq_update "$base_config_temp" ".project.hostname = \"dev.$dir_name.local\"" "Failed to set auto-generated project hostname"
-    safe_yq_update "$base_config_temp" ".terminal.username = \"$dir_name-dev\"" "Failed to set auto-generated terminal username"
+    # Create auto project override file for merging
+    auto_project_override="$(create_temp_file "auto-project-override.XXXXXX")"
+    cat > "$auto_project_override" <<EOF
+project:
+  name: $dir_name
+  hostname: dev.$dir_name.local
+terminal:
+  username: $dir_name-dev
+EOF
+
+    # Merge auto project configuration using vm-config
+    base_config_new="$(create_temp_file "vm-config-auto-project.XXXXXX")"
+    if ! "$VM_CONFIG_BINARY" merge --base "$base_config_temp" --overlay "$auto_project_override" -f yaml > "$base_config_new"; then
+        echo "❌ Error: Failed to merge auto project configuration" >&2
+        exit 1
+    fi
+    mv "$base_config_new" "$base_config_temp"
+    untrack_temp_file "$base_config_new"
 fi
 
 # Write final configuration
 if cp "$base_config_temp" "$OUTPUT_FILE"; then
-    project_name="$(yq '.project.name' "$OUTPUT_FILE")"
+    project_name="$("$VM_CONFIG_BINARY" query "$OUTPUT_FILE" "project.name" --raw)"
     echo "✅ Generated configuration for project: $project_name"
     echo "📍 Configuration file: $OUTPUT_FILE"
     
-    # Show enabled services using yq
-    enabled_services="$(yq '.services | to_entries[] | select(.value.enabled == true) | .key' "$OUTPUT_FILE" 2>/dev/null | tr '\n' ' ' || echo "none")"
+    # Show enabled services using vm-config
+    enabled_services="$("$VM_CONFIG_BINARY" query "$OUTPUT_FILE" "services" --raw 2>/dev/null | grep -E "^\s*\w+:\s*$" | sed 's/:.*$//' | xargs || echo "none")"
     if [[ "$enabled_services" != "none" ]]; then
         echo "🔧 Enabled services: $enabled_services"
     fi
     
-    # Show port allocations using yq
-    ports="$(yq '.ports // {} | to_entries[] | .key + ":" + (.value | tostring)' "$OUTPUT_FILE" 2>/dev/null | tr '\n' ' ' || echo "")"
+    # Show port allocations using vm-config
+    ports="$("$VM_CONFIG_BINARY" query "$OUTPUT_FILE" "ports" --raw 2>/dev/null | grep -E "^\s*\w+:\s*[0-9]+\s*$" | sed 's/^\s*//' | xargs || echo "")"
     if [[ -n "$ports" ]]; then
         echo "🔌 Port allocations: $ports"
     fi

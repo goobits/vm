@@ -14,7 +14,13 @@ detect_required_os() {
     local project_dir="${2:-$(pwd)}"
     
     # Check if explicitly specified in config
-    local os=$(echo "$config" | yq eval '.os' - - 2>/dev/null || echo '' || echo '')
+    local os=""
+    if [[ -n "$config" ]]; then
+        local temp_config=$(mktemp)
+        echo "$config" > "$temp_config"
+        os=$("$OS_CONFIG_DIR/../rust/vm-config/target/release/vm-config" query "$temp_config" "os" --raw 2>/dev/null || echo "")
+        rm -f "$temp_config"
+    fi
     
     if [[ -n "$os" ]] && [[ "$os" != "auto" ]]; then
         echo "$os"
@@ -59,10 +65,16 @@ get_os_defaults() {
     local user_config="$2"
     
     # Extract user's vm settings if provided
-    local user_memory=$(echo "$user_config" | yq eval '.vm.memory' - 2>/dev/null || echo '')
-    local user_cpus=$(echo "$user_config" | yq eval '.vm.cpus' - 2>/dev/null || echo '')
-    local user_disk=$(echo "$user_config" | yq eval '.vm.disk_size' - 2>/dev/null || echo '')
-    local user_username=$(echo "$user_config" | yq eval '.vm.user' - 2>/dev/null || echo '')
+    local user_memory="" user_cpus="" user_disk="" user_username=""
+    if [[ -n "$user_config" ]]; then
+        local temp_config=$(mktemp)
+        echo "$user_config" > "$temp_config"
+        user_memory=$("$OS_CONFIG_DIR/../rust/vm-config/target/release/vm-config" query "$temp_config" "vm.memory" --raw 2>/dev/null || echo "")
+        user_cpus=$("$OS_CONFIG_DIR/../rust/vm-config/target/release/vm-config" query "$temp_config" "vm.cpus" --raw 2>/dev/null || echo "")
+        user_disk=$("$OS_CONFIG_DIR/../rust/vm-config/target/release/vm-config" query "$temp_config" "vm.disk_size" --raw 2>/dev/null || echo "")
+        user_username=$("$OS_CONFIG_DIR/../rust/vm-config/target/release/vm-config" query "$temp_config" "vm.user" --raw 2>/dev/null || echo "")
+        rm -f "$temp_config"
+    fi
     
     case "$os" in
         macos)
@@ -73,7 +85,13 @@ get_os_defaults() {
             local username="${user_username:-admin}"
             
             # Check if user specified a storage path
-            local user_storage_path=$(echo "$user_config" | yq eval '.tart.storage_path' - 2>/dev/null || echo '')
+            local user_storage_path=""
+            if [[ -n "$user_config" ]]; then
+                local temp_config=$(mktemp)
+                echo "$user_config" > "$temp_config"
+                user_storage_path=$("$OS_CONFIG_DIR/../rust/vm-config/target/release/vm-config" query "$temp_config" "tart.storage_path" --raw 2>/dev/null || echo "")
+                rm -f "$temp_config"
+            fi
             local storage_json=""
             if [[ -n "$user_storage_path" ]] && [[ "$user_storage_path" != "null" ]]; then
                 storage_json=",\"storage_path\": \"$user_storage_path\""
@@ -227,7 +245,13 @@ apply_os_config() {
     local os_defaults=$(get_os_defaults "$os" "$config")
     
     # Select provider if not explicitly set
-    local provider=$(echo "$config" | yq eval '.provider' - 2>/dev/null || echo '')
+    local provider=""
+    if [[ -n "$config" ]]; then
+        local temp_config=$(mktemp)
+        echo "$config" > "$temp_config"
+        provider=$("$OS_CONFIG_DIR/../rust/vm-config/target/release/vm-config" query "$temp_config" "provider" --raw 2>/dev/null || echo "")
+        rm -f "$temp_config"
+    fi
     if [[ -z "$provider" ]] || [[ "$provider" == "auto" ]]; then
         provider=$(select_provider_for_os "$os")
         
@@ -240,21 +264,23 @@ apply_os_config() {
     
     # Merge configurations: user config overrides OS defaults
     # This ensures user's vm settings are respected
-    echo "$os_defaults" | yq eval --argjson user "$config" '
-        # Start with OS defaults
-        . as $defaults |
-        
-        # Override with user settings
-        $user + $defaults |
-        
-        # But preserve user vm settings completely if they exist
-        if $user.vm then
-            .vm = ($defaults.vm + $user.vm)
-        else . end |
-        
-        # Set the detected/selected provider
-        .provider = "'$provider'"
-    '
+    local temp_defaults=$(mktemp)
+    local temp_user=$(mktemp)
+    local temp_merged=$(mktemp)
+    echo "$os_defaults" > "$temp_defaults"
+    echo "$config" > "$temp_user"
+
+    # Use vm-config to merge configurations
+    if "$OS_CONFIG_DIR/../rust/vm-config/target/release/vm-config" merge --base "$temp_defaults" --overlay "$temp_user" -f yaml > "$temp_merged"; then
+        # Set the detected/selected provider in the merged config
+        echo "provider: $provider" >> "$temp_merged"
+        cat "$temp_merged"
+    else
+        # Fallback: use OS defaults with provider
+        echo "$os_defaults" | sed "s/provider:.*/provider: $provider/"
+    fi
+
+    rm -f "$temp_defaults" "$temp_user" "$temp_merged"
 }
 
 # Main function to process OS-based configuration
@@ -265,9 +291,10 @@ process_os_config() {
     # Read config
     local config
     if [[ -f "$config_file" ]]; then
-        config=$(cat "$config_file" | yq eval -o=json - 2>/dev/null || echo '' || echo '{}')
+        # Read YAML file directly - no conversion needed
+        config=$(cat "$config_file")
     else
-        config='{}'
+        config=''
     fi
     
     # Detect OS

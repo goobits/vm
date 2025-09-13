@@ -1,47 +1,49 @@
 #!/bin/bash
 # Shell wrapper for vm-config Rust binary
-# This provides a yq-compatible interface for the VM tool
+# This provides a command-line interface for the VM tool
 
 set -e
 
 # Path to the Rust binary
 VM_CONFIG_BIN="${VM_CONFIG_BIN:-/workspace/rust/vm-config/target/release/vm-config}"
 
-# Check if binary exists, fall back to yq if not
+# Check if binary exists - no external fallbacks
 if [[ ! -x "$VM_CONFIG_BIN" ]]; then
-    # Fall back to yq if available
-    if command -v yq >/dev/null 2>&1; then
-        exec yq "$@"
-    else
-        echo "Error: vm-config binary not found and yq not available" >&2
-        exit 1
-    fi
+    echo "Error: vm-config binary not found" >&2
+    echo "Please build the vm-config binary:" >&2
+    echo "  cd /workspace/rust/vm-config" >&2
+    echo "  cargo build --release" >&2
+    echo "" >&2
+    echo "Or run the installer: ./install.sh" >&2
+    exit 1
 fi
 
-# Parse yq-style arguments and convert to vm-config commands
+# Parse command arguments and convert to vm-config commands
 case "$1" in
     -r|--raw-output)
         # Raw output mode
         shift
         if [[ "$1" =~ ^\. ]]; then
-            # Query mode: yq -r '.field' file
+            # Query mode: vm-config -r '.field' file
             field="${1#.}"
             shift
             "$VM_CONFIG_BIN" query "$1" "$field" --raw
         else
-            # Pass through to yq for complex queries
-            exec yq -r "$@"
+            # Complex queries not supported by wrapper
+            echo "Error: Complex query not supported by vm-config wrapper" >&2
+            echo "Raw output argument: $1" >&2
+            exit 1
         fi
         ;;
 
     .)
-        # Convert entire file: yq . file
+        # Convert entire file: vm-config . file
         shift
-        "$VM_CONFIG_BIN" convert "$1" -f json
+        "$VM_CONFIG_BIN" convert "$1" -f yaml
         ;;
 
     -o|--output-format)
-        # Output format: yq -o yaml file
+        # Output format: vm-config -o yaml file
         format="$2"
         shift 2
         case "$format" in
@@ -96,24 +98,23 @@ case "$1" in
         ;;
 
     *)
-        # For simple queries like: yq '.project.name' file
+        # For simple queries like: vm-config '.project.name' file
         if [[ "$1" =~ ^\. ]]; then
             field="${1#.}"
             shift
             if [[ -f "$1" ]]; then
                 "$VM_CONFIG_BIN" query "$1" "$field"
             else
-                # No file specified, try to use yq for stdin
-                exec yq "$@"
-            fi
-        else
-            # Unknown command, pass through to yq if available
-            if command -v yq >/dev/null 2>&1; then
-                exec yq "$@"
-            else
-                echo "Error: Unknown command and yq not available" >&2
+                # No file specified, stdin not supported
+                echo "Error: stdin input not supported by vm-config wrapper" >&2
                 exit 1
             fi
+        else
+            # Unknown command, not supported
+            echo "Error: Unknown command not supported by vm-config wrapper" >&2
+            echo "Command: $1" >&2
+            echo "Use vm-config directly for advanced operations" >&2
+            exit 1
         fi
         ;;
 esac
