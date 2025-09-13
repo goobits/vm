@@ -44,12 +44,6 @@ get_platform_info() {
     esac
 }
 
-# Generate correct yq download URL for current platform
-get_yq_download_url() {
-    local platform
-    platform=$(get_platform_info)
-    echo "https://github.com/mikefarah/yq/releases/latest/download/yq_${platform}"
-}
 
 # Cross-platform readlink -f equivalent
 portable_readlink() {
