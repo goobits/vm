@@ -270,6 +270,75 @@ Vagrant.configure("2") do |config|
         puts "⚠️  Warning: NPM utilities not found at #{npm_utils_script}"
       end
     end
+
+    # Package linking support for pip
+    if project_config['pip_packages'] && !project_config['pip_packages'].empty?
+      puts "🔗 Checking for linked pip packages..."
+      
+      link_detector_script = File.join(File.dirname(__FILE__), '..', '..', 'shared', 'link-detector.sh')
+      
+      if File.exist?(link_detector_script)
+        pip_packages_str = project_config['pip_packages'].map { |pkg| "'#{pkg}'" }.join(' ')
+        
+        pip_detection_cmd = "bash -c \"source '#{link_detector_script}' && generate_package_mounts pip #{pip_packages_str}\""
+        linked_volumes_output = `#{pip_detection_cmd} 2>&1`
+        exit_status = $?.exitstatus
+        
+        linked_volumes = linked_volumes_output.lines.select { |line| line.include?(':') && !line.include?('📦') }.join.strip
+        user_messages = linked_volumes_output.lines.select { |line| line.include?('📦') }.join
+        
+        print user_messages unless user_messages.empty?
+        
+        if exit_status == 0 && !linked_volumes.empty?
+          linked_volumes.split("\n").each do |volume_mapping|
+            next if volume_mapping.empty?
+            
+            parts = volume_mapping.split(':')
+            next unless parts.length >= 2
+            
+            source_path = parts[0]
+            target_path = parts[1]
+            permissions = parts[2] || 'delegated'
+            
+            begin
+              resolved_source = File.realpath(source_path)
+              
+              if File.directory?(resolved_source) && File.readable?(resolved_source)
+                if resolved_source.start_with?('/etc/') || resolved_source.start_with?('/usr/bin/') || 
+                   resolved_source.start_with?('/bin/') || resolved_source.start_with?('/sbin/')
+                  puts "⚠️  Skipping system path: #{resolved_source}"
+                  next
+                end
+                
+                sync_options = {
+                  type: "virtualbox",
+                  create: true,
+                  owner: vm_user,
+                  group: vm_user
+                }
+                
+                if permissions == 'ro'
+                  sync_options[:type] = "rsync"
+                  sync_options[:rsync__exclude] = [".git/", "dist/", "*.pyc", "__pycache__/"]
+                  sync_options[:rsync__args] = ["--verbose", "--archive", "--delete", "-z"]
+                end
+                
+                machine.vm.synced_folder resolved_source, target_path, sync_options
+                puts "📦 Linked package: #{File.basename(target_path)} -> #{target_path}"
+              else
+                puts "⚠️  Warning: Pip linked package path not accessible: #{source_path}"
+              end
+            rescue => e
+              puts "⚠️  Error processing Pip linked package path #{source_path}: #{e.message}"
+            end
+          end
+        elsif !project_config['pip_packages'].empty?
+          puts "ℹ️  No linked Pip packages found for: #{project_config['pip_packages'].join(', ')}"
+        end
+      else
+        puts "⚠️  Warning: Link detector script not found at #{link_detector_script}"
+      end
+    end
   
     # Write merged configuration for Ansible to use
     machine.vm.provision "shell", inline: <<-SHELL
