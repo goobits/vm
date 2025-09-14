@@ -3,7 +3,7 @@ use clap::ValueEnum;
 use std::fmt;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq)]
 pub enum PackageManager {
     /// Cargo (Rust) package manager
     Cargo,

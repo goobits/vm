@@ -65,10 +65,17 @@ else
     echo "  (No binaries found)"
 fi
 
+# Check specifically for vm-pkg
+if [[ -f "$PLATFORM_TARGET_DIR/release/vm-pkg" ]]; then
+    echo "  - vm-pkg (unified package manager)"
+fi
+
 # Also maintain symlinks in the legacy location for compatibility
 echo ""
 echo "🔗 Creating compatibility symlinks in target/release/..."
 mkdir -p "$SCRIPT_DIR/target/release"
+
+# Handle vm-* binaries
 for binary in "$PLATFORM_TARGET_DIR/release/vm-"*; do
     if [[ -f "$binary" && ! "$binary" =~ \.d$ ]]; then
         binary_name=$(basename "$binary")
@@ -76,3 +83,9 @@ for binary in "$PLATFORM_TARGET_DIR/release/vm-"*; do
         echo "  - $binary_name -> ../target/$PLATFORM/release/$binary_name"
     fi
 done
+
+# Also handle vm-pkg if it exists (doesn't start with vm-)
+if [[ -f "$PLATFORM_TARGET_DIR/release/vm-pkg" ]]; then
+    ln -sf "../../$PLATFORM/release/vm-pkg" "$SCRIPT_DIR/target/release/vm-pkg"
+    echo "  - vm-pkg -> ../target/$PLATFORM/release/vm-pkg"
+fi
