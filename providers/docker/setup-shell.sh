@@ -25,8 +25,35 @@ SHOW_TIMESTAMP="false"
 
 # Extract values from config if available
 if [ -f "$CONFIG_FILE" ]; then
-    # vm-config is always available at known location
-    VM_CONFIG_BIN="/usr/local/bin/vm-config"
+    # Universal vm-config detection - no hardcoded paths
+    find_vm_config() {
+        # Try PATH first (most portable)
+        if command -v vm-config >/dev/null 2>&1; then
+            echo "vm-config"
+            return
+        fi
+
+        # Search common locations dynamically
+        for search_path in /vm-tool /usr/local /opt/vm-tool "$HOME/.local" "$HOME/bin"; do
+            if [[ -d "$search_path" ]]; then
+                local found_binary
+                found_binary=$(find "$search_path" -name "vm-config" -type f -executable 2>/dev/null | head -1)
+                if [[ -n "$found_binary" ]]; then
+                    echo "$found_binary"
+                    return
+                fi
+            fi
+        done
+
+        return 1
+    }
+
+    VM_CONFIG_BIN=$(find_vm_config)
+    if [[ -z "$VM_CONFIG_BIN" ]]; then
+        echo "❌ vm-config binary not found" >&2
+        echo "   Searched in PATH and common installation directories" >&2
+        exit 1
+    fi
 
     EMOJI=$("$VM_CONFIG_BIN" query "$CONFIG_FILE" "terminal.emoji" --raw --default "🚀")
     USERNAME=$("$VM_CONFIG_BIN" query "$CONFIG_FILE" "terminal.username" --raw --default "dev")
