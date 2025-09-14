@@ -578,11 +578,14 @@ impl YamlOperations {
                 for (key, val) in map {
                     if let Value::String(key_str) = key {
                         if let Some(template) = expression.split(" | ").nth(1) {
-                            // Simple template replacement
+                            // Proper template replacement with jq-style syntax
                             let result = template
                                 .replace("\\(.key)", key_str)
-                                .replace("\\(.value)", &format!("{:?}", val))
-                                .replace("\"", "");
+                                .replace("\\(.value)", &Self::yaml_value_to_string(val))
+                                .replace(r"\(.key)", key_str)
+                                .replace(r"\(.value)", &Self::yaml_value_to_string(val))
+                                .trim_matches('"')
+                                .to_string();
                             results.push(result);
                         }
                     }
@@ -673,6 +676,22 @@ impl YamlOperations {
                 }
             }
             _ => Err(anyhow::anyhow!("Cannot navigate path on non-mapping")),
+        }
+    }
+
+    /// Convert YAML value to proper string representation (not Debug format)
+    fn yaml_value_to_string(value: &Value) -> String {
+        match value {
+            Value::String(s) => s.clone(),
+            Value::Number(n) => n.to_string(),
+            Value::Bool(b) => b.to_string(),
+            Value::Null => "null".to_string(),
+            Value::Sequence(seq) => {
+                let items: Vec<String> = seq.iter().map(Self::yaml_value_to_string).collect();
+                format!("[{}]", items.join(", "))
+            }
+            Value::Mapping(_) => serde_json::to_string(value).unwrap_or_else(|_| "{}".to_string()),
+            Value::Tagged(tagged) => Self::yaml_value_to_string(&tagged.value),
         }
     }
 

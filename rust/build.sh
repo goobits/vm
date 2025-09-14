@@ -21,6 +21,7 @@ detect_platform() {
 
 PLATFORM=$(detect_platform)
 PLATFORM_TARGET_DIR="$SCRIPT_DIR/target/$PLATFORM"
+PLATFORM_RELEASE_DIR="$PLATFORM_TARGET_DIR/release"
 
 echo "Building VM Tool Rust binaries for platform: $PLATFORM"
 echo "Target directory: $PLATFORM_TARGET_DIR"
@@ -28,9 +29,32 @@ echo "Target directory: $PLATFORM_TARGET_DIR"
 # Create platform-specific directory
 mkdir -p "$PLATFORM_TARGET_DIR"
 
-# Build with platform-specific target directory
-echo "🔨 Building workspace..."
-CARGO_TARGET_DIR="$PLATFORM_TARGET_DIR" cargo build --release --workspace
+# Check if we need to build (incremental build detection)
+needs_build=true
+if [[ -d "$PLATFORM_RELEASE_DIR" ]] && ls "$PLATFORM_RELEASE_DIR"/vm-* >/dev/null 2>&1; then
+    # Find the newest binary
+    newest_binary=$(ls -t "$PLATFORM_RELEASE_DIR"/vm-* 2>/dev/null | head -1)
+
+    if [[ -n "$newest_binary" ]]; then
+        # Check if any Rust source files are newer than the newest binary
+        if ! find . -name "*.rs" -newer "$newest_binary" | grep -q .; then
+            echo "✅ All binaries are up-to-date for $PLATFORM"
+            needs_build=false
+        else
+            echo "🔄 Source changes detected, rebuilding..."
+        fi
+    fi
+else
+    echo "🔨 No platform-specific binaries found, building..."
+fi
+
+# Build only if necessary
+if [[ "$needs_build" == "true" ]]; then
+    echo "🔨 Building workspace..."
+    CARGO_TARGET_DIR="$PLATFORM_TARGET_DIR" cargo build --release --workspace
+else
+    echo "⚡ Skipping build - no changes detected"
+fi
 
 echo ""
 echo "✅ Build complete! Platform-specific binaries are in: $PLATFORM_TARGET_DIR/release/"
