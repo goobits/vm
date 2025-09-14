@@ -1,10 +1,13 @@
 [workspace]
 members = [
-    "vm-config",
-    "vm-ports",
-    "vm-links",
     "vm-common",
+    "vm-config",
+    "vm-detector",
+    "vm-links",
     "vm-pkg",
+    "vm-ports",
+    "vm-provider",
+    "vm",
 ]
 resolver = "2"
 
