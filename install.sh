@@ -124,144 +124,29 @@ fi
 echo -e "${GREEN}✅ Dependencies satisfied${NC}"
 echo ""
 
-# Build the vm-config binary
-echo "🔧 Building vm-config binary..."
-if [[ -d "$SCRIPT_DIR/rust/vm-config" ]]; then
-    cd "$SCRIPT_DIR/rust"
-
-    # Platform detection
-    detect_platform() {
-        local os arch
-        os=$(uname -s | tr '[:upper:]' '[:lower:]')
-        arch=$(uname -m)
-        case "$arch" in
-            x86_64) arch="x86_64" ;;
-            aarch64|arm64) arch="aarch64" ;;
-            *) arch="unknown" ;;
-        esac
-        echo "${os}-${arch}"
-    }
-
-    PLATFORM=$(detect_platform)
-    PLATFORM_TARGET_DIR="target/$PLATFORM"
-    PLATFORM_BINARY="$PLATFORM_TARGET_DIR/release/vm-config"
-    FALLBACK_BINARY="target/release/vm-config"
-
-    echo "🏗️  Building for platform: $PLATFORM"
-
-    # Check if we need to clean build
-    needs_clean=false
-
-    # Check platform-specific binary first
-    if [[ -f "$PLATFORM_BINARY" ]]; then
-        # Check if binary works on current platform
-        if ! "$PLATFORM_BINARY" --version >/dev/null 2>&1; then
-            echo "🔄 Platform-specific binary is corrupted, rebuilding..."
-            needs_clean=true
-        else
-            # Check if source files are newer than binary
-            if find . -name "*.rs" -newer "$PLATFORM_BINARY" | grep -q .; then
-                echo "🔄 Source changes detected, rebuilding..."
-                needs_clean=true
-            else
-                echo "✅ Platform-specific binary is up-to-date"
-            fi
-        fi
-    else
-        echo "🔨 No platform-specific binary found, building..."
-        needs_clean=true
-    fi
-
-    # Clean only if necessary (clean platform-specific directory)
-    if [[ "$needs_clean" == "true" ]]; then
-        echo "🧹 Cleaning previous build artifacts for $PLATFORM..."
-        rm -rf "$PLATFORM_TARGET_DIR" 2>/dev/null || true
-    fi
-
-    # Use the updated build script which handles platform-specific building
-    echo "🔨 Building for current platform..."
-    if ./build.sh; then
-        echo -e "${GREEN}✅ vm-config binary built successfully for $PLATFORM${NC}"
-    else
-        echo -e "${RED}❌ Failed to build vm-config binary${NC}"
-        exit 1
-    fi
-    cd "$SCRIPT_DIR"
+# Build the Rust binaries
+echo "🔧 Building Rust binaries..."
+if (cd "$SCRIPT_DIR/rust" && cargo build --release); then
+    echo -e "${GREEN}✅ Rust binaries built successfully.${NC}"
 else
-    echo -e "${RED}❌ vm-config source not found at: $SCRIPT_DIR/rust/vm-config${NC}"
+    echo -e "${RED}❌ Failed to build Rust binaries.${NC}"
     exit 1
 fi
 echo ""
 
-INSTALL_DIR="${HOME}/.local/share/vm"
 BIN_DIR="${HOME}/.local/bin"
-
-# Create directories
-mkdir -p "$INSTALL_DIR"
 mkdir -p "$BIN_DIR"
 
-# Copy all files except development files
-echo "📁 Copying files to $INSTALL_DIR..."
+# Create a direct symbolic link to the compiled binary
+SOURCE_BINARY="$SCRIPT_DIR/rust/target/release/vm"
+LINK_NAME="$BIN_DIR/vm"
 
-# Check if rsync is available
-if command -v rsync &> /dev/null; then
-    rsync -av \
-        --exclude='.git' \
-        --exclude='*.md' \
-        --exclude='test' \
-        --exclude='install.sh' \
-        --exclude='rust/target/debug' \
-        --exclude='rust/target/deps' \
-        --exclude='rust/target/.rustc_info.json' \
-        --exclude='rust/target/CACHEDIR.TAG' \
-        --exclude='rust/*/target/debug' \
-        --exclude='rust/*/target/deps' \
-        --exclude='rust/*/target/.rustc_info.json' \
-        --exclude='rust/*/target/CACHEDIR.TAG' \
-        "$SCRIPT_DIR/" "$INSTALL_DIR/"
-else
-    # Fallback to cp if rsync is not available
-    echo "📋 Using cp instead of rsync..."
-    # Remove old installation if it exists
-    rm -rf "$INSTALL_DIR"
-    mkdir -p "$INSTALL_DIR"
-
-    # Copy directories
-    for dir in providers shared configs rust lib; do
-        if [[ -d "$SCRIPT_DIR/$dir" ]]; then
-            cp -r "$SCRIPT_DIR/$dir" "$INSTALL_DIR/"
-        fi
-    done
-
-    # Copy individual files
-    for file in vm.sh generate-config.sh vm.yaml package.json *.json *.yaml; do
-        if [[ -f "$SCRIPT_DIR/$file" ]]; then
-            cp "$SCRIPT_DIR/$file" "$INSTALL_DIR/"
-        fi
-    done
-
-    # Make scripts executable
-    chmod +x "$INSTALL_DIR"/*.sh
-fi
-
-# Clean up debug artifacts from copied rust directory
-if [[ -d "$INSTALL_DIR/rust/target" ]]; then
-    echo "🧹 Cleaning debug artifacts from installation..."
-    rm -rf "$INSTALL_DIR/rust/target/debug" 2>/dev/null || true
-    rm -rf "$INSTALL_DIR/rust/target/deps" 2>/dev/null || true
-    rm -f "$INSTALL_DIR/rust/target/.rustc_info.json" 2>/dev/null || true
-    rm -f "$INSTALL_DIR/rust/target/CACHEDIR.TAG" 2>/dev/null || true
-fi
-
-# Create global vm command
-echo "🔗 Creating global 'vm' command in $BIN_DIR..."
-cat > "$BIN_DIR/vm" << 'EOF'
-#!/bin/bash
-# Global VM wrapper - automatically finds vm.yaml in current directory or upward
-exec "$HOME/.local/share/vm/vm.sh" "$@"
-EOF
-
-chmod +x "$BIN_DIR/vm"
+echo "🔗 Creating global 'vm' command..."
+# Remove existing link or file if it exists
+rm -f "$LINK_NAME"
+# Create the new symbolic link
+ln -s "$SOURCE_BINARY" "$LINK_NAME"
+echo "✅ Symlink created: $LINK_NAME -> $SOURCE_BINARY"
 
 # Check if ~/.local/bin is in PATH
 if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then

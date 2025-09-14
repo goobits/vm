@@ -7,8 +7,8 @@ pub mod progress;
 pub mod utils;
 
 mod docker;
-// mod vagrant; // To be implemented later
-// mod tart;    // To be implemented later
+mod vagrant;
+mod tart;
 
 /// The core trait for all VM providers.
 /// This defines the contract for creating, managing, and interacting with a VM.
@@ -47,8 +47,8 @@ pub fn get_provider(config: VmConfig) -> Result<Box<dyn Provider>> {
     let provider_name = config.provider.as_deref().unwrap_or("docker");
     match provider_name {
         "docker" => Ok(Box::new(docker::DockerProvider::new(config)?)),
-        // "vagrant" => Ok(Box::new(vagrant::VagrantProvider::new(config)?)),
-        // "tart" => Ok(Box::new(tart::TartProvider::new(config)?)),
+        "vagrant" => Ok(Box::new(vagrant::VagrantProvider::new(config)?)),
+        "tart" => Ok(Box::new(tart::TartProvider::new(config)?)),
         _ => Err(error::ProviderError::UnknownProvider(provider_name.to_string()).into()),
     }
 }
