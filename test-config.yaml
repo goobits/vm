@@ -1,0 +1,44 @@
+version: '1.0'
+provider: docker
+os: ubuntu
+project:
+  name: test
+  hostname: test.local
+  workspace_path: /workspace
+  env_template_path: .env.example
+vm:
+  memory: 4096
+  cpus: 2
+  swap: 1024
+  swappiness: 60
+  gui: true
+  timezone: America/New_York
+tart:
+  image: test:latest
+  guest_os: linux
+  disk_size: 50
+services:
+  postgresql:
+    enabled: true
+    user: test
+    password: test
+    database: test_db
+    port: 5432
+  headless_browser:
+    enabled: true
+    display: ":99"
+    executable_path: /usr/bin/chrome
+  audio:
+    enabled: true
+    driver: pulse
+    share_microphone: true
+  gpu:
+    enabled: true
+    type: nvidia
+    memory_mb: 512
+terminal:
+  emoji: 🚀
+  username: testuser
+  theme: dracula
+  show_git_branch: true
+  show_timestamp: false

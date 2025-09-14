@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/miko/.local/share/vm/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
