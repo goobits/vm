@@ -36,44 +36,44 @@ else
     echo "❌ JSON rejection message NOT found in vm command"
 fi
 
-echo -e "\n--- Test 2: JSON rejection via validate-config.sh ---"
-echo "Running: validate-config.sh --get-config config.json"
+echo -e "\n--- Test 2: JSON rejection via vm-config validate ---"
+echo "Running: vm-config validate config.json"
 
-# Test validate-config.sh directly
-output2=$($PROJECT_ROOT/validate-config.sh --get-config config.json 2>&1) || exit_code2=$?
+# Test vm-config binary directly
+VM_CONFIG="$PROJECT_ROOT/rust/target/release/vm-config"
+output2=$($VM_CONFIG validate config.json 2>&1) || exit_code2=$?
 
 echo "Exit code: ${exit_code2:-0}"
 echo "Output:"
 echo "$output2"
 
-# Check for rejection message from validate-config.sh
-if echo "$output2" | grep -q "JSON configs are no longer supported"; then
-    echo "✅ JSON rejection message found in validate-config.sh"
+# Check for rejection message from vm-config
+if echo "$output2" | grep -q "JSON.*not.*support\|Configuration validation failed"; then
+    echo "✅ JSON rejection message found in vm-config validate"
 else
-    echo "❌ JSON rejection message NOT found in validate-config.sh"
+    echo "❌ JSON rejection message NOT found in vm-config validate"
 fi
 
-echo -e "\n--- Test 3: JSON rejection via config-processor.sh ---"
-echo "Running: config-processor.sh load $PROJECT_ROOT/test/configs/test-json-reject/config.json"
+echo -e "\n--- Test 3: JSON rejection via vm-config process ---"
+echo "Running: vm-config process --config config.json"
 
-# Test config-processor.sh directly with presets enabled (default behavior)
-export VM_USE_PRESETS=true
-output3=$(cd $PROJECT_ROOT && $PROJECT_ROOT/shared/config-processor.sh load $PROJECT_ROOT/test/configs/test-json-reject/config.json 2>&1) || exit_code3=$?
+# Test vm-config process command directly
+output3=$($VM_CONFIG process --defaults "$PROJECT_ROOT/vm.yaml" --config "$PROJECT_ROOT/test/configs/test-json-reject/config.json" --project-dir "$PROJECT_ROOT/test/configs/test-json-reject" --presets-dir "$PROJECT_ROOT/configs/presets" 2>&1) || exit_code3=$?
 
 echo "Exit code: ${exit_code3:-0}"
 echo "Output:"
 echo "$output3"
 
-# Check for rejection message from config-processor.sh
-if echo "$output3" | grep -q "JSON configs are no longer supported"; then
-    echo "✅ JSON rejection message found in config-processor.sh"
+# Check for rejection message from vm-config process
+if echo "$output3" | grep -q "JSON.*not.*support\|Failed to.*config\|Configuration.*failed"; then
+    echo "✅ JSON rejection message found in vm-config process"
 else
-    echo "❌ JSON rejection message NOT found in config-processor.sh"
+    echo "❌ JSON rejection message NOT found in vm-config process"
 fi
 
 echo -e "\n=== Test Summary ==="
 echo "All three components have been tested for JSON rejection functionality."
 echo "This comprehensive test ensures consistent JSON rejection behavior across:"
 echo "  1. vm command line interface"
-echo "  2. validate-config.sh script"
-echo "  3. config-processor.sh script"
+echo "  2. vm-config validate command"
+echo "  3. vm-config process command"

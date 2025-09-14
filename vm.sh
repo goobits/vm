@@ -49,12 +49,10 @@ source "$SCRIPT_DIR/shared/docker-utils.sh"
 source "$SCRIPT_DIR/shared/temporary-file-utils.sh"
 source "$SCRIPT_DIR/shared/mount-utils.sh"
 source "$SCRIPT_DIR/shared/security-utils.sh"
-source "$SCRIPT_DIR/shared/config-processor.sh"
-
 # Initialize Rust binary paths (these are bundled with the project)
+VM_CONFIG="$SCRIPT_DIR/rust/target/release/vm-config"
 VM_PORTS="$SCRIPT_DIR/rust/target/release/vm-ports"
 VM_LINKS="$SCRIPT_DIR/rust/target/release/vm-links"
-# VM_CONFIG is already set by config-processor.sh
 
 source "$SCRIPT_DIR/shared/provider-interface.sh"
 source "$SCRIPT_DIR/shared/project-detector.sh"
@@ -223,13 +221,25 @@ kill_virtualbox() {
     echo "ℹ️ or run 'vagrant up' to start your VM again."
 }
 
-# Function to load and validate config (now uses shared config processor)
+# Function to load and validate config (uses vm-config directly)
 load_config() {
     local config_path="$1"
     local original_dir="$2"
+    local defaults_path="$SCRIPT_DIR/vm.yaml"
 
-    # Use Rust-based config processing (always includes preset support)
-    process_vm_config "$config_path" "$original_dir"
+    # Use vm-config binary directly with full merge logic
+    local cmd=("$VM_CONFIG" "process")
+    cmd+=("--defaults" "$defaults_path")
+
+    if [[ -n "$config_path" ]] && [[ -f "$config_path" ]]; then
+        cmd+=("--config" "$config_path")
+    fi
+
+    cmd+=("--project-dir" "$original_dir")
+    cmd+=("--presets-dir" "$SCRIPT_DIR/configs/presets")
+    cmd+=("--format" "yaml")
+
+    "${cmd[@]}"
 }
 
 
@@ -2584,11 +2594,18 @@ case "${1:-}" in
         ;;
     "validate")
         echo "✅ Validating configuration..."
-        # Validate configuration using the shared config processor
+        # Validate configuration using vm-config directly
         if [[ -n "$CUSTOM_CONFIG" ]]; then
-            validate_config_file "$CUSTOM_CONFIG"
+            local config_file="$CUSTOM_CONFIG"
+            # Look for config file in current directory if not absolute path
+            if [[ ! "$config_file" = /* ]] && [[ ! -f "$config_file" ]]; then
+                if [[ -f "$(pwd)/$config_file" ]]; then
+                    config_file="$(pwd)/$config_file"
+                fi
+            fi
+            "$VM_CONFIG" validate "$config_file"
         else
-            validate_config_file
+            "$VM_CONFIG" validate "vm.yaml"
         fi
         ;;
     "preset")

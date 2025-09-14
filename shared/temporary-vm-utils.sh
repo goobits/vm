@@ -17,7 +17,16 @@ source "$SCRIPT_DIR/security-utils.sh"
 # Initialize Rust binary paths (these are bundled with the project)
 VM_TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VM_CONFIG="$VM_TOOL_DIR/rust/target/release/vm-config"
-source "$SCRIPT_DIR/shared/config-processor.sh"
+
+# Simple helper function to query config fields
+vm_config_query() {
+    local field="$1"
+    local file="$2"
+    local default="${3:-}"
+
+    "$VM_CONFIG" query "$file" "$field" --raw --default "$default" 2>/dev/null || echo "$default"
+}
+
 source "$SCRIPT_DIR/shared/provider-interface.sh"
 
 # Temp VM state management constants and functions
@@ -2083,7 +2092,7 @@ EOF
 		echo "DEBUG handle_temp_command: extracting schema defaults from: $SCRIPT_DIR/vm.schema.yaml" >&2
 	fi
 	
-	if ! SCHEMA_DEFAULTS=$("$SCRIPT_DIR/validate-config.sh" --extract-defaults "$SCRIPT_DIR/vm.schema.yaml" 2>&1); then
+	if ! SCHEMA_DEFAULTS=$(cat "$SCRIPT_DIR/vm.yaml" 2>&1); then
 		echo "❌ Failed to extract schema defaults"
 		echo "📋 Error output: $SCHEMA_DEFAULTS"
 		rm -f "$TEMP_CONFIG_FILE"

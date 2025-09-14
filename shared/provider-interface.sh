@@ -18,9 +18,7 @@ VM_CONFIG="$VM_TOOL_DIR/rust/target/release/vm-config"
 if [[ -f "$SHARED_DIR/platform-utils.sh" ]]; then
     source "$SHARED_DIR/platform-utils.sh"
 fi
-if [[ -f "$SHARED_DIR/config-processor.sh" ]]; then
-    source "$SHARED_DIR/config-processor.sh"
-fi
+# VM_CONFIG path set by calling script
 if [[ -f "$SHARED_DIR/docker-utils.sh" ]]; then
     source "$SHARED_DIR/docker-utils.sh"
 fi

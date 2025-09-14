@@ -9,8 +9,8 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VM_TOOL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Source the config processor to get VM_CONFIG binary path
-source "$SCRIPT_DIR/config-processor.sh"
+# Initialize VM_CONFIG path directly
+VM_CONFIG="$VM_TOOL_DIR/rust/target/release/vm-config"
 
 # Merge project configuration with default configuration files
 # Args: default_config_path (YAML file), project_config_path (YAML file)

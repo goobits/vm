@@ -37,6 +37,73 @@ detect_os() {
 
 OS=$(detect_os)
 
+# Function to install Rust
+install_rust() {
+    echo -e "${YELLOW}⚠️  Rust is not installed (required for VM tool)${NC}"
+    echo ""
+    echo "The VM tool is written in Rust for performance and safety."
+    echo "You can install it using your system's package manager or the official Rust installer (rustup)."
+    echo ""
+
+    local install_cmd=""
+    local pkg_manager=""
+
+    if [[ "$OS" == "linux" ]]; then
+        if command_exists apt-get; then
+            pkg_manager="apt"
+            install_cmd="sudo apt-get update && sudo apt-get install -y cargo"
+        elif command_exists dnf; then
+            pkg_manager="dnf"
+            install_cmd="sudo dnf install -y cargo"
+        elif command_exists pacman; then
+            pkg_manager="pacman"
+            install_cmd="sudo pacman -S --noconfirm rust"
+        fi
+    fi
+
+    echo -n "Would you like to install Rust automatically? (y/N): "
+    read -r INSTALL_RUST
+
+    if [[ ! "$INSTALL_RUST" =~ ^[Yy]$ ]]; then
+        echo -e "${RED}❌ Rust is required. Please install it manually.${NC}"
+        if [[ -n "$pkg_manager" ]]; then
+            echo "   Recommended command for your system ($pkg_manager):"
+            echo -e "   ${GREEN}$install_cmd${NC}"
+        fi
+        echo "   Alternatively, use the official installer:"
+        echo -e "   ${GREEN}curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh${NC}"
+        exit 1
+    fi
+
+    if [[ -n "$pkg_manager" ]]; a
+        echo "📦 Installing Rust using $pkg_manager..."
+        if eval "$install_cmd"; then
+            echo -e "${GREEN}✅ Rust installed successfully via $pkg_manager.${NC}"
+        else
+            echo -e "${RED}❌ Failed to install Rust using $pkg_manager.${NC}"
+            echo "   Attempting fallback to rustup..."
+            install_rust_with_rustup
+        fi
+    else
+        install_rust_with_rustup
+    fi
+}
+
+# Function to install rust using rustup
+install_rust_with_rustup() {
+    echo "📦 Installing Rust using rustup (official installer)..."
+    if curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y; then
+        # Source the Rust environment for the current session
+        source "$HOME/.cargo/env" 2>/dev/null || true
+        echo -e "${GREEN}✅ Rust installed successfully via rustup.${NC}"
+    else
+        echo -e "${RED}❌ Failed to install Rust using rustup.${NC}"
+        echo "Please try installing it manually:"
+        echo -e "   ${GREEN}curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh${NC}"
+        exit 1
+    fi
+}
+
 echo "🚀 Installing VM Infrastructure..."
 echo "📂 Installing from: $SCRIPT_DIR"
 echo ""
@@ -44,43 +111,14 @@ echo ""
 # Check for required dependencies: Rust and Cargo
 echo "🔍 Checking dependencies..."
 if ! command_exists rustc || ! command_exists cargo; then
-    echo -e "${YELLOW}⚠️  Rust is not installed (required for VM tool)${NC}"
-    echo ""
+    install_rust
+fi
 
-    # Offer to install automatically
-    echo -n "Would you like to install Rust automatically? (y/N): "
-    read -r INSTALL_RUST
-
-    if [[ "$INSTALL_RUST" =~ ^[Yy]$ ]]; then
-        echo "📦 Installing Rust..."
-
-        # Install Rust using rustup
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-
-        # Source the Rust environment
-        source "$HOME/.cargo/env" 2>/dev/null || true
-
-        # Verify Rust installation
-        if command_exists rustc && command_exists cargo; then
-            echo -e "${GREEN}✅ Rust installed successfully${NC}"
-        else
-            echo -e "${RED}❌ Failed to install Rust${NC}"
-            echo ""
-            echo "Please install Rust manually:"
-            echo -e "${GREEN}  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh${NC}"
-            echo ""
-            echo "After installing Rust, run this installer again."
-            exit 1
-        fi
-    else
-        echo -e "${RED}❌ Rust is required for the VM tool${NC}"
-        echo ""
-        echo "Install Rust manually:"
-        echo -e "${GREEN}  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh${NC}"
-        echo ""
-        echo "After installing Rust, run this installer again."
-        exit 1
-    fi
+# Verify Rust installation again after potential installation
+if ! command_exists rustc || ! command_exists cargo; then
+    echo -e "${RED}❌ Rust installation could not be verified.${NC}"
+    echo "Please ensure 'rustc' and 'cargo' are in your PATH and run the installer again."
+    exit 1
 fi
 
 echo -e "${GREEN}✅ Dependencies satisfied${NC}"
@@ -141,7 +179,7 @@ else
     done
 
     # Copy individual files
-    for file in vm.sh validate-config.sh generate-config.sh vm.yaml package.json *.json *.yaml; do
+    for file in vm.sh generate-config.sh vm.yaml package.json *.json *.yaml; do
         if [[ -f "$SCRIPT_DIR/$file" ]]; then
             cp "$SCRIPT_DIR/$file" "$INSTALL_DIR/"
         fi
