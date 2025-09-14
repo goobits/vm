@@ -3,15 +3,17 @@ use anyhow::{Result, Context};
 use regex::Regex;
 use jsonschema::{JSONSchema, ValidationError};
 use serde_json::Value;
+use std::path::PathBuf;
 
 /// Configuration validator
 pub struct ConfigValidator {
     config: VmConfig,
+    schema_path: PathBuf,
 }
 
 impl ConfigValidator {
-    pub fn new(config: VmConfig) -> Self {
-        Self { config }
+    pub fn new(config: VmConfig, schema_path: PathBuf) -> Self {
+        Self { config, schema_path }
     }
 
     /// Validate the entire configuration
@@ -35,13 +37,12 @@ impl ConfigValidator {
     /// Validate using JSON Schema if available
     fn validate_with_schema(&self) -> Result<()> {
         // Load the schema file
-        let schema_path = crate::paths::resolve_tool_path("vm.schema.yaml");
-        if !schema_path.exists() {
-            anyhow::bail!("Schema file not found: {:?}", schema_path);
+        if !self.schema_path.exists() {
+            anyhow::bail!("Schema file not found: {:?}", self.schema_path);
         }
 
-        let schema_content = std::fs::read_to_string(&schema_path)
-            .with_context(|| format!("Failed to read schema file: {:?}", schema_path))?;
+        let schema_content = std::fs::read_to_string(&self.schema_path)
+            .with_context(|| format!("Failed to read schema file: {:?}", self.schema_path))?;
 
         // Parse YAML schema and convert to JSON for jsonschema crate
         let schema_yaml: serde_yaml::Value = serde_yaml::from_str(&schema_content)

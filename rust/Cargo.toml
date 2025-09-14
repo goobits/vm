@@ -4,6 +4,7 @@ members = [
     "vm-ports",
     "vm-links",
     "vm-common",
+    "vm-pkg",
 ]
 resolver = "2"
 

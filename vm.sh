@@ -90,34 +90,45 @@ source "$SCRIPT_DIR/shared/project-detector.sh"
 source "$SCRIPT_DIR/lib/progress-reporter.sh"
 source "$SCRIPT_DIR/lib/docker-compose-progress.sh"
 
-# --- NEW, EFFICIENT, YAML-ONLY CONFIGURATION LOADING ---
+# --- UNIFIED CONFIGURATION LOADING ---
 
 log_info "Loading and validating configuration..."
 
-# Find the config file path. This logic can be simplified, but for now,
-# we'll determine the file to pass to the export command.
-CONFIG_FILE_PATH=""
+# The `vm-config` binary now handles all configuration logic:
+# 1. Finds `vm.yaml` by searching up from the current directory.
+# 2. Loads the `base.yaml` preset as a default.
+# 3. Detects the project type and merges the corresponding preset.
+# 4. Merges the user's `vm.yaml` on top.
+# 5. Validates the final configuration against the schema.
+# 6. Exports the final configuration as shell variables.
+
+cmd=("$VM_CONFIG" "export")
+
+# Pass the --file argument if a custom config path is specified.
 if [[ -n "${CUSTOM_CONFIG:-}" ]]; then
-    CONFIG_FILE_PATH="$CUSTOM_CONFIG"
-elif [[ -f "$(pwd)/vm.yaml" ]]; then
-    CONFIG_FILE_PATH="$(pwd)/vm.yaml"
+    cmd+=("--file" "$CUSTOM_CONFIG")
 fi
 
-# Call `vm-config export` once. The `eval` command executes the output,
-# setting all config values as environment variables.
-# Sanitize variable names by replacing hyphens with underscores
-if ! eval "$("$VM_CONFIG" export --file "$CONFIG_FILE_PATH" | sed 's/export \([^=]*\)-/export \1_/g')"; then
+# Pass the --no-preset flag if requested.
+if [[ "${VM_NO_PRESET:-false}" == "true" ]]; then
+    cmd+=("--no-preset")
+fi
+
+# Execute the command and use `eval` to load the exported variables.
+# The `export` command in `vm-config` is specifically designed for this.
+if ! eval "$("${cmd[@]}")"; then
     log_error "Configuration is invalid or failed to load. Exiting."
     exit 1
 fi
 
-# You can now use the variables directly. Use a default if the variable might not be set.
+# The variables are now available in the script's environment.
+# Use parameter expansion to provide safe defaults.
 PROVIDER="${provider:-docker}"
 PROJECT_NAME="${project_name:-vm-project}"
 
 log_info "Configuration loaded successfully. Provider: $PROVIDER"
 
-# --- END OF NEW CONFIGURATION LOADING ---
+# --- END OF UNIFIED CONFIGURATION LOADING ---
 
 # Set up proper cleanup handlers for temporary files
 setup_temp_file_handlers
@@ -255,38 +266,9 @@ kill_virtualbox() {
     echo "ℹ️ or run 'vagrant up' to start your VM again."
 }
 
-# Function to load and validate config (uses vm-config dump command)
-load_config() {
-    local config_path="$1"
-    local original_dir="$2"
-
-    # Use the new vm-config dump command for centralized configuration authority
-    local cmd=("$VM_CONFIG" "dump")
-
-    if [[ -n "$config_path" ]] && [[ -f "$config_path" ]]; then
-        cmd+=("--file" "$config_path")
-    fi
-
-    # Execute the command and capture both output and exit code
-    local config_yaml
-    local exit_code
-
-    if config_yaml=$("${cmd[@]}" 2>/dev/null); then
-        exit_code=0
-    else
-        exit_code=$?
-        # If dump failed, print error to stderr
-        echo "Fatal: Configuration loading failed. Exit code: $exit_code" >&2
-        "${cmd[@]}" >&2  # Show the actual error message
-        return $exit_code
-    fi
-
-    # Return the configuration YAML
-    echo "$config_yaml"
-}
-
-
 # Helper functions for interactive preset selection
+# Note: Interactive mode is now handled by flags passed to the main script,
+# but these functions are kept for potential direct calls or future use.
 get_available_presets() {
     local presets_dir="$SCRIPT_DIR/configs/presets"
     local available_presets=()
@@ -492,132 +474,14 @@ interactive_preset_selection() {
     echo ""
 }
 
-# Apply smart preset when no vm.yaml exists
-apply_smart_preset() {
-    local project_dir="$1"
+# Get provider from config (now uses environment variables)
+get_provider() {
+    echo "${provider:-docker}"
+}
 
-    # Use forced preset if specified, otherwise detect
-    local detected_type
-    local preset_types=()
-
-    if [[ -n "${VM_FORCED_PRESET:-}" ]]; then
-        detected_type="$VM_FORCED_PRESET"
-        preset_types=("$VM_FORCED_PRESET")
-        echo "🎯 Using forced preset: $VM_FORCED_PRESET"
-    else
-        # Detect project type
-        detected_type=$(detect_project_type "$project_dir")
-        echo "🔍 Detecting project type..."
-        echo "✅ Detected: $detected_type"
-
-        # Parse multi-preset strings or single preset
-        if [[ "$detected_type" == multi:* ]]; then
-            # Extract types from multi:type1 type2 type3 format
-            local multi_types="${detected_type#multi:}"
-            # Split by spaces into array
-            IFS=' ' read -ra preset_types <<< "$multi_types"
-        else
-            # Single preset type
-            preset_types=("$detected_type")
-        fi
-
-        # Interactive preset selection when VM_INTERACTIVE="true"
-        if [[ "${VM_INTERACTIVE:-false}" == "true" ]]; then
-            interactive_preset_selection preset_types
-        fi
-    fi
-
-    # Define base preset file
-    local base_preset_file="$SCRIPT_DIR/configs/presets/base.yaml"
-
-    # Check if base preset exists
-    if [[ ! -f "$base_preset_file" ]]; then
-        echo "❌ Base preset file not found: $base_preset_file" >&2
-        return 1
-    fi
-
-    # Start with the base preset (foundation layer)
-    local merged_config
-    merged_config=$(cat "$base_preset_file")
-    echo "📦 Applying base development preset..."
-
-    # Determine merge order strategy for multi-preset scenarios
-    local ordered_presets=()
-    local framework_presets=()
-    local environment_presets=()
-
-    # Categorize presets for proper merge order
-    for preset_type in "${preset_types[@]}"; do
-        case "$preset_type" in
-            react|vue|next|angular|django|flask|rails|nodejs|python|ruby|php|rust|go)
-                framework_presets+=("$preset_type")
-                ;;
-            docker|kubernetes)
-                environment_presets+=("$preset_type")
-                ;;
-            generic)
-                # Skip generic as base already provides foundation
-                ;;
-            *)
-                # Unknown preset types go to framework layer
-                framework_presets+=("$preset_type")
-                ;;
-        esac
-    done
-
-    # Merge framework presets first (after base)
-    for preset_type in "${framework_presets[@]}"; do
-        local preset_file="$SCRIPT_DIR/configs/presets/${preset_type}.yaml"
-        if [[ -f "$preset_file" ]]; then
-            echo "📦 Applying $preset_type development preset..."
-            local temp_preset
-            temp_preset=$(cat "$preset_file")
-            merged_config=$(echo -e "$merged_config\n---\n$temp_preset")
-        else
-            echo "⚠️  Warning: Preset file not found for '$preset_type', skipping..."
-        fi
-    done
-
-    # Merge environment presets last (override framework settings)
-    for preset_type in "${environment_presets[@]}"; do
-        local preset_file="$SCRIPT_DIR/configs/presets/${preset_type}.yaml"
-        if [[ -f "$preset_file" ]]; then
-            echo "📦 Applying $preset_type environment preset..."
-            local temp_preset
-            temp_preset=$(cat "$preset_file")
-            merged_config=$(echo -e "$merged_config\n---\n$temp_preset")
-        else
-            echo "⚠️  Warning: Preset file not found for '$preset_type', skipping..."
-        fi
-    done
-
-    # Log final merge summary
-    local applied_count=$((${#framework_presets[@]} + ${#environment_presets[@]}))
-    if [[ $applied_count -eq 0 ]]; then
-        echo "📦 Applied base preset only (generic development environment)"
-    elif [[ $applied_count -eq 1 ]]; then
-        echo "📦 Applied base + 1 additional preset"
-    else
-        echo "📦 Applied base + $applied_count additional presets"
-        echo "   Merge order: base → frameworks [${framework_presets[*]}] → environments [${environment_presets[*]}]"
-    fi
-
-    # Extract schema defaults and merge with preset
-    local schema_defaults
-    if ! schema_defaults=$("$SCRIPT_DIR/validate-config.sh" --extract-defaults "$SCRIPT_DIR/vm.schema.yaml" 2>&1); then
-        echo "❌ Failed to extract schema defaults" >&2
-        return 1
-    fi
-
-    # Merge schema defaults with preset (schema defaults first, then preset overrides)
-    local final_config
-    final_config=$(echo -e "$schema_defaults\n---\n$merged_config")
-
-    echo "💡 You can customize this by creating a vm.yaml file"
-    echo ""
-
-    # Return the merged configuration
-    echo "$final_config"
+# Extract project name from config (now uses environment variables)
+get_project_name() {
+    echo "${project_name:-vm-project}"
 }
 
 # Get provider from config (now uses vm-config)
@@ -1251,7 +1115,8 @@ docker_up() {
     # Fix volume permissions before Ansible
     progress_task "Setting up permissions"
     local project_user
-    project_user="$(query_config_field "$config" 'vm.user' 'developer')"
+    # Use CONFIG_FILE_PATH directly since query_config_field expects a file path
+    project_user="$(query_config_field "$CONFIG_FILE_PATH" 'vm.user' 'ubuntu')"
     if docker_run "exec" "$config" "$project_dir" chown -R "$(printf '%q' "$project_user"):$(printf '%q' "$project_user")" "/home/$(printf '%q' "$project_user")/.nvm" "/home/$(printf '%q' "$project_user")/.cache"; then
         progress_done
     else
@@ -1989,7 +1854,8 @@ docker_provision() {
     # Fix volume permissions before Ansible
     progress_task "Setting up permissions"
     local project_user
-    project_user="$(query_config_field "$config" 'vm.user' 'developer')"
+    # Use CONFIG_FILE_PATH directly since query_config_field expects a file path
+    project_user="$(query_config_field "$CONFIG_FILE_PATH" 'vm.user' 'ubuntu')"
     if docker_run "exec" "$config" "$project_dir" chown -R "$(printf '%q' "$project_user"):$(printf '%q' "$project_user")" "/home/$(printf '%q' "$project_user")/.nvm" "/home/$(printf '%q' "$project_user")/.cache"; then
         progress_done
     else

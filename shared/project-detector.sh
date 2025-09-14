@@ -5,6 +5,17 @@
 # Function to detect the project type based on files in the current directory
 # Returns: project type string (e.g., "nodejs", "python", "multi:nodejs python", "generic")
 detect_project_type() {
+    # Try to use the fast Rust binary first
+    local detector_bin
+    detector_bin="$(dirname "$0")/../rust/target/release/vm-detector"
+
+    if [[ -x "$detector_bin" ]]; then
+        local project_dir="${1:-.}"
+        (cd "$project_dir" && "$detector_bin")
+        return
+    fi
+
+    # Fallback to shell script if binary is not available
     local detected_types=()
     local project_dir="${1:-.}"
 

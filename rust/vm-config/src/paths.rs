@@ -57,6 +57,13 @@ pub fn get_presets_dir() -> PathBuf {
     tool_dir.join("configs").join("presets")
 }
 
+/// Get the schema file path
+/// Returns VM_TOOL_DIR/vm.schema.yaml
+pub fn get_schema_path() -> PathBuf {
+    let tool_dir = get_tool_dir();
+    tool_dir.join("vm.schema.yaml")
+}
+
 /// Get the default config file path
 /// Returns ./vm.yaml in the current directory
 pub fn get_default_config_path() -> PathBuf {
