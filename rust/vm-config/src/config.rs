@@ -251,6 +251,12 @@ fn default_true() -> bool {
 }
 
 impl VmConfig {
+    /// Load, merge, and validate configuration from an optional file path.
+    /// This is the primary entrypoint for loading configuration.
+    pub fn load(file: Option<PathBuf>, no_preset: bool) -> anyhow::Result<Self> {
+        crate::cli::load_and_merge_config(file, no_preset)
+    }
+
     /// Load config from YAML file
     pub fn from_file(path: &PathBuf) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)?;

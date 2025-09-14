@@ -595,7 +595,7 @@ pub fn execute(args: Args) -> Result<()> {
     Ok(())
 }
 
-fn load_and_merge_config(file: Option<PathBuf>, no_preset: bool) -> Result<VmConfig> {
+pub fn load_and_merge_config(file: Option<PathBuf>, no_preset: bool) -> Result<VmConfig> {
     // 1. Find user config file, if any
     let user_config_path = match file {
         Some(path) => Some(path),
