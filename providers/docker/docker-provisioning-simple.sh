@@ -153,8 +153,21 @@ generate_docker_compose() {
     # Collect explicit port mappings to avoid conflicts with port range
     local explicit_ports=""
     if [[ "$ports_count" -gt 0 ]]; then
-        # Get explicit port values using vm-config
-        explicit_ports="$("$VM_CONFIG" transform <(echo "$config") 'ports | to_entries[] | .value' --format space)"
+        # Extract explicit port values from the same JSON we parsed earlier
+        local ports_raw
+        ports_raw="$(get_config 'ports' '{}')"
+        if [[ "$ports_raw" != "{}" && "$ports_raw" != "null" && -n "$ports_raw" ]]; then
+            # Extract port values from JSON manually
+            while IFS=: read -r key port; do
+                if [[ -n "$port" ]]; then
+                    # Remove quotes and whitespace
+                    port=$(echo "$port" | tr -d '"' | tr -d ',' | tr -d '}' | xargs)
+                    if [[ "$port" =~ ^[0-9]+$ ]]; then
+                        explicit_ports+=" $port "
+                    fi
+                fi
+            done < <(echo "$ports_raw" | sed 's/[{}]//g' | tr ',' '\n')
+        fi
     fi
 
     # Generate port range forwarding (skip explicit ports to avoid conflicts)

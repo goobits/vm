@@ -243,7 +243,6 @@ fn format_compilation_error(error: ValidationError) -> String {
     format!("Schema compilation error: {}", error)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -423,7 +423,7 @@ pub fn execute(args: Args) -> Result<()> {
             // Load user config if provided
             let user_config = if let Some(path) = config {
                 Some(VmConfig::from_file(&path)
-                    .with_context(|| format!("Failed to load user config: {:?}", path))?) 
+                    .with_context(|| format!("Failed to load user config: {:?}", path))?)
             } else {
                 None
             };
@@ -453,7 +453,7 @@ pub fn execute(args: Args) -> Result<()> {
             let value = match query_field(&json_value, &field) {
                 Ok(val) => {
                     if val.is_null() && default.is_some() {
-                        serde_json::Value::String(default.expect("Default value should be available when checked"))
+                        serde_json::Value::String(default.ok_or_else(|| anyhow::anyhow!("Default value not available"))?)
                     } else {
                         val
                     }
@@ -468,7 +468,7 @@ pub fn execute(args: Args) -> Result<()> {
             };
 
             if raw && value.is_string() {
-                println!("{}", value.as_str().expect("String value should have string content"));
+                println!("{}", value.as_str().ok_or_else(|| anyhow::anyhow!("Expected string value, got: {:?}", value))?);
             } else {
                 println!("{}", serde_json::to_string(&value)?);
             }
@@ -636,7 +636,6 @@ fn load_and_merge_config(file: Option<PathBuf>) -> Result<VmConfig> {
 
     Ok(merged)
 }
-
 
 fn output_config(config: &VmConfig, format: &OutputFormat) -> Result<()> {
     match format {
