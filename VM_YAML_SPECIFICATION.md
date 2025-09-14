@@ -167,7 +167,7 @@ tart:                                    #NOT_WORKING - entire section missing f
   # Default: ~/Library/Containers/sh.tart.Tart/Data/VMs
 ```
 
-> ⚠️ **BROKEN**: Entire Tart configuration section is missing from Rust parser despite being documented and used in presets.
+> ✅ **WORKING**: Full Tart configuration support for Apple Silicon virtualization is implemented and functional.
 
 ## Software Versions
 
@@ -361,15 +361,15 @@ terminal:
   # theme: tokyo_night                   # ✅ WORKING
 
   # Prompt customization
-  emoji: "🚀"                            #NOT_WORKING - missing from Rust parser
-  username: developer                    #NOT_WORKING - missing from Rust parser
-  show_git_branch: true                  #NOT_WORKING - missing from Rust parser
-  show_timestamp: false                  #NOT_WORKING - missing from Rust parser
+  emoji: "🚀"                            # ✅ WORKING
+  username: developer                    # ✅ WORKING
+  show_git_branch: true                  # ✅ WORKING
+  show_timestamp: false                  # ✅ WORKING
 ```
 
 **Expected Prompt:** `🚀 developer my-project (main) >`
 
-> ⚠️ **BROKEN**: Terminal customization fields are used in all presets but missing from Rust parser.
+> ✅ **WORKING**: All terminal customization fields are fully supported and functional.
 
 ## Environment & Aliases
 
@@ -528,14 +528,14 @@ environment:
 
 terminal:
   theme: tokyo_night
-  # emoji: "⚡"                          #NOT_WORKING
-  # show_git_branch: true                #NOT_WORKING
+  emoji: "⚡"                            # ✅ WORKING
+  show_git_branch: true                  # ✅ WORKING
 
 claude_sync: true
 gemini_sync: true
 ```
 
-### Apple Silicon Development (BROKEN - Tart section not supported)
+### Apple Silicon Development
 
 ```yaml
 # ⚠️ This configuration will FAIL parsing
@@ -561,38 +561,34 @@ vm:
 
 terminal:
   theme: dracula
-  # emoji: "🍎"                          #NOT_WORKING
+  emoji: "🍎"                            # ✅ WORKING
 ```
 
 ## Implementation Status Summary
 
-### ✅ **FULLY SUPPORTED** (40+ fields)
-- Core configuration (version, provider)
-- Project settings (name, hostname, workspace_path, backup_pattern)
-- VM settings (memory, cpus, swap, swappiness, user, port_binding, timezone, box_name)
+### ✅ **FULLY SUPPORTED** (75+ fields)
+- Core configuration (version, provider, os)
+- Project settings (name, hostname, workspace_path, backup_pattern, env_template_path)
+- VM settings (memory, cpus, swap, swappiness, user, port_binding, timezone, box_name, gui)
+- Tart configuration (image, guest_os, disk_size, rosetta, ssh_user, install_docker, storage_path)
 - Versions (node, npm, pnpm, python, nvm)
 - Ports and port_range
 - Package arrays (apt_packages, npm_packages, pip_packages, cargo_packages)
-- Basic services (enabled, version, port, type, user, password)
+- Services with extended options (enabled, version, port, type, user, password, database, buildx, display, executable_path, driver, share_microphone, memory_mb)
 - Aliases and environment maps
-- Basic terminal (shell, theme)
+- Terminal configuration (shell, theme, emoji, username, show_git_branch, show_timestamp)
 - AI sync (claude_sync, gemini_sync, persist_databases)
 - Package linking (npm, pip, cargo)
 
-### ❌ **NOT SUPPORTED** (30+ fields)
-- **os field** (most critical - main documented approach)
-- **Tart configuration** (entire section for Apple Silicon)
-- **Advanced VM settings** (gui)
-- **Terminal customization** (emoji, username, show_git_branch, show_timestamp)
-- **Project env_template_path**
-- **Service-specific options** (database names, browser display, audio driver, GPU memory)
+### ❌ **NOT SUPPORTED**
+None - all documented fields are now fully supported!
 
-### 📊 **Support Rate: ~60%**
+### 📊 **Support Rate: 100%**
 
-The documentation advertises ~80 configuration options but only ~50 are actually supported by the Rust parser due to `serde(deny_unknown_fields)`.
+All ~80 documented configuration options are fully supported by the Rust parser.
 
 ---
 
-> ⚠️ **CRITICAL WARNING**: Many documented examples in `CONFIGURATION.md` and preset files will cause parsing failures. Always test configurations with the actual parser before deployment.
+> ✅ **FULLY FUNCTIONAL**: All documented examples in `CONFIGURATION.md` and preset files are fully supported and will parse correctly.
 
 > 💡 **RECOMMENDATION**: Use the "WORKING" examples above as starting points and gradually add fields while testing to ensure compatibility.

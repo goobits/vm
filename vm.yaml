@@ -7,10 +7,10 @@ project:
   hostname: dev.vm.local
 vm:
   box: ubuntu/jammy64
-  memory: 2048
-  cpus: 2
-  swap: 1024  # Swap size in MB (optional, defaults to 0)
-  swappiness: 60  # Swappiness value 0-100 (optional, defaults to 60)
+  memory: 8192
+  cpus: 6
+  swap: 2048  # Swap size in MB (optional, defaults to 0)
+  swappiness: 30  # Swappiness value 0-100 (lower = less swap usage)
   user: developer
   port_binding: 127.0.0.1
   # timezone: auto  # Auto-detects from host (default)
@@ -18,12 +18,13 @@ versions:
   node: '22'
   nvm: v0.40.3
   pnpm: 10.12.3
-  python: '3.11'
+  python: '3.13'
 terminal:
   emoji: 🚀
   username: vm-dev
   theme: dracula
   show_git_branch: true
+  shell: zsh  # Added supported field (defaults to bash if not specified)
 apt_packages:
   - htop
   - tree
@@ -31,6 +32,7 @@ apt_packages:
   - ripgrep
   - nano
   - sox
+  - jq         # JSON processing
 npm_packages:
   - '@anthropic-ai/claude-code'
   - '@google/gemini-cli'
@@ -47,4 +49,4 @@ gemini_sync: true
 package_linking:
   npm: true
   pip: true
-  cargo: true
+  cargo: false

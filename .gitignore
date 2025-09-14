@@ -63,6 +63,11 @@ dist/
 build/
 out/
 
+# Platform-specific build artifacts
+rust/target/linux-*/
+rust/target/darwin-*/
+rust/target/windows-*/
+
 # Python
 __pycache__/
 *.py[cod]
