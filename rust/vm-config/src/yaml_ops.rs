@@ -572,22 +572,39 @@ impl YamlOperations {
     }
 
     fn transform_to_entries(value: &Value, expression: &str) -> Result<Vec<String>> {
-        match value {
+        // Parse the expression: .field | to_entries[] | "template"
+        let parts: Vec<&str> = expression.split(" | ").collect();
+        if parts.len() < 3 {
+            return Ok(vec![expression.to_string()]);
+        }
+
+        let field_path = parts[0].trim_start_matches('.');
+        let template = parts[2];
+
+        // Navigate to the field in the YAML
+        let target_value = if field_path.is_empty() {
+            value
+        } else {
+            match Self::get_nested_field(value, field_path) {
+                Ok(v) => v,
+                Err(_) => return Ok(vec![]),
+            }
+        };
+
+        match target_value {
             Value::Mapping(map) => {
                 let mut results = Vec::new();
                 for (key, val) in map {
                     if let Value::String(key_str) = key {
-                        if let Some(template) = expression.split(" | ").nth(1) {
-                            // Proper template replacement with jq-style syntax
-                            let result = template
-                                .replace("\\(.key)", key_str)
-                                .replace("\\(.value)", &Self::yaml_value_to_string(val))
-                                .replace(r"\(.key)", key_str)
-                                .replace(r"\(.value)", &Self::yaml_value_to_string(val))
-                                .trim_matches('"')
-                                .to_string();
-                            results.push(result);
-                        }
+                        // Proper template replacement with jq-style syntax
+                        let result = template
+                            .replace("\\(.key)", key_str)
+                            .replace("\\(.value)", &Self::yaml_value_to_string(val))
+                            .replace(r"\(.key)", key_str)
+                            .replace(r"\(.value)", &Self::yaml_value_to_string(val))
+                            .trim_matches('"')
+                            .to_string();
+                        results.push(result);
                     }
                 }
                 Ok(results)

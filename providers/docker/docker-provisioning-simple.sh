@@ -9,10 +9,41 @@ set -u
 # Get VM tool directory for accessing default config and utilities
 VM_TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+# Function to get platform-specific binary
+get_platform_binary() {
+    local binary_name="$1"
+    local platform
+    platform="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/arm64/aarch64/')"
+
+    # Check platform-specific location first
+    local platform_binary="$VM_TOOL_DIR/rust/target/$platform/release/$binary_name"
+    if [[ -x "$platform_binary" ]]; then
+        echo "$platform_binary"
+        return 0
+    fi
+
+    # Fallback to generic location
+    local generic_binary="$VM_TOOL_DIR/rust/target/release/$binary_name"
+    if [[ -x "$generic_binary" ]]; then
+        echo "$generic_binary"
+        return 0
+    fi
+
+    # Last resort - check in vm-config subdirectory
+    local subdir_binary="$VM_TOOL_DIR/rust/$binary_name/target/release/$binary_name"
+    if [[ -x "$subdir_binary" ]]; then
+        echo "$subdir_binary"
+        return 0
+    fi
+
+    echo "Error: Could not find $binary_name binary" >&2
+    return 1
+}
+
 # Initialize Rust binary paths (these are bundled with the project)
-VM_CONFIG="${VM_CONFIG:-$VM_TOOL_DIR/rust/target/release/vm-config}"
-VM_PORTS="$VM_TOOL_DIR/rust/target/release/vm-ports"
-VM_LINKS="$VM_TOOL_DIR/rust/target/release/vm-links"
+VM_CONFIG="${VM_CONFIG:-$(get_platform_binary "vm-config")}"
+VM_PORTS="$(get_platform_binary "vm-ports")"
+VM_LINKS="$(get_platform_binary "vm-links")"
 
 # Link detection now handled by vm-links binary
 # source "$VM_TOOL_DIR/shared/link-detector.sh"
