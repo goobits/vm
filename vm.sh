@@ -50,9 +50,9 @@ source "$SCRIPT_DIR/shared/temporary-file-utils.sh"
 source "$SCRIPT_DIR/shared/mount-utils.sh"
 source "$SCRIPT_DIR/shared/security-utils.sh"
 # Initialize Rust binary paths (these are bundled with the project)
-VM_CONFIG="$SCRIPT_DIR/rust/target/release/vm-config"
-VM_PORTS="$SCRIPT_DIR/rust/target/release/vm-ports"
-VM_LINKS="$SCRIPT_DIR/rust/target/release/vm-links"
+VM_CONFIG="$SCRIPT_DIR/vm-config-shim"
+VM_PORTS="$SCRIPT_DIR/rust/vm-config/target/release/vm-ports"
+VM_LINKS="$SCRIPT_DIR/rust/vm-config/target/release/vm-links"
 
 source "$SCRIPT_DIR/shared/provider-interface.sh"
 source "$SCRIPT_DIR/shared/project-detector.sh"
@@ -66,7 +66,7 @@ log_info "Loading and validating configuration..."
 # Find the config file path. This logic can be simplified, but for now,
 # we'll determine the file to pass to the export command.
 CONFIG_FILE_PATH=""
-if [[ -n "$CUSTOM_CONFIG" ]]; then
+if [[ -n "${CUSTOM_CONFIG:-}" ]]; then
     CONFIG_FILE_PATH="$CUSTOM_CONFIG"
 elif [[ -f "$(pwd)/vm.yaml" ]]; then
     CONFIG_FILE_PATH="$(pwd)/vm.yaml"
@@ -74,7 +74,8 @@ fi
 
 # Call `vm-config export` once. The `eval` command executes the output,
 # setting all config values as environment variables.
-if ! eval "$("$VM_CONFIG" export --file "$CONFIG_FILE_PATH")"; then
+# Sanitize variable names by replacing hyphens with underscores
+if ! eval "$("$VM_CONFIG" export --file "$CONFIG_FILE_PATH" | sed 's/export \([^=]*\)-/export \1_/g')"; then
     log_error "Configuration is invalid or failed to load. Exiting."
     exit 1
 fi
@@ -92,7 +93,7 @@ setup_temp_file_handlers
 
 # Export environment variables needed by provider interface
 export CURRENT_DIR
-export CUSTOM_CONFIG
+export CUSTOM_CONFIG="${CUSTOM_CONFIG:-}"
 export FULL_CONFIG_PATH
 
 # Mount validation functions moved to shared/mount-utils.sh
@@ -106,6 +107,24 @@ export FULL_CONFIG_PATH
 # Functions available: detect_comma_in_paths, parse_mount_permissions, construct_mount_argument,
 # process_single_mount, parse_mount_string, validate_mount_security, validate_mount_security_atomic
 
+# Helper function to query configuration fields using vm-config binary
+query_config_field() {
+    local config_file="$1"
+    local field="$2"
+    local default_value="${3:-}"
+
+    local result
+    if result=$("$SCRIPT_DIR/rust/vm-config/target/release/vm-config" query "$config_file" "$field" --raw 2>/dev/null); then
+        echo "$result"
+    else
+        echo "$default_value"
+    fi
+}
+
+# Helper function to sanitize shell variable names (replace hyphens with underscores)
+sanitize_shell_var() {
+    echo "$1" | tr '-' '_'
+}
 
 # Show usage information
 show_usage() {

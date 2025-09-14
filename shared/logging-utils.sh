@@ -57,10 +57,10 @@ vm_log() {
 }
 
 # Convenience functions for common log levels
-vm_debug() { vm_log "DEBUG" "$1" "$2"; }
-vm_info()  { vm_log "INFO" "$1" "$2"; }
-vm_warn()  { vm_log "WARN" "$1" "$2"; }
-vm_error() { vm_log "ERROR" "$1" "$2"; }
+vm_debug() { vm_log "DEBUG" "$1" "${2:-}"; }
+vm_info()  { vm_log "INFO" "$1" "${2:-}"; }
+vm_warn()  { vm_log "WARN" "$1" "${2:-}"; }
+vm_error() { vm_log "ERROR" "$1" "${2:-}"; }
 
 # Helper to format context from variables
 # Usage: vm_info "message" "$(vm_context "key1=$value1" "key2=$value2")"
@@ -109,6 +109,19 @@ log_success() {
     local message="$1"
     local context="${2:-}"
     echo "✅ $message"
+    if [[ -n "$context" ]]; then
+        vm_info "$message" "$context"
+    else
+        vm_info "$message"
+    fi
+}
+
+# Standardized info message function
+# Usage: log_info "Processing configuration"
+log_info() {
+    local message="$1"
+    local context="${2:-}"
+    echo "ℹ️  $message"
     if [[ -n "$context" ]]; then
         vm_info "$message" "$context"
     else
