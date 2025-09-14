@@ -3,6 +3,9 @@ use std::path::Path;
 use vm_config::config::VmConfig;
 
 pub mod error;
+pub mod progress;
+pub mod utils;
+
 mod docker;
 // mod vagrant; // To be implemented later
 // mod tart;    // To be implemented later

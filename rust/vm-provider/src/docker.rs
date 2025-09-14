@@ -1,15 +1,66 @@
-use crate::{Provider, error::ProviderError};
-use anyhow::Result;
-use std::path::Path;
+use crate::{
+    error::ProviderError,
+    progress::ProgressReporter,
+    utils::{is_tool_installed, stream_command},
+    Provider,
+};
+use anyhow::{Context, Result};
+use std::fs;
+use std::path::{Path, PathBuf};
+use tera::{Tera, Context as TeraContext};
 use vm_config::config::VmConfig;
+
+const DOCKER_COMPOSE_TEMPLATE: &str = include_str!("docker/template.yml");
 
 pub struct DockerProvider {
     config: VmConfig,
+    _project_dir: PathBuf, // The root of the user's project
+    temp_dir: PathBuf,    // For storing generated files like docker-compose.yml
 }
 
 impl DockerProvider {
     pub fn new(config: VmConfig) -> Result<Self> {
-        Ok(Self { config })
+        if !is_tool_installed("docker") {
+            return Err(ProviderError::DependencyNotFound("Docker".to_string()).into());
+        }
+
+        let project_dir = std::env::current_dir()?;
+        let temp_dir = project_dir.join(".vm-tmp");
+        fs::create_dir_all(&temp_dir)?;
+
+        Ok(Self {
+            config,
+            _project_dir: project_dir,
+            temp_dir,
+        })
+    }
+
+    fn project_name(&self) -> &str {
+        self.config.project.as_ref()
+            .and_then(|p| p.name.as_deref())
+            .unwrap_or("vm-project")
+    }
+
+    fn container_name(&self) -> String {
+        format!("{}-dev", self.project_name())
+    }
+
+    fn render_docker_compose(&self) -> Result<String> {
+        let mut tera = Tera::default();
+        tera.add_raw_template("docker-compose.yml", DOCKER_COMPOSE_TEMPLATE)?;
+
+        let mut context = TeraContext::new();
+        context.insert("config", &self.config);
+
+        let content = tera.render("docker-compose.yml", &context)?;
+        Ok(content)
+    }
+
+    fn write_docker_compose(&self) -> Result<PathBuf> {
+        let content = self.render_docker_compose()?;
+        let path = self.temp_dir.join("docker-compose.yml");
+        fs::write(&path, content.as_bytes())?;
+        Ok(path)
     }
 }
 
@@ -19,48 +70,94 @@ impl Provider for DockerProvider {
     }
 
     fn create(&self) -> Result<()> {
-        println!("(DockerProvider) Creating VM...");
-        // TODO: Implement logic from vm.sh docker_up()
-        // 1. Generate Dockerfile and docker-compose.yml
-        // 2. Run `docker-compose build`
-        // 3. Run `docker-compose up -d`
-        // 4. Run provisioning (Ansible)
+        let progress = ProgressReporter::new();
+        let main_phase = progress.start_phase("Creating Docker Environment");
+
+        progress.task(&main_phase, "Generating docker-compose.yml...");
+        let compose_path = self.write_docker_compose().context("Failed to generate docker-compose.yml")?;
+        progress.finish_phase(&main_phase, "Done.");
+
+        let build_phase = progress.start_phase("Building container image");
+        progress.task(&build_phase, "Running `docker-compose build`...");
+        stream_command(
+            "docker-compose",
+            &["-f", compose_path.to_str().unwrap(), "build"],
+        ).context("Docker build failed")?;
+        progress.finish_phase(&build_phase, "Build complete.");
+
+        let up_phase = progress.start_phase("Starting containers");
+        progress.task(&up_phase, "Running `docker-compose up -d`...");
+        stream_command(
+            "docker-compose",
+            &["-f", compose_path.to_str().unwrap(), "up", "-d"],
+        ).context("Docker up failed")?;
+        progress.finish_phase(&up_phase, "Containers started.");
+
+        // TODO: Add Ansible provisioning step here.
+
+        println!("\n✅ Docker environment created successfully!");
         Ok(())
     }
 
     fn start(&self) -> Result<()> {
-        println!("(DockerProvider) Starting VM...");
-        // TODO: Implement logic from vm.sh docker_start()
-        Ok(())
+        let compose_path = self.temp_dir.join("docker-compose.yml");
+        if !compose_path.exists() {
+            self.write_docker_compose()?;
+        }
+        
+        stream_command(
+            "docker",
+            &["start", &self.container_name()],
+        ).context("Failed to start container")
     }
 
     fn stop(&self) -> Result<()> {
-        println!("(DockerProvider) Stopping VM...");
-        // TODO: Implement logic from vm.sh docker_halt()
-        Ok(())
+        stream_command(
+            "docker",
+            &["stop", &self.container_name()],
+        ).context("Failed to stop container")
     }
 
     fn destroy(&self) -> Result<()> {
-        println!("(DockerProvider) Destroying VM...");
-        // TODO: Implement logic from vm.sh docker_destroy()
-        Ok(())
+        let compose_path = self.temp_dir.join("docker-compose.yml");
+        if !compose_path.exists() {
+            println!("docker-compose.yml not found. Attempting to remove container by name.");
+            return stream_command("docker", &["rm", "-f", &self.container_name()]);
+        }
+
+        stream_command(
+            "docker-compose",
+            &["-f", compose_path.to_str().unwrap(), "down", "--volumes"],
+        )
     }
 
-    fn ssh(&self, relative_path: &Path) -> Result<()> {
-        println!("(DockerProvider) SSHing into VM at path: {:?}", relative_path);
-        // TODO: Implement logic from vm.sh docker_ssh()
+    fn ssh(&self, _relative_path: &Path) -> Result<()> {
+        let status = duct::cmd(
+            "docker",
+            &["exec", "-it", &self.container_name(), "zsh"],
+        )
+        .run()?
+        .status;
+
+        if !status.success() {
+            return Err(ProviderError::CommandFailed(
+                "SSH command failed".to_string(),
+            ).into());
+        }
         Ok(())
     }
 
     fn exec(&self, cmd: &[&str]) -> Result<()> {
-        println!("(DockerProvider) Executing command: {:?}", cmd);
-        // TODO: Implement logic
-        Ok(())
+        let container = self.container_name();
+        let mut args: Vec<&str> = vec!["exec", &container];
+        args.extend_from_slice(cmd);
+        stream_command("docker", &args)
     }
 
     fn status(&self) -> Result<()> {
-        println!("(DockerProvider) Getting status...");
-        // TODO: Implement logic from vm.sh docker_status()
-        Ok(())
+        stream_command(
+            "docker",
+            &["ps", "-f", &format!("name={}", self.container_name())],
+        )
     }
 }
