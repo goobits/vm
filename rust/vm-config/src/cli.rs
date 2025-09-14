@@ -707,10 +707,12 @@ fn flatten_yaml_to_shell(prefix: &str, value: &Value, exports: &mut Vec<String>)
         Value::Mapping(map) => {
             for (key, val) in map {
                 if let Value::String(key_str) = key {
+                    // Sanitize key for shell variable names (replace hyphens with underscores)
+                    let sanitized_key = key_str.replace('-', "_");
                     let new_prefix = if prefix.is_empty() {
-                        key_str.clone()
+                        sanitized_key
                     } else {
-                        format!("{}_{}", prefix, key_str)
+                        format!("{}_{}", prefix, sanitized_key)
                     };
                     flatten_yaml_to_shell(&new_prefix, val, exports);
                 }

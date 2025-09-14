@@ -2,16 +2,28 @@ use anyhow::{Result, Context};
 use serde_yaml::{Value, Mapping};
 use std::path::{Path, PathBuf};
 use std::fs;
+use std::io::Read;
 use crate::cli::{OutputFormat, TransformFormat};
 
 /// YAML operations for configuration processing
 pub struct YamlOperations;
 
 impl YamlOperations {
+    /// Helper function to read from file or stdin
+    fn read_file_or_stdin(file: &PathBuf) -> Result<String> {
+        if file.to_str() == Some("-") {
+            let mut buffer = String::new();
+            std::io::stdin().read_to_string(&mut buffer)
+                .with_context(|| "Failed to read from stdin")?;
+            Ok(buffer)
+        } else {
+            fs::read_to_string(file)
+                .with_context(|| format!("Failed to read file: {:?}", file))
+        }
+    }
     /// Validate that a file is valid YAML
     pub fn validate_file(file: &PathBuf) -> Result<()> {
-        let content = fs::read_to_string(file)
-            .with_context(|| format!("Failed to read file: {:?}", file))?;
+        let content = Self::read_file_or_stdin(file)?;
 
         let _: Value = serde_yaml::from_str(&content)
             .with_context(|| format!("Invalid YAML in file: {:?}", file))?;
@@ -21,8 +33,7 @@ impl YamlOperations {
 
     /// Add an item to a YAML array at the specified path
     pub fn array_add(file: &PathBuf, path: &str, item: &str) -> Result<()> {
-        let content = fs::read_to_string(file)
-            .with_context(|| format!("Failed to read file: {:?}", file))?;
+        let content = Self::read_file_or_stdin(file)?;
 
         let mut value: Value = serde_yaml::from_str(&content)
             .with_context(|| format!("Invalid YAML in file: {:?}", file))?;
@@ -47,7 +58,7 @@ impl YamlOperations {
 
     /// Remove items from a YAML array based on filter
     pub fn array_remove(file: &PathBuf, path: &str, filter: &str) -> Result<()> {
-        let content = fs::read_to_string(file)
+        let content = Self::read_file_or_stdin(file)
             .with_context(|| format!("Failed to read file: {:?}", file))?;
 
         let mut value: Value = serde_yaml::from_str(&content)
@@ -69,8 +80,7 @@ impl YamlOperations {
 
     /// Query with conditional filtering
     pub fn filter(file: &PathBuf, expression: &str, output_format: &OutputFormat) -> Result<()> {
-        let content = fs::read_to_string(file)
-            .with_context(|| format!("Failed to read file: {:?}", file))?;
+        let content = Self::read_file_or_stdin(file)?;
 
         let value: Value = serde_yaml::from_str(&content)
             .with_context(|| format!("Invalid YAML in file: {:?}", file))?;
@@ -478,8 +488,7 @@ impl YamlOperations {
     // Helper functions
 
     fn load_yaml_file(file: &PathBuf) -> Result<Value> {
-        let content = fs::read_to_string(file)
-            .with_context(|| format!("Failed to read file: {:?}", file))?;
+        let content = Self::read_file_or_stdin(file)?;
 
         serde_yaml::from_str(&content)
             .with_context(|| format!("Failed to parse YAML: {:?}", file))
@@ -668,7 +677,13 @@ impl YamlOperations {
     }
 
     pub fn delete_from_array(file: &Path, path: &str, field: &str, value: &str, format: &OutputFormat) -> Result<()> {
-        let content = std::fs::read_to_string(file)?;
+        let content = if file.to_str() == Some("-") {
+            let mut buffer = String::new();
+            std::io::stdin().read_to_string(&mut buffer)?;
+            buffer
+        } else {
+            std::fs::read_to_string(file)?
+        };
         let mut doc: Value = serde_yaml::from_str(&content)?;
 
         let path_parts: Vec<&str> = if path.is_empty() {

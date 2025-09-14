@@ -4,7 +4,6 @@ use std::path::PathBuf;
 
 /// Main VM configuration structure
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(deny_unknown_fields)]
 pub struct VmConfig {
     #[serde(rename = "$schema", skip_serializing_if = "Option::is_none")]
     pub schema: Option<String>,
@@ -14,6 +13,9 @@ pub struct VmConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub os: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub project: Option<ProjectConfig>,
@@ -54,6 +56,9 @@ pub struct VmConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub terminal: Option<TerminalConfig>,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tart: Option<TartConfig>,
+
     #[serde(default, skip_serializing_if = "is_false")]
     pub claude_sync: bool,
 
@@ -80,6 +85,9 @@ pub struct ProjectConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub backup_pattern: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub env_template_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -107,6 +115,9 @@ pub struct VmSettings {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub port_binding: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gui: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -146,6 +157,32 @@ pub struct ServiceConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
+
+    // Database-specific fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub database: Option<String>,
+
+    // Docker-specific fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub buildx: Option<bool>,
+
+    // Headless browser-specific fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub executable_path: Option<String>,
+
+    // Audio-specific fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub driver: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub share_microphone: Option<bool>,
+
+    // GPU-specific fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_mb: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -155,6 +192,42 @@ pub struct TerminalConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub emoji: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub show_git_branch: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub show_timestamp: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TartConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub guest_os: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disk_size: Option<u32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rosetta: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ssh_user: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub install_docker: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub storage_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
