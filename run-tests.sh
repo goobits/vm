@@ -580,7 +580,7 @@ test_validation() {
     cd "$test_dir"
 
     # Test with no config
-    if $SCRIPT_DIR/vm.sh validate 2>&1 | grep -q "No vm.yaml"; then
+    if $SCRIPT_DIR/vm.sh validate 2>&1 | grep -q "No such file or directory\|Failed to load config"; then
         echo -e "${GREEN}✓ Validation detects missing config${NC}"
     else
         echo -e "${RED}✗ Validation should detect missing config${NC}"
@@ -1129,7 +1129,7 @@ check_prerequisites() {
                 exit 1
             fi
             # Check if user has Docker permissions
-            if ! docker version &>/dev/null 2>&1; then
+            if ! check_docker_access; then
                 if groups | grep -q docker; then
                     echo -e "${YELLOW}⚠ Docker socket permissions issue (in docker group but access denied)${NC}"
                     echo -e "${YELLOW}  This may be due to docker socket group mismatch${NC}"

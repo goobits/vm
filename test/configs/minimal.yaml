@@ -1,14 +1,10 @@
-{
-  "project": {
-    "name": "test-minimal",
-    "hostname": "dev.minimal.local",
-    "workspace_path": "/workspace"
-  },
-  "provider": "docker",
-  "terminal": {
-    "emoji": "🧪",
-    "username": "test-dev"
-  },
-  "services": {},
-  "aliases": {}
-}
+project:
+  name: test-minimal
+  hostname: dev.minimal.local
+  workspace_path: /workspace
+provider: docker
+terminal:
+  emoji: 🧪
+  username: test-dev
+services: {}
+aliases: {}
