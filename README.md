@@ -126,10 +126,22 @@ vm --no-preset create            # Manual configuration only
 ```
 
 ## 📖 Documentation
-- **[CLI Reference](CLI.md)** - Complete command documentation
-- **[Configuration Guide](CONFIGURATION.md)** - Configuration options
-- **[Presets Reference](PRESETS.md)** - Framework presets
-- **[Installation Guide](INSTALLATION.md)** - Setup and troubleshooting
+
+### Getting Started
+- **[Quick Start Guide](docs/getting-started/quick-start.md)** - 5-minute setup tutorial
+- **[Installation Guide](docs/getting-started/installation.md)** - Platform-specific setup
+- **[Common Examples](docs/getting-started/examples.md)** - Real-world configurations
+
+### User Guide
+- **[CLI Reference](docs/user-guide/cli-reference.md)** - Complete command documentation
+- **[Configuration Guide](docs/user-guide/configuration.md)** - Full configuration options
+- **[Presets Guide](docs/user-guide/presets.md)** - Framework auto-detection
+- **[Troubleshooting](docs/user-guide/troubleshooting.md)** - Common issues and solutions
+
+### Development
+- **[Contributing Guide](docs/development/contributing.md)** - How to contribute
+- **[Architecture Overview](docs/development/architecture.md)** - System design
+- **[Testing Guide](docs/development/testing.md)** - Test suite documentation
 
 ## 🧪 Development
 
