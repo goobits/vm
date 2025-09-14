@@ -276,6 +276,13 @@ pub enum Command {
         #[arg(short = 'f', long, default_value = "yaml")]
         format: OutputFormat,
     },
+
+    /// Load, merge, and validate configuration (outputs final YAML)
+    Dump {
+        /// Config file path (optional, searches for vm.yaml if not provided)
+        #[arg(short, long)]
+        file: Option<PathBuf>,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -438,7 +445,7 @@ pub fn execute(args: Args) -> Result<()> {
             let value = match query_field(&json_value, &field) {
                 Ok(val) => {
                     if val.is_null() && default.is_some() {
-                        serde_json::Value::String(default.unwrap())
+                        serde_json::Value::String(default.expect("Default value should be available when checked"))
                     } else {
                         val
                     }
@@ -453,7 +460,7 @@ pub fn execute(args: Args) -> Result<()> {
             };
 
             if raw && value.is_string() {
-                println!("{}", value.as_str().unwrap());
+                println!("{}", value.as_str().expect("String value should have string content"));
             } else {
                 println!("{}", serde_json::to_string(&value)?);
             }
@@ -548,6 +555,56 @@ pub fn execute(args: Args) -> Result<()> {
             use crate::yaml_ops::YamlOperations;
             YamlOperations::delete_from_array(&file, &path, &field, &value, &format)?;
         }
+
+        Command::Dump { file } => {
+            // Configuration discovery and loading
+            let config_path = if let Some(path) = file {
+                path
+            } else {
+                // Search for vm.yaml in current directory and upwards
+                find_vm_config_file()?
+            };
+
+            // Use the default vm.yaml path for defaults
+            let defaults_path = crate::paths::resolve_tool_path("vm.yaml");
+            let presets_dir = crate::paths::get_presets_dir();
+
+            // Determine project directory (parent of found config file)
+            let project_dir = config_path.parent()
+                .unwrap_or_else(|| std::path::Path::new("."))
+                .to_path_buf();
+
+            // Load default config
+            let default_config = VmConfig::from_file(&defaults_path)
+                .with_context(|| format!("Failed to load defaults from: {:?}", defaults_path))?;
+
+            // Load user config
+            let user_config = VmConfig::from_file(&config_path)
+                .with_context(|| format!("Failed to load config from: {:?}", config_path))?;
+
+            // Detect and load preset if user config is partial
+            let preset_config = if user_config.is_partial() {
+                let detector = crate::preset::PresetDetector::new(project_dir, presets_dir);
+                if let Some(preset_name) = detector.detect()? {
+                    Some(detector.load_preset(&preset_name)?)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            // Merge in order: defaults -> preset -> user
+            let merged = crate::merge::merge_configs(Some(default_config), preset_config, Some(user_config))?;
+
+            // Validate the merged configuration
+            let validator = crate::validate::ConfigValidator::new(merged.clone());
+            validator.validate().with_context(|| "Configuration validation failed")?;
+
+            // Output as YAML
+            let yaml = serde_yaml::to_string(&merged)?;
+            print!("{}", yaml);
+        }
     }
 
     Ok(())
@@ -586,4 +643,24 @@ fn query_field(value: &serde_json::Value, field: &str) -> Result<serde_json::Val
     }
 
     Ok(current.clone())
+}
+
+/// Find vm.yaml by searching current directory and upwards
+fn find_vm_config_file() -> Result<PathBuf> {
+    let current_dir = std::env::current_dir()?;
+    let mut dir = current_dir.as_path();
+
+    loop {
+        let config_path = dir.join("vm.yaml");
+        if config_path.exists() {
+            return Ok(config_path);
+        }
+
+        match dir.parent() {
+            Some(parent) => dir = parent,
+            None => break,
+        }
+    }
+
+    anyhow::bail!("Could not find vm.yaml file in current directory or any parent directory");
 }

@@ -49,8 +49,12 @@ fn parse_cargo_install_list(output: &str) -> Result<Vec<(String, String)>> {
 
     for line in output.lines() {
         if let Some(captures) = re.captures(line) {
-            let pkg_name = captures.get(1).unwrap().as_str().to_string();
-            let pkg_path = captures.get(2).unwrap().as_str().to_string();
+            let pkg_name = captures.get(1)
+                .expect("Regex group 1 should exist for cargo package name")
+                .as_str().to_string();
+            let pkg_path = captures.get(2)
+                .expect("Regex group 2 should exist for cargo package path")
+                .as_str().to_string();
 
             // Only include path-based installs (not registry installs)
             if pkg_path.contains('/') && !pkg_path.starts_with("registry+") {
