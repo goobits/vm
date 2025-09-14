@@ -129,38 +129,59 @@ echo "🔧 Building vm-config binary..."
 if [[ -d "$SCRIPT_DIR/rust/vm-config" ]]; then
     cd "$SCRIPT_DIR/rust"
 
+    # Platform detection
+    detect_platform() {
+        local os arch
+        os=$(uname -s | tr '[:upper:]' '[:lower:]')
+        arch=$(uname -m)
+        case "$arch" in
+            x86_64) arch="x86_64" ;;
+            aarch64|arm64) arch="aarch64" ;;
+            *) arch="unknown" ;;
+        esac
+        echo "${os}-${arch}"
+    }
+
+    PLATFORM=$(detect_platform)
+    PLATFORM_TARGET_DIR="target/$PLATFORM"
+    PLATFORM_BINARY="$PLATFORM_TARGET_DIR/release/vm-config"
+    FALLBACK_BINARY="target/release/vm-config"
+
+    echo "🏗️  Building for platform: $PLATFORM"
+
     # Check if we need to clean build
     needs_clean=false
 
-    # Check if binary exists and what platform it was built for
-    if [[ -f "target/release/vm-config" ]]; then
-        # Check if binary is for different platform (will fail to execute)
-        if ! ./target/release/vm-config --version >/dev/null 2>&1; then
-            echo "🔄 Binary built for different platform, cleaning required..."
+    # Check platform-specific binary first
+    if [[ -f "$PLATFORM_BINARY" ]]; then
+        # Check if binary works on current platform
+        if ! "$PLATFORM_BINARY" --version >/dev/null 2>&1; then
+            echo "🔄 Platform-specific binary is corrupted, rebuilding..."
             needs_clean=true
         else
             # Check if source files are newer than binary
-            if find . -name "*.rs" -newer target/release/vm-config | grep -q .; then
-                echo "🔄 Source changes detected, cleaning for fresh build..."
+            if find . -name "*.rs" -newer "$PLATFORM_BINARY" | grep -q .; then
+                echo "🔄 Source changes detected, rebuilding..."
                 needs_clean=true
             else
-                echo "✅ Binary is up-to-date for current platform"
+                echo "✅ Platform-specific binary is up-to-date"
             fi
         fi
     else
-        echo "🔨 No existing binary found, building..."
+        echo "🔨 No platform-specific binary found, building..."
         needs_clean=true
     fi
 
-    # Clean only if necessary
+    # Clean only if necessary (clean platform-specific directory)
     if [[ "$needs_clean" == "true" ]]; then
-        echo "🧹 Cleaning previous build artifacts..."
-        cargo clean --release 2>/dev/null || true
+        echo "🧹 Cleaning previous build artifacts for $PLATFORM..."
+        rm -rf "$PLATFORM_TARGET_DIR" 2>/dev/null || true
     fi
 
+    # Use the updated build script which handles platform-specific building
     echo "🔨 Building for current platform..."
-    if cargo build --release; then
-        echo -e "${GREEN}✅ vm-config binary built successfully${NC}"
+    if ./build.sh; then
+        echo -e "${GREEN}✅ vm-config binary built successfully for $PLATFORM${NC}"
     else
         echo -e "${RED}❌ Failed to build vm-config binary${NC}"
         exit 1

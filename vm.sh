@@ -49,10 +49,41 @@ source "$SCRIPT_DIR/shared/docker-utils.sh"
 source "$SCRIPT_DIR/shared/temporary-file-utils.sh"
 source "$SCRIPT_DIR/shared/mount-utils.sh"
 source "$SCRIPT_DIR/shared/security-utils.sh"
-# Initialize Rust binary paths (these are bundled with the project)
-VM_CONFIG="$SCRIPT_DIR/vm-config-shim"
-VM_PORTS="$SCRIPT_DIR/rust/vm-config/target/release/vm-ports"
-VM_LINKS="$SCRIPT_DIR/rust/vm-config/target/release/vm-links"
+# Platform detection and binary path resolution
+detect_platform() {
+    local os arch
+    os=$(uname -s | tr '[:upper:]' '[:lower:]')
+    arch=$(uname -m)
+    case "$arch" in
+        x86_64) arch="x86_64" ;;
+        aarch64|arm64) arch="aarch64" ;;
+        *) arch="unknown" ;;
+    esac
+    echo "${os}-${arch}"
+}
+
+get_platform_binary() {
+    local binary_name="$1"
+    local platform=$(detect_platform)
+    local platform_path="$SCRIPT_DIR/rust/target/$platform/release/$binary_name"
+    local fallback_path="$SCRIPT_DIR/rust/target/release/$binary_name"
+
+    if [[ -x "$platform_path" ]]; then
+        echo "$platform_path"
+    elif [[ -x "$fallback_path" ]]; then
+        echo "$fallback_path"
+    else
+        log_error "Cannot find executable binary: $binary_name"
+        log_error "Looked in: $platform_path and $fallback_path"
+        log_error "Try running: cd rust && ./build.sh"
+        exit 1
+    fi
+}
+
+# Initialize Rust binary paths (platform-aware)
+VM_CONFIG=$(get_platform_binary "vm-config")
+VM_PORTS=$(get_platform_binary "vm-ports")
+VM_LINKS=$(get_platform_binary "vm-links")
 
 source "$SCRIPT_DIR/shared/provider-interface.sh"
 source "$SCRIPT_DIR/shared/project-detector.sh"
@@ -114,7 +145,7 @@ query_config_field() {
     local default_value="${3:-}"
 
     local result
-    if result=$("$SCRIPT_DIR/rust/vm-config/target/release/vm-config" query "$config_file" "$field" --raw 2>/dev/null); then
+    if result=$("$VM_CONFIG" query "$config_file" "$field" --raw 2>/dev/null); then
         echo "$result"
     else
         echo "$default_value"
@@ -592,13 +623,19 @@ apply_smart_preset() {
 # Get provider from config (now uses vm-config)
 get_provider() {
     local config="$1"
-    "$VM_CONFIG" query "$config" provider --raw --default "docker" 2>/dev/null || echo "docker"
+    local temp_config
+    temp_config="$(create_temp_file "vm-provider.XXXXXX")"
+    echo "$config" > "$temp_config"
+    "$VM_CONFIG" query "$temp_config" provider --raw --default "docker" 2>/dev/null || echo "docker"
 }
 
 # Extract project name from config (now uses vm-config)
 get_project_name() {
     local config="$1"
-    "$VM_CONFIG" query "$config" project.name --raw --default "vm-project" 2>/dev/null || echo "vm-project"
+    local temp_config
+    temp_config="$(create_temp_file "vm-name.XXXXXX")"
+    echo "$config" > "$temp_config"
+    "$VM_CONFIG" query "$temp_config" project.name --raw --default "vm-project" 2>/dev/null || echo "vm-project"
 }
 
 # Extract project name from config and generate container name
