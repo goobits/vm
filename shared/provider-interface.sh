@@ -13,7 +13,7 @@ SHARED_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Initialize vm-config path
 VM_TOOL_DIR="$(cd "$SHARED_DIR/.." && pwd)"
 # Only set VM_CONFIG if not already set by parent script
-VM_CONFIG="${VM_CONFIG:-$VM_TOOL_DIR/rust/vm-config/target/release/vm-config}"
+VM_CONFIG="${VM_CONFIG:-$VM_TOOL_DIR/rust/target/release/vm-config}"
 
 # Source shared utilities
 if [[ -f "$SHARED_DIR/platform-utils.sh" ]]; then

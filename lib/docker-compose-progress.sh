@@ -12,7 +12,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/progress-reporter.sh"
 
 # Set up vm-config path
 VM_TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VM_CONFIG="$VM_TOOL_DIR/rust/target/release/vm-config"
+VM_CONFIG="${VM_CONFIG:-$VM_TOOL_DIR/rust/target/release/vm-config}"
 
 # Run docker compose with progress reporting
 docker_compose_with_progress() {

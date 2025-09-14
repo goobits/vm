@@ -10,7 +10,7 @@ set -u
 VM_TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # Initialize Rust binary paths (these are bundled with the project)
-VM_CONFIG="$VM_TOOL_DIR/rust/target/release/vm-config"
+VM_CONFIG="${VM_CONFIG:-$VM_TOOL_DIR/rust/target/release/vm-config}"
 VM_PORTS="$VM_TOOL_DIR/rust/target/release/vm-ports"
 VM_LINKS="$VM_TOOL_DIR/rust/target/release/vm-links"
 
@@ -58,12 +58,12 @@ generate_docker_compose() {
 
     # Extract basic project data
     local project_name
-    project_name="$(get_config '.project.name' '' | tr -cd '[:alnum:]')"
+    project_name="$(get_config 'project.name' '' | tr -cd '[:alnum:]')"
     if [[ -z "$project_name" ]]; then
         project_name="$(basename "$project_dir" | tr -cd '[:alnum:]')"
     fi
     local project_hostname
-    project_hostname="$(get_config '.project.hostname' '')"
+    project_hostname="$(get_config 'project.hostname' '')"
 
     # Check if hostname is missing or null
     if [[ -z "$project_hostname" || "$project_hostname" == "null" ]]; then
@@ -77,13 +77,13 @@ generate_docker_compose() {
         return 1
     fi
     local workspace_path
-    workspace_path="$(get_config '.project.workspace_path' '/workspace')"
+    workspace_path="$(get_config 'project.workspace_path' '/workspace')"
     local project_user
-    project_user="$(get_config '.vm.user' 'developer')"
+    project_user="$(get_config 'vm.user' 'developer')"
 
     # Get timezone from config or detect from host
     local timezone
-    timezone="$(get_config '.vm.timezone' 'auto')"
+    timezone="$(get_config 'vm.timezone' 'auto')"
     if [[ "$timezone" == "auto" ]] || [[ "$timezone" == "null" ]]; then
         # Detect host timezone
         if [[ -L /etc/localtime ]]; then
@@ -97,11 +97,11 @@ generate_docker_compose() {
 
     # Extract memory and swap settings
     local memory
-    memory="$(get_config '.vm.memory' '2048')"
+    memory="$(get_config 'vm.memory' '2048')"
     local swap
-    swap="$(get_config '.vm.swap' '0')"
+    swap="$(get_config 'vm.swap' '0')"
     local swappiness
-    swappiness="$(get_config '.vm.swappiness' '60')"
+    swappiness="$(get_config 'vm.swappiness' '60')"
 
     # Get VM tool path (use absolute path to avoid relative path issues)
     # The VM tool is always in the workspace directory where vm.sh is located
@@ -117,7 +117,7 @@ generate_docker_compose() {
     local ports_count
     # Count ports using get_config helper
     local ports_section_raw
-    ports_section_raw="$(get_config '.ports' '{}')"
+    ports_section_raw="$(get_config 'ports' '{}')"
     local ports_count
     if [[ "$ports_section_raw" == "{}" || "$ports_section_raw" == "null" || -z "$ports_section_raw" ]]; then
         ports_count=0
@@ -126,16 +126,26 @@ generate_docker_compose() {
     fi
     if [[ "$ports_count" -gt 0 ]]; then
         local host_ip
-        host_ip="$(get_config '.vm.port_binding' '127.0.0.1')"
+        host_ip="$(get_config 'vm.port_binding' '127.0.0.1')"
         # Build ports section from config
         local ports_raw
-        ports_raw="$(get_config '.ports' '{}')"
+        ports_raw="$(get_config 'ports' '{}')"
         if [[ "$ports_raw" != "{}" && "$ports_raw" != "null" && -n "$ports_raw" ]]; then
-            # Build ports using vm-config transform
-            local port_lines
-            port_lines="$(echo "$ports_raw" | "$VM_CONFIG" transform - 'to_entries[] | "      - \"'$host_ip':\(.value):\(.value)\""' --format lines 2>/dev/null || echo '')"
+            # Build ports by parsing JSON manually
+            local port_lines=""
+            # Extract port values from JSON and format them
+            while IFS=: read -r key port; do
+                if [[ -n "$port" ]]; then
+                    # Remove quotes and whitespace
+                    port=$(echo "$port" | tr -d '"' | tr -d ',' | tr -d '}' | xargs)
+                    if [[ "$port" =~ ^[0-9]+$ ]]; then
+                        port_lines+="\n      - \"$host_ip:$port:$port\""
+                    fi
+                fi
+            done < <(echo "$ports_raw" | sed 's/[{}]//g' | tr ',' '\n')
+
             if [[ -n "$port_lines" ]]; then
-                ports_section="\n    ports:\n$port_lines"
+                ports_section="\n    ports:$port_lines"
             fi
         fi
     fi
@@ -144,18 +154,18 @@ generate_docker_compose() {
     local explicit_ports=""
     if [[ "$ports_count" -gt 0 ]]; then
         # Get explicit port values using vm-config
-        explicit_ports="$("$VM_TOOL_DIR/rust/vm-config/target/release/vm-config" transform <(echo "$config") 'ports | to_entries[] | .value' --format space)"
+        explicit_ports="$("$VM_CONFIG" transform <(echo "$config") 'ports | to_entries[] | .value' --format space)"
     fi
 
     # Generate port range forwarding (skip explicit ports to avoid conflicts)
     local port_range
-    port_range="$(get_config '.port_range' '')"
+    port_range="$(get_config 'port_range' '')"
     if [[ -n "$port_range" && "$port_range" =~ ^[0-9]+-[0-9]+$ ]]; then
         local range_start range_end
         range_start="$(echo "$port_range" | cut -d'-' -f1)"
         range_end="$(echo "$port_range" | cut -d'-' -f2)"
         local host_ip
-        host_ip="$(get_config '.vm.port_binding' '127.0.0.1')"
+        host_ip="$(get_config 'vm.port_binding' '127.0.0.1')"
 
         if [[ $range_start -lt $range_end && $range_start -ge 1 && $range_end -le 65535 ]]; then
             local range_ports=""
@@ -181,7 +191,7 @@ generate_docker_compose() {
     # Generate Claude sync volume
     local claude_sync_volume=""
     local claude_sync
-    claude_sync="$(get_config '.claude_sync' 'false')"
+    claude_sync="$(get_config 'claude_sync' 'false')"
     if [[ "$claude_sync" == "true" ]]; then
         local host_path="$HOME/.claude/vms/$project_name"
         local container_path="/home/$project_user/.claude"
@@ -191,7 +201,7 @@ generate_docker_compose() {
     # Generate Gemini sync volume
     local gemini_sync_volume=""
     local gemini_sync
-    gemini_sync="$(get_config '.gemini_sync' 'false')"
+    gemini_sync="$(get_config 'gemini_sync' 'false')"
     if [[ "$gemini_sync" == "true" ]]; then
         local host_path="$HOME/.gemini/vms/$project_name"
         local container_path="/home/$project_user/.gemini"
@@ -201,24 +211,24 @@ generate_docker_compose() {
     # Generate database persistence volumes
     local database_volumes=""
     local persist_databases
-    persist_databases="$(get_config '.persist_databases' 'false')"
+    persist_databases="$(get_config 'persist_databases' 'false')"
     if [[ "$persist_databases" == "true" ]]; then
         local vm_data_path="$project_dir/.vm/data"
 
         # Check each database service
-        if [[ "$(get_config '.services.postgresql.enabled' 'false')" == "true" ]]; then
+        if [[ "$(get_config 'services.postgresql.enabled' 'false')" == "true" ]]; then
             database_volumes+="\\n      - $vm_data_path/postgres:/var/lib/postgresql:delegated"
         fi
 
-        if [[ "$(get_config '.services.redis.enabled' 'false')" == "true" ]]; then
+        if [[ "$(get_config 'services.redis.enabled' 'false')" == "true" ]]; then
             database_volumes+="\\n      - $vm_data_path/redis:/var/lib/redis:delegated"
         fi
 
-        if [[ "$(get_config '.services.mongodb.enabled' 'false')" == "true" ]]; then
+        if [[ "$(get_config 'services.mongodb.enabled' 'false')" == "true" ]]; then
             database_volumes+="\\n      - $vm_data_path/mongodb:/var/lib/mongodb:delegated"
         fi
 
-        if [[ "$(get_config '.services.mysql.enabled' 'false')" == "true" ]]; then
+        if [[ "$(get_config 'services.mysql.enabled' 'false')" == "true" ]]; then
             database_volumes+="\\n      - $vm_data_path/mysql:/var/lib/mysql:delegated"
         fi
     fi
@@ -264,7 +274,7 @@ generate_docker_compose() {
     local groups=()
 
     # Smart audio detection: only enable if explicitly requested
-    local audio_enabled="$(get_config '.services.audio.enabled' 'false')"
+    local audio_enabled="$(get_config 'services.audio.enabled' 'false')"
 
     # Only set up audio if explicitly enabled
     # Note: sox/ffmpeg are often used for file processing, not audio output
@@ -307,9 +317,9 @@ generate_docker_compose() {
     local gpu_env=""
     local gpu_volumes=""
 
-    if [[ "$(get_config '.services.gpu.enabled' 'false')" == "true" ]]; then
+    if [[ "$(get_config 'services.gpu.enabled' 'false')" == "true" ]]; then
         local gpu_type
-        gpu_type="$(get_config '.services.gpu.type' 'auto')"
+        gpu_type="$(get_config 'services.gpu.type' 'auto')"
 
         # NVIDIA GPU support
         if [[ "$gpu_type" == "nvidia" || "$gpu_type" == "auto" ]]; then
@@ -332,10 +342,10 @@ generate_docker_compose() {
         # Check if this package manager is enabled
         case "$pm" in
             "npm")
-                pm_enabled="$(get_config '.package_linking.npm' 'true')"
+                pm_enabled="$(get_config 'package_linking.npm' 'true')"
                 local npm_packages
                 # Get npm packages list using vm-config
-                npm_packages="$("$VM_TOOL_DIR/rust/vm-config/target/release/vm-config" transform <(echo "$config") 'npm_packages[]' --format space)"
+                npm_packages="$("$VM_CONFIG" transform <(echo "$config") 'npm_packages[]' --format space)"
                 if [[ -n "$npm_packages" ]]; then
                     while IFS= read -r package; do
                         [[ -z "$package" ]] && continue
@@ -344,10 +354,10 @@ generate_docker_compose() {
                 fi
                 ;;
             "pip")
-                pm_enabled="$(get_config '.package_linking.pip' 'false')"
+                pm_enabled="$(get_config 'package_linking.pip' 'false')"
                 local pip_packages
                 # Get pip packages list using vm-config
-                pip_packages="$("$VM_TOOL_DIR/rust/vm-config/target/release/vm-config" transform <(echo "$config") 'pip_packages[]' --format space)"
+                pip_packages="$("$VM_CONFIG" transform <(echo "$config") 'pip_packages[]' --format space)"
                 if [[ -n "$pip_packages" ]]; then
                     while IFS= read -r package; do
                         [[ -z "$package" ]] && continue
@@ -356,10 +366,10 @@ generate_docker_compose() {
                 fi
                 ;;
             "cargo")
-                pm_enabled="$(get_config '.package_linking.cargo' 'false')"
+                pm_enabled="$(get_config 'package_linking.cargo' 'false')"
                 local cargo_packages
                 # Get cargo packages list using vm-config
-                cargo_packages="$("$VM_TOOL_DIR/rust/vm-config/target/release/vm-config" transform <(echo "$config") 'cargo_packages[]' --format space)"
+                cargo_packages="$("$VM_CONFIG" transform <(echo "$config") 'cargo_packages[]' --format space)"
 
                 if [[ -n "$cargo_packages" ]]; then
                     while IFS= read -r package; do
