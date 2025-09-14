@@ -11,13 +11,13 @@ get_platform_info() {
     local os arch
     os=$(uname -s)
     arch=$(uname -m)
-    
+
     case "$os" in
         Linux)
             case "$arch" in
                 x86_64) echo "linux_amd64" ;;
                 aarch64|arm64) echo "linux_arm64" ;;
-                *) 
+                *)
                     echo "❌ Error: Unsupported Linux architecture: $arch" >&2
                     echo "Supported: x86_64, aarch64/arm64" >&2
                     exit 1
@@ -48,7 +48,7 @@ get_platform_info() {
 # Cross-platform readlink -f equivalent
 portable_readlink() {
     local path="$1"
-    
+
     if [[ "$(uname -s)" == "Darwin" ]]; then
         # macOS doesn't support readlink -f
         if command -v python3 >/dev/null 2>&1; then
@@ -67,7 +67,7 @@ portable_readlink() {
 portable_relative_path() {
     local base_dir="$1"
     local target_dir="$2"
-    
+
     if [[ "$(uname -s)" == "Darwin" ]]; then
         # macOS doesn't support realpath --relative-to
         if command -v python3 >/dev/null 2>&1; then
@@ -86,13 +86,13 @@ portable_relative_path() {
 # This function provides portable date parsing between GNU date and BSD date
 portable_date_to_epoch() {
     local iso_timestamp="$1"
-    
+
     # Validate input
     if [[ -z "$iso_timestamp" ]]; then
         echo "❌ Error: Empty timestamp provided for date conversion" >&2
         return 1
     fi
-    
+
     if [[ "$(uname -s)" == "Darwin" ]]; then
         # macOS doesn't support date -d, use -j with -f for parsing
         if command -v python3 >/dev/null 2>&1; then
@@ -109,7 +109,7 @@ try:
     timestamp = re.sub(r'\.(\d{6})\d*Z?$', r'.\1', timestamp)
     if timestamp.endswith('Z'):
         timestamp = timestamp[:-1] + '+00:00'
-    
+
     # Parse ISO format timestamp
     dt = datetime.datetime.fromisoformat(timestamp)
     epoch = int(dt.timestamp())

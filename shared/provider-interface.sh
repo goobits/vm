@@ -409,7 +409,7 @@ tart_command_wrapper() {
     local config="$2"
     local project_dir="$3"
     shift 3
-    
+
     # Source Tart provider implementation
     local tart_provider_script="$SCRIPT_DIR/providers/tart/tart-provider.sh"
     if [[ ! -f "$tart_provider_script" ]]; then
@@ -417,9 +417,9 @@ tart_command_wrapper() {
         echo "💡 Expected location: $tart_provider_script" >&2
         return 1
     fi
-    
+
     source "$tart_provider_script"
-    
+
     # Execute the command via Tart provider
     tart_command_wrapper_impl "$command" "$config" "$project_dir" "$@"
 }

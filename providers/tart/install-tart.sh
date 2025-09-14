@@ -6,14 +6,14 @@ set -e
 install_tart() {
     echo "🍎 Installing Tart for Apple Silicon Macs..."
     echo ""
-    
+
     # Check if on Apple Silicon Mac
     if [[ "$(uname -s)" != "Darwin" ]]; then
         echo "❌ This system is not running macOS"
         echo "   Current OS: $(uname -s)"
         exit 1
     fi
-    
+
     if [[ "$(uname -m)" != "arm64" ]]; then
         echo "❌ Tart requires Apple Silicon Mac (M1/M2/M3/M4)"
         echo "   Current architecture: $(uname -m)"
@@ -23,7 +23,7 @@ install_tart() {
         echo "   - Vagrant provider for full VMs"
         exit 1
     fi
-    
+
     # Check if Tart is already installed
     if command -v tart >/dev/null 2>&1; then
         echo "✅ Tart is already installed"
@@ -33,7 +33,7 @@ install_tart() {
         echo "   brew upgrade cirruslabs/cli/tart"
         exit 0
     fi
-    
+
     # Install via Homebrew
     if ! command -v brew >/dev/null 2>&1; then
         echo "📦 Homebrew is not installed"
@@ -43,7 +43,7 @@ install_tart() {
         if [[ "$response" =~ ^[yY] ]]; then
             echo "Installing Homebrew..."
             /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-            
+
             # Add Homebrew to PATH for Apple Silicon
             echo "eval \"\$(/opt/homebrew/bin/brew shellenv)\"" >> ~/.zprofile
             eval "$(/opt/homebrew/bin/brew shellenv)"
@@ -55,10 +55,10 @@ install_tart() {
             exit 1
         fi
     fi
-    
+
     echo "📦 Installing Tart via Homebrew..."
     brew install cirruslabs/cli/tart
-    
+
     echo ""
     echo "✅ Tart installed successfully!"
     echo "   Version: $(tart --version)"

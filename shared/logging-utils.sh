@@ -25,7 +25,7 @@ vm_log() {
     local level="$1"
     local message="$2"
     local context="$3"  # Optional key=value pairs
-    
+
     # Level filtering
     local level_num
     case "$level" in
@@ -35,19 +35,19 @@ vm_log() {
         ERROR) level_num=3 ;;
         *) return 1 ;;  # Invalid level
     esac
-    
+
     if [[ $level_num -lt $(log_level_num) ]]; then
         return 0
     fi
-    
+
     # Build log entry: timestamp | level | message | context
     local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S")
     local output="$timestamp | $level | $message"
-    
+
     if [[ -n "$context" ]]; then
         output="$output | $context"
     fi
-    
+
     # Route to stdout/stderr appropriately for containers
     if [[ "$level" =~ ^(WARN|ERROR)$ ]]; then
         echo "$output" >&2

@@ -14,8 +14,6 @@ VM_CONFIG="$VM_TOOL_DIR/rust/target/release/vm-config"
 VM_PORTS="$VM_TOOL_DIR/rust/target/release/vm-ports"
 VM_LINKS="$VM_TOOL_DIR/rust/target/release/vm-links"
 
-# Source shared utilities
-source "$VM_TOOL_DIR/shared/deep-merge.sh"
 # Link detection now handled by vm-links binary
 # source "$VM_TOOL_DIR/shared/link-detector.sh"
 
@@ -26,11 +24,14 @@ generate_docker_compose() {
     local config_path="$1"
     local project_dir="${2:-$(pwd)}"
 
-    # Load and merge config with defaults using standardized utility
+    # Load and merge config with defaults using Rust vm-config binary
     local default_config_path="$VM_TOOL_DIR/vm.yaml"
     local config
 
-    if ! config="$(merge_project_config "$default_config_path" "$config_path")"; then
+    if ! config="$("$VM_CONFIG" process \
+        --defaults "$default_config_path" \
+        --config "$config_path" \
+        --format yaml)"; then
         echo "❌ Failed to merge project configuration with defaults" >&2
         return 1
     fi
@@ -63,7 +64,7 @@ generate_docker_compose() {
     fi
     local project_hostname
     project_hostname="$(get_config '.project.hostname' '')"
-    
+
     # Check if hostname is missing or null
     if [[ -z "$project_hostname" || "$project_hostname" == "null" ]]; then
         echo "❌ Error: Missing 'project.hostname' in vm.yaml" >&2
@@ -93,7 +94,7 @@ generate_docker_compose() {
             timezone="UTC"
         fi
     fi
-    
+
     # Extract memory and swap settings
     local memory
     memory="$(get_config '.vm.memory' '2048')"
@@ -155,7 +156,7 @@ generate_docker_compose() {
         range_end="$(echo "$port_range" | cut -d'-' -f2)"
         local host_ip
         host_ip="$(get_config '.vm.port_binding' '127.0.0.1')"
-        
+
         if [[ $range_start -lt $range_end && $range_start -ge 1 && $range_end -le 65535 ]]; then
             local range_ports=""
             for port in $(seq "$range_start" "$range_end"); do
@@ -164,7 +165,7 @@ generate_docker_compose() {
                     range_ports+="\n      - \"$host_ip:$port:$port\""
                 fi
             done
-            
+
             if [[ -n "$range_ports" ]]; then
                 if [[ -n "$ports_section" ]]; then
                     # Append to existing ports section
@@ -238,7 +239,7 @@ generate_docker_compose() {
                     local real_path="${path_and_name%:*}"
                     local mount_name="${path_and_name##*:}"
                     local permission="$last_part"
-                    
+
                     # Apply permissions to Docker volume syntax
                     if [[ "$permission" == "ro" ]]; then
                         temp_mount_volumes+="\\n      - $real_path:$workspace_path/$mount_name:ro:delegated"
@@ -264,11 +265,11 @@ generate_docker_compose() {
 
     # Smart audio detection: only enable if explicitly requested
     local audio_enabled="$(get_config '.services.audio.enabled' 'false')"
-    
+
     # Only set up audio if explicitly enabled
     # Note: sox/ffmpeg are often used for file processing, not audio output
     # Users who need audio output should set: services.audio.enabled: true
-    
+
     if [[ "$audio_enabled" == "true" ]]; then
         if [[ "$(uname -s)" == "Darwin" ]]; then
             # macOS: Set up audio environment (actual startup happens at runtime)
@@ -322,12 +323,12 @@ generate_docker_compose() {
 
     # Package linking volumes (npm, pip, cargo)
     local package_link_volumes=""
-    
+
     # Check each package manager if enabled and packages are configured
     for pm in "npm" "pip" "cargo"; do
         local pm_enabled=""
         local packages_array=()
-        
+
         # Check if this package manager is enabled
         case "$pm" in
             "npm")
@@ -368,7 +369,7 @@ generate_docker_compose() {
                 fi
                 ;;
         esac
-        
+
         # Generate mounts if enabled and packages exist
         if [[ "$pm_enabled" == "true" ]] && [[ ${#packages_array[@]} -gt 0 ]]; then
             # Use vm-links binary to generate mounts
@@ -400,18 +401,18 @@ generate_docker_compose() {
             groups_section+="\\n      - $group"
         done
     fi
-    
+
     # Build memory and swap configuration
     local memory_section=""
     if [[ "$memory" -gt 0 ]]; then
         memory_section="\\n    mem_limit: ${memory}m"
-        
+
         # Add swap configuration if specified
         if [[ "$swap" -gt 0 ]]; then
             local total_memory=$((memory + swap))
             memory_section+="\\n    memswap_limit: ${total_memory}m"
         fi
-        
+
         # Add swappiness if not default
         if [[ "$swappiness" != "60" ]]; then
             memory_section+="\\n    mem_swappiness: $swappiness"

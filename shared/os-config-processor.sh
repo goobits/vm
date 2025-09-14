@@ -15,7 +15,7 @@ VM_CONFIG="$OS_CONFIG_DIR/../rust/target/release/vm-config"
 detect_required_os() {
     local config="$1"
     local project_dir="${2:-$(pwd)}"
-    
+
     # Check if explicitly specified in config
     local os=""
     if [[ -n "$config" ]]; then
@@ -24,12 +24,12 @@ detect_required_os() {
         os=$("$OS_CONFIG_DIR/../rust/vm-config/target/release/vm-config" query "$temp_config" "os" --raw 2>/dev/null || echo "")
         rm -f "$temp_config"
     fi
-    
+
     if [[ -n "$os" ]] && [[ "$os" != "auto" ]]; then
         echo "$os"
         return
     fi
-    
+
     # Auto-detect from project files
     if [[ -d "$project_dir" ]]; then
         # iOS/macOS development
@@ -37,13 +37,13 @@ detect_required_os() {
             echo "macos"
             return
         fi
-        
+
         # Swift Package
         if [[ -f "$project_dir/Package.swift" ]]; then
             echo "macos"
             return
         fi
-        
+
         # Has specific Linux preference
         if [[ -f "$project_dir/Dockerfile" ]]; then
             # Check what the Dockerfile uses
@@ -57,7 +57,7 @@ detect_required_os() {
             return
         fi
     fi
-    
+
     # Default to Ubuntu for general development
     echo "ubuntu"
 }
@@ -66,7 +66,7 @@ detect_required_os() {
 get_os_defaults() {
     local os="$1"
     local user_config="$2"
-    
+
     # Extract user's vm settings if provided
     local user_memory="" user_cpus="" user_disk="" user_username=""
     if [[ -n "$user_config" ]]; then
@@ -78,7 +78,7 @@ get_os_defaults() {
         user_username=$("$OS_CONFIG_DIR/../rust/vm-config/target/release/vm-config" query "$temp_config" "vm.user" --raw 2>/dev/null || echo "")
         rm -f "$temp_config"
     fi
-    
+
     case "$os" in
         macos)
             # macOS needs more resources, but respect user overrides
@@ -86,7 +86,7 @@ get_os_defaults() {
             local cpus="${user_cpus:-4}"
             local disk="${user_disk:-60}"
             local username="${user_username:-admin}"
-            
+
             # Check if user specified a storage path
             local user_storage_path=""
             if [[ -n "$user_config" ]]; then
@@ -99,7 +99,7 @@ get_os_defaults() {
             if [[ -n "$user_storage_path" ]] && [[ "$user_storage_path" != "null" ]]; then
                 storage_json=",\"storage_path\": \"$user_storage_path\""
             fi
-            
+
             echo "{
                 \"provider\": \"tart\",
                 \"vm\": {
@@ -118,13 +118,13 @@ get_os_defaults() {
                 }
             }"
             ;;
-            
+
         ubuntu)
             # Ubuntu with reasonable defaults
             local memory="${user_memory:-4096}"
             local cpus="${user_cpus:-2}"
             local username="${user_username:-developer}"
-            
+
             echo "{
                 \"provider\": \"docker\",
                 \"vm\": {
@@ -134,13 +134,13 @@ get_os_defaults() {
                 }
             }"
             ;;
-            
+
         debian)
             # Debian - similar to Ubuntu but might use different packages
             local memory="${user_memory:-2048}"
             local cpus="${user_cpus:-2}"
             local username="${user_username:-developer}"
-            
+
             echo "{
                 \"provider\": \"docker\",
                 \"vm\": {
@@ -150,13 +150,13 @@ get_os_defaults() {
                 }
             }"
             ;;
-            
+
         alpine)
             # Alpine - minimal resources
             local memory="${user_memory:-1024}"
             local cpus="${user_cpus:-1}"
             local username="${user_username:-developer}"
-            
+
             echo "{
                 \"provider\": \"docker\",
                 \"vm\": {
@@ -166,13 +166,13 @@ get_os_defaults() {
                 }
             }"
             ;;
-            
+
         linux)
             # Generic Linux - use Ubuntu as base
             local memory="${user_memory:-4096}"
             local cpus="${user_cpus:-2}"
             local username="${user_username:-developer}"
-            
+
             echo "{
                 \"provider\": \"docker\",
                 \"vm\": {
@@ -182,7 +182,7 @@ get_os_defaults() {
                 }
             }"
             ;;
-            
+
         *)
             # Unknown OS - safe defaults
             echo "{
@@ -202,7 +202,7 @@ select_provider_for_os() {
     local os="$1"
     local host_os="$(uname -s)"
     local host_arch="$(uname -m)"
-    
+
     case "$os" in
         macos)
             # macOS can only run on Apple Silicon with Tart
@@ -216,7 +216,7 @@ select_provider_for_os() {
                 echo "error:macOS VMs require Apple Silicon Mac"
             fi
             ;;
-            
+
         ubuntu|debian|alpine|linux)
             # Linux can run on multiple providers, pick the best
             if command -v docker >/dev/null 2>&1; then
@@ -232,7 +232,7 @@ select_provider_for_os() {
                 echo "error:No suitable virtualization provider found"
             fi
             ;;
-            
+
         *)
             echo "error:Unknown OS: $os"
             ;;
@@ -243,10 +243,10 @@ select_provider_for_os() {
 apply_os_config() {
     local config="$1"
     local os="$2"
-    
+
     # Get OS defaults
     local os_defaults=$(get_os_defaults "$os" "$config")
-    
+
     # Select provider if not explicitly set
     local provider=""
     if [[ -n "$config" ]]; then
@@ -257,14 +257,14 @@ apply_os_config() {
     fi
     if [[ -z "$provider" ]] || [[ "$provider" == "auto" ]]; then
         provider=$(select_provider_for_os "$os")
-        
+
         # Check for errors
         if [[ "$provider" == error:* ]]; then
             echo "❌ ${provider#error:}" >&2
             return 1
         fi
     fi
-    
+
     # Merge configurations: user config overrides OS defaults
     # This ensures user's vm settings are respected
     local temp_defaults=$(mktemp)
@@ -290,7 +290,7 @@ apply_os_config() {
 process_os_config() {
     local config_file="${1:-vm.yaml}"
     local project_dir="${2:-$(pwd)}"
-    
+
     # Read config
     local config
     if [[ -f "$config_file" ]]; then
@@ -299,13 +299,13 @@ process_os_config() {
     else
         config=''
     fi
-    
+
     # Detect OS
     local os=$(detect_required_os "$config" "$project_dir")
-    
+
     # Apply OS configuration
     local final_config=$(apply_os_config "$config" "$os")
-    
+
     echo "$final_config"
 }
 
@@ -313,18 +313,18 @@ process_os_config() {
 check_os_compatibility() {
     local os="$1"
     local provider=$(select_provider_for_os "$os")
-    
+
     if [[ "$provider" == error:* ]]; then
         return 1
     fi
-    
+
     return 0
 }
 
 # Get recommended resources for OS
 get_os_recommended_resources() {
     local os="$1"
-    
+
     case "$os" in
         macos)
             echo "Memory: 8GB, CPUs: 4, Disk: 60GB"

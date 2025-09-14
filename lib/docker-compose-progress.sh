@@ -19,7 +19,7 @@ docker_compose_with_progress() {
     local action="$1"  # up, down, etc.
     shift
     local args=("$@")
-    
+
     case "$action" in
         "up")
             # Count containers/volumes/networks to create
@@ -34,7 +34,7 @@ docker_compose_with_progress() {
                 local volume_count=0
                 local network_count=0
             fi
-            
+
             # Run docker compose and parse output
             docker compose "${args[@]}" 2>&1 | while IFS= read -r line; do
                 case "$line" in
@@ -56,7 +56,7 @@ docker_compose_with_progress() {
                 esac
             done
             ;;
-            
+
         "down")
             # Run docker compose and parse output
             docker compose "${args[@]}" 2>&1 | while IFS= read -r line; do
@@ -77,7 +77,7 @@ docker_compose_with_progress() {
                 esac
             done
             ;;
-            
+
         "build")
             # For build, track the build steps
             local current_step=""
@@ -124,7 +124,7 @@ docker_compose_with_progress() {
 docker_build_with_progress() {
     local current_step=""
     local total_steps=""
-    
+
     docker build "$@" 2>&1 | while IFS= read -r line; do
         case "$line" in
             "#"*"["*"/"*"]"*)
@@ -133,7 +133,7 @@ docker_build_with_progress() {
                     current_num="${BASH_REMATCH[1]}"
                     total_num="${BASH_REMATCH[2]}"
                     step_desc=$(echo "$line" | sed 's/.*\] //' | cut -d' ' -f1-5)
-                    
+
                     if [[ "$step_desc" != "$current_step" ]]; then
                         if [[ -n "$current_step" ]]; then
                             progress_done

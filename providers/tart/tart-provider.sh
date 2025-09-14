@@ -61,7 +61,7 @@ get_tart_vm_name() {
 # Detect guest OS from config or image
 detect_guest_os() {
     local config="$1"
-    
+
     # Check if OS field is set (new simple configuration)
     local os=$(get_config "$config" '.os' '')
     if [[ -n "$os" ]] && [[ "$os" != "auto" ]]; then
@@ -76,14 +76,14 @@ detect_guest_os() {
                 ;;
         esac
     fi
-    
+
     # Check if explicitly set in tart config
     local guest_os=$(get_config "$config" '.tart.guest_os' '')
     if [[ -n "$guest_os" ]]; then
         echo "$guest_os"
         return
     fi
-    
+
     # Check if using a known image
     local image=$(get_config "$config" '.tart.image' '')
     case "$image" in
@@ -102,14 +102,14 @@ detect_guest_os() {
 # Set up Tart environment with custom storage if specified
 setup_tart_storage() {
     local config="$1"
-    
+
     # Check for custom storage path in config
     local storage_path=$(get_config "$config" '.tart.storage_path' '')
-    
+
     if [[ -n "$storage_path" ]] && [[ "$storage_path" != "null" ]]; then
         # Expand tilde if present
         storage_path="${storage_path/#\~/$HOME}"
-        
+
         # Check if path exists
         if [[ ! -d "$storage_path" ]]; then
             echo "📁 Creating storage directory: $storage_path"
@@ -118,17 +118,17 @@ setup_tart_storage() {
                 return 1
             }
         fi
-        
+
         # Verify write permissions
         if [[ ! -w "$storage_path" ]]; then
             echo "❌ No write permission for storage path: $storage_path" >&2
             return 1
         fi
-        
+
         # Set TART_HOME environment variable
         export TART_HOME="$storage_path"
         echo "💾 Using custom storage: $storage_path"
-        
+
         # Show available space
         local available_space=$(df -h "$storage_path" | awk 'NR==2 {print $4}')
         echo "   Available space: $available_space"
@@ -141,15 +141,15 @@ tart_command_wrapper_impl() {
     local config="$2"
     local project_dir="$3"
     shift 3
-    
+
     # Verify Tart is available
     if ! check_tart_installed || ! check_apple_silicon; then
         return 1
     fi
-    
+
     # Set up custom storage if specified
     setup_tart_storage "$config"
-    
+
     case "$command" in
         "create"|"up")
             tart_create "$config" "$project_dir" "$@"
@@ -195,10 +195,10 @@ tart_command_wrapper_impl() {
 tart_create() {
     local config="$1"
     local project_dir="$2"
-    
+
     local vm_name=$(get_tart_vm_name "$config")
     local guest_os=$(detect_guest_os "$config")
-    
+
     # Check if VM already exists
     if tart list 2>/dev/null | grep -q "^${vm_name}"; then
         echo "⚠️  VM '$vm_name' already exists"
@@ -215,25 +215,25 @@ tart_create() {
             return 0
         fi
     fi
-    
+
     # Get configuration values
     local image=$(get_config "$config" '.tart.image' '')
     local cpu=$(get_config "$config" '.vm.cpus // 4')
     local memory=$(get_config "$config" '.vm.memory // 4096')
     local disk_size=$(get_config "$config" '.tart.disk_size // 50')
-    
+
     # Convert memory from MB to GB
     local memory_gb=$((memory / 1024))
     if [[ $memory_gb -lt 1 ]]; then
         memory_gb=1
     fi
-    
+
     echo "🍎 Creating $guest_os VM with Tart..."
     echo "   Name: $vm_name"
     echo "   CPUs: $cpu"
     echo "   Memory: ${memory_gb}GB"
     echo "   Disk: ${disk_size}GB"
-    
+
     # Create VM based on guest OS
     case "$guest_os" in
         "macos")
@@ -258,33 +258,33 @@ create_macos_vm() {
     local disk_size="$5"
     local project_dir="$6"
     local config="$7"
-    
+
     if [[ -z "$image" ]]; then
         # Default macOS image
         image="ghcr.io/cirruslabs/macos-sonoma-base:latest"
     fi
-    
+
     echo "📦 Pulling macOS image: $image"
     if ! tart clone "$image" "$vm_name"; then
         echo "❌ Failed to pull macOS image" >&2
         echo "💡 Try a different image or check your internet connection" >&2
         return 1
     fi
-    
+
     # Configure VM
     echo "⚙️  Configuring VM..."
     tart set "$vm_name" --cpu "$cpu" --memory "$memory"
-    
+
     # Note: Disk resizing is done during clone, not separately
-    
+
     # Start VM
     echo "🚀 Starting macOS VM..."
     tart run "$vm_name" --no-graphics &
-    
+
     # Wait for VM to boot
     echo "⏳ Waiting for VM to boot (this may take a minute)..."
     sleep 10
-    
+
     echo ""
     echo "✅ macOS VM created successfully!"
     echo "💡 Use 'vm ssh' to connect"
@@ -300,12 +300,12 @@ create_linux_vm() {
     local disk_size="$5"
     local project_dir="$6"
     local config="$7"
-    
+
     if [[ -z "$image" ]]; then
         # Default to Ubuntu
         image="ghcr.io/cirruslabs/ubuntu:latest"
     fi
-    
+
     echo "📦 Pulling Linux image: $image"
     if ! tart clone "$image" "$vm_name"; then
         echo "❌ Failed to pull Linux image" >&2
@@ -314,26 +314,26 @@ create_linux_vm() {
         echo "   - ghcr.io/cirruslabs/debian:latest" >&2
         return 1
     fi
-    
+
     # Configure VM
     echo "⚙️  Configuring VM..."
     tart set "$vm_name" --cpu "$cpu" --memory "$memory"
-    
+
     # Enable Rosetta for x86 emulation if requested
     local enable_rosetta=$(get_config "$config" '.tart.rosetta // true')
     if [[ "$enable_rosetta" == "true" ]]; then
         echo "🔄 Enabling Rosetta 2 for x86 emulation..."
         tart set "$vm_name" --rosetta
     fi
-    
+
     # Start VM
     echo "🚀 Starting Linux VM..."
     tart run "$vm_name" --no-graphics &
-    
+
     # Wait for VM to boot
     echo "⏳ Waiting for VM to boot..."
     sleep 8
-    
+
     echo ""
     echo "✅ Linux VM created successfully!"
     echo "💡 Use 'vm ssh' to connect"
@@ -344,21 +344,21 @@ tart_ssh() {
     local config="$1"
     local project_dir="$2"
     local vm_name=$(get_tart_vm_name "$config")
-    
+
     # Set up custom storage if specified
     setup_tart_storage "$config" >/dev/null 2>&1
-    
+
     # Check if VM exists
     if ! tart list 2>/dev/null | grep -q "^${vm_name}"; then
         echo "❌ VM '$vm_name' does not exist" >&2
         echo "💡 Run 'vm create' first" >&2
         return 1
     fi
-    
+
     # Get VM IP (with retry logic)
     local vm_ip=""
     local retries=10
-    
+
     echo "🔍 Getting VM IP address..."
     for ((i=1; i<=retries; i++)); do
         vm_ip=$(tart ip "$vm_name" 2>/dev/null || true)
@@ -372,10 +372,10 @@ tart_ssh() {
         fi
         sleep 2
     done
-    
+
     local guest_os=$(detect_guest_os "$config")
     local ssh_user=$(get_config "$config" '.tart.ssh_user // empty')
-    
+
     # Default SSH users
     if [[ -z "$ssh_user" ]]; then
         case "$guest_os" in
@@ -387,21 +387,21 @@ tart_ssh() {
                 ;;
         esac
     fi
-    
+
     # Calculate relative path for initial directory
     local relative_path="."
     if [[ -n "${CURRENT_DIR:-}" ]] && [[ -n "$project_dir" ]]; then
         relative_path=$(portable_relative_path "$project_dir" "$CURRENT_DIR" 2>/dev/null || echo ".")
     fi
-    
+
     # Get workspace path
     local workspace_path=$(get_config "$config" '.project.workspace_path // "/workspace"')
-    
+
     echo "🔗 Connecting to $vm_name at $vm_ip..."
-    
+
     # Build SSH command with initial directory if needed
     local ssh_cmd="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
-    
+
     if [[ "$relative_path" != "." ]]; then
         # SSH with initial directory change
         local target_dir="${workspace_path}/${relative_path}"
@@ -416,15 +416,15 @@ tart_ssh() {
 tart_start() {
     local config="$1"
     local vm_name=$(get_tart_vm_name "$config")
-    
+
     # Set up custom storage if specified
     setup_tart_storage "$config" >/dev/null 2>&1
-    
+
     if ! tart list 2>/dev/null | grep -q "^${vm_name}"; then
         echo "❌ VM '$vm_name' does not exist" >&2
         return 1
     fi
-    
+
     echo "▶️  Starting VM '$vm_name'..."
     tart run "$vm_name" --no-graphics &
     sleep 3
@@ -435,15 +435,15 @@ tart_start() {
 tart_stop() {
     local config="$1"
     local vm_name=$(get_tart_vm_name "$config")
-    
+
     # Set up custom storage if specified
     setup_tart_storage "$config" >/dev/null 2>&1
-    
+
     if ! tart list 2>/dev/null | grep -q "^${vm_name}"; then
         echo "❌ VM '$vm_name' does not exist" >&2
         return 1
     fi
-    
+
     echo "⏸️  Stopping VM '$vm_name'..."
     tart stop "$vm_name" 2>/dev/null || true
     echo "✅ VM stopped"
@@ -453,7 +453,7 @@ tart_stop() {
 tart_restart() {
     local config="$1"
     local project_dir="$2"
-    
+
     tart_stop "$config" "$project_dir"
     sleep 2
     tart_start "$config" "$project_dir"
@@ -463,23 +463,23 @@ tart_restart() {
 tart_destroy() {
     local config="$1"
     local vm_name=$(get_tart_vm_name "$config")
-    
+
     # Set up custom storage if specified
     setup_tart_storage "$config" >/dev/null 2>&1
-    
+
     if ! tart list 2>/dev/null | grep -q "^${vm_name}"; then
         echo "⚠️  VM '$vm_name' does not exist"
         return 0
     fi
-    
+
     echo "🗑️  Destroying VM '$vm_name'..."
-    
+
     # Stop if running
     tart stop "$vm_name" 2>/dev/null || true
-    
+
     # Delete VM
     tart delete "$vm_name"
-    
+
     echo "✅ VM destroyed"
 }
 
@@ -487,23 +487,23 @@ tart_destroy() {
 tart_status() {
     local config="$1"
     local vm_name=$(get_tart_vm_name "$config")
-    
+
     # Set up custom storage if specified
     setup_tart_storage "$config" >/dev/null 2>&1
-    
+
     echo "📊 Tart VM Status:"
     echo ""
-    
+
     # Check if VM exists
     if ! tart list 2>/dev/null | grep -q "^${vm_name}"; then
         echo "❌ VM '$vm_name' does not exist"
         echo "💡 Run 'vm create' to create a new VM"
         return 1
     fi
-    
+
     # Get VM info
     echo "VM Name: $vm_name"
-    
+
     # Check if running and get IP
     local vm_ip=$(tart ip "$vm_name" 2>/dev/null || echo "")
     if [[ -n "$vm_ip" ]]; then
@@ -512,7 +512,7 @@ tart_status() {
     else
         echo "Status: ⏸️  Stopped"
     fi
-    
+
     # Show VM details from list
     echo ""
     echo "Details:"
@@ -524,27 +524,27 @@ tart_exec() {
     local config="$1"
     local project_dir="$2"
     shift 2
-    
+
     local vm_name=$(get_tart_vm_name "$config")
-    
+
     # Get VM IP
     local vm_ip=$(tart ip "$vm_name" 2>/dev/null)
-    
+
     if [[ -z "$vm_ip" ]]; then
         echo "❌ VM not running or IP not available" >&2
         return 1
     fi
-    
+
     local guest_os=$(detect_guest_os "$config")
     local ssh_user=$(get_config "$config" '.tart.ssh_user // empty')
-    
+
     if [[ -z "$ssh_user" ]]; then
         case "$guest_os" in
             "macos") ssh_user="admin" ;;
             "linux") ssh_user="ubuntu" ;;
         esac
     fi
-    
+
     # Execute command via SSH
     ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
         "${ssh_user}@${vm_ip}" "$@"
@@ -555,18 +555,18 @@ tart_logs() {
     local config="$1"
     local project_dir="$2"
     shift 2
-    
+
     local vm_name=$(get_tart_vm_name "$config")
-    
+
     # Set up custom storage if specified
     setup_tart_storage "$config" >/dev/null 2>&1
-    
+
     # Check if VM exists
     if ! tart list 2>/dev/null | grep -q "^${vm_name}"; then
         echo "❌ VM '$vm_name' does not exist" >&2
         return 1
     fi
-    
+
     # Get VM IP
     local vm_ip=$(tart ip "$vm_name" 2>/dev/null)
     if [[ -z "$vm_ip" ]]; then
@@ -574,21 +574,21 @@ tart_logs() {
         echo "💡 Run 'vm start' first" >&2
         return 1
     fi
-    
+
     local guest_os=$(detect_guest_os "$config")
     local ssh_user=$(get_config "$config" '.tart.ssh_user // empty')
-    
+
     if [[ -z "$ssh_user" ]]; then
         case "$guest_os" in
             "macos") ssh_user="admin" ;;
             "linux") ssh_user="ubuntu" ;;
         esac
     fi
-    
+
     echo "📋 Viewing logs from $vm_name..."
     echo "💡 Press Ctrl+C to stop following logs"
     echo ""
-    
+
     # Based on guest OS, show appropriate logs
     case "$guest_os" in
         "macos")
@@ -618,12 +618,12 @@ tart_logs() {
 tart_provision() {
     local config="$1"
     local project_dir="$2"
-    
+
     echo "📦 Provisioning Tart VM..."
-    
+
     local vm_name=$(get_tart_vm_name "$config")
     local guest_os=$(detect_guest_os "$config")
-    
+
     # Check if VM is running
     local vm_ip=$(tart ip "$vm_name" 2>/dev/null)
     if [[ -z "$vm_ip" ]]; then
@@ -631,7 +631,7 @@ tart_provision() {
         echo "💡 Run 'vm start' first" >&2
         return 1
     fi
-    
+
     # Run provisioning based on guest OS
     case "$guest_os" in
         "macos")
@@ -647,9 +647,9 @@ tart_provision() {
 provision_macos_vm() {
     local config="$1"
     local vm_name="$2"
-    
+
     echo "🍎 Provisioning macOS VM..."
-    
+
     # Create provisioning script
     local provision_script='#!/bin/bash
 set -e
@@ -660,7 +660,7 @@ echo "📦 Starting macOS provisioning..."
 if ! command -v brew >/dev/null 2>&1; then
     echo "Installing Homebrew..."
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    
+
     # Add Homebrew to PATH for Apple Silicon
     echo "eval \"\$(/opt/homebrew/bin/brew shellenv)\"" >> ~/.zprofile
     eval "$(/opt/homebrew/bin/brew shellenv)"
@@ -676,7 +676,7 @@ brew install git htop ripgrep tree wget curl
 
 echo "✅ macOS provisioning complete!"
 '
-    
+
     # Execute provisioning script
     if ! tart_exec "$config" "" bash -c "$provision_script"; then
         echo "⚠️  Some provisioning steps may have failed" >&2
@@ -687,9 +687,9 @@ echo "✅ macOS provisioning complete!"
 provision_linux_vm() {
     local config="$1"
     local vm_name="$2"
-    
+
     echo "🐧 Provisioning Linux VM..."
-    
+
     # Create provisioning script
     local provision_script='#!/bin/bash
 set -e
@@ -723,10 +723,10 @@ fi
 
 echo "✅ Linux provisioning complete!"
 '
-    
+
     # Check if Docker should be installed
     local install_docker=$(get_config "$config" '.tart.install_docker // false')
-    
+
     # Execute provisioning script
     if ! INSTALL_DOCKER="$install_docker" tart_exec "$config" "" bash -c "$provision_script"; then
         echo "⚠️  Some provisioning steps may have failed" >&2

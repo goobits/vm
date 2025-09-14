@@ -1153,13 +1153,13 @@ check_prerequisites() {
     esac
 
     echo -e "${GREEN}✓ All prerequisites met${NC}"
-    
+
     # Additional notes for Docker-dependent tests
     if [[ "$PROVIDER" == "docker" ]] && ! groups | grep -q docker && ! sudo -n docker ps &> /dev/null; then
         echo -e "${YELLOW}"
         echo -e "📋 Note: Some tests require Docker permissions and may fail:"
         echo -e "   • minimal-boot (minimal VM creation)"
-        echo -e "   • postgresql-service (service integration)"  
+        echo -e "   • postgresql-service (service integration)"
         echo -e "   • vm-lifecycle (VM management operations)"
         echo -e ""
         echo -e "🔧 To enable these tests:"

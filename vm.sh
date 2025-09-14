@@ -38,7 +38,7 @@ fi
 # Source shared logging utilities
 source "$SCRIPT_DIR/shared/platform-utils.sh"
 source "$SCRIPT_DIR/shared/logging-utils.sh"
-# CURRENT_DIR: User's working directory when script was invoked  
+# CURRENT_DIR: User's working directory when script was invoked
 # Used by provider interface and config processing
 CURRENT_DIR="$(pwd)"
 
@@ -59,49 +59,33 @@ source "$SCRIPT_DIR/shared/project-detector.sh"
 source "$SCRIPT_DIR/lib/progress-reporter.sh"
 source "$SCRIPT_DIR/lib/docker-compose-progress.sh"
 
-# Helper function to query config with fallback parsing
-query_config_field() {
-    local config="$1"
-    local field="$2"
-    local default="$3"
+# --- NEW, EFFICIENT, YAML-ONLY CONFIGURATION LOADING ---
 
-    local temp_config
-    temp_config="$(create_temp_file "vm-query.XXXXXX")"
-    echo "$config" > "$temp_config"
+log_info "Loading and validating configuration..."
 
-    local result
-    # Use vm-config binary (required, no fallback)
-    result="$("$VM_CONFIG" query "$temp_config" "$field" --raw --default "$default" 2>/dev/null || echo "$default")"
-    if [[ -z "$result" ]]; then
-        # If vm-config fails, use the default
-        case "$field" in
-            "project.name")
-                result="$(grep -A 5 '^project:' "$temp_config" | grep 'name:' | awk '{print $2}' | head -1)"
-                ;;
-            "port_range")
-                result="$(grep '^port_range:' "$temp_config" | awk '{print $2}' | head -1)"
-                ;;
-            "vm.user")
-                result="$(grep -A 5 '^vm:' "$temp_config" | grep 'user:' | awk '{print $2}' | head -1)"
-                ;;
-            "project.workspace_path")
-                result="$(grep -A 5 '^project:' "$temp_config" | grep 'workspace_path:' | awk '{print $2}' | head -1)"
-                ;;
-            "services.audio.enabled")
-                result="$(grep -A 10 '^services:' "$temp_config" | grep -A 5 'audio:' | grep 'enabled:' | awk '{print $2}' | head -1)"
-                ;;
-            "__config_dir")
-                result="$(grep '^__config_dir:' "$temp_config" | awk '{print $2}' | head -1)"
-                ;;
-            *)
-                result="$default"
-                ;;
-        esac
-    fi
+# Find the config file path. This logic can be simplified, but for now,
+# we'll determine the file to pass to the export command.
+CONFIG_FILE_PATH=""
+if [[ -n "$CUSTOM_CONFIG" ]]; then
+    CONFIG_FILE_PATH="$CUSTOM_CONFIG"
+elif [[ -f "$(pwd)/vm.yaml" ]]; then
+    CONFIG_FILE_PATH="$(pwd)/vm.yaml"
+fi
 
-    # Note: temp file cleanup is handled automatically
-    echo "$result"
-}
+# Call `vm-config export` once. The `eval` command executes the output,
+# setting all config values as environment variables.
+if ! eval "$("$VM_CONFIG" export --file "$CONFIG_FILE_PATH")"; then
+    log_error "Configuration is invalid or failed to load. Exiting."
+    exit 1
+fi
+
+# You can now use the variables directly. Use a default if the variable might not be set.
+PROVIDER="${provider:-docker}"
+PROJECT_NAME="${project_name:-vm-project}"
+
+log_info "Configuration loaded successfully. Provider: $PROVIDER"
+
+# --- END OF NEW CONFIGURATION LOADING ---
 
 # Set up proper cleanup handlers for temporary files
 setup_temp_file_handlers
@@ -114,7 +98,7 @@ export FULL_CONFIG_PATH
 # Mount validation functions moved to shared/mount-utils.sh
 
 # Mount validation functions are now available from shared/mount-utils.sh
-# All mount processing functions (validate_mount_security, parse_mount_string, etc.) 
+# All mount processing functions (validate_mount_security, parse_mount_string, etc.)
 # have been moved to shared/mount-utils.sh and are automatically sourced above.
 
 
@@ -256,7 +240,7 @@ load_config() {
 get_available_presets() {
     local presets_dir="$SCRIPT_DIR/configs/presets"
     local available_presets=()
-    
+
     if [[ -d "$presets_dir" ]]; then
         for preset_file in "$presets_dir"/*.yaml; do
             if [[ -f "$preset_file" ]]; then
@@ -269,7 +253,7 @@ get_available_presets() {
             fi
         done
     fi
-    
+
     printf '%s\n' "${available_presets[@]}" | sort
 }
 
@@ -277,7 +261,7 @@ get_available_presets() {
 show_preset_details() {
     local preset_name="$1"
     local preset_file="$SCRIPT_DIR/configs/presets/${preset_name}.yaml"
-    
+
     if [[ -f "$preset_file" ]]; then
         echo ""
         echo "📄 Contents of $preset_name preset:"
@@ -295,7 +279,7 @@ preset_in_array() {
     local preset="$1"
     shift
     local arr=("$@")
-    
+
     for item in "${arr[@]}"; do
         if [[ "$item" == "$preset" ]]; then
             return 0
@@ -312,19 +296,19 @@ preset_in_array() {
 # Modifies the array with user's final selection
 interactive_preset_selection() {
     local -n initial_presets_ref="$1"
-    
+
     echo ""
     echo "🔍 Detected presets: ${initial_presets_ref[*]}"
     echo ""
-    
+
     local menu_running=true
     local current_presets=("${initial_presets_ref[@]}")
-    
+
     while [[ "$menu_running" == true ]]; do
         echo "Interactive Preset Selection:"
         echo "Current selection: ${current_presets[*]:-none}"
         echo ""
-        
+
         local PS3="Choice: "
         local options=(
             "Use current selection and proceed"
@@ -333,7 +317,7 @@ interactive_preset_selection() {
             "View preset details"
             "Reset to detected presets"
         )
-        
+
         select choice in "${options[@]}"; do
             case $REPLY in
                 1)
@@ -346,15 +330,15 @@ interactive_preset_selection() {
                     echo "Available presets to add:"
                     local available_presets
                     mapfile -t available_presets < <(get_available_presets)
-                    
+
                     if [[ ${#available_presets[@]} -eq 0 ]]; then
                         echo "❌ No additional presets available"
                         break
                     fi
-                    
+
                     local add_options=("${available_presets[@]}" "Cancel")
                     local PS3="Select preset to add: "
-                    
+
                     select add_preset in "${add_options[@]}"; do
                         if [[ "$add_preset" == "Cancel" ]]; then
                             break
@@ -378,12 +362,12 @@ interactive_preset_selection() {
                         echo "❌ No presets selected to remove"
                         break
                     fi
-                    
+
                     echo ""
                     echo "Current presets:"
                     local remove_options=("${current_presets[@]}" "Cancel")
                     local PS3="Select preset to remove: "
-                    
+
                     select remove_preset in "${remove_options[@]}"; do
                         if [[ "$remove_preset" == "Cancel" ]]; then
                             break
@@ -410,15 +394,15 @@ interactive_preset_selection() {
                     echo "Available presets:"
                     local available_presets
                     mapfile -t available_presets < <(get_available_presets)
-                    
+
                     if [[ ${#available_presets[@]} -eq 0 ]]; then
                         echo "❌ No presets available to view"
                         break
                     fi
-                    
+
                     local view_options=("${available_presets[@]}" "Cancel")
                     local PS3="Select preset to view: "
-                    
+
                     select view_preset in "${view_options[@]}"; do
                         if [[ "$view_preset" == "Cancel" ]]; then
                             break
@@ -446,10 +430,10 @@ interactive_preset_selection() {
         done
         echo ""
     done
-    
+
     # Update the reference array with user selection
     initial_presets_ref=("${current_presets[@]}")
-    
+
     if [[ ${#initial_presets_ref[@]} -eq 0 ]]; then
         echo "⚠️  No presets selected. Using base preset only."
     else
@@ -461,11 +445,11 @@ interactive_preset_selection() {
 # Apply smart preset when no vm.yaml exists
 apply_smart_preset() {
     local project_dir="$1"
-    
+
     # Use forced preset if specified, otherwise detect
     local detected_type
     local preset_types=()
-    
+
     if [[ -n "${VM_FORCED_PRESET:-}" ]]; then
         detected_type="$VM_FORCED_PRESET"
         preset_types=("$VM_FORCED_PRESET")
@@ -475,7 +459,7 @@ apply_smart_preset() {
         detected_type=$(detect_project_type "$project_dir")
         echo "🔍 Detecting project type..."
         echo "✅ Detected: $detected_type"
-        
+
         # Parse multi-preset strings or single preset
         if [[ "$detected_type" == multi:* ]]; then
             # Extract types from multi:type1 type2 type3 format
@@ -486,32 +470,32 @@ apply_smart_preset() {
             # Single preset type
             preset_types=("$detected_type")
         fi
-        
+
         # Interactive preset selection when VM_INTERACTIVE="true"
         if [[ "${VM_INTERACTIVE:-false}" == "true" ]]; then
             interactive_preset_selection preset_types
         fi
     fi
-    
+
     # Define base preset file
     local base_preset_file="$SCRIPT_DIR/configs/presets/base.yaml"
-    
+
     # Check if base preset exists
     if [[ ! -f "$base_preset_file" ]]; then
         echo "❌ Base preset file not found: $base_preset_file" >&2
         return 1
     fi
-    
+
     # Start with the base preset (foundation layer)
     local merged_config
     merged_config=$(cat "$base_preset_file")
     echo "📦 Applying base development preset..."
-    
+
     # Determine merge order strategy for multi-preset scenarios
     local ordered_presets=()
     local framework_presets=()
     local environment_presets=()
-    
+
     # Categorize presets for proper merge order
     for preset_type in "${preset_types[@]}"; do
         case "$preset_type" in
@@ -530,7 +514,7 @@ apply_smart_preset() {
                 ;;
         esac
     done
-    
+
     # Merge framework presets first (after base)
     for preset_type in "${framework_presets[@]}"; do
         local preset_file="$SCRIPT_DIR/configs/presets/${preset_type}.yaml"
@@ -543,7 +527,7 @@ apply_smart_preset() {
             echo "⚠️  Warning: Preset file not found for '$preset_type', skipping..."
         fi
     done
-    
+
     # Merge environment presets last (override framework settings)
     for preset_type in "${environment_presets[@]}"; do
         local preset_file="$SCRIPT_DIR/configs/presets/${preset_type}.yaml"
@@ -556,7 +540,7 @@ apply_smart_preset() {
             echo "⚠️  Warning: Preset file not found for '$preset_type', skipping..."
         fi
     done
-    
+
     # Log final merge summary
     local applied_count=$((${#framework_presets[@]} + ${#environment_presets[@]}))
     if [[ $applied_count -eq 0 ]]; then
@@ -567,21 +551,21 @@ apply_smart_preset() {
         echo "📦 Applied base + $applied_count additional presets"
         echo "   Merge order: base → frameworks [${framework_presets[*]}] → environments [${environment_presets[*]}]"
     fi
-    
+
     # Extract schema defaults and merge with preset
     local schema_defaults
     if ! schema_defaults=$("$SCRIPT_DIR/validate-config.sh" --extract-defaults "$SCRIPT_DIR/vm.schema.yaml" 2>&1); then
         echo "❌ Failed to extract schema defaults" >&2
         return 1
     fi
-    
+
     # Merge schema defaults with preset (schema defaults first, then preset overrides)
     local final_config
     final_config=$(echo -e "$schema_defaults\n---\n$merged_config")
-    
+
     echo "💡 You can customize this by creating a vm.yaml file"
     echo ""
-    
+
     # Return the merged configuration
     echo "$final_config"
 }
@@ -642,25 +626,25 @@ docker_run() {
 manage_macos_pulseaudio() {
     local action="$1"  # start or stop
     local config="$2"
-    
+
     # Only manage PulseAudio on macOS
     if [[ "$(uname -s)" != "Darwin" ]]; then
         return 0
     fi
-    
+
     # Check if audio is enabled in config
     local audio_enabled
     audio_enabled="$(query_config_field "$config" 'services.audio.enabled' 'false')"
-    
+
     if [[ "$audio_enabled" != "true" ]]; then
         return 0  # Audio not enabled, nothing to do
     fi
-    
+
     # Check if PulseAudio is installed
     if ! command -v pulseaudio >/dev/null 2>&1; then
         return 0  # PulseAudio not installed, skip silently
     fi
-    
+
     case "$action" in
         "start")
             # Check if PulseAudio is already running
@@ -675,10 +659,10 @@ manage_macos_pulseaudio() {
             else
                 # Not running, start it with network access
                 pulseaudio --start --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1;172.16.0.0/12 auth-anonymous=1" --exit-idle-time=-1 2>/dev/null || true
-                
+
                 # Give it a moment to start
                 sleep 1
-                
+
                 # Verify it started
                 if ! pgrep -x "pulseaudio" > /dev/null; then
                     echo "⚠️  Audio: Could not start PulseAudio (audio may not work)"
@@ -690,7 +674,7 @@ manage_macos_pulseaudio() {
             # Just noting this action exists for future use if needed
             ;;
     esac
-    
+
     return 0
 }
 
@@ -705,7 +689,7 @@ docker_startup_and_wait() {
         local startup_error_code=$?
         echo "❌ Container startup failed (exit code: $startup_error_code)"
         echo "🧹 Performing startup rollback - stopping any running containers..."
-        
+
         # Enhanced rollback with verification
         if docker_run "compose" "$config" "$project_dir" down; then
             echo "✅ Containers stopped successfully during rollback"
@@ -713,52 +697,52 @@ docker_startup_and_wait() {
             echo "⚠️ Warning: Rollback may be incomplete - some containers might still be running"
             echo "💡 Check with 'docker ps' and manually stop containers if needed"
         fi
-        
+
         return $startup_error_code
     fi
 
     # Get container name using shared function
     local container_name
     container_name=$(get_project_container_name "$config")
-    
+
     # Wait for container to be responsive with timeout
     local max_attempts=30
     local attempt=1
     local container_ready=false
-    
+
     echo "⏳ Waiting for environment to be ready..."
     while [[ $attempt -le $max_attempts ]]; do
         if [[ $attempt -gt 1 ]]; then
             sleep 1
         fi
-        
+
         # Check if container is still running first
         if ! docker_cmd ps --format "table {{.Names}}" | grep -q "^${container_name}$"; then
             echo "❌ Container stopped unexpectedly during startup"
             echo "💡 Check logs with: vm logs"
             return 1
         fi
-        
+
         # Test if container is responsive
         if docker_cmd exec "${container_name}" echo "ready" >/dev/null 2>&1; then
             echo "✅ Environment ready!"
             container_ready=true
             break
         fi
-        
+
         if [[ $attempt -eq $max_attempts ]]; then
             echo "❌ Environment startup failed - container not responding"
             echo "💡 Container is running but not accepting exec commands"
             echo "💡 This may indicate:"
             echo "   - Container processes still starting"
-            echo "   - Security policies blocking exec" 
+            echo "   - Security policies blocking exec"
             echo "   - Try: docker logs ${container_name}"
             return 1
         fi
-        
+
         ((attempt++))
     done
-    
+
     if [[ "$container_ready" != "true" ]]; then
         echo "❌ Environment startup failed - container not ready"
         return 1
@@ -771,7 +755,7 @@ docker_startup_and_wait() {
         echo "✨ Cleanup complete"
         rm "$compose_file"
     fi
-    
+
     echo "🎉 Environment ready!"
     echo "💡 Use 'vm ssh' to connect to the environment"
 }
@@ -784,17 +768,17 @@ docker_up() {
     # Get container name for display
     local container_name
     container_name=$(get_project_container_name "$config")
-    
+
     # Initialize progress reporter
     progress_init "VM Operation" "$container_name"
-    
+
     # CREATE PHASE
     progress_phase "🚀" "CREATE PHASE"
-    
+
     # Show provider
     progress_task "🐳 Provider: docker"
     progress_done
-    
+
     # Check and register port range if specified
     local port_range
     local project_name
@@ -802,10 +786,10 @@ docker_up() {
     # Query config using helper function
     project_name="$(query_config_field "$config" 'project.name' 'project')"
     port_range="$(query_config_field "$config" 'port_range' '')"
-    
+
     if [[ -n "$port_range" ]]; then
         progress_task "📡 Checking port range $port_range"
-        
+
         # Check for conflicts
         local conflicts
         if conflicts=$("$VM_PORTS" check "$port_range" "$project_name"); then
@@ -822,11 +806,11 @@ docker_up() {
             return 1
         fi
     fi
-    
+
     # Start PulseAudio if needed (macOS only, when audio is enabled)
     # Do this before generating docker-compose.yml so the service is ready
     manage_macos_pulseaudio "start" "$config"
-    
+
     # Create a secure temporary file for the config
     TEMP_CONFIG_FILE=$(create_temp_file "vm-config.XXXXXX")
 
@@ -836,14 +820,14 @@ docker_up() {
 
     # Build container phase
     progress_phase "🔨" "Building container..." "├─"
-    
+
     # Track build start time
     local build_start=$(date +%s)
-    
+
     # Run docker compose build with progress tracking
     local build_output=""
     local build_success=true
-    
+
     # Capture build output while showing progress
     while IFS= read -r line; do
         build_output+="$line"$'\n'
@@ -867,36 +851,36 @@ docker_up() {
                 ;;
         esac
     done < <(docker_run "compose" "$config" "$project_dir" build 2>&1 || echo "BUILD_FAILED:$?")
-    
+
     # Check if build failed
     if [[ "$build_output" =~ BUILD_FAILED:([0-9]+) ]]; then
         local build_error_code="${BASH_REMATCH[1]}"
         progress_fail "Build failed (exit code: $build_error_code)"
-        
+
         progress_phase "🧹" "Cleanup" "├─"
         progress_task "Removing build artifacts"
-        
+
         if docker_run "compose" "$config" "$project_dir" down --remove-orphans; then
             progress_done
         else
             progress_fail "Some artifacts may remain"
         fi
-        
+
         # Clean up temp config file on build failure
         if [[ -f "$TEMP_CONFIG_FILE" ]]; then
             rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
         fi
-        
+
         progress_phase_done
         progress_complete "Build failed"
         return $build_error_code
     fi
-    
+
     progress_phase_done "Build complete"
-    
+
     # Start services phase
     progress_phase "📦" "Starting services..." "├─"
-    
+
     # Run docker compose up with progress tracking
     local startup_output=""
     while IFS= read -r line; do
@@ -915,19 +899,19 @@ docker_up() {
                 ;;
         esac
     done < <(docker_run "compose" "$config" "$project_dir" up -d "$@" 2>&1 || echo "STARTUP_FAILED:$?")
-    
+
     # Check if startup failed
     if [[ "$startup_output" =~ STARTUP_FAILED:([0-9]+) ]]; then
         local startup_error_code="${BASH_REMATCH[1]}"
-        
+
         # Extract the actual error message from Docker output
         local error_message=""
         local error_type="Unknown"
-        
+
         # Parse common Docker errors
         if [[ "$startup_output" =~ "Error response from daemon: "(.+) ]]; then
             error_message="${BASH_REMATCH[1]}"
-            
+
             # Identify specific error types
             if [[ "$error_message" =~ "all predefined address pools have been fully subnetted" ]]; then
                 error_type="Network Pool Exhausted"
@@ -944,7 +928,7 @@ docker_up() {
             # Fallback to showing last meaningful line
             error_message=$(echo "$startup_output" | grep -v "^$" | tail -n 1)
         fi
-        
+
         # Display enhanced error report
         echo ""
         echo "================================================================================"
@@ -957,7 +941,7 @@ docker_up() {
         echo "💬 Error Details:"
         echo "   $error_message"
         echo ""
-        
+
         # Provide specific diagnostic help based on error type
         case "$error_type" in
             "Network Pool Exhausted")
@@ -1032,49 +1016,49 @@ docker_up() {
                 echo "      $ docker compose up"
                 ;;
         esac
-        
+
         echo ""
         echo "📋 Debug Information:"
         echo "   • Config file: $project_dir/vm.yaml"
-        echo "   • Docker compose: $project_dir/docker-compose.yml"  
+        echo "   • Docker compose: $project_dir/docker-compose.yml"
         echo "   • Container name: $(get_project_container_name "$config")"
         echo "   • Exit code: $startup_error_code"
         echo ""
         echo "================================================================================"
-        
+
         progress_fail "Startup failed"
-        
+
         progress_phase "🧹" "Rollback" "├─"
         progress_task "Stopping containers"
-        
+
         # Enhanced rollback with verification
         if docker_run "compose" "$config" "$project_dir" down 2>/dev/null; then
             progress_done
         else
             progress_fail "Some containers may still be running"
         fi
-        
+
         # Clean up temp config file on startup failure
         if [[ -f "$TEMP_CONFIG_FILE" ]]; then
             rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
         fi
-        
+
         progress_phase_done
         progress_complete "Startup failed"
         return $startup_error_code
     fi
-    
+
     progress_phase_done "Services started"
 
     # Provisioning phase
     progress_phase "🔧" "Provisioning environment..." "└─"
-    
+
     # Wait for container to be ready with enhanced error checking
     progress_task "Initializing container"
     local max_attempts=30
     local attempt=1
     local container_ready=false
-    
+
     while [[ $attempt -le $max_attempts ]]; do
         # Check if container exists first
         if ! docker_cmd inspect "${container_name}" >/dev/null 2>&1; then
@@ -1083,7 +1067,7 @@ docker_up() {
             progress_complete "Container initialization failed"
             return 1
         fi
-        
+
         # Use docker_cmd to handle sudo if needed, and check container is running
         local container_status
         if ! container_status=$(docker_cmd inspect "${container_name}" --format='{{.State.Status}}' 2>/dev/null); then
@@ -1092,14 +1076,14 @@ docker_up() {
             progress_complete "Container initialization failed"
             return 1
         fi
-        
+
         if [[ "$container_status" != "running" ]]; then
             if [[ $attempt -eq $max_attempts ]]; then
                 echo "❌ Container failed to start or is not running (status: $container_status)"
                 echo "💡 Check container logs: vm logs"
                 echo "💡 Try rebuilding: vm provision"
                 echo "💡 Container may have exited due to configuration errors"
-                
+
                 # Show container exit code if available
                 local exit_code
                 if exit_code=$(docker_cmd inspect "${container_name}" --format='{{.State.ExitCode}}' 2>/dev/null); then
@@ -1121,12 +1105,12 @@ docker_up() {
                 return 1
             fi
         fi
-        
+
         progress_update "."
         sleep 2
         ((attempt++))
     done
-    
+
     if [[ "$container_ready" != "true" ]]; then
         progress_fail "Initialization timed out after $max_attempts attempts"
         progress_phase_done
@@ -1136,34 +1120,34 @@ docker_up() {
 
     # Copy config file to container with enhanced error handling and validation
     echo "📋 Loading project configuration..."
-    
+
     # Validate temp config file exists and is readable
     if [[ ! -f "$TEMP_CONFIG_FILE" ]]; then
         echo "❌ Temporary configuration file not found: $TEMP_CONFIG_FILE"
         return 1
     fi
-    
+
     if [[ ! -r "$TEMP_CONFIG_FILE" ]]; then
         echo "❌ Cannot read temporary configuration file: $TEMP_CONFIG_FILE"
         return 1
     fi
-    
+
     # First attempt to copy configuration
     if ! docker_cmd cp "$TEMP_CONFIG_FILE" "$(printf '%q' "${container_name}"):/tmp/vm-config.yaml" 2>/dev/null; then
         echo "❌ Configuration loading failed on first attempt"
         echo "💡 Diagnosing container state..."
-        
+
         # Enhanced container diagnostics
         local container_status
         if ! container_status=$(docker_cmd inspect "${container_name}" --format='{{.State.Status}}' 2>/dev/null); then
             echo "❌ Cannot inspect container - it may have been removed"
             return 1
         fi
-        
+
         if [[ "$container_status" != "running" ]]; then
             echo "❌ Container has stopped unexpectedly (status: $container_status)"
             echo "💡 Check container logs: vm logs"
-            
+
             # Show container exit details if available
             local exit_code
             if exit_code=$(docker_cmd inspect "${container_name}" --format='{{.State.ExitCode}}' 2>/dev/null); then
@@ -1171,18 +1155,18 @@ docker_up() {
             fi
             return 1
         fi
-        
+
         # Check if container filesystem is accessible
         if ! docker_cmd exec "${container_name}" test -w /tmp 2>/dev/null; then
             echo "❌ Container /tmp directory is not writable"
             echo "💡 Container may have filesystem issues or security restrictions"
             return 1
         fi
-        
+
         # Retry the copy operation with detailed error reporting
         echo "🔄 Retrying configuration copy (container status: $container_status)..."
         sleep 2
-        
+
         if ! docker_cmd cp "$TEMP_CONFIG_FILE" "$(printf '%q' "${container_name}"):/tmp/vm-config.yaml" 2>&1; then
             echo "❌ Configuration loading failed after retry"
             echo "💡 Possible causes:"
@@ -1193,19 +1177,19 @@ docker_up() {
             return 1
         fi
     fi
-    
+
     # Validate that the file was actually copied successfully
     if ! docker_cmd exec "${container_name}" test -f /tmp/vm-config.yaml 2>/dev/null; then
         echo "❌ Configuration file validation failed - file not found in container"
         return 1
     fi
-    
+
     # Verify file is readable in container
     if ! docker_cmd exec "${container_name}" test -r /tmp/vm-config.yaml 2>/dev/null; then
         echo "❌ Configuration file is not readable in container"
         return 1
     fi
-    
+
     progress_done
 
     # Fix volume permissions before Ansible
@@ -1226,7 +1210,7 @@ docker_up() {
     # Check if debug mode is enabled
     ANSIBLE_VERBOSITY=""
     ANSIBLE_DIFF=""
-    
+
     if [[ "${VM_DEBUG:-}" = "true" ]] || [[ "${DEBUG:-}" = "true" ]]; then
         progress_done
         echo "🐛 Debug mode enabled - showing detailed Ansible output"
@@ -1248,7 +1232,7 @@ docker_up() {
     else
         # Create log file path
         ANSIBLE_LOG="/tmp/ansible-create-$(date +%Y%m%d-%H%M%S).log"
-        
+
         # In normal mode, show progress dots while running
         docker_run "exec" "$config" "$project_dir" bash -c "
             ansible-playbook \
@@ -1283,11 +1267,11 @@ docker_up() {
                 return 1
             fi
         done
-        
+
         # Wait for the process to complete and get exit status
         wait $ansible_pid
         local ansible_exit=$?
-        
+
         if [[ $ansible_exit -eq 0 ]]; then
             progress_done
             # Show summary of what was provisioned
@@ -1439,7 +1423,7 @@ docker_start() {
     shift 3
 
     echo "🚀 Starting development environment..."
-    
+
     # Start PulseAudio if needed (macOS only, when audio is enabled)
     manage_macos_pulseaudio "start" "$config"
 
@@ -1454,38 +1438,38 @@ docker_start() {
         echo "💡 Or check if you're in the correct project directory"
         return 1
     fi
-    
+
     # Get current container status for better error reporting
     local current_status
     if ! current_status=$(docker_cmd inspect "${container_name}" --format='{{.State.Status}}' 2>/dev/null); then
         echo "❌ Cannot determine container status"
         return 1
     fi
-    
+
     # Check if container is already running
     if [[ "$current_status" == "running" ]]; then
         echo "✅ Container '${container_name}' is already running"
         # Skip to ready check
     else
         echo "🚀 Starting container '${container_name}' (current status: $current_status)..."
-        
+
         # Start the container with enhanced error handling
         if ! docker_cmd start "${container_name}" "$@"; then
             local start_error_code=$?
             echo "❌ Failed to start container '${container_name}' (exit code: $start_error_code)"
-            
+
             # Provide specific troubleshooting based on container state
             local exit_code
             if exit_code=$(docker_cmd inspect "${container_name}" --format='{{.State.ExitCode}}' 2>/dev/null); then
                 echo "💡 Container exit code: $exit_code"
             fi
-            
+
             echo "💡 Troubleshooting steps:"
             echo "   1. Check container logs: vm logs"
             echo "   2. Try recreating: vm destroy && vm create"
             echo "   3. Check Docker daemon status"
             echo "   4. Verify disk space and permissions"
-            
+
             return $start_error_code
         fi
     fi
@@ -1495,7 +1479,7 @@ docker_start() {
     local max_attempts=15
     local attempt=1
     local container_ready=false
-    
+
     while [[ $attempt -le $max_attempts ]]; do
         # First verify container is still running
         local runtime_status
@@ -1503,27 +1487,27 @@ docker_start() {
             echo "❌ Cannot check container status during startup"
             return 1
         fi
-        
+
         if [[ "$runtime_status" != "running" ]]; then
             echo "❌ Container stopped during startup (status: $runtime_status)"
-            
+
             # Show exit details
             local exit_code
             if exit_code=$(docker_cmd inspect "${container_name}" --format='{{.State.ExitCode}}' 2>/dev/null); then
                 echo "💡 Container exit code: $exit_code"
             fi
-            
+
             echo "💡 Check container logs: vm logs"
             return 1
         fi
-        
+
         # Test if container is responsive
         if docker_cmd exec "${container_name}" echo "ready" >/dev/null 2>&1; then
             echo "✅ Environment ready!"
             container_ready=true
             break
         fi
-        
+
         if [[ $attempt -eq $max_attempts ]]; then
             echo "❌ Environment startup failed - container not responding"
             echo "💡 Container is running but not accepting exec commands"
@@ -1534,12 +1518,12 @@ docker_start() {
             echo "💡 Try: vm logs to see container output"
             return 1
         fi
-        
+
         echo "⏳ Waiting for container readiness... ($attempt/$max_attempts)"
         sleep 1
         ((attempt++))
     done
-    
+
     if [[ "$container_ready" != "true" ]]; then
         echo "❌ Container startup verification failed"
         return 1
@@ -1557,18 +1541,18 @@ docker_halt() {
     # Stop the container directly (not using docker-compose) with error handling
     local container_name
     container_name=$(get_project_container_name "$config")
-    
+
     # Check if container exists and is running
     if ! docker_cmd inspect "${container_name}" >/dev/null 2>&1; then
         echo "⚠️  Container '${container_name}' does not exist"
         return 0
     fi
-    
+
     if ! docker_cmd inspect "${container_name}" --format='{{.State.Status}}' 2>/dev/null | grep -q "running"; then
         echo "⚠️  Container '${container_name}' is already stopped"
         return 0
     fi
-    
+
     if ! docker_cmd stop "${container_name}" "$@"; then
         echo "❌ Failed to stop container gracefully"
         echo "💡 Trying force stop..."
@@ -1594,14 +1578,14 @@ docker_destroy() {
         # Initialize progress reporter only if not already initialized
         progress_init "VM Operation" "$container_name"
     fi
-    
+
     # DESTROY PHASE
     progress_phase "🗑️" "DESTROY PHASE"
 
     # Get project name for volume/network cleanup
     local project_name
     project_name=$(get_project_name "$config")
-    
+
     # Unregister port range if it exists
     local port_range
     port_range="$(query_config_field "$config" 'port_range' '')"
@@ -1613,7 +1597,7 @@ docker_destroy() {
 
     progress_task "Cleaning up resources"
     progress_done
-    
+
     # Stop and remove container directly
     if docker_cmd stop "$container_name" >/dev/null 2>&1; then
         progress_subtask_done "Container stopped"
@@ -1628,13 +1612,13 @@ docker_destroy() {
         progress_subtask_done "Volumes removed"
     fi
 
-    # Clean up project networks  
+    # Clean up project networks
     if docker_cmd network ls -q --filter "name=${project_name}_" 2>/dev/null | xargs -r docker_cmd network rm >/dev/null 2>&1; then
         progress_subtask_done "Networks removed"
     fi
 
     progress_done
-    
+
     progress_phase_done "Destruction complete"
     progress_complete "VM $container_name destroyed"
 }
@@ -1646,17 +1630,17 @@ docker_status() {
 
     # Show container status
     docker_run "ps" "$config" "$project_dir" "$@"
-    
+
     # Show port range info if configured
     local port_range
     local project_name
     project_name="$(query_config_field "$config" 'project.name' 'project')"
     port_range="$(query_config_field "$config" 'port_range' '')"
-    
+
     if [[ -n "$port_range" ]]; then
         echo ""
         echo "📡 Port Range: $port_range"
-        
+
         # Count used ports in range
         local ports_list
         local temp_config
@@ -1665,23 +1649,23 @@ docker_status() {
         # Extract port values from YAML ports section
         ports_list="$(grep -A 20 '^ports:' "$temp_config" | grep ':' | grep -v '^ports:' | awk '{print $2}' | tr '\n' ' ')"
         # Note: temp file cleanup is handled automatically
-        
+
         if [[ -n "$ports_list" ]]; then
             local range_start range_end
             range_start=$(echo "$port_range" | cut -d'-' -f1)
             range_end=$(echo "$port_range" | cut -d'-' -f2)
-            
+
             local used_count=0
             while read -r port; do
                 if [[ $port -ge $range_start && $port -le $range_end ]]; then
                     ((used_count++))
                 fi
             done <<< "$ports_list"
-            
+
             local total_ports=$((range_end - range_start + 1))
             echo "   Used: $used_count/$total_ports ports"
         fi
-        
+
         # Check for conflicts
         local conflicts
         if ! conflicts=$("$VM_PORTS" check "$port_range" "$project_name" 2>/dev/null); then
@@ -1729,10 +1713,10 @@ docker_provision() {
     # Get container name for display
     local container_name
     container_name=$(get_project_container_name "$config")
-    
+
     # Initialize progress reporter
     progress_init "VM Provision" "$container_name"
-    
+
     # REBUILD PHASE
     progress_phase "🔄" "REBUILD PHASE"
 
@@ -1747,14 +1731,14 @@ docker_provision() {
 
     # Build container phase
     progress_phase "🔨" "Rebuilding container..." "├─"
-    
+
     # Track build start time
     local build_start=$(date +%s)
-    
+
     # Run docker compose build with progress tracking
     local build_output=""
     local build_success=true
-    
+
     # Capture build output while showing progress
     while IFS= read -r line; do
         build_output+="$line"$'\n'
@@ -1778,36 +1762,36 @@ docker_provision() {
                 ;;
         esac
     done < <(docker_run "compose" "$config" "$project_dir" build 2>&1 || echo "BUILD_FAILED:$?")
-    
+
     # Check if build failed
     if [[ "$build_output" =~ BUILD_FAILED:([0-9]+) ]]; then
         local build_error_code="${BASH_REMATCH[1]}"
         progress_fail "Build failed (exit code: $build_error_code)"
-        
+
         progress_phase "🧹" "Cleanup" "├─"
         progress_task "Removing build artifacts"
-        
+
         if docker_run "compose" "$config" "$project_dir" down --remove-orphans; then
             progress_done
         else
             progress_fail "Some artifacts may remain"
         fi
-        
+
         # Clean up temp config file on provision failure
         if [[ -f "$TEMP_CONFIG_FILE" ]]; then
             rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
         fi
-        
+
         progress_phase_done
         progress_complete "Provision failed"
         return $build_error_code
     fi
-    
+
     progress_phase_done "Build complete"
-    
+
     # Start services phase
     progress_phase "📦" "Restarting services..." "├─"
-    
+
     # Run docker compose up with progress tracking
     local startup_output=""
     while IFS= read -r line; do
@@ -1818,47 +1802,47 @@ docker_provision() {
                 ;;
         esac
     done < <(docker_run "compose" "$config" "$project_dir" up -d "$@" 2>&1 || echo "STARTUP_FAILED:$?")
-    
+
     # Check if startup failed
     if [[ "$startup_output" =~ STARTUP_FAILED:([0-9]+) ]]; then
         local startup_error_code="${BASH_REMATCH[1]}"
         progress_fail "Startup failed (exit code: $startup_error_code)"
-        
+
         progress_phase "🧹" "Rollback" "├─"
         progress_task "Stopping containers"
-        
+
         if docker_run "compose" "$config" "$project_dir" down; then
             progress_done
         else
             progress_fail "Some containers may still be running"
         fi
-        
+
         # Clean up temp config file on provision failure
         if [[ -f "$TEMP_CONFIG_FILE" ]]; then
             rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
         fi
-        
+
         progress_phase_done
         progress_complete "Provision failed"
         return $startup_error_code
     fi
-    
+
     progress_phase_done "Services restarted"
 
     # Provisioning phase
     progress_phase "🔧" "Re-provisioning environment..." "└─"
-    
+
     # Wait for container to be ready
     progress_task "Waiting for container readiness"
     local max_attempts=30
     local attempt=1
     local container_ready=false
-    
+
     while [[ $attempt -le $max_attempts ]]; do
         if [[ $attempt -gt 1 ]]; then
             sleep 1
         fi
-        
+
         # Check if container is still running
         if ! docker_cmd ps --format "table {{.Names}}" | grep -q "^${container_name}$"; then
             progress_fail "Container stopped unexpectedly"
@@ -1869,29 +1853,29 @@ docker_provision() {
             progress_complete "Provision failed"
             return 1
         fi
-        
+
         # Test if container is responsive
         if docker_cmd exec "${container_name}" echo "ready" >/dev/null 2>&1; then
             progress_done
             container_ready=true
             break
         fi
-        
+
         progress_update "."
-        
+
         if [[ $attempt -eq $max_attempts ]]; then
             progress_fail "Container not responding after $max_attempts attempts"
-            if [[ -f "$TEMP_CONFIG_FILE" ]]; then  
+            if [[ -f "$TEMP_CONFIG_FILE" ]]; then
                 rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
             fi
             progress_phase_done
             progress_complete "Provision failed"
             return 1
         fi
-        
+
         ((attempt++))
     done
-    
+
     if [[ "$container_ready" != "true" ]]; then
         progress_fail "Container not ready"
         if [[ -f "$TEMP_CONFIG_FILE" ]]; then
@@ -1903,7 +1887,7 @@ docker_provision() {
     fi
 
     progress_task "Loading project configuration"
-    
+
     # Validate temp config file exists and is readable
     if [[ ! -f "$TEMP_CONFIG_FILE" ]]; then
         progress_fail "Temporary configuration file not found"
@@ -1911,14 +1895,14 @@ docker_provision() {
         progress_complete "Configuration loading failed"
         return 1
     fi
-    
+
     if [[ ! -r "$TEMP_CONFIG_FILE" ]]; then
         progress_fail "Cannot read temporary configuration file"
         progress_phase_done
         progress_complete "Configuration loading failed"
         return 1
     fi
-    
+
     # Copy configuration to container
     if ! docker_cmd cp "$TEMP_CONFIG_FILE" "$(printf '%q' "${container_name}"):/tmp/vm-config.yaml" 2>/dev/null; then
         sleep 2
@@ -1932,7 +1916,7 @@ docker_provision() {
             return 1
         fi
     fi
-    
+
     # Validate that the file was actually copied successfully
     if ! docker_cmd exec "${container_name}" test -f /tmp/vm-config.yaml 2>/dev/null; then
         progress_fail "Configuration file not found in container"
@@ -1943,7 +1927,7 @@ docker_provision() {
         progress_complete "Configuration validation failed"
         return 1
     fi
-    
+
     progress_done
 
     # Fix volume permissions before Ansible
@@ -1962,7 +1946,7 @@ docker_provision() {
     # Check if debug mode is enabled
     ANSIBLE_VERBOSITY=""
     ANSIBLE_DIFF=""
-    
+
     if [[ "${VM_DEBUG:-}" = "true" ]] || [[ "${DEBUG:-}" = "true" ]]; then
         progress_done
         echo "🐛 Debug mode enabled - showing detailed Ansible output"
@@ -1984,7 +1968,7 @@ docker_provision() {
     else
         # Create log file path
         ANSIBLE_LOG="/tmp/ansible-provision-$(date +%Y%m%d-%H%M%S).log"
-        
+
         # In normal mode, show progress dots while running
         docker_run "exec" "$config" "$project_dir" bash -c "
             ansible-playbook \
@@ -2019,11 +2003,11 @@ docker_provision() {
                 return 1
             fi
         done
-        
+
         # Wait for the process to complete and get exit status
         wait $ansible_pid
         local ansible_exit=$?
-        
+
         if [[ $ansible_exit -eq 0 ]]; then
             progress_done
             # Show summary of what was provisioned
@@ -2052,7 +2036,7 @@ docker_provision() {
     if [[ -f "$compose_file" ]]; then
         rm "$compose_file"
     fi
-    
+
     # Clean up temp config file after successful provisioning
     if [[ -f "$TEMP_CONFIG_FILE" ]]; then
         rm -f "$TEMP_CONFIG_FILE" 2>/dev/null || true
@@ -2060,14 +2044,14 @@ docker_provision() {
 
     # Complete the phase
     progress_phase_done "Environment ready"
-    
+
     # Calculate total time
     local end_time=$(date +%s)
     local total_time=$((end_time - ${build_start:-$end_time}))
     local time_str="${total_time}s"
-    
+
     progress_complete "VM $container_name re-provisioned!" "$time_str"
-    
+
     echo "💡 Use 'vm ssh' to connect to the environment"
 }
 
@@ -2220,14 +2204,11 @@ vm_list() {
 }
 
 
-
-
-
 # Handle preset commands - Phase B implementation point
 handle_preset_command() {
     local subcommand="${1:-}"
     shift
-    
+
     case "$subcommand" in
         "list")
             preset_list_command
@@ -2266,43 +2247,43 @@ handle_preset_command() {
 # List all available presets with descriptions
 preset_list_command() {
     local presets_dir="$SCRIPT_DIR/configs/presets"
-    
+
     # Check if presets directory exists
     if [[ ! -d "$presets_dir" ]]; then
         echo "❌ Presets directory not found: $presets_dir" >&2
         return 1
     fi
-    
+
     # Check if directory is empty
     local preset_files=($(find "$presets_dir" -name "*.yaml" -type f 2>/dev/null))
     if [[ ${#preset_files[@]} -eq 0 ]]; then
         echo "ℹ️  No presets found in $presets_dir"
         return 0
     fi
-    
+
     echo "Available Configuration Presets:"
     echo "================================="
     echo ""
-    
+
     # Table header
     printf "%-15s %-12s %s\n" "Name" "Type" "Description"
     printf "%-15s %-12s %s\n" "----" "----" "-----------"
-    
+
     # Process each preset file
     for preset_file in "${preset_files[@]}"; do
         local preset_name=$(basename "$preset_file" .yaml)
         local preset_type="General"
         local description="No description available"
-        
+
         # Extract metadata from the preset file
         if [[ -r "$preset_file" ]]; then
             # Try to extract the preset name and description from YAML
             local yaml_name=$(grep -E "^\s*name:\s*[\"']?(.+)[\"']?\s*$" "$preset_file" 2>/dev/null | sed -E 's/^\s*name:\s*[\"'"'"']?(.+)[\"'"'"']?\s*$/\1/' | head -1)
             local yaml_desc=$(grep -E "^\s*description:\s*[\"']?(.+)[\"']?\s*$" "$preset_file" 2>/dev/null | sed -E 's/^\s*description:\s*[\"'"'"']?(.+)[\"'"'"']?\s*$/\1/' | head -1)
-            
+
             # Use extracted values if available
             [[ -n "$yaml_desc" ]] && description="$yaml_desc"
-            
+
             # Determine preset type based on content and name
             if grep -q "django\|flask\|fastapi" "$preset_file" 2>/dev/null; then
                 preset_type="Python Web"
@@ -2318,15 +2299,15 @@ preset_list_command() {
                 preset_type="Python"
             fi
         fi
-        
+
         # Truncate description if too long
         if [[ ${#description} -gt 50 ]]; then
             description="${description:0:47}..."
         fi
-        
+
         printf "%-15s %-12s %s\n" "$preset_name" "$preset_type" "$description"
     done
-    
+
     echo ""
     echo "Use 'vm preset show <name>' to view detailed configuration for any preset."
 }
@@ -2334,7 +2315,7 @@ preset_list_command() {
 # Show detailed configuration for a specific preset
 preset_show_command() {
     local preset_name="${1:-}"
-    
+
     if [[ -z "$preset_name" ]]; then
         echo "❌ Missing preset name" >&2
         echo ""
@@ -2347,9 +2328,9 @@ preset_show_command() {
         echo "Use 'vm preset list' to see available presets."
         return 1
     fi
-    
+
     local presets_dir="$SCRIPT_DIR/configs/presets"
-    
+
     # Handle preset name with or without .yaml extension
     local preset_file
     if [[ "$preset_name" == *.yaml ]]; then
@@ -2357,12 +2338,12 @@ preset_show_command() {
     else
         preset_file="$presets_dir/$preset_name.yaml"
     fi
-    
+
     # Check if preset file exists
     if [[ ! -f "$preset_file" ]]; then
         echo "❌ Preset not found: $preset_name" >&2
         echo ""
-        
+
         # Suggest similar presets
         local available_presets=($(find "$presets_dir" -name "*.yaml" -type f 2>/dev/null | xargs -I {} basename {} .yaml))
         if [[ ${#available_presets[@]} -gt 0 ]]; then
@@ -2377,34 +2358,34 @@ preset_show_command() {
         fi
         return 1
     fi
-    
+
     # Check file permissions
     if [[ ! -r "$preset_file" ]]; then
         echo "❌ Cannot read preset file: $preset_file" >&2
         echo "Check file permissions." >&2
         return 1
     fi
-    
+
     echo "Preset Configuration: $(basename "$preset_file" .yaml)"
     echo "======================================================"
     echo ""
-    
+
     # Display file with helpful annotations
     local in_section=""
     local line_number=0
-    
+
     while IFS= read -r line; do
         ((line_number++))
-        
+
         # Skip YAML document separator and comments at the start
         if [[ "$line" =~ ^---$ ]] || [[ "$line" =~ ^#.*$ && $line_number -le 5 ]]; then
             continue
         fi
-        
+
         # Detect sections and add explanatory comments
         if [[ "$line" =~ ^[a-zA-Z_][a-zA-Z0-9_]*: ]]; then
             local section=$(echo "$line" | cut -d: -f1)
-            
+
             case "$section" in
                 "preset")
                     if [[ "$in_section" != "preset" ]]; then
@@ -2463,10 +2444,10 @@ preset_show_command() {
                     ;;
             esac
         fi
-        
+
         echo "$line"
     done < "$preset_file"
-    
+
     echo ""
     echo "To use this preset:"
     echo "  vm --preset $(basename "$preset_file" .yaml) create"
@@ -2560,7 +2541,7 @@ while [[ $# -gt 0 ]]; do
             ARGS+=("$@")
             break
             ;;
-        
+
         *)
             # Collect remaining arguments (command and its args)
             ARGS+=("$1")
@@ -2622,7 +2603,7 @@ case "${1:-}" in
         shift
         handle_preset_command "$@"
         ;;
-    
+
     "list")
         vm_list
         ;;
@@ -2787,7 +2768,7 @@ case "${1:-}" in
 
             # Initialize progress reporter for destroy operation
             progress_init "VM Operation" "$container_name"
-            
+
             # Show confirmation in destroy phase
             echo -e "├─ ⚠️  Confirm destruction of $container_name? (y/N): \c"
             read -r response
@@ -2826,13 +2807,13 @@ case "${1:-}" in
             echo "DEBUG main: CUSTOM_CONFIG='$CUSTOM_CONFIG'" >&2
             echo "DEBUG main: USE_PRESETS='$USE_PRESETS', FORCED_PRESET='$FORCED_PRESET'" >&2
         fi
-        
+
         # Export preset configuration for config-processor.sh
         export VM_USE_PRESETS="$USE_PRESETS"
         if [[ -n "$FORCED_PRESET" ]]; then
             export VM_FORCED_PRESET="$FORCED_PRESET"
         fi
-        
+
         # Use enhanced config loading with preset support
         if ! CONFIG=$(load_config "$CUSTOM_CONFIG" "$CURRENT_DIR"); then
             echo "❌ Invalid configuration"

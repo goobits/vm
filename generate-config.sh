@@ -106,25 +106,25 @@ cp "$DEFAULT_CONFIG" "$base_config_temp"
 if [[ -n "$SERVICES" ]]; then
     # Split services by comma and process each
     IFS=',' read -ra service_list <<< "$SERVICES"
-    
+
     for service in "${service_list[@]}"; do
         # Trim whitespace
         service="$(echo "$service" | xargs)"
-        
+
         # Validate service exists
         if [[ ! " $AVAILABLE_SERVICES " =~ \ ${service}\  ]]; then
             log_error "Unknown service: $service"
             log_tip "Available services: $AVAILABLE_SERVICES"
             exit 1
         fi
-        
+
         # Load service configuration
         service_config_file="$SCRIPT_DIR/configs/services/${service}.yaml"
         if [[ ! -f "$service_config_file" ]]; then
             log_error "Service configuration not found: $service_config_file"
             exit 1
         fi
-        
+
         # Merge service configuration using vm-config
         base_config_new="$(create_temp_file "vm-config-new.XXXXXX")"
         if ! "$VM_CONFIG_BINARY" merge --base "$base_config_temp" --overlay "$service_config_file" -f yaml > "$base_config_new"; then
@@ -177,14 +177,14 @@ if [[ -n "$PORTS" ]]; then
         echo "❌ Invalid port number: $PORTS (must be between 1024-65535)" >&2
         exit 1
     fi
-    
+
     # Generate port allocation (10 ports starting from specified number)
     web_port="$PORTS"
     api_port="$((PORTS + 1))"
     postgres_port="$((PORTS + 5))"
     redis_port="$((PORTS + 6))"
     mongodb_port="$((PORTS + 7))"
-    
+
     # Set port configuration using vm-config merge
     port_override="$(create_temp_file "port-override.XXXXXX")"
     cat > "$port_override" <<EOF
@@ -235,24 +235,24 @@ if cp "$base_config_temp" "$OUTPUT_FILE"; then
     project_name="$("$VM_CONFIG_BINARY" query "$OUTPUT_FILE" "project.name" --raw)"
     echo "✅ Generated configuration for project: $project_name"
     echo "📍 Configuration file: $OUTPUT_FILE"
-    
+
     # Show enabled services using vm-config
     enabled_services="$("$VM_CONFIG_BINARY" query "$OUTPUT_FILE" "services" --raw 2>/dev/null | grep -E "^\s*\w+:\s*$" | sed 's/:.*$//' | xargs || echo "none")"
     if [[ "$enabled_services" != "none" ]]; then
         echo "🔧 Enabled services: $enabled_services"
     fi
-    
+
     # Show port allocations using vm-config
     ports="$("$VM_CONFIG_BINARY" query "$OUTPUT_FILE" "ports" --raw 2>/dev/null | grep -E "^\s*\w+:\s*[0-9]+\s*$" | sed 's/^\s*//' | xargs || echo "")"
     if [[ -n "$ports" ]]; then
         echo "🔌 Port allocations: $ports"
     fi
-    
+
     echo ""
     echo "Next steps:"
     echo "  1. Review and customize $OUTPUT_FILE as needed"
     echo "  2. Run \"vm create\" to start your development environment"
-    
+
     # Temporary files will be cleaned up automatically by trap handlers
 else
     echo "❌ Failed to generate configuration" >&2

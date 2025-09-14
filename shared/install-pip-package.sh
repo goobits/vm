@@ -42,7 +42,7 @@ if [ -n "$LINKED_DIR" ]; then
         echo "  -> Detected as a pipx environment."
         LINKED_BIN_DIR="$LINKED_DIR/bin"
         LOCAL_BIN_DIR="/home/${PROJECT_USER}/.local/bin"
-        
+
         mkdir -p "$LOCAL_BIN_DIR"
 
         echo "  -> Creating wrapper scripts in $LOCAL_BIN_DIR to use the VM's python interpreter."
@@ -50,9 +50,9 @@ if [ -n "$LINKED_DIR" ]; then
             if [ -f "$SCRIPT_PATH" ] && [ -x "$SCRIPT_PATH" ]; then
                 SCRIPT_NAME=$(basename "$SCRIPT_PATH")
                 WRAPPER_PATH="$LOCAL_BIN_DIR/$SCRIPT_NAME"
-                
+
                 echo "    - Wrapping command: $SCRIPT_NAME"
-                
+
                 # Create a MORE ROBUST wrapper script
                 cat > "$WRAPPER_PATH" << 'WRAPPER_EOF'
 #!/bin/sh
@@ -100,7 +100,7 @@ WRAPPER_EOF
                 # Replace placeholders with actual paths
                 sed -i "s|__LINKED_DIR__|$LINKED_DIR|g" "$WRAPPER_PATH"
                 sed -i "s|__SCRIPT_PATH__|$SCRIPT_PATH|g" "$WRAPPER_PATH"
-                
+
                 chmod +x "$WRAPPER_PATH"
             fi
         done
@@ -110,7 +110,7 @@ WRAPPER_EOF
     elif [ -f "$LINKED_DIR/setup.py" ] || [ -f "$LINKED_DIR/pyproject.toml" ]; then
         echo "  -> Detected as a source project. Installing in editable mode."
         python3 -m pip install --user --break-system-packages -e "$LINKED_DIR"
-    
+
     # Fallback for directories that are neither
     else
         echo "  -> ⚠️  Warning: Linked directory is not a recognized pipx environment or Python source project."
