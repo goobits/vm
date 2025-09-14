@@ -1,8 +1,5 @@
 ---
 # React Development Preset
-preset:
-  name: "React Development"
-  description: "Optimized for React/Next.js development"
 
 npm_packages:
   - create-react-app

@@ -1,8 +1,5 @@
 ---
 # Django Development Preset
-preset:
-  name: "Django Development"
-  description: "Optimized for Django web development"
 
 pip_packages:
   - django

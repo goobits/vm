@@ -1,8 +1,5 @@
 ---
 # Docker Development Preset
-preset:
-  name: "Docker Development"
-  description: "Optimized for Docker containerization and development"
 
 apt_packages:
   - docker.io

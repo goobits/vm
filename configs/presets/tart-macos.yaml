@@ -1,11 +1,4 @@
 ---
-preset:
-  name: "Tart macOS"
-  description: "Native macOS VM on Apple Silicon using Virtualization.framework"
-  detection:
-    host_platform: darwin
-    host_arch: arm64
-    provider_available: tart
 
 provider: tart
 

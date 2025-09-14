@@ -1,15 +1,4 @@
 ---
-preset:
-  name: "Tart Ubuntu"
-  description: "Ubuntu 22.04 LTS ARM64 with Rosetta 2 on Apple Silicon"
-  detection:
-    host_platform: darwin
-    host_arch: arm64
-    provider_available: tart
-    files:
-      - "package.json"
-      - "requirements.txt"
-      - "Gemfile"
 
 provider: tart
 

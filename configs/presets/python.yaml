@@ -1,8 +1,5 @@
 ---
 # Python Development Preset
-preset:
-  name: "Python Development"
-  description: "Optimized for Python projects"
 
 pip_packages:
   - black

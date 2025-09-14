@@ -1,15 +1,4 @@
 ---
-preset:
-  name: "Tart Linux"
-  description: "ARM64 Linux with Rosetta 2 for x86 emulation on Apple Silicon"
-  detection:
-    host_platform: darwin
-    host_arch: arm64
-    provider_available: tart
-    files:
-      - "*.sh"
-      - "Makefile"
-      - "CMakeLists.txt"
 
 provider: tart
 

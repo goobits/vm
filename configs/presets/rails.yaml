@@ -1,8 +1,5 @@
 ---
 # Ruby on Rails Development Preset
-preset:
-  name: "Ruby on Rails Development"
-  description: "Optimized for Ruby on Rails development"
 
 apt_packages:
   - ruby-dev

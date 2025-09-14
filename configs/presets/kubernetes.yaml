@@ -1,8 +1,5 @@
 ---
 # Kubernetes Development Preset
-preset:
-  name: "Kubernetes Development"
-  description: "Optimized for Kubernetes development and management"
 
 apt_packages:
   - curl

@@ -1,8 +1,5 @@
 ---
 # Generic Development Preset
-preset:
-  name: "Generic Development"
-  description: "General-purpose development environment"
 
 pip_packages:
   - git-filter-repo
