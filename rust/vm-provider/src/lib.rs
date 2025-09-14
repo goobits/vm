@@ -33,7 +33,10 @@ pub trait Provider {
     fn ssh(&self, relative_path: &Path) -> Result<()>;
 
     /// Execute a command inside the VM.
-    fn exec(&self, cmd: &[&str]) -> Result<()>;
+    fn exec(&self, cmd: &[String]) -> Result<()>;
+
+    /// Get the logs of the VM.
+    fn logs(&self) -> Result<()>;
 
     /// Get the status of the VM.
     fn status(&self) -> Result<()>;

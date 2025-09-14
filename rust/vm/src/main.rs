@@ -39,6 +39,14 @@ enum Command {
     },
     /// Get the status of a VM
     Status,
+    /// Execute a command in the VM
+    Exec {
+        /// The command to execute
+        #[arg(required = true, num_args = 1..)]
+        command: Vec<String>,
+    },
+    /// View logs of the VM
+    Logs,
     /// Validate the configuration
     Validate,
 }
@@ -81,6 +89,8 @@ fn main() -> Result<()> {
             provider.ssh(&relative_path)
         }
         Command::Status => provider.status(),
+        Command::Exec { command } => provider.exec(&command),
+        Command::Logs => provider.logs(),
         Command::Validate => unreachable!(), // Handled above
     }
 }

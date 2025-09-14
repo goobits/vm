@@ -147,11 +147,17 @@ impl Provider for DockerProvider {
         Ok(())
     }
 
-    fn exec(&self, cmd: &[&str]) -> Result<()> {
+    fn exec(&self, cmd: &[String]) -> Result<()> {
         let container = self.container_name();
         let mut args: Vec<&str> = vec!["exec", &container];
-        args.extend_from_slice(cmd);
+        // Convert Vec<String> to Vec<&str> for the command
+        let cmd_strs: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
+        args.extend_from_slice(&cmd_strs);
         stream_command("docker", &args)
+    }
+
+    fn logs(&self) -> Result<()> {
+        stream_command("docker", &["logs", "-f", &self.container_name()])
     }
 
     fn status(&self) -> Result<()> {
