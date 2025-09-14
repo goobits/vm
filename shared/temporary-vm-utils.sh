@@ -24,15 +24,8 @@ source "$SCRIPT_DIR/shared/provider-interface.sh"
 TEMP_STATE_DIR="$HOME/.vm"
 TEMP_STATE_FILE="$TEMP_STATE_DIR/temp-vm.state"
 
-# Wrapper function for vm-config to replace yq functionality
-vm_config_query() {
-	local filter="$1"
-	local file="$2"
-	local default="${3:-""}"
-
-	# Use vm-config binary to query
-	"$VM_CONFIG" query "$file" "$filter" --raw --default "$default" 2>/dev/null || echo "$default"
-}
+# Source the state operations helper
+source "$SCRIPT_DIR/temp-vm-state-ops.sh"
 
 # Directory validation functions moved to shared/security-utils.sh
 
@@ -286,14 +279,8 @@ get_temp_mounts() {
 		return 1
 	fi
 	
-	# Use vm-config to extract mounts
-	if "$VM_CONFIG" has-field "$TEMP_STATE_FILE" "mounts.0" "source" 2>/dev/null; then
-		# New format - construct mount string
-		"$VM_CONFIG" transform "$TEMP_STATE_FILE" 'mounts[] | "\(.source):\(.target):\(.permissions)"' --format comma 2>/dev/null
-	else
-		# Old format - direct strings
-		"$VM_CONFIG" transform "$TEMP_STATE_FILE" 'mounts[]' --format comma 2>/dev/null
-	fi
+	# Use vm-config to extract mounts - assumes structured format
+	"$VM_CONFIG" transform "$TEMP_STATE_FILE" 'mounts[] | "\(.source):\(.target):\(.permissions)"' --format comma 2>/dev/null
 }
 
 # Compare two mount strings for equality
@@ -568,30 +555,15 @@ update_temp_vm_with_mounts() {
 	
 	# Read current mount configuration and build mount string for docker provisioning
 	local mount_string=""
-	# Check format and build mount string (space-separated realpath:basename pairs)
-	if "$VM_CONFIG" has-field "$TEMP_STATE_FILE" "mounts.0" "source" 2>/dev/null; then
-		# New format - extract source paths and create realpath:basename format
-		mount_string=$("$VM_CONFIG" transform "$TEMP_STATE_FILE" 'mounts[].source' --format lines 2>/dev/null | while read -r source; do
-			# Get absolute path, fallback to source if resolution fails
-			if abs_path=$(portable_readlink "$source" 2>/dev/null); then
-				echo -n "$abs_path:$(basename "$source") "
-			else
-				echo -n "$source:$(basename "$source") "
-			fi
-		done | sed 's/ $//')
-	else
-		# Old format - parse and convert to expected format
-		mount_string=$("$VM_CONFIG" transform "$TEMP_STATE_FILE" 'mounts[]' --format lines 2>/dev/null | while read -r mount; do
-			# Extract source from old format mount string
-			source="${mount%%:*}"
-			# Get absolute path, fallback to source if resolution fails
-			if abs_path=$(portable_readlink "$source" 2>/dev/null); then
-				echo -n "$abs_path:$(basename "$source") "
-			else
-				echo -n "$source:$(basename "$source") "
-			fi
-		done | sed 's/ $//')
-	fi
+	# Extract source paths and create realpath:basename format
+	mount_string=$("$VM_CONFIG" transform "$TEMP_STATE_FILE" 'mounts[].source' --format lines 2>/dev/null | while read -r source; do
+		# Get absolute path, fallback to source if resolution fails
+		if abs_path=$(portable_readlink "$source" 2>/dev/null); then
+			echo -n "$abs_path:$(basename "$source") "
+		else
+			echo -n "$source:$(basename "$source") "
+		fi
+	done | sed 's/ $//')
 	
 	echo "🛑 Stopping container..."
 	local stop_success=true
@@ -1104,27 +1076,14 @@ EOF
 			echo "📋 Temp VM Status:"
 			echo "=================="
 			
-			if command -v yq &> /dev/null; then
-				echo "Container: $(get_container_name_from_state)"
-				echo "Provider: $provider"
-				echo "Created: $(yq_raw '.created_at' "$TEMP_STATE_FILE")"
-				echo "Project: $(yq_raw '.project_dir' "$TEMP_STATE_FILE")"
-				echo ""
-				echo "Mounts:"
-				# Try to detect format and display accordingly
-				if "$VM_CONFIG" has-field "$TEMP_STATE_FILE" "mounts.0" "source" 2>/dev/null; then
-					# New format
-					"$VM_CONFIG" transform "$TEMP_STATE_FILE" 'mounts[] | "  • \(.source) → \(.target) [\(.permissions)]"' --format lines 2>/dev/null
-				else
-					# Old format
-					"$VM_CONFIG" transform "$TEMP_STATE_FILE" 'mounts[]' --format lines 2>/dev/null | while read -r mount; do
-						echo "  • $mount"
-					done
-				fi
-			else
-				# Fallback display
-				cat "$TEMP_STATE_FILE"
-			fi
+			echo "Container: $(get_container_name_from_state)"
+			echo "Provider: $provider"
+			echo "Created: $(vm_config_query '.created_at' "$TEMP_STATE_FILE")"
+			echo "Project: $(vm_config_query '.project_dir' "$TEMP_STATE_FILE")"
+			echo ""
+			echo "Mounts:"
+			# Display structured mount format
+			"$VM_CONFIG" transform "$TEMP_STATE_FILE" 'mounts[] | "  • \(.source) → \(.target) [\(.permissions)]"' --format lines 2>/dev/null
 			
 			# Check if VM is actually running (provider-specific)
 			if is_temp_vm_running "$container_name" "$provider"; then
@@ -1228,14 +1187,11 @@ EOF
 			target="/workspace/$(basename "$abs_source")"
 			
 			# Check if already mounted
-			if command -v yq &> /dev/null; then
-				if yq '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
-					# New format
-					if yq '.mounts[] | select(.source == "'"$abs_source"'") | .source' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "$abs_source"; then
-						echo "❌ Directory '$abs_source' is already mounted"
-						exit 1
-					fi
-				fi
+			local existing_mounts
+			existing_mounts=$("$VM_CONFIG" transform "$TEMP_STATE_FILE" 'mounts[].source' --format lines 2>/dev/null)
+			if echo "$existing_mounts" | grep -q "^$abs_source$"; then
+				echo "❌ Directory '$abs_source' is already mounted"
+				exit 1
 			fi
 			
 			# Show warning and get confirmation
@@ -1255,27 +1211,20 @@ EOF
 			
 			# Add mount to state file
 			echo "📝 Updating mount configuration..."
-			if command -v yq &> /dev/null; then
-				# Create temporary file for the update
-				local temp_file
-				temp_file=$(mktemp)
-				setup_temp_file_cleanup "$temp_file"
-				cp "$TEMP_STATE_FILE" "$temp_file"
-				
-				# Add the new mount in new format - SECURE: use yq --arg to prevent shell injection
-				yq --arg source "$abs_source" --arg target "$target" --arg perm "$perm" \
-					'.mounts += [{"source": $source, "target": $target, "permissions": $perm}]' \
-					"$temp_file" > "$TEMP_STATE_FILE"
-				
-				rm -f "$temp_file"
-			else
-				# Fallback: append manually
-				cat >> "$TEMP_STATE_FILE" <<-EOF
-				  - source: $abs_source
-				    target: $target
-				    permissions: $perm
-				EOF
-			fi
+			# Create temporary file for the update
+			local temp_file
+			temp_file=$(mktemp)
+			setup_temp_file_cleanup "$temp_file"
+
+			# Read current state and add new mount
+			local current_mounts
+			current_mounts=$("$VM_CONFIG" query "$TEMP_STATE_FILE" "mounts" 2>/dev/null || echo "[]")
+
+			# Create new mount entry and append to array
+			cat "$TEMP_STATE_FILE" | "$VM_CONFIG" modify - "mounts" \
+				"$current_mounts + [{\"source\": \"$abs_source\", \"target\": \"$target\", \"permissions\": \"$perm\"}]" > "$temp_file"
+
+			mv "$temp_file" "$TEMP_STATE_FILE"
 			
 			# Update the VM with new mounts (provider-specific)
 			local provider
@@ -1296,7 +1245,7 @@ EOF
 					
 					# Get project dir from state
 					local project_dir
-					project_dir=$(yq_raw '.project_dir' "$TEMP_STATE_FILE")
+					project_dir=$(vm_config_query '.project_dir' "$TEMP_STATE_FILE")
 					
 					vagrant_temp_update_mounts "$container_name" "$new_mount_string" "$project_dir"
 					;;
@@ -1352,12 +1301,10 @@ EOF
 				echo ""
 				
 				# Show what will be removed
-				if command -v yq &> /dev/null; then
-					local mount_count
-				mount_count=$(yq '.mounts | length' "$TEMP_STATE_FILE" 2>/dev/null)
-					echo "This will remove $mount_count mount(s) and clean up volumes:"
-					yq '.mounts[]? | "  📂 \(.source)"' "$TEMP_STATE_FILE" 2>/dev/null
-				fi
+				local mount_count
+				mount_count=$("$VM_CONFIG" array-length "$TEMP_STATE_FILE" "mounts" 2>/dev/null || echo 0)
+				echo "This will remove $mount_count mount(s) and clean up volumes:"
+				"$VM_CONFIG" transform "$TEMP_STATE_FILE" 'mounts[] | "  📂 \(.source)"' --format lines 2>/dev/null
 				
 				# Get confirmation
 				if [[ "$AUTO_YES" != "true" ]]; then
@@ -1414,28 +1361,21 @@ EOF
 			
 			# Check if mount exists
 			local mount_found=""
-			if command -v yq &> /dev/null; then
-				if yq '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
-					# New format - check if mount exists
-					mount_found=$(yq '.mounts[] | select(.source == "'"$abs_path"'") | .source' "$TEMP_STATE_FILE" 2>/dev/null)
-				fi
+			if mount_exists "$TEMP_STATE_FILE" "$abs_path"; then
+				mount_found="$abs_path"
 			fi
 			
 			if [[ -z "$mount_found" ]]; then
 				echo "❌ Mount '$abs_path' not found"
 				echo ""
 				echo "Current mounts:"
-				if command -v yq &> /dev/null; then
-					yq '.mounts[]? | "  • \(.source)"' "$TEMP_STATE_FILE" 2>/dev/null
-				fi
+				list_mounts "$TEMP_STATE_FILE" "bullets"
 				exit 1
 			fi
 			
 			# Check if it's the last mount
 			local mount_count=0
-			if command -v yq &> /dev/null; then
-				mount_count=$(yq '.mounts | length' "$TEMP_STATE_FILE" 2>/dev/null)
-			fi
+			mount_count=$(get_mount_count "$TEMP_STATE_FILE")
 			
 			if [[ "$mount_count" -le 1 ]]; then
 				echo "❌ Cannot remove the last mount"
@@ -1460,20 +1400,7 @@ EOF
 			
 			# Remove mount from state file
 			echo "📝 Updating mount configuration..."
-			if command -v yq &> /dev/null; then
-				# Create temporary file for the update
-				local temp_file
-				temp_file=$(mktemp)
-				setup_temp_file_cleanup "$temp_file"
-				cp "$TEMP_STATE_FILE" "$temp_file"
-				
-				# Remove the mount - SECURE: use yq --arg to prevent shell injection
-				yq --arg path "$abs_path" 'del(.mounts[] | select(.source == $path))' \
-					"$temp_file" > "$TEMP_STATE_FILE"
-			else
-				echo "❌ yq is required for unmount operation"
-				exit 1
-			fi
+			remove_mount "$TEMP_STATE_FILE" "$abs_path"
 			
 			# Update the VM with new mounts (provider-specific)
 			local provider
@@ -1490,7 +1417,7 @@ EOF
 					
 					# Get project dir from state
 					local project_dir
-					project_dir=$(yq_raw '.project_dir' "$TEMP_STATE_FILE")
+					project_dir=$(vm_config_query '.project_dir' "$TEMP_STATE_FILE")
 					
 					vagrant_temp_update_mounts "$container_name" "$updated_mounts" "$project_dir"
 					;;
@@ -1512,25 +1439,20 @@ EOF
 			echo "📁 Current Mounts:"
 			echo "=================="
 			
-			if command -v yq &> /dev/null; then
-				local container_name
-				container_name=$(get_container_name_from_state)
-				echo "Container: $container_name"
-				echo ""
-				
-				# Check if new format exists
-				if yq '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
-					# New format
-					yq '.mounts[]? | "  📂 \(.source) → \(.target) (\(.permissions))"' "$TEMP_STATE_FILE" 2>/dev/null
-				else
-					# Old format
-					yq '.mounts[]?' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
-						echo "  📂 $mount"
-					done
-				fi
+			local container_name
+			container_name=$(get_container_name_from_state)
+			echo "Container: $container_name"
+			echo ""
+
+			# Check if new format exists and display mounts
+			if has_new_format "$TEMP_STATE_FILE"; then
+				# New format with detailed display
+				list_mounts "$TEMP_STATE_FILE" "detailed"
 			else
-				# Fallback display
-				grep "^  - " "$TEMP_STATE_FILE" | sed 's/^  - /  📂 /'
+				# Old format
+				list_mounts "$TEMP_STATE_FILE" "simple" | while read -r mount; do
+					echo "  📂 $mount"
+				done
 			fi
 			
 			echo ""
@@ -1547,42 +1469,31 @@ EOF
 			
 			# Show active temp VM from state file
 			if [[ -f "$TEMP_STATE_FILE" ]]; then
-				if command -v yq &> /dev/null; then
-					local container_name
+				local container_name
 				container_name=$(get_container_name_from_state)
-					if [[ -n "$container_name" ]]; then
-						local status="stopped"
-						if is_temp_vm_running "$container_name"; then
-							status="running"
-						fi
-						echo ""
-						echo "🚀 $container_name ($status)"
-						echo "   Created: $(yq_raw '.created_at' "$TEMP_STATE_FILE")"
-						echo "   Project: $(yq_raw '.project_dir' "$TEMP_STATE_FILE")"
-						
-						# Show mount count
-						local mount_count=0
-						if yq '.mounts[0] | has("source")' "$TEMP_STATE_FILE" 2>/dev/null | grep -q "true"; then
-							# New format
-							mount_count=$(yq '.mounts | length' "$TEMP_STATE_FILE" 2>/dev/null)
-						else
-							# Old format  
-							mount_count=$(yq '.mounts | length' "$TEMP_STATE_FILE" 2>/dev/null)
-						fi
-						echo "   Mounts: $mount_count directories"
-						
-						if [[ "$status" = "running" ]]; then
-							echo "   💡 Use 'vm temp ssh' to connect"
-						else
-							echo "   💡 Use 'vm temp start' to start"
-						fi
+				if [[ -n "$container_name" ]]; then
+					local status="stopped"
+					if is_temp_vm_running "$container_name"; then
+						status="running"
+					fi
+					echo ""
+					echo "🚀 $container_name ($status)"
+					echo "   Created: $($VM_CONFIG query "$TEMP_STATE_FILE" "created_at" -f yaml 2>/dev/null | sed 's/created_at: //')"
+					echo "   Project: $($VM_CONFIG query "$TEMP_STATE_FILE" "project_dir" -f yaml 2>/dev/null | sed 's/project_dir: //')"
+
+					# Show mount count
+					local mount_count=0
+					mount_count=$(get_mount_count "$TEMP_STATE_FILE")
+					echo "   Mounts: $mount_count directories"
+
+					if [[ "$status" = "running" ]]; then
+						echo "   💡 Use 'vm temp ssh' to connect"
 					else
-						echo ""
-						echo "⚠️  State file exists but container name not found"
+						echo "   💡 Use 'vm temp start' to start"
 					fi
 				else
 					echo ""
-					echo "⚠️  State file exists but yq not available to parse it"
+					echo "⚠️  State file exists but container name not found"
 				fi
 			else
 				echo ""
@@ -2014,14 +1925,14 @@ EOF
 			echo "⚠️  Temp VM already exists with different mounts"
 			echo ""
 			echo "Current mounts:"
-			if command -v yq &> /dev/null && [[ -f "$TEMP_STATE_FILE" ]]; then
-				yq '.mounts[]?' "$TEMP_STATE_FILE" 2>/dev/null | while read -r mount; do
+			if [[ -f "$TEMP_STATE_FILE" ]]; then
+				list_mounts "$TEMP_STATE_FILE" "simple" | while read -r mount; do
 					# Extract just the source path for readability
 					source_path=$(echo "$mount" | cut -d: -f1)
 					echo "  • $(basename "$source_path")"
 				done
 			else
-				echo "  • (Unable to display without yq)"
+				echo "  • (No state file found)"
 			fi
 			echo ""
 			echo "Requested mounts:"
@@ -2179,15 +2090,23 @@ EOF
 		exit 1
 	fi
 	
-	# Use yq to merge schema defaults with temp config
-	if ! CONFIG=$(yq eval-all 'select(fileIndex == 0) * select(fileIndex == 1)' <(echo "$SCHEMA_DEFAULTS") "$TEMP_CONFIG_FILE" 2>&1); then
+	# Use vm-config to merge schema defaults with temp config
+	local schema_file
+	schema_file=$(mktemp)
+	echo "$SCHEMA_DEFAULTS" > "$schema_file"
+
+	if ! CONFIG=$("$VM_CONFIG" merge-eval-all "$schema_file" "$TEMP_CONFIG_FILE" -f yaml 2>&1); then
 		echo "❌ Failed to generate temp VM configuration"
 		echo "📋 Error merging configs: $CONFIG"
 		echo "💡 Check that vm-config is installed and working: $VM_CONFIG --version"
+		rm -f "$schema_file"
 		rm -f "$TEMP_CONFIG_FILE"
 		exit 1
 	fi
-	
+
+	rm -f "$schema_file"
+	echo "$CONFIG" > "$TEMP_CONFIG_FILE"
+
 	# Create a temporary project directory for docker-compose generation
 	# Use a fixed name instead of PID to avoid multiple projects
 	TEMP_PROJECT_DIR="/tmp/vm-temp-project"

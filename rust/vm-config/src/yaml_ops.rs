@@ -1,6 +1,6 @@
 use anyhow::{Result, Context};
 use serde_yaml::{Value, Mapping};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::fs;
 use crate::cli::{OutputFormat, TransformFormat};
 
@@ -646,6 +646,75 @@ impl YamlOperations {
             _ => return Err(anyhow::anyhow!("Cannot navigate path on non-object")),
         }
 
+        Ok(())
+    }
+
+    fn navigate_path_mut<'a>(value: &'a mut Value, path: &[&str]) -> Result<&'a mut Value> {
+        if path.is_empty() {
+            return Ok(value);
+        }
+
+        match value {
+            Value::Mapping(map) => {
+                let key = Value::String(path[0].to_string());
+                match map.get_mut(&key) {
+                    Some(nested) if path.len() == 1 => Ok(nested),
+                    Some(nested) => Self::navigate_path_mut(nested, &path[1..]),
+                    None => Err(anyhow::anyhow!("Path not found: {}", path[0])),
+                }
+            }
+            _ => Err(anyhow::anyhow!("Cannot navigate path on non-mapping")),
+        }
+    }
+
+    pub fn delete_from_array(file: &Path, path: &str, field: &str, value: &str, format: &OutputFormat) -> Result<()> {
+        let content = std::fs::read_to_string(file)?;
+        let mut doc: Value = serde_yaml::from_str(&content)?;
+
+        let path_parts: Vec<&str> = if path.is_empty() {
+            vec![]
+        } else {
+            path.split('.').collect()
+        };
+
+        // Navigate to the array
+        let target = if path_parts.is_empty() {
+            &mut doc
+        } else {
+            Self::navigate_path_mut(&mut doc, &path_parts)?
+        };
+
+        // Filter the array
+        if let Value::Sequence(seq) = target {
+            seq.retain(|item| {
+                if let Value::Mapping(map) = item {
+                    if let Some(field_val) = map.get(&Value::String(field.to_string())) {
+                        if let Value::String(s) = field_val {
+                            return s != value;
+                        }
+                    }
+                }
+                true
+            });
+        } else {
+            return Err(anyhow::anyhow!("Path '{}' is not an array", path));
+        }
+
+        // Output the result
+        match format {
+            OutputFormat::Yaml => {
+                let yaml_str = serde_yaml::to_string(&doc)?;
+                print!("{}", yaml_str);
+            }
+            OutputFormat::Json => {
+                let json_str = serde_json::to_string(&doc)?;
+                println!("{}", json_str);
+            }
+            OutputFormat::JsonPretty => {
+                let json_str = serde_json::to_string_pretty(&doc)?;
+                println!("{}", json_str);
+            }
+        }
         Ok(())
     }
 }

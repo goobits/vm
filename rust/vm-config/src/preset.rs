@@ -3,6 +3,24 @@ use anyhow::{Result, Context};
 use std::path::PathBuf;
 use glob::glob;
 use which::which;
+use serde::{Deserialize, Serialize};
+
+/// Metadata about a preset
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PresetMetadata {
+    pub name: String,
+    pub description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detection: Option<serde_yaml::Value>,
+}
+
+/// Preset file structure with metadata
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PresetFile {
+    pub preset: PresetMetadata,
+    #[serde(flatten)]
+    pub config: VmConfig,
+}
 
 /// Preset detection and loading
 pub struct PresetDetector {
@@ -105,14 +123,19 @@ impl PresetDetector {
 
     /// Load a preset configuration by name
     pub fn load_preset(&self, name: &str) -> Result<VmConfig> {
-        let preset_file = self.presets_dir.join(format!("{}.yaml", name));
+        let preset_path = self.presets_dir.join(format!("{}.yaml", name));
 
-        if !preset_file.exists() {
-            anyhow::bail!("Preset '{}' not found at {:?}", name, preset_file);
+        if !preset_path.exists() {
+            anyhow::bail!("Preset '{}' not found at {:?}", name, preset_path);
         }
 
-        VmConfig::from_file(&preset_file)
-            .with_context(|| format!("Failed to load preset '{}'", name))
+        // Load as PresetFile to handle metadata wrapper
+        let content = std::fs::read_to_string(&preset_path)?;
+        let preset_file: PresetFile = serde_yaml::from_str(&content)
+            .with_context(|| format!("Failed to parse preset '{}'", name))?;
+
+        // Return just the config portion
+        Ok(preset_file.config)
     }
 
     /// Get list of available presets

@@ -10,6 +10,10 @@ DOCKER_COMPOSE_PROGRESS_LOADED=1
 
 source "$(dirname "${BASH_SOURCE[0]}")/progress-reporter.sh"
 
+# Set up vm-config path
+VM_TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VM_CONFIG="$VM_TOOL_DIR/rust/target/release/vm-config"
+
 # Run docker compose with progress reporting
 docker_compose_with_progress() {
     local action="$1"  # up, down, etc.
@@ -22,9 +26,9 @@ docker_compose_with_progress() {
             local compose_file="${args[-1]}"
             if [[ -f "$compose_file" ]]; then
                 # Try to parse compose file for resource counts
-                local container_count=$(yq '.services | length' "$compose_file" 2>/dev/null || echo 1)
-                local volume_count=$(yq '.volumes | length' "$compose_file" 2>/dev/null || echo 0)
-                local network_count=$(yq '.networks | length' "$compose_file" 2>/dev/null || echo 0)
+                local container_count=$("$VM_CONFIG" array-length "$compose_file" "services" 2>/dev/null || echo 1)
+                local volume_count=$("$VM_CONFIG" array-length "$compose_file" "volumes" 2>/dev/null || echo 0)
+                local network_count=$("$VM_CONFIG" array-length "$compose_file" "networks" 2>/dev/null || echo 0)
             else
                 local container_count=1
                 local volume_count=0

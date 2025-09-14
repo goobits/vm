@@ -257,6 +257,25 @@ pub enum Command {
         #[arg(default_value = "")]
         path: String,
     },
+
+    /// Delete items from array matching a condition
+    Delete {
+        /// Config file
+        file: PathBuf,
+
+        /// Path to array (dot notation)
+        path: String,
+
+        /// Field to match for deletion
+        field: String,
+
+        /// Value to match for deletion
+        value: String,
+
+        /// Output format
+        #[arg(short = 'f', long, default_value = "yaml")]
+        format: OutputFormat,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -523,6 +542,11 @@ pub fn execute(args: Args) -> Result<()> {
             use crate::yaml_ops::YamlOperations;
             let count = YamlOperations::count_items(&file, &path)?;
             println!("{}", count);
+        }
+
+        Command::Delete { file, path, field, value, format } => {
+            use crate::yaml_ops::YamlOperations;
+            YamlOperations::delete_from_array(&file, &path, &field, &value, &format)?;
         }
     }
 
