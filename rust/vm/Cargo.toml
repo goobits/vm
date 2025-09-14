@@ -1,0 +1,10 @@
+[package]
+name = "vm"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.0", features = ["derive"] }
+vm-config = { path = "../vm-config" }
+vm-provider = { path = "../vm-provider" }
