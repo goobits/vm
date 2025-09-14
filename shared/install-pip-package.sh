@@ -4,6 +4,13 @@
 
 set -e
 
+# Get script directory and source utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/temporary-file-utils.sh"
+
+# Set up temp file cleanup
+setup_temp_file_handlers
+
 PROJECT_USER="$1"
 PACKAGE="$2"
 
@@ -116,7 +123,7 @@ else
     echo "📦 Attempting to install $PACKAGE from registry..."
 
     # First try with pipx (good for CLI tools)
-    pipx_error_file="$(mktemp /tmp/pipx_error_XXXXXX.log)"
+    pipx_error_file="$(create_temp_file "pipx_error_XXXXXX.log")"
     if /usr/bin/pipx install "$PACKAGE" 2>"$pipx_error_file"; then
         echo "✅ Installed $PACKAGE as CLI tool with pipx"
     else

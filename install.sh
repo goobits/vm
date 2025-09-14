@@ -75,7 +75,7 @@ install_rust() {
         exit 1
     fi
 
-    if [[ -n "$pkg_manager" ]]; a
+    if [[ -n "$pkg_manager" ]]; then
         echo "📦 Installing Rust using $pkg_manager..."
         if eval "$install_cmd"; then
             echo -e "${GREEN}✅ Rust installed successfully via $pkg_manager.${NC}"
@@ -127,7 +127,38 @@ echo ""
 # Build the vm-config binary
 echo "🔧 Building vm-config binary..."
 if [[ -d "$SCRIPT_DIR/rust/vm-config" ]]; then
-    cd "$SCRIPT_DIR/rust/vm-config"
+    cd "$SCRIPT_DIR/rust"
+
+    # Check if we need to clean build
+    needs_clean=false
+
+    # Check if binary exists and what platform it was built for
+    if [[ -f "target/release/vm-config" ]]; then
+        # Check if binary is for different platform (will fail to execute)
+        if ! ./target/release/vm-config --version >/dev/null 2>&1; then
+            echo "🔄 Binary built for different platform, cleaning required..."
+            needs_clean=true
+        else
+            # Check if source files are newer than binary
+            if find . -name "*.rs" -newer target/release/vm-config | grep -q .; then
+                echo "🔄 Source changes detected, cleaning for fresh build..."
+                needs_clean=true
+            else
+                echo "✅ Binary is up-to-date for current platform"
+            fi
+        fi
+    else
+        echo "🔨 No existing binary found, building..."
+        needs_clean=true
+    fi
+
+    # Clean only if necessary
+    if [[ "$needs_clean" == "true" ]]; then
+        echo "🧹 Cleaning previous build artifacts..."
+        cargo clean --release 2>/dev/null || true
+    fi
+
+    echo "🔨 Building for current platform..."
     if cargo build --release; then
         echo -e "${GREEN}✅ vm-config binary built successfully${NC}"
     else
@@ -158,7 +189,10 @@ if command -v rsync &> /dev/null; then
         --exclude='*.md' \
         --exclude='test' \
         --exclude='install.sh' \
-        --exclude='rust/target/' \
+        --exclude='rust/target/debug' \
+        --exclude='rust/target/deps' \
+        --exclude='rust/target/.rustc_info.json' \
+        --exclude='rust/target/CACHEDIR.TAG' \
         --exclude='rust/*/target/debug' \
         --exclude='rust/*/target/deps' \
         --exclude='rust/*/target/.rustc_info.json' \
@@ -187,6 +221,15 @@ else
 
     # Make scripts executable
     chmod +x "$INSTALL_DIR"/*.sh
+fi
+
+# Clean up debug artifacts from copied rust directory
+if [[ -d "$INSTALL_DIR/rust/target" ]]; then
+    echo "🧹 Cleaning debug artifacts from installation..."
+    rm -rf "$INSTALL_DIR/rust/target/debug" 2>/dev/null || true
+    rm -rf "$INSTALL_DIR/rust/target/deps" 2>/dev/null || true
+    rm -f "$INSTALL_DIR/rust/target/.rustc_info.json" 2>/dev/null || true
+    rm -f "$INSTALL_DIR/rust/target/CACHEDIR.TAG" 2>/dev/null || true
 fi
 
 # Create global vm command

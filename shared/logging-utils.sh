@@ -68,3 +68,64 @@ vm_context() {
     local IFS=" "
     echo "$*"
 }
+
+# Standardized error message functions
+# These functions provide consistent error formatting across the codebase
+# Usage: log_error "Failed to do something" "key=value"
+log_error() {
+    local message="$1"
+    local context="${2:-}"
+    echo "❌ Error: $message" >&2
+    if [[ -n "$context" ]]; then
+        vm_error "$message" "$context"
+    else
+        vm_error "$message"
+    fi
+}
+
+# Standardized tip/hint message function
+# Usage: log_tip "Try using the --help flag"
+log_tip() {
+    local tip="$1"
+    echo "💡 $tip" >&2
+}
+
+# Standardized warning message function
+# Usage: log_warning "This may cause issues"
+log_warning() {
+    local warning="$1"
+    local context="${2:-}"
+    echo "⚠️ Warning: $warning" >&2
+    if [[ -n "$context" ]]; then
+        vm_warn "$warning" "$context"
+    else
+        vm_warn "$warning"
+    fi
+}
+
+# Standardized success message function
+# Usage: log_success "Operation completed successfully"
+log_success() {
+    local message="$1"
+    local context="${2:-}"
+    echo "✅ $message"
+    if [[ -n "$context" ]]; then
+        vm_info "$message" "$context"
+    else
+        vm_info "$message"
+    fi
+}
+
+# Standardized info message function with icon
+# Usage: log_info_icon "📄" "File created successfully"
+log_info_icon() {
+    local icon="$1"
+    local message="$2"
+    local context="${3:-}"
+    echo "$icon $message"
+    if [[ -n "$context" ]]; then
+        vm_info "$message" "$context"
+    else
+        vm_info "$message"
+    fi
+}

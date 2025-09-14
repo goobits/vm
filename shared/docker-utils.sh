@@ -80,7 +80,49 @@ check_docker_access() {
     if docker version &>/dev/null 2>&1; then
         return 0
     fi
-    
+
     # Docker is not accessible without sudo
+    return 1
+}
+
+# Standard Docker version check with consistent error handling
+# This function standardizes Docker availability checks across the codebase
+# Returns 0 if Docker is available (with or without sudo), 1 if not available
+# Usage: is_docker_available
+is_docker_available() {
+    # First try without sudo
+    if docker version >/dev/null 2>&1; then
+        return 0
+    fi
+
+    # Then try with sudo if the first attempt failed
+    if sudo docker version >/dev/null 2>&1; then
+        return 0
+    fi
+
+    # Docker is not available at all
+    return 1
+}
+
+# Check if Docker daemon is running and accessible
+# This function provides detailed status information for debugging
+# Returns 0 if running, 1 if not running, sets DOCKER_STATUS_MESSAGE
+check_docker_daemon_status() {
+    DOCKER_STATUS_MESSAGE=""
+
+    # Try direct docker command first
+    if docker version >/dev/null 2>&1; then
+        DOCKER_STATUS_MESSAGE="Docker is running and accessible without sudo"
+        return 0
+    fi
+
+    # Try with sudo
+    if sudo docker version >/dev/null 2>&1; then
+        DOCKER_STATUS_MESSAGE="Docker is running but requires sudo access"
+        return 0
+    fi
+
+    # Docker is not accessible
+    DOCKER_STATUS_MESSAGE="Docker daemon is not running or not accessible"
     return 1
 }

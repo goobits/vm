@@ -13,6 +13,7 @@ source "$SCRIPT_DIR/shared/platform-utils.sh"
 
 # Source temporary file utilities for secure temp file handling
 source "$SCRIPT_DIR/shared/temporary-file-utils.sh"
+source "$SCRIPT_DIR/shared/logging-utils.sh"
 
 # Set up proper cleanup handlers
 setup_temp_file_handlers
@@ -85,14 +86,14 @@ done
 
 # Check if output file already exists
 if [[ -f "$OUTPUT_FILE" ]]; then
-    echo "❌ Configuration file already exists: $OUTPUT_FILE" >&2
-    echo "Remove the existing file or specify a different output location." >&2
+    log_error "Configuration file already exists: $OUTPUT_FILE"
+    log_tip "Remove the existing file or specify a different output location"
     exit 1
 fi
 
 # Load base configuration
 if [[ ! -f "$DEFAULT_CONFIG" ]]; then
-    echo "❌ Default configuration not found: $DEFAULT_CONFIG" >&2
+    log_error "Default configuration not found: $DEFAULT_CONFIG"
     exit 1
 fi
 
@@ -112,15 +113,15 @@ if [[ -n "$SERVICES" ]]; then
         
         # Validate service exists
         if [[ ! " $AVAILABLE_SERVICES " =~ \ ${service}\  ]]; then
-            echo "❌ Unknown service: $service" >&2
-            echo "Available services: $AVAILABLE_SERVICES" >&2
+            log_error "Unknown service: $service"
+            log_tip "Available services: $AVAILABLE_SERVICES"
             exit 1
         fi
         
         # Load service configuration
         service_config_file="$SCRIPT_DIR/configs/services/${service}.yaml"
         if [[ ! -f "$service_config_file" ]]; then
-            echo "❌ Service configuration not found: $service_config_file" >&2
+            log_error "Service configuration not found: $service_config_file"
             exit 1
         fi
         

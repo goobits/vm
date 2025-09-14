@@ -40,12 +40,12 @@ generate_docker_compose() {
         local path="$1"
         local default="$2"
         # Use vm-config binary to query merged config
-        "$VM_CONFIG" query <(echo "$config") "$path" --raw --default "$default"
-            if [[ -z "$value" || "$value" == "null" ]]; then
-                echo "$default"
-            else
-                echo "$value"
-            fi
+        local value
+        value=$("$VM_CONFIG" query <(echo "$config") "$path" --raw --default "$default" 2>/dev/null)
+        if [[ -z "$value" || "$value" == "null" ]]; then
+            echo "$default"
+        else
+            echo "$value"
         fi
     }
 
@@ -58,6 +58,9 @@ generate_docker_compose() {
     # Extract basic project data
     local project_name
     project_name="$(get_config '.project.name' '' | tr -cd '[:alnum:]')"
+    if [[ -z "$project_name" ]]; then
+        project_name="$(basename "$project_dir" | tr -cd '[:alnum:]')"
+    fi
     local project_hostname
     project_hostname="$(get_config '.project.hostname' '')"
     
@@ -132,7 +135,7 @@ generate_docker_compose() {
             port_lines="$(echo "$ports_raw" | "$VM_CONFIG" transform - 'to_entries[] | "      - \"'$host_ip':\(.value):\(.value)\""' --format lines 2>/dev/null || echo '')"
             if [[ -n "$port_lines" ]]; then
                 ports_section="\n    ports:\n$port_lines"
-            fi"
+            fi
         fi
     fi
 

@@ -66,7 +66,7 @@ query_config_field() {
     local default="$3"
 
     local temp_config
-    temp_config=$(mktemp)
+    temp_config="$(create_temp_file "vm-query.XXXXXX")"
     echo "$config" > "$temp_config"
 
     local result
@@ -99,7 +99,7 @@ query_config_field() {
         esac
     fi
 
-    rm -f "$temp_config"
+    # Note: temp file cleanup is handled automatically
     echo "$result"
 }
 
@@ -221,25 +221,34 @@ kill_virtualbox() {
     echo "ℹ️ or run 'vagrant up' to start your VM again."
 }
 
-# Function to load and validate config (uses vm-config directly)
+# Function to load and validate config (uses vm-config dump command)
 load_config() {
     local config_path="$1"
     local original_dir="$2"
-    local defaults_path="$SCRIPT_DIR/vm.yaml"
 
-    # Use vm-config binary directly with full merge logic
-    local cmd=("$VM_CONFIG" "process")
-    cmd+=("--defaults" "$defaults_path")
+    # Use the new vm-config dump command for centralized configuration authority
+    local cmd=("$VM_CONFIG" "dump")
 
     if [[ -n "$config_path" ]] && [[ -f "$config_path" ]]; then
-        cmd+=("--config" "$config_path")
+        cmd+=("--file" "$config_path")
     fi
 
-    cmd+=("--project-dir" "$original_dir")
-    cmd+=("--presets-dir" "$SCRIPT_DIR/configs/presets")
-    cmd+=("--format" "yaml")
+    # Execute the command and capture both output and exit code
+    local config_yaml
+    local exit_code
 
-    "${cmd[@]}"
+    if config_yaml=$("${cmd[@]}" 2>/dev/null); then
+        exit_code=0
+    else
+        exit_code=$?
+        # If dump failed, print error to stderr
+        echo "Fatal: Configuration loading failed. Exit code: $exit_code" >&2
+        "${cmd[@]}" >&2  # Show the actual error message
+        return $exit_code
+    fi
+
+    # Return the configuration YAML
+    echo "$config_yaml"
 }
 
 
@@ -577,16 +586,16 @@ apply_smart_preset() {
     echo "$final_config"
 }
 
-# Get provider from config (now uses shared config processor)
+# Get provider from config (now uses vm-config)
 get_provider() {
     local config="$1"
-    get_config_provider "$config"
+    "$VM_CONFIG" query "$config" provider --raw --default "docker" 2>/dev/null || echo "docker"
 }
 
-# Extract project name from config (now uses shared config processor)
+# Extract project name from config (now uses vm-config)
 get_project_name() {
     local config="$1"
-    get_config_project_name "$config"
+    "$VM_CONFIG" query "$config" project.name --raw --default "vm-project" 2>/dev/null || echo "vm-project"
 }
 
 # Extract project name from config and generate container name
@@ -1651,11 +1660,11 @@ docker_status() {
         # Count used ports in range
         local ports_list
         local temp_config
-        temp_config=$(mktemp)
+        temp_config="$(create_temp_file "vm-ports.XXXXXX")"
         echo "$config" > "$temp_config"
         # Extract port values from YAML ports section
         ports_list="$(grep -A 20 '^ports:' "$temp_config" | grep ':' | grep -v '^ports:' | awk '{print $2}' | tr '\n' ' ')"
-        rm -f "$temp_config"
+        # Note: temp file cleanup is handled automatically
         
         if [[ -n "$ports_list" ]]; then
             local range_start range_end
