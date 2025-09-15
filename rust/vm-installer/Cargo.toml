@@ -5,9 +5,9 @@ edition = "2021"
 description = "Installer for the VM development tool."
 
 [dependencies]
-anyhow = "1.0"
-clap = { version = "4.4", features = ["derive"] }
+anyhow = { workspace = true }
+clap = { workspace = true }
 colored = "2.0"
 dialoguer = "0.11"
-dirs = "5.0"
-which = "4.4"
+dirs = { workspace = true }
+which = { workspace = true }

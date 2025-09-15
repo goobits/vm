@@ -5,10 +5,6 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
-[[bin]]
-name = "vm-temp"
-path = "src/bin/main.rs"
-
 [dependencies]
 anyhow = { workspace = true }
 serde = { workspace = true }

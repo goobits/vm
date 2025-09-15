@@ -64,7 +64,7 @@ fn run_cargo_clean(project_root: &Path) -> Result<()> {
 fn build_workspace(project_root: &Path) -> Result<PathBuf> {
     println!("🔧 Building Rust binaries...");
     let status = Command::new("cargo")
-        .args(["build", "--release", "--workspace"])
+        .args(["build", "--release", "--bin", "vm"])
         .current_dir(project_root)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())

@@ -18,15 +18,13 @@ pub fn ensure_path(bin_dir: &Path) -> Result<()> {
     println!("⚠️ {} is not in your PATH", bin_dir.display());
 
     let shell_profile = get_shell_profile()?;
-    if shell_profile.is_none() {
+    let Some(profile_path) = shell_profile else {
         println!(
             "Could not detect shell profile. Please add {} to your PATH manually.",
             bin_dir.display()
         );
         return Ok(());
-    }
-
-    let profile_path = shell_profile.unwrap();
+    };
     let prompt = format!(
         "Add {} to your PATH in {:?}?",
         bin_dir.display(),

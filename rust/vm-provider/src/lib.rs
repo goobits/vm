@@ -86,9 +86,20 @@ pub trait Provider {
     }
 }
 
+// When in a test environment, include the mock provider.
+#[cfg(test)]
+mod mock;
+
 /// A factory function to create a provider instance based on the configuration.
 pub fn get_provider(config: VmConfig) -> Result<Box<dyn Provider>> {
     let provider_name = config.provider.as_deref().unwrap_or("docker");
+
+    // In a test build, allow instantiating the mock provider.
+    #[cfg(test)]
+    if provider_name == "mock" {
+        return Ok(Box::new(mock::MockProvider::new(config)?));
+    }
+
     match provider_name {
         "docker" => Ok(Box::new(docker::DockerProvider::new(config)?)),
         "vagrant" => Ok(Box::new(vagrant::VagrantProvider::new(config)?)),

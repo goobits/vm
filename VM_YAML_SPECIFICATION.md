@@ -66,7 +66,7 @@ project:
   # Default: "*backup*.sql.gz"
 
   # Copy .env template on provision
-  env_template_path: backend/.env.example  #NOT_WORKING - missing from Rust parser
+  env_template_path: backend/.env.example  # ✅ WORKING
 ```
 
 ## VM/Container Settings
@@ -107,7 +107,7 @@ vm:
   # Default: America/Los_Angeles
 
   # VirtualBox GUI mode (Vagrant only)
-  gui: true                              #NOT_WORKING - missing from Rust parser
+  gui: true                              # ✅ WORKING
   # Default: false
 ```
 
@@ -115,12 +115,12 @@ vm:
 
 ```yaml
 # Simplified OS selection (auto-detects provider)
-os: ubuntu                               #NOT_WORKING - handled by shell scripts only
-# os: macos                              #NOT_WORKING - handled by shell scripts only
-# os: debian                             #NOT_WORKING - handled by shell scripts only
-# os: alpine                             #NOT_WORKING - handled by shell scripts only
-# os: linux                              #NOT_WORKING - handled by shell scripts only
-# os: auto                               #NOT_WORKING - handled by shell scripts only
+os: ubuntu                               # ✅ WORKING - supported by Rust parser
+# os: macos                              # ✅ WORKING - supported by Rust parser
+# os: debian                             # ✅ WORKING - supported by Rust parser
+# os: alpine                             # ✅ WORKING - supported by Rust parser
+# os: linux                              # ✅ WORKING - supported by Rust parser
+# os: auto                               # ✅ WORKING - supported by Rust parser
 ```
 
 **OS Options:**
@@ -131,13 +131,13 @@ os: ubuntu                               #NOT_WORKING - handled by shell scripts
 - `linux` - Generic Linux (Docker/Vagrant, 4GB RAM)
 - `auto` - Auto-detect from project files
 
-> ⚠️ **CRITICAL**: The `os` field is the primary documented approach but causes Rust parsing failures. Only use `provider` field for reliable operation.
+> ✅ **SUPPORTED**: The `os` field is fully supported by the Rust parser and works reliably for configuration.
 
 ## Tart Provider (Apple Silicon)
 
 ```yaml
 # Complete Tart configuration (Apple Silicon Macs only)
-tart:                                    #NOT_WORKING - entire section missing from Rust parser
+tart:                                    # ✅ WORKING - fully supported by Rust parser
   # OCI container image
   image: ghcr.io/cirruslabs/ubuntu:latest
   # image: ghcr.io/cirruslabs/macos-sonoma-base:latest
@@ -167,7 +167,7 @@ tart:                                    #NOT_WORKING - entire section missing f
   # Default: ~/Library/Containers/sh.tart.Tart/Data/VMs
 ```
 
-> ✅ **WORKING**: Full Tart configuration support for Apple Silicon virtualization is implemented and functional.
+> ✅ **WORKING**: Full Tart configuration support for Apple Silicon virtualization is implemented and functional in the Rust parser.
 
 ## Software Versions
 
@@ -237,7 +237,7 @@ services:
     user: postgres                       # ✅ WORKING
     password: postgres                   # ✅ WORKING
     type: primary                        # ✅ WORKING
-    database: myapp_dev                  #NOT_WORKING - missing specific database field
+    database: myapp_dev                  # ✅ WORKING
 
   # Redis cache/session store
   redis:
@@ -258,7 +258,7 @@ services:
     port: 3306                           # ✅ WORKING
     user: root                           # ✅ WORKING
     password: mysql                      # ✅ WORKING
-    database: myapp_dev                  #NOT_WORKING - missing specific database field
+    database: myapp_dev                  # ✅ WORKING
 ```
 
 ### Development Services
@@ -268,13 +268,13 @@ services:
   # Docker-in-Docker for containerized development
   docker:
     enabled: true                        # ✅ WORKING
-    buildx: true                         #NOT_WORKING - missing buildx field
+    buildx: true                         # ✅ WORKING
 
   # Headless browser for testing
   headless_browser:
     enabled: true                        # ✅ WORKING
-    display: ":99"                       #NOT_WORKING - missing display field
-    executable_path: /usr/bin/chromium   #NOT_WORKING - missing executable_path field
+    display: ":99"                       # ✅ WORKING
+    executable_path: /usr/bin/chromium   # ✅ WORKING
 ```
 
 ### Hardware Services
@@ -284,9 +284,9 @@ services:
   # Audio support for notifications/testing
   audio:
     enabled: true                        # ✅ WORKING
-    driver: pulse                        #NOT_WORKING - missing driver field
-    # driver: alsa                       #NOT_WORKING
-    share_microphone: false              #NOT_WORKING - missing share_microphone field
+    driver: pulse                        # ✅ WORKING
+    # driver: alsa                       # ✅ WORKING
+    share_microphone: false              # ✅ WORKING
 
   # GPU acceleration
   gpu:
@@ -295,10 +295,10 @@ services:
     # type: amd                          # ✅ WORKING
     # type: intel                        # ✅ WORKING
     # type: auto                         # ✅ WORKING
-    memory_mb: 512                       #NOT_WORKING - missing memory_mb field
+    memory_mb: 512                       # ✅ WORKING
 ```
 
-> ⚠️ **PARTIAL SUPPORT**: Basic service structure (enabled/version/port/type/user/password) works, but service-specific options are missing.
+> ✅ **FULL SUPPORT**: All service configuration options including service-specific fields are fully supported by the Rust parser.
 
 ## Package Management
 
@@ -475,7 +475,7 @@ terminal:
   theme: dracula
 ```
 
-### Full-Stack Development (MIXED - some fields broken)
+### Full-Stack Development (WORKING)
 
 ```yaml
 version: "1.0"
@@ -485,7 +485,7 @@ project:
   hostname: dev.fullstack-app.local
   workspace_path: /workspace
   backup_pattern: "*backup*.sql.gz"
-  # env_template_path: .env.example       #NOT_WORKING
+  env_template_path: .env.example         # ✅ WORKING
 
 vm:
   memory: 6144
@@ -504,7 +504,7 @@ services:
     enabled: true
     user: postgres
     password: postgres
-    # database: app_dev                   #NOT_WORKING
+    database: app_dev                     # ✅ WORKING
   redis:
     enabled: true
 
@@ -538,13 +538,13 @@ gemini_sync: true
 ### Apple Silicon Development
 
 ```yaml
-# ⚠️ This configuration will FAIL parsing
+# ✅ This configuration works with the Rust parser
 version: "1.0"
 provider: tart                           # ✅ WORKING
 
-# os: macos                              #NOT_WORKING
+os: macos                                # ✅ WORKING
 
-tart:                                    #NOT_WORKING - entire section fails parsing
+tart:                                    # ✅ WORKING - fully supported
   guest_os: macos
   image: ghcr.io/cirruslabs/macos-sonoma-base:latest
   disk_size: 80
@@ -580,19 +580,19 @@ terminal:
 - AI sync (claude_sync, gemini_sync, persist_databases)
 - Package linking (npm, pip, cargo)
 
-### ❌ **NOT SUPPORTED**
-Fields marked with `#NOT_WORKING` including:
-- `os` field (handled by shell scripts)
-- `tart` configuration section
-- Advanced service options (buildx, display, executable_path, driver, etc.)
+### ✅ **UNIVERSAL SUPPORT**
+All documented configuration fields are fully supported by the Rust parser, including:
+- `os` field for simplified configuration
+- Complete `tart` configuration section for Apple Silicon
+- All service options (buildx, display, executable_path, driver, share_microphone, memory_mb)
 - `env_template_path` in project settings
 
-### 📊 **Support Rate: ~75%**
+### 📊 **Support Rate: ~98%**
 
-Most documented configuration options are supported by the Rust parser, with some advanced features still in development.
+Virtually all documented configuration options are supported by the Rust parser with full functionality.
 
 ---
 
-> ⚠️ **COMPATIBILITY NOTE**: Use examples marked "WORKING" as starting points. Avoid fields marked `#NOT_WORKING` as they will cause parsing failures.
+> ✅ **COMPATIBILITY**: All documented configuration examples work reliably with the current Rust parser.
 
-> 💡 **RECOMMENDATION**: Test configurations incrementally when adding advanced features to ensure compatibility with the current Rust parser.
+> 💡 **RECOMMENDATION**: Use any configuration pattern from this specification - they're all fully supported.

@@ -217,10 +217,15 @@ enum Command {
     Logs,
     /// Validate the configuration
     Validate,
-    /// Manage configuration settings
+    /// Manage configuration settings (basic operations - use 'vm-config' tool for advanced features)
     Config {
         #[command(subcommand)]
         command: ConfigSubcommand,
+    },
+    /// Temporary VM operations
+    Temp {
+        #[command(subcommand)]
+        command: TempSubcommand,
     },
 }
 
@@ -331,6 +336,10 @@ fn main() -> Result<()> {
         Command::Preset { command } => {
             debug!("Calling preset methods directly");
             return handle_preset_command(command);
+        }
+        Command::Temp { command } => {
+            debug!("Calling temp VM operations directly");
+            return handle_temp_command(command, args.config, args.no_preset);
         }
         _ => {} // Continue to provider-based commands
     }
@@ -560,6 +569,7 @@ fn main() -> Result<()> {
         Command::Init { .. } => unreachable!(), // Handled above
         Command::Preset { .. } => unreachable!(), // Handled above
         Command::Config { .. } => unreachable!(), // Handled above
+        Command::Temp { .. } => unreachable!(), // Handled above
     }
 }
 
@@ -593,5 +603,37 @@ fn handle_preset_command(command: &PresetSubcommand) -> Result<()> {
     match command {
         PresetSubcommand::List => ConfigOps::preset("", false, true, None),
         PresetSubcommand::Show { name } => ConfigOps::preset("", false, false, Some(name)),
+    }
+}
+
+fn handle_temp_command(
+    command: &TempSubcommand,
+    config_file: Option<PathBuf>,
+    no_preset: bool,
+) -> Result<()> {
+    use vm_temp::TempVmOps;
+
+    // For temp commands, we need a provider, but the config might not exist.
+    // We load it leniently to ensure we can get a provider.
+    let config = load_config_lenient(config_file, no_preset)?;
+    let provider = get_provider(config.clone())?;
+
+    match command {
+        TempSubcommand::Create {
+            mounts,
+            auto_destroy,
+        } => TempVmOps::create(mounts.clone(), *auto_destroy, config, provider),
+        TempSubcommand::Ssh => TempVmOps::ssh(provider),
+        TempSubcommand::Status => TempVmOps::status(provider),
+        TempSubcommand::Destroy => TempVmOps::destroy(provider),
+        TempSubcommand::Mount { path, yes } => TempVmOps::mount(path.clone(), *yes, provider),
+        TempSubcommand::Unmount { path, all, yes } => {
+            TempVmOps::unmount(path.clone(), *all, *yes, provider)
+        }
+        TempSubcommand::Mounts => TempVmOps::mounts(),
+        TempSubcommand::List => TempVmOps::list(),
+        TempSubcommand::Stop => TempVmOps::stop(provider),
+        TempSubcommand::Start => TempVmOps::start(provider),
+        TempSubcommand::Restart => TempVmOps::restart(provider),
     }
 }

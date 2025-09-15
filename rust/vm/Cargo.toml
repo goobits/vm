@@ -15,3 +15,4 @@ dirs = { workspace = true }
 serde = { workspace = true }
 vm-config = { path = "../vm-config" }
 vm-provider = { path = "../vm-provider" }
+vm-temp = { path = "../vm-temp" }
