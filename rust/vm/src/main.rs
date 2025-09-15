@@ -1,22 +1,17 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use log::{debug, info, warn, error};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use vm_common::{log_context, scoped_context};
 use vm_config::{config::VmConfig, init_config_file, ConfigOps};
 use vm_provider::get_provider;
 use vm_provider::progress::{confirm_prompt, ProgressReporter, StatusFormatter};
+use uuid::Uuid;
 
-// Global debug flag (thread-safe)
-static DEBUG_ENABLED: AtomicBool = AtomicBool::new(false);
-
-// Debug output macro
-macro_rules! debug {
-    ($($arg:tt)*) => {
-        if DEBUG_ENABLED.load(Ordering::Relaxed) {
-            eprintln!("DEBUG: {}", format!($($arg)*));
-        }
-    };
-}
+// Request ID for this execution - used for tracing logs across the entire request
+static REQUEST_ID: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    Uuid::new_v4().to_string()
+});
 
 #[derive(Debug, Parser)]
 #[command(name = "vm")]
@@ -287,12 +282,19 @@ fn load_config_lenient(file: Option<PathBuf>, _no_preset: bool) -> Result<VmConf
 }
 
 fn main() -> Result<()> {
+    // Initialize structured logging system first
+    vm_common::logging::init().context("Failed to initialize logging")?;
+
     let args = Args::parse();
 
-    // Set global debug flag
-    DEBUG_ENABLED.store(args.debug, Ordering::Relaxed);
+    // Set up request-level context that will be inherited by all logs
+    let _request_guard = scoped_context! {
+        "request_id" => REQUEST_ID.as_str(),
+        "command" => format!("{:?}", args.command),
+        "debug" => args.debug
+    };
 
-    debug!("Starting vm command with args: {:?}", args);
+    info!("Starting vm command");
 
     // For commands that don't need a provider, handle them first.
     match &args.command {
