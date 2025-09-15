@@ -2259,6 +2259,7 @@ name = "vm-provider"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "duct",
  "indicatif",
  "serde",
@@ -2267,7 +2268,6 @@ dependencies = [
  "tera",
  "thiserror 1.0.69",
  "vm-config",
- "vm-temp",
  "which",
 ]
 
@@ -2276,7 +2276,6 @@ name = "vm-temp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "chrono",
  "clap",
  "dirs",
  "fs2",
@@ -2285,6 +2284,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "vm-config",
+ "vm-provider",
 ]
 
 [[package]]
