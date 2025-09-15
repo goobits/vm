@@ -581,34 +581,8 @@ test_project_info() {
     cd "$SCRIPT_DIR"
 }
 
-# Test VM resource suggestions
-test_vm_resources() {
-    echo -e "\n${PURPLE}=== VM Resource Suggestions Tests ===${NC}"
-
-    # Test resource suggestions for different project types
-    local react_resources
-    react_resources=$(suggest_vm_resources "react")
-    assert_contains "$react_resources" "memory=2048" "React suggests 2GB memory"
-    assert_contains "$react_resources" "cpus=2" "React suggests 2 CPUs"
-
-    local rust_resources
-    rust_resources=$(suggest_vm_resources "rust")
-    assert_contains "$rust_resources" "memory=4096" "Rust suggests 4GB memory"
-    assert_contains "$rust_resources" "cpus=4" "Rust suggests 4 CPUs"
-
-    local docker_resources
-    docker_resources=$(suggest_vm_resources "docker")
-    assert_contains "$docker_resources" "memory=4096" "Docker suggests 4GB memory"
-    assert_contains "$docker_resources" "disk_size=40" "Docker suggests 40GB disk"
-
-    local multi_resources
-    multi_resources=$(suggest_vm_resources "multi:react django")
-    assert_contains "$multi_resources" "memory=4096" "Multi-tech suggests 4GB memory"
-
-    local generic_resources
-    generic_resources=$(suggest_vm_resources "generic")
-    assert_contains "$generic_resources" "memory=2048" "Generic suggests 2GB memory"
-}
+# VM resource suggestions functionality moved to Rust implementation
+# See: rust/vm-config/src/resources.rs for comprehensive tests
 
 # Main test runner for integration tests
 run_all_tests() {
