@@ -63,8 +63,6 @@ pub fn is_path_in_safe_locations(
 
     let mut safe_path_prefixes: Vec<String> = vec![
         String::from("/home/"),
-        String::from("/tmp/"),
-        String::from("/var/tmp/"),
         String::from("/workspace/"),
         String::from("/opt/"),
         String::from("/srv/"),
@@ -72,6 +70,31 @@ pub fn is_path_in_safe_locations(
         String::from("/data/"),
         String::from("/projects/"),
     ];
+
+    // Add platform-specific temp directories
+    safe_path_prefixes.push(std::env::temp_dir().to_string_lossy().to_string());
+
+    #[cfg(target_os = "macos")]
+    {
+        safe_path_prefixes.extend_from_slice(&[
+            String::from("/tmp/"),
+            String::from("/var/tmp/"),
+            String::from("/var/folders/"),
+            String::from("/private/tmp/"),
+        ]);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        safe_path_prefixes.extend_from_slice(&[
+            String::from("/tmp/"),
+            String::from("/var/tmp/"),
+            String::from("/dev/shm/"),
+        ]);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        // Windows temp paths are handled by std::env::temp_dir()
+    }
 
     if let Ok(current_dir) = std::env::current_dir() {
         if let Some(current_dir_str) = current_dir.to_str() {

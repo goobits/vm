@@ -1,6 +1,6 @@
 // Standard library
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 // External crates
@@ -286,6 +286,81 @@ impl Provider for DockerProvider {
         preflight::check_system_resources()?;
         self.check_daemon_is_running()?;
         self.handle_potential_issues()?;
+
+        // Check if container already exists
+        let container_name = self.container_name();
+        let container_exists = std::process::Command::new("docker")
+            .args(["ps", "-a", "--format", "{{.Names}}"])
+            .output()
+            .map(|output| {
+                String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .any(|line| line.trim() == container_name)
+            })
+            .unwrap_or(false);
+
+        if container_exists {
+            // Check if it's running
+            let is_running = std::process::Command::new("docker")
+                .args(["ps", "--format", "{{.Names}}"])
+                .output()
+                .map(|output| {
+                    String::from_utf8_lossy(&output.stdout)
+                        .lines()
+                        .any(|line| line.trim() == container_name)
+                })
+                .unwrap_or(false);
+
+            let status = if is_running { "running" } else { "stopped" };
+            println!("⚠️  Container '{}' already exists (status: {}).", container_name, status);
+
+            // Check if we're in an interactive terminal
+            if std::io::stdin().is_terminal() {
+                println!("\nWhat would you like to do?");
+                if is_running {
+                    println!("  1. Keep using the existing running container");
+                } else {
+                    println!("  1. Start the existing container");
+                }
+                println!("  2. Recreate the container (destroy and rebuild)");
+                println!("  3. Cancel operation");
+
+                print!("\nChoice [1-3]: ");
+                std::io::stdout().flush()?;
+
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input)?;
+
+                match input.trim() {
+                    "1" => {
+                        if is_running {
+                            println!("\n✅ Using existing running container.");
+                            return Ok(());
+                        } else {
+                            println!("\n▶️  Starting existing container...");
+                            return self.start();
+                        }
+                    }
+                    "2" => {
+                        println!("\n🔄 Recreating container...");
+                        self.destroy()?;
+                        // Continue with creation below
+                    }
+                    _ => {
+                        println!("❌ Operation cancelled.");
+                        return Ok(());
+                    }
+                }
+            } else {
+                // Non-interactive mode: fail with informative error
+                return Err(anyhow::anyhow!(
+                    "Container '{}' already exists. In non-interactive mode, please use:\n\
+                     - 'vm start' to start the existing container\n\
+                     - 'vm destroy' followed by 'vm create' to recreate it",
+                    container_name
+                ));
+            }
+        }
 
         // Only setup audio if it's enabled in the configuration
         if let Some(audio_service) = self.config.services.get("audio") {

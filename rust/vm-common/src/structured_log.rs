@@ -442,6 +442,46 @@ pub fn init_with_config(config: LogConfig) -> Result<(), log::SetLoggerError> {
     Ok(())
 }
 
+/// Helper functions for output macros
+/// These provide a simpler interface for the migration macros
+
+/// Log an info message
+pub fn log_info(message: &str) {
+    log::info!("{}", message);
+}
+
+/// Log an error message
+pub fn log_error(message: &str) {
+    log::error!("{}", message);
+}
+
+/// Log an info message without newline (for compatibility)
+pub fn log_info_no_newline(message: &str) {
+    // In structured logging, we always log complete messages
+    // This is here for API compatibility during migration
+    log::info!("{}", message);
+}
+
+/// Log an error message without newline (for compatibility)
+pub fn log_error_no_newline(message: &str) {
+    log::error!("{}", message);
+}
+
+/// Log a progress message
+pub fn log_progress(message: &str) {
+    log::info!("Progress: {}", message);
+}
+
+/// Log a success message
+pub fn log_success(message: &str) {
+    log::info!("Success: {}", message);
+}
+
+/// Log a warning message
+pub fn log_warning(message: &str) {
+    log::warn!("{}", message);
+}
+
 /// Create a logger instance for testing
 #[cfg(test)]
 pub fn create_test_logger() -> StructuredLogger {

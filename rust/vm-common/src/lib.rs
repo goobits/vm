@@ -4,6 +4,7 @@
 pub mod file_system;
 pub mod log_context;
 pub mod logging;
+pub mod output_macros;
 pub mod platform;
 pub mod security;
 pub mod structured_log;

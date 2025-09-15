@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::ValueEnum;
 use std::fmt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, ValueEnum, PartialEq)]
 pub enum PackageManager {
@@ -34,15 +34,6 @@ impl PackageManager {
         }
     }
 
-    /// Get the environment setup file path if needed
-    #[allow(dead_code)]
-    pub fn env_file(&self, user: &str) -> Option<PathBuf> {
-        match self {
-            PackageManager::Cargo => Some(PathBuf::from(format!("/home/{}/.cargo/env", user))),
-            PackageManager::Npm => Some(PathBuf::from(format!("/home/{}/.nvm/nvm.sh", user))),
-            PackageManager::Pip => None,
-        }
-    }
 
     /// Check if the package manager is available
     pub fn is_available(&self) -> Result<bool> {
@@ -55,44 +46,5 @@ impl PackageManager {
         }
     }
 
-    /// Get the install command for registry packages
-    #[allow(dead_code)]
-    pub fn install_command(&self) -> Vec<String> {
-        match self {
-            PackageManager::Cargo => vec!["cargo".to_string(), "install".to_string()],
-            PackageManager::Npm => vec!["npm".to_string(), "install".to_string(), "-g".to_string()],
-            PackageManager::Pip => vec![
-                "python3".to_string(),
-                "-m".to_string(),
-                "pip".to_string(),
-                "install".to_string(),
-                "--user".to_string(),
-                "--break-system-packages".to_string(),
-            ],
-        }
-    }
 
-    /// Get the command to install a linked package
-    #[allow(dead_code)]
-    pub fn link_install_command(&self, package_path: &Path) -> Vec<String> {
-        match self {
-            PackageManager::Cargo => vec![
-                "cargo".to_string(),
-                "install".to_string(),
-                "--path".to_string(),
-                package_path.to_string_lossy().to_string(),
-            ],
-            PackageManager::Npm => vec!["npm".to_string(), "link".to_string()],
-            PackageManager::Pip => vec![
-                "python3".to_string(),
-                "-m".to_string(),
-                "pip".to_string(),
-                "install".to_string(),
-                "--user".to_string(),
-                "--break-system-packages".to_string(),
-                "-e".to_string(),
-                package_path.to_string_lossy().to_string(),
-            ],
-        }
-    }
 }

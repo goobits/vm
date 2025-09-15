@@ -8,7 +8,7 @@ use log::{debug, info, warn};
 use uuid::Uuid;
 
 // Internal imports
-use vm_common::{log_context, scoped_context};
+use vm_common::{log_context, scoped_context, vm_error, vm_progress, vm_success, vm_warning};
 use vm_config::{config::VmConfig, init_config_file, ConfigOps};
 use vm_provider::get_provider;
 use vm_provider::progress::{confirm_prompt, ProgressReporter, StatusFormatter};
@@ -325,7 +325,7 @@ fn main() -> Result<()> {
                 }
                 Err(e) => {
                     debug!("Configuration validation failed: {}", e);
-                    eprintln!("❌ Configuration is invalid: {:#}", e);
+                    vm_error!("Configuration is invalid: {:#}", e);
                     // Return the error to exit with a non-zero status code
                     return Err(e);
                 }

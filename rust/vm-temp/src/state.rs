@@ -295,6 +295,23 @@ impl StateManager {
         Ok(())
     }
 
+    /// Get platform-specific temp directory paths
+    fn get_platform_temp_paths() -> Vec<&'static str> {
+        #[cfg(target_os = "windows")]
+        {
+            vec![] // Windows temp is handled by std::env::temp_dir()
+        }
+        #[cfg(target_os = "macos")]
+        {
+            vec!["/tmp", "/var/tmp", "/var/folders", "/private/tmp", "/private/var/tmp"]
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        {
+            // Linux and other Unix-like systems
+            vec!["/tmp", "/var/tmp", "/dev/shm"]
+        }
+    }
+
     /// Check if a path is dangerous to mount (system directories)
     fn is_dangerous_mount_source(path: &Path) -> bool {
         // Allow paths inside system temp directories
@@ -306,9 +323,9 @@ impl StateManager {
             }
         }
 
-        // Also allow common temp directories
-        let temp_paths = ["/tmp", "/var/tmp", "/var/folders"];
-        for temp_path in &temp_paths {
+        // Platform-specific additional temp directories
+        let additional_temp_paths = Self::get_platform_temp_paths();
+        for temp_path in &additional_temp_paths {
             if path.starts_with(temp_path) {
                 return false;
             }

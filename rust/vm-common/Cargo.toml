@@ -16,6 +16,6 @@ tempfile = { workspace = true }
 log = { workspace = true }
 pathdiff = { workspace = true }
 chrono = { workspace = true }
-atty = { workspace = true }
+is-terminal = { workspace = true }
 dirs = { workspace = true }
 uuid = { workspace = true }

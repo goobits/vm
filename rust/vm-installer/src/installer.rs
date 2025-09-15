@@ -46,8 +46,14 @@ fn get_project_root() -> Result<PathBuf> {
 
 fn run_cargo_clean(project_root: &Path) -> Result<()> {
     println!("🧹 Cleaning build artifacts...");
+
+    // Clean platform-specific target directory
+    let platform = platform::detect_platform_string();
+    let target_dir = project_root.join(format!("target-{}", platform));
+
     let status = Command::new("cargo")
         .arg("clean")
+        .env("CARGO_TARGET_DIR", &target_dir)
         .current_dir(project_root)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
@@ -63,8 +69,14 @@ fn run_cargo_clean(project_root: &Path) -> Result<()> {
 
 fn build_workspace(project_root: &Path) -> Result<PathBuf> {
     println!("🔧 Building Rust binaries...");
+
+    // Use platform-specific target directory to avoid conflicts in shared filesystems
+    let platform = platform::detect_platform_string();
+    let target_dir = project_root.join(format!("target-{}", platform));
+
     let status = Command::new("cargo")
         .args(["build", "--release", "--bin", "vm"])
+        .env("CARGO_TARGET_DIR", &target_dir)
         .current_dir(project_root)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
@@ -76,7 +88,7 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
     }
     println!("{}", "✅ Rust binaries built successfully.".green());
 
-    let binary_path = project_root.join("target/release/vm");
+    let binary_path = target_dir.join("release/vm");
     if !binary_path.exists() {
         anyhow::bail!("Could not find compiled 'vm' binary at {:?}", binary_path);
     }

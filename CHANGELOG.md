@@ -32,6 +32,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2025-09-15
+
+### Added
+- **Rust Migration**: Core functionality migrated to Rust for improved performance and type safety
+- **Structured Logging**: New structured logging system with context tracking
+- **Legacy Code Cleanup**: Removed outdated dependencies and patterns
+- **Dependency Updates**: Updated test fixture versions to current stable releases
+
+### Changed
+- Replaced deprecated `atty` crate with modern `is-terminal`
+- Updated React, Django, Flask, and Express versions in test fixtures
+- Improved port range management with better documentation
+
+### Fixed
+- Fixed version consistency across configuration files
+- Resolved format string issues and compilation warnings
+
 ## [1.3.0] - 2025-09-05
 
 ### Added

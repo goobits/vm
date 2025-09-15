@@ -159,8 +159,14 @@
         ignore_errors: yes
 
       - name: restart supervisor
-        command: supervisorctl reload
+        shell: |
+          if ! pgrep supervisord > /dev/null; then
+            supervisord -c /etc/supervisor/supervisord.conf
+            sleep 2
+          fi
+          supervisorctl reload
         when: is_docker_container
+        ignore_errors: yes
 
   tasks:
       # System configuration
@@ -791,15 +797,20 @@
       - name: Start supervisor and reload configurations (Docker)
         block:
           - name: Ensure supervisor is running
-            service:
-              name: supervisor
-              state: started
-          
+            shell: |
+              if ! pgrep supervisord > /dev/null; then
+                supervisord -c /etc/supervisor/supervisord.conf
+                sleep 2
+              fi
+            ignore_errors: yes
+
           - name: Reload supervisor configuration
             command: supervisorctl reread
-          
+            ignore_errors: yes
+
           - name: Update supervisor processes
             command: supervisorctl update
+            ignore_errors: yes
         when: is_docker_container
 
       # Final message

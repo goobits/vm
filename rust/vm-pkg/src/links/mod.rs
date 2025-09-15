@@ -31,23 +31,3 @@ pub fn detect_packages(
     }
 }
 
-/// Generate Docker mount strings for linked packages
-#[allow(dead_code)]
-pub fn generate_mounts(package_manager: &str, packages: &[String]) -> Result<Vec<String>> {
-    let detections = detect_packages(package_manager, packages)?;
-    let mut mounts = Vec::new();
-
-    for (package, path) in detections {
-        let mount_str = format!(
-            "{}:/home/developer/.links/{}/{}:delegated",
-            path, package_manager, package
-        );
-        mounts.push(mount_str);
-        eprintln!(
-            "📦 Found linked package ({}): {} -> {}",
-            package_manager, package, path
-        );
-    }
-
-    Ok(mounts)
-}

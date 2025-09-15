@@ -103,34 +103,6 @@ impl LinkDetector {
         Ok(results)
     }
 
-    /// Get comprehensive link information for a package (both controlled and system)
-    #[allow(dead_code)]
-    pub fn get_all_link_info(
-        &self,
-        package: &str,
-        manager: PackageManager,
-    ) -> Result<Vec<(String, String)>> {
-        let mut results = Vec::new();
-
-        // Check controlled links
-        if let Some(controlled_path) = self.get_linked_path(package, manager)? {
-            results.push((
-                "controlled".to_string(),
-                controlled_path.to_string_lossy().to_string(),
-            ));
-        }
-
-        // Check system links
-        let manager_str = manager.to_string();
-        let packages = vec![package.to_string()];
-        let system_detections = SystemLinkDetector::detect_for_manager(&manager_str, &packages)?;
-
-        for (_, path) in system_detections {
-            results.push(("system".to_string(), path));
-        }
-
-        Ok(results)
-    }
 
     /// Check if a path is a pipx environment
     pub fn is_pipx_environment(path: &Path) -> bool {

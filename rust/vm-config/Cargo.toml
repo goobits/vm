@@ -20,7 +20,6 @@ clap = { workspace = true }
 dirs = { workspace = true }
 glob = { workspace = true }
 indexmap = { workspace = true }
-jsonschema = { workspace = true, optional = true }
 regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -36,7 +35,6 @@ libc = { workspace = true }
 
 [features]
 default = []
-schema-validation = ["jsonschema"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

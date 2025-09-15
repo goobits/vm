@@ -17,6 +17,6 @@ clap = { workspace = true }
 vm-config = { path = "../vm-config" }
 tempfile = { workspace = true }
 fs2 = { workspace = true }
-atty = { workspace = true }
+is-terminal = { workspace = true }
 
 [dev-dependencies]

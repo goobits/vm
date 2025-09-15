@@ -1,7 +1,5 @@
 use crate::config::VmConfig;
 use anyhow::Result;
-#[cfg(feature = "schema-validation")]
-use jsonschema::ValidationError;
 use regex::Regex;
 use std::path::PathBuf;
 
@@ -17,38 +15,9 @@ impl ConfigValidator {
 
     /// Validate the entire configuration
     pub fn validate(&self) -> Result<()> {
-        #[cfg(feature = "schema-validation")]
-        {
-            // Try schema validation first, fall back to manual validation if schema not available
-            match self.validate_with_schema() {
-                Ok(_) => {
-                    // Schema validation passed, also run additional manual checks
-                    self.validate_additional_checks()?;
-                }
-                Err(e) => {
-                    // Schema validation failed or unavailable, run full manual validation
-                    eprintln!("Schema validation failed or unavailable: {}", e);
-                    eprintln!("Falling back to basic validation...");
-                    self.validate_manual()?;
-                }
-            }
-        }
-
-        #[cfg(not(feature = "schema-validation"))]
-        {
-            // Schema validation not available, run manual validation
-            self.validate_manual()?;
-        }
-
+        // Run manual validation
+        self.validate_manual()?;
         Ok(())
-    }
-
-    /// Validate using JSON Schema if available
-    #[cfg(feature = "schema-validation")]
-    fn validate_with_schema(&self) -> Result<()> {
-        // For now, return error since schema file doesn't exist
-        // This will trigger fallback to manual validation
-        anyhow::bail!("Schema file not available")
     }
 
     /// Full manual validation (used as fallback)
@@ -58,15 +27,6 @@ impl ConfigValidator {
         self.validate_project()?;
         self.validate_ports()?;
         self.validate_services()?;
-        self.validate_versions()?;
-        Ok(())
-    }
-
-    /// Additional checks that complement schema validation
-    #[cfg(feature = "schema-validation")]
-    fn validate_additional_checks(&self) -> Result<()> {
-        // Run some of the manual checks that might not be covered by schema
-        self.validate_ports()?;
         self.validate_versions()?;
         Ok(())
     }
@@ -214,12 +174,6 @@ impl ConfigValidator {
     }
 }
 
-/// Format compilation error for user-friendly display
-#[cfg(feature = "schema-validation")]
-#[allow(dead_code)]
-fn format_compilation_error(error: ValidationError) -> String {
-    format!("Schema compilation error: {}", error)
-}
 
 #[cfg(test)]
 mod tests {
