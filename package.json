@@ -1,6 +1,6 @@
 {
   "name": "@goobits/vm",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Beautiful development VMs with one command. Vagrant + Ansible + gorgeous terminals.",
   "type": "module",
   "bin": {
