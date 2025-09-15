@@ -1,9 +1,9 @@
 [package]
 name = "vm-pkg"
-version = "1.1.0"
-edition = "2021"
-authors = ["VM Tool Contributors"]
-license = "MIT"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
 description = "Unified package manager for VM Tool - handles cargo, npm, and pip/pipx packages"
 
 [dependencies]
@@ -13,6 +13,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 which = { workspace = true }
 home = { workspace = true }
+tempfile = { workspace = true }
+
+[dev-dependencies]
 tempfile = { workspace = true }
 
 [[bin]]

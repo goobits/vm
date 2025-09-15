@@ -1,16 +1,17 @@
 [package]
 name = "vm"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
 serde_yaml = { workspace = true }
 serde_json = { workspace = true }
-tempfile = "3.8"
-dirs = "5.0"
-chrono = "0.4"
+tempfile = { workspace = true }
+dirs = { workspace = true }
 serde = { workspace = true }
 vm-config = { path = "../vm-config" }
 vm-provider = { path = "../vm-provider" }

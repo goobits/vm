@@ -340,6 +340,13 @@ pub enum Command {
         #[arg(long)]
         global: bool,
     },
+
+    /// Initialize a new vm.yaml configuration file
+    Init {
+        /// Target file or directory (defaults to current directory)
+        #[arg(short, long)]
+        file: Option<PathBuf>,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -719,6 +726,10 @@ pub fn execute(args: Args) -> Result<()> {
 
         Command::Clear { global } => {
             crate::config_ops::ConfigOps::clear(global)?;
+        }
+
+        Command::Init { file } => {
+            init_config_file(file)?;
         }
     }
 

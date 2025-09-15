@@ -150,9 +150,10 @@ mod tests {
 
     #[test]
     fn test_conflict_detection() {
+        let temp_file = tempfile::NamedTempFile::new().unwrap();
         let mut registry = PortRegistry {
             entries: HashMap::new(),
-            registry_path: PathBuf::new(),
+            registry_path: temp_file.path().to_path_buf(),
         };
 
         // Add a project
@@ -177,9 +178,10 @@ mod tests {
 
     #[test]
     fn test_suggest_next_range() {
+        let temp_file = tempfile::NamedTempFile::new().unwrap();
         let mut registry = PortRegistry {
             entries: HashMap::new(),
-            registry_path: PathBuf::new(),
+            registry_path: temp_file.path().to_path_buf(),
         };
 
         // Register a range
@@ -191,5 +193,111 @@ mod tests {
         assert!(suggestion.is_some());
         let suggested = suggestion.unwrap();
         assert_eq!(suggested, "3010-3019"); // Should suggest non-overlapping range
+    }
+
+    #[test]
+    fn test_concurrent_registry_access_race_condition() {
+        use std::thread;
+        use std::sync::Arc;
+
+        let temp_dir = tempdir().unwrap();
+        let registry_path = temp_dir.path().join("port-registry.json");
+
+        // Initialize an empty registry file
+        std::fs::write(&registry_path, "{}").unwrap();
+
+        // Create multiple registries that point to the same file (simulating different processes)
+        let shared_path = Arc::new(registry_path);
+        let mut handles = vec![];
+        let num_threads = 10_usize;
+
+        for i in 0..num_threads {
+            let path = Arc::clone(&shared_path);
+            let handle = thread::spawn(move || {
+                // Each thread creates its own registry instance pointing to the same file
+                let mut registry = PortRegistry {
+                    entries: HashMap::new(),
+                    registry_path: (*path).clone(),
+                };
+
+                // Load current state
+                let content = std::fs::read_to_string(&registry.registry_path).unwrap();
+                let entries: HashMap<String, ProjectEntry> = if content.trim() == "{}" {
+                    HashMap::new()
+                } else {
+                    serde_json::from_str(&content).unwrap_or_default()
+                };
+                registry.entries = entries;
+
+                // Add our entry
+                let range = PortRange::new(3000 + (i as u16) * 10, 3000 + (i as u16) * 10 + 9).unwrap();
+
+                // Small delay to increase race condition likelihood
+                std::thread::sleep(std::time::Duration::from_millis(1));
+
+                registry.register(&format!("project_{}", i), &range, &format!("/path_{}", i))
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all threads to complete
+        let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+
+        // Count successful vs failed operations
+        let successful_registrations = results.iter().filter(|r| r.is_ok()).count();
+        let failed_registrations = results.iter().filter(|r| r.is_err()).count();
+
+        println!("Registration results: {} succeeded, {} failed", successful_registrations, failed_registrations);
+
+        if failed_registrations > 0 {
+            println!("🚨 FILE SYSTEM RACE CONDITION DETECTED:");
+            println!("  {} threads failed to register due to temp file conflicts", failed_registrations);
+            println!("  This demonstrates the race condition in atomic file operations");
+        }
+
+        // Load final registry and check if all entries are present
+        let content = std::fs::read_to_string(&*shared_path).unwrap();
+        let final_entries: HashMap<String, ProjectEntry> = serde_json::from_str(&content).unwrap();
+
+        // This is the key test: analyze the types of race conditions that occurred
+        let actual_count = final_entries.len();
+
+        println!("Final analysis:");
+        println!("  File operations succeeded: {}", successful_registrations);
+        println!("  File operations failed: {}", failed_registrations);
+        println!("  Final registry entries: {}", actual_count);
+
+        // The race condition can manifest in two ways:
+        // 1. File system race: temp file conflicts (already detected above)
+        // 2. Data race: successful writes that overwrite each other's data
+
+        if successful_registrations > actual_count {
+            println!("🚨 DATA RACE CONDITION DETECTED:");
+            println!("  {} operations succeeded, but only {} entries in final registry", successful_registrations, actual_count);
+            println!("  Lost {} registrations due to concurrent read-modify-write cycles", successful_registrations - actual_count);
+
+            // Show which projects made it through the data race
+            let mut found_projects: Vec<_> = final_entries.keys().collect();
+            found_projects.sort();
+            println!("  Surviving projects: {:?}", found_projects);
+        }
+
+        // In a robust system, we'd want: successful_registrations == actual_count == num_threads
+        if successful_registrations == actual_count && successful_registrations == num_threads {
+            println!("✅ No race conditions detected in this run (may not reproduce consistently)");
+        } else {
+            println!("⚠️  Race conditions successfully demonstrated:");
+            println!("   Expected: {} total registrations", num_threads);
+            println!("   Achieved: {} stored registrations", actual_count);
+            println!("   Success rate: {:.1}%", (actual_count as f64 / num_threads as f64) * 100.0);
+        }
+
+        // Verify that the surviving entries are valid
+        for (project_name, entry) in &final_entries {
+            assert!(PortRange::parse(&entry.range).is_ok(),
+                   "Invalid range stored for project {}: {}", project_name, entry.range);
+            assert!(entry.path.starts_with("/path_"),
+                   "Invalid path stored for project {}: {}", project_name, entry.path);
+        }
     }
 }

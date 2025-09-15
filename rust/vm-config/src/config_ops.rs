@@ -187,6 +187,11 @@ impl ConfigOps {
 // Helper functions
 
 fn get_global_config_path() -> PathBuf {
+    // Check for test environment override first
+    if let Ok(home) = std::env::var("HOME") {
+        return PathBuf::from(home).join(".config").join("vm").join("global.yaml");
+    }
+
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("~/.config"))
         .join("vm")
@@ -194,9 +199,13 @@ fn get_global_config_path() -> PathBuf {
 }
 
 fn get_or_create_global_config_path() -> Result<PathBuf> {
-    let config_dir = dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("~/.config"))
-        .join("vm");
+    let config_dir = if let Ok(home) = std::env::var("HOME") {
+        PathBuf::from(home).join(".config").join("vm")
+    } else {
+        dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from("~/.config"))
+            .join("vm")
+    };
 
     if !config_dir.exists() {
         fs::create_dir_all(&config_dir)

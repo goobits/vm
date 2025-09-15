@@ -7,12 +7,12 @@ use std::env;
 /// 2. Directory containing the vm-config binary (../../ from binary)
 /// 3. Current directory as fallback
 pub fn get_tool_dir() -> PathBuf {
-    // Check environment variable first
+    // Check environment variable first - this should always work in tests
     if let Ok(tool_dir) = env::var("VM_TOOL_DIR") {
         return PathBuf::from(tool_dir);
     }
 
-    // Try to find based on executable location
+    // Try to find based on executable location, but don't fail if current_exe() fails
     if let Ok(exe_path) = env::current_exe() {
         // vm-config is at VM_TOOL_DIR/rust/vm-config/target/release/vm-config
         // or VM_TOOL_DIR/rust/target/release/vm-config
@@ -46,7 +46,7 @@ pub fn get_tool_dir() -> PathBuf {
         }
     }
 
-    // Fallback to current directory
+    // Fallback to current directory - this should always work
     env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 

@@ -36,10 +36,11 @@ walkdir = "2.5"
 rayon = "1.10"
 glob = "0.3"
 jsonschema = "0.17"
-tempfile = "3.8"
+tempfile = "3.10"
 home = "0.5"
 dirs = "5.0"
 scopeguard = "1.2"
+chrono = { version = "0.4", features = ["serde"] }
 
 [profile.release]
 opt-level = 3

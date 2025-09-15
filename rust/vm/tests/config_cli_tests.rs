@@ -36,6 +36,7 @@ impl CliTestFixture {
             .args(args)
             .current_dir(&self.test_dir)
             .env("HOME", self.test_dir.parent().unwrap())  // Mock HOME for global config
+            .env("VM_TOOL_DIR", &self.test_dir)  // Point preset system to test directory
             .output()?;
         Ok(output)
     }
@@ -64,7 +65,14 @@ impl CliTestFixture {
         let presets_dir = self.test_dir.join("configs").join("presets");
         fs::create_dir_all(&presets_dir)?;
         let preset_path = presets_dir.join(format!("{}.yaml", name));
-        fs::write(preset_path, content)?;
+
+        // Add preset metadata header to the content
+        let full_content = format!(
+            "---\npreset:\n  name: {}\n  description: \"Test preset for {}\"\n\n{}",
+            name, name, content
+        );
+
+        fs::write(preset_path, full_content)?;
         Ok(())
     }
 }
@@ -411,7 +419,7 @@ services:
 
         assert!(stdout.contains("services:"));
         assert!(stdout.contains("postgresql:"));
-        assert!(stdout.contains("version: '15'"));
+        assert!(stdout.contains("version: 15"));
         assert!(stdout.contains("port: 5432"));
         assert!(stdout.contains("redis:"));
         assert!(stdout.contains("enabled: true"));

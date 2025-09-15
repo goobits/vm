@@ -20,7 +20,7 @@ clap = { workspace = true }
 dirs = { workspace = true }
 glob = { workspace = true }
 indexmap = { workspace = true }
-jsonschema = { workspace = true }
+jsonschema = { workspace = true, optional = true }
 regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -28,6 +28,10 @@ serde_yaml = { workspace = true }
 thiserror = { workspace = true }
 which = { workspace = true }
 vm-common = { path = "../vm-common" }
+
+[features]
+default = []
+schema-validation = ["jsonschema"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

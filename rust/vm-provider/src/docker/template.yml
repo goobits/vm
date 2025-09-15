@@ -5,20 +5,27 @@ services:
   {{ config.project.name | default(value="vm-project") }}-dev:
     container_name: {{ config.project.name | default(value="vm-project") }}-dev
     build:
-      context: ..
+      context: {{ project_dir }}
       dockerfile: Dockerfile
     image: {{ config.project.name | default(value="vm-project") }}:latest
     volumes:
-      - ../..:/workspace:rw
+      - {{ project_dir }}:/workspace:rw
+      - {{ vm_tool_dir }}:/vm-tool:ro
       # Additional volumes for package linking, etc. can be added here dynamically
+    {% if config.ports and config.ports | length > 0 -%}
     ports:
-      {% if config.ports %}{% for name, port in config.ports %}- "{{ port }}:{{ port }}"
-      {% endfor %}{% endif %}
+      {% for name, port in config.ports %}- "{{ port }}:{{ port }}"
+      {% endfor %}
+    {%- endif %}
+    {% if config.environment and config.environment | length > 0 -%}
     environment:
-      # Environment variables will be populated here
-      {% if config.environment %}{% for name, value in config.environment %}- {{ name }}={{ value }}
-      {% endfor %}{% endif %}
+      {% for name, value in config.environment %}- {{ name }}={{ value }}
+      {% endfor %}
+    {%- endif %}
     cap_add:
       - SYS_PTRACE
     security_opt:
       - seccomp=unconfined
+    command: ["tail", "-f", "/dev/null"]
+    tty: true
+    stdin_open: true

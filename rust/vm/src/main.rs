@@ -1,9 +1,8 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-use std::process::Command as ProcessCommand;
 use std::sync::atomic::{AtomicBool, Ordering};
-use vm_config::config::VmConfig;
+use vm_config::{config::VmConfig, ConfigOps, init_config_file};
 use vm_provider::get_provider;
 use vm_provider::progress::{confirm_prompt, ProgressReporter, StatusFormatter};
 
@@ -206,33 +205,6 @@ enum Command {
     Logs,
     /// Validate the configuration
     Validate,
-    /// Generate configuration by composing services
-    Generate {
-        /// Comma-separated list of services (postgresql,redis,docker)
-        #[arg(long)]
-        services: Option<String>,
-
-        /// Starting port for allocation (allocates 10 sequential ports)
-        #[arg(long)]
-        ports: Option<u16>,
-
-        /// Project name (sets project.name, hostname, username)
-        #[arg(long)]
-        name: Option<String>,
-
-        /// Output file (default: vm.yaml)
-        output: Option<PathBuf>,
-    },
-    /// Manage temporary VMs
-    Temp {
-        #[command(subcommand)]
-        command: TempSubcommand,
-    },
-    /// Alias for temp command
-    Tmp {
-        #[command(subcommand)]
-        command: TempSubcommand,
-    },
     /// Manage configuration settings
     Config {
         #[command(subcommand)]
@@ -270,24 +242,16 @@ fn main() -> Result<()> {
             }
         }
         Command::Init { file } => {
-            debug!("Delegating to vm-config binary: init command");
-            return delegate_to_vm_config(&["init"], file.as_ref());
-        }
-        Command::Generate { services, ports, name, output } => {
-            debug!("Delegating to vm-generator binary");
-            return delegate_to_vm_generator(services.as_ref(), *ports, name.as_ref(), output.as_ref());
-        }
-        Command::Temp { command } | Command::Tmp { command } => {
-            debug!("Delegating to vm-temp binary");
-            return delegate_to_vm_temp(command);
+            debug!("Calling init_config_file directly");
+            return init_config_file(file.clone());
         }
         Command::Config { command } => {
-            debug!("Delegating to vm-config binary: config command");
-            return delegate_to_vm_config_for_config(command);
+            debug!("Calling ConfigOps methods directly");
+            return handle_config_command(command);
         }
         Command::Preset { command } => {
-            debug!("Delegating to vm-config binary: preset command");
-            return delegate_to_vm_config_for_preset(command);
+            debug!("Calling preset methods directly");
+            return handle_preset_command(command);
         }
         _ => {} // Continue to provider-based commands
     }
@@ -474,207 +438,46 @@ fn main() -> Result<()> {
         Command::Validate => unreachable!(), // Handled above
         Command::Init { .. } => unreachable!(), // Handled above
         Command::Preset { .. } => unreachable!(), // Handled above
-        Command::Generate { .. } => unreachable!(), // Handled above
-        Command::Temp { .. } | Command::Tmp { .. } => unreachable!(), // Handled above
         Command::Config { .. } => unreachable!(), // Handled above
     }
 }
 
 
-// Delegation functions for clean architecture
+// Direct function call handlers for config operations
 
-fn find_binary(name: &str) -> String {
-    // Try to find binary in development/workspace location first
-    if let Ok(current_exe) = std::env::current_exe() {
-        if let Some(parent) = current_exe.parent() {
-            let dev_binary = parent.join(name);
-            if dev_binary.exists() {
-                return dev_binary.to_string_lossy().to_string();
-            }
-        }
-    }
-
-    // Fall back to PATH lookup
-    name.to_string()
-}
-
-fn delegate_to_vm_config(args: &[&str], file: Option<&PathBuf>) -> Result<()> {
-    let mut cmd_args = vec!["vm-config"];
-    cmd_args.extend(args);
-
-    let file_str;
-    if let Some(f) = file {
-        cmd_args.push("--file");
-        file_str = f.to_string_lossy().to_string();
-        cmd_args.push(&file_str);
-    }
-
-    let binary_path = find_binary("vm-config");
-    let status = ProcessCommand::new(&binary_path)
-        .args(&cmd_args[1..])
-        .status()
-        .context("Failed to execute vm-config")?;
-
-    if !status.success() {
-        std::process::exit(status.code().unwrap_or(1));
-    }
-    Ok(())
-}
-
-fn delegate_to_vm_generator(
-    services: Option<&String>,
-    ports: Option<u16>,
-    name: Option<&String>,
-    output: Option<&PathBuf>
-) -> Result<()> {
-    let binary_path = find_binary("vm-generator");
-    let mut cmd = ProcessCommand::new(&binary_path);
-    cmd.arg("generate");
-
-    if let Some(s) = services {
-        cmd.arg("--services").arg(s);
-    }
-    if let Some(p) = ports {
-        cmd.arg("--ports").arg(p.to_string());
-    }
-    if let Some(n) = name {
-        cmd.arg("--name").arg(n);
-    }
-    if let Some(o) = output {
-        cmd.arg(o);
-    }
-
-    let status = cmd.status().context("Failed to execute vm-generator")?;
-
-    if !status.success() {
-        std::process::exit(status.code().unwrap_or(1));
-    }
-    Ok(())
-}
-
-fn delegate_to_vm_temp(command: &TempSubcommand) -> Result<()> {
-    let binary_path = find_binary("vm-temp");
-    let mut cmd = ProcessCommand::new(&binary_path);
-
-    match command {
-        TempSubcommand::Create { mounts, auto_destroy } => {
-            cmd.arg("create");
-            for mount in mounts {
-                cmd.arg(mount);
-            }
-            if *auto_destroy {
-                cmd.arg("--auto-destroy");
-            }
-        }
-        TempSubcommand::Ssh => { cmd.arg("ssh"); }
-        TempSubcommand::Status => { cmd.arg("status"); }
-        TempSubcommand::Destroy => { cmd.arg("destroy"); }
-        TempSubcommand::Mount { path, yes } => {
-            cmd.arg("mount").arg(path);
-            if *yes {
-                cmd.arg("--yes");
-            }
-        }
-        TempSubcommand::Unmount { path, all, yes } => {
-            cmd.arg("unmount");
-            if let Some(p) = path {
-                cmd.arg("--path").arg(p);
-            }
-            if *all {
-                cmd.arg("--all");
-            }
-            if *yes {
-                cmd.arg("--yes");
-            }
-        }
-        TempSubcommand::Mounts => { cmd.arg("mounts"); }
-        TempSubcommand::List => { cmd.arg("list"); }
-        TempSubcommand::Stop => { cmd.arg("stop"); }
-        TempSubcommand::Start => { cmd.arg("start"); }
-        TempSubcommand::Restart => { cmd.arg("restart"); }
-    }
-
-    let status = cmd.status().context("Failed to execute vm-temp")?;
-
-    if !status.success() {
-        std::process::exit(status.code().unwrap_or(1));
-    }
-    Ok(())
-}
-
-fn delegate_to_vm_config_for_config(command: &ConfigSubcommand) -> Result<()> {
-    let binary_path = find_binary("vm-config");
-    let mut cmd = ProcessCommand::new(&binary_path);
-
+fn handle_config_command(command: &ConfigSubcommand) -> Result<()> {
     match command {
         ConfigSubcommand::Set { field, value, global } => {
-            cmd.arg("set").arg(field).arg(value);
-            if *global {
-                cmd.arg("--global");
-            }
+            ConfigOps::set(field, value, *global)
         }
         ConfigSubcommand::Get { field, global } => {
-            cmd.arg("get");
-            if let Some(f) = field {
-                cmd.arg(f);
-            }
-            if *global {
-                cmd.arg("--global");
-            }
+            ConfigOps::get(field.as_deref(), *global)
         }
         ConfigSubcommand::Unset { field, global } => {
-            cmd.arg("unset").arg(field);
-            if *global {
-                cmd.arg("--global");
-            }
+            ConfigOps::unset(field, *global)
         }
         ConfigSubcommand::Clear { global } => {
-            cmd.arg("clear");
-            if *global {
-                cmd.arg("--global");
-            }
+            ConfigOps::clear(*global)
         }
         ConfigSubcommand::Preset { names, global, list, show } => {
-            cmd.arg("preset");
-            if *list {
-                cmd.arg("--list");
-            } else if let Some(show_name) = show {
-                cmd.arg("--show").arg(show_name);
-            } else if let Some(preset_names) = names {
-                cmd.arg(preset_names);
-            }
-            if *global {
-                cmd.arg("--global");
+            match (list, show, names) {
+                (true, _, _) => ConfigOps::preset("", *global, true, None),
+                (_, Some(show_name), _) => ConfigOps::preset("", *global, false, Some(show_name)),
+                (_, _, Some(preset_names)) => ConfigOps::preset(preset_names, *global, false, None),
+                _ => Ok(()),
             }
         }
     }
-
-    let status = cmd.status().context("Failed to execute vm-config")?;
-
-    if !status.success() {
-        std::process::exit(status.code().unwrap_or(1));
-    }
-    Ok(())
 }
 
-fn delegate_to_vm_config_for_preset(command: &PresetSubcommand) -> Result<()> {
-    let binary_path = find_binary("vm-config");
-    let mut cmd = ProcessCommand::new(&binary_path);
-    cmd.arg("preset");
-
+fn handle_preset_command(command: &PresetSubcommand) -> Result<()> {
     match command {
         PresetSubcommand::List => {
-            cmd.arg("--list");
+            ConfigOps::preset("", false, true, None)
         }
         PresetSubcommand::Show { name } => {
-            cmd.arg("--detect-only").arg("--dir").arg(".").arg(name);
+            ConfigOps::preset("", false, false, Some(name))
         }
     }
-
-    let status = cmd.status().context("Failed to execute vm-config")?;
-
-    if !status.success() {
-        std::process::exit(status.code().unwrap_or(1));
-    }
-    Ok(())
 }
+

@@ -8,7 +8,6 @@ use crate::{
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
-use tempfile::TempDir;
 use tera::{Tera, Context as TeraContext};
 use vm_config::config::VmConfig;
 use crate::{TempProvider, TempVmState};
@@ -19,7 +18,7 @@ const DOCKERFILE_TEMPLATE: &str = include_str!("../../../providers/docker/Docker
 pub struct DockerProvider {
     config: VmConfig,
     _project_dir: PathBuf, // The root of the user's project
-    temp_dir: TempDir,    // Secure temporary directory for generated files like docker-compose.yml
+    temp_dir: PathBuf,     // Persistent project-specific directory for generated files like docker-compose.yml
 }
 
 impl DockerProvider {
@@ -36,8 +35,15 @@ impl DockerProvider {
         }
 
         let project_dir = std::env::current_dir()?;
-        let temp_dir = TempDir::new()
-            .context("Failed to create secure temporary directory")?;
+
+        // Create a persistent project-specific directory for docker-compose files
+        let project_name = config.project.as_ref()
+            .and_then(|p| p.name.as_deref())
+            .unwrap_or("vm-project");
+
+        let temp_dir = std::env::temp_dir().join(format!("vm-{}", project_name));
+        fs::create_dir_all(&temp_dir)
+            .context("Failed to create project-specific directory")?;
 
         Ok(Self {
             config,
@@ -72,8 +78,14 @@ impl DockerProvider {
         let mut tera = Tera::default();
         tera.add_raw_template("docker-compose.yml", DOCKER_COMPOSE_TEMPLATE)?;
 
+        let project_dir_str = Self::path_to_string(&self._project_dir)?;
+        let vm_tool_dir = vm_config::get_tool_dir();
+        let vm_tool_dir_str = Self::path_to_string(&vm_tool_dir)?;
+
         let mut context = TeraContext::new();
         context.insert("config", &self.config);
+        context.insert("project_dir", &project_dir_str);
+        context.insert("vm_tool_dir", &vm_tool_dir_str);
 
         let content = tera.render("docker-compose.yml", &context)?;
         Ok(content)
@@ -81,8 +93,10 @@ impl DockerProvider {
 
     fn write_docker_compose(&self) -> Result<PathBuf> {
         let content = self.render_docker_compose()?;
-        let path = self.temp_dir.path().join("docker-compose.yml");
+
+        let path = self.temp_dir.join("docker-compose.yml");
         fs::write(&path, content.as_bytes())?;
+
         Ok(path)
     }
 
@@ -106,75 +120,90 @@ impl Provider for DockerProvider {
 
     fn create(&self) -> Result<()> {
         self.check_daemon_is_running()?;
-        let progress = ProgressReporter::new();
-        let main_phase = progress.start_phase("Creating Docker Environment");
-
-        progress.task(&main_phase, "Generating docker-compose.yml...");
+        // Phase 1: Generate files
+        println!("🐳 Creating Docker Environment");
+        print!("📄 Generating docker-compose.yml... ");
         let compose_path = self.write_docker_compose().context("Failed to generate docker-compose.yml")?;
+        println!("✅");
 
-        progress.task(&main_phase, "Generating Dockerfile...");
+        print!("📄 Generating Dockerfile... ");
         let _dockerfile_path = self.write_dockerfile().context("Failed to generate Dockerfile")?;
-        progress.finish_phase(&main_phase, "Done.");
+        println!("✅");
 
-        let build_phase = progress.start_phase("Building container image");
-        progress.task(&build_phase, "Running `docker compose build`...");
+        // Phase 2: Build container
+        println!("\n🔨 Building container image");
+        println!("Running `docker compose build`...");
         stream_command(
             "docker",
             &["compose", "-f", Self::path_to_string(&compose_path)?, "build"],
         ).context("Docker build failed")?;
-        progress.finish_phase(&build_phase, "Build complete.");
+        println!("✅ Build complete");
 
-        let up_phase = progress.start_phase("Starting containers");
-        progress.task(&up_phase, "Running `docker compose up -d`...");
+        // Phase 3: Start containers
+        println!("\n🚀 Starting containers");
+        println!("Running `docker compose up -d`...");
         stream_command(
             "docker",
             &["compose", "-f", Self::path_to_string(&compose_path)?, "up", "-d"],
         ).context("Docker up failed")?;
-        progress.finish_phase(&up_phase, "Containers started.");
+        println!("✅ Containers started");
 
-        // Wait for container to be ready
-        let provisioning_phase = progress.start_phase("Provisioning environment");
-        progress.task(&provisioning_phase, "Waiting for container readiness...");
+        // Phase 4: Wait for container readiness and provision
+        println!("\n🔧 Provisioning environment");
+        print!("⏳ Waiting for container readiness... ");
 
         let max_attempts = 30;
         let mut attempt = 1;
         let mut container_ready = false;
 
         while attempt <= max_attempts {
-            if stream_command("docker", &["exec", &self.container_name(), "echo", "ready"]).is_ok() {
+            // Use quiet check instead of stream_command to avoid noise
+            let check_result = std::process::Command::new("docker")
+                .args(&["exec", &self.container_name(), "echo", "ready"])
+                .output();
+
+            if check_result.is_ok() && check_result.unwrap().status.success() {
                 container_ready = true;
                 break;
             }
 
             if attempt == max_attempts {
+                println!("❌");
                 return Err(anyhow::anyhow!("Container failed to become ready after {} attempts", max_attempts));
             }
-
             std::thread::sleep(std::time::Duration::from_secs(2));
             attempt += 1;
         }
 
         if !container_ready {
+            println!("❌");
             return Err(anyhow::anyhow!("Container initialization timed out"));
         }
-
-        progress.task(&provisioning_phase, "Container ready.");
+        println!("✅");
 
         // Copy config to container for Ansible
-        progress.task(&provisioning_phase, "Loading project configuration...");
+        print!("📋 Loading project configuration... ");
         let config_json = self.config.to_json().context("Failed to serialize config")?;
-        let temp_config_path = self.temp_dir.path().join("vm-config.json");
+        let temp_config_path = self.temp_dir.join("vm-config.json");
         fs::write(&temp_config_path, config_json)?;
 
-        stream_command("docker", &[
-            "cp",
-            Self::path_to_string(&temp_config_path)?,
-            &format!("{}:/tmp/vm-config.json", self.container_name())
-        ]).context("Failed to copy config to container")?;
-        progress.task(&provisioning_phase, "Configuration loaded.");
+        let copy_result = std::process::Command::new("docker")
+            .args(&[
+                "cp",
+                Self::path_to_string(&temp_config_path)?,
+                &format!("{}:/tmp/vm-config.json", self.container_name())
+            ])
+            .output()
+            .context("Failed to copy config to container")?;
+
+        if !copy_result.status.success() {
+            println!("❌");
+            return Err(anyhow::anyhow!("Failed to copy config to container"));
+        }
+        println!("✅");
 
         // Run Ansible provisioning
-        progress.task(&provisioning_phase, "Running Ansible provisioning...");
+        println!("🎭 Running Ansible provisioning...");
         let ansible_result = stream_command("docker", &[
             "exec",
             &self.container_name(),
@@ -183,29 +212,34 @@ impl Provider for DockerProvider {
         ]);
 
         if ansible_result.is_err() {
-            progress.task(&provisioning_phase, "Provisioning failed.");
+            println!("❌ Provisioning failed");
             return Err(anyhow::anyhow!("Ansible provisioning failed"));
         }
-        progress.task(&provisioning_phase, "Provisioning complete.");
+        println!("✅ Provisioning complete");
 
         // Start supervisor services
-        progress.task(&provisioning_phase, "Starting services...");
-        let _ = stream_command("docker", &[
-            "exec",
-            &self.container_name(),
-            "bash", "-c",
-            "supervisorctl reread && supervisorctl update"
-        ]);
-        progress.task(&provisioning_phase, "Services started.");
+        print!("🔄 Starting services... ");
+        let service_result = std::process::Command::new("docker")
+            .args(&[
+                "exec",
+                &self.container_name(),
+                "bash", "-c",
+                "supervisorctl reread && supervisorctl update"
+            ])
+            .output();
 
-        progress.finish_phase(&provisioning_phase, "Environment ready.");
+        if service_result.is_ok() {
+            println!("✅");
+        } else {
+            println!("⚠️ (services may start later)");
+        }
 
         println!("\n✅ Docker environment created successfully!");
         Ok(())
     }
 
     fn start(&self) -> Result<()> {
-        let compose_path = self.temp_dir.path().join("docker-compose.yml");
+        let compose_path = self.temp_dir.join("docker-compose.yml");
         if !compose_path.exists() {
             self.write_docker_compose()?;
         }
@@ -217,7 +251,7 @@ impl Provider for DockerProvider {
     }
 
     fn stop(&self) -> Result<()> {
-        let compose_path = self.temp_dir.path().join("docker-compose.yml");
+        let compose_path = self.temp_dir.join("docker-compose.yml");
         if compose_path.exists() {
             stream_command(
                 "docker",
@@ -233,7 +267,7 @@ impl Provider for DockerProvider {
     }
 
     fn destroy(&self) -> Result<()> {
-        let compose_path = self.temp_dir.path().join("docker-compose.yml");
+        let compose_path = self.temp_dir.join("docker-compose.yml");
         if !compose_path.exists() {
             println!("docker-compose.yml not found. Attempting to remove container by name.");
             return stream_command("docker", &["rm", "-f", &self.container_name()]);
@@ -311,7 +345,7 @@ impl Provider for DockerProvider {
     }
 
     fn status(&self) -> Result<()> {
-        let compose_path = self.temp_dir.path().join("docker-compose.yml");
+        let compose_path = self.temp_dir.join("docker-compose.yml");
 
         if compose_path.exists() {
             // Use docker-compose ps for formatted status
@@ -378,7 +412,7 @@ impl Provider for DockerProvider {
 
         // Copy config to container for Ansible
         let config_json = self.config.to_json().context("Failed to serialize config")?;
-        let temp_config_path = self.temp_dir.path().join("vm-config.json");
+        let temp_config_path = self.temp_dir.join("vm-config.json");
         std::fs::write(&temp_config_path, config_json)?;
 
         stream_command("docker", &[
@@ -457,7 +491,7 @@ impl TempProvider for DockerProvider {
 
         progress.task(&main_phase, "Starting container...");
         // Start the container
-        let compose_path = self.temp_dir.path().join("docker-compose.yml");
+        let compose_path = self.temp_dir.join("docker-compose.yml");
         stream_command(
             "docker",
             &["compose", "-f", Self::path_to_string(&compose_path)?, "up", "-d"],
@@ -494,7 +528,7 @@ impl TempProvider for DockerProvider {
         // Generate docker-compose.yml with the new mounts
         let content = self.render_docker_compose_with_mounts(state)
             .context("Failed to render docker-compose.yml with mounts")?;
-        let compose_path = self.temp_dir.path().join("docker-compose.yml");
+        let compose_path = self.temp_dir.join("docker-compose.yml");
         fs::write(&compose_path, content.as_bytes())
             .context("Failed to write updated docker-compose.yml")?;
 

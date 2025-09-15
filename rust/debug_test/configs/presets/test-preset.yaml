@@ -1,0 +1,12 @@
+---
+preset:
+  name: test-preset
+  description: "Test preset for test-preset"
+
+services:
+  redis:
+    enabled: true
+vm:
+  memory: 2048
+npm_packages:
+  - eslint

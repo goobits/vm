@@ -2,6 +2,7 @@ pub mod config;
 pub mod merge;
 pub mod validate;
 pub mod cli;
+pub mod resources;   // VM resource suggestions
 mod preset;          // Internal only
 mod yaml_ops;
 mod paths;           // Internal only
@@ -9,8 +10,10 @@ mod embedded_presets;
 mod config_ops;      // Internal only
 
 // Re-export commonly needed path utilities
-pub use paths::resolve_tool_path;
+pub use paths::{resolve_tool_path, get_tool_dir};
 
-// Re-export for testing (includes integration tests)
-#[cfg(any(test, debug_assertions))]
+// Re-export config operations for use by main vm binary
 pub use config_ops::{ConfigOps, load_global_config};
+
+// Re-export CLI functions for direct use
+pub use cli::init_config_file;

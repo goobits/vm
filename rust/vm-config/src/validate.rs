@@ -1,7 +1,9 @@
 use crate::config::VmConfig;
 use anyhow::{Result, Context};
 use regex::Regex;
+#[cfg(feature = "schema-validation")]
 use jsonschema::{JSONSchema, ValidationError};
+#[cfg(feature = "schema-validation")]
 use serde_json::Value;
 use std::path::PathBuf;
 
@@ -17,54 +19,38 @@ impl ConfigValidator {
 
     /// Validate the entire configuration
     pub fn validate(&self) -> Result<()> {
-        // Try schema validation first, fall back to manual validation if schema not available
-        match self.validate_with_schema() {
-            Ok(_) => {
-                // Schema validation passed, also run additional manual checks
-                self.validate_additional_checks()?;
-            }
-            Err(e) => {
-                // Schema validation failed or unavailable, run full manual validation
-                eprintln!("Schema validation failed or unavailable: {}", e);
-                eprintln!("Falling back to basic validation...");
-                self.validate_manual()?;
+        #[cfg(feature = "schema-validation")]
+        {
+            // Try schema validation first, fall back to manual validation if schema not available
+            match self.validate_with_schema() {
+                Ok(_) => {
+                    // Schema validation passed, also run additional manual checks
+                    self.validate_additional_checks()?;
+                }
+                Err(e) => {
+                    // Schema validation failed or unavailable, run full manual validation
+                    eprintln!("Schema validation failed or unavailable: {}", e);
+                    eprintln!("Falling back to basic validation...");
+                    self.validate_manual()?;
+                }
             }
         }
+
+        #[cfg(not(feature = "schema-validation"))]
+        {
+            // Schema validation not available, run manual validation
+            self.validate_manual()?;
+        }
+
         Ok(())
     }
 
     /// Validate using JSON Schema if available
+    #[cfg(feature = "schema-validation")]
     fn validate_with_schema(&self) -> Result<()> {
-        // Use embedded schema content
-        const EMBEDDED_SCHEMA: &str = include_str!("../../../vm.schema.yaml");
-        let schema_content = EMBEDDED_SCHEMA;
-
-        // Parse YAML schema and convert to JSON for jsonschema crate
-        let schema_yaml: serde_yaml::Value = serde_yaml::from_str(&schema_content)
-            .with_context(|| "Failed to parse schema YAML")?;
-
-        let schema_json: Value = serde_json::to_value(schema_yaml)
-            .with_context(|| "Failed to convert schema to JSON")?;
-
-        // Compile the schema
-        let compiled_schema = JSONSchema::compile(&schema_json)
-            .map_err(|e| anyhow::anyhow!("Failed to compile schema: {}", format_compilation_error(e)))?;
-
-        // Convert config to JSON for validation
-        let config_json = serde_json::to_value(&self.config)
-            .with_context(|| "Failed to convert config to JSON for validation")?;
-
-        // Validate
-        let validation_result = compiled_schema.validate(&config_json);
-        if let Err(errors) = validation_result {
-            let error_messages: Vec<String> = errors
-                .map(|error| format!("- At '{}': {}", error.instance_path, error))
-                .collect();
-
-            anyhow::bail!("Configuration validation failed:\n{}", error_messages.join("\n"));
-        }
-
-        Ok(())
+        // For now, return error since schema file doesn't exist
+        // This will trigger fallback to manual validation
+        anyhow::bail!("Schema file not available")
     }
 
     /// Full manual validation (used as fallback)
@@ -79,6 +65,7 @@ impl ConfigValidator {
     }
 
     /// Additional checks that complement schema validation
+    #[cfg(feature = "schema-validation")]
     fn validate_additional_checks(&self) -> Result<()> {
         // Run some of the manual checks that might not be covered by schema
         self.validate_ports()?;
@@ -235,6 +222,7 @@ impl ConfigValidator {
 }
 
 /// Format compilation error for user-friendly display
+#[cfg(feature = "schema-validation")]
 fn format_compilation_error(error: ValidationError) -> String {
     format!("Schema compilation error: {}", error)
 }

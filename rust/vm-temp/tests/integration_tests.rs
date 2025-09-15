@@ -279,6 +279,113 @@ fn test_mount_source_validation_edge_cases() -> Result<()> {
 }
 
 #[test]
+fn test_mount_path_edge_cases() -> Result<()> {
+    let fixture = IntegrationTestFixture::new()?;
+    let mut state = fixture.create_test_state();
+
+    // Test 1: Relative path handling
+    let relative_path = std::path::PathBuf::from("./relative_mount");
+    let result = state.add_mount(relative_path, MountPermission::ReadWrite);
+    // Should either canonicalize or reject relative paths
+    if let Err(err) = result {
+        let error_msg = err.to_string();
+        assert!(error_msg.contains("absolute") || error_msg.contains("does not exist"));
+    }
+
+    // Test 2: Path with ".." components
+    let parent_path = fixture._temp_dir.path().join("subdir").join("..").join("parent_test");
+    fs::create_dir_all(&parent_path)?;
+    let result = state.add_mount(parent_path, MountPermission::ReadWrite);
+    // Should handle path canonicalization
+    assert!(result.is_ok(), "Canonicalized paths should work");
+
+    // Test 3: Very long path names
+    let long_name = "a".repeat(255);
+    let long_path = fixture._temp_dir.path().join(&long_name);
+    // Only create if filesystem supports it
+    if fs::create_dir_all(&long_path).is_ok() {
+        let result = state.add_mount(long_path, MountPermission::ReadWrite);
+        assert!(result.is_ok(), "Long valid paths should work");
+    }
+
+    // Test 4: Path with spaces and special characters
+    let special_path = fixture._temp_dir.path().join("path with spaces & symbols");
+    fs::create_dir_all(&special_path)?;
+    let result = state.add_mount(special_path, MountPermission::ReadWrite);
+    assert!(result.is_ok(), "Paths with spaces and symbols should work");
+
+    // Test 5: Empty path string (converted to current directory)
+    let empty_path = std::path::PathBuf::from("");
+    let result = state.add_mount(empty_path, MountPermission::ReadWrite);
+    assert!(result.is_err(), "Empty paths should be rejected");
+
+    println!("✅ Mount path edge cases test passed");
+    Ok(())
+}
+
+#[test]
+fn test_mount_permission_scenarios() -> Result<()> {
+    let fixture = IntegrationTestFixture::new()?;
+    let mut state = fixture.create_test_state();
+
+    // Test 1: Read-only mount followed by read-write attempt on same path
+    let test_dir = fixture._temp_dir.path().join("permission_conflict");
+    fs::create_dir_all(&test_dir)?;
+
+    state.add_mount(test_dir.clone(), MountPermission::ReadOnly)?;
+    let result = state.add_mount(test_dir, MountPermission::ReadWrite);
+    assert!(result.is_err(), "Should reject duplicate mount with different permissions");
+
+    // Test 2: Multiple different paths with different permissions
+    let ro_dir = fixture._temp_dir.path().join("readonly_dir");
+    let rw_dir = fixture._temp_dir.path().join("readwrite_dir");
+    fs::create_dir_all(&ro_dir)?;
+    fs::create_dir_all(&rw_dir)?;
+
+    assert!(state.add_mount(ro_dir, MountPermission::ReadOnly).is_ok());
+    assert!(state.add_mount(rw_dir, MountPermission::ReadWrite).is_ok());
+
+    // Verify both mounts exist with correct permissions
+    assert_eq!(state.mount_count(), 3); // Initial + 2 new mounts
+
+    println!("✅ Mount permission scenarios test passed");
+    Ok(())
+}
+
+#[test]
+fn test_mount_filesystem_integration() -> Result<()> {
+    let fixture = IntegrationTestFixture::new()?;
+    let mut state = fixture.create_test_state();
+
+    // Test 1: Mount point with nested directory structure
+    let nested_source = fixture._temp_dir.path().join("deep").join("nested").join("structure");
+    fs::create_dir_all(&nested_source)?;
+    fs::write(nested_source.join("test_file.txt"), "nested content")?;
+
+    let result = state.add_mount(nested_source.clone(), MountPermission::ReadWrite);
+    assert!(result.is_ok(), "Deeply nested paths should work");
+
+    // Test 2: Mount point with existing files
+    let files_dir = fixture._temp_dir.path().join("with_files");
+    fs::create_dir_all(&files_dir)?;
+    for i in 0..5 {
+        fs::write(files_dir.join(format!("file_{}.txt", i)), format!("content {}", i))?;
+    }
+
+    let result = state.add_mount(files_dir, MountPermission::ReadOnly);
+    assert!(result.is_ok(), "Directories with existing files should work");
+
+    // Test 3: Hidden directory (starts with .)
+    let hidden_dir = fixture._temp_dir.path().join(".hidden_mount");
+    fs::create_dir_all(&hidden_dir)?;
+    let result = state.add_mount(hidden_dir, MountPermission::ReadWrite);
+    assert!(result.is_ok(), "Hidden directories should work");
+
+    println!("✅ Mount filesystem integration test passed");
+    Ok(())
+}
+
+#[test]
 fn test_state_file_atomic_operations() -> Result<()> {
     let fixture = IntegrationTestFixture::new()?;
     let state_manager = fixture.create_state_manager();
