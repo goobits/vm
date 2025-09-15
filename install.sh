@@ -39,9 +39,9 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Verify we're in the right directory
-if [[ ! -f "$SCRIPT_DIR/vm.sh" ]]; then
-    echo -e "${RED}❌ Error: Cannot find vm.sh in $SCRIPT_DIR${NC}"
-    echo "💡 Make sure you're running install.sh from the vm directory"
+if [[ ! -f "$SCRIPT_DIR/rust/Cargo.toml" ]]; then
+    echo -e "${RED}❌ Error: Cannot find rust/Cargo.toml in $SCRIPT_DIR${NC}"
+    echo "💡 Make sure you're running install.sh from the project root directory"
     exit 1
 fi
 
