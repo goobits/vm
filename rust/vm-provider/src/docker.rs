@@ -1,12 +1,14 @@
 use crate::{
     error::ProviderError,
     progress::ProgressReporter,
+    security::SecurityValidator,
     utils::{is_tool_installed, stream_command},
     Provider,
 };
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
+use tempfile::TempDir;
 use tera::{Tera, Context as TeraContext};
 use vm_config::config::VmConfig;
 use vm_temp::{TempVmState, TempProvider};
@@ -17,7 +19,7 @@ const DOCKERFILE_TEMPLATE: &str = include_str!("../../../providers/docker/Docker
 pub struct DockerProvider {
     config: VmConfig,
     _project_dir: PathBuf, // The root of the user's project
-    temp_dir: PathBuf,    // For storing generated files like docker-compose.yml
+    temp_dir: TempDir,    // Secure temporary directory for generated files like docker-compose.yml
 }
 
 impl DockerProvider {
@@ -27,8 +29,8 @@ impl DockerProvider {
         }
 
         let project_dir = std::env::current_dir()?;
-        let temp_dir = project_dir.join(".vm-tmp");
-        fs::create_dir_all(&temp_dir)?;
+        let temp_dir = TempDir::new()
+            .context("Failed to create secure temporary directory")?;
 
         Ok(Self {
             config,
@@ -72,7 +74,7 @@ impl DockerProvider {
 
     fn write_docker_compose(&self) -> Result<PathBuf> {
         let content = self.render_docker_compose()?;
-        let path = self.temp_dir.join("docker-compose.yml");
+        let path = self.temp_dir.path().join("docker-compose.yml");
         fs::write(&path, content.as_bytes())?;
         Ok(path)
     }
@@ -154,7 +156,7 @@ impl Provider for DockerProvider {
         // Copy config to container for Ansible
         progress.task(&provisioning_phase, "Loading project configuration...");
         let config_json = self.config.to_json().context("Failed to serialize config")?;
-        let temp_config_path = self.temp_dir.join("vm-config.json");
+        let temp_config_path = self.temp_dir.path().join("vm-config.json");
         fs::write(&temp_config_path, config_json)?;
 
         stream_command("docker", &[
@@ -196,7 +198,7 @@ impl Provider for DockerProvider {
     }
 
     fn start(&self) -> Result<()> {
-        let compose_path = self.temp_dir.join("docker-compose.yml");
+        let compose_path = self.temp_dir.path().join("docker-compose.yml");
         if !compose_path.exists() {
             self.write_docker_compose()?;
         }
@@ -208,7 +210,7 @@ impl Provider for DockerProvider {
     }
 
     fn stop(&self) -> Result<()> {
-        let compose_path = self.temp_dir.join("docker-compose.yml");
+        let compose_path = self.temp_dir.path().join("docker-compose.yml");
         if compose_path.exists() {
             stream_command(
                 "docker",
@@ -224,7 +226,7 @@ impl Provider for DockerProvider {
     }
 
     fn destroy(&self) -> Result<()> {
-        let compose_path = self.temp_dir.join("docker-compose.yml");
+        let compose_path = self.temp_dir.path().join("docker-compose.yml");
         if !compose_path.exists() {
             println!("docker-compose.yml not found. Attempting to remove container by name.");
             return stream_command("docker", &["rm", "-f", &self.container_name()]);
@@ -302,7 +304,7 @@ impl Provider for DockerProvider {
     }
 
     fn status(&self) -> Result<()> {
-        let compose_path = self.temp_dir.join("docker-compose.yml");
+        let compose_path = self.temp_dir.path().join("docker-compose.yml");
 
         if compose_path.exists() {
             // Use docker-compose ps for formatted status
@@ -369,7 +371,7 @@ impl Provider for DockerProvider {
 
         // Copy config to container for Ansible
         let config_json = self.config.to_json().context("Failed to serialize config")?;
-        let temp_config_path = self.temp_dir.join("vm-config.json");
+        let temp_config_path = self.temp_dir.path().join("vm-config.json");
         std::fs::write(&temp_config_path, config_json)?;
 
         stream_command("docker", &[
@@ -448,7 +450,7 @@ impl TempProvider for DockerProvider {
 
         progress.task(&main_phase, "Starting container...");
         // Start the container
-        let compose_path = self.temp_dir.join("docker-compose.yml");
+        let compose_path = self.temp_dir.path().join("docker-compose.yml");
         stream_command(
             "docker",
             &["compose", "-f", compose_path.to_str().unwrap(), "up", "-d"],
@@ -485,7 +487,7 @@ impl TempProvider for DockerProvider {
         // Generate docker-compose.yml with the new mounts
         let content = self.render_docker_compose_with_mounts(state)
             .context("Failed to render docker-compose.yml with mounts")?;
-        let compose_path = self.temp_dir.join("docker-compose.yml");
+        let compose_path = self.temp_dir.path().join("docker-compose.yml");
         fs::write(&compose_path, content.as_bytes())
             .context("Failed to write updated docker-compose.yml")?;
 

@@ -4,6 +4,7 @@ use vm_config::config::VmConfig;
 
 pub mod error;
 pub mod progress;
+pub mod security;
 pub mod utils;
 
 mod docker;

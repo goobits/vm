@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
-use vm_config::config_ops::ConfigOps;
+use vm_config::{ConfigOps, load_global_config};
 use vm_config::config::VmConfig;
 
 /// Test fixture that sets up temporary directories for testing
@@ -385,7 +385,7 @@ mod integration_tests {
         // Setup: Create global config
         ConfigOps::set("vm.memory", "8192", true)?;
         ConfigOps::set("provider", "vagrant", true)?;
-        let global_config = vm_config::config_ops::load_global_config();
+        let global_config = load_global_config();
 
         // Setup: Create preset
         let preset_content = r#"

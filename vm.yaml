@@ -7,13 +7,12 @@ project:
   hostname: dev.vm.local
 vm:
   box: ubuntu/jammy64
-  memory: 8192
+  memory: 4096
   cpus: 6
-  swap: 2048  # Swap size in MB (optional, defaults to 0)
-  swappiness: 30  # Swappiness value 0-100 (lower = less swap usage)
+  swap: 2048
+  swappiness: 30
   user: developer
   port_binding: 127.0.0.1
-  # timezone: auto  # Auto-detects from host (default)
 versions:
   node: '22'
   nvm: v0.40.3
@@ -24,28 +23,26 @@ terminal:
   username: vm-dev
   theme: dracula
   show_git_branch: true
-  shell: zsh  # Added supported field (defaults to bash if not specified)
+  shell: zsh
 apt_packages:
-  - htop
-  - tree
-  - ncdu
-  - ripgrep
-  - nano
-  - sox
-  - jq         # JSON processing
+- htop
+- tree
+- ncdu
+- ripgrep
+- nano
+- sox
+- jq
 npm_packages:
-  - '@anthropic-ai/claude-code'
-  - '@google/gemini-cli'
-  - npm-check-updates
-  - prettier
-  - eslint
+- '@anthropic-ai/claude-code'
+- '@google/gemini-cli'
+- npm-check-updates
+- prettier
+- eslint
 aliases:
   claudeyolo: claude --dangerously-skip-permissions
   geminiyolo: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini
 claude_sync: true
 gemini_sync: true
-# pip_packages:
-#   - example-package  # Add Python packages here if needed
 package_linking:
   npm: true
   pip: true

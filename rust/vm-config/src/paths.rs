@@ -50,18 +50,23 @@ pub fn get_tool_dir() -> PathBuf {
     env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
+/// Get the config directory
+/// Returns VM_TOOL_DIR/configs or ./configs
+pub fn get_config_dir() -> PathBuf {
+    let tool_dir = get_tool_dir();
+    tool_dir.join("configs")
+}
+
 /// Get the presets directory
 /// Returns VM_TOOL_DIR/configs/presets or ./configs/presets
 pub fn get_presets_dir() -> PathBuf {
-    let tool_dir = get_tool_dir();
-    tool_dir.join("configs").join("presets")
+    get_config_dir().join("presets")
 }
 
 /// Get the services directory
 /// Returns VM_TOOL_DIR/configs/services or ./configs/services
 pub fn get_services_dir() -> PathBuf {
-    let tool_dir = get_tool_dir();
-    tool_dir.join("configs").join("services")
+    get_config_dir().join("services")
 }
 
 /// Get the schema file path

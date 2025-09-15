@@ -2,17 +2,18 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::process::Command as ProcessCommand;
+use std::sync::atomic::{AtomicBool, Ordering};
 use vm_config::config::VmConfig;
 use vm_provider::get_provider;
 use vm_provider::progress::{confirm_prompt, ProgressReporter, StatusFormatter};
 
-// Global debug flag
-static mut DEBUG_ENABLED: bool = false;
+// Global debug flag (thread-safe)
+static DEBUG_ENABLED: AtomicBool = AtomicBool::new(false);
 
 // Debug output macro
 macro_rules! debug {
     ($($arg:tt)*) => {
-        if unsafe { DEBUG_ENABLED } {
+        if DEBUG_ENABLED.load(Ordering::Relaxed) {
             eprintln!("DEBUG: {}", format!($($arg)*));
         }
     };
@@ -243,9 +244,7 @@ fn main() -> Result<()> {
     let args = Args::parse();
 
     // Set global debug flag
-    unsafe {
-        DEBUG_ENABLED = args.debug;
-    }
+    DEBUG_ENABLED.store(args.debug, Ordering::Relaxed);
 
     debug!("Starting vm command with args: {:?}", args);
 
@@ -481,7 +480,23 @@ fn main() -> Result<()> {
     }
 }
 
+
 // Delegation functions for clean architecture
+
+fn find_binary(name: &str) -> String {
+    // Try to find binary in development/workspace location first
+    if let Ok(current_exe) = std::env::current_exe() {
+        if let Some(parent) = current_exe.parent() {
+            let dev_binary = parent.join(name);
+            if dev_binary.exists() {
+                return dev_binary.to_string_lossy().to_string();
+            }
+        }
+    }
+
+    // Fall back to PATH lookup
+    name.to_string()
+}
 
 fn delegate_to_vm_config(args: &[&str], file: Option<&PathBuf>) -> Result<()> {
     let mut cmd_args = vec!["vm-config"];
@@ -494,7 +509,8 @@ fn delegate_to_vm_config(args: &[&str], file: Option<&PathBuf>) -> Result<()> {
         cmd_args.push(&file_str);
     }
 
-    let status = ProcessCommand::new("vm-config")
+    let binary_path = find_binary("vm-config");
+    let status = ProcessCommand::new(&binary_path)
         .args(&cmd_args[1..])
         .status()
         .context("Failed to execute vm-config")?;
@@ -511,7 +527,8 @@ fn delegate_to_vm_generator(
     name: Option<&String>,
     output: Option<&PathBuf>
 ) -> Result<()> {
-    let mut cmd = ProcessCommand::new("vm-generator");
+    let binary_path = find_binary("vm-generator");
+    let mut cmd = ProcessCommand::new(&binary_path);
     cmd.arg("generate");
 
     if let Some(s) = services {
@@ -536,7 +553,8 @@ fn delegate_to_vm_generator(
 }
 
 fn delegate_to_vm_temp(command: &TempSubcommand) -> Result<()> {
-    let mut cmd = ProcessCommand::new("vm-temp");
+    let binary_path = find_binary("vm-temp");
+    let mut cmd = ProcessCommand::new(&binary_path);
 
     match command {
         TempSubcommand::Create { mounts, auto_destroy } => {
@@ -585,7 +603,8 @@ fn delegate_to_vm_temp(command: &TempSubcommand) -> Result<()> {
 }
 
 fn delegate_to_vm_config_for_config(command: &ConfigSubcommand) -> Result<()> {
-    let mut cmd = ProcessCommand::new("vm-config");
+    let binary_path = find_binary("vm-config");
+    let mut cmd = ProcessCommand::new(&binary_path);
 
     match command {
         ConfigSubcommand::Set { field, value, global } => {
@@ -639,7 +658,8 @@ fn delegate_to_vm_config_for_config(command: &ConfigSubcommand) -> Result<()> {
 }
 
 fn delegate_to_vm_config_for_preset(command: &PresetSubcommand) -> Result<()> {
-    let mut cmd = ProcessCommand::new("vm-config");
+    let binary_path = find_binary("vm-config");
+    let mut cmd = ProcessCommand::new(&binary_path);
     cmd.arg("preset");
 
     match command {

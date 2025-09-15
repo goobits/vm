@@ -745,10 +745,16 @@ pub fn load_and_merge_config(file: Option<PathBuf>, no_preset: bool) -> Result<V
         None => std::env::current_dir()?,
     };
 
-    // 4. Load embedded defaults configuration
-    const EMBEDDED_DEFAULTS: &str = include_str!("../../../defaults.yaml");
-    let base_config: VmConfig = serde_yaml::from_str(EMBEDDED_DEFAULTS)
-        .with_context(|| "Failed to parse embedded defaults configuration")?;
+    // 4. Load OS-specific defaults as the new base
+    let detected_os = user_config.as_ref().and_then(|c| c.os.as_deref())
+        .unwrap_or("ubuntu"); // Simple default for now
+    
+    let os_defaults_path = paths::get_config_dir().join("os_defaults").join(format!("{}.yaml", detected_os));
+    let os_defaults_config = if os_defaults_path.exists() {
+        VmConfig::from_file(&os_defaults_path)?
+    } else {
+        VmConfig::default()
+    };
 
     // 5. Detect and load project-specific preset
     let presets_dir = crate::paths::get_presets_dir();
@@ -770,8 +776,8 @@ pub fn load_and_merge_config(file: Option<PathBuf>, no_preset: bool) -> Result<V
     // 6. Load global configuration if it exists
     let global_config = crate::config_ops::load_global_config();
 
-    // 7. Merge in order: base -> global -> preset -> user
-    let merged = crate::merge::merge_configs(Some(base_config), global_config, preset_config, user_config)?;
+    // 7. Merge in order: os_defaults -> global -> preset -> user
+    let merged = crate::merge::merge_configs(Some(os_defaults_config), global_config, preset_config, user_config)?;
 
     // 8. Validate the final merged configuration against the schema
     let schema_path = crate::paths::get_schema_path();

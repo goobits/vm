@@ -1,6 +1,7 @@
 use crate::TempVmState;
 use anyhow::{Context, Result};
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
@@ -23,26 +24,32 @@ pub enum StateError {
 pub struct StateManager {
     state_dir: PathBuf,
     state_file: PathBuf,
+    temp_file_registry: PathBuf,
 }
 
 impl StateManager {
     /// Create a new state manager with default state directory
     pub fn new() -> Result<Self> {
         let state_dir = Self::default_state_dir()?;
+        fs::create_dir_all(&state_dir)?;
         let state_file = state_dir.join("temp-vm.state");
+        let temp_file_registry = state_dir.join(".temp_files.registry");
 
         Ok(Self {
             state_dir,
             state_file,
+            temp_file_registry,
         })
     }
 
     /// Create a new state manager with custom state directory
     pub fn with_state_dir(state_dir: PathBuf) -> Self {
         let state_file = state_dir.join("temp-vm.state");
+        let temp_file_registry = state_dir.join(".temp_files.registry");
         Self {
             state_dir,
             state_file,
+            temp_file_registry,
         }
     }
 
@@ -112,6 +119,41 @@ impl StateManager {
                 .with_context(|| format!("Failed to delete state file: {}", self.state_file.display()))?;
         }
         Ok(())
+    }
+
+    /// Create a new temporary file and register it for cleanup.
+    pub fn create_temp_file(&self, prefix: &str) -> Result<PathBuf> {
+        let temp_file = tempfile::Builder::new()
+            .prefix(prefix)
+            .tempfile_in(&self.state_dir)?;
+        let path = temp_file.into_temp_path().to_path_buf();
+
+        let mut registry = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.temp_file_registry)?;
+        writeln!(registry, "{}", path.display())?;
+
+        Ok(path)
+    }
+
+    /// Clean up all registered temporary files.
+    pub fn cleanup_temp_files(&self) {
+        if !self.temp_file_registry.exists() {
+            return;
+        }
+
+        if let Ok(content) = fs::read_to_string(&self.temp_file_registry) {
+            for path_str in content.lines() {
+                let path = Path::new(path_str);
+                if path.is_file() {
+                    let _ = fs::remove_file(path);
+                } else if path.is_dir() {
+                    let _ = fs::remove_dir_all(path);
+                }
+            }
+            let _ = fs::remove_file(&self.temp_file_registry);
+        }
     }
 
     /// Validate temp VM state for consistency and security

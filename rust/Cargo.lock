@@ -2151,7 +2151,6 @@ dependencies = [
  "tempfile",
  "vm-config",
  "vm-provider",
- "vm-temp",
 ]
 
 [[package]]
