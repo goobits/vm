@@ -252,9 +252,10 @@ mod tests {
             hostname: Some("test.local".to_string()),
             workspace_path: Some(crate::paths::get_default_workspace_path().to_string_lossy().to_string()),
             backup_pattern: None,
+            env_template_path: None,
         });
 
-        let validator = ConfigValidator::new(config);
+        let validator = ConfigValidator::new(config, std::path::PathBuf::from("test.yaml"));
         assert!(validator.validate().is_ok());
     }
 
@@ -267,7 +268,7 @@ mod tests {
             ..Default::default()
         });
 
-        let validator = ConfigValidator::new(config);
+        let validator = ConfigValidator::new(config, std::path::PathBuf::from("test.yaml"));
         assert!(validator.validate().is_err());
     }
 
@@ -279,9 +280,9 @@ mod tests {
             name: Some("test".to_string()),
             ..Default::default()
         });
-        config.ports.insert("web".to_string(), 70000);
+        config.ports.insert("web".to_string(), 0); // Port 0 is invalid
 
-        let validator = ConfigValidator::new(config);
+        let validator = ConfigValidator::new(config, std::path::PathBuf::from("test.yaml"));
         assert!(validator.validate().is_err());
     }
 }

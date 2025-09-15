@@ -227,14 +227,18 @@ fn main() -> Result<()> {
     // For commands that don't need a provider, handle them first.
     match &args.command {
         Command::Validate => {
+            debug!("Validating configuration: config_file={:?}, no_preset={}", args.config, args.no_preset);
             // The `load` function performs validation internally. If it succeeds,
             // the configuration is valid.
             match VmConfig::load(args.config, args.no_preset) {
-                Ok(_) => {
+                Ok(config) => {
+                    debug!("Configuration validation successful: provider={:?}, project_name={:?}",
+                           config.provider, config.project.as_ref().and_then(|p| p.name.as_ref()));
                     println!("✅ Configuration is valid.");
                     return Ok(());
                 }
                 Err(e) => {
+                    debug!("Configuration validation failed: {}", e);
                     eprintln!("❌ Configuration is invalid: {:#}", e);
                     // Return the error to exit with a non-zero status code
                     return Err(e);
@@ -242,8 +246,14 @@ fn main() -> Result<()> {
             }
         }
         Command::Init { file } => {
+            debug!("Initializing configuration file: custom_path={:?}", file);
             // Initialize a new vm.yaml configuration file
-            return vm_config::cli::init_config_file(file.clone());
+            let result = vm_config::cli::init_config_file(file.clone());
+            match &result {
+                Ok(_) => debug!("Configuration file initialization successful"),
+                Err(e) => debug!("Configuration file initialization failed: {}", e),
+            }
+            return result;
         }
         Command::Generate { services, ports, name, output } => {
             return handle_generate_command(services.clone(), ports.clone(), name.clone(), output.clone());
@@ -252,26 +262,37 @@ fn main() -> Result<()> {
             return handle_temp_command(command);
         }
         Command::Config { command } => {
-            return handle_config_command(command);
+            debug!("Config command: {:?}", command);
+            let result = handle_config_command(command);
+            match &result {
+                Ok(_) => debug!("Config command completed successfully"),
+                Err(e) => debug!("Config command failed: {}", e),
+            }
+            return result;
         }
         Command::Preset { command } => {
             // Handle preset commands
             let project_dir = std::env::current_dir()?;
             let presets_dir = paths::get_presets_dir();
+            debug!("Preset command: project_dir={:?}, presets_dir={:?}", project_dir, presets_dir);
             let detector = PresetDetector::new(project_dir, presets_dir);
 
             match command {
                 PresetSubcommand::List => {
+                    debug!("Listing available presets");
                     println!("Available presets:");
                     let presets = detector.list_presets()?;
+                    debug!("Found {} presets", presets.len());
                     for preset in presets {
                         println!("  {}", preset);
                     }
                     return Ok(());
                 }
                 PresetSubcommand::Show { name } => {
+                    debug!("Showing preset configuration: name='{}'", name);
                     let config = detector.load_preset(name)?;
                     let yaml = serde_yaml::to_string(&config)?;
+                    debug!("Successfully loaded preset '{}' configuration", name);
                     println!("Preset '{}' configuration:", name);
                     println!("{}", yaml);
                     return Ok(());
@@ -355,7 +376,9 @@ fn main() -> Result<()> {
             provider.kill()
         },
         Command::GetSyncDirectory => {
+            debug!("Getting sync directory for provider '{}'", provider.name());
             let sync_dir = provider.get_sync_directory()?;
+            debug!("Sync directory: '{}'", sync_dir);
             println!("{}", sync_dir);
             Ok(())
         },
@@ -367,6 +390,8 @@ fn main() -> Result<()> {
                 .map(|s| s.as_str())
                 .unwrap_or("VM");
 
+            debug!("Destroying VM: vm_name='{}', provider='{}'", vm_name, provider.name());
+
             // Initialize progress reporter
             let progress = ProgressReporter::new();
 
@@ -375,6 +400,7 @@ fn main() -> Result<()> {
             let confirmation_msg = format!("├─ ⚠️  Are you sure you want to destroy {}? This will delete all data. (y/N): ", vm_name);
 
             if confirm_prompt(&confirmation_msg) {
+                debug!("Destroy confirmation: response='yes', proceeding with destruction");
                 progress.subtask("├─", "Proceeding with destruction...");
                 let result = provider.destroy();
                 match result {
@@ -386,21 +412,26 @@ fn main() -> Result<()> {
                 }
                 result
             } else {
+                debug!("Destroy confirmation: response='no', cancelling destruction");
                 progress.error("└─", "Destruction cancelled");
                 std::process::exit(1);
             }
         }
         Command::Ssh { path } => {
             let relative_path = path.unwrap_or_else(|| PathBuf::from("."));
+            let workspace_path = config.project.as_ref()
+                .and_then(|p| p.workspace_path.as_deref())
+                .unwrap_or("/workspace");
+
+            debug!("SSH command: relative_path='{}', workspace_path='{}'",
+                   relative_path.display(), workspace_path);
+
             provider.ssh(&relative_path)
         }
         Command::Status => {
             // Enhanced status reporting using StatusFormatter
             let progress = ProgressReporter::new();
             let status_formatter = StatusFormatter::new();
-
-            progress.phase_header("📊", "STATUS CHECK");
-            progress.subtask("├─", "Checking VM status...");
 
             // Get VM name from config
             let vm_name = config.project.as_ref()
@@ -412,9 +443,16 @@ fn main() -> Result<()> {
             let memory = config.vm.as_ref().and_then(|vm| vm.memory);
             let cpus = config.vm.as_ref().and_then(|vm| vm.cpus);
 
+            debug!("Status check: vm_name='{}', provider='{}', memory={:?}, cpus={:?}",
+                   vm_name, provider.name(), memory, cpus);
+
+            progress.phase_header("📊", "STATUS CHECK");
+            progress.subtask("├─", "Checking VM status...");
+
             let result = provider.status();
             match result {
                 Ok(()) => {
+                    debug!("Status check successful for VM '{}'", vm_name);
                     progress.complete("└─", "Status check complete");
 
                     // Format status information
@@ -428,14 +466,21 @@ fn main() -> Result<()> {
                     );
                 }
                 Err(e) => {
+                    debug!("Status check failed for VM '{}': {}", vm_name, e);
                     progress.error("└─", &format!("Status check failed: {}", e));
                     return Err(e);
                 }
             }
             result
         }
-        Command::Exec { command } => provider.exec(&command),
-        Command::Logs => provider.logs(),
+        Command::Exec { command } => {
+            debug!("Executing command in VM: command={:?}, provider='{}'", command, provider.name());
+            provider.exec(&command)
+        },
+        Command::Logs => {
+            debug!("Viewing VM logs: provider='{}'", provider.name());
+            provider.logs()
+        },
         Command::Validate => unreachable!(), // Handled above
         Command::Init { .. } => unreachable!(), // Handled above
         Command::Preset { .. } => unreachable!(), // Handled above
@@ -685,25 +730,33 @@ fn handle_config_command(command: &ConfigSubcommand) -> Result<()> {
 
     match command {
         ConfigSubcommand::Set { field, value, global } => {
+            debug!("Config set: field='{}', value='{}', global={}", field, value, global);
             ConfigOps::set(field, value, *global)
         }
         ConfigSubcommand::Get { field, global } => {
+            debug!("Config get: field={:?}, global={}", field, global);
             ConfigOps::get(field.as_deref(), *global)
         }
         ConfigSubcommand::Unset { field, global } => {
+            debug!("Config unset: field='{}', global={}", field, global);
             ConfigOps::unset(field, *global)
         }
         ConfigSubcommand::Clear { global } => {
+            debug!("Config clear: global={}", global);
             ConfigOps::clear(*global)
         }
         ConfigSubcommand::Preset { names, global, list, show } => {
             if *list {
+                debug!("Config preset: list=true");
                 ConfigOps::preset("", false, true, None)
             } else if let Some(show_name) = show {
+                debug!("Config preset: show='{}'", show_name);
                 ConfigOps::preset("", false, false, Some(show_name))
             } else if let Some(preset_names) = names {
+                debug!("Config preset: apply names='{}', global={}", preset_names, global);
                 ConfigOps::preset(preset_names, *global, false, None)
             } else {
+                debug!("Config preset: invalid arguments - no names, list, or show specified");
                 anyhow::bail!("Must specify preset names, --list, or --show");
             }
         }
