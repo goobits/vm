@@ -1,4 +1,7 @@
 ---
+preset:
+  name: tart-linux
+  description: "Tart Linux - Ubuntu Linux VM for development on Apple Silicon"
 
 provider: tart
 
@@ -32,17 +35,16 @@ services:
     enabled: false
 
 # Package installation for Linux
-packages:
-  apt:
-    - build-essential
-    - git
-    - curl
-    - wget
-    - htop
-    - ripgrep
-    - tree
-    - vim
-    - tmux
+apt_packages:
+  - build-essential
+  - git
+  - curl
+  - wget
+  - htop
+  - ripgrep
+  - tree
+  - vim
+  - tmux
 
 # Terminal configuration for Linux
 terminal:

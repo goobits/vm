@@ -1,4 +1,7 @@
 ---
+preset:
+  name: tart-ubuntu
+  description: "Tart Ubuntu - Ubuntu Linux VM with development services on Apple Silicon"
 
 provider: tart
 
@@ -31,27 +34,26 @@ services:
     enabled: true
 
 # Ubuntu-specific packages
-packages:
-  apt:
-    - build-essential
-    - git
-    - curl
-    - wget
-    - software-properties-common
-    - apt-transport-https
-    - ca-certificates
-    - gnupg
-    - lsb-release
-    - python3-pip
-    - python3-venv
-    - nodejs
-    - npm
-    - htop
-    - ripgrep
-    - tree
-    - vim
-    - tmux
-    - zsh
+apt_packages:
+  - build-essential
+  - git
+  - curl
+  - wget
+  - software-properties-common
+  - apt-transport-https
+  - ca-certificates
+  - gnupg
+  - lsb-release
+  - python3-pip
+  - python3-venv
+  - nodejs
+  - npm
+  - htop
+  - ripgrep
+  - tree
+  - vim
+  - tmux
+  - zsh
 
 # Terminal configuration
 terminal:

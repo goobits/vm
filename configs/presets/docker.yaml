@@ -1,5 +1,7 @@
 ---
-# Docker Development Preset
+preset:
+  name: docker
+  description: "Docker Development - Container development and deployment tools"
 
 apt_packages:
   - docker.io
@@ -22,9 +24,9 @@ aliases:
   dexec: "docker exec -it"
 
 ports:
-  - 2375  # Docker daemon API (non-TLS)
-  - 2376  # Docker daemon API (TLS)
-  - 9000  # Portainer web UI
+  docker-api: 2375  # Docker daemon API (non-TLS)
+  docker-tls: 2376  # Docker daemon API (TLS)
+  portainer: 9000  # Portainer web UI
 
 services:
   postgresql:

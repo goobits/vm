@@ -1,5 +1,7 @@
 ---
-# Django Development Preset
+preset:
+  name: django
+  description: "Django Development - Python web framework with PostgreSQL and Redis"
 
 pip_packages:
   - django
@@ -18,9 +20,9 @@ npm_packages:
   - prettier  # For frontend assets
 
 ports:
-  - 8000  # Django dev server default
-  - 8001  # Alternative Django port
-  - 5555  # Celery flower monitoring
+  django: 8000  # Django dev server default
+  django-alt: 8001  # Alternative Django port
+  celery-flower: 5555  # Celery flower monitoring
 
 services:
   postgresql:

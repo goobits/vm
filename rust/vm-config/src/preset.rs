@@ -123,30 +123,46 @@ impl PresetDetector {
 
     /// Load a preset configuration by name
     pub fn load_preset(&self, name: &str) -> Result<VmConfig> {
-        let preset_path = self.presets_dir.join(format!("{}.yaml", name));
-
-        if !preset_path.exists() {
-            anyhow::bail!("Preset '{}' not found at {:?}", name, preset_path);
+        // Try embedded presets first
+        if let Some(content) = crate::embedded_presets::get_preset_content(name) {
+            let preset_file: PresetFile = serde_yaml::from_str(content)
+                .with_context(|| format!("Failed to parse embedded preset '{}'", name))?;
+            return Ok(preset_file.config);
         }
 
-        // Load as PresetFile to handle metadata wrapper
+        // Fallback to file system (for custom presets)
+        let preset_path = self.presets_dir.join(format!("{}.yaml", name));
+        if !preset_path.exists() {
+            anyhow::bail!("Preset '{}' not found (not embedded and no file at {:?})", name, preset_path);
+        }
+
         let content = std::fs::read_to_string(&preset_path)?;
         let preset_file: PresetFile = serde_yaml::from_str(&content)
             .with_context(|| format!("Failed to parse preset '{}'", name))?;
 
-        // Return just the config portion
         Ok(preset_file.config)
     }
 
     /// Get list of available presets
     pub fn list_presets(&self) -> Result<Vec<String>> {
-        let pattern = self.presets_dir.join("*.yaml").to_string_lossy().to_string();
         let mut presets = Vec::new();
 
-        for entry in glob(&pattern)? {
-            if let Ok(path) = entry {
-                if let Some(stem) = path.file_stem() {
-                    presets.push(stem.to_string_lossy().to_string());
+        // Add embedded presets
+        for name in crate::embedded_presets::get_preset_names() {
+            presets.push(name.to_string());
+        }
+
+        // Add file system presets (if presets dir exists)
+        if self.presets_dir.exists() {
+            let pattern = self.presets_dir.join("*.yaml").to_string_lossy().to_string();
+            for entry in glob(&pattern)? {
+                if let Ok(path) = entry {
+                    if let Some(stem) = path.file_stem() {
+                        let name = stem.to_string_lossy().to_string();
+                        if !presets.contains(&name) {
+                            presets.push(name);
+                        }
+                    }
                 }
             }
         }

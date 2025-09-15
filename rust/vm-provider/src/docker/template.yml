@@ -1,25 +1,24 @@
 # This is a Tera template for docker-compose.yml
 # It will be rendered by the vm-provider crate.
-version: '3.8'
 
 services:
   {{ config.project.name | default(value="vm-project") }}-dev:
     container_name: {{ config.project.name | default(value="vm-project") }}-dev
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
     image: {{ config.project.name | default(value="vm-project") }}:latest
     volumes:
       - ../..:/workspace:rw
       # Additional volumes for package linking, etc. can be added here dynamically
     ports:
-      {% for name, port in config.ports %}- "{{ port }}:{{ port }}"
-      {% endfor %}
+      {% if config.ports %}{% for name, port in config.ports %}- "{{ port }}:{{ port }}"
+      {% endfor %}{% endif %}
     environment:
       # Environment variables will be populated here
-      {% for name, value in config.environment %}- {{ name }}={{ value }}
-      {% endfor %}
+      {% if config.environment %}{% for name, value in config.environment %}- {{ name }}={{ value }}
+      {% endfor %}{% endif %}
     cap_add:
       - SYS_PTRACE
     security_opt:
-      - secomp=unconfined
+      - seccomp=unconfined

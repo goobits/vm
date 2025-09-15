@@ -8,12 +8,11 @@ use std::path::PathBuf;
 /// Configuration validator
 pub struct ConfigValidator {
     config: VmConfig,
-    schema_path: PathBuf,
 }
 
 impl ConfigValidator {
-    pub fn new(config: VmConfig, schema_path: PathBuf) -> Self {
-        Self { config, schema_path }
+    pub fn new(config: VmConfig, _schema_path: PathBuf) -> Self {
+        Self { config }
     }
 
     /// Validate the entire configuration
@@ -36,13 +35,9 @@ impl ConfigValidator {
 
     /// Validate using JSON Schema if available
     fn validate_with_schema(&self) -> Result<()> {
-        // Load the schema file
-        if !self.schema_path.exists() {
-            anyhow::bail!("Schema file not found: {:?}", self.schema_path);
-        }
-
-        let schema_content = std::fs::read_to_string(&self.schema_path)
-            .with_context(|| format!("Failed to read schema file: {:?}", self.schema_path))?;
+        // Use embedded schema content
+        const EMBEDDED_SCHEMA: &str = include_str!("../../../vm.schema.yaml");
+        let schema_content = EMBEDDED_SCHEMA;
 
         // Parse YAML schema and convert to JSON for jsonschema crate
         let schema_yaml: serde_yaml::Value = serde_yaml::from_str(&schema_content)

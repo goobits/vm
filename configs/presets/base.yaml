@@ -1,5 +1,7 @@
 ---
-# Generic Development Preset
+preset:
+  name: base
+  description: Generic development preset with basic tools
 
 pip_packages:
   - git-filter-repo

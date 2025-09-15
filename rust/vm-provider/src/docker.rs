@@ -11,6 +11,7 @@ use tera::{Tera, Context as TeraContext};
 use vm_config::config::VmConfig;
 
 const DOCKER_COMPOSE_TEMPLATE: &str = include_str!("docker/template.yml");
+const DOCKERFILE_TEMPLATE: &str = include_str!("../../../providers/docker/Dockerfile");
 
 pub struct DockerProvider {
     config: VmConfig,
@@ -62,6 +63,18 @@ impl DockerProvider {
         fs::write(&path, content.as_bytes())?;
         Ok(path)
     }
+
+    fn write_dockerfile(&self) -> Result<PathBuf> {
+        // Use the embedded Dockerfile template
+        let dockerfile_path = self._project_dir.join("Dockerfile");
+
+        // Check if Dockerfile already exists
+        if !dockerfile_path.exists() {
+            fs::write(&dockerfile_path, DOCKERFILE_TEMPLATE.as_bytes())?;
+        }
+
+        Ok(dockerfile_path)
+    }
 }
 
 impl Provider for DockerProvider {
@@ -75,21 +88,24 @@ impl Provider for DockerProvider {
 
         progress.task(&main_phase, "Generating docker-compose.yml...");
         let compose_path = self.write_docker_compose().context("Failed to generate docker-compose.yml")?;
+
+        progress.task(&main_phase, "Generating Dockerfile...");
+        let _dockerfile_path = self.write_dockerfile().context("Failed to generate Dockerfile")?;
         progress.finish_phase(&main_phase, "Done.");
 
         let build_phase = progress.start_phase("Building container image");
-        progress.task(&build_phase, "Running `docker-compose build`...");
+        progress.task(&build_phase, "Running `docker compose build`...");
         stream_command(
-            "docker-compose",
-            &["-f", compose_path.to_str().unwrap(), "build"],
+            "docker",
+            &["compose", "-f", compose_path.to_str().unwrap(), "build"],
         ).context("Docker build failed")?;
         progress.finish_phase(&build_phase, "Build complete.");
 
         let up_phase = progress.start_phase("Starting containers");
-        progress.task(&up_phase, "Running `docker-compose up -d`...");
+        progress.task(&up_phase, "Running `docker compose up -d`...");
         stream_command(
-            "docker-compose",
-            &["-f", compose_path.to_str().unwrap(), "up", "-d"],
+            "docker",
+            &["compose", "-f", compose_path.to_str().unwrap(), "up", "-d"],
         ).context("Docker up failed")?;
         progress.finish_phase(&up_phase, "Containers started.");
 
@@ -126,8 +142,8 @@ impl Provider for DockerProvider {
         }
 
         stream_command(
-            "docker-compose",
-            &["-f", compose_path.to_str().unwrap(), "down", "--volumes"],
+            "docker",
+            &["compose", "-f", compose_path.to_str().unwrap(), "down", "--volumes"],
         )
     }
 

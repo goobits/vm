@@ -1,5 +1,7 @@
 ---
-# Kubernetes Development Preset
+preset:
+  name: kubernetes
+  description: "Kubernetes Development - Tools for Kubernetes development and deployment"
 
 apt_packages:
   - curl
@@ -7,9 +9,7 @@ apt_packages:
   - software-properties-common
 
 # Note: kubectl and helm should be installed via their official installation methods
-snap_packages:
-  - kubectl --classic
-  - helm --classic
+# snap_packages not supported in current schema
 
 pip_packages:
   - kubernetes
@@ -28,11 +28,11 @@ aliases:
   kexec: "kubectl exec -it"
 
 ports:
-  - 8080  # Kubernetes dashboard
-  - 6443  # Kubernetes API server
-  - 10250 # Kubelet API
-  - 9090  # Prometheus (common in k8s)
-  - 3000  # Grafana (common in k8s)
+  dashboard: 8080  # Kubernetes dashboard
+  api-server: 6443  # Kubernetes API server
+  kubelet: 10250 # Kubelet API
+  prometheus: 9090  # Prometheus (common in k8s)
+  grafana: 3000  # Grafana (common in k8s)
 
 services:
   postgresql:

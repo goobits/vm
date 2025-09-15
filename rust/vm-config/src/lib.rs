@@ -5,3 +5,4 @@ pub mod validate;
 pub mod cli;
 pub mod yaml_ops;
 pub mod paths;
+pub mod embedded_presets;

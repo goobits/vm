@@ -1,7 +1,7 @@
 ---
-# Node.js Development Preset
-# name: "Node.js Development"
-# description: "Optimized for JavaScript/TypeScript projects"
+preset:
+  name: nodejs
+  description: "Node.js Development - Optimized for JavaScript/TypeScript projects"
 
 npm_packages:
   - prettier

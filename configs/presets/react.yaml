@@ -1,5 +1,7 @@
 ---
-# React Development Preset
+preset:
+  name: react
+  description: "React Development - Modern frontend development with React, Vite, and testing tools"
 
 npm_packages:
   - create-react-app
@@ -15,9 +17,9 @@ pip_packages:
   - git-filter-repo
 
 ports:
-  - 3000  # React dev server default
-  - 3001  # Alternative React port
-  - 5173  # Vite dev server
+  react: 3000  # React dev server default
+  react-alt: 3001  # Alternative React port
+  vite: 5173  # Vite dev server
 
 services:
   redis:

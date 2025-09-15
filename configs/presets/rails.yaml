@@ -1,5 +1,7 @@
 ---
-# Ruby on Rails Development Preset
+preset:
+  name: rails
+  description: "Ruby on Rails Development - Full-stack Ruby web framework with PostgreSQL and Redis"
 
 apt_packages:
   - ruby-dev
@@ -24,9 +26,9 @@ npm_packages:
   - webpack
 
 ports:
-  - 3000  # Rails server default
-  - 3001  # Alternative Rails port
-  - 4567  # Sidekiq web UI
+  rails: 3000  # Rails server default
+  rails-alt: 3001  # Alternative Rails port
+  sidekiq: 4567  # Sidekiq web UI
 
 services:
   postgresql:

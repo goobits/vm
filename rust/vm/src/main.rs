@@ -23,6 +23,12 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Initialize a new vm.yaml configuration file
+    Init {
+        /// Custom configuration file path
+        #[arg(short, long)]
+        file: Option<PathBuf>,
+    },
     /// Create and provision a new VM
     Create,
     /// Start an existing VM
@@ -55,20 +61,27 @@ fn main() -> Result<()> {
     let args = Args::parse();
 
     // For commands that don't need a provider, handle them first.
-    if let Command::Validate = args.command {
-        // The `load` function performs validation internally. If it succeeds,
-        // the configuration is valid.
-        match VmConfig::load(args.config, args.no_preset) {
-            Ok(_) => {
-                println!("✅ Configuration is valid.");
-                return Ok(());
-            }
-            Err(e) => {
-                eprintln!("❌ Configuration is invalid: {:#}", e);
-                // Return the error to exit with a non-zero status code
-                return Err(e);
+    match &args.command {
+        Command::Validate => {
+            // The `load` function performs validation internally. If it succeeds,
+            // the configuration is valid.
+            match VmConfig::load(args.config, args.no_preset) {
+                Ok(_) => {
+                    println!("✅ Configuration is valid.");
+                    return Ok(());
+                }
+                Err(e) => {
+                    eprintln!("❌ Configuration is invalid: {:#}", e);
+                    // Return the error to exit with a non-zero status code
+                    return Err(e);
+                }
             }
         }
+        Command::Init { file } => {
+            // Initialize a new vm.yaml configuration file
+            return vm_config::cli::init_config_file(file.clone());
+        }
+        _ => {} // Continue to provider-based commands
     }
 
     // 1. Load configuration
@@ -92,5 +105,6 @@ fn main() -> Result<()> {
         Command::Exec { command } => provider.exec(&command),
         Command::Logs => provider.logs(),
         Command::Validate => unreachable!(), // Handled above
+        Command::Init { .. } => unreachable!(), // Handled above
     }
 }

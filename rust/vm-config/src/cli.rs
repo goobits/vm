@@ -350,6 +350,83 @@ impl std::str::FromStr for OutputFormat {
     }
 }
 
+/// Initialize a new vm.yaml configuration file
+pub fn init_config_file(file_path: Option<PathBuf>) -> Result<()> {
+    use regex::Regex;
+
+    // Determine target path
+    let target_path = match file_path {
+        Some(path) => {
+            if path.is_dir() {
+                path.join("vm.yaml")
+            } else {
+                path
+            }
+        }
+        None => std::env::current_dir()?.join("vm.yaml")
+    };
+
+    // Check if vm.yaml already exists
+    if target_path.exists() {
+        anyhow::bail!("❌ vm.yaml already exists at {}\nUse --file to specify a different location or remove the existing file.", target_path.display());
+    }
+
+    // Get current directory name for project name
+    let current_dir = std::env::current_dir()?;
+    let dir_name = current_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("vm-project");
+
+    // Sanitize directory name for use as project name
+    // Replace dots, spaces, and other invalid characters with hyphens
+    // Then remove any consecutive hyphens and trim leading/trailing hyphens
+    let re = Regex::new(r"[^a-zA-Z0-9_-]").unwrap();
+    let sanitized_name = re.replace_all(dir_name, "-");
+    let re_consecutive = Regex::new(r"-+").unwrap();
+    let sanitized_name = re_consecutive.replace_all(&sanitized_name, "-");
+    let sanitized_name = sanitized_name.trim_matches('-');
+
+    // If the sanitized name is different, inform the user
+    if sanitized_name != dir_name {
+        println!("📝 Note: Directory name '{}' contains invalid characters for project names.", dir_name);
+        println!("   Using sanitized name: '{}'", sanitized_name);
+        println!();
+    }
+
+    // Load embedded defaults
+    const EMBEDDED_DEFAULTS: &str = include_str!("../../../defaults.yaml");
+    let mut config: VmConfig = serde_yaml::from_str(EMBEDDED_DEFAULTS)
+        .context("Failed to parse embedded defaults")?;
+
+    // Customize config for this directory
+    if let Some(ref mut project) = config.project {
+        project.name = Some(sanitized_name.to_string());
+        project.hostname = Some(format!("dev.{}.local", sanitized_name));
+    }
+
+    if let Some(ref mut terminal) = config.terminal {
+        terminal.username = Some(format!("{}-dev", sanitized_name));
+    }
+
+    // Convert to YAML
+    let yaml_content = serde_yaml::to_string(&config)
+        .context("Failed to serialize configuration to YAML")?;
+
+    // Write the YAML to file
+    std::fs::write(&target_path, yaml_content)
+        .context(format!("Failed to write vm.yaml to {}", target_path.display()))?;
+
+    println!("✅ Created vm.yaml for project: {}", sanitized_name);
+    println!("📍 Configuration file: {}", target_path.display());
+    println!();
+    println!("Next steps:");
+    println!("  1. Review and customize vm.yaml as needed");
+    println!("  2. Run \"vm create\" to start your development environment");
+
+    Ok(())
+}
+
 pub fn execute(args: Args) -> Result<()> {
     match args.command {
         Command::Merge { base, overlay, format } => {
@@ -615,13 +692,13 @@ pub fn load_and_merge_config(file: Option<PathBuf>, no_preset: bool) -> Result<V
         None => std::env::current_dir()?,
     };
 
-    // 4. Load base preset (which acts as the default config)
-    let presets_dir = crate::paths::get_presets_dir();
-    let base_preset_path = presets_dir.join("base.yaml");
-    let base_config = VmConfig::from_file(&base_preset_path)
-        .with_context(|| format!("Failed to load base preset from: {:?}", base_preset_path))?;
+    // 4. Load embedded defaults configuration
+    const EMBEDDED_DEFAULTS: &str = include_str!("../../../defaults.yaml");
+    let base_config: VmConfig = serde_yaml::from_str(EMBEDDED_DEFAULTS)
+        .with_context(|| "Failed to parse embedded defaults configuration")?;
 
     // 5. Detect and load project-specific preset
+    let presets_dir = crate::paths::get_presets_dir();
     let preset_config = if !no_preset {
         let detector = crate::preset::PresetDetector::new(project_dir, presets_dir);
         if let Some(preset_name) = detector.detect()? {

@@ -1,5 +1,7 @@
 ---
-# Python Development Preset
+preset:
+  name: python
+  description: "Python Development - General Python development with testing and linting tools"
 
 pip_packages:
   - black
