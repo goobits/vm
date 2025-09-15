@@ -1,13 +1,10 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-use std::fs;
+use std::process::Command as ProcessCommand;
 use vm_config::config::VmConfig;
-use vm_config::preset::PresetDetector;
-use vm_config::paths;
 use vm_provider::get_provider;
 use vm_provider::progress::{confirm_prompt, ProgressReporter, StatusFormatter};
-use vm_temp::{TempVmState, StateManager, MountPermission, MountParser};
 
 // Global debug flag
 static mut DEBUG_ENABLED: bool = false;
@@ -274,58 +271,24 @@ fn main() -> Result<()> {
             }
         }
         Command::Init { file } => {
-            debug!("Initializing configuration file: custom_path={:?}", file);
-            // Initialize a new vm.yaml configuration file
-            let result = vm_config::cli::init_config_file(file.clone());
-            match &result {
-                Ok(_) => debug!("Configuration file initialization successful"),
-                Err(e) => debug!("Configuration file initialization failed: {}", e),
-            }
-            return result;
+            debug!("Delegating to vm-config binary: init command");
+            return delegate_to_vm_config(&["init"], file.as_ref());
         }
         Command::Generate { services, ports, name, output } => {
-            return handle_generate_command(services.clone(), ports.clone(), name.clone(), output.clone());
+            debug!("Delegating to vm-generator binary");
+            return delegate_to_vm_generator(services.as_ref(), *ports, name.as_ref(), output.as_ref());
         }
         Command::Temp { command } | Command::Tmp { command } => {
-            return handle_temp_command(command);
+            debug!("Delegating to vm-temp binary");
+            return delegate_to_vm_temp(command);
         }
         Command::Config { command } => {
-            debug!("Config command: {:?}", command);
-            let result = handle_config_command(command);
-            match &result {
-                Ok(_) => debug!("Config command completed successfully"),
-                Err(e) => debug!("Config command failed: {}", e),
-            }
-            return result;
+            debug!("Delegating to vm-config binary: config command");
+            return delegate_to_vm_config_for_config(command);
         }
         Command::Preset { command } => {
-            // Handle preset commands
-            let project_dir = std::env::current_dir()?;
-            let presets_dir = paths::get_presets_dir();
-            debug!("Preset command: project_dir={:?}, presets_dir={:?}", project_dir, presets_dir);
-            let detector = PresetDetector::new(project_dir, presets_dir);
-
-            match command {
-                PresetSubcommand::List => {
-                    debug!("Listing available presets");
-                    println!("Available presets:");
-                    let presets = detector.list_presets()?;
-                    debug!("Found {} presets", presets.len());
-                    for preset in presets {
-                        println!("  {}", preset);
-                    }
-                    return Ok(());
-                }
-                PresetSubcommand::Show { name } => {
-                    debug!("Showing preset configuration: name='{}'", name);
-                    let config = detector.load_preset(name)?;
-                    let yaml = serde_yaml::to_string(&config)?;
-                    debug!("Successfully loaded preset '{}' configuration", name);
-                    println!("Preset '{}' configuration:", name);
-                    println!("{}", yaml);
-                    return Ok(());
-                }
-            }
+            debug!("Delegating to vm-config binary: preset command");
+            return delegate_to_vm_config_for_preset(command);
         }
         _ => {} // Continue to provider-based commands
     }
@@ -518,439 +481,180 @@ fn main() -> Result<()> {
     }
 }
 
-// Generate command implementation
-fn handle_generate_command(
-    services: Option<String>,
-    ports: Option<u16>,
-    name: Option<String>,
-    output: Option<PathBuf>,
-) -> Result<()> {
-    debug!("Generate command: services={:?}, ports={:?}, name={:?}, output={:?}",
-           services, ports, name, output);
-    println!("⚙️ Generating configuration...");
+// Delegation functions for clean architecture
 
-    // Load base config from defaults
-    const EMBEDDED_DEFAULTS: &str = include_str!("../../../defaults.yaml");
-    let mut config: VmConfig = serde_yaml::from_str(EMBEDDED_DEFAULTS)
-        .context("Failed to parse embedded defaults")?;
+fn delegate_to_vm_config(args: &[&str], file: Option<&PathBuf>) -> Result<()> {
+    let mut cmd_args = vec!["vm-config"];
+    cmd_args.extend(args);
 
-    // Parse and merge services
-    if let Some(ref services_str) = services {
-        let service_list: Vec<String> = services_str
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .collect();
-
-        for service in service_list {
-            debug!("Loading service config: {}", service);
-            // Load service config
-            let service_path = paths::resolve_tool_path(format!("configs/services/{}.yaml", service));
-            debug!("Service config path: {:?}", service_path);
-            if !service_path.exists() {
-                eprintln!("❌ Unknown service: {}", service);
-                eprintln!("💡 Available services: postgresql, redis, mongodb, docker");
-                return Err(anyhow::anyhow!("Service configuration not found"));
-            }
-
-            let service_config = VmConfig::from_file(&service_path)
-                .with_context(|| format!("Failed to load service config: {}", service))?;
-            debug!("Loaded service config for: {}", service);
-
-            // Merge service config into base
-            config = vm_config::merge::ConfigMerger::new(config)
-                .merge(service_config)?;
-            debug!("Merged service config: {}", service);
-        }
+    let file_str;
+    if let Some(f) = file {
+        cmd_args.push("--file");
+        file_str = f.to_string_lossy().to_string();
+        cmd_args.push(&file_str);
     }
 
-    // Apply port configuration
-    if let Some(port_start) = ports {
-        if port_start < 1024 || port_start > 65535 {
-            return Err(anyhow::anyhow!("Invalid port number: {} (must be between 1024-65535)", port_start));
-        }
+    let status = ProcessCommand::new("vm-config")
+        .args(&cmd_args[1..])
+        .status()
+        .context("Failed to execute vm-config")?;
 
-        // Allocate sequential ports
-        config.ports.insert("web".to_string(), port_start);
-        config.ports.insert("api".to_string(), port_start + 1);
-        config.ports.insert("postgresql".to_string(), port_start + 5);
-        config.ports.insert("redis".to_string(), port_start + 6);
-        config.ports.insert("mongodb".to_string(), port_start + 7);
+    if !status.success() {
+        std::process::exit(status.code().unwrap_or(1));
     }
-
-    // Apply project name
-    if let Some(ref project_name) = name {
-        if let Some(ref mut project) = config.project {
-            project.name = Some(project_name.clone());
-            project.hostname = Some(format!("dev.{}.local", project_name));
-        }
-        if let Some(ref mut terminal) = config.terminal {
-            terminal.username = Some(format!("{}-dev", project_name));
-        }
-    }
-
-    // Write to output file
-    let output_path = output.unwrap_or_else(|| PathBuf::from("vm.yaml"));
-    let yaml = serde_yaml::to_string(&config)?;
-    fs::write(&output_path, yaml).context("Failed to write configuration file")?;
-
-    println!("✅ Generated {}", output_path.display());
-    if let Some(ref services_str) = services {
-        println!("   Services: {}", services_str);
-    }
-    if let Some(port_start) = ports {
-        println!("   Port range: {}-{}", port_start, port_start + 9);
-    }
-    if let Some(ref project_name) = name {
-        println!("   Project name: {}", project_name);
-    }
-
     Ok(())
 }
 
-// Temp command implementation
-fn handle_temp_command(command: &TempSubcommand) -> Result<()> {
-    debug!("Temp command: {:?}", command);
-    let state_manager = StateManager::new()
-        .context("Failed to initialize state manager")?;
+fn delegate_to_vm_generator(
+    services: Option<&String>,
+    ports: Option<u16>,
+    name: Option<&String>,
+    output: Option<&PathBuf>
+) -> Result<()> {
+    let mut cmd = ProcessCommand::new("vm-generator");
+    cmd.arg("generate");
+
+    if let Some(s) = services {
+        cmd.arg("--services").arg(s);
+    }
+    if let Some(p) = ports {
+        cmd.arg("--ports").arg(p.to_string());
+    }
+    if let Some(n) = name {
+        cmd.arg("--name").arg(n);
+    }
+    if let Some(o) = output {
+        cmd.arg(o);
+    }
+
+    let status = cmd.status().context("Failed to execute vm-generator")?;
+
+    if !status.success() {
+        std::process::exit(status.code().unwrap_or(1));
+    }
+    Ok(())
+}
+
+fn delegate_to_vm_temp(command: &TempSubcommand) -> Result<()> {
+    let mut cmd = ProcessCommand::new("vm-temp");
 
     match command {
         TempSubcommand::Create { mounts, auto_destroy } => {
-            // Parse mount strings using MountParser
-            let parsed_mounts = MountParser::parse_mount_strings(mounts)
-                .context("Failed to parse mount strings")?;
-
-            // Get current project directory
-            let project_dir = std::env::current_dir()
-                .context("Failed to get current directory")?;
-
-            // Create temp VM state
-            let mut temp_state = TempVmState::new(
-                "vm-temp-dev".to_string(),
-                "docker".to_string(),
-                project_dir,
-                *auto_destroy,
-            );
-
-            // Add all mounts to the state
-            for (source, target, permissions) in parsed_mounts {
-                if let Some(target_path) = target {
-                    temp_state.add_mount_with_target(source, target_path, permissions)
-                        .context("Failed to add mount with custom target")?;
-                } else {
-                    temp_state.add_mount(source, permissions)
-                        .context("Failed to add mount")?;
-                }
+            cmd.arg("create");
+            for mount in mounts {
+                cmd.arg(mount);
             }
-
-            // Create minimal temp config
-            let temp_config = create_temp_config()?;
-
-            // Create the VM
-            println!("🚀 Creating temporary VM...");
-            let provider = get_provider(temp_config)?;
-            provider.create()?;
-
-            // Save state
-            state_manager.save_state(&temp_state)
-                .context("Failed to save temp VM state")?;
-
-            println!("✅ Temporary VM created with {} mount(s)", temp_state.mount_count());
-
             if *auto_destroy {
-                // SSH then destroy
-                println!("🔗 Connecting to temporary VM...");
-                provider.ssh(&PathBuf::from("."))?;
-
-                println!("🗑️ Auto-destroying temporary VM...");
-                provider.destroy()?;
-                state_manager.delete_state()
-                    .context("Failed to delete temp VM state")?;
-            } else {
-                println!("💡 Use 'vm temp ssh' to connect");
-                println!("   Use 'vm temp destroy' when done");
+                cmd.arg("--auto-destroy");
             }
-
-            Ok(())
         }
-        TempSubcommand::Ssh => {
-            if !state_manager.state_exists() {
-                return Err(anyhow::anyhow!("No temp VM found\n💡 Create one with: vm temp create ./your-directory"));
-            }
-
-            let temp_config = create_temp_config()?;
-            let provider = get_provider(temp_config)?;
-            provider.ssh(&PathBuf::from("."))
-        }
-        TempSubcommand::Status => {
-            if !state_manager.state_exists() {
-                println!("❌ No temp VM found");
-                println!("💡 Create one with: vm temp create ./your-directory");
-                return Ok(());
-            }
-
-            let state = state_manager.load_state()
-                .context("Failed to load temp VM state")?;
-
-            println!("📊 Temp VM Status:");
-            println!("   Container: {}", state.container_name);
-            println!("   Provider: {}", state.provider);
-            println!("   Created: {}", state.created_at.format("%Y-%m-%d %H:%M:%S UTC"));
-            println!("   Project: {}", state.project_dir.display());
-            println!("   Mounts: {}", state.mount_count());
-            if state.is_auto_destroy() {
-                println!("   Auto-destroy: enabled");
-            }
-
-            // Check provider status
-            let temp_config = create_temp_config()?;
-            let provider = get_provider(temp_config)?;
-            provider.status()
-        }
-        TempSubcommand::Destroy => {
-            if !state_manager.state_exists() {
-                return Err(anyhow::anyhow!("No temp VM found"));
-            }
-
-            let temp_config = create_temp_config()?;
-            let provider = get_provider(temp_config)?;
-
-            println!("🗑️ Destroying temporary VM...");
-            provider.destroy()?;
-            state_manager.delete_state()
-                .context("Failed to delete temp VM state")?;
-
-            println!("✅ Temporary VM destroyed");
-            Ok(())
-        }
+        TempSubcommand::Ssh => { cmd.arg("ssh"); }
+        TempSubcommand::Status => { cmd.arg("status"); }
+        TempSubcommand::Destroy => { cmd.arg("destroy"); }
         TempSubcommand::Mount { path, yes } => {
-            if !state_manager.state_exists() {
-                return Err(anyhow::anyhow!("No temp VM found. Create one first with: vm temp create"));
+            cmd.arg("mount").arg(path);
+            if *yes {
+                cmd.arg("--yes");
             }
-
-            // Parse the mount string
-            let (source, target, permissions) = MountParser::parse_mount_string(path)
-                .context("Failed to parse mount string")?;
-
-            // Load current state
-            let mut state = state_manager.load_state()
-                .context("Failed to load temp VM state")?;
-
-            // Check if mount already exists
-            if state.has_mount(&source) {
-                return Err(anyhow::anyhow!("Mount already exists for source: {}", source.display()));
-            }
-
-            // Confirm action unless --yes flag is used
-            if !yes {
-                let confirmation_msg = format!("Add mount {} to temp VM? (y/N): ", source.display());
-                if !confirm_prompt(&confirmation_msg) {
-                    println!("❌ Mount operation cancelled");
-                    return Ok(());
-                }
-            }
-
-            // Add the mount
-            let permissions_display = permissions.to_string();
-            if let Some(target_path) = target {
-                state.add_mount_with_target(source.clone(), target_path, permissions)
-                    .context("Failed to add mount with custom target")?;
-            } else {
-                state.add_mount(source.clone(), permissions)
-                    .context("Failed to add mount")?;
-            }
-
-            // Save updated state
-            state_manager.save_state(&state)
-                .context("Failed to save updated temp VM state")?;
-
-            println!("🔗 Mount added: {} ({})", source.display(), permissions_display);
-            println!("💡 VM will need to be recreated for mount to take effect");
-            println!("   Use 'vm temp restart' to apply changes");
-
-            Ok(())
         }
         TempSubcommand::Unmount { path, all, yes } => {
-            if !state_manager.state_exists() {
-                return Err(anyhow::anyhow!("No temp VM found"));
+            cmd.arg("unmount");
+            if let Some(p) = path {
+                cmd.arg("--path").arg(p);
             }
-
-            // Load current state
-            let mut state = state_manager.load_state()
-                .context("Failed to load temp VM state")?;
-
             if *all {
-                if !yes {
-                    let confirmation_msg = format!("Remove all {} mounts from temp VM? (y/N): ", state.mount_count());
-                    if !confirm_prompt(&confirmation_msg) {
-                        println!("❌ Unmount operation cancelled");
-                        return Ok(());
-                    }
-                }
-
-                let mount_count = state.mount_count();
-                state.clear_mounts();
-
-                // Save updated state
-                state_manager.save_state(&state)
-                    .context("Failed to save updated temp VM state")?;
-
-                println!("🗑️ Removed all {} mount(s)", mount_count);
-            } else if let Some(path_str) = path {
-                let source_path = PathBuf::from(path_str);
-
-                if !state.has_mount(&source_path) {
-                    return Err(anyhow::anyhow!("Mount not found for source: {}", source_path.display()));
-                }
-
-                if !yes {
-                    let confirmation_msg = format!("Remove mount {} from temp VM? (y/N): ", source_path.display());
-                    if !confirm_prompt(&confirmation_msg) {
-                        println!("❌ Unmount operation cancelled");
-                        return Ok(());
-                    }
-                }
-
-                let removed_mount = state.remove_mount(&source_path)
-                    .context("Failed to remove mount")?;
-
-                // Save updated state
-                state_manager.save_state(&state)
-                    .context("Failed to save updated temp VM state")?;
-
-                println!("🗑️ Removed mount: {} ({})", removed_mount.source.display(), removed_mount.permissions);
-            } else {
-                return Err(anyhow::anyhow!("Must specify --path or --all"));
+                cmd.arg("--all");
             }
-
-            println!("💡 VM will need to be recreated for changes to take effect");
-            println!("   Use 'vm temp restart' to apply changes");
-
-            Ok(())
-        }
-        TempSubcommand::Mounts => {
-            if !state_manager.state_exists() {
-                println!("❌ No temp VM found");
-                return Ok(());
+            if *yes {
+                cmd.arg("--yes");
             }
-
-            let state = state_manager.load_state()
-                .context("Failed to load temp VM state")?;
-
-            if state.mount_count() == 0 {
-                println!("📁 No mounts configured");
-                return Ok(());
-            }
-
-            println!("📁 Current mounts ({}):", state.mount_count());
-            for mount in state.get_mounts() {
-                println!("   {} → {} ({})",
-                    mount.source.display(),
-                    mount.target.display(),
-                    mount.permissions
-                );
-            }
-
-            // Show mount summary by permission
-            let ro_count = state.mount_count_by_permission(MountPermission::ReadOnly);
-            let rw_count = state.mount_count_by_permission(MountPermission::ReadWrite);
-
-            println!("   {} read-only, {} read-write", ro_count, rw_count);
-
-            Ok(())
         }
-        TempSubcommand::List => {
-            // For now, just show if there's a temp VM
-            if state_manager.state_exists() {
-                let state = state_manager.load_state()
-                    .context("Failed to load temp VM state")?;
-
-                println!("📋 Temp VMs:");
-                println!("   {} ({})", state.container_name, state.provider);
-                println!("      Created: {}", state.created_at.format("%Y-%m-%d %H:%M:%S"));
-                println!("      Project: {}", state.project_dir.display());
-                println!("      Mounts: {}", state.mount_count());
-            } else {
-                println!("📋 No temp VMs found");
-            }
-
-            Ok(())
-        }
-        TempSubcommand::Stop => {
-            println!("⏸️  Stop command not yet implemented");
-            println!("💡 Use 'vm temp destroy' to remove the VM completely");
-            Ok(())
-        }
-        TempSubcommand::Start => {
-            println!("▶️  Start command not yet implemented");
-            println!("💡 Use 'vm temp create' to create a new temp VM");
-            Ok(())
-        }
-        TempSubcommand::Restart => {
-            println!("🔄 Restart command not yet implemented");
-            println!("💡 Use 'vm temp destroy' then 'vm temp create' for now");
-            Ok(())
-        }
-    }
-}
-
-// Helper function to create temp VM config
-fn create_temp_config() -> Result<VmConfig> {
-    let mut config = VmConfig::default();
-    config.provider = Some("docker".to_string());
-
-    if let Some(ref mut project) = config.project {
-        project.name = Some("vm-temp".to_string());
-        project.hostname = Some("vm-temp.local".to_string());
-        project.workspace_path = Some("/workspace".to_string());
-    } else {
-        config.project = Some(vm_config::config::ProjectConfig {
-            name: Some("vm-temp".to_string()),
-            hostname: Some("vm-temp.local".to_string()),
-            workspace_path: Some("/workspace".to_string()),
-            backup_pattern: None,
-            env_template_path: None,
-        });
+        TempSubcommand::Mounts => { cmd.arg("mounts"); }
+        TempSubcommand::List => { cmd.arg("list"); }
+        TempSubcommand::Stop => { cmd.arg("stop"); }
+        TempSubcommand::Start => { cmd.arg("start"); }
+        TempSubcommand::Restart => { cmd.arg("restart"); }
     }
 
-    Ok(config)
+    let status = cmd.status().context("Failed to execute vm-temp")?;
+
+    if !status.success() {
+        std::process::exit(status.code().unwrap_or(1));
+    }
+    Ok(())
 }
 
-
-// Config command implementation
-fn handle_config_command(command: &ConfigSubcommand) -> Result<()> {
-    use vm_config::config_ops::ConfigOps;
+fn delegate_to_vm_config_for_config(command: &ConfigSubcommand) -> Result<()> {
+    let mut cmd = ProcessCommand::new("vm-config");
 
     match command {
         ConfigSubcommand::Set { field, value, global } => {
-            debug!("Config set: field='{}', value='{}', global={}", field, value, global);
-            ConfigOps::set(field, value, *global)
+            cmd.arg("set").arg(field).arg(value);
+            if *global {
+                cmd.arg("--global");
+            }
         }
         ConfigSubcommand::Get { field, global } => {
-            debug!("Config get: field={:?}, global={}", field, global);
-            ConfigOps::get(field.as_deref(), *global)
+            cmd.arg("get");
+            if let Some(f) = field {
+                cmd.arg(f);
+            }
+            if *global {
+                cmd.arg("--global");
+            }
         }
         ConfigSubcommand::Unset { field, global } => {
-            debug!("Config unset: field='{}', global={}", field, global);
-            ConfigOps::unset(field, *global)
+            cmd.arg("unset").arg(field);
+            if *global {
+                cmd.arg("--global");
+            }
         }
         ConfigSubcommand::Clear { global } => {
-            debug!("Config clear: global={}", global);
-            ConfigOps::clear(*global)
+            cmd.arg("clear");
+            if *global {
+                cmd.arg("--global");
+            }
         }
         ConfigSubcommand::Preset { names, global, list, show } => {
+            cmd.arg("preset");
             if *list {
-                debug!("Config preset: list=true");
-                ConfigOps::preset("", false, true, None)
+                cmd.arg("--list");
             } else if let Some(show_name) = show {
-                debug!("Config preset: show='{}'", show_name);
-                ConfigOps::preset("", false, false, Some(show_name))
+                cmd.arg("--show").arg(show_name);
             } else if let Some(preset_names) = names {
-                debug!("Config preset: apply names='{}', global={}", preset_names, global);
-                ConfigOps::preset(preset_names, *global, false, None)
-            } else {
-                debug!("Config preset: invalid arguments - no names, list, or show specified");
-                anyhow::bail!("Must specify preset names, --list, or --show");
+                cmd.arg(preset_names);
+            }
+            if *global {
+                cmd.arg("--global");
             }
         }
     }
+
+    let status = cmd.status().context("Failed to execute vm-config")?;
+
+    if !status.success() {
+        std::process::exit(status.code().unwrap_or(1));
+    }
+    Ok(())
+}
+
+fn delegate_to_vm_config_for_preset(command: &PresetSubcommand) -> Result<()> {
+    let mut cmd = ProcessCommand::new("vm-config");
+    cmd.arg("preset");
+
+    match command {
+        PresetSubcommand::List => {
+            cmd.arg("--list");
+        }
+        PresetSubcommand::Show { name } => {
+            cmd.arg("--detect-only").arg("--dir").arg(".").arg(name);
+        }
+    }
+
+    let status = cmd.status().context("Failed to execute vm-config")?;
+
+    if !status.success() {
+        std::process::exit(status.code().unwrap_or(1));
+    }
+    Ok(())
 }
