@@ -38,7 +38,7 @@ git clone <repository-url> vm
 cd vm
 
 # 2. Use directly without global installation
-./vm.sh create
+./vm create
 ```
 
 ### Option 3: Package.json Integration
@@ -50,7 +50,7 @@ git clone <repository-url> vm
 # 2. Add to package.json scripts
 {
   "scripts": {
-    "vm": "./vm/vm.sh"
+    "vm": "./vm/vm"
   }
 }
 
