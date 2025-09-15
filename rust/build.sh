@@ -84,6 +84,12 @@ for binary in "$PLATFORM_TARGET_DIR/release/vm-"*; do
     fi
 done
 
+# Handle the main vm binary
+if [[ -f "$PLATFORM_TARGET_DIR/release/vm" ]]; then
+    ln -sf "../../$PLATFORM/release/vm" "$SCRIPT_DIR/target/release/vm"
+    echo "  - vm -> ../target/$PLATFORM/release/vm"
+fi
+
 # Also handle vm-pkg if it exists (doesn't start with vm-)
 if [[ -f "$PLATFORM_TARGET_DIR/release/vm-pkg" ]]; then
     ln -sf "../../$PLATFORM/release/vm-pkg" "$SCRIPT_DIR/target/release/vm-pkg"

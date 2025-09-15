@@ -126,7 +126,7 @@ echo ""
 
 # Build the Rust binaries
 echo "🔧 Building Rust binaries..."
-if (cd "$SCRIPT_DIR/rust" && cargo build --release); then
+if (cd "$SCRIPT_DIR/rust" && ./build.sh); then
     echo -e "${GREEN}✅ Rust binaries built successfully.${NC}"
 else
     echo -e "${RED}❌ Failed to build Rust binaries.${NC}"
@@ -137,8 +137,31 @@ echo ""
 BIN_DIR="${HOME}/.local/bin"
 mkdir -p "$BIN_DIR"
 
+# Function to detect platform (matches build.sh logic)
+detect_platform() {
+    local os arch
+    os=$(uname -s | tr '[:upper:]' '[:lower:]')
+    arch=$(uname -m)
+    case "$arch" in
+        x86_64) arch="x86_64" ;;
+        aarch64|arm64) arch="aarch64" ;;
+        *) arch="unknown" ;;
+    esac
+    echo "${os}-${arch}"
+}
+
 # Create a direct symbolic link to the compiled binary
-SOURCE_BINARY="$SCRIPT_DIR/rust/target/release/vm"
+PLATFORM=$(detect_platform)
+PLATFORM_BINARY="$SCRIPT_DIR/rust/target/$PLATFORM/release/vm"
+FALLBACK_BINARY="$SCRIPT_DIR/rust/target/release/vm"
+
+# Use platform-specific binary if it exists, otherwise fall back to generic location
+if [[ -f "$PLATFORM_BINARY" ]]; then
+    SOURCE_BINARY="$PLATFORM_BINARY"
+else
+    SOURCE_BINARY="$FALLBACK_BINARY"
+fi
+
 LINK_NAME="$BIN_DIR/vm"
 
 echo "🔗 Creating global 'vm' command..."

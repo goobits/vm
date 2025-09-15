@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use vm_config::config::VmConfig;
-use vm_provider::{get_provider, Provider};
+use vm_provider::get_provider;
 
 #[derive(Parser)]
 #[command(name = "vm")]
