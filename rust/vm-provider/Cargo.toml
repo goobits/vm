@@ -4,15 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0"
-duct = "0.13"
-indicatif = "0.17"
-serde = { version = "1.0", features = ["derive"] }
-serde_yaml = "0.9"
-tera = "1.19"
-thiserror = "1.0"
-which = "4.4"
-
-# Add vm-config as a local dependency
-[dependencies.vm-config]
-path = "../vm-config"
+anyhow = { workspace = true }
+duct = { workspace = true }
+indicatif = { workspace = true }
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+tera = { workspace = true }
+thiserror = { workspace = true }
+which = { workspace = true }
+vm-config = { path = "../vm-config" }

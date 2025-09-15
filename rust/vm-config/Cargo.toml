@@ -15,20 +15,18 @@ name = "vm-config"
 path = "src/main.rs"
 
 [dependencies]
-anyhow = "1.0"
-clap = { version = "4.0", features = ["derive"] }
-glob = "0.3"
-indexmap = { version = "2.0", features = ["serde"] }
-jsonschema = "0.17"
-regex = "1.5"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-serde_yaml = "0.9"
-thiserror = "1.0"
-which = "4.4"
-
-[dependencies.vm-common]
-path = "../vm-common"
+anyhow = { workspace = true }
+clap = { workspace = true }
+glob = { workspace = true }
+indexmap = { workspace = true }
+jsonschema = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+thiserror = { workspace = true }
+which = { workspace = true }
+vm-common = { path = "../vm-common" }
 
 [dev-dependencies]
-tempfile = "3.8"
+tempfile = { workspace = true }
