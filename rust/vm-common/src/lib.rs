@@ -2,9 +2,11 @@
 // This crate provides shared functionality across VM Tool components
 
 pub mod file_system;
+pub mod log_context;
 pub mod logging;
 pub mod platform;
 pub mod security;
+pub mod structured_log;
 pub mod temp;
 
 use anyhow::{Context, Result};

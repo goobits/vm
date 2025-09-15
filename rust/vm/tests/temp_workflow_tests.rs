@@ -74,8 +74,8 @@ fn test_temp_vm_full_lifecycle() -> Result<()> {
         return Ok(());
     }
 
-    // Use the mock provider for this test to avoid Docker dependency
-    fixture.create_config_file("provider: mock")?;
+    // Use the docker provider for this test
+    fixture.create_config_file("provider: docker")?;
 
     // 1. Create a temp VM
     let output = fixture.run_vm_command(&["temp", "create", "./"])?;

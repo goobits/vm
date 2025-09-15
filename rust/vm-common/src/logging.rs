@@ -1,3 +1,7 @@
+// Re-export the structured logging system for backward compatibility
+pub use crate::structured_log::{init, init_with_config, LogConfig, LogFormat, LogOutput};
+
+// Legacy VmLogger for backward compatibility - now just a wrapper
 use log::{Level, LevelFilter, Metadata, Record};
 
 pub struct VmLogger;
@@ -23,8 +27,10 @@ impl log::Log for VmLogger {
     fn flush(&self) {}
 }
 
-pub fn init() {
+/// Legacy init function - now initializes structured logging
+/// This maintains backward compatibility for any existing code
+pub fn init_legacy() {
     static LOGGER: VmLogger = VmLogger;
-    log::set_logger(&LOGGER).unwrap();
+    let _ = log::set_logger(&LOGGER);
     log::set_max_level(LevelFilter::Info);
 }
