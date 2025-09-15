@@ -6,12 +6,28 @@ pub mod error;
 pub mod progress;
 pub mod security;
 pub mod utils;
+pub mod temp_models;
 
 mod docker;
 mod vagrant;
 mod tart;
 
-pub use vm_temp::TempProvider;
+pub use temp_models::{Mount, MountPermission, TempVmState};
+
+/// Trait for providers that support temporary VM mount updates
+pub trait TempProvider {
+    /// Update the mounts of a temporary VM by recreating the container
+    fn update_mounts(&self, state: &TempVmState) -> Result<()>;
+
+    /// Recreate a container with new mount configuration
+    fn recreate_with_mounts(&self, state: &TempVmState) -> Result<()>;
+
+    /// Check if a container is healthy and ready
+    fn check_container_health(&self, container_name: &str) -> Result<bool>;
+
+    /// Check if a container is currently running
+    fn is_container_running(&self, container_name: &str) -> Result<bool>;
+}
 
 /// The core trait for all VM providers.
 /// This defines the contract for creating, managing, and interacting with a VM.
