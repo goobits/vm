@@ -29,9 +29,10 @@ thiserror = { workspace = true }
 which = { workspace = true }
 vm-common = { path = "../vm-common" }
 vm-ports = { path = "../vm-ports" }
+vm-detector = { path = "../vm-detector" }
 
 [target.'cfg(unix)'.dependencies]
-libc = "0.2"
+libc = { workspace = true }
 
 [features]
 default = []

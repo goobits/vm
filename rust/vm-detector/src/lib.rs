@@ -3,6 +3,14 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
+pub mod os;
+pub mod tools;
+pub mod presets;
+
+pub use os::*;
+pub use tools::*;
+pub use presets::*;
+
 /// Detect project type(s) in a given directory
 pub fn detect_project_type(dir: &Path) -> HashSet<String> {
     let mut types = HashSet::new();

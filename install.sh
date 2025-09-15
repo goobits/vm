@@ -61,6 +61,19 @@ detect_os() {
 
 OS=$(detect_os)
 
+# Function to detect platform (matches build.sh logic)
+detect_platform() {
+    local os arch
+    os=$(uname -s | tr '[:upper:]' '[:lower:]')
+    arch=$(uname -m)
+    case "$arch" in
+        x86_64) arch="x86_64" ;;
+        aarch64|arm64) arch="aarch64" ;;
+        *) arch="unknown" ;;
+    esac
+    echo "${os}-${arch}"
+}
+
 # Function to install Rust
 install_rust() {
     echo -e "${YELLOW}⚠️  Rust is not installed (required for VM tool)${NC}"
@@ -180,7 +193,9 @@ fi
 
 # Build the Rust binaries
 echo "🔧 Building Rust binaries..."
-if (cd "$SCRIPT_DIR/rust" && ./build.sh); then
+PLATFORM=$(detect_platform)
+PLATFORM_TARGET_DIR="$SCRIPT_DIR/rust/target/$PLATFORM"
+if (cd "$SCRIPT_DIR/rust" && CARGO_TARGET_DIR="$PLATFORM_TARGET_DIR" cargo build --release --workspace); then
     echo -e "${GREEN}✅ Rust binaries built successfully.${NC}"
 else
     echo -e "${RED}❌ Failed to build Rust binaries.${NC}"
@@ -190,19 +205,6 @@ echo ""
 
 BIN_DIR="${HOME}/.local/bin"
 mkdir -p "$BIN_DIR"
-
-# Function to detect platform (matches build.sh logic)
-detect_platform() {
-    local os arch
-    os=$(uname -s | tr '[:upper:]' '[:lower:]')
-    arch=$(uname -m)
-    case "$arch" in
-        x86_64) arch="x86_64" ;;
-        aarch64|arm64) arch="aarch64" ;;
-        *) arch="unknown" ;;
-    esac
-    echo "${os}-${arch}"
-}
 
 # Create a direct symbolic link to the compiled binary
 PLATFORM=$(detect_platform)

@@ -1,0 +1,145 @@
+---
+# Simplified Configuration-Driven Development Environment
+- name: Setup Development Environment
+  hosts: all
+  become: yes
+  vars:
+      default_user: "{{ lookup('env', 'PROJECT_USER') | default('developer') }}"
+      default_workspace: '/workspace'
+      ansible_remote_tmp: '/tmp'
+
+  pre_tasks:
+      - name: Check if running in container
+        stat:
+            path: /.dockerenv
+        register: dockerenv_stat
+
+      - name: Set container fact
+        set_fact:
+            is_docker_container: "{{ dockerenv_stat.stat.exists }}"
+
+      - name: Check for merged configuration
+        stat:
+            path: '/tmp/vm-config.json'
+        register: config_file_stat
+
+      - name: Load merged configuration
+        set_fact:
+            project_config: "{{ lookup('file', '/tmp/vm-config.json') | from_json }}"
+        when: config_file_stat.stat.exists
+
+      - name: Use minimal fallback configuration
+        set_fact:
+            project_config:
+                project:
+                    name: "{{ ansible_hostname.split('.')[0] | default('project') }}"
+                    hostname: "dev.{{ ansible_hostname.split('.')[0] | default('project') }}.local"
+                    workspace_path: '{{ default_workspace }}'
+                vm:
+                    user: '{{ default_user }}'
+        when: not config_file_stat.stat.exists
+
+      - name: Load terminal themes
+        set_fact:
+            terminal_themes: "{{ lookup('file', '/embedded-shared/themes.json') | from_json }}"
+
+      - name: Set derived variables
+        set_fact:
+            project_user: "{{ project_config.vm.user | default(default_user) }}"
+            project_path: "{{ project_config.project.workspace_path | default(default_workspace) }}"
+            home_dir: "/home/{{ project_config.vm.user | default(default_user) }}"
+
+  tasks:
+      - name: Set hostname in container
+        shell: echo "{{ project_config.project.hostname | default('dev.local') }}" > /etc/hostname
+        when: is_docker_container
+
+      - name: Update /etc/hosts in container
+        lineinfile:
+            path: /etc/hosts
+            line: "127.0.0.1 {{ project_config.project.hostname | default('dev.local') }}"
+            state: present
+        when: is_docker_container
+
+      - name: Set system timezone
+        timezone:
+            name: "{{ project_config.vm.timezone | default('UTC') }}"
+
+      - name: Generate .zshrc from embedded template
+        template:
+            src: /embedded-shared/zshrc.j2
+            dest: '/home/{{ project_user }}/.zshrc'
+            owner: '{{ project_user }}'
+            group: '{{ project_user }}'
+            mode: '0644'
+
+      # Load service definitions from embedded resources
+      - name: Load service definitions
+        include_vars: /embedded-shared/service_definitions.yml
+
+      # Configure aliases from vm.yaml
+      - name: Add custom aliases to .zshrc
+        lineinfile:
+            path: '/home/{{ project_user }}/.zshrc'
+            line: "alias {{ item.key }}='{{ item.value }}'"
+            state: present
+        loop: "{{ project_config.aliases | default({}) | dict2items }}"
+        when: project_config.aliases is defined
+
+      # Set environment variables
+      - name: Add environment variables to .zshrc
+        lineinfile:
+            path: '/home/{{ project_user }}/.zshrc'
+            line: "export {{ item.key }}='{{ item.value }}'"
+            state: present
+        loop: "{{ project_config.environment | default({}) | dict2items }}"
+        when: project_config.environment is defined
+
+      # Claude Code configuration
+      - name: Create Claude settings directory
+        file:
+            path: '/home/{{ project_user }}/.claude'
+            state: directory
+            owner: '{{ project_user }}'
+            group: '{{ project_user }}'
+            mode: '0755'
+        when: project_config.claude_sync | default(false)
+
+      - name: Copy Claude settings
+        copy:
+            src: '/embedded-shared/claude-settings.json'
+            dest: '/home/{{ project_user }}/.claude/settings.json'
+            remote_src: yes
+            owner: '{{ project_user }}'
+            group: '{{ project_user }}'
+            mode: '0644'
+        when: project_config.claude_sync | default(false)
+
+      # Gemini configuration
+      - name: Create Gemini settings directory
+        file:
+            path: '/home/{{ project_user }}/.gemini'
+            state: directory
+            owner: '{{ project_user }}'
+            group: '{{ project_user }}'
+            mode: '0755'
+        when: project_config.gemini_sync | default(false)
+
+      - name: Copy Gemini settings
+        copy:
+            src: '/embedded-shared/gemini-settings.json'
+            dest: '/home/{{ project_user }}/.gemini/settings.json'
+            remote_src: yes
+            owner: '{{ project_user }}'
+            group: '{{ project_user }}'
+            mode: '0644'
+        when: project_config.gemini_sync | default(false)
+
+      # Final ownership fix
+      - name: Fix ownership of user home directory
+        file:
+            path: '/home/{{ project_user }}'
+            owner: '{{ project_user }}'
+            group: '{{ project_user }}'
+            recurse: yes
+        ignore_errors: yes

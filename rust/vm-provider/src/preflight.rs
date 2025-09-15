@@ -1,5 +1,5 @@
 use anyhow::{bail, Result};
-use sysinfo::{System, SystemExt};
+use sysinfo::System;
 
 const MIN_CPU_CORES: u32 = 2;
 const MIN_MEMORY_GB: u64 = 4;
@@ -10,7 +10,7 @@ pub fn check_system_resources() -> Result<()> {
     sys.refresh_all();
 
     // Check CPU cores
-    if let Some(cpu_cores) = sys.physical_core_count() {
+    if let Some(cpu_cores) = System::physical_core_count() {
         if (cpu_cores as u32) < MIN_CPU_CORES {
             bail!("System has only {} physical CPU cores. A minimum of {} is recommended.", cpu_cores, MIN_CPU_CORES);
         }

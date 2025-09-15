@@ -3,7 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
 use vm_config::{VmConfig, ConfigOps, preset::PresetDetector};
-use vm_detector::FrameworkDetector;
+use vm_detector::{detect_project_type, format_detected_types};
 use vm_ports::{PortRegistry, PortRange};
 use vm_temp::{StateManager, TempVmState};
 
@@ -95,10 +95,10 @@ fn test_detector_config_integration() -> Result<()> {
     fixture.create_project_file("requirements.txt", "Django>=4.0\npsycopg2>=2.8")?;
 
     // Step 2: Use detector to identify project type
-    let detector = FrameworkDetector::new(&fixture.project_dir);
-    let detected_frameworks = detector.detect_all_frameworks()?;
+    let detected_types = detect_project_type(&fixture.project_dir);
 
-    assert!(!detected_frameworks.is_empty());
+    assert!(!detected_types.is_empty());
+    assert!(detected_types.contains("django"));
 
     // Step 3: Create corresponding preset
     fixture.create_preset("django", r#"
@@ -232,12 +232,10 @@ fn test_preset_detector_integration() -> Result<()> {
     }"#)?;
 
     // Step 2: Use framework detector
-    let framework_detector = FrameworkDetector::new(&fixture.project_dir);
-    let frameworks = framework_detector.detect_all_frameworks()?;
+    let detected_types = detect_project_type(&fixture.project_dir);
 
     // Should detect React
-    let react_detected = frameworks.iter().any(|f| f.framework_type.contains("React"));
-    assert!(react_detected, "React framework should be detected");
+    assert!(detected_types.contains("react"), "React framework should be detected");
 
     // Step 3: Create React preset
     fixture.create_preset("react", r#"
@@ -306,11 +304,10 @@ services:
 "#)?;
 
     // Step 2: Detect all frameworks
-    let detector = FrameworkDetector::new(&fixture.project_dir);
-    let frameworks = detector.detect_all_frameworks()?;
+    let detected_types = detect_project_type(&fixture.project_dir);
 
     // Should detect multiple frameworks
-    assert!(frameworks.len() > 1, "Should detect multiple frameworks");
+    assert!(detected_types.len() > 1, "Should detect multiple frameworks");
 
     // Step 3: Create presets for different aspects
     fixture.create_preset("nodejs", r#"

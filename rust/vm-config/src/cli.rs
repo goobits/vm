@@ -345,6 +345,14 @@ pub enum Command {
         /// Target file or directory (defaults to current directory)
         #[arg(short, long)]
         file: Option<PathBuf>,
+
+        /// Comma-separated services to enable (postgresql,redis,mongodb,docker)
+        #[arg(long)]
+        services: Option<String>,
+
+        /// Starting port for service allocation (allocates sequential ports)
+        #[arg(long)]
+        ports: Option<u16>,
     },
 }
 
@@ -393,8 +401,7 @@ impl std::str::FromStr for OutputFormat {
 }
 
 /// Initialize a new vm.yaml configuration file
-pub fn init_config_file(file_path: Option<PathBuf>) -> Result<()> {
-    println!("🔧 DEBUG: init_config_file called");
+pub fn init_config_file(file_path: Option<PathBuf>, services: Option<String>, ports: Option<u16>) -> Result<()> {
     use regex::Regex;
 
     // Determine target path
@@ -456,7 +463,6 @@ pub fn init_config_file(file_path: Option<PathBuf>) -> Result<()> {
     }
 
     // Use vm-ports library to suggest and register an available port range
-    println!("🔍 Attempting to allocate port range...");
     if let Ok(registry) = vm_ports::PortRegistry::load() {
         if let Some(range_str) = registry.suggest_next_range(10, 3000) {
             config.port_range = Some(range_str.clone());
@@ -476,6 +482,49 @@ pub fn init_config_file(file_path: Option<PathBuf>) -> Result<()> {
         println!("⚠️  Failed to load port registry");
     }
 
+    // Apply service configurations
+    if let Some(ref services_str) = services {
+        let service_list: Vec<String> = services_str
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .collect();
+
+        for service in service_list {
+            // Load service config
+            let service_path = crate::paths::resolve_tool_path(format!("configs/services/{}.yaml", service));
+            if !service_path.exists() {
+                eprintln!("❌ Unknown service: {}", service);
+                eprintln!("💡 Available services: postgresql, redis, mongodb, docker");
+                return Err(anyhow::anyhow!("Service configuration not found"));
+            }
+
+            let service_config = VmConfig::from_file(&service_path)
+                .with_context(|| format!("Failed to load service config: {}", service))?;
+
+            // Merge service config into base
+            config = crate::merge::ConfigMerger::new(config).merge(service_config)?;
+        }
+    }
+
+    // Apply port configuration
+    if let Some(port_start) = ports {
+        if port_start < 1024 {
+            return Err(anyhow::anyhow!(
+                "Invalid port number: {} (must be >= 1024)",
+                port_start
+            ));
+        }
+
+        // Allocate sequential ports
+        config.ports.insert("web".to_string(), port_start);
+        config.ports.insert("api".to_string(), port_start + 1);
+        config
+            .ports
+            .insert("postgresql".to_string(), port_start + 5);
+        config.ports.insert("redis".to_string(), port_start + 6);
+        config.ports.insert("mongodb".to_string(), port_start + 7);
+    }
+
     // Convert to YAML
     let yaml_content =
         serde_yaml::to_string(&config).context("Failed to serialize configuration to YAML")?;
@@ -488,6 +537,12 @@ pub fn init_config_file(file_path: Option<PathBuf>) -> Result<()> {
 
     println!("✅ Created vm.yaml for project: {}", sanitized_name);
     println!("📍 Configuration file: {}", target_path.display());
+    if let Some(ref services_str) = services {
+        println!("🔧 Services: {}", services_str);
+    }
+    if let Some(port_start) = ports {
+        println!("🔌 Port range: {}-{}", port_start, port_start + 9);
+    }
     println!();
     println!("Next steps:");
     println!("  1. Review and customize vm.yaml as needed");
@@ -820,8 +875,8 @@ pub fn execute(args: Args) -> Result<()> {
             crate::config_ops::ConfigOps::clear(global)?;
         }
 
-        Command::Init { file } => {
-            init_config_file(file)?;
+        Command::Init { file, services, ports } => {
+            init_config_file(file, services, ports)?;
         }
     }
 
@@ -855,7 +910,7 @@ pub fn load_and_merge_config(file: Option<PathBuf>, no_preset: bool) -> Result<V
     };
 
     // 4. Load OS-specific defaults as the new base
-    let default_os = crate::os_detection::detect_host_os();
+    let default_os = vm_detector::detect_host_os();
     let detected_os = user_config
         .as_ref()
         .and_then(|c| c.os.as_deref())
@@ -938,7 +993,7 @@ pub fn load_and_merge_config_with_preset(
     };
 
     // 4. Load OS-specific defaults as the new base
-    let default_os = crate::os_detection::detect_host_os();
+    let default_os = vm_detector::detect_host_os();
     let detected_os = user_config
         .as_ref()
         .and_then(|c| c.os.as_deref())

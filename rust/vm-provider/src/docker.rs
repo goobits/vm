@@ -34,38 +34,10 @@ impl DockerProvider {
         })
     }
 
-    /// Write embedded resources to container
+    /// Legacy method - no longer needed with self-contained containers
     fn setup_container_resources(&self) -> Result<()> {
-        let container = self.container_name();
-
-        // Create directory structure in container (needs sudo for root-owned directories)
-        let output = std::process::Command::new("docker")
-            .args(["exec", &container, "sudo", "mkdir", "-p",
-                   "/vm-tool/shared/ansible/tasks",
-                   "/vm-tool/shared/services",
-                   "/vm-tool/shared/templates",
-                   "/vm-tool/shared/claude-settings",
-                   "/vm-tool/shared/gemini-settings",
-                   "/vm-tool/rust/target/release"])
-            .output()?;
-
-        if !output.status.success() {
-            return Err(anyhow::anyhow!("Failed to create directories: {}",
-                String::from_utf8_lossy(&output.stderr)));
-        }
-
-        // Write embedded resources to container
-        self.write_to_container("/vm-tool/shared/ansible/playbook.yml", resources::ANSIBLE_PLAYBOOK)?;
-        self.write_to_container("/vm-tool/shared/ansible/tasks/manage-service.yml", resources::MANAGE_SERVICE_TASK)?;
-        self.write_to_container("/vm-tool/shared/services/service_definitions.yml", resources::SERVICE_DEFINITIONS)?;
-        self.write_to_container("/vm-tool/shared/templates/zshrc.j2", resources::ZSHRC_TEMPLATE)?;
-        self.write_to_container("/vm-tool/shared/themes.json", resources::THEMES_JSON)?;
-        self.write_to_container("/vm-tool/shared/claude-settings/settings.json", resources::CLAUDE_SETTINGS)?;
-        self.write_to_container("/vm-tool/shared/gemini-settings/settings.json", resources::GEMINI_SETTINGS)?;
-
-        // Copy vm-pkg binary to container if it exists
-        self.copy_vm_pkg_binary()?;
-
+        // Resources are now embedded in the container image during build
+        // This method is kept for compatibility but does nothing
         Ok(())
     }
 
@@ -256,9 +228,27 @@ impl DockerProvider {
 
     fn write_dockerfile(&self) -> Result<PathBuf> {
         let dockerfile_path = self._project_dir.join("Dockerfile");
-        if !dockerfile_path.exists() {
-            fs::write(&dockerfile_path, DOCKERFILE_TEMPLATE.as_bytes())?;
-        }
+
+        // Use the new Tera template for Dockerfile
+        let mut tera = Tera::default();
+        let template_content = include_str!("docker/Dockerfile.j2");
+        tera.add_raw_template("Dockerfile", template_content)?;
+
+        let current_uid = vm_config::get_current_uid();
+        let current_gid = vm_config::get_current_gid();
+        let project_user = self.config.vm.as_ref()
+            .and_then(|vm| vm.user.as_deref())
+            .unwrap_or("developer");
+
+        let mut context = TeraContext::new();
+        context.insert("config", &self.config);
+        context.insert("project_uid", &current_uid.to_string());
+        context.insert("project_gid", &current_gid.to_string());
+        context.insert("project_user", &project_user);
+
+        let content = tera.render("Dockerfile", &context)?;
+        fs::write(&dockerfile_path, content.as_bytes())?;
+
         Ok(dockerfile_path)
     }
 }
@@ -337,14 +327,13 @@ impl Provider for DockerProvider {
         }
         println!("✅");
 
-        print!("📦 Setting up configuration files... ");
-        self.setup_container_resources()?;
+        print!("📦 Configuration ready in container... ");
         println!("✅");
 
         println!("🎭 Running Ansible provisioning...");
         stream_command(
             "docker",
-            &["exec", &self.container_name(), "bash", "-c", "ansible-playbook -i localhost, -c local /vm-tool/shared/ansible/playbook.yml"],
+            &["exec", &self.container_name(), "bash", "-c", "ansible-playbook -i localhost, -c local /embedded-ansible/playbook.yml"],
         ).context("Ansible provisioning failed")?;
         println!("✅ Provisioning complete");
 

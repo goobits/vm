@@ -84,6 +84,6 @@ impl LinkDetector {
 
     /// Check if a path is a Python project (has setup.py or pyproject.toml)
     pub fn is_python_project(path: &Path) -> bool {
-        path.join("setup.py").exists() || path.join("pyproject.toml").exists()
+        vm_detector::is_python_project(path)
     }
 }

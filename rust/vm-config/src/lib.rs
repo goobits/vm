@@ -7,7 +7,6 @@ mod paths; // Internal only
 mod preset; // Internal only
 pub mod resources; // VM resource suggestions
 pub mod validate;
-pub mod os_detection;
 mod yaml_ops; // Internal only
 
 // Re-export commonly needed path utilities

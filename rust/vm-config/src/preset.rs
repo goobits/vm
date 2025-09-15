@@ -3,7 +3,7 @@ use anyhow::{Context, Result};
 use glob::glob;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use which::which;
+use vm_detector::detect_preset_for_project;
 
 /// Metadata about a preset
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,95 +38,10 @@ impl PresetDetector {
 
     /// Detect the appropriate preset based on project files
     pub fn detect(&self) -> Result<Option<String>> {
-        // Check for various project indicators
-        let detections = vec![
-            // Django
-            (vec!["manage.py", "django", "settings.py"], "django"),
-            // Rails
-            (vec!["Gemfile", "config.ru", "app/controllers"], "rails"),
-            // React
-            (vec!["package.json"], "react"), // Further check needed
-            // Node.js
-            (vec!["package.json", "node_modules"], "nodejs"),
-            // Python
-            (
-                vec!["requirements.txt", "setup.py", "pyproject.toml"],
-                "python",
-            ),
-            // Rust
-            (vec!["Cargo.toml", "Cargo.lock"], "rust"),
-            // Go
-            (vec!["go.mod", "go.sum"], "go"),
-            // Docker Compose
-            (vec!["docker-compose.yml", "docker-compose.yaml"], "docker"),
-            // Kubernetes
-            (vec!["k8s/", "kubernetes/", "deployment.yaml", "service.yaml", "kustomization.yaml", "helm/", "charts/", ".k8s/"], "kubernetes"),
-        ];
-
-        for (indicators, preset) in detections {
-            if self.has_indicators(&indicators) {
-                // Special handling for React vs Node.js
-                if preset == "react" && self.is_react_project()? {
-                    return Ok(Some("react".to_string()));
-                } else if preset == "react" {
-                    continue; // Not React, check other presets
-                }
-                return Ok(Some(preset.to_string()));
-            }
-        }
-
-        Ok(None)
+        // Use vm-detector's comprehensive detection logic
+        Ok(detect_preset_for_project(&self.project_dir))
     }
 
-    /// Check if project has any of the given indicator files/directories
-    fn has_indicators(&self, indicators: &[&str]) -> bool {
-        for indicator in indicators {
-            let path = self.project_dir.join(indicator);
-
-            // Check if it's a glob pattern
-            if indicator.contains('*') {
-                let pattern = self
-                    .project_dir
-                    .join(indicator)
-                    .to_string_lossy()
-                    .to_string();
-                if let Ok(paths) = glob(&pattern) {
-                    if paths.count() > 0 {
-                        return true;
-                    }
-                }
-            } else if path.exists() {
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Check if a package.json indicates a React project
-    fn is_react_project(&self) -> Result<bool> {
-        let package_json = self.project_dir.join("package.json");
-        if !package_json.exists() {
-            return Ok(false);
-        }
-
-        let content = std::fs::read_to_string(&package_json)?;
-        let json: serde_json::Value = serde_json::from_str(&content)?;
-
-        // Check dependencies for React
-        if let Some(deps) = json.get("dependencies") {
-            if deps.get("react").is_some() || deps.get("react-dom").is_some() {
-                return Ok(true);
-            }
-        }
-
-        if let Some(deps) = json.get("devDependencies") {
-            if deps.get("react").is_some() || deps.get("react-scripts").is_some() {
-                return Ok(true);
-            }
-        }
-
-        Ok(false)
-    }
 
     /// Load a preset configuration by name
     pub fn load_preset(&self, name: &str) -> Result<VmConfig> {
@@ -185,63 +100,6 @@ impl PresetDetector {
     }
 }
 
-/// Detect installed tools/languages for smart preset selection
-#[allow(dead_code)]
-pub struct ToolDetector;
-
-#[allow(dead_code)]
-impl ToolDetector {
-    /// Check if a command is available in PATH
-    pub fn has_command(cmd: &str) -> bool {
-        which(cmd).is_ok()
-    }
-
-    /// Detect installed language runtimes
-    pub fn detect_languages() -> Vec<String> {
-        let mut languages = Vec::new();
-
-        if Self::has_command("node") || Self::has_command("npm") {
-            languages.push("nodejs".to_string());
-        }
-        if Self::has_command("python") || Self::has_command("python3") {
-            languages.push("python".to_string());
-        }
-        if Self::has_command("ruby") || Self::has_command("gem") {
-            languages.push("ruby".to_string());
-        }
-        if Self::has_command("cargo") || Self::has_command("rustc") {
-            languages.push("rust".to_string());
-        }
-        if Self::has_command("go") {
-            languages.push("go".to_string());
-        }
-        if Self::has_command("java") || Self::has_command("javac") {
-            languages.push("java".to_string());
-        }
-
-        languages
-    }
-
-    /// Detect installed databases
-    pub fn detect_databases() -> Vec<String> {
-        let mut databases = Vec::new();
-
-        if Self::has_command("psql") {
-            databases.push("postgresql".to_string());
-        }
-        if Self::has_command("mysql") {
-            databases.push("mysql".to_string());
-        }
-        if Self::has_command("mongosh") || Self::has_command("mongo") {
-            databases.push("mongodb".to_string());
-        }
-        if Self::has_command("redis-cli") {
-            databases.push("redis".to_string());
-        }
-
-        databases
-    }
-}
 
 #[cfg(test)]
 mod tests {

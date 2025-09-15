@@ -163,6 +163,14 @@ enum Command {
         /// Custom configuration file path
         #[arg(short, long)]
         file: Option<PathBuf>,
+
+        /// Comma-separated services to enable (postgresql,redis,mongodb,docker)
+        #[arg(long)]
+        services: Option<String>,
+
+        /// Starting port for service allocation (allocates sequential ports)
+        #[arg(long)]
+        ports: Option<u16>,
     },
     /// Create and provision a new VM
     Create,
@@ -247,9 +255,9 @@ fn main() -> Result<()> {
                 }
             }
         }
-        Command::Init { file } => {
+        Command::Init { file, services, ports } => {
             debug!("Calling init_config_file directly");
-            return init_config_file(file.clone());
+            return init_config_file(file.clone(), services.clone(), *ports);
         }
         Command::Config { command } => {
             debug!("Calling ConfigOps methods directly");

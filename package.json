@@ -12,7 +12,6 @@
     "vm.yaml",
     "vm.schema.yaml",
     "validate-config.sh",
-    "generate-config.sh",
     "install.sh",
     "run-tests.sh",
     "providers/",
@@ -26,7 +25,7 @@
   "scripts": {
     "test": "cd rust && cargo test",
     "validate": "./vm.sh validate || echo 'Validation requires vm binary'",
-    "postinstall": "chmod +x vm.sh install.sh generate-config.sh"
+    "postinstall": "chmod +x vm.sh install.sh"
   },
   "keywords": [
     "vagrant",

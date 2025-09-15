@@ -18,7 +18,7 @@ services:
       # macOS specific volume for audio
       - /tmp/pulseaudio.socket:/tmp/pulseaudio.socket
       {% endif %}
-      # Additional volumes for package linking, etc. can be added here dynamically
+      # Container is now self-contained - no VM tool mount needed
     {% if config.ports and config.ports | length > 0 -%}
     ports:
       {% for name, port in config.ports %}- "{{ port }}:{{ port }}"

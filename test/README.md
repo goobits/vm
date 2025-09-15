@@ -30,9 +30,6 @@ cargo test -p vm-temp
 
 # Run with output
 cargo test -- --nocapture
-
-# Quick test script from project root
-./test-rust.sh
 ```
 
 ## Test Artifacts
