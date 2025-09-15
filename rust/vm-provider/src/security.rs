@@ -56,7 +56,7 @@ impl SecurityValidator {
         let workspace_str = canonical_workspace.to_string_lossy();
         let target_str = target_path.to_string_lossy();
 
-        if !target_str.starts_with(&workspace_str) && target_path != canonical_workspace {
+        if !target_str.starts_with(&*workspace_str) && target_path != canonical_workspace {
             anyhow::bail!("Path escapes workspace boundary: {} -> {}", relative_path.display(), target_path.display());
         }
 

@@ -14,3 +14,4 @@ thiserror = { workspace = true }
 which = { workspace = true }
 vm-config = { path = "../vm-config" }
 vm-temp = { path = "../vm-temp" }
+tempfile = "3.10"

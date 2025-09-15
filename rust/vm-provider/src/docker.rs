@@ -287,12 +287,12 @@ impl Provider for DockerProvider {
             .and_then(|vm| vm.user.as_deref())
             .unwrap_or("developer");
 
-        let mut args: Vec<&str> = vec!["exec", &container, "su", "-", project_user, "-c"];
+        // Use safe argument passing pattern (like tart.rs) - avoid shell entirely
+        let mut args: Vec<&str> = vec!["exec", "-w", workspace_path, "--user", project_user, &container];
 
-        // Build command with working directory context
-        let cmd_str = cmd.join(" ");
-        let full_cmd = format!("cd {} && {}", workspace_path, cmd_str);
-        args.push(&full_cmd);
+        // Convert command strings to string references and pass individually (no shell interpretation)
+        let cmd_strs: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
+        args.extend_from_slice(&cmd_strs);
 
         stream_command("docker", &args)
     }

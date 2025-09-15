@@ -6,6 +6,31 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+/// Validate a filename for script creation (no path separators, safe characters only)
+fn validate_script_name(filename: &str) -> Result<()> {
+    // Check for empty name
+    if filename.is_empty() {
+        anyhow::bail!("Script name cannot be empty");
+    }
+
+    // Check for path separators
+    if filename.contains('/') || filename.contains('\\') {
+        anyhow::bail!("Script name cannot contain path separators: {}", filename);
+    }
+
+    // Check for dangerous characters
+    if filename.contains("..") || filename.starts_with('.') {
+        anyhow::bail!("Script name cannot contain '..' or start with '.': {}", filename);
+    }
+
+    // Only allow alphanumeric, dash, underscore
+    if !filename.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        anyhow::bail!("Script name can only contain alphanumeric characters, dashes, and underscores: {}", filename);
+    }
+
+    Ok(())
+}
+
 pub struct PackageInstaller {
     user: String,
     detector: LinkDetector,
@@ -266,6 +291,10 @@ impl PackageInstaller {
                 let script_name = script_path.file_name()
                     .and_then(|n| n.to_str())
                     .context("Invalid script name")?;
+
+                // Validate script name for security
+                validate_script_name(script_name)
+                    .with_context(|| format!("Invalid script name from pipx environment: {}", script_name))?;
 
                 let wrapper_path = local_bin.join(script_name);
                 self.create_wrapper_script(&wrapper_path, &script_path, path)?;

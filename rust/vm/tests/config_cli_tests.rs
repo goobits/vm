@@ -21,6 +21,11 @@ impl CliTestFixture {
         let workspace_root = std::env::current_dir()?;
         let binary_path = workspace_root.join("target").join("debug").join("vm");
 
+        // Debug output
+        eprintln!("Current dir: {:?}", workspace_root);
+        eprintln!("Binary path: {:?}", binary_path);
+        eprintln!("Binary exists: {}", binary_path.exists());
+
         Ok(Self {
             _temp_dir: temp_dir,
             test_dir,

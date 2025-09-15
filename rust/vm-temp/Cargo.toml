@@ -17,5 +17,6 @@ thiserror = { workspace = true }
 clap = { workspace = true }
 vm-config = { path = "../vm-config" }
 tempfile = { workspace = true }
+fs2 = "0.4"
 
 [dev-dependencies]

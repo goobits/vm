@@ -1,9 +1,21 @@
-use crate::{Provider, error::ProviderError, progress::ProgressReporter};
-use anyhow::Result;
+use crate::{Provider, error::ProviderError, progress::ProgressReporter, security::SecurityValidator};
+use anyhow::{Result, Context};
 use std::path::Path;
 use std::env;
 use vm_config::config::VmConfig;
 use crate::utils::{is_tool_installed, stream_command};
+
+/// Safely escape a string for shell execution by wrapping in single quotes
+/// and escaping any existing single quotes
+fn shell_escape(arg: &str) -> String {
+    // If the argument contains no special characters, return as-is
+    if arg.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/') {
+        arg.to_string()
+    } else {
+        // Wrap in single quotes and escape any existing single quotes
+        format!("'{}'", arg.replace('\'', "'\"'\"'"))
+    }
+}
 
 pub struct VagrantProvider {
     config: VmConfig,
@@ -112,7 +124,12 @@ impl Provider for VagrantProvider {
             let workspace_path = self.config.project.as_ref()
                 .and_then(|p| p.workspace_path.as_deref())
                 .unwrap_or("/workspace");
-            let target_dir = format!("{}/{}", workspace_path, relative_path.display());
+
+            // Validate and calculate target directory (prevent path traversal)
+            let target_path = SecurityValidator::validate_relative_path(relative_path, workspace_path)
+                .context("Invalid path for SSH operation")?;
+            let target_dir = target_path.to_string_lossy();
+
             // Get shell from config (terminal.shell or default to bash)
             let shell = self.config.terminal.as_ref()
                 .and_then(|t| t.shell.as_deref())
@@ -125,8 +142,12 @@ impl Provider for VagrantProvider {
     }
 
     fn exec(&self, cmd: &[String]) -> Result<()> {
-        let cmd_str = cmd.join(" ");
-        self.run_vagrant_command(&["ssh", "-c", &cmd_str])
+        // Safely escape each argument for shell execution
+        let escaped_args: Vec<String> = cmd.iter()
+            .map(|arg| shell_escape(arg))
+            .collect();
+        let safe_cmd = escaped_args.join(" ");
+        self.run_vagrant_command(&["ssh", "-c", &safe_cmd])
     }
 
     fn logs(&self) -> Result<()> {
