@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -185,7 +185,10 @@ enum Command {
     /// List all VMs
     List,
     /// Force kill VM processes
-    Kill,
+    Kill {
+        /// Optional container name or ID to kill. If not provided, kills the current project's container.
+        container: Option<String>,
+    },
     /// Get workspace directory
     GetSyncDirectory,
     /// Preset operations
@@ -218,6 +221,63 @@ enum Command {
         #[command(subcommand)]
         command: ConfigSubcommand,
     },
+}
+
+/// Load configuration with lenient validation for commands that don't require full project setup
+fn load_config_lenient(file: Option<PathBuf>, no_preset: bool) -> Result<VmConfig> {
+    use vm_config::config::VmConfig;
+
+    // Try to load defaults as base
+    const EMBEDDED_DEFAULTS: &str = include_str!("../../../defaults.yaml");
+    let mut config: VmConfig = serde_yaml::from_str(EMBEDDED_DEFAULTS)
+        .context("Failed to parse embedded defaults")?;
+
+    // Try to find and load user config if it exists
+    let user_config_path = match file {
+        Some(path) => Some(path),
+        None => {
+            // Look for vm.yaml in current directory
+            let current_dir = std::env::current_dir()?;
+            let vm_yaml_path = current_dir.join("vm.yaml");
+            if vm_yaml_path.exists() {
+                Some(vm_yaml_path)
+            } else {
+                None
+            }
+        }
+    };
+
+    if let Some(path) = user_config_path {
+        match VmConfig::from_file(&path) {
+            Ok(user_config) => {
+                // Merge user config into defaults using available public API
+                // For lenient loading, we'll do a simple field-by-field merge
+                if user_config.provider.is_some() {
+                    config.provider = user_config.provider;
+                }
+                if user_config.project.is_some() {
+                    config.project = user_config.project;
+                }
+                if user_config.vm.is_some() {
+                    config.vm = user_config.vm;
+                }
+                // Copy other important fields
+                if !user_config.services.is_empty() {
+                    config.services = user_config.services;
+                }
+            }
+            Err(e) => {
+                debug!("Failed to load user config, using defaults: {}", e);
+            }
+        }
+    }
+
+    // Ensure we have at least a minimal valid config for providers
+    if config.provider.is_none() {
+        config.provider = Some("docker".to_string());
+    }
+
+    Ok(config)
 }
 
 fn main() -> Result<()> {
@@ -279,7 +339,7 @@ fn main() -> Result<()> {
             | Command::Restart
             | Command::Destroy
             | Command::Provision
-            | Command::Kill => {
+            | Command::Kill { .. } => {
                 println!("🔍 DRY RUN MODE - showing what would be executed:");
                 println!("   Command: {:?}", args.command);
                 if let Some(config) = &args.config {
@@ -306,7 +366,18 @@ fn main() -> Result<()> {
         debug!("Using preset override: {}", preset);
         VmConfig::load_with_preset(args.config, preset)?
     } else {
-        VmConfig::load(args.config, args.no_preset)?
+        // For List command, try lenient loading first to avoid validation errors
+        if matches!(args.command, Command::List) {
+            match load_config_lenient(args.config.clone(), args.no_preset) {
+                Ok(config) => config,
+                Err(_) => {
+                    // If lenient loading fails, fall back to strict loading
+                    VmConfig::load(args.config, args.no_preset)?
+                }
+            }
+        } else {
+            VmConfig::load(args.config, args.no_preset)?
+        }
     };
 
     debug!(
@@ -346,9 +417,9 @@ fn main() -> Result<()> {
             debug!("Listing VMs");
             provider.list()
         }
-        Command::Kill => {
-            debug!("Force killing VM processes");
-            provider.kill()
+        Command::Kill { container } => {
+            debug!("Force killing VM processes: container={:?}", container);
+            provider.kill(container.as_deref())
         }
         Command::GetSyncDirectory => {
             debug!("Getting sync directory for provider '{}'", provider.name());

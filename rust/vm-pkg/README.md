@@ -91,9 +91,9 @@ vm-pkg/
 5. **Testing**: Can use Rust's built-in test framework
 6. **Cross-platform**: Easier to support different platforms
 
-## Integration with vm.sh
+## Integration with vm binary
 
-The `vm.sh` script can now call:
+The main `vm` binary can now call:
 
 ```bash
 vm-pkg install --type "$package_type" "$package" --user "$PROJECT_USER"

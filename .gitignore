@@ -28,7 +28,6 @@ docker-compose.yml
 *.backup
 *.bak
 *~
-vm.sh.backup
 
 # Sensitive files
 *.key

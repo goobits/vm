@@ -195,7 +195,7 @@ impl Provider for TartProvider {
         stream_command("tart", &["list"])
     }
 
-    fn kill(&self) -> Result<()> {
+    fn kill(&self, _container: Option<&str>) -> Result<()> {
         // Force stop the VM
         stream_command("tart", &["stop", &self.vm_name()])
     }

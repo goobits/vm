@@ -74,7 +74,8 @@ pub trait Provider {
     fn list(&self) -> Result<()>;
 
     /// Force kill VM processes.
-    fn kill(&self) -> Result<()>;
+    /// If container is provided, kill that specific container. Otherwise, kill the project's container.
+    fn kill(&self, container: Option<&str>) -> Result<()>;
 
     /// Get workspace directory.
     fn get_sync_directory(&self) -> Result<String>;

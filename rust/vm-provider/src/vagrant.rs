@@ -226,7 +226,7 @@ impl Provider for VagrantProvider {
         stream_command("vagrant", &["global-status"])
     }
 
-    fn kill(&self) -> Result<()> {
+    fn kill(&self, _container: Option<&str>) -> Result<()> {
         // Force destroy the VM
         self.run_vagrant_command(&["destroy", "-f"])
     }

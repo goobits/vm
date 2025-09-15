@@ -266,6 +266,23 @@ impl StateManager {
 
     /// Check if a path is dangerous to mount (system directories)
     fn is_dangerous_mount_source(path: &Path) -> bool {
+        // Allow paths inside system temp directories
+        if let Ok(temp_dir) = std::env::temp_dir().canonicalize() {
+            if let Ok(canonical_path) = path.canonicalize() {
+                if canonical_path.starts_with(&temp_dir) {
+                    return false;
+                }
+            }
+        }
+
+        // Also allow common temp directories
+        let temp_paths = ["/tmp", "/var/tmp", "/var/folders"];
+        for temp_path in &temp_paths {
+            if path.starts_with(temp_path) {
+                return false;
+            }
+        }
+
         let dangerous_paths = [
             "/", "/etc", "/usr", "/var", "/bin", "/sbin", "/boot", "/sys", "/proc", "/dev", "/root",
         ];
@@ -298,21 +315,19 @@ mod tests {
 
     #[test]
     fn test_dangerous_mount_detection() {
+        // These should be dangerous
         assert!(StateManager::is_dangerous_mount_source(Path::new("/")));
         assert!(StateManager::is_dangerous_mount_source(Path::new("/etc")));
-        assert!(StateManager::is_dangerous_mount_source(Path::new(
-            "/etc/nginx"
-        )));
-        assert!(StateManager::is_dangerous_mount_source(Path::new(
-            "/usr/bin"
-        )));
+        assert!(StateManager::is_dangerous_mount_source(Path::new("/usr/bin")));
+        assert!(StateManager::is_dangerous_mount_source(Path::new("/var/log")));
+        assert!(StateManager::is_dangerous_mount_source(Path::new("/root")));
 
-        assert!(!StateManager::is_dangerous_mount_source(Path::new(
-            "/home/user"
-        )));
+        // These should be safe
+        assert!(!StateManager::is_dangerous_mount_source(Path::new("/home/user")));
         assert!(!StateManager::is_dangerous_mount_source(Path::new("/tmp")));
-        assert!(!StateManager::is_dangerous_mount_source(Path::new(
-            "/workspace"
-        )));
+        assert!(!StateManager::is_dangerous_mount_source(Path::new("/tmp/test")));
+        assert!(!StateManager::is_dangerous_mount_source(Path::new("/var/tmp")));
+        assert!(!StateManager::is_dangerous_mount_source(Path::new("/var/folders/test")));
+        assert!(!StateManager::is_dangerous_mount_source(Path::new("/workspace")));
     }
 }

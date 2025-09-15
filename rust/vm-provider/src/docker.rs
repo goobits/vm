@@ -270,7 +270,13 @@ impl Provider for DockerProvider {
         preflight::check_system_resources()?;
         self.check_daemon_is_running()?;
         self.handle_potential_issues()?;
-        MacOSAudioManager::setup()?;
+
+        // Only setup audio if it's enabled in the configuration
+        if let Some(audio_service) = self.config.services.get("audio") {
+            if audio_service.enabled {
+                MacOSAudioManager::setup()?;
+            }
+        }
 
         println!("🐳 Creating Docker Environment");
 
@@ -396,7 +402,14 @@ impl Provider for DockerProvider {
             return stream_command("docker", &["rm", "-f", &self.container_name()]);
         }
         stream_command("docker", &["compose", "-f", Self::path_to_string(&compose_path)?, "down", "--volumes"])?;
-        MacOSAudioManager::cleanup()?;
+
+        // Only cleanup audio if it was enabled in the configuration
+        if let Some(audio_service) = self.config.services.get("audio") {
+            if audio_service.enabled {
+                MacOSAudioManager::cleanup()?;
+            }
+        }
+
         Ok(())
     }
 
@@ -486,13 +499,16 @@ impl Provider for DockerProvider {
     }
 
     fn list(&self) -> Result<()> {
-        let project_name = self.project_name();
-        stream_command("docker", &["ps", "-a", "--filter", &format!("name={}", project_name)])
+        // Show all containers - let users see the full Docker environment
+        // This provides better visibility than filtering by project name
+        stream_command("docker", &["ps", "-a"])
             .context("Failed to list containers")
     }
 
-    fn kill(&self) -> Result<()> {
-        stream_command("docker", &["kill", &self.container_name()])
+    fn kill(&self, container: Option<&str>) -> Result<()> {
+        let container_name = self.container_name();
+        let target_container = container.unwrap_or(&container_name);
+        stream_command("docker", &["kill", target_container])
             .context("Failed to kill container")
     }
 
