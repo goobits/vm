@@ -1,9 +1,8 @@
 use crate::log_context;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use log::{Level, LevelFilter, Metadata, Record};
 use regex::Regex;
 use serde_json::{json, Map, Value};
-use std::collections::HashMap;
 use std::env;
 use std::fs::OpenOptions;
 use std::io::{self, Write};
@@ -145,7 +144,7 @@ impl StructuredLogger {
     }
 
     fn format_message(&self, record: &Record, context: &Map<String, Value>) -> (String, String) {
-        let format = match self.config.format {
+        let format = match &self.config.format {
             LogFormat::Auto => {
                 if is_tty() {
                     LogFormat::Human
@@ -153,7 +152,7 @@ impl StructuredLogger {
                     LogFormat::Json
                 }
             }
-            format => format,
+            format => format.clone(),
         };
 
         match format {
@@ -424,18 +423,18 @@ fn format_value_for_human(value: &Value) -> String {
 }
 
 /// Initialize the structured logging system
-pub fn init() -> Result<(), Box<dyn std::error::Error>> {
+pub fn init() -> Result<(), log::SetLoggerError> {
     init_with_config(LogConfig::from_env())
 }
 
 /// Initialize with a custom configuration
-pub fn init_with_config(config: LogConfig) -> Result<(), Box<dyn std::error::Error>> {
+pub fn init_with_config(config: LogConfig) -> Result<(), log::SetLoggerError> {
     // Initialize context system
     log_context::init_context();
 
     // Create and install the logger
-    let logger = StructuredLogger::new(config.clone());
-    log::set_boxed_logger(Box::new(logger))?;
+    let logger = Box::leak(Box::new(StructuredLogger::new(config.clone())));
+    log::set_logger(logger)?;
     log::set_max_level(config.level);
 
     Ok(())

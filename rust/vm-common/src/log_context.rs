@@ -1,8 +1,7 @@
 use serde_json::{Map, Value};
 use std::cell::RefCell;
-use std::collections::HashMap;
 
-/// Thread-local storage for logging context
+// Thread-local storage for logging context
 thread_local! {
     static LOG_CONTEXT: RefCell<Vec<Map<String, Value>>> = RefCell::new(vec![Map::new()]);
 }

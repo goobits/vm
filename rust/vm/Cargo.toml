@@ -14,7 +14,7 @@ tempfile = { workspace = true }
 dirs = { workspace = true }
 serde = { workspace = true }
 log = { workspace = true }
-uuid = { version = "1.0", features = ["v4", "serde"] }
+uuid = { workspace = true }
 vm-common = { path = "../vm-common" }
 vm-config = { path = "../vm-config" }
 vm-provider = { path = "../vm-provider" }

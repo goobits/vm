@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use log::{debug, info, warn, error};
+use log::{debug, info, warn};
 use std::path::PathBuf;
 use vm_common::{log_context, scoped_context};
 use vm_config::{config::VmConfig, init_config_file, ConfigOps};
@@ -275,7 +275,7 @@ fn load_config_lenient(file: Option<PathBuf>, _no_preset: bool) -> Result<VmConf
 
     // Ensure we have at least a minimal valid config for providers
     if config.provider.is_none() {
-        config.provider = Some("docker".to_string());
+        config.provider = Some(String::from("docker"));
     }
 
     Ok(config)
@@ -283,7 +283,9 @@ fn load_config_lenient(file: Option<PathBuf>, _no_preset: bool) -> Result<VmConf
 
 fn main() -> Result<()> {
     // Initialize structured logging system first
-    vm_common::logging::init().context("Failed to initialize logging")?;
+    if let Err(_) = vm_common::logging::init() {
+        eprintln!("Warning: Failed to initialize structured logging, falling back to basic logging");
+    }
 
     let args = Args::parse();
 
@@ -404,37 +406,50 @@ fn main() -> Result<()> {
 
     // 2. Get the appropriate provider
     let provider = get_provider(config.clone())?;
+
+    // Add provider context that will be inherited by all subsequent logs
+    log_context! {
+        "provider" => provider.name()
+    };
+
     debug!("Using provider: {}", provider.name());
 
     // 3. Execute the command
     debug!("Executing command: {:?}", args.command);
     match args.command {
         Command::Create => {
-            debug!("Starting VM creation");
+            let _op_guard = scoped_context! { "operation" => "create" };
+            info!("Starting VM creation");
             provider.create()
         }
         Command::Start => {
-            debug!("Starting VM");
+            let _op_guard = scoped_context! { "operation" => "start" };
+            info!("Starting VM");
             provider.start()
         }
         Command::Stop => {
-            debug!("Stopping VM");
+            let _op_guard = scoped_context! { "operation" => "stop" };
+            info!("Stopping VM");
             provider.stop()
         }
         Command::Restart => {
-            debug!("Restarting VM");
+            let _op_guard = scoped_context! { "operation" => "restart" };
+            info!("Restarting VM");
             provider.restart()
         }
         Command::Provision => {
-            debug!("Re-running VM provisioning");
+            let _op_guard = scoped_context! { "operation" => "provision" };
+            info!("Re-running VM provisioning");
             provider.provision()
         }
         Command::List => {
+            let _op_guard = scoped_context! { "operation" => "list" };
             debug!("Listing VMs");
             provider.list()
         }
         Command::Kill { container } => {
-            debug!("Force killing VM processes: container={:?}", container);
+            let _op_guard = scoped_context! { "operation" => "kill" };
+            warn!("Force killing VM processes: container={:?}", container);
             provider.kill(container.as_deref())
         }
         Command::GetSyncDirectory => {
