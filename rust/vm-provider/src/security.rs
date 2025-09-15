@@ -12,10 +12,16 @@ impl SecurityValidator {
     /// - The path doesn't contain ".." components
     /// - The path doesn't start with ".."
     /// - The resolved path stays within the workspace boundary
+    /// - The path is reasonable length for developer use
     pub fn validate_relative_path(relative_path: &Path, workspace_path: &str) -> Result<PathBuf> {
+        // Check for reasonable path length (prevent accidental huge inputs)
+        let path_str = relative_path.to_string_lossy();
+        if path_str.len() > 4096 {
+            anyhow::bail!("Path too long (max 4096 characters): {} characters provided", path_str.len());
+        }
         // Reject absolute paths
         if relative_path.is_absolute() {
-            anyhow::bail!("Absolute paths are not allowed for security reasons: {}", relative_path.display());
+            anyhow::bail!("Absolute paths are not allowed (use relative paths from workspace root): {}", relative_path.display());
         }
 
         // Check for dangerous path components
@@ -57,7 +63,8 @@ impl SecurityValidator {
         let target_str = target_path.to_string_lossy();
 
         if !target_str.starts_with(&*workspace_str) && target_path != canonical_workspace {
-            anyhow::bail!("Path escapes workspace boundary: {} -> {}", relative_path.display(), target_path.display());
+            anyhow::bail!("Path escapes workspace boundary: {} -> {} (workspace: {})",
+                         relative_path.display(), target_path.display(), workspace_str);
         }
 
         Ok(target_path)
@@ -70,6 +77,11 @@ impl SecurityValidator {
             anyhow::bail!("Script name cannot be empty");
         }
 
+        // Check for reasonable length
+        if filename.len() > 255 {
+            anyhow::bail!("Script name too long (max 255 characters): {} characters provided", filename.len());
+        }
+
         // Check for path separators
         if filename.contains('/') || filename.contains('\\') {
             anyhow::bail!("Script name cannot contain path separators: {}", filename);
@@ -80,9 +92,9 @@ impl SecurityValidator {
             anyhow::bail!("Script name cannot contain '..' or start with '.': {}", filename);
         }
 
-        // Only allow alphanumeric, dash, underscore
-        if !filename.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
-            anyhow::bail!("Script name can only contain alphanumeric characters, dashes, and underscores: {}", filename);
+        // Only allow alphanumeric, dash, underscore, and dots (for extensions)
+        if !filename.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.') {
+            anyhow::bail!("Script name can only contain alphanumeric characters, dashes, underscores, and dots: {}", filename);
         }
 
         Ok(())

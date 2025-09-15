@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 use tera::{Tera, Context as TeraContext};
 use vm_config::config::VmConfig;
-use vm_temp::{TempVmState, TempProvider};
+use crate::{TempProvider, TempVmState};
 
 const DOCKER_COMPOSE_TEMPLATE: &str = include_str!("docker/template.yml");
 const DOCKERFILE_TEMPLATE: &str = include_str!("../../../providers/docker/Dockerfile");
@@ -258,13 +258,15 @@ impl Provider for DockerProvider {
         let target_dir = target_path.to_string_lossy().to_string();
 
         // Run interactive shell with proper working directory
+        // Use environment variable approach to avoid string formatting in shell commands
         let status = duct::cmd(
             "docker",
             &[
-                "exec", "-it", &self.container_name(),
+                "exec", "-it",
+                "-e", &format!("VM_TARGET_DIR={}", target_dir),
+                &self.container_name(),
                 "sudo", "-u", project_user,
-                "sh", "-c",
-                &format!("VM_TARGET_DIR='{}' exec {}", target_dir, shell)
+                "sh", "-c", &format!("cd \"$VM_TARGET_DIR\" && exec {}", shell)
             ],
         )
         .run()?

@@ -134,9 +134,12 @@ impl Provider for VagrantProvider {
             let shell = self.config.terminal.as_ref()
                 .and_then(|t| t.shell.as_deref())
                 .unwrap_or("bash");
-            let cmd = format!("cd {} && exec {}", target_dir, shell);
 
-            duct::cmd("vagrant", &["ssh", "-c", &cmd]).run()?;
+            // Use safe argument passing - avoid shell interpolation by using printf and exec
+            // This prevents injection even if target_dir or shell contain special characters
+            let safe_cmd = format!("cd \"$1\" && exec \"$2\"");
+
+            duct::cmd("vagrant", &["ssh", "-c", &safe_cmd, "--", &target_dir, shell]).run()?;
         }
         Ok(())
     }
