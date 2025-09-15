@@ -1,4 +1,4 @@
-use crate::{Provider, error::ProviderError};
+use crate::{Provider, error::ProviderError, progress::ProgressReporter};
 use anyhow::Result;
 use std::path::Path;
 use vm_config::config::VmConfig;
@@ -29,12 +29,81 @@ impl Provider for TartProvider {
     }
 
     fn create(&self) -> Result<()> {
-        println!("(TartProvider) Creating VM...");
-        // TODO: Translate logic from tart-provider.sh
-        // This will involve `tart clone` and `tart run` with --no-graphics
-        let image = self.config.tart.as_ref().and_then(|t| t.image.as_deref()).unwrap_or("ghcr.io/cirruslabs/ubuntu-22.04");
-        stream_command("tart", &["clone", image, &self.vm_name()])?;
-        stream_command("tart", &["run", "--no-graphics", &self.vm_name()])
+        let progress = ProgressReporter::new();
+        let main_phase = progress.start_phase("Creating Tart VM");
+
+        // Check if VM already exists
+        progress.task(&main_phase, "Checking if VM exists...");
+        let list_output = std::process::Command::new("tart")
+            .args(&["list"])
+            .output();
+
+        if let Ok(output) = list_output {
+            let list_str = String::from_utf8_lossy(&output.stdout);
+            if list_str.contains(&self.vm_name()) {
+                progress.task(&main_phase, "VM already exists.");
+                println!("⚠️  Tart VM '{}' already exists.", self.vm_name());
+                println!("To recreate, first run: vm destroy");
+                progress.finish_phase(&main_phase, "Skipped creation.");
+                return Ok(());
+            }
+        }
+        progress.task(&main_phase, "VM not found, proceeding with creation.");
+
+        // Get image from config
+        let image = self.config.tart.as_ref()
+            .and_then(|t| t.image.as_deref())
+            .unwrap_or("ghcr.io/cirruslabs/ubuntu:latest");
+
+        // Clone the base image
+        progress.task(&main_phase, &format!("Cloning image '{}'...", image));
+        let clone_result = stream_command("tart", &["clone", image, &self.vm_name()]);
+        if clone_result.is_err() {
+            progress.task(&main_phase, "Clone failed.");
+            progress.finish_phase(&main_phase, "Creation failed.");
+            return clone_result;
+        }
+        progress.task(&main_phase, "Image cloned successfully.");
+
+        // Configure VM with memory/CPU settings if specified
+        if let Some(vm_config) = &self.config.vm {
+            if let Some(memory) = vm_config.memory {
+                progress.task(&main_phase, &format!("Setting memory to {} MB...", memory));
+                stream_command("tart", &["set", &self.vm_name(), "--memory", &memory.to_string()])?;
+                progress.task(&main_phase, "Memory configured.");
+            }
+
+            if let Some(cpus) = vm_config.cpus {
+                progress.task(&main_phase, &format!("Setting CPUs to {}...", cpus));
+                stream_command("tart", &["set", &self.vm_name(), "--cpu", &cpus.to_string()])?;
+                progress.task(&main_phase, "CPUs configured.");
+            }
+        }
+
+        // Set disk size if specified
+        if let Some(tart_config) = &self.config.tart {
+            if let Some(disk_size) = tart_config.disk_size {
+                progress.task(&main_phase, &format!("Setting disk size to {} GB...", disk_size));
+                stream_command("tart", &["set", &self.vm_name(), "--disk-size", &disk_size.to_string()])?;
+                progress.task(&main_phase, "Disk size configured.");
+            }
+        }
+
+        // Start VM
+        progress.task(&main_phase, "Starting VM...");
+        let start_result = stream_command("tart", &["run", "--no-graphics", &self.vm_name()]);
+        if start_result.is_err() {
+            progress.task(&main_phase, "VM start failed.");
+            progress.finish_phase(&main_phase, "Creation failed.");
+            return start_result;
+        }
+
+        progress.task(&main_phase, "VM started successfully.");
+        progress.finish_phase(&main_phase, "Environment ready.");
+
+        println!("\n✅ Tart VM created successfully!");
+        println!("💡 Use 'vm ssh' to connect to the VM");
+        Ok(())
     }
 
     fn start(&self) -> Result<()> {
@@ -63,11 +132,58 @@ impl Provider for TartProvider {
     }
 
     fn logs(&self) -> Result<()> {
-        println!("Logs can be found in ~/.tart/vms/{}/app.log", self.vm_name());
-        Ok(())
+        // Try to read logs from ~/.tart/vms/{name}/app.log
+        let home_env = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        let log_path = format!("{}/.tart/vms/{}/app.log", home_env, self.vm_name());
+
+        // Check if log file exists before attempting to tail
+        if !std::path::Path::new(&log_path).exists() {
+            let error_msg = format!("Log file not found at: {}", log_path);
+            println!("{}", error_msg);
+            println!("The VM might not be running or logs may not be available yet.");
+            println!("Expected location: ~/.tart/vms/{}/app.log", self.vm_name());
+            return Err(anyhow::anyhow!(error_msg));
+        }
+
+        println!("Showing Tart VM logs from: {}", log_path);
+        println!("Press Ctrl+C to stop...\n");
+
+        // Use tail -f to follow the log file
+        stream_command("tail", &["-f", &log_path])
     }
 
     fn status(&self) -> Result<()> {
         stream_command("tart", &["list"])
+    }
+
+    fn restart(&self) -> Result<()> {
+        // Stop then start the VM
+        self.stop()?;
+        self.start()
+    }
+
+    fn provision(&self) -> Result<()> {
+        // Provisioning not supported for Tart
+        println!("Provisioning not supported for Tart VMs");
+        println!("Tart VMs use pre-built images and don't support dynamic provisioning");
+        Ok(())
+    }
+
+    fn list(&self) -> Result<()> {
+        // List all Tart VMs
+        stream_command("tart", &["list"])
+    }
+
+    fn kill(&self) -> Result<()> {
+        // Force stop the VM
+        stream_command("tart", &["stop", &self.vm_name()])
+    }
+
+    fn get_sync_directory(&self) -> Result<String> {
+        // Return workspace_path from config
+        let workspace_path = self.config.project.as_ref()
+            .and_then(|p| p.workspace_path.as_deref())
+            .unwrap_or("/workspace");
+        Ok(workspace_path.to_string())
     }
 }
