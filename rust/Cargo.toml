@@ -44,6 +44,8 @@ atty = "0.2"
 base64 = "0.22"
 libc = "0.2"
 fs2 = "0.4"
+log = "0.4"
+pathdiff = "0.2"
 
 [profile.release]
 opt-level = 3

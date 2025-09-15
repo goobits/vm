@@ -12,6 +12,7 @@ walkdir = { workspace = true }
 which = { workspace = true }
 anyhow = { workspace = true }
 glob = { workspace = true }
+vm-common = { path = "../vm-common" }
 
 [dev-dependencies]
 tempfile = { workspace = true }

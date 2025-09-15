@@ -1,4 +1,22 @@
 use std::env;
+use std::path::{Path, PathBuf};
+use anyhow::{Context, Result};
+
+/// A cross-platform equivalent of `readlink -f`.
+pub fn portable_readlink(path: &Path) -> Result<PathBuf> {
+    let canonical_path = path
+        .canonicalize()
+        .with_context(|| format!("Failed to get canonical path for {:?}", path))?;
+    Ok(canonical_path)
+}
+
+/// A cross-platform equivalent of `realpath --relative-to`.
+pub fn portable_relative_path(base: &Path, target: &Path) -> Result<PathBuf> {
+    let relative_path = pathdiff::diff_paths(target, base)
+        .ok_or_else(|| anyhow::anyhow!("Failed to calculate relative path from {:?} to {:?}", base, target))?;
+    Ok(relative_path)
+}
+
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Os {

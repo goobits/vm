@@ -123,7 +123,7 @@ impl LinkDetector {
 
     /// Check if a path is a pipx environment
     pub fn is_pipx_environment(path: &Path) -> bool {
-        path.join("pipx_metadata.json").exists()
+        vm_detector::is_pipx_environment(path)
     }
 
     /// Check if a path is a Python project (has setup.py or pyproject.toml)

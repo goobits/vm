@@ -1,11 +1,14 @@
 // Common utilities and types for VM Tool
 // This crate provides shared functionality across VM Tool components
 
+pub mod file_system;
+pub mod logging;
 pub mod platform;
 pub mod security;
 pub mod temp;
 
 use anyhow::{Context, Result};
+
 use std::path::Path;
 use std::process::Command;
 

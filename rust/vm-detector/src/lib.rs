@@ -2,6 +2,7 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
+use vm_common::file_system::*;
 
 pub mod os;
 pub mod tools;
@@ -10,6 +11,19 @@ pub mod presets;
 pub use os::*;
 pub use tools::*;
 pub use presets::*;
+
+/// Check if a path is a Python project (has setup.py, pyproject.toml, etc.)
+pub fn is_python_project(dir: &Path) -> bool {
+    has_any_file(
+        dir,
+        &["requirements.txt", "pyproject.toml", "setup.py", "Pipfile"],
+    )
+}
+
+/// Check if a path is a pipx environment
+pub fn is_pipx_environment(path: &Path) -> bool {
+    path.join("pipx_metadata.json").exists()
+}
 
 /// Detect project type(s) in a given directory
 pub fn detect_project_type(dir: &Path) -> HashSet<String> {
@@ -53,10 +67,7 @@ pub fn detect_project_type(dir: &Path) -> HashSet<String> {
     }
 
     // --- Python Detection ---
-    if has_any_file(
-        dir,
-        &["requirements.txt", "pyproject.toml", "setup.py", "Pipfile"],
-    ) {
+    if is_python_project(dir) {
         let mut framework = "python".to_string();
         if has_file_containing(dir, "requirements.txt", "Django")
             || has_file_containing(dir, "requirements.txt", "django")
@@ -125,25 +136,7 @@ pub fn format_detected_types(detected_types: HashSet<String>) -> String {
 }
 
 // --- Helper Functions ---
-
-fn has_file(base_dir: &Path, file_name: &str) -> bool {
-    base_dir.join(file_name).exists()
-}
-
-fn has_any_file(base_dir: &Path, file_names: &[&str]) -> bool {
-    file_names.iter().any(|f| has_file(base_dir, f))
-}
-
-fn has_any_dir(base_dir: &Path, dir_names: &[&str]) -> bool {
-    dir_names.iter().any(|d| base_dir.join(d).is_dir())
-}
-
-fn has_file_containing(base_dir: &Path, file_name: &str, pattern: &str) -> bool {
-    if let Ok(content) = fs::read_to_string(base_dir.join(file_name)) {
-        return content.contains(pattern);
-    }
-    false
-}
+// (Now using shared utilities from vm_common::file_system)
 
 #[cfg(test)]
 mod tests {

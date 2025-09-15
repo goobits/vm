@@ -4,16 +4,13 @@
   "description": "Beautiful development VMs with one command. Vagrant + Ansible + gorgeous terminals.",
   "type": "module",
   "bin": {
-    "vm": "./vm.sh"
+    "vm": "./vm"
   },
   "files": [
-    "vm.sh",
     "vm",
     "vm.yaml",
     "vm.schema.yaml",
-    "validate-config.sh",
     "install.sh",
-    "run-tests.sh",
     "providers/",
     "shared/",
     "configs/",
@@ -24,8 +21,8 @@
   ],
   "scripts": {
     "test": "cd rust && cargo test",
-    "validate": "./vm.sh validate || echo 'Validation requires vm binary'",
-    "postinstall": "chmod +x vm.sh install.sh"
+    "validate": "./vm validate || echo 'Validation requires vm binary'",
+    "postinstall": "chmod +x vm install.sh"
   },
   "keywords": [
     "vagrant",
