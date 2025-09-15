@@ -4,9 +4,13 @@ use vm_config::config::VmConfig;
 
 pub mod error;
 pub mod progress;
+pub mod resources;
 pub mod security;
 pub mod temp_models;
 pub mod utils;
+
+pub mod preflight;
+pub mod audio;
 
 mod docker;
 mod tart;

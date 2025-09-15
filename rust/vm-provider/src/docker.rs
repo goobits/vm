@@ -1,11 +1,14 @@
 use crate::{
+    audio::MacOSAudioManager,
     error::ProviderError,
+    preflight,
     progress::ProgressReporter,
+    resources,
     security::SecurityValidator,
-    utils::{is_tool_installed, stream_command},
+    utils::{is_tool_installed, stream_command, stream_docker_build},
     Provider,
 };
-use crate::{TempProvider, TempVmState};
+use crate::{ TempProvider, TempVmState };
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -15,7 +18,6 @@ use vm_config::config::VmConfig;
 // External dependencies
 extern crate atty;
 
-const DOCKER_COMPOSE_TEMPLATE: &str = include_str!("docker/template.yml");
 const DOCKERFILE_TEMPLATE: &str = include_str!("../../../providers/docker/Dockerfile");
 
 pub struct DockerProvider {
@@ -32,60 +34,103 @@ impl DockerProvider {
         })
     }
 
-    /// Ensure path is accessible to Docker, copy to temp location if needed
-    fn ensure_docker_accessible_path(path: &Path) -> Result<PathBuf> {
-        // Check if path actually contains required VM tool files
-        let has_shared = path.join("shared").exists();
-        let has_configs = path.join("configs").exists();
+    /// Write embedded resources to container
+    fn setup_container_resources(&self) -> Result<()> {
+        let container = self.container_name();
 
-        if has_shared || has_configs {
-            // Path contains VM tool files, check if accessible to Docker
-            let path_str = path.to_string_lossy();
-            if path_str.starts_with("/tmp") ||
-               path_str.starts_with("/var") ||
-               path_str.starts_with("/home") ||
-               path_str.starts_with("/Users") {  // macOS
-                return Ok(path.to_path_buf());
-            }
+        // Create directory structure in container (needs sudo for root-owned directories)
+        let output = std::process::Command::new("docker")
+            .args(["exec", &container, "sudo", "mkdir", "-p",
+                   "/vm-tool/shared/ansible/tasks",
+                   "/vm-tool/shared/services",
+                   "/vm-tool/shared/templates",
+                   "/vm-tool/shared/claude-settings",
+                   "/vm-tool/shared/gemini-settings",
+                   "/vm-tool/rust/target/release"])
+            .output()?;
+
+        if !output.status.success() {
+            return Err(anyhow::anyhow!("Failed to create directories: {}",
+                String::from_utf8_lossy(&output.stderr)));
         }
 
-        // If path might not be accessible, create accessible copy
-        eprintln!("⚠️  VM tool directory may not be accessible to Docker: {}", path.display());
-        eprintln!("   Creating accessible copy in /tmp/vm-tool...");
+        // Write embedded resources to container
+        self.write_to_container("/vm-tool/shared/ansible/playbook.yml", resources::ANSIBLE_PLAYBOOK)?;
+        self.write_to_container("/vm-tool/shared/ansible/tasks/manage-service.yml", resources::MANAGE_SERVICE_TASK)?;
+        self.write_to_container("/vm-tool/shared/services/service_definitions.yml", resources::SERVICE_DEFINITIONS)?;
+        self.write_to_container("/vm-tool/shared/templates/zshrc.j2", resources::ZSHRC_TEMPLATE)?;
+        self.write_to_container("/vm-tool/shared/themes.json", resources::THEMES_JSON)?;
+        self.write_to_container("/vm-tool/shared/claude-settings/settings.json", resources::CLAUDE_SETTINGS)?;
+        self.write_to_container("/vm-tool/shared/gemini-settings/settings.json", resources::GEMINI_SETTINGS)?;
 
-        let accessible_path = std::env::temp_dir().join("vm-tool");
+        // Copy vm-pkg binary to container if it exists
+        self.copy_vm_pkg_binary()?;
 
-        // Only copy if it doesn't exist or is older
-        if !accessible_path.exists() {
-            std::fs::create_dir_all(&accessible_path)?;
-
-            // Copy essential directories
-            for dir in ["shared", "configs"] {
-                let src = path.join(dir);
-                let dst = accessible_path.join(dir);
-                if src.exists() {
-                    Self::copy_dir_all(&src, &dst)?;
-                }
-            }
-
-            eprintln!("✅ Created accessible copy at: {}", accessible_path.display());
-        }
-
-        Ok(accessible_path)
+        Ok(())
     }
 
-    /// Recursively copy directory contents
-    fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
-        std::fs::create_dir_all(dst)?;
-        for entry in std::fs::read_dir(src)? {
-            let entry = entry?;
-            let ty = entry.file_type()?;
-            if ty.is_dir() {
-                Self::copy_dir_all(&entry.path(), &dst.join(entry.file_name()))?;
+    /// Copy vm-pkg binary to container
+    fn copy_vm_pkg_binary(&self) -> Result<()> {
+        let container = self.container_name();
+
+        // Find vm-pkg binary in our build directory
+        let tool_dir = vm_config::get_tool_dir();
+
+        // Try platform-specific path first
+        let platform = format!("{}-{}",
+            std::env::consts::OS,
+            std::env::consts::ARCH.replace("aarch64", "aarch64").replace("x86_64", "x86_64"));
+        let platform_vm_pkg = tool_dir.join(format!("rust/target/{}/release/vm-pkg", platform));
+
+        let vm_pkg_path = if platform_vm_pkg.exists() {
+            platform_vm_pkg
+        } else {
+            // Fallback to generic release path
+            tool_dir.join("rust/target/release/vm-pkg")
+        };
+
+        if vm_pkg_path.exists() {
+            // Copy the binary to container (follow symlinks with -L)
+            let output = std::process::Command::new("docker")
+                .args(["cp", "-L", &vm_pkg_path.to_string_lossy(),
+                       &format!("{}:/vm-tool/rust/target/release/vm-pkg", container)])
+                .output()?;
+
+            if !output.status.success() {
+                eprintln!("Warning: Failed to copy vm-pkg binary: {}",
+                    String::from_utf8_lossy(&output.stderr));
             } else {
-                std::fs::copy(entry.path(), dst.join(entry.file_name()))?;
+                // Make it executable
+                std::process::Command::new("docker")
+                    .args(["exec", &container, "sudo", "chmod", "+x",
+                           "/vm-tool/rust/target/release/vm-pkg"])
+                    .output()?;
             }
+        } else {
+            eprintln!("Warning: vm-pkg binary not found at expected locations");
         }
+
+        Ok(())
+    }
+
+    /// Write content to a file in the container
+    fn write_to_container(&self, path: &str, content: &str) -> Result<()> {
+        use base64::Engine;
+        let container = self.container_name();
+        let encoded_content = base64::engine::general_purpose::STANDARD.encode(content);
+
+        // Use base64 to safely transfer content with special characters (with sudo)
+        let decode_cmd = format!("echo '{}' | base64 -d | sudo tee '{}' > /dev/null", encoded_content, path);
+
+        let output = std::process::Command::new("docker")
+            .args(["exec", &container, "sh", "-c", &decode_cmd])
+            .output()?;
+
+        if !output.status.success() {
+            return Err(anyhow::anyhow!("Failed to write {}: {}", path,
+                String::from_utf8_lossy(&output.stderr)));
+        }
+
         Ok(())
     }
 
@@ -135,7 +180,7 @@ impl DockerProvider {
         let status = std::process::Command::new("docker").arg("info").output();
         if let Ok(output) = status {
             if output.status.success() {
-                return Ok(());
+                return Ok(())
             }
         }
         Err(ProviderError::DependencyNotFound(
@@ -157,19 +202,44 @@ impl DockerProvider {
         format!("{}-dev", self.project_name())
     }
 
+    fn load_docker_compose_template() -> Result<String> {
+        // Try to load from file first (for development/customization)
+        let template_path = vm_config::get_tool_dir()
+            .join("rust/vm-provider/src/docker/template.yml");
+
+        if template_path.exists() {
+            eprintln!("Loading Docker Compose template from: {}", template_path.display());
+            std::fs::read_to_string(&template_path)
+                .with_context(|| format!("Failed to read template from {:?}", template_path))
+        } else {
+            // Fallback to embedded template for production
+            eprintln!("Using embedded Docker Compose template");
+            Ok(include_str!("docker/template.yml").to_string())
+        }
+    }
+
     fn render_docker_compose(&self) -> Result<String> {
         let mut tera = Tera::default();
-        tera.add_raw_template("docker-compose.yml", DOCKER_COMPOSE_TEMPLATE)?;
+        let template_content = Self::load_docker_compose_template()?;
+        tera.add_raw_template("docker-compose.yml", &template_content)?;
 
         let project_dir_str = Self::path_to_string(&self._project_dir)?;
-        let vm_tool_dir = vm_config::get_tool_dir();
-        let vm_tool_dir = Self::ensure_docker_accessible_path(&vm_tool_dir)?;
-        let vm_tool_dir_str = Self::path_to_string(&vm_tool_dir)?;
+        let vm_tool_dir_str = "/vm-tool";
+
+        let current_uid = vm_config::get_current_uid();
+        let current_gid = vm_config::get_current_gid();
+        let project_user = self.config.vm.as_ref()
+            .and_then(|vm| vm.user.as_deref())
+            .unwrap_or("developer");
 
         let mut context = TeraContext::new();
         context.insert("config", &self.config);
         context.insert("project_dir", &project_dir_str);
         context.insert("vm_tool_dir", &vm_tool_dir_str);
+        context.insert("project_uid", &current_uid.to_string());
+        context.insert("project_gid", &current_gid.to_string());
+        context.insert("project_user", &project_user);
+        context.insert("is_macos", &cfg!(target_os = "macos"));
 
         let content = tera.render("docker-compose.yml", &context)?;
         Ok(content)
@@ -185,14 +255,10 @@ impl DockerProvider {
     }
 
     fn write_dockerfile(&self) -> Result<PathBuf> {
-        // Use the embedded Dockerfile template
         let dockerfile_path = self._project_dir.join("Dockerfile");
-
-        // Check if Dockerfile already exists
         if !dockerfile_path.exists() {
             fs::write(&dockerfile_path, DOCKERFILE_TEMPLATE.as_bytes())?;
         }
-
         Ok(dockerfile_path)
     }
 }
@@ -203,40 +269,31 @@ impl Provider for DockerProvider {
     }
 
     fn create(&self) -> Result<()> {
+        preflight::check_system_resources()?;
         self.check_daemon_is_running()?;
         self.handle_potential_issues()?;
-        // Phase 1: Generate files
+        MacOSAudioManager::setup()?;
+
         println!("🐳 Creating Docker Environment");
         print!("📄 Generating docker-compose.yml... ");
-        let compose_path = self
-            .write_docker_compose()
-            .context("Failed to generate docker-compose.yml")?;
+        let compose_path = self.write_docker_compose()?;
         println!("✅");
 
         print!("📄 Generating Dockerfile... ");
-        let _dockerfile_path = self
-            .write_dockerfile()
-            .context("Failed to generate Dockerfile")?;
+        self.write_dockerfile()?;
         println!("✅");
 
-        // Phase 2: Build container
-        println!("\n🔨 Building container image");
-        println!("Running `docker compose build`...");
-        stream_command(
-            "docker",
-            &[
-                "compose",
-                "-f",
-                Self::path_to_string(&compose_path)?,
-                "build",
-            ],
-        )
+        println!("\n🔨 Building container image (this may take a while)...");
+        stream_docker_build(&[
+            "compose",
+            "-f",
+            Self::path_to_string(&compose_path)?,
+            "build",
+        ])
         .context("Docker build failed")?;
         println!("✅ Build complete");
 
-        // Phase 3: Start containers
         println!("\n🚀 Starting containers");
-        println!("Running `docker compose up -d`...");
         stream_command(
             "docker",
             &[
@@ -250,100 +307,49 @@ impl Provider for DockerProvider {
         .context("Docker up failed")?;
         println!("✅ Containers started");
 
-        // Phase 4: Wait for container readiness and provision
         println!("\n🔧 Provisioning environment");
         print!("⏳ Waiting for container readiness... ");
-
         let max_attempts = 30;
         let mut attempt = 1;
-        let mut container_ready = false;
-
         while attempt <= max_attempts {
-            // Use quiet check instead of stream_command to avoid noise
-            let check_result = std::process::Command::new("docker")
-                .args(["exec", &self.container_name(), "echo", "ready"])
-                .output();
-
-            if let Ok(output) = check_result {
+            if let Ok(output) = std::process::Command::new("docker").args(["exec", &self.container_name(), "echo", "ready"]).output() {
                 if output.status.success() {
-                    container_ready = true;
                     break;
                 }
             }
-
             if attempt == max_attempts {
                 println!("❌");
-                return Err(anyhow::anyhow!(
-                    "Container failed to become ready after {} attempts",
-                    max_attempts
-                ));
+                return Err(anyhow::anyhow!("Container failed to become ready"));
             }
             std::thread::sleep(std::time::Duration::from_secs(2));
             attempt += 1;
         }
-
-        if !container_ready {
-            println!("❌");
-            return Err(anyhow::anyhow!("Container initialization timed out"));
-        }
         println!("✅");
 
-        // Copy config to container for Ansible
         print!("📋 Loading project configuration... ");
-        let config_json = self
-            .config
-            .to_json()
-            .context("Failed to serialize config")?;
+        let config_json = self.config.to_json()?;
         let temp_config_path = self.temp_dir.join("vm-config.json");
         fs::write(&temp_config_path, config_json)?;
-
-        let copy_result = std::process::Command::new("docker")
-            .args([
-                "cp",
-                Self::path_to_string(&temp_config_path)?,
-                &format!("{}:/tmp/vm-config.json", self.container_name()),
-            ])
-            .output()
-            .context("Failed to copy config to container")?;
-
+        let copy_result = std::process::Command::new("docker").args(["cp", Self::path_to_string(&temp_config_path)?, &format!("{}:/tmp/vm-config.json", self.container_name())]).output()?;
         if !copy_result.status.success() {
             println!("❌");
             return Err(anyhow::anyhow!("Failed to copy config to container"));
         }
         println!("✅");
 
-        // Run Ansible provisioning
-        println!("🎭 Running Ansible provisioning...");
-        let ansible_result = stream_command(
-            "docker",
-            &[
-                "exec",
-                &self.container_name(),
-                "bash",
-                "-c",
-                "ansible-playbook -i localhost, -c local /vm-tool/shared/ansible/playbook.yml",
-            ],
-        );
+        print!("📦 Setting up configuration files... ");
+        self.setup_container_resources()?;
+        println!("✅");
 
-        if ansible_result.is_err() {
-            println!("❌ Provisioning failed");
-            return Err(anyhow::anyhow!("Ansible provisioning failed"));
-        }
+        println!("🎭 Running Ansible provisioning...");
+        stream_command(
+            "docker",
+            &["exec", &self.container_name(), "bash", "-c", "ansible-playbook -i localhost, -c local /vm-tool/shared/ansible/playbook.yml"],
+        ).context("Ansible provisioning failed")?;
         println!("✅ Provisioning complete");
 
-        // Start supervisor services
         print!("🔄 Starting services... ");
-        let service_result = std::process::Command::new("docker")
-            .args([
-                "exec",
-                &self.container_name(),
-                "bash",
-                "-c",
-                "supervisorctl reread && supervisorctl update",
-            ])
-            .output();
-
-        if service_result.is_ok() {
+        if std::process::Command::new("docker").args(["exec", &self.container_name(), "bash", "-c", "supervisorctl reread && supervisorctl update"]).output().is_ok() {
             println!("✅");
         } else {
             println!("⚠️ (services may start later)");
@@ -358,35 +364,16 @@ impl Provider for DockerProvider {
         if !compose_path.exists() {
             self.write_docker_compose()?;
         }
-
-        stream_command(
-            "docker",
-            &[
-                "compose",
-                "-f",
-                Self::path_to_string(&compose_path)?,
-                "up",
-                "-d",
-            ],
-        )
-        .context("Failed to start container with docker-compose")
+        stream_command("docker", &["compose", "-f", Self::path_to_string(&compose_path)?, "up", "-d"])
+            .context("Failed to start container with docker-compose")
     }
 
     fn stop(&self) -> Result<()> {
         let compose_path = self.temp_dir.join("docker-compose.yml");
         if compose_path.exists() {
-            stream_command(
-                "docker",
-                &[
-                    "compose",
-                    "-f",
-                    Self::path_to_string(&compose_path)?,
-                    "stop",
-                ],
-            )
-            .context("Failed to stop container with docker-compose")
+            stream_command("docker", &["compose", "-f", Self::path_to_string(&compose_path)?, "stop"])
+                .context("Failed to stop container with docker-compose")
         } else {
-            // Fallback to direct container stop if compose file doesn't exist
             stream_command("docker", &["stop", &self.container_name()])
                 .context("Failed to stop container")
         }
@@ -398,80 +385,22 @@ impl Provider for DockerProvider {
             println!("docker-compose.yml not found. Attempting to remove container by name.");
             return stream_command("docker", &["rm", "-f", &self.container_name()]);
         }
-
-        stream_command(
-            "docker",
-            &[
-                "compose",
-                "-f",
-                Self::path_to_string(&compose_path)?,
-                "down",
-                "--volumes",
-            ],
-        )
+        stream_command("docker", &["compose", "-f", Self::path_to_string(&compose_path)?, "down", "--volumes"])?;
+        MacOSAudioManager::cleanup()?;
+        Ok(())
     }
 
     fn ssh(&self, relative_path: &Path) -> Result<()> {
-        // Get workspace path and user from config
-        let workspace_path = self
-            .config
-            .project
-            .as_ref()
-            .and_then(|p| p.workspace_path.as_deref())
-            .unwrap_or("/workspace");
-        let project_user = self
-            .config
-            .vm
-            .as_ref()
-            .and_then(|vm| vm.user.as_deref())
-            .unwrap_or("developer");
+        let workspace_path = self.config.project.as_ref().and_then(|p| p.workspace_path.as_deref()).unwrap_or("/workspace");
+        let project_user = self.config.vm.as_ref().and_then(|vm| vm.user.as_deref()).unwrap_or("developer");
+        let shell = self.config.terminal.as_ref().and_then(|t| t.shell.as_deref()).unwrap_or("zsh");
 
-        // Get shell from config (terminal.shell or default to zsh)
-        let shell = self
-            .config
-            .terminal
-            .as_ref()
-            .and_then(|t| t.shell.as_deref())
-            .unwrap_or("zsh");
-
-        // Validate and calculate target directory (prevent path traversal)
-        let target_path = SecurityValidator::validate_relative_path(relative_path, workspace_path)
-            .context("Invalid path for SSH operation")?;
+        let target_path = SecurityValidator::validate_relative_path(relative_path, workspace_path)?;
         let target_dir = target_path.to_string_lossy().to_string();
 
-        // Run interactive shell with proper working directory
-        // Use environment variable approach to avoid string formatting in shell commands
+        let tty_flag = if atty::is(atty::Stream::Stdin) && atty::is(atty::Stream::Stdout) { "-it" } else { "-i" };
 
-        // Detect if we're in an interactive environment and can use TTY
-        // This works across all systems: Linux, macOS, Windows, CI/CD environments
-        let stdin_is_tty = atty::is(atty::Stream::Stdin);
-        let stdout_is_tty = atty::is(atty::Stream::Stdout);
-        let tty_flag = if stdin_is_tty && stdout_is_tty {
-            "-it" // Interactive with TTY
-        } else {
-            "-i"  // Interactive without TTY (for pipes, CI/CD, etc.)
-        };
-
-        // TTY detection completed - using appropriate flag for current environment
-
-        let status = duct::cmd(
-            "docker",
-            &[
-                "exec",
-                tty_flag,
-                "-e",
-                &format!("VM_TARGET_DIR={}", target_dir),
-                &self.container_name(),
-                "sudo",
-                "-u",
-                project_user,
-                "sh",
-                "-c",
-                &format!("cd \"$VM_TARGET_DIR\" && exec {}", shell),
-            ],
-        )
-        .run()?
-        .status;
+        let status = duct::cmd("docker", &["exec", tty_flag, "-e", &format!("VM_TARGET_DIR={}", target_dir), &self.container_name(), "sudo", "-u", project_user, "sh", "-c", &format!("cd \"$VM_TARGET_DIR\" && exec {}", shell)]).run()?.status;
 
         if !status.success() {
             return Err(ProviderError::CommandFailed("SSH command failed".to_string()).into());
@@ -481,33 +410,12 @@ impl Provider for DockerProvider {
 
     fn exec(&self, cmd: &[String]) -> Result<()> {
         let container = self.container_name();
-        let workspace_path = self
-            .config
-            .project
-            .as_ref()
-            .and_then(|p| p.workspace_path.as_deref())
-            .unwrap_or("/workspace");
-        let project_user = self
-            .config
-            .vm
-            .as_ref()
-            .and_then(|vm| vm.user.as_deref())
-            .unwrap_or("developer");
+        let workspace_path = self.config.project.as_ref().and_then(|p| p.workspace_path.as_deref()).unwrap_or("/workspace");
+        let project_user = self.config.vm.as_ref().and_then(|vm| vm.user.as_deref()).unwrap_or("developer");
 
-        // Use safe argument passing pattern (like tart.rs) - avoid shell entirely
-        let mut args: Vec<&str> = vec![
-            "exec",
-            "-w",
-            workspace_path,
-            "--user",
-            project_user,
-            &container,
-        ];
-
-        // Convert command strings to string references and pass individually (no shell interpretation)
+        let mut args: Vec<&str> = vec!["exec", "-w", workspace_path, "--user", project_user, &container];
         let cmd_strs: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
         args.extend_from_slice(&cmd_strs);
-
         stream_command("docker", &args)
     }
 
@@ -517,143 +425,69 @@ impl Provider for DockerProvider {
 
     fn status(&self) -> Result<()> {
         let compose_path = self.temp_dir.join("docker-compose.yml");
-
         if compose_path.exists() {
-            // Use docker-compose ps for formatted status
-            stream_command(
-                "docker",
-                &["compose", "-f", Self::path_to_string(&compose_path)?, "ps"],
-            )
-            .context("Failed to get container status with docker-compose")?;
+            stream_command("docker", &["compose", "-f", Self::path_to_string(&compose_path)?, "ps"])?;
         } else {
-            // Fallback to docker ps with filter for this container
-            stream_command(
-                "docker",
-                &["ps", "-f", &format!("name={}", self.container_name())],
-            )
-            .context("Failed to get container status")?;
+            stream_command("docker", &["ps", "-f", &format!("name={}", self.container_name())])?;
         }
 
-        // Show port range info if configured
         if let Some(port_range) = &self.config.port_range {
             println!("\n📡 Port Range: {}", port_range);
-
-            // Count used ports in range if configured
             if !self.config.ports.is_empty() {
-                let range_parts: Vec<&str> = port_range.split('-').collect();
-                if range_parts.len() == 2 {
-                    if let (Ok(range_start), Ok(range_end)) =
-                        (range_parts[0].parse::<u16>(), range_parts[1].parse::<u16>())
-                    {
-                        let used_count = self
-                            .config
-                            .ports
-                            .values()
-                            .filter(|&port| *port >= range_start && *port <= range_end)
-                            .count();
-                        let total_ports = (range_end - range_start + 1) as usize;
-                        println!("   Used: {}/{} ports", used_count, total_ports);
-                    }
+                if let Ok(parsed_range) = vm_ports::PortRange::parse(port_range) {
+                    let (start, end) = (parsed_range.start, parsed_range.end);
+                    let used_count = self.config.ports.values().filter(|&&p| p >= start && p <= end).count();
+                    println!("   Used: {}/{} ports", used_count, (end - start + 1));
                 }
             }
         }
-
         Ok(())
     }
 
     fn restart(&self) -> Result<()> {
-        // Stop then start with compose
         self.stop()?;
         self.start()
     }
 
     fn provision(&self) -> Result<()> {
-        // Re-run ansible without recreating container
         let container = self.container_name();
-
-        // Check if container is running
-        let status_output = std::process::Command::new("docker")
-            .args(["inspect", "--format", "{{.State.Status}}", &container])
-            .output()?;
-
-        let status = String::from_utf8_lossy(&status_output.stdout)
-            .trim()
-            .to_string();
+        let status_output = std::process::Command::new("docker").args(["inspect", "--format", "{{.State.Status}}", &container]).output()?;
+        let status = String::from_utf8_lossy(&status_output.stdout).trim().to_string();
         if status != "running" {
-            return Err(anyhow::anyhow!(
-                "Container {} is not running. Start it first with 'vm start'",
-                container
-            ));
+            return Err(anyhow::anyhow!("Container {} is not running. Start it first with 'vm start'", container));
         }
 
         let progress = ProgressReporter::new();
         progress.phase_header("🔧", "PROVISIONING PHASE");
         progress.subtask("├─", "Re-running Ansible provisioning...");
 
-        // Copy config to container for Ansible
-        let config_json = self
-            .config
-            .to_json()
-            .context("Failed to serialize config")?;
+        let config_json = self.config.to_json()?;
         let temp_config_path = self.temp_dir.join("vm-config.json");
         std::fs::write(&temp_config_path, config_json)?;
+        stream_command("docker", &["cp", Self::path_to_string(&temp_config_path)?, &format!("{}:/tmp/vm-config.json", self.container_name())])?;
 
-        stream_command(
-            "docker",
-            &[
-                "cp",
-                Self::path_to_string(&temp_config_path)?,
-                &format!("{}:/tmp/vm-config.json", self.container_name()),
-            ],
-        )
-        .context("Failed to copy config to container")?;
-
-        // Run Ansible provisioning
-        let ansible_result = stream_command(
-            "docker",
-            &[
-                "exec",
-                &self.container_name(),
-                "bash",
-                "-c",
-                "ansible-playbook -i localhost, -c local /vm-tool/shared/ansible/playbook.yml",
-            ],
-        );
-
+        let ansible_result = stream_command("docker", &["exec", &self.container_name(), "bash", "-c", "ansible-playbook -i localhost, -c local /vm-tool/shared/ansible/playbook.yml"]);
         if ansible_result.is_err() {
             progress.error("└─", "Provisioning failed");
             return Err(anyhow::anyhow!("Ansible provisioning failed"));
         }
-
         progress.complete("└─", "Provisioning complete");
         Ok(())
     }
 
     fn list(&self) -> Result<()> {
-        // Use docker ps -a with project filter
         let project_name = self.project_name();
-        stream_command(
-            "docker",
-            &["ps", "-a", "--filter", &format!("name={}", project_name)],
-        )
-        .context("Failed to list containers")
+        stream_command("docker", &["ps", "-a", "--filter", &format!("name={}", project_name)])
+            .context("Failed to list containers")
     }
 
     fn kill(&self) -> Result<()> {
-        // Force kill the container
         stream_command("docker", &["kill", &self.container_name()])
             .context("Failed to kill container")
     }
 
     fn get_sync_directory(&self) -> Result<String> {
-        // Return workspace_path from config
-        let workspace_path = self
-            .config
-            .project
-            .as_ref()
-            .and_then(|p| p.workspace_path.as_deref())
-            .unwrap_or("/workspace");
-        Ok(workspace_path.to_string())
+        Ok(self.config.project.as_ref().and_then(|p| p.workspace_path.as_deref()).unwrap_or("/workspace").to_string())
     }
 
     fn as_temp_provider(&self) -> Option<&dyn TempProvider> {
@@ -665,52 +499,24 @@ impl TempProvider for DockerProvider {
     fn update_mounts(&self, state: &TempVmState) -> Result<()> {
         let progress = ProgressReporter::new();
         let main_phase = progress.start_phase("Updating container mounts");
-
         progress.task(&main_phase, "Checking container status...");
 
-        // Check if container is running first
-        let is_running = self
-            .is_container_running(&state.container_name)
-            .context("Failed to check container status")?;
-
-        if is_running {
+        if self.is_container_running(&state.container_name)? {
             progress.task(&main_phase, "Stopping container...");
-            // Stop the container if it's running
-            stream_command("docker", &["stop", &state.container_name])
-                .context("Failed to stop container")?;
+            stream_command("docker", &["stop", &state.container_name])?;
         }
 
         progress.task(&main_phase, "Recreating container with new mounts...");
-        // Recreate the container with new mounts
-        self.recreate_with_mounts(state)
-            .context("Failed to recreate container with new mounts")?;
+        self.recreate_with_mounts(state)?;
 
         progress.task(&main_phase, "Starting container...");
-        // Start the container
         let compose_path = self.temp_dir.join("docker-compose.yml");
-        stream_command(
-            "docker",
-            &[
-                "compose",
-                "-f",
-                Self::path_to_string(&compose_path)?,
-                "up",
-                "-d",
-            ],
-        )
-        .context("Failed to start container with new mounts")?;
+        stream_command("docker", &["compose", "-f", Self::path_to_string(&compose_path)?, "up", "-d"])?;
 
         progress.task(&main_phase, "Checking container health...");
-        // Check if container is healthy
-        let is_healthy = self
-            .check_container_health(&state.container_name)
-            .context("Failed to check container health")?;
-
-        if !is_healthy {
+        if !self.check_container_health(&state.container_name)? {
             progress.finish_phase(&main_phase, "Mount update failed - container not healthy");
-            return Err(anyhow::anyhow!(
-                "Container is not healthy after mount update"
-            ));
+            return Err(anyhow::anyhow!("Container is not healthy after mount update"));
         }
 
         progress.finish_phase(&main_phase, "Mounts updated successfully");
@@ -720,27 +526,18 @@ impl TempProvider for DockerProvider {
     fn recreate_with_mounts(&self, state: &TempVmState) -> Result<()> {
         let progress = ProgressReporter::new();
         let phase = progress.start_phase("Recreating container configuration");
-
         progress.task(&phase, "Generating updated docker-compose.yml...");
 
-        // Create a modified config with the temp VM mounts
         let mut temp_config = self.config.clone();
-
-        // Update the project name to match the temp VM
         if let Some(ref mut project) = temp_config.project {
             project.name = Some("vm-temp".to_string());
         }
 
-        // Generate docker-compose.yml with the new mounts
-        let content = self
-            .render_docker_compose_with_mounts(state)
-            .context("Failed to render docker-compose.yml with mounts")?;
+        let content = self.render_docker_compose_with_mounts(state)?;
         let compose_path = self.temp_dir.join("docker-compose.yml");
-        fs::write(&compose_path, content.as_bytes())
-            .context("Failed to write updated docker-compose.yml")?;
+        fs::write(&compose_path, content.as_bytes())?;
 
         progress.task(&phase, "Removing old container...");
-        // Remove the old container (preserving volumes)
         let _ = stream_command("docker", &["rm", "-f", &state.container_name]);
 
         progress.finish_phase(&phase, "Container configuration updated");
@@ -748,43 +545,27 @@ impl TempProvider for DockerProvider {
     }
 
     fn check_container_health(&self, container_name: &str) -> Result<bool> {
-        // Wait for container to be ready
         let max_attempts = 30;
-        let mut attempt = 1;
-
-        while attempt <= max_attempts {
+        for _ in 0..max_attempts {
             if stream_command("docker", &["exec", container_name, "echo", "ready"]).is_ok() {
                 return Ok(true);
             }
-
-            if attempt == max_attempts {
-                return Ok(false);
-            }
-
             std::thread::sleep(std::time::Duration::from_secs(2));
-            attempt += 1;
         }
-
         Ok(false)
     }
 
     fn is_container_running(&self, container_name: &str) -> Result<bool> {
-        let output = std::process::Command::new("docker")
-            .args(["inspect", "--format", "{{.State.Status}}", container_name])
-            .output()
-            .context("Failed to check container status")?;
-
+        let output = std::process::Command::new("docker").args(["inspect", "--format", "{{.State.Status}}", container_name]).output()?;
         if !output.status.success() {
             return Ok(false);
         }
-
         let status = String::from_utf8_lossy(&output.stdout).trim().to_string();
         Ok(status == "running")
     }
 }
 
 impl DockerProvider {
-    /// Render docker-compose.yml with custom mounts for temp VMs
     fn render_docker_compose_with_mounts(&self, state: &TempVmState) -> Result<String> {
         const TEMP_DOCKER_COMPOSE_TEMPLATE: &str = r#"
 # Temporary VM docker-compose.yml with custom mounts
@@ -819,7 +600,6 @@ volumes:
   vmtemp_nvm:
   vmtemp_cache:
 "#;
-
         let mut tera = Tera::default();
         tera.add_raw_template("docker-compose.yml", TEMP_DOCKER_COMPOSE_TEMPLATE)?;
 

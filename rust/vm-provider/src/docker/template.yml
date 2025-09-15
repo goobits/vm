@@ -7,10 +7,17 @@ services:
     build:
       context: {{ project_dir }}
       dockerfile: Dockerfile
+      args:
+        PROJECT_UID: {{ project_uid }}
+        PROJECT_GID: {{ project_gid }}
+        PROJECT_USER: {{ project_user }}
     image: {{ config.project.name | default(value="vm-project") }}:latest
     volumes:
       - {{ project_dir }}:/workspace:rw
-      - {{ vm_tool_dir }}:/vm-tool:ro
+      {% if is_macos %}
+      # macOS specific volume for audio
+      - /tmp/pulseaudio.socket:/tmp/pulseaudio.socket
+      {% endif %}
       # Additional volumes for package linking, etc. can be added here dynamically
     {% if config.ports and config.ports | length > 0 -%}
     ports:
@@ -19,6 +26,9 @@ services:
     {%- endif %}
     {% if config.environment and config.environment | length > 0 -%}
     environment:
+      {% if is_macos %}
+      - PULSE_SERVER=unix:/tmp/pulseaudio.socket
+      {% endif %}
       {% for name, value in config.environment %}- {{ name }}={{ value }}
       {% endfor %}
     {%- endif %}
