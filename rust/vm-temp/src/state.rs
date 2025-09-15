@@ -1,0 +1,218 @@
+use crate::TempVmState;
+use anyhow::{Context, Result};
+use std::fs;
+use std::path::{Path, PathBuf};
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum StateError {
+    #[error("State file not found at {path}")]
+    StateNotFound { path: PathBuf },
+    #[error("Invalid state file format: {0}")]
+    InvalidFormat(#[from] serde_yaml::Error),
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Context error: {0}")]
+    Context(#[from] anyhow::Error),
+    #[error("State validation failed: {reason}")]
+    ValidationFailed { reason: String },
+}
+
+/// Manages temp VM state persistence and validation
+#[derive(Debug)]
+pub struct StateManager {
+    state_dir: PathBuf,
+    state_file: PathBuf,
+}
+
+impl StateManager {
+    /// Create a new state manager with default state directory
+    pub fn new() -> Result<Self> {
+        let state_dir = Self::default_state_dir()?;
+        let state_file = state_dir.join("temp-vm.state");
+
+        Ok(Self {
+            state_dir,
+            state_file,
+        })
+    }
+
+    /// Create a new state manager with custom state directory
+    pub fn with_state_dir(state_dir: PathBuf) -> Self {
+        let state_file = state_dir.join("temp-vm.state");
+        Self {
+            state_dir,
+            state_file,
+        }
+    }
+
+    /// Get the default state directory (~/.vm)
+    pub fn default_state_dir() -> Result<PathBuf> {
+        dirs::home_dir()
+            .map(|home| home.join(".vm"))
+            .ok_or_else(|| anyhow::anyhow!("Could not find home directory"))
+    }
+
+    /// Get the state file path
+    pub fn state_file_path(&self) -> &Path {
+        &self.state_file
+    }
+
+    /// Check if a temp VM state exists
+    pub fn state_exists(&self) -> bool {
+        self.state_file.exists()
+    }
+
+    /// Load temp VM state from disk
+    pub fn load_state(&self) -> Result<TempVmState, StateError> {
+        if !self.state_file.exists() {
+            return Err(StateError::StateNotFound {
+                path: self.state_file.clone(),
+            });
+        }
+
+        let content = fs::read_to_string(&self.state_file)
+            .with_context(|| format!("Failed to read state file: {}", self.state_file.display()))?;
+
+        let state: TempVmState = serde_yaml::from_str(&content)
+            .with_context(|| format!("Failed to parse state file: {}", self.state_file.display()))?;
+
+        self.validate_state(&state)?;
+        Ok(state)
+    }
+
+    /// Save temp VM state to disk atomically
+    pub fn save_state(&self, state: &TempVmState) -> Result<(), StateError> {
+        self.validate_state(state)?;
+
+        // Create state directory if it doesn't exist
+        fs::create_dir_all(&self.state_dir)
+            .with_context(|| format!("Failed to create state directory: {}", self.state_dir.display()))?;
+
+        // Serialize state to YAML
+        let yaml_content = serde_yaml::to_string(state)
+            .with_context(|| "Failed to serialize state to YAML")?;
+
+        // Write atomically using a temporary file
+        let temp_file = self.state_file.with_extension("tmp");
+        fs::write(&temp_file, yaml_content)
+            .with_context(|| format!("Failed to write temporary state file: {}", temp_file.display()))?;
+
+        // Atomic move to final location
+        fs::rename(&temp_file, &self.state_file)
+            .with_context(|| format!("Failed to move state file to final location: {}", self.state_file.display()))?;
+
+        Ok(())
+    }
+
+    /// Delete the state file
+    pub fn delete_state(&self) -> Result<(), StateError> {
+        if self.state_file.exists() {
+            fs::remove_file(&self.state_file)
+                .with_context(|| format!("Failed to delete state file: {}", self.state_file.display()))?;
+        }
+        Ok(())
+    }
+
+    /// Validate temp VM state for consistency and security
+    pub fn validate_state(&self, state: &TempVmState) -> Result<(), StateError> {
+        // Validate container name is not empty
+        if state.container_name.trim().is_empty() {
+            return Err(StateError::ValidationFailed {
+                reason: "Container name cannot be empty".to_string(),
+            });
+        }
+
+        // Validate provider is not empty
+        if state.provider.trim().is_empty() {
+            return Err(StateError::ValidationFailed {
+                reason: "Provider cannot be empty".to_string(),
+            });
+        }
+
+        // Validate project directory exists
+        if !state.project_dir.exists() {
+            return Err(StateError::ValidationFailed {
+                reason: format!("Project directory does not exist: {}", state.project_dir.display()),
+            });
+        }
+
+        // Validate all mount sources exist and are directories
+        for mount in &state.mounts {
+            if !mount.source.exists() {
+                return Err(StateError::ValidationFailed {
+                    reason: format!("Mount source does not exist: {}", mount.source.display()),
+                });
+            }
+
+            if !mount.source.is_dir() {
+                return Err(StateError::ValidationFailed {
+                    reason: format!("Mount source is not a directory: {}", mount.source.display()),
+                });
+            }
+
+            // Security check: prevent mounting dangerous system directories
+            if Self::is_dangerous_mount_source(&mount.source) {
+                return Err(StateError::ValidationFailed {
+                    reason: format!("Dangerous mount source not allowed: {}", mount.source.display()),
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Check if a path is dangerous to mount (system directories)
+    fn is_dangerous_mount_source(path: &Path) -> bool {
+        let dangerous_paths = [
+            "/",
+            "/etc",
+            "/usr",
+            "/var",
+            "/bin",
+            "/sbin",
+            "/boot",
+            "/sys",
+            "/proc",
+            "/dev",
+            "/root",
+        ];
+
+        // Check exact matches and if path starts with dangerous paths
+        for dangerous in &dangerous_paths {
+            let dangerous_path = Path::new(dangerous);
+            if path == dangerous_path {
+                return true;
+            }
+            // For non-root paths, check if it's a subdirectory of dangerous paths
+            if *dangerous != "/" && path.starts_with(dangerous_path) {
+                return true;
+            }
+        }
+
+        false
+    }
+}
+
+impl Default for StateManager {
+    fn default() -> Self {
+        Self::new().expect("Failed to create default state manager")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dangerous_mount_detection() {
+        assert!(StateManager::is_dangerous_mount_source(Path::new("/")));
+        assert!(StateManager::is_dangerous_mount_source(Path::new("/etc")));
+        assert!(StateManager::is_dangerous_mount_source(Path::new("/etc/nginx")));
+        assert!(StateManager::is_dangerous_mount_source(Path::new("/usr/bin")));
+
+        assert!(!StateManager::is_dangerous_mount_source(Path::new("/home/user")));
+        assert!(!StateManager::is_dangerous_mount_source(Path::new("/tmp")));
+        assert!(!StateManager::is_dangerous_mount_source(Path::new("/workspace")));
+    }
+}

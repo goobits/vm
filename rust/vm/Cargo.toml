@@ -14,3 +14,4 @@ chrono = "0.4"
 serde = { workspace = true }
 vm-config = { path = "../vm-config" }
 vm-provider = { path = "../vm-provider" }
+vm-temp = { path = "../vm-temp" }

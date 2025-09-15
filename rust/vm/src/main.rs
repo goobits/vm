@@ -9,6 +9,7 @@ use vm_config::preset::PresetDetector;
 use vm_config::paths;
 use vm_provider::get_provider;
 use vm_provider::progress::{confirm_prompt, ProgressReporter, StatusFormatter};
+use vm_temp::{TempVmState, StateManager, Mount, MountPermission, MountParser};
 
 // Global debug flag
 static mut DEBUG_ENABLED: bool = false;
@@ -129,6 +130,35 @@ enum TempSubcommand {
     Status,
     /// Destroy temp VM
     Destroy,
+    /// Add mount to running temp VM
+    Mount {
+        /// Path to mount (e.g., ./src or ./config:ro)
+        path: String,
+        /// Skip confirmation prompts
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Remove mount from temp VM
+    Unmount {
+        /// Path to unmount (omit for --all)
+        path: Option<String>,
+        /// Remove all mounts
+        #[arg(long)]
+        all: bool,
+        /// Skip confirmation prompts
+        #[arg(long)]
+        yes: bool,
+    },
+    /// List current mounts
+    Mounts,
+    /// List all temp VMs
+    List,
+    /// Stop temp VM
+    Stop,
+    /// Start temp VM
+    Start,
+    /// Restart temp VM
+    Restart,
 }
 
 #[derive(Debug, Subcommand)]
@@ -582,67 +612,51 @@ fn handle_generate_command(
 // Temp command implementation
 fn handle_temp_command(command: &TempSubcommand) -> Result<()> {
     debug!("Temp command: {:?}", command);
-    let temp_state_dir = dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?
-        .join(".vm");
-    let temp_state_file = temp_state_dir.join("temp-vm.state");
+    let state_manager = StateManager::new()
+        .context("Failed to initialize state manager")?;
 
     match command {
         TempSubcommand::Create { mounts, auto_destroy } => {
-            // Validate mounts
-            let mut processed_mounts = Vec::new();
-            for mount in mounts {
-                let parts: Vec<&str> = mount.split(':').collect();
-                let source = Path::new(parts[0]);
-                let perm = if parts.len() > 1 { parts[1] } else { "rw" };
+            // Parse mount strings using MountParser
+            let parsed_mounts = MountParser::parse_mount_strings(mounts)
+                .context("Failed to parse mount strings")?;
 
-                if !source.exists() {
-                    return Err(anyhow::anyhow!("Directory '{}' does not exist", source.display()));
-                }
-                if !source.is_dir() {
-                    return Err(anyhow::anyhow!("'{}' is not a directory", source.display()));
-                }
-                if perm != "ro" && perm != "rw" {
-                    return Err(anyhow::anyhow!("Invalid permission '{}'. Use 'ro' or 'rw'", perm));
-                }
+            // Get current project directory
+            let project_dir = std::env::current_dir()
+                .context("Failed to get current directory")?;
 
-                processed_mounts.push((source.to_path_buf(), perm.to_string()));
+            // Create temp VM state
+            let mut temp_state = TempVmState::new(
+                "vm-temp-dev".to_string(),
+                "docker".to_string(),
+                project_dir,
+                *auto_destroy,
+            );
+
+            // Add all mounts to the state
+            for (source, target, permissions) in parsed_mounts {
+                if let Some(target_path) = target {
+                    temp_state.add_mount_with_target(source, target_path, permissions)
+                        .context("Failed to add mount with custom target")?;
+                } else {
+                    temp_state.add_mount(source, permissions)
+                        .context("Failed to add mount")?;
+                }
             }
 
             // Create minimal temp config
-            let mut temp_config = VmConfig::default();
-            temp_config.provider = Some("docker".to_string());
-
-            if let Some(ref mut project) = temp_config.project {
-                project.name = Some("vm-temp".to_string());
-                project.hostname = Some("vm-temp.local".to_string());
-                project.workspace_path = Some("/workspace".to_string());
-            } else {
-                temp_config.project = Some(vm_config::config::ProjectConfig {
-                    name: Some("vm-temp".to_string()),
-                    hostname: Some("vm-temp.local".to_string()),
-                    workspace_path: Some("/workspace".to_string()),
-                    backup_pattern: None,
-                    env_template_path: None,
-                });
-            }
+            let temp_config = create_temp_config()?;
 
             // Create the VM
             println!("🚀 Creating temporary VM...");
-            let provider = get_provider(temp_config.clone())?;
+            let provider = get_provider(temp_config)?;
             provider.create()?;
 
             // Save state
-            fs::create_dir_all(&temp_state_dir)?;
-            let state = TempVmState {
-                container_name: "vm-temp-dev".to_string(),
-                mounts: processed_mounts.clone(),
-                created_at: chrono::Utc::now().to_rfc3339(),
-            };
-            let state_yaml = serde_yaml::to_string(&state)?;
-            fs::write(&temp_state_file, state_yaml)?;
+            state_manager.save_state(&temp_state)
+                .context("Failed to save temp VM state")?;
 
-            println!("✅ Temporary VM created with {} mount(s)", mounts.len());
+            println!("✅ Temporary VM created with {} mount(s)", temp_state.mount_count());
 
             if *auto_destroy {
                 // SSH then destroy
@@ -651,7 +665,8 @@ fn handle_temp_command(command: &TempSubcommand) -> Result<()> {
 
                 println!("🗑️ Auto-destroying temporary VM...");
                 provider.destroy()?;
-                let _ = fs::remove_file(&temp_state_file);
+                state_manager.delete_state()
+                    .context("Failed to delete temp VM state")?;
             } else {
                 println!("💡 Use 'vm temp ssh' to connect");
                 println!("   Use 'vm temp destroy' when done");
@@ -660,69 +675,247 @@ fn handle_temp_command(command: &TempSubcommand) -> Result<()> {
             Ok(())
         }
         TempSubcommand::Ssh => {
-            if !temp_state_file.exists() {
-                return Err(anyhow::anyhow!("No temp VM found\n💡 Create one with: vm temp ./your-directory"));
+            if !state_manager.state_exists() {
+                return Err(anyhow::anyhow!("No temp VM found\n💡 Create one with: vm temp create ./your-directory"));
             }
 
-            let temp_config = load_temp_config(&temp_state_file)?;
+            let temp_config = create_temp_config()?;
             let provider = get_provider(temp_config)?;
             provider.ssh(&PathBuf::from("."))
         }
         TempSubcommand::Status => {
-            if !temp_state_file.exists() {
+            if !state_manager.state_exists() {
                 println!("❌ No temp VM found");
-                println!("💡 Create one with: vm temp ./your-directory");
+                println!("💡 Create one with: vm temp create ./your-directory");
                 return Ok(());
             }
 
-            let temp_config = load_temp_config(&temp_state_file)?;
+            let state = state_manager.load_state()
+                .context("Failed to load temp VM state")?;
+
+            println!("📊 Temp VM Status:");
+            println!("   Container: {}", state.container_name);
+            println!("   Provider: {}", state.provider);
+            println!("   Created: {}", state.created_at.format("%Y-%m-%d %H:%M:%S UTC"));
+            println!("   Project: {}", state.project_dir.display());
+            println!("   Mounts: {}", state.mount_count());
+            if state.is_auto_destroy() {
+                println!("   Auto-destroy: enabled");
+            }
+
+            // Check provider status
+            let temp_config = create_temp_config()?;
             let provider = get_provider(temp_config)?;
             provider.status()
         }
         TempSubcommand::Destroy => {
-            if !temp_state_file.exists() {
+            if !state_manager.state_exists() {
                 return Err(anyhow::anyhow!("No temp VM found"));
             }
 
-            let temp_config = load_temp_config(&temp_state_file)?;
+            let temp_config = create_temp_config()?;
             let provider = get_provider(temp_config)?;
 
             println!("🗑️ Destroying temporary VM...");
             provider.destroy()?;
-            fs::remove_file(&temp_state_file)?;
+            state_manager.delete_state()
+                .context("Failed to delete temp VM state")?;
 
             println!("✅ Temporary VM destroyed");
+            Ok(())
+        }
+        TempSubcommand::Mount { path, yes } => {
+            if !state_manager.state_exists() {
+                return Err(anyhow::anyhow!("No temp VM found. Create one first with: vm temp create"));
+            }
+
+            // Parse the mount string
+            let (source, target, permissions) = MountParser::parse_mount_string(path)
+                .context("Failed to parse mount string")?;
+
+            // Load current state
+            let mut state = state_manager.load_state()
+                .context("Failed to load temp VM state")?;
+
+            // Check if mount already exists
+            if state.has_mount(&source) {
+                return Err(anyhow::anyhow!("Mount already exists for source: {}", source.display()));
+            }
+
+            // Add the mount
+            if let Some(target_path) = target {
+                state.add_mount_with_target(source.clone(), target_path, permissions)
+                    .context("Failed to add mount with custom target")?;
+            } else {
+                state.add_mount(source.clone(), permissions)
+                    .context("Failed to add mount")?;
+            }
+
+            // Confirm action unless --yes flag is used
+            if !yes {
+                let confirmation_msg = format!("Add mount {} to temp VM? (y/N): ", source.display());
+                if !confirm_prompt(&confirmation_msg) {
+                    println!("❌ Mount operation cancelled");
+                    return Ok(());
+                }
+            }
+
+            // Save updated state
+            state_manager.save_state(&state)
+                .context("Failed to save updated temp VM state")?;
+
+            println!("🔗 Mount added: {} ({})", source.display(), permissions);
+            println!("💡 VM will need to be recreated for mount to take effect");
+            println!("   Use 'vm temp restart' to apply changes");
+
+            Ok(())
+        }
+        TempSubcommand::Unmount { path, all, yes } => {
+            if !state_manager.state_exists() {
+                return Err(anyhow::anyhow!("No temp VM found"));
+            }
+
+            // Load current state
+            let mut state = state_manager.load_state()
+                .context("Failed to load temp VM state")?;
+
+            if *all {
+                if !yes {
+                    let confirmation_msg = format!("Remove all {} mounts from temp VM? (y/N): ", state.mount_count());
+                    if !confirm_prompt(&confirmation_msg) {
+                        println!("❌ Unmount operation cancelled");
+                        return Ok(());
+                    }
+                }
+
+                let mount_count = state.mount_count();
+                state.clear_mounts();
+
+                // Save updated state
+                state_manager.save_state(&state)
+                    .context("Failed to save updated temp VM state")?;
+
+                println!("🗑️ Removed all {} mount(s)", mount_count);
+            } else if let Some(path_str) = path {
+                let source_path = PathBuf::from(path_str);
+
+                if !state.has_mount(&source_path) {
+                    return Err(anyhow::anyhow!("Mount not found for source: {}", source_path.display()));
+                }
+
+                if !yes {
+                    let confirmation_msg = format!("Remove mount {} from temp VM? (y/N): ", source_path.display());
+                    if !confirm_prompt(&confirmation_msg) {
+                        println!("❌ Unmount operation cancelled");
+                        return Ok(());
+                    }
+                }
+
+                let removed_mount = state.remove_mount(&source_path)
+                    .context("Failed to remove mount")?;
+
+                // Save updated state
+                state_manager.save_state(&state)
+                    .context("Failed to save updated temp VM state")?;
+
+                println!("🗑️ Removed mount: {} ({})", removed_mount.source.display(), removed_mount.permissions);
+            } else {
+                return Err(anyhow::anyhow!("Must specify --path or --all"));
+            }
+
+            println!("💡 VM will need to be recreated for changes to take effect");
+            println!("   Use 'vm temp restart' to apply changes");
+
+            Ok(())
+        }
+        TempSubcommand::Mounts => {
+            if !state_manager.state_exists() {
+                println!("❌ No temp VM found");
+                return Ok(());
+            }
+
+            let state = state_manager.load_state()
+                .context("Failed to load temp VM state")?;
+
+            if state.mount_count() == 0 {
+                println!("📁 No mounts configured");
+                return Ok(());
+            }
+
+            println!("📁 Current mounts ({}):", state.mount_count());
+            for mount in state.get_mounts() {
+                println!("   {} → {} ({})",
+                    mount.source.display(),
+                    mount.target.display(),
+                    mount.permissions
+                );
+            }
+
+            // Show mount summary by permission
+            let ro_count = state.mount_count_by_permission(MountPermission::ReadOnly);
+            let rw_count = state.mount_count_by_permission(MountPermission::ReadWrite);
+
+            println!("   {} read-only, {} read-write", ro_count, rw_count);
+
+            Ok(())
+        }
+        TempSubcommand::List => {
+            // For now, just show if there's a temp VM
+            if state_manager.state_exists() {
+                let state = state_manager.load_state()
+                    .context("Failed to load temp VM state")?;
+
+                println!("📋 Temp VMs:");
+                println!("   {} ({})", state.container_name, state.provider);
+                println!("      Created: {}", state.created_at.format("%Y-%m-%d %H:%M:%S"));
+                println!("      Project: {}", state.project_dir.display());
+                println!("      Mounts: {}", state.mount_count());
+            } else {
+                println!("📋 No temp VMs found");
+            }
+
+            Ok(())
+        }
+        TempSubcommand::Stop => {
+            println!("⏸️  Stop command not yet implemented");
+            println!("💡 Use 'vm temp destroy' to remove the VM completely");
+            Ok(())
+        }
+        TempSubcommand::Start => {
+            println!("▶️  Start command not yet implemented");
+            println!("💡 Use 'vm temp create' to create a new temp VM");
+            Ok(())
+        }
+        TempSubcommand::Restart => {
+            println!("🔄 Restart command not yet implemented");
+            println!("💡 Use 'vm temp destroy' then 'vm temp create' for now");
             Ok(())
         }
     }
 }
 
-// Helper function to load temp VM config from state
-fn load_temp_config(state_file: &Path) -> Result<VmConfig> {
-    let state_content = fs::read_to_string(state_file)?;
-    let _state: TempVmState = serde_yaml::from_str(&state_content)?;
-
-    // Create minimal config for temp VM
+// Helper function to create temp VM config
+fn create_temp_config() -> Result<VmConfig> {
     let mut config = VmConfig::default();
     config.provider = Some("docker".to_string());
-    config.project = Some(vm_config::config::ProjectConfig {
-        name: Some("vm-temp".to_string()),
-        hostname: Some("vm-temp.local".to_string()),
-        workspace_path: Some("/workspace".to_string()),
-        backup_pattern: None,
-        env_template_path: None,
-    });
+
+    if let Some(ref mut project) = config.project {
+        project.name = Some("vm-temp".to_string());
+        project.hostname = Some("vm-temp.local".to_string());
+        project.workspace_path = Some("/workspace".to_string());
+    } else {
+        config.project = Some(vm_config::config::ProjectConfig {
+            name: Some("vm-temp".to_string()),
+            hostname: Some("vm-temp.local".to_string()),
+            workspace_path: Some("/workspace".to_string()),
+            backup_pattern: None,
+            env_template_path: None,
+        });
+    }
 
     Ok(config)
 }
 
-// Temp VM state structure
-#[derive(serde::Serialize, serde::Deserialize)]
-struct TempVmState {
-    container_name: String,
-    mounts: Vec<(PathBuf, String)>,
-    created_at: String,
-}
 
 // Config command implementation
 fn handle_config_command(command: &ConfigSubcommand) -> Result<()> {

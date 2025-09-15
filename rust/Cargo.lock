@@ -221,6 +221,7 @@ dependencies = [
  "iana-time-zone",
  "js-sys",
  "num-traits",
+ "serde",
  "wasm-bindgen",
  "windows-link 0.2.0",
 ]
@@ -2150,6 +2151,7 @@ dependencies = [
  "tempfile",
  "vm-config",
  "vm-provider",
+ "vm-temp",
 ]
 
 [[package]]
@@ -2244,6 +2246,19 @@ dependencies = [
  "thiserror 1.0.69",
  "vm-config",
  "which",
+]
+
+[[package]]
+name = "vm-temp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "dirs",
+ "serde",
+ "serde_yaml",
+ "tempfile",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

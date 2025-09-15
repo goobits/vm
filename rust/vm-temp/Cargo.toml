@@ -1,0 +1,15 @@
+[package]
+name = "vm-temp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+chrono = { version = "0.4", features = ["serde"] }
+dirs = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

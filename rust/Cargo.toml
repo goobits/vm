@@ -7,6 +7,7 @@ members = [
     "vm-pkg",
     "vm-ports",
     "vm-provider",
+    "vm-temp",
     "vm",
 ]
 resolver = "2"
