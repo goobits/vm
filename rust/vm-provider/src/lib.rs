@@ -9,8 +9,8 @@ pub mod security;
 pub mod temp_models;
 pub mod utils;
 
-pub mod preflight;
 pub mod audio;
+pub mod preflight;
 
 mod docker;
 mod tart;

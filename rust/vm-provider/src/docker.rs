@@ -8,7 +8,7 @@ use crate::{
     utils::{is_tool_installed, stream_command, stream_docker_build},
     Provider,
 };
-use crate::{ TempProvider, TempVmState };
+use crate::{TempProvider, TempVmState};
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -17,7 +17,6 @@ use vm_config::config::VmConfig;
 
 // External dependencies
 extern crate atty;
-
 
 pub struct DockerProvider {
     config: VmConfig,
@@ -64,7 +63,10 @@ impl DockerProvider {
 
         let current_uid = vm_config::get_current_uid();
         let current_gid = vm_config::get_current_gid();
-        let project_user = self.config.vm.as_ref()
+        let project_user = self
+            .config
+            .vm
+            .as_ref()
             .and_then(|vm| vm.user.as_deref())
             .unwrap_or("developer");
 
@@ -125,7 +127,10 @@ impl DockerProvider {
         // Add user/group build args
         let current_uid = vm_config::get_current_uid();
         let current_gid = vm_config::get_current_gid();
-        let project_user = self.config.vm.as_ref()
+        let project_user = self
+            .config
+            .vm
+            .as_ref()
             .and_then(|vm| vm.user.as_deref())
             .unwrap_or("developer");
 
@@ -135,9 +140,6 @@ impl DockerProvider {
 
         args
     }
-
-
-
 
     /// Handle potential Docker issues proactively
     fn handle_potential_issues(&self) -> Result<()> {
@@ -149,7 +151,11 @@ impl DockerProvider {
         }
 
         // Check Docker daemon status more thoroughly
-        if std::process::Command::new("docker").arg("ps").output().is_err() {
+        if std::process::Command::new("docker")
+            .arg("ps")
+            .output()
+            .is_err()
+        {
             eprintln!("⚠️  Docker daemon may not be responding properly");
             eprintln!("   Try: docker system prune -f");
         }
@@ -185,7 +191,7 @@ impl DockerProvider {
         let status = std::process::Command::new("docker").arg("info").output();
         if let Ok(output) = status {
             if output.status.success() {
-                return Ok(())
+                return Ok(());
             }
         }
         Err(ProviderError::DependencyNotFound(
@@ -209,11 +215,14 @@ impl DockerProvider {
 
     fn load_docker_compose_template() -> Result<String> {
         // Try to load from file first (for development/customization)
-        let template_path = vm_config::get_tool_dir()
-            .join("rust/vm-provider/src/docker/template.yml");
+        let template_path =
+            vm_config::get_tool_dir().join("rust/vm-provider/src/docker/template.yml");
 
         if template_path.exists() {
-            eprintln!("Loading Docker Compose template from: {}", template_path.display());
+            eprintln!(
+                "Loading Docker Compose template from: {}",
+                template_path.display()
+            );
             std::fs::read_to_string(&template_path)
                 .with_context(|| format!("Failed to read template from {:?}", template_path))
         } else {
@@ -233,7 +242,10 @@ impl DockerProvider {
 
         let current_uid = vm_config::get_current_uid();
         let current_gid = vm_config::get_current_gid();
-        let project_user = self.config.vm.as_ref()
+        let project_user = self
+            .config
+            .vm
+            .as_ref()
             .and_then(|vm| vm.user.as_deref())
             .unwrap_or("developer");
 
@@ -258,7 +270,6 @@ impl DockerProvider {
 
         Ok(path)
     }
-
 }
 
 impl Provider for DockerProvider {
@@ -303,9 +314,9 @@ impl Provider for DockerProvider {
         ];
         docker_build_args.extend(build_args);
 
-        let docker_build_str_args: Vec<&str> = docker_build_args.iter().map(|s| s.as_str()).collect();
-        stream_docker_build(&docker_build_str_args)
-            .context("Docker build failed")?;
+        let docker_build_str_args: Vec<&str> =
+            docker_build_args.iter().map(|s| s.as_str()).collect();
+        stream_docker_build(&docker_build_str_args).context("Docker build failed")?;
         println!("✅ Build complete");
 
         // Step 5: Start containers
@@ -329,7 +340,10 @@ impl Provider for DockerProvider {
         let max_attempts = 30;
         let mut attempt = 1;
         while attempt <= max_attempts {
-            if let Ok(output) = std::process::Command::new("docker").args(["exec", &self.container_name(), "echo", "ready"]).output() {
+            if let Ok(output) = std::process::Command::new("docker")
+                .args(["exec", &self.container_name(), "echo", "ready"])
+                .output()
+            {
                 if output.status.success() {
                     break;
                 }
@@ -347,7 +361,13 @@ impl Provider for DockerProvider {
         let config_json = self.config.to_json()?;
         let temp_config_path = self.temp_dir.join("vm-config.json");
         fs::write(&temp_config_path, config_json)?;
-        let copy_result = std::process::Command::new("docker").args(["cp", Self::path_to_string(&temp_config_path)?, &format!("{}:/tmp/vm-config.json", self.container_name())]).output()?;
+        let copy_result = std::process::Command::new("docker")
+            .args([
+                "cp",
+                Self::path_to_string(&temp_config_path)?,
+                &format!("{}:/tmp/vm-config.json", self.container_name()),
+            ])
+            .output()?;
         if !copy_result.status.success() {
             println!("❌");
             return Err(anyhow::anyhow!("Failed to copy config to container"));
@@ -357,12 +377,29 @@ impl Provider for DockerProvider {
         println!("🎭 Running Ansible provisioning (configuration only)...");
         stream_command(
             "docker",
-            &["exec", &self.container_name(), "bash", "-c", "ansible-playbook -i localhost, -c local /app/shared/ansible/playbook.yml"],
-        ).context("Ansible provisioning failed")?;
+            &[
+                "exec",
+                &self.container_name(),
+                "bash",
+                "-c",
+                "ansible-playbook -i localhost, -c local /app/shared/ansible/playbook.yml",
+            ],
+        )
+        .context("Ansible provisioning failed")?;
         println!("✅ Provisioning complete");
 
         print!("🔄 Starting services... ");
-        if std::process::Command::new("docker").args(["exec", &self.container_name(), "bash", "-c", "supervisorctl reread && supervisorctl update"]).output().is_ok() {
+        if std::process::Command::new("docker")
+            .args([
+                "exec",
+                &self.container_name(),
+                "bash",
+                "-c",
+                "supervisorctl reread && supervisorctl update",
+            ])
+            .output()
+            .is_ok()
+        {
             println!("✅");
         } else {
             println!("⚠️ (services may start later)");
@@ -380,15 +417,32 @@ impl Provider for DockerProvider {
             let build_context = self.prepare_build_context()?;
             self.write_docker_compose(&build_context)?;
         }
-        stream_command("docker", &["compose", "-f", Self::path_to_string(&compose_path)?, "up", "-d"])
-            .context("Failed to start container with docker-compose")
+        stream_command(
+            "docker",
+            &[
+                "compose",
+                "-f",
+                Self::path_to_string(&compose_path)?,
+                "up",
+                "-d",
+            ],
+        )
+        .context("Failed to start container with docker-compose")
     }
 
     fn stop(&self) -> Result<()> {
         let compose_path = self.temp_dir.join("docker-compose.yml");
         if compose_path.exists() {
-            stream_command("docker", &["compose", "-f", Self::path_to_string(&compose_path)?, "stop"])
-                .context("Failed to stop container with docker-compose")
+            stream_command(
+                "docker",
+                &[
+                    "compose",
+                    "-f",
+                    Self::path_to_string(&compose_path)?,
+                    "stop",
+                ],
+            )
+            .context("Failed to stop container with docker-compose")
         } else {
             stream_command("docker", &["stop", &self.container_name()])
                 .context("Failed to stop container")
@@ -401,7 +455,16 @@ impl Provider for DockerProvider {
             println!("docker-compose.yml not found. Attempting to remove container by name.");
             return stream_command("docker", &["rm", "-f", &self.container_name()]);
         }
-        stream_command("docker", &["compose", "-f", Self::path_to_string(&compose_path)?, "down", "--volumes"])?;
+        stream_command(
+            "docker",
+            &[
+                "compose",
+                "-f",
+                Self::path_to_string(&compose_path)?,
+                "down",
+                "--volumes",
+            ],
+        )?;
 
         // Only cleanup audio if it was enabled in the configuration
         if let Some(audio_service) = self.config.services.get("audio") {
@@ -414,16 +477,52 @@ impl Provider for DockerProvider {
     }
 
     fn ssh(&self, relative_path: &Path) -> Result<()> {
-        let workspace_path = self.config.project.as_ref().and_then(|p| p.workspace_path.as_deref()).unwrap_or("/workspace");
-        let project_user = self.config.vm.as_ref().and_then(|vm| vm.user.as_deref()).unwrap_or("developer");
-        let shell = self.config.terminal.as_ref().and_then(|t| t.shell.as_deref()).unwrap_or("zsh");
+        let workspace_path = self
+            .config
+            .project
+            .as_ref()
+            .and_then(|p| p.workspace_path.as_deref())
+            .unwrap_or("/workspace");
+        let project_user = self
+            .config
+            .vm
+            .as_ref()
+            .and_then(|vm| vm.user.as_deref())
+            .unwrap_or("developer");
+        let shell = self
+            .config
+            .terminal
+            .as_ref()
+            .and_then(|t| t.shell.as_deref())
+            .unwrap_or("zsh");
 
         let target_path = SecurityValidator::validate_relative_path(relative_path, workspace_path)?;
         let target_dir = target_path.to_string_lossy().to_string();
 
-        let tty_flag = if atty::is(atty::Stream::Stdin) && atty::is(atty::Stream::Stdout) { "-it" } else { "-i" };
+        let tty_flag = if atty::is(atty::Stream::Stdin) && atty::is(atty::Stream::Stdout) {
+            "-it"
+        } else {
+            "-i"
+        };
 
-        let status = duct::cmd("docker", &["exec", tty_flag, "-e", &format!("VM_TARGET_DIR={}", target_dir), &self.container_name(), "sudo", "-u", project_user, "sh", "-c", &format!("cd \"$VM_TARGET_DIR\" && exec {}", shell)]).run()?.status;
+        let status = duct::cmd(
+            "docker",
+            &[
+                "exec",
+                tty_flag,
+                "-e",
+                &format!("VM_TARGET_DIR={}", target_dir),
+                &self.container_name(),
+                "sudo",
+                "-u",
+                project_user,
+                "sh",
+                "-c",
+                &format!("cd \"$VM_TARGET_DIR\" && exec {}", shell),
+            ],
+        )
+        .run()?
+        .status;
 
         if !status.success() {
             return Err(ProviderError::CommandFailed("SSH command failed".to_string()).into());
@@ -433,10 +532,27 @@ impl Provider for DockerProvider {
 
     fn exec(&self, cmd: &[String]) -> Result<()> {
         let container = self.container_name();
-        let workspace_path = self.config.project.as_ref().and_then(|p| p.workspace_path.as_deref()).unwrap_or("/workspace");
-        let project_user = self.config.vm.as_ref().and_then(|vm| vm.user.as_deref()).unwrap_or("developer");
+        let workspace_path = self
+            .config
+            .project
+            .as_ref()
+            .and_then(|p| p.workspace_path.as_deref())
+            .unwrap_or("/workspace");
+        let project_user = self
+            .config
+            .vm
+            .as_ref()
+            .and_then(|vm| vm.user.as_deref())
+            .unwrap_or("developer");
 
-        let mut args: Vec<&str> = vec!["exec", "-w", workspace_path, "--user", project_user, &container];
+        let mut args: Vec<&str> = vec![
+            "exec",
+            "-w",
+            workspace_path,
+            "--user",
+            project_user,
+            &container,
+        ];
         let cmd_strs: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
         args.extend_from_slice(&cmd_strs);
         stream_command("docker", &args)
@@ -449,9 +565,15 @@ impl Provider for DockerProvider {
     fn status(&self) -> Result<()> {
         let compose_path = self.temp_dir.join("docker-compose.yml");
         if compose_path.exists() {
-            stream_command("docker", &["compose", "-f", Self::path_to_string(&compose_path)?, "ps"])?;
+            stream_command(
+                "docker",
+                &["compose", "-f", Self::path_to_string(&compose_path)?, "ps"],
+            )?;
         } else {
-            stream_command("docker", &["ps", "-f", &format!("name={}", self.container_name())])?;
+            stream_command(
+                "docker",
+                &["ps", "-f", &format!("name={}", self.container_name())],
+            )?;
         }
 
         if let Some(port_range) = &self.config.port_range {
@@ -459,7 +581,12 @@ impl Provider for DockerProvider {
             if !self.config.ports.is_empty() {
                 if let Ok(parsed_range) = vm_ports::PortRange::parse(port_range) {
                     let (start, end) = (parsed_range.start, parsed_range.end);
-                    let used_count = self.config.ports.values().filter(|&&p| p >= start && p <= end).count();
+                    let used_count = self
+                        .config
+                        .ports
+                        .values()
+                        .filter(|&&p| p >= start && p <= end)
+                        .count();
                     println!("   Used: {}/{} ports", used_count, (end - start + 1));
                 }
             }
@@ -474,10 +601,17 @@ impl Provider for DockerProvider {
 
     fn provision(&self) -> Result<()> {
         let container = self.container_name();
-        let status_output = std::process::Command::new("docker").args(["inspect", "--format", "{{.State.Status}}", &container]).output()?;
-        let status = String::from_utf8_lossy(&status_output.stdout).trim().to_string();
+        let status_output = std::process::Command::new("docker")
+            .args(["inspect", "--format", "{{.State.Status}}", &container])
+            .output()?;
+        let status = String::from_utf8_lossy(&status_output.stdout)
+            .trim()
+            .to_string();
         if status != "running" {
-            return Err(anyhow::anyhow!("Container {} is not running. Start it first with 'vm start'", container));
+            return Err(anyhow::anyhow!(
+                "Container {} is not running. Start it first with 'vm start'",
+                container
+            ));
         }
 
         let progress = ProgressReporter::new();
@@ -487,9 +621,25 @@ impl Provider for DockerProvider {
         let config_json = self.config.to_json()?;
         let temp_config_path = self.temp_dir.join("vm-config.json");
         std::fs::write(&temp_config_path, config_json)?;
-        stream_command("docker", &["cp", Self::path_to_string(&temp_config_path)?, &format!("{}:/tmp/vm-config.json", self.container_name())])?;
+        stream_command(
+            "docker",
+            &[
+                "cp",
+                Self::path_to_string(&temp_config_path)?,
+                &format!("{}:/tmp/vm-config.json", self.container_name()),
+            ],
+        )?;
 
-        let ansible_result = stream_command("docker", &["exec", &self.container_name(), "bash", "-c", "ansible-playbook -i localhost, -c local /app/shared/ansible/playbook.yml"]);
+        let ansible_result = stream_command(
+            "docker",
+            &[
+                "exec",
+                &self.container_name(),
+                "bash",
+                "-c",
+                "ansible-playbook -i localhost, -c local /app/shared/ansible/playbook.yml",
+            ],
+        );
         if ansible_result.is_err() {
             progress.error("└─", "Provisioning failed");
             return Err(anyhow::anyhow!("Ansible provisioning failed"));
@@ -501,19 +651,23 @@ impl Provider for DockerProvider {
     fn list(&self) -> Result<()> {
         // Show all containers - let users see the full Docker environment
         // This provides better visibility than filtering by project name
-        stream_command("docker", &["ps", "-a"])
-            .context("Failed to list containers")
+        stream_command("docker", &["ps", "-a"]).context("Failed to list containers")
     }
 
     fn kill(&self, container: Option<&str>) -> Result<()> {
         let container_name = self.container_name();
         let target_container = container.unwrap_or(&container_name);
-        stream_command("docker", &["kill", target_container])
-            .context("Failed to kill container")
+        stream_command("docker", &["kill", target_container]).context("Failed to kill container")
     }
 
     fn get_sync_directory(&self) -> Result<String> {
-        Ok(self.config.project.as_ref().and_then(|p| p.workspace_path.as_deref()).unwrap_or("/workspace").to_string())
+        Ok(self
+            .config
+            .project
+            .as_ref()
+            .and_then(|p| p.workspace_path.as_deref())
+            .unwrap_or("/workspace")
+            .to_string())
     }
 
     fn as_temp_provider(&self) -> Option<&dyn TempProvider> {
@@ -537,12 +691,23 @@ impl TempProvider for DockerProvider {
 
         progress.task(&main_phase, "Starting container...");
         let compose_path = self.temp_dir.join("docker-compose.yml");
-        stream_command("docker", &["compose", "-f", Self::path_to_string(&compose_path)?, "up", "-d"])?;
+        stream_command(
+            "docker",
+            &[
+                "compose",
+                "-f",
+                Self::path_to_string(&compose_path)?,
+                "up",
+                "-d",
+            ],
+        )?;
 
         progress.task(&main_phase, "Checking container health...");
         if !self.check_container_health(&state.container_name)? {
             progress.finish_phase(&main_phase, "Mount update failed - container not healthy");
-            return Err(anyhow::anyhow!("Container is not healthy after mount update"));
+            return Err(anyhow::anyhow!(
+                "Container is not healthy after mount update"
+            ));
         }
 
         progress.finish_phase(&main_phase, "Mounts updated successfully");
@@ -582,7 +747,9 @@ impl TempProvider for DockerProvider {
     }
 
     fn is_container_running(&self, container_name: &str) -> Result<bool> {
-        let output = std::process::Command::new("docker").args(["inspect", "--format", "{{.State.Status}}", container_name]).output()?;
+        let output = std::process::Command::new("docker")
+            .args(["inspect", "--format", "{{.State.Status}}", container_name])
+            .output()?;
         if !output.status.success() {
             return Ok(false);
         }

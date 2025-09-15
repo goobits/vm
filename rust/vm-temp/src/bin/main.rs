@@ -542,7 +542,7 @@ impl TempDockerProvider {
         let tty_flag = if stdin_is_tty && stdout_is_tty {
             "-it" // Interactive with TTY
         } else {
-            "-i"  // Interactive without TTY (for pipes, CI/CD, etc.)
+            "-i" // Interactive without TTY (for pipes, CI/CD, etc.)
         };
 
         // TTY detection completed - using appropriate flag for current environment

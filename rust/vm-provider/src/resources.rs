@@ -1,9 +1,9 @@
 // Embedded resources for VM provisioning
 // These are compiled into the binary for portability
 
+use anyhow::Result;
 use std::fs;
 use std::path::Path;
-use anyhow::Result;
 
 pub const ANSIBLE_PLAYBOOK: &str = include_str!("resources/ansible/playbook.yml");
 pub const MANAGE_SERVICE_TASK: &str = include_str!("resources/ansible/tasks/manage-service.yml");
@@ -31,7 +31,10 @@ pub fn copy_embedded_resources(shared_dir: &Path) -> Result<()> {
     // Write embedded resources to files
     fs::write(ansible_dir.join("playbook.yml"), ANSIBLE_PLAYBOOK)?;
     fs::write(tasks_dir.join("manage-service.yml"), MANAGE_SERVICE_TASK)?;
-    fs::write(services_dir.join("service_definitions.yml"), SERVICE_DEFINITIONS)?;
+    fs::write(
+        services_dir.join("service_definitions.yml"),
+        SERVICE_DEFINITIONS,
+    )?;
     fs::write(templates_dir.join("zshrc.j2"), ZSHRC_TEMPLATE)?;
     fs::write(shared_dir.join("themes.json"), THEMES_JSON)?;
 

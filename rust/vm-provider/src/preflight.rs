@@ -12,7 +12,11 @@ pub fn check_system_resources() -> Result<()> {
     // Check CPU cores
     if let Some(cpu_cores) = System::physical_core_count() {
         if (cpu_cores as u32) < MIN_CPU_CORES {
-            bail!("System has only {} physical CPU cores. A minimum of {} is recommended.", cpu_cores, MIN_CPU_CORES);
+            bail!(
+                "System has only {} physical CPU cores. A minimum of {} is recommended.",
+                cpu_cores,
+                MIN_CPU_CORES
+            );
         }
     }
 

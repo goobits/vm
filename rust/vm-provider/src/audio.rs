@@ -21,7 +21,9 @@ impl MacOSAudioManager {
     /// Stops the PulseAudio daemon.
     pub fn cleanup() -> Result<()> {
         println!("Stopping PulseAudio daemon...");
-        Command::new("pulseaudio").arg("-k").status()
+        Command::new("pulseaudio")
+            .arg("-k")
+            .status()
             .context("Failed to stop PulseAudio daemon.")?;
         Ok(())
     }
@@ -29,12 +31,19 @@ impl MacOSAudioManager {
 
 #[cfg(target_os = "macos")]
 fn is_pulseaudio_installed() -> Result<bool> {
-    Ok(Command::new("brew").args(&["list", "pulseaudio"]).stdout(Stdio::null()).stderr(Stdio::null()).status()?.success())
+    Ok(Command::new("brew")
+        .args(&["list", "pulseaudio"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()?
+        .success())
 }
 
 #[cfg(target_os = "macos")]
 fn install_pulseaudio() -> Result<()> {
-    let status = Command::new("brew").args(&["install", "pulseaudio"]).status()
+    let status = Command::new("brew")
+        .args(&["install", "pulseaudio"])
+        .status()
         .context("Failed to execute 'brew install pulseaudio'. Make sure Homebrew is installed.")?;
     if !status.success() {
         anyhow::bail!("'brew install pulseaudio' failed.");
@@ -46,7 +55,11 @@ fn install_pulseaudio() -> Result<()> {
 fn start_pulseaudio_daemon() -> Result<()> {
     println!("Starting PulseAudio daemon for container audio...");
     let status = Command::new("pulseaudio")
-        .args(&["--load=module-native-protocol-unix", "--exit-idle-time=-1", "--daemon"])
+        .args(&[
+            "--load=module-native-protocol-unix",
+            "--exit-idle-time=-1",
+            "--daemon",
+        ])
         .status()
         .context("Failed to start PulseAudio daemon.")?;
     if !status.success() {

@@ -34,7 +34,9 @@ impl DockerProgressParser {
         let main_bar = mp.add(ProgressBar::new(0));
         main_bar.set_style(
             ProgressStyle::default_bar()
-                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}")
+                .template(
+                    "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}",
+                )
                 .unwrap()
                 .progress_chars("#>-"),
         );
@@ -60,8 +62,14 @@ impl Default for DockerProgressParser {
 impl ProgressParser for DockerProgressParser {
     fn parse_line(&mut self, line: &str) {
         if let Some(caps) = self.step_regex.captures(line) {
-            let step: u32 = caps.get(1).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
-            let total: u32 = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+            let step: u32 = caps
+                .get(1)
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(0);
+            let total: u32 = caps
+                .get(2)
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(0);
             if self.total_steps == 0 {
                 self.total_steps = total;
                 self.main_bar.set_length(self.total_steps as u64);
@@ -76,7 +84,11 @@ impl ProgressParser for DockerProgressParser {
                 let layer_id = layer_id_match.as_str().to_string();
                 if !self.layer_bars.contains_key(&layer_id) {
                     let pb = self.mp.add(ProgressBar::new_spinner());
-                    pb.set_style(ProgressStyle::default_spinner().template("  {prefix:12} {spinner} {wide_msg}").unwrap());
+                    pb.set_style(
+                        ProgressStyle::default_spinner()
+                            .template("  {prefix:12} {spinner} {wide_msg}")
+                            .unwrap(),
+                    );
                     pb.set_prefix(layer_id.clone());
                     pb.set_message("Pulling...");
                     self.layer_bars.insert(layer_id, pb);

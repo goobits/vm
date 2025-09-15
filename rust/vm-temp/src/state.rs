@@ -318,16 +318,30 @@ mod tests {
         // These should be dangerous
         assert!(StateManager::is_dangerous_mount_source(Path::new("/")));
         assert!(StateManager::is_dangerous_mount_source(Path::new("/etc")));
-        assert!(StateManager::is_dangerous_mount_source(Path::new("/usr/bin")));
-        assert!(StateManager::is_dangerous_mount_source(Path::new("/var/log")));
+        assert!(StateManager::is_dangerous_mount_source(Path::new(
+            "/usr/bin"
+        )));
+        assert!(StateManager::is_dangerous_mount_source(Path::new(
+            "/var/log"
+        )));
         assert!(StateManager::is_dangerous_mount_source(Path::new("/root")));
 
         // These should be safe
-        assert!(!StateManager::is_dangerous_mount_source(Path::new("/home/user")));
+        assert!(!StateManager::is_dangerous_mount_source(Path::new(
+            "/home/user"
+        )));
         assert!(!StateManager::is_dangerous_mount_source(Path::new("/tmp")));
-        assert!(!StateManager::is_dangerous_mount_source(Path::new("/tmp/test")));
-        assert!(!StateManager::is_dangerous_mount_source(Path::new("/var/tmp")));
-        assert!(!StateManager::is_dangerous_mount_source(Path::new("/var/folders/test")));
-        assert!(!StateManager::is_dangerous_mount_source(Path::new("/workspace")));
+        assert!(!StateManager::is_dangerous_mount_source(Path::new(
+            "/tmp/test"
+        )));
+        assert!(!StateManager::is_dangerous_mount_source(Path::new(
+            "/var/tmp"
+        )));
+        assert!(!StateManager::is_dangerous_mount_source(Path::new(
+            "/var/folders/test"
+        )));
+        assert!(!StateManager::is_dangerous_mount_source(Path::new(
+            "/workspace"
+        )));
     }
 }

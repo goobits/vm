@@ -225,13 +225,13 @@ enum Command {
 }
 
 /// Load configuration with lenient validation for commands that don't require full project setup
-fn load_config_lenient(file: Option<PathBuf>, no_preset: bool) -> Result<VmConfig> {
+fn load_config_lenient(file: Option<PathBuf>, _no_preset: bool) -> Result<VmConfig> {
     use vm_config::config::VmConfig;
 
     // Try to load defaults as base
     const EMBEDDED_DEFAULTS: &str = include_str!("../../../defaults.yaml");
-    let mut config: VmConfig = serde_yaml::from_str(EMBEDDED_DEFAULTS)
-        .context("Failed to parse embedded defaults")?;
+    let mut config: VmConfig =
+        serde_yaml::from_str(EMBEDDED_DEFAULTS).context("Failed to parse embedded defaults")?;
 
     // Try to find and load user config if it exists
     let user_config_path = match file {
@@ -316,7 +316,11 @@ fn main() -> Result<()> {
                 }
             }
         }
-        Command::Init { file, services, ports } => {
+        Command::Init {
+            file,
+            services,
+            ports,
+        } => {
             debug!("Calling init_config_file directly");
             return init_config_file(file.clone(), services.clone(), *ports);
         }
