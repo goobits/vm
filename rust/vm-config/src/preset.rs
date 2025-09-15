@@ -60,7 +60,7 @@ impl PresetDetector {
             // Docker Compose
             (vec!["docker-compose.yml", "docker-compose.yaml"], "docker"),
             // Kubernetes
-            (vec!["k8s/", "kubernetes/", "*.yaml"], "kubernetes"),
+            (vec!["k8s/", "kubernetes/", "deployment.yaml", "service.yaml", "kustomization.yaml", "helm/", "charts/", ".k8s/"], "kubernetes"),
         ];
 
         for (indicators, preset) in detections {

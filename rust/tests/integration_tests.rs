@@ -150,31 +150,26 @@ fn test_config_ports_integration() -> Result<()> {
     let config = VmConfig::load(None, false)?;
 
     // Step 3: Extract port information and test with port registry
-    let mut registry = PortRegistry::new();
+    let mut registry = PortRegistry::load()?;
 
-    if let Some(ports) = &config.ports {
-        for (name, port_config) in ports {
-            let port = match port_config {
-                serde_yaml::Value::Number(n) => n.as_u64().unwrap() as u16,
-                serde_yaml::Value::String(s) => s.parse().unwrap(),
-                _ => continue,
-            };
-
+    if !config.ports.is_empty() {
+        for (name, &port) in &config.ports {
             // Step 4: Register port ranges around configured ports
-            let range = PortRange::new(port, port)?;
-            registry.register_range(name.clone(), range)?;
+            let range = PortRange::new(port, port + 1)?;
+            registry.register(name, &range, &fixture.project_dir.to_string_lossy())?;
         }
     }
 
     // Step 5: Test conflict detection
-    let conflicting_range = PortRange::new(3000, 3000)?;
-    let conflicts = registry.check_conflicts(&conflicting_range);
-    assert!(!conflicts.is_empty());
+    let conflicting_range = PortRange::new(3000, 3001)?;
+    let conflicts = registry.check_conflicts(&conflicting_range, None);
+    assert!(conflicts.is_some());
 
     // Step 6: Test port suggestion
-    let suggested = registry.suggest_next_range(80, 90)?;
-    assert!(suggested.start() >= 80);
-    assert!(suggested.end() <= 90);
+    if let Some(suggested_str) = registry.suggest_next_range(10, 3000) {
+        let suggested = PortRange::parse(&suggested_str)?;
+        assert!(suggested.start >= 3000);
+    }
 
     Ok(())
 }

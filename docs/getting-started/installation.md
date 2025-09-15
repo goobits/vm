@@ -159,6 +159,30 @@ vm --help
 vm create  # Should work with defaults
 ```
 
+## ⚙️ Environment Variables
+
+### VM_TOOL_DIR
+Override VM tool directory detection for custom installations:
+
+```bash
+# Set custom VM tool directory (useful for development or non-standard installations)
+export VM_TOOL_DIR=/path/to/vm/installation
+vm create
+
+# Add to shell profile for permanent setting
+echo 'export VM_TOOL_DIR=/path/to/vm' >> ~/.bashrc
+# Or for zsh users
+echo 'export VM_TOOL_DIR=/path/to/vm' >> ~/.zshrc
+```
+
+**When to use VM_TOOL_DIR:**
+- Development builds from source
+- Custom installation locations
+- Binary installed via symlink causing path detection issues
+- Container environments where `/vm-tool` mount needs explicit path
+
+**Auto-detection**: Usually unnecessary - VM tool automatically detects installation path from binary location.
+
 ## 🚨 Troubleshooting Installation
 
 ### Docker Issues

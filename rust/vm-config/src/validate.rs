@@ -1,5 +1,5 @@
 use crate::config::VmConfig;
-use anyhow::{Context, Result};
+use anyhow::Result;
 #[cfg(feature = "schema-validation")]
 use jsonschema::ValidationError;
 use regex::Regex;
@@ -144,23 +144,7 @@ impl ConfigValidator {
 
         // Validate port range if present
         if let Some(range) = &self.config.port_range {
-            let range_regex = Regex::new(r"^(\d+)-(\d+)$")?;
-            if let Some(captures) = range_regex.captures(range) {
-                let start: u16 = captures[1].parse().context("Invalid port range start")?;
-                let end: u16 = captures[2].parse().context("Invalid port range end")?;
-
-                if start >= end {
-                    anyhow::bail!("Invalid port range: start must be less than end");
-                }
-                if start == 0 {
-                    anyhow::bail!("Port range start cannot be 0 (reserved port)");
-                }
-            } else {
-                anyhow::bail!(
-                    "Invalid port range format: {}. Expected format: START-END",
-                    range
-                );
-            }
+            vm_ports::PortRange::parse(range)?;
         }
 
         Ok(())

@@ -18,36 +18,42 @@ pub fn get_tool_dir() -> PathBuf {
         if let Ok(canonical_path) = exe_path.canonicalize() {
             exe_path = canonical_path;
         }
-        // vm-config is at VM_TOOL_DIR/rust/vm-config/target/release/vm-config
-        // or VM_TOOL_DIR/rust/target/release/vm-config
-        // Go up to find the root
-        if let Some(parent) = exe_path.parent() {
-            // Check if we're in target/release or target/debug
-            if parent.file_name() == Some(std::ffi::OsStr::new("release"))
-                || parent.file_name() == Some(std::ffi::OsStr::new("debug"))
-            {
-                // Go up to find VM_TOOL_DIR
-                if let Some(target) = parent.parent() {
-                    if target.file_name() == Some(std::ffi::OsStr::new("target")) {
-                        // Could be either rust/vm-config/target or rust/target
-                        if let Some(rust_or_vm_config) = target.parent() {
-                            if rust_or_vm_config.file_name()
-                                == Some(std::ffi::OsStr::new("vm-config"))
-                            {
-                                // We're in rust/vm-config/target, go up two more
-                                if let Some(rust) = rust_or_vm_config.parent() {
-                                    if let Some(root) = rust.parent() {
-                                        return root.to_path_buf();
-                                    }
-                                }
-                            } else if rust_or_vm_config.file_name()
-                                == Some(std::ffi::OsStr::new("rust"))
-                            {
-                                // We're in rust/target, go up one more
-                                if let Some(root) = rust_or_vm_config.parent() {
-                                    return root.to_path_buf();
-                                }
+
+        // Binaries are typically located at one of:
+        // - VM_TOOL_DIR/rust/vm-config/target/(<platform>/)?{release,debug}/vm-config
+        // - VM_TOOL_DIR/rust/target/(<platform>/)?{release,debug}/vm
+        // We walk up until we find a directory named "target" (allowing for
+        // an optional platform directory like "darwin-aarch64" between release/debug and target),
+        // then detect whether we're under rust/vm-config/target or rust/target to derive VM_TOOL_DIR.
+        if let Some(mut dir) = exe_path.parent() {
+            // Search upwards up to a few levels for a directory named "target"
+            let mut target_dir: Option<PathBuf> = None;
+            for _ in 0..6 {
+                if dir.file_name() == Some(std::ffi::OsStr::new("target")) {
+                    target_dir = Some(dir.to_path_buf());
+                    break;
+                }
+                if let Some(parent) = dir.parent() {
+                    dir = parent;
+                } else {
+                    break;
+                }
+            }
+
+            if let Some(target) = target_dir {
+                if let Some(parent) = target.parent() {
+                    // Case: .../rust/vm-config/target
+                    if parent.file_name() == Some(std::ffi::OsStr::new("vm-config")) {
+                        if let Some(rust) = parent.parent() {
+                            if let Some(root) = rust.parent() {
+                                return root.to_path_buf();
                             }
+                        }
+                    }
+                    // Case: .../rust/target
+                    else if parent.file_name() == Some(std::ffi::OsStr::new("rust")) {
+                        if let Some(root) = parent.parent() {
+                            return root.to_path_buf();
                         }
                     }
                 }
@@ -57,6 +63,30 @@ pub fn get_tool_dir() -> PathBuf {
 
     // Fallback to current directory - this should always work
     env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+}
+
+/// Get current user's UID
+pub fn get_current_uid() -> u32 {
+    #[cfg(unix)]
+    {
+        unsafe { libc::getuid() }
+    }
+    #[cfg(not(unix))]
+    {
+        1000 // Default UID for non-Unix systems
+    }
+}
+
+/// Get current user's GID
+pub fn get_current_gid() -> u32 {
+    #[cfg(unix)]
+    {
+        unsafe { libc::getgid() }
+    }
+    #[cfg(not(unix))]
+    {
+        1000 // Default GID for non-Unix systems
+    }
 }
 
 /// Get the config directory

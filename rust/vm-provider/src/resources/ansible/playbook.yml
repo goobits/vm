@@ -425,7 +425,11 @@
         when: project_config.apt_packages is defined and project_config.apt_packages | length > 0
 
       - name: Install global npm packages (with link detection)
-        command: "{{ vm_pkg_bin }} install --package-type npm --user '{{ project_user }}' '{{ item }}'"
+        shell: |
+            source ~/.nvm/nvm.sh
+            {{ vm_pkg_bin }} install --package-type npm --user '{{ project_user }}' '{{ item }}'
+        args:
+            executable: /bin/bash
         become_user: '{{ project_user }}'
         loop: '{{ project_config.npm_packages | default([]) }}'
         when: project_config.npm_packages is defined and project_config.npm_packages | length > 0
@@ -500,7 +504,11 @@
               state: absent
 
       - name: Install cargo packages
-        command: "{{ vm_pkg_bin }} install --package-type cargo --user '{{ project_user }}' '{{ item }}'"
+        shell: |
+            source ~/.cargo/env 2>/dev/null || true
+            {{ vm_pkg_bin }} install --package-type cargo --user '{{ project_user }}' '{{ item }}'
+        args:
+            executable: /bin/bash
         become_user: '{{ project_user }}'
         loop: '{{ project_config.cargo_packages }}'
         when: project_config.cargo_packages is defined and project_config.cargo_packages | length > 0
@@ -550,7 +558,11 @@
 
       # Install pip packages with smart detection (pipx for CLI tools, pip for libraries)
       - name: Install pip packages with smart pipx/pip detection
-        command: "{{ vm_pkg_bin }} install --package-type pip --user '{{ project_user }}' '{{ item }}'"
+        shell: |
+            export PATH="$HOME/.local/bin:$PATH"
+            {{ vm_pkg_bin }} install --package-type pip --user '{{ project_user }}' '{{ item }}'
+        args:
+            executable: /bin/bash
         become_user: '{{ project_user }}'
         loop: '{{ project_config.pip_packages }}'
         when: project_config.pip_packages is defined and project_config.pip_packages | length > 0

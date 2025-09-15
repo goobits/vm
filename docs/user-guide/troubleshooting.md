@@ -350,6 +350,27 @@ VM_DEBUG=true vm create
 VM_VERBOSE=true vm create
 ```
 
+### VM Tool Path Configuration
+```bash
+# Set custom VM tool installation directory
+export VM_TOOL_DIR=/path/to/vm/installation
+vm create
+
+# Check current VM tool directory detection
+VM_TOOL_DIR=/custom/path vm create  # Will use custom path
+vm create  # Will auto-detect from binary location
+
+# Troubleshoot vm-tool mount issues in Docker
+export VM_TOOL_DIR=/Users/username/projects/vm
+vm destroy && vm create
+```
+
+**VM_TOOL_DIR Environment Variable:**
+- **Purpose**: Specifies the VM tool installation directory for container mounting
+- **Auto-detection**: Usually detected automatically from binary location
+- **When to set**: When binary is installed in non-standard location or via symlink
+- **Docker usage**: Mounts this directory to `/vm-tool` in containers for Ansible access
+
 ### Inspect VM State
 ```bash
 # Get detailed VM information

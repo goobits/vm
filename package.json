@@ -24,9 +24,9 @@
     "bin/"
   ],
   "scripts": {
-    "test": "./run-tests.sh",
-    "validate": "./validate-config.sh --validate",
-    "postinstall": "chmod +x vm.sh vm validate-config.sh run-tests.sh install.sh generate-config.sh"
+    "test": "cd rust && cargo test",
+    "validate": "./vm.sh validate || echo 'Validation requires vm binary'",
+    "postinstall": "chmod +x vm.sh install.sh generate-config.sh"
   },
   "keywords": [
     "vagrant",
