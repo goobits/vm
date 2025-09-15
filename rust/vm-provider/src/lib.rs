@@ -40,6 +40,21 @@ pub trait Provider {
 
     /// Get the status of the VM.
     fn status(&self) -> Result<()>;
+
+    /// Restart a VM (stop then start).
+    fn restart(&self) -> Result<()>;
+
+    /// Re-run provisioning on existing VM.
+    fn provision(&self) -> Result<()>;
+
+    /// List all VMs.
+    fn list(&self) -> Result<()>;
+
+    /// Force kill VM processes.
+    fn kill(&self) -> Result<()>;
+
+    /// Get workspace directory.
+    fn get_sync_directory(&self) -> Result<String>;
 }
 
 /// A factory function to create a provider instance based on the configuration.
