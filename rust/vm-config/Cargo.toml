@@ -28,6 +28,10 @@ serde_yaml = { workspace = true }
 thiserror = { workspace = true }
 which = { workspace = true }
 vm-common = { path = "../vm-common" }
+vm-ports = { path = "../vm-ports" }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [features]
 default = []

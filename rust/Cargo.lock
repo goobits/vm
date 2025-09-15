@@ -144,6 +144,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
 
 [[package]]
+name = "base64"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+
+[[package]]
 name = "bit-set"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1003,7 +1009,7 @@ checksum = "2a071f4f7efc9a9118dfb627a0a94ef247986e1ab8606a4c806ae2b3aa3b6978"
 dependencies = [
  "ahash",
  "anyhow",
- "base64",
+ "base64 0.21.7",
  "bytecount",
  "clap",
  "fancy-regex",
@@ -1126,6 +1132,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df9761775871bdef83bee530e60050f7e54b1105350d6884eb0fb4f46c2f9405"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "ntapi"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8a3895c6391c39d7fe7ebc444a87eb2991b2a0bc718fdabd071eec617fc68e4"
+dependencies = [
+ "winapi",
 ]
 
 [[package]]
@@ -1547,7 +1562,7 @@ version = "0.11.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd67538700a17451e7cba03ac727fb961abb7607553461627b97de0b89cf4a62"
 dependencies = [
- "base64",
+ "base64 0.21.7",
  "bytes",
  "encoding_rs",
  "futures-core",
@@ -1848,6 +1863,21 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "sysinfo"
+version = "0.29.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd727fc423c2060f6c92d9534cef765c65a6ed3f428a03d7def74a8c4348e666"
+dependencies = [
+ "cfg-if",
+ "core-foundation-sys",
+ "libc",
+ "ntapi",
+ "once_cell",
+ "rayon",
+ "winapi",
 ]
 
 [[package]]
@@ -2202,6 +2232,7 @@ dependencies = [
  "glob",
  "indexmap",
  "jsonschema",
+ "libc",
  "regex",
  "serde",
  "serde_json",
@@ -2209,6 +2240,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "vm-common",
+ "vm-ports",
  "which",
 ]
 
@@ -2281,16 +2313,20 @@ version = "1.1.0"
 dependencies = [
  "anyhow",
  "atty",
+ "base64 0.22.1",
  "chrono",
  "duct",
  "indicatif",
+ "regex",
  "serde",
  "serde_json",
  "serde_yaml",
+ "sysinfo",
  "tempfile",
  "tera",
  "thiserror 1.0.69",
  "vm-config",
+ "vm-ports",
  "which",
 ]
 
