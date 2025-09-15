@@ -32,7 +32,7 @@ impl MacOSAudioManager {
 #[cfg(target_os = "macos")]
 fn is_pulseaudio_installed() -> Result<bool> {
     Ok(Command::new("brew")
-        .args(&["list", "pulseaudio"])
+        .args(["list", "pulseaudio"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()?
@@ -42,7 +42,7 @@ fn is_pulseaudio_installed() -> Result<bool> {
 #[cfg(target_os = "macos")]
 fn install_pulseaudio() -> Result<()> {
     let status = Command::new("brew")
-        .args(&["install", "pulseaudio"])
+        .args(["install", "pulseaudio"])
         .status()
         .context("Failed to execute 'brew install pulseaudio'. Make sure Homebrew is installed.")?;
     if !status.success() {
@@ -55,7 +55,7 @@ fn install_pulseaudio() -> Result<()> {
 fn start_pulseaudio_daemon() -> Result<()> {
     println!("Starting PulseAudio daemon for container audio...");
     let status = Command::new("pulseaudio")
-        .args(&[
+        .args([
             "--load=module-native-protocol-unix",
             "--exit-idle-time=-1",
             "--daemon",

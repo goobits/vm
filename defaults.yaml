@@ -2,7 +2,7 @@
 # Default VM configuration - contains all schema defaults
 # This file provides sensible defaults for all VM configuration options
 
-version: "1.0"
+version: "1.2.0"
 provider: docker
 os: auto
 

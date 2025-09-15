@@ -1,16 +1,32 @@
-use crate::range::PortRange;
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
+//! Port registry for tracking project port allocations.
+//!
+//! This module provides functionality for registering and managing port ranges
+//! allocated to different projects, enabling conflict detection and suggesting
+//! available port ranges.
+
+// Standard library
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+// External crates
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
+
+// Internal imports
+use crate::range::PortRange;
+
+/// A registry entry for a project's port allocation.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProjectEntry {
     pub range: String,
     pub path: String,
 }
 
+/// Registry for managing port range allocations across projects.
+///
+/// The registry stores project port assignments and provides conflict detection
+/// and port range suggestion capabilities.
 #[derive(Debug, Default)]
 pub struct PortRegistry {
     entries: HashMap<String, ProjectEntry>,
@@ -18,6 +34,10 @@ pub struct PortRegistry {
 }
 
 impl PortRegistry {
+    /// Loads the port registry from the default location (`~/.vm/port-registry.json`).
+    ///
+    /// # Returns
+    /// A `Result` containing the loaded registry or an error if loading fails.
     pub fn load() -> Result<Self> {
         let home_dir = std::env::var("HOME")
             .map_err(|_| anyhow::anyhow!("HOME environment variable not set"))?;
@@ -49,6 +69,14 @@ impl PortRegistry {
         })
     }
 
+    /// Checks if a port range conflicts with any registered projects.
+    ///
+    /// # Arguments
+    /// * `range` - The port range to check for conflicts
+    /// * `exclude_project` - Optional project name to exclude from conflict checking
+    ///
+    /// # Returns
+    /// `Some(String)` containing conflicting project names if conflicts exist, `None` otherwise.
     pub fn check_conflicts(
         &self,
         range: &PortRange,
@@ -79,6 +107,15 @@ impl PortRegistry {
         }
     }
 
+    /// Registers a port range for a project.
+    ///
+    /// # Arguments
+    /// * `project` - The project name
+    /// * `range` - The port range to register
+    /// * `path` - The project path
+    ///
+    /// # Returns
+    /// A `Result` indicating success or failure of the registration.
     pub fn register(&mut self, project: &str, range: &PortRange, path: &str) -> Result<()> {
         let entry = ProjectEntry {
             range: range.to_string(),
@@ -89,11 +126,19 @@ impl PortRegistry {
         self.save()
     }
 
+    /// Unregisters a project's port range.
+    ///
+    /// # Arguments
+    /// * `project` - The project name to unregister
+    ///
+    /// # Returns
+    /// A `Result` indicating success or failure of the unregistration.
     pub fn unregister(&mut self, project: &str) -> Result<()> {
         self.entries.remove(project);
         self.save()
     }
 
+    /// Lists all registered project port ranges to stdout.
     pub fn list(&self) {
         if self.entries.is_empty() {
             println!("📡 No port ranges registered yet");
@@ -111,6 +156,14 @@ impl PortRegistry {
         }
     }
 
+    /// Suggests the next available port range of the specified size.
+    ///
+    /// # Arguments
+    /// * `size` - The number of ports needed
+    /// * `start_from` - The starting port to search from
+    ///
+    /// # Returns
+    /// `Some(String)` containing the suggested range, or `None` if no range is available.
     pub fn suggest_next_range(&self, size: u16, start_from: u16) -> Option<String> {
         let mut current = start_from;
 
@@ -134,7 +187,7 @@ impl PortRegistry {
         let temp_path = self.registry_path.with_extension("tmp");
 
         let json_content = if self.entries.is_empty() {
-            "{}".to_string()
+            String::from("{}")
         } else {
             serde_json::to_string_pretty(&self.entries)?
         };

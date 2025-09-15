@@ -1,7 +1,10 @@
-use crate::installer::PackageInstaller;
-use crate::package_manager::PackageManager;
+// External crates
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+
+// Internal imports
+use crate::installer::PackageInstaller;
+use crate::package_manager::PackageManager;
 
 #[derive(Parser)]
 #[command(name = "vm-pkg")]

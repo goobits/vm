@@ -1,10 +1,15 @@
-use crate::link_detector::LinkDetector;
-use crate::package_manager::PackageManager;
-use anyhow::{Context, Result};
+// Standard library
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+
+// External crates
+use anyhow::{Context, Result};
+
+// Internal imports
+use crate::link_detector::LinkDetector;
+use crate::package_manager::PackageManager;
 
 /// Validate a filename for script creation (no path separators, safe characters only)
 fn validate_script_name(filename: &str) -> Result<()> {

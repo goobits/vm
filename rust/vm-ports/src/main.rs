@@ -1,9 +1,11 @@
-use anyhow::Result;
-use clap::{Parser, Subcommand};
-
 mod range;
 mod registry;
 
+// External crates
+use anyhow::Result;
+use clap::{Parser, Subcommand};
+
+// Internal imports
 use range::PortRange;
 use registry::PortRegistry;
 

@@ -1,3 +1,16 @@
+// Standard library
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+
+// External crates
+use anyhow::{Context, Result};
+use is_terminal::IsTerminal;
+use tera::{Context as TeraContext, Tera};
+
+// External dependencies
+
+// Internal imports
 use crate::{
     audio::MacOSAudioManager,
     error::ProviderError,
@@ -6,17 +19,9 @@ use crate::{
     resources,
     security::SecurityValidator,
     utils::{is_tool_installed, stream_command, stream_docker_build},
-    Provider,
+    Provider, TempProvider, TempVmState,
 };
-use crate::{TempProvider, TempVmState};
-use anyhow::{Context, Result};
-use std::fs;
-use std::path::{Path, PathBuf};
-use tera::{Context as TeraContext, Tera};
 use vm_config::config::VmConfig;
-
-// External dependencies
-extern crate atty;
 
 pub struct DockerProvider {
     config: VmConfig,
@@ -165,7 +170,7 @@ impl DockerProvider {
 
     pub fn new(config: VmConfig) -> Result<Self> {
         if !is_tool_installed("docker") {
-            return Err(ProviderError::DependencyNotFound("Docker".to_string()).into());
+            return Err(ProviderError::DependencyNotFound(String::from("Docker")).into());
         }
 
         let project_dir = std::env::current_dir()?;
@@ -228,7 +233,7 @@ impl DockerProvider {
         } else {
             // Fallback to embedded template for production
             eprintln!("Using embedded Docker Compose template");
-            Ok(include_str!("docker/template.yml").to_string())
+            Ok(String::from(include_str!("docker/template.yml")))
         }
     }
 
@@ -307,10 +312,10 @@ impl Provider for DockerProvider {
         // Step 4: Build with all package arguments
         println!("\n🔨 Building container image with packages (this may take a while)...");
         let mut docker_build_args = vec![
-            "compose".to_string(),
-            "-f".to_string(),
+            String::from("compose"),
+            String::from("-f"),
             Self::path_to_string(&compose_path)?.to_string(),
-            "build".to_string(),
+            String::from("build"),
         ];
         docker_build_args.extend(build_args);
 
@@ -499,7 +504,7 @@ impl Provider for DockerProvider {
         let target_path = SecurityValidator::validate_relative_path(relative_path, workspace_path)?;
         let target_dir = target_path.to_string_lossy().to_string();
 
-        let tty_flag = if atty::is(atty::Stream::Stdin) && atty::is(atty::Stream::Stdout) {
+        let tty_flag = if io::stdin().is_terminal() && io::stdout().is_terminal() {
             "-it"
         } else {
             "-i"
@@ -525,7 +530,7 @@ impl Provider for DockerProvider {
         .status;
 
         if !status.success() {
-            return Err(ProviderError::CommandFailed("SSH command failed".to_string()).into());
+            return Err(ProviderError::CommandFailed(String::from("SSH command failed")).into());
         }
         Ok(())
     }
@@ -721,7 +726,7 @@ impl TempProvider for DockerProvider {
 
         let mut temp_config = self.config.clone();
         if let Some(ref mut project) = temp_config.project {
-            project.name = Some("vm-temp".to_string());
+            project.name = Some(String::from("vm-temp"));
         }
 
         let content = self.render_docker_compose_with_mounts(state)?;

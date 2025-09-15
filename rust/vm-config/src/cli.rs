@@ -573,13 +573,13 @@ pub fn init_config_file(
         }
 
         // Allocate sequential ports
-        config.ports.insert("web".to_string(), port_start);
-        config.ports.insert("api".to_string(), port_start + 1);
+        config.ports.insert(String::from("web"), port_start);
+        config.ports.insert(String::from("api"), port_start + 1);
         config
             .ports
-            .insert("postgresql".to_string(), port_start + 5);
-        config.ports.insert("redis".to_string(), port_start + 6);
-        config.ports.insert("mongodb".to_string(), port_start + 7);
+            .insert(String::from("postgresql"), port_start + 5);
+        config.ports.insert(String::from("redis"), port_start + 6);
+        config.ports.insert(String::from("mongodb"), port_start + 7);
     }
 
     // Convert to YAML

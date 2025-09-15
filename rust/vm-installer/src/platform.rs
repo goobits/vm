@@ -1,10 +1,13 @@
-use anyhow::{Context, Result};
-use colored::*;
-use dialoguer::Confirm;
+// Standard library
 use std::env;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+
+// External crates
+use anyhow::{Context, Result};
+use colored::*;
+use dialoguer::Confirm;
 
 pub fn ensure_path(bin_dir: &Path) -> Result<()> {
     let path_var = env::var("PATH").unwrap_or_default();

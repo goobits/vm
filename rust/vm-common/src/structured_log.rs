@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 
 // External crates
 use chrono::Utc;
+use is_terminal::IsTerminal;
 use log::{Level, LevelFilter, Metadata, Record};
 use regex::Regex;
 use serde_json::{json, Map, Value};
@@ -190,7 +191,8 @@ impl StructuredLogger {
             }
         }
 
-        serde_json::to_string(&log_entry).unwrap_or_else(|_| "Failed to serialize log entry".to_string())
+        serde_json::to_string(&log_entry)
+            .unwrap_or_else(|_| "Failed to serialize log entry".to_string())
     }
 
     fn format_human(&self, record: &Record, context: &Map<String, Value>) -> String {
@@ -359,9 +361,7 @@ fn parse_log_tags() -> TagFilter {
                 });
             } else if value.contains('*') || value.contains('?') {
                 // Wildcard pattern
-                let regex_pattern = value
-                    .replace('*', ".*")
-                    .replace('?', ".");
+                let regex_pattern = value.replace('*', ".*").replace('?', ".");
                 if let Ok(regex) = Regex::new(&format!("^{}$", regex_pattern)) {
                     patterns.push(TagPattern {
                         key,
@@ -398,24 +398,21 @@ fn determine_file_path(output: &LogOutput) -> Option<PathBuf> {
         env::var("LOG_FILE")
             .ok()
             .map(PathBuf::from)
-            .or_else(|| {
-                dirs::cache_dir()
-                    .map(|dir| dir.join("vm").join("vm.log"))
-            })
+            .or_else(|| dirs::cache_dir().map(|dir| dir.join("vm").join("vm.log")))
     } else {
         None
     }
 }
 
 fn is_tty() -> bool {
-    atty::is(atty::Stream::Stdout)
+    io::stdout().is_terminal()
 }
 
 fn is_container() -> bool {
     // Check common container indicators
-    Path::new("/.dockerenv").exists() ||
-    env::var("KUBERNETES_SERVICE_HOST").is_ok() ||
-    env::var("container").is_ok()
+    Path::new("/.dockerenv").exists()
+        || env::var("KUBERNETES_SERVICE_HOST").is_ok()
+        || env::var("container").is_ok()
 }
 
 fn format_value_for_human(value: &Value) -> String {
@@ -460,6 +457,7 @@ pub fn create_test_logger() -> StructuredLogger {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[allow(unused_imports)]
     use log::{debug, error, info, warn};
 
     #[test]

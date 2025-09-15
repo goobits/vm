@@ -41,7 +41,7 @@ dirs = "6.0"
 scopeguard = "1.2"
 chrono = { version = "0.4", features = ["serde"] }
 sysinfo = "0.37"
-atty = "0.2"
+is-terminal = "0.4"
 base64 = "0.22"
 libc = "0.2"
 fs2 = "0.4"

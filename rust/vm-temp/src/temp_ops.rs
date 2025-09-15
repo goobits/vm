@@ -1,7 +1,12 @@
-use crate::{MountParser, MountPermission, StateManager, TempVmState};
-use anyhow::{Context, Result};
+// Standard library
 use std::io::{self, Write};
 use std::path::PathBuf;
+
+// External crates
+use anyhow::{Context, Result};
+
+// Internal imports
+use crate::{MountParser, MountPermission, StateManager, TempVmState};
 use vm_config::config::VmConfig;
 use vm_provider::Provider;
 
@@ -19,8 +24,8 @@ impl TempVmOps {
         let state_manager = StateManager::new().context("Failed to initialize state manager")?;
 
         // Parse mount strings using MountParser
-        let parsed_mounts = MountParser::parse_mount_strings(&mounts)
-            .context("Failed to parse mount strings")?;
+        let parsed_mounts =
+            MountParser::parse_mount_strings(&mounts).context("Failed to parse mount strings")?;
 
         // Get current project directory
         let project_dir = std::env::current_dir().context("Failed to get current directory")?;
@@ -155,8 +160,8 @@ impl TempVmOps {
         }
 
         // Parse the mount string
-        let (source, target, permissions) = MountParser::parse_mount_string(&path)
-            .context("Failed to parse mount string")?;
+        let (source, target, permissions) =
+            MountParser::parse_mount_string(&path).context("Failed to parse mount string")?;
 
         // Load current state
         let mut state = state_manager

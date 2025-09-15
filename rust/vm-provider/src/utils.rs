@@ -1,9 +1,14 @@
-use crate::progress::{DockerProgressParser, ProgressParser};
-use anyhow::Result;
-use duct::cmd;
+// Standard library
 use std::ffi::OsStr;
 use std::io::{BufRead, BufReader};
+
+// External crates
+use anyhow::Result;
+use duct::cmd;
 use which::which;
+
+// Internal imports
+use crate::progress::{DockerProgressParser, ProgressParser};
 
 /// The original simple command streamer for backward compatibility.
 pub fn stream_command<A: AsRef<OsStr>>(command: &str, args: &[A]) -> Result<()> {

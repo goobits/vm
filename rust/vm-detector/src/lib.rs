@@ -33,7 +33,7 @@ pub fn detect_project_type(dir: &Path) -> HashSet<String> {
     if has_file(dir, "package.json") {
         if let Ok(content) = fs::read_to_string(dir.join("package.json")) {
             if let Ok(json) = serde_json::from_str::<Value>(&content) {
-                let mut framework = "nodejs".to_string();
+                let mut framework = String::from("nodejs");
                 let deps = json.get("dependencies").and_then(Value::as_object);
                 let dev_deps = json.get("devDependencies").and_then(Value::as_object);
 
@@ -42,7 +42,7 @@ pub fn detect_project_type(dir: &Path) -> HashSet<String> {
                 for dep in all_deps {
                     match dep.as_str() {
                         "react" => {
-                            framework = "react".to_string();
+                            framework = String::from("react");
                             break;
                         }
                         "vue" => {
@@ -187,8 +187,8 @@ mod tests {
           "name": "test-react-app",
           "version": "1.0.0",
           "dependencies": {
-            "react": "^18.2.0",
-            "react-dom": "^18.2.0"
+            "react": "^18.3.1",
+            "react-dom": "^18.3.1"
           }
         }
         "#,
@@ -238,8 +238,8 @@ mod tests {
           "name": "test-nextjs-app",
           "dependencies": {
             "next": "^13.4.0",
-            "react": "^18.2.0",
-            "react-dom": "^18.2.0"
+            "react": "^18.3.1",
+            "react-dom": "^18.3.1"
           }
         }
         "#,
@@ -277,7 +277,7 @@ mod tests {
     fn test_django_detection() {
         let fixture = ProjectTestFixture::new().unwrap();
         fixture
-            .create_file("requirements.txt", "Django==4.2.0\npsycopg2-binary==2.9.6")
+            .create_file("requirements.txt", "Django==5.1.3\npsycopg2-binary==2.9.9")
             .unwrap();
 
         let detected = detect_project_type(fixture.path());
@@ -289,7 +289,7 @@ mod tests {
     fn test_flask_detection() {
         let fixture = ProjectTestFixture::new().unwrap();
         fixture
-            .create_file("requirements.txt", "Flask==2.3.0\nFlask-SQLAlchemy==3.0.5")
+            .create_file("requirements.txt", "Flask==3.1.0\nFlask-SQLAlchemy==3.1.1")
             .unwrap();
 
         let detected = detect_project_type(fixture.path());
@@ -325,7 +325,7 @@ mod tests {
         {
           "name": "test-nodejs-app",
           "dependencies": {
-            "express": "^4.18.0",
+            "express": "^4.21.1",
             "lodash": "^4.17.21"
           }
         }
@@ -462,7 +462,7 @@ mod tests {
             .unwrap();
 
         fixture
-            .create_file("requirements.txt", "Django==4.2.0")
+            .create_file("requirements.txt", "Django==5.1.3")
             .unwrap();
 
         let detected = detect_project_type(fixture.path());
@@ -607,8 +607,8 @@ mod tests {
         {
           "name": "test-app",
           "dependencies": {
-            "react": "^18.2.0",
-            "react-dom": "^18.2.0",
+            "react": "^18.3.1",
+            "react-dom": "^18.3.1",
             "next": "^13.4.0"
           }
         }

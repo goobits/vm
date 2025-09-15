@@ -1,7 +1,12 @@
-use anyhow::Result;
+// Standard library
 use std::fs;
 use std::path::PathBuf;
+
+// External crates
+use anyhow::Result;
 use tempfile::TempDir;
+
+// Internal imports
 use vm_config::{VmConfig, ConfigOps, preset::PresetDetector};
 use vm_detector::{detect_project_type, format_detected_types};
 use vm_ports::{PortRegistry, PortRange};
@@ -284,8 +289,8 @@ fn test_multi_framework_detection_and_config() -> Result<()> {
     fixture.create_project_file("package.json", r#"{
         "name": "fullstack-app",
         "dependencies": {
-            "express": "^4.18.0",
-            "react": "^18.0.0"
+            "express": "^4.21.1",
+            "react": "^18.3.1"
         }
     }"#)?;
 

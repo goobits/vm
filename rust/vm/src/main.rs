@@ -14,9 +14,8 @@ use vm_provider::get_provider;
 use vm_provider::progress::{confirm_prompt, ProgressReporter, StatusFormatter};
 
 // Request ID for this execution - used for tracing logs across the entire request
-static REQUEST_ID: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    Uuid::new_v4().to_string()
-});
+static REQUEST_ID: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| Uuid::new_v4().to_string());
 
 #[derive(Debug, Parser)]
 #[command(name = "vm")]
@@ -288,8 +287,10 @@ fn load_config_lenient(file: Option<PathBuf>, _no_preset: bool) -> Result<VmConf
 
 fn main() -> Result<()> {
     // Initialize structured logging system first
-    if let Err(_) = vm_common::logging::init() {
-        eprintln!("Warning: Failed to initialize structured logging, falling back to basic logging");
+    if vm_common::logging::init().is_err() {
+        eprintln!(
+            "Warning: Failed to initialize structured logging, falling back to basic logging"
+        );
     }
 
     let args = Args::parse();

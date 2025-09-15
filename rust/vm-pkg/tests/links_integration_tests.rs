@@ -1,7 +1,10 @@
-use anyhow::Result;
+// Standard library
 use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::PathBuf;
+
+// External crates
+use anyhow::Result;
 use tempfile::TempDir;
 
 /// Test fixture for vm-pkg links integration testing

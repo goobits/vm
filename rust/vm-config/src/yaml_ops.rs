@@ -243,7 +243,7 @@ impl YamlOperations {
                 if array_path == "mounts" {
                     if let Value::Mapping(map) = value {
                         if let Some(Value::Sequence(seq)) =
-                            map.get(Value::String("mounts".to_string()))
+                            map.get(Value::String(String::from("mounts")))
                         {
                             let results: Vec<Value> = seq
                                 .iter()
@@ -729,7 +729,9 @@ impl YamlOperations {
                 let items: Vec<String> = seq.iter().map(Self::yaml_value_to_string).collect();
                 format!("[{}]", items.join(", "))
             }
-            Value::Mapping(_) => serde_json::to_string(value).unwrap_or_else(|_| "{}".to_string()),
+            Value::Mapping(_) => {
+                serde_json::to_string(value).unwrap_or_else(|_| String::from("{}"))
+            }
             Value::Tagged(tagged) => Self::yaml_value_to_string(&tagged.value),
         }
     }
@@ -767,7 +769,7 @@ impl YamlOperations {
         if let Value::Sequence(seq) = target {
             seq.retain(|item| {
                 if let Value::Mapping(map) = item {
-                    if let Some(Value::String(s)) = map.get(Value::String(field.to_string())) {
+                    if let Some(Value::String(s)) = map.get(Value::String(String::from(field))) {
                         return s != value;
                     }
                 }

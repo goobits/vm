@@ -61,7 +61,7 @@ RUN if [ -n "${CARGO_PACKAGES}" ]; then \
 fi
 
 RUN if [ -n "${PIPX_PACKAGES}" ]; then \
-    python3 -m pip install --user pipx; \
+    python3 -m pip install --user --break-system-packages pipx; \
     python3 -m pipx ensurepath; \
 fi
 
@@ -84,7 +84,7 @@ RUN if [ -n "${PIPX_PACKAGES}" ]; then \
 fi
 
 RUN if [ -n "${PIP_PACKAGES}" ]; then \
-    pip3 install --user ${PIP_PACKAGES}; \
+    pip3 install --user --break-system-packages ${PIP_PACKAGES}; \
 fi
 
 RUN if [ -n "${CARGO_PACKAGES}" ]; then \

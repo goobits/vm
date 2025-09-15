@@ -1,11 +1,16 @@
+// Standard library
+use std::fs;
+use std::path::PathBuf;
+
+// External crates
+use anyhow::{bail, Context, Result};
+use serde_yaml::{Mapping, Value};
+
+// Internal imports
 use crate::config::VmConfig;
 use crate::merge::ConfigMerger;
 use crate::paths;
 use crate::preset::PresetDetector;
-use anyhow::{bail, Context, Result};
-use serde_yaml::{Mapping, Value};
-use std::fs;
-use std::path::PathBuf;
 
 /// Configuration operations for vm config command
 pub struct ConfigOps;

@@ -9,10 +9,12 @@ pub mod security;
 pub mod structured_log;
 pub mod temp;
 
-use anyhow::{Context, Result};
-
+// Standard library
 use std::path::Path;
 use std::process::Command;
+
+// External crates
+use anyhow::{Context, Result};
 
 /// Common prelude for VM Tool modules
 pub mod prelude {

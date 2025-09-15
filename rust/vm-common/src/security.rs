@@ -62,15 +62,15 @@ pub fn is_path_in_safe_locations(
     let resolved_path = resolve_path_secure(check_path, true)?;
 
     let mut safe_path_prefixes: Vec<String> = vec![
-        "/home/".to_string(),
-        "/tmp/".to_string(),
-        "/var/tmp/".to_string(),
-        "/workspace/".to_string(),
-        "/opt/".to_string(),
-        "/srv/".to_string(),
-        "/usr/local/".to_string(),
-        "/data/".to_string(),
-        "/projects/".to_string(),
+        String::from("/home/"),
+        String::from("/tmp/"),
+        String::from("/var/tmp/"),
+        String::from("/workspace/"),
+        String::from("/opt/"),
+        String::from("/srv/"),
+        String::from("/usr/local/"),
+        String::from("/data/"),
+        String::from("/projects/"),
     ];
 
     if let Ok(current_dir) = std::env::current_dir() {

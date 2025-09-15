@@ -1,7 +1,7 @@
 // Re-export the structured logging system for backward compatibility
 pub use crate::structured_log::{init, init_with_config, LogConfig, LogFormat, LogOutput};
 
-// Legacy VmLogger for backward compatibility - now just a wrapper
+// External crates
 use log::{Level, LevelFilter, Metadata, Record};
 
 pub struct VmLogger;

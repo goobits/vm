@@ -1,3 +1,14 @@
+//! VM configuration management library.
+//!
+//! This library provides functionality for managing VM configurations, including
+//! loading, merging, validating configurations, and managing presets.
+//!
+//! ## Main Features
+//! - Configuration loading and validation
+//! - Configuration merging and preset management
+//! - CLI utilities for configuration initialization
+//! - Resource management utilities
+
 pub mod cli;
 pub mod config;
 mod config_ops;

@@ -415,7 +415,7 @@ environment:
         "name": "test-project",
         "version": "1.0.0",
         "dependencies": {
-            "express": "^4.18.0"
+            "express": "^4.21.1"
         }
     }"#,
     )?;

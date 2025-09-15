@@ -1,3 +1,9 @@
+//! VM provider abstraction library.
+//!
+//! This library provides a unified interface for working with different VM providers
+//! such as Docker, Vagrant, and Tart. It defines core traits and factory functions
+//! for provider instantiation and management.
+
 use anyhow::Result;
 use std::path::Path;
 use vm_config::config::VmConfig;
@@ -90,7 +96,13 @@ pub trait Provider {
 #[cfg(test)]
 mod mock;
 
-/// A factory function to create a provider instance based on the configuration.
+/// Creates a provider instance based on the configuration.
+///
+/// # Arguments
+/// * `config` - The VM configuration containing provider settings
+///
+/// # Returns
+/// A boxed provider implementation or an error if the provider is unknown.
 pub fn get_provider(config: VmConfig) -> Result<Box<dyn Provider>> {
     let provider_name = config.provider.as_deref().unwrap_or("docker");
 

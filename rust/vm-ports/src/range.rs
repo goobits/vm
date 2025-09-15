@@ -1,6 +1,15 @@
+//! Port range management utilities.
+//!
+//! This module provides types and functions for representing and manipulating
+//! network port ranges, including parsing, validation, and overlap detection.
+
 use anyhow::Result;
 use std::fmt;
 
+/// Represents a range of network ports.
+///
+/// A port range defines a continuous range of ports from `start` to `end` (inclusive).
+/// The start port must always be less than the end port.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PortRange {
     pub start: u16,
@@ -8,6 +17,13 @@ pub struct PortRange {
 }
 
 impl PortRange {
+    /// Parses a port range from a string in "START-END" format.
+    ///
+    /// # Arguments
+    /// * `range_str` - A string containing the port range (e.g., "3000-3009")
+    ///
+    /// # Returns
+    /// A `Result` containing the parsed `PortRange` or an error if the format is invalid.
     pub fn parse(range_str: &str) -> Result<Self> {
         // Validate format: START-END
         if !range_str.contains('-') {
@@ -43,6 +59,14 @@ impl PortRange {
         Ok(PortRange { start, end })
     }
 
+    /// Creates a new port range with the specified start and end ports.
+    ///
+    /// # Arguments
+    /// * `start` - The starting port number
+    /// * `end` - The ending port number
+    ///
+    /// # Returns
+    /// A `Result` containing the new `PortRange` or an error if start >= end.
     pub fn new(start: u16, end: u16) -> Result<Self> {
         if start >= end {
             anyhow::bail!(
@@ -54,11 +78,22 @@ impl PortRange {
         Ok(PortRange { start, end })
     }
 
+    /// Checks if this port range overlaps with another port range.
+    ///
+    /// # Arguments
+    /// * `other` - The other port range to check for overlap
+    ///
+    /// # Returns
+    /// `true` if the ranges overlap, `false` otherwise.
     pub fn overlaps_with(&self, other: &PortRange) -> bool {
         // Ranges overlap if one starts before the other ends
         self.start <= other.end && other.start <= self.end
     }
 
+    /// Returns the number of ports in this range.
+    ///
+    /// # Returns
+    /// The count of ports in the range (end - start + 1).
     #[allow(dead_code)]
     pub fn size(&self) -> u16 {
         self.end - self.start + 1

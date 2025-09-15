@@ -1,3 +1,8 @@
+//! Temporary VM state management.
+//!
+//! This module provides functionality for persisting and managing the state of temporary VMs,
+//! including state file operations, locking mechanisms, and validation.
+
 use crate::TempVmState;
 use anyhow::{Context, Result};
 use fs2::FileExt;
@@ -6,6 +11,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
+/// Errors that can occur during state management operations.
 #[derive(Error, Debug)]
 pub enum StateError {
     #[error("State file not found at {path}")]
@@ -30,7 +36,12 @@ pub struct StateManager {
 }
 
 impl StateManager {
-    /// Create a new state manager with default state directory
+    /// Creates a new state manager with the default state directory.
+    ///
+    /// The default state directory is `~/.vm`.
+    ///
+    /// # Returns
+    /// A `Result` containing the new `StateManager` or an error if initialization fails.
     pub fn new() -> Result<Self> {
         let state_dir = Self::default_state_dir()?;
         fs::create_dir_all(&state_dir)?;
@@ -46,7 +57,13 @@ impl StateManager {
         })
     }
 
-    /// Create a new state manager with custom state directory
+    /// Creates a new state manager with a custom state directory.
+    ///
+    /// # Arguments
+    /// * `state_dir` - The custom directory to use for state files
+    ///
+    /// # Returns
+    /// A new `StateManager` instance using the specified directory.
     pub fn with_state_dir(state_dir: PathBuf) -> Self {
         let state_file = state_dir.join("temp-vm.state");
         let temp_file_registry = state_dir.join(".temp_files.registry");
@@ -59,7 +76,12 @@ impl StateManager {
         }
     }
 
-    /// Get the default state directory (~/.vm)
+    /// Gets the default state directory path.
+    ///
+    /// Returns `~/.vm` where `~` is the user's home directory.
+    ///
+    /// # Returns
+    /// A `Result` containing the default state directory path or an error if the home directory cannot be found.
     pub fn default_state_dir() -> Result<PathBuf> {
         dirs::home_dir()
             .map(|home| home.join(".vm"))
@@ -172,7 +194,13 @@ impl StateManager {
         Ok(())
     }
 
-    /// Create a new temporary file and register it for cleanup.
+    /// Creates a new temporary file and registers it for cleanup.
+    ///
+    /// # Arguments
+    /// * `prefix` - The prefix to use for the temporary file name
+    ///
+    /// # Returns
+    /// A `Result` containing the path to the created temporary file.
     pub fn create_temp_file(&self, prefix: &str) -> Result<PathBuf> {
         let temp_file = tempfile::Builder::new()
             .prefix(prefix)
@@ -188,7 +216,10 @@ impl StateManager {
         Ok(path)
     }
 
-    /// Clean up all registered temporary files.
+    /// Cleans up all registered temporary files.
+    ///
+    /// This method removes all files that were registered through `create_temp_file`.
+    /// It silently ignores any errors that occur during cleanup.
     pub fn cleanup_temp_files(&self) {
         if !self.temp_file_registry.exists() {
             return;
