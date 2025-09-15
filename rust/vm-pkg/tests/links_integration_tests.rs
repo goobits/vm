@@ -10,7 +10,7 @@ struct LinksTestFixture {
     test_dir: PathBuf,
     npm_global_dir: PathBuf,
     nvm_dir: PathBuf,
-    cargo_dir: PathBuf,
+    _cargo_dir: PathBuf,
 }
 
 impl LinksTestFixture {
@@ -32,7 +32,7 @@ impl LinksTestFixture {
             test_dir,
             npm_global_dir,
             nvm_dir,
-            cargo_dir,
+            _cargo_dir: cargo_dir,
         })
     }
 

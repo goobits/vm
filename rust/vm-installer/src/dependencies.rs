@@ -14,4 +14,3 @@ pub fn check() -> Result<()> {
     println!("{}", "✅ Dependencies satisfied".green());
     Ok(())
 }
-

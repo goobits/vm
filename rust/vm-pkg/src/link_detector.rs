@@ -1,5 +1,5 @@
-use crate::package_manager::PackageManager;
 use crate::links::SystemLinkDetector;
+use crate::package_manager::PackageManager;
 use anyhow::Result;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -93,7 +93,10 @@ impl LinkDetector {
             // Get system-wide links (but we need to scan common packages - simplified approach)
             // For a full implementation, this would require scanning all installed packages
             // For now, we'll just indicate that system link detection is available
-            results.push((mgr, "(use 'vm-pkg links detect' for system-wide detection)".to_string()));
+            results.push((
+                mgr,
+                "(use 'vm-pkg links detect' for system-wide detection)".to_string(),
+            ));
         }
 
         results.sort_by(|a, b| a.0.to_string().cmp(&b.0.to_string()).then(a.1.cmp(&b.1)));
@@ -101,12 +104,20 @@ impl LinkDetector {
     }
 
     /// Get comprehensive link information for a package (both controlled and system)
-    pub fn get_all_link_info(&self, package: &str, manager: PackageManager) -> Result<Vec<(String, String)>> {
+    #[allow(dead_code)]
+    pub fn get_all_link_info(
+        &self,
+        package: &str,
+        manager: PackageManager,
+    ) -> Result<Vec<(String, String)>> {
         let mut results = Vec::new();
 
         // Check controlled links
         if let Some(controlled_path) = self.get_linked_path(package, manager)? {
-            results.push(("controlled".to_string(), controlled_path.to_string_lossy().to_string()));
+            results.push((
+                "controlled".to_string(),
+                controlled_path.to_string_lossy().to_string(),
+            ));
         }
 
         // Check system links

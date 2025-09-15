@@ -3,9 +3,6 @@ pub mod npm;
 pub mod pip;
 pub mod system;
 
-pub use cargo::detect_cargo_packages;
-pub use npm::detect_npm_packages;
-pub use pip::detect_pip_packages;
 pub use system::SystemLinkDetector;
 
 use anyhow::Result;
@@ -22,7 +19,10 @@ pub fn validate_package_manager(pm: &str) -> Result<()> {
 }
 
 /// Detect packages for a specific package manager
-pub fn detect_packages(package_manager: &str, packages: &[String]) -> Result<Vec<(String, String)>> {
+pub fn detect_packages(
+    package_manager: &str,
+    packages: &[String],
+) -> Result<Vec<(String, String)>> {
     match package_manager {
         "npm" => npm::detect_npm_packages(packages),
         "pip" => pip::detect_pip_packages(packages),
@@ -32,6 +32,7 @@ pub fn detect_packages(package_manager: &str, packages: &[String]) -> Result<Vec
 }
 
 /// Generate Docker mount strings for linked packages
+#[allow(dead_code)]
 pub fn generate_mounts(package_manager: &str, packages: &[String]) -> Result<Vec<String>> {
     let detections = detect_packages(package_manager, packages)?;
     let mut mounts = Vec::new();

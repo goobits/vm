@@ -15,6 +15,7 @@ impl SystemLinkDetector {
     }
 
     /// Detect linked packages across all package managers
+    #[allow(dead_code)]
     pub fn detect_all(packages: &[String]) -> Result<Vec<(String, String, String)>> {
         let mut all_results = Vec::new();
         let managers = ["npm", "pip", "cargo"];
@@ -31,6 +32,7 @@ impl SystemLinkDetector {
     }
 
     /// Generate Docker mount strings for a specific package manager
+    #[allow(dead_code)]
     pub fn generate_mounts_for_manager(
         package_manager: &str,
         packages: &[String],
@@ -40,6 +42,7 @@ impl SystemLinkDetector {
     }
 
     /// Generate Docker mount strings for all package managers
+    #[allow(dead_code)]
     pub fn generate_all_mounts(packages: &[String]) -> Result<Vec<(String, String)>> {
         let mut all_mounts = Vec::new();
         let managers = ["npm", "pip", "cargo"];
@@ -56,6 +59,7 @@ impl SystemLinkDetector {
     }
 
     /// Check if any packages are linked across all managers
+    #[allow(dead_code)]
     pub fn has_any_links(packages: &[String]) -> bool {
         let managers = ["npm", "pip", "cargo"];
 

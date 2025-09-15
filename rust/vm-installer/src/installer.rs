@@ -30,7 +30,7 @@ fn get_project_root() -> Result<PathBuf> {
     // Use the executable's path to reliably find the project root, as `cargo run`
     // can change the current working directory.
     let exe_path = env::current_exe()?;
-    
+
     // Search upwards from the executable's location for the project root,
     // which we identify by the presence of the 'rust/Cargo.toml' file.
     for path in exe_path.ancestors() {
@@ -105,6 +105,10 @@ fn create_symlink(source_binary: &Path, bin_dir: &Path) -> Result<()> {
         anyhow::bail!("Automatic symlinking is only supported on Unix-like systems.");
     }
 
-    println!("✅ Symlink created: {} -> {}", link_name.display(), source_binary.display());
+    println!(
+        "✅ Symlink created: {} -> {}",
+        link_name.display(),
+        source_binary.display()
+    );
     Ok(())
 }
