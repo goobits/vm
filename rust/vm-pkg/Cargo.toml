@@ -11,9 +11,9 @@ anyhow = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-which = "6.0"
-home = "0.5"
-tempfile = "3.8"
+which = { workspace = true }
+home = { workspace = true }
+tempfile = { workspace = true }
 
 [[bin]]
 name = "vm-pkg"
