@@ -1,7 +1,9 @@
 use crate::detect_project_type;
 use glob::glob;
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(test)]
+use std::path::PathBuf;
 
 /// Simplified preset detection that leverages vm-detector's core project detection
 pub fn detect_preset_for_project(project_dir: &Path) -> Option<String> {

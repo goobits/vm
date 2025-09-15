@@ -13,6 +13,24 @@ pub struct Args {
 }
 
 #[derive(Subcommand)]
+pub enum LinksSubcommand {
+    /// Detect linked packages and output package:path pairs
+    Detect {
+        /// Package manager (npm, pip, cargo)
+        package_manager: String,
+        /// Package names to detect
+        packages: Vec<String>,
+    },
+    /// Generate Docker mount strings for linked packages
+    Mounts {
+        /// Package manager (npm, pip, cargo)
+        package_manager: String,
+        /// Package names to detect
+        packages: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum Command {
     /// Install a package
     Install {
@@ -56,6 +74,12 @@ pub enum Command {
         #[arg(short = 'u', long, default_value = "developer")]
         user: String,
     },
+
+    /// System-wide package link detection and mount generation
+    Links {
+        #[command(subcommand)]
+        command: LinksSubcommand,
+    },
 }
 
 pub fn execute(args: Args) -> Result<()> {
@@ -87,6 +111,40 @@ pub fn execute(args: Args) -> Result<()> {
         Command::List { package_type, user } => {
             let installer = PackageInstaller::new(user);
             installer.list_linked(package_type)?;
+        }
+        Command::Links { command } => {
+            use crate::links::*;
+            match command {
+                LinksSubcommand::Detect {
+                    package_manager,
+                    packages,
+                } => {
+                    validate_package_manager(&package_manager)?;
+                    let detections = detect_packages(&package_manager, &packages)?;
+
+                    for (package, path) in detections {
+                        println!("{}:{}", package, path);
+                    }
+                }
+                LinksSubcommand::Mounts {
+                    package_manager,
+                    packages,
+                } => {
+                    validate_package_manager(&package_manager)?;
+                    let detections = detect_packages(&package_manager, &packages)?;
+
+                    for (package, path) in detections {
+                        println!(
+                            "{}:/home/developer/.links/{}/{}:delegated",
+                            path, package_manager, package
+                        );
+                        eprintln!(
+                            "📦 Found linked package ({}): {} -> {}",
+                            package_manager, package, path
+                        );
+                    }
+                }
+            }
         }
     }
     Ok(())

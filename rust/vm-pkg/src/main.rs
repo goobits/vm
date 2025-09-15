@@ -1,6 +1,7 @@
 mod cli;
 mod installer;
 mod link_detector;
+mod links;
 mod package_manager;
 
 use anyhow::Result;

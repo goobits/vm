@@ -51,6 +51,12 @@ impl DockerProgressParser {
     }
 }
 
+impl Default for DockerProgressParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ProgressParser for DockerProgressParser {
     fn parse_line(&mut self, line: &str) {
         if let Some(caps) = self.step_regex.captures(line) {
@@ -81,7 +87,7 @@ impl ProgressParser for DockerProgressParser {
 
     fn finish(&self) {
         self.main_bar.finish_with_message("Build complete");
-        for (_, bar) in &self.layer_bars {
+        for bar in self.layer_bars.values() {
             bar.finish_and_clear();
         }
     }

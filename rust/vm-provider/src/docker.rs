@@ -18,7 +18,6 @@ use vm_config::config::VmConfig;
 // External dependencies
 extern crate atty;
 
-const DOCKERFILE_TEMPLATE: &str = include_str!("../../../providers/docker/Dockerfile");
 
 pub struct DockerProvider {
     config: VmConfig,
@@ -34,77 +33,111 @@ impl DockerProvider {
         })
     }
 
-    /// Legacy method - no longer needed with self-contained containers
-    fn setup_container_resources(&self) -> Result<()> {
-        // Resources are now embedded in the container image during build
-        // This method is kept for compatibility but does nothing
+    /// Prepare build context with embedded resources and generated Dockerfile
+    fn prepare_build_context(&self) -> Result<PathBuf> {
+        // Create temporary build context directory
+        let build_context = self.temp_dir.join("build_context");
+        if build_context.exists() {
+            fs::remove_dir_all(&build_context)?;
+        }
+        fs::create_dir_all(&build_context)?;
+
+        // Create shared directory and copy embedded resources
+        let shared_dir = build_context.join("shared");
+        fs::create_dir_all(&shared_dir)?;
+
+        // Copy embedded resources to build context
+        resources::copy_embedded_resources(&shared_dir)?;
+
+        // Generate Dockerfile from template
+        let dockerfile_path = build_context.join("Dockerfile.generated");
+        self.generate_dockerfile(&dockerfile_path)?;
+
+        Ok(build_context)
+    }
+
+    /// Generate Dockerfile from template with build args
+    fn generate_dockerfile(&self, output_path: &Path) -> Result<()> {
+        let mut tera = Tera::default();
+        let template_content = include_str!("docker/Dockerfile.j2");
+        tera.add_raw_template("Dockerfile", template_content)?;
+
+        let current_uid = vm_config::get_current_uid();
+        let current_gid = vm_config::get_current_gid();
+        let project_user = self.config.vm.as_ref()
+            .and_then(|vm| vm.user.as_deref())
+            .unwrap_or("developer");
+
+        let mut context = TeraContext::new();
+        context.insert("project_uid", &current_uid.to_string());
+        context.insert("project_gid", &current_gid.to_string());
+        context.insert("project_user", &project_user);
+
+        let content = tera.render("Dockerfile", &context)?;
+        fs::write(output_path, content.as_bytes())?;
+
         Ok(())
     }
 
-    /// Copy vm-pkg binary to container
-    fn copy_vm_pkg_binary(&self) -> Result<()> {
-        let container = self.container_name();
+    /// Gather all package lists and format as build arguments
+    fn gather_build_args(&self) -> Vec<String> {
+        let mut args = Vec::new();
 
-        // Find vm-pkg binary in our build directory
-        let tool_dir = vm_config::get_tool_dir();
-
-        // Try platform-specific path first
-        let platform = format!("{}-{}",
-            std::env::consts::OS,
-            std::env::consts::ARCH.replace("aarch64", "aarch64").replace("x86_64", "x86_64"));
-        let platform_vm_pkg = tool_dir.join(format!("rust/target/{}/release/vm-pkg", platform));
-
-        let vm_pkg_path = if platform_vm_pkg.exists() {
-            platform_vm_pkg
-        } else {
-            // Fallback to generic release path
-            tool_dir.join("rust/target/release/vm-pkg")
-        };
-
-        if vm_pkg_path.exists() {
-            // Copy the binary to container (follow symlinks with -L)
-            let output = std::process::Command::new("docker")
-                .args(["cp", "-L", &vm_pkg_path.to_string_lossy(),
-                       &format!("{}:/vm-tool/rust/target/release/vm-pkg", container)])
-                .output()?;
-
-            if !output.status.success() {
-                eprintln!("Warning: Failed to copy vm-pkg binary: {}",
-                    String::from_utf8_lossy(&output.stderr));
-            } else {
-                // Make it executable
-                std::process::Command::new("docker")
-                    .args(["exec", &container, "sudo", "chmod", "+x",
-                           "/vm-tool/rust/target/release/vm-pkg"])
-                    .output()?;
+        // Add version build args
+        if let Some(versions) = &self.config.versions {
+            if let Some(node) = &versions.node {
+                args.push(format!("--build-arg=NODE_VERSION={}", node));
             }
-        } else {
-            eprintln!("Warning: vm-pkg binary not found at expected locations");
+            if let Some(nvm) = &versions.nvm {
+                args.push(format!("--build-arg=NVM_VERSION={}", nvm));
+            }
+            if let Some(pnpm) = &versions.pnpm {
+                args.push(format!("--build-arg=PNPM_VERSION={}", pnpm));
+            }
         }
 
-        Ok(())
-    }
-
-    /// Write content to a file in the container
-    fn write_to_container(&self, path: &str, content: &str) -> Result<()> {
-        use base64::Engine;
-        let container = self.container_name();
-        let encoded_content = base64::engine::general_purpose::STANDARD.encode(content);
-
-        // Use base64 to safely transfer content with special characters (with sudo)
-        let decode_cmd = format!("echo '{}' | base64 -d | sudo tee '{}' > /dev/null", encoded_content, path);
-
-        let output = std::process::Command::new("docker")
-            .args(["exec", &container, "sh", "-c", &decode_cmd])
-            .output()?;
-
-        if !output.status.success() {
-            return Err(anyhow::anyhow!("Failed to write {}: {}", path,
-                String::from_utf8_lossy(&output.stderr)));
+        // Add package list build args
+        if !self.config.apt_packages.is_empty() {
+            let packages = self.config.apt_packages.join(" ");
+            args.push(format!("--build-arg=APT_PACKAGES={}", packages));
         }
 
-        Ok(())
+        if !self.config.npm_packages.is_empty() {
+            let packages = self.config.npm_packages.join(" ");
+            args.push(format!("--build-arg=NPM_PACKAGES={}", packages));
+        }
+
+        if !self.config.pip_packages.is_empty() {
+            let packages = self.config.pip_packages.join(" ");
+            args.push(format!("--build-arg=PIP_PACKAGES={}", packages));
+        }
+
+        if !self.config.pipx_packages.is_empty() {
+            let packages = self.config.pipx_packages.join(" ");
+            args.push(format!("--build-arg=PIPX_PACKAGES={}", packages));
+        }
+
+        if !self.config.cargo_packages.is_empty() {
+            let packages = self.config.cargo_packages.join(" ");
+            args.push(format!("--build-arg=CARGO_PACKAGES={}", packages));
+        }
+
+        // Add user/group build args
+        let current_uid = vm_config::get_current_uid();
+        let current_gid = vm_config::get_current_gid();
+        let project_user = self.config.vm.as_ref()
+            .and_then(|vm| vm.user.as_deref())
+            .unwrap_or("developer");
+
+        args.push(format!("--build-arg=PROJECT_UID={}", current_uid));
+        args.push(format!("--build-arg=PROJECT_GID={}", current_gid));
+        args.push(format!("--build-arg=PROJECT_USER={}", project_user));
+
+        args
     }
+
+
+
 
     /// Handle potential Docker issues proactively
     fn handle_potential_issues(&self) -> Result<()> {
@@ -116,7 +149,7 @@ impl DockerProvider {
         }
 
         // Check Docker daemon status more thoroughly
-        if let Err(_) = std::process::Command::new("docker").arg("ps").output() {
+        if std::process::Command::new("docker").arg("ps").output().is_err() {
             eprintln!("⚠️  Docker daemon may not be responding properly");
             eprintln!("   Try: docker system prune -f");
         }
@@ -190,13 +223,13 @@ impl DockerProvider {
         }
     }
 
-    fn render_docker_compose(&self) -> Result<String> {
+    fn render_docker_compose(&self, build_context_dir: &Path) -> Result<String> {
         let mut tera = Tera::default();
         let template_content = Self::load_docker_compose_template()?;
         tera.add_raw_template("docker-compose.yml", &template_content)?;
 
         let project_dir_str = Self::path_to_string(&self._project_dir)?;
-        let vm_tool_dir_str = "/vm-tool";
+        let build_context_str = Self::path_to_string(build_context_dir)?;
 
         let current_uid = vm_config::get_current_uid();
         let current_gid = vm_config::get_current_gid();
@@ -207,7 +240,7 @@ impl DockerProvider {
         let mut context = TeraContext::new();
         context.insert("config", &self.config);
         context.insert("project_dir", &project_dir_str);
-        context.insert("vm_tool_dir", &vm_tool_dir_str);
+        context.insert("build_context_dir", &build_context_str);
         context.insert("project_uid", &current_uid.to_string());
         context.insert("project_gid", &current_gid.to_string());
         context.insert("project_user", &project_user);
@@ -217,8 +250,8 @@ impl DockerProvider {
         Ok(content)
     }
 
-    fn write_docker_compose(&self) -> Result<PathBuf> {
-        let content = self.render_docker_compose()?;
+    fn write_docker_compose(&self, build_context_dir: &Path) -> Result<PathBuf> {
+        let content = self.render_docker_compose(build_context_dir)?;
 
         let path = self.temp_dir.join("docker-compose.yml");
         fs::write(&path, content.as_bytes())?;
@@ -226,31 +259,6 @@ impl DockerProvider {
         Ok(path)
     }
 
-    fn write_dockerfile(&self) -> Result<PathBuf> {
-        let dockerfile_path = self._project_dir.join("Dockerfile");
-
-        // Use the new Tera template for Dockerfile
-        let mut tera = Tera::default();
-        let template_content = include_str!("docker/Dockerfile.j2");
-        tera.add_raw_template("Dockerfile", template_content)?;
-
-        let current_uid = vm_config::get_current_uid();
-        let current_gid = vm_config::get_current_gid();
-        let project_user = self.config.vm.as_ref()
-            .and_then(|vm| vm.user.as_deref())
-            .unwrap_or("developer");
-
-        let mut context = TeraContext::new();
-        context.insert("config", &self.config);
-        context.insert("project_uid", &current_uid.to_string());
-        context.insert("project_gid", &current_gid.to_string());
-        context.insert("project_user", &project_user);
-
-        let content = tera.render("Dockerfile", &context)?;
-        fs::write(&dockerfile_path, content.as_bytes())?;
-
-        Ok(dockerfile_path)
-    }
 }
 
 impl Provider for DockerProvider {
@@ -265,24 +273,36 @@ impl Provider for DockerProvider {
         MacOSAudioManager::setup()?;
 
         println!("🐳 Creating Docker Environment");
+
+        // Step 1: Prepare build context with embedded resources
+        print!("📦 Preparing build context... ");
+        let build_context = self.prepare_build_context()?;
+        println!("✅");
+
+        // Step 2: Generate docker-compose.yml with build context
         print!("📄 Generating docker-compose.yml... ");
-        let compose_path = self.write_docker_compose()?;
+        let compose_path = self.write_docker_compose(&build_context)?;
         println!("✅");
 
-        print!("📄 Generating Dockerfile... ");
-        self.write_dockerfile()?;
-        println!("✅");
+        // Step 3: Gather build arguments for packages
+        let build_args = self.gather_build_args();
 
-        println!("\n🔨 Building container image (this may take a while)...");
-        stream_docker_build(&[
-            "compose",
-            "-f",
-            Self::path_to_string(&compose_path)?,
-            "build",
-        ])
-        .context("Docker build failed")?;
+        // Step 4: Build with all package arguments
+        println!("\n🔨 Building container image with packages (this may take a while)...");
+        let mut docker_build_args = vec![
+            "compose".to_string(),
+            "-f".to_string(),
+            Self::path_to_string(&compose_path)?.to_string(),
+            "build".to_string(),
+        ];
+        docker_build_args.extend(build_args);
+
+        let docker_build_str_args: Vec<&str> = docker_build_args.iter().map(|s| s.as_str()).collect();
+        stream_docker_build(&docker_build_str_args)
+            .context("Docker build failed")?;
         println!("✅ Build complete");
 
+        // Step 5: Start containers
         println!("\n🚀 Starting containers");
         stream_command(
             "docker",
@@ -297,6 +317,7 @@ impl Provider for DockerProvider {
         .context("Docker up failed")?;
         println!("✅ Containers started");
 
+        // Step 6: Wait for readiness and run ansible (configuration only)
         println!("\n🔧 Provisioning environment");
         print!("⏳ Waiting for container readiness... ");
         let max_attempts = 30;
@@ -327,13 +348,10 @@ impl Provider for DockerProvider {
         }
         println!("✅");
 
-        print!("📦 Configuration ready in container... ");
-        println!("✅");
-
-        println!("🎭 Running Ansible provisioning...");
+        println!("🎭 Running Ansible provisioning (configuration only)...");
         stream_command(
             "docker",
-            &["exec", &self.container_name(), "bash", "-c", "ansible-playbook -i localhost, -c local /embedded-ansible/playbook.yml"],
+            &["exec", &self.container_name(), "bash", "-c", "ansible-playbook -i localhost, -c local /app/shared/ansible/playbook.yml"],
         ).context("Ansible provisioning failed")?;
         println!("✅ Provisioning complete");
 
@@ -345,13 +363,16 @@ impl Provider for DockerProvider {
         }
 
         println!("\n✅ Docker environment created successfully!");
+        println!("🎉 All packages installed at build time for faster startup!");
         Ok(())
     }
 
     fn start(&self) -> Result<()> {
         let compose_path = self.temp_dir.join("docker-compose.yml");
         if !compose_path.exists() {
-            self.write_docker_compose()?;
+            // Fallback: prepare build context and generate compose file
+            let build_context = self.prepare_build_context()?;
+            self.write_docker_compose(&build_context)?;
         }
         stream_command("docker", &["compose", "-f", Self::path_to_string(&compose_path)?, "up", "-d"])
             .context("Failed to start container with docker-compose")
@@ -455,7 +476,7 @@ impl Provider for DockerProvider {
         std::fs::write(&temp_config_path, config_json)?;
         stream_command("docker", &["cp", Self::path_to_string(&temp_config_path)?, &format!("{}:/tmp/vm-config.json", self.container_name())])?;
 
-        let ansible_result = stream_command("docker", &["exec", &self.container_name(), "bash", "-c", "ansible-playbook -i localhost, -c local /vm-tool/shared/ansible/playbook.yml"]);
+        let ansible_result = stream_command("docker", &["exec", &self.container_name(), "bash", "-c", "ansible-playbook -i localhost, -c local /app/shared/ansible/playbook.yml"]);
         if ansible_result.is_err() {
             progress.error("└─", "Provisioning failed");
             return Err(anyhow::anyhow!("Ansible provisioning failed"));

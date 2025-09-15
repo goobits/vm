@@ -45,6 +45,9 @@ pub struct VmConfig {
     pub pip_packages: Vec<String>,
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pipx_packages: Vec<String>,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cargo_packages: Vec<String>,
 
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]

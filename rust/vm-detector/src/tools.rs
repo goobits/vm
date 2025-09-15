@@ -93,7 +93,7 @@ mod tests {
     fn test_detect_languages() {
         let languages = ToolDetector::detect_languages();
         // Should return a vector (may be empty in test environments)
-        assert!(languages.len() >= 0);
+        // Vec::len() is always >= 0, this assertion is redundant but kept for clarity
 
         // If any languages are detected, they should be valid
         for lang in &languages {
@@ -108,7 +108,7 @@ mod tests {
     fn test_detect_databases() {
         let databases = ToolDetector::detect_databases();
         // Should return a vector (may be empty in test environments)
-        assert!(databases.len() >= 0);
+        // Vec::len() is always >= 0, this assertion is redundant but kept for clarity
 
         // If any databases are detected, they should be valid
         for db in &databases {

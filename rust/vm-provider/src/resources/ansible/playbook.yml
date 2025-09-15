@@ -44,12 +44,12 @@
 
       - name: Check for terminal themes
         stat:
-            path: '/vm-tool/shared/themes.json'
+            path: '/app/shared/themes.json'
         register: themes_file_stat
 
       - name: Load terminal themes
         set_fact:
-            terminal_themes: "{{ lookup('file', '/vm-tool/shared/themes.json') | from_json }}"
+            terminal_themes: "{{ lookup('file', '/app/shared/themes.json') | from_json }}"
         when: themes_file_stat.stat.exists
 
       - name: Use fallback Dracula theme
@@ -117,28 +117,6 @@
         become: yes
         ignore_errors: yes  # Continue if some files can't be changed
 
-      # Platform detection for vm-pkg and other Rust binaries
-      - name: Detect platform for Rust binaries
-        set_fact:
-            vm_platform: "{{ ansible_system | lower }}-{{ ansible_machine | replace('x86_64', 'x86_64') | replace('aarch64', 'aarch64') | replace('arm64', 'aarch64') }}"
-
-      - name: Set vm-pkg binary path
-        set_fact:
-            vm_pkg_bin: "/vm-tool/rust/target/{{ vm_platform }}/release/vm-pkg"
-
-      - name: Check for platform-specific vm-pkg binary
-        stat:
-            path: "{{ vm_pkg_bin }}"
-        register: platform_vm_pkg
-
-      - name: Fallback to generic vm-pkg if platform-specific not found
-        set_fact:
-            vm_pkg_bin: "/vm-tool/rust/target/release/vm-pkg"
-        when: not platform_vm_pkg.stat.exists
-
-      - name: Debug vm-pkg binary path
-        debug:
-            msg: "Using vm-pkg binary at: {{ vm_pkg_bin }}"
 
   handlers:
       - name: restart postgresql
@@ -338,7 +316,7 @@
 
       - name: Generate .zshrc from template
         template:
-            src: /vm-tool/shared/templates/zshrc.j2
+            src: /app/shared/templates/zshrc.j2
             dest: '/home/{{ project_user }}/.zshrc'
             owner: '{{ project_user }}'
             group: '{{ project_user }}'
@@ -424,15 +402,6 @@
         until: apt_packages_install is succeeded
         when: project_config.apt_packages is defined and project_config.apt_packages | length > 0
 
-      - name: Install global npm packages (with link detection)
-        shell: |
-            source ~/.nvm/nvm.sh
-            {{ vm_pkg_bin }} install --package-type npm --user '{{ project_user }}' '{{ item }}'
-        args:
-            executable: /bin/bash
-        become_user: '{{ project_user }}'
-        loop: '{{ project_config.npm_packages | default([]) }}'
-        when: project_config.npm_packages is defined and project_config.npm_packages | length > 0
 
       - name: Install Claude Code CLI
         shell: |
@@ -503,15 +472,6 @@
               path: /tmp/rustup.sh
               state: absent
 
-      - name: Install cargo packages
-        shell: |
-            source ~/.cargo/env 2>/dev/null || true
-            {{ vm_pkg_bin }} install --package-type cargo --user '{{ project_user }}' '{{ item }}'
-        args:
-            executable: /bin/bash
-        become_user: '{{ project_user }}'
-        loop: '{{ project_config.cargo_packages }}'
-        when: project_config.cargo_packages is defined and project_config.cargo_packages | length > 0
 
       # Install pip and pipx if pip_packages is defined
       - name: Check if pipx is installed
@@ -556,21 +516,11 @@
       # Install packages for each configured package manager
       # ================================================================================
 
-      # Install pip packages with smart detection (pipx for CLI tools, pip for libraries)
-      - name: Install pip packages with smart pipx/pip detection
-        shell: |
-            export PATH="$HOME/.local/bin:$PATH"
-            {{ vm_pkg_bin }} install --package-type pip --user '{{ project_user }}' '{{ item }}'
-        args:
-            executable: /bin/bash
-        become_user: '{{ project_user }}'
-        loop: '{{ project_config.pip_packages }}'
-        when: project_config.pip_packages is defined and project_config.pip_packages | length > 0
 
 
       # Load service definitions
       - name: Load service definitions
-        include_vars: /vm-tool/shared/services/service_definitions.yml
+        include_vars: /app/shared/services/service_definitions.yml
 
       # Install and configure all enabled services using reusable task
       - name: Install and configure enabled services
@@ -667,7 +617,7 @@
 
       - name: Copy shared Claude settings
         copy:
-            src: '/vm-tool/shared/claude-settings/'
+            src: '/app/shared/claude-settings/'
             dest: '/home/{{ project_user }}/.claude/'
             remote_src: yes
             owner: '{{ project_user }}'
@@ -682,12 +632,12 @@
 
       - name: Check for project Gemini settings
         stat:
-            path: '/vm-tool/shared/gemini-settings/settings.json'
+            path: '/app/shared/gemini-settings/settings.json'
         register: gemini_settings
 
       - name: Copy project Gemini settings
         copy:
-            src: '/vm-tool/shared/gemini-settings/settings.json'
+            src: '/app/shared/gemini-settings/settings.json'
             dest: '/home/{{ project_user }}/.gemini/settings.json'
             remote_src: yes
             owner: '{{ project_user }}'

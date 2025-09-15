@@ -37,7 +37,7 @@ mod tests {
         assert!(matches!(
             os.as_str(),
             "macos" | "windows" | "linux" | "ubuntu" | "fedora" | "debian" | "arch" | "unknown"
-        ) || os.starts_with("linux") || os.len() > 0);
+        ) || os.starts_with("linux") || !os.is_empty());
     }
 
     #[cfg(target_os = "linux")]

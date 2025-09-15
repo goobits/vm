@@ -2254,10 +2254,13 @@ dependencies = [
  "anyhow",
  "clap",
  "home",
+ "rayon",
+ "regex",
  "serde",
  "serde_json",
  "tempfile",
  "vm-detector",
+ "walkdir",
  "which",
 ]
 

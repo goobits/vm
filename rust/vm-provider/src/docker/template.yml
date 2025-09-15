@@ -5,8 +5,8 @@ services:
   {{ config.project.name | default(value="vm-project") }}-dev:
     container_name: {{ config.project.name | default(value="vm-project") }}-dev
     build:
-      context: {{ project_dir }}
-      dockerfile: Dockerfile
+      context: {{ build_context_dir }}
+      dockerfile: Dockerfile.generated
       args:
         PROJECT_UID: {{ project_uid }}
         PROJECT_GID: {{ project_gid }}

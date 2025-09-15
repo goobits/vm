@@ -4,18 +4,16 @@ use std::os::unix::fs::symlink;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
-/// Test fixture for vm-links integration testing
-struct LinkTestFixture {
+/// Test fixture for vm-pkg links integration testing
+struct LinksTestFixture {
     _temp_dir: TempDir,
     test_dir: PathBuf,
     npm_global_dir: PathBuf,
     nvm_dir: PathBuf,
-    #[allow(dead_code)]
     cargo_dir: PathBuf,
-    binary_path: PathBuf,
 }
 
-impl LinkTestFixture {
+impl LinksTestFixture {
     fn new() -> Result<Self> {
         let temp_dir = TempDir::new()?;
         let test_dir = temp_dir.path().to_path_buf();
@@ -29,17 +27,12 @@ impl LinkTestFixture {
         fs::create_dir_all(&nvm_dir)?;
         fs::create_dir_all(&cargo_dir)?;
 
-        // Get path to vm-links binary
-        let workspace_root = std::env::current_dir()?;
-        let binary_path = workspace_root.join("target/debug/vm-links");
-
         Ok(Self {
             _temp_dir: temp_dir,
             test_dir,
             npm_global_dir,
             nvm_dir,
             cargo_dir,
-            binary_path,
         })
     }
 
@@ -150,20 +143,11 @@ path = "src/main.rs"
 
 #[test]
 fn test_npm_package_detection() -> Result<()> {
-    let fixture = LinkTestFixture::new()?;
+    let fixture = LinksTestFixture::new()?;
 
     // Create test packages
     fixture.create_npm_link("test-package", "test-package")?;
     fixture.create_npm_link("another-package", "another-pkg")?;
-
-    // Skip test if binary doesn't exist (not built yet)
-    if !fixture.binary_path.exists() {
-        println!(
-            "Skipping test - vm-links binary not found at {:?}",
-            fixture.binary_path
-        );
-        return Ok(());
-    }
 
     // Test detection with real package structure
     // Note: This test validates the logic without mocking npm commands
@@ -188,7 +172,7 @@ fn test_npm_package_detection() -> Result<()> {
 
 #[test]
 fn test_nvm_directory_structure() -> Result<()> {
-    let fixture = LinkTestFixture::new()?;
+    let fixture = LinksTestFixture::new()?;
 
     // Create NVM-style packages
     fixture.create_nvm_link("nvm-package", "nvm-test")?;
@@ -210,7 +194,7 @@ fn test_nvm_directory_structure() -> Result<()> {
 
 #[test]
 fn test_python_package_structure() -> Result<()> {
-    let fixture = LinkTestFixture::new()?;
+    let fixture = LinksTestFixture::new()?;
 
     // Create Python package structures
     fixture.create_pip_package("python-package", "python-test")?;
@@ -230,7 +214,7 @@ fn test_python_package_structure() -> Result<()> {
 
 #[test]
 fn test_cargo_package_structure() -> Result<()> {
-    let fixture = LinkTestFixture::new()?;
+    let fixture = LinksTestFixture::new()?;
 
     // Create Rust package structures
     fixture.create_cargo_package("rust-tool", "rust-test")?;
@@ -250,7 +234,7 @@ fn test_cargo_package_structure() -> Result<()> {
 
 #[test]
 fn test_symlink_resolution() -> Result<()> {
-    let fixture = LinkTestFixture::new()?;
+    let fixture = LinksTestFixture::new()?;
 
     // Create package with nested symlinks
     fixture.create_npm_link("symlink-test", "symlink-target")?;
@@ -274,7 +258,7 @@ fn test_symlink_resolution() -> Result<()> {
 
 #[test]
 fn test_broken_symlink_handling() -> Result<()> {
-    let fixture = LinkTestFixture::new()?;
+    let fixture = LinksTestFixture::new()?;
 
     // Create a symlink to non-existent target
     let broken_link = fixture.npm_global_dir.join("broken-link");
@@ -294,7 +278,7 @@ fn test_broken_symlink_handling() -> Result<()> {
 
 #[test]
 fn test_package_name_validation() -> Result<()> {
-    let fixture = LinkTestFixture::new()?;
+    let fixture = LinksTestFixture::new()?;
 
     // Test various package name formats
     let valid_names = vec![
@@ -316,7 +300,7 @@ fn test_package_name_validation() -> Result<()> {
 
 #[test]
 fn test_directory_traversal_prevention() -> Result<()> {
-    let fixture = LinkTestFixture::new()?;
+    let fixture = LinksTestFixture::new()?;
 
     // Test that package detection doesn't follow dangerous paths
     let package_dir = fixture.test_dir.join("projects/safe-package");
@@ -349,7 +333,7 @@ fn test_directory_traversal_prevention() -> Result<()> {
 
 #[test]
 fn test_parallel_safety() -> Result<()> {
-    let fixture = LinkTestFixture::new()?;
+    let fixture = LinksTestFixture::new()?;
 
     // Create multiple packages for parallel processing testing
     let packages = vec![
@@ -383,6 +367,29 @@ fn test_parallel_safety() -> Result<()> {
     for result in results {
         assert!(result.is_ok());
     }
+
+    Ok(())
+}
+
+#[test]
+fn test_links_module_integration() -> Result<()> {
+    // Test that the links module can be imported and used
+    use vm_pkg::links::*;
+
+    // Test package manager validation
+    assert!(validate_package_manager("npm").is_ok());
+    assert!(validate_package_manager("pip").is_ok());
+    assert!(validate_package_manager("cargo").is_ok());
+    assert!(validate_package_manager("invalid").is_err());
+
+    // Test SystemLinkDetector exists and can be used
+    let detector = SystemLinkDetector;
+    let packages = vec!["test-package".to_string()];
+
+    // These calls should not panic (they may return empty results in test environment)
+    let _detections = SystemLinkDetector::detect_for_manager("npm", &packages);
+    let _all_detections = SystemLinkDetector::detect_all(&packages);
+    let _has_links = SystemLinkDetector::has_any_links(&packages);
 
     Ok(())
 }

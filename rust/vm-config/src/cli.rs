@@ -4,6 +4,51 @@ use clap::{Parser, Subcommand};
 use serde_yaml::Value;
 use std::path::{Path, PathBuf};
 
+/// Fix YAML indentation issues by ensuring consistent 2-space indentation for arrays
+fn fix_yaml_indentation(yaml: &str) -> String {
+    let mut result = String::new();
+    let mut in_apt_packages = false;
+    let mut in_npm_packages = false;
+
+    for line in yaml.lines() {
+        let trimmed = line.trim();
+
+        // Check if we're entering array sections
+        if trimmed == "apt_packages:" {
+            in_apt_packages = true;
+            result.push_str(line);
+            result.push('\n');
+            continue;
+        } else if trimmed == "npm_packages:" {
+            in_npm_packages = true;
+            result.push_str(line);
+            result.push('\n');
+            continue;
+        } else if trimmed.ends_with(':') && !trimmed.starts_with('-') {
+            // We've hit a new section, reset flags
+            in_apt_packages = false;
+            in_npm_packages = false;
+            result.push_str(line);
+            result.push('\n');
+            continue;
+        }
+
+        // Fix indentation for array items in specific sections
+        if (in_apt_packages || in_npm_packages) && trimmed.starts_with('-') {
+            // Ensure array items are indented with 2 spaces
+            result.push_str("  ");
+            result.push_str(trimmed);
+        } else {
+            // For all other lines, keep as-is
+            result.push_str(line);
+        }
+
+        result.push('\n');
+    }
+
+    result
+}
+
 #[derive(Parser)]
 #[command(name = "vm-config")]
 #[command(about = "Configuration processor for VM Tool")]
@@ -501,8 +546,13 @@ pub fn init_config_file(file_path: Option<PathBuf>, services: Option<String>, po
             let service_config = VmConfig::from_file(&service_path)
                 .with_context(|| format!("Failed to load service config: {}", service))?;
 
-            // Merge service config into base
-            config = crate::merge::ConfigMerger::new(config).merge(service_config)?;
+            // Extract only the specific service we want to enable from the service config
+            if let Some(specific_service_config) = service_config.services.get(&service) {
+                // Enable the specific service with its configuration
+                let mut enabled_service = specific_service_config.clone();
+                enabled_service.enabled = true;
+                config.services.insert(service.clone(), enabled_service);
+            }
         }
     }
 
@@ -526,8 +576,11 @@ pub fn init_config_file(file_path: Option<PathBuf>, services: Option<String>, po
     }
 
     // Convert to YAML
-    let yaml_content =
+    let mut yaml_content =
         serde_yaml::to_string(&config).context("Failed to serialize configuration to YAML")?;
+
+    // Post-process YAML to fix indentation issues
+    yaml_content = fix_yaml_indentation(&yaml_content);
 
     // Write the YAML to file
     std::fs::write(&target_path, yaml_content).context(format!(
