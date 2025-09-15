@@ -109,7 +109,73 @@ impl Provider for DockerProvider {
         ).context("Docker up failed")?;
         progress.finish_phase(&up_phase, "Containers started.");
 
-        // TODO: Add Ansible provisioning step here.
+        // Wait for container to be ready
+        let provisioning_phase = progress.start_phase("Provisioning environment");
+        progress.task(&provisioning_phase, "Waiting for container readiness...");
+
+        let max_attempts = 30;
+        let mut attempt = 1;
+        let mut container_ready = false;
+
+        while attempt <= max_attempts {
+            if stream_command("docker", &["exec", &self.container_name(), "echo", "ready"]).is_ok() {
+                container_ready = true;
+                break;
+            }
+
+            if attempt == max_attempts {
+                return Err(anyhow::anyhow!("Container failed to become ready after {} attempts", max_attempts));
+            }
+
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            attempt += 1;
+        }
+
+        if !container_ready {
+            return Err(anyhow::anyhow!("Container initialization timed out"));
+        }
+
+        progress.task(&provisioning_phase, "Container ready.");
+
+        // Copy config to container for Ansible
+        progress.task(&provisioning_phase, "Loading project configuration...");
+        let config_json = self.config.to_json().context("Failed to serialize config")?;
+        let temp_config_path = self.temp_dir.join("vm-config.json");
+        fs::write(&temp_config_path, config_json)?;
+
+        stream_command("docker", &[
+            "cp",
+            temp_config_path.to_str().unwrap(),
+            &format!("{}:/tmp/vm-config.json", self.container_name())
+        ]).context("Failed to copy config to container")?;
+        progress.task(&provisioning_phase, "Configuration loaded.");
+
+        // Run Ansible provisioning
+        progress.task(&provisioning_phase, "Running Ansible provisioning...");
+        let ansible_result = stream_command("docker", &[
+            "exec",
+            &self.container_name(),
+            "bash", "-c",
+            "ansible-playbook -i localhost, -c local /vm-tool/shared/ansible/playbook.yml"
+        ]);
+
+        if ansible_result.is_err() {
+            progress.task(&provisioning_phase, "Provisioning failed.");
+            return Err(anyhow::anyhow!("Ansible provisioning failed"));
+        }
+        progress.task(&provisioning_phase, "Provisioning complete.");
+
+        // Start supervisor services
+        progress.task(&provisioning_phase, "Starting services...");
+        let _ = stream_command("docker", &[
+            "exec",
+            &self.container_name(),
+            "bash", "-c",
+            "supervisorctl reread && supervisorctl update"
+        ]);
+        progress.task(&provisioning_phase, "Services started.");
+
+        progress.finish_phase(&provisioning_phase, "Environment ready.");
 
         println!("\n✅ Docker environment created successfully!");
         Ok(())
@@ -120,18 +186,27 @@ impl Provider for DockerProvider {
         if !compose_path.exists() {
             self.write_docker_compose()?;
         }
-        
+
         stream_command(
             "docker",
-            &["start", &self.container_name()],
-        ).context("Failed to start container")
+            &["compose", "-f", compose_path.to_str().unwrap(), "up", "-d"],
+        ).context("Failed to start container with docker-compose")
     }
 
     fn stop(&self) -> Result<()> {
-        stream_command(
-            "docker",
-            &["stop", &self.container_name()],
-        ).context("Failed to stop container")
+        let compose_path = self.temp_dir.join("docker-compose.yml");
+        if compose_path.exists() {
+            stream_command(
+                "docker",
+                &["compose", "-f", compose_path.to_str().unwrap(), "stop"],
+            ).context("Failed to stop container with docker-compose")
+        } else {
+            // Fallback to direct container stop if compose file doesn't exist
+            stream_command(
+                "docker",
+                &["stop", &self.container_name()],
+            ).context("Failed to stop container")
+        }
     }
 
     fn destroy(&self) -> Result<()> {
@@ -147,10 +222,36 @@ impl Provider for DockerProvider {
         )
     }
 
-    fn ssh(&self, _relative_path: &Path) -> Result<()> {
+    fn ssh(&self, relative_path: &Path) -> Result<()> {
+        // Get workspace path and user from config
+        let workspace_path = self.config.project.as_ref()
+            .and_then(|p| p.workspace_path.as_deref())
+            .unwrap_or("/workspace");
+        let project_user = self.config.vm.as_ref()
+            .and_then(|vm| vm.user.as_deref())
+            .unwrap_or("developer");
+
+        // Get shell from config (terminal.shell or default to zsh)
+        let shell = self.config.terminal.as_ref()
+            .and_then(|t| t.shell.as_deref())
+            .unwrap_or("zsh");
+
+        // Calculate target directory
+        let target_dir = if relative_path.as_os_str().is_empty() || relative_path == Path::new(".") {
+            workspace_path.to_string()
+        } else {
+            format!("{}/{}", workspace_path, relative_path.display())
+        };
+
+        // Run interactive shell with proper working directory
         let status = duct::cmd(
             "docker",
-            &["exec", "-it", &self.container_name(), "zsh"],
+            &[
+                "exec", "-it", &self.container_name(),
+                "sudo", "-u", project_user,
+                "sh", "-c",
+                &format!("VM_TARGET_DIR='{}' exec {}", target_dir, shell)
+            ],
         )
         .run()?
         .status;
@@ -165,10 +266,20 @@ impl Provider for DockerProvider {
 
     fn exec(&self, cmd: &[String]) -> Result<()> {
         let container = self.container_name();
-        let mut args: Vec<&str> = vec!["exec", &container];
-        // Convert Vec<String> to Vec<&str> for the command
-        let cmd_strs: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
-        args.extend_from_slice(&cmd_strs);
+        let workspace_path = self.config.project.as_ref()
+            .and_then(|p| p.workspace_path.as_deref())
+            .unwrap_or("/workspace");
+        let project_user = self.config.vm.as_ref()
+            .and_then(|vm| vm.user.as_deref())
+            .unwrap_or("developer");
+
+        let mut args: Vec<&str> = vec!["exec", &container, "su", "-", project_user, "-c"];
+
+        // Build command with working directory context
+        let cmd_str = cmd.join(" ");
+        let full_cmd = format!("cd {} && {}", workspace_path, cmd_str);
+        args.push(&full_cmd);
+
         stream_command("docker", &args)
     }
 
@@ -177,9 +288,119 @@ impl Provider for DockerProvider {
     }
 
     fn status(&self) -> Result<()> {
+        let compose_path = self.temp_dir.join("docker-compose.yml");
+
+        if compose_path.exists() {
+            // Use docker-compose ps for formatted status
+            stream_command(
+                "docker",
+                &["compose", "-f", compose_path.to_str().unwrap(), "ps"],
+            ).context("Failed to get container status with docker-compose")?;
+        } else {
+            // Fallback to docker ps with filter for this container
+            stream_command(
+                "docker",
+                &["ps", "-f", &format!("name={}", self.container_name())],
+            ).context("Failed to get container status")?;
+        }
+
+        // Show port range info if configured
+        if let Some(port_range) = &self.config.port_range {
+            println!("\n📡 Port Range: {}", port_range);
+
+            // Count used ports in range if configured
+            if !self.config.ports.is_empty() {
+                let range_parts: Vec<&str> = port_range.split('-').collect();
+                if range_parts.len() == 2 {
+                    if let (Ok(range_start), Ok(range_end)) = (
+                        range_parts[0].parse::<u16>(),
+                        range_parts[1].parse::<u16>()
+                    ) {
+                        let used_count = self.config.ports.values()
+                            .filter(|&port| *port >= range_start && *port <= range_end)
+                            .count();
+                        let total_ports = (range_end - range_start + 1) as usize;
+                        println!("   Used: {}/{} ports", used_count, total_ports);
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn restart(&self) -> Result<()> {
+        // Stop then start with compose
+        self.stop()?;
+        self.start()
+    }
+
+    fn provision(&self) -> Result<()> {
+        // Re-run ansible without recreating container
+        let container = self.container_name();
+
+        // Check if container is running
+        let status_output = std::process::Command::new("docker")
+            .args(&["inspect", "--format", "{{.State.Status}}", &container])
+            .output()?;
+
+        let status = String::from_utf8_lossy(&status_output.stdout).trim().to_string();
+        if status != "running" {
+            return Err(anyhow::anyhow!("Container {} is not running. Start it first with 'vm start'", container));
+        }
+
+        let progress = ProgressReporter::new();
+        progress.phase_header("🔧", "PROVISIONING PHASE");
+        progress.subtask("├─", "Re-running Ansible provisioning...");
+
+        // Copy config to container for Ansible
+        let config_json = self.config.to_json().context("Failed to serialize config")?;
+        let temp_config_path = self.temp_dir.join("vm-config.json");
+        std::fs::write(&temp_config_path, config_json)?;
+
+        stream_command("docker", &[
+            "cp",
+            temp_config_path.to_str().unwrap(),
+            &format!("{}:/tmp/vm-config.json", self.container_name())
+        ]).context("Failed to copy config to container")?;
+
+        // Run Ansible provisioning
+        let ansible_result = stream_command("docker", &[
+            "exec",
+            &self.container_name(),
+            "bash", "-c",
+            "ansible-playbook -i localhost, -c local /vm-tool/shared/ansible/playbook.yml"
+        ]);
+
+        if ansible_result.is_err() {
+            progress.error("└─", "Provisioning failed");
+            return Err(anyhow::anyhow!("Ansible provisioning failed"));
+        }
+
+        progress.complete("└─", "Provisioning complete");
+        Ok(())
+    }
+
+    fn list(&self) -> Result<()> {
+        // Use docker ps -a with project filter
+        let project_name = self.project_name();
         stream_command(
             "docker",
-            &["ps", "-f", &format!("name={}", self.container_name())],
-        )
+            &["ps", "-a", "--filter", &format!("name={}", project_name)],
+        ).context("Failed to list containers")
+    }
+
+    fn kill(&self) -> Result<()> {
+        // Force kill the container
+        stream_command("docker", &["kill", &self.container_name()])
+            .context("Failed to kill container")
+    }
+
+    fn get_sync_directory(&self) -> Result<String> {
+        // Return workspace_path from config
+        let workspace_path = self.config.project.as_ref()
+            .and_then(|p| p.workspace_path.as_deref())
+            .unwrap_or("/workspace");
+        Ok(workspace_path.to_string())
     }
 }
