@@ -8,6 +8,7 @@ members = [
     "vm-provider",
     "vm-temp",
     "vm",
+    "vm-installer",
 ]
 resolver = "2"
 
