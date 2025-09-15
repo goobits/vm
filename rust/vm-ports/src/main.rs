@@ -1,11 +1,11 @@
-use clap::{Parser, Subcommand};
 use anyhow::Result;
+use clap::{Parser, Subcommand};
 
-mod registry;
 mod range;
+mod registry;
 
-use registry::PortRegistry;
 use range::PortRange;
+use registry::PortRegistry;
 
 #[derive(Parser)]
 #[command(name = "vm-ports")]
@@ -52,18 +52,26 @@ fn main() -> Result<()> {
     let args = Args::parse();
 
     match args.command {
-        Command::Check { range, project_name } => {
+        Command::Check {
+            range,
+            project_name,
+        } => {
             let port_range = PortRange::parse(&range)?;
             let registry = PortRegistry::load()?;
 
-            if let Some(conflicts) = registry.check_conflicts(&port_range, project_name.as_deref()) {
+            if let Some(conflicts) = registry.check_conflicts(&port_range, project_name.as_deref())
+            {
                 println!("{}", conflicts);
                 std::process::exit(1);
             } else {
                 std::process::exit(0);
             }
         }
-        Command::Register { range, project, path } => {
+        Command::Register {
+            range,
+            project,
+            path,
+        } => {
             let port_range = PortRange::parse(&range)?;
             let mut registry = PortRegistry::load()?;
 
@@ -72,7 +80,10 @@ fn main() -> Result<()> {
                 std::process::exit(1);
             } else {
                 registry.register(&project, &port_range, &path)?;
-                println!("✅ Registered port range {} for project '{}'", range, project);
+                println!(
+                    "✅ Registered port range {} for project '{}'",
+                    range, project
+                );
             }
         }
         Command::Suggest { size } => {

@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
 use vm_config::config::VmConfig;
 use vm_config::merge::ConfigMerger;
 use vm_config::resolve_tool_path;
@@ -40,9 +40,12 @@ fn main() -> Result<()> {
     let args = Args::parse();
 
     match args.command {
-        Command::Generate { services, ports, name, output } => {
-            handle_generate_command(services, ports, name, output)
-        }
+        Command::Generate {
+            services,
+            ports,
+            name,
+            output,
+        } => handle_generate_command(services, ports, name, output),
     }
 }
 
@@ -57,8 +60,8 @@ fn handle_generate_command(
 
     // Load base config from defaults
     const EMBEDDED_DEFAULTS: &str = include_str!("../../../defaults.yaml");
-    let mut config: VmConfig = serde_yaml::from_str(EMBEDDED_DEFAULTS)
-        .context("Failed to parse embedded defaults")?;
+    let mut config: VmConfig =
+        serde_yaml::from_str(EMBEDDED_DEFAULTS).context("Failed to parse embedded defaults")?;
 
     // Parse and merge services
     if let Some(ref services_str) = services {
@@ -80,21 +83,25 @@ fn handle_generate_command(
                 .with_context(|| format!("Failed to load service config: {}", service))?;
 
             // Merge service config into base
-            config = ConfigMerger::new(config)
-                .merge(service_config)?;
+            config = ConfigMerger::new(config).merge(service_config)?;
         }
     }
 
     // Apply port configuration
     if let Some(port_start) = ports {
         if port_start < 1024 {
-            return Err(anyhow::anyhow!("Invalid port number: {} (must be >= 1024)", port_start));
+            return Err(anyhow::anyhow!(
+                "Invalid port number: {} (must be >= 1024)",
+                port_start
+            ));
         }
 
         // Allocate sequential ports
         config.ports.insert("web".to_string(), port_start);
         config.ports.insert("api".to_string(), port_start + 1);
-        config.ports.insert("postgresql".to_string(), port_start + 5);
+        config
+            .ports
+            .insert("postgresql".to_string(), port_start + 5);
         config.ports.insert("redis".to_string(), port_start + 6);
         config.ports.insert("mongodb".to_string(), port_start + 7);
     }

@@ -1,13 +1,15 @@
 use anyhow::{Context, Result};
 use std::path::PathBuf;
-use vm_provider::{MountPermission};
+use vm_provider::MountPermission;
 
 /// Mount parsing utilities
 pub struct MountParser;
 
 impl MountParser {
     /// Parse mount string in format "source:permissions" or "source:target:permissions"
-    pub fn parse_mount_string(mount_str: &str) -> Result<(PathBuf, Option<PathBuf>, MountPermission)> {
+    pub fn parse_mount_string(
+        mount_str: &str,
+    ) -> Result<(PathBuf, Option<PathBuf>, MountPermission)> {
         let parts: Vec<&str> = mount_str.split(':').collect();
 
         match parts.len() {
@@ -39,7 +41,9 @@ impl MountParser {
     }
 
     /// Parse multiple mount strings
-    pub fn parse_mount_strings(mount_strings: &[String]) -> Result<Vec<(PathBuf, Option<PathBuf>, MountPermission)>> {
+    pub fn parse_mount_strings(
+        mount_strings: &[String],
+    ) -> Result<Vec<(PathBuf, Option<PathBuf>, MountPermission)>> {
         mount_strings
             .iter()
             .map(|s| Self::parse_mount_string(s))
@@ -66,7 +70,8 @@ mod tests {
         assert_eq!(perm, MountPermission::ReadOnly);
 
         // Test source with target and permissions
-        let (source, target, perm) = MountParser::parse_mount_string("/home/user:/workspace/user:rw").unwrap();
+        let (source, target, perm) =
+            MountParser::parse_mount_string("/home/user:/workspace/user:rw").unwrap();
         assert_eq!(source, PathBuf::from("/home/user"));
         assert_eq!(target, Some(PathBuf::from("/workspace/user")));
         assert_eq!(perm, MountPermission::ReadWrite);

@@ -78,13 +78,13 @@ pub fn execute(args: Args) -> Result<()> {
             if installer.is_linked(&package, package_type)? {
                 println!("🔗 Package '{}' is linked for {}", package, package_type);
             } else {
-                println!("📦 Package '{}' is not linked (would install from registry)", package);
+                println!(
+                    "📦 Package '{}' is not linked (would install from registry)",
+                    package
+                );
             }
         }
-        Command::List {
-            package_type,
-            user,
-        } => {
+        Command::List { package_type, user } => {
             let installer = PackageInstaller::new(user);
             installer.list_linked(package_type)?;
         }

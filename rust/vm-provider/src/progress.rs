@@ -1,10 +1,16 @@
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use std::time::Duration;
 use std::io::{self, Write};
+use std::time::Duration;
 
 pub struct ProgressReporter {
     mp: MultiProgress,
     style: ProgressStyle,
+}
+
+impl Default for ProgressReporter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ProgressReporter {
@@ -12,7 +18,8 @@ impl ProgressReporter {
         let mp = MultiProgress::new();
         let style = ProgressStyle::default_spinner()
             .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏", "✅"])
-            .template("{spinner:.green} {prefix:.bold} {wide_msg}").unwrap();
+            .template("{spinner:.green} {prefix:.bold} {wide_msg}")
+            .unwrap_or_else(|_| ProgressStyle::default_spinner());
 
         Self { mp, style }
     }
@@ -62,12 +69,25 @@ impl ProgressReporter {
 /// Simple status formatter for VM status output
 pub struct StatusFormatter;
 
+impl Default for StatusFormatter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StatusFormatter {
     pub fn new() -> Self {
         Self
     }
 
-    pub fn format_status(&self, vm_name: &str, state: &str, provider: &str, memory: Option<u32>, cpus: Option<u32>) {
+    pub fn format_status(
+        &self,
+        vm_name: &str,
+        state: &str,
+        provider: &str,
+        memory: Option<u32>,
+        cpus: Option<u32>,
+    ) {
         println!("VM Status Report");
         println!("================");
         println!("Name: {}", vm_name);
@@ -93,7 +113,7 @@ impl StatusFormatter {
 /// Prompt user for confirmation with a yes/no question
 pub fn confirm_prompt(message: &str) -> bool {
     print!("{}", message);
-    io::stdout().flush().unwrap();
+    let _ = io::stdout().flush();
 
     let mut input = String::new();
     match io::stdin().read_line(&mut input) {

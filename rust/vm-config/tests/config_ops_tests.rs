@@ -3,8 +3,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tempfile::TempDir;
-use vm_config::{ConfigOps};
 use vm_config::config::VmConfig;
+use vm_config::ConfigOps;
 
 // Global mutex to ensure tests run sequentially to avoid environment variable conflicts
 static TEST_MUTEX: Mutex<()> = Mutex::new(());
@@ -29,7 +29,7 @@ impl SimpleTestFixture {
         // Set environment variables to use our temp directory
         std::env::set_var("HOME", &test_dir);
         let tool_dir = test_dir.join("vm-tool");
-        fs::create_dir_all(&tool_dir.join("configs").join("presets"))?;
+        fs::create_dir_all(tool_dir.join("configs").join("presets"))?;
         std::env::set_var("VM_TOOL_DIR", &tool_dir);
 
         Ok(Self {
@@ -100,7 +100,9 @@ mod config_ops_tests {
 
         assert_eq!(config.vm.as_ref().and_then(|v| v.memory), Some(4096));
         assert_eq!(
-            config.services.get("docker")
+            config
+                .services
+                .get("docker")
                 .and_then(|s| s.enabled.then_some(true)),
             Some(true)
         );
@@ -119,7 +121,11 @@ mod config_ops_tests {
         ConfigOps::set("vm.cpus", "8", true)?;
 
         // Verify global config file was created
-        let global_config_path = fixture.test_dir.join(".config").join("vm").join("global.yaml");
+        let global_config_path = fixture
+            .test_dir
+            .join(".config")
+            .join("vm")
+            .join("global.yaml");
         assert!(global_config_path.exists());
 
         // Test getting global config
@@ -191,7 +197,9 @@ vm:
 
         assert_eq!(config.vm.as_ref().and_then(|v| v.memory), Some(2048));
         assert_eq!(
-            config.services.get("redis")
+            config
+                .services
+                .get("redis")
                 .and_then(|s| s.enabled.then_some(true)),
             Some(true)
         );
@@ -220,7 +228,7 @@ vm:
         assert_eq!(postgresql.port, Some(5432));
 
         let redis = config.services.get("redis").unwrap();
-        assert_eq!(redis.enabled, true);
+        assert!(redis.enabled);
 
         // Test unsetting nested values
         ConfigOps::unset("services.postgresql.version", false)?;
@@ -230,7 +238,7 @@ vm:
 
         let updated_postgresql = updated_config.services.get("postgresql").unwrap();
         assert_eq!(updated_postgresql.version, None);
-        assert_eq!(updated_postgresql.port, Some(5432));  // Should still exist
+        assert_eq!(updated_postgresql.port, Some(5432)); // Should still exist
 
         Ok(())
     }

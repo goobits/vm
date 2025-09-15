@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use indexmap::IndexMap;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Main VM configuration structure
@@ -257,6 +257,12 @@ impl VmConfig {
         crate::cli::load_and_merge_config(file, no_preset)
     }
 
+    /// Load configuration with a specific preset override.
+    /// This allows forcing a specific preset regardless of auto-detection.
+    pub fn load_with_preset(file: Option<PathBuf>, preset_name: String) -> anyhow::Result<Self> {
+        crate::cli::load_and_merge_config_with_preset(file, preset_name)
+    }
+
     /// Load config from YAML file
     pub fn from_file(path: &PathBuf) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)?;
@@ -270,7 +276,6 @@ impl VmConfig {
 
     /// Check if this is a partial config (missing required fields)
     pub fn is_partial(&self) -> bool {
-        self.provider.is_none() ||
-        self.project.as_ref().map_or(true, |p| p.name.is_none())
+        self.provider.is_none() || self.project.as_ref().is_none_or(|p| p.name.is_none())
     }
 }

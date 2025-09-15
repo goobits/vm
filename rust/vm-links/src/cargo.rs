@@ -9,9 +9,7 @@ pub fn detect_cargo_packages(packages: &[String]) -> Result<Vec<(String, String)
     let mut results = Vec::new();
 
     // Get cargo install list
-    let output = Command::new("cargo")
-        .args(&["install", "--list"])
-        .output()?;
+    let output = Command::new("cargo").args(["install", "--list"]).output()?;
 
     if !output.status.success() {
         return Ok(results);
@@ -21,7 +19,8 @@ pub fn detect_cargo_packages(packages: &[String]) -> Result<Vec<(String, String)
     let installations = parse_cargo_install_list(&output_str)?;
 
     // Check each installation against requested packages in parallel
-    let detections: Vec<_> = installations.par_iter()
+    let detections: Vec<_> = installations
+        .par_iter()
         .filter_map(|(pkg_name, pkg_path)| {
             // Check if this package is in our requested list
             for requested_pkg in &package_set {
@@ -49,12 +48,16 @@ fn parse_cargo_install_list(output: &str) -> Result<Vec<(String, String)>> {
 
     for line in output.lines() {
         if let Some(captures) = re.captures(line) {
-            let pkg_name = captures.get(1)
+            let pkg_name = captures
+                .get(1)
                 .expect("Regex group 1 should exist for cargo package name")
-                .as_str().to_string();
-            let pkg_path = captures.get(2)
+                .as_str()
+                .to_string();
+            let pkg_path = captures
+                .get(2)
                 .expect("Regex group 2 should exist for cargo package path")
-                .as_str().to_string();
+                .as_str()
+                .to_string();
 
             // Only include path-based installs (not registry installs)
             if pkg_path.contains('/') && !pkg_path.starts_with("registry+") {

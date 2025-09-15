@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use std::env;
+use std::path::{Path, PathBuf};
 
 /// Get the VM tool installation directory
 /// Priority order:
@@ -13,27 +13,36 @@ pub fn get_tool_dir() -> PathBuf {
     }
 
     // Try to find based on executable location, but don't fail if current_exe() fails
-    if let Ok(exe_path) = env::current_exe() {
+    if let Ok(mut exe_path) = env::current_exe() {
+        // Resolve symlinks (important for installed binaries)
+        if let Ok(canonical_path) = exe_path.canonicalize() {
+            exe_path = canonical_path;
+        }
         // vm-config is at VM_TOOL_DIR/rust/vm-config/target/release/vm-config
         // or VM_TOOL_DIR/rust/target/release/vm-config
         // Go up to find the root
         if let Some(parent) = exe_path.parent() {
             // Check if we're in target/release or target/debug
-            if parent.file_name() == Some(std::ffi::OsStr::new("release")) ||
-               parent.file_name() == Some(std::ffi::OsStr::new("debug")) {
+            if parent.file_name() == Some(std::ffi::OsStr::new("release"))
+                || parent.file_name() == Some(std::ffi::OsStr::new("debug"))
+            {
                 // Go up to find VM_TOOL_DIR
                 if let Some(target) = parent.parent() {
                     if target.file_name() == Some(std::ffi::OsStr::new("target")) {
                         // Could be either rust/vm-config/target or rust/target
                         if let Some(rust_or_vm_config) = target.parent() {
-                            if rust_or_vm_config.file_name() == Some(std::ffi::OsStr::new("vm-config")) {
+                            if rust_or_vm_config.file_name()
+                                == Some(std::ffi::OsStr::new("vm-config"))
+                            {
                                 // We're in rust/vm-config/target, go up two more
                                 if let Some(rust) = rust_or_vm_config.parent() {
                                     if let Some(root) = rust.parent() {
                                         return root.to_path_buf();
                                     }
                                 }
-                            } else if rust_or_vm_config.file_name() == Some(std::ffi::OsStr::new("rust")) {
+                            } else if rust_or_vm_config.file_name()
+                                == Some(std::ffi::OsStr::new("rust"))
+                            {
                                 // We're in rust/target, go up one more
                                 if let Some(root) = rust_or_vm_config.parent() {
                                     return root.to_path_buf();

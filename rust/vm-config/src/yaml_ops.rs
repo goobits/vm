@@ -1,9 +1,9 @@
-use anyhow::{Result, Context};
-use serde_yaml::{Value, Mapping};
-use std::path::{Path, PathBuf};
+use crate::cli::{OutputFormat, TransformFormat};
+use anyhow::{Context, Result};
+use serde_yaml::{Mapping, Value};
 use std::fs;
 use std::io::Read;
-use crate::cli::{OutputFormat, TransformFormat};
+use std::path::{Path, PathBuf};
 
 /// YAML operations for configuration processing
 pub struct YamlOperations;
@@ -13,12 +13,12 @@ impl YamlOperations {
     fn read_file_or_stdin(file: &PathBuf) -> Result<String> {
         if file.to_str() == Some("-") {
             let mut buffer = String::new();
-            std::io::stdin().read_to_string(&mut buffer)
+            std::io::stdin()
+                .read_to_string(&mut buffer)
                 .with_context(|| "Failed to read from stdin")?;
             Ok(buffer)
         } else {
-            fs::read_to_string(file)
-                .with_context(|| format!("Failed to read file: {:?}", file))
+            fs::read_to_string(file).with_context(|| format!("Failed to read file: {:?}", file))
         }
     }
     /// Validate that a file is valid YAML
@@ -39,16 +39,16 @@ impl YamlOperations {
             .with_context(|| format!("Invalid YAML in file: {:?}", file))?;
 
         // Parse the item as YAML
-        let new_item: Value = serde_yaml::from_str(item)
-            .with_context(|| format!("Invalid YAML item: {}", item))?;
+        let new_item: Value =
+            serde_yaml::from_str(item).with_context(|| format!("Invalid YAML item: {}", item))?;
 
         // Navigate to the path and add the item
         let path_parts: Vec<&str> = path.split('.').collect();
         Self::add_to_array_at_path(&mut value, &path_parts, new_item)?;
 
         // Write back to file
-        let updated_yaml = serde_yaml::to_string(&value)
-            .with_context(|| "Failed to serialize YAML")?;
+        let updated_yaml =
+            serde_yaml::to_string(&value).with_context(|| "Failed to serialize YAML")?;
 
         fs::write(file, updated_yaml)
             .with_context(|| format!("Failed to write file: {:?}", file))?;
@@ -69,8 +69,8 @@ impl YamlOperations {
         Self::remove_from_array_at_path(&mut value, &path_parts, filter)?;
 
         // Write back to file
-        let updated_yaml = serde_yaml::to_string(&value)
-            .with_context(|| "Failed to serialize YAML")?;
+        let updated_yaml =
+            serde_yaml::to_string(&value).with_context(|| "Failed to serialize YAML")?;
 
         fs::write(file, updated_yaml)
             .with_context(|| format!("Failed to write file: {:?}", file))?;
@@ -127,7 +127,9 @@ impl YamlOperations {
                             seq.push(item);
                             return Ok(());
                         }
-                        Some(_) => return Err(anyhow::anyhow!("Path '{}' is not an array", path[0])),
+                        Some(_) => {
+                            return Err(anyhow::anyhow!("Path '{}' is not an array", path[0]))
+                        }
                         None => {
                             // Create new array
                             map.insert(key, Value::Sequence(vec![item]));
@@ -175,7 +177,9 @@ impl YamlOperations {
                             seq.retain(|item| !Self::matches_filter(item, filter));
                             return Ok(());
                         }
-                        Some(_) => return Err(anyhow::anyhow!("Path '{}' is not an array", path[0])),
+                        Some(_) => {
+                            return Err(anyhow::anyhow!("Path '{}' is not an array", path[0]))
+                        }
                         None => return Err(anyhow::anyhow!("Path '{}' not found", path[0])),
                     }
                 }
@@ -224,7 +228,7 @@ impl YamlOperations {
     // Get field value from YAML value
     fn get_field_value<'a>(value: &'a Value, field: &str) -> Option<&'a Value> {
         match value {
-            Value::Mapping(map) => map.get(&Value::String(field.to_string())),
+            Value::Mapping(map) => map.get(Value::String(field.to_string())),
             _ => None,
         }
     }
@@ -238,8 +242,11 @@ impl YamlOperations {
                 let array_path = array_part.trim_start_matches('.');
                 if array_path == "mounts" {
                     if let Value::Mapping(map) = value {
-                        if let Some(Value::Sequence(seq)) = map.get(&Value::String("mounts".to_string())) {
-                            let results: Vec<Value> = seq.iter()
+                        if let Some(Value::Sequence(seq)) =
+                            map.get(Value::String("mounts".to_string()))
+                        {
+                            let results: Vec<Value> = seq
+                                .iter()
                                 .filter(|_item| {
                                     // Simple select filter parsing
                                     if expression.contains(".source") {
@@ -294,7 +301,6 @@ impl YamlOperations {
         Ok(())
     }
 
-
     /// Modify YAML file in-place
     pub fn modify_file(file: &PathBuf, field: &str, new_value: &str, stdout: bool) -> Result<()> {
         let mut value = Self::load_yaml_file(file)?;
@@ -311,8 +317,7 @@ impl YamlOperations {
             print!("{}", yaml);
         } else {
             let yaml = serde_yaml::to_string(&value)?;
-            fs::write(file, yaml)
-                .with_context(|| format!("Failed to write file: {:?}", file))?;
+            fs::write(file, yaml).with_context(|| format!("Failed to write file: {:?}", file))?;
         }
 
         Ok(())
@@ -391,7 +396,12 @@ impl YamlOperations {
     }
 
     /// Add object to array at specified path
-    pub fn add_to_array_path(file: &PathBuf, path: &str, object_json: &str, stdout: bool) -> Result<()> {
+    pub fn add_to_array_path(
+        file: &PathBuf,
+        path: &str,
+        object_json: &str,
+        stdout: bool,
+    ) -> Result<()> {
         let mut value = Self::load_yaml_file(file)?;
 
         // Parse the JSON object and convert to YAML
@@ -400,8 +410,8 @@ impl YamlOperations {
 
         // Convert via string to avoid type compatibility issues
         let yaml_string = serde_yaml::to_string(&json_value)?;
-        let yaml_value: Value = serde_yaml::from_str(&yaml_string)
-            .with_context(|| "Failed to convert JSON to YAML")?;
+        let yaml_value: Value =
+            serde_yaml::from_str(&yaml_string).with_context(|| "Failed to convert JSON to YAML")?;
 
         // Navigate to the path and add the object
         let path_parts: Vec<&str> = path.split('.').collect();
@@ -412,15 +422,20 @@ impl YamlOperations {
             print!("{}", yaml);
         } else {
             let yaml = serde_yaml::to_string(&value)?;
-            fs::write(file, yaml)
-                .with_context(|| format!("Failed to write file: {:?}", file))?;
+            fs::write(file, yaml).with_context(|| format!("Failed to write file: {:?}", file))?;
         }
 
         Ok(())
     }
 
     /// Select items from array where field matches value
-    pub fn select_where(file: &PathBuf, path: &str, field: &str, match_value: &str, format: &OutputFormat) -> Result<()> {
+    pub fn select_where(
+        file: &PathBuf,
+        path: &str,
+        field: &str,
+        match_value: &str,
+        format: &OutputFormat,
+    ) -> Result<()> {
         let value = Self::load_yaml_file(file)?;
 
         let target = if path.is_empty() {
@@ -490,8 +505,7 @@ impl YamlOperations {
     fn load_yaml_file(file: &PathBuf) -> Result<Value> {
         let content = Self::read_file_or_stdin(file)?;
 
-        serde_yaml::from_str(&content)
-            .with_context(|| format!("Failed to parse YAML: {:?}", file))
+        serde_yaml::from_str(&content).with_context(|| format!("Failed to parse YAML: {:?}", file))
     }
 
     fn deep_merge_values(base: Value, overlay: Value) -> Value {
@@ -561,10 +575,16 @@ impl YamlOperations {
             match current {
                 Value::Mapping(map) => {
                     let key = Value::String(part.to_string());
-                    current = map.get(&key)
+                    current = map
+                        .get(&key)
                         .ok_or_else(|| anyhow::anyhow!("Field '{}' not found", part))?;
                 }
-                _ => return Err(anyhow::anyhow!("Cannot navigate field '{}' on non-object", part)),
+                _ => {
+                    return Err(anyhow::anyhow!(
+                        "Cannot navigate field '{}' on non-object",
+                        part
+                    ))
+                }
             }
         }
 
@@ -646,7 +666,9 @@ impl YamlOperations {
                             seq.push(object);
                             return Ok(());
                         }
-                        Some(_) => return Err(anyhow::anyhow!("Path '{}' is not an array", path[0])),
+                        Some(_) => {
+                            return Err(anyhow::anyhow!("Path '{}' is not an array", path[0]))
+                        }
                         None => {
                             // Create new array
                             map.insert(key, Value::Sequence(vec![object]));
@@ -712,7 +734,13 @@ impl YamlOperations {
         }
     }
 
-    pub fn delete_from_array(file: &Path, path: &str, field: &str, value: &str, format: &OutputFormat) -> Result<()> {
+    pub fn delete_from_array(
+        file: &Path,
+        path: &str,
+        field: &str,
+        value: &str,
+        format: &OutputFormat,
+    ) -> Result<()> {
         let content = if file.to_str() == Some("-") {
             let mut buffer = String::new();
             std::io::stdin().read_to_string(&mut buffer)?;
@@ -739,10 +767,8 @@ impl YamlOperations {
         if let Value::Sequence(seq) = target {
             seq.retain(|item| {
                 if let Value::Mapping(map) = item {
-                    if let Some(field_val) = map.get(&Value::String(field.to_string())) {
-                        if let Value::String(s) = field_val {
-                            return s != value;
-                        }
+                    if let Some(Value::String(s)) = map.get(Value::String(field.to_string())) {
+                        return s != value;
                     }
                 }
                 true

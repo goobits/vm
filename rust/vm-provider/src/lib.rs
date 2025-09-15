@@ -5,12 +5,12 @@ use vm_config::config::VmConfig;
 pub mod error;
 pub mod progress;
 pub mod security;
-pub mod utils;
 pub mod temp_models;
+pub mod utils;
 
 mod docker;
-mod vagrant;
 mod tart;
+mod vagrant;
 
 pub use temp_models::{Mount, MountPermission, TempVmState};
 

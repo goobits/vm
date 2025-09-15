@@ -7,7 +7,7 @@ use std::process::Command;
 
 /// Common prelude for VM Tool modules
 pub mod prelude {
-    pub use anyhow::{Result, Context};
+    pub use anyhow::{Context, Result};
     pub use serde::{Deserialize, Serialize};
 }
 
@@ -17,8 +17,7 @@ pub struct FileOps;
 impl FileOps {
     /// Read file contents with proper error context
     pub fn read_file_with_context(path: &Path) -> Result<String> {
-        std::fs::read_to_string(path)
-            .with_context(|| format!("Failed to read file: {:?}", path))
+        std::fs::read_to_string(path).with_context(|| format!("Failed to read file: {:?}", path))
     }
 
     /// Read from file or stdin if path is "-"
@@ -26,7 +25,8 @@ impl FileOps {
         if path.to_str() == Some("-") {
             use std::io::Read;
             let mut buffer = String::new();
-            std::io::stdin().read_to_string(&mut buffer)
+            std::io::stdin()
+                .read_to_string(&mut buffer)
                 .with_context(|| "Failed to read from stdin")?;
             Ok(buffer)
         } else {
@@ -65,7 +65,10 @@ impl PathOps {
     /// Get current directory with fallback, logging warnings
     pub fn current_dir_with_fallback() -> std::path::PathBuf {
         std::env::current_dir().unwrap_or_else(|e| {
-            eprintln!("Warning: Could not get current directory: {}. Using '.' as fallback", e);
+            eprintln!(
+                "Warning: Could not get current directory: {}. Using '.' as fallback",
+                e
+            );
             std::path::PathBuf::from(".")
         })
     }

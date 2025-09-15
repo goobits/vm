@@ -35,8 +35,8 @@ impl CliTestFixture {
         let output = Command::new(&self.binary_path)
             .args(args)
             .current_dir(&self.test_dir)
-            .env("HOME", self.test_dir.parent().unwrap())  // Mock HOME for global config
-            .env("VM_TOOL_DIR", &self.test_dir)  // Point preset system to test directory
+            .env("HOME", self.test_dir.parent().unwrap()) // Mock HOME for global config
+            .env("VM_TOOL_DIR", &self.test_dir) // Point preset system to test directory
             .output()?;
         Ok(output)
     }
@@ -54,7 +54,9 @@ impl CliTestFixture {
 
     /// Get global config path
     fn global_config_path(&self) -> PathBuf {
-        self.test_dir.parent().unwrap()
+        self.test_dir
+            .parent()
+            .unwrap()
             .join(".config")
             .join("vm")
             .join("global.yaml")
@@ -87,7 +89,11 @@ mod cli_integration_tests {
 
         // Test setting a local config value
         let output = fixture.run_vm_command(&["config", "set", "vm.memory", "4096"])?;
-        assert!(output.status.success(), "Failed to set config: {}", String::from_utf8_lossy(&output.stderr));
+        assert!(
+            output.status.success(),
+            "Failed to set config: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
 
         let stdout = String::from_utf8(output.stdout)?;
         assert!(stdout.contains("✅ Set vm.memory = 4096"));
@@ -120,7 +126,11 @@ mod cli_integration_tests {
 
         // Test setting a global config value
         let output = fixture.run_vm_command(&["config", "set", "--global", "provider", "tart"])?;
-        assert!(output.status.success(), "Failed to set global config: {}", String::from_utf8_lossy(&output.stderr));
+        assert!(
+            output.status.success(),
+            "Failed to set global config: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
 
         let stdout = String::from_utf8(output.stdout)?;
         assert!(stdout.contains("✅ Set provider = tart"));
@@ -211,7 +221,9 @@ mod cli_integration_tests {
         let fixture = CliTestFixture::new()?;
 
         // Create a test preset
-        fixture.create_preset("test-preset", r#"
+        fixture.create_preset(
+            "test-preset",
+            r#"
 services:
   redis:
     enabled: true
@@ -219,7 +231,8 @@ vm:
   memory: 2048
 npm_packages:
   - eslint
-"#)?;
+"#,
+        )?;
 
         // Test listing presets
         let output = fixture.run_vm_command(&["config", "preset", "--list"])?;
@@ -250,7 +263,9 @@ npm_packages:
         let fixture = CliTestFixture::new()?;
 
         // Create a test preset
-        fixture.create_preset("test-preset", r#"
+        fixture.create_preset(
+            "test-preset",
+            r#"
 services:
   redis:
     enabled: true
@@ -261,7 +276,8 @@ vm:
 npm_packages:
   - eslint
   - prettier
-"#)?;
+"#,
+        )?;
 
         // Apply the preset
         let output = fixture.run_vm_command(&["config", "preset", "test-preset"])?;
@@ -288,7 +304,9 @@ npm_packages:
         let fixture = CliTestFixture::new()?;
 
         // Create first preset
-        fixture.create_preset("preset1", r#"
+        fixture.create_preset(
+            "preset1",
+            r#"
 services:
   redis:
     enabled: true
@@ -296,10 +314,13 @@ vm:
   memory: 2048
 npm_packages:
   - eslint
-"#)?;
+"#,
+        )?;
 
         // Create second preset
-        fixture.create_preset("preset2", r#"
+        fixture.create_preset(
+            "preset2",
+            r#"
 services:
   postgresql:
     enabled: true
@@ -310,7 +331,8 @@ npm_packages:
   - prettier
 ports:
   web: 3000
-"#)?;
+"#,
+        )?;
 
         // Apply both presets with comma separation
         let output = fixture.run_vm_command(&["config", "preset", "preset1,preset2"])?;
@@ -346,7 +368,9 @@ ports:
         let fixture = CliTestFixture::new()?;
 
         // Create a test preset
-        fixture.create_preset("global-preset", r#"
+        fixture.create_preset(
+            "global-preset",
+            r#"
 provider: tart
 vm:
   memory: 8192
@@ -354,7 +378,8 @@ vm:
 services:
   docker:
     enabled: true
-"#)?;
+"#,
+        )?;
 
         // Apply preset globally
         let output = fixture.run_vm_command(&["config", "preset", "--global", "global-preset"])?;

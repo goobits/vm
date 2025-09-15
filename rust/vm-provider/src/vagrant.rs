@@ -1,15 +1,20 @@
-use crate::{Provider, error::ProviderError, progress::ProgressReporter, security::SecurityValidator};
-use anyhow::{Result, Context};
-use std::path::Path;
-use std::env;
-use vm_config::config::VmConfig;
 use crate::utils::{is_tool_installed, stream_command};
+use crate::{
+    error::ProviderError, progress::ProgressReporter, security::SecurityValidator, Provider,
+};
+use anyhow::{Context, Result};
+use std::env;
+use std::path::Path;
+use vm_config::config::VmConfig;
 
 /// Safely escape a string for shell execution by wrapping in single quotes
 /// and escaping any existing single quotes
 fn shell_escape(arg: &str) -> String {
     // If the argument contains no special characters, return as-is
-    if arg.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/') {
+    if arg
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/')
+    {
         arg.to_string()
     } else {
         // Wrap in single quotes and escape any existing single quotes
@@ -28,7 +33,10 @@ impl VagrantProvider {
             return Err(ProviderError::DependencyNotFound("Vagrant".to_string()).into());
         }
         let project_dir = env::current_dir()?;
-        Ok(Self { config, project_dir })
+        Ok(Self {
+            config,
+            project_dir,
+        })
     }
 
     fn run_vagrant_command(&self, args: &[&str]) -> Result<()> {
@@ -81,12 +89,15 @@ impl Provider for VagrantProvider {
         progress.task(&main_phase, "Checking existing VM status...");
         let status_output = std::process::Command::new("vagrant")
             .env("VAGRANT_CWD", self.project_dir.join("providers/vagrant"))
-            .args(&["status", "default"])
+            .args(["status", "default"])
             .output();
 
         if let Ok(output) = status_output {
             let status_str = String::from_utf8_lossy(&output.stdout);
-            if status_str.contains("running") || status_str.contains("poweroff") || status_str.contains("saved") {
+            if status_str.contains("running")
+                || status_str.contains("poweroff")
+                || status_str.contains("saved")
+            {
                 progress.task(&main_phase, "VM already exists.");
                 println!("⚠️  Vagrant VM already exists.");
                 println!("To recreate, first run: vm destroy");
@@ -125,9 +136,8 @@ impl Provider for VagrantProvider {
     }
 
     fn start(&self) -> Result<()> {
-        self.run_vagrant_command(&["resume"]).or_else(|_| {
-            self.run_vagrant_command(&["up"])
-        })
+        self.run_vagrant_command(&["resume"])
+            .or_else(|_| self.run_vagrant_command(&["up"]))
     }
 
     fn stop(&self) -> Result<()> {
@@ -147,34 +157,43 @@ impl Provider for VagrantProvider {
             duct::cmd("vagrant", &["ssh"]).run()?;
         } else {
             // SSH with directory change
-            let workspace_path = self.config.project.as_ref()
+            let workspace_path = self
+                .config
+                .project
+                .as_ref()
                 .and_then(|p| p.workspace_path.as_deref())
                 .unwrap_or("/workspace");
 
             // Validate and calculate target directory (prevent path traversal)
-            let target_path = SecurityValidator::validate_relative_path(relative_path, workspace_path)
-                .context("Invalid path for SSH operation")?;
+            let target_path =
+                SecurityValidator::validate_relative_path(relative_path, workspace_path)
+                    .context("Invalid path for SSH operation")?;
             let target_dir = target_path.to_string_lossy();
 
             // Get shell from config (terminal.shell or default to bash)
-            let shell = self.config.terminal.as_ref()
+            let shell = self
+                .config
+                .terminal
+                .as_ref()
                 .and_then(|t| t.shell.as_deref())
                 .unwrap_or("bash");
 
             // Use safe argument passing - avoid shell interpolation by using printf and exec
             // This prevents injection even if target_dir or shell contain special characters
-            let safe_cmd = format!("cd \"$1\" && exec \"$2\"");
+            let safe_cmd = "cd \"$1\" && exec \"$2\"".to_string();
 
-            duct::cmd("vagrant", &["ssh", "-c", &safe_cmd, "--", &target_dir, shell]).run()?;
+            duct::cmd(
+                "vagrant",
+                &["ssh", "-c", &safe_cmd, "--", &target_dir, shell],
+            )
+            .run()?;
         }
         Ok(())
     }
 
     fn exec(&self, cmd: &[String]) -> Result<()> {
         // Safely escape each argument for shell execution
-        let escaped_args: Vec<String> = cmd.iter()
-            .map(|arg| shell_escape(arg))
-            .collect();
+        let escaped_args: Vec<String> = cmd.iter().map(|arg| shell_escape(arg)).collect();
         let safe_cmd = escaped_args.join(" ");
         self.run_vagrant_command(&["ssh", "-c", &safe_cmd])
     }
@@ -182,8 +201,9 @@ impl Provider for VagrantProvider {
     fn logs(&self) -> Result<()> {
         println!("Showing service logs - Press Ctrl+C to stop...");
         self.run_vagrant_command(&[
-            "ssh", "-c",
-            "sudo journalctl -u postgresql -u redis-server -u mongod -f"
+            "ssh",
+            "-c",
+            "sudo journalctl -u postgresql -u redis-server -u mongod -f",
         ])
     }
 
@@ -213,7 +233,10 @@ impl Provider for VagrantProvider {
 
     fn get_sync_directory(&self) -> Result<String> {
         // Return workspace_path from config
-        let workspace_path = self.config.project.as_ref()
+        let workspace_path = self
+            .config
+            .project
+            .as_ref()
             .and_then(|p| p.workspace_path.as_deref())
             .unwrap_or("/workspace");
         Ok(workspace_path.to_string())

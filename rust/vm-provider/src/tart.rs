@@ -1,8 +1,8 @@
-use crate::{Provider, error::ProviderError, progress::ProgressReporter};
+use crate::utils::{is_tool_installed, stream_command};
+use crate::{error::ProviderError, progress::ProgressReporter, Provider};
 use anyhow::Result;
 use std::path::Path;
 use vm_config::config::VmConfig;
-use crate::utils::{is_tool_installed, stream_command};
 
 pub struct TartProvider {
     config: VmConfig,
@@ -17,9 +17,12 @@ impl TartProvider {
     }
 
     fn vm_name(&self) -> String {
-        self.config.project.as_ref()
+        self.config
+            .project
+            .as_ref()
             .and_then(|p| p.name.as_deref())
-            .unwrap_or("vm-project").to_string()
+            .unwrap_or("vm-project")
+            .to_string()
     }
 }
 
@@ -34,9 +37,7 @@ impl Provider for TartProvider {
 
         // Check if VM already exists
         progress.task(&main_phase, "Checking if VM exists...");
-        let list_output = std::process::Command::new("tart")
-            .args(&["list"])
-            .output();
+        let list_output = std::process::Command::new("tart").args(["list"]).output();
 
         if let Ok(output) = list_output {
             let list_str = String::from_utf8_lossy(&output.stdout);
@@ -51,7 +52,10 @@ impl Provider for TartProvider {
         progress.task(&main_phase, "VM not found, proceeding with creation.");
 
         // Get image from config
-        let image = self.config.tart.as_ref()
+        let image = self
+            .config
+            .tart
+            .as_ref()
             .and_then(|t| t.image.as_deref())
             .unwrap_or("ghcr.io/cirruslabs/ubuntu:latest");
 
@@ -69,13 +73,19 @@ impl Provider for TartProvider {
         if let Some(vm_config) = &self.config.vm {
             if let Some(memory) = vm_config.memory {
                 progress.task(&main_phase, &format!("Setting memory to {} MB...", memory));
-                stream_command("tart", &["set", &self.vm_name(), "--memory", &memory.to_string()])?;
+                stream_command(
+                    "tart",
+                    &["set", &self.vm_name(), "--memory", &memory.to_string()],
+                )?;
                 progress.task(&main_phase, "Memory configured.");
             }
 
             if let Some(cpus) = vm_config.cpus {
                 progress.task(&main_phase, &format!("Setting CPUs to {}...", cpus));
-                stream_command("tart", &["set", &self.vm_name(), "--cpu", &cpus.to_string()])?;
+                stream_command(
+                    "tart",
+                    &["set", &self.vm_name(), "--cpu", &cpus.to_string()],
+                )?;
                 progress.task(&main_phase, "CPUs configured.");
             }
         }
@@ -83,8 +93,19 @@ impl Provider for TartProvider {
         // Set disk size if specified
         if let Some(tart_config) = &self.config.tart {
             if let Some(disk_size) = tart_config.disk_size {
-                progress.task(&main_phase, &format!("Setting disk size to {} GB...", disk_size));
-                stream_command("tart", &["set", &self.vm_name(), "--disk-size", &disk_size.to_string()])?;
+                progress.task(
+                    &main_phase,
+                    &format!("Setting disk size to {} GB...", disk_size),
+                );
+                stream_command(
+                    "tart",
+                    &[
+                        "set",
+                        &self.vm_name(),
+                        "--disk-size",
+                        &disk_size.to_string(),
+                    ],
+                )?;
                 progress.task(&main_phase, "Disk size configured.");
             }
         }
@@ -181,7 +202,10 @@ impl Provider for TartProvider {
 
     fn get_sync_directory(&self) -> Result<String> {
         // Return workspace_path from config
-        let workspace_path = self.config.project.as_ref()
+        let workspace_path = self
+            .config
+            .project
+            .as_ref()
             .and_then(|p| p.workspace_path.as_deref())
             .unwrap_or("/workspace");
         Ok(workspace_path.to_string())

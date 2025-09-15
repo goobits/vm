@@ -10,6 +10,7 @@ struct LinkTestFixture {
     test_dir: PathBuf,
     npm_global_dir: PathBuf,
     nvm_dir: PathBuf,
+    #[allow(dead_code)]
     cargo_dir: PathBuf,
     binary_path: PathBuf,
 }
@@ -48,11 +49,14 @@ impl LinkTestFixture {
         fs::create_dir_all(&package_dir)?;
 
         // Create a basic package.json
-        let package_json = format!(r#"{{
+        let package_json = format!(
+            r#"{{
             "name": "{}",
             "version": "1.0.0",
             "main": "index.js"
-        }}"#, package_name);
+        }}"#,
+            package_name
+        );
         fs::write(package_dir.join("package.json"), package_json)?;
         fs::write(package_dir.join("index.js"), "console.log('test');")?;
 
@@ -69,11 +73,14 @@ impl LinkTestFixture {
         fs::create_dir_all(&package_dir)?;
 
         // Create a basic package.json
-        let package_json = format!(r#"{{
+        let package_json = format!(
+            r#"{{
             "name": "{}",
             "version": "1.0.0",
             "main": "index.js"
-        }}"#, package_name);
+        }}"#,
+            package_name
+        );
         fs::write(package_dir.join("package.json"), package_json)?;
         fs::write(package_dir.join("index.js"), "console.log('test');")?;
 
@@ -90,17 +97,21 @@ impl LinkTestFixture {
         fs::create_dir_all(&package_dir)?;
 
         // Create setup.py
-        let setup_py = format!(r#"from setuptools import setup
+        let setup_py = format!(
+            r#"from setuptools import setup
 setup(
     name="{}",
     version="1.0.0",
     packages=["{}"],
 )
-"#, package_name, package_name.replace('-', '_'));
+"#,
+            package_name,
+            package_name.replace("-", "_")
+        );
         fs::write(package_dir.join("setup.py"), setup_py)?;
 
         // Create package directory
-        let pkg_dir = package_dir.join(package_name.replace('-', '_'));
+        let pkg_dir = package_dir.join(package_name.replace("-", "_"));
         fs::create_dir_all(&pkg_dir)?;
         fs::write(pkg_dir.join("__init__.py"), "# test package")?;
 
@@ -110,10 +121,11 @@ setup(
     /// Create a Rust package structure
     fn create_cargo_package(&self, package_name: &str, target_path: &str) -> Result<()> {
         let package_dir = self.test_dir.join("projects").join(target_path);
-        fs::create_dir_all(&package_dir.join("src"))?;
+        fs::create_dir_all(package_dir.join("src"))?;
 
         // Create Cargo.toml
-        let cargo_toml = format!(r#"[package]
+        let cargo_toml = format!(
+            r#"[package]
 name = "{}"
 version = "0.1.0"
 edition = "2021"
@@ -121,11 +133,16 @@ edition = "2021"
 [[bin]]
 name = "{}"
 path = "src/main.rs"
-"#, package_name, package_name);
+"#,
+            package_name, package_name
+        );
         fs::write(package_dir.join("Cargo.toml"), cargo_toml)?;
-        fs::write(package_dir.join("src/main.rs"), r#"fn main() {
+        fs::write(
+            package_dir.join("src/main.rs"),
+            r#"fn main() {
     println!("Hello, world!");
-}"#)?;
+}"#,
+        )?;
 
         Ok(())
     }
@@ -141,7 +158,10 @@ fn test_npm_package_detection() -> Result<()> {
 
     // Skip test if binary doesn't exist (not built yet)
     if !fixture.binary_path.exists() {
-        println!("Skipping test - vm-links binary not found at {:?}", fixture.binary_path);
+        println!(
+            "Skipping test - vm-links binary not found at {:?}",
+            fixture.binary_path
+        );
         return Ok(());
     }
 
@@ -351,10 +371,13 @@ fn test_parallel_safety() -> Result<()> {
     }
 
     // Test that symlinks can be resolved concurrently without issues
-    let results: Vec<_> = packages.iter().map(|(name, _)| {
-        let link_path = fixture.npm_global_dir.join(name);
-        link_path.canonicalize()
-    }).collect();
+    let results: Vec<_> = packages
+        .iter()
+        .map(|(name, _)| {
+            let link_path = fixture.npm_global_dir.join(name);
+            link_path.canonicalize()
+        })
+        .collect();
 
     // All should succeed
     for result in results {

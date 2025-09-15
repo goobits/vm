@@ -11,14 +11,9 @@ pub fn detect_pip_packages(packages: &[String]) -> Result<Vec<(String, String)>>
     // Try different pip commands in parallel
     let pip_commands = vec!["pip", "pip3", "python3", "python"];
 
-    let detections: Vec<_> = pip_commands.par_iter()
-        .filter_map(|cmd| {
-            if let Ok(pip_packages) = get_editable_packages_for_command(cmd) {
-                Some(pip_packages)
-            } else {
-                None
-            }
-        })
+    let detections: Vec<_> = pip_commands
+        .par_iter()
+        .filter_map(|cmd| get_editable_packages_for_command(cmd).ok())
         .flatten()
         .collect();
 
@@ -44,16 +39,12 @@ pub fn detect_pip_packages(packages: &[String]) -> Result<Vec<(String, String)>>
 
 fn get_editable_packages_for_command(cmd: &str) -> Result<Vec<(String, String)>> {
     let output = match cmd {
-        "pip" | "pip3" => {
-            Command::new(cmd)
-                .args(&["list", "-e", "--format=json"])
-                .output()?
-        }
-        "python" | "python3" => {
-            Command::new(cmd)
-                .args(&["-m", "pip", "list", "-e", "--format=json"])
-                .output()?
-        }
+        "pip" | "pip3" => Command::new(cmd)
+            .args(["list", "-e", "--format=json"])
+            .output()?,
+        "python" | "python3" => Command::new(cmd)
+            .args(["-m", "pip", "list", "-e", "--format=json"])
+            .output()?,
         _ => return Ok(Vec::new()),
     };
 
@@ -70,7 +61,8 @@ fn get_editable_packages_for_command(cmd: &str) -> Result<Vec<(String, String)>>
         for item in items {
             if let (Some(name), Some(location)) = (
                 item.get("name").and_then(|n| n.as_str()),
-                item.get("editable_project_location").and_then(|l| l.as_str())
+                item.get("editable_project_location")
+                    .and_then(|l| l.as_str()),
             ) {
                 // Verify the location exists
                 if std::path::Path::new(location).exists() {
@@ -93,8 +85,8 @@ fn package_matches(package_name: &str, requested_name: &str) -> bool {
     let req_normalized = req_lower.replace('-', "_");
 
     // Check various combinations
-    name_lower == req_lower ||
-    name_lower == req_normalized ||
-    name_normalized == req_lower ||
-    name_normalized == req_normalized
+    name_lower == req_lower
+        || name_lower == req_normalized
+        || name_normalized == req_lower
+        || name_normalized == req_normalized
 }

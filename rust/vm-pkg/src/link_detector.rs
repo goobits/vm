@@ -19,7 +19,11 @@ impl LinkDetector {
     }
 
     /// Get the path to a linked package if it exists
-    pub fn get_linked_path(&self, package: &str, manager: PackageManager) -> Result<Option<PathBuf>> {
+    pub fn get_linked_path(
+        &self,
+        package: &str,
+        manager: PackageManager,
+    ) -> Result<Option<PathBuf>> {
         let links_dir = manager.links_dir(&self.user);
 
         // Direct package name check
@@ -41,23 +45,28 @@ impl LinkDetector {
     }
 
     /// List all linked packages for a manager
-    pub fn list_linked(&self, manager: Option<PackageManager>) -> Result<Vec<(PackageManager, String)>> {
+    pub fn list_linked(
+        &self,
+        manager: Option<PackageManager>,
+    ) -> Result<Vec<(PackageManager, String)>> {
         let mut results = Vec::new();
 
         let managers = match manager {
             Some(m) => vec![m],
-            None => vec![PackageManager::Cargo, PackageManager::Npm, PackageManager::Pip],
+            None => vec![
+                PackageManager::Cargo,
+                PackageManager::Npm,
+                PackageManager::Pip,
+            ],
         };
 
         for mgr in managers {
             let links_dir = mgr.links_dir(&self.user);
             if links_dir.exists() {
                 if let Ok(entries) = fs::read_dir(&links_dir) {
-                    for entry in entries {
-                        if let Ok(entry) = entry {
-                            if let Some(name) = entry.file_name().to_str() {
-                                results.push((mgr, name.to_string()));
-                            }
+                    for entry in entries.flatten() {
+                        if let Some(name) = entry.file_name().to_str() {
+                            results.push((mgr, name.to_string()));
                         }
                     }
                 }

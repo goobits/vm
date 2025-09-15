@@ -1,10 +1,8 @@
 use crate::config::VmConfig;
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
+#[cfg(feature = "schema-validation")]
+use jsonschema::ValidationError;
 use regex::Regex;
-#[cfg(feature = "schema-validation")]
-use jsonschema::{JSONSchema, ValidationError};
-#[cfg(feature = "schema-validation")]
-use serde_json::Value;
 use std::path::PathBuf;
 
 /// Configuration validator
@@ -95,7 +93,10 @@ impl ConfigValidator {
         if let Some(provider) = &self.config.provider {
             match provider.as_str() {
                 "docker" | "vagrant" | "tart" => Ok(()),
-                _ => anyhow::bail!("Invalid provider: {}. Must be one of: docker, vagrant, tart", provider)
+                _ => anyhow::bail!(
+                    "Invalid provider: {}. Must be one of: docker, vagrant, tart",
+                    provider
+                ),
             }
         } else {
             Ok(())
@@ -145,10 +146,8 @@ impl ConfigValidator {
         if let Some(range) = &self.config.port_range {
             let range_regex = Regex::new(r"^(\d+)-(\d+)$")?;
             if let Some(captures) = range_regex.captures(range) {
-                let start: u16 = captures[1].parse()
-                    .context("Invalid port range start")?;
-                let end: u16 = captures[2].parse()
-                    .context("Invalid port range end")?;
+                let start: u16 = captures[1].parse().context("Invalid port range start")?;
+                let end: u16 = captures[2].parse().context("Invalid port range end")?;
 
                 if start >= end {
                     anyhow::bail!("Invalid port range: start must be less than end");
@@ -157,7 +156,10 @@ impl ConfigValidator {
                     anyhow::bail!("Port range start cannot be 0 (reserved port)");
                 }
             } else {
-                anyhow::bail!("Invalid port range format: {}. Expected format: START-END", range);
+                anyhow::bail!(
+                    "Invalid port range format: {}. Expected format: START-END",
+                    range
+                );
             }
         }
 
@@ -170,7 +172,11 @@ impl ConfigValidator {
             // Validate service port if specified
             if let Some(port) = service.port {
                 if port == 0 {
-                    anyhow::bail!("Invalid port {} for service {}: port 0 is reserved", port, name);
+                    anyhow::bail!(
+                        "Invalid port {} for service {}: port 0 is reserved",
+                        port,
+                        name
+                    );
                 }
             }
 
@@ -178,8 +184,11 @@ impl ConfigValidator {
             if name == "gpu" && service.enabled {
                 if let Some(gpu_type) = &service.r#type {
                     match gpu_type.as_str() {
-                        "nvidia" | "amd" | "intel" | "auto" => {},
-                        _ => anyhow::bail!("Invalid GPU type: {}. Must be one of: nvidia, amd, intel, auto", gpu_type)
+                        "nvidia" | "amd" | "intel" | "auto" => {}
+                        _ => anyhow::bail!(
+                            "Invalid GPU type: {}. Must be one of: nvidia, amd, intel, auto",
+                            gpu_type
+                        ),
                     }
                 }
             }
@@ -212,17 +221,18 @@ impl ConfigValidator {
     /// Check if a version string is valid
     fn is_valid_version(version: &str) -> bool {
         // Allow "latest", semantic versions, or major version numbers
-        version == "latest" ||
-        version == "lts" ||
-        version.parse::<u32>().is_ok() ||
-        Regex::new(r"^\d+\.\d+(\.\d+)?$")
-            .expect("Semantic version regex should be valid")
-            .is_match(version)
+        version == "latest"
+            || version == "lts"
+            || version.parse::<u32>().is_ok()
+            || Regex::new(r"^\d+\.\d+(\.\d+)?$")
+                .expect("Semantic version regex should be valid")
+                .is_match(version)
     }
 }
 
 /// Format compilation error for user-friendly display
 #[cfg(feature = "schema-validation")]
+#[allow(dead_code)]
 fn format_compilation_error(error: ValidationError) -> String {
     format!("Schema compilation error: {}", error)
 }
@@ -238,7 +248,11 @@ mod tests {
         config.project = Some(crate::config::ProjectConfig {
             name: Some("test-project".to_string()),
             hostname: Some("test.local".to_string()),
-            workspace_path: Some(crate::paths::get_default_workspace_path().to_string_lossy().to_string()),
+            workspace_path: Some(
+                crate::paths::get_default_workspace_path()
+                    .to_string_lossy()
+                    .to_string(),
+            ),
             backup_pattern: None,
             env_template_path: None,
         });

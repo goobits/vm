@@ -1,9 +1,9 @@
-use clap::{Parser, Subcommand};
 use anyhow::Result;
+use clap::{Parser, Subcommand};
 
+mod cargo;
 mod npm;
 mod pip;
-mod cargo;
 
 #[derive(Parser)]
 #[command(name = "vm-links")]
@@ -36,7 +36,10 @@ fn main() -> Result<()> {
     let args = Args::parse();
 
     match args.command {
-        Command::Detect { package_manager, packages } => {
+        Command::Detect {
+            package_manager,
+            packages,
+        } => {
             validate_package_manager(&package_manager)?;
             let detections = detect_packages(&package_manager, &packages)?;
 
@@ -44,13 +47,22 @@ fn main() -> Result<()> {
                 println!("{}:{}", package, path);
             }
         }
-        Command::Mounts { package_manager, packages } => {
+        Command::Mounts {
+            package_manager,
+            packages,
+        } => {
             validate_package_manager(&package_manager)?;
             let detections = detect_packages(&package_manager, &packages)?;
 
             for (package, path) in detections {
-                println!("{}:/home/developer/.links/{}/{}:delegated", path, package_manager, package);
-                eprintln!("📦 Found linked package ({}): {} -> {}", package_manager, package, path);
+                println!(
+                    "{}:/home/developer/.links/{}/{}:delegated",
+                    path, package_manager, package
+                );
+                eprintln!(
+                    "📦 Found linked package ({}): {} -> {}",
+                    package_manager, package, path
+                );
             }
         }
     }
@@ -61,7 +73,10 @@ fn main() -> Result<()> {
 fn validate_package_manager(pm: &str) -> Result<()> {
     match pm {
         "npm" | "pip" | "cargo" => Ok(()),
-        _ => anyhow::bail!("❌ Error: Package manager '{}' not in whitelist: [npm, pip, cargo]", pm),
+        _ => anyhow::bail!(
+            "❌ Error: Package manager '{}' not in whitelist: [npm, pip, cargo]",
+            pm
+        ),
     }
 }
 

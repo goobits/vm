@@ -3,7 +3,8 @@ use std::fs;
 use std::os::unix::fs::{symlink, PermissionsExt};
 use std::path::PathBuf;
 use tempfile::TempDir;
-use vm_pkg::{LinkDetector, PackageManager};
+// Integration tests for vm-pkg - these types are not publicly exported
+// so we test through the binary interface instead
 
 /// Test fixture for vm-pkg integration testing
 struct PkgTestFixture {
@@ -79,7 +80,7 @@ impl PkgTestFixture {
     /// Create a linked Python package
     fn create_pip_package(&self, package_name: &str) -> Result<PathBuf> {
         let package_dir = self.test_dir.join("projects").join(package_name);
-        let pkg_name = package_name.replace('-', '_');
+        let pkg_name = package_name.replace("-", "_");
         fs::create_dir_all(&package_dir.join(&pkg_name))?;
 
         // Create setup.py

@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 /// VM resource suggestion based on project type
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ResourceSuggestion {
-    pub memory: u32,     // Memory in MB
-    pub cpus: u32,       // Number of CPU cores
+    pub memory: u32,            // Memory in MB
+    pub cpus: u32,              // Number of CPU cores
     pub disk_size: Option<u32>, // Disk size in GB (when different from default)
 }
 
@@ -77,9 +77,7 @@ impl ResourceAdvisor {
             },
 
             // Multi-technology projects - parse and aggregate
-            project if project.starts_with("multi:") => {
-                Self::suggest_multi_tech_resources(project)
-            },
+            project if project.starts_with("multi:") => Self::suggest_multi_tech_resources(project),
 
             // Generic/unknown - conservative default
             _ => ResourceSuggestion {
@@ -108,9 +106,7 @@ impl ResourceAdvisor {
         // Aggregate resources - take max of each dimension
         let max_memory = suggestions.iter().map(|s| s.memory).max().unwrap_or(2048);
         let max_cpus = suggestions.iter().map(|s| s.cpus).max().unwrap_or(2);
-        let max_disk = suggestions.iter()
-            .filter_map(|s| s.disk_size)
-            .max();
+        let max_disk = suggestions.iter().filter_map(|s| s.disk_size).max();
 
         // Add 50% overhead for multi-tech complexity
         let memory_with_overhead = (max_memory as f32 * 1.5) as u32;
@@ -212,14 +208,33 @@ mod tests {
     fn test_all_framework_types() {
         // Test that all frameworks mentioned in shell tests work
         let frameworks = vec![
-            "react", "vue", "angular", "next", "django", "flask", "rails",
-            "nodejs", "python", "rust", "go", "docker", "kubernetes"
+            "react",
+            "vue",
+            "angular",
+            "next",
+            "django",
+            "flask",
+            "rails",
+            "nodejs",
+            "python",
+            "rust",
+            "go",
+            "docker",
+            "kubernetes",
         ];
 
         for framework in frameworks {
             let suggestion = ResourceAdvisor::suggest_vm_resources(framework);
-            assert!(suggestion.memory >= 2048, "Framework {} should have at least 2GB memory", framework);
-            assert!(suggestion.cpus >= 2, "Framework {} should have at least 2 CPUs", framework);
+            assert!(
+                suggestion.memory >= 2048,
+                "Framework {} should have at least 2GB memory",
+                framework
+            );
+            assert!(
+                suggestion.cpus >= 2,
+                "Framework {} should have at least 2 CPUs",
+                framework
+            );
         }
     }
 

@@ -1,10 +1,13 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
 use std::io::{self, Write};
-use vm_temp::{TempVmState, StateManager, MountPermission, MountParser};
-use vm_provider::TempProvider;
+use std::path::{Path, PathBuf};
 use vm_config::config::VmConfig;
+use vm_provider::TempProvider;
+use vm_temp::{MountParser, MountPermission, StateManager, TempVmState};
+
+// External dependencies
+extern crate atty;
 
 #[derive(Debug, Parser)]
 #[command(name = "vm-temp")]
@@ -67,9 +70,10 @@ fn main() -> Result<()> {
     let args = Args::parse();
 
     match args.command {
-        Command::Create { mounts, auto_destroy } => {
-            handle_create_command(mounts, auto_destroy)
-        }
+        Command::Create {
+            mounts,
+            auto_destroy,
+        } => handle_create_command(mounts, auto_destroy),
         Command::Ssh => handle_ssh_command(),
         Command::Status => handle_status_command(),
         Command::Destroy => handle_destroy_command(),
@@ -84,16 +88,14 @@ fn main() -> Result<()> {
 }
 
 fn handle_create_command(mounts: Vec<String>, auto_destroy: bool) -> Result<()> {
-    let state_manager = StateManager::new()
-        .context("Failed to initialize state manager")?;
+    let state_manager = StateManager::new().context("Failed to initialize state manager")?;
 
     // Parse mount strings using MountParser
-    let parsed_mounts = MountParser::parse_mount_strings(&mounts)
-        .context("Failed to parse mount strings")?;
+    let parsed_mounts =
+        MountParser::parse_mount_strings(&mounts).context("Failed to parse mount strings")?;
 
     // Get current project directory
-    let project_dir = std::env::current_dir()
-        .context("Failed to get current directory")?;
+    let project_dir = std::env::current_dir().context("Failed to get current directory")?;
 
     // Create temp VM state
     let mut temp_state = TempVmState::new(
@@ -106,10 +108,12 @@ fn handle_create_command(mounts: Vec<String>, auto_destroy: bool) -> Result<()> 
     // Add all mounts to the state
     for (source, target, permissions) in parsed_mounts {
         if let Some(target_path) = target {
-            temp_state.add_mount_with_target(source, target_path, permissions)
+            temp_state
+                .add_mount_with_target(source, target_path, permissions)
                 .context("Failed to add mount with custom target")?;
         } else {
-            temp_state.add_mount(source, permissions)
+            temp_state
+                .add_mount(source, permissions)
                 .context("Failed to add mount")?;
         }
     }
@@ -122,10 +126,14 @@ fn handle_create_command(mounts: Vec<String>, auto_destroy: bool) -> Result<()> 
     provider.create()?;
 
     // Save state
-    state_manager.save_state(&temp_state)
+    state_manager
+        .save_state(&temp_state)
         .context("Failed to save temp VM state")?;
 
-    println!("✅ Temporary VM created with {} mount(s)", temp_state.mount_count());
+    println!(
+        "✅ Temporary VM created with {} mount(s)",
+        temp_state.mount_count()
+    );
 
     if auto_destroy {
         // SSH then destroy
@@ -134,7 +142,8 @@ fn handle_create_command(mounts: Vec<String>, auto_destroy: bool) -> Result<()> 
 
         println!("🗑️ Auto-destroying temporary VM...");
         provider.destroy()?;
-        state_manager.delete_state()
+        state_manager
+            .delete_state()
             .context("Failed to delete temp VM state")?;
     } else {
         println!("💡 Use 'vm-temp ssh' to connect");
@@ -145,11 +154,12 @@ fn handle_create_command(mounts: Vec<String>, auto_destroy: bool) -> Result<()> 
 }
 
 fn handle_ssh_command() -> Result<()> {
-    let state_manager = StateManager::new()
-        .context("Failed to initialize state manager")?;
+    let state_manager = StateManager::new().context("Failed to initialize state manager")?;
 
     if !state_manager.state_exists() {
-        return Err(anyhow::anyhow!("No temp VM found\n💡 Create one with: vm-temp create ./your-directory"));
+        return Err(anyhow::anyhow!(
+            "No temp VM found\n💡 Create one with: vm-temp create ./your-directory"
+        ));
     }
 
     let temp_config = create_temp_config()?;
@@ -158,8 +168,7 @@ fn handle_ssh_command() -> Result<()> {
 }
 
 fn handle_status_command() -> Result<()> {
-    let state_manager = StateManager::new()
-        .context("Failed to initialize state manager")?;
+    let state_manager = StateManager::new().context("Failed to initialize state manager")?;
 
     if !state_manager.state_exists() {
         println!("❌ No temp VM found");
@@ -167,13 +176,17 @@ fn handle_status_command() -> Result<()> {
         return Ok(());
     }
 
-    let state = state_manager.load_state()
+    let state = state_manager
+        .load_state()
         .context("Failed to load temp VM state")?;
 
     println!("📊 Temp VM Status:");
     println!("   Container: {}", state.container_name);
     println!("   Provider: {}", state.provider);
-    println!("   Created: {}", state.created_at.format("%Y-%m-%d %H:%M:%S UTC"));
+    println!(
+        "   Created: {}",
+        state.created_at.format("%Y-%m-%d %H:%M:%S UTC")
+    );
     println!("   Project: {}", state.project_dir.display());
     println!("   Mounts: {}", state.mount_count());
     if state.is_auto_destroy() {
@@ -187,8 +200,7 @@ fn handle_status_command() -> Result<()> {
 }
 
 fn handle_destroy_command() -> Result<()> {
-    let state_manager = StateManager::new()
-        .context("Failed to initialize state manager")?;
+    let state_manager = StateManager::new().context("Failed to initialize state manager")?;
 
     if !state_manager.state_exists() {
         return Err(anyhow::anyhow!("No temp VM found"));
@@ -199,7 +211,8 @@ fn handle_destroy_command() -> Result<()> {
 
     println!("🗑️ Destroying temporary VM...");
     provider.destroy()?;
-    state_manager.delete_state()
+    state_manager
+        .delete_state()
         .context("Failed to delete temp VM state")?;
 
     println!("✅ Temporary VM destroyed");
@@ -207,24 +220,29 @@ fn handle_destroy_command() -> Result<()> {
 }
 
 fn handle_mount_command(path: String, yes: bool) -> Result<()> {
-    let state_manager = StateManager::new()
-        .context("Failed to initialize state manager")?;
+    let state_manager = StateManager::new().context("Failed to initialize state manager")?;
 
     if !state_manager.state_exists() {
-        return Err(anyhow::anyhow!("No temp VM found. Create one first with: vm-temp create"));
+        return Err(anyhow::anyhow!(
+            "No temp VM found. Create one first with: vm-temp create"
+        ));
     }
 
     // Parse the mount string
-    let (source, target, permissions) = MountParser::parse_mount_string(&path)
-        .context("Failed to parse mount string")?;
+    let (source, target, permissions) =
+        MountParser::parse_mount_string(&path).context("Failed to parse mount string")?;
 
     // Load current state
-    let mut state = state_manager.load_state()
+    let mut state = state_manager
+        .load_state()
         .context("Failed to load temp VM state")?;
 
     // Check if mount already exists
     if state.has_mount(&source) {
-        return Err(anyhow::anyhow!("Mount already exists for source: {}", source.display()));
+        return Err(anyhow::anyhow!(
+            "Mount already exists for source: {}",
+            source.display()
+        ));
     }
 
     // Confirm action unless --yes flag is used
@@ -239,24 +257,32 @@ fn handle_mount_command(path: String, yes: bool) -> Result<()> {
     // Add the mount
     let permissions_display = permissions.to_string();
     if let Some(target_path) = target {
-        state.add_mount_with_target(source.clone(), target_path, permissions)
+        state
+            .add_mount_with_target(source.clone(), target_path, permissions)
             .context("Failed to add mount with custom target")?;
     } else {
-        state.add_mount(source.clone(), permissions)
+        state
+            .add_mount(source.clone(), permissions)
             .context("Failed to add mount")?;
     }
 
     // Save updated state
-    state_manager.save_state(&state)
+    state_manager
+        .save_state(&state)
         .context("Failed to save updated temp VM state")?;
 
-    println!("🔗 Mount added: {} ({})", source.display(), permissions_display);
+    println!(
+        "🔗 Mount added: {} ({})",
+        source.display(),
+        permissions_display
+    );
 
     // Apply mount changes using TempProvider
     let temp_config = create_temp_config()?;
     let temp_provider = get_temp_provider(temp_config)?;
     println!("🔄 Updating container with new mount...");
-    temp_provider.update_mounts(&state)
+    temp_provider
+        .update_mounts(&state)
         .context("Failed to update container mounts")?;
     println!("✅ Mount successfully applied to running container");
 
@@ -264,20 +290,23 @@ fn handle_mount_command(path: String, yes: bool) -> Result<()> {
 }
 
 fn handle_unmount_command(path: Option<String>, all: bool, yes: bool) -> Result<()> {
-    let state_manager = StateManager::new()
-        .context("Failed to initialize state manager")?;
+    let state_manager = StateManager::new().context("Failed to initialize state manager")?;
 
     if !state_manager.state_exists() {
         return Err(anyhow::anyhow!("No temp VM found"));
     }
 
     // Load current state
-    let mut state = state_manager.load_state()
+    let mut state = state_manager
+        .load_state()
         .context("Failed to load temp VM state")?;
 
     if all {
         if !yes {
-            let confirmation_msg = format!("Remove all {} mounts from temp VM? (y/N): ", state.mount_count());
+            let confirmation_msg = format!(
+                "Remove all {} mounts from temp VM? (y/N): ",
+                state.mount_count()
+            );
             if !confirm_prompt(&confirmation_msg) {
                 println!("❌ Unmount operation cancelled");
                 return Ok(());
@@ -288,7 +317,8 @@ fn handle_unmount_command(path: Option<String>, all: bool, yes: bool) -> Result<
         state.clear_mounts();
 
         // Save updated state
-        state_manager.save_state(&state)
+        state_manager
+            .save_state(&state)
             .context("Failed to save updated temp VM state")?;
 
         println!("🗑️ Removed all {} mount(s)", mount_count);
@@ -297,38 +327,52 @@ fn handle_unmount_command(path: Option<String>, all: bool, yes: bool) -> Result<
         let temp_config = create_temp_config()?;
         let temp_provider = get_temp_provider(temp_config)?;
         println!("🔄 Updating container with removed mounts...");
-        temp_provider.update_mounts(&state)
+        temp_provider
+            .update_mounts(&state)
             .context("Failed to update container mounts")?;
         println!("✅ All mounts successfully removed from running container");
     } else if let Some(path_str) = path {
         let source_path = PathBuf::from(path_str);
 
         if !state.has_mount(&source_path) {
-            return Err(anyhow::anyhow!("Mount not found for source: {}", source_path.display()));
+            return Err(anyhow::anyhow!(
+                "Mount not found for source: {}",
+                source_path.display()
+            ));
         }
 
         if !yes {
-            let confirmation_msg = format!("Remove mount {} from temp VM? (y/N): ", source_path.display());
+            let confirmation_msg = format!(
+                "Remove mount {} from temp VM? (y/N): ",
+                source_path.display()
+            );
             if !confirm_prompt(&confirmation_msg) {
                 println!("❌ Unmount operation cancelled");
                 return Ok(());
             }
         }
 
-        let removed_mount = state.remove_mount(&source_path)
+        let removed_mount = state
+            .remove_mount(&source_path)
             .context("Failed to remove mount")?;
 
         // Save updated state
-        state_manager.save_state(&state)
+        state_manager
+            .save_state(&state)
             .context("Failed to save updated temp VM state")?;
 
-        println!("🗑️ Removed mount: {} ({})", removed_mount.source.display(), removed_mount.permissions);
+        println!(
+            "🗑️ Removed mount: {} ({})",
+            removed_mount.source.display(),
+            removed_mount.permissions
+        );
 
         // Apply mount changes using TempProvider
         let temp_config = create_temp_config()?;
         let temp_provider = get_temp_provider(temp_config)?;
         println!("🔄 Updating container with removed mount...");
-        temp_provider.update_mounts(&state)
+        temp_provider
+            .update_mounts(&state)
             .context("Failed to update container mounts")?;
         println!("✅ Mount successfully removed from running container");
     } else {
@@ -339,15 +383,15 @@ fn handle_unmount_command(path: Option<String>, all: bool, yes: bool) -> Result<
 }
 
 fn handle_mounts_command() -> Result<()> {
-    let state_manager = StateManager::new()
-        .context("Failed to initialize state manager")?;
+    let state_manager = StateManager::new().context("Failed to initialize state manager")?;
 
     if !state_manager.state_exists() {
         println!("❌ No temp VM found");
         return Ok(());
     }
 
-    let state = state_manager.load_state()
+    let state = state_manager
+        .load_state()
         .context("Failed to load temp VM state")?;
 
     if state.mount_count() == 0 {
@@ -357,7 +401,8 @@ fn handle_mounts_command() -> Result<()> {
 
     println!("📁 Current mounts ({}):", state.mount_count());
     for mount in state.get_mounts() {
-        println!("   {} → {} ({})",
+        println!(
+            "   {} → {} ({})",
             mount.source.display(),
             mount.target.display(),
             mount.permissions
@@ -374,17 +419,20 @@ fn handle_mounts_command() -> Result<()> {
 }
 
 fn handle_list_command() -> Result<()> {
-    let state_manager = StateManager::new()
-        .context("Failed to initialize state manager")?;
+    let state_manager = StateManager::new().context("Failed to initialize state manager")?;
 
     // For now, just show if there's a temp VM
     if state_manager.state_exists() {
-        let state = state_manager.load_state()
+        let state = state_manager
+            .load_state()
             .context("Failed to load temp VM state")?;
 
         println!("📋 Temp VMs:");
         println!("   {} ({})", state.container_name, state.provider);
-        println!("      Created: {}", state.created_at.format("%Y-%m-%d %H:%M:%S"));
+        println!(
+            "      Created: {}",
+            state.created_at.format("%Y-%m-%d %H:%M:%S")
+        );
         println!("      Project: {}", state.project_dir.display());
         println!("      Mounts: {}", state.mount_count());
     } else {
@@ -414,8 +462,10 @@ fn handle_restart_command() -> Result<()> {
 
 // Helper function to create temp VM config
 fn create_temp_config() -> Result<VmConfig> {
-    let mut config = VmConfig::default();
-    config.provider = Some("docker".to_string());
+    let mut config = VmConfig {
+        provider: Some("docker".to_string()),
+        ..Default::default()
+    };
 
     if let Some(ref mut project) = config.project {
         project.name = Some("vm-temp".to_string());
@@ -464,10 +514,7 @@ impl TempDockerProvider {
         let temp_dir = project_dir.join(".vm-tmp");
         std::fs::create_dir_all(&temp_dir)?;
 
-        Ok(Self {
-            config,
-            temp_dir,
-        })
+        Ok(Self { config, temp_dir })
     }
 
     fn container_name(&self) -> &str {
@@ -485,10 +532,23 @@ impl TempDockerProvider {
         Ok(())
     }
 
-    fn ssh(&self, _path: &PathBuf) -> Result<()> {
+    fn ssh(&self, _path: &Path) -> Result<()> {
         let container = self.container_name();
+
+        // Detect if we're in an interactive environment and can use TTY
+        // This works across all systems: Linux, macOS, Windows, CI/CD environments
+        let stdin_is_tty = atty::is(atty::Stream::Stdin);
+        let stdout_is_tty = atty::is(atty::Stream::Stdout);
+        let tty_flag = if stdin_is_tty && stdout_is_tty {
+            "-it" // Interactive with TTY
+        } else {
+            "-i"  // Interactive without TTY (for pipes, CI/CD, etc.)
+        };
+
+        // TTY detection completed - using appropriate flag for current environment
+
         std::process::Command::new("docker")
-            .args(&["exec", "-it", container, "bash"])
+            .args(["exec", tty_flag, container, "bash"])
             .status()
             .context("Failed to SSH into container")?;
         Ok(())
@@ -497,7 +557,7 @@ impl TempDockerProvider {
     fn status(&self) -> Result<()> {
         let container = self.container_name();
         std::process::Command::new("docker")
-            .args(&["ps", "-f", &format!("name={}", container)])
+            .args(["ps", "-f", &format!("name={}", container)])
             .status()
             .context("Failed to get container status")?;
         Ok(())
@@ -506,7 +566,7 @@ impl TempDockerProvider {
     fn destroy(&self) -> Result<()> {
         let container = self.container_name();
         std::process::Command::new("docker")
-            .args(&["rm", "-f", container])
+            .args(["rm", "-f", container])
             .status()
             .context("Failed to destroy container")?;
         Ok(())
@@ -523,7 +583,7 @@ impl TempProvider for TempDockerProvider {
         if is_running {
             // Stop container
             std::process::Command::new("docker")
-                .args(&["stop", &state.container_name])
+                .args(["stop", &state.container_name])
                 .status()
                 .context("Failed to stop container")?;
         }
@@ -533,13 +593,15 @@ impl TempProvider for TempDockerProvider {
 
         // Start container again
         std::process::Command::new("docker")
-            .args(&["start", &state.container_name])
+            .args(["start", &state.container_name])
             .status()
             .context("Failed to start container")?;
 
         // Check health
         if !self.check_container_health(&state.container_name)? {
-            return Err(anyhow::anyhow!("Container failed health check after mount update"));
+            return Err(anyhow::anyhow!(
+                "Container failed health check after mount update"
+            ));
         }
 
         println!("✅ Container mounts updated successfully!");
@@ -549,39 +611,41 @@ impl TempProvider for TempDockerProvider {
     fn recreate_with_mounts(&self, state: &TempVmState) -> Result<()> {
         // Remove old container
         let _ = std::process::Command::new("docker")
-            .args(&["rm", "-f", &state.container_name])
+            .args(["rm", "-f", &state.container_name])
             .status();
 
         // Create new container with updated mounts
         let mut cmd = std::process::Command::new("docker");
-        cmd.args(&["run", "-d", "--name", &state.container_name]);
+        cmd.args(["run", "-d", "--name", &state.container_name]);
 
         // Add volumes for persistent data
-        cmd.args(&["-v", "vmtemp_nvm:/home/developer/.nvm"]);
-        cmd.args(&["-v", "vmtemp_cache:/home/developer/.cache"]);
-        cmd.args(&["-v", "../..:/workspace:rw"]);
+        cmd.args(["-v", "vmtemp_nvm:/home/developer/.nvm"]);
+        cmd.args(["-v", "vmtemp_cache:/home/developer/.cache"]);
+        cmd.args(["-v", "../..:/workspace:rw"]);
 
         // Add custom mounts
         for mount in &state.mounts {
-            let mount_str = format!("{}:{}:{}",
+            let mount_str = format!(
+                "{}:{}:{}",
                 mount.source.display(),
                 mount.target.display(),
                 mount.permissions
             );
-            cmd.args(&["-v", &mount_str]);
+            cmd.args(["-v", &mount_str]);
         }
 
         // Use the vm-temp image
         cmd.arg("vm-temp:latest");
 
-        cmd.status().context("Failed to recreate container with new mounts")?;
+        cmd.status()
+            .context("Failed to recreate container with new mounts")?;
         Ok(())
     }
 
     fn check_container_health(&self, container_name: &str) -> Result<bool> {
         for _ in 0..10 {
             let output = std::process::Command::new("docker")
-                .args(&["exec", container_name, "echo", "ready"])
+                .args(["exec", container_name, "echo", "ready"])
                 .output();
 
             if output.is_ok() && output.unwrap().status.success() {
@@ -595,7 +659,7 @@ impl TempProvider for TempDockerProvider {
 
     fn is_container_running(&self, container_name: &str) -> Result<bool> {
         let output = std::process::Command::new("docker")
-            .args(&["inspect", "--format", "{{.State.Status}}", container_name])
+            .args(["inspect", "--format", "{{.State.Status}}", container_name])
             .output()
             .context("Failed to check container status")?;
 

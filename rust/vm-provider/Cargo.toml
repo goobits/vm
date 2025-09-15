@@ -18,3 +18,4 @@ which = { workspace = true }
 vm-config = { path = "../vm-config" }
 chrono = { workspace = true }
 tempfile = { workspace = true }
+atty = "0.2"

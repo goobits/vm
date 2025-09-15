@@ -1,7 +1,7 @@
+use serde_json::Value;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
-use serde_json::Value;
 
 /// Detect project type(s) in a given directory
 pub fn detect_project_type(dir: &Path) -> HashSet<String> {
@@ -19,10 +19,22 @@ pub fn detect_project_type(dir: &Path) -> HashSet<String> {
 
                 for dep in all_deps {
                     match dep.as_str() {
-                        "react" => { framework = "react".to_string(); break; }
-                        "vue" => { framework = "vue".to_string(); break; }
-                        "next" => { framework = "next".to_string(); break; }
-                        "@angular/core" => { framework = "angular".to_string(); break; }
+                        "react" => {
+                            framework = "react".to_string();
+                            break;
+                        }
+                        "vue" => {
+                            framework = "vue".to_string();
+                            break;
+                        }
+                        "next" => {
+                            framework = "next".to_string();
+                            break;
+                        }
+                        "@angular/core" => {
+                            framework = "angular".to_string();
+                            break;
+                        }
                         _ => (),
                     }
                 }
@@ -33,11 +45,18 @@ pub fn detect_project_type(dir: &Path) -> HashSet<String> {
     }
 
     // --- Python Detection ---
-    if has_any_file(dir, &["requirements.txt", "pyproject.toml", "setup.py", "Pipfile"]) {
+    if has_any_file(
+        dir,
+        &["requirements.txt", "pyproject.toml", "setup.py", "Pipfile"],
+    ) {
         let mut framework = "python".to_string();
-        if has_file_containing(dir, "requirements.txt", "Django") || has_file_containing(dir, "requirements.txt", "django") {
+        if has_file_containing(dir, "requirements.txt", "Django")
+            || has_file_containing(dir, "requirements.txt", "django")
+        {
             framework = "django".to_string();
-        } else if has_file_containing(dir, "requirements.txt", "Flask") || has_file_containing(dir, "requirements.txt", "flask") {
+        } else if has_file_containing(dir, "requirements.txt", "Flask")
+            || has_file_containing(dir, "requirements.txt", "flask")
+        {
             framework = "flask".to_string();
         }
         types.insert(framework);
@@ -68,7 +87,10 @@ pub fn detect_project_type(dir: &Path) -> HashSet<String> {
     }
 
     // --- Docker Detection ---
-    if has_any_file(dir, &["Dockerfile", "docker-compose.yml", "docker-compose.yaml"]) {
+    if has_any_file(
+        dir,
+        &["Dockerfile", "docker-compose.yml", "docker-compose.yaml"],
+    ) {
         types.insert("docker".to_string());
     }
 
@@ -118,8 +140,8 @@ fn has_file_containing(base_dir: &Path, file_name: &str, pattern: &str) -> bool 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     /// Test fixture for creating temporary project directories
     struct ProjectTestFixture {
@@ -156,7 +178,10 @@ mod tests {
     #[test]
     fn test_react_detection() {
         let fixture = ProjectTestFixture::new().unwrap();
-        fixture.create_file("package.json", r#"
+        fixture
+            .create_file(
+                "package.json",
+                r#"
         {
           "name": "test-react-app",
           "version": "1.0.0",
@@ -165,7 +190,9 @@ mod tests {
             "react-dom": "^18.2.0"
           }
         }
-        "#).unwrap();
+        "#,
+            )
+            .unwrap();
 
         let detected = detect_project_type(fixture.path());
         assert!(detected.contains("react"));
@@ -178,14 +205,19 @@ mod tests {
     #[test]
     fn test_vue_detection() {
         let fixture = ProjectTestFixture::new().unwrap();
-        fixture.create_file("package.json", r#"
+        fixture
+            .create_file(
+                "package.json",
+                r#"
         {
           "name": "test-vue-app",
           "dependencies": {
             "vue": "^3.3.0"
           }
         }
-        "#).unwrap();
+        "#,
+            )
+            .unwrap();
 
         let detected = detect_project_type(fixture.path());
         assert!(detected.contains("vue"));
@@ -197,7 +229,10 @@ mod tests {
     #[test]
     fn test_next_detection_overrides_react() {
         let fixture = ProjectTestFixture::new().unwrap();
-        fixture.create_file("package.json", r#"
+        fixture
+            .create_file(
+                "package.json",
+                r#"
         {
           "name": "test-nextjs-app",
           "dependencies": {
@@ -206,7 +241,9 @@ mod tests {
             "react-dom": "^18.2.0"
           }
         }
-        "#).unwrap();
+        "#,
+            )
+            .unwrap();
 
         let detected = detect_project_type(fixture.path());
         assert!(detected.contains("next"));
@@ -216,7 +253,10 @@ mod tests {
     #[test]
     fn test_angular_detection() {
         let fixture = ProjectTestFixture::new().unwrap();
-        fixture.create_file("package.json", r#"
+        fixture
+            .create_file(
+                "package.json",
+                r#"
         {
           "name": "test-angular-app",
           "dependencies": {
@@ -224,7 +264,9 @@ mod tests {
             "@angular/common": "^15.2.0"
           }
         }
-        "#).unwrap();
+        "#,
+            )
+            .unwrap();
 
         let detected = detect_project_type(fixture.path());
         assert!(detected.contains("angular"));
@@ -233,7 +275,9 @@ mod tests {
     #[test]
     fn test_django_detection() {
         let fixture = ProjectTestFixture::new().unwrap();
-        fixture.create_file("requirements.txt", "Django==4.2.0\npsycopg2-binary==2.9.6").unwrap();
+        fixture
+            .create_file("requirements.txt", "Django==4.2.0\npsycopg2-binary==2.9.6")
+            .unwrap();
 
         let detected = detect_project_type(fixture.path());
         assert!(detected.contains("django"));
@@ -243,7 +287,9 @@ mod tests {
     #[test]
     fn test_flask_detection() {
         let fixture = ProjectTestFixture::new().unwrap();
-        fixture.create_file("requirements.txt", "Flask==2.3.0\nFlask-SQLAlchemy==3.0.5").unwrap();
+        fixture
+            .create_file("requirements.txt", "Flask==2.3.0\nFlask-SQLAlchemy==3.0.5")
+            .unwrap();
 
         let detected = detect_project_type(fixture.path());
         assert!(detected.contains("flask"));
@@ -252,11 +298,16 @@ mod tests {
     #[test]
     fn test_rails_detection() {
         let fixture = ProjectTestFixture::new().unwrap();
-        fixture.create_file("Gemfile", r#"
+        fixture
+            .create_file(
+                "Gemfile",
+                r#"
         source 'https://rubygems.org'
         gem 'rails', '~> 7.0.0'
         gem 'pg', '~> 1.1'
-        "#).unwrap();
+        "#,
+            )
+            .unwrap();
 
         let detected = detect_project_type(fixture.path());
         assert!(detected.contains("rails"));
@@ -266,7 +317,10 @@ mod tests {
     #[test]
     fn test_nodejs_detection() {
         let fixture = ProjectTestFixture::new().unwrap();
-        fixture.create_file("package.json", r#"
+        fixture
+            .create_file(
+                "package.json",
+                r#"
         {
           "name": "test-nodejs-app",
           "dependencies": {
@@ -274,7 +328,9 @@ mod tests {
             "lodash": "^4.17.21"
           }
         }
-        "#).unwrap();
+        "#,
+            )
+            .unwrap();
 
         let detected = detect_project_type(fixture.path());
         assert!(detected.contains("nodejs"));
@@ -283,7 +339,9 @@ mod tests {
     #[test]
     fn test_python_detection() {
         let fixture = ProjectTestFixture::new().unwrap();
-        fixture.create_file("requirements.txt", "requests==2.31.0\nnumpy==1.24.0").unwrap();
+        fixture
+            .create_file("requirements.txt", "requests==2.31.0\nnumpy==1.24.0")
+            .unwrap();
 
         let detected = detect_project_type(fixture.path());
         assert!(detected.contains("python"));
@@ -292,7 +350,10 @@ mod tests {
     #[test]
     fn test_rust_detection() {
         let fixture = ProjectTestFixture::new().unwrap();
-        fixture.create_file("Cargo.toml", r#"
+        fixture
+            .create_file(
+                "Cargo.toml",
+                r#"
         [package]
         name = "test-rust-app"
         version = "0.1.0"
@@ -300,7 +361,9 @@ mod tests {
 
         [dependencies]
         tokio = "1.0"
-        "#).unwrap();
+        "#,
+            )
+            .unwrap();
 
         let detected = detect_project_type(fixture.path());
         assert!(detected.contains("rust"));
@@ -309,7 +372,10 @@ mod tests {
     #[test]
     fn test_go_detection() {
         let fixture = ProjectTestFixture::new().unwrap();
-        fixture.create_file("go.mod", r#"
+        fixture
+            .create_file(
+                "go.mod",
+                r#"
         module test-go-app
 
         go 1.20
@@ -317,7 +383,9 @@ mod tests {
         require (
             github.com/gin-gonic/gin v1.9.1
         )
-        "#).unwrap();
+        "#,
+            )
+            .unwrap();
 
         let detected = detect_project_type(fixture.path());
         assert!(detected.contains("go"));
@@ -326,7 +394,9 @@ mod tests {
     #[test]
     fn test_docker_detection() {
         let fixture = ProjectTestFixture::new().unwrap();
-        fixture.create_file("Dockerfile", "FROM node:18-alpine\nWORKDIR /app").unwrap();
+        fixture
+            .create_file("Dockerfile", "FROM node:18-alpine\nWORKDIR /app")
+            .unwrap();
 
         let detected = detect_project_type(fixture.path());
         assert!(detected.contains("docker"));
@@ -335,12 +405,17 @@ mod tests {
     #[test]
     fn test_docker_compose_detection() {
         let fixture = ProjectTestFixture::new().unwrap();
-        fixture.create_file("docker-compose.yml", r#"
+        fixture
+            .create_file(
+                "docker-compose.yml",
+                r#"
         version: '3.8'
         services:
           app:
             build: .
-        "#).unwrap();
+        "#,
+            )
+            .unwrap();
 
         let detected = detect_project_type(fixture.path());
         assert!(detected.contains("docker"));
@@ -350,12 +425,17 @@ mod tests {
     fn test_kubernetes_detection() {
         let fixture = ProjectTestFixture::new().unwrap();
         fixture.create_dir("k8s").unwrap();
-        fixture.create_file("k8s/deployment.yaml", r#"
+        fixture
+            .create_file(
+                "k8s/deployment.yaml",
+                r#"
         apiVersion: apps/v1
         kind: Deployment
         metadata:
           name: test-app
-        "#).unwrap();
+        "#,
+            )
+            .unwrap();
 
         let detected = detect_project_type(fixture.path());
         assert!(detected.contains("kubernetes"));
@@ -366,16 +446,23 @@ mod tests {
         let fixture = ProjectTestFixture::new().unwrap();
 
         // Create both React and Django indicators
-        fixture.create_file("package.json", r#"
+        fixture
+            .create_file(
+                "package.json",
+                r#"
         {
           "name": "fullstack-app",
           "dependencies": {
             "react": "^18.2.0"
           }
         }
-        "#).unwrap();
+        "#,
+            )
+            .unwrap();
 
-        fixture.create_file("requirements.txt", "Django==4.2.0").unwrap();
+        fixture
+            .create_file("requirements.txt", "Django==4.2.0")
+            .unwrap();
 
         let detected = detect_project_type(fixture.path());
         assert!(detected.contains("react"));
@@ -391,16 +478,23 @@ mod tests {
     fn test_multi_tech_with_docker() {
         let fixture = ProjectTestFixture::new().unwrap();
 
-        fixture.create_file("package.json", r#"
+        fixture
+            .create_file(
+                "package.json",
+                r#"
         {
           "name": "dockerized-react-app",
           "dependencies": {
             "react": "^18.2.0"
           }
         }
-        "#).unwrap();
+        "#,
+            )
+            .unwrap();
 
-        fixture.create_file("Dockerfile", "FROM node:18-alpine").unwrap();
+        fixture
+            .create_file("Dockerfile", "FROM node:18-alpine")
+            .unwrap();
 
         let detected = detect_project_type(fixture.path());
         let formatted = format_detected_types(detected);
@@ -425,14 +519,19 @@ mod tests {
         let fixture = ProjectTestFixture::new().unwrap();
 
         // Create malformed JSON
-        fixture.create_file("package.json", r#"
+        fixture
+            .create_file(
+                "package.json",
+                r#"
         {
           "name": "broken-app",
           "version": "1.0.0"
           "dependencies": {
             "react": "^18.2.0"
           // Missing closing braces
-        "#).unwrap();
+        "#,
+            )
+            .unwrap();
 
         let detected = detect_project_type(fixture.path());
         let formatted = format_detected_types(detected);
@@ -455,14 +554,19 @@ mod tests {
     #[test]
     fn test_php_detection() {
         let fixture = ProjectTestFixture::new().unwrap();
-        fixture.create_file("composer.json", r#"
+        fixture
+            .create_file(
+                "composer.json",
+                r#"
         {
           "name": "test/php-app",
           "require": {
             "php": ">=8.0"
           }
         }
-        "#).unwrap();
+        "#,
+            )
+            .unwrap();
 
         let detected = detect_project_type(fixture.path());
         assert!(detected.contains("php"));
@@ -471,14 +575,19 @@ mod tests {
     #[test]
     fn test_pyproject_toml_detection() {
         let fixture = ProjectTestFixture::new().unwrap();
-        fixture.create_file("pyproject.toml", r#"
+        fixture
+            .create_file(
+                "pyproject.toml",
+                r#"
         [tool.poetry]
         name = "test-python-app"
         version = "0.1.0"
 
         [tool.poetry.dependencies]
         python = "^3.9"
-        "#).unwrap();
+        "#,
+            )
+            .unwrap();
 
         let detected = detect_project_type(fixture.path());
         assert!(detected.contains("python"));
@@ -490,7 +599,10 @@ mod tests {
         let fixture = ProjectTestFixture::new().unwrap();
 
         // Create package.json with Next.js (should override React detection)
-        fixture.create_file("package.json", r#"
+        fixture
+            .create_file(
+                "package.json",
+                r#"
         {
           "name": "test-app",
           "dependencies": {
@@ -499,7 +611,9 @@ mod tests {
             "next": "^13.4.0"
           }
         }
-        "#).unwrap();
+        "#,
+            )
+            .unwrap();
 
         let detected = detect_project_type(fixture.path());
 

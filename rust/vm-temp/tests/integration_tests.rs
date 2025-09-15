@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use tempfile::TempDir;
-use vm_temp::{StateManager, TempVmState, MountPermission};
+use vm_temp::{MountPermission, StateManager, TempVmState};
 
 /// Test fixture for integration testing with real filesystem operations
 struct IntegrationTestFixture {
@@ -74,13 +74,16 @@ fn test_concurrent_state_operations() -> Result<()> {
             thread::sleep(Duration::from_millis(10));
 
             // Load state, modify it, save it
-            let mut state = state_manager.load_state()
+            let mut state = state_manager
+                .load_state()
                 .expect("Failed to load state in thread");
 
-            state.add_mount(mount_source, MountPermission::ReadWrite)
+            state
+                .add_mount(mount_source, MountPermission::ReadWrite)
                 .expect("Failed to add mount in thread");
 
-            state_manager.save_state(&state)
+            state_manager
+                .save_state(&state)
                 .expect("Failed to save state in thread");
 
             Ok(())
@@ -99,12 +102,18 @@ fn test_concurrent_state_operations() -> Result<()> {
 
     // At least some mounts should be present (reveals race condition if < num_threads)
     let actual_mounts = final_state.mount_count();
-    println!("Race condition test: {}/{} threads succeeded", actual_mounts, num_threads);
+    println!(
+        "Race condition test: {}/{} threads succeeded",
+        actual_mounts, num_threads
+    );
 
     // This test is designed to potentially fail to reveal race conditions
     // If it fails consistently, we have a real concurrency bug to fix
     if actual_mounts < num_threads {
-        println!("⚠️  Race condition detected: only {}/{} mounts saved", actual_mounts, num_threads);
+        println!(
+            "⚠️  Race condition detected: only {}/{} mounts saved",
+            actual_mounts, num_threads
+        );
         println!("This indicates atomic operations need improvement in StateManager");
     }
 
@@ -112,7 +121,10 @@ fn test_concurrent_state_operations() -> Result<()> {
     let state_content = fs::read_to_string(state_manager.state_file_path())?;
     let _: TempVmState = serde_yaml::from_str(&state_content)?;
 
-    println!("✅ Concurrent operations test passed - {} mounts added atomically", num_threads);
+    println!(
+        "✅ Concurrent operations test passed - {} mounts added atomically",
+        num_threads
+    );
     Ok(())
 }
 
@@ -127,7 +139,11 @@ fn test_mount_workflow_integration() -> Result<()> {
     // Add multiple mounts with different permissions
     state.add_mount(fixture.mount_source.clone(), MountPermission::ReadWrite)?;
 
-    let ro_mount = fixture.mount_source.parent().unwrap().join("readonly_mount");
+    let ro_mount = fixture
+        .mount_source
+        .parent()
+        .unwrap()
+        .join("readonly_mount");
     fs::create_dir_all(&ro_mount)?;
     state.add_mount(ro_mount.clone(), MountPermission::ReadOnly)?;
 
@@ -216,8 +232,10 @@ auto_destroy: false
     assert!(result.is_err());
 
     let error_msg = result.unwrap_err().to_string();
-    assert!(error_msg.contains("Container name cannot be empty") ||
-            error_msg.contains("Project directory does not exist"));
+    assert!(
+        error_msg.contains("Container name cannot be empty")
+            || error_msg.contains("Project directory does not exist")
+    );
 
     // Test 4: Recovery - write valid state after corruption
     let valid_state = fixture.create_test_state();
@@ -293,7 +311,12 @@ fn test_mount_path_edge_cases() -> Result<()> {
     }
 
     // Test 2: Path with ".." components
-    let parent_path = fixture._temp_dir.path().join("subdir").join("..").join("parent_test");
+    let parent_path = fixture
+        ._temp_dir
+        .path()
+        .join("subdir")
+        .join("..")
+        .join("parent_test");
     fs::create_dir_all(&parent_path)?;
     let result = state.add_mount(parent_path, MountPermission::ReadWrite);
     // Should handle path canonicalization
@@ -334,7 +357,10 @@ fn test_mount_permission_scenarios() -> Result<()> {
 
     state.add_mount(test_dir.clone(), MountPermission::ReadOnly)?;
     let result = state.add_mount(test_dir, MountPermission::ReadWrite);
-    assert!(result.is_err(), "Should reject duplicate mount with different permissions");
+    assert!(
+        result.is_err(),
+        "Should reject duplicate mount with different permissions"
+    );
 
     // Test 2: Multiple different paths with different permissions
     let ro_dir = fixture._temp_dir.path().join("readonly_dir");
@@ -358,7 +384,12 @@ fn test_mount_filesystem_integration() -> Result<()> {
     let mut state = fixture.create_test_state();
 
     // Test 1: Mount point with nested directory structure
-    let nested_source = fixture._temp_dir.path().join("deep").join("nested").join("structure");
+    let nested_source = fixture
+        ._temp_dir
+        .path()
+        .join("deep")
+        .join("nested")
+        .join("structure");
     fs::create_dir_all(&nested_source)?;
     fs::write(nested_source.join("test_file.txt"), "nested content")?;
 
@@ -369,11 +400,17 @@ fn test_mount_filesystem_integration() -> Result<()> {
     let files_dir = fixture._temp_dir.path().join("with_files");
     fs::create_dir_all(&files_dir)?;
     for i in 0..5 {
-        fs::write(files_dir.join(format!("file_{}.txt", i)), format!("content {}", i))?;
+        fs::write(
+            files_dir.join(format!("file_{}.txt", i)),
+            format!("content {}", i),
+        )?;
     }
 
     let result = state.add_mount(files_dir, MountPermission::ReadOnly);
-    assert!(result.is_ok(), "Directories with existing files should work");
+    assert!(
+        result.is_ok(),
+        "Directories with existing files should work"
+    );
 
     // Test 3: Hidden directory (starts with .)
     let hidden_dir = fixture._temp_dir.path().join(".hidden_mount");
@@ -400,7 +437,10 @@ fn test_state_file_atomic_operations() -> Result<()> {
     let temp_file_path = state_file_path.with_extension("tmp");
 
     assert!(state_file_path.exists());
-    assert!(!temp_file_path.exists(), "Temporary file should be cleaned up after atomic write");
+    assert!(
+        !temp_file_path.exists(),
+        "Temporary file should be cleaned up after atomic write"
+    );
 
     // Test state file integrity after modifications
     let original_content = fs::read_to_string(state_file_path)?;
@@ -414,7 +454,10 @@ fn test_state_file_atomic_operations() -> Result<()> {
     // Verify file was updated atomically
     let new_content = fs::read_to_string(state_file_path)?;
     assert_ne!(original_content, new_content);
-    assert!(!temp_file_path.exists(), "Temp file should be cleaned up after second write");
+    assert!(
+        !temp_file_path.exists(),
+        "Temp file should be cleaned up after second write"
+    );
 
     // Verify content integrity
     let loaded_state: TempVmState = serde_yaml::from_str(&new_content)?;

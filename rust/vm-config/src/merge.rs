@@ -89,7 +89,6 @@ pub fn merge_configs(
     merger.merge_all(overlays)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -159,14 +158,20 @@ mod tests {
 
         // Array should be completely replaced, not merged
         assert_eq!(base["npm_packages"], json!(["prettier", "jest"]));
-        assert!(!base["npm_packages"].as_array().unwrap().contains(&json!("eslint")));
-        assert!(!base["npm_packages"].as_array().unwrap().contains(&json!("typescript")));
+        assert!(!base["npm_packages"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("eslint")));
+        assert!(!base["npm_packages"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("typescript")));
 
         // Objects should merge
-        assert_eq!(base["ports"]["web"], 8080);  // Updated
-        assert_eq!(base["ports"]["api"], 4000);  // Preserved
-        assert_eq!(base["services"]["redis"]["enabled"], true);  // Preserved
-        assert_eq!(base["services"]["redis"]["port"], 6379);     // Added
+        assert_eq!(base["ports"]["web"], 8080); // Updated
+        assert_eq!(base["ports"]["api"], 4000); // Preserved
+        assert_eq!(base["services"]["redis"]["enabled"], true); // Preserved
+        assert_eq!(base["services"]["redis"]["port"], 6379); // Added
     }
 
     #[test]
@@ -269,13 +274,19 @@ mod tests {
 
         // Final result should have only user's packages (array replacement)
         assert_eq!(defaults["npm_packages"], json!(["my-custom-tools"]));
-        assert!(!defaults["npm_packages"].as_array().unwrap().contains(&json!("basic-tools")));
-        assert!(!defaults["npm_packages"].as_array().unwrap().contains(&json!("react-preset")));
+        assert!(!defaults["npm_packages"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("basic-tools")));
+        assert!(!defaults["npm_packages"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("react-preset")));
 
         // But other fields should be properly merged
-        assert_eq!(defaults["vm"]["memory"], 2048);  // From global
-        assert_eq!(defaults["vm"]["cpus"], 4);       // From user
-        assert_eq!(defaults["services"]["docker"]["enabled"], false);  // From defaults
-        assert_eq!(defaults["services"]["redis"]["enabled"], true);    // From preset
+        assert_eq!(defaults["vm"]["memory"], 2048); // From global
+        assert_eq!(defaults["vm"]["cpus"], 4); // From user
+        assert_eq!(defaults["services"]["docker"]["enabled"], false); // From defaults
+        assert_eq!(defaults["services"]["redis"]["enabled"], true); // From preset
     }
 }

@@ -1,164 +1,115 @@
-# Test Suite Setup Guide
+# VM Tool Test Suite
 
-## Quick Start
+## Overview
+
+The VM tool test suite has been migrated from shell scripts to Rust. The previous shell test suite (2,773 lines) was removed because:
+- Missing dependencies (docker-utils.sh was removed in commit 7640f9e)
+- Broken function references (check_docker_access, detect_project_type never existed)
+- Superseded by comprehensive Rust tests
+
+## Current Test Coverage
+
+### Rust Tests (Working)
+- **vm-detector**: 22 tests for project type detection
+- **vm-config**: Configuration operations, validation, merging
+- **vm-temp**: Mount validation, edge cases, filesystem integration
+- **vm-provider**: Security validation, path traversal protection
+- **Resource suggestions**: VM resource recommendations by project type
+
+### Running Tests
 
 ```bash
-# Setup test environment (one-time)
-./setup-tests.sh
+# Run all Rust tests
+cd rust
+cargo test --workspace
 
-# Run all tests
-./run-tests.sh
+# Run specific component tests
+cargo test -p vm-detector
+cargo test -p vm-config
+cargo test -p vm-temp
 
-# Run specific test suite
-./run-tests.sh --suite framework
-./run-tests.sh --suite minimal
-./run-tests.sh --suite services
+# Run with output
+cargo test -- --nocapture
+
+# Quick test script from project root
+./test-rust.sh
 ```
 
-## Prerequisites
+## Test Artifacts
 
-### 1. Docker (Required for most tests)
-- Install Docker: `sudo apt-get install docker.io` (Ubuntu/Debian)
-- Check Docker status: `docker --version`
+The `test/configs/` directory contains YAML configuration files used for testing:
+- `minimal.yaml` - Basic VM configuration
+- `postgresql.yaml`, `redis.yaml`, `mongodb.yaml` - Service configurations
+- `languages/` - Language-specific package configurations
+- `test-json-reject/` - JSON rejection test files
 
-### 2. Docker Permissions (Recommended)
-Many tests require Docker access without sudo. To enable:
+## Migration Notes
 
-```bash
-# Add your user to the docker group
-sudo usermod -aG docker $USER
+### What Was Removed
+- `/workspace/run-tests.sh` (1,271 lines) - Main test runner
+- `/workspace/test/integration/preset-system.test.sh` (716 lines)
+- `/workspace/test/system/vm-lifecycle.test.sh` (564 lines)
+- `/workspace/setup-tests.sh` (222 lines)
 
-# Apply changes (logout/login or run):
-newgrp docker
+### Why Removed
+1. All shell tests depended on `shared/docker-utils.sh` which was removed
+2. Functions like `detect_project_type()` were never implemented
+3. Rust tests provide better coverage with type safety
+4. Infrastructure testing belongs in proper tools (Terraform, Ansible)
 
-# Verify access
-docker ps
+## Future Testing Strategy
+
+### Integration Testing
+For VM lifecycle and service provisioning tests, consider:
+- **testcontainers** crate for Docker integration tests
+- **Terraform** for infrastructure validation
+- **Ansible** for provisioning verification
+
+### What's Not Currently Tested
+- Actual VM creation/destruction (requires Docker)
+- Service installation verification (PostgreSQL, Redis, etc.)
+- Cross-process command execution
+
+These are infrastructure concerns better tested with infrastructure tools.
+
+## Development
+
+### Adding New Tests
+
+Create tests in the appropriate Rust module:
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_your_feature() {
+        // Test implementation
+    }
+}
 ```
 
-**Note:** Tests will skip Docker-dependent functionality if permissions aren't configured, showing helpful warnings instead of failing.
+### Test Organization
+- Unit tests: In the same file as the code
+- Integration tests: In `tests/` directory of each crate
+- Use `tempfile` crate for filesystem testing
+- Use `mockall` for mocking external dependencies
 
-### 3. Rust Toolchain (Required for vm-config)
-The vm-config tool is written in Rust. To build it:
+## Quick Reference
 
 ```bash
-# Install Rust if not present
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# Build vm-config
-cd rust/vm-config
+# Build everything
 cargo build --release
-```
 
-Alternatively, run `./install.sh` which handles Rust installation and building automatically.
+# Test everything
+cargo test --workspace
 
-## Running Tests
+# Test with coverage (requires cargo-tarpaulin)
+cargo tarpaulin --workspace
 
-### Available Test Suites
+# Run benchmarks (if any)
+cargo bench
 
-| Suite | Description | Docker Required |
-|-------|-------------|-----------------|
-| `framework` | Configuration validation, vm command tests | No |
-| `minimal` | Basic VM functionality | Yes |
-| `services` | PostgreSQL, Redis, MongoDB, Docker integration | Yes |
-| `languages` | Node.js, Python support | Yes |
-| `cli` | CLI commands (init, validate, status, exec) | Partial |
-| `lifecycle` | VM creation, destruction, reload | Yes |
-
-### Individual Test Files
-
-```bash
-# Unit tests
-./test/unit/config-validation.test.sh
-./test/unit/preset-detection.test.sh
-
-# Integration tests
-./test/integration/preset-system.test.sh
-
-# System tests
-./test/system/vm-lifecycle.test.sh
-```
-
-### Verbose Mode
-
-```bash
-# Enable detailed output
-VERBOSE=true ./run-tests.sh --suite minimal
-```
-
-## Common Issues & Solutions
-
-### Issue: "Docker access unavailable" warnings
-**Solution:** Add user to docker group (see Prerequisites section)
-
-### Issue: "vm init command not found"
-**Solution:** The log_info function issue has been fixed. Pull latest changes.
-
-### Issue: "vm-config: command not found"
-**Solution:** Run `./install.sh` or build manually:
-```bash
-cd rust/vm-config && cargo build --release
-```
-
-### Issue: Tests hanging or timing out
-**Solution:** Check Docker daemon is running:
-```bash
-sudo systemctl status docker
-sudo systemctl start docker  # If not running
-```
-
-### Issue: Permission denied errors
-**Solution:** Ensure proper file permissions:
-```bash
-chmod +x *.sh
-chmod +x test/**/*.sh
-```
-
-## Test Output
-
-Tests use colored output:
-- 🟢 **Green** - Test passed
-- 🔴 **Red** - Test failed
-- 🟡 **Yellow** - Test skipped (usually due to missing permissions)
-
-## Development Notes
-
-### Writing New Tests
-
-1. Add test functions to appropriate category:
-   - `test/unit/` - Isolated component tests
-   - `test/integration/` - Component interaction tests
-   - `test/system/` - End-to-end workflow tests
-
-2. Use provided assertion helpers:
-   - `assert_command_succeeds`
-   - `assert_file_exists`
-   - `assert_service_enabled`
-   - `assert_vm_running`
-
-3. Follow naming conventions:
-   - Test functions: `test_feature_name()`
-   - Test files: `feature-name.test.sh`
-
-### Debugging Tests
-
-```bash
-# Run with debug output
-set -x
-./test/unit/config-validation.test.sh
-
-# Check test artifacts
-ls -la .test_artifacts/
-
-# Clean up test artifacts
-rm -rf .test_artifacts/
-```
-
-## Getting Help
-
-```bash
-# Show test runner help
-./run-tests.sh --help
-
-# List available test suites
-./run-tests.sh --list
+# Check for issues
+cargo clippy -- -D warnings
 ```

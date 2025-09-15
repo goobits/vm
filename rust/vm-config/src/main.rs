@@ -1,6 +1,6 @@
 use anyhow::Result;
-use vm_config::cli::Args;
 use clap::Parser;
+use vm_config::cli::Args;
 
 fn main() -> Result<()> {
     let args = Args::parse();

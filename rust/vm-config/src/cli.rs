@@ -1,8 +1,8 @@
-use crate::{config::VmConfig, merge, preset::PresetDetector, paths};
-use anyhow::{Result, Context};
+use crate::{config::VmConfig, merge, paths, preset::PresetDetector};
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use std::path::{Path, PathBuf};
 use serde_yaml::Value;
+use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(name = "vm-config")]
@@ -166,7 +166,6 @@ pub enum Command {
         #[arg(short = 'f', long, default_value = "yaml")]
         format: OutputFormat,
     },
-
 
     /// Modify YAML file in-place
     Modify {
@@ -406,7 +405,7 @@ pub fn init_config_file(file_path: Option<PathBuf>) -> Result<()> {
                 path
             }
         }
-        None => std::env::current_dir()?.join("vm.yaml")
+        None => std::env::current_dir()?.join("vm.yaml"),
     };
 
     // Check if vm.yaml already exists
@@ -432,15 +431,18 @@ pub fn init_config_file(file_path: Option<PathBuf>) -> Result<()> {
 
     // If the sanitized name is different, inform the user
     if sanitized_name != dir_name {
-        println!("📝 Note: Directory name '{}' contains invalid characters for project names.", dir_name);
+        println!(
+            "📝 Note: Directory name '{}' contains invalid characters for project names.",
+            dir_name
+        );
         println!("   Using sanitized name: '{}'", sanitized_name);
         println!();
     }
 
     // Load embedded defaults
     const EMBEDDED_DEFAULTS: &str = include_str!("../../../defaults.yaml");
-    let mut config: VmConfig = serde_yaml::from_str(EMBEDDED_DEFAULTS)
-        .context("Failed to parse embedded defaults")?;
+    let mut config: VmConfig =
+        serde_yaml::from_str(EMBEDDED_DEFAULTS).context("Failed to parse embedded defaults")?;
 
     // Customize config for this directory
     if let Some(ref mut project) = config.project {
@@ -453,12 +455,14 @@ pub fn init_config_file(file_path: Option<PathBuf>) -> Result<()> {
     }
 
     // Convert to YAML
-    let yaml_content = serde_yaml::to_string(&config)
-        .context("Failed to serialize configuration to YAML")?;
+    let yaml_content =
+        serde_yaml::to_string(&config).context("Failed to serialize configuration to YAML")?;
 
     // Write the YAML to file
-    std::fs::write(&target_path, yaml_content)
-        .context(format!("Failed to write vm.yaml to {}", target_path.display()))?;
+    std::fs::write(&target_path, yaml_content).context(format!(
+        "Failed to write vm.yaml to {}",
+        target_path.display()
+    ))?;
 
     println!("✅ Created vm.yaml for project: {}", sanitized_name);
     println!("📍 Configuration file: {}", target_path.display());
@@ -472,7 +476,11 @@ pub fn init_config_file(file_path: Option<PathBuf>) -> Result<()> {
 
 pub fn execute(args: Args) -> Result<()> {
     match args.command {
-        Command::Merge { base, overlay, format } => {
+        Command::Merge {
+            base,
+            overlay,
+            format,
+        } => {
             let base_config = VmConfig::from_file(&base)
                 .with_context(|| format!("Failed to load base config: {:?}", base))?;
 
@@ -487,22 +495,29 @@ pub fn execute(args: Args) -> Result<()> {
             output_config(&merged, &format)?;
         }
 
-        Command::Validate { file, no_preset, verbose } => {
-            match load_and_merge_config(file, no_preset) {
-                Ok(_) => {
-                    println!("✅ Configuration is valid");
-                    if verbose {
-                        println!("Successfully loaded, merged, and validated the configuration.");
-                    }
-                }
-                Err(e) => {
-                    eprintln!("❌ Configuration validation failed: {:#}", e);
-                    std::process::exit(1);
+        Command::Validate {
+            file,
+            no_preset,
+            verbose,
+        } => match load_and_merge_config(file, no_preset) {
+            Ok(_) => {
+                println!("✅ Configuration is valid");
+                if verbose {
+                    println!("Successfully loaded, merged, and validated the configuration.");
                 }
             }
-        }
+            Err(e) => {
+                eprintln!("❌ Configuration validation failed: {:#}", e);
+                std::process::exit(1);
+            }
+        },
 
-        Command::Preset { dir, presets_dir, detect_only, list } => {
+        Command::Preset {
+            dir,
+            presets_dir,
+            detect_only,
+            list,
+        } => {
             let presets_dir = presets_dir.unwrap_or_else(paths::get_presets_dir);
             let detector = PresetDetector::new(dir.clone(), presets_dir);
 
@@ -537,7 +552,13 @@ pub fn execute(args: Args) -> Result<()> {
             output_config(&config, &format)?;
         }
 
-        Command::Process { defaults, config, project_dir, presets_dir, format } => {
+        Command::Process {
+            defaults,
+            config,
+            project_dir,
+            presets_dir,
+            format,
+        } => {
             // Use default paths if not specified
             let defaults = defaults.unwrap_or_else(|| paths::resolve_tool_path("vm.yaml"));
             let presets_dir = presets_dir.unwrap_or_else(paths::get_presets_dir);
@@ -548,14 +569,16 @@ pub fn execute(args: Args) -> Result<()> {
 
             // Load user config if provided
             let user_config = if let Some(path) = config {
-                Some(VmConfig::from_file(&path)
-                    .with_context(|| format!("Failed to load user config: {:?}", path))?)
+                Some(
+                    VmConfig::from_file(&path)
+                        .with_context(|| format!("Failed to load user config: {:?}", path))?,
+                )
             } else {
                 None
             };
 
             // Detect and load preset if user config is partial
-            let preset_config = if user_config.as_ref().map_or(true, |c| c.is_partial()) {
+            let preset_config = if user_config.as_ref().is_none_or(|c| c.is_partial()) {
                 let detector = PresetDetector::new(project_dir, presets_dir);
                 if let Some(preset_name) = detector.detect()? {
                     Some(detector.load_preset(&preset_name)?)
@@ -568,11 +591,21 @@ pub fn execute(args: Args) -> Result<()> {
 
             // Merge in order: defaults -> global -> preset -> user
             let global_config = crate::config_ops::load_global_config();
-            let merged = merge::merge_configs(Some(default_config), global_config, preset_config, user_config)?;
+            let merged = merge::merge_configs(
+                Some(default_config),
+                global_config,
+                preset_config,
+                user_config,
+            )?;
             output_config(&merged, &format)?;
         }
 
-        Command::Query { config, field, raw, default } => {
+        Command::Query {
+            config,
+            field,
+            raw,
+            default,
+        } => {
             let config = VmConfig::from_file(&config)
                 .with_context(|| format!("Failed to load config: {:?}", config))?;
 
@@ -580,11 +613,14 @@ pub fn execute(args: Args) -> Result<()> {
             let value = match query_field(&json_value, &field) {
                 Ok(val) => {
                     if val.is_null() && default.is_some() {
-                        serde_json::Value::String(default.ok_or_else(|| anyhow::anyhow!("Default value not available"))?)
+                        serde_json::Value::String(
+                            default
+                                .ok_or_else(|| anyhow::anyhow!("Default value not available"))?,
+                        )
                     } else {
                         val
                     }
-                },
+                }
                 Err(_) => {
                     if let Some(default_val) = default {
                         serde_json::Value::String(default_val)
@@ -595,7 +631,13 @@ pub fn execute(args: Args) -> Result<()> {
             };
 
             if raw && value.is_string() {
-                println!("{}", value.as_str().ok_or_else(|| anyhow::anyhow!("Expected string value, got: {:?}", value))?);
+                println!(
+                    "{}",
+                    value.as_str().ok_or_else(|| anyhow::anyhow!(
+                        "Expected string value, got: {:?}",
+                        value
+                    ))?
+                );
             } else {
                 println!("{}", serde_json::to_string(&value)?);
             }
@@ -611,7 +653,11 @@ pub fn execute(args: Args) -> Result<()> {
             YamlOperations::array_remove(&file, &path, &filter)?;
         }
 
-        Command::Filter { file, expression, output_format } => {
+        Command::Filter {
+            file,
+            expression,
+            output_format,
+        } => {
             use crate::yaml_ops::YamlOperations;
             YamlOperations::filter(&file, &expression, &output_format)?;
         }
@@ -635,8 +681,12 @@ pub fn execute(args: Args) -> Result<()> {
             YamlOperations::merge_eval_all(&files, &format)?;
         }
 
-
-        Command::Modify { file, field, value, stdout } => {
+        Command::Modify {
+            file,
+            field,
+            value,
+            stdout,
+        } => {
             use crate::yaml_ops::YamlOperations;
             YamlOperations::modify_file(&file, &field, &value, stdout)?;
         }
@@ -647,12 +697,20 @@ pub fn execute(args: Args) -> Result<()> {
             println!("{}", length);
         }
 
-        Command::Transform { file, expression, format } => {
+        Command::Transform {
+            file,
+            expression,
+            format,
+        } => {
             use crate::yaml_ops::YamlOperations;
             YamlOperations::transform(&file, &expression, &format)?;
         }
 
-        Command::HasField { file, field, subfield } => {
+        Command::HasField {
+            file,
+            field,
+            subfield,
+        } => {
             use crate::yaml_ops::YamlOperations;
             match YamlOperations::has_field(&file, &field, &subfield) {
                 Ok(true) => {
@@ -670,20 +728,28 @@ pub fn execute(args: Args) -> Result<()> {
             }
         }
 
-        Command::AddToArray { file, path, object, stdout } => {
+        Command::AddToArray {
+            file,
+            path,
+            object,
+            stdout,
+        } => {
             use crate::yaml_ops::YamlOperations;
             YamlOperations::add_to_array_path(&file, &path, &object, stdout)?;
         }
 
-        Command::SelectWhere { file, path, field, value, format } => {
+        Command::SelectWhere {
+            file,
+            path,
+            field,
+            value,
+            format,
+        } => {
             use crate::yaml_ops::YamlOperations;
             YamlOperations::select_where(&file, &path, &field, &value, &format)?;
         }
 
-        Command::Count {
-            file,
-            path,
-        } => {
+        Command::Count { file, path } => {
             use crate::yaml_ops::YamlOperations;
             let count = YamlOperations::count_items(&file, &path)?;
             println!("{}", count);
@@ -712,7 +778,11 @@ pub fn execute(args: Args) -> Result<()> {
             output_shell_exports(&value)?;
         }
 
-        Command::Set { field, value, global } => {
+        Command::Set {
+            field,
+            value,
+            global,
+        } => {
             crate::config_ops::ConfigOps::set(&field, &value, global)?;
         }
 
@@ -745,22 +815,32 @@ pub fn load_and_merge_config(file: Option<PathBuf>, no_preset: bool) -> Result<V
 
     // 2. Load user config if path was found
     let user_config = if let Some(ref path) = user_config_path {
-        Some(VmConfig::from_file(path).with_context(|| format!("Failed to load user config from: {:?}", path))?)
+        Some(
+            VmConfig::from_file(path)
+                .with_context(|| format!("Failed to load user config from: {:?}", path))?,
+        )
     } else {
         None
     };
 
     // 3. Determine project directory for preset detection
     let project_dir = match user_config_path {
-        Some(ref path) => path.parent().unwrap_or_else(|| Path::new(".")).to_path_buf(),
+        Some(ref path) => path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf(),
         None => std::env::current_dir()?,
     };
 
     // 4. Load OS-specific defaults as the new base
-    let detected_os = user_config.as_ref().and_then(|c| c.os.as_deref())
+    let detected_os = user_config
+        .as_ref()
+        .and_then(|c| c.os.as_deref())
         .unwrap_or("ubuntu"); // Simple default for now
-    
-    let os_defaults_path = paths::get_config_dir().join("os_defaults").join(format!("{}.yaml", detected_os));
+
+    let os_defaults_path = paths::get_config_dir()
+        .join("os_defaults")
+        .join(format!("{}.yaml", detected_os));
     let os_defaults_config = if os_defaults_path.exists() {
         VmConfig::from_file(&os_defaults_path)?
     } else {
@@ -788,12 +868,97 @@ pub fn load_and_merge_config(file: Option<PathBuf>, no_preset: bool) -> Result<V
     let global_config = crate::config_ops::load_global_config();
 
     // 7. Merge in order: os_defaults -> global -> preset -> user
-    let merged = crate::merge::merge_configs(Some(os_defaults_config), global_config, preset_config, user_config)?;
+    let merged = crate::merge::merge_configs(
+        Some(os_defaults_config),
+        global_config,
+        preset_config,
+        user_config,
+    )?;
 
     // 8. Validate the final merged configuration against the schema
     let schema_path = crate::paths::get_schema_path();
     let validator = crate::validate::ConfigValidator::new(merged.clone(), schema_path);
-    validator.validate().with_context(|| "Final configuration validation failed")?;
+    validator
+        .validate()
+        .with_context(|| "Final configuration validation failed")?;
+
+    Ok(merged)
+}
+
+pub fn load_and_merge_config_with_preset(
+    file: Option<PathBuf>,
+    preset_name: String,
+) -> Result<VmConfig> {
+    // 1. Find user config file, if any
+    let user_config_path = match file {
+        Some(path) => Some(path),
+        None => find_vm_config_file().ok(), // It's okay if it's not found
+    };
+
+    // 2. Load user config if path was found
+    let user_config = if let Some(ref path) = user_config_path {
+        Some(
+            VmConfig::from_file(path)
+                .with_context(|| format!("Failed to load user config from: {:?}", path))?,
+        )
+    } else {
+        None
+    };
+
+    // 3. Determine project directory for preset detection
+    let project_dir = match user_config_path {
+        Some(ref path) => path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf(),
+        None => std::env::current_dir()?,
+    };
+
+    // 4. Load OS-specific defaults as the new base
+    let detected_os = user_config
+        .as_ref()
+        .and_then(|c| c.os.as_deref())
+        .unwrap_or("ubuntu"); // Simple default for now
+
+    let os_defaults_path = paths::get_config_dir()
+        .join("os_defaults")
+        .join(format!("{}.yaml", detected_os));
+    let os_defaults_config = if os_defaults_path.exists() {
+        VmConfig::from_file(&os_defaults_path)?
+    } else {
+        VmConfig::default()
+    };
+
+    // 5. Load the specified preset (override auto-detection)
+    let presets_dir = crate::paths::get_presets_dir();
+    let preset_config = if preset_name != "base" && preset_name != "generic" {
+        let detector = crate::preset::PresetDetector::new(project_dir, presets_dir);
+        Some(
+            detector
+                .load_preset(&preset_name)
+                .with_context(|| format!("Failed to load preset: {}", preset_name))?,
+        )
+    } else {
+        None
+    };
+
+    // 6. Load global configuration if it exists
+    let global_config = crate::config_ops::load_global_config();
+
+    // 7. Merge in order: os_defaults -> global -> preset -> user
+    let merged = crate::merge::merge_configs(
+        Some(os_defaults_config),
+        global_config,
+        preset_config,
+        user_config,
+    )?;
+
+    // 8. Validate the final merged configuration against the schema
+    let schema_path = crate::paths::get_schema_path();
+    let validator = crate::validate::ConfigValidator::new(merged.clone(), schema_path);
+    validator
+        .validate()
+        .with_context(|| "Final configuration validation failed")?;
 
     Ok(merged)
 }
@@ -823,7 +988,8 @@ fn query_field(value: &serde_json::Value, field: &str) -> Result<serde_json::Val
     for part in parts {
         match current {
             serde_json::Value::Object(map) => {
-                current = map.get(part)
+                current = map
+                    .get(part)
                     .ok_or_else(|| anyhow::anyhow!("Field '{}' not found", part))?;
             }
             _ => anyhow::bail!("Cannot access field '{}' on non-object", part),
@@ -879,7 +1045,12 @@ fn flatten_yaml_to_shell(prefix: &str, value: &Value, exports: &mut Vec<String>)
             }
         }
         Value::String(s) => {
-            let escaped = s.replace('"', "\"");
+            // Properly escape shell metacharacters for safe export
+            let escaped = s
+                .replace('\\', "\\\\") // Escape backslash first
+                .replace('"', "\\\"") // Escape double quotes
+                .replace('$', "\\$") // Escape dollar signs (prevents variable expansion)
+                .replace('`', "\\`"); // Escape backticks (prevents command substitution)
             exports.push(format!("export {}=\"{}\"", prefix, escaped));
         }
         Value::Bool(b) => {

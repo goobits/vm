@@ -36,11 +36,12 @@ impl PortRegistry {
 
         // Load registry from file
         let content = fs::read_to_string(&registry_path)?;
-        let entries: HashMap<String, ProjectEntry> = if content.trim().is_empty() || content.trim() == "{}" {
-            HashMap::new()
-        } else {
-            serde_json::from_str(&content)?
-        };
+        let entries: HashMap<String, ProjectEntry> =
+            if content.trim().is_empty() || content.trim() == "{}" {
+                HashMap::new()
+            } else {
+                serde_json::from_str(&content)?
+            };
 
         Ok(PortRegistry {
             entries,
@@ -48,7 +49,11 @@ impl PortRegistry {
         })
     }
 
-    pub fn check_conflicts(&self, range: &PortRange, exclude_project: Option<&str>) -> Option<String> {
+    pub fn check_conflicts(
+        &self,
+        range: &PortRange,
+        exclude_project: Option<&str>,
+    ) -> Option<String> {
         let mut conflicts = Vec::new();
 
         for (project_name, entry) in &self.entries {
@@ -197,8 +202,8 @@ mod tests {
 
     #[test]
     fn test_concurrent_registry_access_race_condition() {
-        use std::thread;
         use std::sync::Arc;
+        use std::thread;
 
         let temp_dir = tempdir().unwrap();
         let registry_path = temp_dir.path().join("port-registry.json");
@@ -230,7 +235,8 @@ mod tests {
                 registry.entries = entries;
 
                 // Add our entry
-                let range = PortRange::new(3000 + (i as u16) * 10, 3000 + (i as u16) * 10 + 9).unwrap();
+                let range =
+                    PortRange::new(3000 + (i as u16) * 10, 3000 + (i as u16) * 10 + 9).unwrap();
 
                 // Small delay to increase race condition likelihood
                 std::thread::sleep(std::time::Duration::from_millis(1));
@@ -247,11 +253,17 @@ mod tests {
         let successful_registrations = results.iter().filter(|r| r.is_ok()).count();
         let failed_registrations = results.iter().filter(|r| r.is_err()).count();
 
-        println!("Registration results: {} succeeded, {} failed", successful_registrations, failed_registrations);
+        println!(
+            "Registration results: {} succeeded, {} failed",
+            successful_registrations, failed_registrations
+        );
 
         if failed_registrations > 0 {
             println!("🚨 FILE SYSTEM RACE CONDITION DETECTED:");
-            println!("  {} threads failed to register due to temp file conflicts", failed_registrations);
+            println!(
+                "  {} threads failed to register due to temp file conflicts",
+                failed_registrations
+            );
             println!("  This demonstrates the race condition in atomic file operations");
         }
 
@@ -273,8 +285,14 @@ mod tests {
 
         if successful_registrations > actual_count {
             println!("🚨 DATA RACE CONDITION DETECTED:");
-            println!("  {} operations succeeded, but only {} entries in final registry", successful_registrations, actual_count);
-            println!("  Lost {} registrations due to concurrent read-modify-write cycles", successful_registrations - actual_count);
+            println!(
+                "  {} operations succeeded, but only {} entries in final registry",
+                successful_registrations, actual_count
+            );
+            println!(
+                "  Lost {} registrations due to concurrent read-modify-write cycles",
+                successful_registrations - actual_count
+            );
 
             // Show which projects made it through the data race
             let mut found_projects: Vec<_> = final_entries.keys().collect();
@@ -289,15 +307,26 @@ mod tests {
             println!("⚠️  Race conditions successfully demonstrated:");
             println!("   Expected: {} total registrations", num_threads);
             println!("   Achieved: {} stored registrations", actual_count);
-            println!("   Success rate: {:.1}%", (actual_count as f64 / num_threads as f64) * 100.0);
+            println!(
+                "   Success rate: {:.1}%",
+                (actual_count as f64 / num_threads as f64) * 100.0
+            );
         }
 
         // Verify that the surviving entries are valid
         for (project_name, entry) in &final_entries {
-            assert!(PortRange::parse(&entry.range).is_ok(),
-                   "Invalid range stored for project {}: {}", project_name, entry.range);
-            assert!(entry.path.starts_with("/path_"),
-                   "Invalid path stored for project {}: {}", project_name, entry.path);
+            assert!(
+                PortRange::parse(&entry.range).is_ok(),
+                "Invalid range stored for project {}: {}",
+                project_name,
+                entry.range
+            );
+            assert!(
+                entry.path.starts_with("/path_"),
+                "Invalid path stored for project {}: {}",
+                project_name,
+                entry.path
+            );
         }
     }
 }

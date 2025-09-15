@@ -11,21 +11,33 @@ impl PortRange {
     pub fn parse(range_str: &str) -> Result<Self> {
         // Validate format: START-END
         if !range_str.contains('-') {
-            anyhow::bail!("❌ Invalid port range format: {}\n💡 Expected format: START-END (e.g., 3170-3179)", range_str);
+            anyhow::bail!(
+                "❌ Invalid port range format: {}\n💡 Expected format: START-END (e.g., 3170-3179)",
+                range_str
+            );
         }
 
         let parts: Vec<&str> = range_str.split('-').collect();
         if parts.len() != 2 {
-            anyhow::bail!("❌ Invalid port range format: {}\n💡 Expected format: START-END (e.g., 3170-3179)", range_str);
+            anyhow::bail!(
+                "❌ Invalid port range format: {}\n💡 Expected format: START-END (e.g., 3170-3179)",
+                range_str
+            );
         }
 
-        let start: u16 = parts[0].parse()
+        let start: u16 = parts[0]
+            .parse()
             .map_err(|_| anyhow::anyhow!("❌ Invalid start port: {}", parts[0]))?;
-        let end: u16 = parts[1].parse()
+        let end: u16 = parts[1]
+            .parse()
             .map_err(|_| anyhow::anyhow!("❌ Invalid end port: {}", parts[1]))?;
 
         if start >= end {
-            anyhow::bail!("❌ Invalid range: start ({}) must be less than end ({})", start, end);
+            anyhow::bail!(
+                "❌ Invalid range: start ({}) must be less than end ({})",
+                start,
+                end
+            );
         }
 
         Ok(PortRange { start, end })
@@ -33,7 +45,11 @@ impl PortRange {
 
     pub fn new(start: u16, end: u16) -> Result<Self> {
         if start >= end {
-            anyhow::bail!("❌ Invalid range: start ({}) must be less than end ({})", start, end);
+            anyhow::bail!(
+                "❌ Invalid range: start ({}) must be less than end ({})",
+                start,
+                end
+            );
         }
         Ok(PortRange { start, end })
     }
@@ -104,8 +120,14 @@ mod tests {
         let range1 = PortRange::new(3000, 3009).unwrap();
         let range2 = PortRange::new(3010, 3019).unwrap();
 
-        assert!(!range1.overlaps_with(&range2), "Adjacent ranges 3000-3009 and 3010-3019 should not overlap");
-        assert!(!range2.overlaps_with(&range1), "Overlap detection should be symmetric");
+        assert!(
+            !range1.overlaps_with(&range2),
+            "Adjacent ranges 3000-3009 and 3010-3019 should not overlap"
+        );
+        assert!(
+            !range2.overlaps_with(&range1),
+            "Overlap detection should be symmetric"
+        );
     }
 
     #[test]
@@ -114,8 +136,14 @@ mod tests {
         let range1 = PortRange::new(3000, 3009).unwrap();
         let range2 = PortRange::new(3009, 3019).unwrap(); // Shares port 3009
 
-        assert!(range1.overlaps_with(&range2), "Ranges sharing port 3009 should overlap");
-        assert!(range2.overlaps_with(&range1), "Overlap detection should be symmetric");
+        assert!(
+            range1.overlaps_with(&range2),
+            "Ranges sharing port 3009 should overlap"
+        );
+        assert!(
+            range2.overlaps_with(&range1),
+            "Overlap detection should be symmetric"
+        );
     }
 
     #[test]
@@ -132,8 +160,14 @@ mod tests {
         assert!(range1.overlaps_with(&touching));
 
         // Single port ranges are invalid (start must be < end)
-        assert!(PortRange::new(3009, 3009).is_err(), "Single port ranges should be invalid");
-        assert!(PortRange::new(3000, 3000).is_err(), "Single port ranges should be invalid");
+        assert!(
+            PortRange::new(3009, 3009).is_err(),
+            "Single port ranges should be invalid"
+        );
+        assert!(
+            PortRange::new(3000, 3000).is_err(),
+            "Single port ranges should be invalid"
+        );
 
         // Minimal valid ranges (2 ports)
         let inside_last = PortRange::new(3009, 3010).unwrap();
@@ -149,11 +183,17 @@ mod tests {
         let max_range = PortRange::new(65534, 65535).unwrap();
         let adjacent_to_max = PortRange::new(65533, 65534).unwrap();
 
-        assert!(max_range.overlaps_with(&adjacent_to_max), "Should detect overlap at port 65534");
+        assert!(
+            max_range.overlaps_with(&adjacent_to_max),
+            "Should detect overlap at port 65534"
+        );
 
         // Test that we handle the boundary correctly
         let before_max = PortRange::new(65532, 65533).unwrap();
-        assert!(!max_range.overlaps_with(&before_max), "Should not overlap 65534-65535 vs 65532-65533");
+        assert!(
+            !max_range.overlaps_with(&before_max),
+            "Should not overlap 65534-65535 vs 65532-65533"
+        );
     }
 
     #[test]

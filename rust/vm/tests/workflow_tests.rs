@@ -80,13 +80,20 @@ fn test_basic_config_workflow() -> Result<()> {
 
     // Skip test if binary doesn't exist
     if !fixture.binary_path.exists() {
-        println!("Skipping test - vm binary not found at {:?}", fixture.binary_path);
+        println!(
+            "Skipping test - vm binary not found at {:?}",
+            fixture.binary_path
+        );
         return Ok(());
     }
 
     // Step 1: Set a basic configuration value
     let output = fixture.run_vm_command(&["config", "set", "vm.memory", "4096"])?;
-    assert!(output.status.success(), "Failed to set config: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "Failed to set config: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     // Verify file was created
     assert!(fixture.file_exists("vm.yaml"));
@@ -121,7 +128,9 @@ fn test_preset_application_workflow() -> Result<()> {
     }
 
     // Step 1: Create a custom preset
-    fixture.create_preset("workflow-test", r#"
+    fixture.create_preset(
+        "workflow-test",
+        r#"
 vm:
   memory: 8192
   cpus: 4
@@ -133,7 +142,8 @@ services:
 npm_packages:
   - eslint
   - prettier
-"#)?;
+"#,
+    )?;
 
     // Step 2: List presets to verify it's available
     let output = fixture.run_vm_command(&["config", "preset", "--list"])?;
@@ -273,7 +283,9 @@ fn test_preset_composition_workflow() -> Result<()> {
     }
 
     // Step 1: Create base preset
-    fixture.create_preset("base-preset", r#"
+    fixture.create_preset(
+        "base-preset",
+        r#"
 vm:
   memory: 2048
   cpus: 2
@@ -282,10 +294,13 @@ services:
     enabled: true
 npm_packages:
   - eslint
-"#)?;
+"#,
+    )?;
 
     // Step 2: Create override preset
-    fixture.create_preset("override-preset", r#"
+    fixture.create_preset(
+        "override-preset",
+        r#"
 vm:
   memory: 4096  # Override memory
   swap: 1024    # Add new field
@@ -296,7 +311,8 @@ npm_packages:
   - prettier      # Replace packages
 ports:
   web: 3000      # Add new section
-"#)?;
+"#,
+    )?;
 
     // Step 3: Apply both presets in sequence
     let output = fixture.run_vm_command(&["config", "preset", "base-preset,override-preset"])?;
@@ -355,7 +371,7 @@ fn test_configuration_error_recovery() -> Result<()> {
     assert_eq!(stdout.trim(), "4096");
 
     // Step 5: Try to unset from non-existent nested path
-    let output = fixture.run_vm_command(&["config", "unset", "nonexistent.path"])?;
+    let _output = fixture.run_vm_command(&["config", "unset", "nonexistent.path"])?;
     // This might succeed or fail depending on implementation, but shouldn't crash
 
     // Step 6: Verify main config is still intact
@@ -376,26 +392,45 @@ fn test_project_type_detection_workflow() -> Result<()> {
         return Ok(());
     }
 
-    // Step 1: Create a Node.js project indicator
-    fixture.create_project_file("package.json", r#"{
+    // Step 1: Create the nodejs preset for testing
+    fixture.create_preset(
+        "nodejs",
+        r#"
+provider: docker
+vm:
+  memory: 2048
+  cpus: 2
+npm_packages:
+  - nodemon
+  - eslint
+environment:
+  NODE_ENV: development
+"#,
+    )?;
+
+    // Step 2: Create a Node.js project indicator
+    fixture.create_project_file(
+        "package.json",
+        r#"{
         "name": "test-project",
         "version": "1.0.0",
         "dependencies": {
             "express": "^4.18.0"
         }
-    }"#)?;
+    }"#,
+    )?;
 
-    // Step 2: List available presets (should include nodejs)
+    // Step 3: List available presets (should include nodejs)
     let output = fixture.run_vm_command(&["config", "preset", "--list"])?;
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout)?;
     assert!(stdout.contains("nodejs"));
 
-    // Step 3: Apply nodejs preset
+    // Step 4: Apply nodejs preset
     let output = fixture.run_vm_command(&["config", "preset", "nodejs"])?;
     assert!(output.status.success());
 
-    // Step 4: Verify nodejs-specific configuration was applied
+    // Step 5: Verify nodejs-specific configuration was applied
     let config_content = fixture.read_file("vm.yaml")?;
     assert!(config_content.contains("npm_packages"));
 

@@ -80,10 +80,12 @@ impl StateManager {
     fn acquire_lock(&self) -> Result<File, StateError> {
         let lock_file = OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .open(&self.lock_file)?;
 
-        lock_file.lock_exclusive()
+        lock_file
+            .lock_exclusive()
             .with_context(|| format!("Failed to acquire lock: {}", self.lock_file.display()))?;
 
         Ok(lock_file)
@@ -102,8 +104,9 @@ impl StateManager {
         let content = fs::read_to_string(&self.state_file)
             .with_context(|| format!("Failed to read state file: {}", self.state_file.display()))?;
 
-        let state: TempVmState = serde_yaml::from_str(&content)
-            .with_context(|| format!("Failed to parse state file: {}", self.state_file.display()))?;
+        let state: TempVmState = serde_yaml::from_str(&content).with_context(|| {
+            format!("Failed to parse state file: {}", self.state_file.display())
+        })?;
 
         self.validate_state(&state)?;
         Ok(state)
@@ -116,12 +119,16 @@ impl StateManager {
         self.validate_state(state)?;
 
         // Create state directory if it doesn't exist
-        fs::create_dir_all(&self.state_dir)
-            .with_context(|| format!("Failed to create state directory: {}", self.state_dir.display()))?;
+        fs::create_dir_all(&self.state_dir).with_context(|| {
+            format!(
+                "Failed to create state directory: {}",
+                self.state_dir.display()
+            )
+        })?;
 
         // Serialize state to YAML
-        let yaml_content = serde_yaml::to_string(state)
-            .with_context(|| "Failed to serialize state to YAML")?;
+        let yaml_content =
+            serde_yaml::to_string(state).with_context(|| "Failed to serialize state to YAML")?;
 
         // Write atomically using a unique temporary file
         let temp_file = tempfile::Builder::new()
@@ -129,13 +136,26 @@ impl StateManager {
             .suffix(".tmp")
             .tempfile_in(&self.state_dir)?;
 
-        temp_file.as_file().write_all(yaml_content.as_bytes())
-            .with_context(|| format!("Failed to write temporary state file: {}", temp_file.path().display()))?;
+        temp_file
+            .as_file()
+            .write_all(yaml_content.as_bytes())
+            .with_context(|| {
+                format!(
+                    "Failed to write temporary state file: {}",
+                    temp_file.path().display()
+                )
+            })?;
 
         // Atomic move to final location
-        temp_file.persist(&self.state_file)
+        temp_file
+            .persist(&self.state_file)
             .map_err(|e| e.error)
-            .with_context(|| format!("Failed to move state file to final location: {}", self.state_file.display()))?;
+            .with_context(|| {
+                format!(
+                    "Failed to move state file to final location: {}",
+                    self.state_file.display()
+                )
+            })?;
 
         Ok(())
     }
@@ -145,8 +165,9 @@ impl StateManager {
         let _lock = self.acquire_lock()?;
 
         if self.state_file.exists() {
-            fs::remove_file(&self.state_file)
-                .with_context(|| format!("Failed to delete state file: {}", self.state_file.display()))?;
+            fs::remove_file(&self.state_file).with_context(|| {
+                format!("Failed to delete state file: {}", self.state_file.display())
+            })?;
         }
         Ok(())
     }
@@ -205,7 +226,10 @@ impl StateManager {
         // Validate project directory exists
         if !state.project_dir.exists() {
             return Err(StateError::ValidationFailed {
-                reason: format!("Project directory does not exist: {}", state.project_dir.display()),
+                reason: format!(
+                    "Project directory does not exist: {}",
+                    state.project_dir.display()
+                ),
             });
         }
 
@@ -219,14 +243,20 @@ impl StateManager {
 
             if !mount.source.is_dir() {
                 return Err(StateError::ValidationFailed {
-                    reason: format!("Mount source is not a directory: {}", mount.source.display()),
+                    reason: format!(
+                        "Mount source is not a directory: {}",
+                        mount.source.display()
+                    ),
                 });
             }
 
             // Security check: prevent mounting dangerous system directories
             if Self::is_dangerous_mount_source(&mount.source) {
                 return Err(StateError::ValidationFailed {
-                    reason: format!("Dangerous mount source not allowed: {}", mount.source.display()),
+                    reason: format!(
+                        "Dangerous mount source not allowed: {}",
+                        mount.source.display()
+                    ),
                 });
             }
         }
@@ -237,17 +267,7 @@ impl StateManager {
     /// Check if a path is dangerous to mount (system directories)
     fn is_dangerous_mount_source(path: &Path) -> bool {
         let dangerous_paths = [
-            "/",
-            "/etc",
-            "/usr",
-            "/var",
-            "/bin",
-            "/sbin",
-            "/boot",
-            "/sys",
-            "/proc",
-            "/dev",
-            "/root",
+            "/", "/etc", "/usr", "/var", "/bin", "/sbin", "/boot", "/sys", "/proc", "/dev", "/root",
         ];
 
         // Check exact matches and if path starts with dangerous paths
@@ -280,11 +300,19 @@ mod tests {
     fn test_dangerous_mount_detection() {
         assert!(StateManager::is_dangerous_mount_source(Path::new("/")));
         assert!(StateManager::is_dangerous_mount_source(Path::new("/etc")));
-        assert!(StateManager::is_dangerous_mount_source(Path::new("/etc/nginx")));
-        assert!(StateManager::is_dangerous_mount_source(Path::new("/usr/bin")));
+        assert!(StateManager::is_dangerous_mount_source(Path::new(
+            "/etc/nginx"
+        )));
+        assert!(StateManager::is_dangerous_mount_source(Path::new(
+            "/usr/bin"
+        )));
 
-        assert!(!StateManager::is_dangerous_mount_source(Path::new("/home/user")));
+        assert!(!StateManager::is_dangerous_mount_source(Path::new(
+            "/home/user"
+        )));
         assert!(!StateManager::is_dangerous_mount_source(Path::new("/tmp")));
-        assert!(!StateManager::is_dangerous_mount_source(Path::new("/workspace")));
+        assert!(!StateManager::is_dangerous_mount_source(Path::new(
+            "/workspace"
+        )));
     }
 }

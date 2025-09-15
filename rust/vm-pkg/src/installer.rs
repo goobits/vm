@@ -20,12 +20,21 @@ fn validate_script_name(filename: &str) -> Result<()> {
 
     // Check for dangerous characters
     if filename.contains("..") || filename.starts_with('.') {
-        anyhow::bail!("Script name cannot contain '..' or start with '.': {}", filename);
+        anyhow::bail!(
+            "Script name cannot contain '..' or start with '.': {}",
+            filename
+        );
     }
 
     // Only allow alphanumeric, dash, underscore
-    if !filename.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
-        anyhow::bail!("Script name can only contain alphanumeric characters, dashes, and underscores: {}", filename);
+    if !filename
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        anyhow::bail!(
+            "Script name can only contain alphanumeric characters, dashes, and underscores: {}",
+            filename
+        );
     }
 
     Ok(())
@@ -43,7 +52,12 @@ impl PackageInstaller {
     }
 
     /// Install a package
-    pub fn install(&self, package: &str, manager: PackageManager, force_registry: bool) -> Result<()> {
+    pub fn install(
+        &self,
+        package: &str,
+        manager: PackageManager,
+        force_registry: bool,
+    ) -> Result<()> {
         // Check if package manager is available
         if !manager.is_available()? {
             anyhow::bail!("Package manager {} is not available", manager);
@@ -58,7 +72,10 @@ impl PackageInstaller {
         }
 
         // Install from registry
-        println!("📦 Installing {} package from registry: {}", manager, package);
+        println!(
+            "📦 Installing {} package from registry: {}",
+            manager, package
+        );
         self.install_from_registry(package, manager)
     }
 
@@ -92,8 +109,7 @@ impl PackageInstaller {
         let cargo_home = format!("/home/{}/.cargo", self.user);
         cmd.env("CARGO_HOME", &cargo_home);
 
-        let status = cmd.status()
-            .context("Failed to execute cargo install")?;
+        let status = cmd.status().context("Failed to execute cargo install")?;
 
         if !status.success() {
             anyhow::bail!("Cargo install failed for linked package: {}", package);
@@ -110,8 +126,7 @@ impl PackageInstaller {
         let cargo_home = format!("/home/{}/.cargo", self.user);
         cmd.env("CARGO_HOME", &cargo_home);
 
-        let status = cmd.status()
-            .context("Failed to execute cargo install")?;
+        let status = cmd.status().context("Failed to execute cargo install")?;
 
         if !status.success() {
             anyhow::bail!("Cargo install failed for package: {}", package);
@@ -135,8 +150,7 @@ impl PackageInstaller {
         let nvm_dir = format!("/home/{}/.nvm", self.user);
         cmd.env("NVM_DIR", &nvm_dir);
 
-        let status = cmd.status()
-            .context("Failed to execute npm link")?;
+        let status = cmd.status().context("Failed to execute npm link")?;
 
         if !status.success() {
             anyhow::bail!("NPM link failed for package: {}", package);
@@ -153,8 +167,7 @@ impl PackageInstaller {
         let nvm_dir = format!("/home/{}/.nvm", self.user);
         cmd.env("NVM_DIR", &nvm_dir);
 
-        let status = cmd.status()
-            .context("Failed to execute npm install")?;
+        let status = cmd.status().context("Failed to execute npm install")?;
 
         if !status.success() {
             anyhow::bail!("NPM install failed for package: {}", package);
@@ -202,7 +215,10 @@ impl PackageInstaller {
             }
             Ok(false) => {
                 // Pipx indicated it's a library, not a CLI tool
-                println!("📚 {} appears to be a library, installing with pip...", package);
+                println!(
+                    "📚 {} appears to be a library, installing with pip...",
+                    package
+                );
             }
             Err(_) => {
                 // Pipx not available or other error, try pip
@@ -213,10 +229,9 @@ impl PackageInstaller {
         // Install with pip
         let pip_exe = Self::find_pip_executable();
         let mut cmd = Command::new(pip_exe);
-        cmd.args(&["install", "--user", "--break-system-packages", package]);
+        cmd.args(["install", "--user", "--break-system-packages", package]);
 
-        let status = cmd.status()
-            .context("Failed to execute pip install")?;
+        let status = cmd.status().context("Failed to execute pip install")?;
 
         if !status.success() {
             anyhow::bail!("Pip install failed for package: {}", package);
@@ -229,11 +244,10 @@ impl PackageInstaller {
     fn install_pip_editable(&self, _package: &str, path: &Path) -> Result<()> {
         let pip_exe = Self::find_pip_executable();
         let mut cmd = Command::new(pip_exe);
-        cmd.args(&["install", "--user", "--break-system-packages", "-e"]);
+        cmd.args(["install", "--user", "--break-system-packages", "-e"]);
         cmd.arg(path);
 
-        let status = cmd.status()
-            .context("Failed to execute pip install")?;
+        let status = cmd.status().context("Failed to execute pip install")?;
 
         if !status.success() {
             anyhow::bail!("Pip editable install failed");
@@ -263,7 +277,8 @@ impl PackageInstaller {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.contains("No apps associated with package")
             || stderr.contains("not a valid package")
-            || stderr.contains("library") {
+            || stderr.contains("library")
+        {
             return Ok(false);
         }
 
@@ -288,13 +303,15 @@ impl PackageInstaller {
             let script_path = entry.path();
 
             if script_path.is_file() {
-                let script_name = script_path.file_name()
+                let script_name = script_path
+                    .file_name()
                     .and_then(|n| n.to_str())
                     .context("Invalid script name")?;
 
                 // Validate script name for security
-                validate_script_name(script_name)
-                    .with_context(|| format!("Invalid script name from pipx environment: {}", script_name))?;
+                validate_script_name(script_name).with_context(|| {
+                    format!("Invalid script name from pipx environment: {}", script_name)
+                })?;
 
                 let wrapper_path = local_bin.join(script_name);
                 self.create_wrapper_script(&wrapper_path, &script_path, path)?;
@@ -308,8 +325,14 @@ impl PackageInstaller {
         Ok(())
     }
 
-    fn create_wrapper_script(&self, wrapper_path: &Path, script_path: &Path, linked_dir: &Path) -> Result<()> {
-        let wrapper_content = format!(r#"#!/bin/sh
+    fn create_wrapper_script(
+        &self,
+        wrapper_path: &Path,
+        script_path: &Path,
+        linked_dir: &Path,
+    ) -> Result<()> {
+        let wrapper_content = format!(
+            r#"#!/bin/sh
 # VM-Tool generated wrapper for linked pipx package
 set -e
 

@@ -7,8 +7,8 @@ use std::io::{BufRead, BufReader};
 pub fn stream_command<A: AsRef<OsStr>>(command: &str, args: &[A]) -> Result<()> {
     let reader = cmd(command, args).stderr_to_stdout().reader()?;
 
-    let mut lines = BufReader::new(reader).lines();
-    while let Some(line) = lines.next() {
+    let lines = BufReader::new(reader).lines();
+    for line in lines {
         println!("{}", line?);
     }
 

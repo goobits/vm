@@ -1,11 +1,11 @@
-use anyhow::{Result, Context, bail};
-use serde_yaml::{Value, Mapping};
-use std::path::PathBuf;
-use std::fs;
 use crate::config::VmConfig;
 use crate::merge::ConfigMerger;
-use crate::preset::PresetDetector;
 use crate::paths;
+use crate::preset::PresetDetector;
+use anyhow::{bail, Context, Result};
+use serde_yaml::{Mapping, Value};
+use std::fs;
+use std::path::PathBuf;
 
 /// Configuration operations for vm config command
 pub struct ConfigOps;
@@ -27,8 +27,8 @@ impl ConfigOps {
         };
 
         // Parse the value - try as YAML first, then as string
-        let parsed_value: Value = serde_yaml::from_str(value)
-            .unwrap_or_else(|_| Value::String(value.to_string()));
+        let parsed_value: Value =
+            serde_yaml::from_str(value).unwrap_or_else(|_| Value::String(value.to_string()));
 
         set_nested_field(&mut yaml_value, field, parsed_value)?;
 
@@ -179,7 +179,10 @@ impl ConfigOps {
         fs::write(&config_path, yaml_str)?;
 
         let scope = if global { "global" } else { "local" };
-        println!("✅ Applied preset(s) {} to {} configuration", preset_names, scope);
+        println!(
+            "✅ Applied preset(s) {} to {} configuration",
+            preset_names, scope
+        );
         Ok(())
     }
 }
@@ -189,7 +192,10 @@ impl ConfigOps {
 fn get_global_config_path() -> PathBuf {
     // Check for test environment override first
     if let Ok(home) = std::env::var("HOME") {
-        return PathBuf::from(home).join(".config").join("vm").join("global.yaml");
+        return PathBuf::from(home)
+            .join(".config")
+            .join("vm")
+            .join("global.yaml");
     }
 
     dirs::config_dir()
@@ -208,8 +214,12 @@ fn get_or_create_global_config_path() -> Result<PathBuf> {
     };
 
     if !config_dir.exists() {
-        fs::create_dir_all(&config_dir)
-            .with_context(|| format!("Failed to create config directory: {}", config_dir.display()))?;
+        fs::create_dir_all(&config_dir).with_context(|| {
+            format!(
+                "Failed to create config directory: {}",
+                config_dir.display()
+            )
+        })?;
     }
 
     Ok(config_dir.join("global.yaml"))
@@ -293,7 +303,8 @@ fn get_nested_field<'a>(value: &'a Value, field: &str) -> Result<&'a Value> {
         match current {
             Value::Mapping(map) => {
                 let key = Value::String(part.to_string());
-                current = map.get(&key)
+                current = map
+                    .get(&key)
                     .ok_or_else(|| anyhow::anyhow!("Field '{}' not found", part))?;
             }
             _ => bail!("Cannot navigate field '{}' on non-object", part),
@@ -347,8 +358,5 @@ pub fn load_global_config() -> Option<VmConfig> {
         return None;
     }
 
-    match VmConfig::from_file(&global_path) {
-        Ok(config) => Some(config),
-        Err(_) => None,
-    }
+    VmConfig::from_file(&global_path).ok()
 }

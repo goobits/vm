@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use vm_config::{config::VmConfig, ConfigOps, init_config_file};
+use vm_config::{config::VmConfig, init_config_file, ConfigOps};
 use vm_provider::get_provider;
 use vm_provider::progress::{confirm_prompt, ProgressReporter, StatusFormatter};
 
@@ -223,13 +223,19 @@ fn main() -> Result<()> {
     // For commands that don't need a provider, handle them first.
     match &args.command {
         Command::Validate => {
-            debug!("Validating configuration: config_file={:?}, no_preset={}", args.config, args.no_preset);
+            debug!(
+                "Validating configuration: config_file={:?}, no_preset={}",
+                args.config, args.no_preset
+            );
             // The `load` function performs validation internally. If it succeeds,
             // the configuration is valid.
             match VmConfig::load(args.config, args.no_preset) {
                 Ok(config) => {
-                    debug!("Configuration validation successful: provider={:?}, project_name={:?}",
-                           config.provider, config.project.as_ref().and_then(|p| p.name.as_ref()));
+                    debug!(
+                        "Configuration validation successful: provider={:?}, project_name={:?}",
+                        config.provider,
+                        config.project.as_ref().and_then(|p| p.name.as_ref())
+                    );
                     println!("✅ Configuration is valid.");
                     return Ok(());
                 }
@@ -259,9 +265,13 @@ fn main() -> Result<()> {
     // Handle dry-run for provider commands
     if args.dry_run {
         match &args.command {
-            Command::Create | Command::Start | Command::Stop |
-            Command::Restart | Command::Destroy | Command::Provision |
-            Command::Kill => {
+            Command::Create
+            | Command::Start
+            | Command::Stop
+            | Command::Restart
+            | Command::Destroy
+            | Command::Provision
+            | Command::Kill => {
                 println!("🔍 DRY RUN MODE - showing what would be executed:");
                 println!("   Command: {:?}", args.command);
                 if let Some(config) = &args.config {
@@ -279,20 +289,23 @@ fn main() -> Result<()> {
 
     // 1. Load configuration
     // The vm-config crate now handles file discovery, preset merging, and validation.
-    debug!("Loading configuration: config_file={:?}, no_preset={}, preset_override={:?}",
-           args.config, args.no_preset, args.preset);
+    debug!(
+        "Loading configuration: config_file={:?}, no_preset={}, preset_override={:?}",
+        args.config, args.no_preset, args.preset
+    );
 
     let config = if let Some(preset) = args.preset {
         debug!("Using preset override: {}", preset);
-        // TODO: Implement load_with_preset in vm-config
-        // For now, use regular load
-        VmConfig::load(args.config, args.no_preset)?
+        VmConfig::load_with_preset(args.config, preset)?
     } else {
         VmConfig::load(args.config, args.no_preset)?
     };
 
-    debug!("Loaded configuration: provider={:?}, project_name={:?}",
-           config.provider, config.project.as_ref().and_then(|p| p.name.as_ref()));
+    debug!(
+        "Loaded configuration: provider={:?}, project_name={:?}",
+        config.provider,
+        config.project.as_ref().and_then(|p| p.name.as_ref())
+    );
 
     // 2. Get the appropriate provider
     let provider = get_provider(config.clone())?;
@@ -304,54 +317,62 @@ fn main() -> Result<()> {
         Command::Create => {
             debug!("Starting VM creation");
             provider.create()
-        },
+        }
         Command::Start => {
             debug!("Starting VM");
             provider.start()
-        },
+        }
         Command::Stop => {
             debug!("Stopping VM");
             provider.stop()
-        },
+        }
         Command::Restart => {
             debug!("Restarting VM");
             provider.restart()
-        },
+        }
         Command::Provision => {
             debug!("Re-running VM provisioning");
             provider.provision()
-        },
+        }
         Command::List => {
             debug!("Listing VMs");
             provider.list()
-        },
+        }
         Command::Kill => {
             debug!("Force killing VM processes");
             provider.kill()
-        },
+        }
         Command::GetSyncDirectory => {
             debug!("Getting sync directory for provider '{}'", provider.name());
             let sync_dir = provider.get_sync_directory()?;
             debug!("Sync directory: '{}'", sync_dir);
             println!("{}", sync_dir);
             Ok(())
-        },
+        }
         Command::Destroy => {
             // Get VM name from config for confirmation prompt
-            let vm_name = config.project
+            let vm_name = config
+                .project
                 .as_ref()
                 .and_then(|p| p.name.as_ref())
                 .map(|s| s.as_str())
                 .unwrap_or("VM");
 
-            debug!("Destroying VM: vm_name='{}', provider='{}'", vm_name, provider.name());
+            debug!(
+                "Destroying VM: vm_name='{}', provider='{}'",
+                vm_name,
+                provider.name()
+            );
 
             // Initialize progress reporter
             let progress = ProgressReporter::new();
 
             // Show confirmation prompt
             progress.phase_header("🗑️", "DESTROY PHASE");
-            let confirmation_msg = format!("├─ ⚠️  Are you sure you want to destroy {}? This will delete all data. (y/N): ", vm_name);
+            let confirmation_msg = format!(
+                "├─ ⚠️  Are you sure you want to destroy {}? This will delete all data. (y/N): ",
+                vm_name
+            );
 
             if confirm_prompt(&confirmation_msg) {
                 debug!("Destroy confirmation: response='yes', proceeding with destruction");
@@ -373,12 +394,17 @@ fn main() -> Result<()> {
         }
         Command::Ssh { path } => {
             let relative_path = path.unwrap_or_else(|| PathBuf::from("."));
-            let workspace_path = config.project.as_ref()
+            let workspace_path = config
+                .project
+                .as_ref()
                 .and_then(|p| p.workspace_path.as_deref())
                 .unwrap_or("/workspace");
 
-            debug!("SSH command: relative_path='{}', workspace_path='{}'",
-                   relative_path.display(), workspace_path);
+            debug!(
+                "SSH command: relative_path='{}', workspace_path='{}'",
+                relative_path.display(),
+                workspace_path
+            );
 
             provider.ssh(&relative_path)
         }
@@ -388,7 +414,9 @@ fn main() -> Result<()> {
             let status_formatter = StatusFormatter::new();
 
             // Get VM name from config
-            let vm_name = config.project.as_ref()
+            let vm_name = config
+                .project
+                .as_ref()
                 .and_then(|p| p.name.as_ref())
                 .map(|s| s.as_str())
                 .unwrap_or("vm-project");
@@ -397,8 +425,13 @@ fn main() -> Result<()> {
             let memory = config.vm.as_ref().and_then(|vm| vm.memory);
             let cpus = config.vm.as_ref().and_then(|vm| vm.cpus);
 
-            debug!("Status check: vm_name='{}', provider='{}', memory={:?}, cpus={:?}",
-                   vm_name, provider.name(), memory, cpus);
+            debug!(
+                "Status check: vm_name='{}', provider='{}', memory={:?}, cpus={:?}",
+                vm_name,
+                provider.name(),
+                memory,
+                cpus
+            );
 
             progress.phase_header("📊", "STATUS CHECK");
             progress.subtask("├─", "Checking VM status...");
@@ -416,7 +449,7 @@ fn main() -> Result<()> {
                         "running", // This could be enhanced to get actual status
                         provider.name(),
                         memory,
-                        cpus
+                        cpus,
                     );
                 }
                 Err(e) => {
@@ -428,56 +461,53 @@ fn main() -> Result<()> {
             result
         }
         Command::Exec { command } => {
-            debug!("Executing command in VM: command={:?}, provider='{}'", command, provider.name());
+            debug!(
+                "Executing command in VM: command={:?}, provider='{}'",
+                command,
+                provider.name()
+            );
             provider.exec(&command)
-        },
+        }
         Command::Logs => {
             debug!("Viewing VM logs: provider='{}'", provider.name());
             provider.logs()
-        },
-        Command::Validate => unreachable!(), // Handled above
+        }
+        Command::Validate => unreachable!(),    // Handled above
         Command::Init { .. } => unreachable!(), // Handled above
         Command::Preset { .. } => unreachable!(), // Handled above
         Command::Config { .. } => unreachable!(), // Handled above
     }
 }
 
-
 // Direct function call handlers for config operations
 
 fn handle_config_command(command: &ConfigSubcommand) -> Result<()> {
     match command {
-        ConfigSubcommand::Set { field, value, global } => {
-            ConfigOps::set(field, value, *global)
-        }
-        ConfigSubcommand::Get { field, global } => {
-            ConfigOps::get(field.as_deref(), *global)
-        }
-        ConfigSubcommand::Unset { field, global } => {
-            ConfigOps::unset(field, *global)
-        }
-        ConfigSubcommand::Clear { global } => {
-            ConfigOps::clear(*global)
-        }
-        ConfigSubcommand::Preset { names, global, list, show } => {
-            match (list, show, names) {
-                (true, _, _) => ConfigOps::preset("", *global, true, None),
-                (_, Some(show_name), _) => ConfigOps::preset("", *global, false, Some(show_name)),
-                (_, _, Some(preset_names)) => ConfigOps::preset(preset_names, *global, false, None),
-                _ => Ok(()),
-            }
-        }
+        ConfigSubcommand::Set {
+            field,
+            value,
+            global,
+        } => ConfigOps::set(field, value, *global),
+        ConfigSubcommand::Get { field, global } => ConfigOps::get(field.as_deref(), *global),
+        ConfigSubcommand::Unset { field, global } => ConfigOps::unset(field, *global),
+        ConfigSubcommand::Clear { global } => ConfigOps::clear(*global),
+        ConfigSubcommand::Preset {
+            names,
+            global,
+            list,
+            show,
+        } => match (list, show, names) {
+            (true, _, _) => ConfigOps::preset("", *global, true, None),
+            (_, Some(show_name), _) => ConfigOps::preset("", *global, false, Some(show_name)),
+            (_, _, Some(preset_names)) => ConfigOps::preset(preset_names, *global, false, None),
+            _ => Ok(()),
+        },
     }
 }
 
 fn handle_preset_command(command: &PresetSubcommand) -> Result<()> {
     match command {
-        PresetSubcommand::List => {
-            ConfigOps::preset("", false, true, None)
-        }
-        PresetSubcommand::Show { name } => {
-            ConfigOps::preset("", false, false, Some(name))
-        }
+        PresetSubcommand::List => ConfigOps::preset("", false, true, None),
+        PresetSubcommand::Show { name } => ConfigOps::preset("", false, false, Some(name)),
     }
 }
-

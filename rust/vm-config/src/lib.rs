@@ -1,19 +1,19 @@
-pub mod config;
-pub mod merge;
-pub mod validate;
 pub mod cli;
-pub mod resources;   // VM resource suggestions
-mod preset;          // Internal only
-mod yaml_ops;
-mod paths;           // Internal only
+pub mod config;
+mod config_ops;
 mod embedded_presets;
-mod config_ops;      // Internal only
+pub mod merge;
+mod paths; // Internal only
+mod preset; // Internal only
+pub mod resources; // VM resource suggestions
+pub mod validate;
+mod yaml_ops; // Internal only
 
 // Re-export commonly needed path utilities
-pub use paths::{resolve_tool_path, get_tool_dir};
+pub use paths::{get_tool_dir, resolve_tool_path};
 
 // Re-export config operations for use by main vm binary
-pub use config_ops::{ConfigOps, load_global_config};
+pub use config_ops::{load_global_config, ConfigOps};
 
 // Re-export CLI functions for direct use
 pub use cli::init_config_file;

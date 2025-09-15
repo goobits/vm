@@ -52,7 +52,10 @@ impl std::str::FromStr for MountPermission {
         match s {
             "ro" => Ok(MountPermission::ReadOnly),
             "rw" => Ok(MountPermission::ReadWrite),
-            _ => Err(anyhow::anyhow!("Invalid permission '{}'. Use 'ro' or 'rw'", s)),
+            _ => Err(anyhow::anyhow!(
+                "Invalid permission '{}'. Use 'ro' or 'rw'",
+                s
+            )),
         }
     }
 }
@@ -152,11 +155,18 @@ impl TempVmState {
 
     /// Get all mount strings for provider use
     pub fn mount_strings(&self) -> Vec<String> {
-        self.mounts.iter().map(|mount| mount.to_mount_string()).collect()
+        self.mounts
+            .iter()
+            .map(|mount| mount.to_mount_string())
+            .collect()
     }
 
     /// Add a new mount to the temp VM
-    pub fn add_mount(&mut self, source: PathBuf, permissions: MountPermission) -> Result<(), MountError> {
+    pub fn add_mount(
+        &mut self,
+        source: PathBuf,
+        permissions: MountPermission,
+    ) -> Result<(), MountError> {
         // Validate the mount source
         Self::validate_mount_source(&source)?;
 
@@ -241,9 +251,11 @@ impl TempVmState {
         source: &Path,
         permissions: MountPermission,
     ) -> Result<(), MountError> {
-        let mount = self.get_mount_mut(source).ok_or_else(|| MountError::MountNotFound {
-            path: source.to_path_buf(),
-        })?;
+        let mount = self
+            .get_mount_mut(source)
+            .ok_or_else(|| MountError::MountNotFound {
+                path: source.to_path_buf(),
+            })?;
 
         mount.permissions = permissions;
         Ok(())
@@ -304,7 +316,10 @@ impl TempVmState {
         let allowed_prefixes = ["/workspace", "/tmp", "/home"];
         let target_str = target.to_string_lossy();
 
-        if !allowed_prefixes.iter().any(|prefix| target_str.starts_with(prefix)) {
+        if !allowed_prefixes
+            .iter()
+            .any(|prefix| target_str.starts_with(prefix))
+        {
             return Err(MountError::InvalidTarget {
                 path: target.to_path_buf(),
             });
@@ -316,17 +331,7 @@ impl TempVmState {
     /// Check if a path is dangerous to mount (system directories)
     fn is_dangerous_mount_path(path: &Path) -> bool {
         let dangerous_paths = [
-            "/",
-            "/etc",
-            "/usr",
-            "/var",
-            "/bin",
-            "/sbin",
-            "/boot",
-            "/sys",
-            "/proc",
-            "/dev",
-            "/root",
+            "/", "/etc", "/usr", "/var", "/bin", "/sbin", "/boot", "/sys", "/proc", "/dev", "/root",
         ];
 
         // Check exact matches and if path starts with dangerous paths
@@ -353,12 +358,18 @@ mod tests {
     fn test_dangerous_path_detection() {
         assert!(TempVmState::is_dangerous_mount_path(Path::new("/")));
         assert!(TempVmState::is_dangerous_mount_path(Path::new("/etc")));
-        assert!(TempVmState::is_dangerous_mount_path(Path::new("/etc/nginx")));
+        assert!(TempVmState::is_dangerous_mount_path(Path::new(
+            "/etc/nginx"
+        )));
         assert!(TempVmState::is_dangerous_mount_path(Path::new("/usr/bin")));
 
-        assert!(!TempVmState::is_dangerous_mount_path(Path::new("/home/user")));
+        assert!(!TempVmState::is_dangerous_mount_path(Path::new(
+            "/home/user"
+        )));
         assert!(!TempVmState::is_dangerous_mount_path(Path::new("/tmp")));
-        assert!(!TempVmState::is_dangerous_mount_path(Path::new("/workspace")));
+        assert!(!TempVmState::is_dangerous_mount_path(Path::new(
+            "/workspace"
+        )));
     }
 
     #[test]

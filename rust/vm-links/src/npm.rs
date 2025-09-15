@@ -37,9 +37,7 @@ pub fn detect_npm_packages(packages: &[String]) -> Result<Vec<(String, String)>>
 }
 
 fn get_npm_root() -> Result<PathBuf> {
-    let output = Command::new("npm")
-        .args(&["root", "-g"])
-        .output()?;
+    let output = Command::new("npm").args(["root", "-g"]).output()?;
 
     if !output.status.success() {
         anyhow::bail!("Failed to get npm root directory");
@@ -60,7 +58,10 @@ fn get_nvm_versions_dir() -> Option<PathBuf> {
     }
 }
 
-fn check_npm_directory(npm_root: &Path, package_set: &HashSet<&String>) -> Result<Vec<(String, String)>> {
+fn check_npm_directory(
+    npm_root: &Path,
+    package_set: &HashSet<&String>,
+) -> Result<Vec<(String, String)>> {
     let mut results = Vec::new();
 
     if !npm_root.exists() {
@@ -68,7 +69,8 @@ fn check_npm_directory(npm_root: &Path, package_set: &HashSet<&String>) -> Resul
     }
 
     // Use parallel iteration over packages for performance
-    let detections: Vec<_> = package_set.par_iter()
+    let detections: Vec<_> = package_set
+        .par_iter()
         .filter_map(|package| {
             let link_path = npm_root.join(package);
             if link_path.is_symlink() {
@@ -83,7 +85,10 @@ fn check_npm_directory(npm_root: &Path, package_set: &HashSet<&String>) -> Resul
                     // Canonicalize to resolve all symbolic links and relative components
                     if let Ok(canonical_path) = absolute_target.canonicalize() {
                         if canonical_path.exists() {
-                            return Some(((*package).clone(), canonical_path.to_string_lossy().to_string()));
+                            return Some((
+                                (*package).clone(),
+                                canonical_path.to_string_lossy().to_string(),
+                            ));
                         }
                     }
                 }
@@ -126,35 +131,38 @@ fn check_nvm_directories(
         .collect();
 
     // Check each version directory in parallel
-    let detections: Vec<_> = version_dirs.par_iter()
+    let detections: Vec<_> = version_dirs
+        .par_iter()
         .flat_map(|node_modules| {
-            package_set.par_iter()
-                .filter_map(|package| {
-                    // Skip if we already found this package
-                    if already_found.contains(*package) {
-                        return None;
-                    }
+            package_set.par_iter().filter_map(|package| {
+                // Skip if we already found this package
+                if already_found.contains(*package) {
+                    return None;
+                }
 
-                    let link_path = node_modules.join(package);
-                    if link_path.is_symlink() {
-                        if let Ok(target_path) = std::fs::read_link(&link_path) {
-                            // Convert to absolute path if relative
-                            let absolute_target = if target_path.is_absolute() {
-                                target_path
-                            } else {
-                                node_modules.join(target_path)
-                            };
+                let link_path = node_modules.join(package);
+                if link_path.is_symlink() {
+                    if let Ok(target_path) = std::fs::read_link(&link_path) {
+                        // Convert to absolute path if relative
+                        let absolute_target = if target_path.is_absolute() {
+                            target_path
+                        } else {
+                            node_modules.join(target_path)
+                        };
 
-                            // Canonicalize to resolve all symbolic links and relative components
-                            if let Ok(canonical_path) = absolute_target.canonicalize() {
-                                if canonical_path.exists() {
-                                    return Some(((*package).clone(), canonical_path.to_string_lossy().to_string()));
-                                }
+                        // Canonicalize to resolve all symbolic links and relative components
+                        if let Ok(canonical_path) = absolute_target.canonicalize() {
+                            if canonical_path.exists() {
+                                return Some((
+                                    (*package).clone(),
+                                    canonical_path.to_string_lossy().to_string(),
+                                ));
                             }
                         }
                     }
-                    None
-                })
+                }
+                None
+            })
         })
         .collect();
 
