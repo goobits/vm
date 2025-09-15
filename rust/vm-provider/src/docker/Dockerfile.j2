@@ -96,9 +96,9 @@ USER root
 RUN mkdir -p /app/shared/ansible /app/shared/services /app/shared/templates /app/shared/settings
 COPY shared /app/shared
 RUN chown -R ${PROJECT_UID}:${PROJECT_GID} /app
-USER ${PROJECT_USER}
 
 # --- Finalization ---
-RUN mkdir -p /workspace
+RUN mkdir -p /workspace && chown ${PROJECT_UID}:${PROJECT_GID} /workspace
+USER ${PROJECT_USER}
 WORKDIR /workspace
 CMD ["tail", "-f", "/dev/null"]

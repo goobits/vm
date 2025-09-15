@@ -190,6 +190,7 @@ enum Command {
         container: Option<String>,
     },
     /// Get workspace directory
+    #[command(hide = true)]
     GetSyncDirectory,
     /// Preset operations
     Preset {
