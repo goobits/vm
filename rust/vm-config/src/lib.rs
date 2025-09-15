@@ -1,9 +1,12 @@
 pub mod config;
 pub mod merge;
-pub mod preset;
 pub mod validate;
 pub mod cli;
-pub mod yaml_ops;
-pub mod paths;
-pub mod embedded_presets;
-pub mod config_ops;
+mod preset;          // Internal only
+mod yaml_ops;
+mod paths;           // Internal only
+mod embedded_presets;
+mod config_ops;      // Internal only
+
+// Re-export commonly needed path utilities
+pub use paths::resolve_tool_path;

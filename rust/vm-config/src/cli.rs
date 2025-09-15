@@ -304,6 +304,42 @@ pub enum Command {
         #[arg(long)]
         no_preset: bool,
     },
+
+    /// Set a configuration value
+    Set {
+        /// Field path (e.g., "vm.memory" or "services.docker.enabled")
+        field: String,
+        /// Value to set
+        value: String,
+        /// Apply to global config (~/.config/vm/global.yaml)
+        #[arg(long)]
+        global: bool,
+    },
+
+    /// Get configuration value(s)
+    Get {
+        /// Field path (omit to show all configuration)
+        field: Option<String>,
+        /// Read from global config
+        #[arg(long)]
+        global: bool,
+    },
+
+    /// Remove a configuration field
+    Unset {
+        /// Field path to remove
+        field: String,
+        /// Remove from global config
+        #[arg(long)]
+        global: bool,
+    },
+
+    /// Clear all configuration
+    Clear {
+        /// Clear global config
+        #[arg(long)]
+        global: bool,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -667,6 +703,22 @@ pub fn execute(args: Args) -> Result<()> {
             let merged = load_and_merge_config(file, no_preset)?;
             let value = serde_yaml::to_value(&merged)?;
             output_shell_exports(&value)?;
+        }
+
+        Command::Set { field, value, global } => {
+            crate::config_ops::ConfigOps::set(&field, &value, global)?;
+        }
+
+        Command::Get { field, global } => {
+            crate::config_ops::ConfigOps::get(field.as_deref(), global)?;
+        }
+
+        Command::Unset { field, global } => {
+            crate::config_ops::ConfigOps::unset(&field, global)?;
+        }
+
+        Command::Clear { global } => {
+            crate::config_ops::ConfigOps::clear(global)?;
         }
     }
 
