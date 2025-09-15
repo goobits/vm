@@ -446,7 +446,11 @@ impl std::str::FromStr for OutputFormat {
 }
 
 /// Initialize a new vm.yaml configuration file
-pub fn init_config_file(file_path: Option<PathBuf>, services: Option<String>, ports: Option<u16>) -> Result<()> {
+pub fn init_config_file(
+    file_path: Option<PathBuf>,
+    services: Option<String>,
+    ports: Option<u16>,
+) -> Result<()> {
     use regex::Regex;
 
     // Determine target path
@@ -516,7 +520,9 @@ pub fn init_config_file(file_path: Option<PathBuf>, services: Option<String>, po
             // Register this range
             if let Ok(range) = vm_ports::PortRange::parse(&range_str) {
                 let mut registry = vm_ports::PortRegistry::load().unwrap_or_default();
-                if let Err(e) = registry.register(sanitized_name, &range, &current_dir.to_string_lossy()) {
+                if let Err(e) =
+                    registry.register(sanitized_name, &range, &current_dir.to_string_lossy())
+                {
                     println!("⚠️  Failed to register port range: {}", e);
                 }
             }
@@ -536,7 +542,8 @@ pub fn init_config_file(file_path: Option<PathBuf>, services: Option<String>, po
 
         for service in service_list {
             // Load service config
-            let service_path = crate::paths::resolve_tool_path(format!("configs/services/{}.yaml", service));
+            let service_path =
+                crate::paths::resolve_tool_path(format!("configs/services/{}.yaml", service));
             if !service_path.exists() {
                 eprintln!("❌ Unknown service: {}", service);
                 eprintln!("💡 Available services: postgresql, redis, mongodb, docker");
@@ -928,7 +935,11 @@ pub fn execute(args: Args) -> Result<()> {
             crate::config_ops::ConfigOps::clear(global)?;
         }
 
-        Command::Init { file, services, ports } => {
+        Command::Init {
+            file,
+            services,
+            ports,
+        } => {
             init_config_file(file, services, ports)?;
         }
     }

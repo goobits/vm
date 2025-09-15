@@ -86,7 +86,9 @@ mod tests {
         assert!(ToolDetector::has_command("ls") || ToolDetector::has_command("dir"));
 
         // Test with a command that definitely doesn't exist
-        assert!(!ToolDetector::has_command("definitely_does_not_exist_command_12345"));
+        assert!(!ToolDetector::has_command(
+            "definitely_does_not_exist_command_12345"
+        ));
     }
 
     #[test]

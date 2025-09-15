@@ -52,12 +52,19 @@ fn detect_preset_by_structure(project_dir: &Path) -> Option<String> {
     }
 
     // Kubernetes structure detection
-    if has_any_dir(project_dir, &["k8s", "kubernetes", "helm", "charts", ".k8s"]) {
+    if has_any_dir(
+        project_dir,
+        &["k8s", "kubernetes", "helm", "charts", ".k8s"],
+    ) {
         return Some("kubernetes".to_string());
     }
 
     // Additional file pattern checks
-    let k8s_patterns = ["**/kustomization.yaml", "**/deployment.yaml", "**/service.yaml"];
+    let k8s_patterns = [
+        "**/kustomization.yaml",
+        "**/deployment.yaml",
+        "**/service.yaml",
+    ];
     for pattern in &k8s_patterns {
         let full_pattern = project_dir.join(pattern).to_string_lossy().to_string();
         if let Ok(paths) = glob(&full_pattern) {
@@ -148,10 +155,7 @@ mod tests {
     fn test_react_preset_detection() {
         let fixture = PresetTestFixture::new().unwrap();
         fixture
-            .create_file(
-                "package.json",
-                r#"{"dependencies": {"react": "^18.0.0"}}"#,
-            )
+            .create_file("package.json", r#"{"dependencies": {"react": "^18.0.0"}}"#)
             .unwrap();
 
         let preset = detect_preset_for_project(fixture.path());
@@ -180,10 +184,7 @@ mod tests {
     fn test_multi_tech_detection() {
         let fixture = PresetTestFixture::new().unwrap();
         fixture
-            .create_file(
-                "package.json",
-                r#"{"dependencies": {"react": "^18.0.0"}}"#,
-            )
+            .create_file("package.json", r#"{"dependencies": {"react": "^18.0.0"}}"#)
             .unwrap();
         fixture.create_file("Dockerfile", "FROM node:18").unwrap();
 

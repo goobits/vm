@@ -42,7 +42,6 @@ impl PresetDetector {
         Ok(detect_preset_for_project(&self.project_dir))
     }
 
-
     /// Load a preset configuration by name
     pub fn load_preset(&self, name: &str) -> Result<VmConfig> {
         // Try embedded presets first
@@ -99,7 +98,6 @@ impl PresetDetector {
         Ok(presets)
     }
 }
-
 
 #[cfg(test)]
 mod tests {

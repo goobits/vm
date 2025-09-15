@@ -1,15 +1,19 @@
-use std::path::{Path, PathBuf};
 use crate::platform::portable_readlink;
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
+use std::path::{Path, PathBuf};
 
 /// Checks for dangerous shell metacharacters in a string.
 pub fn check_dangerous_characters(input_string: &str, context: &str) -> Result<()> {
     // List of dangerous characters
     let dangerous_chars = [
-        ';', '`', '$', '"', '|', '&', '>', '<', '(', ')', '{', '}', '*', '?', '[', ']', '~', '@', '#', '%',
+        ';', '`', '$', '"', '|', '&', '>', '<', '(', ')', '{', '}', '*', '?', '[', ']', '~', '@',
+        '#', '%',
     ];
     if input_string.chars().any(|c| dangerous_chars.contains(&c)) {
-        return Err(anyhow!("{} contains potentially dangerous characters", context));
+        return Err(anyhow!(
+            "{} contains potentially dangerous characters",
+            context
+        ));
     }
 
     // Check for dangerous control characters
@@ -31,21 +35,30 @@ pub fn resolve_path_secure(input_path: &Path, must_exist: bool) -> Result<PathBu
     let resolved_path = if must_exist {
         portable_readlink(input_path)?
     } else {
-        let parent_dir = input_path.parent().ok_or_else(|| anyhow!("Cannot get parent directory of {:?}", input_path))?;
-        let filename = input_path.file_name().ok_or_else(|| anyhow!("Cannot get filename of {:?}", input_path))?;
+        let parent_dir = input_path
+            .parent()
+            .ok_or_else(|| anyhow!("Cannot get parent directory of {:?}", input_path))?;
+        let filename = input_path
+            .file_name()
+            .ok_or_else(|| anyhow!("Cannot get filename of {:?}", input_path))?;
         let resolved_parent = portable_readlink(parent_dir)?;
         resolved_parent.join(filename)
     };
 
     if resolved_path.to_str().unwrap_or("").contains("..") {
-        return Err(anyhow!("Resolved path contains parent directory references"));
+        return Err(anyhow!(
+            "Resolved path contains parent directory references"
+        ));
     }
 
     Ok(resolved_path)
 }
 
 /// Checks if a path is within a set of allowed safe directories.
-pub fn is_path_in_safe_locations(check_path: &Path, additional_safe_paths: Option<&[&str]>) -> Result<()> {
+pub fn is_path_in_safe_locations(
+    check_path: &Path,
+    additional_safe_paths: Option<&[&str]>,
+) -> Result<()> {
     let resolved_path = resolve_path_secure(check_path, true)?;
 
     let mut safe_path_prefixes: Vec<String> = vec![
@@ -70,14 +83,16 @@ pub fn is_path_in_safe_locations(check_path: &Path, additional_safe_paths: Optio
         safe_path_prefixes.extend(additional_paths.iter().map(|s| s.to_string()));
     }
 
-    let is_safe = safe_path_prefixes.iter().any(|safe_prefix| {
-        resolved_path.starts_with(safe_prefix)
-    });
+    let is_safe = safe_path_prefixes
+        .iter()
+        .any(|safe_prefix| resolved_path.starts_with(safe_prefix));
 
     if is_safe {
         Ok(())
     } else {
-        Err(anyhow!("Path '{:?}' is not in allowed safe locations", resolved_path))
+        Err(anyhow!(
+            "Path '{:?}' is not in allowed safe locations",
+            resolved_path
+        ))
     }
 }
-

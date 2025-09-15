@@ -21,7 +21,9 @@ fn detect_linux_distro() -> Result<String> {
             return Ok(id.trim_matches('"').to_lowercase());
         }
     }
-    Err(anyhow::anyhow!("Could not determine Linux distribution from /etc/os-release"))
+    Err(anyhow::anyhow!(
+        "Could not determine Linux distribution from /etc/os-release"
+    ))
 }
 
 #[cfg(test)]
@@ -34,10 +36,13 @@ mod tests {
         // Should return a non-empty string
         assert!(!os.is_empty());
         // Should be one of the known OS types or "unknown"
-        assert!(matches!(
-            os.as_str(),
-            "macos" | "windows" | "linux" | "ubuntu" | "fedora" | "debian" | "arch" | "unknown"
-        ) || os.starts_with("linux") || !os.is_empty());
+        assert!(
+            matches!(
+                os.as_str(),
+                "macos" | "windows" | "linux" | "ubuntu" | "fedora" | "debian" | "arch" | "unknown"
+            ) || os.starts_with("linux")
+                || !os.is_empty()
+        );
     }
 
     #[cfg(target_os = "linux")]

@@ -5,12 +5,12 @@ use std::path::Path;
 use vm_common::file_system::*;
 
 pub mod os;
-pub mod tools;
 pub mod presets;
+pub mod tools;
 
 pub use os::*;
-pub use tools::*;
 pub use presets::*;
+pub use tools::*;
 
 /// Check if a path is a Python project (has setup.py, pyproject.toml, etc.)
 pub fn is_python_project(dir: &Path) -> bool {

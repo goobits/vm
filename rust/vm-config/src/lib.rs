@@ -10,7 +10,7 @@ pub mod validate;
 mod yaml_ops; // Internal only
 
 // Re-export commonly needed path utilities
-pub use paths::{get_tool_dir, resolve_tool_path, get_current_uid, get_current_gid};
+pub use paths::{get_current_gid, get_current_uid, get_tool_dir, resolve_tool_path};
 
 // Re-export config operations for use by main vm binary
 pub use config_ops::{load_global_config, ConfigOps};

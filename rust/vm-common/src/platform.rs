@@ -1,6 +1,6 @@
+use anyhow::{Context, Result};
 use std::env;
 use std::path::{Path, PathBuf};
-use anyhow::{Context, Result};
 
 /// A cross-platform equivalent of `readlink -f`.
 pub fn portable_readlink(path: &Path) -> Result<PathBuf> {
@@ -12,11 +12,15 @@ pub fn portable_readlink(path: &Path) -> Result<PathBuf> {
 
 /// A cross-platform equivalent of `realpath --relative-to`.
 pub fn portable_relative_path(base: &Path, target: &Path) -> Result<PathBuf> {
-    let relative_path = pathdiff::diff_paths(target, base)
-        .ok_or_else(|| anyhow::anyhow!("Failed to calculate relative path from {:?} to {:?}", base, target))?;
+    let relative_path = pathdiff::diff_paths(target, base).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Failed to calculate relative path from {:?} to {:?}",
+            base,
+            target
+        )
+    })?;
     Ok(relative_path)
 }
-
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Os {
@@ -53,8 +57,8 @@ pub fn get_platform_info() -> Platform {
     Platform { os, arch }
 }
 
-impl ToString for Platform {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for Platform {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let os_str = match self.os {
             Os::Linux => "linux",
             Os::MacOs => "darwin", // Keep consistency with shell script output 'darwin' for macOS
@@ -65,6 +69,6 @@ impl ToString for Platform {
             Arch::Arm64 => "arm64",
             Arch::Unsupported => "unsupported_arch",
         };
-        format!("{}_{}", os_str, arch_str)
+        write!(f, "{}_{}", os_str, arch_str)
     }
 }
