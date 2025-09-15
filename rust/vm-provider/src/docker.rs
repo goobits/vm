@@ -252,12 +252,10 @@ impl Provider for DockerProvider {
             .and_then(|t| t.shell.as_deref())
             .unwrap_or("zsh");
 
-        // Calculate target directory
-        let target_dir = if relative_path.as_os_str().is_empty() || relative_path == Path::new(".") {
-            workspace_path.to_string()
-        } else {
-            format!("{}/{}", workspace_path, relative_path.display())
-        };
+        // Validate and calculate target directory (prevent path traversal)
+        let target_path = SecurityValidator::validate_relative_path(relative_path, workspace_path)
+            .context("Invalid path for SSH operation")?;
+        let target_dir = target_path.to_string_lossy().to_string();
 
         // Run interactive shell with proper working directory
         let status = duct::cmd(
