@@ -14,7 +14,7 @@ cd vm
 ./install.sh  # Install the tool locally
 
 # 3. Run tests to ensure everything works
-./run-tests.sh
+cd rust && cargo test
 
 # 4. Make your changes
 # 5. Test your changes
@@ -25,27 +25,25 @@ cd vm
 
 ### Testing Your Changes
 ```bash
-# Run all tests
-./run-tests.sh
+# Run Rust tests
+cd rust && cargo test
 
-# Run specific test suites
-./run-tests.sh --suite minimal
-./run-tests.sh --suite framework
-./run-tests.sh --suite services
+# Run with verbose output
+cd rust && cargo test -- --nocapture
 
-# Run individual test categories
-./test/unit/config-validation.test.sh
-./test/integration/preset-system.test.sh
-./test/system/vm-lifecycle.test.sh
-
-# Enable verbose testing
-VERBOSE=true ./run-tests.sh
+# Test specific modules
+cd rust && cargo test vm_config
+cd rust && cargo test vm_provider
 ```
 
 ### Code Style
 ```bash
 # Shell script formatting (if shellcheck is available)
-shellcheck vm.sh shared/*.sh providers/*/*.sh
+# Check Rust code formatting
+cd rust && cargo fmt --check
+
+# Run Rust linting
+cd rust && cargo clippy
 
 # YAML validation (if yamllint is available)
 yamllint configs/*.yaml test/configs/*.yaml
@@ -60,7 +58,7 @@ yamllint configs/*.yaml test/configs/*.yaml
 
 ```
 .
-├── vm.sh                           # Main entry point
+├── vm                              # Main entry point (wrapper for Rust binary)
 ├── shared/                         # Shared utilities
 │   ├── config-processor.sh         # Configuration handling
 │   ├── project-detector.sh         # Framework detection
@@ -227,12 +225,12 @@ cp target/release/vm-config ../bin/
 
 ### Benchmarking
 ```bash
-# Profile shell script performance
-time ./vm.sh create
+# Profile Rust binary performance
+time ./vm create
 
-# Profile individual components
-time ./shared/config-processor.sh process vm.yaml
-time ./shared/project-detector.sh detect
+# Profile Rust binary components (if individual binaries exist)
+time ./rust/target/release/vm-config process vm.yaml
+time ./rust/target/release/vm create --dry-run
 
 # Compare before/after performance
 hyperfine 'old_command' 'new_command'  # If hyperfine is available
@@ -277,17 +275,16 @@ hyperfine 'old_command' 'new_command'  # If hyperfine is available
 ### Understanding the Codebase
 ```bash
 # Start with main entry point
-less vm.sh
+less vm  # Wrapper script
 
-# Understand configuration processing
+# Understand the Rust implementation
+less rust/src/main.rs
+less rust/vm-config/src/lib.rs
+less rust/vm-provider/src/lib.rs
+
+# Legacy shell scripts (being migrated)
 less shared/config-processor.sh
-
-# See how providers work
 less providers/docker/provider.sh
-less providers/vagrant/provider.sh
-
-# Look at test examples
-less test/unit/preset-detection.test.sh
 ```
 
 ### Shell Scripting Best Practices

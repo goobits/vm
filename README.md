@@ -12,16 +12,23 @@ Smart development environments that auto-configure based on your project type
 ## 🚀 Quick Start
 
 ```bash
-# Install from npm
-npm install -g @goobits/vm
+# 1. Clone the repository
+git clone https://github.com/goobits/vm.git
+cd vm
 
-# Or install from source
-git clone https://github.com/goobits/vm.git && cd vm && ./install.sh
+# 2. Run the installer
+# This command compiles and runs the installer, which places the `vm`
+# binary in ~/.local/bin.
+cargo run --package vm-installer
 
-# Create environment (auto-detects your project)
+# 3. Configure your shell
+# Restart your shell or source your profile to add `vm` to your PATH.
+# e.g., source ~/.zshrc
+
+# 4. Create an environment (auto-detects your project)
 vm create
 
-# Enter your development environment
+# 5. Enter your development environment
 vm ssh
 ```
 

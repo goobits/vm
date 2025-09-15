@@ -3,8 +3,8 @@
 ## Overview
 
 The VM tool test suite has been migrated from shell scripts to Rust. The previous shell test suite (2,773 lines) was removed because:
-- Missing dependencies (docker-utils.sh was removed in commit 7640f9e)
-- Broken function references (check_docker_access, detect_project_type never existed)
+- Shell-based testing system has been migrated to Rust
+- Legacy shell functions had broken dependencies and references
 - Superseded by comprehensive Rust tests
 
 ## Current Test Coverage

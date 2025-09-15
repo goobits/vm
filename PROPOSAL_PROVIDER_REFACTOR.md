@@ -1,5 +1,9 @@
 # Comprehensive Provider Refactor Proposal
 
+**STATUS: SUPERSEDED** - This proposal has been superseded by the migration to Rust. The shell-based provider system described here has been replaced with a Rust implementation in the `rust/vm-provider/` crate.
+
+---
+
 ## Current State Analysis
 
 ### Existing Structure

@@ -68,19 +68,21 @@ test/
 
 ### Main Test Runner
 
-The main test runner (`./run-tests.sh`) still provides comprehensive testing:
+The main testing is now done via Rust's built-in test framework:
 
 ```bash
-# Run all test suites
-./run-tests.sh
+# Run all Rust tests
+cd rust && cargo test
 
-# Run specific test suite
-./run-tests.sh --suite framework     # Framework validation tests
-./run-tests.sh --suite minimal       # Minimal VM functionality
-./run-tests.sh --suite services      # Service integration tests
-./run-tests.sh --suite languages     # Language support tests
-./run-tests.sh --suite cli           # CLI command tests
-./run-tests.sh --suite lifecycle     # Calls system/vm-lifecycle.test.sh
+# Run tests with output
+cd rust && cargo test -- --nocapture
+
+# Run specific test modules
+cd rust && cargo test vm_config
+cd rust && cargo test vm_provider
+
+# Legacy shell tests (if they still exist)
+# Note: Most shell-based tests have been migrated to Rust
 ```
 
 ### Individual Test Categories
@@ -184,12 +186,12 @@ The previous test structure has been reorganized:
 
 ### Running Reorganized Tests
 
-The main `run-tests.sh` runner has been updated to work with the new structure:
+**Note**: The shell-based test runner has been replaced with Rust's cargo test:
 
-- Framework detection is now separated into unit tests
-- VM lifecycle tests are properly categorized as system tests
-- Integration tests focus on component interaction
-- All existing test functionality is preserved
+- Framework detection is now tested in Rust unit tests
+- VM lifecycle tests are implemented as Rust integration tests
+- Component interaction is tested via Rust integration tests
+- Test functionality has been migrated from shell scripts to Rust
 
 ## Test Development Guidelines
 

@@ -1,5 +1,7 @@
 # VM Temp Enhancements TODO
 
+**STATUS: ARCHIVED** - These enhancements have been implemented in the Rust migration. The shell-based vm-temp functionality described here has been replaced with `rust/vm-temp/`.
+
 ## ✅ All Major Issues Resolved!
 
 ### ✅ COMPLETED: Destructive Operations Without Confirmation  

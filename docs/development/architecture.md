@@ -26,17 +26,18 @@ Understanding the VM development environment's architecture and design principle
 
 ## 📁 Core Components
 
-### 1. Main Entry Point (`vm.sh`)
+### 1. Main Entry Point (`vm` wrapper → Rust binary)
 **Purpose**: CLI interface and command routing
-- Parses command-line arguments
-- Routes commands to appropriate handlers
-- Manages global configuration and logging
-- Coordinates between components
+- Wrapper script delegates to compiled Rust binary (`rust/target/release/vm`)
+- Rust binary handles argument parsing and command routing
+- Manages configuration loading and validation
+- Coordinates provider operations
 
-**Key Functions**:
-- `load_config()` - Configuration loading and merging
-- `main()` - Command routing logic
-- Provider delegation for VM operations
+**Key Components**:
+- `vm` - Shell wrapper script
+- `rust/src/main.rs` - Main Rust entry point
+- `rust/vm-config/` - Configuration handling
+- `rust/vm-provider/` - Provider abstraction
 
 ### 2. Configuration System (`shared/config-processor.sh`)
 **Purpose**: YAML processing, validation, and preset application
@@ -113,17 +114,17 @@ provider_logs()     # View logs
 
 ### VM Creation Flow
 ```
-1. CLI Parsing (vm.sh)
+1. CLI Parsing (Rust binary via vm wrapper)
    └─ Command: "vm create"
 
-2. Configuration Loading (config-processor.sh)
+2. Configuration Loading (Rust vm-config crate)
    ├─ Load user config (vm.yaml)
-   ├─ Detect project type (project-detector.sh)
+   ├─ Detect project type (Rust project detection)
    ├─ Apply presets based on detection
    ├─ Merge with defaults
    └─ Validate final configuration
 
-3. Provider Selection (provider-interface.sh)
+3. Provider Selection (Rust vm-provider crate)
    ├─ Check provider availability
    ├─ Select best provider for config
    └─ Delegate to provider implementation
@@ -135,13 +136,13 @@ provider_logs()     # View logs
    ├─ Install services and dependencies
    └─ Return connection information
 
-5. Post-Creation (vm.sh)
+5. Post-Creation (Rust binary)
    └─ Display connection information and next steps
 ```
 
 ### Preset Application Flow
 ```
-1. Project Scanning (project-detector.sh)
+1. Project Scanning (Rust project detection)
    ├─ Scan for package.json (Node.js indicators)
    ├─ Scan for requirements.txt (Python indicators)
    ├─ Scan for Gemfile (Ruby indicators)
@@ -149,7 +150,7 @@ provider_logs()     # View logs
    ├─ Scan for Dockerfile (Docker indicators)
    └─ Return detected preset list
 
-2. Preset Loading (config-processor.sh)
+2. Preset Loading (Rust vm-config crate)
    ├─ Load preset YAML files
    ├─ Apply presets in priority order
    ├─ Merge with user configuration
