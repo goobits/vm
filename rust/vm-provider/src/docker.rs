@@ -9,6 +9,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tera::{Tera, Context as TeraContext};
 use vm_config::config::VmConfig;
+use vm_temp::{TempVmState, TempProvider};
 
 const DOCKER_COMPOSE_TEMPLATE: &str = include_str!("docker/template.yml");
 const DOCKERFILE_TEMPLATE: &str = include_str!("../../../providers/docker/Dockerfile");
@@ -34,6 +35,18 @@ impl DockerProvider {
             _project_dir: project_dir,
             temp_dir,
         })
+    }
+
+    fn check_daemon_is_running(&self) -> Result<()> {
+        let status = std::process::Command::new("docker").arg("info").output();
+        if let Ok(output) = status {
+            if output.status.success() {
+                return Ok(());
+            }
+        }
+        Err(ProviderError::DependencyNotFound(
+            "Docker daemon is not running. Please start Docker Desktop or the Docker service.".to_string()
+        ).into())
     }
 
     fn project_name(&self) -> &str {
@@ -83,6 +96,7 @@ impl Provider for DockerProvider {
     }
 
     fn create(&self) -> Result<()> {
+        self.check_daemon_is_running()?;
         let progress = ProgressReporter::new();
         let main_phase = progress.start_phase("Creating Docker Environment");
 
@@ -402,5 +416,169 @@ impl Provider for DockerProvider {
             .and_then(|p| p.workspace_path.as_deref())
             .unwrap_or("/workspace");
         Ok(workspace_path.to_string())
+    }
+
+    fn as_temp_provider(&self) -> Option<&dyn TempProvider> {
+        Some(self)
+    }
+}
+
+impl TempProvider for DockerProvider {
+    fn update_mounts(&self, state: &TempVmState) -> Result<()> {
+        let progress = ProgressReporter::new();
+        let main_phase = progress.start_phase("Updating container mounts");
+
+        progress.task(&main_phase, "Checking container status...");
+
+        // Check if container is running first
+        let is_running = self.is_container_running(&state.container_name)
+            .context("Failed to check container status")?;
+
+        if is_running {
+            progress.task(&main_phase, "Stopping container...");
+            // Stop the container if it's running
+            stream_command("docker", &["stop", &state.container_name])
+                .context("Failed to stop container")?;
+        }
+
+        progress.task(&main_phase, "Recreating container with new mounts...");
+        // Recreate the container with new mounts
+        self.recreate_with_mounts(state)
+            .context("Failed to recreate container with new mounts")?;
+
+        progress.task(&main_phase, "Starting container...");
+        // Start the container
+        let compose_path = self.temp_dir.join("docker-compose.yml");
+        stream_command(
+            "docker",
+            &["compose", "-f", compose_path.to_str().unwrap(), "up", "-d"],
+        ).context("Failed to start container with new mounts")?;
+
+        progress.task(&main_phase, "Checking container health...");
+        // Check if container is healthy
+        let is_healthy = self.check_container_health(&state.container_name)
+            .context("Failed to check container health")?;
+
+        if !is_healthy {
+            progress.finish_phase(&main_phase, "Mount update failed - container not healthy");
+            return Err(anyhow::anyhow!("Container is not healthy after mount update"));
+        }
+
+        progress.finish_phase(&main_phase, "Mounts updated successfully");
+        Ok(())
+    }
+
+    fn recreate_with_mounts(&self, state: &TempVmState) -> Result<()> {
+        let progress = ProgressReporter::new();
+        let phase = progress.start_phase("Recreating container configuration");
+
+        progress.task(&phase, "Generating updated docker-compose.yml...");
+
+        // Create a modified config with the temp VM mounts
+        let mut temp_config = self.config.clone();
+
+        // Update the project name to match the temp VM
+        if let Some(ref mut project) = temp_config.project {
+            project.name = Some("vm-temp".to_string());
+        }
+
+        // Generate docker-compose.yml with the new mounts
+        let content = self.render_docker_compose_with_mounts(state)
+            .context("Failed to render docker-compose.yml with mounts")?;
+        let compose_path = self.temp_dir.join("docker-compose.yml");
+        fs::write(&compose_path, content.as_bytes())
+            .context("Failed to write updated docker-compose.yml")?;
+
+        progress.task(&phase, "Removing old container...");
+        // Remove the old container (preserving volumes)
+        let _ = stream_command("docker", &["rm", "-f", &state.container_name]);
+
+        progress.finish_phase(&phase, "Container configuration updated");
+        Ok(())
+    }
+
+    fn check_container_health(&self, container_name: &str) -> Result<bool> {
+        // Wait for container to be ready
+        let max_attempts = 30;
+        let mut attempt = 1;
+
+        while attempt <= max_attempts {
+            if stream_command("docker", &["exec", container_name, "echo", "ready"]).is_ok() {
+                return Ok(true);
+            }
+
+            if attempt == max_attempts {
+                return Ok(false);
+            }
+
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            attempt += 1;
+        }
+
+        Ok(false)
+    }
+
+    fn is_container_running(&self, container_name: &str) -> Result<bool> {
+        let output = std::process::Command::new("docker")
+            .args(&["inspect", "--format", "{{.State.Status}}", container_name])
+            .output()
+            .context("Failed to check container status")?;
+
+        if !output.status.success() {
+            return Ok(false);
+        }
+
+        let status = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Ok(status == "running")
+    }
+}
+
+impl DockerProvider {
+    /// Render docker-compose.yml with custom mounts for temp VMs
+    fn render_docker_compose_with_mounts(&self, state: &TempVmState) -> Result<String> {
+        const TEMP_DOCKER_COMPOSE_TEMPLATE: &str = r#"
+# Temporary VM docker-compose.yml with custom mounts
+services:
+  {{ container_name }}:
+    container_name: {{ container_name }}
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: vm-temp:latest
+    volumes:
+      # Default workspace volume
+      - ../..:/workspace:rw
+      # Persistent volumes for cache and package managers
+      - vmtemp_nvm:/home/developer/.nvm
+      - vmtemp_cache:/home/developer/.cache
+      {% if mounts %}# Custom temp VM mounts
+      {% for mount in mounts %}- {{ mount.source }}:{{ mount.target }}:{{ mount.permissions }}
+      {% endfor %}{% endif %}
+    ports:
+      {% if config.ports %}{% for name, port in config.ports %}- "{{ port }}:{{ port }}"
+      {% endfor %}{% endif %}
+    environment:
+      {% if config.environment %}{% for name, value in config.environment %}- {{ name }}={{ value }}
+      {% endfor %}{% endif %}
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp=unconfined
+
+volumes:
+  vmtemp_nvm:
+  vmtemp_cache:
+"#;
+
+        let mut tera = Tera::default();
+        tera.add_raw_template("docker-compose.yml", TEMP_DOCKER_COMPOSE_TEMPLATE)?;
+
+        let mut context = TeraContext::new();
+        context.insert("config", &self.config);
+        context.insert("container_name", &state.container_name);
+        context.insert("mounts", &state.mounts);
+
+        let content = tera.render("docker-compose.yml", &context)?;
+        Ok(content)
     }
 }

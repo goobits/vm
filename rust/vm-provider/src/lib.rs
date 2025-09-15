@@ -10,6 +10,8 @@ mod docker;
 mod vagrant;
 mod tart;
 
+pub use vm_temp::TempProvider;
+
 /// The core trait for all VM providers.
 /// This defines the contract for creating, managing, and interacting with a VM.
 pub trait Provider {
@@ -55,6 +57,11 @@ pub trait Provider {
 
     /// Get workspace directory.
     fn get_sync_directory(&self) -> Result<String>;
+
+    /// Get access to temp provider capabilities if supported
+    fn as_temp_provider(&self) -> Option<&dyn TempProvider> {
+        None
+    }
 }
 
 /// A factory function to create a provider instance based on the configuration.

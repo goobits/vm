@@ -141,6 +141,15 @@ impl PackageInstaller {
 
     // === Pip/Pipx Implementation ===
 
+    fn find_pip_executable() -> String {
+        // Prefer pip3, then pip, as per Python best practices
+        if which::which("pip3").is_ok() {
+            "pip3".to_string()
+        } else {
+            "pip".to_string()
+        }
+    }
+
     fn install_pip_linked(&self, package: &str, path: &Path) -> Result<()> {
         // Check if it's a pipx environment
         if LinkDetector::is_pipx_environment(path) {
@@ -177,8 +186,9 @@ impl PackageInstaller {
         }
 
         // Install with pip
-        let mut cmd = Command::new("python3");
-        cmd.args(&["-m", "pip", "install", "--user", "--break-system-packages", package]);
+        let pip_exe = Self::find_pip_executable();
+        let mut cmd = Command::new(pip_exe);
+        cmd.args(&["install", "--user", "--break-system-packages", package]);
 
         let status = cmd.status()
             .context("Failed to execute pip install")?;
@@ -192,8 +202,9 @@ impl PackageInstaller {
     }
 
     fn install_pip_editable(&self, _package: &str, path: &Path) -> Result<()> {
-        let mut cmd = Command::new("python3");
-        cmd.args(&["-m", "pip", "install", "--user", "--break-system-packages", "-e"]);
+        let pip_exe = Self::find_pip_executable();
+        let mut cmd = Command::new(pip_exe);
+        cmd.args(&["install", "--user", "--break-system-packages", "-e"]);
         cmd.arg(path);
 
         let status = cmd.status()
