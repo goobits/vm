@@ -16,7 +16,6 @@
 ```bash
 vm create                        # Auto-detect project type
 vm --preset django create        # Force preset
-vm --interactive create          # Choose interactively
 vm --no-preset create            # Skip detection
 vm --config prod.yaml create     # Custom config
 ```
@@ -108,17 +107,18 @@ vm temp list                     # Show all temp VMs
 ```bash
 vm init                          # Create vm.yaml
 vm init --preset django          # With preset
-vm init --interactive            # Interactive setup
+vm init --services postgresql,redis # With services
 
 vm validate                      # Check vm.yaml
 vm validate --config custom.yaml # Check specific file
 vm validate --verbose            # Detailed output
 ```
 
-### generate
+### config
 ```bash
-vm generate                      # Interactive service selection
-vm generate --services postgresql,redis
+vm config set vm.memory 4096     # Set memory
+vm config get                    # Show all config
+vm config preset nodejs,docker   # Apply presets
 ```
 
 ---
@@ -141,12 +141,9 @@ vm preset show react --yaml      # As YAML
 
 ### test
 ```bash
-vm test                          # Run all tests
-vm test --suite minimal          # Basic tests
-vm test --suite services         # Service tests
-vm test --suite integration      # Full tests
-vm test --list                   # Show suites
-vm test --verbose                # Detailed output
+./test/test.sh                   # Run all tests
+./test/test.sh --suite minimal   # Basic tests
+./test/test.sh --list            # Show suites
 ```
 
 ---
@@ -157,7 +154,7 @@ vm test --verbose                # Detailed output
 ```bash
 vm --config <file> <command>    # Use specific config
 vm --preset <name> create        # Force preset
-vm --interactive create          # Interactive mode
+vm --dry-run create              # Show what would run
 vm --no-preset create            # Skip presets
 ```
 

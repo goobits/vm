@@ -581,14 +581,18 @@ terminal:
 - Package linking (npm, pip, cargo)
 
 ### ❌ **NOT SUPPORTED**
-None - all documented fields are now fully supported!
+Fields marked with `#NOT_WORKING` including:
+- `os` field (handled by shell scripts)
+- `tart` configuration section
+- Advanced service options (buildx, display, executable_path, driver, etc.)
+- `env_template_path` in project settings
 
-### 📊 **Support Rate: 100%**
+### 📊 **Support Rate: ~75%**
 
-All ~80 documented configuration options are fully supported by the Rust parser.
+Most documented configuration options are supported by the Rust parser, with some advanced features still in development.
 
 ---
 
-> ✅ **FULLY FUNCTIONAL**: All documented examples in `CONFIGURATION.md` and preset files are fully supported and will parse correctly.
+> ⚠️ **COMPATIBILITY NOTE**: Use examples marked "WORKING" as starting points. Avoid fields marked `#NOT_WORKING` as they will cause parsing failures.
 
-> 💡 **RECOMMENDATION**: Use the "WORKING" examples above as starting points and gradually add fields while testing to ensure compatibility.
+> 💡 **RECOMMENDATION**: Test configurations incrementally when adding advanced features to ensure compatibility with the current Rust parser.

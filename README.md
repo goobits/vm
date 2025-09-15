@@ -17,9 +17,8 @@ git clone https://github.com/goobits/vm.git
 cd vm
 
 # 2. Run the installer
-# This command compiles and runs the installer, which places the `vm`
-# binary in ~/.local/bin.
-cargo run --package vm-installer
+# This script compiles and installs the `vm` binary
+./install.sh
 
 # 3. Configure your shell
 # Restart your shell or source your profile to add `vm` to your PATH.
@@ -128,7 +127,6 @@ vm preset show django        # Preset details
 
 # Override defaults
 vm --preset django create        # Force specific preset
-vm --interactive create          # Choose presets interactively
 vm --no-preset create            # Manual configuration only
 ```
 
@@ -153,11 +151,6 @@ vm --no-preset create            # Manual configuration only
 ## 🧪 Development
 
 ```bash
-# Testing
-vm test                      # Run all tests
-vm test --suite minimal     # Run specific test suite
-vm test --list              # Show available suites
-
 # Debugging
 LOG_LEVEL=DEBUG vm create    # Detailed output
 vm logs                      # View service logs
@@ -165,7 +158,7 @@ vm logs                      # View service logs
 
 ## 💡 Support
 - **Issues**: Report at [GitHub Issues](https://github.com/goobits/vm/issues)
-- **Troubleshooting**: See [Installation Guide](INSTALLATION.md#troubleshooting)
+- **Troubleshooting**: See [Troubleshooting Guide](docs/user-guide/troubleshooting.md)
 - **Quick fixes**: `vm destroy && vm create` for most problems
 
 ---
@@ -213,7 +206,6 @@ vm temp mounts               # List current mounts
 ### Configuration
 ```bash
 vm init                      # Create vm.yaml
-vm generate                  # Generate config by composing services
 vm validate                  # Check config
 vm preset list               # Show presets
 vm preset show <name>        # Preset details

@@ -17,7 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **User Control Flags**:
     - `--no-preset`: Disables the preset system entirely for manual configuration.
     - `--preset <name>`: Forces a specific preset, overriding detection.
-    - `--interactive`: Provides an interactive menu to review, add, or remove presets before VM creation.
   - **Preset Management Commands**:
     - `vm preset list`: Shows all available presets with descriptions.
     - `vm preset show <name>`: Displays the full configuration of a specific preset.
