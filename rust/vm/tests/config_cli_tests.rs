@@ -19,12 +19,9 @@ impl CliTestFixture {
 
         // Get the path to the vm binary
         let workspace_root = std::env::current_dir()?;
-        let binary_path = workspace_root.join("target").join("debug").join("vm");
-
-        // Debug output
-        eprintln!("Current dir: {:?}", workspace_root);
-        eprintln!("Binary path: {:?}", binary_path);
-        eprintln!("Binary exists: {}", binary_path.exists());
+        // Go up to the rust directory root since we're in rust/vm
+        let rust_root = workspace_root.parent().unwrap();
+        let binary_path = rust_root.join("target").join("debug").join("vm");
 
         Ok(Self {
             _temp_dir: temp_dir,
@@ -221,6 +218,9 @@ npm_packages:
         assert!(output.status.success());
 
         let stdout = String::from_utf8(output.stdout)?;
+        let stderr = String::from_utf8(output.stderr)?;
+        eprintln!("STDOUT: {}", stdout);
+        eprintln!("STDERR: {}", stderr);
         assert!(stdout.contains("Available presets:"));
         assert!(stdout.contains("test-preset"));
 

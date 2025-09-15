@@ -63,12 +63,6 @@ pub fn get_presets_dir() -> PathBuf {
     get_config_dir().join("presets")
 }
 
-/// Get the services directory
-/// Returns VM_TOOL_DIR/configs/services or ./configs/services
-pub fn get_services_dir() -> PathBuf {
-    get_config_dir().join("services")
-}
-
 /// Get the schema file path
 /// Returns VM_TOOL_DIR/vm.schema.yaml
 pub fn get_schema_path() -> PathBuf {
@@ -76,14 +70,9 @@ pub fn get_schema_path() -> PathBuf {
     tool_dir.join("vm.schema.yaml")
 }
 
-/// Get the default config file path
-/// Returns ./vm.yaml in the current directory
-pub fn get_default_config_path() -> PathBuf {
-    PathBuf::from("vm.yaml")
-}
-
 /// Get the default workspace path
 /// Returns /home/USER/workspace on Unix or current directory
+#[cfg(test)]
 pub fn get_default_workspace_path() -> PathBuf {
     #[cfg(unix)]
     {
