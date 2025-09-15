@@ -394,6 +394,7 @@ impl std::str::FromStr for OutputFormat {
 
 /// Initialize a new vm.yaml configuration file
 pub fn init_config_file(file_path: Option<PathBuf>) -> Result<()> {
+    println!("🔧 DEBUG: init_config_file called");
     use regex::Regex;
 
     // Determine target path
@@ -452,6 +453,27 @@ pub fn init_config_file(file_path: Option<PathBuf>) -> Result<()> {
 
     if let Some(ref mut terminal) = config.terminal {
         terminal.username = Some(format!("{}-dev", sanitized_name));
+    }
+
+    // Use vm-ports library to suggest and register an available port range
+    println!("🔍 Attempting to allocate port range...");
+    if let Ok(registry) = vm_ports::PortRegistry::load() {
+        if let Some(range_str) = registry.suggest_next_range(10, 3000) {
+            config.port_range = Some(range_str.clone());
+            println!("📡 Allocated port range: {}", range_str);
+
+            // Register this range
+            if let Ok(range) = vm_ports::PortRange::parse(&range_str) {
+                let mut registry = vm_ports::PortRegistry::load().unwrap_or_default();
+                if let Err(e) = registry.register(sanitized_name, &range, &current_dir.to_string_lossy()) {
+                    println!("⚠️  Failed to register port range: {}", e);
+                }
+            }
+        } else {
+            println!("⚠️  Could not find available port range");
+        }
+    } else {
+        println!("⚠️  Failed to load port registry");
     }
 
     // Convert to YAML
@@ -833,10 +855,11 @@ pub fn load_and_merge_config(file: Option<PathBuf>, no_preset: bool) -> Result<V
     };
 
     // 4. Load OS-specific defaults as the new base
+    let default_os = crate::os_detection::detect_host_os();
     let detected_os = user_config
         .as_ref()
         .and_then(|c| c.os.as_deref())
-        .unwrap_or("ubuntu"); // Simple default for now
+        .unwrap_or(&default_os);
 
     let os_defaults_path = paths::get_config_dir()
         .join("os_defaults")
@@ -915,10 +938,11 @@ pub fn load_and_merge_config_with_preset(
     };
 
     // 4. Load OS-specific defaults as the new base
+    let default_os = crate::os_detection::detect_host_os();
     let detected_os = user_config
         .as_ref()
         .and_then(|c| c.os.as_deref())
-        .unwrap_or("ubuntu"); // Simple default for now
+        .unwrap_or(&default_os);
 
     let os_defaults_path = paths::get_config_dir()
         .join("os_defaults")
