@@ -6,3 +6,4 @@ pub mod cli;
 pub mod yaml_ops;
 pub mod paths;
 pub mod embedded_presets;
+pub mod config_ops;

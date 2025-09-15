@@ -63,10 +63,12 @@ fn deep_merge(base: &mut Value, overlay: Value) {
 
 /// Merge configs following the VM tool precedence rules:
 /// 1. Default config (base)
-/// 2. Preset config (if detected)
-/// 3. User config (highest priority)
+/// 2. Global config (user's global settings)
+/// 3. Preset config (if detected)
+/// 4. User config (highest priority)
 pub fn merge_configs(
     default: Option<VmConfig>,
+    global: Option<VmConfig>,
     preset: Option<VmConfig>,
     user: Option<VmConfig>,
 ) -> Result<VmConfig> {
@@ -74,6 +76,9 @@ pub fn merge_configs(
     let merger = ConfigMerger::new(base);
 
     let mut overlays = Vec::new();
+    if let Some(g) = global {
+        overlays.push(g);
+    }
     if let Some(p) = preset {
         overlays.push(p);
     }
@@ -83,6 +88,7 @@ pub fn merge_configs(
 
     merger.merge_all(overlays)
 }
+
 
 #[cfg(test)]
 mod tests {

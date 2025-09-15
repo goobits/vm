@@ -523,8 +523,9 @@ pub fn execute(args: Args) -> Result<()> {
                 None
             };
 
-            // Merge in order: defaults -> preset -> user
-            let merged = merge::merge_configs(Some(default_config), preset_config, user_config)?;
+            // Merge in order: defaults -> global -> preset -> user
+            let global_config = crate::config_ops::load_global_config();
+            let merged = merge::merge_configs(Some(default_config), global_config, preset_config, user_config)?;
             output_config(&merged, &format)?;
         }
 
@@ -714,10 +715,13 @@ pub fn load_and_merge_config(file: Option<PathBuf>, no_preset: bool) -> Result<V
         None
     };
 
-    // 6. Merge in order: base -> preset -> user
-    let merged = crate::merge::merge_configs(Some(base_config), preset_config, user_config)?;
+    // 6. Load global configuration if it exists
+    let global_config = crate::config_ops::load_global_config();
 
-    // 7. Validate the final merged configuration against the schema
+    // 7. Merge in order: base -> global -> preset -> user
+    let merged = crate::merge::merge_configs(Some(base_config), global_config, preset_config, user_config)?;
+
+    // 8. Validate the final merged configuration against the schema
     let schema_path = crate::paths::get_schema_path();
     let validator = crate::validate::ConfigValidator::new(merged.clone(), schema_path);
     validator.validate().with_context(|| "Final configuration validation failed")?;

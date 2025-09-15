@@ -57,6 +57,13 @@ pub fn get_presets_dir() -> PathBuf {
     tool_dir.join("configs").join("presets")
 }
 
+/// Get the services directory
+/// Returns VM_TOOL_DIR/configs/services or ./configs/services
+pub fn get_services_dir() -> PathBuf {
+    let tool_dir = get_tool_dir();
+    tool_dir.join("configs").join("services")
+}
+
 /// Get the schema file path
 /// Returns VM_TOOL_DIR/vm.schema.yaml
 pub fn get_schema_path() -> PathBuf {
