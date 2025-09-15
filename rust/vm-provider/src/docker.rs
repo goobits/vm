@@ -23,6 +23,13 @@ pub struct DockerProvider {
 }
 
 impl DockerProvider {
+    /// Safely convert a path to string with descriptive error message
+    fn path_to_string(path: &Path) -> Result<&str> {
+        path.to_str().ok_or_else(|| {
+            anyhow::anyhow!("Path contains invalid UTF-8 characters: {}", path.display())
+        })
+    }
+
     pub fn new(config: VmConfig) -> Result<Self> {
         if !is_tool_installed("docker") {
             return Err(ProviderError::DependencyNotFound("Docker".to_string()).into());
@@ -113,7 +120,7 @@ impl Provider for DockerProvider {
         progress.task(&build_phase, "Running `docker compose build`...");
         stream_command(
             "docker",
-            &["compose", "-f", compose_path.to_str().unwrap(), "build"],
+            &["compose", "-f", Self::path_to_string(&compose_path)?, "build"],
         ).context("Docker build failed")?;
         progress.finish_phase(&build_phase, "Build complete.");
 
@@ -121,7 +128,7 @@ impl Provider for DockerProvider {
         progress.task(&up_phase, "Running `docker compose up -d`...");
         stream_command(
             "docker",
-            &["compose", "-f", compose_path.to_str().unwrap(), "up", "-d"],
+            &["compose", "-f", Self::path_to_string(&compose_path)?, "up", "-d"],
         ).context("Docker up failed")?;
         progress.finish_phase(&up_phase, "Containers started.");
 
@@ -161,7 +168,7 @@ impl Provider for DockerProvider {
 
         stream_command("docker", &[
             "cp",
-            temp_config_path.to_str().unwrap(),
+            Self::path_to_string(&temp_config_path)?,
             &format!("{}:/tmp/vm-config.json", self.container_name())
         ]).context("Failed to copy config to container")?;
         progress.task(&provisioning_phase, "Configuration loaded.");
@@ -205,7 +212,7 @@ impl Provider for DockerProvider {
 
         stream_command(
             "docker",
-            &["compose", "-f", compose_path.to_str().unwrap(), "up", "-d"],
+            &["compose", "-f", Self::path_to_string(&compose_path)?, "up", "-d"],
         ).context("Failed to start container with docker-compose")
     }
 
@@ -214,7 +221,7 @@ impl Provider for DockerProvider {
         if compose_path.exists() {
             stream_command(
                 "docker",
-                &["compose", "-f", compose_path.to_str().unwrap(), "stop"],
+                &["compose", "-f", Self::path_to_string(&compose_path)?, "stop"],
             ).context("Failed to stop container with docker-compose")
         } else {
             // Fallback to direct container stop if compose file doesn't exist
@@ -234,7 +241,7 @@ impl Provider for DockerProvider {
 
         stream_command(
             "docker",
-            &["compose", "-f", compose_path.to_str().unwrap(), "down", "--volumes"],
+            &["compose", "-f", Self::path_to_string(&compose_path)?, "down", "--volumes"],
         )
     }
 
@@ -310,7 +317,7 @@ impl Provider for DockerProvider {
             // Use docker-compose ps for formatted status
             stream_command(
                 "docker",
-                &["compose", "-f", compose_path.to_str().unwrap(), "ps"],
+                &["compose", "-f", Self::path_to_string(&compose_path)?, "ps"],
             ).context("Failed to get container status with docker-compose")?;
         } else {
             // Fallback to docker ps with filter for this container
@@ -376,7 +383,7 @@ impl Provider for DockerProvider {
 
         stream_command("docker", &[
             "cp",
-            temp_config_path.to_str().unwrap(),
+            Self::path_to_string(&temp_config_path)?,
             &format!("{}:/tmp/vm-config.json", self.container_name())
         ]).context("Failed to copy config to container")?;
 
@@ -453,7 +460,7 @@ impl TempProvider for DockerProvider {
         let compose_path = self.temp_dir.path().join("docker-compose.yml");
         stream_command(
             "docker",
-            &["compose", "-f", compose_path.to_str().unwrap(), "up", "-d"],
+            &["compose", "-f", Self::path_to_string(&compose_path)?, "up", "-d"],
         ).context("Failed to start container with new mounts")?;
 
         progress.task(&main_phase, "Checking container health...");

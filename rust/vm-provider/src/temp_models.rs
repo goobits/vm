@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -371,6 +371,6 @@ mod tests {
         // Invalid targets
         assert!(TempVmState::validate_target_path(Path::new("relative/path")).is_err());
         assert!(TempVmState::validate_target_path(Path::new("/etc/test")).is_err());
-        assert!(_TempVmState::validate_target_path(Path::new("/usr/test")).is_err());
+        assert!(TempVmState::validate_target_path(Path::new("/usr/test")).is_err());
     }
 }

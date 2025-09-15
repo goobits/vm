@@ -35,6 +35,7 @@ impl PackageManager {
     }
 
     /// Get the environment setup file path if needed
+    #[allow(dead_code)]
     pub fn env_file(&self, user: &str) -> Option<PathBuf> {
         match self {
             PackageManager::Cargo => Some(PathBuf::from(format!("/home/{}/.cargo/env", user))),
@@ -53,6 +54,7 @@ impl PackageManager {
     }
 
     /// Get the install command for registry packages
+    #[allow(dead_code)]
     pub fn install_command(&self) -> Vec<String> {
         match self {
             PackageManager::Cargo => vec!["cargo".to_string(), "install".to_string()],
@@ -64,6 +66,7 @@ impl PackageManager {
     }
 
     /// Get the command to install a linked package
+    #[allow(dead_code)]
     pub fn link_install_command(&self, package_path: &PathBuf) -> Vec<String> {
         match self {
             PackageManager::Cargo => vec![

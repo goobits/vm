@@ -2,7 +2,8 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::io::{self, Write};
-use vm_temp::{TempVmState, StateManager, MountPermission, MountParser, TempProvider};
+use vm_temp::{TempVmState, StateManager, MountPermission, MountParser};
+use vm_provider::TempProvider;
 use vm_config::config::VmConfig;
 
 #[derive(Debug, Parser)]
@@ -451,6 +452,7 @@ fn confirm_prompt(message: &str) -> bool {
 }
 
 /// Simplified Docker provider that can handle TempProvider operations
+#[allow(dead_code)]
 struct TempDockerProvider {
     config: VmConfig,
     temp_dir: PathBuf,

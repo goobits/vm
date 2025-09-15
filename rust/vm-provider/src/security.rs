@@ -54,15 +54,12 @@ impl SecurityValidator {
 
         // Ensure the resolved path is still within workspace
         // This is an additional safety check
-        let canonical_workspace = workspace.canonicalize()
-            .context("Failed to canonicalize workspace path")?;
-
-        // For the target path, we can't canonicalize since it might not exist in the VM
-        // So we do a string-based check instead
-        let workspace_str = canonical_workspace.to_string_lossy();
+        // Note: For VM paths (like /workspace), we can't canonicalize on the host,
+        // so we use string-based validation instead
+        let workspace_str = workspace.to_string_lossy();
         let target_str = target_path.to_string_lossy();
 
-        if !target_str.starts_with(&*workspace_str) && target_path != canonical_workspace {
+        if !target_str.starts_with(&*workspace_str) && target_path != workspace {
             anyhow::bail!("Path escapes workspace boundary: {} -> {} (workspace: {})",
                          relative_path.display(), target_path.display(), workspace_str);
         }

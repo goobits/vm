@@ -87,8 +87,8 @@ fn handle_generate_command(
 
     // Apply port configuration
     if let Some(port_start) = ports {
-        if port_start < 1024 || port_start > 65535 {
-            return Err(anyhow::anyhow!("Invalid port number: {} (must be between 1024-65535)", port_start));
+        if port_start < 1024 {
+            return Err(anyhow::anyhow!("Invalid port number: {} (must be >= 1024)", port_start));
         }
 
         // Allocate sequential ports

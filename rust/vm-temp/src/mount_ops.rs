@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use vm_provider::{MountPermission};
 
 /// Mount parsing utilities

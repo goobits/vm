@@ -34,7 +34,10 @@ impl VagrantProvider {
     fn run_vagrant_command(&self, args: &[&str]) -> Result<()> {
         // Set VAGRANT_CWD to providers/vagrant directory
         let vagrant_cwd = self.project_dir.join("providers/vagrant");
-        let config_json = self.config.to_json()?;
+
+        // Create sanitized config without sensitive environment variables
+        let sanitized_config = self.create_sanitized_config();
+        let config_json = serde_json::to_string_pretty(&sanitized_config)?;
 
         // Set environment variables
         env::set_var("VAGRANT_CWD", vagrant_cwd);
@@ -42,6 +45,26 @@ impl VagrantProvider {
         env::set_var("VM_CONFIG_JSON", config_json);
 
         stream_command("vagrant", args)
+    }
+
+    /// Create a sanitized version of the config that excludes sensitive environment variables
+    fn create_sanitized_config(&self) -> VmConfig {
+        let mut sanitized = self.config.clone();
+
+        // Remove potentially sensitive environment variables to prevent exposure
+        // Only expose essential non-sensitive environment for Vagrant provisioning
+        if !sanitized.environment.is_empty() {
+            let safe_env_prefixes = ["VM_", "VAGRANT_", "LANG", "LC_", "PATH", "HOME", "USER"];
+
+            sanitized.environment.retain(|key, _| {
+                // Keep environment variables that are clearly safe
+                safe_env_prefixes.iter().any(|prefix| key.starts_with(prefix)) ||
+                // Keep standard non-sensitive variables
+                matches!(key.as_str(), "TERM" | "SHELL" | "EDITOR" | "PAGER")
+            });
+        }
+
+        sanitized
     }
 }
 
@@ -76,7 +99,10 @@ impl Provider for VagrantProvider {
         // Start VM with full provisioning
         progress.task(&main_phase, "Starting Vagrant VM with provisioning...");
         let vagrant_cwd = self.project_dir.join("providers/vagrant");
-        let config_json = self.config.to_json()?;
+
+        // Create sanitized config without sensitive environment variables
+        let sanitized_config = self.create_sanitized_config();
+        let config_json = serde_json::to_string_pretty(&sanitized_config)?;
 
         env::set_var("VAGRANT_CWD", &vagrant_cwd);
         env::set_var("VM_PROJECT_DIR", &self.project_dir);
