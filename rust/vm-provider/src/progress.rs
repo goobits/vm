@@ -1,6 +1,93 @@
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use regex::Regex;
+use std::collections::HashMap;
 use std::io::{self, Write};
+use std::sync::Arc;
 use std::time::Duration;
+
+// --- Generic Progress Parsing --- //
+
+/// A generic trait for parsing command output to drive a progress bar.
+pub trait ProgressParser: Send + Sync {
+    /// Parses a single line of output.
+    fn parse_line(&mut self, line: &str);
+    /// Marks the progress as finished.
+    fn finish(&self);
+}
+
+// --- Docker-specific Progress Parser --- //
+
+/// A progress parser specifically for `docker build` output.
+pub struct DockerProgressParser {
+    mp: Arc<MultiProgress>,
+    main_bar: ProgressBar,
+    step_regex: Regex,
+    layer_pull_regex: Regex,
+    total_steps: u32,
+    current_step: u32,
+    layer_bars: HashMap<String, ProgressBar>,
+}
+
+impl DockerProgressParser {
+    pub fn new() -> Self {
+        let mp = Arc::new(MultiProgress::new());
+        let main_bar = mp.add(ProgressBar::new(0));
+        main_bar.set_style(
+            ProgressStyle::default_bar()
+                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}")
+                .unwrap()
+                .progress_chars("#>-"),
+        );
+
+        Self {
+            mp,
+            main_bar,
+            step_regex: Regex::new(r"Step (\d+)/(\d+)").unwrap(),
+            layer_pull_regex: Regex::new(r"([a-f0-9]{12}): Pulling fs layer").unwrap(),
+            total_steps: 0,
+            current_step: 0,
+            layer_bars: HashMap::new(),
+        }
+    }
+}
+
+impl ProgressParser for DockerProgressParser {
+    fn parse_line(&mut self, line: &str) {
+        if let Some(caps) = self.step_regex.captures(line) {
+            let step: u32 = caps.get(1).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+            let total: u32 = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+            if self.total_steps == 0 {
+                self.total_steps = total;
+                self.main_bar.set_length(self.total_steps as u64);
+            }
+            self.current_step = step;
+            self.main_bar.set_position(self.current_step as u64);
+            self.main_bar.set_message(line.trim().to_string());
+        }
+
+        if let Some(caps) = self.layer_pull_regex.captures(line) {
+            if let Some(layer_id_match) = caps.get(1) {
+                let layer_id = layer_id_match.as_str().to_string();
+                if !self.layer_bars.contains_key(&layer_id) {
+                    let pb = self.mp.add(ProgressBar::new_spinner());
+                    pb.set_style(ProgressStyle::default_spinner().template("  {prefix:12} {spinner} {wide_msg}").unwrap());
+                    pb.set_prefix(layer_id.clone());
+                    pb.set_message("Pulling...");
+                    self.layer_bars.insert(layer_id, pb);
+                }
+            }
+        }
+    }
+
+    fn finish(&self) {
+        self.main_bar.finish_with_message("Build complete");
+        for (_, bar) in &self.layer_bars {
+            bar.finish_and_clear();
+        }
+    }
+}
+
+// --- Existing Progress Reporter --- //
 
 pub struct ProgressReporter {
     mp: MultiProgress,
@@ -40,31 +127,28 @@ impl ProgressReporter {
         pb.finish_with_message(format!("{} {}", pb.message(), msg));
     }
 
-    /// Display a phase header with icon (e.g., "🔧 BUILD PHASE")
     pub fn phase_header(&self, icon: &str, phase: &str) {
         println!("{} {}", icon, phase);
     }
 
-    /// Display a subtask with tree structure (├─ or └─)
     pub fn subtask(&self, connector: &str, task: &str) {
         println!("{} {}", connector, task);
     }
 
-    /// Display a completion message with checkmark
     pub fn complete(&self, connector: &str, message: &str) {
         println!("{} ✅ {}", connector, message);
     }
 
-    /// Display a warning message
     pub fn warning(&self, connector: &str, message: &str) {
         println!("{} ⚠️ {}", connector, message);
     }
 
-    /// Display an error message
     pub fn error(&self, connector: &str, message: &str) {
         println!("{} ❌ {}", connector, message);
     }
 }
+
+// --- Other Utilities --- //
 
 /// Simple status formatter for VM status output
 pub struct StatusFormatter;

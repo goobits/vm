@@ -1,21 +1,45 @@
+use crate::progress::{DockerProgressParser, ProgressParser};
 use anyhow::Result;
 use duct::cmd;
 use std::ffi::OsStr;
 use std::io::{BufRead, BufReader};
+use which::which;
 
-/// Executes a command, streaming its output to the console.
+/// The original simple command streamer for backward compatibility.
 pub fn stream_command<A: AsRef<OsStr>>(command: &str, args: &[A]) -> Result<()> {
     let reader = cmd(command, args).stderr_to_stdout().reader()?;
-
     let lines = BufReader::new(reader).lines();
     for line in lines {
         println!("{}", line?);
     }
-
     Ok(())
+}
+
+/// Executes a command, streaming its output to a parser for rich progress.
+pub fn stream_command_with_progress<A: AsRef<OsStr>>(
+    command: &str,
+    args: &[A],
+    mut parser: Box<dyn ProgressParser>,
+) -> Result<()> {
+    let reader = cmd(command, args).stderr_to_stdout().reader()?;
+    let lines = BufReader::new(reader).lines();
+
+    for line in lines {
+        let line = line?;
+        parser.parse_line(&line);
+    }
+
+    parser.finish();
+    Ok(())
+}
+
+/// A convenience function for streaming Docker builds with progress.
+pub fn stream_docker_build<A: AsRef<OsStr>>(args: &[A]) -> Result<()> {
+    let parser = DockerProgressParser::new();
+    stream_command_with_progress("docker", args, Box::new(parser))
 }
 
 /// Checks if a command-line tool is available in the system's PATH.
 pub fn is_tool_installed(tool_name: &str) -> bool {
-    which::which(tool_name).is_ok()
+    which(tool_name).is_ok()
 }
