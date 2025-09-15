@@ -3,6 +3,7 @@ members = [
     "vm-common",
     "vm-config",
     "vm-detector",
+    "vm-generator",
     "vm-links",
     "vm-pkg",
     "vm-ports",

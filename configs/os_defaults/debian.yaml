@@ -1,0 +1,7 @@
+
+# Default configuration for Debian Linux VMs
+provider: docker
+vm:
+  memory: 2048
+  cpus: 2
+  user: developer

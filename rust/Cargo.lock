@@ -2194,6 +2194,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "vm-generator"
+version = "1.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde",
+ "serde_yaml",
+ "vm-config",
+]
+
+[[package]]
 name = "vm-links"
 version = "1.1.0"
 dependencies = [
@@ -2245,6 +2256,7 @@ dependencies = [
  "tera",
  "thiserror 1.0.69",
  "vm-config",
+ "vm-temp",
  "which",
 ]
 
@@ -2254,11 +2266,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "clap",
  "dirs",
  "serde",
  "serde_yaml",
  "tempfile",
  "thiserror 1.0.69",
+ "vm-config",
 ]
 
 [[package]]

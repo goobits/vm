@@ -1,0 +1,7 @@
+
+# Default configuration for Alpine Linux VMs
+provider: docker
+vm:
+  memory: 1024
+  cpus: 1
+  user: developer

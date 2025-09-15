@@ -1,0 +1,18 @@
+[package]
+name = "vm-generator"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Configuration generator for VM Tool"
+
+[[bin]]
+name = "vm-generator"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+vm-config = { path = "../vm-config" }
