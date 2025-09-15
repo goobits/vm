@@ -1,15 +1,13 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use serde::{Serialize, Deserialize};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::fs;
-use dirs;
 use vm_config::config::VmConfig;
 use vm_config::preset::PresetDetector;
 use vm_config::paths;
 use vm_provider::get_provider;
 use vm_provider::progress::{confirm_prompt, ProgressReporter, StatusFormatter};
-use vm_temp::{TempVmState, StateManager, Mount, MountPermission, MountParser};
+use vm_temp::{TempVmState, StateManager, MountPermission, MountParser};
 
 // Global debug flag
 static mut DEBUG_ENABLED: bool = false;
@@ -742,15 +740,6 @@ fn handle_temp_command(command: &TempSubcommand) -> Result<()> {
                 return Err(anyhow::anyhow!("Mount already exists for source: {}", source.display()));
             }
 
-            // Add the mount
-            if let Some(target_path) = target {
-                state.add_mount_with_target(source.clone(), target_path, permissions)
-                    .context("Failed to add mount with custom target")?;
-            } else {
-                state.add_mount(source.clone(), permissions)
-                    .context("Failed to add mount")?;
-            }
-
             // Confirm action unless --yes flag is used
             if !yes {
                 let confirmation_msg = format!("Add mount {} to temp VM? (y/N): ", source.display());
@@ -760,11 +749,21 @@ fn handle_temp_command(command: &TempSubcommand) -> Result<()> {
                 }
             }
 
+            // Add the mount
+            let permissions_display = permissions.to_string();
+            if let Some(target_path) = target {
+                state.add_mount_with_target(source.clone(), target_path, permissions)
+                    .context("Failed to add mount with custom target")?;
+            } else {
+                state.add_mount(source.clone(), permissions)
+                    .context("Failed to add mount")?;
+            }
+
             // Save updated state
             state_manager.save_state(&state)
                 .context("Failed to save updated temp VM state")?;
 
-            println!("🔗 Mount added: {} ({})", source.display(), permissions);
+            println!("🔗 Mount added: {} ({})", source.display(), permissions_display);
             println!("💡 VM will need to be recreated for mount to take effect");
             println!("   Use 'vm temp restart' to apply changes");
 
