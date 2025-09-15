@@ -26,8 +26,9 @@ PLATFORM_RELEASE_DIR="$PLATFORM_TARGET_DIR/release"
 echo "Building VM Tool Rust binaries for platform: $PLATFORM"
 echo "Target directory: $PLATFORM_TARGET_DIR"
 
-# Create platform-specific directory
+# Create platform-specific directory and required subdirectories
 mkdir -p "$PLATFORM_TARGET_DIR"
+mkdir -p "$PLATFORM_RELEASE_DIR/deps"
 
 # Check if we need to build (incremental build detection)
 needs_build=true

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Global Installation Script for VM Infrastructure
-# Usage: ./install.sh
+# Usage: ./install.sh [--clean]
 
 set -e
 set -u
@@ -10,6 +10,30 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
+
+# Parse command line arguments
+CLEAN_BUILD=false
+for arg in "$@"; do
+    case $arg in
+        --clean)
+            CLEAN_BUILD=true
+            shift
+            ;;
+        --help|-h)
+            echo "Usage: $0 [--clean]"
+            echo ""
+            echo "Options:"
+            echo "  --clean    Clean all build artifacts before building"
+            echo "  --help     Show this help message"
+            exit 0
+            ;;
+        *)
+            echo -e "${RED}Unknown option: $arg${NC}"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -123,6 +147,36 @@ fi
 
 echo -e "${GREEN}✅ Dependencies satisfied${NC}"
 echo ""
+
+# Clean build artifacts if requested
+if [[ "$CLEAN_BUILD" == "true" ]]; then
+    echo "🧹 Cleaning build artifacts..."
+    if (cd "$SCRIPT_DIR/rust" && cargo clean); then
+        echo -e "${GREEN}✅ Build artifacts cleaned.${NC}"
+
+        # Also remove platform-specific directories (only in rust/target)
+        # Safety: Only removes build artifacts in the target directory
+        if [[ -d "$SCRIPT_DIR/rust/target" ]]; then
+            # List what will be removed for transparency
+            dirs_to_remove=$(find "$SCRIPT_DIR/rust/target" -maxdepth 1 -type d \( -name "darwin-*" -o -name "linux-*" \) 2>/dev/null || true)
+            if [[ -n "$dirs_to_remove" ]]; then
+                echo "  Removing platform-specific build directories:"
+                echo "$dirs_to_remove" | while IFS= read -r dir; do
+                    if [[ -n "$dir" ]] && [[ -d "$dir" ]]; then
+                        echo "    - $(basename "$dir")"
+                        rm -rf "$dir"
+                    fi
+                done
+                echo -e "${GREEN}✅ Platform-specific directories removed.${NC}"
+            else
+                echo "  No platform-specific directories found to remove."
+            fi
+        fi
+    else
+        echo -e "${YELLOW}⚠️  Warning: Failed to clean some build artifacts, continuing anyway...${NC}"
+    fi
+    echo ""
+fi
 
 # Build the Rust binaries
 echo "🔧 Building Rust binaries..."
