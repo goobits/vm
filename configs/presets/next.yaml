@@ -1,0 +1,37 @@
+---
+preset:
+  name: next
+  description: "Next.js Development - Full-stack React framework with SSR, API routes, and modern tooling"
+
+npm_packages:
+  - next
+  - "@next/eslint-plugin-next"
+  - "@next/font"
+  - sharp  # Image optimization
+  - typescript
+  - "@types/node"
+  - "@types/react"
+  - "@types/react-dom"
+  - eslint-config-next
+  - react-testing-library
+  - jest
+  - jest-environment-jsdom
+
+pip_packages:
+  - git-filter-repo
+
+ports:
+  next: 3000  # Next.js dev server default
+  next-alt: 3001  # Alternative Next.js port
+  api: 3002  # API development port
+
+services:
+  redis:
+    enabled: true  # Session storage, caching
+  postgresql:
+    enabled: true  # Next.js often full-stack
+
+environment:
+  NODE_ENV: development
+  NEXT_PUBLIC_ENV: development
+  NEXT_TELEMETRY_DISABLED: "1"  # Disable Next.js telemetry

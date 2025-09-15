@@ -14,6 +14,7 @@ pub fn get_embedded_presets() -> HashMap<&'static str, &'static str> {
         include_str!("../../../configs/presets/python.yaml"),
     );
     presets.insert("react", include_str!("../../../configs/presets/react.yaml"));
+    presets.insert("next", include_str!("../../../configs/presets/next.yaml"));
     presets.insert(
         "django",
         include_str!("../../../configs/presets/django.yaml"),

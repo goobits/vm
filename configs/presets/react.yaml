@@ -8,7 +8,7 @@ npm_packages:
   - react-router-dom
   - react-dev-utils
   - webpack-dev-server
-  - @vitejs/plugin-react
+  - "@vitejs/plugin-react"
   - vite
   - react-testing-library
   - jest
