@@ -1,12 +1,17 @@
+// Standard library
+use std::path::PathBuf;
+
+// External crates
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use log::{debug, info, warn};
-use std::path::PathBuf;
+use uuid::Uuid;
+
+// Internal imports
 use vm_common::{log_context, scoped_context};
 use vm_config::{config::VmConfig, init_config_file, ConfigOps};
 use vm_provider::get_provider;
 use vm_provider::progress::{confirm_prompt, ProgressReporter, StatusFormatter};
-use uuid::Uuid;
 
 // Request ID for this execution - used for tracing logs across the entire request
 static REQUEST_ID: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {

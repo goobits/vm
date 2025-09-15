@@ -1,13 +1,18 @@
-use crate::log_context;
-use chrono::Utc;
-use log::{Level, LevelFilter, Metadata, Record};
-use regex::Regex;
-use serde_json::{json, Map, Value};
+// Standard library
 use std::env;
 use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+
+// External crates
+use chrono::Utc;
+use log::{Level, LevelFilter, Metadata, Record};
+use regex::Regex;
+use serde_json::{json, Map, Value};
+
+// Internal imports
+use crate::log_context;
 
 /// Configuration for the structured logger
 #[derive(Debug, Clone)]
