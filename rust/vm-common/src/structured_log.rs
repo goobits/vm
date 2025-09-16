@@ -2,10 +2,10 @@
 
 // Internal imports
 use crate::log_context;
-use log::{Level, Record};
-use serde_json::{Map, Value};
-use regex::Regex;
 use chrono;
+use log::{Level, Record};
+use regex::Regex;
+use serde_json::{Map, Value};
 
 /// Log output destination
 #[derive(Debug, Clone)]
@@ -124,19 +124,30 @@ impl log::Log for StructuredLogger {
             match self.config.format {
                 LogFormat::Json => {
                     let mut log_entry = Map::new();
-                    log_entry.insert("level".to_string(), Value::String(record.level().to_string()));
-                    log_entry.insert("message".to_string(), Value::String(record.args().to_string()));
-                    log_entry.insert("timestamp".to_string(), Value::String(chrono::Utc::now().to_rfc3339()));
+                    log_entry.insert(
+                        "level".to_string(),
+                        Value::String(record.level().to_string()),
+                    );
+                    log_entry.insert(
+                        "message".to_string(),
+                        Value::String(record.args().to_string()),
+                    );
+                    log_entry.insert(
+                        "timestamp".to_string(),
+                        Value::String(chrono::Utc::now().to_rfc3339()),
+                    );
 
                     if let Some(module) = record.module_path() {
                         log_entry.insert("module".to_string(), Value::String(module.to_string()));
                     }
 
-                    let json_str = serde_json::to_string(&log_entry).unwrap_or_else(|_| "{}".to_string());
+                    let json_str =
+                        serde_json::to_string(&log_entry).unwrap_or_else(|_| "{}".to_string());
                     eprintln!("{}", json_str);
                 }
                 LogFormat::Text => {
-                    eprintln!("[{}] {}: {}",
+                    eprintln!(
+                        "[{}] {}: {}",
                         chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"),
                         record.level(),
                         record.args()
@@ -180,7 +191,6 @@ pub fn init_with_config(config: LogConfig) -> Result<(), log::SetLoggerError> {
 
 /// Helper functions for output macros
 /// These provide a simpler interface for the migration macros
-
 /// Log an info message
 pub fn log_info(message: &str) {
     log::info!("{}", message);
@@ -223,12 +233,11 @@ mod tests {
     use super::*;
     #[allow(unused_imports)]
     use log::{debug, error, info, warn};
-    use serde_json::{json, Map, Value};
     use regex::Regex;
+    use serde_json::{json, Map};
 
     #[test]
     fn test_tag_filter_exact_match() {
-
         let pattern = TagPattern {
             key: "component".to_string(),
             value: Some("docker".to_string()),
@@ -246,12 +255,13 @@ mod tests {
 
     #[test]
     fn test_tag_filter_wildcard() {
-
         let pattern = TagPattern {
             key: "operation".to_string(),
             value: Some("create*".to_string()),
-            regex: Some(Regex::new("^create.*$")
-                .expect("Failed to compile test regex - pattern is invalid")),
+            regex: Some(
+                Regex::new("^create.*$")
+                    .expect("Failed to compile test regex - pattern is invalid"),
+            ),
         };
         let filter = TagFilter::from_patterns(vec![pattern]);
 
@@ -267,8 +277,8 @@ mod tests {
     fn test_json_formatting() {
         use log::Level;
 
-        let logger = create_test_logger();
-        let record = log::Record::builder()
+        let _logger = create_test_logger();
+        let _record = log::Record::builder()
             .args(format_args!("Test message"))
             .level(Level::Info)
             .module_path(Some("test"))
