@@ -1,4 +1,5 @@
 
+---
 # Default configuration for macOS VMs
 provider: tart
 vm:

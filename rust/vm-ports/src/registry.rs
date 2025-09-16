@@ -12,6 +12,7 @@ use std::path::PathBuf;
 // External crates
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use vm_common::vm_println;
 
 // Internal imports
 use crate::range::PortRange;
@@ -141,17 +142,17 @@ impl PortRegistry {
     /// Lists all registered project port ranges to stdout.
     pub fn list(&self) {
         if self.entries.is_empty() {
-            println!("📡 No port ranges registered yet");
+            vm_println!("No port ranges registered yet");
         } else {
-            println!("📡 Registered port ranges:");
-            println!();
+            vm_println!("Registered port ranges:");
+            vm_println!();
 
             // Sort entries by project name for consistent output
             let mut sorted_entries: Vec<_> = self.entries.iter().collect();
             sorted_entries.sort_by_key(|(name, _)| *name);
 
             for (project_name, entry) in sorted_entries {
-                println!("  {}: {} → {}", project_name, entry.range, entry.path);
+                vm_println!("  {}: {} → {}", project_name, entry.range, entry.path);
             }
         }
     }
@@ -208,24 +209,24 @@ mod tests {
 
     #[test]
     fn test_conflict_detection() {
-        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        let temp_file = tempfile::NamedTempFile::new().expect("Failed to create temporary file for conflict detection test");
         let mut registry = PortRegistry {
             entries: HashMap::new(),
             registry_path: temp_file.path().to_path_buf(),
         };
 
         // Add a project
-        let range1 = PortRange::new(3000, 3009).unwrap();
-        registry.register("project1", &range1, "/path1").unwrap();
+        let range1 = PortRange::new(3000, 3009).expect("Valid range for conflict detection test");
+        registry.register("project1", &range1, "/path1").expect("Failed to register project1 for test");
 
         // Test overlapping range
-        let range2 = PortRange::new(3005, 3015).unwrap();
+        let range2 = PortRange::new(3005, 3015).expect("Valid overlapping range for conflict test");
         let conflicts = registry.check_conflicts(&range2, None);
         assert!(conflicts.is_some());
-        assert!(conflicts.unwrap().contains("project1"));
+        assert!(conflicts.expect("Should have conflicts for overlapping range").contains("project1"));
 
         // Test non-overlapping range
-        let range3 = PortRange::new(3020, 3029).unwrap();
+        let range3 = PortRange::new(3020, 3029).expect("Valid non-overlapping range for conflict test");
         let conflicts = registry.check_conflicts(&range3, None);
         assert!(conflicts.is_none());
 
@@ -236,20 +237,20 @@ mod tests {
 
     #[test]
     fn test_suggest_next_range() {
-        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        let temp_file = tempfile::NamedTempFile::new().expect("Failed to create temporary file for suggestion test");
         let mut registry = PortRegistry {
             entries: HashMap::new(),
             registry_path: temp_file.path().to_path_buf(),
         };
 
         // Register a range
-        let range1 = PortRange::new(3000, 3009).unwrap();
-        registry.register("project1", &range1, "/path1").unwrap();
+        let range1 = PortRange::new(3000, 3009).expect("Valid range for suggestion test");
+        registry.register("project1", &range1, "/path1").expect("Failed to register project1 for suggestion test");
 
         // Suggest next range
         let suggestion = registry.suggest_next_range(10, 3000);
         assert!(suggestion.is_some());
-        let suggested = suggestion.unwrap();
+        let suggested = suggestion.expect("Should suggest a valid next range");
         assert_eq!(suggested, "3010-3019"); // Should suggest non-overlapping range
     }
 
@@ -258,11 +259,11 @@ mod tests {
         use std::sync::Arc;
         use std::thread;
 
-        let temp_dir = tempdir().unwrap();
+        let temp_dir = tempdir().expect("Failed to create temporary directory for race condition test");
         let registry_path = temp_dir.path().join("port-registry.json");
 
         // Initialize an empty registry file
-        std::fs::write(&registry_path, "{}").unwrap();
+        std::fs::write(&registry_path, "{}").expect("Failed to initialize empty registry file");
 
         // Create multiple registries that point to the same file (simulating different processes)
         let shared_path = Arc::new(registry_path);
@@ -279,17 +280,17 @@ mod tests {
                 };
 
                 // Load current state
-                let content = std::fs::read_to_string(&registry.registry_path).unwrap();
+                let content = std::fs::read_to_string(&registry.registry_path).expect("Failed to read registry file in race condition test");
                 let entries: HashMap<String, ProjectEntry> = if content.trim() == "{}" {
                     HashMap::new()
                 } else {
-                    serde_json::from_str(&content).unwrap_or_default()
+                    serde_json::from_str(&content).expect("Failed to parse registry JSON in race condition test")
                 };
                 registry.entries = entries;
 
                 // Add our entry
                 let range =
-                    PortRange::new(3000 + (i as u16) * 10, 3000 + (i as u16) * 10 + 9).unwrap();
+                    PortRange::new(3000 + (i as u16) * 10, 3000 + (i as u16) * 10 + 9).expect("Valid range for race condition test");
 
                 // Small delay to increase race condition likelihood
                 std::thread::sleep(std::time::Duration::from_millis(1));
@@ -300,7 +301,7 @@ mod tests {
         }
 
         // Wait for all threads to complete
-        let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        let results: Vec<_> = handles.into_iter().map(|h| h.join().expect("Thread should complete successfully")).collect();
 
         // Count successful vs failed operations
         let successful_registrations = results.iter().filter(|r| r.is_ok()).count();
@@ -321,8 +322,8 @@ mod tests {
         }
 
         // Load final registry and check if all entries are present
-        let content = std::fs::read_to_string(&*shared_path).unwrap();
-        let final_entries: HashMap<String, ProjectEntry> = serde_json::from_str(&content).unwrap();
+        let content = std::fs::read_to_string(&*shared_path).expect("Failed to read final registry state");
+        let final_entries: HashMap<String, ProjectEntry> = serde_json::from_str(&content).expect("Failed to parse final registry JSON");
 
         // This is the key test: analyze the types of race conditions that occurred
         let actual_count = final_entries.len();

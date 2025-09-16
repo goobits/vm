@@ -1,4 +1,5 @@
 
+---
 # Default configuration for Ubuntu Linux VMs
 provider: docker
 vm:

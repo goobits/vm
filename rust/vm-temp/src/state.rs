@@ -244,14 +244,14 @@ impl StateManager {
         // Validate container name is not empty
         if state.container_name.trim().is_empty() {
             return Err(StateError::ValidationFailed {
-                reason: "Container name cannot be empty".to_string(),
+                reason: "Container name cannot be empty".to_owned(),
             });
         }
 
         // Validate provider is not empty
         if state.provider.trim().is_empty() {
             return Err(StateError::ValidationFailed {
-                reason: "Provider cannot be empty".to_string(),
+                reason: "Provider cannot be empty".to_owned(),
             });
         }
 

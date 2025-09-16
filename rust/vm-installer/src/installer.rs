@@ -1,10 +1,14 @@
-use anyhow::{Context, Result};
+// Standard library
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+
+// External crates
+use anyhow::{Context, Result};
 use vm_common::vm_success;
 
+// Internal imports
 use crate::platform;
 
 const BIN_DIR_NAME: &str = ".local/bin";

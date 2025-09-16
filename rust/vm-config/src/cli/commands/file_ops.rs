@@ -1,6 +1,10 @@
-use anyhow::Result;
+// Standard library
 use std::path::PathBuf;
 
+// External crates
+use anyhow::Result;
+
+// Internal imports
 use super::super::OutputFormat;
 
 pub fn execute_array_add(file: PathBuf, path: String, item: String) -> Result<()> {

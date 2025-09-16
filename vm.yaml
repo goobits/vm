@@ -1,10 +1,11 @@
-version: '1.0'
+---
+version: "1.0"
 provider: docker
 project:
   name: vm
   hostname: dev.vm.local
   workspace_path: /workspace
-  backup_pattern: '*backup*.sql.gz'
+  backup_pattern: "*backup*.sql.gz"
 vm:
   user: developer
   memory: 4096
@@ -13,14 +14,14 @@ vm:
   swappiness: 30
   port_binding: 127.0.0.1
 versions:
-  node: '22'
-  pnpm: 10.12.3
-  python: '3.13'
-  nvm: v0.40.3
+  node: "22"
+  pnpm: "10.12.3"
+  python: "3.13"
+  nvm: "v0.40.3"
 services:
   postgresql:
     enabled: false
-    version: '15'
+    version: "15"
   redis:
     enabled: false
 apt_packages:

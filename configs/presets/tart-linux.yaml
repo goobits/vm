@@ -24,13 +24,13 @@ project:
 services:
   postgresql:
     enabled: false
-    version: 15
+    version: "15"
   redis:
     enabled: false
-    version: 7
+    version: "7"
   mongodb:
     enabled: false
-    version: 6
+    version: "6"
   docker:
     enabled: false
 

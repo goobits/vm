@@ -368,7 +368,7 @@ impl<'a> LifecycleOperations<'a> {
             .unwrap_or(DEFAULT_SHELL);
 
         let target_path = SecurityValidator::validate_relative_path(relative_path, workspace_path)?;
-        let target_dir = target_path.to_string_lossy().to_string();
+        let target_dir = target_path.to_string_lossy();
 
         let tty_flag = if io::stdin().is_terminal() && io::stdout().is_terminal() {
             "-it"
@@ -470,7 +470,7 @@ impl<'a> LifecycleOperations<'a> {
             .output()?;
         let status = String::from_utf8_lossy(&status_output.stdout)
             .trim()
-            .to_string();
+            .to_owned();
         if status != "running" {
             return Err(anyhow::anyhow!(
                 "Container {} is not running. Start it first with 'vm start'",
@@ -577,7 +577,7 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
 
         let mut temp_config = self.config.clone();
         if let Some(ref mut project) = temp_config.project {
-            project.name = Some(String::from("vm-temp"));
+            project.name = Some("vm-temp".to_owned());
         }
 
         let compose_ops = ComposeOperations::new(&temp_config, self.temp_dir, self.project_dir);
@@ -616,7 +616,8 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
         if !output.status.success() {
             return Ok(false);
         }
-        let status = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        let status = output_str.trim();
         Ok(status == "running")
     }
 }

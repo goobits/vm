@@ -1,4 +1,5 @@
 
+---
 # Default configuration for Debian Linux VMs
 provider: docker
 vm:

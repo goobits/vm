@@ -1248,6 +1248,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "version-sync"
+version = "1.2.1"
+dependencies = [
+ "anyhow",
+ "clap",
+ "regex",
+ "serde_json",
+]
+
+[[package]]
 name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"

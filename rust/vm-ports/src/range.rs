@@ -112,7 +112,7 @@ mod tests {
 
     #[test]
     fn test_parse_valid_range() {
-        let range = PortRange::parse("3000-3009").unwrap();
+        let range = PortRange::parse("3000-3009").expect("Valid port range format for test");
         assert_eq!(range.start, 3000);
         assert_eq!(range.end, 3009);
     }
@@ -132,9 +132,9 @@ mod tests {
 
     #[test]
     fn test_overlap_detection() {
-        let range1 = PortRange::new(3000, 3009).unwrap();
-        let range2 = PortRange::new(3005, 3015).unwrap();
-        let range3 = PortRange::new(3010, 3019).unwrap();
+        let range1 = PortRange::new(3000, 3009).expect("Valid first range for overlap test");
+        let range2 = PortRange::new(3005, 3015).expect("Valid second range for overlap test");
+        let range3 = PortRange::new(3010, 3019).expect("Valid third range for overlap test");
 
         assert!(range1.overlaps_with(&range2)); // 3000-3009 overlaps 3005-3015
         assert!(range2.overlaps_with(&range1)); // symmetric
@@ -144,7 +144,7 @@ mod tests {
 
     #[test]
     fn test_size() {
-        let range = PortRange::new(3000, 3009).unwrap();
+        let range = PortRange::new(3000, 3009).expect("Valid range for size test");
         assert_eq!(range.size(), 10);
     }
 
@@ -152,8 +152,8 @@ mod tests {
     #[test]
     fn test_adjacent_ranges_no_overlap() {
         // Adjacent ranges should NOT overlap - common production bug
-        let range1 = PortRange::new(3000, 3009).unwrap();
-        let range2 = PortRange::new(3010, 3019).unwrap();
+        let range1 = PortRange::new(3000, 3009).expect("Valid first range for adjacent test");
+        let range2 = PortRange::new(3010, 3019).expect("Valid second range for adjacent test");
 
         assert!(
             !range1.overlaps_with(&range2),
@@ -168,8 +168,8 @@ mod tests {
     #[test]
     fn test_single_port_overlap_detection() {
         // Ranges that share exactly one port should overlap
-        let range1 = PortRange::new(3000, 3009).unwrap();
-        let range2 = PortRange::new(3009, 3019).unwrap(); // Shares port 3009
+        let range1 = PortRange::new(3000, 3009).expect("Valid first range for single port overlap test");
+        let range2 = PortRange::new(3009, 3019).expect("Valid second range for single port overlap test"); // Shares port 3009
 
         assert!(
             range1.overlaps_with(&range2),
@@ -184,14 +184,14 @@ mod tests {
     #[test]
     fn test_boundary_edge_cases() {
         // Test exact boundary conditions that cause off-by-one errors
-        let range1 = PortRange::new(3000, 3009).unwrap();
+        let range1 = PortRange::new(3000, 3009).expect("Valid base range for boundary test");
 
         // Adjacent (no overlap)
-        let adjacent = PortRange::new(3010, 3019).unwrap();
+        let adjacent = PortRange::new(3010, 3019).expect("Valid adjacent range for boundary test");
         assert!(!range1.overlaps_with(&adjacent));
 
         // Touching (overlap by 1)
-        let touching = PortRange::new(3009, 3019).unwrap();
+        let touching = PortRange::new(3009, 3019).expect("Valid touching range for boundary test");
         assert!(range1.overlaps_with(&touching));
 
         // Single port ranges are invalid (start must be < end)
@@ -205,18 +205,18 @@ mod tests {
         );
 
         // Minimal valid ranges (2 ports)
-        let inside_last = PortRange::new(3009, 3010).unwrap();
+        let inside_last = PortRange::new(3009, 3010).expect("Valid minimal range at end boundary");
         assert!(range1.overlaps_with(&inside_last));
 
-        let inside_first = PortRange::new(3000, 3001).unwrap();
+        let inside_first = PortRange::new(3000, 3001).expect("Valid minimal range at start boundary");
         assert!(range1.overlaps_with(&inside_first));
     }
 
     #[test]
     fn test_integer_overflow_boundary() {
         // Test near u16::MAX to catch overflow bugs
-        let max_range = PortRange::new(65534, 65535).unwrap();
-        let adjacent_to_max = PortRange::new(65533, 65534).unwrap();
+        let max_range = PortRange::new(65534, 65535).expect("Valid range at maximum port boundary");
+        let adjacent_to_max = PortRange::new(65533, 65534).expect("Valid range adjacent to maximum");
 
         assert!(
             max_range.overlaps_with(&adjacent_to_max),
@@ -224,7 +224,7 @@ mod tests {
         );
 
         // Test that we handle the boundary correctly
-        let before_max = PortRange::new(65532, 65533).unwrap();
+        let before_max = PortRange::new(65532, 65533).expect("Valid range before maximum boundary");
         assert!(
             !max_range.overlaps_with(&before_max),
             "Should not overlap 65534-65535 vs 65532-65533"
@@ -234,9 +234,9 @@ mod tests {
     #[test]
     fn test_production_port_scenarios() {
         // Common production port allocations that have caused conflicts
-        let web_ports = PortRange::new(3000, 3009).unwrap();
-        let api_ports = PortRange::new(3010, 3019).unwrap();
-        let db_ports = PortRange::new(5432, 5442).unwrap();
+        let web_ports = PortRange::new(3000, 3009).expect("Valid web ports range for production test");
+        let api_ports = PortRange::new(3010, 3019).expect("Valid API ports range for production test");
+        let db_ports = PortRange::new(5432, 5442).expect("Valid database ports range for production test");
 
         // These should not conflict
         assert!(!web_ports.overlaps_with(&api_ports));
@@ -244,7 +244,7 @@ mod tests {
         assert!(!api_ports.overlaps_with(&db_ports));
 
         // But this should conflict
-        let conflicting_web = PortRange::new(3005, 3015).unwrap(); // Spans web and api
+        let conflicting_web = PortRange::new(3005, 3015).expect("Valid conflicting range for production test"); // Spans web and api
         assert!(web_ports.overlaps_with(&conflicting_web));
         assert!(api_ports.overlaps_with(&conflicting_web));
     }

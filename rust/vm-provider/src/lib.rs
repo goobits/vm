@@ -4,8 +4,13 @@
 //! such as Docker, Vagrant, and Tart. It defines core traits and factory functions
 //! for provider instantiation and management.
 
-use anyhow::Result;
+// Standard library
 use std::path::Path;
+
+// External crates
+use anyhow::Result;
+
+// Internal imports
 use vm_config::config::VmConfig;
 
 pub mod error;

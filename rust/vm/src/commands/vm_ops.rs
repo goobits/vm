@@ -1,9 +1,13 @@
 // VM operation command handlers
 
-use anyhow::Result;
-use log::{debug, info, warn};
+// Standard library
 use std::path::PathBuf;
 
+// External crates
+use anyhow::Result;
+use log::{debug, info, warn};
+
+// Internal imports
 use vm_common::scoped_context;
 use vm_config::config::VmConfig;
 use vm_provider::{

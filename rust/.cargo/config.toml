@@ -1,0 +1,19 @@
+# Cargo configuration for optimized build performance
+# This file improves incremental compilation and development workflow
+
+[build]
+# Enable incremental compilation by default for better development builds
+incremental = true
+
+# Use faster linker when available (requires installation)
+# Uncomment the appropriate section for your platform:
+
+# [target.x86_64-unknown-linux-gnu]
+# linker = "clang"
+# rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+# [target.x86_64-apple-darwin]
+# rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+# [target.aarch64-apple-darwin]
+# rustflags = ["-C", "link-arg=-fuse-ld=lld"]

@@ -1,7 +1,11 @@
-use anyhow::{Context, Result};
+// Standard library
 use std::path::{Path, PathBuf};
+
+// External crates
+use anyhow::{Context, Result};
 use vm_common::{vm_error, vm_println, vm_success};
 
+// Internal imports
 use super::super::utils::find_vm_config_file;
 use crate::{config::VmConfig, paths};
 

@@ -1,7 +1,11 @@
+// Standard library
 use std::env;
-use vm_detector::{detect_project_type, format_detected_types};
 
+// External crates
 use anyhow::{Context, Result};
+
+// Internal imports
+use vm_detector::{detect_project_type, format_detected_types};
 
 fn main() -> Result<()> {
     let project_dir = env::current_dir()

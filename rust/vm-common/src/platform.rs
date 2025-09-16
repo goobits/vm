@@ -1,6 +1,9 @@
-use anyhow::{Context, Result};
+// Standard library
 use std::env;
 use std::path::{Path, PathBuf};
+
+// External crates
+use anyhow::{Context, Result};
 
 /// A cross-platform equivalent of `readlink -f`.
 pub fn portable_readlink(path: &Path) -> Result<PathBuf> {
