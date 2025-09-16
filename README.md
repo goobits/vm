@@ -2,7 +2,7 @@
 Development environments that auto-configure based on your project type
 
 ## ✨ Key Features
-- **🎯 Zero Configuration** - Detects React, Django, Rails, Vue, and 20+ frameworks automatically
+- **🎯 Zero Configuration** - Detects React, Django, Rails, Vue, Angular, Next.js, Flask and more frameworks automatically
 - **🔐 AI Agent Safe** - Docker containers or full VM isolation for secure development
 - **⚡ Instant Setup** - Docker environments in 10-30s, full VMs in 2-3min
 - **🧪 Temporary VMs** - Quick experiments with specific folders mounted
@@ -89,9 +89,10 @@ vm temp ssh              # Enter and start coding
 vm temp destroy          # Clean up when done
 
 # Dynamic mount management
-vm temp mount ./new-feature    # Add directories while working
-vm temp unmount ./old-code     # Remove when not needed
-vm temp mounts                 # List current mounts
+vm temp mount ./new-feature     # Add directories while working
+vm temp unmount ./old-code      # Remove specific mount
+vm temp unmount --all           # Remove all mounts
+vm temp mounts                  # List current mounts
 ```
 
 ## ⚙️ Configuration
@@ -100,7 +101,7 @@ vm temp mounts                 # List current mounts
 # Minimal configuration
 os: ubuntu
 
-# Add ports
+# Add ports (mapped as key-value pairs)
 ports:
   frontend: 3000
   backend: 3001
@@ -113,6 +114,7 @@ vm:
 services:
   postgresql:
     enabled: true
+    version: "15"
 ```
 
 ```bash
@@ -178,6 +180,7 @@ vm ssh                       # Connect to VM
 vm destroy                   # Delete VM completely
 vm status                    # Check if running
 vm provision                 # Re-run provisioning
+vm kill [container]          # Force kill VM processes
 ```
 
 ### Temporary VMs
@@ -186,8 +189,14 @@ vm temp create <folders>     # Create ephemeral VM
 vm temp ssh                  # SSH into temp VM
 vm temp destroy              # Clean up
 vm temp mount <path>         # Add mount to running VM
-vm temp unmount <path>       # Remove mount
+vm temp unmount <path>       # Remove specific mount
+vm temp unmount --all        # Remove all mounts
 vm temp mounts               # List current mounts
+vm temp list                 # List all temp VMs
+vm temp status               # Check temp VM status
+vm temp stop                 # Stop temp VM
+vm temp start                # Start temp VM
+vm temp restart              # Restart temp VM
 ```
 
 ### Configuration
@@ -196,6 +205,11 @@ vm init                      # Create vm.yaml
 vm validate                  # Check config
 vm preset list               # Show presets
 vm preset show <name>        # Preset details
+vm config get [field]        # Get config value(s)
+vm config set <field> <value> # Set config value
+vm config unset <field>      # Remove config field
+vm config clear              # Clear all config
+vm config preset <names>     # Apply preset(s)
 ```
 
 ### Advanced
