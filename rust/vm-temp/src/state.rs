@@ -393,9 +393,18 @@ mod tests {
         assert!(!StateManager::is_dangerous_mount_source(Path::new(
             "/var/tmp"
         )));
+
+        // Platform-specific safe paths
+        #[cfg(target_os = "macos")]
         assert!(!StateManager::is_dangerous_mount_source(Path::new(
             "/var/folders/test"
         )));
+
+        #[cfg(not(target_os = "macos"))]
+        assert!(StateManager::is_dangerous_mount_source(Path::new(
+            "/var/folders/test"
+        )));
+
         assert!(!StateManager::is_dangerous_mount_source(Path::new(
             "/workspace"
         )));

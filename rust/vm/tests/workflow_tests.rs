@@ -36,6 +36,7 @@ impl WorkflowTestFixture {
             .current_dir(&self.test_dir)
             .env("HOME", self.test_dir.parent().unwrap())
             .env("VM_TOOL_DIR", &self.test_dir)
+            .env("VM_TEST_MODE", "1") // Disable structured logging for tests
             .output()?;
         Ok(output)
     }

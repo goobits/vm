@@ -39,6 +39,7 @@ impl TempWorkflowTestFixture {
             .current_dir(&self.test_dir)
             .env("HOME", self.test_dir.parent().unwrap())
             .env("VM_TOOL_DIR", &self.test_dir)
+            .env("VM_TEST_MODE", "1") // Disable structured logging for tests
             .output()?;
         Ok(output)
     }
@@ -61,6 +62,15 @@ impl TempWorkflowTestFixture {
     }
 }
 
+/// Check if Docker is available on the system
+fn is_docker_available() -> bool {
+    Command::new("docker")
+        .arg("--version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
 #[test]
 fn test_temp_vm_full_lifecycle() -> Result<()> {
     let fixture = TempWorkflowTestFixture::new()?;
@@ -71,6 +81,12 @@ fn test_temp_vm_full_lifecycle() -> Result<()> {
             "Skipping test - vm binary not found at {:?}",
             fixture.binary_path
         );
+        return Ok(());
+    }
+
+    // Skip test if Docker is not available
+    if !is_docker_available() {
+        println!("Skipping test - Docker not available for integration testing");
         return Ok(());
     }
 
