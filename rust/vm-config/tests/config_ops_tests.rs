@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use tempfile::TempDir;
 use vm_config::config::VmConfig;
 use vm_config::ConfigOps;
+use serde_yaml_ng as serde_yaml;
 
 // Global mutex to ensure tests run sequentially to avoid environment variable conflicts
 static TEST_MUTEX: Mutex<()> = Mutex::new(());
@@ -80,7 +81,7 @@ mod config_ops_tests {
         fixture.set_working_dir()?;
 
         // Test setting a simple value
-        ConfigOps::set("vm.memory", "4096", false)?;
+        ConfigOps::set("vm.memory", "4096", false, false)?;
 
         // Verify the file was created in current directory
         let config_path = std::env::current_dir()?.join("vm.yaml");
@@ -92,7 +93,7 @@ mod config_ops_tests {
         assert_eq!(config.vm.as_ref().and_then(|v| v.memory), Some(4096));
 
         // Test setting a nested value
-        ConfigOps::set("services.docker.enabled", "true", false)?;
+        ConfigOps::set("services.docker.enabled", "true", false, false)?;
 
         // Verify the nested structure
         let config_content = fs::read_to_string(&config_path)?;
@@ -117,8 +118,8 @@ mod config_ops_tests {
         fixture.set_working_dir()?;
 
         // Test setting global config
-        ConfigOps::set("provider", "tart", true)?;
-        ConfigOps::set("vm.cpus", "8", true)?;
+        ConfigOps::set("provider", "tart", true, false)?;
+        ConfigOps::set("vm.cpus", "8", true, false)?;
 
         // Verify global config file was created
         let global_config_path = fixture
@@ -154,8 +155,8 @@ mod config_ops_tests {
         fixture.set_working_dir()?;
 
         // Create a local config file
-        ConfigOps::set("vm.memory", "2048", false)?;
-        ConfigOps::set("provider", "docker", false)?;
+        ConfigOps::set("vm.memory", "2048", false, false)?;
+        ConfigOps::set("provider", "docker", false, false)?;
 
         // Verify file exists
         let config_path = std::env::current_dir()?.join("vm.yaml");
@@ -214,9 +215,9 @@ vm:
         fixture.set_working_dir()?;
 
         // Test deep nested setting
-        ConfigOps::set("services.postgresql.version", "15", false)?;
-        ConfigOps::set("services.postgresql.port", "5432", false)?;
-        ConfigOps::set("services.redis.enabled", "true", false)?;
+        ConfigOps::set("services.postgresql.version", "15", false, false)?;
+        ConfigOps::set("services.postgresql.port", "5432", false, false)?;
+        ConfigOps::set("services.redis.enabled", "true", false, false)?;
 
         // Verify nested structure was created correctly
         let config_path = std::env::current_dir()?.join("vm.yaml");

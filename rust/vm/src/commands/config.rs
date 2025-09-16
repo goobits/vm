@@ -37,13 +37,13 @@ pub fn handle_validate(config_file: Option<PathBuf>, no_preset: bool) -> Result<
 }
 
 /// Handle configuration management commands
-pub fn handle_config_command(command: &ConfigSubcommand) -> Result<()> {
+pub fn handle_config_command(command: &ConfigSubcommand, dry_run: bool) -> Result<()> {
     match command {
         ConfigSubcommand::Set {
             field,
             value,
             global,
-        } => ConfigOps::set(field, value, *global),
+        } => ConfigOps::set(field, value, *global, dry_run),
         ConfigSubcommand::Get { field, global } => ConfigOps::get(field.as_deref(), *global),
         ConfigSubcommand::Unset { field, global } => ConfigOps::unset(field, *global),
         ConfigSubcommand::Clear { global } => ConfigOps::clear(*global),

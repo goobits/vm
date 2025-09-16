@@ -145,10 +145,10 @@ fn test_config_ports_integration() -> Result<()> {
     fixture.set_working_dir()?;
 
     // Step 1: Set up configuration with port requirements
-    let output = ConfigOps::set("ports.web", "3000", false)?;
+    let output = ConfigOps::set("ports.web", "3000", false, false)?;
     assert!(output.contains("✅"));
 
-    let output = ConfigOps::set("ports.api", "8080", false)?;
+    let output = ConfigOps::set("ports.api", "8080", false, false)?;
     assert!(output.contains("✅"));
 
     // Step 2: Load the configuration
@@ -185,10 +185,10 @@ fn test_config_temp_integration() -> Result<()> {
     fixture.set_working_dir()?;
 
     // Step 1: Set up configuration
-    let output = ConfigOps::set("vm.memory", "4096", false)?;
+    let output = ConfigOps::set("vm.memory", "4096", false, false)?;
     assert!(output.contains("✅"));
 
-    let output = ConfigOps::set("provider", "docker", false)?;
+    let output = ConfigOps::set("provider", "docker", false, false)?;
     assert!(output.contains("✅"));
 
     // Step 2: Load configuration
@@ -375,10 +375,10 @@ fn test_configuration_inheritance_chain() -> Result<()> {
     fixture.set_working_dir()?;
 
     // Step 1: Set global configuration
-    let output = ConfigOps::set("vm.cpus", "8", true)?;
+    let output = ConfigOps::set("vm.cpus", "8", true, false)?;
     assert!(output.contains("✅"));
 
-    let output = ConfigOps::set("provider", "tart", true)?;
+    let output = ConfigOps::set("provider", "tart", true, false)?;
     assert!(output.contains("✅"));
 
     // Step 2: Create and apply preset
@@ -396,10 +396,10 @@ npm_packages:
     ConfigOps::preset("test-preset", false, false, None)?;
 
     // Step 3: Set local overrides
-    let output = ConfigOps::set("vm.memory", "8192", false)?;
+    let output = ConfigOps::set("vm.memory", "8192", false, false)?;
     assert!(output.contains("✅"));
 
-    let output = ConfigOps::set("provider", "docker", false)?;
+    let output = ConfigOps::set("provider", "docker", false, false)?;
     assert!(output.contains("✅"));
 
     // Step 4: Test final merged configuration
@@ -430,8 +430,8 @@ fn test_state_persistence_across_operations() -> Result<()> {
     fixture.set_working_dir()?;
 
     // Step 1: Set up initial configuration
-    ConfigOps::set("vm.memory", "4096", false)?;
-    ConfigOps::set("provider", "docker", false)?;
+    ConfigOps::set("vm.memory", "4096", false, false)?;
+    ConfigOps::set("provider", "docker", false, false)?;
 
     // Step 2: Create temp state
     let state_manager = StateManager::with_state_dir(fixture.test_dir.join("vm_state"));
@@ -445,7 +445,7 @@ fn test_state_persistence_across_operations() -> Result<()> {
     state_manager.save_state(&initial_state)?;
 
     // Step 3: Modify configuration
-    ConfigOps::set("vm.memory", "8192", false)?;
+    ConfigOps::set("vm.memory", "8192", false, false)?;
 
     // Step 4: Create new state with updated config
     let config = VmConfig::load(None, false)?;

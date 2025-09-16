@@ -34,7 +34,7 @@ use crate::preset::PresetDetector;
 /// use vm_config::ConfigOps;
 ///
 /// // Set a local configuration value
-/// ConfigOps::set("vm.memory", "4096", false)?;
+/// ConfigOps::set("vm.memory", "4096", false, false)?;
 ///
 /// // Get a global configuration value
 /// ConfigOps::get(Some("project.name"), true)?;
@@ -79,16 +79,16 @@ impl ConfigOps {
     /// use vm_config::ConfigOps;
     ///
     /// // Set VM memory
-    /// ConfigOps::set("vm.memory", "4096", false)?;
+    /// ConfigOps::set("vm.memory", "4096", false, false)?;
     ///
     /// // Enable a service globally
-    /// ConfigOps::set("services.postgresql.enabled", "true", true)?;
+    /// ConfigOps::set("services.postgresql.enabled", "true", true, false)?;
     ///
     /// // Set an array value
-    /// ConfigOps::set("npm_packages", "[eslint, prettier]", false)?;
+    /// ConfigOps::set("npm_packages", "[eslint, prettier]", false, false)?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    pub fn set(field: &str, value: &str, global: bool) -> Result<()> {
+    pub fn set(field: &str, value: &str, global: bool, dry_run: bool) -> Result<()> {
         let config_path = if global {
             get_or_create_global_config_path()?
         } else {
@@ -108,10 +108,14 @@ impl ConfigOps {
 
         set_nested_field(&mut yaml_value, field, parsed_value)?;
 
-        let yaml_str = serde_yaml::to_string(&yaml_value)?;
-        fs::write(&config_path, yaml_str)?;
-
-        println!("✅ Set {} = {} in {}", field, value, config_path.display());
+        if dry_run {
+            println!("🔍 DRY RUN - Would set {} = {} in {}", field, value, config_path.display());
+            println!("   (no changes were made to the file)");
+        } else {
+            let yaml_str = serde_yaml::to_string(&yaml_value)?;
+            fs::write(&config_path, yaml_str)?;
+            println!("✅ Set {} = {} in {}", field, value, config_path.display());
+        }
         Ok(())
     }
 

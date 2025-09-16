@@ -426,7 +426,9 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     pub fn show_logs(&self) -> Result<()> {
-        stream_command("docker", &["logs", "-f", &self.container_name()])
+        // Show recent logs without following (-f) to avoid hanging indefinitely
+        // Use --tail to show last 50 lines and add timestamps
+        stream_command("docker", &["logs", "--tail", "50", "-t", &self.container_name()])
     }
 
     pub fn show_status(&self) -> Result<()> {

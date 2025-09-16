@@ -34,7 +34,7 @@ pub fn execute_command(args: Args) -> Result<()> {
         }
         Command::Config { command } => {
             debug!("Calling ConfigOps methods directly");
-            config::handle_config_command(command)
+            config::handle_config_command(command, args.dry_run)
         }
         Command::Preset { command } => {
             debug!("Calling preset methods directly");
