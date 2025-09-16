@@ -495,7 +495,7 @@ impl<'a> LifecycleOperations<'a> {
                 &self.container_name(),
                 "bash",
                 "-c",
-                "ansible-playbook -i localhost, -c local /app/shared/ansible/playbook.yml",
+                &format!("ansible-playbook -i localhost, -c local {}", ANSIBLE_PLAYBOOK_PATH),
             ],
         );
         if let Err(e) = ansible_result {
@@ -586,12 +586,11 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
     }
 
     fn check_container_health(&self, container_name: &str) -> Result<bool> {
-        let max_attempts = 30;
-        for _ in 0..max_attempts {
+        for _ in 0..CONTAINER_READINESS_MAX_ATTEMPTS {
             if stream_command("docker", &["exec", container_name, "echo", "ready"]).is_ok() {
                 return Ok(true);
             }
-            std::thread::sleep(std::time::Duration::from_secs(2));
+            std::thread::sleep(std::time::Duration::from_secs(CONTAINER_READINESS_SLEEP_SECONDS));
         }
         Ok(false)
     }

@@ -1,15 +1,65 @@
 use which::which;
 
-/// Tool and runtime detection utilities
+/// Tool and runtime detection utilities.
+///
+/// Provides methods for detecting installed development tools, language runtimes,
+/// and database systems on the host system. This is useful for:
+/// - Verifying development environment requirements
+/// - Providing installation recommendations
+/// - Adapting VM configurations based on available tools
+///
+/// All detection is performed by checking if commands are available in the system PATH.
 pub struct ToolDetector;
 
 impl ToolDetector {
-    /// Check if a command is available in PATH
+    /// Check if a command is available in the system PATH.
+    ///
+    /// This is the core detection method used by other detection functions.
+    /// It verifies whether a given command/executable can be found and executed.
+    ///
+    /// # Arguments
+    /// * `cmd` - The command name to check for (e.g., "node", "python", "git")
+    ///
+    /// # Returns
+    /// `true` if the command is found in PATH, `false` otherwise
+    ///
+    /// # Examples
+    /// ```rust
+    /// use vm_detector::ToolDetector;
+    ///
+    /// if ToolDetector::has_command("git") {
+    ///     println!("Git is installed");
+    /// }
+    /// ```
     pub fn has_command(cmd: &str) -> bool {
         which(cmd).is_ok()
     }
 
-    /// Detect installed language runtimes
+    /// Detect installed programming language runtimes.
+    ///
+    /// Scans the system for common programming language runtimes and development tools.
+    /// This helps determine what languages can be used in the development environment.
+    ///
+    /// ## Detected Languages
+    /// - **nodejs** - Node.js runtime (checks for `node` or `npm`)
+    /// - **python** - Python interpreter (checks for `python` or `python3`)
+    /// - **ruby** - Ruby interpreter (checks for `ruby` or `gem`)
+    /// - **rust** - Rust toolchain (checks for `cargo` or `rustc`)
+    /// - **go** - Go compiler and runtime (checks for `go`)
+    /// - **java** - Java runtime and compiler (checks for `java` or `javac`)
+    ///
+    /// # Returns
+    /// A vector of detected language identifiers (may be empty)
+    ///
+    /// # Examples
+    /// ```rust
+    /// use vm_detector::ToolDetector;
+    ///
+    /// let languages = ToolDetector::detect_languages();
+    /// for lang in languages {
+    ///     println!("Found language runtime: {}", lang);
+    /// }
+    /// ```
     pub fn detect_languages() -> Vec<String> {
         let mut languages = Vec::new();
 
@@ -35,7 +85,29 @@ impl ToolDetector {
         languages
     }
 
-    /// Detect installed databases
+    /// Detect installed database systems.
+    ///
+    /// Scans the system for common database clients and tools. This helps
+    /// determine what databases are available for development and testing.
+    ///
+    /// ## Detected Databases
+    /// - **postgresql** - PostgreSQL database (checks for `psql` client)
+    /// - **mysql** - MySQL database (checks for `mysql` client)
+    /// - **mongodb** - MongoDB database (checks for `mongosh` or legacy `mongo` client)
+    /// - **redis** - Redis key-value store (checks for `redis-cli` client)
+    ///
+    /// # Returns
+    /// A vector of detected database identifiers (may be empty)
+    ///
+    /// # Examples
+    /// ```rust
+    /// use vm_detector::ToolDetector;
+    ///
+    /// let databases = ToolDetector::detect_databases();
+    /// if databases.contains(&"postgresql".to_string()) {
+    ///     println!("PostgreSQL is available");
+    /// }
+    /// ```
     pub fn detect_databases() -> Vec<String> {
         let mut databases = Vec::new();
 
@@ -56,22 +128,93 @@ impl ToolDetector {
     }
 }
 
-/// Check if a command is available in PATH (convenience function)
+/// Check if a command is available in PATH (convenience function).
+///
+/// This is a module-level convenience function that wraps `ToolDetector::has_command`
+/// for easier use without needing to reference the struct.
+///
+/// # Arguments
+/// * `cmd` - The command name to check for
+///
+/// # Returns
+/// `true` if the command is found in PATH, `false` otherwise
+///
+/// # Examples
+/// ```rust
+/// use vm_detector::has_command;
+///
+/// if has_command("docker") {
+///     println!("Docker is available");
+/// }
+/// ```
 pub fn has_command(cmd: &str) -> bool {
     ToolDetector::has_command(cmd)
 }
 
-/// Detect installed language runtimes (convenience function)
+/// Detect installed language runtimes (convenience function).
+///
+/// This is a module-level convenience function that wraps `ToolDetector::detect_languages`
+/// for easier use without needing to reference the struct.
+///
+/// # Returns
+/// A vector of detected language runtime identifiers
+///
+/// # Examples
+/// ```rust
+/// use vm_detector::detect_languages;
+///
+/// let languages = detect_languages();
+/// println!("Available languages: {:?}", languages);
+/// ```
 pub fn detect_languages() -> Vec<String> {
     ToolDetector::detect_languages()
 }
 
-/// Detect installed databases (convenience function)
+/// Detect installed databases (convenience function).
+///
+/// This is a module-level convenience function that wraps `ToolDetector::detect_databases`
+/// for easier use without needing to reference the struct.
+///
+/// # Returns
+/// A vector of detected database system identifiers
+///
+/// # Examples
+/// ```rust
+/// use vm_detector::detect_databases;
+///
+/// let databases = detect_databases();
+/// for db in databases {
+///     println!("Found database: {}", db);
+/// }
+/// ```
 pub fn detect_databases() -> Vec<String> {
     ToolDetector::detect_databases()
 }
 
-/// Check if a path is a Python project (has setup.py or pyproject.toml)
+/// Check if a directory contains a Python project (legacy function).
+///
+/// **Note**: This function is deprecated in favor of the main `is_python_project`
+/// function in the root module, which provides more comprehensive detection.
+///
+/// This function only checks for `setup.py` and `pyproject.toml` files.
+/// The main function also checks for `requirements.txt` and `Pipfile`.
+///
+/// # Arguments
+/// * `path` - The directory path to check
+///
+/// # Returns
+/// `true` if Python project files are found, `false` otherwise
+///
+/// # Examples
+/// ```rust
+/// use std::path::Path;
+/// use vm_detector::tools::is_python_project;
+///
+/// let project_dir = Path::new("/path/to/python/project");
+/// if is_python_project(project_dir) {
+///     println!("Found Python project files");
+/// }
+/// ```
 pub fn is_python_project(path: &std::path::Path) -> bool {
     path.join("setup.py").exists() || path.join("pyproject.toml").exists()
 }

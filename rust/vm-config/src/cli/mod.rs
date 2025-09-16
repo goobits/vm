@@ -423,84 +423,93 @@ pub fn init_config_file(
 }
 
 pub fn execute(args: Args) -> Result<()> {
+    use Command::*;
+
     match args.command {
-        Command::Merge { base, overlay, format } => {
-            commands::merge::execute_merge(base, overlay, format)
+        // File Operations Group
+        Merge { base, overlay, format } => {
+            FileOpsGroup::execute_merge(base, overlay, format)
         }
-        Command::Validate { file, no_preset, verbose } => {
-            commands::validation::execute_validate(file, no_preset, verbose)
+        Convert { input, format } => {
+            FileOpsGroup::execute_convert(input, format)
         }
-        Command::Preset { dir, presets_dir, detect_only, list } => {
-            commands::preset::execute(dir, presets_dir, detect_only, list)
+        ArrayAdd { file, path, item } => {
+            FileOpsGroup::execute_array_add(file, path, item)
         }
-        Command::Convert { input, format } => {
-            commands::conversion::execute(input, format)
+        ArrayRemove { file, path, filter } => {
+            FileOpsGroup::execute_array_remove(file, path, filter)
         }
-        Command::Process { defaults, config, project_dir, presets_dir, format } => {
-            commands::process::execute(defaults, config, project_dir, presets_dir, format)
+        Modify { file, field, value, stdout } => {
+            FileOpsGroup::execute_modify(file, field, value, stdout)
         }
-        Command::Query { config, field, raw, default } => {
-            commands::query::execute_query(config, field, raw, default)
+        AddToArray { file, path, object, stdout } => {
+            FileOpsGroup::execute_add_to_array(file, path, object, stdout)
         }
-        Command::ArrayAdd { file, path, item } => {
-            commands::file_ops::execute_array_add(file, path, item)
+        Delete { file, path, field, value, format } => {
+            FileOpsGroup::execute_delete(file, path, field, value, format)
         }
-        Command::ArrayRemove { file, path, filter } => {
-            commands::file_ops::execute_array_remove(file, path, filter)
+        CheckFile { file } => {
+            FileOpsGroup::execute_check_file(file)
         }
-        Command::Filter { file, expression, output_format } => {
-            commands::query::execute_filter(file, expression, output_format)
+        MergeEvalAll { files, format } => {
+            FileOpsGroup::execute_merge_eval_all(files, format)
         }
-        Command::CheckFile { file } => {
-            commands::validation::execute_check_file(file)
+        Transform { file, expression, format } => {
+            FileOpsGroup::execute_transform(file, expression, format)
         }
-        Command::MergeEvalAll { files, format } => {
-            commands::merge::execute_merge_eval_all(files, format)
+
+        // Query Operations Group
+        Query { config, field, raw, default } => {
+            QueryOpsGroup::execute_query(config, field, raw, default)
         }
-        Command::Modify { file, field, value, stdout } => {
-            commands::file_ops::execute_modify(file, field, value, stdout)
+        Filter { file, expression, output_format } => {
+            QueryOpsGroup::execute_filter(file, expression, output_format)
         }
-        Command::ArrayLength { file, path } => {
-            commands::query::execute_array_length(file, path)
+        ArrayLength { file, path } => {
+            QueryOpsGroup::execute_array_length(file, path)
         }
-        Command::Transform { file, expression, format } => {
-            commands::transformation::execute(file, expression, format)
+        HasField { file, field, subfield } => {
+            QueryOpsGroup::execute_has_field(file, field, subfield)
         }
-        Command::HasField { file, field, subfield } => {
-            commands::query::execute_has_field(file, field, subfield)
+        SelectWhere { file, path, field, value, format } => {
+            QueryOpsGroup::execute_select_where(file, path, field, value, format)
         }
-        Command::AddToArray { file, path, object, stdout } => {
-            commands::file_ops::execute_add_to_array(file, path, object, stdout)
+        Count { file, path } => {
+            QueryOpsGroup::execute_count(file, path)
         }
-        Command::SelectWhere { file, path, field, value, format } => {
-            commands::query::execute_select_where(file, path, field, value, format)
+
+        // Configuration Operations Group
+        Set { field, value, global } => {
+            ConfigOpsGroup::execute_set(field, value, global)
         }
-        Command::Count { file, path } => {
-            commands::query::execute_count(file, path)
+        Get { field, global } => {
+            ConfigOpsGroup::execute_get(field, global)
         }
-        Command::Delete { file, path, field, value, format } => {
-            commands::file_ops::execute_delete(file, path, field, value, format)
+        Unset { field, global } => {
+            ConfigOpsGroup::execute_unset(field, global)
         }
-        Command::Dump { file, no_preset } => {
-            commands::dump::execute_dump(file, no_preset)
+        Clear { global } => {
+            ConfigOpsGroup::execute_clear(global)
         }
-        Command::Export { file, no_preset } => {
-            commands::dump::execute_export(file, no_preset)
+        Validate { file, no_preset, verbose } => {
+            ConfigOpsGroup::execute_validate(file, no_preset, verbose)
         }
-        Command::Set { field, value, global } => {
-            commands::config_ops::execute_set(field, value, global)
+        Dump { file, no_preset } => {
+            ConfigOpsGroup::execute_dump(file, no_preset)
         }
-        Command::Get { field, global } => {
-            commands::config_ops::execute_get(field, global)
+        Export { file, no_preset } => {
+            ConfigOpsGroup::execute_export(file, no_preset)
         }
-        Command::Unset { field, global } => {
-            commands::config_ops::execute_unset(field, global)
+
+        // Project Operations Group
+        Preset { dir, presets_dir, detect_only, list } => {
+            ProjectOpsGroup::execute_preset(dir, presets_dir, detect_only, list)
         }
-        Command::Clear { global } => {
-            commands::config_ops::execute_clear(global)
+        Process { defaults, config, project_dir, presets_dir, format } => {
+            ProjectOpsGroup::execute_process(defaults, config, project_dir, presets_dir, format)
         }
-        Command::Init { file, services, ports } => {
-            commands::init::execute(file, services, ports)
+        Init { file, services, ports } => {
+            ProjectOpsGroup::execute_init(file, services, ports)
         }
     }
 }
