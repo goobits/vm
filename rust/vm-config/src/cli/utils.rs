@@ -1,5 +1,6 @@
 use crate::config::VmConfig;
 use anyhow::Result;
+use serde_yaml_ng as serde_yaml;
 use serde_yaml::Value;
 use std::path::PathBuf;
 
