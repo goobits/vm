@@ -78,41 +78,8 @@ impl<'a> ComposeOperations<'a> {
     }
 
     pub fn render_docker_compose_with_mounts(&self, state: &TempVmState) -> Result<String> {
-        const TEMP_DOCKER_COMPOSE_TEMPLATE: &str = r#"
-# Temporary VM docker-compose.yml with custom mounts
-services:
-  {{ container_name }}:
-    container_name: {{ container_name }}
-    build:
-      context: ..
-      dockerfile: Dockerfile
-    image: vm-temp:latest
-    volumes:
-      # Default workspace volume
-      - ../..:/workspace:rw
-      # Persistent volumes for cache and package managers
-      - vmtemp_nvm:/home/developer/.nvm
-      - vmtemp_cache:/home/developer/.cache
-      {% if mounts %}# Custom temp VM mounts
-      {% for mount in mounts %}- {{ mount.source }}:{{ mount.target }}:{{ mount.permissions }}
-      {% endfor %}{% endif %}
-    ports:
-      {% if config.ports %}{% for name, port in config.ports %}- "{{ port }}:{{ port }}"
-      {% endfor %}{% endif %}
-    environment:
-      {% if config.environment %}{% for name, value in config.environment %}- {{ name }}={{ value }}
-      {% endfor %}{% endif %}
-    cap_add:
-      - SYS_PTRACE
-    security_opt:
-      - seccomp=unconfined
-
-volumes:
-  vmtemp_nvm:
-  vmtemp_cache:
-"#;
-        let mut tera = Tera::default();
-        tera.add_raw_template("docker-compose.yml", TEMP_DOCKER_COMPOSE_TEMPLATE)?;
+        // Use shared template engine instead of creating new instance
+        let tera = &super::TEMP_COMPOSE_TERA;
 
         let mut context = TeraContext::new();
         context.insert("config", &self.config);
