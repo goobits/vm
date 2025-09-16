@@ -5,7 +5,50 @@ use std::path::Path;
 #[cfg(test)]
 use std::path::PathBuf;
 
-/// Simplified preset detection that leverages vm-detector's core project detection
+/// Detect the most appropriate VM preset for a project directory.
+///
+/// This function analyzes a project directory using comprehensive detection logic
+/// and returns the highest-priority preset that matches the detected technologies.
+/// Presets are VM configuration templates optimized for specific tech stacks.
+///
+/// ## Preset Priority Order
+/// 1. **Framework-specific**: next, react, angular, vue, django, flask, rails
+/// 2. **Language-specific**: nodejs, python, rust, go, php
+/// 3. **Infrastructure**: docker, kubernetes
+///
+/// ## Supported Presets
+/// - `next` - Next.js applications
+/// - `react` - React applications
+/// - `angular` - Angular applications
+/// - `vue` - Vue.js applications
+/// - `django` - Django web applications
+/// - `flask` - Flask web applications
+/// - `rails` - Ruby on Rails applications
+/// - `nodejs` - Node.js applications
+/// - `python` - Python projects
+/// - `rust` - Rust projects
+/// - `go` - Go projects
+/// - `php` - PHP projects
+/// - `docker` - Dockerized applications
+/// - `kubernetes` - Kubernetes deployments
+///
+/// # Arguments
+/// * `project_dir` - The project directory to analyze
+///
+/// # Returns
+/// * `Some(preset_name)` - The recommended preset name
+/// * `None` - If no matching preset is found
+///
+/// # Examples
+/// ```rust
+/// use std::path::Path;
+/// use vm_detector::detect_preset_for_project;
+///
+/// let project_dir = Path::new("/path/to/react/app");
+/// if let Some(preset) = detect_preset_for_project(project_dir) {
+///     println!("Recommended preset: {}", preset);
+/// }
+/// ```
 pub fn detect_preset_for_project(project_dir: &Path) -> Option<String> {
     // Use vm-detector's comprehensive project detection
     let detected_types = detect_project_type(project_dir);
@@ -92,24 +135,142 @@ fn has_any_dir(base_dir: &Path, dir_names: &[&str]) -> bool {
     dir_names.iter().any(|d| has_dir(base_dir, d))
 }
 
-/// Enhanced React project detection using vm-detector's logic
+/// Check if a directory contains a React project.
+///
+/// Detects React projects by analyzing the project structure and dependencies.
+/// This includes both standard React applications and Next.js projects which
+/// are built on top of React.
+///
+/// ## Detection Logic
+/// - Checks for React dependencies in package.json
+/// - Identifies Next.js projects (which are React-based)
+/// - Uses vm-detector's comprehensive project analysis
+///
+/// # Arguments
+/// * `project_dir` - The directory path to check
+///
+/// # Returns
+/// `true` if the project uses React or Next.js, `false` otherwise
+///
+/// # Examples
+/// ```rust
+/// use std::path::Path;
+/// use vm_detector::is_react_project;
+///
+/// let project_dir = Path::new("/path/to/my-app");
+/// if is_react_project(project_dir) {
+///     println!("This project uses React");
+/// }
+/// ```
 pub fn is_react_project(project_dir: &Path) -> bool {
     let detected_types = detect_project_type(project_dir);
     detected_types.contains("react") || detected_types.contains("next")
 }
 
-/// Get recommended preset based on detected project types
+/// Get the recommended VM preset for a project with fallback.
+///
+/// This is a convenience function that wraps `detect_preset_for_project`
+/// and provides a sensible fallback. If no specific preset is detected,
+/// it returns "base" which provides a minimal VM configuration.
+///
+/// ## Fallback Strategy
+/// - If a specific preset is detected → returns that preset name
+/// - If no preset is detected → returns "base" as a safe default
+///
+/// The "base" preset typically includes:
+/// - Basic development tools
+/// - Common utilities
+/// - Minimal resource allocation
+///
+/// # Arguments
+/// * `project_dir` - The project directory to analyze
+///
+/// # Returns
+/// The recommended preset name (never returns `None`)
+///
+/// # Examples
+/// ```rust
+/// use std::path::Path;
+/// use vm_detector::get_recommended_preset;
+///
+/// let project_dir = Path::new("/path/to/project");
+/// let preset = get_recommended_preset(project_dir);
+/// println!("Using preset: {}", preset); // Always returns a value
+/// ```
 pub fn get_recommended_preset(project_dir: &Path) -> String {
     detect_preset_for_project(project_dir).unwrap_or_else(|| "base".to_string())
 }
 
-/// Check if detected types indicate a multi-technology project
+/// Check if a project uses multiple technologies.
+///
+/// Determines whether a project is a multi-technology stack by counting
+/// the number of distinct technologies detected. This is useful for:
+/// - Identifying complex project structures
+/// - Determining if special handling is needed
+/// - Providing appropriate warnings or recommendations
+///
+/// ## Multi-Tech Examples
+/// - React frontend + Docker containerization
+/// - Python backend + Node.js build tools
+/// - Ruby on Rails + Kubernetes deployment
+///
+/// # Arguments
+/// * `project_dir` - The project directory to analyze
+///
+/// # Returns
+/// `true` if more than one technology is detected, `false` otherwise
+///
+/// # Examples
+/// ```rust
+/// use std::path::Path;
+/// use vm_detector::is_multi_tech_project;
+///
+/// let project_dir = Path::new("/path/to/fullstack/app");
+/// if is_multi_tech_project(project_dir) {
+///     println!("Complex multi-technology project detected");
+/// }
+/// ```
 pub fn is_multi_tech_project(project_dir: &Path) -> bool {
     let detected_types = detect_project_type(project_dir);
     detected_types.len() > 1
 }
 
-/// Get all detected technology types for a project
+/// Get the complete set of detected technologies for a project.
+///
+/// Returns all detected technology identifiers for detailed analysis.
+/// This provides the raw detection results, useful for:
+/// - Detailed project analysis
+/// - Custom preset logic
+/// - Technology reporting and metrics
+/// - Multi-technology handling
+///
+/// ## Technology Categories
+/// - **Languages**: python, nodejs, rust, go, ruby, php
+/// - **Frameworks**: react, vue, angular, next, django, flask, rails
+/// - **Infrastructure**: docker, kubernetes
+///
+/// # Arguments
+/// * `project_dir` - The project directory to analyze
+///
+/// # Returns
+/// A `HashSet<String>` containing all detected technology identifiers
+///
+/// # Examples
+/// ```rust
+/// use std::path::Path;
+/// use vm_detector::get_detected_technologies;
+///
+/// let project_dir = Path::new("/path/to/project");
+/// let technologies = get_detected_technologies(project_dir);
+///
+/// for tech in &technologies {
+///     println!("Detected: {}", tech);
+/// }
+///
+/// if technologies.contains("docker") && technologies.contains("react") {
+///     println!("Containerized React application");
+/// }
+/// ```
 pub fn get_detected_technologies(project_dir: &Path) -> HashSet<String> {
     detect_project_type(project_dir)
 }

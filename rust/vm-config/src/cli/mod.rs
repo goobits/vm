@@ -6,10 +6,14 @@ use std::path::PathBuf;
 // Removed unused imports
 
 mod commands;
+mod command_groups;
 mod utils;
 
 pub use utils::*;
 pub use commands::validation::{load_and_merge_config, load_and_merge_config_with_preset};
+
+// Import command groups for organized dispatch
+use command_groups::{FileOpsGroup, QueryOpsGroup, ConfigOpsGroup, ProjectOpsGroup};
 
 // Removed unused function fix_yaml_indentation
 

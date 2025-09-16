@@ -13,7 +13,6 @@ regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
-sysinfo = { workspace = true }
 tera = { workspace = true }
 thiserror = { workspace = true }
 which = { workspace = true }

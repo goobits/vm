@@ -12,6 +12,7 @@ pub mod error;
 pub mod progress;
 pub mod resources;
 pub mod security;
+pub mod system_check;
 pub mod temp_models;
 pub mod utils;
 

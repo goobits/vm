@@ -19,6 +19,17 @@ use super::{build::BuildOperations, compose::ComposeOperations, UserConfig, Comp
 use vm_common::{vm_error, vm_success, vm_warning};
 use vm_config::config::VmConfig;
 
+// Constants for container lifecycle operations
+const DEFAULT_PROJECT_NAME: &str = "vm-project";
+const CONTAINER_SUFFIX: &str = "-dev";
+const DEFAULT_WORKSPACE_PATH: &str = "/workspace";
+const DEFAULT_SHELL: &str = "zsh";
+const HIGH_MEMORY_THRESHOLD: u32 = 8192;
+const CONTAINER_READINESS_MAX_ATTEMPTS: u32 = 30;
+const CONTAINER_READINESS_SLEEP_SECONDS: u64 = 2;
+const ANSIBLE_PLAYBOOK_PATH: &str = "/app/shared/ansible/playbook.yml";
+const TEMP_CONFIG_PATH: &str = "/tmp/vm-config.json";
+
 pub struct LifecycleOperations<'a> {
     pub config: &'a VmConfig,
     pub temp_dir: &'a std::path::PathBuf,
@@ -43,18 +54,18 @@ impl<'a> LifecycleOperations<'a> {
             .project
             .as_ref()
             .and_then(|p| p.name.as_deref())
-            .unwrap_or("vm-project")
+            .unwrap_or(DEFAULT_PROJECT_NAME)
     }
 
     pub fn container_name(&self) -> String {
-        format!("{}-dev", self.project_name())
+        format!("{}{}", self.project_name(), CONTAINER_SUFFIX)
     }
 
     /// Handle potential Docker issues proactively
     pub fn handle_potential_issues(&self) -> Result<()> {
         // Check for port conflicts and provide helpful guidance
         if let Some(vm_config) = &self.config.vm {
-            if vm_config.memory.unwrap_or(0) > 8192 {
+            if vm_config.memory.unwrap_or(0) > HIGH_MEMORY_THRESHOLD {
                 eprintln!("💡 Tip: High memory allocation detected. Ensure your system has sufficient RAM.");
             }
         }
@@ -231,9 +242,8 @@ impl<'a> LifecycleOperations<'a> {
         // Step 6: Wait for readiness and run ansible (configuration only)
         println!("\n🔧 Provisioning environment");
         print!("⏳ Waiting for container readiness... ");
-        let max_attempts = 30;
         let mut attempt = 1;
-        while attempt <= max_attempts {
+        while attempt <= CONTAINER_READINESS_MAX_ATTEMPTS {
             if let Ok(output) = std::process::Command::new("docker")
                 .args(["exec", &self.container_name(), "echo", "ready"])
                 .output()
@@ -242,11 +252,11 @@ impl<'a> LifecycleOperations<'a> {
                     break;
                 }
             }
-            if attempt == max_attempts {
+            if attempt == CONTAINER_READINESS_MAX_ATTEMPTS {
                 println!("❌");
                 return Err(anyhow::anyhow!("Container failed to become ready"));
             }
-            std::thread::sleep(std::time::Duration::from_secs(2));
+            std::thread::sleep(std::time::Duration::from_secs(CONTAINER_READINESS_SLEEP_SECONDS));
             attempt += 1;
         }
         println!("✅");
@@ -259,7 +269,7 @@ impl<'a> LifecycleOperations<'a> {
             .args([
                 "cp",
                 BuildOperations::path_to_string(&temp_config_path)?,
-                &format!("{}:/tmp/vm-config.json", self.container_name()),
+                &format!("{}:{}", self.container_name(), TEMP_CONFIG_PATH),
             ])
             .output()?;
         if !copy_result.status.success() {
@@ -276,7 +286,7 @@ impl<'a> LifecycleOperations<'a> {
                 &self.container_name(),
                 "bash",
                 "-c",
-                "ansible-playbook -i localhost, -c local /app/shared/ansible/playbook.yml",
+                &format!("ansible-playbook -i localhost, -c local {}", ANSIBLE_PLAYBOOK_PATH),
             ],
         )
         .context("Ansible provisioning failed")?;
@@ -343,7 +353,7 @@ impl<'a> LifecycleOperations<'a> {
             .project
             .as_ref()
             .and_then(|p| p.workspace_path.as_deref())
-            .unwrap_or("/workspace");
+            .unwrap_or(DEFAULT_WORKSPACE_PATH);
         let user_config = UserConfig::from_vm_config(self.config);
         let project_user = &user_config.username;
         let shell = self
@@ -351,7 +361,7 @@ impl<'a> LifecycleOperations<'a> {
             .terminal
             .as_ref()
             .and_then(|t| t.shell.as_deref())
-            .unwrap_or("zsh");
+            .unwrap_or(DEFAULT_SHELL);
 
         let target_path = SecurityValidator::validate_relative_path(relative_path, workspace_path)?;
         let target_dir = target_path.to_string_lossy().to_string();
@@ -394,7 +404,7 @@ impl<'a> LifecycleOperations<'a> {
             .project
             .as_ref()
             .and_then(|p| p.workspace_path.as_deref())
-            .unwrap_or("/workspace");
+            .unwrap_or(DEFAULT_WORKSPACE_PATH);
         let user_config = UserConfig::from_vm_config(self.config);
         let project_user = &user_config.username;
 
@@ -474,7 +484,7 @@ impl<'a> LifecycleOperations<'a> {
             &[
                 "cp",
                 BuildOperations::path_to_string(&temp_config_path)?,
-                &format!("{}:/tmp/vm-config.json", self.container_name()),
+                &format!("{}:{}", self.container_name(), TEMP_CONFIG_PATH),
             ],
         )?;
 
