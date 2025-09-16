@@ -1,0 +1,44 @@
+# Example: Hardened security configuration for running untrusted code
+# This configuration prioritizes security over development convenience
+
+provider: docker
+os: ubuntu
+
+# Security configuration for maximum host protection
+security:
+  # Disable debugging capabilities that could be used for host escape
+  enable_debugging: false    # Removes SYS_PTRACE, enables seccomp filtering
+
+  # Prevent privilege escalation
+  no_new_privileges: true    # Blocks SUID/SGID binaries from elevating privileges
+
+  # User namespace remapping (requires Docker daemon configuration)
+  # Uncomment if your Docker daemon supports user namespaces
+  # user_namespaces: true
+
+  # Resource limits to prevent DoS
+  memory_limit: "2g"         # Maximum 2GB RAM
+  cpu_limit: "2.0"          # Maximum 2 CPU cores
+  pids_limit: 500           # Maximum 500 processes
+
+  # Additional capabilities to drop
+  drop_capabilities:
+    - NET_ADMIN             # Network configuration
+    - SYS_TIME             # System time modification
+    - SYS_MODULE           # Kernel module loading
+
+  # Custom security options (optional)
+  # security_opts:
+  #   - apparmor=docker-default
+
+  # Read-only root filesystem (requires explicit mounts for writable areas)
+  # read_only_root: true
+
+# Regular VM configuration
+vm:
+  memory: 2048
+  cpus: 2
+
+# Your application configuration
+ports:
+  app: 3000

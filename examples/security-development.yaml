@@ -1,0 +1,20 @@
+# Example: Development configuration with debugging enabled
+# This configuration prioritizes developer convenience over maximum security
+
+provider: docker
+os: ubuntu
+
+# Enable debugging capabilities for development work
+security:
+  enable_debugging: true     # Enable gdb, strace, etc. (reduces security)
+  no_new_privileges: false   # Allow SUID operations (reduces security)
+
+# Regular development configuration
+vm:
+  memory: 4096
+  cpus: 4
+
+ports:
+  frontend: 3000
+  backend: 8080
+  database: 5432
