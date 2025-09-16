@@ -80,11 +80,20 @@ RUN if [ -n "${NPM_PACKAGES}" ]; then \
 fi
 
 RUN if [ -n "${PIPX_PACKAGES}" ]; then \
-    . "$HOME/.profile" && pipx install ${PIPX_PACKAGES}; \
+    . "$HOME/.profile" && \
+    for package in ${PIPX_PACKAGES}; do \
+        echo "Installing pipx package: $package"; \
+        pipx install "$package" || \
+        echo "⚠️ Warning: Failed to install pipx package '$package' - it may not be available"; \
+    done; \
 fi
 
 RUN if [ -n "${PIP_PACKAGES}" ]; then \
-    pip3 install --user --break-system-packages ${PIP_PACKAGES}; \
+    for package in ${PIP_PACKAGES}; do \
+        echo "Installing pip package: $package"; \
+        pip3 install --user --break-system-packages "$package" || \
+        echo "⚠️ Warning: Failed to install pip package '$package' - it may not exist in PyPI"; \
+    done; \
 fi
 
 RUN if [ -n "${CARGO_PACKAGES}" ]; then \
