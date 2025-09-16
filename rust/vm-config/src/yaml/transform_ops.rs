@@ -1,7 +1,7 @@
 use super::core::CoreOperations;
 use crate::cli::{OutputFormat, TransformFormat};
-use anyhow::{Context, Result};
-use serde_yaml::{Mapping, Value};
+use anyhow::Result;
+use serde_yaml::Value;
 use std::path::PathBuf;
 
 /// Transform-specific YAML operations

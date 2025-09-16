@@ -201,8 +201,8 @@
             file:
               path: "{{ item }}"
               state: directory
-              owner: vagrant
-              group: staff
+              owner: root
+              group: root
               mode: '0755'
             loop:
               - /var/log/supervisor
