@@ -30,7 +30,7 @@ use crate::preset::PresetDetector;
 ///
 /// # Examples
 /// ```rust
-/// use vm_config::config_ops::ConfigOps;
+/// use vm_config::ConfigOps;
 ///
 /// // Set a local configuration value
 /// ConfigOps::set("vm.memory", "4096", false)?;
@@ -75,7 +75,7 @@ impl ConfigOps {
     ///
     /// # Examples
     /// ```rust
-    /// use vm_config::config_ops::ConfigOps;
+    /// use vm_config::ConfigOps;
     ///
     /// // Set VM memory
     /// ConfigOps::set("vm.memory", "4096", false)?;
@@ -140,7 +140,7 @@ impl ConfigOps {
     ///
     /// # Examples
     /// ```rust
-    /// use vm_config::config_ops::ConfigOps;
+    /// use vm_config::ConfigOps;
     ///
     /// // Get specific field
     /// ConfigOps::get(Some("vm.memory"), false)?;
