@@ -6,7 +6,10 @@ use std::path::PathBuf;
 
 use vm_common::scoped_context;
 use vm_config::config::VmConfig;
-use vm_provider::{progress::{confirm_prompt, ProgressReporter, StatusFormatter}, Provider};
+use vm_provider::{
+    progress::{confirm_prompt, ProgressReporter, StatusFormatter},
+    Provider,
+};
 
 /// Handle VM creation
 pub fn handle_create(provider: Box<dyn Provider>) -> Result<()> {

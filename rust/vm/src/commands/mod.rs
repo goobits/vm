@@ -24,7 +24,11 @@ pub fn execute_command(args: Args) -> Result<()> {
     // Handle commands that don't need a provider first
     match &args.command {
         Command::Validate => config::handle_validate(args.config, args.no_preset),
-        Command::Init { file, services, ports } => {
+        Command::Init {
+            file,
+            services,
+            ports,
+        } => {
             debug!("Calling init_config_file directly");
             init_config_file(file.clone(), services.clone(), *ports)
         }
@@ -136,4 +140,3 @@ fn handle_provider_command(args: Args) -> Result<()> {
         _ => unreachable!(), // Other commands handled above
     }
 }
-
