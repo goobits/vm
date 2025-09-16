@@ -3,7 +3,7 @@ Development environments that auto-configure based on your project type
 
 ## ✨ Key Features
 - **🎯 Zero Configuration** - Detects React, Django, Rails, Vue, Angular, Next.js, Flask and more frameworks automatically
-- **🔐 AI Agent Safe** - Docker containers or full VM isolation for secure development
+- **🔐 AI Agent Safe** - Docker containers with secure defaults prevent host escape
 - **⚡ Instant Setup** - Docker environments in 10-30s, full VMs in 2-3min
 - **🧪 Temporary VMs** - Quick experiments with specific folders mounted
 - **🔄 File Sync** - Edit locally, run in VM with instant synchronization
