@@ -11,7 +11,7 @@ PROJECT SUMMARY
   Framework:    Clap (CLI), Docker/libvirt (virtualization)
   Entry Point:  rust/vm/src/main.rs
 
-  Total Files:  133 (.rs files)
+  Total Files:  136 (.rs files)
   Total LOC:    248,661
 
 ================================================================================
@@ -82,7 +82,7 @@ ENTRY POINTS:
 
 CORE LOGIC:
   • [rust/vm-provider/src/lib.rs]      - Provider abstraction
-  • [rust/vm-detector/src/detector.rs] - Framework detection
+  • [rust/vm-detector/src/lib.rs] - Framework detection
   • [rust/vm-config/src/config.rs]     - Config parsing/validation
 
 CONFIGURATION:
@@ -146,7 +146,7 @@ To understand VM creation:
   [provider/docker/mod.rs]
 
 To modify detection logic:
-  Core files: [vm-detector/src/detector.rs], [detector/patterns.rs]
+  Core files: [vm-detector/src/lib.rs], [vm-detector/src/presets.rs]
   Tests: [vm-detector/src/tests/*.rs]
 
 To add new service:
