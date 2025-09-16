@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 // External crates
 use anyhow::{bail, Context, Result};
+use serde_yaml_ng as serde_yaml;
 use serde_yaml::{Mapping, Value};
 
 // Internal imports
