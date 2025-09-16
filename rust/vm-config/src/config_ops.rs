@@ -163,11 +163,11 @@ impl ConfigOps {
             VmConfig::default()
         };
 
-        // Parse comma-separated presets and merge them
-        let preset_list: Vec<&str> = preset_names.split(',').map(|s| s.trim()).collect();
+        // Parse comma-separated presets and merge them - avoid Vec allocation
+        let preset_iter = preset_names.split(',').map(|s| s.trim());
         let mut merged_config = base_config;
 
-        for preset_name in &preset_list {
+        for preset_name in preset_iter {
             let preset_path = presets_dir.join(format!("{}.yaml", preset_name));
             if !preset_path.exists() {
                 bail!("Preset '{}' not found", preset_name);
@@ -301,10 +301,9 @@ fn set_nested_field_recursive(value: &mut Value, parts: &[&str], new_value: Valu
 }
 
 fn get_nested_field<'a>(value: &'a Value, field: &str) -> Result<&'a Value> {
-    let parts: Vec<&str> = field.split('.').collect();
     let mut current = value;
 
-    for part in parts {
+    for part in field.split('.') {
         match current {
             Value::Mapping(map) => {
                 let key = Value::String(part.to_string());
