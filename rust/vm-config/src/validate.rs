@@ -3,6 +3,19 @@ use anyhow::Result;
 use regex::Regex;
 use std::path::PathBuf;
 
+/// Validate GPU type for GPU service
+fn validate_gpu_type(gpu_type: &Option<String>) -> Result<()> {
+    if let Some(gpu_type) = gpu_type {
+        if !matches!(gpu_type.as_str(), "nvidia" | "amd" | "intel" | "auto") {
+            anyhow::bail!(
+                "Invalid GPU type: {}. Must be one of: nvidia, amd, intel, auto",
+                gpu_type
+            );
+        }
+    }
+    Ok(())
+}
+
 /// VM configuration validator.
 ///
 /// Provides comprehensive validation of VM configurations to ensure they are
@@ -191,14 +204,7 @@ impl ConfigValidator {
 
             // Validate GPU type if GPU service is enabled
             if name == "gpu" && service.enabled {
-                if let Some(gpu_type) = &service.r#type {
-                    if !matches!(gpu_type.as_str(), "nvidia" | "amd" | "intel" | "auto") {
-                        anyhow::bail!(
-                            "Invalid GPU type: {}. Must be one of: nvidia, amd, intel, auto",
-                            gpu_type
-                        );
-                    }
-                }
+                validate_gpu_type(&service.r#type)?;
             }
         }
 
