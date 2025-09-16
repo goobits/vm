@@ -99,7 +99,7 @@ service_definitions:
     service_optional_packages:
       buildx: docker-buildx
     service_post_install_commands:
-      - "usermod -a -G docker {{ 'developer' if is_docker_container else 'vagrant' }}"
+      - "usermod -a -G docker {{ 'developer' if is_docker_container else project_config.ssh_user | default('vagrant') }}"
       - "{{ 'docker buildx install' if project_config.services.docker.buildx | default(true) else 'echo \"Buildx disabled\"' }}"
     service_ignore_errors: true
     # Note: docker.io CLI is included in base Docker image for Docker provider
@@ -118,7 +118,7 @@ service_definitions:
         regexp: "^#?default-sink"
         line: "# default-sink = auto"
     service_post_install_commands:
-      - "usermod -a -G audio {{ 'developer' if is_docker_container else 'vagrant' }}"
+      - "usermod -a -G audio {{ 'developer' if is_docker_container else project_config.ssh_user | default('vagrant') }}"
       - "pulseaudio --check -v || (pulseaudio --system --start && echo 'PulseAudio started')"
     service_supervisor_command: "/usr/bin/pulseaudio --system --disallow-exit --disallow-module-loading --log-target=stderr"
     service_supervisor_user: "root"
@@ -132,7 +132,7 @@ service_definitions:
       - mesa-vulkan-drivers
       - mesa-va-drivers
     service_post_install_commands:
-      - "usermod -a -G video,render {{ 'developer' if is_docker_container else 'vagrant' }}"
+      - "usermod -a -G video,render {{ 'developer' if is_docker_container else project_config.ssh_user | default('vagrant') }}"
     service_ignore_errors: true
 
   vm:

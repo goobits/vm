@@ -62,6 +62,13 @@ dist/
 build/
 out/
 
+# Rust build artifacts
+rust/target/
+rust/target-*/
+rust/**/target/
+**/*.rs.bk
+*.old
+
 # Platform-specific build artifacts
 rust/target/linux-*/
 rust/target/darwin-*/

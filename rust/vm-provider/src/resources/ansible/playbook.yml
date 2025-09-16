@@ -355,7 +355,7 @@
           project_config.gemini_sync | default(false)
 
       # Change default shell to zsh
-      - name: Change vagrant user shell to zsh
+      - name: Change user shell to zsh
         user:
             name: '{{ project_user }}'
             shell: /usr/bin/zsh
