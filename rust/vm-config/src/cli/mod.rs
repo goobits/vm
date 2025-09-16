@@ -606,7 +606,7 @@ pub fn execute(args: Args) -> Result<()> {
             file,
             no_preset,
             verbose,
-        } => ConfigOpsGroup::execute_validate(file, no_preset, verbose),
+        } => { ConfigOpsGroup::execute_validate(file, no_preset, verbose); Ok(()) },
         Dump { file, no_preset } => ConfigOpsGroup::execute_dump(file, no_preset),
         Export { file, no_preset } => ConfigOpsGroup::execute_export(file, no_preset),
 

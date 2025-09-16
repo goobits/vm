@@ -30,6 +30,13 @@ Kubernetes development and testing
 - Container runtime
 - Kubernetes dashboard
 
+### next
+Next.js applications
+- Node.js & npm packages
+- Next.js optimizations
+- React development tools
+- Ports: 3000, 3001
+
 ### nodejs
 Node.js/JavaScript development
 - Node.js & npm/pnpm
@@ -50,11 +57,17 @@ Ruby on Rails development
 - Ports: 3000, 5432, 6379
 
 ### react
-React/Next.js frontend development
+React frontend development
 - Node.js & npm packages
 - Vite, webpack dev server
 - React testing tools
 - Ports: 3000, 3001, 5173
+
+### rust
+Rust development environment
+- Rust toolchain & cargo
+- Development tools
+- Common crates
 
 ### tart-linux
 Linux VMs on Apple Silicon (Tart)
@@ -85,11 +98,6 @@ vm --preset django create
 vm --preset react create
 ```
 
-### Interactive Selection
-```bash
-vm --interactive create
-```
-
 ### Disable Presets
 ```bash
 vm --no-preset create
@@ -98,11 +106,13 @@ vm --no-preset create
 ## How It Works
 
 1. **Detection**: Scans for framework-specific files:
-   - `package.json` → nodejs/react
+   - `package.json` → nodejs/react/next
    - `requirements.txt` → python
    - `Gemfile` → rails
    - `manage.py` → django
    - `Dockerfile` → docker
+   - `Cargo.toml` → rust
+   - Kubernetes manifests → kubernetes
 
 2. **Application**: Merges preset configuration with your `vm.yaml`
    - Your settings take precedence

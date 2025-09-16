@@ -24,4 +24,10 @@ is-terminal = { workspace = true }
 default = []
 structured-output = ["vm-common/structured-output"]
 
+[package.metadata.cargo-machete]
+ignored = [
+    "is-terminal", # Used transitively in terminal operations
+    "serde"        # Used transitively via serde_yaml_ng and state serialization
+]
+
 [dev-dependencies]

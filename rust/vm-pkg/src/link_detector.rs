@@ -16,18 +16,18 @@ impl LinkDetector {
     /// Check if a package is linked (checks both .links directories and system-wide links)
     pub fn is_linked(&self, package: &str, manager: PackageManager) -> Result<bool> {
         // First check controlled .links directories
-        let controlled_linked_path = self.get_linked_path(package, manager)?;
+        let controlled_linked_path = self.get_linked_path(package, manager);
         if controlled_linked_path.is_some() {
             return Ok(true);
         }
 
         // Then check system-wide links
-        let system_linked = self.is_system_linked(package, manager)?;
+        let system_linked = Self::is_system_linked(package, manager)?;
         Ok(system_linked)
     }
 
     /// Check if a package has system-wide links (npm global, cargo install, pip editable)
-    pub fn is_system_linked(&self, package: &str, manager: PackageManager) -> Result<bool> {
+    pub fn is_system_linked(package: &str, manager: PackageManager) -> Result<bool> {
         let manager_str = manager.to_string();
         let packages = vec![package.into()];
 
@@ -40,13 +40,13 @@ impl LinkDetector {
         &self,
         package: &str,
         manager: PackageManager,
-    ) -> Result<Option<PathBuf>> {
+    ) -> Option<PathBuf> {
         let links_dir = manager.links_dir(&self.user);
 
         // Direct package name check
         let direct_path = links_dir.join(package);
         if direct_path.exists() {
-            return Ok(Some(direct_path));
+            return Some(direct_path);
         }
 
         // For Python packages, also check sanitized name (replace - with _)
@@ -54,18 +54,18 @@ impl LinkDetector {
             let safe_name = package.replace('-', "_").to_lowercase();
             let safe_path = links_dir.join(&safe_name);
             if safe_path.exists() {
-                return Ok(Some(safe_path));
+                return Some(safe_path);
             }
         }
 
-        Ok(None)
+        None
     }
 
     /// List all linked packages for a manager (includes both controlled links and system links)
     pub fn list_linked(
         &self,
         manager: Option<PackageManager>,
-    ) -> Result<Vec<(PackageManager, String)>> {
+    ) -> Vec<(PackageManager, String)> {
         let mut results = Vec::new();
 
         let managers = match manager {
@@ -80,14 +80,20 @@ impl LinkDetector {
         for mgr in managers {
             // Get controlled links from .links directories
             let links_dir = mgr.links_dir(&self.user);
-            if links_dir.exists() {
-                if let Ok(entries) = fs::read_dir(&links_dir) {
-                    for entry in entries.flatten() {
-                        if let Some(name) = entry.file_name().to_str() {
-                            results.push((mgr, format!("{} (controlled)", name)));
-                        }
-                    }
-                }
+            if !links_dir.exists() {
+                continue;
+            }
+
+            let Ok(entries) = fs::read_dir(&links_dir) else {
+                continue;
+            };
+
+            for entry in entries.flatten() {
+                let file_name = entry.file_name();
+                let Some(name) = file_name.to_str() else {
+                    continue;
+                };
+                results.push((mgr, format!("{} (controlled)", name)));
             }
 
             // Get system-wide links (but we need to scan common packages - simplified approach)
@@ -100,7 +106,7 @@ impl LinkDetector {
         }
 
         results.sort_by(|a, b| a.0.to_string().cmp(&b.0.to_string()).then(a.1.cmp(&b.1)));
-        Ok(results)
+        results
     }
 
     /// Check if a path is a pipx environment

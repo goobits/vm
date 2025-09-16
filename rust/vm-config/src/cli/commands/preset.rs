@@ -11,7 +11,7 @@ pub fn execute(
     list: bool,
 ) -> Result<()> {
     let presets_dir = presets_dir.unwrap_or_else(paths::get_presets_dir);
-    let detector = PresetDetector::new(dir.clone(), presets_dir);
+    let detector = PresetDetector::new(dir, presets_dir);
 
     if list {
         let presets = detector.list_presets()?;
@@ -20,12 +20,12 @@ pub fn execute(
             println!("  - {}", preset);
         }
     } else if detect_only {
-        match detector.detect()? {
+        match detector.detect() {
             Some(preset) => println!("{}", preset),
             None => println!("base"),
         }
     } else {
-        match detector.detect()? {
+        match detector.detect() {
             Some(preset_name) => {
                 let preset = detector.load_preset(&preset_name)?;
                 output_config(&preset, &OutputFormat::Yaml)?;

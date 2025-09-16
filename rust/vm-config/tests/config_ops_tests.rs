@@ -46,7 +46,7 @@ impl SimpleTestFixture {
         Ok(())
     }
 
-    fn create_preset(&self, name: &str, content: &str) -> Result<()> {
+    fn create_preset(name: &str, content: &str) -> Result<()> {
         let tool_dir = std::env::var("VM_TOOL_DIR").unwrap();
         let presets_dir = PathBuf::from(tool_dir).join("configs").join("presets");
         fs::create_dir_all(&presets_dir)?;
@@ -185,7 +185,7 @@ services:
 vm:
   memory: 2048
 "#;
-        fixture.create_preset("test-preset", test_preset)?;
+        SimpleTestFixture::create_preset("test-preset", test_preset)?;
 
         // Apply the preset locally
         ConfigOps::preset("test-preset", false, false, None)?;

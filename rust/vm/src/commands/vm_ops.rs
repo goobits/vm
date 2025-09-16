@@ -93,7 +93,7 @@ pub fn handle_destroy(provider: Box<dyn Provider>, config: VmConfig) -> Result<(
     let progress = ProgressReporter::new();
 
     // Show confirmation prompt
-    progress.phase_header("🗑️", "DESTROY PHASE");
+    ProgressReporter::phase_header("🗑️", "DESTROY PHASE");
     let confirmation_msg = format!(
         "├─ ⚠️  Are you sure you want to destroy {}? This will delete all data. (y/N): ",
         vm_name
@@ -101,19 +101,19 @@ pub fn handle_destroy(provider: Box<dyn Provider>, config: VmConfig) -> Result<(
 
     if confirm_prompt(&confirmation_msg) {
         debug!("Destroy confirmation: response='yes', proceeding with destruction");
-        progress.subtask("├─", "Proceeding with destruction...");
+        ProgressReporter::subtask("├─", "Proceeding with destruction...");
         let result = provider.destroy();
         match result {
-            Ok(()) => progress.complete("└─", "VM destroyed successfully"),
+            Ok(()) => ProgressReporter::complete("└─", "VM destroyed successfully"),
             Err(e) => {
-                progress.error("└─", &format!("Destruction failed: {}", e));
+                ProgressReporter::error("└─", &format!("Destruction failed: {}", e));
                 return Err(e);
             }
         }
         result
     } else {
         debug!("Destroy confirmation: response='no', cancelling destruction");
-        progress.error("└─", "Destruction cancelled");
+        ProgressReporter::error("└─", "Destruction cancelled");
         std::process::exit(1);
     }
 }
@@ -166,14 +166,14 @@ pub fn handle_status(provider: Box<dyn Provider>, config: VmConfig) -> Result<()
         cpus
     );
 
-    progress.phase_header("📊", "STATUS CHECK");
-    progress.subtask("├─", "Checking VM status...");
+    ProgressReporter::phase_header("📊", "STATUS CHECK");
+    ProgressReporter::subtask("├─", "Checking VM status...");
 
     let result = provider.status();
     match result {
         Ok(()) => {
             debug!("Status check successful for VM '{}'", vm_name);
-            progress.complete("└─", "Status check complete");
+            ProgressReporter::complete("└─", "Status check complete");
 
             // Format status information
             println!("\n");
@@ -187,7 +187,7 @@ pub fn handle_status(provider: Box<dyn Provider>, config: VmConfig) -> Result<()
         }
         Err(e) => {
             debug!("Status check failed for VM '{}': {}", vm_name, e);
-            progress.error("└─", &format!("Status check failed: {}", e));
+            ProgressReporter::error("└─", &format!("Status check failed: {}", e));
             return Err(e);
         }
     }

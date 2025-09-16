@@ -1,6 +1,24 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
+/// Helper function to derive tool directory from a target directory path
+fn derive_tool_dir_from_target(target: &Path) -> Option<PathBuf> {
+    let parent = target.parent()?;
+
+    // Case: .../rust/vm-config/target
+    if parent.file_name() == Some(std::ffi::OsStr::new("vm-config")) {
+        let rust = parent.parent()?;
+        return rust.parent().map(|root| root.to_path_buf());
+    }
+
+    // Case: .../rust/target
+    if parent.file_name() == Some(std::ffi::OsStr::new("rust")) {
+        return parent.parent().map(|root| root.to_path_buf());
+    }
+
+    None
+}
+
 /// Get the VM tool installation directory
 /// Priority order:
 /// 1. VM_TOOL_DIR environment variable
@@ -41,21 +59,8 @@ pub fn get_tool_dir() -> PathBuf {
             }
 
             if let Some(target) = target_dir {
-                if let Some(parent) = target.parent() {
-                    // Case: .../rust/vm-config/target
-                    if parent.file_name() == Some(std::ffi::OsStr::new("vm-config")) {
-                        if let Some(rust) = parent.parent() {
-                            if let Some(root) = rust.parent() {
-                                return root.to_path_buf();
-                            }
-                        }
-                    }
-                    // Case: .../rust/target
-                    else if parent.file_name() == Some(std::ffi::OsStr::new("rust")) {
-                        if let Some(root) = parent.parent() {
-                            return root.to_path_buf();
-                        }
-                    }
+                if let Some(root) = derive_tool_dir_from_target(&target) {
+                    return root;
                 }
             }
         }

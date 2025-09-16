@@ -122,7 +122,7 @@ pip_packages:
 
     // Step 4: Use preset detector to find and load preset
     let preset_detector = PresetDetector::new(fixture.project_dir.clone(), fixture.config_dir.join("presets"));
-    let detected_preset = preset_detector.detect()?;
+    let detected_preset = preset_detector.detect();
 
     assert_eq!(detected_preset, Some("django".to_string()));
 
@@ -260,7 +260,7 @@ ports:
 
     // Step 4: Use preset detector for auto-detection
     let preset_detector = PresetDetector::new(fixture.project_dir.clone(), fixture.config_dir.join("presets"));
-    let detected_preset = preset_detector.detect()?;
+    let detected_preset = preset_detector.detect();
 
     assert_eq!(detected_preset, Some("react".to_string()));
 

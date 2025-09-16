@@ -192,12 +192,11 @@ impl ConfigValidator {
             // Validate GPU type if GPU service is enabled
             if name == "gpu" && service.enabled {
                 if let Some(gpu_type) = &service.r#type {
-                    match gpu_type.as_str() {
-                        "nvidia" | "amd" | "intel" | "auto" => {}
-                        _ => anyhow::bail!(
+                    if !matches!(gpu_type.as_str(), "nvidia" | "amd" | "intel" | "auto") {
+                        anyhow::bail!(
                             "Invalid GPU type: {}. Must be one of: nvidia, amd, intel, auto",
                             gpu_type
-                        ),
+                        );
                     }
                 }
             }

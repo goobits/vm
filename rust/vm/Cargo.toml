@@ -8,11 +8,9 @@ license.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
-serde_yaml_ng = { workspace = true }
 serde_json = { workspace = true }
+serde_yaml_ng = { workspace = true }
 tempfile = { workspace = true }
-dirs = { workspace = true }
-serde = { workspace = true }
 log = { workspace = true }
 uuid = { workspace = true }
 vm-common = { path = "../vm-common" }
@@ -23,3 +21,8 @@ vm-temp = { path = "../vm-temp" }
 [features]
 default = []
 structured-output = ["vm-common/structured-output"]
+
+[package.metadata.cargo-machete]
+ignored = [
+    "serde_json"  # Used transitively via serde_yaml::from_str
+]

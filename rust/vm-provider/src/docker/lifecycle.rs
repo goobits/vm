@@ -481,9 +481,9 @@ impl<'a> LifecycleOperations<'a> {
             ));
         }
 
-        let progress = ProgressReporter::new();
-        progress.phase_header("🔧", "PROVISIONING PHASE");
-        progress.subtask("├─", "Re-running Ansible provisioning...");
+        let _progress = ProgressReporter::new();
+        ProgressReporter::phase_header("🔧", "PROVISIONING PHASE");
+        ProgressReporter::subtask("├─", "Re-running Ansible provisioning...");
 
         let config_json = self.config.to_json()?;
         let temp_config_path = self.temp_dir.join("vm-config.json");
@@ -511,10 +511,10 @@ impl<'a> LifecycleOperations<'a> {
             ],
         );
         if let Err(e) = ansible_result {
-            progress.error("└─", &format!("Provisioning failed: {}", e));
+            ProgressReporter::error("└─", &format!("Provisioning failed: {}", e));
             return Err(e).context("Ansible provisioning failed during container setup");
         }
-        progress.complete("└─", "Provisioning complete");
+        ProgressReporter::complete("└─", "Provisioning complete");
         Ok(())
     }
 
@@ -545,38 +545,38 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
     fn update_mounts(&self, state: &TempVmState) -> Result<()> {
         let progress = ProgressReporter::new();
         let main_phase = progress.start_phase("Updating container mounts");
-        progress.task(&main_phase, "Checking container status...");
+        ProgressReporter::task(&main_phase, "Checking container status...");
 
         if self.is_container_running(&state.container_name)? {
-            progress.task(&main_phase, "Stopping container...");
+            ProgressReporter::task(&main_phase, "Stopping container...");
             stream_command("docker", &["stop", &state.container_name])?;
         }
 
-        progress.task(&main_phase, "Recreating container with new mounts...");
+        ProgressReporter::task(&main_phase, "Recreating container with new mounts...");
         self.recreate_with_mounts(state)?;
 
-        progress.task(&main_phase, "Starting container...");
+        ProgressReporter::task(&main_phase, "Starting container...");
         let compose_path = self.temp_dir.join("docker-compose.yml");
         let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         stream_command("docker", &args_refs)?;
 
-        progress.task(&main_phase, "Checking container health...");
+        ProgressReporter::task(&main_phase, "Checking container health...");
         if !self.check_container_health(&state.container_name)? {
-            progress.finish_phase(&main_phase, "Mount update failed - container not healthy");
+            ProgressReporter::finish_phase(&main_phase, "Mount update failed - container not healthy");
             return Err(anyhow::anyhow!(
                 "Container is not healthy after mount update"
             ));
         }
 
-        progress.finish_phase(&main_phase, "Mounts updated successfully");
+        ProgressReporter::finish_phase(&main_phase, "Mounts updated successfully");
         Ok(())
     }
 
     fn recreate_with_mounts(&self, state: &TempVmState) -> Result<()> {
         let progress = ProgressReporter::new();
         let phase = progress.start_phase("Recreating container configuration");
-        progress.task(&phase, "Generating updated docker-compose.yml...");
+        ProgressReporter::task(&phase, "Generating updated docker-compose.yml...");
 
         let mut temp_config = self.config.clone();
         if let Some(ref mut project) = temp_config.project {
@@ -588,7 +588,7 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
         let compose_path = self.temp_dir.join("docker-compose.yml");
         std::fs::write(&compose_path, content.as_bytes())?;
 
-        progress.task(&phase, "Removing old container...");
+        ProgressReporter::task(&phase, "Removing old container...");
         if let Err(e) = stream_command("docker", &["rm", "-f", &state.container_name]) {
             eprintln!(
                 "Warning: Failed to remove old container {}: {}",
@@ -596,7 +596,7 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
             );
         }
 
-        progress.finish_phase(&phase, "Container configuration updated");
+        ProgressReporter::finish_phase(&phase, "Container configuration updated");
         Ok(())
     }
 

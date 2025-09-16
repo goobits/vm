@@ -141,31 +141,31 @@ impl ProgressReporter {
         pb
     }
 
-    pub fn task(&self, phase_pb: &ProgressBar, msg: &str) {
+    pub fn task(phase_pb: &ProgressBar, msg: &str) {
         phase_pb.set_message(format!("- {}", msg));
     }
 
-    pub fn finish_phase(&self, pb: &ProgressBar, msg: &str) {
+    pub fn finish_phase(pb: &ProgressBar, msg: &str) {
         pb.finish_with_message(format!("{} {}", pb.message(), msg));
     }
 
-    pub fn phase_header(&self, icon: &str, phase: &str) {
+    pub fn phase_header(icon: &str, phase: &str) {
         println!("{} {}", icon, phase);
     }
 
-    pub fn subtask(&self, connector: &str, task: &str) {
+    pub fn subtask(connector: &str, task: &str) {
         println!("{} {}", connector, task);
     }
 
-    pub fn complete(&self, connector: &str, message: &str) {
+    pub fn complete(connector: &str, message: &str) {
         println!("{} ✅ {}", connector, message);
     }
 
-    pub fn warning(&self, connector: &str, message: &str) {
+    pub fn warning(connector: &str, message: &str) {
         println!("{} ⚠️ {}", connector, message);
     }
 
-    pub fn error(&self, connector: &str, message: &str) {
+    pub fn error(connector: &str, message: &str) {
         println!("{} ❌ {}", connector, message);
     }
 }

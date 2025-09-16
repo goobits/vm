@@ -15,7 +15,7 @@ impl TransformOperations {
 
         let results = if expression.contains("to_entries[]") {
             // Handle to_entries transformations
-            Self::transform_to_entries(&value, expression)?
+            Self::transform_to_entries(&value, expression)
         } else if expression.contains(".[]") {
             // Handle array iteration
             Self::transform_array_items(&value, expression)?
@@ -109,7 +109,7 @@ impl TransformOperations {
     }
 
     // Transform entries (basic implementation)
-    fn transform_to_entries(value: &Value, _expression: &str) -> Result<Vec<String>> {
+    fn transform_to_entries(value: &Value, _expression: &str) -> Vec<String> {
         match value {
             Value::Mapping(map) => {
                 let mut results = Vec::new();
@@ -119,9 +119,9 @@ impl TransformOperations {
                         results.push(entry);
                     }
                 }
-                Ok(results)
+                results
             }
-            _ => Ok(vec!["Not a mapping".to_string()]),
+            _ => vec!["Not a mapping".to_string()],
         }
     }
 

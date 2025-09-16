@@ -642,6 +642,6 @@ impl VmConfig {
     /// }
     /// ```
     pub fn is_partial(&self) -> bool {
-        self.provider.is_none() || self.project.as_ref().is_none_or(|p| p.name.is_none())
+        self.provider.is_none() || self.project.as_ref().map_or(true, |p| p.name.is_none())
     }
 }

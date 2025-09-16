@@ -9,7 +9,6 @@ description = "Installer for the VM development tool."
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
-colored = { workspace = true }
 dirs = { workspace = true }
 which = { workspace = true }
 vm-common = { path = "../vm-common" }

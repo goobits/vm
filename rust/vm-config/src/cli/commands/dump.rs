@@ -15,5 +15,6 @@ pub fn execute_dump(file: Option<PathBuf>, no_preset: bool) -> Result<()> {
 pub fn execute_export(file: Option<PathBuf>, no_preset: bool) -> Result<()> {
     let merged = load_and_merge_config(file, no_preset)?;
     let value = serde_yaml::to_value(&merged)?;
-    output_shell_exports(&value)
+    output_shell_exports(&value);
+    Ok(())
 }

@@ -9,7 +9,7 @@ use vm_common::{vm_error, vm_println, vm_success};
 use super::super::utils::find_vm_config_file;
 use crate::{config::VmConfig, paths};
 
-pub fn execute_validate(file: Option<PathBuf>, no_preset: bool, verbose: bool) -> Result<()> {
+pub fn execute_validate(file: Option<PathBuf>, no_preset: bool, verbose: bool) {
     match load_and_merge_config(file, no_preset) {
         Ok(_) => {
             vm_success!("Configuration is valid");
@@ -22,7 +22,6 @@ pub fn execute_validate(file: Option<PathBuf>, no_preset: bool, verbose: bool) -
             std::process::exit(1);
         }
     }
-    Ok(())
 }
 
 pub fn execute_check_file(file: PathBuf) -> Result<()> {
@@ -85,7 +84,7 @@ pub fn load_and_merge_config(file: Option<PathBuf>, no_preset: bool) -> Result<V
     let presets_dir = crate::paths::get_presets_dir();
     let preset_config = if !no_preset {
         let detector = crate::preset::PresetDetector::new(project_dir, presets_dir);
-        if let Some(preset_name) = detector.detect()? {
+        if let Some(preset_name) = detector.detect() {
             if preset_name != "base" && preset_name != "generic" {
                 Some(detector.load_preset(&preset_name)?)
             } else {

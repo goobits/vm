@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-pub fn detect_npm_packages(packages: &[String]) -> Result<Vec<(String, String)>> {
+pub fn detect_npm_packages(packages: &[String]) -> Vec<(String, String)> {
     let mut results = Vec::new();
     let mut found_packages = HashSet::new();
 
@@ -13,7 +13,7 @@ pub fn detect_npm_packages(packages: &[String]) -> Result<Vec<(String, String)>>
 
     // Check npm root -g (global npm directory)
     if let Ok(npm_root) = get_npm_root() {
-        let npm_detections = check_npm_directory(&npm_root, &package_set)?;
+        let npm_detections = check_npm_directory(&npm_root, &package_set);
         for (package, path) in npm_detections {
             if !found_packages.contains(&package) {
                 results.push((package.clone(), path));
@@ -24,7 +24,7 @@ pub fn detect_npm_packages(packages: &[String]) -> Result<Vec<(String, String)>>
 
     // Check NVM directories in parallel
     if let Some(nvm_dir) = get_nvm_versions_dir() {
-        let nvm_detections = check_nvm_directories(&nvm_dir, &package_set, &found_packages)?;
+        let nvm_detections = check_nvm_directories(&nvm_dir, &package_set, &found_packages).unwrap_or_else(|_| Vec::new());
         for (package, path) in nvm_detections {
             if !found_packages.contains(&package) {
                 results.push((package.clone(), path));
@@ -33,7 +33,7 @@ pub fn detect_npm_packages(packages: &[String]) -> Result<Vec<(String, String)>>
         }
     }
 
-    Ok(results)
+    results
 }
 
 fn get_npm_root() -> Result<PathBuf> {
@@ -58,14 +58,38 @@ fn get_nvm_versions_dir() -> Option<PathBuf> {
     }
 }
 
+/// Helper function to check if a symlink points to a valid package
+fn check_symlink_package(link_path: &Path, base_path: &Path, package: &str) -> Option<(String, String)> {
+    if !link_path.is_symlink() {
+        return None;
+    }
+
+    let target_path = std::fs::read_link(link_path).ok()?;
+
+    // Convert to absolute path if relative
+    let absolute_target = if target_path.is_absolute() {
+        target_path
+    } else {
+        base_path.join(target_path)
+    };
+
+    // Canonicalize and check if path exists
+    let canonical_path = absolute_target.canonicalize().ok()?;
+    if canonical_path.exists() {
+        Some((package.to_string(), canonical_path.to_string_lossy().to_string()))
+    } else {
+        None
+    }
+}
+
 fn check_npm_directory(
     npm_root: &Path,
     package_set: &HashSet<&String>,
-) -> Result<Vec<(String, String)>> {
+) -> Vec<(String, String)> {
     let mut results = Vec::new();
 
     if !npm_root.exists() {
-        return Ok(results);
+        return results;
     }
 
     // Use parallel iteration over packages for performance
@@ -73,32 +97,12 @@ fn check_npm_directory(
         .par_iter()
         .filter_map(|package| {
             let link_path = npm_root.join(package);
-            if link_path.is_symlink() {
-                if let Ok(target_path) = std::fs::read_link(&link_path) {
-                    // Convert to absolute path if relative
-                    let absolute_target = if target_path.is_absolute() {
-                        target_path
-                    } else {
-                        npm_root.join(target_path)
-                    };
-
-                    // Canonicalize to resolve all symbolic links and relative components
-                    if let Ok(canonical_path) = absolute_target.canonicalize() {
-                        if canonical_path.exists() {
-                            return Some((
-                                (*package).clone(),
-                                canonical_path.to_string_lossy().to_string(),
-                            ));
-                        }
-                    }
-                }
-            }
-            None
+            check_symlink_package(&link_path, npm_root, package)
         })
         .collect();
 
     results.extend(detections);
-    Ok(results)
+    results
 }
 
 fn check_nvm_directories(
@@ -141,27 +145,7 @@ fn check_nvm_directories(
                 }
 
                 let link_path = node_modules.join(package);
-                if link_path.is_symlink() {
-                    if let Ok(target_path) = std::fs::read_link(&link_path) {
-                        // Convert to absolute path if relative
-                        let absolute_target = if target_path.is_absolute() {
-                            target_path
-                        } else {
-                            node_modules.join(target_path)
-                        };
-
-                        // Canonicalize to resolve all symbolic links and relative components
-                        if let Ok(canonical_path) = absolute_target.canonicalize() {
-                            if canonical_path.exists() {
-                                return Some((
-                                    (*package).clone(),
-                                    canonical_path.to_string_lossy().to_string(),
-                                ));
-                            }
-                        }
-                    }
-                }
-                None
+                check_symlink_package(&link_path, node_modules, package)
             })
         })
         .collect();

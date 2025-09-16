@@ -62,13 +62,12 @@ pub fn find_vm_config_file() -> Result<PathBuf> {
     anyhow::bail!("Could not find vm.yaml file in current directory or any parent directory");
 }
 
-pub fn output_shell_exports(value: &Value) -> Result<()> {
+pub fn output_shell_exports(value: &Value) {
     let mut exports = Vec::new();
     flatten_yaml_to_shell("", value, &mut exports);
     for export in exports {
         println!("{}", export);
     }
-    Ok(())
 }
 
 fn flatten_yaml_to_shell(prefix: &str, value: &Value, exports: &mut Vec<String>) {

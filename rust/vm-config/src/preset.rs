@@ -38,9 +38,9 @@ impl PresetDetector {
     }
 
     /// Detect the appropriate preset based on project files
-    pub fn detect(&self) -> Result<Option<String>> {
+    pub fn detect(&self) -> Option<String> {
         // Use vm-detector's comprehensive detection logic
-        Ok(detect_preset_for_project(&self.project_dir))
+        detect_preset_for_project(&self.project_dir)
     }
 
     /// Load a preset configuration by name
@@ -86,11 +86,13 @@ impl PresetDetector {
                 .to_string_lossy()
                 .to_string();
             for path in glob(&pattern)?.flatten() {
-                if let Some(stem) = path.file_stem() {
-                    let name = stem.to_string_lossy().to_string();
-                    if !presets.contains(&name) {
-                        presets.push(name);
-                    }
+                let Some(stem) = path.file_stem() else {
+                    continue;
+                };
+
+                let name = stem.to_string_lossy().to_string();
+                if !presets.contains(&name) {
+                    presets.push(name);
                 }
             }
         }
@@ -115,8 +117,8 @@ mod tests {
         // Create Django indicators
         fs::write(project_dir.join("manage.py"), "").unwrap();
 
-        let detector = PresetDetector::new(project_dir.clone(), presets_dir);
-        let preset = detector.detect().unwrap();
+        let detector = PresetDetector::new(project_dir, presets_dir);
+        let preset = detector.detect();
 
         assert_eq!(preset, Some("django".to_string()));
     }
@@ -136,8 +138,8 @@ mod tests {
         }"#;
         fs::write(project_dir.join("package.json"), package_json).unwrap();
 
-        let detector = PresetDetector::new(project_dir.clone(), presets_dir);
-        let preset = detector.detect().unwrap();
+        let detector = PresetDetector::new(project_dir, presets_dir);
+        let preset = detector.detect();
 
         assert_eq!(preset, Some("react".to_string()));
     }

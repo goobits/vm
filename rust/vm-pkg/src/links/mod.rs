@@ -24,8 +24,8 @@ pub fn detect_packages(
     packages: &[String],
 ) -> Result<Vec<(String, String)>> {
     match package_manager {
-        "npm" => npm::detect_npm_packages(packages),
-        "pip" => pip::detect_pip_packages(packages),
+        "npm" => Ok(npm::detect_npm_packages(packages)),
+        "pip" => Ok(pip::detect_pip_packages(packages)),
         "cargo" => cargo::detect_cargo_packages(packages),
         _ => unreachable!(), // Already validated
     }

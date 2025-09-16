@@ -1,17 +1,20 @@
 # Test Suite Documentation
 
-The VM tool test suite has been fully migrated from shell scripts to Rust. This documentation reflects the current Rust-based testing approach.
+The VM tool test suite is implemented entirely in Rust with 165+ unit tests and integration tests across 37 files.
 
 ## Current Test Structure
 
 ```
 rust/
-├── vm-detector/         # Framework detection (22 tests)
-├── vm-config/          # Configuration operations
-├── vm-temp/            # Mount validation & filesystem integration
-├── vm-provider/        # Security validation & path protection
-├── vm-ports/           # Port registry and range management
-└── vm-pkg/             # Package management operations
+├── vm-detector/         # Framework detection (55 tests across 12 test files)
+├── vm-config/          # Configuration operations (18 tests)
+├── vm-temp/            # Mount validation & filesystem integration (8 tests)
+├── vm-provider/        # Security validation & path protection (22 tests)
+├── vm-ports/           # Port registry and range management (13 tests)
+├── vm-pkg/             # Package management operations (10 tests)
+├── vm-installer/       # Installation management (11 tests)
+├── vm-common/          # Common utilities (10 tests)
+└── vm/                 # CLI and workflows (21 tests)
 ```
 
 ## Test Categories
@@ -71,7 +74,7 @@ cargo test -p vm-provider    # Security & path validation
 cargo test -p vm-ports       # Port management
 
 # Run integration tests only
-cargo test --test integration
+cargo test --test integration_tests
 ```
 
 ### Test Development
@@ -95,8 +98,7 @@ mod tests {
 **Test Organization**:
 - Unit tests: In the same file as the code (`#[cfg(test)]` modules)
 - Integration tests: In `tests/` directory of each crate
-- Use `tempfile` crate for filesystem testing
-- Use `mockall` for mocking external dependencies
+- Use `tempfile` crate for filesystem testing (workspace dependency)
 
 **Example Test Patterns**:
 
@@ -140,13 +142,13 @@ sudo systemctl start docker
 
 ## Test Configuration Files
 
-Test fixtures are located in `test/configs/`:
+Test fixtures are located in `../test/configs/`:
 
-- Service-specific configs (postgresql.yaml, redis.yaml, etc.)
-- Minimal configuration templates for testing
-- Language-specific package configurations
+- Service configs: `postgresql.yaml`, `redis.yaml`, `mongodb.yaml`, `docker.yaml`
+- Minimal configuration: `minimal.yaml`
+- Language packages: `languages/npm_packages.yaml`, `languages/pip_packages.yaml`, `languages/cargo_packages.yaml`
 
-These are used as test data and loaded during Rust test execution.
+These YAML files provide test data for configuration validation and integration tests.
 
 ## Migration Status
 
@@ -154,13 +156,16 @@ These are used as test data and loaded during Rust test execution.
 
 All testing functionality has been migrated from shell scripts to Rust:
 
-| Previous Shell Tests | Current Rust Implementation | Location |
-|---------------------|------------------------------|----------|
-| Framework detection | Unit tests in `vm-detector` | `rust/vm-detector/src/tests/` |
-| Configuration validation | Unit/integration tests in `vm-config` | `rust/vm-config/src/` & `rust/vm-config/tests/` |
-| VM lifecycle operations | Integration tests | `rust/tests/integration_tests.rs` |
-| Provider functionality | Unit tests in `vm-provider` | `rust/vm-provider/src/` |
-| Port management | Unit tests in `vm-ports` | `rust/vm-ports/src/` |
+| Component | Test Type | Location | Test Count |
+|-----------|-----------|----------|------------|
+| Framework detection | Unit tests | `rust/vm-detector/src/tests/*.rs` | 55 tests |
+| Configuration | Unit & Integration | `rust/vm-config/src/` & `tests/` | 18 tests |
+| VM workflows | Integration tests | `rust/vm/tests/` | 21 tests |
+| Provider security | Unit tests | `rust/vm-provider/src/` | 22 tests |
+| Port management | Unit tests | `rust/vm-ports/src/` | 13 tests |
+| Package management | Integration tests | `rust/vm-pkg/tests/` | 10 tests |
+| Installer | Unit tests | `rust/vm-installer/src/` | 11 tests |
+| Temp operations | Integration tests | `rust/vm-temp/tests/` | 8 tests |
 
 ### Benefits of Rust Migration
 

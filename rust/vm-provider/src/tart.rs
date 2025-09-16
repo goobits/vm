@@ -37,20 +37,20 @@ impl Provider for TartProvider {
         let main_phase = progress.start_phase("Creating Tart VM");
 
         // Check if VM already exists
-        progress.task(&main_phase, "Checking if VM exists...");
+        ProgressReporter::task(&main_phase, "Checking if VM exists...");
         let list_output = std::process::Command::new("tart").args(["list"]).output();
 
         if let Ok(output) = list_output {
             let list_str = String::from_utf8_lossy(&output.stdout);
             if list_str.contains(&self.vm_name()) {
-                progress.task(&main_phase, "VM already exists.");
+                ProgressReporter::task(&main_phase, "VM already exists.");
                 println!("⚠️  Tart VM '{}' already exists.", self.vm_name());
                 println!("To recreate, first run: vm destroy");
-                progress.finish_phase(&main_phase, "Skipped creation.");
+                ProgressReporter::finish_phase(&main_phase, "Skipped creation.");
                 return Ok(());
             }
         }
-        progress.task(&main_phase, "VM not found, proceeding with creation.");
+        ProgressReporter::task(&main_phase, "VM not found, proceeding with creation.");
 
         // Get image from config
         let image = self
@@ -61,40 +61,40 @@ impl Provider for TartProvider {
             .unwrap_or("ghcr.io/cirruslabs/ubuntu:latest");
 
         // Clone the base image
-        progress.task(&main_phase, &format!("Cloning image '{}'...", image));
+        ProgressReporter::task(&main_phase, &format!("Cloning image '{}'...", image));
         let clone_result = stream_command("tart", &["clone", image, &self.vm_name()]);
         if clone_result.is_err() {
-            progress.task(&main_phase, "Clone failed.");
-            progress.finish_phase(&main_phase, "Creation failed.");
+            ProgressReporter::task(&main_phase, "Clone failed.");
+            ProgressReporter::finish_phase(&main_phase, "Creation failed.");
             return clone_result;
         }
-        progress.task(&main_phase, "Image cloned successfully.");
+        ProgressReporter::task(&main_phase, "Image cloned successfully.");
 
         // Configure VM with memory/CPU settings if specified
         if let Some(vm_config) = &self.config.vm {
             if let Some(memory) = vm_config.memory {
-                progress.task(&main_phase, &format!("Setting memory to {} MB...", memory));
+                ProgressReporter::task(&main_phase, &format!("Setting memory to {} MB...", memory));
                 stream_command(
                     "tart",
                     &["set", &self.vm_name(), "--memory", &memory.to_string()],
                 )?;
-                progress.task(&main_phase, "Memory configured.");
+                ProgressReporter::task(&main_phase, "Memory configured.");
             }
 
             if let Some(cpus) = vm_config.cpus {
-                progress.task(&main_phase, &format!("Setting CPUs to {}...", cpus));
+                ProgressReporter::task(&main_phase, &format!("Setting CPUs to {}...", cpus));
                 stream_command(
                     "tart",
                     &["set", &self.vm_name(), "--cpu", &cpus.to_string()],
                 )?;
-                progress.task(&main_phase, "CPUs configured.");
+                ProgressReporter::task(&main_phase, "CPUs configured.");
             }
         }
 
         // Set disk size if specified
         if let Some(tart_config) = &self.config.tart {
             if let Some(disk_size) = tart_config.disk_size {
-                progress.task(
+                ProgressReporter::task(
                     &main_phase,
                     &format!("Setting disk size to {} GB...", disk_size),
                 );
@@ -107,21 +107,21 @@ impl Provider for TartProvider {
                         &disk_size.to_string(),
                     ],
                 )?;
-                progress.task(&main_phase, "Disk size configured.");
+                ProgressReporter::task(&main_phase, "Disk size configured.");
             }
         }
 
         // Start VM
-        progress.task(&main_phase, "Starting VM...");
+        ProgressReporter::task(&main_phase, "Starting VM...");
         let start_result = stream_command("tart", &["run", "--no-graphics", &self.vm_name()]);
         if start_result.is_err() {
-            progress.task(&main_phase, "VM start failed.");
-            progress.finish_phase(&main_phase, "Creation failed.");
+            ProgressReporter::task(&main_phase, "VM start failed.");
+            ProgressReporter::finish_phase(&main_phase, "Creation failed.");
             return start_result;
         }
 
-        progress.task(&main_phase, "VM started successfully.");
-        progress.finish_phase(&main_phase, "Environment ready.");
+        ProgressReporter::task(&main_phase, "VM started successfully.");
+        ProgressReporter::finish_phase(&main_phase, "Environment ready.");
 
         println!("\n✅ Tart VM created successfully!");
         println!("💡 Use 'vm ssh' to connect to the VM");

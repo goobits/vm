@@ -105,6 +105,26 @@ pub fn is_pipx_environment(path: &Path) -> bool {
     path.join("pipx_metadata.json").exists()
 }
 
+/// Helper function to detect JavaScript framework from package.json dependencies
+fn detect_js_framework(json: &Value) -> String {
+    let deps = json.get("dependencies").and_then(Value::as_object);
+    let dev_deps = json.get("devDependencies").and_then(Value::as_object);
+
+    let all_deps = deps.into_iter().chain(dev_deps).flat_map(|o| o.keys());
+
+    for dep in all_deps {
+        match dep.as_str() {
+            "react" => return "react".to_string(),
+            "vue" => return "vue".to_string(),
+            "next" => return "next".to_string(),
+            "@angular/core" => return "angular".to_string(),
+            _ => continue,
+        }
+    }
+
+    "nodejs".to_string()
+}
+
 /// Detect all project types and technologies in a directory.
 ///
 /// This is the core detection function that analyzes a project directory
@@ -152,33 +172,7 @@ pub fn detect_project_type(dir: &Path) -> HashSet<String> {
     if has_file(dir, "package.json") {
         if let Ok(content) = fs::read_to_string(dir.join("package.json")) {
             if let Ok(json) = serde_json::from_str::<Value>(&content) {
-                let mut framework = String::from("nodejs");
-                let deps = json.get("dependencies").and_then(Value::as_object);
-                let dev_deps = json.get("devDependencies").and_then(Value::as_object);
-
-                let all_deps = deps.into_iter().chain(dev_deps).flat_map(|o| o.keys());
-
-                for dep in all_deps {
-                    match dep.as_str() {
-                        "react" => {
-                            framework = String::from("react");
-                            break;
-                        }
-                        "vue" => {
-                            framework = "vue".to_string();
-                            break;
-                        }
-                        "next" => {
-                            framework = "next".to_string();
-                            break;
-                        }
-                        "@angular/core" => {
-                            framework = "angular".to_string();
-                            break;
-                        }
-                        _ => (),
-                    }
-                }
+                let framework = detect_js_framework(&json);
                 types.insert(framework);
             }
             // If JSON parsing fails, we don't add nodejs type (graceful degradation)

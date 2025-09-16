@@ -9,15 +9,12 @@ description = "Unified package manager for VM Tool - handles cargo, npm, and pip
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
-serde = { workspace = true }
 serde_json = { workspace = true }
 which = { workspace = true }
-home = { workspace = true }
 tempfile = { workspace = true }
 vm-detector = { path = "../vm-detector" }
 vm-common = { path = "../vm-common" }
 rayon = { workspace = true }
-walkdir = { workspace = true }
 regex = { workspace = true }
 
 [features]

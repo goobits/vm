@@ -28,7 +28,7 @@ impl ConfigOpsGroup {
     }
 
     /// Execute validate command
-    pub fn execute_validate(file: Option<PathBuf>, no_preset: bool, verbose: bool) -> Result<()> {
+    pub fn execute_validate(file: Option<PathBuf>, no_preset: bool, verbose: bool) {
         commands::validation::execute_validate(file, no_preset, verbose)
     }
 

@@ -112,15 +112,20 @@ impl ArrayOperations {
         match target {
             Value::Sequence(seq) => {
                 seq.retain(|item| {
-                    if let Value::Mapping(map) = item {
-                        let field_key = Value::String(field.to_string());
-                        if let Some(field_value) = map.get(&field_key) {
-                            if let Some(field_str) = field_value.as_str() {
-                                return field_str != match_value;
-                            }
-                        }
-                    }
-                    true
+                    let Value::Mapping(map) = item else {
+                        return true;
+                    };
+
+                    let field_key = Value::String(field.to_string());
+                    let Some(field_value) = map.get(&field_key) else {
+                        return true;
+                    };
+
+                    let Some(field_str) = field_value.as_str() else {
+                        return true;
+                    };
+
+                    field_str != match_value
                 });
             }
             _ => return Err(anyhow::anyhow!("Path does not point to an array")),

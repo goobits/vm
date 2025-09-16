@@ -87,7 +87,7 @@ impl Provider for VagrantProvider {
         let main_phase = progress.start_phase("Creating Vagrant Environment");
 
         // Check if VM already exists
-        progress.task(&main_phase, "Checking existing VM status...");
+        ProgressReporter::task(&main_phase, "Checking existing VM status...");
         let status_output = std::process::Command::new("vagrant")
             .env("VAGRANT_CWD", self.project_dir.join("providers/vagrant"))
             .args(["status", "default"])
@@ -99,17 +99,17 @@ impl Provider for VagrantProvider {
                 || status_str.contains("poweroff")
                 || status_str.contains("saved")
             {
-                progress.task(&main_phase, "VM already exists.");
+                ProgressReporter::task(&main_phase, "VM already exists.");
                 vm_warning!("Vagrant VM already exists.");
                 vm_println!("To recreate, first run: vm destroy");
-                progress.finish_phase(&main_phase, "Skipped creation.");
+                ProgressReporter::finish_phase(&main_phase, "Skipped creation.");
                 return Ok(());
             }
         }
-        progress.task(&main_phase, "No existing VM found.");
+        ProgressReporter::task(&main_phase, "No existing VM found.");
 
         // Start VM with full provisioning
-        progress.task(&main_phase, "Starting Vagrant VM with provisioning...");
+        ProgressReporter::task(&main_phase, "Starting Vagrant VM with provisioning...");
         let vagrant_cwd = self.project_dir.join("providers/vagrant");
 
         // Create sanitized config without sensitive environment variables
@@ -123,13 +123,13 @@ impl Provider for VagrantProvider {
         let result = stream_command("vagrant", &["up"]);
 
         if result.is_err() {
-            progress.task(&main_phase, "VM creation failed.");
-            progress.finish_phase(&main_phase, "Creation failed.");
+            ProgressReporter::task(&main_phase, "VM creation failed.");
+            ProgressReporter::finish_phase(&main_phase, "Creation failed.");
             return result;
         }
 
-        progress.task(&main_phase, "VM created successfully.");
-        progress.finish_phase(&main_phase, "Environment ready.");
+        ProgressReporter::task(&main_phase, "VM created successfully.");
+        ProgressReporter::finish_phase(&main_phase, "Environment ready.");
 
         vm_success!("Vagrant environment created successfully!");
         vm_println!("Use 'vm ssh' to connect to the VM");

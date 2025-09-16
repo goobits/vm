@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::process::Command;
 
-pub fn detect_pip_packages(packages: &[String]) -> Result<Vec<(String, String)>> {
+pub fn detect_pip_packages(packages: &[String]) -> Vec<(String, String)> {
     let package_set: HashSet<&String> = packages.iter().collect();
     let mut results = Vec::new();
 
@@ -34,7 +34,7 @@ pub fn detect_pip_packages(packages: &[String]) -> Result<Vec<(String, String)>>
         }
     }
 
-    Ok(results)
+    results
 }
 
 fn get_editable_packages_for_command(cmd: &str) -> Result<Vec<(String, String)>> {

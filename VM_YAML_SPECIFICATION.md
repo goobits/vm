@@ -74,8 +74,9 @@ project:
 ```yaml
 vm:
   # Vagrant box (Vagrant provider only)
-  box: ubuntu/jammy64                    # ✅ WORKING (as 'box_name' in Rust)
+  box: ubuntu/jammy64                    # ✅ WORKING (field name is 'box')
   # box: bento/ubuntu-22.04              # ✅ WORKING
+  # Note: Rust struct uses 'box_name' internally
 
   # Memory allocation in MB
   memory: 4096                           # ✅ WORKING
@@ -577,7 +578,7 @@ terminal:
 ### ✅ **FULLY SUPPORTED** (75+ fields)
 - Core configuration (version, provider, os)
 - Project settings (name, hostname, workspace_path, backup_pattern, env_template_path)
-- VM settings (memory, cpus, swap, swappiness, user, port_binding, timezone, box_name, gui)
+- VM settings (box, memory, cpus, swap, swappiness, user, port_binding, timezone, gui)
 - Tart configuration (image, guest_os, disk_size, rosetta, ssh_user, install_docker, storage_path)
 - Versions (node, npm, pnpm, python, nvm)
 - Ports and port_range

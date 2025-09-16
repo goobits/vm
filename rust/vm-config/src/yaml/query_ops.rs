@@ -17,7 +17,7 @@ impl QueryOperations {
             .with_context(|| format!("Invalid YAML in file: {:?}", file))?;
 
         // Apply the filter expression
-        let result = Self::apply_filter(&value, expression)?;
+        let result = Self::apply_filter(&value, expression);
 
         // Output in requested format
         match output_format {
@@ -58,15 +58,21 @@ impl QueryOperations {
             Value::Sequence(seq) => {
                 let mut matching_items = Vec::new();
                 for item in seq {
-                    if let Value::Mapping(map) = item {
-                        let field_key = Value::String(field.to_string());
-                        if let Some(field_value) = map.get(&field_key) {
-                            if let Some(field_str) = field_value.as_str() {
-                                if field_str == match_value {
-                                    matching_items.push(item.clone());
-                                }
-                            }
-                        }
+                    let Value::Mapping(map) = item else {
+                        continue;
+                    };
+
+                    let field_key = Value::String(field.to_string());
+                    let Some(field_value) = map.get(&field_key) else {
+                        continue;
+                    };
+
+                    let Some(field_str) = field_value.as_str() else {
+                        continue;
+                    };
+
+                    if field_str == match_value {
+                        matching_items.push(item.clone());
                     }
                 }
                 Value::Sequence(matching_items)
@@ -111,36 +117,38 @@ impl QueryOperations {
     }
 
     // Apply filter expression (basic implementation)
-    fn apply_filter(value: &Value, expression: &str) -> Result<Value> {
+    fn apply_filter(value: &Value, expression: &str) -> Value {
         // Handle array access with filters like: .mounts[] | select(.source == "value")
         if expression.contains("[]") && expression.contains("select") {
             // Simple implementation for array filtering
             if let Some(array_part) = expression.split("[]").next() {
                 let array_path = array_part.trim_start_matches('.');
                 if array_path == "mounts" {
-                    if let Value::Mapping(map) = value {
-                        if let Some(Value::Sequence(seq)) =
-                            map.get(Value::String(String::from("mounts")))
-                        {
-                            let results: Vec<Value> = seq
-                                .iter()
-                                .filter(|_item| {
-                                    // Simple select filter parsing
-                                    if expression.contains(".source") {
-                                        return true; // For now, return all items
-                                    }
-                                    true
-                                })
-                                .cloned()
-                                .collect();
-                            return Ok(Value::Sequence(results));
-                        }
-                    }
+                    let Value::Mapping(map) = value else {
+                        return value.clone();
+                    };
+
+                    let Some(Value::Sequence(seq)) = map.get(Value::String(String::from("mounts"))) else {
+                        return value.clone();
+                    };
+
+                    let results: Vec<Value> = seq
+                        .iter()
+                        .filter(|_item| {
+                            // Simple select filter parsing
+                            if expression.contains(".source") {
+                                return true; // For now, return all items
+                            }
+                            true
+                        })
+                        .cloned()
+                        .collect();
+                    return Value::Sequence(results);
                 }
             }
         }
 
         // Fallback: return the whole value
-        Ok(value.clone())
+        value.clone()
     }
 }

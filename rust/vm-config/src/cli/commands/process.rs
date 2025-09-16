@@ -30,9 +30,9 @@ pub fn execute(
     };
 
     // Detect and load preset if user config is partial
-    let preset_config = if user_config.as_ref().is_none_or(|c| c.is_partial()) {
+    let preset_config = if user_config.as_ref().map_or(true, |c| c.is_partial()) {
         let detector = PresetDetector::new(project_dir, presets_dir);
-        if let Some(preset_name) = detector.detect()? {
+        if let Some(preset_name) = detector.detect() {
             Some(detector.load_preset(&preset_name)?)
         } else {
             None

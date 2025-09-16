@@ -16,24 +16,27 @@
 
 ```bash
 # Install a cargo package
-vm-pkg install --type cargo ripgrep
+vm-pkg install --package-type cargo ripgrep
 
 # Install an npm package
-vm-pkg install --type npm typescript
+vm-pkg install --package-type npm typescript
 
 # Install a Python package (automatically uses pip or pipx)
-vm-pkg install --type pip black
+vm-pkg install --package-type pip black
 
 # Force registry install (ignore linked packages)
-vm-pkg install --type npm --force-registry my-package
+vm-pkg install --package-type npm --force-registry my-package
+
+# Specify user (defaults to "developer")
+vm-pkg install --package-type cargo ripgrep --user developer
 ```
 
 ### Check if a Package is Linked
 
 ```bash
-vm-pkg check --type cargo my-crate
-vm-pkg check --type npm my-module
-vm-pkg check --type pip my-package
+vm-pkg check --package-type cargo my-crate
+vm-pkg check --package-type npm my-module
+vm-pkg check --package-type pip my-package
 ```
 
 ### List Linked Packages
@@ -43,7 +46,23 @@ vm-pkg check --type pip my-package
 vm-pkg list
 
 # List only npm linked packages
-vm-pkg list --type npm
+vm-pkg list --package-type npm
+```
+
+### Detect Linked Packages
+
+```bash
+# Detect if packages are linked
+vm-pkg links detect npm express react
+vm-pkg links detect cargo ripgrep fd-find
+```
+
+### Generate Docker Mounts
+
+```bash
+# Generate Docker mount strings for linked packages
+vm-pkg links mounts npm express react
+# Output: -v /home/developer/.links/npm/express:/workspace/node_modules/express:ro
 ```
 
 ## How It Replaces Shell Scripts
@@ -64,9 +83,9 @@ vm-pkg list --type npm
 ### After (1 unified binary):
 
 ```bash
-vm-pkg install --type cargo ripgrep --user developer
-vm-pkg install --type npm typescript --user developer
-vm-pkg install --type pip black --user developer
+vm-pkg install --package-type cargo ripgrep --user developer
+vm-pkg install --package-type npm typescript --user developer
+vm-pkg install --package-type pip black --user developer
 ```
 
 ## Architecture
@@ -78,7 +97,15 @@ vm-pkg/
 │   ├── cli.rs            # Command-line interface
 │   ├── package_manager.rs # Package manager abstraction
 │   ├── link_detector.rs  # Linked package detection
-│   └── installer.rs      # Installation logic
+│   ├── installer.rs      # Installation logic
+│   └── links/           # Package link management
+│       ├── mod.rs
+│       ├── cargo.rs      # Cargo-specific link detection
+│       ├── npm.rs        # NPM-specific link detection
+│       ├── pip.rs        # Pip-specific link detection
+│       └── system.rs     # System-wide link detection
+├── tests/
+│   └── links_integration_tests.rs
 └── Cargo.toml
 ```
 
@@ -129,11 +156,18 @@ cargo build --release
 ```bash
 # Test with a linked package
 mkdir -p /home/developer/.links/npm/my-module
-vm-pkg check --type npm my-module
+vm-pkg check --package-type npm my-module
 # Output: 🔗 Package 'my-module' is linked for npm
 
+# Test with non-linked package
+vm-pkg check --package-type npm non-linked-module
+# Output: 📦 Package 'non-linked-module' is not linked (would install from registry)
+
 # Test installation
-vm-pkg install --type pip black
+vm-pkg install --package-type pip black
 # Output: 📦 Installing pip package from registry: black
 #         ✅ Installed black as CLI tool with pipx
+
+# Run integration tests
+cargo test --package vm-pkg
 ```

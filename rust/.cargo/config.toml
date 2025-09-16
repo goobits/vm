@@ -17,3 +17,32 @@ incremental = true
 
 # [target.aarch64-apple-darwin]
 # rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+# Dead code detection aliases
+[alias]
+# Check for dead code using Clippy with aggressive linting
+dead-code = [
+    "clippy",
+    "--workspace",
+    "--all-targets",
+    "--",
+    "-W", "dead_code",
+    "-W", "unused_imports",
+    "-W", "unused_variables",
+    "-W", "unused_mut",
+    "-W", "unreachable_code",
+    "-W", "unreachable_patterns",
+    "-W", "clippy::redundant_clone",
+    "-W", "clippy::unnecessary_wraps",
+    "-W", "clippy::unused_self",
+    "-W", "clippy::unused_async"
+]
+
+# Quick dead code check (less verbose)
+dead-code-quick = ["clippy", "--workspace", "--", "-D", "dead_code"]
+
+# Check for unused dependencies using cargo-machete
+dead-deps = ["machete"]
+
+# Comprehensive dead code analysis (runs both)
+dead-all = ["machete", "&&", "cargo", "dead-code"]

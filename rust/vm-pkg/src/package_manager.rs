@@ -1,4 +1,3 @@
-use anyhow::Result;
 use clap::ValueEnum;
 use std::fmt;
 use std::path::PathBuf;
@@ -35,12 +34,12 @@ impl PackageManager {
     }
 
     /// Check if the package manager is available
-    pub fn is_available(&self) -> Result<bool> {
+    pub fn is_available(&self) -> bool {
         match self {
-            PackageManager::Cargo => Ok(which::which("cargo").is_ok()),
-            PackageManager::Npm => Ok(which::which("npm").is_ok() || which::which("node").is_ok()),
+            PackageManager::Cargo => which::which("cargo").is_ok(),
+            PackageManager::Npm => which::which("npm").is_ok() || which::which("node").is_ok(),
             PackageManager::Pip => {
-                Ok(which::which("python3").is_ok() || which::which("pip3").is_ok())
+                which::which("python3").is_ok() || which::which("pip3").is_ok()
             }
         }
     }

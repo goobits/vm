@@ -65,13 +65,13 @@ impl PackageInstaller {
         force_registry: bool,
     ) -> Result<()> {
         // Check if package manager is available
-        if !manager.is_available()? {
+        if !manager.is_available() {
             anyhow::bail!("Package manager {} is not available", manager);
         }
 
         // Check for linked package first (unless forcing registry install)
         if !force_registry {
-            if let Some(linked_path) = self.detector.get_linked_path(package, manager)? {
+            if let Some(linked_path) = self.detector.get_linked_path(package, manager) {
                 println!("🔗 Found linked local package: {}", package);
                 return self.install_linked(package, manager, &linked_path);
             }
@@ -204,17 +204,17 @@ impl PackageInstaller {
         // Check if it's a Python project
         if LinkDetector::is_python_project(path) {
             println!("  -> Detected as a Python project, installing in editable mode");
-            return self.install_pip_editable(package, path);
+            return Self::install_pip_editable(package, path);
         }
 
         // Fallback to editable install
         println!("  -> Installing as editable Python package");
-        self.install_pip_editable(package, path)
+        Self::install_pip_editable(package, path)
     }
 
     fn install_pip_registry(&self, package: &str) -> Result<()> {
         // First try pipx (for CLI tools)
-        match self.try_pipx_install(package) {
+        match Self::try_pipx_install(package) {
             Ok(true) => {
                 vm_success!("Installed {} as CLI tool with pipx", package);
                 return Ok(());
@@ -247,7 +247,7 @@ impl PackageInstaller {
         Ok(())
     }
 
-    fn install_pip_editable(&self, _package: &str, path: &Path) -> Result<()> {
+    fn install_pip_editable(_package: &str, path: &Path) -> Result<()> {
         let pip_exe = Self::find_pip_executable();
         let mut cmd = Command::new(pip_exe);
         cmd.args(["install", "--user", "--break-system-packages", "-e"]);
@@ -262,7 +262,7 @@ impl PackageInstaller {
         Ok(())
     }
 
-    fn try_pipx_install(&self, package: &str) -> Result<bool> {
+    fn try_pipx_install(package: &str) -> Result<bool> {
         // Check if pipx is available
         if which::which("pipx").is_err() {
             return Ok(false);
@@ -320,7 +320,7 @@ impl PackageInstaller {
                 })?;
 
                 let wrapper_path = local_bin.join(script_name);
-                self.create_wrapper_script(&wrapper_path, &script_path, path)?;
+                Self::create_wrapper_script(&wrapper_path, &script_path, path)?;
 
                 println!("    - Created wrapper: {}", script_name);
             }
@@ -332,7 +332,6 @@ impl PackageInstaller {
     }
 
     fn create_wrapper_script(
-        &self,
         wrapper_path: &Path,
         script_path: &Path,
         linked_dir: &Path,
@@ -403,7 +402,7 @@ exec python3 "$SCRIPT_PATH" "$@"
     }
 
     pub fn list_linked(&self, manager: Option<PackageManager>) -> Result<()> {
-        let linked = self.detector.list_linked(manager)?;
+        let linked = self.detector.list_linked(manager);
 
         if linked.is_empty() {
             println!("No linked packages found");

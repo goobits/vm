@@ -1,0 +1,29 @@
+# Clippy configuration for dead code detection
+# This configuration enables additional lints for finding unused code
+
+# Warn on cognitive complexity
+cognitive-complexity-threshold = 30
+
+# Disallow certain macros
+disallowed-macros = []
+
+# Set the minimum rust version (matches workspace)
+msrv = "1.70.0"
+
+# Allow certain names that would normally trigger warnings
+allowed-duplicate-crates = []
+
+# Warn on functions with too many lines
+too-many-lines-threshold = 100
+
+# Warn on functions with too many arguments
+too-many-arguments-threshold = 7
+
+# Type complexity threshold
+type-complexity-threshold = 250
+
+# Maximum single expression can be nested
+excessive-nesting-threshold = 5
+
+# Avoid false positives in test code
+avoid-breaking-exported-api = false

@@ -86,23 +86,30 @@ impl TagFilter {
 
     pub fn matches(&self, context: &Map<String, Value>) -> bool {
         for pattern in &self.patterns {
-            if let Some(value) = context.get(&pattern.key) {
-                if let Some(expected) = &pattern.value {
-                    if let Some(regex) = &pattern.regex {
-                        if let Some(str_value) = value.as_str() {
-                            if regex.is_match(str_value) {
-                                return true;
-                            }
-                        }
-                    } else if let Some(str_value) = value.as_str() {
-                        if str_value == expected {
-                            return true;
-                        }
-                    }
-                }
+            if self.pattern_matches(pattern, context) {
+                return true;
             }
         }
         false
+    }
+
+    fn pattern_matches(&self, pattern: &TagPattern, context: &Map<String, Value>) -> bool {
+        let Some(value) = context.get(&pattern.key) else {
+            return false;
+        };
+
+        let Some(expected) = &pattern.value else {
+            return false;
+        };
+
+        let Some(str_value) = value.as_str() else {
+            return false;
+        };
+
+        match &pattern.regex {
+            Some(regex) => regex.is_match(str_value),
+            None => str_value == expected,
+        }
     }
 }
 

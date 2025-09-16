@@ -23,3 +23,11 @@ uuid = { workspace = true }
 [features]
 default = []
 structured-output = []
+
+[package.metadata.cargo-machete]
+ignored = [
+    "dirs",        # Used transitively by multiple crates
+    "is-terminal", # Used transitively by terminal output logic
+    "thiserror",   # Used transitively for error handling
+    "uuid"         # Used transitively for ID generation
+]

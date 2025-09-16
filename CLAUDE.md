@@ -132,3 +132,50 @@ source $HOME/.cargo/env
 cargo --version
 rustc --version
 ```
+
+## Dead Code Detection
+
+Run dead code detection with:
+```bash
+source /home/developer/.cargo/env
+cd rust
+
+# Check for dead code (unused functions, structs, etc.)
+cargo dead-code
+
+# Quick dead code check with error on findings
+cargo dead-code-quick
+
+# Check for unused dependencies
+cargo dead-deps
+
+# Comprehensive analysis (both code and dependencies)
+cargo dead-all
+```
+
+### Tools
+- **Clippy** (built-in): Detects unused code, imports, variables, unreachable code
+- **cargo-machete**: Detects unused dependencies in Cargo.toml files
+
+### Configuration
+- **Cargo aliases**: `.cargo/config.toml` - Contains dead-code detection commands
+- **Clippy config**: `clippy.toml` - Additional linting rules for code quality
+
+### Lint Categories
+The dead-code detection checks for:
+- `dead_code` - Unused functions, structs, enums, methods
+- `unused_imports` - Import statements that aren't used
+- `unused_variables` - Variables that are never read
+- `unused_mut` - Mutable variables that don't need to be mutable
+- `unreachable_code` - Code that can never be executed
+- `unreachable_patterns` - Match patterns that can never be reached
+- `clippy::redundant_clone` - Unnecessary cloning operations
+- `clippy::unnecessary_wraps` - Functions that always return Ok/Some
+- `clippy::unused_self` - Methods that don't use self
+- `clippy::unused_async` - Async functions that don't need to be async
+
+### Fixing Dead Code
+1. **Review findings carefully** - Some code may be intentionally kept for future use
+2. **For false positives** - Add `#[allow(dead_code)]` to specific items
+3. **For unused dependencies** - Run `cargo machete --fix` to auto-remove
+4. **For test/example code** - These are often false positives and can be ignored
