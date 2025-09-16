@@ -1,3 +1,26 @@
+//! CLI interface for VM configuration management.
+//!
+//! This module implements a command-line interface for VM configuration operations
+//! using a command group pattern for better organization and maintainability.
+//!
+//! ## Architecture
+//!
+//! The CLI is organized into command groups for clear separation of concerns:
+//! - **FileOpsGroup**: File manipulation commands (merge, convert, modify)
+//! - **QueryOpsGroup**: Data querying commands (query, filter, count)
+//! - **ConfigOpsGroup**: Configuration management (get, set, validate)
+//! - **ProjectOpsGroup**: Project-level operations (init, preset, process)
+//!
+//! ## Command Flow
+//!
+//! 1. Command definitions are in the `Command` enum (data structures only)
+//! 2. The `execute()` function dispatches to appropriate command groups
+//! 3. Command groups delegate to individual command handlers in `commands/`
+//! 4. Each handler performs its specific operation and returns results
+//!
+//! This pattern keeps the main CLI file focused on structure while delegating
+//! implementation details to specialized modules.
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
