@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 // External crates
 use anyhow::Result;
-use tera::{Context as TeraContext, Tera};
+use tera::{Context as TeraContext};
 
 // Internal imports
 use crate::resources;

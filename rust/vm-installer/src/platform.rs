@@ -9,8 +9,7 @@ use anyhow::{Context, Result};
 use vm_common::vm_println;
 
 // Internal imports
-mod prompt;
-use prompt::confirm_prompt;
+use crate::prompt::confirm_prompt;
 
 pub fn ensure_path(bin_dir: &Path) -> Result<()> {
     let path_var = env::var("PATH").unwrap_or_default();

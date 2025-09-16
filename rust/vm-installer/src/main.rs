@@ -6,6 +6,7 @@ mod cli;
 mod dependencies;
 mod installer;
 mod platform;
+mod prompt;
 
 use cli::Args;
 use installer::install;

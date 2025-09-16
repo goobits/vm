@@ -1,8 +1,5 @@
 // Structured logging system - refactored to use modular organization
 
-// Re-export from logging modules
-pub use crate::logging::{LogConfig, LogFormat, LogOutput};
-
 // Internal imports
 use crate::log_context;
 use log::{Level, Record};
@@ -10,7 +7,64 @@ use serde_json::{Map, Value};
 use regex::Regex;
 use chrono;
 
+/// Log output destination
+#[derive(Debug, Clone)]
+pub enum LogOutput {
+    Stdout,
+    Stderr,
+    File(String),
+}
+
+/// Log format options
+#[derive(Debug, Clone)]
+pub enum LogFormat {
+    Text,
+    Json,
+}
+
+/// Configuration for the structured logger
+#[derive(Debug, Clone)]
+pub struct LogConfig {
+    pub level: Level,
+    pub format: LogFormat,
+    pub output: LogOutput,
+    pub tags: Option<Vec<TagPattern>>,
+}
+
+impl LogConfig {
+    /// Create a LogConfig from environment variables
+    pub fn from_env() -> Self {
+        let level = match std::env::var("LOG_LEVEL").as_deref() {
+            Ok("error") => Level::Error,
+            Ok("warn") => Level::Warn,
+            Ok("info") => Level::Info,
+            Ok("debug") => Level::Debug,
+            Ok("trace") => Level::Trace,
+            _ => Level::Info,
+        };
+
+        let format = match std::env::var("LOG_FORMAT").as_deref() {
+            Ok("json") => LogFormat::Json,
+            _ => LogFormat::Text,
+        };
+
+        let output = match std::env::var("LOG_OUTPUT").as_deref() {
+            Ok("stdout") => LogOutput::Stdout,
+            Ok(path) if path.starts_with("file:") => LogOutput::File(path[5..].to_string()),
+            _ => LogOutput::Stderr,
+        };
+
+        Self {
+            level,
+            format,
+            output,
+            tags: None,
+        }
+    }
+}
+
 /// Tag pattern for filtering logs
+#[derive(Debug, Clone)]
 pub struct TagPattern {
     pub key: String,
     pub value: Option<String>,
@@ -119,7 +173,7 @@ pub fn init_with_config(config: LogConfig) -> Result<(), log::SetLoggerError> {
     // Create and install the logger
     let logger = Box::leak(Box::new(StructuredLogger::new(config.clone())));
     log::set_logger(logger)?;
-    log::set_max_level(config.level);
+    log::set_max_level(config.level.to_level_filter());
 
     Ok(())
 }

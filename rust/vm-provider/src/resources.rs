@@ -28,7 +28,7 @@ pub fn copy_embedded_resources(shared_dir: &Path) -> Result<()> {
         shared_dir.join("gemini-settings"),
     ];
 
-    directories.par_iter().try_for_each(|dir| {
+    directories[..].par_iter().try_for_each(|dir| {
         fs::create_dir_all(dir)
     })?;
 
@@ -43,7 +43,7 @@ pub fn copy_embedded_resources(shared_dir: &Path) -> Result<()> {
         (directories[6].join("settings.json"), GEMINI_SETTINGS),
     ];
 
-    file_operations.par_iter().try_for_each(|(path, content)| {
+    file_operations[..].par_iter().try_for_each(|(path, content)| {
         fs::write(path, content)
     })?;
 

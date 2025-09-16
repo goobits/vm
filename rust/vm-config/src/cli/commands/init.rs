@@ -155,7 +155,7 @@ pub fn execute(
                 .with_context(|| format!("Failed to load service config: {}", service))?;
 
             // Extract only the specific service we want to enable from the service config
-            if let Some(specific_service_config) = service_config.services.get(&service) {
+            if let Some(specific_service_config) = service_config.services.get(service) {
                 // Enable the specific service with its configuration
                 let mut enabled_service = specific_service_config.clone();
                 enabled_service.enabled = true;
