@@ -27,6 +27,9 @@ pub fn detect_packages(
         "npm" => Ok(npm::detect_npm_packages(packages)),
         "pip" => Ok(pip::detect_pip_packages(packages)),
         "cargo" => cargo::detect_cargo_packages(packages),
-        _ => unreachable!(), // Already validated
+        _ => anyhow::bail!(
+            "❌ Error: Package manager '{}' not supported. Use npm, pip, or cargo.",
+            package_manager
+        ),
     }
 }

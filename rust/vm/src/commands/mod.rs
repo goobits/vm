@@ -137,6 +137,9 @@ fn handle_provider_command(args: Args) -> Result<()> {
         Command::Status => vm_ops::handle_status(provider, config),
         Command::Exec { command } => vm_ops::handle_exec(provider, command),
         Command::Logs => vm_ops::handle_logs(provider),
-        _ => unreachable!(), // Other commands handled above
+        cmd => anyhow::bail!(
+            "❌ Error: Command {:?} should have been handled in earlier match statement",
+            cmd
+        ),
     }
 }
