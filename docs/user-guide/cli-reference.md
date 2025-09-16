@@ -23,8 +23,9 @@ vm --config prod.yaml create     # Custom config
 ### ssh
 ```bash
 vm ssh                           # Enter VM
-vm ssh -c "ls -la"              # Run command
-vm ssh -c "npm test"            # Run tests
+vm ssh /workspace/src            # Enter VM in specific directory
+vm exec ls -la                   # Run command (use exec instead)
+vm exec npm test                 # Run tests (use exec instead)
 ```
 
 ### start / stop / restart

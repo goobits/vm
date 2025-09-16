@@ -330,6 +330,13 @@ pip_packages:                            # ✅ WORKING
   - mypy
   - requests
 
+# Python packages via pipx (isolated environments)
+pipx_packages:                           # ✅ WORKING
+  - poetry
+  - black
+  - isort
+  - mypy
+
 # Rust packages (triggers Rust installation)
 cargo_packages:                          # ✅ WORKING
   - cargo-watch
@@ -340,6 +347,7 @@ cargo_packages:                          # ✅ WORKING
 **Installation Behavior:**
 - `cargo_packages` → Installs Rust via rustup
 - `pip_packages` → Installs Python via pyenv
+- `pipx_packages` → Installs Python packages in isolated environments
 - `npm_packages` → Node.js included by default
 
 ## Shell & Terminal
@@ -573,7 +581,7 @@ terminal:
 - Tart configuration (image, guest_os, disk_size, rosetta, ssh_user, install_docker, storage_path)
 - Versions (node, npm, pnpm, python, nvm)
 - Ports and port_range
-- Package arrays (apt_packages, npm_packages, pip_packages, cargo_packages)
+- Package arrays (apt_packages, npm_packages, pip_packages, pipx_packages, cargo_packages)
 - Services with extended options (enabled, version, port, type, user, password, database, buildx, display, executable_path, driver, share_microphone, memory_mb)
 - Aliases and environment maps
 - Terminal configuration (shell, theme, emoji, username, show_git_branch, show_timestamp)

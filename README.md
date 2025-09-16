@@ -1,41 +1,35 @@
-# 🚀 Goobits VM Infrastructure
-Smart development environments that auto-configure based on your project type
+# 🚀 Goobits VM
+Development environments that auto-configure based on your project type
 
 ## ✨ Key Features
 - **🎯 Zero Configuration** - Detects React, Django, Rails, Vue, and 20+ frameworks automatically
-- **🔐 AI Agent Safe** - Docker containers or full VM isolation for secure AI-assisted development
+- **🔐 AI Agent Safe** - Docker containers or full VM isolation for secure development
 - **⚡ Instant Setup** - Docker environments in 10-30s, full VMs in 2-3min
 - **🧪 Temporary VMs** - Quick experiments with specific folders mounted
 - **🔄 File Sync** - Edit locally, run in VM with instant synchronization
-- **📦 Smart Presets** - Auto-installs language runtimes, databases, and tools per project
-- **🦀 Rust-Powered** - Core functionality migrated to Rust for improved performance
+- **📦 Auto Presets** - Installs language runtimes, databases, and tools per project
 
 ## 🚀 Quick Start
 
 ```bash
-# 1. Clone the repository
+# Installation
 git clone https://github.com/goobits/vm.git
-cd vm
+cd vm && ./install.sh
 
-# 2. Run the installer
-# This script compiles and installs the `vm` binary
-./install.sh
+# Restart shell or source profile
+source ~/.zshrc
 
-# 3. Configure your shell
-# Restart your shell or source your profile to add `vm` to your PATH.
-# e.g., source ~/.zshrc
-
-# 4. Create an environment (auto-detects your project)
+# Create environment (auto-detects your project)
 vm create
 
-# 5. Enter your development environment
+# Enter development environment
 vm ssh
 ```
 
-**Optional configuration:**
 ```yaml
-# vm.yaml - only if you want to override defaults
+# Optional: vm.yaml for custom configuration
 os: ubuntu
+provider: docker  # or vagrant for full isolation
 ```
 
 ## 🛠️ Environment Types
@@ -60,7 +54,7 @@ cd my-django-api && vm create    # → Python, PostgreSQL, Redis
 cd fullstack-app && vm create    # → Multiple presets combined
 ```
 
-## 🎮 Essential Commands
+## 🎮 Commands
 
 ```bash
 # Main workflow
@@ -70,9 +64,9 @@ vm stop          # Stop VM (keeps data)
 vm destroy       # Delete VM completely
 
 # Quick experiments
-vm temp ./src ./tests     # Instant VM with folder mounts
-vm temp ssh               # Enter temp VM
-vm temp destroy          # Clean up
+vm temp create ./src ./tests     # Instant VM with folder mounts
+vm temp ssh                      # Enter temp VM
+vm temp destroy                  # Clean up
 
 # Management
 vm list          # Show all VMs
@@ -90,7 +84,7 @@ vm preset list   # Available presets
 
 ```bash
 # Quick experiments with specific folder mounts
-vm temp ./src ./tests ./docs:ro
+vm temp create ./src ./tests ./docs:ro
 vm temp ssh              # Enter and start coding
 vm temp destroy          # Clean up when done
 
@@ -132,22 +126,14 @@ vm --no-preset create            # Manual configuration only
 ```
 
 ## 📖 Documentation
-
-### Getting Started
 - **[Quick Start Guide](docs/getting-started/quick-start.md)** - 5-minute setup tutorial
 - **[Installation Guide](docs/getting-started/installation.md)** - Platform-specific setup
-- **[Common Examples](docs/getting-started/examples.md)** - Real-world configurations
-
-### User Guide
 - **[CLI Reference](docs/user-guide/cli-reference.md)** - Complete command documentation
 - **[Configuration Guide](docs/user-guide/configuration.md)** - Full configuration options
 - **[Presets Guide](docs/user-guide/presets.md)** - Framework auto-detection
 - **[Troubleshooting](docs/user-guide/troubleshooting.md)** - Common issues and solutions
-
-### Development
 - **[Contributing Guide](docs/development/contributing.md)** - How to contribute
 - **[Architecture Overview](docs/development/architecture.md)** - System design
-- **[Testing Guide](docs/development/testing.md)** - Test suite documentation
 
 ## 🧪 Development
 
@@ -196,8 +182,8 @@ vm provision                 # Re-run provisioning
 
 ### Temporary VMs
 ```bash
-vm temp <folders>            # Create ephemeral VM
-vm temp ssh [-c cmd]         # SSH or run command
+vm temp create <folders>     # Create ephemeral VM
+vm temp ssh                  # SSH into temp VM
 vm temp destroy              # Clean up
 vm temp mount <path>         # Add mount to running VM
 vm temp unmount <path>       # Remove mount
