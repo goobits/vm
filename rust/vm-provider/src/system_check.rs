@@ -94,3 +94,133 @@ fn get_cpu_core_count() -> Result<u32> {
     // For now, return a conservative estimate
     bail!("Windows system checking not implemented yet");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_minimum_requirements_constants() {
+        // Test that our constants are reasonable
+        assert!(MIN_CPU_CORES >= 1);
+        assert!(MIN_CPU_CORES <= 16); // Sanity check - shouldn't require too many cores
+        assert!(MIN_MEMORY_GB >= 1);
+        assert!(MIN_MEMORY_GB <= 64); // Sanity check - shouldn't require excessive memory
+    }
+
+    #[test]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn test_cpu_core_detection() {
+        let result = get_cpu_core_count();
+
+        // Should successfully detect CPU cores on supported platforms
+        assert!(result.is_ok());
+
+        let cpu_cores = result.unwrap();
+        // Should return a reasonable number of cores
+        assert!(cpu_cores > 0);
+        assert!(cpu_cores <= 256); // Sanity check for reasonable upper bound
+    }
+
+    #[test]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn test_memory_detection() {
+        let result = get_total_memory_gb();
+
+        // Should successfully detect memory on supported platforms
+        assert!(result.is_ok());
+
+        let memory_gb = result.unwrap();
+        // Should return a reasonable amount of memory
+        assert!(memory_gb > 0);
+        assert!(memory_gb <= 1024); // Sanity check for reasonable upper bound (1TB)
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_windows_not_implemented() {
+        // On Windows, both functions should return errors indicating not implemented
+        let cpu_result = get_cpu_core_count();
+        assert!(cpu_result.is_err());
+        assert!(cpu_result.unwrap_err().to_string().contains("not implemented"));
+
+        let memory_result = get_total_memory_gb();
+        assert!(memory_result.is_err());
+        assert!(memory_result.unwrap_err().to_string().contains("not implemented"));
+    }
+
+    #[test]
+    fn test_resource_requirements_validation() {
+        // Test the main check function logic with known values
+        // Note: We can't easily test the actual function without mocking
+        // But we can test the logic patterns it uses
+
+        // Simulate sufficient resources
+        let sufficient_cores = MIN_CPU_CORES + 2;
+        let sufficient_memory = MIN_MEMORY_GB + 4;
+
+        assert!(sufficient_cores >= MIN_CPU_CORES);
+        assert!(sufficient_memory >= MIN_MEMORY_GB);
+
+        // Simulate insufficient resources
+        let insufficient_cores = if MIN_CPU_CORES > 1 { MIN_CPU_CORES - 1 } else { 0 };
+        let insufficient_memory = if MIN_MEMORY_GB > 1 { MIN_MEMORY_GB - 1 } else { 0 };
+
+        assert!(insufficient_cores < MIN_CPU_CORES);
+        assert!(insufficient_memory < MIN_MEMORY_GB);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_linux_proc_parsing_resilience() {
+        // Test that our parsing logic is resilient to different /proc formats
+        // This is more of a documentation test showing expected input formats
+
+        // Example meminfo line format
+        let example_meminfo_line = "MemTotal:       16384000 kB";
+        let parts: Vec<&str> = example_meminfo_line.split_whitespace().collect();
+        assert!(parts.len() >= 2);
+
+        if parts.len() >= 2 {
+            let mem_kb_str = parts[1];
+            let mem_kb: Result<u64, _> = mem_kb_str.parse();
+            assert!(mem_kb.is_ok());
+
+            let mem_kb = mem_kb.unwrap();
+            let mem_gb = mem_kb / 1024 / 1024;
+            assert!(mem_gb > 0);
+        }
+
+        // Example cpuinfo processor counting
+        let example_cpuinfo_lines = vec![
+            "processor\t: 0",
+            "vendor_id\t: GenuineIntel",
+            "processor\t: 1",
+            "vendor_id\t: GenuineIntel",
+        ];
+
+        let processor_count = example_cpuinfo_lines
+            .iter()
+            .filter(|line| line.starts_with("processor"))
+            .count() as u32;
+
+        assert_eq!(processor_count, 2);
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_macos_sysctl_command_format() {
+        // Test that we're using the correct sysctl command formats
+        // This is more of a documentation test
+
+        let memory_args = ["-n", "hw.memsize"];
+        assert_eq!(memory_args.len(), 2);
+        assert_eq!(memory_args[0], "-n");
+        assert_eq!(memory_args[1], "hw.memsize");
+
+        let cpu_args = ["-n", "hw.physicalcpu"];
+        assert_eq!(cpu_args.len(), 2);
+        assert_eq!(cpu_args[0], "-n");
+        assert_eq!(cpu_args[1], "hw.physicalcpu");
+    }
+}

@@ -125,3 +125,102 @@ pub fn get_provider(config: VmConfig) -> Result<Box<dyn Provider>> {
         _ => Err(error::ProviderError::UnknownProvider(provider_name.into()).into()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use vm_config::config::VmConfig;
+
+    #[test]
+    fn test_get_provider_default_docker() {
+        let config = VmConfig::default();
+        let result = get_provider(config);
+        // Test that we default to docker, even if docker is not available
+        match result {
+            Ok(provider) => assert_eq!(provider.name(), "docker"),
+            Err(error) => {
+                // If docker is not available, we should get a dependency error
+                assert!(error.to_string().contains("Dependency not found"));
+            }
+        }
+    }
+
+    #[test]
+    fn test_get_provider_explicit_docker() {
+        let mut config = VmConfig::default();
+        config.provider = Some("docker".into());
+        let result = get_provider(config);
+        // Test that we try to create docker provider
+        match result {
+            Ok(provider) => assert_eq!(provider.name(), "docker"),
+            Err(error) => {
+                // If docker is not available, we should get a dependency error
+                assert!(error.to_string().contains("Dependency not found"));
+            }
+        }
+    }
+
+    #[test]
+    fn test_get_provider_mock() {
+        let mut config = VmConfig::default();
+        config.provider = Some("mock".into());
+        let provider = get_provider(config).expect("Should create mock provider");
+        assert_eq!(provider.name(), "mock");
+    }
+
+    #[test]
+    fn test_get_provider_unknown() {
+        let mut config = VmConfig::default();
+        config.provider = Some("unknown-provider".into());
+        let result = get_provider(config);
+        assert!(result.is_err());
+
+        if let Err(error) = result {
+            let error_msg = error.to_string();
+            assert!(error_msg.contains("Unknown provider"));
+            assert!(error_msg.contains("unknown-provider"));
+        }
+    }
+
+    #[test]
+    fn test_get_provider_empty_string() {
+        let mut config = VmConfig::default();
+        config.provider = Some("".into());
+        let result = get_provider(config);
+        // Empty string should be treated as unknown provider, not default to docker
+        assert!(result.is_err());
+        if let Err(error) = result {
+            let error_msg = error.to_string();
+            assert!(error_msg.contains("Unknown provider"));
+        }
+    }
+
+    #[test]
+    fn test_provider_trait_basic_contract() {
+        // Use mock provider for trait testing since docker might not be available
+        let mut config = VmConfig::default();
+        config.provider = Some("mock".into());
+        let provider = get_provider(config).expect("Should create mock provider");
+
+        // Test basic trait methods return without panicking
+        assert!(!provider.name().is_empty());
+        assert_eq!(provider.name(), "mock");
+
+        // Test sync directory method
+        let sync_result = provider.get_sync_directory();
+        assert!(sync_result.is_ok());
+        let dir = sync_result.unwrap();
+        assert!(!dir.is_empty());
+    }
+
+    #[test]
+    fn test_temp_provider_capability() {
+        // Use mock provider for testing since docker might not be available
+        let mut config = VmConfig::default();
+        config.provider = Some("mock".into());
+        let provider = get_provider(config).expect("Should create mock provider");
+
+        // Mock provider should support temp operations
+        assert!(provider.as_temp_provider().is_some());
+    }
+}
