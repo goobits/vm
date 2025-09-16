@@ -53,7 +53,7 @@
     line: "{{ item.line }}"
   loop: "{{ service_versioned_config_lines }}"
   notify: "restart {{ service_name }}"
-  when: 
+  when:
     - service_versioned_config_lines | length > 0
     - service_version_result is defined
 
@@ -63,14 +63,14 @@
     enabled: yes
     state: started
     daemon_reload: "{{ service_systemd_daemon_reload }}"
-  when: 
+  when:
     - not is_docker_container
     - service_systemd_name != "" or service_name is defined
   notify: "restart {{ service_name }}"
 
 - name: "Force systemd service restart for {{ service_name }}"
   meta: flush_handlers
-  when: 
+  when:
     - not is_docker_container
     - service_systemd_name != "" or service_name is defined
 
@@ -79,8 +79,8 @@
     dest: "/etc/supervisor/conf.d/{{ service_name }}.conf"
     content: |
       [program:{{ service_name }}]
-      command={{ service_supervisor_command }}
-      user={{ service_supervisor_user if service_supervisor_user != '' else 'vagrant' }}
+      command={{ service_supervisor_command | replace('VERSION', service_version_result.stdout) if (service_version_result is defined and service_version_result.stdout is defined) else service_supervisor_command }}
+      user={{ service_supervisor_user if service_supervisor_user != '' else 'root' }}
       autostart=true
       autorestart=true
       stderr_logfile=/dev/stderr
@@ -95,11 +95,19 @@
     - service_supervisor_command != ""
   notify: restart supervisor
 
-- name: "Force supervisor reload for {{ service_name }} (Docker)"
-  meta: flush_handlers
-  when: 
+- name: "Restart supervisor for {{ service_name }} (Docker) - conditional"
+  shell: |
+    if pgrep supervisord > /dev/null; then
+      supervisorctl reread
+      supervisorctl update
+      supervisorctl restart {{ service_name }} || true
+    else
+      echo "Supervisor not running, will start on container startup"
+    fi
+  when:
     - is_docker_container
     - service_supervisor_command != ""
+  ignore_errors: yes
 
 - name: "Wait for {{ service_name }} to be ready"
   wait_for:

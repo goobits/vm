@@ -82,6 +82,21 @@
             show_timestamp: '{{ project_config.terminal.show_timestamp | default(false) }}'
             terminal_colors: "{{ terminal_themes[project_config.terminal.theme | default('dracula')].colors | default(terminal_themes.dracula.colors) }}"
             home_dir: "/home/{{ project_config.vm.user | default(default_user) }}"
+            # Consolidated conditions for package manager installation requirements
+            nodejs_required: >-
+              (project_config.npm_packages is defined and project_config.npm_packages is not none and project_config.npm_packages | length > 0) or
+              project_config.claude_sync | default(false) or
+              project_config.gemini_sync | default(false)
+            pip_packages_required: "{{ project_config.pip_packages is defined and project_config.pip_packages | length > 0 }}"
+            cargo_packages_required: "{{ project_config.cargo_packages is defined and project_config.cargo_packages | length > 0 }}"
+            apt_packages_required: "{{ project_config.apt_packages is defined and project_config.apt_packages | length > 0 }}"
+            # Environment template configuration
+            env_template_configured: "{{ project_config.project.env_template_path is defined and project_config.project.env_template_path }}"
+            # Consolidated condition for port configurations
+            ports_configured: >-
+              project_config.ports is defined and
+              project_config.ports is mapping and
+              project_config.ports | length > 0
 
       # User creation pre-task
       - name: Ensure project user exists with correct UID/GID
@@ -164,9 +179,8 @@
             supervisord -c /etc/supervisor/supervisord.conf
             sleep 2
           fi
-          supervisorctl reload
+          supervisorctl reread && supervisorctl update
         when: is_docker_container
-        ignore_errors: yes
 
   tasks:
       # System configuration
@@ -215,7 +229,7 @@
                 [unix_http_server]
                 file=/var/run/supervisor/supervisor.sock
                 chmod=0770
-                chown={{ project_user }}:staff
+                chown=root:root
 
                 [supervisord]
                 nodaemon=true
@@ -238,7 +252,6 @@
       # Locale configuration
       - name: Wait for apt lock to be released
         shell: while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 1; done
-        
       - name: Install locale packages
         apt:
             name:
@@ -313,10 +326,8 @@
             from_ip: 127.0.0.1
             comment: 'Allow {{ item.key }} port'
         with_dict: '{{ project_config.ports | default({}) }}'
-        when: 
-            - project_config.ports is defined
-            - project_config.ports is mapping
-            - project_config.ports | length > 0
+        when:
+            - ports_configured
             - not is_docker_container
 
       - name: Allow configured ports from Vagrant host
@@ -327,10 +338,8 @@
             from_ip: 10.0.2.2
             comment: 'Allow {{ item.key }} port from Vagrant host'
         with_dict: '{{ project_config.ports | default({}) }}'
-        when: 
-            - project_config.ports is defined
-            - project_config.ports is mapping
-            - project_config.ports | length > 0
+        when:
+            - ports_configured
             - not is_docker_container
 
       # Install Node.js/npm if npm_packages is defined OR claude_sync/gemini_sync enabled
@@ -340,20 +349,14 @@
             dest: /tmp/install_nvm.sh
             mode: '0755'
         become_user: '{{ project_user }}'
-        when: >
-          (project_config.npm_packages is defined and project_config.npm_packages is not none and project_config.npm_packages | length > 0) or
-          project_config.claude_sync | default(false) or
-          project_config.gemini_sync | default(false)
+        when: nodejs_required
 
       - name: Install NVM
         shell: /tmp/install_nvm.sh
         args:
             creates: '/home/{{ project_user }}/.nvm/nvm.sh'
         become_user: '{{ project_user }}'
-        when: >
-          (project_config.npm_packages is defined and project_config.npm_packages is not none and project_config.npm_packages | length > 0) or
-          project_config.claude_sync | default(false) or
-          project_config.gemini_sync | default(false)
+        when: nodejs_required
 
       # Change default shell to zsh
       - name: Change user shell to zsh
@@ -380,10 +383,7 @@
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
-        when: >
-          (project_config.npm_packages is defined and project_config.npm_packages is not none and project_config.npm_packages | length > 0) or
-          project_config.claude_sync | default(false) or
-          project_config.gemini_sync | default(false)
+        when: nodejs_required
 
       - name: Update npm to latest version
         shell: |
@@ -392,10 +392,7 @@
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
-        when: >
-          (project_config.npm_packages is defined and project_config.npm_packages is not none and project_config.npm_packages | length > 0) or
-          project_config.claude_sync | default(false) or
-          project_config.gemini_sync | default(false)
+        when: nodejs_required
         ignore_errors: yes
 
       - name: Enable corepack for pnpm
@@ -405,10 +402,7 @@
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
-        when: >
-          (project_config.npm_packages is defined and project_config.npm_packages is not none and project_config.npm_packages | length > 0) or
-          project_config.claude_sync | default(false) or
-          project_config.gemini_sync | default(false)
+        when: nodejs_required
 
       - name: Install pnpm via corepack
         shell: |
@@ -418,10 +412,7 @@
             executable: /bin/bash
         become_user: '{{ project_user }}'
         register: corepack_result
-        when: >
-          (project_config.npm_packages is defined and project_config.npm_packages is not none and project_config.npm_packages | length > 0) or
-          project_config.claude_sync | default(false) or
-          project_config.gemini_sync | default(false)
+        when: nodejs_required
         ignore_errors: yes
 
       - name: Install pnpm via npm if corepack failed
@@ -432,11 +423,8 @@
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
-        when: 
-          - >
-            (project_config.npm_packages is defined and project_config.npm_packages | length > 0) or
-            project_config.claude_sync | default(false) or
-            project_config.gemini_sync | default(false)
+        when:
+          - nodejs_required
           - corepack_result.failed | default(false)
 
       - name: Install additional APT packages
@@ -447,7 +435,7 @@
         delay: 10
         register: apt_packages_install
         until: apt_packages_install is succeeded
-        when: project_config.apt_packages is defined and project_config.apt_packages | length > 0
+        when: apt_packages_required
 
 
       - name: Install Claude Code CLI
@@ -492,10 +480,10 @@
           path: '{{ home_dir }}/.cargo/bin/cargo'
         register: cargo_installed
         become_user: '{{ project_user }}'
-        when: project_config.cargo_packages is defined and project_config.cargo_packages | length > 0
+        when: cargo_packages_required
 
       - name: Install Rust via rustup
-        when: project_config.cargo_packages is defined and project_config.cargo_packages | length > 0 and not cargo_installed.stat.exists
+        when: cargo_packages_required and not cargo_installed.stat.exists
         block:
           - name: Download rustup installer
             get_url:
@@ -526,14 +514,14 @@
         register: pipx_check
         failed_when: false
         changed_when: false
-        when: project_config.pip_packages is defined and project_config.pip_packages | length > 0
+        when: pip_packages_required
 
       - name: Install pipx for Python package management
         apt:
             name: pipx
             state: present
-        when: 
-          - project_config.pip_packages is defined and project_config.pip_packages | length > 0
+        when:
+          - pip_packages_required
           - pipx_check is defined and pipx_check.rc != 0
         retries: 5
         delay: 10
@@ -544,15 +532,14 @@
         shell: |
             pipx ensurepath
         become_user: '{{ project_user }}'
-        when: 
-          - project_config.pip_packages is defined and project_config.pip_packages | length > 0
+        when: pip_packages_required
         ignore_errors: yes
 
       - name: Ensure pip is installed for Python libraries
         apt:
             name: python3-pip
             state: present
-        when: project_config.pip_packages is defined and project_config.pip_packages | length > 0
+        when: pip_packages_required
         retries: 5
         delay: 10
         register: pip_install_apt
@@ -575,26 +562,27 @@
         vars:
           service_name: "{{ service_item.key }}"
           service_config: "{{ service_item.value }}"
-          # Only pass variables that are actually defined for this service
-          service_packages: "{{ service_definitions[service_item.key].service_packages | default([]) }}"
-          service_dependencies: "{{ service_definitions[service_item.key].service_dependencies | default([]) }}"
-          service_gpg_key_url: "{{ service_definitions[service_item.key].service_gpg_key_url | default('') }}"
-          service_repository: "{{ service_definitions[service_item.key].service_repository | default('') }}"
-          service_config_lines: "{{ service_definitions[service_item.key].service_config_lines | default([]) }}"
-          service_version_command: "{{ service_definitions[service_item.key].service_version_command | default('') }}"
-          service_versioned_config_lines: "{{ service_definitions[service_item.key].service_versioned_config_lines | default([]) }}"
-          service_systemd_name: "{{ service_definitions[service_item.key].service_systemd_name | default('') }}"
-          service_systemd_daemon_reload: "{{ service_definitions[service_item.key].service_systemd_daemon_reload | default(false) }}"
-          service_supervisor_command: "{{ service_definitions[service_item.key].service_supervisor_command | default('') }}"
-          service_supervisor_user: "{{ service_definitions[service_item.key].service_supervisor_user | default('') }}"
-          service_supervisor_environment: "{{ service_definitions[service_item.key].service_supervisor_environment | default('') }}"
-          service_port: "{{ service_definitions[service_item.key].service_port | default('') }}"
-          service_post_install_commands: "{{ service_definitions[service_item.key].service_post_install_commands | default([]) }}"
-          service_ignore_errors: "{{ service_definitions[service_item.key].service_ignore_errors | default(false) }}"
+          # Consolidated service definition access with defaults
+          current_service_def: "{{ service_definitions[service_item.key] | default({}) }}"
+          service_packages: "{{ current_service_def.service_packages | default([]) }}"
+          service_dependencies: "{{ current_service_def.service_dependencies | default([]) }}"
+          service_gpg_key_url: "{{ current_service_def.service_gpg_key_url | default('') }}"
+          service_repository: "{{ current_service_def.service_repository | default('') }}"
+          service_config_lines: "{{ current_service_def.service_config_lines | default([]) }}"
+          service_version_command: "{{ current_service_def.service_version_command | default('') }}"
+          service_versioned_config_lines: "{{ current_service_def.service_versioned_config_lines | default([]) }}"
+          service_systemd_name: "{{ current_service_def.service_systemd_name | default('') }}"
+          service_systemd_daemon_reload: "{{ current_service_def.service_systemd_daemon_reload | default(false) }}"
+          service_supervisor_command: "{{ current_service_def.service_supervisor_command | default('') }}"
+          service_supervisor_user: "{{ current_service_def.service_supervisor_user | default('') }}"
+          service_supervisor_environment: "{{ current_service_def.service_supervisor_environment | default('') }}"
+          service_port: "{{ current_service_def.service_port | default('') }}"
+          service_post_install_commands: "{{ current_service_def.service_post_install_commands | default([]) }}"
+          service_ignore_errors: "{{ current_service_def.service_ignore_errors | default(false) }}"
         loop: "{{ project_config.services | dict2items }}"
         loop_control:
           loop_var: service_item
-        when: 
+        when:
           - service_item.value.enabled | default(false)
           - service_item.key in service_definitions
           - service_item.key != 'docker'  # Docker handled separately due to user group requirements
@@ -633,7 +621,7 @@
                 Restart=always
                 [Install]
                 WantedBy=multi-user.target
-        when: 
+        when:
           - project_config.services.headless_browser.enabled | default(false)
           - not is_docker_container
         no_log: true
@@ -649,7 +637,7 @@
       - name: Restore database from backup
         shell: |
             gunzip -c "{{ (backup_files.files | sort(attribute='mtime') | last).path }}" | sudo -u postgres psql -p {{ project_config.ports.postgresql | default(5432) }} -d "{{ project_config.services.postgresql.database }}"
-        when: 
+        when:
           - project_config.services.postgresql.enabled | default(false)
           - backup_files is defined
           - backup_files.files | length > 0
@@ -708,7 +696,7 @@
         stat:
             path: '{{ project_path }}/{{ project_config.project.env_template_path }}'
         register: env_template
-        when: project_config.project.env_template_path is defined and project_config.project.env_template_path
+        when: env_template_configured
 
       - name: Copy .env template
         copy:
@@ -717,7 +705,7 @@
             remote_src: yes
             owner: '{{ project_user }}'
         when:
-            - project_config.project.env_template_path is defined and project_config.project.env_template_path
+            - env_template_configured
             - env_template.stat.exists
 
       - name: Configure DATABASE_URL in .env
@@ -726,7 +714,7 @@
             regexp: '^DATABASE_URL='
             line: "DATABASE_URL=postgresql://{{ project_config.services.postgresql.user | default('postgres') }}:{{ project_config.services.postgresql.password | default('postgres') }}@localhost:{{ project_config.ports.postgresql | default(project_config.services.postgresql.port | default(5432)) }}/{{ project_config.services.postgresql.database }}"
         when:
-            - project_config.project.env_template_path is defined and project_config.project.env_template_path
+            - env_template_configured
             - env_template.stat.exists
             - project_config.services.postgresql.enabled | default(false)
 
@@ -736,7 +724,7 @@
             regexp: '^REDIS_URL='
             line: 'REDIS_URL=redis://localhost:{{ project_config.ports.redis | default(project_config.services.redis.port | default(6379)) }}'
         when:
-            - project_config.project.env_template_path is defined and project_config.project.env_template_path
+            - env_template_configured
             - env_template.stat.exists
             - project_config.services.redis.enabled | default(false)
 
@@ -835,24 +823,6 @@
         when: not is_docker_container
 
       # Ensure supervisor is started and services are loaded in Docker
-      - name: Start supervisor and reload configurations (Docker)
-        block:
-          - name: Ensure supervisor is running
-            shell: |
-              if ! pgrep supervisord > /dev/null; then
-                supervisord -c /etc/supervisor/supervisord.conf
-                sleep 2
-              fi
-            ignore_errors: yes
-
-          - name: Reload supervisor configuration
-            command: supervisorctl reread
-            ignore_errors: yes
-
-          - name: Update supervisor processes
-            command: supervisorctl update
-            ignore_errors: yes
-        when: is_docker_container
 
       # Final message
       - name: Display completion message
@@ -863,5 +833,5 @@
                 📁 Project: {{ project_name }}
                 📍 Path: {{ project_path }}
                 🛠️ Tools: Node.js, Claude Code, Gemini CLI
-                
+
                 💡 Ready to code!

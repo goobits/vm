@@ -2,7 +2,42 @@
 # Service configuration definitions for the reusable service management task
 # Each service defines the variables needed by tasks/manage-service.yml
 
+# YAML anchors for common patterns
+common_patterns: &common_patterns
+  # Common port configuration pattern
+  default_port_config: &default_port_config
+    service_ignore_errors: true
+
+  # Common localhost bind configuration
+  localhost_bind_config: &localhost_bind_config
+    bind_address: "127.0.0.1"
+
+  # Common user group management pattern
+  user_group_commands: &user_group_commands
+    docker_group: &docker_group_cmd
+      "usermod -a -G docker {{ 'developer' if is_docker_container else project_config.ssh_user | default('vagrant') }}"
+    audio_group: &audio_group_cmd
+      "usermod -a -G audio {{ 'developer' if is_docker_container else project_config.ssh_user | default('vagrant') }}"
+    video_group: &video_group_cmd
+      "usermod -a -G video,render {{ 'developer' if is_docker_container else project_config.ssh_user | default('vagrant') }}"
+
+  # Common database setup patterns
+  database_patterns: &database_patterns
+    postgresql_db_setup: &postgresql_db_setup
+      - "sudo -u postgres psql -p {{ project_config.ports.postgresql | default(5432) }} -c \"ALTER USER {{ project_config.services.postgresql.user | default('postgres') }} PASSWORD '{{ project_config.services.postgresql.password | default('postgres') }}';\""
+      - "sudo -u postgres createdb -p {{ project_config.ports.postgresql | default(5432) }} \"{{ project_config.services.postgresql.database | default(project_config.project.name + '_dev') }}\" || echo \"Database exists\""
+
+    mysql_db_setup: &mysql_db_setup
+      - "mysql -u root -e \"ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{{ project_config.services.mysql.password | default('mysql') }}';\""
+      - "mysql -u root -p{{ project_config.services.mysql.password | default('mysql') }} -e \"CREATE DATABASE IF NOT EXISTS {{ project_config.services.mysql.database | default(project_config.project.name + '_dev') }};\""
+
+    mongodb_db_setup: &mongodb_db_setup
+      - "mongosh --port {{ project_config.ports.mongodb | default(project_config.services.mongodb.port | default(27017)) }} --eval \"db = db.getSiblingDB('{{ project_config.project.name }}_dev'); db.createCollection('init'); print('Database {{ project_config.project.name }}_dev created');\""
+
+# Service definitions organized by category
 service_definitions:
+
+  # === DATABASE SERVICES ===
   postgresql:
     service_packages:
       - postgresql
@@ -16,30 +51,30 @@ service_definitions:
         regexp: "^#?listen_addresses ="
         line: "listen_addresses = 'localhost'"
     service_systemd_name: "postgresql"
-    service_supervisor_command: "/usr/lib/postgresql/14/bin/postgres -D /var/lib/postgresql/14/main -c config_file=/etc/postgresql/14/main/postgresql.conf"
+    service_supervisor_command: "/usr/lib/postgresql/VERSION/bin/postgres -D /var/lib/postgresql/VERSION/main -c config_file=/etc/postgresql/VERSION/main/postgresql.conf"
     service_supervisor_user: "postgres"
     service_supervisor_environment: "LC_ALL=\"en_US.UTF-8\",LC_CTYPE=\"en_US.UTF-8\""
     service_port: "{{ project_config.ports.postgresql | default(5432) }}"
-    service_post_install_commands:
-      - "sudo -u postgres psql -p {{ project_config.ports.postgresql | default(5432) }} -c \"ALTER USER {{ project_config.services.postgresql.user | default('postgres') }} PASSWORD '{{ project_config.services.postgresql.password | default('postgres') }}';\""
-      - "sudo -u postgres createdb -p {{ project_config.ports.postgresql | default(5432) }} \"{{ project_config.services.postgresql.database | default(project_config.project.name + '_dev') }}\" || echo \"Database exists\""
-    service_ignore_errors: true
+    service_post_install_commands: *postgresql_db_setup
+    <<: *default_port_config
 
-  redis:
+  mysql:
     service_packages:
-      - redis-server
-      - redis-tools
+      - mysql-server
+      - mysql-client
     service_config_lines:
-      - path: "/etc/redis/redis.conf"
-        regexp: "^bind"
-        line: "bind 127.0.0.1 ::1"
-      - path: "/etc/redis/redis.conf"
+      - path: "/etc/mysql/mysql.conf.d/mysqld.cnf"
+        regexp: "^bind-address"
+        line: "bind-address = 127.0.0.1"
+      - path: "/etc/mysql/mysql.conf.d/mysqld.cnf"
         regexp: "^port"
-        line: "port {{ project_config.ports.redis | default(6379) }}"
-    service_systemd_name: "redis-server"
-    service_supervisor_command: "/usr/bin/redis-server --bind 127.0.0.1 ::1 --port {{ project_config.ports.redis | default(6379) }} --protected-mode yes"
-    service_supervisor_user: "redis"
-    service_port: "{{ project_config.ports.redis | default(6379) }}"
+        line: "port = {{ project_config.ports.mysql | default(3306) }}"
+    service_systemd_name: "mysql"
+    service_supervisor_command: "/usr/sbin/mysqld --basedir=/usr --datadir=/var/lib/mysql --plugin-dir=/usr/lib/mysql/plugin --user=mysql --log-error=/var/log/mysql/error.log --pid-file=/var/run/mysqld/mysqld.pid"
+    service_supervisor_user: "mysql"
+    service_port: "{{ project_config.ports.mysql | default(3306) }}"
+    service_post_install_commands: *mysql_db_setup
+    <<: *default_port_config
 
   mongodb:
     service_dependencies:
@@ -61,10 +96,27 @@ service_definitions:
     service_supervisor_command: "/usr/bin/mongod --config /etc/mongod.conf"
     service_supervisor_user: "mongodb"
     service_port: "{{ project_config.ports.mongodb | default(project_config.services.mongodb.port | default(27017)) }}"
-    service_post_install_commands:
-      - "mongosh --port {{ project_config.ports.mongodb | default(project_config.services.mongodb.port | default(27017)) }} --eval \"db = db.getSiblingDB('{{ project_config.project.name }}_dev'); db.createCollection('init'); print('Database {{ project_config.project.name }}_dev created');\""
-    service_ignore_errors: true
+    service_post_install_commands: *mongodb_db_setup
+    <<: *default_port_config
 
+  # === CACHE & MESSAGE QUEUE SERVICES ===
+  redis:
+    service_packages:
+      - redis-server
+      - redis-tools
+    service_config_lines:
+      - path: "/etc/redis/redis.conf"
+        regexp: "^bind"
+        line: "bind 127.0.0.1 ::1"
+      - path: "/etc/redis/redis.conf"
+        regexp: "^port"
+        line: "port {{ project_config.ports.redis | default(6379) }}"
+    service_systemd_name: "redis-server"
+    service_supervisor_command: "/usr/bin/redis-server --bind 127.0.0.1 ::1 --port {{ project_config.ports.redis | default(6379) }} --protected-mode yes"
+    service_supervisor_user: "redis"
+    service_port: "{{ project_config.ports.redis | default(6379) }}"
+
+  # === DEVELOPMENT & BROWSER SERVICES ===
   headless_browser:
     service_packages:
       - chromium-browser
@@ -73,37 +125,19 @@ service_definitions:
     service_supervisor_command: "/usr/bin/Xvfb :99 -screen 0 1024x768x24 -ac"
     service_supervisor_user: "root"
 
-  mysql:
-    service_packages:
-      - mysql-server
-      - mysql-client
-    service_config_lines:
-      - path: "/etc/mysql/mysql.conf.d/mysqld.cnf"
-        regexp: "^bind-address"
-        line: "bind-address = 127.0.0.1"
-      - path: "/etc/mysql/mysql.conf.d/mysqld.cnf"
-        regexp: "^port"
-        line: "port = {{ project_config.ports.mysql | default(3306) }}"
-    service_systemd_name: "mysql"
-    service_supervisor_command: "/usr/sbin/mysqld --basedir=/usr --datadir=/var/lib/mysql --plugin-dir=/usr/lib/mysql/plugin --user=mysql --log-error=/var/log/mysql/error.log --pid-file=/var/run/mysqld/mysqld.pid"
-    service_supervisor_user: "mysql"
-    service_port: "{{ project_config.ports.mysql | default(3306) }}"
-    service_post_install_commands:
-      - "mysql -u root -e \"ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{{ project_config.services.mysql.password | default('mysql') }}';\""
-      - "mysql -u root -p{{ project_config.services.mysql.password | default('mysql') }} -e \"CREATE DATABASE IF NOT EXISTS {{ project_config.services.mysql.database | default(project_config.project.name + '_dev') }};\""
-    service_ignore_errors: true
-
+  # === CONTAINERIZATION SERVICES ===
   docker:
     service_packages:
       - docker-compose
     service_optional_packages:
       buildx: docker-buildx
     service_post_install_commands:
-      - "usermod -a -G docker {{ 'developer' if is_docker_container else project_config.ssh_user | default('vagrant') }}"
+      - *docker_group_cmd
       - "{{ 'docker buildx install' if project_config.services.docker.buildx | default(true) else 'echo \"Buildx disabled\"' }}"
-    service_ignore_errors: true
+    <<: *default_port_config
     # Note: docker.io CLI is included in base Docker image for Docker provider
 
+  # === MULTIMEDIA SERVICES ===
   audio:
     service_packages:
       - pulseaudio
@@ -118,11 +152,11 @@ service_definitions:
         regexp: "^#?default-sink"
         line: "# default-sink = auto"
     service_post_install_commands:
-      - "usermod -a -G audio {{ 'developer' if is_docker_container else project_config.ssh_user | default('vagrant') }}"
+      - *audio_group_cmd
       - "pulseaudio --check -v || (pulseaudio --system --start && echo 'PulseAudio started')"
     service_supervisor_command: "/usr/bin/pulseaudio --system --disallow-exit --disallow-module-loading --log-target=stderr"
     service_supervisor_user: "root"
-    service_ignore_errors: true
+    <<: *default_port_config
 
   gpu:
     service_packages:
@@ -132,9 +166,10 @@ service_definitions:
       - mesa-vulkan-drivers
       - mesa-va-drivers
     service_post_install_commands:
-      - "usermod -a -G video,render {{ 'developer' if is_docker_container else project_config.ssh_user | default('vagrant') }}"
-    service_ignore_errors: true
+      - *video_group_cmd
+    <<: *default_port_config
 
+  # === SYSTEM & ENVIRONMENT SERVICES ===
   vm:
     service_dependencies:
       - curl
@@ -144,4 +179,4 @@ service_definitions:
       - "curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -"
       - "apt-get install -y nodejs"
       - "cd /workspace && npm link"
-    service_ignore_errors: true
+    <<: *default_port_config
