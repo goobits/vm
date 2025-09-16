@@ -89,8 +89,8 @@ pub fn handle_destroy(provider: Box<dyn Provider>, config: VmConfig) -> Result<(
         provider.name()
     );
 
-    // Initialize progress reporter
-    let progress = ProgressReporter::new();
+    // Initialize progress reporter (kept for potential future use)
+    let _progress = ProgressReporter::new();
 
     // Show confirmation prompt
     ProgressReporter::phase_header("🗑️", "DESTROY PHASE");
@@ -143,7 +143,7 @@ pub fn handle_ssh(
 /// Handle VM status check
 pub fn handle_status(provider: Box<dyn Provider>, config: VmConfig) -> Result<()> {
     // Enhanced status reporting using StatusFormatter
-    let progress = ProgressReporter::new();
+    let _progress = ProgressReporter::new();
     let status_formatter = StatusFormatter::new();
 
     // Get VM name from config
