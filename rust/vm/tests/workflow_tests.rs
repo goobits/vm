@@ -2,7 +2,11 @@ use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Mutex;
 use tempfile::TempDir;
+
+// Global mutex to ensure tests run sequentially to avoid environment variable conflicts
+static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
 /// Test fixture for end-to-end CLI workflow testing
 struct WorkflowTestFixture {
@@ -77,6 +81,7 @@ impl WorkflowTestFixture {
 
 #[test]
 fn test_basic_config_workflow() -> Result<()> {
+    let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = WorkflowTestFixture::new()?;
 
     // Skip test if binary doesn't exist
@@ -121,6 +126,7 @@ fn test_basic_config_workflow() -> Result<()> {
 
 #[test]
 fn test_preset_application_workflow() -> Result<()> {
+    let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = WorkflowTestFixture::new()?;
 
     if !fixture.binary_path.exists() {
@@ -180,6 +186,7 @@ npm_packages:
 
 #[test]
 fn test_nested_configuration_workflow() -> Result<()> {
+    let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = WorkflowTestFixture::new()?;
 
     if !fixture.binary_path.exists() {
@@ -230,6 +237,7 @@ fn test_nested_configuration_workflow() -> Result<()> {
 
 #[test]
 fn test_global_vs_local_config_workflow() -> Result<()> {
+    let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = WorkflowTestFixture::new()?;
 
     if !fixture.binary_path.exists() {
@@ -276,6 +284,7 @@ fn test_global_vs_local_config_workflow() -> Result<()> {
 
 #[test]
 fn test_preset_composition_workflow() -> Result<()> {
+    let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = WorkflowTestFixture::new()?;
 
     if !fixture.binary_path.exists() {
@@ -346,6 +355,7 @@ ports:
 
 #[test]
 fn test_configuration_error_recovery() -> Result<()> {
+    let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = WorkflowTestFixture::new()?;
 
     if !fixture.binary_path.exists() {
@@ -386,6 +396,7 @@ fn test_configuration_error_recovery() -> Result<()> {
 
 #[test]
 fn test_project_type_detection_workflow() -> Result<()> {
+    let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = WorkflowTestFixture::new()?;
 
     if !fixture.binary_path.exists() {
@@ -440,6 +451,7 @@ environment:
 
 #[test]
 fn test_configuration_clear_workflow() -> Result<()> {
+    let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = WorkflowTestFixture::new()?;
 
     if !fixture.binary_path.exists() {
@@ -473,6 +485,7 @@ fn test_configuration_clear_workflow() -> Result<()> {
 
 #[test]
 fn test_help_system_workflow() -> Result<()> {
+    let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = WorkflowTestFixture::new()?;
 
     if !fixture.binary_path.exists() {
