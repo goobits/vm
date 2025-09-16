@@ -43,17 +43,19 @@ services:
     cap_add:
       - SYS_PTRACE
     {% endif %}
+    {% if (config.security.enable_debugging | default(value=false)) or (config.security.no_new_privileges | default(value=false)) or (config.security.security_opts and config.security.security_opts | length > 0) %}
     security_opt:
       {% if config.security.enable_debugging | default(value=false) %}
       - seccomp=unconfined
       {% endif %}
-      {% if config.security.no_new_privileges | default(value=true) %}
+      {% if config.security.no_new_privileges | default(value=false) %}
       - no-new-privileges
       {% endif %}
       {% if config.security.security_opts and config.security.security_opts | length > 0 %}
       {% for opt in config.security.security_opts %}- {{ opt }}
       {% endfor %}
       {% endif %}
+    {% endif %}
     {% if config.security.user_namespaces | default(value=false) %}
     userns_mode: "host"
     {% endif %}
