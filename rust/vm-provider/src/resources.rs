@@ -15,37 +15,37 @@ pub const GEMINI_SETTINGS: &str = include_str!("resources/settings/gemini-settin
 
 /// Copy all embedded resources to the specified directory
 pub fn copy_embedded_resources(shared_dir: &Path) -> Result<()> {
-    // Create directory structure
-    let ansible_dir = shared_dir.join("ansible");
-    let tasks_dir = ansible_dir.join("tasks");
-    let services_dir = shared_dir.join("services");
-    let templates_dir = shared_dir.join("templates");
-    let settings_dir = shared_dir.join("settings");
+    use rayon::prelude::*;
 
-    fs::create_dir_all(&ansible_dir)?;
-    fs::create_dir_all(&tasks_dir)?;
-    fs::create_dir_all(&services_dir)?;
-    fs::create_dir_all(&templates_dir)?;
-    fs::create_dir_all(&settings_dir)?;
+    // Create directory structure in parallel
+    let directories = [
+        shared_dir.join("ansible"),
+        shared_dir.join("ansible").join("tasks"),
+        shared_dir.join("services"),
+        shared_dir.join("templates"),
+        shared_dir.join("settings"),
+        shared_dir.join("claude-settings"),
+        shared_dir.join("gemini-settings"),
+    ];
 
-    // Write embedded resources to files
-    fs::write(ansible_dir.join("playbook.yml"), ANSIBLE_PLAYBOOK)?;
-    fs::write(tasks_dir.join("manage-service.yml"), MANAGE_SERVICE_TASK)?;
-    fs::write(
-        services_dir.join("service_definitions.yml"),
-        SERVICE_DEFINITIONS,
-    )?;
-    fs::write(templates_dir.join("zshrc.j2"), ZSHRC_TEMPLATE)?;
-    fs::write(shared_dir.join("themes.json"), THEMES_JSON)?;
+    directories.par_iter().try_for_each(|dir| {
+        fs::create_dir_all(dir)
+    })?;
 
-    // Create claude and gemini settings directories
-    let claude_settings_dir = shared_dir.join("claude-settings");
-    let gemini_settings_dir = shared_dir.join("gemini-settings");
-    fs::create_dir_all(&claude_settings_dir)?;
-    fs::create_dir_all(&gemini_settings_dir)?;
+    // Write embedded resources in parallel
+    let file_operations = [
+        (directories[0].join("playbook.yml"), ANSIBLE_PLAYBOOK),
+        (directories[1].join("manage-service.yml"), MANAGE_SERVICE_TASK),
+        (directories[2].join("service_definitions.yml"), SERVICE_DEFINITIONS),
+        (directories[3].join("zshrc.j2"), ZSHRC_TEMPLATE),
+        (shared_dir.join("themes.json"), THEMES_JSON),
+        (directories[5].join("settings.json"), CLAUDE_SETTINGS),
+        (directories[6].join("settings.json"), GEMINI_SETTINGS),
+    ];
 
-    fs::write(claude_settings_dir.join("settings.json"), CLAUDE_SETTINGS)?;
-    fs::write(gemini_settings_dir.join("settings.json"), GEMINI_SETTINGS)?;
+    file_operations.par_iter().try_for_each(|(path, content)| {
+        fs::write(path, content)
+    })?;
 
     Ok(())
 }

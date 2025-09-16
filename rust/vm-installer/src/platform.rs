@@ -6,8 +6,11 @@ use std::path::{Path, PathBuf};
 
 // External crates
 use anyhow::{Context, Result};
-use dialoguer::Confirm;
 use vm_common::vm_println;
+
+// Internal imports
+mod prompt;
+use prompt::confirm_prompt;
 
 pub fn ensure_path(bin_dir: &Path) -> Result<()> {
     let path_var = env::var("PATH").unwrap_or_default();
@@ -34,7 +37,7 @@ pub fn ensure_path(bin_dir: &Path) -> Result<()> {
         profile_path
     );
 
-    if Confirm::new().with_prompt(prompt).interact()? {
+    if confirm_prompt(&prompt)? {
         add_to_profile(&profile_path, bin_dir)?;
         println!(
             "✅ Added PATH to {}. Please restart your shell.",
