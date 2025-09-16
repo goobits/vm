@@ -4,6 +4,7 @@ use glob::glob;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use vm_detector::detect_preset_for_project;
+use serde_yaml_ng as serde_yaml;
 
 /// Metadata about a preset
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -10,6 +10,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
+use serde_yaml_ng as serde_yaml;
 
 /// Errors that can occur during state management operations.
 #[derive(Error, Debug)]
