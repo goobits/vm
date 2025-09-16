@@ -1,14 +1,110 @@
 // Structured logging system - refactored to use modular organization
 
 // Re-export from logging modules
-pub use crate::logging::{
-    LogConfig, LogFormat, LogOutput, TagFilter,
-    StructuredLogger,
-    create_test_logger,
-};
+pub use crate::logging::{LogConfig, LogFormat, LogOutput};
 
 // Internal imports
 use crate::log_context;
+use log::{Level, Record};
+use serde_json::{Map, Value};
+use regex::Regex;
+use chrono;
+
+/// Tag pattern for filtering logs
+pub struct TagPattern {
+    pub key: String,
+    pub value: Option<String>,
+    pub regex: Option<Regex>,
+}
+
+/// Filter for log entries based on tags
+pub struct TagFilter {
+    patterns: Vec<TagPattern>,
+}
+
+impl TagFilter {
+    pub fn from_patterns(patterns: Vec<TagPattern>) -> Self {
+        Self { patterns }
+    }
+
+    pub fn matches(&self, context: &Map<String, Value>) -> bool {
+        for pattern in &self.patterns {
+            if let Some(value) = context.get(&pattern.key) {
+                if let Some(expected) = &pattern.value {
+                    if let Some(regex) = &pattern.regex {
+                        if let Some(str_value) = value.as_str() {
+                            if regex.is_match(str_value) {
+                                return true;
+                            }
+                        }
+                    } else if let Some(str_value) = value.as_str() {
+                        if str_value == expected {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+}
+
+/// Simple structured logger implementation
+pub struct StructuredLogger {
+    config: LogConfig,
+}
+
+impl StructuredLogger {
+    pub fn new(config: LogConfig) -> Self {
+        Self { config }
+    }
+}
+
+impl log::Log for StructuredLogger {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        metadata.level() <= self.config.level
+    }
+
+    fn log(&self, record: &Record) {
+        if self.enabled(record.metadata()) {
+            match self.config.format {
+                LogFormat::Json => {
+                    let mut log_entry = Map::new();
+                    log_entry.insert("level".to_string(), Value::String(record.level().to_string()));
+                    log_entry.insert("message".to_string(), Value::String(record.args().to_string()));
+                    log_entry.insert("timestamp".to_string(), Value::String(chrono::Utc::now().to_rfc3339()));
+
+                    if let Some(module) = record.module_path() {
+                        log_entry.insert("module".to_string(), Value::String(module.to_string()));
+                    }
+
+                    let json_str = serde_json::to_string(&log_entry).unwrap_or_else(|_| "{}".to_string());
+                    eprintln!("{}", json_str);
+                }
+                LogFormat::Text => {
+                    eprintln!("[{}] {}: {}",
+                        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"),
+                        record.level(),
+                        record.args()
+                    );
+                }
+            }
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+/// Create a test logger for unit tests
+#[cfg(test)]
+pub fn create_test_logger() -> StructuredLogger {
+    StructuredLogger::new(LogConfig {
+        level: Level::Debug,
+        format: LogFormat::Text,
+        output: LogOutput::Stderr,
+        tags: None,
+    })
+}
 
 /// Initialize the structured logging system
 pub fn init() -> Result<(), log::SetLoggerError> {
@@ -78,7 +174,6 @@ mod tests {
 
     #[test]
     fn test_tag_filter_exact_match() {
-        use crate::logging::config::TagPattern;
 
         let pattern = TagPattern {
             key: "component".to_string(),
@@ -97,7 +192,6 @@ mod tests {
 
     #[test]
     fn test_tag_filter_wildcard() {
-        use crate::logging::config::TagPattern;
 
         let pattern = TagPattern {
             key: "operation".to_string(),
