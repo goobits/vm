@@ -25,8 +25,8 @@ cargo run --bin version-sync sync
 **What it syncs:**
 - `rust/Cargo.toml` - Rust workspace version
 - `defaults.yaml` - Default configuration template
-- `rust/vm-config/config.yaml` - Embedded config template
-- `rust/vm-config/vm.yaml` - VM config template
+- `rust/version-sync/fixtures/config.yaml` - Version sync placeholder
+- `rust/version-sync/fixtures/vm.yaml` - Version sync placeholder
 
 **Automatic sync:**
 The version sync runs automatically when you use `npm version` to bump the version:

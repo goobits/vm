@@ -66,8 +66,8 @@ impl VersionSync {
         vec![
             self.project_root.join("rust/Cargo.toml"),
             self.project_root.join("defaults.yaml"),
-            self.project_root.join("rust/vm-config/config.yaml"),
-            self.project_root.join("rust/vm-config/vm.yaml"),
+            self.project_root.join("rust/version-sync/fixtures/config.yaml"),
+            self.project_root.join("rust/version-sync/fixtures/vm.yaml"),
         ]
     }
 
