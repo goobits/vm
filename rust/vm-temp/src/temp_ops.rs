@@ -433,7 +433,7 @@ impl TempVmOps {
     /// Simple confirmation prompt
     fn confirm_prompt(message: &str) -> bool {
         print!("{}", message);
-        io::stdout().flush().unwrap();
+        io::stdout().flush().expect("Failed to flush stdout");
 
         let mut input = String::new();
         match io::stdin().read_line(&mut input) {

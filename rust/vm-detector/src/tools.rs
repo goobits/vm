@@ -191,7 +191,6 @@ pub fn detect_databases() -> Vec<String> {
     ToolDetector::detect_databases()
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

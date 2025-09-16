@@ -69,6 +69,9 @@ pub fn get_tool_dir() -> PathBuf {
 pub fn get_current_uid() -> u32 {
     #[cfg(unix)]
     {
+        // SAFETY: libc::getuid() is always safe to call as it simply returns
+        // the real user ID of the calling process. This system call never fails
+        // and has no parameters that could cause undefined behavior.
         unsafe { libc::getuid() }
     }
     #[cfg(not(unix))]
@@ -81,6 +84,9 @@ pub fn get_current_uid() -> u32 {
 pub fn get_current_gid() -> u32 {
     #[cfg(unix)]
     {
+        // SAFETY: libc::getgid() is always safe to call as it simply returns
+        // the real group ID of the calling process. This system call never fails
+        // and has no parameters that could cause undefined behavior.
         unsafe { libc::getgid() }
     }
     #[cfg(not(unix))]

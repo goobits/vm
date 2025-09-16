@@ -1,9 +1,9 @@
 use crate::config::VmConfig;
 use anyhow::{Context, Result};
 use regex::Regex;
+use serde_yaml_ng as serde_yaml;
 use std::path::PathBuf;
 use vm_common::{vm_error, vm_success, vm_warning};
-use serde_yaml_ng as serde_yaml;
 
 /// Fix YAML indentation issues by ensuring consistent 2-space indentation for arrays
 fn fix_yaml_indentation(yaml: &str) -> String {
@@ -82,9 +82,9 @@ pub fn execute(
     // Sanitize directory name for use as project name
     // Replace dots, spaces, and other invalid characters with hyphens
     // Then remove any consecutive hyphens and trim leading/trailing hyphens
-    let re = Regex::new(r"[^a-zA-Z0-9_-]").unwrap();
+    let re = Regex::new(r"[^a-zA-Z0-9_-]").expect("Invalid regex pattern for sanitizing directory name");
     let sanitized_name = re.replace_all(dir_name, "-");
-    let re_consecutive = Regex::new(r"-+").unwrap();
+    let re_consecutive = Regex::new(r"-+").expect("Invalid regex pattern for removing consecutive hyphens");
     let sanitized_name = re_consecutive.replace_all(&sanitized_name, "-");
     let sanitized_name = sanitized_name.trim_matches('-');
 
@@ -121,7 +121,10 @@ pub fn execute(
 
             // Register this range
             if let Ok(range) = vm_ports::PortRange::parse(&range_str) {
-                let mut registry = vm_ports::PortRegistry::load().unwrap_or_default();
+                let mut registry = vm_ports::PortRegistry::load().unwrap_or_else(|_| {
+                    vm_warning!("Failed to load port registry, using default");
+                    vm_ports::PortRegistry::default()
+                });
                 if let Err(e) =
                     registry.register(sanitized_name, &range, &current_dir.to_string_lossy())
                 {

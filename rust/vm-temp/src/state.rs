@@ -6,11 +6,11 @@
 use crate::TempVmState;
 use anyhow::{Context, Result};
 use fs2::FileExt;
+use serde_yaml_ng as serde_yaml;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
-use serde_yaml_ng as serde_yaml;
 
 /// Errors that can occur during state management operations.
 #[derive(Error, Debug)]
@@ -244,14 +244,14 @@ impl StateManager {
         // Validate container name is not empty
         if state.container_name.trim().is_empty() {
             return Err(StateError::ValidationFailed {
-                reason: "Container name cannot be empty".to_owned(),
+                reason: "Container name cannot be empty".into(),
             });
         }
 
         // Validate provider is not empty
         if state.provider.trim().is_empty() {
             return Err(StateError::ValidationFailed {
-                reason: "Provider cannot be empty".to_owned(),
+                reason: "Provider cannot be empty".into(),
             });
         }
 

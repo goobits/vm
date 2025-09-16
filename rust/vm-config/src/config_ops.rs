@@ -4,8 +4,8 @@ use std::path::PathBuf;
 
 // External crates
 use anyhow::{bail, Context, Result};
-use serde_yaml_ng as serde_yaml;
 use serde_yaml::{Mapping, Value};
+use serde_yaml_ng as serde_yaml;
 
 // Internal imports
 use crate::config::VmConfig;
@@ -104,12 +104,17 @@ impl ConfigOps {
 
         // Parse the value - try as YAML first, then as string
         let parsed_value: Value =
-            serde_yaml::from_str(value).unwrap_or_else(|_| Value::String(value.to_owned()));
+            serde_yaml::from_str(value).unwrap_or_else(|_| Value::String(value.into()));
 
         set_nested_field(&mut yaml_value, field, parsed_value)?;
 
         if dry_run {
-            println!("🔍 DRY RUN - Would set {} = {} in {}", field, value, config_path.display());
+            println!(
+                "🔍 DRY RUN - Would set {} = {} in {}",
+                field,
+                value,
+                config_path.display()
+            );
             println!("   (no changes were made to the file)");
         } else {
             let yaml_str = serde_yaml::to_string(&yaml_value)?;
@@ -385,7 +390,7 @@ fn set_nested_field_recursive(value: &mut Value, parts: &[&str], new_value: Valu
     if parts.len() == 1 {
         match value {
             Value::Mapping(map) => {
-                let key = Value::String(parts[0].to_owned());
+                let key = Value::String(parts[0].into());
                 map.insert(key, new_value);
                 return Ok(());
             }
@@ -395,7 +400,7 @@ fn set_nested_field_recursive(value: &mut Value, parts: &[&str], new_value: Valu
 
     match value {
         Value::Mapping(map) => {
-            let key = Value::String(parts[0].to_owned());
+            let key = Value::String(parts[0].into());
             match map.get_mut(&key) {
                 Some(nested) => set_nested_field_recursive(nested, &parts[1..], new_value)?,
                 None => {
@@ -418,7 +423,7 @@ fn get_nested_field<'a>(value: &'a Value, field: &str) -> Result<&'a Value> {
     for part in field.split('.') {
         match current {
             Value::Mapping(map) => {
-                let key = Value::String(part.to_owned());
+                let key = Value::String(part.into());
                 current = map
                     .get(&key)
                     .ok_or_else(|| anyhow::anyhow!("Field '{}' not found", part))?;
@@ -443,7 +448,7 @@ fn unset_nested_field_recursive(value: &mut Value, parts: &[&str]) -> Result<()>
     if parts.len() == 1 {
         match value {
             Value::Mapping(map) => {
-                let key = Value::String(parts[0].to_owned());
+                let key = Value::String(parts[0].into());
                 if map.remove(&key).is_none() {
                     bail!("Field '{}' not found", parts[0]);
                 }
@@ -455,7 +460,7 @@ fn unset_nested_field_recursive(value: &mut Value, parts: &[&str]) -> Result<()>
 
     match value {
         Value::Mapping(map) => {
-            let key = Value::String(parts[0].to_owned());
+            let key = Value::String(parts[0].into());
             match map.get_mut(&key) {
                 Some(nested) => unset_nested_field_recursive(nested, &parts[1..])?,
                 None => bail!("Field '{}' not found", parts[0]),

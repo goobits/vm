@@ -1,5 +1,8 @@
 // Structured logging system - refactored to use modular organization
 
+// Standard library
+use std::sync::OnceLock;
+
 // Internal imports
 use crate::log_context;
 use chrono;
@@ -125,24 +128,24 @@ impl log::Log for StructuredLogger {
                 LogFormat::Json => {
                     let mut log_entry = Map::new();
                     log_entry.insert(
-                        "level".to_string(),
+                        "level".into(),
                         Value::String(record.level().to_string()),
                     );
                     log_entry.insert(
-                        "message".to_string(),
+                        "message".into(),
                         Value::String(record.args().to_string()),
                     );
                     log_entry.insert(
-                        "timestamp".to_string(),
+                        "timestamp".into(),
                         Value::String(chrono::Utc::now().to_rfc3339()),
                     );
 
                     if let Some(module) = record.module_path() {
-                        log_entry.insert("module".to_string(), Value::String(module.to_string()));
+                        log_entry.insert("module".into(), Value::String(module.into()));
                     }
 
                     let json_str =
-                        serde_json::to_string(&log_entry).unwrap_or_else(|_| "{}".to_string());
+                        serde_json::to_string(&log_entry).unwrap_or_else(|_| "{}".into());
                     eprintln!("{}", json_str);
                 }
                 LogFormat::Text => {
@@ -176,13 +179,16 @@ pub fn init() -> Result<(), log::SetLoggerError> {
     init_with_config(LogConfig::from_env())
 }
 
+/// Global logger instance using OnceLock for thread-safe initialization
+static LOGGER: OnceLock<StructuredLogger> = OnceLock::new();
+
 /// Initialize with a custom configuration
 pub fn init_with_config(config: LogConfig) -> Result<(), log::SetLoggerError> {
     // Initialize context system
     log_context::init_context();
 
-    // Create and install the logger
-    let logger = Box::leak(Box::new(StructuredLogger::new(config.clone())));
+    // Create and install the logger using OnceLock for memory-safe singleton
+    let logger = LOGGER.get_or_init(|| StructuredLogger::new(config.clone()));
     log::set_logger(logger)?;
     log::set_max_level(config.level.to_level_filter());
 

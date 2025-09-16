@@ -29,7 +29,7 @@ impl LinkDetector {
     /// Check if a package has system-wide links (npm global, cargo install, pip editable)
     pub fn is_system_linked(&self, package: &str, manager: PackageManager) -> Result<bool> {
         let manager_str = manager.to_string();
-        let packages = vec![package.to_owned()];
+        let packages = vec![package.into()];
 
         let detections = SystemLinkDetector::detect_for_manager(&manager_str, &packages)?;
         Ok(!detections.is_empty())
@@ -95,7 +95,7 @@ impl LinkDetector {
             // For now, we'll just indicate that system link detection is available
             results.push((
                 mgr,
-                "(use 'vm-pkg links detect' for system-wide detection)".to_owned(),
+                "(use 'vm-pkg links detect' for system-wide detection)".into(),
             ));
         }
 

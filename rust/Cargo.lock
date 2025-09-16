@@ -1344,6 +1344,7 @@ dependencies = [
  "clap",
  "colored",
  "dirs",
+ "tempfile",
  "vm-common",
  "which",
 ]
@@ -1372,6 +1373,7 @@ version = "1.2.1"
 dependencies = [
  "anyhow",
  "clap",
+ "fs2",
  "serde",
  "serde_json",
  "tempfile",

@@ -50,11 +50,11 @@ impl VersionSync {
     }
 
     fn read_package_version(root: &Path) -> Result<String> {
-        let package_json = fs::read_to_string(root.join("package.json"))
-            .context("Failed to read package.json")?;
+        let package_json =
+            fs::read_to_string(root.join("package.json")).context("Failed to read package.json")?;
 
-        let json: serde_json::Value = serde_json::from_str(&package_json)
-            .context("Failed to parse package.json")?;
+        let json: serde_json::Value =
+            serde_json::from_str(&package_json).context("Failed to parse package.json")?;
 
         json.get("version")
             .and_then(|v| v.as_str())
@@ -79,10 +79,13 @@ impl VersionSync {
         let content = fs::read_to_string(path)
             .with_context(|| format!("Failed to read {}", path.display()))?;
 
-        let version_regex = Regex::new(r#"version\s*[:=]\s*"?([^"\s]+)"?"#).unwrap();
+        let version_regex = Regex::new(r#"version\s*[:=]\s*"?([^"\s]+)"?"#)
+            .expect("Invalid regex pattern for version detection");
 
         if let Some(captures) = version_regex.captures(&content) {
-            let current_version = captures.get(1).unwrap().as_str();
+            let current_version = captures.get(1)
+                .expect("Regex should have captured version group")
+                .as_str();
             if current_version == self.package_version {
                 Ok(FileVersionStatus::Synced)
             } else {
@@ -97,13 +100,19 @@ impl VersionSync {
         let content = fs::read_to_string(path)
             .with_context(|| format!("Failed to read {}", path.display()))?;
 
-        let version_regex = Regex::new(r#"version\s*=\s*"[^"]+""#).unwrap();
-        let yaml_version_regex = Regex::new(r#"version:\s*"?[^"\s]+"?"#).unwrap();
+        let version_regex = Regex::new(r#"version\s*=\s*"[^"]+""#)
+            .expect("Invalid regex pattern for version replacement");
+        let yaml_version_regex = Regex::new(r#"version:\s*"?[^"\s]+"?"#)
+            .expect("Invalid regex pattern for YAML version replacement");
 
         let updated = if version_regex.is_match(&content) {
-            version_regex.replace_all(&content, &format!(r#"version = "{}""#, self.package_version))
+            version_regex.replace_all(
+                &content,
+                &format!(r#"version = "{}""#, self.package_version),
+            )
         } else {
-            yaml_version_regex.replace_all(&content, &format!(r#"version: "{}""#, self.package_version))
+            yaml_version_regex
+                .replace_all(&content, &format!(r#"version: "{}""#, self.package_version))
         };
 
         if updated != content {
@@ -122,7 +131,8 @@ impl VersionSync {
         let mut all_synced = true;
 
         for file_path in self.files_to_sync() {
-            let relative_path = file_path.strip_prefix(&self.project_root)
+            let relative_path = file_path
+                .strip_prefix(&self.project_root)
                 .unwrap_or(&file_path);
 
             match self.check_file_version(&file_path)? {
@@ -130,8 +140,12 @@ impl VersionSync {
                     println!("✅ {} ({})", relative_path.display(), self.package_version);
                 }
                 FileVersionStatus::OutOfSync(current) => {
-                    println!("❌ {} ({} → should be {})",
-                        relative_path.display(), current, self.package_version);
+                    println!(
+                        "❌ {} ({} → should be {})",
+                        relative_path.display(),
+                        current,
+                        self.package_version
+                    );
                     all_synced = false;
                 }
                 FileVersionStatus::Missing => {
@@ -159,20 +173,28 @@ impl VersionSync {
         let mut updated_count = 0;
 
         for file_path in self.files_to_sync() {
-            let relative_path = file_path.strip_prefix(&self.project_root)
+            let relative_path = file_path
+                .strip_prefix(&self.project_root)
                 .unwrap_or(&file_path);
 
             match self.check_file_version(&file_path)? {
                 FileVersionStatus::OutOfSync(current) => {
                     if self.update_file_version(&file_path)? {
-                        println!("✅ Updated {}: {} → {}",
-                            relative_path.display(), current, self.package_version);
+                        println!(
+                            "✅ Updated {}: {} → {}",
+                            relative_path.display(),
+                            current,
+                            self.package_version
+                        );
                         updated_count += 1;
                     }
                 }
                 FileVersionStatus::Synced => {
-                    println!("✅ {} already up to date ({})",
-                        relative_path.display(), self.package_version);
+                    println!(
+                        "✅ {} already up to date ({})",
+                        relative_path.display(),
+                        self.package_version
+                    );
                 }
                 FileVersionStatus::Missing => {
                     println!("⚠️  {} (missing)", relative_path.display());
@@ -186,7 +208,10 @@ impl VersionSync {
         if updated_count == 0 {
             println!("\n✅ All versions were already in sync!");
         } else {
-            println!("\n✅ Updated {} files to version {}", updated_count, self.package_version);
+            println!(
+                "\n✅ Updated {} files to version {}",
+                updated_count, self.package_version
+            );
         }
 
         Ok(())
@@ -212,27 +237,25 @@ fn main() {
         }
     };
 
-    let result = match cli.command {
-        Command::Check => {
-            match version_sync.check() {
-                Ok(all_synced) => {
-                    if all_synced {
-                        process::exit(0);
-                    } else {
-                        process::exit(1);
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Error: {}", e);
+    match cli.command {
+        Command::Check => match version_sync.check() {
+            Ok(all_synced) => {
+                if all_synced {
+                    process::exit(0);
+                } else {
                     process::exit(1);
                 }
             }
-        }
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                process::exit(1);
+            }
+        },
         Command::Sync => {
             if let Err(e) = version_sync.sync() {
                 eprintln!("Error: {}", e);
                 process::exit(1);
             }
         }
-    };
+    }
 }

@@ -1,11 +1,11 @@
 use anyhow::Result;
+use serde_yaml_ng as serde_yaml;
 use std::fs;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use tempfile::TempDir;
 use vm_temp::{MountPermission, StateManager, TempVmState};
-use serde_yaml_ng as serde_yaml;
 
 /// Test fixture for integration testing with real filesystem operations
 struct IntegrationTestFixture {

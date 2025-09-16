@@ -1,8 +1,8 @@
 use super::core::CoreOperations;
 use crate::cli::OutputFormat;
 use anyhow::{Context, Result};
-use serde_yaml_ng as serde_yaml;
 use serde_yaml::{Mapping, Value};
+use serde_yaml_ng as serde_yaml;
 use std::path::PathBuf;
 
 /// Array-specific YAML operations

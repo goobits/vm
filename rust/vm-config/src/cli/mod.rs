@@ -12,7 +12,6 @@ pub use utils::*;
 // Import command groups for organized dispatch
 use command_groups::{ConfigOpsGroup, FileOpsGroup, ProjectOpsGroup, QueryOpsGroup};
 
-
 /// Command-line arguments for the VM configuration tool.
 ///
 /// This structure defines the top-level CLI interface for vm-config,
