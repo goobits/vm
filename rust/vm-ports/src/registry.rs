@@ -125,16 +125,15 @@ impl PortRegistry {
     /// # Returns
     /// A `Result` indicating success or failure of the registration.
     pub fn register(&mut self, project: &str, range: &PortRange, path: &str) -> Result<()> {
-        // Reload current state to ensure we have the latest data
-        self.reload_from_file()?;
-
-        let entry = ProjectEntry {
-            range: range.to_string(),
-            path: path.to_string(),
-        };
-
-        self.entries.insert(project.to_string(), entry);
-        self.save()
+        // Perform atomic read-modify-write operation with exclusive lock
+        self.atomic_update(|entries| {
+            let entry = ProjectEntry {
+                range: range.to_string(),
+                path: path.to_string(),
+            };
+            entries.insert(project.to_string(), entry);
+            Ok(())
+        })
     }
 
     /// Unregisters a project's port range.
@@ -145,11 +144,11 @@ impl PortRegistry {
     /// # Returns
     /// A `Result` indicating success or failure of the unregistration.
     pub fn unregister(&mut self, project: &str) -> Result<()> {
-        // Reload current state to ensure we have the latest data
-        self.reload_from_file()?;
-
-        self.entries.remove(project);
-        self.save()
+        // Perform atomic read-modify-write operation with exclusive lock
+        self.atomic_update(|entries| {
+            entries.remove(project);
+            Ok(())
+        })
     }
 
     /// Lists all registered project port ranges to stdout.
@@ -196,43 +195,50 @@ impl PortRegistry {
         None
     }
 
-    /// Reloads the registry entries from the file.
-    /// This ensures we have the latest state before making modifications.
-    fn reload_from_file(&mut self) -> Result<()> {
-        let file = File::open(&self.registry_path)?;
-        file.lock_shared()?; // Acquire shared lock for reading
+    /// Performs an atomic update operation with exclusive file locking.
+    /// This ensures thread-safe read-modify-write operations.
+    fn atomic_update<F>(&mut self, update_fn: F) -> Result<()>
+    where
+        F: FnOnce(&mut HashMap<String, ProjectEntry>) -> Result<()>,
+    {
+        // Create or open the file with read/write permissions
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&self.registry_path)?;
 
+        // Acquire exclusive lock for the entire read-modify-write operation
+        file.lock_exclusive()?;
+
+        // Read current state
         let content = fs::read_to_string(&self.registry_path)?;
-        self.entries = if content.trim().is_empty() || content.trim() == "{}" {
-            HashMap::new()
-        } else {
-            serde_json::from_str(&content)?
-        };
+        let mut entries: HashMap<String, ProjectEntry> =
+            if content.trim().is_empty() || content.trim() == "{}" {
+                HashMap::new()
+            } else {
+                serde_json::from_str(&content)?
+            };
 
-        file.unlock()?; // Release the lock
-        Ok(())
-    }
+        // Apply the update
+        update_fn(&mut entries)?;
 
-    fn save(&self) -> Result<()> {
-        // Use file locking to prevent race conditions during save
-        let lock_file = File::open(&self.registry_path)?;
-        lock_file.lock_exclusive()?; // Acquire exclusive lock for writing
-
-        // Write to temporary file first for atomic operation
-        let temp_path = self.registry_path.with_extension("tmp");
-
-        let json_content = if self.entries.is_empty() {
+        // Write back to file
+        let json_content = if entries.is_empty() {
             String::from("{}")
         } else {
-            serde_json::to_string_pretty(&self.entries)?
+            serde_json::to_string_pretty(&entries)?
         };
 
-        fs::write(&temp_path, json_content)?;
+        // Truncate and write directly (no temp file needed since we hold exclusive lock)
+        file.set_len(0)?;
+        fs::write(&self.registry_path, json_content)?;
 
-        // Atomic rename
-        fs::rename(temp_path, &self.registry_path)?;
+        // Update our local state
+        self.entries = entries;
 
-        lock_file.unlock()?; // Release the lock
+        // Release the lock
+        file.unlock()?;
 
         Ok(())
     }
