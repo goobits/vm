@@ -1,0 +1,599 @@
+// Standard library
+use std::io::{self, Write};
+use std::path::Path;
+
+// External crates
+use anyhow::{Context, Result};
+use is_terminal::IsTerminal;
+
+// Internal imports
+use crate::{
+    audio::MacOSAudioManager,
+    error::ProviderError,
+    progress::ProgressReporter,
+    security::SecurityValidator,
+    utils::{stream_command, stream_docker_build},
+    TempProvider, TempVmState,
+};
+use super::{build::BuildOperations, compose::ComposeOperations, UserConfig, ComposeCommand};
+use vm_common::{vm_error, vm_success, vm_warning};
+use vm_config::config::VmConfig;
+
+pub struct LifecycleOperations<'a> {
+    pub config: &'a VmConfig,
+    pub temp_dir: &'a std::path::PathBuf,
+    pub project_dir: &'a std::path::PathBuf,
+}
+
+impl<'a> LifecycleOperations<'a> {
+    pub fn new(
+        config: &'a VmConfig,
+        temp_dir: &'a std::path::PathBuf,
+        project_dir: &'a std::path::PathBuf,
+    ) -> Self {
+        Self {
+            config,
+            temp_dir,
+            project_dir,
+        }
+    }
+
+    pub fn project_name(&self) -> &str {
+        self.config
+            .project
+            .as_ref()
+            .and_then(|p| p.name.as_deref())
+            .unwrap_or("vm-project")
+    }
+
+    pub fn container_name(&self) -> String {
+        format!("{}-dev", self.project_name())
+    }
+
+    /// Handle potential Docker issues proactively
+    pub fn handle_potential_issues(&self) -> Result<()> {
+        // Check for port conflicts and provide helpful guidance
+        if let Some(vm_config) = &self.config.vm {
+            if vm_config.memory.unwrap_or(0) > 8192 {
+                eprintln!("💡 Tip: High memory allocation detected. Ensure your system has sufficient RAM.");
+            }
+        }
+
+        // Check Docker daemon status more thoroughly
+        if std::process::Command::new("docker")
+            .arg("ps")
+            .output()
+            .is_err()
+        {
+            vm_warning!("Docker daemon may not be responding properly");
+            eprintln!("   Try: docker system prune -f");
+        }
+
+        Ok(())
+    }
+
+    pub fn check_daemon_is_running(&self) -> Result<()> {
+        let status = std::process::Command::new("docker").arg("info").output();
+        if let Ok(output) = status {
+            if output.status.success() {
+                return Ok(());
+            }
+        }
+        Err(ProviderError::DependencyNotFound(
+            "Docker daemon is not running. Please start Docker Desktop or the Docker service."
+                .into(),
+        )
+        .into())
+    }
+
+    pub fn create_container(&self) -> Result<()> {
+        self.check_daemon_is_running()?;
+        self.handle_potential_issues()?;
+
+        // Check if container already exists
+        let container_name = self.container_name();
+        let container_exists = std::process::Command::new("docker")
+            .args(["ps", "-a", "--format", "{{.Names}}"])
+            .output()
+            .map(|output| {
+                String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .any(|line| line.trim() == container_name)
+            })
+            .unwrap_or(false);
+
+        if container_exists {
+            return self.handle_existing_container();
+        }
+
+        // Only setup audio if it's enabled in the configuration
+        if let Some(audio_service) = self.config.services.get("audio") {
+            if audio_service.enabled {
+                MacOSAudioManager::setup()?;
+            }
+        }
+
+        println!("🐳 Creating Docker Environment");
+
+        // Step 1: Prepare build context with embedded resources
+        print!("📦 Preparing build context... ");
+        let build_ops = BuildOperations::new(self.config, self.temp_dir);
+        let build_context = build_ops.prepare_build_context()?;
+        println!("✅");
+
+        // Step 2: Generate docker-compose.yml with build context
+        print!("📄 Generating docker-compose.yml... ");
+        let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
+        let compose_path = compose_ops.write_docker_compose(&build_context)?;
+        println!("✅");
+
+        // Step 3: Gather build arguments for packages
+        let build_args = build_ops.gather_build_args();
+
+        // Step 4: Build with all package arguments
+        println!("\n🔨 Building container image with packages (this may take a while)...");
+        let base_compose_args = ComposeCommand::build_args(&compose_path, "build", &[])?;
+
+        // Combine compose args with dynamic build args
+        let mut all_args = Vec::with_capacity(base_compose_args.len() + build_args.len());
+        all_args.extend(base_compose_args.iter().map(|s| s.as_str()));
+        all_args.extend(build_args.iter().map(|s| s.as_str()));
+
+        stream_docker_build(&all_args).context("Docker build failed")?;
+        println!("✅ Build complete");
+
+        // Step 5: Start containers
+        println!("\n🚀 Starting containers");
+        let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
+        let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        stream_command("docker", &args_refs)
+        .context("Docker up failed")?;
+        println!("✅ Containers started");
+
+        self.provision_container()?;
+
+        vm_success!("Docker environment created successfully!");
+        println!("🎉 All packages installed at build time for faster startup!");
+        Ok(())
+    }
+
+    fn handle_existing_container(&self) -> Result<()> {
+        let container_name = self.container_name();
+
+        // Check if it's running
+        let is_running = std::process::Command::new("docker")
+            .args(["ps", "--format", "{{.Names}}"])
+            .output()
+            .map(|output| {
+                String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .any(|line| line.trim() == container_name)
+            })
+            .unwrap_or(false);
+
+        let status = if is_running { "running" } else { "stopped" };
+        vm_warning!(
+            "Container '{}' already exists (status: {}).",
+            container_name,
+            status
+        );
+
+        // Check if we're in an interactive terminal
+        if std::io::stdin().is_terminal() {
+            println!("\nWhat would you like to do?");
+            if is_running {
+                println!("  1. Keep using the existing running container");
+            } else {
+                println!("  1. Start the existing container");
+            }
+            println!("  2. Recreate the container (destroy and rebuild)");
+            println!("  3. Cancel operation");
+
+            print!("\nChoice [1-3]: ");
+            std::io::stdout().flush()?;
+
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input)?;
+
+            match input.trim() {
+                "1" => {
+                    if is_running {
+                        vm_success!("Using existing running container.");
+                        return Ok(());
+                    } else {
+                        println!("\n▶️  Starting existing container...");
+                        return self.start_container();
+                    }
+                }
+                "2" => {
+                    println!("\n🔄 Recreating container...");
+                    self.destroy_container()?;
+                    // Continue with creation below
+                    return self.create_container();
+                }
+                _ => {
+                    vm_error!("Operation cancelled.");
+                    return Ok(());
+                }
+            }
+        } else {
+            // Non-interactive mode: fail with informative error
+            return Err(anyhow::anyhow!(
+                "Container '{}' already exists. In non-interactive mode, please use:\n\
+                 - 'vm start' to start the existing container\n\
+                 - 'vm destroy' followed by 'vm create' to recreate it",
+                container_name
+            ));
+        }
+    }
+
+    fn provision_container(&self) -> Result<()> {
+        // Step 6: Wait for readiness and run ansible (configuration only)
+        println!("\n🔧 Provisioning environment");
+        print!("⏳ Waiting for container readiness... ");
+        let max_attempts = 30;
+        let mut attempt = 1;
+        while attempt <= max_attempts {
+            if let Ok(output) = std::process::Command::new("docker")
+                .args(["exec", &self.container_name(), "echo", "ready"])
+                .output()
+            {
+                if output.status.success() {
+                    break;
+                }
+            }
+            if attempt == max_attempts {
+                println!("❌");
+                return Err(anyhow::anyhow!("Container failed to become ready"));
+            }
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            attempt += 1;
+        }
+        println!("✅");
+
+        print!("📋 Loading project configuration... ");
+        let config_json = self.config.to_json()?;
+        let temp_config_path = self.temp_dir.join("vm-config.json");
+        std::fs::write(&temp_config_path, config_json)?;
+        let copy_result = std::process::Command::new("docker")
+            .args([
+                "cp",
+                BuildOperations::path_to_string(&temp_config_path)?,
+                &format!("{}:/tmp/vm-config.json", self.container_name()),
+            ])
+            .output()?;
+        if !copy_result.status.success() {
+            println!("❌");
+            return Err(anyhow::anyhow!("Failed to copy config to container"));
+        }
+        println!("✅");
+
+        println!("🎭 Running Ansible provisioning (configuration only)...");
+        stream_command(
+            "docker",
+            &[
+                "exec",
+                &self.container_name(),
+                "bash",
+                "-c",
+                "ansible-playbook -i localhost, -c local /app/shared/ansible/playbook.yml",
+            ],
+        )
+        .context("Ansible provisioning failed")?;
+        println!("✅ Provisioning complete");
+
+        print!("🔄 Starting services... ");
+        if std::process::Command::new("docker")
+            .args([
+                "exec",
+                &self.container_name(),
+                "bash",
+                "-c",
+                "supervisorctl reread && supervisorctl update",
+            ])
+            .output()
+            .is_ok()
+        {
+            println!("✅");
+        } else {
+            println!("⚠️ (services may start later)");
+        }
+
+        Ok(())
+    }
+
+    pub fn start_container(&self) -> Result<()> {
+        let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
+        compose_ops.start_with_compose()
+    }
+
+    pub fn stop_container(&self) -> Result<()> {
+        let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
+        if let Err(_) = compose_ops.stop_with_compose() {
+            // Fallback to direct container stop
+            stream_command("docker", &["stop", &self.container_name()])
+                .context("Failed to stop container")
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn destroy_container(&self) -> Result<()> {
+        let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
+        let result = if let Err(_) = compose_ops.destroy_with_compose() {
+            println!("docker-compose.yml not found. Attempting to remove container by name.");
+            stream_command("docker", &["rm", "-f", &self.container_name()])
+        } else {
+            Ok(())
+        };
+
+        // Only cleanup audio if it was enabled in the configuration
+        if let Some(audio_service) = self.config.services.get("audio") {
+            if audio_service.enabled {
+                MacOSAudioManager::cleanup()?;
+            }
+        }
+
+        result
+    }
+
+    pub fn ssh_into_container(&self, relative_path: &Path) -> Result<()> {
+        let workspace_path = self
+            .config
+            .project
+            .as_ref()
+            .and_then(|p| p.workspace_path.as_deref())
+            .unwrap_or("/workspace");
+        let user_config = UserConfig::from_vm_config(self.config);
+        let project_user = &user_config.username;
+        let shell = self
+            .config
+            .terminal
+            .as_ref()
+            .and_then(|t| t.shell.as_deref())
+            .unwrap_or("zsh");
+
+        let target_path = SecurityValidator::validate_relative_path(relative_path, workspace_path)?;
+        let target_dir = target_path.to_string_lossy().to_string();
+
+        let tty_flag = if io::stdin().is_terminal() && io::stdout().is_terminal() {
+            "-it"
+        } else {
+            "-i"
+        };
+
+        let status = duct::cmd(
+            "docker",
+            &[
+                "exec",
+                tty_flag,
+                "-e",
+                &format!("VM_TARGET_DIR={}", target_dir),
+                &self.container_name(),
+                "sudo",
+                "-u",
+                project_user,
+                "sh",
+                "-c",
+                &format!("cd \"$VM_TARGET_DIR\" && exec {}", shell),
+            ],
+        )
+        .run()?
+        .status;
+
+        if !status.success() {
+            return Err(ProviderError::CommandFailed(String::from("SSH command failed")).into());
+        }
+        Ok(())
+    }
+
+    pub fn exec_in_container(&self, cmd: &[String]) -> Result<()> {
+        let container = self.container_name();
+        let workspace_path = self
+            .config
+            .project
+            .as_ref()
+            .and_then(|p| p.workspace_path.as_deref())
+            .unwrap_or("/workspace");
+        let user_config = UserConfig::from_vm_config(self.config);
+        let project_user = &user_config.username;
+
+        let mut args: Vec<&str> = vec![
+            "exec",
+            "-w",
+            workspace_path,
+            "--user",
+            project_user,
+            &container,
+        ];
+        let cmd_strs: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
+        args.extend_from_slice(&cmd_strs);
+        stream_command("docker", &args)
+    }
+
+    pub fn show_logs(&self) -> Result<()> {
+        stream_command("docker", &["logs", "-f", &self.container_name()])
+    }
+
+    pub fn show_status(&self) -> Result<()> {
+        let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
+        if let Err(_) = compose_ops.status_with_compose() {
+            stream_command(
+                "docker",
+                &["ps", "-f", &format!("name={}", self.container_name())],
+            )?;
+        }
+
+        if let Some(port_range) = &self.config.port_range {
+            println!("\n📡 Port Range: {}", port_range);
+            if !self.config.ports.is_empty() {
+                if let Ok(parsed_range) = vm_ports::PortRange::parse(port_range) {
+                    let (start, end) = (parsed_range.start, parsed_range.end);
+                    let used_count = self
+                        .config
+                        .ports
+                        .values()
+                        .filter(|&&p| p >= start && p <= end)
+                        .count();
+                    println!("   Used: {}/{} ports", used_count, (end - start + 1));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn restart_container(&self) -> Result<()> {
+        self.stop_container()?;
+        self.start_container()
+    }
+
+    pub fn provision_existing(&self) -> Result<()> {
+        let container = self.container_name();
+        let status_output = std::process::Command::new("docker")
+            .args(["inspect", "--format", "{{.State.Status}}", &container])
+            .output()?;
+        let status = String::from_utf8_lossy(&status_output.stdout)
+            .trim()
+            .to_string();
+        if status != "running" {
+            return Err(anyhow::anyhow!(
+                "Container {} is not running. Start it first with 'vm start'",
+                container
+            ));
+        }
+
+        let progress = ProgressReporter::new();
+        progress.phase_header("🔧", "PROVISIONING PHASE");
+        progress.subtask("├─", "Re-running Ansible provisioning...");
+
+        let config_json = self.config.to_json()?;
+        let temp_config_path = self.temp_dir.join("vm-config.json");
+        std::fs::write(&temp_config_path, config_json)?;
+        stream_command(
+            "docker",
+            &[
+                "cp",
+                BuildOperations::path_to_string(&temp_config_path)?,
+                &format!("{}:/tmp/vm-config.json", self.container_name()),
+            ],
+        )?;
+
+        let ansible_result = stream_command(
+            "docker",
+            &[
+                "exec",
+                &self.container_name(),
+                "bash",
+                "-c",
+                "ansible-playbook -i localhost, -c local /app/shared/ansible/playbook.yml",
+            ],
+        );
+        if let Err(e) = ansible_result {
+            progress.error("└─", &format!("Provisioning failed: {}", e));
+            return Err(e).context("Ansible provisioning failed during container setup");
+        }
+        progress.complete("└─", "Provisioning complete");
+        Ok(())
+    }
+
+    pub fn list_containers(&self) -> Result<()> {
+        // Show all containers - let users see the full Docker environment
+        // This provides better visibility than filtering by project name
+        stream_command("docker", &["ps", "-a"]).context("Failed to list containers")
+    }
+
+    pub fn kill_container(&self, container: Option<&str>) -> Result<()> {
+        let container_name = self.container_name();
+        let target_container = container.unwrap_or(&container_name);
+        stream_command("docker", &["kill", target_container]).context("Failed to kill container")
+    }
+
+    pub fn get_sync_directory(&self) -> Result<String> {
+        Ok(self
+            .config
+            .project
+            .as_ref()
+            .and_then(|p| p.workspace_path.as_deref())
+            .unwrap_or("/workspace")
+            .to_string())
+    }
+}
+
+impl<'a> TempProvider for LifecycleOperations<'a> {
+    fn update_mounts(&self, state: &TempVmState) -> Result<()> {
+        let progress = ProgressReporter::new();
+        let main_phase = progress.start_phase("Updating container mounts");
+        progress.task(&main_phase, "Checking container status...");
+
+        if self.is_container_running(&state.container_name)? {
+            progress.task(&main_phase, "Stopping container...");
+            stream_command("docker", &["stop", &state.container_name])?;
+        }
+
+        progress.task(&main_phase, "Recreating container with new mounts...");
+        self.recreate_with_mounts(state)?;
+
+        progress.task(&main_phase, "Starting container...");
+        let compose_path = self.temp_dir.join("docker-compose.yml");
+        let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
+        let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        stream_command("docker", &args_refs)?;
+
+        progress.task(&main_phase, "Checking container health...");
+        if !self.check_container_health(&state.container_name)? {
+            progress.finish_phase(&main_phase, "Mount update failed - container not healthy");
+            return Err(anyhow::anyhow!(
+                "Container is not healthy after mount update"
+            ));
+        }
+
+        progress.finish_phase(&main_phase, "Mounts updated successfully");
+        Ok(())
+    }
+
+    fn recreate_with_mounts(&self, state: &TempVmState) -> Result<()> {
+        let progress = ProgressReporter::new();
+        let phase = progress.start_phase("Recreating container configuration");
+        progress.task(&phase, "Generating updated docker-compose.yml...");
+
+        let mut temp_config = self.config.clone();
+        if let Some(ref mut project) = temp_config.project {
+            project.name = Some(String::from("vm-temp"));
+        }
+
+        let compose_ops = ComposeOperations::new(&temp_config, self.temp_dir, self.project_dir);
+        let content = compose_ops.render_docker_compose_with_mounts(state)?;
+        let compose_path = self.temp_dir.join("docker-compose.yml");
+        std::fs::write(&compose_path, content.as_bytes())?;
+
+        progress.task(&phase, "Removing old container...");
+        if let Err(e) = stream_command("docker", &["rm", "-f", &state.container_name]) {
+            eprintln!("Warning: Failed to remove old container {}: {}", &state.container_name, e);
+        }
+
+        progress.finish_phase(&phase, "Container configuration updated");
+        Ok(())
+    }
+
+    fn check_container_health(&self, container_name: &str) -> Result<bool> {
+        let max_attempts = 30;
+        for _ in 0..max_attempts {
+            if stream_command("docker", &["exec", container_name, "echo", "ready"]).is_ok() {
+                return Ok(true);
+            }
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        }
+        Ok(false)
+    }
+
+    fn is_container_running(&self, container_name: &str) -> Result<bool> {
+        let output = std::process::Command::new("docker")
+            .args(["inspect", "--format", "{{.State.Status}}", container_name])
+            .output()?;
+        if !output.status.success() {
+            return Ok(false);
+        }
+        let status = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Ok(status == "running")
+    }
+}

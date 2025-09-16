@@ -12,7 +12,7 @@ pub struct TartProvider {
 impl TartProvider {
     pub fn new(config: VmConfig) -> Result<Self> {
         if !is_tool_installed("tart") {
-            return Err(ProviderError::DependencyNotFound("Tart".to_string()).into());
+            return Err(ProviderError::DependencyNotFound("Tart".into()).into());
         }
         Ok(Self { config })
     }

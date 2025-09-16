@@ -12,6 +12,10 @@ services:
         PROJECT_GID: {{ project_gid }}
         PROJECT_USER: {{ project_user }}
     image: {{ config.project.name | default(value="vm-project") }}:latest
+    {% if config.services.postgresql.enabled | default(value=false) -%}
+    depends_on:
+      - postgres
+    {%- endif %}
     volumes:
       - {{ project_dir }}:/workspace:rw
       {% if is_macos %}
@@ -24,14 +28,17 @@ services:
       {% for name, port in config.ports %}- "{{ port }}:{{ port }}"
       {% endfor %}
     {%- endif %}
-    {% if config.environment and config.environment | length > 0 -%}
     environment:
       {% if is_macos %}
       - PULSE_SERVER=unix:/tmp/pulseaudio.socket
       {% endif %}
+      {% if config.services.postgresql.enabled | default(value=false) %}
+      - DATABASE_URL=postgresql://{{ config.services.postgresql.user | default(value="postgres") }}:{{ config.services.postgresql.password | default(value="postgres") }}@postgres:5432/{{ config.services.postgresql.database | default(value=config.project.name ~ "_dev") }}
+      {% endif %}
+      {% if config.environment and config.environment | length > 0 -%}
       {% for name, value in config.environment %}- {{ name }}={{ value }}
       {% endfor %}
-    {%- endif %}
+      {%- endif %}
     cap_add:
       - SYS_PTRACE
     security_opt:
@@ -39,3 +46,23 @@ services:
     command: ["tail", "-f", "/dev/null"]
     tty: true
     stdin_open: true
+
+  {% if config.services.postgresql.enabled | default(value=false) %}
+  postgres:
+    image: postgres:15-alpine
+    container_name: {{ config.project.name | default(value="vm-project") }}-postgres
+    environment:
+      - POSTGRES_DB={{ config.services.postgresql.database | default(value=config.project.name ~ "_dev") }}
+      - POSTGRES_USER={{ config.services.postgresql.user | default(value="postgres") }}
+      - POSTGRES_PASSWORD={{ config.services.postgresql.password | default(value="postgres") }}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "{{ config.services.postgresql.port | default(value=5432) }}:5432"
+    restart: unless-stopped
+  {% endif %}
+
+{% if config.services.postgresql.enabled | default(value=false) %}
+volumes:
+  postgres_data:
+{% endif %}

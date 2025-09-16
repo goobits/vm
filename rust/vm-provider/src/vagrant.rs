@@ -31,7 +31,7 @@ pub struct VagrantProvider {
 impl VagrantProvider {
     pub fn new(config: VmConfig) -> Result<Self> {
         if !is_tool_installed("vagrant") {
-            return Err(ProviderError::DependencyNotFound("Vagrant".to_string()).into());
+            return Err(ProviderError::DependencyNotFound("Vagrant".into()).into());
         }
         let project_dir = env::current_dir()?;
         Ok(Self {

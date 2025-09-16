@@ -116,6 +116,6 @@ pub fn get_provider(config: VmConfig) -> Result<Box<dyn Provider>> {
         "docker" => Ok(Box::new(docker::DockerProvider::new(config)?)),
         "vagrant" => Ok(Box::new(vagrant::VagrantProvider::new(config)?)),
         "tart" => Ok(Box::new(tart::TartProvider::new(config)?)),
-        _ => Err(error::ProviderError::UnknownProvider(provider_name.to_string()).into()),
+        _ => Err(error::ProviderError::UnknownProvider(provider_name.into()).into()),
     }
 }
