@@ -149,10 +149,17 @@ services:
     environment:
       {% if config.environment %}{% for name, value in config.environment %}- {{ name }}={{ value }}
       {% endfor %}{% endif %}
+    {% if config.security.enable_debugging | default(value=false) %}
     cap_add:
       - SYS_PTRACE
+    {% endif %}
     security_opt:
+      {% if config.security.enable_debugging | default(value=false) %}
       - seccomp=unconfined
+      {% endif %}
+      {% if config.security.no_new_privileges | default(value=true) %}
+      - no-new-privileges
+      {% endif %}
 
 volumes:
   vmtemp_nvm:

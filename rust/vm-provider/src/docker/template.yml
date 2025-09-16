@@ -39,10 +39,44 @@ services:
       {% for name, value in config.environment %}- {{ name }}={{ value }}
       {% endfor %}
       {%- endif %}
+    {% if config.security.enable_debugging | default(value=false) %}
     cap_add:
       - SYS_PTRACE
+    {% endif %}
     security_opt:
+      {% if config.security.enable_debugging | default(value=false) %}
       - seccomp=unconfined
+      {% endif %}
+      {% if config.security.no_new_privileges | default(value=true) %}
+      - no-new-privileges
+      {% endif %}
+      {% if config.security.security_opts and config.security.security_opts | length > 0 %}
+      {% for opt in config.security.security_opts %}- {{ opt }}
+      {% endfor %}
+      {% endif %}
+    {% if config.security.user_namespaces | default(value=false) %}
+    userns_mode: "host"
+    {% endif %}
+    {% if config.security.drop_capabilities and config.security.drop_capabilities | length > 0 %}
+    cap_drop:
+      {% for cap in config.security.drop_capabilities %}- {{ cap }}
+      {% endfor %}
+    {% endif %}
+    {% if config.security.memory_limit %}
+    mem_limit: {{ config.security.memory_limit }}
+    {% endif %}
+    {% if config.security.cpu_limit %}
+    cpus: "{{ config.security.cpu_limit }}"
+    {% endif %}
+    {% if config.security.pids_limit %}
+    pids_limit: {{ config.security.pids_limit }}
+    {% endif %}
+    {% if config.security.read_only_root | default(value=false) %}
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/tmp
+    {% endif %}
     command: ["tail", "-f", "/dev/null"]
     tty: true
     stdin_open: true

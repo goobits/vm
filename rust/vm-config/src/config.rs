@@ -108,6 +108,9 @@ pub struct VmConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub package_linking: Option<PackageLinkingConfig>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub security: Option<SecurityConfig>,
 }
 
 /// Project-specific configuration settings.
@@ -430,6 +433,59 @@ fn is_false(b: &bool) -> bool {
 
 fn default_true() -> bool {
     true
+}
+
+/// Security configuration for Docker container isolation.
+///
+/// Controls security features that affect container isolation and host protection.
+/// By default, development convenience is prioritized, but these options allow
+/// hardening the container against escape attempts.
+///
+/// # Host Escape Prevention
+/// - `enable_debugging`: Controls SYS_PTRACE and seccomp (default: true for dev)
+/// - `no_new_privileges`: Prevents privilege escalation via SUID binaries
+/// - `user_namespaces`: Remaps container UIDs to unprivileged host UIDs
+///
+/// # Container Hardening
+/// - `read_only_root`: Makes root filesystem read-only (requires explicit mounts)
+/// - `drop_capabilities`: List of capabilities to explicitly drop
+/// - `security_opts`: Additional Docker security options
+///
+/// # Examples
+/// ```yaml
+/// # security:
+/// #   enable_debugging: false    # Disable ptrace/seccomp for production
+/// #   no_new_privileges: true    # Prevent privilege escalation
+/// #   user_namespaces: true      # Enable UID remapping
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SecurityConfig {
+    #[serde(default)]
+    pub enable_debugging: bool,
+
+    #[serde(default = "default_true")]
+    pub no_new_privileges: bool,
+
+    #[serde(default)]
+    pub user_namespaces: bool,
+
+    #[serde(default)]
+    pub read_only_root: bool,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub drop_capabilities: Vec<String>,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub security_opts: Vec<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_limit: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu_limit: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pids_limit: Option<u32>,
 }
 
 impl VmConfig {
