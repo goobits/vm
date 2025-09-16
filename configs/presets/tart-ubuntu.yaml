@@ -23,15 +23,15 @@ project:
 # Development services
 services:
   postgresql:
-    enabled: true
+    enabled: false
     version: 15
   redis:
-    enabled: true
+    enabled: false
     version: 7
   mongodb:
     enabled: false
   docker:
-    enabled: true
+    enabled: false
 
 # Ubuntu-specific packages
 apt_packages:

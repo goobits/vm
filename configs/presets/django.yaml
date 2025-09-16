@@ -26,9 +26,9 @@ ports:
 
 services:
   postgresql:
-    enabled: true  # Primary database for Django
+    enabled: false  # Enable manually if needed
   redis:
-    enabled: true  # For caching and Celery
+    enabled: false  # Enable manually if needed
 
 environment:
   DJANGO_SETTINGS_MODULE: "settings.development"

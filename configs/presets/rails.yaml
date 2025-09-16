@@ -32,9 +32,9 @@ ports:
 
 services:
   postgresql:
-    enabled: true  # Primary database for Rails
+    enabled: false  # Enable manually if needed
   redis:
-    enabled: true  # For ActionCable and Sidekiq
+    enabled: false  # Enable manually if needed
 
 environment:
   RAILS_ENV: development

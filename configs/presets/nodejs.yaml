@@ -16,9 +16,9 @@ pip_packages:
 
 services:
   redis:
-    enabled: true  # Common for session storage
+    enabled: false  # Enable manually if needed
   postgresql:
-    enabled: true  # Most common DB
+    enabled: false  # Enable manually if needed
 
 environment:
   NODE_ENV: development

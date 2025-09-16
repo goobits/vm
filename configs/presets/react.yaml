@@ -23,7 +23,7 @@ ports:
 
 services:
   redis:
-    enabled: true  # Common for session storage
+    enabled: false  # Enable manually if needed
   postgresql:
     enabled: false  # Optional for React apps
 

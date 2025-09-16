@@ -27,9 +27,9 @@ ports:
 
 services:
   redis:
-    enabled: true  # Session storage, caching
+    enabled: false  # Enable manually if needed
   postgresql:
-    enabled: true  # Next.js often full-stack
+    enabled: false  # Enable manually if needed
 
 environment:
   NODE_ENV: development
