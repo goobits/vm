@@ -1,8 +1,8 @@
 use anyhow::Result;
 use std::path::PathBuf;
 
-use crate::cli::{OutputFormat, TransformFormat};
 use crate::cli::commands;
+use crate::cli::{OutputFormat, TransformFormat};
 
 /// Handle all file operation commands
 pub struct FileOpsGroup;
@@ -34,12 +34,23 @@ impl FileOpsGroup {
     }
 
     /// Execute add to array command
-    pub fn execute_add_to_array(file: PathBuf, path: String, object: String, stdout: bool) -> Result<()> {
+    pub fn execute_add_to_array(
+        file: PathBuf,
+        path: String,
+        object: String,
+        stdout: bool,
+    ) -> Result<()> {
         commands::file_ops::execute_add_to_array(file, path, object, stdout)
     }
 
     /// Execute delete command
-    pub fn execute_delete(file: PathBuf, path: String, field: String, value: String, format: OutputFormat) -> Result<()> {
+    pub fn execute_delete(
+        file: PathBuf,
+        path: String,
+        field: String,
+        value: String,
+        format: OutputFormat,
+    ) -> Result<()> {
         commands::file_ops::execute_delete(file, path, field, value, format)
     }
 
@@ -54,7 +65,11 @@ impl FileOpsGroup {
     }
 
     /// Execute transform command
-    pub fn execute_transform(file: PathBuf, expression: String, format: TransformFormat) -> Result<()> {
+    pub fn execute_transform(
+        file: PathBuf,
+        expression: String,
+        format: TransformFormat,
+    ) -> Result<()> {
         commands::transformation::execute(file, expression, format)
     }
 }

@@ -5,15 +5,15 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 // Removed unused imports
 
-mod commands;
 mod command_groups;
+mod commands;
 mod utils;
 
-pub use utils::*;
 pub use commands::validation::{load_and_merge_config, load_and_merge_config_with_preset};
+pub use utils::*;
 
 // Import command groups for organized dispatch
-use command_groups::{FileOpsGroup, QueryOpsGroup, ConfigOpsGroup, ProjectOpsGroup};
+use command_groups::{ConfigOpsGroup, FileOpsGroup, ProjectOpsGroup, QueryOpsGroup};
 
 // Removed unused function fix_yaml_indentation
 
@@ -534,89 +534,105 @@ pub fn execute(args: Args) -> Result<()> {
 
     match args.command {
         // File Operations Group
-        Merge { base, overlay, format } => {
-            FileOpsGroup::execute_merge(base, overlay, format)
-        }
-        Convert { input, format } => {
-            FileOpsGroup::execute_convert(input, format)
-        }
-        ArrayAdd { file, path, item } => {
-            FileOpsGroup::execute_array_add(file, path, item)
-        }
+        Merge {
+            base,
+            overlay,
+            format,
+        } => FileOpsGroup::execute_merge(base, overlay, format),
+        Convert { input, format } => FileOpsGroup::execute_convert(input, format),
+        ArrayAdd { file, path, item } => FileOpsGroup::execute_array_add(file, path, item),
         ArrayRemove { file, path, filter } => {
             FileOpsGroup::execute_array_remove(file, path, filter)
         }
-        Modify { file, field, value, stdout } => {
-            FileOpsGroup::execute_modify(file, field, value, stdout)
-        }
-        AddToArray { file, path, object, stdout } => {
-            FileOpsGroup::execute_add_to_array(file, path, object, stdout)
-        }
-        Delete { file, path, field, value, format } => {
-            FileOpsGroup::execute_delete(file, path, field, value, format)
-        }
-        CheckFile { file } => {
-            FileOpsGroup::execute_check_file(file)
-        }
-        MergeEvalAll { files, format } => {
-            FileOpsGroup::execute_merge_eval_all(files, format)
-        }
-        Transform { file, expression, format } => {
-            FileOpsGroup::execute_transform(file, expression, format)
-        }
+        Modify {
+            file,
+            field,
+            value,
+            stdout,
+        } => FileOpsGroup::execute_modify(file, field, value, stdout),
+        AddToArray {
+            file,
+            path,
+            object,
+            stdout,
+        } => FileOpsGroup::execute_add_to_array(file, path, object, stdout),
+        Delete {
+            file,
+            path,
+            field,
+            value,
+            format,
+        } => FileOpsGroup::execute_delete(file, path, field, value, format),
+        CheckFile { file } => FileOpsGroup::execute_check_file(file),
+        MergeEvalAll { files, format } => FileOpsGroup::execute_merge_eval_all(files, format),
+        Transform {
+            file,
+            expression,
+            format,
+        } => FileOpsGroup::execute_transform(file, expression, format),
 
         // Query Operations Group
-        Query { config, field, raw, default } => {
-            QueryOpsGroup::execute_query(config, field, raw, default)
-        }
-        Filter { file, expression, output_format } => {
-            QueryOpsGroup::execute_filter(file, expression, output_format)
-        }
-        ArrayLength { file, path } => {
-            QueryOpsGroup::execute_array_length(file, path)
-        }
-        HasField { file, field, subfield } => {
-            QueryOpsGroup::execute_has_field(file, field, subfield)
-        }
-        SelectWhere { file, path, field, value, format } => {
-            QueryOpsGroup::execute_select_where(file, path, field, value, format)
-        }
-        Count { file, path } => {
-            QueryOpsGroup::execute_count(file, path)
-        }
+        Query {
+            config,
+            field,
+            raw,
+            default,
+        } => QueryOpsGroup::execute_query(config, field, raw, default),
+        Filter {
+            file,
+            expression,
+            output_format,
+        } => QueryOpsGroup::execute_filter(file, expression, output_format),
+        ArrayLength { file, path } => QueryOpsGroup::execute_array_length(file, path),
+        HasField {
+            file,
+            field,
+            subfield,
+        } => QueryOpsGroup::execute_has_field(file, field, subfield),
+        SelectWhere {
+            file,
+            path,
+            field,
+            value,
+            format,
+        } => QueryOpsGroup::execute_select_where(file, path, field, value, format),
+        Count { file, path } => QueryOpsGroup::execute_count(file, path),
 
         // Configuration Operations Group
-        Set { field, value, global } => {
-            ConfigOpsGroup::execute_set(field, value, global)
-        }
-        Get { field, global } => {
-            ConfigOpsGroup::execute_get(field, global)
-        }
-        Unset { field, global } => {
-            ConfigOpsGroup::execute_unset(field, global)
-        }
-        Clear { global } => {
-            ConfigOpsGroup::execute_clear(global)
-        }
-        Validate { file, no_preset, verbose } => {
-            ConfigOpsGroup::execute_validate(file, no_preset, verbose)
-        }
-        Dump { file, no_preset } => {
-            ConfigOpsGroup::execute_dump(file, no_preset)
-        }
-        Export { file, no_preset } => {
-            ConfigOpsGroup::execute_export(file, no_preset)
-        }
+        Set {
+            field,
+            value,
+            global,
+        } => ConfigOpsGroup::execute_set(field, value, global),
+        Get { field, global } => ConfigOpsGroup::execute_get(field, global),
+        Unset { field, global } => ConfigOpsGroup::execute_unset(field, global),
+        Clear { global } => ConfigOpsGroup::execute_clear(global),
+        Validate {
+            file,
+            no_preset,
+            verbose,
+        } => ConfigOpsGroup::execute_validate(file, no_preset, verbose),
+        Dump { file, no_preset } => ConfigOpsGroup::execute_dump(file, no_preset),
+        Export { file, no_preset } => ConfigOpsGroup::execute_export(file, no_preset),
 
         // Project Operations Group
-        Preset { dir, presets_dir, detect_only, list } => {
-            ProjectOpsGroup::execute_preset(dir, presets_dir, detect_only, list)
-        }
-        Process { defaults, config, project_dir, presets_dir, format } => {
-            ProjectOpsGroup::execute_process(defaults, config, project_dir, presets_dir, format)
-        }
-        Init { file, services, ports } => {
-            ProjectOpsGroup::execute_init(file, services, ports)
-        }
+        Preset {
+            dir,
+            presets_dir,
+            detect_only,
+            list,
+        } => ProjectOpsGroup::execute_preset(dir, presets_dir, detect_only, list),
+        Process {
+            defaults,
+            config,
+            project_dir,
+            presets_dir,
+            format,
+        } => ProjectOpsGroup::execute_process(defaults, config, project_dir, presets_dir, format),
+        Init {
+            file,
+            services,
+            ports,
+        } => ProjectOpsGroup::execute_init(file, services, ports),
     }
 }

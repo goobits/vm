@@ -19,8 +19,7 @@ pub fn execute_query(
         Ok(val) => {
             if val.is_null() && default.is_some() {
                 serde_json::Value::String(
-                    default
-                        .ok_or_else(|| anyhow::anyhow!("Default value not available"))?,
+                    default.ok_or_else(|| anyhow::anyhow!("Default value not available"))?,
                 )
             } else {
                 val
@@ -38,10 +37,9 @@ pub fn execute_query(
     if raw && value.is_string() {
         println!(
             "{}",
-            value.as_str().ok_or_else(|| anyhow::anyhow!(
-                "Expected string value, got: {:?}",
-                value
-            ))?
+            value
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("Expected string value, got: {:?}", value))?
         );
     } else {
         println!("{}", serde_json::to_string(&value)?);

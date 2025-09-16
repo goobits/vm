@@ -136,10 +136,7 @@ pub fn execute(
 
     // Apply service configurations
     if let Some(ref services_str) = services {
-        let service_list: Vec<&str> = services_str
-            .split(',')
-            .map(|s| s.trim())
-            .collect();
+        let service_list: Vec<&str> = services_str.split(',').map(|s| s.trim()).collect();
 
         for service in service_list {
             // Load service config

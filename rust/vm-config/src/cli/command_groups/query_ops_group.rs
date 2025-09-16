@@ -1,20 +1,29 @@
 use anyhow::Result;
 use std::path::PathBuf;
 
-use crate::cli::OutputFormat;
 use crate::cli::commands;
+use crate::cli::OutputFormat;
 
 /// Handle all query operation commands
 pub struct QueryOpsGroup;
 
 impl QueryOpsGroup {
     /// Execute query command
-    pub fn execute_query(config: PathBuf, field: String, raw: bool, default: Option<String>) -> Result<()> {
+    pub fn execute_query(
+        config: PathBuf,
+        field: String,
+        raw: bool,
+        default: Option<String>,
+    ) -> Result<()> {
         commands::query::execute_query(config, field, raw, default)
     }
 
     /// Execute filter command
-    pub fn execute_filter(file: PathBuf, expression: String, output_format: OutputFormat) -> Result<()> {
+    pub fn execute_filter(
+        file: PathBuf,
+        expression: String,
+        output_format: OutputFormat,
+    ) -> Result<()> {
         commands::query::execute_filter(file, expression, output_format)
     }
 
@@ -29,7 +38,13 @@ impl QueryOpsGroup {
     }
 
     /// Execute select where command
-    pub fn execute_select_where(file: PathBuf, path: String, field: String, value: String, format: OutputFormat) -> Result<()> {
+    pub fn execute_select_where(
+        file: PathBuf,
+        path: String,
+        field: String,
+        value: String,
+        format: OutputFormat,
+    ) -> Result<()> {
         commands::query::execute_select_where(file, path, field, value, format)
     }
 
