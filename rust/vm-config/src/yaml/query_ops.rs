@@ -150,7 +150,7 @@ impl QueryOperations {
             .filter(|_item| {
                 // Simple select filter parsing
                 // TODO: Implement actual filter logic based on expression
-                expression.contains(".source") || true
+                expression.contains(".source")
             })
             .cloned()
             .collect();
