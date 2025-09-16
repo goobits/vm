@@ -119,36 +119,42 @@ impl QueryOperations {
     // Apply filter expression (basic implementation)
     fn apply_filter(value: &Value, expression: &str) -> Value {
         // Handle array access with filters like: .mounts[] | select(.source == "value")
-        if expression.contains("[]") && expression.contains("select") {
-            // Simple implementation for array filtering
-            if let Some(array_part) = expression.split("[]").next() {
-                let array_path = array_part.trim_start_matches('.');
-                if array_path == "mounts" {
-                    let Value::Mapping(map) = value else {
-                        return value.clone();
-                    };
-
-                    let Some(Value::Sequence(seq)) = map.get(Value::String(String::from("mounts"))) else {
-                        return value.clone();
-                    };
-
-                    let results: Vec<Value> = seq
-                        .iter()
-                        .filter(|_item| {
-                            // Simple select filter parsing
-                            if expression.contains(".source") {
-                                return true; // For now, return all items
-                            }
-                            true
-                        })
-                        .cloned()
-                        .collect();
-                    return Value::Sequence(results);
-                }
-            }
+        if !expression.contains("[]") || !expression.contains("select") {
+            return value.clone();
         }
 
-        // Fallback: return the whole value
-        value.clone()
+        let Some(array_part) = expression.split("[]").next() else {
+            return value.clone();
+        };
+
+        let array_path = array_part.trim_start_matches('.');
+        if array_path != "mounts" {
+            return value.clone();
+        }
+
+        Self::filter_mounts_array(value, expression)
+    }
+
+    // Extract mounts array filtering logic
+    fn filter_mounts_array(value: &Value, expression: &str) -> Value {
+        let Value::Mapping(map) = value else {
+            return value.clone();
+        };
+
+        let Some(Value::Sequence(seq)) = map.get(Value::String(String::from("mounts"))) else {
+            return value.clone();
+        };
+
+        let results: Vec<Value> = seq
+            .iter()
+            .filter(|_item| {
+                // Simple select filter parsing
+                // TODO: Implement actual filter logic based on expression
+                expression.contains(".source") || true
+            })
+            .cloned()
+            .collect();
+
+        Value::Sequence(results)
     }
 }
