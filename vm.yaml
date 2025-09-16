@@ -7,7 +7,7 @@ project:
   backup_pattern: '*backup*.sql.gz'
 vm:
   user: developer
-  memory: 8192
+  memory: 4096
   cpus: 6
   swap: 2048
   swappiness: 30
@@ -33,6 +33,7 @@ apt_packages:
 - jq
 npm_packages:
 - eslint
+- prettier
 pip_packages:
 - git-filter-repo
 aliases:
