@@ -343,7 +343,7 @@ vm:
   port_binding: "0.0.0.0"
 ```
 
-### Smart Defaults
+### Auto Defaults
 ```yaml
 # Let the tool figure it out
 os: ubuntu  # Everything else auto-configured

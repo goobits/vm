@@ -1,7 +1,7 @@
 # 📦 VM Tool Presets
 
 ## Overview
-Intelligent preset system that auto-configures VMs based on detected project type.
+Preset system that auto-configures VMs based on detected project type.
 
 ## Available Presets
 

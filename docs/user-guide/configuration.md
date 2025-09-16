@@ -70,7 +70,7 @@ The `vm` command automatically searches for `vm.yaml` configuration:
 1. **Current directory**: `./vm.yaml`
 2. **Parent directory**: `../vm.yaml`
 3. **Grandparent directory**: `../../vm.yaml`
-4. **Smart defaults with presets**: If no config found, uses built-in defaults enhanced by automatic preset detection
+4. **Auto defaults with presets**: If no config found, uses built-in defaults enhanced by automatic preset detection
 
 This means you can run `vm create` from anywhere in your project tree! The tool will also analyze your project files to automatically apply appropriate presets.
 

@@ -1,148 +1,131 @@
 # Test Suite Documentation
 
-This directory contains the reorganized test suite for the VM development environment tool. The tests are organized into logical categories for better maintainability and clarity.
+The VM tool test suite has been fully migrated from shell scripts to Rust. This documentation reflects the current Rust-based testing approach.
 
-## Directory Structure
+## Current Test Structure
 
 ```
-test/
-├── unit/
-│   ├── config-validation.test.sh    # Configuration validation unit tests
-│   └── preset-detection.test.sh     # Framework detection unit tests
-├── integration/
-│   ├── migration.test.sh            # VM migration system tests
-│   └── preset-system.test.sh        # Preset application integration tests
-├── system/
-│   └── vm-lifecycle.test.sh         # VM lifecycle and operations tests
-├── configs/                         # Test configuration files
-└── README.md                        # This documentation
+rust/
+├── vm-detector/         # Framework detection (22 tests)
+├── vm-config/          # Configuration operations
+├── vm-temp/            # Mount validation & filesystem integration
+├── vm-provider/        # Security validation & path protection
+├── vm-ports/           # Port registry and range management
+└── vm-pkg/             # Package management operations
 ```
 
 ## Test Categories
 
-### Unit Tests (`test/unit/`)
+### Unit Tests (Rust modules)
 
 **Purpose**: Test individual components and functions in isolation.
 
-- **`config-validation.test.sh`**: Tests configuration validation logic
-  - JSON schema validation
-  - Configuration file parsing
-  - Error handling for malformed configs
-  
-- **`preset-detection.test.sh`**: Tests framework detection functionality
+- **Framework Detection**: Tests in `vm-detector` for:
   - React, Vue, Angular, Next.js detection
   - Python (Django, Flask) detection
   - Node.js, Rust, Go detection
   - Multi-technology project detection
   - Edge cases and error handling
 
-### Integration Tests (`test/integration/`)
+- **Configuration Operations**: Tests in `vm-config` for:
+  - YAML configuration validation
+  - Configuration file parsing and merging
+  - Error handling for malformed configs
+  - Preset detection and application
+
+### Integration Tests (Rust `tests/` directories)
 
 **Purpose**: Test how components work together and integrate with external systems.
 
-- **`preset-system.test.sh`**: Tests preset application and system integration
-  - Preset application workflows
-  - VM tool preset commands (`vm preset list`, `vm preset show`)
-  - Flag functionality (`--preset`, `--no-preset`)
-  - Preset file validation
-  - Project info and resource suggestions
+- **Configuration System**: Tests configuration loading, merging, and validation
+- **Preset System**: Tests preset detection, application, and command functionality
+- **Mount Operations**: Tests filesystem integration and security validation
+- **Port Management**: Tests port allocation and conflict detection
 
-### System Tests (`test/system/`)
+### System Tests (End-to-end workflows)
 
-**Purpose**: Test complete system functionality and end-to-end workflows.
-
-- **`vm-lifecycle.test.sh`**: Tests full VM lifecycle operations
-  - VM creation and destruction
-  - VM status monitoring
-  - Command execution in VMs
-  - VM reload functionality
-  - Docker integration testing
+**Currently implemented via Rust integration tests** that cover:
+- VM lifecycle operations (creation, destruction, status)
+- Command execution and shell integration
+- Provider-specific workflows (Docker, Vagrant, Tart)
+- Configuration validation across complete workflows
 
 ## Running All Tests
 
-### Main Test Runner
+### Rust Test Framework
 
-The main testing is now done via Rust's built-in test framework:
+All testing is now done via Rust's built-in test framework:
 
 ```bash
-# Run all Rust tests
-cd rust && cargo test
+# Run all tests
+cd rust && cargo test --workspace
 
 # Run tests with output
-cd rust && cargo test -- --nocapture
+cargo test --workspace -- --nocapture
 
-# Run specific test modules
-cd rust && cargo test vm_config
-cd rust && cargo test vm_provider
+# Run specific component tests
+cargo test -p vm-detector    # Framework detection
+cargo test -p vm-config      # Configuration operations
+cargo test -p vm-temp        # Mount validation
+cargo test -p vm-provider    # Security & path validation
+cargo test -p vm-ports       # Port management
 
-# Legacy shell tests (if they still exist)
-# Note: Most shell-based tests have been migrated to Rust
+# Run integration tests only
+cargo test --test integration
 ```
 
-### Individual Test Categories
+### Test Development
 
-```bash
-# Unit tests
-./test/unit/config-validation.test.sh
-./test/unit/preset-detection.test.sh
+**Adding New Tests**:
 
-# Integration tests  
-./test/integration/migration.test.sh
-./test/integration/preset-system.test.sh
+Create tests in the appropriate Rust module:
 
-# System tests
-./test/system/vm-lifecycle.test.sh
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_your_feature() {
+        // Test implementation
+    }
+}
 ```
 
-### Specific Test Examples
+**Test Organization**:
+- Unit tests: In the same file as the code (`#[cfg(test)]` modules)
+- Integration tests: In `tests/` directory of each crate
+- Use `tempfile` crate for filesystem testing
+- Use `mockall` for mocking external dependencies
 
-**Run unit tests**:
-```bash
-# All unit tests
-./test/unit/config-validation.test.sh
-./test/unit/preset-detection.test.sh
+**Example Test Patterns**:
 
-# Specific framework detection tests
-./test/unit/preset-detection.test.sh --detection
-./test/unit/preset-detection.test.sh --edge-cases
-```
+```rust
+// Unit test
+#[test]
+fn test_port_range_parsing() {
+    let range = PortRange::parse("3000-3009").unwrap();
+    assert_eq!(range.start(), 3000);
+    assert_eq!(range.end(), 3009);
+}
 
-**Run integration tests**:
-```bash
-# All integration tests
-./test/integration/migration.test.sh
-./test/integration/preset-system.test.sh
-
-# Specific preset tests
-./test/integration/preset-system.test.sh --application
-./test/integration/preset-system.test.sh --commands
-./test/integration/preset-system.test.sh --flags
-```
-
-**Run system tests**:
-```bash
-# All VM lifecycle tests
-./test/system/vm-lifecycle.test.sh
-
-# Individual VM operations
-./test/system/vm-lifecycle.test.sh minimal-boot
-./test/system/vm-lifecycle.test.sh vm-status
-./test/system/vm-lifecycle.test.sh vm-exec
-./test/system/vm-lifecycle.test.sh vm-lifecycle
-./test/system/vm-lifecycle.test.sh vm-reload
-```
-
+// Integration test
+#[test]
+fn test_config_loading_workflow() {
+    let config = VmConfig::load(None, false)?;
+    assert!(config.provider.is_some());
+}
 ## Test Dependencies
 
 ### Prerequisites
 
-- **Docker**: Required for VM lifecycle and system tests
-  
-- **timeout**: Command timeout utility
+- **Rust toolchain**: Required for all testing (`cargo test`)
+- **Docker**: Required for provider integration tests
+- **Git**: Required for project detection tests
 
 ### Docker Permissions
 
-Many tests require Docker access. If tests are skipped with Docker permission warnings:
+Integration tests that use Docker require proper permissions:
 
 ```bash
 # Add user to docker group
@@ -151,88 +134,99 @@ sudo usermod -aG docker $USER
 # Restart session
 newgrp docker
 
-# Or ensure Docker daemon is running and accessible
+# Or ensure Docker daemon is running
 sudo systemctl start docker
 ```
 
-## Configuration Files
+## Test Configuration Files
 
-Test configuration files are located in `test/configs/`:
+Test fixtures are located in `test/configs/`:
 
 - Service-specific configs (postgresql.yaml, redis.yaml, etc.)
-- Minimal configuration for basic testing
-- Test-specific VM configurations
+- Minimal configuration templates for testing
+- Language-specific package configurations
 
-These are automatically generated by the test framework when needed.
+These are used as test data and loaded during Rust test execution.
 
-## Migration Guide
+## Migration Status
 
-### From Old Structure
+### Complete Migration to Rust
 
-The previous test structure has been reorganized:
+All testing functionality has been migrated from shell scripts to Rust:
 
-| Old Location | New Location | Notes |
-|--------------|--------------|-------|
-| `test/test-presets.sh` (detection) | `test/unit/preset-detection.test.sh` | Framework detection only |
-| `test/test-presets.sh` (system) | `test/integration/preset-system.test.sh` | Preset application & commands |
-| `test.sh` (VM lifecycle) | `test/system/vm-lifecycle.test.sh` | VM operations extracted |
-| `test/unit/config-validation.test.sh` | ✓ Already exists | No change |
+| Previous Shell Tests | Current Rust Implementation | Location |
+|---------------------|------------------------------|----------|
+| Framework detection | Unit tests in `vm-detector` | `rust/vm-detector/src/tests/` |
+| Configuration validation | Unit/integration tests in `vm-config` | `rust/vm-config/src/` & `rust/vm-config/tests/` |
+| VM lifecycle operations | Integration tests | `rust/tests/integration_tests.rs` |
+| Provider functionality | Unit tests in `vm-provider` | `rust/vm-provider/src/` |
+| Port management | Unit tests in `vm-ports` | `rust/vm-ports/src/` |
 
-### Running Reorganized Tests
+### Benefits of Rust Migration
 
-**Note**: The shell-based test runner has been replaced with Rust's cargo test:
-
-- Framework detection is now tested in Rust unit tests
-- VM lifecycle tests are implemented as Rust integration tests
-- Component interaction is tested via Rust integration tests
-- Test functionality has been migrated from shell scripts to Rust
+- **Type Safety**: Compile-time error detection
+- **Performance**: Faster test execution
+- **Reliability**: Better error handling and resource management
+- **Maintainability**: Integrated with code, automatic dependency management
 
 ## Test Development Guidelines
 
 ### Adding New Tests
 
-1. **Unit Tests**: Add to `test/unit/` for isolated component testing
-2. **Integration Tests**: Add to `test/integration/` for component interaction testing  
-3. **System Tests**: Add to `test/system/` for end-to-end workflow testing
+1. **Unit Tests**: Add `#[test]` functions to the relevant module
+2. **Integration Tests**: Create files in the `tests/` directory of relevant crates
+3. **End-to-end Tests**: Use integration tests that exercise complete workflows
 
 ### Test Naming Convention
 
-- Use descriptive test function names: `test_framework_detection()`, `test_vm_lifecycle()`
-- Use clear assertion messages that explain what should happen
-- Group related tests in logical test suites
+- Use descriptive test function names: `test_framework_detection()`, `test_config_loading()`
+- Use clear assertion messages with context
+- Group related tests in logical modules (`#[cfg(test)] mod tests`)
 
 ### Best Practices
 
 - Keep unit tests fast and isolated
-- Use appropriate test category for the scope of testing
+- Use `tempfile` for filesystem tests to avoid conflicts
 - Include both positive and negative test cases
 - Provide clear error messages and debugging output
-- Clean up resources in test teardown
+- Use appropriate test fixtures and mocking where needed
 
 ## Troubleshooting
 
 ### Common Issues
 
 1. **Docker Permission Denied**: See Docker Permissions section above
-2. **Missing Dependencies**: Install required tools (timeout)
-3. **Test Timeouts**: Increase timeout values for slower systems
-4. **Container Conflicts**: Tests automatically clean up containers but manual cleanup may be needed:
+2. **Test Failures**: Run with `--nocapture` for detailed output
+3. **Compilation Errors**: Ensure Rust toolchain is up to date
+4. **Container Conflicts**: Integration tests clean up automatically, but manual cleanup may be needed:
    ```bash
    docker ps -a | grep "test-" | awk '{print $1}' | xargs docker rm -f
    ```
 
 ### Debug Mode
 
-Most tests support verbose output:
+Enable verbose test output:
 ```bash
-VERBOSE=true ./test/unit/preset-detection.test.sh
+# Show test output
+cargo test -- --nocapture
+
+# Show test names being run
+cargo test -- --nocapture --show-output
+
+# Run specific test with debugging
+RUST_LOG=debug cargo test test_name -- --nocapture
 ```
 
 ### Getting Help
 
-Each test script includes help documentation:
+Use Rust's built-in test help:
 ```bash
-./test/unit/preset-detection.test.sh --help
-./test/integration/migration.test.sh --help
-./test/system/vm-lifecycle.test.sh --help
+# Show available test options
+cargo test --help
+
+# List all available tests
+cargo test -- --list
+
+# Run tests matching a pattern
+cargo test config -- --nocapture
 ```
