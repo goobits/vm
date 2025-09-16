@@ -7,7 +7,7 @@ pub mod output_macros;
 pub mod platform;
 pub mod security;
 pub mod structured_log;
-pub mod temp;
+pub mod temp_dir;
 
 // Standard library
 use std::path::Path;

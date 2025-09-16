@@ -27,10 +27,10 @@ use std::path::PathBuf;
 
 mod command_groups;
 mod commands;
-mod utils;
+mod formatting;
 
 pub use commands::validation::{load_and_merge_config, load_and_merge_config_with_preset};
-pub use utils::*;
+pub use formatting::*;
 
 // Import command groups for organized dispatch
 use command_groups::{ConfigOpsGroup, FileOpsGroup, ProjectOpsGroup, QueryOpsGroup};

@@ -10,7 +10,7 @@ use tera::Context as TeraContext;
 use super::build::BuildOperations;
 use super::host_packages::{detect_packages, get_package_env_vars, get_volume_mounts, PackageManager};
 use super::{ComposeCommand, UserConfig};
-use crate::{utils::stream_command, TempVmState};
+use crate::{command_stream::stream_command, TempVmState};
 use vm_config::config::VmConfig;
 
 pub struct ComposeOperations<'a> {

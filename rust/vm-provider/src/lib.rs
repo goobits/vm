@@ -19,7 +19,7 @@ pub mod resources;
 pub mod security;
 pub mod system_check;
 pub mod temp_models;
-pub mod utils;
+pub mod command_stream;
 
 pub mod audio;
 pub mod preflight;

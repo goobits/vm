@@ -2,7 +2,8 @@ use anyhow::{Context, Result};
 use std::path::PathBuf;
 use vm_common::vm_error;
 
-use super::super::{utils::query_field, OutputFormat};
+use crate::cli::formatting::query_field;
+use crate::cli::OutputFormat;
 use crate::config::VmConfig;
 
 pub fn execute_query(

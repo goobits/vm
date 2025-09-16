@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::path::PathBuf;
 
-use super::super::utils::output_shell_exports;
+use crate::cli::formatting::output_shell_exports;
 use super::validation::load_and_merge_config;
 use serde_yaml_ng as serde_yaml;
 

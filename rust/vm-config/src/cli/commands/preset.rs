@@ -1,7 +1,8 @@
 use anyhow::Result;
 use std::path::PathBuf;
 
-use super::super::{utils::output_config, OutputFormat};
+use crate::cli::formatting::output_config;
+use crate::cli::OutputFormat;
 use crate::{paths, preset::PresetDetector};
 
 pub fn execute(

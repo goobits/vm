@@ -20,7 +20,7 @@ use crate::{
     error::ProviderError,
     progress::ProgressReporter,
     security::SecurityValidator,
-    utils::{stream_command, stream_docker_build},
+    command_stream::{stream_command, stream_docker_build},
     TempProvider, TempVmState,
 };
 use vm_common::{vm_error, vm_success, vm_warning};

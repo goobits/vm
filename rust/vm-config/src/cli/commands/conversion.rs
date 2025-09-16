@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 
-use super::super::{utils::output_config, OutputFormat};
+use crate::cli::formatting::output_config;
+use crate::cli::OutputFormat;
 use crate::config::VmConfig;
 
 pub fn execute(input: PathBuf, format: OutputFormat) -> Result<()> {
