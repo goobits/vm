@@ -1,0 +1,9 @@
+version: 1.2.0
+provider: docker
+project:
+  name: test-config
+  hostname: dev.test.local
+vm:
+  user: developer
+  memory: 2048
+  cpus: 2

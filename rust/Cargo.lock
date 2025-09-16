@@ -1255,7 +1255,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vm"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1274,7 +1274,7 @@ dependencies = [
 
 [[package]]
 name = "vm-common"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1292,7 +1292,7 @@ dependencies = [
 
 [[package]]
 name = "vm-config"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1314,7 +1314,7 @@ dependencies = [
 
 [[package]]
 name = "vm-detector"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anyhow",
  "glob",
@@ -1328,7 +1328,7 @@ dependencies = [
 
 [[package]]
 name = "vm-installer"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1340,7 +1340,7 @@ dependencies = [
 
 [[package]]
 name = "vm-pkg"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1358,7 +1358,7 @@ dependencies = [
 
 [[package]]
 name = "vm-ports"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1371,7 +1371,7 @@ dependencies = [
 
 [[package]]
 name = "vm-provider"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anyhow",
  "base64",
@@ -1395,7 +1395,7 @@ dependencies = [
 
 [[package]]
 name = "vm-temp"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anyhow",
  "clap",

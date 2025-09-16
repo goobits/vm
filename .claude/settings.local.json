@@ -2,7 +2,16 @@
   "permissions": {
     "allow": [
       "Read(//Users/miko/.local/share/vm/**)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Read(//var/folders/kv/r8f8qp9d3f1b0hr290p2z8mm0000gn/T/vm-vm/build_context/**)",
+      "Read(//var/folders/kv/r8f8qp9d3f1b0hr290p2z8mm0000gn/T/vm-vm/**)",
+      "Bash(cargo build:*)",
+      "Bash(find:*)",
+      "Bash(awk:*)",
+      "Bash(vm create:*)",
+      "Read(//Users/miko/projects/**)",
+      "Bash(tree:*)",
+      "Read(//private/var/folders/kv/r8f8qp9d3f1b0hr290p2z8mm0000gn/T/vm-goobits-prompt-palette/**)"
     ],
     "deny": [],
     "ask": []

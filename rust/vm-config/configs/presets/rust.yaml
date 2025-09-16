@@ -1,0 +1,23 @@
+---
+preset:
+  name: rust
+  description: "Rust Development - Systems programming with Cargo and Rust toolchain"
+
+apt_packages:
+  - build-essential
+  - libssl-dev
+  - pkg-config
+
+ports:
+  app: 8080  # Common Rust web app port
+  debug: 9000  # Debugging port
+
+services:
+  redis:
+    enabled: false  # Optional for Rust apps
+  postgresql:
+    enabled: false  # Optional for Rust apps
+
+environment:
+  RUST_BACKTRACE: "1"
+  CARGO_TERM_COLOR: always
