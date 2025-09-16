@@ -47,6 +47,9 @@ credentials/
 *.swo
 .DS_Store
 
+# Claude Code local settings
+.claude/settings.local.json
+
 # Temporary files
 *.tmp
 *.temp
