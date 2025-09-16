@@ -3,6 +3,7 @@ use anyhow::{Context, Result};
 use regex::Regex;
 use std::path::PathBuf;
 use vm_common::{vm_error, vm_success, vm_warning};
+use serde_yaml_ng as serde_yaml;
 
 /// Fix YAML indentation issues by ensuring consistent 2-space indentation for arrays
 fn fix_yaml_indentation(yaml: &str) -> String {

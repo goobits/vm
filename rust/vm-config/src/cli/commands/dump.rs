@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use super::super::utils::output_shell_exports;
 use super::validation::load_and_merge_config;
+use serde_yaml_ng as serde_yaml;
 
 pub fn execute_dump(file: Option<PathBuf>, no_preset: bool) -> Result<()> {
     let merged = load_and_merge_config(file, no_preset)?;
