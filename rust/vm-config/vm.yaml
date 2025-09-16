@@ -1,0 +1,83 @@
+version: 1.2.0
+provider: docker
+os: auto
+project:
+  name: vm-config
+  hostname: dev.vm-config.local
+  workspace_path: /workspace
+  backup_pattern: '*backup*.sql.gz'
+vm:
+  user: developer
+  memory: 4096
+  cpus: 2
+  timezone: America/Los_Angeles
+  port_binding: 127.0.0.1
+  gui: false
+versions:
+  node: '22'
+  pnpm: 10.12.3
+  python: '3.11'
+  nvm: v0.40.3
+port_range: 3000-3009
+services:
+  postgresql:
+    enabled: false
+    port: 5432
+    user: postgres
+    password: postgres
+  redis:
+    enabled: false
+    port: 6379
+  mongodb:
+    enabled: false
+    port: 27017
+  mysql:
+    enabled: false
+    port: 3306
+    user: root
+    password: mysql
+  docker:
+    enabled: false
+    buildx: true
+  headless_browser:
+    enabled: false
+    display: :99
+    executable_path: /usr/bin/chromium-browser
+  audio:
+    enabled: false
+    driver: pulse
+    share_microphone: false
+  gpu:
+    enabled: false
+    type: auto
+    memory_mb: 256
+apt_packages:
+- htop
+- tree
+- ncdu
+- ripgrep
+- nano
+- sox
+- pipx
+npm_packages:
+- eslint
+- prettier
+aliases:
+  claudeyolo: claude --dangerously-skip-permissions
+  geminiyolo: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini
+terminal:
+  theme: dracula
+  emoji: 🚀
+  username: vm-config-dev
+  show_git_branch: true
+  show_timestamp: false
+tart:
+  disk_size: 50
+  rosetta: true
+  install_docker: false
+claude_sync: true
+gemini_sync: true
+package_linking:
+  npm: true
+  pip: false
+  cargo: false
