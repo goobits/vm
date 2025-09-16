@@ -67,6 +67,7 @@ impl Drop for ContextGuard {
 ///
 /// Usage:
 /// ```
+/// use vm_common::scoped_context;
 /// let _guard = scoped_context! {
 ///     "operation" => "create",
 ///     "provider" => "docker"
@@ -82,6 +83,7 @@ pub fn scoped_context(context: Map<String, Value>) -> ContextGuard {
 ///
 /// Usage:
 /// ```
+/// use vm_common::scoped_context;
 /// let _guard = scoped_context! {
 ///     "operation" => "create",
 ///     "component" => "docker",
@@ -103,6 +105,7 @@ macro_rules! scoped_context {
 ///
 /// Usage:
 /// ```
+/// use vm_common::log_context;
 /// log_context! {
 ///     "user_id" => "user123",
 ///     "duration_ms" => 1500
