@@ -184,8 +184,11 @@ impl StructuredLogger {
             "timestamp": Utc::now().to_rfc3339(),
             "level": record.level().to_string(),
             "message": record.args().to_string(),
+            // Module path may be None in some contexts, default to "unknown" for clarity
             "module": record.module_path().unwrap_or("unknown"),
+            // File path may be None in some contexts, default to "unknown" for clarity
             "file": record.file().unwrap_or("unknown"),
+            // Line number may be None in some contexts, default to 0 for clarity
             "line": record.line().unwrap_or(0)
         });
 
@@ -257,6 +260,7 @@ impl StructuredLogger {
 
 impl log::Log for StructuredLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
+        // If level filter conversion fails, default to Info level for safety
         metadata.level() <= self.config.level.to_level().unwrap_or(Level::Info)
     }
 
@@ -526,7 +530,8 @@ mod tests {
         let pattern = TagPattern {
             key: "operation".to_string(),
             value: Some("create*".to_string()),
-            regex: Some(Regex::new("^create.*$").unwrap()),
+            regex: Some(Regex::new("^create.*$")
+                .expect("Failed to compile test regex - pattern is invalid")),
         };
         let filter = TagFilter::from_patterns(vec![pattern]);
 

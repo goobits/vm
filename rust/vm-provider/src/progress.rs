@@ -37,15 +37,17 @@ impl DockerProgressParser {
                 .template(
                     "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}",
                 )
-                .unwrap()
+                .expect("Failed to create progress bar template - template string is malformed")
                 .progress_chars("#>-"),
         );
 
         Self {
             mp,
             main_bar,
-            step_regex: Regex::new(r"Step (\d+)/(\d+)").unwrap(),
-            layer_pull_regex: Regex::new(r"([a-f0-9]{12}): Pulling fs layer").unwrap(),
+            step_regex: Regex::new(r"Step (\d+)/(\d+)")
+                .expect("Failed to compile step regex - regex pattern is invalid"),
+            layer_pull_regex: Regex::new(r"([a-f0-9]{12}): Pulling fs layer")
+                .expect("Failed to compile layer pull regex - regex pattern is invalid"),
             total_steps: 0,
             current_step: 0,
             layer_bars: HashMap::new(),
@@ -87,7 +89,7 @@ impl ProgressParser for DockerProgressParser {
                     pb.set_style(
                         ProgressStyle::default_spinner()
                             .template("  {prefix:12} {spinner} {wide_msg}")
-                            .unwrap(),
+                            .expect("Failed to create spinner template - template string is malformed"),
                     );
                     pb.set_prefix(layer_id.clone());
                     pb.set_message("Pulling...");

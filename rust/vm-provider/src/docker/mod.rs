@@ -6,7 +6,6 @@ pub mod lifecycle;
 
 // Re-export the main types and functions for backwards compatibility
 pub use build::BuildOperations;
-pub use compose::ComposeOperations;
 pub use lifecycle::LifecycleOperations;
 
 

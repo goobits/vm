@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 // External crates
-use anyhow::{Context, Result};
+use anyhow::Result;
 use tera::{Context as TeraContext, Tera};
 
 // Internal imports
