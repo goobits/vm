@@ -1,5 +1,5 @@
-use std::io::{self, Write};
 use anyhow::Result;
+use std::io::{self, Write};
 
 /// Simple confirmation prompt without external dependencies
 pub fn confirm_prompt(message: &str) -> Result<bool> {
