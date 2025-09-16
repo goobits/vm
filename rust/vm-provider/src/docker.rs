@@ -21,6 +21,7 @@ use crate::{
     utils::{is_tool_installed, stream_command, stream_docker_build},
     Provider, TempProvider, TempVmState,
 };
+use vm_common::{vm_error, vm_success, vm_warning};
 use vm_config::config::VmConfig;
 
 pub struct DockerProvider {
@@ -161,7 +162,7 @@ impl DockerProvider {
             .output()
             .is_err()
         {
-            eprintln!("⚠️  Docker daemon may not be responding properly");
+            vm_warning!("Docker daemon may not be responding properly");
             eprintln!("   Try: docker system prune -f");
         }
 
@@ -312,7 +313,11 @@ impl Provider for DockerProvider {
                 .unwrap_or(false);
 
             let status = if is_running { "running" } else { "stopped" };
-            println!("⚠️  Container '{}' already exists (status: {}).", container_name, status);
+            vm_warning!(
+                "Container '{}' already exists (status: {}).",
+                container_name,
+                status
+            );
 
             // Check if we're in an interactive terminal
             if std::io::stdin().is_terminal() {
@@ -334,7 +339,7 @@ impl Provider for DockerProvider {
                 match input.trim() {
                     "1" => {
                         if is_running {
-                            println!("\n✅ Using existing running container.");
+                            vm_success!("Using existing running container.");
                             return Ok(());
                         } else {
                             println!("\n▶️  Starting existing container...");
@@ -347,7 +352,7 @@ impl Provider for DockerProvider {
                         // Continue with creation below
                     }
                     _ => {
-                        println!("❌ Operation cancelled.");
+                        vm_error!("Operation cancelled.");
                         return Ok(());
                     }
                 }
@@ -485,7 +490,7 @@ impl Provider for DockerProvider {
             println!("⚠️ (services may start later)");
         }
 
-        println!("\n✅ Docker environment created successfully!");
+        vm_success!("Docker environment created successfully!");
         println!("🎉 All packages installed at build time for faster startup!");
         Ok(())
     }
@@ -720,9 +725,9 @@ impl Provider for DockerProvider {
                 "ansible-playbook -i localhost, -c local /app/shared/ansible/playbook.yml",
             ],
         );
-        if ansible_result.is_err() {
-            progress.error("└─", "Provisioning failed");
-            return Err(anyhow::anyhow!("Ansible provisioning failed"));
+        if let Err(e) = ansible_result {
+            progress.error("└─", &format!("Provisioning failed: {}", e));
+            return Err(e).context("Ansible provisioning failed during container setup");
         }
         progress.complete("└─", "Provisioning complete");
         Ok(())
@@ -809,7 +814,9 @@ impl TempProvider for DockerProvider {
         fs::write(&compose_path, content.as_bytes())?;
 
         progress.task(&phase, "Removing old container...");
-        let _ = stream_command("docker", &["rm", "-f", &state.container_name]);
+        if let Err(e) = stream_command("docker", &["rm", "-f", &state.container_name]) {
+            eprintln!("Warning: Failed to remove old container {}: {}", &state.container_name, e);
+        }
 
         progress.finish_phase(&phase, "Container configuration updated");
         Ok(())

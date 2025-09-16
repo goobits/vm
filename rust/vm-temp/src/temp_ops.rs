@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 // External crates
 use anyhow::{Context, Result};
+use vm_common::vm_success;
 
 // Internal imports
 use crate::{MountParser, MountPermission, StateManager, TempVmState};
@@ -145,7 +146,7 @@ impl TempVmOps {
             .delete_state()
             .context("Failed to delete temp VM state")?;
 
-        println!("✅ Temporary VM destroyed");
+        vm_success!("Temporary VM destroyed");
         Ok(())
     }
 
@@ -214,7 +215,7 @@ impl TempVmOps {
             temp_provider
                 .update_mounts(&state)
                 .context("Failed to update container mounts")?;
-            println!("✅ Mount successfully applied to running container");
+            vm_success!("Mount successfully applied to running container");
         } else {
             return Err(anyhow::anyhow!("Provider does not support mount updates"));
         }
@@ -268,7 +269,7 @@ impl TempVmOps {
                 temp_provider
                     .update_mounts(&state)
                     .context("Failed to update container mounts")?;
-                println!("✅ All mounts successfully removed from running container");
+                vm_success!("All mounts successfully removed from running container");
             }
         } else if let Some(path_str) = path {
             let source_path = PathBuf::from(path_str);
@@ -312,7 +313,7 @@ impl TempVmOps {
                 temp_provider
                     .update_mounts(&state)
                     .context("Failed to update container mounts")?;
-                println!("✅ Mount successfully removed from running container");
+                vm_success!("Mount successfully removed from running container");
             }
         } else {
             return Err(anyhow::anyhow!("Must specify --path or --all"));
@@ -392,7 +393,7 @@ impl TempVmOps {
 
         println!("⏸️ Stopping temporary VM...");
         provider.stop()?;
-        println!("✅ Temporary VM stopped");
+        vm_success!("Temporary VM stopped");
 
         Ok(())
     }
@@ -407,7 +408,7 @@ impl TempVmOps {
 
         println!("▶️ Starting temporary VM...");
         provider.start()?;
-        println!("✅ Temporary VM started");
+        vm_success!("Temporary VM started");
 
         Ok(())
     }
@@ -422,7 +423,7 @@ impl TempVmOps {
 
         println!("🔄 Restarting temporary VM...");
         provider.restart()?;
-        println!("✅ Temporary VM restarted");
+        vm_success!("Temporary VM restarted");
 
         Ok(())
     }

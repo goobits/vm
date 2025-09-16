@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
-use colored::*;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use vm_common::vm_success;
 
 use crate::platform;
 
@@ -63,7 +63,7 @@ fn run_cargo_clean(project_root: &Path) -> Result<()> {
     if !status.success() {
         anyhow::bail!("'cargo clean' failed.");
     }
-    println!("{}", "✅ Build artifacts cleaned.".green());
+    vm_success!("Build artifacts cleaned.");
     Ok(())
 }
 
@@ -86,7 +86,7 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
     if !status.success() {
         anyhow::bail!("Failed to build Rust binaries.");
     }
-    println!("{}", "✅ Rust binaries built successfully.".green());
+    vm_success!("Rust binaries built successfully.");
 
     let binary_path = target_dir.join("release/vm");
     if !binary_path.exists() {

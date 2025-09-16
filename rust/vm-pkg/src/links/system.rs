@@ -13,8 +13,4 @@ impl SystemLinkDetector {
         validate_package_manager(package_manager)?;
         detect_packages(package_manager, packages)
     }
-
-
-
-
 }

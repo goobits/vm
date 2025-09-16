@@ -444,7 +444,6 @@ pub fn init_with_config(config: LogConfig) -> Result<(), log::SetLoggerError> {
 
 /// Helper functions for output macros
 /// These provide a simpler interface for the migration macros
-
 /// Log an info message
 pub fn log_info(message: &str) {
     log::info!("{}", message);

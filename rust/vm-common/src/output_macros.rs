@@ -3,7 +3,6 @@
 /// These macros provide a migration path from direct println!/eprintln! usage
 /// to structured logging. They maintain backward compatibility while allowing
 /// gradual adoption of structured logging throughout the codebase.
-
 /// Print a line to stdout, with optional structured logging
 #[macro_export]
 macro_rules! vm_println {

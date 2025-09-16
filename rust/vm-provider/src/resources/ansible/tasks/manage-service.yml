@@ -80,15 +80,17 @@
     content: |
       [program:{{ service_name }}]
       command={{ service_supervisor_command }}
-      user={{ service_supervisor_user if service_supervisor_user != '' else 'root' }}
+      user={{ service_supervisor_user if service_supervisor_user != '' else 'vagrant' }}
       autostart=true
       autorestart=true
-      stderr_logfile=/var/log/supervisor/{{ service_name }}-err.log
-      stdout_logfile=/var/log/supervisor/{{ service_name }}-out.log
+      stderr_logfile=/dev/stderr
+      stderr_logfile_maxbytes=0
+      stdout_logfile=/dev/stdout
+      stdout_logfile_maxbytes=0
       {% if service_supervisor_environment != '' %}
       environment={{ service_supervisor_environment }}
       {% endif %}
-  when: 
+  when:
     - is_docker_container
     - service_supervisor_command != ""
   notify: restart supervisor

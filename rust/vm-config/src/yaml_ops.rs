@@ -729,7 +729,9 @@ impl YamlOperations {
                 let items: Vec<String> = seq.iter().map(Self::yaml_value_to_string).collect();
                 format!("[{}]", items.join(", "))
             }
-            Value::Mapping(_) => serde_json::to_string(value).unwrap_or_else(|_| String::from("{}")),
+            Value::Mapping(_) => {
+                serde_json::to_string(value).unwrap_or_else(|_| String::from("{}"))
+            }
             Value::Tagged(tagged) => Self::yaml_value_to_string(&tagged.value),
         }
     }

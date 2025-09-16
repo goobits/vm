@@ -4,6 +4,7 @@ mod registry;
 // External crates
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use vm_common::{vm_error, vm_success, vm_warning};
 
 // Internal imports
 use range::PortRange;
@@ -78,14 +79,11 @@ fn main() -> Result<()> {
             let mut registry = PortRegistry::load()?;
 
             if let Some(conflicts) = registry.check_conflicts(&port_range, Some(&project)) {
-                println!("⚠️  Port range {} conflicts with: {}", range, conflicts);
+                vm_warning!("Port range {} conflicts with: {}", range, conflicts);
                 std::process::exit(1);
             } else {
                 registry.register(&project, &port_range, &path)?;
-                println!(
-                    "✅ Registered port range {} for project '{}'",
-                    range, project
-                );
+                vm_success!("Registered port range {} for project '{}'", range, project);
             }
         }
         Command::Suggest { size } => {
@@ -95,7 +93,7 @@ fn main() -> Result<()> {
             if let Some(range) = registry.suggest_next_range(size, 3000) {
                 println!("{}", range);
             } else {
-                eprintln!("❌ No available port range of size {} found", size);
+                vm_error!("No available port range of size {} found", size);
                 std::process::exit(1);
             }
         }
@@ -106,7 +104,7 @@ fn main() -> Result<()> {
         Command::Unregister { project } => {
             let mut registry = PortRegistry::load()?;
             registry.unregister(&project)?;
-            println!("✅ Unregistered port range for project '{}'", project);
+            vm_success!("Unregistered port range for project '{}'", project);
         }
     }
 

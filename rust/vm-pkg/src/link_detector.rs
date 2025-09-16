@@ -103,7 +103,6 @@ impl LinkDetector {
         Ok(results)
     }
 
-
     /// Check if a path is a pipx environment
     pub fn is_pipx_environment(path: &Path) -> bool {
         vm_detector::is_pipx_environment(path)

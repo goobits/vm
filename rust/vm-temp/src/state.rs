@@ -303,7 +303,13 @@ impl StateManager {
         }
         #[cfg(target_os = "macos")]
         {
-            vec!["/tmp", "/var/tmp", "/var/folders", "/private/tmp", "/private/var/tmp"]
+            vec![
+                "/tmp",
+                "/var/tmp",
+                "/var/folders",
+                "/private/tmp",
+                "/private/var/tmp",
+            ]
         }
         #[cfg(not(any(target_os = "windows", target_os = "macos")))]
         {
@@ -351,9 +357,11 @@ impl StateManager {
     }
 }
 
+// Note: Default impl intentionally panics for invalid environment
+// This ensures early failure detection for misconfigured systems
 impl Default for StateManager {
     fn default() -> Self {
-        Self::new().expect("Failed to create default state manager")
+        Self::new().expect("Failed to create default state manager - check that home directory is accessible")
     }
 }
 

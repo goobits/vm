@@ -1428,6 +1428,7 @@ dependencies = [
  "colored",
  "dialoguer",
  "dirs",
+ "vm-common",
  "which",
 ]
 
@@ -1443,6 +1444,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "vm-common",
  "vm-detector",
  "walkdir",
  "which",
@@ -1479,6 +1481,7 @@ dependencies = [
  "tempfile",
  "tera",
  "thiserror 2.0.16",
+ "vm-common",
  "vm-config",
  "vm-ports",
  "which",
@@ -1497,6 +1500,7 @@ dependencies = [
  "serde_yaml",
  "tempfile",
  "thiserror 2.0.16",
+ "vm-common",
  "vm-config",
  "vm-provider",
 ]

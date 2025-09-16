@@ -8,7 +8,7 @@ use log::{debug, info, warn};
 use uuid::Uuid;
 
 // Internal imports
-use vm_common::{log_context, scoped_context, vm_error, vm_progress, vm_success, vm_warning};
+use vm_common::{log_context, scoped_context, vm_error, vm_println, vm_success};
 use vm_config::{config::VmConfig, init_config_file, ConfigOps};
 use vm_provider::get_provider;
 use vm_provider::progress::{confirm_prompt, ProgressReporter, StatusFormatter};
@@ -320,7 +320,7 @@ fn main() -> Result<()> {
                         config.provider,
                         config.project.as_ref().and_then(|p| p.name.as_ref())
                     );
-                    println!("✅ Configuration is valid.");
+                    vm_success!("Configuration is valid.");
                     return Ok(());
                 }
                 Err(e) => {
@@ -364,15 +364,15 @@ fn main() -> Result<()> {
             | Command::Destroy
             | Command::Provision
             | Command::Kill { .. } => {
-                println!("🔍 DRY RUN MODE - showing what would be executed:");
-                println!("   Command: {:?}", args.command);
+                vm_println!("🔍 DRY RUN MODE - showing what would be executed:");
+                vm_println!("   Command: {:?}", args.command);
                 if let Some(config) = &args.config {
-                    println!("   Config: {}", config.display());
+                    vm_println!("   Config: {}", config.display());
                 }
                 if let Some(preset) = &args.preset {
-                    println!("   Preset override: {}", preset);
+                    vm_println!("   Preset override: {}", preset);
                 }
-                println!("🚫 Dry run complete - no commands were executed");
+                vm_println!("🚫 Dry run complete - no commands were executed");
                 return Ok(());
             }
             _ => {} // Non-provider commands proceed normally

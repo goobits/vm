@@ -22,5 +22,9 @@ clap = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 
+[features]
+default = []
+structured-output = ["vm-common/structured-output"]
+
 [dev-dependencies]
 tempfile = { workspace = true }

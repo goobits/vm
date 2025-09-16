@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 
 // External crates
 use anyhow::{Context, Result};
-use colored::*;
 use dialoguer::Confirm;
+use vm_common::vm_println;
 
 pub fn ensure_path(bin_dir: &Path) -> Result<()> {
     let path_var = env::var("PATH").unwrap_or_default();
@@ -41,9 +41,9 @@ pub fn ensure_path(bin_dir: &Path) -> Result<()> {
             profile_path.display()
         );
     } else {
-        println!(
-            "Please add the following to your shell profile:\n  {}",
-            format!("export PATH=\"{}:$PATH\"", bin_dir.display()).cyan()
+        vm_println!(
+            "Please add the following to your shell profile:\n  export PATH=\"{}:$PATH\"",
+            bin_dir.display()
         );
     }
 

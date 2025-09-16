@@ -3,6 +3,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use serde_yaml::Value;
 use std::path::{Path, PathBuf};
+use vm_common::{vm_error, vm_println, vm_success, vm_warning};
 
 /// Fix YAML indentation issues by ensuring consistent 2-space indentation for arrays
 fn fix_yaml_indentation(yaml: &str) -> String {
@@ -523,14 +524,14 @@ pub fn init_config_file(
                 if let Err(e) =
                     registry.register(sanitized_name, &range, &current_dir.to_string_lossy())
                 {
-                    println!("⚠️  Failed to register port range: {}", e);
+                    vm_warning!("Failed to register port range: {}", e);
                 }
             }
         } else {
-            println!("⚠️  Could not find available port range");
+            vm_warning!("Could not find available port range");
         }
     } else {
-        println!("⚠️  Failed to load port registry");
+        vm_warning!("Failed to load port registry");
     }
 
     // Apply service configurations
@@ -545,8 +546,8 @@ pub fn init_config_file(
             let service_path =
                 crate::paths::resolve_tool_path(format!("configs/services/{}.yaml", service));
             if !service_path.exists() {
-                eprintln!("❌ Unknown service: {}", service);
-                eprintln!("💡 Available services: postgresql, redis, mongodb, docker");
+                vm_error!("Unknown service: {}", service);
+                vm_error!("Available services: postgresql, redis, mongodb, docker");
                 return Err(anyhow::anyhow!("Service configuration not found"));
             }
 
@@ -595,7 +596,7 @@ pub fn init_config_file(
         target_path.display()
     ))?;
 
-    println!("✅ Created vm.yaml for project: {}", sanitized_name);
+    vm_success!("Created vm.yaml for project: {}", sanitized_name);
     println!("📍 Configuration file: {}", target_path.display());
     if let Some(ref services_str) = services {
         println!("🔧 Services: {}", services_str);
@@ -638,13 +639,13 @@ pub fn execute(args: Args) -> Result<()> {
             verbose,
         } => match load_and_merge_config(file, no_preset) {
             Ok(_) => {
-                println!("✅ Configuration is valid");
+                vm_success!("Configuration is valid");
                 if verbose {
-                    println!("Successfully loaded, merged, and validated the configuration.");
+                    vm_println!("Successfully loaded, merged, and validated the configuration.");
                 }
             }
             Err(e) => {
-                eprintln!("❌ Configuration validation failed: {:#}", e);
+                vm_error!("Configuration validation failed: {:#}", e);
                 std::process::exit(1);
             }
         },
@@ -803,11 +804,11 @@ pub fn execute(args: Args) -> Result<()> {
             use crate::yaml_ops::YamlOperations;
             match YamlOperations::validate_file(&file) {
                 Ok(_) => {
-                    println!("✅ File is valid YAML");
+                    vm_success!("File is valid YAML");
                     std::process::exit(0);
                 }
                 Err(e) => {
-                    eprintln!("❌ File validation failed: {}", e);
+                    vm_error!("File validation failed: {}", e);
                     std::process::exit(1);
                 }
             }
@@ -859,7 +860,7 @@ pub fn execute(args: Args) -> Result<()> {
                     std::process::exit(1);
                 }
                 Err(e) => {
-                    eprintln!("❌ Error checking field: {}", e);
+                    vm_error!("Error checking field: {}", e);
                     std::process::exit(1);
                 }
             }

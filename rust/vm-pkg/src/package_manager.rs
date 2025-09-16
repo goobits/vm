@@ -34,7 +34,6 @@ impl PackageManager {
         }
     }
 
-
     /// Check if the package manager is available
     pub fn is_available(&self) -> Result<bool> {
         match self {
@@ -45,6 +44,4 @@ impl PackageManager {
             }
         }
     }
-
-
 }

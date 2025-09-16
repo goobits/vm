@@ -19,3 +19,7 @@ chrono = { workspace = true }
 is-terminal = { workspace = true }
 dirs = { workspace = true }
 uuid = { workspace = true }
+
+[features]
+default = []
+structured-output = []

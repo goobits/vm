@@ -5,6 +5,7 @@ use crate::{
 use anyhow::{Context, Result};
 use std::env;
 use std::path::Path;
+use vm_common::{vm_println, vm_success, vm_warning};
 use vm_config::config::VmConfig;
 
 /// Safely escape a string for shell execution by wrapping in single quotes
@@ -99,8 +100,8 @@ impl Provider for VagrantProvider {
                 || status_str.contains("saved")
             {
                 progress.task(&main_phase, "VM already exists.");
-                println!("⚠️  Vagrant VM already exists.");
-                println!("To recreate, first run: vm destroy");
+                vm_warning!("Vagrant VM already exists.");
+                vm_println!("To recreate, first run: vm destroy");
                 progress.finish_phase(&main_phase, "Skipped creation.");
                 return Ok(());
             }
@@ -130,8 +131,8 @@ impl Provider for VagrantProvider {
         progress.task(&main_phase, "VM created successfully.");
         progress.finish_phase(&main_phase, "Environment ready.");
 
-        println!("\n✅ Vagrant environment created successfully!");
-        println!("💡 Use 'vm ssh' to connect to the VM");
+        vm_success!("Vagrant environment created successfully!");
+        vm_println!("Use 'vm ssh' to connect to the VM");
         Ok(())
     }
 
@@ -199,7 +200,7 @@ impl Provider for VagrantProvider {
     }
 
     fn logs(&self) -> Result<()> {
-        println!("Showing service logs - Press Ctrl+C to stop...");
+        vm_println!("Showing service logs - Press Ctrl+C to stop...");
         self.run_vagrant_command(&[
             "ssh",
             "-c",

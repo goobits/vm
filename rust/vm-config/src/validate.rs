@@ -174,7 +174,6 @@ impl ConfigValidator {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

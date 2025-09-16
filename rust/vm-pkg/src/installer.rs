@@ -6,6 +6,7 @@ use std::process::{Command, Stdio};
 
 // External crates
 use anyhow::{Context, Result};
+use vm_common::vm_success;
 
 // Internal imports
 use crate::link_detector::LinkDetector;
@@ -120,7 +121,7 @@ impl PackageInstaller {
             anyhow::bail!("Cargo install failed for linked package: {}", package);
         }
 
-        println!("✅ Installed linked cargo package: {}", package);
+        vm_success!("Installed linked cargo package: {}", package);
         Ok(())
     }
 
@@ -137,7 +138,7 @@ impl PackageInstaller {
             anyhow::bail!("Cargo install failed for package: {}", package);
         }
 
-        println!("✅ Installed cargo package from registry: {}", package);
+        vm_success!("Installed cargo package from registry: {}", package);
         Ok(())
     }
 
@@ -161,7 +162,7 @@ impl PackageInstaller {
             anyhow::bail!("NPM link failed for package: {}", package);
         }
 
-        println!("✅ Linked npm package: {}", package);
+        vm_success!("Linked npm package: {}", package);
         Ok(())
     }
 
@@ -178,7 +179,7 @@ impl PackageInstaller {
             anyhow::bail!("NPM install failed for package: {}", package);
         }
 
-        println!("✅ Installed npm package from registry: {}", package);
+        vm_success!("Installed npm package from registry: {}", package);
         Ok(())
     }
 
@@ -215,7 +216,7 @@ impl PackageInstaller {
         // First try pipx (for CLI tools)
         match self.try_pipx_install(package) {
             Ok(true) => {
-                println!("✅ Installed {} as CLI tool with pipx", package);
+                vm_success!("Installed {} as CLI tool with pipx", package);
                 return Ok(());
             }
             Ok(false) => {
@@ -242,7 +243,7 @@ impl PackageInstaller {
             anyhow::bail!("Pip install failed for package: {}", package);
         }
 
-        println!("✅ Installed Python package with pip: {}", package);
+        vm_success!("Installed Python package with pip: {}", package);
         Ok(())
     }
 
@@ -325,7 +326,7 @@ impl PackageInstaller {
             }
         }
 
-        println!("✅ Wrapper scripts created for pipx package: {}", package);
+        vm_success!("Wrapper scripts created for pipx package: {}", package);
         println!("  -> Please restart your shell to use them");
         Ok(())
     }

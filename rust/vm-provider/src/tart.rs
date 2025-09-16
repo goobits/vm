@@ -2,6 +2,7 @@ use crate::utils::{is_tool_installed, stream_command};
 use crate::{error::ProviderError, progress::ProgressReporter, Provider};
 use anyhow::Result;
 use std::path::Path;
+use vm_common::{vm_error, vm_println};
 use vm_config::config::VmConfig;
 
 pub struct TartProvider {
@@ -160,13 +161,13 @@ impl Provider for TartProvider {
         // Check if log file exists before attempting to tail
         if !std::path::Path::new(&log_path).exists() {
             let error_msg = format!("Log file not found at: {}", log_path);
-            println!("{}", error_msg);
-            println!("The VM might not be running or logs may not be available yet.");
-            println!("Expected location: ~/.tart/vms/{}/app.log", self.vm_name());
+            vm_error!("{}", error_msg);
+            vm_println!("The VM might not be running or logs may not be available yet.");
+            vm_println!("Expected location: ~/.tart/vms/{}/app.log", self.vm_name());
             return Err(anyhow::anyhow!(error_msg));
         }
 
-        println!("Showing Tart VM logs from: {}", log_path);
+        vm_println!("Showing Tart VM logs from: {}", log_path);
         println!("Press Ctrl+C to stop...\n");
 
         // Use tail -f to follow the log file

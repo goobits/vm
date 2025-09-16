@@ -194,6 +194,46 @@
             update_cache: yes
             cache_valid_time: 3600
 
+      # Setup supervisor for Docker containers
+      - name: Setup supervisor for Docker containers
+        block:
+          - name: Create supervisor directories with proper permissions
+            file:
+              path: "{{ item }}"
+              state: directory
+              owner: vagrant
+              group: staff
+              mode: '0755'
+            loop:
+              - /var/log/supervisor
+              - /var/run/supervisor
+
+          - name: Configure supervisor for Docker with stdout logging
+            copy:
+              dest: /etc/supervisor/supervisord.conf
+              content: |
+                [unix_http_server]
+                file=/var/run/supervisor/supervisor.sock
+                chmod=0770
+                chown=vagrant:staff
+
+                [supervisord]
+                nodaemon=true
+                logfile=/dev/stdout
+                logfile_maxbytes=0
+                pidfile=/var/run/supervisor/supervisord.pid
+                user=vagrant
+
+                [rpcinterface:supervisor]
+                supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
+
+                [supervisorctl]
+                serverurl=unix:///var/run/supervisor/supervisor.sock
+
+                [include]
+                files = /etc/supervisor/conf.d/*.conf
+        when: is_docker_container
+
       # Locale configuration
       - name: Wait for apt lock to be released
         shell: while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 1; done

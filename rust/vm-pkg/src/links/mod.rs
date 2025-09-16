@@ -30,4 +30,3 @@ pub fn detect_packages(
         _ => unreachable!(), // Already validated
     }
 }
-

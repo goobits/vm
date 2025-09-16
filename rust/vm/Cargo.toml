@@ -19,3 +19,7 @@ vm-common = { path = "../vm-common" }
 vm-config = { path = "../vm-config" }
 vm-provider = { path = "../vm-provider" }
 vm-temp = { path = "../vm-temp" }
+
+[features]
+default = []
+structured-output = ["vm-common/structured-output"]
