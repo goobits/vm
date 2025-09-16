@@ -1,4 +1,4 @@
-version: 1.2.0
+version: 1.2.1
 provider: docker
 os: auto
 project:
@@ -9,7 +9,7 @@ project:
 vm:
   user: developer
   memory: 4096
-  cpus: 2
+  cpus: 4
   timezone: America/Los_Angeles
   port_binding: 127.0.0.1
   gui: false
