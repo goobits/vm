@@ -186,7 +186,7 @@ impl QueryOperations {
 
         // Handle simple field existence checks like: .source
         if expression.starts_with('.') {
-            let field_name = &expression[1..]; // Remove the leading dot
+            let field_name = expression.strip_prefix('.').unwrap(); // Remove the leading dot
 
             return match item {
                 Value::Mapping(map) => {
@@ -260,7 +260,7 @@ impl QueryOperations {
         } else {
             // For non-equality conditions, just check field existence
             if condition.starts_with('.') {
-                let field_name = &condition[1..];
+                let field_name = condition.strip_prefix('.').unwrap();
                 match item {
                     Value::Mapping(map) => {
                         map.get(&Value::String(field_name.to_string()))

@@ -95,8 +95,8 @@ pub fn execute(
     // Sanitize directory name for use as project name
     // Replace dots, spaces, and other invalid characters with hyphens
     // Then remove any consecutive hyphens and trim leading/trailing hyphens
-    let sanitized_name = (&*INVALID_CHARS_RE).replace_all(dir_name, "-");
-    let sanitized_name = (&*CONSECUTIVE_HYPHENS_RE).replace_all(&sanitized_name, "-");
+    let sanitized_name = INVALID_CHARS_RE.replace_all(dir_name, "-");
+    let sanitized_name = CONSECUTIVE_HYPHENS_RE.replace_all(&sanitized_name, "-");
     let sanitized_name = sanitized_name.trim_matches('-');
 
     // If the sanitized name is different, inform the user

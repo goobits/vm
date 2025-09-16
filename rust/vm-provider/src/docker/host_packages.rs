@@ -96,7 +96,7 @@ fn detect_package_directories(info: &mut HostPackageInfo) {
 
     // Python directories
     if let Ok(output) = Command::new("python3")
-        .args(&["-c", "import site; print(site.getusersitepackages())"])
+        .args(["-c", "import site; print(site.getusersitepackages())"])
         .output()
     {
         if output.status.success() {
@@ -117,7 +117,7 @@ fn detect_package_directories(info: &mut HostPackageInfo) {
 
     // NPM directories
     if let Ok(output) = Command::new("npm")
-        .args(&["root", "-g"])
+        .args(["root", "-g"])
         .output()
     {
         if output.status.success() {

@@ -8,12 +8,19 @@ use std::fmt;
 
 #[cfg(test)]
 mod test_constants {
-    // Common test port ranges to reduce magic numbers in tests
+    // These constants were defined for consistency but are unused in practice
+    // Tests use inline values for clarity
+    #[allow(dead_code)]
     pub const DEFAULT_START_PORT: u16 = 3000;
+    #[allow(dead_code)]
     pub const DEFAULT_END_PORT: u16 = 3009;
+    #[allow(dead_code)]
     pub const OVERLAP_START_PORT: u16 = 3005;
+    #[allow(dead_code)]
     pub const OVERLAP_END_PORT: u16 = 3015;
+    #[allow(dead_code)]
     pub const ADJACENT_START_PORT: u16 = 3010;
+    #[allow(dead_code)]
     pub const ADJACENT_END_PORT: u16 = 3019;
 }
 
