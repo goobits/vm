@@ -4,11 +4,11 @@ use std::path::{Path, PathBuf};
 
 // External crates
 use anyhow::Result;
-use tera::{Context as TeraContext};
+use tera::Context as TeraContext;
 
 // Internal imports
-use crate::resources;
 use super::UserConfig;
+use crate::resources;
 use vm_config::config::VmConfig;
 
 pub struct BuildOperations<'a> {

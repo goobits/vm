@@ -46,7 +46,8 @@ fn get_total_memory_gb() -> Result<u64> {
 #[cfg(target_os = "linux")]
 fn get_cpu_core_count() -> Result<u32> {
     let cpuinfo = std::fs::read_to_string("/proc/cpuinfo")?;
-    let core_count = cpuinfo.lines()
+    let core_count = cpuinfo
+        .lines()
         .filter(|line| line.starts_with("processor"))
         .count() as u32;
     Ok(core_count)

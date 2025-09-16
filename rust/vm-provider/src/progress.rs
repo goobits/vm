@@ -89,7 +89,9 @@ impl ProgressParser for DockerProgressParser {
                     pb.set_style(
                         ProgressStyle::default_spinner()
                             .template("  {prefix:12} {spinner} {wide_msg}")
-                            .expect("Failed to create spinner template - template string is malformed"),
+                            .expect(
+                                "Failed to create spinner template - template string is malformed",
+                            ),
                     );
                     pb.set_prefix(layer_id.clone());
                     pb.set_message("Pulling...");

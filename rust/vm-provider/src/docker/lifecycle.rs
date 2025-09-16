@@ -7,6 +7,7 @@ use anyhow::{Context, Result};
 use is_terminal::IsTerminal;
 
 // Internal imports
+use super::{build::BuildOperations, compose::ComposeOperations, ComposeCommand, UserConfig};
 use crate::{
     audio::MacOSAudioManager,
     error::ProviderError,
@@ -15,7 +16,6 @@ use crate::{
     utils::{stream_command, stream_docker_build},
     TempProvider, TempVmState,
 };
-use super::{build::BuildOperations, compose::ComposeOperations, UserConfig, ComposeCommand};
 use vm_common::{vm_error, vm_success, vm_warning};
 use vm_config::config::VmConfig;
 
@@ -157,8 +157,7 @@ impl<'a> LifecycleOperations<'a> {
         println!("\n🚀 Starting containers");
         let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        stream_command("docker", &args_refs)
-        .context("Docker up failed")?;
+        stream_command("docker", &args_refs).context("Docker up failed")?;
         println!("✅ Containers started");
 
         self.provision_container()?;
@@ -210,31 +209,31 @@ impl<'a> LifecycleOperations<'a> {
                 "1" => {
                     if is_running {
                         vm_success!("Using existing running container.");
-                        return Ok(());
+                        Ok(())
                     } else {
                         println!("\n▶️  Starting existing container...");
-                        return self.start_container();
+                        self.start_container()
                     }
                 }
                 "2" => {
                     println!("\n🔄 Recreating container...");
                     self.destroy_container()?;
                     // Continue with creation below
-                    return self.create_container();
+                    self.create_container()
                 }
                 _ => {
                     vm_error!("Operation cancelled.");
-                    return Ok(());
+                    Ok(())
                 }
             }
         } else {
             // Non-interactive mode: fail with informative error
-            return Err(anyhow::anyhow!(
+            Err(anyhow::anyhow!(
                 "Container '{}' already exists. In non-interactive mode, please use:\n\
                  - 'vm start' to start the existing container\n\
                  - 'vm destroy' followed by 'vm create' to recreate it",
                 container_name
-            ));
+            ))
         }
     }
 
@@ -256,7 +255,9 @@ impl<'a> LifecycleOperations<'a> {
                 println!("❌");
                 return Err(anyhow::anyhow!("Container failed to become ready"));
             }
-            std::thread::sleep(std::time::Duration::from_secs(CONTAINER_READINESS_SLEEP_SECONDS));
+            std::thread::sleep(std::time::Duration::from_secs(
+                CONTAINER_READINESS_SLEEP_SECONDS,
+            ));
             attempt += 1;
         }
         println!("✅");
@@ -286,7 +287,10 @@ impl<'a> LifecycleOperations<'a> {
                 &self.container_name(),
                 "bash",
                 "-c",
-                &format!("ansible-playbook -i localhost, -c local {}", ANSIBLE_PLAYBOOK_PATH),
+                &format!(
+                    "ansible-playbook -i localhost, -c local {}",
+                    ANSIBLE_PLAYBOOK_PATH
+                ),
             ],
         )
         .context("Ansible provisioning failed")?;
@@ -319,7 +323,7 @@ impl<'a> LifecycleOperations<'a> {
 
     pub fn stop_container(&self) -> Result<()> {
         let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
-        if let Err(_) = compose_ops.stop_with_compose() {
+        if compose_ops.stop_with_compose().is_err() {
             // Fallback to direct container stop
             stream_command("docker", &["stop", &self.container_name()])
                 .context("Failed to stop container")
@@ -330,7 +334,7 @@ impl<'a> LifecycleOperations<'a> {
 
     pub fn destroy_container(&self) -> Result<()> {
         let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
-        let result = if let Err(_) = compose_ops.destroy_with_compose() {
+        let result = if compose_ops.destroy_with_compose().is_err() {
             println!("docker-compose.yml not found. Attempting to remove container by name.");
             stream_command("docker", &["rm", "-f", &self.container_name()])
         } else {
@@ -427,7 +431,7 @@ impl<'a> LifecycleOperations<'a> {
 
     pub fn show_status(&self) -> Result<()> {
         let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
-        if let Err(_) = compose_ops.status_with_compose() {
+        if compose_ops.status_with_compose().is_err() {
             stream_command(
                 "docker",
                 &["ps", "-f", &format!("name={}", self.container_name())],
@@ -495,7 +499,10 @@ impl<'a> LifecycleOperations<'a> {
                 &self.container_name(),
                 "bash",
                 "-c",
-                &format!("ansible-playbook -i localhost, -c local {}", ANSIBLE_PLAYBOOK_PATH),
+                &format!(
+                    "ansible-playbook -i localhost, -c local {}",
+                    ANSIBLE_PLAYBOOK_PATH
+                ),
             ],
         );
         if let Err(e) = ansible_result {
@@ -578,7 +585,10 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
 
         progress.task(&phase, "Removing old container...");
         if let Err(e) = stream_command("docker", &["rm", "-f", &state.container_name]) {
-            eprintln!("Warning: Failed to remove old container {}: {}", &state.container_name, e);
+            eprintln!(
+                "Warning: Failed to remove old container {}: {}",
+                &state.container_name, e
+            );
         }
 
         progress.finish_phase(&phase, "Container configuration updated");
@@ -590,7 +600,9 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
             if stream_command("docker", &["exec", container_name, "echo", "ready"]).is_ok() {
                 return Ok(true);
             }
-            std::thread::sleep(std::time::Duration::from_secs(CONTAINER_READINESS_SLEEP_SECONDS));
+            std::thread::sleep(std::time::Duration::from_secs(
+                CONTAINER_READINESS_SLEEP_SECONDS,
+            ));
         }
         Ok(false)
     }

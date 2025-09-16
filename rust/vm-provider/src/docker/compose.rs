@@ -4,11 +4,11 @@ use std::path::{Path, PathBuf};
 
 // External crates
 use anyhow::{Context, Result};
-use tera::{Context as TeraContext};
+use tera::Context as TeraContext;
 
 // Internal imports
 use super::build::BuildOperations;
-use super::{UserConfig, ComposeCommand};
+use super::{ComposeCommand, UserConfig};
 use crate::{utils::stream_command, TempVmState};
 use vm_config::config::VmConfig;
 
@@ -27,6 +27,7 @@ impl<'a> ComposeOperations<'a> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn load_docker_compose_template() -> Result<String> {
         // Try to load from file first (for development/customization)
         let template_path =
@@ -101,7 +102,7 @@ impl<'a> ComposeOperations<'a> {
         let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         stream_command("docker", &args_refs)
-        .context("Failed to start container with docker-compose")
+            .context("Failed to start container with docker-compose")
     }
 
     pub fn stop_with_compose(&self) -> Result<()> {
@@ -110,7 +111,7 @@ impl<'a> ComposeOperations<'a> {
             let args = ComposeCommand::build_args(&compose_path, "stop", &[])?;
             let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
             stream_command("docker", &args_refs)
-            .context("Failed to stop container with docker-compose")
+                .context("Failed to stop container with docker-compose")
         } else {
             Err(anyhow::anyhow!("docker-compose.yml not found"))
         }

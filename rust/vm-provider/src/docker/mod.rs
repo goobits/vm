@@ -8,12 +8,6 @@ pub mod lifecycle;
 pub use build::BuildOperations;
 pub use lifecycle::LifecycleOperations;
 
-
-
-
-
-
-
 // Standard library
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -23,12 +17,7 @@ use anyhow::{Context, Result};
 use tera::Tera;
 
 // Internal imports
-use crate::{
-    error::ProviderError,
-    preflight,
-    utils::is_tool_installed,
-    Provider, TempProvider,
-};
+use crate::{error::ProviderError, preflight, utils::is_tool_installed, Provider, TempProvider};
 use vm_config::config::VmConfig;
 
 /// Container user and permission configuration
@@ -63,7 +52,11 @@ pub struct ComposeCommand;
 
 impl ComposeCommand {
     /// Build docker-compose command arguments with compose file path
-    pub fn build_args(compose_path: &Path, subcommand: &str, extra_args: &[&str]) -> Result<Vec<String>, anyhow::Error> {
+    pub fn build_args(
+        compose_path: &Path,
+        subcommand: &str,
+        extra_args: &[&str],
+    ) -> Result<Vec<String>, anyhow::Error> {
         let mut args = vec![
             "compose".to_string(),
             "-f".to_string(),

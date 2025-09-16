@@ -28,24 +28,30 @@ pub fn copy_embedded_resources(shared_dir: &Path) -> Result<()> {
         shared_dir.join("gemini-settings"),
     ];
 
-    directories[..].par_iter().try_for_each(|dir| {
-        fs::create_dir_all(dir)
-    })?;
+    directories[..]
+        .par_iter()
+        .try_for_each(fs::create_dir_all)?;
 
     // Write embedded resources in parallel
     let file_operations = [
         (directories[0].join("playbook.yml"), ANSIBLE_PLAYBOOK),
-        (directories[1].join("manage-service.yml"), MANAGE_SERVICE_TASK),
-        (directories[2].join("service_definitions.yml"), SERVICE_DEFINITIONS),
+        (
+            directories[1].join("manage-service.yml"),
+            MANAGE_SERVICE_TASK,
+        ),
+        (
+            directories[2].join("service_definitions.yml"),
+            SERVICE_DEFINITIONS,
+        ),
         (directories[3].join("zshrc.j2"), ZSHRC_TEMPLATE),
         (shared_dir.join("themes.json"), THEMES_JSON),
         (directories[5].join("settings.json"), CLAUDE_SETTINGS),
         (directories[6].join("settings.json"), GEMINI_SETTINGS),
     ];
 
-    file_operations[..].par_iter().try_for_each(|(path, content)| {
-        fs::write(path, content)
-    })?;
+    file_operations[..]
+        .par_iter()
+        .try_for_each(|(path, content)| fs::write(path, content))?;
 
     Ok(())
 }

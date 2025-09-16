@@ -361,7 +361,9 @@ impl StateManager {
 // This ensures early failure detection for misconfigured systems
 impl Default for StateManager {
     fn default() -> Self {
-        Self::new().expect("Failed to create default state manager - check that home directory is accessible")
+        Self::new().expect(
+            "Failed to create default state manager - check that home directory is accessible",
+        )
     }
 }
 
