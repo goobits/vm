@@ -1,9 +1,42 @@
+//! Host operating system detection utilities.
+//!
+//! This module provides functionality for detecting the host operating system
+//! and Linux distribution. This information is used to:
+//! - Adapt VM configurations for different host platforms
+//! - Provide platform-specific recommendations
+//! - Enable host-aware virtualization optimizations
+
 use anyhow::Result;
 use std::fs;
 
 /// Detects the host operating system and distribution.
 ///
-/// Returns a string like "macos", "ubuntu", "fedora", "windows", etc.
+/// Provides a unified interface for OS detection across different platforms.
+/// For Linux systems, attempts to detect the specific distribution from
+/// `/etc/os-release`. For other platforms, returns the general OS type.
+///
+/// ## Return Values
+/// - **macOS**: "macos"
+/// - **Windows**: "windows"
+/// - **Linux distributions**: "ubuntu", "debian", "fedora", "arch", etc.
+/// - **Generic Linux**: "linux" (if distribution cannot be determined)
+/// - **Unknown**: "unknown" (for unrecognized platforms)
+///
+/// # Returns
+/// A string identifier for the detected operating system
+///
+/// # Examples
+/// ```rust
+/// use vm_detector::detect_host_os;
+///
+/// let os = detect_host_os();
+/// match os.as_str() {
+///     "macos" => println!("Running on macOS"),
+///     "ubuntu" => println!("Running on Ubuntu Linux"),
+///     "windows" => println!("Running on Windows"),
+///     _ => println!("Running on: {}", os),
+/// }
+/// ```
 pub fn detect_host_os() -> String {
     match std::env::consts::OS {
         "macos" => "macos".to_string(),

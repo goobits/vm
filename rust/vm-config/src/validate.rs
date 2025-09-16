@@ -3,17 +3,82 @@ use anyhow::Result;
 use regex::Regex;
 use std::path::PathBuf;
 
-/// Configuration validator
+/// VM configuration validator.
+///
+/// Provides comprehensive validation of VM configurations to ensure they are
+/// complete, valid, and suitable for VM provisioning. The validator checks
+/// required fields, validates constraints, and ensures configuration consistency.
+///
+/// ## Validation Categories
+/// - **Required Fields**: Essential fields that must be present
+/// - **Provider Validation**: Provider-specific configuration checks
+/// - **Project Settings**: Project configuration validation
+/// - **Port Configuration**: Port allocation and conflict checking
+/// - **Service Configuration**: Service-specific validation rules
+/// - **Version Constraints**: Version format and compatibility checking
+///
+/// # Examples
+/// ```rust
+/// use vm_config::validate::ConfigValidator;
+/// use vm_config::config::VmConfig;
+/// use std::path::PathBuf;
+///
+/// let config = VmConfig::default();
+/// let validator = ConfigValidator::new(config, PathBuf::from("schema.json"));
+///
+/// match validator.validate() {
+///     Ok(()) => println!("Configuration is valid"),
+///     Err(e) => println!("Validation error: {}", e),
+/// }
+/// ```
 pub struct ConfigValidator {
     config: VmConfig,
 }
 
 impl ConfigValidator {
+    /// Create a new configuration validator.
+    ///
+    /// # Arguments
+    /// * `config` - The VM configuration to validate
+    /// * `_schema_path` - Path to validation schema (currently unused, reserved for future use)
+    ///
+    /// # Returns
+    /// A new `ConfigValidator` instance ready to perform validation
     pub fn new(config: VmConfig, _schema_path: PathBuf) -> Self {
         Self { config }
     }
 
-    /// Validate the entire configuration
+    /// Validate the entire configuration.
+    ///
+    /// Performs comprehensive validation of all configuration aspects including
+    /// required fields, provider settings, project configuration, ports, services,
+    /// and version specifications.
+    ///
+    /// # Returns
+    /// `Ok(())` if all validation checks pass
+    ///
+    /// # Errors
+    /// Returns an error with detailed information about the first validation
+    /// failure encountered. Common validation errors include:
+    /// - Missing required fields
+    /// - Invalid provider configuration
+    /// - Port conflicts or invalid port numbers
+    /// - Invalid service configurations
+    /// - Malformed version specifications
+    ///
+    /// # Examples
+    /// ```rust
+    /// use vm_config::validate::ConfigValidator;
+    /// use vm_config::config::VmConfig;
+    /// use std::path::PathBuf;
+    ///
+    /// let config = VmConfig::default();
+    /// let validator = ConfigValidator::new(config, PathBuf::from("schema.json"));
+    ///
+    /// if let Err(e) = validator.validate() {
+    ///     eprintln!("Validation failed: {}", e);
+    /// }
+    /// ```
     pub fn validate(&self) -> Result<()> {
         // Run manual validation
         self.validate_manual()?;

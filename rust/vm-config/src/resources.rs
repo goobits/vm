@@ -1,6 +1,26 @@
 use serde::{Deserialize, Serialize};
 
-/// VM resource suggestion based on project type
+/// VM resource allocation suggestion based on project type.
+///
+/// Represents recommended hardware resource allocations for different types of
+/// development projects. These suggestions are based on typical resource usage
+/// patterns for various technology stacks and development workflows.
+///
+/// # Fields
+/// - `memory`: RAM allocation in megabytes
+/// - `cpus`: Number of CPU cores to allocate
+/// - `disk_size`: Optional disk size in gigabytes (if different from default)
+///
+/// # Examples
+/// ```rust
+/// use vm_config::resources::ResourceSuggestion;
+///
+/// let suggestion = ResourceSuggestion {
+///     memory: 2048,  // 2GB RAM
+///     cpus: 2,       // 2 CPU cores
+///     disk_size: Some(20), // 20GB disk
+/// };
+/// ```
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ResourceSuggestion {
     pub memory: u32,            // Memory in MB
@@ -8,11 +28,56 @@ pub struct ResourceSuggestion {
     pub disk_size: Option<u32>, // Disk size in GB (when different from default)
 }
 
-/// Resource advisor for VM configurations
+/// Resource advisor for VM configurations.
+///
+/// Provides intelligent resource allocation recommendations based on project types
+/// and development requirements. The advisor considers typical resource usage
+/// patterns for different technology stacks to suggest optimal VM configurations.
+///
+/// ## Recommendation Logic
+/// Resource suggestions are based on:
+/// - **Language/Framework Requirements**: Memory and CPU needs for different stacks
+/// - **Development Workflows**: Build processes, hot reloading, testing
+/// - **Typical Dependencies**: Database requirements, asset compilation
+/// - **Performance Considerations**: Avoiding resource constraints during development
+///
+/// ## Supported Project Types
+/// - Frontend frameworks (React, Vue, Angular)
+/// - Full-stack frameworks (Next.js)
+/// - Backend frameworks (Django, Flask, Rails)
+/// - Language runtimes (Node.js, Python, Rust, Go)
+/// - Infrastructure tools (Docker, Kubernetes)
 pub struct ResourceAdvisor;
 
 impl ResourceAdvisor {
-    /// Suggest VM resources based on project type
+    /// Suggest VM resources based on project type.
+    ///
+    /// Analyzes the project type and returns optimized resource allocation
+    /// recommendations. The suggestions balance performance with resource
+    /// efficiency, ensuring smooth development while avoiding over-allocation.
+    ///
+    /// ## Resource Tiers
+    /// - **Light** (1-2GB, 1-2 CPUs): Simple projects, basic development
+    /// - **Moderate** (2-3GB, 2 CPUs): Standard web development, most frameworks
+    /// - **Heavy** (4-8GB, 2-4 CPUs): Complex builds, multiple services
+    /// - **Intensive** (8GB+, 4+ CPUs): Large projects, extensive tooling
+    ///
+    /// # Arguments
+    /// * `project_type` - Project type identifier (e.g., "react", "django", "rust")
+    ///
+    /// # Returns
+    /// A `ResourceSuggestion` with recommended memory, CPU, and optional disk allocations
+    ///
+    /// # Examples
+    /// ```rust
+    /// use vm_config::resources::ResourceAdvisor;
+    ///
+    /// let suggestion = ResourceAdvisor::suggest_vm_resources("react");
+    /// println!("Recommended: {}MB RAM, {} CPUs", suggestion.memory, suggestion.cpus);
+    ///
+    /// let heavy_suggestion = ResourceAdvisor::suggest_vm_resources("kubernetes");
+    /// println!("For K8s: {}MB RAM, {} CPUs", heavy_suggestion.memory, heavy_suggestion.cpus);
+    /// ```
     pub fn suggest_vm_resources(project_type: &str) -> ResourceSuggestion {
         match project_type {
             // Frontend frameworks - moderate resources

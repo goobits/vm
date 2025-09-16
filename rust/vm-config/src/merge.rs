@@ -2,17 +2,83 @@ use crate::config::VmConfig;
 use anyhow::Result;
 use serde_json::Value;
 
-/// Deep merge strategy for VM configurations
+/// Deep merge strategy for VM configurations.
+///
+/// Provides sophisticated configuration merging capabilities that intelligently
+/// combine multiple configuration sources while preserving the intended behavior
+/// for different data types.
+///
+/// ## Merge Strategy
+/// - **Objects**: Deep merge, with overlay values taking precedence
+/// - **Arrays**: Complete replacement (overlay replaces base entirely)
+/// - **Primitives**: Simple replacement
+///
+/// This strategy is designed for configuration use cases where:
+/// - Object merging allows for additive configuration
+/// - Array replacement prevents unexpected behavior from partial merges
+/// - Primitive replacement provides predictable overrides
+///
+/// # Examples
+/// ```rust
+/// use vm_config::merge::ConfigMerger;
+/// use vm_config::config::VmConfig;
+///
+/// let base = VmConfig::default();
+/// let overlay = VmConfig::default();
+///
+/// let merger = ConfigMerger::new(base);
+/// let result = merger.merge(overlay)?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub struct ConfigMerger {
     base: VmConfig,
 }
 
 impl ConfigMerger {
+    /// Create a new configuration merger with a base configuration.
+    ///
+    /// The base configuration serves as the foundation for all merge operations.
+    /// Subsequent overlays will be merged on top of this base.
+    ///
+    /// # Arguments
+    /// * `base` - The base configuration to start with
+    ///
+    /// # Returns
+    /// A new `ConfigMerger` instance ready for merge operations
     pub fn new(base: VmConfig) -> Self {
         Self { base }
     }
 
-    /// Merge another config into the base, with overlay taking precedence
+    /// Merge another configuration into the base, with overlay taking precedence.
+    ///
+    /// Performs a deep merge operation where the overlay configuration values
+    /// override corresponding values in the base configuration. The merge behavior
+    /// depends on the data type:
+    ///
+    /// - **Objects**: Recursively merged (additive)
+    /// - **Arrays**: Completely replaced (not merged)
+    /// - **Primitives**: Simply replaced
+    ///
+    /// # Arguments
+    /// * `overlay` - The configuration to merge on top of the base
+    ///
+    /// # Returns
+    /// A new `VmConfig` with the merged result
+    ///
+    /// # Errors
+    /// Returns an error if JSON serialization/deserialization fails during merging
+    ///
+    /// # Examples
+    /// ```rust
+    /// use vm_config::merge::ConfigMerger;
+    /// use vm_config::config::VmConfig;
+    ///
+    /// let base = VmConfig::default();
+    /// let overlay = VmConfig::default();
+    ///
+    /// let result = ConfigMerger::new(base).merge(overlay)?;
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn merge(self, overlay: VmConfig) -> Result<VmConfig> {
         // Convert to JSON values for deep merging
         let mut base_value = serde_json::to_value(&self.base)?;
@@ -24,7 +90,32 @@ impl ConfigMerger {
         Ok(serde_json::from_value(base_value)?)
     }
 
-    /// Merge multiple configs in order
+    /// Merge multiple configurations in order.
+    ///
+    /// Applies multiple overlay configurations sequentially, where each overlay
+    /// is merged on top of the previous result. This is useful for building
+    /// configuration hierarchies like: defaults → global → preset → user.
+    ///
+    /// # Arguments
+    /// * `overlays` - Vector of configurations to merge in order
+    ///
+    /// # Returns
+    /// A new `VmConfig` with all overlays applied sequentially
+    ///
+    /// # Errors
+    /// Returns an error if any individual merge operation fails
+    ///
+    /// # Examples
+    /// ```rust
+    /// use vm_config::merge::ConfigMerger;
+    /// use vm_config::config::VmConfig;
+    ///
+    /// let base = VmConfig::default();
+    /// let overlays = vec![VmConfig::default(), VmConfig::default()];
+    ///
+    /// let result = ConfigMerger::new(base).merge_all(overlays)?;
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn merge_all(self, overlays: Vec<VmConfig>) -> Result<VmConfig> {
         let mut result = self.base;
         for overlay in overlays {
@@ -61,11 +152,42 @@ fn deep_merge(base: &mut Value, overlay: Value) {
     }
 }
 
-/// Merge configs following the VM tool precedence rules:
-/// 1. Default config (base)
-/// 2. Global config (user's global settings)
-/// 3. Preset config (if detected)
-/// 4. User config (highest priority)
+/// Merge configurations following VM tool precedence rules.
+///
+/// This is the main configuration merging function that implements the VM tool's
+/// configuration hierarchy. Configurations are merged in order of precedence:
+///
+/// 1. **Default config** - Base VM tool defaults
+/// 2. **Global config** - User's global settings (~/.config/vm/global.yaml)
+/// 3. **Preset config** - Auto-detected or specified preset
+/// 4. **User config** - Project-specific configuration (highest priority)
+///
+/// Each layer can be `None`, in which case it's skipped. The result is a
+/// fully merged configuration ready for use.
+///
+/// # Arguments
+/// * `default` - Base default configuration (typically from VM tool)
+/// * `global` - User's global configuration file
+/// * `preset` - Auto-detected or manually specified preset
+/// * `user` - Project-specific user configuration
+///
+/// # Returns
+/// A fully merged `VmConfig` with all applicable configurations applied
+///
+/// # Errors
+/// Returns an error if any merge operation fails
+///
+/// # Examples
+/// ```rust
+/// use vm_config::merge::merge_configs;
+/// use vm_config::config::VmConfig;
+///
+/// let default_config = Some(VmConfig::default());
+/// let user_config = Some(VmConfig::default());
+///
+/// let result = merge_configs(default_config, None, None, user_config)?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub fn merge_configs(
     default: Option<VmConfig>,
     global: Option<VmConfig>,

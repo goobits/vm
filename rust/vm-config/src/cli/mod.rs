@@ -17,6 +17,11 @@ use command_groups::{FileOpsGroup, QueryOpsGroup, ConfigOpsGroup, ProjectOpsGrou
 
 // Removed unused function fix_yaml_indentation
 
+/// Command-line arguments for the VM configuration tool.
+///
+/// This structure defines the top-level CLI interface for vm-config,
+/// which provides utilities for processing, validating, and manipulating
+/// VM configuration files.
 #[derive(Parser)]
 #[command(name = "vm-config")]
 #[command(about = "Configuration processor for VM Tool")]
@@ -26,6 +31,11 @@ pub struct Args {
     pub command: Command,
 }
 
+/// Available CLI commands for VM configuration operations.
+///
+/// This enum defines all supported operations for working with VM configurations,
+/// including file manipulation, validation, merging, and querying capabilities.
+/// Each variant contains the specific arguments needed for that operation.
 #[derive(Subcommand)]
 pub enum Command {
     /// Merge multiple config files
@@ -369,6 +379,15 @@ pub enum Command {
     },
 }
 
+/// Output format options for configuration data.
+///
+/// Determines how configuration data should be formatted when output to stdout.
+/// Different commands may support different subsets of these formats.
+///
+/// # Formats
+/// - `Yaml` - Human-readable YAML format (default for most operations)
+/// - `Json` - Compact JSON format
+/// - `JsonPretty` - Pretty-printed JSON with indentation
 #[derive(Clone, Debug)]
 pub enum OutputFormat {
     Yaml,
@@ -376,6 +395,17 @@ pub enum OutputFormat {
     JsonPretty,
 }
 
+/// Output format options for data transformation operations.
+///
+/// Specialized format options for the transform command, which can output
+/// data in various formats suitable for shell scripting and data processing.
+///
+/// # Formats
+/// - `Lines` - One item per line (default)
+/// - `Space` - Space-separated values
+/// - `Comma` - Comma-separated values
+/// - `Json` - JSON array format
+/// - `Yaml` - YAML array format
 #[derive(Clone, Debug)]
 pub enum TransformFormat {
     Lines,
@@ -413,7 +443,48 @@ impl std::str::FromStr for OutputFormat {
     }
 }
 
-/// Initialize a new vm.yaml configuration file
+/// Initialize a new vm.yaml configuration file.
+///
+/// Creates a new VM configuration file with sensible defaults and optional
+/// service configurations. This is typically used to bootstrap new projects
+/// with VM tool support.
+///
+/// ## Generated Configuration
+/// - Basic project structure with detected or default settings
+/// - Optional service configurations (databases, caches, etc.)
+/// - Sequential port allocation for services
+/// - Provider-appropriate defaults
+///
+/// # Arguments
+/// * `file_path` - Target file or directory (defaults to current directory/vm.yaml)
+/// * `services` - Comma-separated list of services to enable (e.g., "postgresql,redis")
+/// * `ports` - Starting port number for service allocation
+///
+/// # Returns
+/// `Ok(())` if the configuration file was created successfully
+///
+/// # Errors
+/// Returns an error if:
+/// - File cannot be written
+/// - Directory does not exist
+/// - Invalid service names provided
+///
+/// # Examples
+/// ```rust
+/// use vm_config::init_config_file;
+/// use std::path::PathBuf;
+///
+/// // Create basic configuration
+/// init_config_file(None, None, None)?;
+///
+/// // Create with services
+/// init_config_file(
+///     Some(PathBuf::from("my-project/vm.yaml")),
+///     Some("postgresql,redis".to_string()),
+///     Some(5432)
+/// )?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub fn init_config_file(
     file_path: Option<PathBuf>,
     services: Option<String>,
@@ -422,6 +493,42 @@ pub fn init_config_file(
     commands::init::execute(file_path, services, ports)
 }
 
+/// Execute a CLI command with the provided arguments.
+///
+/// This is the main command dispatcher that routes CLI arguments to their
+/// corresponding implementation functions. It handles all supported VM
+/// configuration operations including merging, validation, querying, and
+/// file manipulation.
+///
+/// # Arguments
+/// * `args` - Parsed command-line arguments containing the command and its parameters
+///
+/// # Returns
+/// `Ok(())` if the command executed successfully
+///
+/// # Errors
+/// Returns an error if:
+/// - Command execution fails
+/// - Invalid arguments provided
+/// - File operations fail
+/// - Configuration parsing errors
+///
+/// # Examples
+/// ```rust
+/// use vm_config::cli::{Args, Command, OutputFormat};
+/// use std::path::PathBuf;
+///
+/// let args = Args {
+///     command: Command::Validate {
+///         file: Some(PathBuf::from("vm.yaml")),
+///         no_preset: false,
+///         verbose: true,
+///     }
+/// };
+///
+/// vm_config::cli::execute(args)?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub fn execute(args: Args) -> Result<()> {
     use Command::*;
 

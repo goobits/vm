@@ -12,11 +12,81 @@ use crate::merge::ConfigMerger;
 use crate::paths;
 use crate::preset::PresetDetector;
 
-/// Configuration operations for vm config command
+/// Configuration operations for VM configuration management.
+///
+/// Provides high-level operations for reading, writing, and manipulating
+/// VM configuration files. Supports both local project configurations
+/// and global user settings.
+///
+/// ## Supported Operations
+/// - **Set**: Modify configuration values using dot notation
+/// - **Get**: Retrieve configuration values or entire configurations
+/// - **Unset**: Remove configuration fields
+/// - **Clear**: Reset entire configuration files
+///
+/// ## Configuration Scopes
+/// - **Local**: Project-specific configuration (vm.yaml in project directory)
+/// - **Global**: User-wide configuration (~/.config/vm/global.yaml)
+///
+/// # Examples
+/// ```rust
+/// use vm_config::config_ops::ConfigOps;
+///
+/// // Set a local configuration value
+/// ConfigOps::set("vm.memory", "4096", false)?;
+///
+/// // Get a global configuration value
+/// ConfigOps::get(Some("project.name"), true)?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub struct ConfigOps;
 
 impl ConfigOps {
-    /// Set a configuration value
+    /// Set a configuration value using dot notation.
+    ///
+    /// Modifies a configuration field in either the local project configuration
+    /// or the global user configuration. The field path uses dot notation to
+    /// access nested configuration values (e.g., "vm.memory", "services.postgresql.port").
+    ///
+    /// ## Value Parsing
+    /// Values are parsed in the following order:
+    /// 1. **YAML**: Attempts to parse as YAML (supports complex types)
+    /// 2. **String**: Falls back to string value if YAML parsing fails
+    ///
+    /// This allows setting primitive values, arrays, and objects:
+    /// - Numbers: "4096", "2.5"
+    /// - Booleans: "true", "false"
+    /// - Arrays: "[item1, item2]"
+    /// - Objects: "{key: value}"
+    ///
+    /// # Arguments
+    /// * `field` - Dot-notation path to the field (e.g., "vm.memory")
+    /// * `value` - String representation of the value to set
+    /// * `global` - If true, modifies global config; if false, modifies local config
+    ///
+    /// # Returns
+    /// `Ok(())` if the value was set successfully
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - Configuration file cannot be read or written
+    /// - Field path is malformed
+    /// - File system permissions prevent modification
+    ///
+    /// # Examples
+    /// ```rust
+    /// use vm_config::config_ops::ConfigOps;
+    ///
+    /// // Set VM memory
+    /// ConfigOps::set("vm.memory", "4096", false)?;
+    ///
+    /// // Enable a service globally
+    /// ConfigOps::set("services.postgresql.enabled", "true", true)?;
+    ///
+    /// // Set an array value
+    /// ConfigOps::set("npm_packages", "[eslint, prettier]", false)?;
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn set(field: &str, value: &str, global: bool) -> Result<()> {
         let config_path = if global {
             get_or_create_global_config_path()?
@@ -44,7 +114,44 @@ impl ConfigOps {
         Ok(())
     }
 
-    /// Get a configuration value
+    /// Get a configuration value or display entire configuration.
+    ///
+    /// Retrieves and displays configuration values from either local or global
+    /// configuration files. If no field is specified, displays the entire
+    /// configuration in YAML format.
+    ///
+    /// ## Output Format
+    /// - **Specific field**: Displays just the field value
+    /// - **Entire config**: Pretty-printed YAML of the full configuration
+    /// - **Missing field**: Shows an informative message
+    ///
+    /// # Arguments
+    /// * `field` - Optional dot-notation path to specific field
+    /// * `global` - If true, reads from global config; if false, reads from local config
+    ///
+    /// # Returns
+    /// `Ok(())` after displaying the requested information
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - Configuration file cannot be read
+    /// - Configuration file contains invalid YAML
+    /// - File system permissions prevent access
+    ///
+    /// # Examples
+    /// ```rust
+    /// use vm_config::config_ops::ConfigOps;
+    ///
+    /// // Get specific field
+    /// ConfigOps::get(Some("vm.memory"), false)?;
+    ///
+    /// // Display entire local configuration
+    /// ConfigOps::get(None, false)?;
+    ///
+    /// // Get global setting
+    /// ConfigOps::get(Some("project.name"), true)?;
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn get(field: Option<&str>, global: bool) -> Result<()> {
         let config_path = if global {
             get_global_config_path()
