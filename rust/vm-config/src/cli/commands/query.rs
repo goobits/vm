@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use std::path::PathBuf;
-use vm_common::{vm_error, vm_success};
+use vm_common::vm_error;
 
 use super::super::{utils::query_field, OutputFormat};
 use crate::config::VmConfig;
@@ -54,19 +54,19 @@ pub fn execute_filter(
     expression: String,
     output_format: OutputFormat,
 ) -> Result<()> {
-    use crate::yaml_ops::YamlOperations;
+    use crate::yaml::YamlOperations;
     YamlOperations::filter(&file, &expression, &output_format)
 }
 
 pub fn execute_array_length(file: PathBuf, path: String) -> Result<()> {
-    use crate::yaml_ops::YamlOperations;
+    use crate::yaml::YamlOperations;
     let length = YamlOperations::array_length(&file, &path)?;
     println!("{}", length);
     Ok(())
 }
 
 pub fn execute_has_field(file: PathBuf, field: String, subfield: String) -> Result<()> {
-    use crate::yaml_ops::YamlOperations;
+    use crate::yaml::YamlOperations;
     match YamlOperations::has_field(&file, &field, &subfield) {
         Ok(true) => {
             println!("true");
@@ -90,12 +90,12 @@ pub fn execute_select_where(
     value: String,
     format: OutputFormat,
 ) -> Result<()> {
-    use crate::yaml_ops::YamlOperations;
+    use crate::yaml::YamlOperations;
     YamlOperations::select_where(&file, &path, &field, &value, &format)
 }
 
 pub fn execute_count(file: PathBuf, path: String) -> Result<()> {
-    use crate::yaml_ops::YamlOperations;
+    use crate::yaml::YamlOperations;
     let count = YamlOperations::count_items(&file, &path)?;
     println!("{}", count);
     Ok(())

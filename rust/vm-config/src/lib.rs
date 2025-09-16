@@ -18,7 +18,7 @@ mod paths; // Internal only
 mod preset; // Internal only
 pub mod resources; // VM resource suggestions
 pub mod validate;
-mod yaml_ops; // Internal only
+pub mod yaml; // YAML operations module
 
 // Re-export commonly needed path utilities
 pub use paths::{get_current_gid, get_current_uid, get_tool_dir, resolve_tool_path};

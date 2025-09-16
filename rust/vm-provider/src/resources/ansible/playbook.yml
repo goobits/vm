@@ -215,14 +215,15 @@
                 [unix_http_server]
                 file=/var/run/supervisor/supervisor.sock
                 chmod=0770
-                chown=vagrant:staff
+                chown={{ project_user }}:staff
 
                 [supervisord]
                 nodaemon=true
-                logfile=/dev/stdout
-                logfile_maxbytes=0
+                logfile=/var/log/supervisor/supervisord.log
+                logfile_maxbytes=50MB
+                logfile_backups=10
                 pidfile=/var/run/supervisor/supervisord.pid
-                user=vagrant
+                user=root
 
                 [rpcinterface:supervisor]
                 supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface

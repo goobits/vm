@@ -286,11 +286,14 @@ fn load_config_lenient(file: Option<PathBuf>, _no_preset: bool) -> Result<VmConf
 }
 
 fn main() -> Result<()> {
-    // Initialize structured logging system first
-    if vm_common::logging::init().is_err() {
-        eprintln!(
-            "Warning: Failed to initialize structured logging, falling back to basic logging"
-        );
+    // Initialize structured logging system first, but only if not in test mode
+    // Tests expect clean stdout output, so we disable logging for test runs
+    if std::env::var("VM_TEST_MODE").is_err() {
+        if vm_common::logging::init().is_err() {
+            eprintln!(
+                "Warning: Failed to initialize structured logging, falling back to basic logging"
+            );
+        }
     }
 
     let args = Args::parse();

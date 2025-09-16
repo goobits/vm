@@ -108,7 +108,12 @@ impl TagFilter {
                 match &pattern.value {
                     Some(expected) => {
                         if let Some(regex) = &pattern.regex {
-                            regex.is_match(&context_value.to_string())
+                            // Use as_str() to get the string value without quotes
+                            if let Some(str_value) = context_value.as_str() {
+                                regex.is_match(str_value)
+                            } else {
+                                false
+                            }
                         } else {
                             context_value.as_str() == Some(expected)
                         }
@@ -535,7 +540,13 @@ mod tests {
 
     #[test]
     fn test_json_formatting() {
-        let logger = create_test_logger();
+        let logger = StructuredLogger::new(LogConfig {
+            level: LevelFilter::Debug,
+            output: LogOutput::Console,
+            format: LogFormat::Json, // Use JSON format for this test
+            tags: TagFilter::show_all(),
+            file_path: None,
+        });
         let record = log::Record::builder()
             .args(format_args!("Test message"))
             .level(Level::Info)

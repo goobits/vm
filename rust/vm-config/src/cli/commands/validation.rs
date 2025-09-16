@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use vm_common::{vm_error, vm_println, vm_success};
 
 use super::super::utils::find_vm_config_file;
-use crate::{config::VmConfig, paths, preset::PresetDetector};
+use crate::{config::VmConfig, paths};
 
 pub fn execute_validate(file: Option<PathBuf>, no_preset: bool, verbose: bool) -> Result<()> {
     match load_and_merge_config(file, no_preset) {
@@ -22,7 +22,7 @@ pub fn execute_validate(file: Option<PathBuf>, no_preset: bool, verbose: bool) -
 }
 
 pub fn execute_check_file(file: PathBuf) -> Result<()> {
-    use crate::yaml_ops::YamlOperations;
+    use crate::yaml::YamlOperations;
     match YamlOperations::validate_file(&file) {
         Ok(_) => {
             vm_success!("File is valid YAML");

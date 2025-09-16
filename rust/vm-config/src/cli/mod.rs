@@ -1,9 +1,9 @@
-use crate::{config::VmConfig, merge, paths, preset::PresetDetector};
-use anyhow::{Context, Result};
+// Removed unused imports
+use anyhow::Result;
 use clap::{Parser, Subcommand};
-use serde_yaml::Value;
-use std::path::{Path, PathBuf};
-use vm_common::{vm_error, vm_println, vm_success, vm_warning};
+// Removed unused import
+use std::path::PathBuf;
+// Removed unused imports
 
 mod commands;
 mod utils;
@@ -11,50 +11,7 @@ mod utils;
 pub use utils::*;
 pub use commands::validation::{load_and_merge_config, load_and_merge_config_with_preset};
 
-/// Fix YAML indentation issues by ensuring consistent 2-space indentation for arrays
-fn fix_yaml_indentation(yaml: &str) -> String {
-    let mut result = String::new();
-    let mut in_apt_packages = false;
-    let mut in_npm_packages = false;
-
-    for line in yaml.lines() {
-        let trimmed = line.trim();
-
-        // Check if we're entering array sections
-        if trimmed == "apt_packages:" {
-            in_apt_packages = true;
-            result.push_str(line);
-            result.push('\n');
-            continue;
-        } else if trimmed == "npm_packages:" {
-            in_npm_packages = true;
-            result.push_str(line);
-            result.push('\n');
-            continue;
-        } else if trimmed.ends_with(':') && !trimmed.starts_with('-') {
-            // We've hit a new section, reset flags
-            in_apt_packages = false;
-            in_npm_packages = false;
-            result.push_str(line);
-            result.push('\n');
-            continue;
-        }
-
-        // Fix indentation for array items in specific sections
-        if (in_apt_packages || in_npm_packages) && trimmed.starts_with('-') {
-            // Ensure array items are indented with 2 spaces
-            result.push_str("  ");
-            result.push_str(trimmed);
-        } else {
-            // For all other lines, keep as-is
-            result.push_str(line);
-        }
-
-        result.push('\n');
-    }
-
-    result
-}
+// Removed unused function fix_yaml_indentation
 
 #[derive(Parser)]
 #[command(name = "vm-config")]

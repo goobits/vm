@@ -20,6 +20,6 @@ pub fn execute_merge(base: PathBuf, overlay: Vec<PathBuf>, format: OutputFormat)
 }
 
 pub fn execute_merge_eval_all(files: Vec<PathBuf>, format: OutputFormat) -> Result<()> {
-    use crate::yaml_ops::YamlOperations;
+    use crate::yaml::YamlOperations;
     YamlOperations::merge_eval_all(&files, &format)
 }

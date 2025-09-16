@@ -37,6 +37,7 @@ impl CliTestFixture {
             .current_dir(&self.test_dir)
             .env("HOME", self.test_dir.parent().unwrap()) // Mock HOME for global config
             .env("VM_TOOL_DIR", &self.test_dir) // Point preset system to test directory
+            .env("VM_TEST_MODE", "1") // Disable logging in test mode
             .output()?;
         Ok(output)
     }

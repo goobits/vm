@@ -1,9 +1,9 @@
 use crate::config::VmConfig;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde_yaml::Value;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use super::{OutputFormat, TransformFormat};
+use super::OutputFormat;
 
 pub fn output_config(config: &VmConfig, format: &OutputFormat) -> Result<()> {
     match format {
