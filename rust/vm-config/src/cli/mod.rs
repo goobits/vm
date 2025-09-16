@@ -1,9 +1,6 @@
-// Removed unused imports
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-// Removed unused import
 use std::path::PathBuf;
-// Removed unused imports
 
 mod command_groups;
 mod commands;
@@ -15,7 +12,6 @@ pub use utils::*;
 // Import command groups for organized dispatch
 use command_groups::{ConfigOpsGroup, FileOpsGroup, ProjectOpsGroup, QueryOpsGroup};
 
-// Removed unused function fix_yaml_indentation
 
 /// Command-line arguments for the VM configuration tool.
 ///
@@ -470,12 +466,12 @@ impl std::str::FromStr for OutputFormat {
 /// - Invalid service names provided
 ///
 /// # Examples
-/// ```rust
+/// ```rust,no_run
 /// use vm_config::init_config_file;
 /// use std::path::PathBuf;
 ///
 /// // Create basic configuration
-/// init_config_file(None, None, None)?;
+/// init_config_file(Some(PathBuf::from("test-vm.yaml")), None, None)?;
 ///
 /// // Create with services
 /// init_config_file(

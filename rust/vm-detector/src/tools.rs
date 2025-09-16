@@ -191,37 +191,11 @@ pub fn detect_databases() -> Vec<String> {
     ToolDetector::detect_databases()
 }
 
-/// Check if a directory contains a Python project (legacy function).
-///
-/// **Note**: This function is deprecated in favor of the main `is_python_project`
-/// function in the root module, which provides more comprehensive detection.
-///
-/// This function only checks for `setup.py` and `pyproject.toml` files.
-/// The main function also checks for `requirements.txt` and `Pipfile`.
-///
-/// # Arguments
-/// * `path` - The directory path to check
-///
-/// # Returns
-/// `true` if Python project files are found, `false` otherwise
-///
-/// # Examples
-/// ```rust
-/// use std::path::Path;
-/// use vm_detector::tools::is_python_project;
-///
-/// let project_dir = Path::new("/path/to/python/project");
-/// if is_python_project(project_dir) {
-///     println!("Found Python project files");
-/// }
-/// ```
-pub fn is_python_project(path: &std::path::Path) -> bool {
-    path.join("setup.py").exists() || path.join("pyproject.toml").exists()
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::is_python_project;
 
     #[test]
     fn test_has_command() {
