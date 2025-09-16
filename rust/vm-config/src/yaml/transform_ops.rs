@@ -89,7 +89,8 @@ impl TransformOperations {
                 for (key, overlay_value) in overlay_map {
                     match base_map.remove(&key) {
                         Some(base_value) => {
-                            base_map.insert(key, Self::deep_merge_values(base_value, overlay_value));
+                            base_map
+                                .insert(key, Self::deep_merge_values(base_value, overlay_value));
                         }
                         None => {
                             base_map.insert(key, overlay_value);

@@ -52,7 +52,13 @@ impl YamlOperations {
         QueryOperations::filter(file, expression, output_format)
     }
 
-    pub fn select_where(file: &PathBuf, path: &str, field: &str, value: &str, format: &OutputFormat) -> Result<()> {
+    pub fn select_where(
+        file: &PathBuf,
+        path: &str,
+        field: &str,
+        value: &str,
+        format: &OutputFormat,
+    ) -> Result<()> {
         QueryOperations::select_where(file, path, field, value, format)
     }
 
@@ -74,7 +80,13 @@ impl YamlOperations {
         CoreOperations::validate_file(file)
     }
 
-    pub fn delete_from_array(file: &PathBuf, path: &str, field: &str, value: &str, format: &OutputFormat) -> Result<()> {
+    pub fn delete_from_array(
+        file: &PathBuf,
+        path: &str,
+        field: &str,
+        value: &str,
+        format: &OutputFormat,
+    ) -> Result<()> {
         ArrayOperations::delete_matching(file, path, field, value, format)
     }
 }

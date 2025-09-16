@@ -284,10 +284,16 @@ impl ArrayOperations {
             match current {
                 Value::Mapping(map) => {
                     let key = Value::String(part.to_string());
-                    current = map.get_mut(&key)
+                    current = map
+                        .get_mut(&key)
                         .ok_or_else(|| anyhow::anyhow!("Field '{}' not found", part))?;
                 }
-                _ => return Err(anyhow::anyhow!("Cannot access field '{}' on non-object", part)),
+                _ => {
+                    return Err(anyhow::anyhow!(
+                        "Cannot access field '{}' on non-object",
+                        part
+                    ))
+                }
             }
         }
 

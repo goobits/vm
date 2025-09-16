@@ -34,15 +34,13 @@ impl CoreOperations {
     /// Load YAML file into Value
     pub fn load_yaml_file(file: &PathBuf) -> Result<Value> {
         let content = Self::read_file_or_stdin(file)?;
-        serde_yaml::from_str(&content)
-            .with_context(|| format!("Invalid YAML in file: {:?}", file))
+        serde_yaml::from_str(&content).with_context(|| format!("Invalid YAML in file: {:?}", file))
     }
 
     /// Write Value to YAML file
     pub fn write_yaml_file(file: &PathBuf, value: &Value) -> Result<()> {
         let yaml = serde_yaml::to_string(value)?;
-        fs::write(file, yaml)
-            .with_context(|| format!("Failed to write file: {:?}", file))
+        fs::write(file, yaml).with_context(|| format!("Failed to write file: {:?}", file))
     }
 
     /// Get nested field from YAML value using dot notation
@@ -54,10 +52,16 @@ impl CoreOperations {
             match current {
                 Value::Mapping(map) => {
                     let key = Value::String(part.to_string());
-                    current = map.get(&key)
+                    current = map
+                        .get(&key)
                         .ok_or_else(|| anyhow::anyhow!("Field '{}' not found", part))?;
                 }
-                _ => return Err(anyhow::anyhow!("Cannot access field '{}' on non-object", part)),
+                _ => {
+                    return Err(anyhow::anyhow!(
+                        "Cannot access field '{}' on non-object",
+                        part
+                    ))
+                }
             }
         }
 
