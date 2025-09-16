@@ -1,6 +1,7 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use serde_yaml_ng as serde_yaml;
 
 /// Main VM configuration structure.
 ///

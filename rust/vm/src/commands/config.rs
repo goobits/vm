@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use crate::cli::ConfigSubcommand;
 use vm_common::{vm_error, vm_success};
 use vm_config::{config::VmConfig, ConfigOps};
+use serde_yaml_ng as serde_yaml;
 
 /// Handle configuration validation command
 pub fn handle_validate(config_file: Option<PathBuf>, no_preset: bool) -> Result<()> {
