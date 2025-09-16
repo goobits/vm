@@ -17,9 +17,9 @@ npm_packages:
 
 services:
   postgresql:
-    enabled: true
+    enabled: false
   redis:
-    enabled: true
+    enabled: false
 
 environment:
   PYTHONDONTWRITEBYTECODE: "1"

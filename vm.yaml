@@ -19,10 +19,10 @@ versions:
   nvm: v0.40.3
 services:
   postgresql:
-    enabled: true
+    enabled: false
     version: '15'
   redis:
-    enabled: true
+    enabled: false
 apt_packages:
 - htop
 - tree
