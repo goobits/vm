@@ -131,7 +131,7 @@ impl StateManager {
             format!("Failed to parse state file: {}", self.state_file.display())
         })?;
 
-        self.validate_state(&state)?;
+        Self::validate_state(&state)?;
         Ok(state)
     }
 
@@ -139,7 +139,7 @@ impl StateManager {
     pub fn save_state(&self, state: &TempVmState) -> Result<(), StateError> {
         let _lock = self.acquire_lock()?;
 
-        self.validate_state(state)?;
+        Self::validate_state(state)?;
 
         // Create state directory if it doesn't exist
         fs::create_dir_all(&self.state_dir).with_context(|| {
@@ -240,7 +240,7 @@ impl StateManager {
     }
 
     /// Validate temp VM state for consistency and security
-    pub fn validate_state(&self, state: &TempVmState) -> Result<(), StateError> {
+    pub fn validate_state(state: &TempVmState) -> Result<(), StateError> {
         // Validate container name is not empty
         if state.container_name.trim().is_empty() {
             return Err(StateError::ValidationFailed {

@@ -187,7 +187,6 @@ impl StatusFormatter {
     }
 
     pub fn format_status(
-        &self,
         vm_name: &str,
         state: &str,
         provider: &str,

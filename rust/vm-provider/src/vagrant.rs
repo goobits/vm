@@ -232,14 +232,14 @@ impl Provider for VagrantProvider {
         self.run_vagrant_command(&["destroy", "-f"])
     }
 
-    fn get_sync_directory(&self) -> Result<String> {
+    fn get_sync_directory(&self) -> String {
         // Return workspace_path from config
-        let workspace_path = self
+        self
             .config
             .project
             .as_ref()
             .and_then(|p| p.workspace_path.as_deref())
-            .unwrap_or("/workspace");
-        Ok(workspace_path.to_string())
+            .unwrap_or("/workspace")
+            .to_string()
     }
 }

@@ -80,9 +80,6 @@ pub struct VmConfig {
     pub pip_packages: Vec<String>,
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub pipx_packages: Vec<String>,
-
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cargo_packages: Vec<String>,
 
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
@@ -417,7 +414,7 @@ pub struct TartConfig {
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PackageLinkingConfig {
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub npm: bool,
 
     #[serde(default)]

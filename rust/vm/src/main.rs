@@ -5,6 +5,7 @@ use uuid::Uuid;
 use anyhow::Result;
 use clap::Parser;
 use log::info;
+use lazy_static::lazy_static;
 
 // Internal imports
 use vm_common::scoped_context;
@@ -16,9 +17,10 @@ mod commands;
 use cli::Args;
 use commands::execute_command;
 
-// Request ID for this execution - used for tracing logs across the entire request
-static REQUEST_ID: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| Uuid::new_v4().to_string());
+lazy_static! {
+    /// Request ID for this execution - used for tracing logs across the entire request
+    static ref REQUEST_ID: String = Uuid::new_v4().to_string();
+}
 
 fn main() -> Result<()> {
     // Initialize structured logging system first, but only if not in test mode

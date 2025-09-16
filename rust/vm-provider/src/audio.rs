@@ -74,13 +74,11 @@ pub struct MacOSAudioManager;
 
 #[cfg(not(target_os = "macos"))]
 impl MacOSAudioManager {
-    pub fn setup() -> anyhow::Result<()> {
+    pub fn setup() {
         // Do nothing on non-macOS platforms.
-        Ok(())
     }
 
-    pub fn cleanup() -> anyhow::Result<()> {
+    pub fn cleanup() {
         // Do nothing on non-macOS platforms.
-        Ok(())
     }
 }

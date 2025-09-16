@@ -1,3 +1,10 @@
+//! Configuration management operations for VM Tool.
+//!
+//! This module provides high-level operations for managing VM configuration files,
+//! including setting, getting, and unsetting configuration values using dot notation,
+//! applying presets, and managing configuration state with dry-run capabilities.
+//! It serves as the core configuration manipulation engine for the CLI.
+
 // Standard library
 use std::fs;
 use std::path::PathBuf;
@@ -378,11 +385,11 @@ fn find_or_create_local_config() -> Result<PathBuf> {
 }
 
 fn set_nested_field(value: &mut Value, field: &str, new_value: Value) -> Result<()> {
-    let parts: Vec<&str> = field.split('.').collect();
-    if parts.is_empty() {
+    if field.is_empty() {
         bail!("Empty field path");
     }
 
+    let parts: Vec<&str> = field.split('.').collect();
     set_nested_field_recursive(value, &parts, new_value)
 }
 
@@ -417,6 +424,20 @@ fn set_nested_field_recursive(value: &mut Value, parts: &[&str], new_value: Valu
     Ok(())
 }
 
+/// Navigate through nested YAML structure using dot notation path
+///
+/// This function traverses a YAML value structure following a dot-separated path
+/// (e.g., "vm.memory" -> value["vm"]["memory"]). Each part of the path must exist
+/// as a key in a YAML mapping, or the function returns an error.
+///
+/// # Arguments
+/// * `value` - The root YAML value to traverse
+/// * `field` - Dot-separated field path (e.g., "services.postgresql.port")
+///
+/// # Returns
+/// A reference to the value at the specified path, or an error if:
+/// - Any part of the path doesn't exist
+/// - Any intermediate value is not a mapping/object
 fn get_nested_field<'a>(value: &'a Value, field: &str) -> Result<&'a Value> {
     let mut current = value;
 
@@ -436,11 +457,11 @@ fn get_nested_field<'a>(value: &'a Value, field: &str) -> Result<&'a Value> {
 }
 
 fn unset_nested_field(value: &mut Value, field: &str) -> Result<()> {
-    let parts: Vec<&str> = field.split('.').collect();
-    if parts.is_empty() {
+    if field.is_empty() {
         bail!("Empty field path");
     }
 
+    let parts: Vec<&str> = field.split('.').collect();
     unset_nested_field_recursive(value, &parts)
 }
 

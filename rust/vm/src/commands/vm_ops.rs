@@ -65,12 +65,11 @@ pub fn handle_kill(provider: Box<dyn Provider>, container: Option<String>) -> Re
 }
 
 /// Handle get sync directory
-pub fn handle_get_sync_directory(provider: Box<dyn Provider>) -> Result<()> {
+pub fn handle_get_sync_directory(provider: Box<dyn Provider>) {
     debug!("Getting sync directory for provider '{}'", provider.name());
-    let sync_dir = provider.get_sync_directory()?;
+    let sync_dir = provider.get_sync_directory();
     debug!("Sync directory: '{}'", sync_dir);
     println!("{}", sync_dir);
-    Ok(())
 }
 
 /// Handle VM destruction
@@ -102,15 +101,17 @@ pub fn handle_destroy(provider: Box<dyn Provider>, config: VmConfig) -> Result<(
     if confirm_prompt(&confirmation_msg) {
         debug!("Destroy confirmation: response='yes', proceeding with destruction");
         ProgressReporter::subtask("├─", "Proceeding with destruction...");
-        let result = provider.destroy();
-        match result {
-            Ok(()) => ProgressReporter::complete("└─", "VM destroyed successfully"),
+
+        match provider.destroy() {
+            Ok(()) => {
+                ProgressReporter::complete("└─", "VM destroyed successfully");
+                Ok(())
+            }
             Err(e) => {
                 ProgressReporter::error("└─", &format!("Destruction failed: {}", e));
-                return Err(e);
+                Err(e)
             }
         }
-        result
     } else {
         debug!("Destroy confirmation: response='no', cancelling destruction");
         ProgressReporter::error("└─", "Destruction cancelled");
@@ -144,7 +145,6 @@ pub fn handle_ssh(
 pub fn handle_status(provider: Box<dyn Provider>, config: VmConfig) -> Result<()> {
     // Enhanced status reporting using StatusFormatter
     let _progress = ProgressReporter::new();
-    let status_formatter = StatusFormatter::new();
 
     // Get VM name from config
     let vm_name = config
@@ -169,29 +169,28 @@ pub fn handle_status(provider: Box<dyn Provider>, config: VmConfig) -> Result<()
     ProgressReporter::phase_header("📊", "STATUS CHECK");
     ProgressReporter::subtask("├─", "Checking VM status...");
 
-    let result = provider.status();
-    match result {
+    match provider.status() {
         Ok(()) => {
             debug!("Status check successful for VM '{}'", vm_name);
             ProgressReporter::complete("└─", "Status check complete");
 
             // Format status information
             println!("\n");
-            status_formatter.format_status(
+            StatusFormatter::format_status(
                 vm_name,
                 "running", // This could be enhanced to get actual status
                 provider.name(),
                 memory,
                 cpus,
             );
+            Ok(())
         }
         Err(e) => {
             debug!("Status check failed for VM '{}': {}", vm_name, e);
             ProgressReporter::error("└─", &format!("Status check failed: {}", e));
-            return Err(e);
+            Err(e)
         }
     }
-    result
 }
 
 /// Handle command execution in VM

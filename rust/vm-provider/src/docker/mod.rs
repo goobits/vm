@@ -2,6 +2,7 @@
 
 pub mod build;
 pub mod compose;
+pub mod host_packages;
 pub mod lifecycle;
 
 // Re-export the main types and functions for backwards compatibility
@@ -105,27 +106,32 @@ impl DockerProvider {
     }
 }
 
-use std::sync::LazyLock;
+use lazy_static::lazy_static;
 
-/// Shared template engine for Docker compose operations
-pub(crate) static COMPOSE_TERA: LazyLock<Tera> = LazyLock::new(|| {
-    let mut tera = Tera::default();
-    tera.add_raw_template("docker-compose.yml", include_str!("template.yml"))
-        .expect("Failed to add docker-compose template");
-    tera
-});
+lazy_static! {
+    /// Shared template engine for Docker compose operations
+    pub(crate) static ref COMPOSE_TERA: Tera = {
+        let mut tera = Tera::default();
+        tera.add_raw_template("docker-compose.yml", include_str!("template.yml"))
+            .expect("Failed to add docker-compose template");
+        tera
+    };
+}
 
-/// Shared template engine for Dockerfile operations
-pub(crate) static DOCKERFILE_TERA: LazyLock<Tera> = LazyLock::new(|| {
-    let mut tera = Tera::default();
-    tera.add_raw_template("Dockerfile", include_str!("Dockerfile.j2"))
-        .expect("Failed to add Dockerfile template");
-    tera
-});
+lazy_static! {
+    /// Shared template engine for Dockerfile operations
+    pub(crate) static ref DOCKERFILE_TERA: Tera = {
+        let mut tera = Tera::default();
+        tera.add_raw_template("Dockerfile", include_str!("Dockerfile.j2"))
+            .expect("Failed to add Dockerfile template");
+        tera
+    };
+}
 
-/// Shared template engine for temporary VM docker-compose operations
-pub(crate) static TEMP_COMPOSE_TERA: LazyLock<Tera> = LazyLock::new(|| {
-    const TEMP_DOCKER_COMPOSE_TEMPLATE: &str = r#"
+lazy_static! {
+    /// Shared template engine for temporary VM docker-compose operations
+    pub(crate) static ref TEMP_COMPOSE_TERA: Tera = {
+        const TEMP_DOCKER_COMPOSE_TEMPLATE: &str = r#"
 # Temporary VM docker-compose.yml with custom mounts
 services:
   {{ container_name }}:
@@ -165,11 +171,21 @@ volumes:
   vmtemp_nvm:
   vmtemp_cache:
 "#;
-    let mut tera = Tera::default();
-    tera.add_raw_template("docker-compose.yml", TEMP_DOCKER_COMPOSE_TEMPLATE)
-        .expect("Failed to add temporary docker-compose template");
-    tera
-});
+        let mut tera = Tera::default();
+        tera.add_raw_template("docker-compose.yml", TEMP_DOCKER_COMPOSE_TEMPLATE)
+            .expect("Failed to add temporary docker-compose template");
+        tera
+    };
+}
+
+impl Drop for DockerProvider {
+    fn drop(&mut self) {
+        if self.temp_dir.exists() {
+            // Best-effort cleanup. Ignore errors if cleanup fails.
+            let _ = fs::remove_dir_all(&self.temp_dir);
+        }
+    }
+}
 
 impl Provider for DockerProvider {
     fn name(&self) -> &'static str {
@@ -238,7 +254,7 @@ impl Provider for DockerProvider {
         lifecycle.kill_container(container)
     }
 
-    fn get_sync_directory(&self) -> Result<String> {
+    fn get_sync_directory(&self) -> String {
         let lifecycle = self.lifecycle_ops();
         lifecycle.get_sync_directory()
     }

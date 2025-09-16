@@ -95,6 +95,34 @@
         loop: "{{ project_config.environment | default({}) | dict2items }}"
         when: project_config.environment is defined
 
+      - name: Link host-mounted packages
+        vars:
+          local_bin: "/usr/local/bin"
+        block:
+          - name: Link pipx packages
+            shell: "ln -sf /host/pipx/{{ item }}/bin/* {{ local_bin }}/"
+            loop: "{{ project_config.pip_packages | default([]) }}"
+            when:
+              - project_config.package_linking.pip | default(false)
+              - "lookup('pipe', 'find /host/pipx/{{ item }}/bin -type f -executable 2>/dev/null') | length > 0"
+            ignore_errors: yes
+
+          - name: Link npm packages
+            shell: "ln -sf /host/npm/{{ item }}/bin/* {{ local_bin }}/"
+            loop: "{{ project_config.npm_packages | default([]) }}"
+            when:
+              - project_config.package_linking.npm | default(false)
+              - "lookup('pipe', 'find /host/npm/{{ item }}/bin -type f -executable 2>/dev/null') | length > 0"
+            ignore_errors: yes
+
+          - name: Link cargo packages
+            shell: "ln -sf /host/cargo/bin/{{ item }} {{ local_bin }}/"
+            loop: "{{ project_config.cargo_packages | default([]) }}"
+            when:
+              - project_config.package_linking.cargo | default(false)
+              - (stat(path='/host/cargo/bin/{{ item }}')).stat.exists
+            ignore_errors: yes
+
       # Claude Code configuration
       - name: Create Claude settings directory
         file:

@@ -56,7 +56,7 @@ impl<'a> BuildOperations<'a> {
         // Use shared template engine instead of creating new instance
         let tera = &super::DOCKERFILE_TERA;
 
-        let user_config = UserConfig::from_vm_config(self.config);
+        let user_config = self.get_user_config();
 
         let mut context = TeraContext::new();
         context.insert("project_uid", &user_config.uid.to_string());
@@ -102,23 +102,25 @@ impl<'a> BuildOperations<'a> {
             args.push(format!("--build-arg=PIP_PACKAGES={}", packages));
         }
 
-        if !self.config.pipx_packages.is_empty() {
-            let packages = self.config.pipx_packages.join(" ");
-            args.push(format!("--build-arg=PIPX_PACKAGES={}", packages));
-        }
-
         if !self.config.cargo_packages.is_empty() {
             let packages = self.config.cargo_packages.join(" ");
             args.push(format!("--build-arg=CARGO_PACKAGES={}", packages));
         }
 
         // Add user/group build args
-        let user_config = UserConfig::from_vm_config(self.config);
+        let user_config = self.get_user_config();
 
         args.push(format!("--build-arg=PROJECT_UID={}", user_config.uid));
         args.push(format!("--build-arg=PROJECT_GID={}", user_config.gid));
         args.push(format!("--build-arg=PROJECT_USER={}", user_config.username));
 
         args
+    }
+
+    /// Get user configuration from VM config
+    ///
+    /// Centralizes the creation of UserConfig to avoid duplication and ensure consistency.
+    fn get_user_config(&self) -> UserConfig {
+        UserConfig::from_vm_config(self.config)
     }
 }

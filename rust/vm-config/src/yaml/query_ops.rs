@@ -1,3 +1,9 @@
+//! YAML query operations for field extraction and filtering.
+//!
+//! This module provides functionality for querying YAML structures using dot notation
+//! and filtering sequences based on field expressions. It supports extracting nested
+//! values and applying filters to arrays of data.
+
 use super::core::CoreOperations;
 use crate::cli::OutputFormat;
 use anyhow::{Context, Result};
@@ -119,7 +125,7 @@ impl QueryOperations {
     // Apply filter expression (basic implementation)
     fn apply_filter(value: &Value, expression: &str) -> Value {
         // Handle array access with filters like: .mounts[] | select(.source == "value")
-        if !expression.contains("[]") || !expression.contains("select") {
+        if !expression.contains("[]") {
             return value.clone();
         }
 
@@ -128,33 +134,144 @@ impl QueryOperations {
         };
 
         let array_path = array_part.trim_start_matches('.');
-        if array_path != "mounts" {
-            return value.clone();
-        }
 
-        Self::filter_mounts_array(value, expression)
+        // Handle any array field, not just "mounts"
+        Self::filter_array_field(value, array_path, expression)
     }
 
-    // Extract mounts array filtering logic
-    fn filter_mounts_array(value: &Value, expression: &str) -> Value {
+    // Extract array filtering logic for any field
+    fn filter_array_field(value: &Value, field_name: &str, expression: &str) -> Value {
         let Value::Mapping(map) = value else {
             return value.clone();
         };
 
-        let Some(Value::Sequence(seq)) = map.get(Value::String(String::from("mounts"))) else {
+        let Some(Value::Sequence(seq)) = map.get(&Value::String(field_name.to_string())) else {
             return value.clone();
+        };
+
+        // Extract the filter condition from the expression
+        // e.g., ".mounts[] | select(.source == \"value\")" -> "select(.source == \"value\")"
+        let filter_part = if let Some(pipe_pos) = expression.find(" | ") {
+            &expression[pipe_pos + 3..] // Skip " | "
+        } else {
+            // If no pipe, just use the expression as-is
+            expression
         };
 
         let results: Vec<Value> = seq
             .iter()
-            .filter(|_item| {
-                // Simple select filter parsing
-                // TODO: Implement actual filter logic based on expression
-                expression.contains(".source")
+            .filter(|item| {
+                // Implement actual filter logic based on expression
+                Self::evaluate_filter_expression(item, filter_part)
             })
             .cloned()
             .collect();
 
         Value::Sequence(results)
+    }
+
+    /// Evaluate a filter expression against a YAML value
+    /// Supports patterns like:
+    /// - `.field` - Check if field exists and is not null
+    /// - `select(.field == "value")` - Check if field equals specific value
+    /// - `select(.field == value)` - Check if field equals unquoted value
+    fn evaluate_filter_expression(item: &Value, expression: &str) -> bool {
+        let expression = expression.trim();
+
+        // Handle select() expressions like: select(.source == "value")
+        if expression.starts_with("select(") && expression.ends_with(')') {
+            let inner = &expression[7..expression.len() - 1]; // Remove "select(" and ")"
+            return Self::evaluate_select_condition(item, inner);
+        }
+
+        // Handle simple field existence checks like: .source
+        if expression.starts_with('.') {
+            let field_name = &expression[1..]; // Remove the leading dot
+
+            return match item {
+                Value::Mapping(map) => {
+                    // Check if the field exists and has a truthy value
+                    map.get(&Value::String(field_name.to_string()))
+                        .map(|value| !matches!(value, Value::Null))
+                        .unwrap_or(false)
+                }
+                _ => false,
+            };
+        }
+
+        // For non-recognized expressions, default to true to maintain existing behavior
+        true
+    }
+
+    /// Evaluate a condition inside select() like: .field == "value"
+    fn evaluate_select_condition(item: &Value, condition: &str) -> bool {
+        let condition = condition.trim();
+
+        // Handle equality comparisons: .field == "value" or .field == value
+        if let Some(eq_pos) = condition.find("==") {
+            let field_part = condition[..eq_pos].trim();
+            let value_part = condition[eq_pos + 2..].trim();
+
+            // Extract field name (remove leading dot)
+            if !field_part.starts_with('.') {
+                return false;
+            }
+            let field_name = &field_part[1..];
+
+            // Get the field value from the item
+            let Value::Mapping(map) = item else {
+                return false;
+            };
+
+            let Some(field_value) = map.get(&Value::String(field_name.to_string())) else {
+                return false;
+            };
+
+            // Parse the expected value (handle quoted and unquoted strings)
+            let expected_value = if value_part.starts_with('"') && value_part.ends_with('"') {
+                // Quoted string - remove quotes
+                &value_part[1..value_part.len() - 1]
+            } else {
+                // Unquoted value
+                value_part
+            };
+
+            // Compare values
+            match field_value {
+                Value::String(s) => s == expected_value,
+                Value::Number(n) => {
+                    // Try to parse expected_value as a number
+                    expected_value.parse::<i64>().ok()
+                        .and_then(|expected| n.as_i64().map(|actual| actual == expected))
+                        .unwrap_or_else(|| {
+                            // Try as float
+                            expected_value.parse::<f64>().ok()
+                                .and_then(|expected| n.as_f64().map(|actual| (actual - expected).abs() < f64::EPSILON))
+                                .unwrap_or(false)
+                        })
+                }
+                Value::Bool(b) => {
+                    expected_value.parse::<bool>().ok()
+                        .map(|expected| *b == expected)
+                        .unwrap_or(false)
+                }
+                _ => false,
+            }
+        } else {
+            // For non-equality conditions, just check field existence
+            if condition.starts_with('.') {
+                let field_name = &condition[1..];
+                match item {
+                    Value::Mapping(map) => {
+                        map.get(&Value::String(field_name.to_string()))
+                            .map(|value| !matches!(value, Value::Null))
+                            .unwrap_or(false)
+                    }
+                    _ => false,
+                }
+            } else {
+                false
+            }
+        }
     }
 }

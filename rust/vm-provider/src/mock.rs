@@ -59,8 +59,8 @@ impl Provider for MockProvider {
         Ok(())
     }
 
-    fn get_sync_directory(&self) -> Result<String> {
-        Ok("/tmp/mock_sync".to_string())
+    fn get_sync_directory(&self) -> String {
+        "/tmp/mock_sync".to_string()
     }
 
     fn as_temp_provider(&self) -> Option<&dyn TempProvider> {

@@ -12,6 +12,11 @@ use vm_common::vm_success;
 use crate::link_detector::LinkDetector;
 use crate::package_manager::PackageManager;
 
+// Path constants for user directories
+const CARGO_HOME_PATH: &str = ".cargo";
+const NVM_DIR_PATH: &str = ".nvm";
+const LOCAL_BIN_PATH: &str = ".local/bin";
+
 /// Validate a filename for script creation (no path separators, safe characters only)
 fn validate_script_name(filename: &str) -> Result<()> {
     // Check for empty name
@@ -112,7 +117,7 @@ impl PackageInstaller {
         cmd.arg("install").arg("--path").arg(path);
 
         // Set CARGO_HOME if needed
-        let cargo_home = format!("/home/{}/.cargo", self.user);
+        let cargo_home = format!("/home/{}/{}", self.user, CARGO_HOME_PATH);
         cmd.env("CARGO_HOME", &cargo_home);
 
         let status = cmd.status().context("Failed to execute cargo install")?;
@@ -129,7 +134,7 @@ impl PackageInstaller {
         let mut cmd = Command::new("cargo");
         cmd.arg("install").arg(package);
 
-        let cargo_home = format!("/home/{}/.cargo", self.user);
+        let cargo_home = format!("/home/{}/{}", self.user, CARGO_HOME_PATH);
         cmd.env("CARGO_HOME", &cargo_home);
 
         let status = cmd.status().context("Failed to execute cargo install")?;
@@ -153,7 +158,7 @@ impl PackageInstaller {
         cmd.current_dir(path);
 
         // Set NVM_DIR if needed
-        let nvm_dir = format!("/home/{}/.nvm", self.user);
+        let nvm_dir = format!("/home/{}/{}", self.user, NVM_DIR_PATH);
         cmd.env("NVM_DIR", &nvm_dir);
 
         let status = cmd.status().context("Failed to execute npm link")?;
@@ -170,7 +175,7 @@ impl PackageInstaller {
         let mut cmd = Command::new("npm");
         cmd.arg("install").arg("-g").arg(package);
 
-        let nvm_dir = format!("/home/{}/.nvm", self.user);
+        let nvm_dir = format!("/home/{}/{}", self.user, NVM_DIR_PATH);
         cmd.env("NVM_DIR", &nvm_dir);
 
         let status = cmd.status().context("Failed to execute npm install")?;
@@ -299,7 +304,7 @@ impl PackageInstaller {
             return Ok(());
         }
 
-        let local_bin = PathBuf::from(format!("/home/{}/.local/bin", self.user));
+        let local_bin = PathBuf::from(format!("/home/{}/{}", self.user, LOCAL_BIN_PATH));
         fs::create_dir_all(&local_bin)?;
 
         println!("  -> Creating wrapper scripts in {:?}", local_bin);
@@ -401,12 +406,12 @@ exec python3 "$SCRIPT_PATH" "$@"
         self.detector.is_linked(package, manager)
     }
 
-    pub fn list_linked(&self, manager: Option<PackageManager>) -> Result<()> {
+    pub fn list_linked(&self, manager: Option<PackageManager>) {
         let linked = self.detector.list_linked(manager);
 
         if linked.is_empty() {
             println!("No linked packages found");
-            return Ok(());
+            return;
         }
 
         println!("🔗 Linked packages:");
@@ -419,7 +424,5 @@ exec python3 "$SCRIPT_PATH" "$@"
             }
             println!("    - {}", package);
         }
-
-        Ok(())
     }
 }

@@ -75,30 +75,42 @@ RUN if [ -n "${APT_PACKAGES}" ]; then \
 fi
 USER ${PROJECT_USER}
 
+# NPM Package Installation
 RUN if [ -n "${NPM_PACKAGES}" ]; then \
-    . "$NVM_DIR/nvm.sh" && npm install -g ${NPM_PACKAGES}; \
-fi
-
-RUN if [ -n "${PIPX_PACKAGES}" ]; then \
-    . "$HOME/.profile" && \
-    for package in ${PIPX_PACKAGES}; do \
-        echo "Installing pipx package: $package"; \
-        pipx install "$package" || \
-        echo "⚠️ Warning: Failed to install pipx package '$package' - it may not be available"; \
+    for package in ${NPM_PACKAGES}; do \
+        echo "Installing NPM package: $package"; \
+        . "$NVM_DIR/nvm.sh" && npm install -g "$package" 2>/dev/null && \
+        echo "  ✓ Installed from npm registry" || \
+        echo "  ⚠️ Warning: Failed to install '$package' from npm registry"; \
     done; \
 fi
 
+# Python Package Installation
 RUN if [ -n "${PIP_PACKAGES}" ]; then \
     for package in ${PIP_PACKAGES}; do \
-        echo "Installing pip package: $package"; \
-        pip3 install --user --break-system-packages "$package" || \
-        echo "⚠️ Warning: Failed to install pip package '$package' - it may not exist in PyPI"; \
+        echo "Installing Python package: $package"; \
+        if pip3 install --user --break-system-packages "$package" 2>/dev/null; then \
+            echo "  ✓ Installed from PyPI via pip"; \
+        elif . "$HOME/.profile" && pipx install "$package" 2>/dev/null; then \
+            echo "  ✓ Installed from PyPI via pipx"; \
+        else \
+            echo "  ⚠️ Warning: Failed to install '$package' via any method"; \
+        fi; \
     done; \
 fi
 
+# Cargo Package Installation
 RUN if [ -n "${CARGO_PACKAGES}" ]; then \
-    . "$HOME/.cargo/env" && cargo install ${CARGO_PACKAGES}; \
+    for package in ${CARGO_PACKAGES}; do \
+        echo "Installing Cargo package: $package"; \
+        if . "$HOME/.cargo/env" && cargo install "$package" 2>/dev/null; then \
+            echo "  ✓ Installed from cargo registry"; \
+        else \
+            echo "  ⚠️ Warning: Failed to install cargo package '$package'"; \
+        fi; \
+    done; \
 fi
+
 
 # --- Resource & Configuration Embedding ---
 USER root

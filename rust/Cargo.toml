@@ -48,6 +48,7 @@ log = "0.4"
 pathdiff = "0.2"
 colored = "2.0"
 uuid = { version = "1.0", features = ["v4", "serde"] }
+lazy_static = "1.5"
 
 [profile.release]
 opt-level = 3

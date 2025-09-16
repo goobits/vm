@@ -1,3 +1,10 @@
+//! Docker container lifecycle management operations.
+//!
+//! This module handles the complete lifecycle of Docker containers used
+//! for VM environments, including creation, starting, stopping, provisioning,
+//! and cleanup operations. It provides a high-level interface for VM
+//! management through Docker containers with progress reporting and error handling.
+
 // Standard library
 use std::io::{self, Write};
 use std::path::Path;
@@ -62,7 +69,7 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     /// Handle potential Docker issues proactively
-    pub fn handle_potential_issues(&self) -> Result<()> {
+    pub fn handle_potential_issues(&self) {
         // Check for port conflicts and provide helpful guidance
         if let Some(vm_config) = &self.config.vm {
             if vm_config.memory.unwrap_or(0) > HIGH_MEMORY_THRESHOLD {
@@ -79,8 +86,6 @@ impl<'a> LifecycleOperations<'a> {
             vm_warning!("Docker daemon may not be responding properly");
             eprintln!("   Try: docker system prune -f");
         }
-
-        Ok(())
     }
 
     pub fn check_daemon_is_running(&self) -> Result<()> {
@@ -99,7 +104,7 @@ impl<'a> LifecycleOperations<'a> {
 
     pub fn create_container(&self) -> Result<()> {
         self.check_daemon_is_running()?;
-        self.handle_potential_issues()?;
+        self.handle_potential_issues();
 
         // Check if container already exists
         let container_name = self.container_name();
@@ -120,7 +125,7 @@ impl<'a> LifecycleOperations<'a> {
         // Only setup audio if it's enabled in the configuration
         if let Some(audio_service) = self.config.services.get("audio") {
             if audio_service.enabled {
-                MacOSAudioManager::setup()?;
+                let _ = MacOSAudioManager::setup();
             }
         }
 
@@ -344,7 +349,7 @@ impl<'a> LifecycleOperations<'a> {
         // Only cleanup audio if it was enabled in the configuration
         if let Some(audio_service) = self.config.services.get("audio") {
             if audio_service.enabled {
-                MacOSAudioManager::cleanup()?;
+                let _ = MacOSAudioManager::cleanup();
             }
         }
 
@@ -530,14 +535,14 @@ impl<'a> LifecycleOperations<'a> {
         stream_command("docker", &["kill", target_container]).context("Failed to kill container")
     }
 
-    pub fn get_sync_directory(&self) -> Result<String> {
-        Ok(self
+    pub fn get_sync_directory(&self) -> String {
+        self
             .config
             .project
             .as_ref()
             .and_then(|p| p.workspace_path.as_deref())
             .unwrap_or("/workspace")
-            .to_string())
+            .to_string()
     }
 }
 

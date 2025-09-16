@@ -148,7 +148,10 @@ impl ConfigValidator {
             if let Some(name) = &project.name {
                 let name_regex = Regex::new(r"^[a-zA-Z0-9\-_]+$")?;
                 if !name_regex.is_match(name) {
-                    anyhow::bail!("Invalid project name: {}. Must contain only alphanumeric characters, dashes, and underscores", name);
+                    anyhow::bail!(
+                        "Invalid project name: {}. Must contain only alphanumeric characters, dashes, and underscores",
+                        name
+                    );
                 }
             }
 

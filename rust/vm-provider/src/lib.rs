@@ -90,7 +90,7 @@ pub trait Provider {
     fn kill(&self, container: Option<&str>) -> Result<()>;
 
     /// Get workspace directory.
-    fn get_sync_directory(&self) -> Result<String>;
+    fn get_sync_directory(&self) -> String;
 
     /// Get access to temp provider capabilities if supported
     fn as_temp_provider(&self) -> Option<&dyn TempProvider> {
@@ -147,8 +147,10 @@ mod tests {
 
     #[test]
     fn test_get_provider_explicit_docker() {
-        let mut config = VmConfig::default();
-        config.provider = Some("docker".into());
+        let config = VmConfig {
+            provider: Some("docker".into()),
+            ..Default::default()
+        };
         let result = get_provider(config);
         // Test that we try to create docker provider
         match result {
@@ -162,16 +164,20 @@ mod tests {
 
     #[test]
     fn test_get_provider_mock() {
-        let mut config = VmConfig::default();
-        config.provider = Some("mock".into());
+        let config = VmConfig {
+            provider: Some("mock".into()),
+            ..Default::default()
+        };
         let provider = get_provider(config).expect("Should create mock provider");
         assert_eq!(provider.name(), "mock");
     }
 
     #[test]
     fn test_get_provider_unknown() {
-        let mut config = VmConfig::default();
-        config.provider = Some("unknown-provider".into());
+        let config = VmConfig {
+            provider: Some("unknown-provider".into()),
+            ..Default::default()
+        };
         let result = get_provider(config);
         assert!(result.is_err());
 
@@ -184,8 +190,10 @@ mod tests {
 
     #[test]
     fn test_get_provider_empty_string() {
-        let mut config = VmConfig::default();
-        config.provider = Some("".into());
+        let config = VmConfig {
+            provider: Some("".into()),
+            ..Default::default()
+        };
         let result = get_provider(config);
         // Empty string should be treated as unknown provider, not default to docker
         assert!(result.is_err());
@@ -198,8 +206,10 @@ mod tests {
     #[test]
     fn test_provider_trait_basic_contract() {
         // Use mock provider for trait testing since docker might not be available
-        let mut config = VmConfig::default();
-        config.provider = Some("mock".into());
+        let config = VmConfig {
+            provider: Some("mock".into()),
+            ..Default::default()
+        };
         let provider = get_provider(config).expect("Should create mock provider");
 
         // Test basic trait methods return without panicking
@@ -207,17 +217,17 @@ mod tests {
         assert_eq!(provider.name(), "mock");
 
         // Test sync directory method
-        let sync_result = provider.get_sync_directory();
-        assert!(sync_result.is_ok());
-        let dir = sync_result.unwrap();
+        let dir = provider.get_sync_directory();
         assert!(!dir.is_empty());
     }
 
     #[test]
     fn test_temp_provider_capability() {
         // Use mock provider for testing since docker might not be available
-        let mut config = VmConfig::default();
-        config.provider = Some("mock".into());
+        let config = VmConfig {
+            provider: Some("mock".into()),
+            ..Default::default()
+        };
         let provider = get_provider(config).expect("Should create mock provider");
 
         // Mock provider should support temp operations

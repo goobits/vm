@@ -1,3 +1,21 @@
+//! Thread-local logging context management.
+//!
+//! This module provides a thread-local context stack for structured logging,
+//! allowing nested context scopes with automatic cleanup. Context data is
+//! merged hierarchically, with inner scopes overriding outer scopes.
+//!
+//! ## Usage
+//!
+//! Use the `scoped_context!` macro for automatic context management:
+//!
+//! ```rust
+//! let _guard = scoped_context! {
+//!     "operation" => "create_vm",
+//!     "provider" => "docker"
+//! };
+//! // Context is automatically cleaned up when guard drops
+//! ```
+
 use serde_json::{Map, Value};
 use std::cell::RefCell;
 

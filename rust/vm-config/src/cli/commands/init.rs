@@ -3,17 +3,17 @@ use anyhow::{Context, Result};
 use regex::Regex;
 use serde_yaml_ng as serde_yaml;
 use std::path::PathBuf;
-use std::sync::LazyLock;
+use lazy_static::lazy_static;
 use vm_common::{vm_error, vm_success, vm_warning};
 
 // Compile regex patterns once at initialization for better performance
-static INVALID_CHARS_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"[^a-zA-Z0-9_-]").expect("Invalid regex pattern for sanitizing directory name")
-});
+lazy_static! {
+    static ref INVALID_CHARS_RE: Regex =
+        Regex::new(r"[^a-zA-Z0-9_-]").expect("Invalid regex pattern for sanitizing directory name");
 
-static CONSECUTIVE_HYPHENS_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"-+").expect("Invalid regex pattern for removing consecutive hyphens")
-});
+    static ref CONSECUTIVE_HYPHENS_RE: Regex =
+        Regex::new(r"-+").expect("Invalid regex pattern for removing consecutive hyphens");
+}
 
 /// Fix YAML indentation issues by ensuring consistent 2-space indentation for arrays
 fn fix_yaml_indentation(yaml: &str) -> String {
@@ -79,7 +79,10 @@ pub fn execute(
 
     // Check if vm.yaml already exists
     if target_path.exists() {
-        anyhow::bail!("❌ vm.yaml already exists at {}\nUse --file to specify a different location or remove the existing file.", target_path.display());
+        anyhow::bail!(
+            "❌ vm.yaml already exists at {}\nUse --file to specify a different location or remove the existing file.",
+            target_path.display()
+        );
     }
 
     // Get current directory name for project name
@@ -92,8 +95,8 @@ pub fn execute(
     // Sanitize directory name for use as project name
     // Replace dots, spaces, and other invalid characters with hyphens
     // Then remove any consecutive hyphens and trim leading/trailing hyphens
-    let sanitized_name = INVALID_CHARS_RE.replace_all(dir_name, "-");
-    let sanitized_name = CONSECUTIVE_HYPHENS_RE.replace_all(&sanitized_name, "-");
+    let sanitized_name = (&*INVALID_CHARS_RE).replace_all(dir_name, "-");
+    let sanitized_name = (&*CONSECUTIVE_HYPHENS_RE).replace_all(&sanitized_name, "-");
     let sanitized_name = sanitized_name.trim_matches('-');
 
     // If the sanitized name is different, inform the user

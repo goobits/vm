@@ -113,7 +113,7 @@ pub fn execute(args: Args) -> Result<()> {
         }
         Command::List { package_type, user } => {
             let installer = PackageInstaller::new(user);
-            installer.list_linked(package_type)?;
+            installer.list_linked(package_type);
         }
         Command::Links { command } => {
             use crate::links::{detect_packages, validate_package_manager};

@@ -131,7 +131,10 @@ fn handle_provider_command(args: Args) -> Result<()> {
         Command::Provision => vm_ops::handle_provision(provider),
         Command::List => vm_ops::handle_list(provider),
         Command::Kill { container } => vm_ops::handle_kill(provider, container),
-        Command::GetSyncDirectory => vm_ops::handle_get_sync_directory(provider),
+        Command::GetSyncDirectory => {
+            vm_ops::handle_get_sync_directory(provider);
+            Ok(())
+        }
         Command::Destroy => vm_ops::handle_destroy(provider, config),
         Command::Ssh { path } => vm_ops::handle_ssh(provider, path, config),
         Command::Status => vm_ops::handle_status(provider, config),

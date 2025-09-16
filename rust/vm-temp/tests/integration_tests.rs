@@ -256,14 +256,14 @@ fn test_mount_source_validation_edge_cases() -> Result<()> {
 
     // Test 1: Non-existent directory
     let nonexistent = fixture._temp_dir.path().join("does_not_exist");
-    let result = state.add_mount(nonexistent.clone(), MountPermission::ReadWrite);
+    let result = state.add_mount(nonexistent, MountPermission::ReadWrite);
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("does not exist"));
 
     // Test 2: File instead of directory
     let file_path = fixture.mount_source.join("not_a_directory.txt");
     fs::write(&file_path, "content")?;
-    let result = state.add_mount(file_path.clone(), MountPermission::ReadWrite);
+    let result = state.add_mount(file_path, MountPermission::ReadWrite);
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("not a directory"));
 
@@ -290,7 +290,7 @@ fn test_mount_source_validation_edge_cases() -> Result<()> {
     fs::create_dir_all(&temp_dir)?;
 
     // This should work
-    let result = state.add_mount(temp_dir.clone(), MountPermission::ReadOnly);
+    let result = state.add_mount(temp_dir, MountPermission::ReadOnly);
     assert!(result.is_ok());
 
     println!("✅ Mount source validation test passed - edge cases handled correctly");
@@ -394,7 +394,7 @@ fn test_mount_filesystem_integration() -> Result<()> {
     fs::create_dir_all(&nested_source)?;
     fs::write(nested_source.join("test_file.txt"), "nested content")?;
 
-    let result = state.add_mount(nested_source.clone(), MountPermission::ReadWrite);
+    let result = state.add_mount(nested_source, MountPermission::ReadWrite);
     assert!(result.is_ok(), "Deeply nested paths should work");
 
     // Test 2: Mount point with existing files

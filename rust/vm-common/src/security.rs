@@ -1,3 +1,10 @@
+//! Security utilities for path validation and input sanitization.
+//!
+//! This module provides functions to safely handle user input, validate paths,
+//! and prevent security vulnerabilities in file system operations. It includes
+//! protection against path traversal attacks, shell injection, and unsafe file
+//! system access patterns.
+
 use crate::platform::portable_readlink;
 use anyhow::{anyhow, Result};
 use std::path::{Path, PathBuf};

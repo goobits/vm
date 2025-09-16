@@ -1,9 +1,9 @@
 use super::fixtures::ProjectTestFixture;
-use crate::{detect_project_type, format_detected_types};
+use crate::{detect_project_type, format_detected_types, test_fixture};
 
 #[test]
 fn test_react_detection() {
-    let fixture = ProjectTestFixture::new().unwrap();
+    let fixture = test_fixture!();
     fixture
         .create_file(
             "package.json",

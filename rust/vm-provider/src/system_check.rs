@@ -102,9 +102,7 @@ mod tests {
     #[test]
     fn test_minimum_requirements_constants() {
         // Test that our constants are reasonable
-        assert!(MIN_CPU_CORES >= 1);
         assert!(MIN_CPU_CORES <= 16); // Sanity check - shouldn't require too many cores
-        assert!(MIN_MEMORY_GB >= 1);
         assert!(MIN_MEMORY_GB <= 64); // Sanity check - shouldn't require excessive memory
     }
 
@@ -163,8 +161,8 @@ mod tests {
         assert!(sufficient_memory >= MIN_MEMORY_GB);
 
         // Simulate insufficient resources
-        let insufficient_cores = if MIN_CPU_CORES > 1 { MIN_CPU_CORES - 1 } else { 0 };
-        let insufficient_memory = if MIN_MEMORY_GB > 1 { MIN_MEMORY_GB - 1 } else { 0 };
+        let insufficient_cores = MIN_CPU_CORES.saturating_sub(1);
+        let insufficient_memory = MIN_MEMORY_GB.saturating_sub(1);
 
         assert!(insufficient_cores < MIN_CPU_CORES);
         assert!(insufficient_memory < MIN_MEMORY_GB);
@@ -192,7 +190,7 @@ mod tests {
         }
 
         // Example cpuinfo processor counting
-        let example_cpuinfo_lines = vec![
+        let example_cpuinfo_lines = [
             "processor\t: 0",
             "vendor_id\t: GenuineIntel",
             "processor\t: 1",

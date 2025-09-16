@@ -22,6 +22,9 @@ services:
       # macOS specific volume for audio
       - /tmp/pulseaudio.socket:/tmp/pulseaudio.socket
       {% endif %}
+      # Host package mounts for development
+      {% if host_mounts %}{% for mount in host_mounts %}- {{ mount.0 }}:{{ mount.1 }}:ro
+      {% endfor %}{% endif %}
       # Container is now self-contained - no VM tool mount needed
     {% if config.ports and config.ports | length > 0 -%}
     ports:
@@ -35,6 +38,9 @@ services:
       {% if config.services.postgresql.enabled | default(value=false) %}
       - DATABASE_URL=postgresql://{{ config.services.postgresql.user | default(value="postgres") }}:{{ config.services.postgresql.password | default(value="postgres") }}@postgres:5432/{{ config.services.postgresql.database | default(value=config.project.name ~ "_dev") }}
       {% endif %}
+      # Host package environment variables
+      {% if host_env_vars %}{% for env_var in host_env_vars %}- {{ env_var.0 }}={{ env_var.1 }}
+      {% endfor %}{% endif %}
       {% if config.environment and config.environment | length > 0 -%}
       {% for name, value in config.environment %}- {{ name }}={{ value }}
       {% endfor %}

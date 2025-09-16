@@ -6,6 +6,17 @@
 use anyhow::Result;
 use std::fmt;
 
+#[cfg(test)]
+mod test_constants {
+    // Common test port ranges to reduce magic numbers in tests
+    pub const DEFAULT_START_PORT: u16 = 3000;
+    pub const DEFAULT_END_PORT: u16 = 3009;
+    pub const OVERLAP_START_PORT: u16 = 3005;
+    pub const OVERLAP_END_PORT: u16 = 3015;
+    pub const ADJACENT_START_PORT: u16 = 3010;
+    pub const ADJACENT_END_PORT: u16 = 3019;
+}
+
 /// Represents a range of network ports.
 ///
 /// A port range defines a continuous range of ports from `start` to `end` (inclusive).

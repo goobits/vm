@@ -1244,6 +1244,7 @@ version = "1.2.2"
 dependencies = [
  "anyhow",
  "clap",
+ "lazy_static",
  "log",
  "serde_json",
  "serde_yaml_ng",
@@ -1282,6 +1283,7 @@ dependencies = [
  "dirs",
  "glob",
  "indexmap",
+ "lazy_static",
  "libc",
  "regex",
  "serde",
@@ -1353,6 +1355,7 @@ dependencies = [
  "duct",
  "indicatif",
  "is-terminal",
+ "lazy_static",
  "rayon",
  "regex",
  "serde",

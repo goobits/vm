@@ -33,3 +33,12 @@ impl ProjectTestFixture {
         &self.project_dir
     }
 }
+
+/// Convenience macro for creating a test fixture
+/// Reduces boilerplate in test functions
+#[macro_export]
+macro_rules! test_fixture {
+    () => {
+        $crate::tests::fixtures::ProjectTestFixture::new().unwrap()
+    };
+}

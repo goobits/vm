@@ -86,14 +86,14 @@ impl TagFilter {
 
     pub fn matches(&self, context: &Map<String, Value>) -> bool {
         for pattern in &self.patterns {
-            if self.pattern_matches(pattern, context) {
+            if Self::pattern_matches(pattern, context) {
                 return true;
             }
         }
         false
     }
 
-    fn pattern_matches(&self, pattern: &TagPattern, context: &Map<String, Value>) -> bool {
+    fn pattern_matches(pattern: &TagPattern, context: &Map<String, Value>) -> bool {
         let Some(value) = context.get(&pattern.key) else {
             return false;
         };
