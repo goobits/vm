@@ -47,9 +47,8 @@ impl<'a> ComposeOperations<'a> {
     }
 
     pub fn render_docker_compose(&self, build_context_dir: &Path) -> Result<String> {
-        let mut tera = Tera::default();
-        let template_content = Self::load_docker_compose_template()?;
-        tera.add_raw_template("docker-compose.yml", &template_content)?;
+        // Use shared template engine instead of creating new instance
+        let tera = &super::COMPOSE_TERA;
 
         let project_dir_str = BuildOperations::path_to_string(self.project_dir)?;
         let build_context_str = BuildOperations::path_to_string(build_context_dir)?;

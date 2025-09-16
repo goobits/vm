@@ -53,9 +53,8 @@ impl<'a> BuildOperations<'a> {
 
     /// Generate Dockerfile from template with build args
     pub fn generate_dockerfile(&self, output_path: &Path) -> Result<()> {
-        let mut tera = Tera::default();
-        let template_content = include_str!("Dockerfile.j2");
-        tera.add_raw_template("Dockerfile", template_content)?;
+        // Use shared template engine instead of creating new instance
+        let tera = &super::DOCKERFILE_TERA;
 
         let user_config = UserConfig::from_vm_config(self.config);
 

@@ -112,15 +112,23 @@ impl DockerProvider {
     }
 }
 
-/// Shared template engine for all Docker operations
-pub(crate) fn get_template_engine() -> Result<Tera> {
+use std::sync::LazyLock;
+
+/// Shared template engine for Docker compose operations
+pub(crate) static COMPOSE_TERA: LazyLock<Tera> = LazyLock::new(|| {
     let mut tera = Tera::default();
+    tera.add_raw_template("docker-compose.yml", include_str!("template.yml"))
+        .expect("Failed to add docker-compose template");
+    tera
+});
 
-    // Add all Docker templates
-    tera.add_raw_template("docker-compose.yml", include_str!("template.yml"))?;
-    tera.add_raw_template("Dockerfile", include_str!("Dockerfile.j2"))?;
-
-    Ok(tera)
+/// Shared template engine for Dockerfile operations
+pub(crate) static DOCKERFILE_TERA: LazyLock<Tera> = LazyLock::new(|| {
+    let mut tera = Tera::default();
+    tera.add_raw_template("Dockerfile", include_str!("Dockerfile.j2"))
+        .expect("Failed to add Dockerfile template");
+    tera
+});
 }
 
 impl Provider for DockerProvider {
