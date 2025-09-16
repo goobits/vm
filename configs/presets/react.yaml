@@ -30,4 +30,4 @@ services:
 environment:
   NODE_ENV: development
   REACT_APP_ENV: development
-  FAST_REFRESH: true
+  FAST_REFRESH: "true"
