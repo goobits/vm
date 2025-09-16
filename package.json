@@ -12,7 +12,6 @@
     "vm.schema.yaml",
     "install.sh",
     "providers/",
-    "shared/",
     "configs/",
     "lib/",
     "test/",

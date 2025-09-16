@@ -6,7 +6,7 @@
 
 - **Unified Interface**: Single command for all package managers
 - **Link Detection**: Automatically detects and uses linked local packages
-- **Smart Python Handling**: Automatically chooses between pip and pipx
+- **Auto Python Handling**: Automatically chooses between pip and pipx
 - **Wrapper Generation**: Creates wrapper scripts for pipx environments
 - **Type Safety**: Rust's type system prevents common shell script errors
 
