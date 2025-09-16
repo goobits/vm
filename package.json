@@ -16,12 +16,16 @@
     "lib/",
     "test/",
     "rust/",
-    "bin/"
+    "bin/",
+    "scripts/"
   ],
   "scripts": {
     "test": "cd rust && cargo test",
     "validate": "./vm validate || echo 'Validation requires vm binary'",
-    "postinstall": "chmod +x vm install.sh"
+    "postinstall": "chmod +x vm install.sh",
+    "sync-versions": "cd rust && cargo run --bin version-sync sync",
+    "check-versions": "cd rust && cargo run --bin version-sync check",
+    "version": "npm run sync-versions && git add ."
   },
   "keywords": [
     "vagrant",

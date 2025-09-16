@@ -9,6 +9,7 @@ members = [
     "vm-temp",
     "vm",
     "vm-installer",
+    "version-sync",
 ]
 resolver = "2"
 
@@ -57,6 +58,8 @@ strip = true
 [profile.dev]
 opt-level = 1
 incremental = true
+debug = 1
+codegen-units = 16
 
 [profile.release-with-debug]
 inherits = "release"
