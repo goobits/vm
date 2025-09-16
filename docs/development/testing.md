@@ -40,12 +40,6 @@ test/
 
 **Purpose**: Test how components work together and integrate with external systems.
 
-- **`migration.test.sh`**: Tests the VM migration system
-  - JSON to YAML config migration
-  - Migration dry-run functionality
-  - Backup creation and validation
-  - JSON config rejection handling
-
 - **`preset-system.test.sh`**: Tests preset application and system integration
   - Preset application workflows
   - VM tool preset commands (`vm preset list`, `vm preset show`)
