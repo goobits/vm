@@ -6,7 +6,7 @@ use vm_common::{vm_error, vm_success, vm_warning};
 
 /// Fix YAML indentation issues by ensuring consistent 2-space indentation for arrays
 fn fix_yaml_indentation(yaml: &str) -> String {
-    let mut result = String::new();
+    let mut result = String::with_capacity(yaml.len() + 100); // Pre-allocate with estimated capacity
     let mut in_apt_packages = false;
     let mut in_npm_packages = false;
 
@@ -136,9 +136,9 @@ pub fn execute(
 
     // Apply service configurations
     if let Some(ref services_str) = services {
-        let service_list: Vec<String> = services_str
+        let service_list: Vec<&str> = services_str
             .split(',')
-            .map(|s| s.trim().to_string())
+            .map(|s| s.trim())
             .collect();
 
         for service in service_list {
@@ -159,7 +159,7 @@ pub fn execute(
                 // Enable the specific service with its configuration
                 let mut enabled_service = specific_service_config.clone();
                 enabled_service.enabled = true;
-                config.services.insert(service.clone(), enabled_service);
+                config.services.insert(service.to_string(), enabled_service);
             }
         }
     }
@@ -173,14 +173,14 @@ pub fn execute(
             ));
         }
 
-        // Allocate sequential ports
-        config.ports.insert(String::from("web"), port_start);
-        config.ports.insert(String::from("api"), port_start + 1);
+        // Allocate sequential ports - use &str literals to avoid String allocation
+        config.ports.insert("web".to_string(), port_start);
+        config.ports.insert("api".to_string(), port_start + 1);
         config
             .ports
-            .insert(String::from("postgresql"), port_start + 5);
-        config.ports.insert(String::from("redis"), port_start + 6);
-        config.ports.insert(String::from("mongodb"), port_start + 7);
+            .insert("postgresql".to_string(), port_start + 5);
+        config.ports.insert("redis".to_string(), port_start + 6);
+        config.ports.insert("mongodb".to_string(), port_start + 7);
     }
 
     // Convert to YAML

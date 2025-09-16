@@ -200,7 +200,7 @@ impl StructuredLogger {
         }
 
         serde_json::to_string(&log_entry)
-            .unwrap_or_else(|_| "Failed to serialize log entry".to_string())
+            .unwrap_or_else(|_| String::from("Failed to serialize log entry"))
     }
 
     fn format_human(&self, record: &Record, context: &Map<String, Value>) -> String {
@@ -215,18 +215,16 @@ impl StructuredLogger {
         let timestamp = Utc::now().format("%H:%M:%S");
         let message = record.args().to_string();
 
-        // Build context string
-        let context_str = if context.is_empty() {
-            String::new()
+        // Build context string - avoid String::new() allocation when empty
+        if context.is_empty() {
+            format!("{} [{}] {}", level_icon, timestamp, message)
         } else {
             let pairs: Vec<String> = context
                 .iter()
                 .map(|(k, v)| format!("{}={}", k, format_value_for_human(v)))
                 .collect();
-            format!(" ({})", pairs.join(", "))
-        };
-
-        format!("{} [{}] {}{}", level_icon, timestamp, message, context_str)
+            format!("{} [{}] {} ({})", level_icon, timestamp, message, pairs.join(", "))
+        }
     }
 
     fn should_output_to_stdout(&self, level: Level) -> bool {
@@ -358,13 +356,13 @@ fn parse_log_tags() -> TagFilter {
         }
 
         if let Some((key, value)) = tag.split_once(':') {
-            let key = key.trim().to_string();
+            let key = key.trim();
             let value = value.trim();
 
             if value == "*" {
                 // Key exists, any value
                 patterns.push(TagPattern {
-                    key,
+                    key: key.to_string(),
                     value: None,
                     regex: None,
                 });
@@ -373,7 +371,7 @@ fn parse_log_tags() -> TagFilter {
                 let regex_pattern = value.replace('*', ".*").replace('?', ".");
                 if let Ok(regex) = Regex::new(&format!("^{}$", regex_pattern)) {
                     patterns.push(TagPattern {
-                        key,
+                        key: key.to_string(),
                         value: Some(value.to_string()),
                         regex: Some(regex),
                     });
@@ -381,7 +379,7 @@ fn parse_log_tags() -> TagFilter {
             } else {
                 // Exact match
                 patterns.push(TagPattern {
-                    key,
+                    key: key.to_string(),
                     value: Some(value.to_string()),
                     regex: None,
                 });

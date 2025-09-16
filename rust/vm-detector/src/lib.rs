@@ -2,15 +2,15 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
-use vm_common::file_system::*;
+use vm_common::file_system::{has_any_file, has_file, has_file_containing, has_any_dir};
 
 pub mod os;
 pub mod presets;
 pub mod tools;
 
-pub use os::*;
-pub use presets::*;
-pub use tools::*;
+pub use os::detect_host_os;
+pub use presets::{detect_preset_for_project, is_react_project, get_recommended_preset, is_multi_tech_project, get_detected_technologies};
+pub use tools::{ToolDetector, has_command, detect_languages, detect_databases};
 
 /// Check if a path is a Python project (has setup.py, pyproject.toml, etc.)
 pub fn is_python_project(dir: &Path) -> bool {

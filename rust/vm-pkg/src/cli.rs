@@ -116,7 +116,7 @@ pub fn execute(args: Args) -> Result<()> {
             installer.list_linked(package_type)?;
         }
         Command::Links { command } => {
-            use crate::links::*;
+            use crate::links::{validate_package_manager, detect_packages};
             match command {
                 LinksSubcommand::Detect {
                     package_manager,

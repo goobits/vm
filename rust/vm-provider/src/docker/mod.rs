@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 
 // External crates
 use anyhow::{Context, Result};
+use tera::Tera;
 
 // Internal imports
 use crate::{
@@ -109,6 +110,17 @@ impl DockerProvider {
     fn lifecycle_ops(&self) -> LifecycleOperations<'_> {
         LifecycleOperations::new(&self.config, &self.temp_dir, &self._project_dir)
     }
+}
+
+/// Shared template engine for all Docker operations
+pub(crate) fn get_template_engine() -> Result<Tera> {
+    let mut tera = Tera::default();
+
+    // Add all Docker templates
+    tera.add_raw_template("docker-compose.yml", include_str!("template.yml"))?;
+    tera.add_raw_template("Dockerfile", include_str!("Dockerfile.j2"))?;
+
+    Ok(tera)
 }
 
 impl Provider for DockerProvider {
