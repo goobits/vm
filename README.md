@@ -1,4 +1,4 @@
-# 🚀 Goobits VM Infrastructure (v1.2.0)
+# 🚀 Goobits VM Infrastructure
 Smart development environments that auto-configure based on your project type
 
 ## ✨ Key Features
@@ -8,7 +8,7 @@ Smart development environments that auto-configure based on your project type
 - **🧪 Temporary VMs** - Quick experiments with specific folders mounted
 - **🔄 File Sync** - Edit locally, run in VM with instant synchronization
 - **📦 Smart Presets** - Auto-installs language runtimes, databases, and tools per project
-- **🦀 Rust-Powered** - Core functionality migrated to Rust for improved performance (v1.2.0)
+- **🦀 Rust-Powered** - Core functionality migrated to Rust for improved performance
 
 ## 🚀 Quick Start
 
