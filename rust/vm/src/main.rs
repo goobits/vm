@@ -23,7 +23,7 @@ static REQUEST_ID: std::sync::LazyLock<String> =
 fn main() -> Result<()> {
     // Initialize structured logging system first, but only if not in test mode
     // Tests expect clean stdout output, so we disable logging for test runs
-    if std::env::var("VM_TEST_MODE").is_err() && vm_common::logging::init().is_err() {
+    if std::env::var("VM_TEST_MODE").is_err() && vm_common::structured_log::init().is_err() {
         eprintln!(
             "Warning: Failed to initialize structured logging, falling back to basic logging"
         );
