@@ -26,12 +26,12 @@ Development environments that auto-configure based on your project type
 - **[Preferences](docs/development/preferences.md)** - Development preferences and conventions
 
 ## ✨ Key Features
-- **Zero Configuration** - Detects React, Django, Rails, Vue, Angular, Next.js, Flask and more frameworks automatically
-- **AI Agent Safe** - Docker containers with secure defaults prevent host escape
-- **Instant Setup** - Docker environments in 10-30s, full VMs in 2-3min
-- **Temporary VMs** - Quick experiments with specific folders mounted
-- **File Sync** - Edit locally, run in VM with instant synchronization
-- **Auto Presets** - Installs language runtimes, databases, and tools per project
+- **Minimal Configuration** - Detects React, Django, Rails, Vue, Angular, Next.js, Flask and more frameworks automatically
+- **Container Isolation** - Docker containers with secure defaults
+- **Quick Setup** - Docker environments typically ready in under a minute
+- **Temporary VMs** - Ephemeral environments with specific folder mounts
+- **File Sync** - Edit locally, run in VM with file synchronization
+- **Preset System** - Installs language runtimes, databases, and tools per project
 
 ## 🚀 Quick Start
 

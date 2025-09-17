@@ -1,6 +1,6 @@
 # 💻 Installation Guide
 
-Beautiful development environments with one command. Choose between Docker (lightweight containers, default) or Vagrant (full VM isolation) based on your needs.
+Development environment setup. Choose between Docker (lightweight containers, default) or Vagrant (full VM isolation) based on your needs.
 
 ## 🏃 Quick Start
 
@@ -13,8 +13,8 @@ cd vm
 ./install.sh
 
 # 2. Start immediately with defaults OR create custom vm.yaml
-vm create  # Works without any config! Uses smart defaults
-vm ssh     # Enter your shiny new Ubuntu box
+vm create  # Works with default configuration
+vm ssh     # Enter the Ubuntu environment
 
 # OR customize with vm.yaml
 ```

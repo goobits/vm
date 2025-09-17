@@ -1,8 +1,8 @@
 # 🚀 Quick Start Guide
 
-Get up and running with your development environment in under 5 minutes.
+Setup guide for getting your development environment running.
 
-## 🎯 Zero Setup Option
+## 🎯 Minimal Setup
 
 ```bash
 # 1. Install the tool
@@ -16,7 +16,7 @@ vm create
 vm ssh
 ```
 
-That's it! The tool automatically:
+The tool automatically:
 - Detects your project type (React, Django, Rails, Vue, etc.)
 - Configures appropriate services and tools
 - Sets up port forwarding and file sync
@@ -80,7 +80,7 @@ vm logs          # View service logs
 
 ## 🧪 Temporary VMs
 
-Perfect for testing, code reviews, or quick experiments:
+Suitable for testing, code reviews, or experiments:
 
 ```bash
 vm temp ./feature-branch     # Mount specific directories
