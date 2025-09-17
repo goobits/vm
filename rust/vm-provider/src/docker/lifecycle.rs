@@ -381,7 +381,7 @@ impl<'a> LifecycleOperations<'a> {
                 }
             }
             if attempt == CONTAINER_READINESS_MAX_ATTEMPTS {
-                println!("❌");
+                vm_error!("Container failed to become ready");
                 return Err(anyhow::anyhow!("Container failed to become ready"));
             }
             std::thread::sleep(std::time::Duration::from_secs(

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 // External crates
 use anyhow::{Context, Result};
-use vm_common::vm_success;
+use vm_common::{vm_success, vm_error};
 
 // Internal imports
 use crate::{MountParser, MountPermission, StateManager, TempVmState};
@@ -104,7 +104,7 @@ impl TempVmOps {
         let state_manager = StateManager::new().context("Failed to initialize state manager")?;
 
         if !state_manager.state_exists() {
-            println!("❌ No temp VM found");
+            vm_error!("No temp VM found");
             println!("💡 Create one with: vm temp create ./your-directory");
             return Ok(());
         }
@@ -181,7 +181,7 @@ impl TempVmOps {
         if !yes {
             let confirmation_msg = format!("Add mount {} to temp VM? (y/N): ", source.display());
             if !Self::confirm_prompt(&confirmation_msg) {
-                println!("❌ Mount operation cancelled");
+                vm_error!("Mount operation cancelled");
                 return Ok(());
             }
         }
@@ -248,7 +248,7 @@ impl TempVmOps {
                     state.mount_count()
                 );
                 if !Self::confirm_prompt(&confirmation_msg) {
-                    println!("❌ Unmount operation cancelled");
+                    vm_error!("Unmount operation cancelled");
                     return Ok(());
                 }
             }
@@ -287,7 +287,7 @@ impl TempVmOps {
                     source_path.display()
                 );
                 if !Self::confirm_prompt(&confirmation_msg) {
-                    println!("❌ Unmount operation cancelled");
+                    vm_error!("Unmount operation cancelled");
                     return Ok(());
                 }
             }
@@ -327,7 +327,7 @@ impl TempVmOps {
         let state_manager = StateManager::new().context("Failed to initialize state manager")?;
 
         if !state_manager.state_exists() {
-            println!("❌ No temp VM found");
+            vm_error!("No temp VM found");
             return Ok(());
         }
 
