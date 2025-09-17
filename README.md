@@ -1,13 +1,37 @@
 # 🚀 Goobits VM
 Development environments that auto-configure based on your project type
 
+## 📚 Documentation
+
+### Getting Started
+- **[Quick Start Guide](docs/getting-started/quick-start.md)** - 5-minute setup tutorial
+- **[Installation Guide](docs/getting-started/installation.md)** - Platform-specific setup
+- **[Examples](docs/getting-started/examples.md)** - Common use cases and patterns
+
+### User Guide
+- **[CLI Reference](docs/user-guide/cli-reference.md)** - Complete command documentation
+- **[Configuration Guide](docs/user-guide/configuration.md)** - Full configuration options
+- **[Presets Guide](docs/user-guide/presets.md)** - Framework auto-detection
+- **[Security Guide](docs/user-guide/security.md)** - Security features and best practices
+- **[Troubleshooting](docs/user-guide/troubleshooting.md)** - Common issues and solutions
+
+### API Documentation
+- **[Configuration Schema](docs/api/configuration-schema.md)** - YAML configuration reference
+- **[Preset Format](docs/api/preset-format.md)** - Creating custom presets
+
+### Development
+- **[Architecture Overview](docs/development/architecture.md)** - System design and components
+- **[Contributing Guide](docs/development/contributing.md)** - How to contribute
+- **[Testing Guide](docs/development/testing.md)** - Running and writing tests
+- **[Preferences](docs/development/preferences.md)** - Development preferences and conventions
+
 ## ✨ Key Features
-- **🎯 Zero Configuration** - Detects React, Django, Rails, Vue, Angular, Next.js, Flask and more frameworks automatically
-- **🔐 AI Agent Safe** - Docker containers with secure defaults prevent host escape
-- **⚡ Instant Setup** - Docker environments in 10-30s, full VMs in 2-3min
-- **🧪 Temporary VMs** - Quick experiments with specific folders mounted
-- **🔄 File Sync** - Edit locally, run in VM with instant synchronization
-- **📦 Auto Presets** - Installs language runtimes, databases, and tools per project
+- **Zero Configuration** - Detects React, Django, Rails, Vue, Angular, Next.js, Flask and more frameworks automatically
+- **AI Agent Safe** - Docker containers with secure defaults prevent host escape
+- **Instant Setup** - Docker environments in 10-30s, full VMs in 2-3min
+- **Temporary VMs** - Quick experiments with specific folders mounted
+- **File Sync** - Edit locally, run in VM with instant synchronization
+- **Auto Presets** - Installs language runtimes, databases, and tools per project
 
 ## 🚀 Quick Start
 
@@ -126,16 +150,6 @@ vm preset show django        # Preset details
 vm --preset django create        # Force specific preset
 vm --no-preset create            # Manual configuration only
 ```
-
-## 📖 Documentation
-- **[Quick Start Guide](docs/getting-started/quick-start.md)** - 5-minute setup tutorial
-- **[Installation Guide](docs/getting-started/installation.md)** - Platform-specific setup
-- **[CLI Reference](docs/user-guide/cli-reference.md)** - Complete command documentation
-- **[Configuration Guide](docs/user-guide/configuration.md)** - Full configuration options
-- **[Presets Guide](docs/user-guide/presets.md)** - Framework auto-detection
-- **[Troubleshooting](docs/user-guide/troubleshooting.md)** - Common issues and solutions
-- **[Contributing Guide](docs/development/contributing.md)** - How to contribute
-- **[Architecture Overview](docs/development/architecture.md)** - System design
 
 ## 🧪 Development
 
