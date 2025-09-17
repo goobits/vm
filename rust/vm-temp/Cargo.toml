@@ -13,7 +13,6 @@ vm-provider = { path = "../vm-provider" }
 vm-common = { path = "../vm-common" }
 vm-platform = { path = "../vm-platform" }
 
-dirs = { workspace = true }
 thiserror = { workspace = true }
 clap = { workspace = true }
 vm-config = { path = "../vm-config" }
