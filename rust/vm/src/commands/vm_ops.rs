@@ -133,7 +133,7 @@ pub fn handle_destroy(provider: Box<dyn Provider>, config: VmConfig, force: bool
     } else {
         debug!("Destroy confirmation: response='no', cancelling destruction");
         ProgressReporter::error("└─", "Destruction cancelled");
-        std::process::exit(1);
+        anyhow::bail!("VM destruction cancelled by user");
     }
 }
 

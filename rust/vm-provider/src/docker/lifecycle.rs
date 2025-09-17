@@ -96,7 +96,8 @@ impl<'a> LifecycleOperations<'a> {
             .output()?;
 
         if pipx_list_output.status.success() {
-            let pipx_json = serde_json::from_slice::<Value>(&pipx_list_output.stdout)?;
+            let pipx_json = serde_json::from_slice::<Value>(&pipx_list_output.stdout)
+                .context("Failed to parse pipx list output as JSON")?;
             Ok(Some(pipx_json))
         } else {
             Ok(None)
@@ -359,7 +360,8 @@ impl<'a> LifecycleOperations<'a> {
         if !local_pipx_packages.is_empty() {
             config.extra_config.insert(
                 "local_pipx_packages".to_string(),
-                serde_json::to_value(local_pipx_packages).unwrap(),
+                serde_json::to_value(local_pipx_packages)
+                    .context("Failed to serialize local pipx packages for configuration")?,
             );
         }
 
@@ -383,7 +385,8 @@ impl<'a> LifecycleOperations<'a> {
         if !container_pipx_packages.is_empty() {
             config_clone.extra_config.insert(
                 "container_pipx_packages".to_string(),
-                serde_json::to_value(container_pipx_packages).unwrap(),
+                serde_json::to_value(container_pipx_packages)
+                    .context("Failed to serialize container pipx packages for configuration")?,
             );
         }
 
@@ -391,13 +394,15 @@ impl<'a> LifecycleOperations<'a> {
         if !local_pipx_packages.is_empty() {
             config_clone.extra_config.insert(
                 "local_pipx_packages".to_string(),
-                serde_json::to_value(local_pipx_packages).unwrap(),
+                serde_json::to_value(local_pipx_packages)
+                    .context("Failed to serialize local pipx packages for config copy")?,
             );
         }
 
         let config_json = config_clone.to_json()?;
         let temp_config_path = self.temp_dir.join("vm-config.json");
-        std::fs::write(&temp_config_path, config_json)?;
+        std::fs::write(&temp_config_path, config_json)
+            .with_context(|| format!("Failed to write configuration to {}", temp_config_path.display()))?;
         let copy_result = std::process::Command::new("docker")
             .args([
                 "cp",

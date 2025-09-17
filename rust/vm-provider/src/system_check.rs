@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 
 const MIN_CPU_CORES: u32 = 2;
 const MIN_MEMORY_GB: u64 = 4;
@@ -30,12 +30,14 @@ pub fn check_system_resources() -> Result<()> {
 
 #[cfg(target_os = "linux")]
 fn get_total_memory_gb() -> Result<u64> {
-    let meminfo = std::fs::read_to_string("/proc/meminfo")?;
+    let meminfo = std::fs::read_to_string("/proc/meminfo")
+        .context("Failed to read /proc/meminfo for memory detection")?;
     for line in meminfo.lines() {
         if line.starts_with("MemTotal:") {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 2 {
-                let mem_kb: u64 = parts[1].parse()?;
+                let mem_kb: u64 = parts[1].parse()
+                    .context("Failed to parse memory value from /proc/meminfo")?;
                 return Ok(mem_kb / 1024 / 1024); // Convert KB to GB
             }
         }
@@ -45,7 +47,8 @@ fn get_total_memory_gb() -> Result<u64> {
 
 #[cfg(target_os = "linux")]
 fn get_cpu_core_count() -> Result<u32> {
-    let cpuinfo = std::fs::read_to_string("/proc/cpuinfo")?;
+    let cpuinfo = std::fs::read_to_string("/proc/cpuinfo")
+        .context("Failed to read /proc/cpuinfo for CPU detection")?;
     let core_count = cpuinfo
         .lines()
         .filter(|line| line.starts_with("processor"))
@@ -63,7 +66,11 @@ fn get_total_memory_gb() -> Result<u64> {
         bail!("Failed to get memory size via sysctl");
     }
 
-    let mem_bytes: u64 = String::from_utf8(output.stdout)?.trim().parse()?;
+    let mem_bytes: u64 = String::from_utf8(output.stdout)
+        .context("Failed to parse sysctl memory output as UTF-8")?
+        .trim()
+        .parse()
+        .context("Failed to parse memory size as number")?;
     Ok(mem_bytes / 1024 / 1024 / 1024) // Convert bytes to GB
 }
 
@@ -77,7 +84,11 @@ fn get_cpu_core_count() -> Result<u32> {
         bail!("Failed to get CPU count via sysctl");
     }
 
-    let cpu_count: u32 = String::from_utf8(output.stdout)?.trim().parse()?;
+    let cpu_count: u32 = String::from_utf8(output.stdout)
+        .context("Failed to parse sysctl output as UTF-8")?
+        .trim()
+        .parse()
+        .context("Failed to parse CPU count as number")?;
     Ok(cpu_count)
 }
 

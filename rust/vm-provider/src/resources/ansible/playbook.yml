@@ -513,6 +513,7 @@ except Exception as e:
                 python3 -c "
 import tomllib, os, stat, sys
 try:
+    package_name = os.path.basename(os.getcwd())
     with open('pyproject.toml', 'rb') as f:
         data = tomllib.load(f)
     scripts = data.get('project', {}).get('scripts', {})
@@ -521,7 +522,12 @@ try:
         module, function = entry_point.split(':')
         print(f'Creating wrapper for {name} at {wrapper_path}')
         wrapper_content = f'''#!/usr/bin/env python3
-import sys
+import sys, os
+# Ensure local package is in Python path, making this script self-contained
+local_paths = [f'/opt/local-packages/{package_name}', f'/opt/local-packages/{package_name}/src']
+for path in local_paths:
+    if path not in sys.path and os.path.exists(path):
+        sys.path.insert(0, path)
 from {module} import {function}
 sys.exit({function}())
 '''
@@ -529,7 +535,7 @@ sys.exit({function}())
             f.write(wrapper_content)
         os.chmod(wrapper_path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
 except Exception as e:
-    print(f'Could not create wrapper for {{ item.key }}: {e}', file=sys.stderr)
+    print(f'Could not create wrapper for {package_name}: {e}', file=sys.stderr)
 "
             fi
         args:

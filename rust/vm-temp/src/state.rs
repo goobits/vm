@@ -356,13 +356,23 @@ impl StateManager {
     }
 }
 
-// Note: Default impl intentionally panics for invalid environment
-// This ensures early failure detection for misconfigured systems
+// Safe default implementation with fallback to current directory
 impl Default for StateManager {
     fn default() -> Self {
-        Self::new().expect(
-            "Failed to create default state manager - check that home directory is accessible",
-        )
+        match Self::new() {
+            Ok(manager) => manager,
+            Err(_) => {
+                // Fallback to current directory if state directory creation fails
+                let fallback_dir = std::env::current_dir()
+                    .unwrap_or_else(|_| std::path::PathBuf::from("."));
+                Self {
+                    state_dir: fallback_dir.clone(),
+                    state_file: fallback_dir.join(".vm_temp_state.yaml"),
+                    temp_file_registry: fallback_dir.join(".temp_files.registry"),
+                    lock_file: fallback_dir.join(".temp_vm.lock"),
+                }
+            }
+        }
     }
 }
 
