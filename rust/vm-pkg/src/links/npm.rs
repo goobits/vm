@@ -48,6 +48,12 @@ fn get_npm_root() -> Result<PathBuf> {
 }
 
 fn get_nvm_versions_dir() -> Option<PathBuf> {
+    // Use platform abstraction for cross-platform NVM detection
+    if let Ok(Some(nvm_dir)) = vm_platform::current().nvm_versions_dir() {
+        return Some(nvm_dir);
+    }
+
+    // Fallback to hardcoded Unix path for backwards compatibility
     let home = std::env::var("HOME").ok()?;
     let nvm_versions = PathBuf::from(home).join(".nvm/versions/node");
 

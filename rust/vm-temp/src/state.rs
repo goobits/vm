@@ -84,9 +84,7 @@ impl StateManager {
     /// # Returns
     /// A `Result` containing the default state directory path or an error if the home directory cannot be found.
     pub fn default_state_dir() -> Result<PathBuf> {
-        dirs::home_dir()
-            .map(|home| home.join(".vm"))
-            .ok_or_else(|| anyhow::anyhow!("Could not find home directory"))
+        vm_platform::platform::vm_state_dir()
     }
 
     /// Get the state file path

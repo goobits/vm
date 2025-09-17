@@ -1296,6 +1296,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "uuid",
+ "vm-platform",
 ]
 
 [[package]]
@@ -1340,6 +1341,7 @@ dependencies = [
  "dirs",
  "tempfile",
  "vm-common",
+ "vm-platform",
  "which",
 ]
 
@@ -1355,6 +1357,7 @@ dependencies = [
  "tempfile",
  "vm-common",
  "vm-detector",
+ "vm-platform",
  "which",
 ]
 
@@ -1365,6 +1368,7 @@ dependencies = [
  "anyhow",
  "dirs",
  "sysinfo",
+ "tempfile",
 ]
 
 [[package]]
@@ -1398,6 +1402,7 @@ dependencies = [
  "thiserror",
  "vm-common",
  "vm-config",
+ "vm-platform",
  "vm-ports",
  "which",
 ]
@@ -1417,6 +1422,7 @@ dependencies = [
  "thiserror",
  "vm-common",
  "vm-config",
+ "vm-platform",
  "vm-provider",
 ]
 

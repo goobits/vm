@@ -19,6 +19,7 @@ chrono = { workspace = true }
 is-terminal = { workspace = true }
 dirs = { workspace = true }
 uuid = { workspace = true }
+vm-platform = { path = "../vm-platform" }
 
 [features]
 default = []

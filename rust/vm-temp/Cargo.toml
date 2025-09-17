@@ -11,6 +11,7 @@ serde = { workspace = true }
 serde_yaml_ng = { workspace = true }
 vm-provider = { path = "../vm-provider" }
 vm-common = { path = "../vm-common" }
+vm-platform = { path = "../vm-platform" }
 
 dirs = { workspace = true }
 thiserror = { workspace = true }

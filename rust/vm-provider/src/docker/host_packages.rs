@@ -134,15 +134,28 @@ fn detect_package_directories(info: &mut HostPackageInfo) {
         info.npm_local_dir = Some(local_npm);
     }
 
-    // Cargo directories
-    let cargo_registry = PathBuf::from(&home).join(".cargo/registry");
-    if cargo_registry.exists() {
-        info.cargo_registry = Some(cargo_registry);
-    }
+    // Cargo directories - use platform abstraction for cross-platform paths
+    if let Ok(cargo_home) = vm_platform::current().cargo_home() {
+        let cargo_registry = cargo_home.join("registry");
+        if cargo_registry.exists() {
+            info.cargo_registry = Some(cargo_registry);
+        }
 
-    let cargo_bin = PathBuf::from(&home).join(".cargo/bin");
-    if cargo_bin.exists() {
-        info.cargo_bin = Some(cargo_bin);
+        let cargo_bin = cargo_home.join("bin");
+        if cargo_bin.exists() {
+            info.cargo_bin = Some(cargo_bin);
+        }
+    } else {
+        // Fallback to home-based paths if platform detection fails
+        let cargo_registry = PathBuf::from(&home).join(".cargo/registry");
+        if cargo_registry.exists() {
+            info.cargo_registry = Some(cargo_registry);
+        }
+
+        let cargo_bin = PathBuf::from(&home).join(".cargo/bin");
+        if cargo_bin.exists() {
+            info.cargo_bin = Some(cargo_bin);
+        }
     }
 }
 

@@ -467,14 +467,29 @@
         when: project_config.container_pipx_packages is defined and project_config.container_pipx_packages | length > 0
         ignore_errors: yes
 
-      - name: Install local pipx packages in editable mode
-        shell: |
-            pipx ensurepath
-            pipx install -e /opt/local-packages/{{ item.key }}
-        become_user: '{{ project_user }}'
+      - name: Setup local packages via PATH and PYTHONPATH (no installation needed)
+        lineinfile:
+            path: '/home/{{ project_user }}/.zshrc'
+            line: |
+                # Local package: {{ item.key }}
+                export PATH="/opt/local-packages/{{ item.key }}:/opt/local-packages/{{ item.key }}/bin:$PATH"
+                export PYTHONPATH="/opt/local-packages/{{ item.key }}:/opt/local-packages/{{ item.key }}/src:$PYTHONPATH"
+            create: yes
+            owner: '{{ project_user }}'
+            mode: '0644'
         loop: "{{ project_config.local_pipx_packages | dict2items | default([]) }}"
         when: project_config.local_pipx_packages is defined and project_config.local_pipx_packages | length > 0
-        ignore_errors: yes
+
+      - name: Add git auto-update for local packages
+        cron:
+            name: "Auto-update local package {{ item.key }}"
+            minute: "*/2"
+            job: "cd /opt/local-packages/{{ item.key }} && git fetch && git reset --hard origin/main"
+            user: root
+        loop: "{{ project_config.local_pipx_packages | dict2items | default([]) }}"
+        when:
+            - project_config.local_pipx_packages is defined and project_config.local_pipx_packages | length > 0
+            - project_config.auto_update_local_packages | default(true)
 
       - name: Install pnpm via npm as fallback
         shell: |

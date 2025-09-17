@@ -10,5 +10,8 @@ anyhow = { workspace = true }
 dirs = { workspace = true }
 sysinfo = { workspace = true }
 
+[dev-dependencies]
+tempfile = { workspace = true }
+
 [features]
 default = []

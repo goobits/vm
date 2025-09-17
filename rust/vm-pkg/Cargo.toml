@@ -14,6 +14,7 @@ which = { workspace = true }
 tempfile = { workspace = true }
 vm-detector = { path = "../vm-detector" }
 vm-common = { path = "../vm-common" }
+vm-platform = { path = "../vm-platform" }
 rayon = { workspace = true }
 regex = { workspace = true }
 

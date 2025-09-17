@@ -12,6 +12,7 @@ clap = { workspace = true }
 dirs = { workspace = true }
 which = { workspace = true }
 vm-common = { path = "../vm-common" }
+vm-platform = { path = "../vm-platform" }
 
 [dev-dependencies]
 tempfile = "3.22"

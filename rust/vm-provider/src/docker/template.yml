@@ -25,8 +25,8 @@ services:
       # Host package mounts for development
       {% if host_mounts %}{% for mount in host_mounts %}- {{ mount.0 }}:{{ mount.1 }}:ro
       {% endfor %}{% endif %}
-      # Local pipx package mounts (read-write for editable installs)
-      {% if local_pipx_mounts %}{% for mount in local_pipx_mounts %}- {{ mount.0 }}:{{ mount.1 }}:rw
+      # Local package mounts (read-only for clean live updates)
+      {% if local_pipx_mounts %}{% for mount in local_pipx_mounts %}- {{ mount.0 }}:{{ mount.1 }}:ro
       {% endfor %}{% endif %}
       # Container is now self-contained - no VM tool mount needed
     {% if config.ports and config.ports | length > 0 -%}
@@ -41,6 +41,8 @@ services:
       {% if config.services.postgresql.enabled | default(value=false) %}
       - DATABASE_URL=postgresql://{{ config.services.postgresql.user | default(value="postgres") }}:{{ config.services.postgresql.password | default(value="postgres") }}@postgres:5432/{{ config.services.postgresql.database | default(value=config.project.name ~ "_dev") }}
       {% endif %}
+      # Disable Python bytecode generation for clean read-only mounting
+      - PYTHONDONTWRITEBYTECODE=1
       # Host package environment variables
       {% if host_env_vars %}{% for env_var in host_env_vars %}- {{ env_var.0 }}={{ env_var.1 }}
       {% endfor %}{% endif %}

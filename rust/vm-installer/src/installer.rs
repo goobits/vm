@@ -88,9 +88,10 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
     }
     vm_success!("Rust binaries built successfully.");
 
-    let binary_path = target_dir.join("release/vm");
+    let binary_name = vm_platform::platform::executable_name("vm");
+    let binary_path = target_dir.join("release").join(&binary_name);
     if !binary_path.exists() {
-        anyhow::bail!("Could not find compiled 'vm' binary at {:?}", binary_path);
+        anyhow::bail!("Could not find compiled '{}' binary at {:?}", binary_name, binary_path);
     }
     Ok(binary_path)
 }
@@ -99,26 +100,20 @@ fn create_symlink(source_binary: &Path, bin_dir: &Path) -> Result<()> {
     println!("🔗 Creating global 'vm' command...");
     fs::create_dir_all(bin_dir).context("Failed to create user bin directory")?;
 
-    let link_name = bin_dir.join("vm");
+    let executable_name = vm_platform::platform::executable_name("vm");
+    let link_name = bin_dir.join(&executable_name);
 
     // Remove existing link or file if it exists
     if link_name.exists() || link_name.is_symlink() {
         fs::remove_file(&link_name).context("Failed to remove existing 'vm' file/symlink")?;
     }
 
-    #[cfg(unix)]
-    {
-        std::os::unix::fs::symlink(source_binary, &link_name)
-            .context("Failed to create symlink")?;
-    }
-    #[cfg(not(unix))]
-    {
-        // Add Windows support here if needed in the future
-        anyhow::bail!("Automatic symlinking is only supported on Unix-like systems.");
-    }
+    // Use platform abstraction for cross-platform installation
+    vm_platform::current().install_executable(source_binary, bin_dir, "vm")
+        .context("Failed to install executable")?;
 
     println!(
-        "✅ Symlink created: {} -> {}",
+        "✅ Executable installed: {} -> {}",
         link_name.display(),
         source_binary.display()
     );
