@@ -345,12 +345,12 @@ mod tests {
 
         assert!(list_module_loggers().is_empty());
 
-        let _logger1 = get_logger("module1");
-        let _logger2 = get_logger("module2");
+        let _logger1 = get_logger("test_list_module_loggers_mod1");
+        let _logger2 = get_logger("test_list_module_loggers_mod2");
 
         let loggers = list_module_loggers();
         assert_eq!(loggers.len(), 2);
-        assert!(loggers.contains(&"module1".to_string()));
-        assert!(loggers.contains(&"module2".to_string()));
+        assert!(loggers.contains(&"test_list_module_loggers_mod1".to_string()));
+        assert!(loggers.contains(&"test_list_module_loggers_mod2".to_string()));
     }
 }
