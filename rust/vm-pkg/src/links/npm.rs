@@ -1,4 +1,5 @@
 use anyhow::Result;
+use vm_common::vm_error;
 use rayon::prelude::*;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -40,7 +41,8 @@ fn get_npm_root() -> Result<PathBuf> {
     let output = Command::new("npm").args(["root", "-g"]).output()?;
 
     if !output.status.success() {
-        anyhow::bail!("Failed to get npm root directory");
+        vm_error!("Failed to get npm root directory");
+        return Err(anyhow::anyhow!("Failed to get npm root directory"));
     }
 
     let root_str = String::from_utf8(output.stdout)?.trim().to_string();

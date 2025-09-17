@@ -79,10 +79,11 @@ pub fn execute(
 
     // Check if vm.yaml already exists
     if target_path.exists() {
-        anyhow::bail!(
-            "❌ vm.yaml already exists at {}\nUse --file to specify a different location or remove the existing file.",
+        vm_error!(
+            "vm.yaml already exists at {}\nUse --file to specify a different location or remove the existing file.",
             target_path.display()
         );
+        return Err(anyhow::anyhow!("vm.yaml already exists"));
     }
 
     // Get current directory name for project name

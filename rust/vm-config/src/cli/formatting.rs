@@ -3,6 +3,7 @@ use anyhow::Result;
 use serde_yaml::Value;
 use serde_yaml_ng as serde_yaml;
 use std::path::PathBuf;
+use vm_common::vm_error;
 
 use super::OutputFormat;
 
@@ -35,7 +36,10 @@ pub fn query_field(value: &serde_json::Value, field: &str) -> Result<serde_json:
                     .get(part)
                     .ok_or_else(|| anyhow::anyhow!("Field '{}' not found", part))?;
             }
-            _ => anyhow::bail!("Cannot access field '{}' on non-object", part),
+            _ => {
+                vm_error!("Cannot access field '{}' on non-object", part);
+                return Err(anyhow::anyhow!("Cannot access field on non-object"));
+            }
         }
     }
 
@@ -59,7 +63,8 @@ pub fn find_vm_config_file() -> Result<PathBuf> {
         }
     }
 
-    anyhow::bail!("Could not find vm.yaml file in current directory or any parent directory");
+    vm_error!("Could not find vm.yaml file in current directory or any parent directory");
+    return Err(anyhow::anyhow!("Could not find vm.yaml file"));
 }
 
 pub fn output_shell_exports(value: &Value) {

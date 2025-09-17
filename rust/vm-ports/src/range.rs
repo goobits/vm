@@ -5,6 +5,7 @@
 
 use anyhow::Result;
 use std::fmt;
+use vm_common::vm_error;
 
 #[cfg(test)]
 mod test_constants {
@@ -45,33 +46,36 @@ impl PortRange {
     pub fn parse(range_str: &str) -> Result<Self> {
         // Validate format: START-END
         if !range_str.contains('-') {
-            anyhow::bail!(
-                "❌ Invalid port range format: {}\n💡 Expected format: START-END (e.g., 3170-3179)",
+            vm_error!(
+                "Invalid port range format: {}\n💡 Expected format: START-END (e.g., 3170-3179)",
                 range_str
             );
+            return Err(anyhow::anyhow!("Invalid port range format"));
         }
 
         let parts: Vec<&str> = range_str.split('-').collect();
         if parts.len() != 2 {
-            anyhow::bail!(
-                "❌ Invalid port range format: {}\n💡 Expected format: START-END (e.g., 3170-3179)",
+            vm_error!(
+                "Invalid port range format: {}\n💡 Expected format: START-END (e.g., 3170-3179)",
                 range_str
             );
+            return Err(anyhow::anyhow!("Invalid port range format"));
         }
 
         let start: u16 = parts[0]
             .parse()
-            .map_err(|_| anyhow::anyhow!("❌ Invalid start port: {}", parts[0]))?;
+            .map_err(|_| anyhow::anyhow!("Invalid start port: {}", parts[0]))?;
         let end: u16 = parts[1]
             .parse()
-            .map_err(|_| anyhow::anyhow!("❌ Invalid end port: {}", parts[1]))?;
+            .map_err(|_| anyhow::anyhow!("Invalid end port: {}", parts[1]))?;
 
         if start >= end {
-            anyhow::bail!(
-                "❌ Invalid range: start ({}) must be less than end ({})",
+            vm_error!(
+                "Invalid range: start ({}) must be less than end ({})",
                 start,
                 end
             );
+            return Err(anyhow::anyhow!("Invalid range values"));
         }
 
         Ok(PortRange { start, end })
@@ -87,11 +91,12 @@ impl PortRange {
     /// A `Result` containing the new `PortRange` or an error if start >= end.
     pub fn new(start: u16, end: u16) -> Result<Self> {
         if start >= end {
-            anyhow::bail!(
-                "❌ Invalid range: start ({}) must be less than end ({})",
+            vm_error!(
+                "Invalid range: start ({}) must be less than end ({})",
                 start,
                 end
             );
+            return Err(anyhow::anyhow!("Invalid range values"));
         }
         Ok(PortRange { start, end })
     }

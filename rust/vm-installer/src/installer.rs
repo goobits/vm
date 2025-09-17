@@ -6,7 +6,7 @@ use std::process::{Command, Stdio};
 
 // External crates
 use anyhow::{Context, Result};
-use vm_common::{user_paths, vm_success, vm_progress, module_logger_context, scoped_context};
+use vm_common::{user_paths, vm_success, vm_progress, vm_error, module_logger_context, scoped_context};
 
 // Internal imports
 use crate::platform;
@@ -48,7 +48,8 @@ fn get_project_root() -> Result<PathBuf> {
         }
     }
 
-    anyhow::bail!("Could not find project root from executable location. Ensure the project structure is intact.");
+    vm_error!("Could not find project root from executable location. Ensure the project structure is intact.");
+    return Err(anyhow::anyhow!("Could not find project root"));
 }
 
 fn run_cargo_clean(project_root: &Path) -> Result<()> {
@@ -75,7 +76,8 @@ fn run_cargo_clean(project_root: &Path) -> Result<()> {
         .context("Failed to execute 'cargo clean'")?;
 
     if !status.success() {
-        anyhow::bail!("'cargo clean' failed.");
+        vm_error!("'cargo clean' failed.");
+        return Err(anyhow::anyhow!("cargo clean failed"));
     }
     vm_success!("Build artifacts cleaned.");
     Ok(())
@@ -106,14 +108,16 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
         .context("Failed to execute 'cargo build'")?;
 
     if !status.success() {
-        anyhow::bail!("Failed to build Rust binaries.");
+        vm_error!("Failed to build Rust binaries.");
+        return Err(anyhow::anyhow!("Failed to build Rust binaries"));
     }
     vm_success!("Rust binaries built successfully.");
 
     let binary_name = vm_platform::platform::executable_name("vm");
     let binary_path = target_dir.join("release").join(&binary_name);
     if !binary_path.exists() {
-        anyhow::bail!("Could not find compiled '{}' binary at {:?}", binary_name, binary_path);
+        vm_error!("Could not find compiled '{}' binary at {:?}", binary_name, binary_path);
+        return Err(anyhow::anyhow!("Could not find compiled binary"));
     }
     Ok(binary_path)
 }

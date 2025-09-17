@@ -4,6 +4,7 @@ use glob::glob;
 use serde::{Deserialize, Serialize};
 use serde_yaml_ng as serde_yaml;
 use std::path::PathBuf;
+use vm_common::vm_error;
 use vm_detector::detect_preset_for_project;
 
 /// Metadata about a preset
@@ -55,11 +56,12 @@ impl PresetDetector {
         // Fallback to file system (for custom presets)
         let preset_path = self.presets_dir.join(format!("{}.yaml", name));
         if !preset_path.exists() {
-            anyhow::bail!(
+            vm_error!(
                 "Preset '{}' not found (not embedded and no file at {:?})",
                 name,
                 preset_path
             );
+            return Err(anyhow::anyhow!("Preset not found"));
         }
 
         let content = std::fs::read_to_string(&preset_path)?;

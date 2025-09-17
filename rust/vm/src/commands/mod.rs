@@ -4,7 +4,7 @@ use anyhow::Result;
 use log::debug;
 // Import the CLI types
 use crate::cli::{Args, Command};
-use vm_common::{log_context, vm_println};
+use vm_common::{log_context, vm_println, vm_error};
 use vm_config::{config::VmConfig, init_config_file};
 use vm_provider::get_provider;
 
@@ -140,9 +140,12 @@ fn handle_provider_command(args: Args) -> Result<()> {
         Command::Status => vm_ops::handle_status(provider, config),
         Command::Exec { command } => vm_ops::handle_exec(provider, command),
         Command::Logs => vm_ops::handle_logs(provider),
-        cmd => anyhow::bail!(
-            "❌ Error: Command {:?} should have been handled in earlier match statement",
-            cmd
-        ),
+        cmd => {
+            vm_error!(
+                "Command {:?} should have been handled in earlier match statement",
+                cmd
+            );
+            return Err(anyhow::anyhow!("Command not handled in match statement"));
+        }
     }
 }

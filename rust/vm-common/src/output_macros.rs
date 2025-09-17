@@ -256,7 +256,7 @@ macro_rules! vm_error {
         }
         #[cfg(not(feature = "structured-output"))]
         {
-            eprintln!("✗ {}", format!($($arg)*));
+            eprintln!("❌ {}", format!($($arg)*));
         }
     }};
 }

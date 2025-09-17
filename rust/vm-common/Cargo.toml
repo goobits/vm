@@ -22,7 +22,7 @@ uuid = { workspace = true }
 vm-platform = { path = "../vm-platform" }
 
 [features]
-default = []
+default = ["test-helpers"]
 structured-output = []
 test-helpers = []
 

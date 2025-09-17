@@ -28,15 +28,6 @@ impl<'a> ComposeOperations<'a> {
         }
     }
 
-    /// Helper method to extract local pipx package names from config
-    fn get_local_pipx_package_names(&self) -> std::collections::HashSet<String> {
-        self.config
-            .extra_config
-            .get("local_pipx_packages")
-            .and_then(|local_pipx| local_pipx.as_object())
-            .map(|obj| obj.keys().cloned().collect())
-            .unwrap_or_default()
-    }
 
     #[allow(dead_code)]
     pub fn load_docker_compose_template() -> Result<String> {
@@ -76,16 +67,8 @@ impl<'a> ComposeOperations<'a> {
                 host_info.pip_site_packages = pip_info.pip_site_packages;
                 host_info.pipx_base_dir = pip_info.pipx_base_dir;
 
-                // Filter out packages that will be handled by local pipx mounting
-                let local_pipx_packages: std::collections::HashSet<String> =
-                    self.get_local_pipx_package_names();
-
-                // Only include packages that are NOT in local_pipx_packages
-                for (package_name, location) in pip_info.detected_packages {
-                    if !local_pipx_packages.contains(&package_name) {
-                        host_info.detected_packages.insert(package_name, location);
-                    }
-                }
+                // Include all detected pip packages for host mounting
+                host_info.detected_packages.extend(pip_info.detected_packages);
             }
         }
 
@@ -111,25 +94,6 @@ impl<'a> ComposeOperations<'a> {
         let host_mounts = get_volume_mounts(&host_info);
         let host_env_vars = get_package_env_vars(&host_info);
 
-        // Prepare local pipx package mounts separately (they need rw access)
-        let mut local_pipx_mounts = Vec::new();
-        if let Some(local_pipx) = self.config.extra_config.get("local_pipx_packages") {
-            if let Some(packages) = local_pipx.as_object() {
-                for (package_name, source_path) in packages {
-                    if let Some(path_str) = source_path.as_str() {
-                        let source_path = std::path::PathBuf::from(path_str);
-                        if source_path.exists() {
-                            // Local packages need read-write access for editable installs
-                            let container_path = format!("/opt/local-packages/{}", package_name);
-                            local_pipx_mounts.push((
-                                path_str.to_string(),
-                                container_path,
-                            ));
-                        }
-                    }
-                }
-            }
-        }
 
         let mut context = TeraContext::new();
         context.insert("config", &self.config);
@@ -141,36 +105,11 @@ impl<'a> ComposeOperations<'a> {
         context.insert("is_macos", &cfg!(target_os = "macos"));
         context.insert("host_mounts", &host_mounts);
         context.insert("host_env_vars", &host_env_vars);
+        // No local package mounts or environment variables needed
+        let local_pipx_mounts: Vec<(String, String)> = Vec::new();
+        let local_env_vars: Vec<(String, String)> = Vec::new();
+
         context.insert("local_pipx_mounts", &local_pipx_mounts);
-
-        // Generate PATH and PYTHONPATH for local packages
-        let mut local_env_vars = Vec::new();
-        if !local_pipx_mounts.is_empty() {
-            let mut path_additions = Vec::new();
-            let mut pythonpath_additions = Vec::new();
-
-            for (_, container_path) in &local_pipx_mounts {
-                // Add package root and bin for executables
-                path_additions.push(container_path.clone());
-                path_additions.push(format!("{}/bin", container_path));
-                // Add package root and src for Python imports
-                pythonpath_additions.push(container_path.clone());
-                pythonpath_additions.push(format!("{}/src", container_path));
-            }
-
-            if !path_additions.is_empty() {
-                local_env_vars.push((
-                    "PATH".to_string(),
-                    format!("{}:$PATH", path_additions.join(":")),
-                ));
-            }
-            if !pythonpath_additions.is_empty() {
-                local_env_vars.push((
-                    "PYTHONPATH".to_string(),
-                    format!("{}:$PYTHONPATH", pythonpath_additions.join(":")),
-                ));
-            }
-        }
         context.insert("local_env_vars", &local_env_vars);
 
         let content = tera.render("docker-compose.yml", &context)?;

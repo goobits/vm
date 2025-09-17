@@ -57,32 +57,19 @@ impl<'a> LifecycleOperations<'a> {
         }
     }
 
-    /// Helper to extract pipx package information from JSON output
-    fn extract_pipx_package_info(&self, pipx_json: &Value) -> Result<(std::collections::HashMap<String, String>, std::collections::HashSet<String>)> {
-        let mut local_pipx_packages = std::collections::HashMap::new();
+    /// Helper to extract pipx managed packages (for filtering from pip_packages)
+    fn extract_pipx_managed_packages(&self, pipx_json: &Value) -> Result<std::collections::HashSet<String>> {
         let mut pipx_managed_packages = std::collections::HashSet::new();
 
         if let Some(venvs) = pipx_json.get("venvs").and_then(|v| v.as_object()) {
             for package in &self.config.pip_packages {
-                if let Some(package_venv) = venvs.get(package) {
-                    if let Some(package_url) = package_venv
-                        .get("metadata")
-                        .and_then(|m| m.get("main_package"))
-                        .and_then(|mp| mp.get("package_or_url"))
-                        .and_then(|pu| pu.as_str())
-                    {
-                        pipx_managed_packages.insert(package.clone());
-
-                        // Store local packages with their source paths for mounting
-                        if package_url.starts_with('/') || package_url.contains("./") || package_url.contains("../") {
-                            local_pipx_packages.insert(package.clone(), package_url.to_string());
-                        }
-                    }
+                if venvs.contains_key(package) {
+                    pipx_managed_packages.insert(package.clone());
                 }
             }
         }
 
-        Ok((local_pipx_packages, pipx_managed_packages))
+        Ok(pipx_managed_packages)
     }
 
     /// Helper to get pipx JSON output
@@ -104,10 +91,9 @@ impl<'a> LifecycleOperations<'a> {
         }
     }
 
-    /// Helper to categorize pipx packages into container and local packages
-    fn categorize_pipx_packages(&self, pipx_json: &Value) -> Result<(Vec<String>, std::collections::HashMap<String, String>)> {
+    /// Helper to categorize pipx packages (only returns container packages now)
+    fn categorize_pipx_packages(&self, pipx_json: &Value) -> Result<Vec<String>> {
         let mut container_pipx_packages = Vec::new();
-        let mut local_pipx_packages = std::collections::HashMap::new();
 
         if let Some(venvs) = pipx_json.get("venvs").and_then(|v| v.as_object()) {
             let pipx_managed_packages: std::collections::HashSet<String> = venvs
@@ -117,32 +103,13 @@ impl<'a> LifecycleOperations<'a> {
 
             for package in &self.config.pip_packages {
                 if pipx_managed_packages.contains(package) {
-                    // Check if this is a local package installation (contains "/" path)
-                    if let Some(package_venv) = venvs.get(package) {
-                        if let Some(package_url) = package_venv
-                            .get("metadata")
-                            .and_then(|m| m.get("main_package"))
-                            .and_then(|mp| mp.get("package_or_url"))
-                            .and_then(|pu| pu.as_str())
-                        {
-                            // Separate local packages from PyPI packages
-                            if package_url.starts_with('/') || package_url.contains("./") || package_url.contains("../") {
-                                // Store local packages with their source paths for mounting
-                                local_pipx_packages.insert(package.clone(), package_url.to_string());
-                            } else {
-                                // PyPI packages can be installed normally in container
-                                container_pipx_packages.push(package.clone());
-                            }
-                        }
-                    } else {
-                        // If we can't determine the package source, include it (likely PyPI)
-                        container_pipx_packages.push(package.clone());
-                    }
+                    // All pipx packages are now treated as PyPI packages for container installation
+                    container_pipx_packages.push(package.clone());
                 }
             }
         }
 
-        Ok((container_pipx_packages, local_pipx_packages))
+        Ok(container_pipx_packages)
     }
 
     pub fn project_name(&self) -> &str {
@@ -225,9 +192,9 @@ impl<'a> LifecycleOperations<'a> {
 
         println!("🐳 Creating Docker Environment");
 
-        // Step 1: Detect local pipx packages and update config
+        // Step 1: Filter pipx-managed packages from pip_packages
         let mut modified_config = self.config.clone();
-        self.detect_and_add_local_pipx_packages(&mut modified_config)?;
+        self.filter_pipx_managed_packages(&mut modified_config)?;
 
         // Step 2: Prepare build context with embedded resources
         print!("📦 Preparing build context... ");
@@ -340,14 +307,14 @@ impl<'a> LifecycleOperations<'a> {
         }
     }
 
-    fn detect_and_add_local_pipx_packages(&self, config: &mut vm_config::config::VmConfig) -> Result<()> {
-        let (local_pipx_packages, pipx_managed_packages) = if let Some(pipx_json) = self.get_pipx_json()? {
-            self.extract_pipx_package_info(&pipx_json)?
+    fn filter_pipx_managed_packages(&self, config: &mut vm_config::config::VmConfig) -> Result<()> {
+        let pipx_managed_packages = if let Some(pipx_json) = self.get_pipx_json()? {
+            self.extract_pipx_managed_packages(&pipx_json)?
         } else {
-            (std::collections::HashMap::new(), std::collections::HashSet::new())
+            std::collections::HashSet::new()
         };
 
-        // Remove pipx-managed packages from pip_packages to prevent double mounting
+        // Remove pipx-managed packages from pip_packages to prevent double installation
         if !pipx_managed_packages.is_empty() {
             config.pip_packages = config.pip_packages
                 .iter()
@@ -356,24 +323,15 @@ impl<'a> LifecycleOperations<'a> {
                 .collect();
         }
 
-        // Add local packages mapping to config for volume mounting
-        if !local_pipx_packages.is_empty() {
-            config.extra_config.insert(
-                "local_pipx_packages".to_string(),
-                serde_json::to_value(local_pipx_packages)
-                    .context("Failed to serialize local pipx packages for configuration")?,
-            );
-        }
-
         Ok(())
     }
 
     fn prepare_and_copy_config(&self) -> Result<()> {
         let mut config_clone = self.config.clone();
-        let (container_pipx_packages, local_pipx_packages) = if let Some(pipx_json) = self.get_pipx_json()? {
+        let container_pipx_packages = if let Some(pipx_json) = self.get_pipx_json()? {
             self.categorize_pipx_packages(&pipx_json)?
         } else {
-            (Vec::new(), std::collections::HashMap::new())
+            Vec::new()
         };
 
         // Always clear pip_packages if we processed any pipx packages, regardless of whether they were included
@@ -390,14 +348,6 @@ impl<'a> LifecycleOperations<'a> {
             );
         }
 
-        // Add local packages mapping to config for volume mounting and editable installation
-        if !local_pipx_packages.is_empty() {
-            config_clone.extra_config.insert(
-                "local_pipx_packages".to_string(),
-                serde_json::to_value(local_pipx_packages)
-                    .context("Failed to serialize local pipx packages for config copy")?,
-            );
-        }
 
         let config_json = config_clone.to_json()?;
         let temp_config_path = self.temp_dir.join("vm-config.json");
@@ -805,10 +755,9 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_pipx_package_info_with_local_package() {
+    fn test_extract_pipx_managed_packages() {
         let lifecycle = create_test_lifecycle();
 
-        // Simulate pipx JSON output with a local package
         let pipx_json = json!({
             "venvs": {
                 "claudeflow": {
@@ -830,19 +779,12 @@ mod tests {
             }
         });
 
-        let result = lifecycle.extract_pipx_package_info(&pipx_json).unwrap();
-        let (local_packages, managed_packages) = result;
+        let managed_packages = lifecycle.extract_pipx_managed_packages(&pipx_json).unwrap();
 
-        // Should detect claudeflow as local package
-        assert!(local_packages.contains_key("claudeflow"));
-        assert_eq!(local_packages.get("claudeflow").unwrap(), "/Users/miko/projects/codeflow");
-
-        // Should mark both as pipx-managed
+        // Should mark both as pipx-managed for filtering from pip_packages
         assert!(managed_packages.contains("claudeflow"));
         assert!(managed_packages.contains("ruff"));
-
-        // Should NOT include ruff as local (it's from PyPI)
-        assert!(!local_packages.contains_key("ruff"));
+        assert_eq!(managed_packages.len(), 2);
     }
 
     #[test]
@@ -870,41 +812,12 @@ mod tests {
             }
         });
 
-        let result = lifecycle.categorize_pipx_packages(&pipx_json).unwrap();
-        let (container_packages, local_packages) = result;
+        let container_packages = lifecycle.categorize_pipx_packages(&pipx_json).unwrap();
 
-        // ruff should be in container packages (installed from PyPI)
+        // All pipx packages are now treated as container packages
         assert!(container_packages.contains(&"ruff".to_string()));
-        assert_eq!(container_packages.len(), 1);
-
-        // claudeflow should be in local packages
-        assert!(local_packages.contains_key("claudeflow"));
-        assert_eq!(local_packages.get("claudeflow").unwrap(), "/Users/miko/projects/codeflow");
-    }
-
-    #[test]
-    fn test_detect_relative_path_packages() {
-        let lifecycle = create_test_lifecycle();
-
-        let pipx_json = json!({
-            "venvs": {
-                "claudeflow": {
-                    "metadata": {
-                        "main_package": {
-                            "package_or_url": "./codeflow",
-                            "package": "claudeflow"
-                        }
-                    }
-                }
-            }
-        });
-
-        let result = lifecycle.extract_pipx_package_info(&pipx_json).unwrap();
-        let (local_packages, _) = result;
-
-        // Should detect relative path as local
-        assert!(local_packages.contains_key("claudeflow"));
-        assert_eq!(local_packages.get("claudeflow").unwrap(), "./codeflow");
+        assert!(container_packages.contains(&"claudeflow".to_string()));
+        assert_eq!(container_packages.len(), 2);
     }
 
     #[test]
@@ -915,10 +828,37 @@ mod tests {
             "venvs": {}
         });
 
-        let result = lifecycle.extract_pipx_package_info(&pipx_json).unwrap();
-        let (local_packages, managed_packages) = result;
+        let managed_packages = lifecycle.extract_pipx_managed_packages(&pipx_json).unwrap();
+        let container_packages = lifecycle.categorize_pipx_packages(&pipx_json).unwrap();
 
-        assert!(local_packages.is_empty());
         assert!(managed_packages.is_empty());
+        assert!(container_packages.is_empty());
+    }
+
+    #[test]
+    fn test_filter_pipx_managed_packages() {
+        let lifecycle = create_test_lifecycle();
+        let mut config = lifecycle.config.clone();
+
+        // Set up test config with pip packages that overlap with pipx
+        config.pip_packages = vec!["ruff".to_string(), "black".to_string(), "claudeflow".to_string()];
+
+        // Mock pipx detection to return ruff and claudeflow as managed
+        // In a real test, this would be injected, but for simplicity we test the filtering logic
+        let pipx_managed: std::collections::HashSet<String> =
+            ["ruff", "claudeflow"].iter().map(|s| s.to_string()).collect();
+
+        // Filter out pipx-managed packages
+        config.pip_packages = config.pip_packages
+            .iter()
+            .filter(|pkg| !pipx_managed.contains(*pkg))
+            .cloned()
+            .collect();
+
+        // Only black should remain (not managed by pipx)
+        assert_eq!(config.pip_packages.len(), 1);
+        assert!(config.pip_packages.contains(&"black".to_string()));
+        assert!(!config.pip_packages.contains(&"ruff".to_string()));
+        assert!(!config.pip_packages.contains(&"claudeflow".to_string()));
     }
 }

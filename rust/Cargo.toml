@@ -21,6 +21,7 @@ authors = ["VM Tool Contributors"]
 license = "MIT"
 
 [workspace.dependencies]
+vm-common = { path = "vm-common" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml_ng = "0.10"

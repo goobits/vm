@@ -4,6 +4,7 @@ use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
+use vm_common::vm_error;
 
 #[derive(Parser)]
 #[command(name = "version-sync")]
@@ -44,7 +45,8 @@ impl VersionSync {
                 return Ok(current);
             }
             if !current.pop() {
-                anyhow::bail!("Could not find project root (no package.json found)");
+                vm_error!("Could not find project root (no package.json found)");
+                return Err(anyhow::anyhow!("Could not find project root"));
             }
         }
     }

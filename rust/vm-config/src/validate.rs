@@ -2,15 +2,17 @@ use crate::config::VmConfig;
 use anyhow::Result;
 use regex::Regex;
 use std::path::PathBuf;
+use vm_common::vm_error;
 
 /// Validate GPU type for GPU service
 fn validate_gpu_type(gpu_type: &Option<String>) -> Result<()> {
     if let Some(gpu_type) = gpu_type {
         if !matches!(gpu_type.as_str(), "nvidia" | "amd" | "intel" | "auto") {
-            anyhow::bail!(
+            vm_error!(
                 "Invalid GPU type: {}. Must be one of: nvidia, amd, intel, auto",
                 gpu_type
             );
+            return Err(anyhow::anyhow!("Invalid GPU type"));
         }
     }
     Ok(())
@@ -112,15 +114,18 @@ impl ConfigValidator {
     /// Check required fields are present
     fn validate_required_fields(&self) -> Result<()> {
         if self.config.provider.is_none() {
-            anyhow::bail!("Missing required field: provider");
+            vm_error!("Missing required field: provider");
+            return Err(anyhow::anyhow!("Missing required field: provider"));
         }
 
         if let Some(project) = &self.config.project {
             if project.name.is_none() {
-                anyhow::bail!("Missing required field: project.name");
+                vm_error!("Missing required field: project.name");
+                return Err(anyhow::anyhow!("Missing required field: project.name"));
             }
         } else {
-            anyhow::bail!("Missing required field: project");
+            vm_error!("Missing required field: project");
+            return Err(anyhow::anyhow!("Missing required field: project"));
         }
 
         Ok(())
@@ -131,10 +136,13 @@ impl ConfigValidator {
         if let Some(provider) = &self.config.provider {
             match provider.as_str() {
                 "docker" | "vagrant" | "tart" => Ok(()),
-                _ => anyhow::bail!(
-                    "Invalid provider: {}. Must be one of: docker, vagrant, tart",
-                    provider
-                ),
+                _ => {
+                    vm_error!(
+                        "Invalid provider: {}. Must be one of: docker, vagrant, tart",
+                        provider
+                    );
+                    return Err(anyhow::anyhow!("Invalid provider"));
+                }
             }
         } else {
             Ok(())
@@ -148,10 +156,11 @@ impl ConfigValidator {
             if let Some(name) = &project.name {
                 let name_regex = Regex::new(r"^[a-zA-Z0-9\-_]+$")?;
                 if !name_regex.is_match(name) {
-                    anyhow::bail!(
+                    vm_error!(
                         "Invalid project name: {}. Must contain only alphanumeric characters, dashes, and underscores",
                         name
                     );
+                    return Err(anyhow::anyhow!("Invalid project name"));
                 }
             }
 
@@ -159,14 +168,16 @@ impl ConfigValidator {
             if let Some(hostname) = &project.hostname {
                 let hostname_regex = Regex::new(r"^[a-zA-Z0-9\-\.]+$")?;
                 if !hostname_regex.is_match(hostname) {
-                    anyhow::bail!("Invalid hostname: {}. Must be a valid hostname", hostname);
+                    vm_error!("Invalid hostname: {}. Must be a valid hostname", hostname);
+                    return Err(anyhow::anyhow!("Invalid hostname"));
                 }
             }
 
             // Validate workspace path
             if let Some(path) = &project.workspace_path {
                 if !path.starts_with('/') {
-                    anyhow::bail!("Workspace path must be absolute: {}", path);
+                    vm_error!("Workspace path must be absolute: {}", path);
+                    return Err(anyhow::anyhow!("Workspace path must be absolute"));
                 }
             }
         }
@@ -179,7 +190,8 @@ impl ConfigValidator {
         // Validate individual port mappings
         for (name, port) in &self.config.ports {
             if *port == 0 {
-                anyhow::bail!("Invalid port {} for {}: port 0 is reserved", port, name);
+                vm_error!("Invalid port {} for {}: port 0 is reserved", port, name);
+                return Err(anyhow::anyhow!("Invalid port: port 0 is reserved"));
             }
         }
 
@@ -197,11 +209,12 @@ impl ConfigValidator {
             // Validate service port if specified
             if let Some(port) = service.port {
                 if port == 0 {
-                    anyhow::bail!(
+                    vm_error!(
                         "Invalid port {} for service {}: port 0 is reserved",
                         port,
                         name
                     );
+                    return Err(anyhow::anyhow!("Invalid port: port 0 is reserved"));
                 }
             }
 
@@ -220,14 +233,16 @@ impl ConfigValidator {
             // Validate Node.js version
             if let Some(node) = &versions.node {
                 if !Self::is_valid_version(node) {
-                    anyhow::bail!("Invalid Node.js version: {}", node);
+                    vm_error!("Invalid Node.js version: {}", node);
+                    return Err(anyhow::anyhow!("Invalid Node.js version"));
                 }
             }
 
             // Validate Python version
             if let Some(python) = &versions.python {
                 if !Self::is_valid_version(python) {
-                    anyhow::bail!("Invalid Python version: {}", python);
+                    vm_error!("Invalid Python version: {}", python);
+                    return Err(anyhow::anyhow!("Invalid Python version"));
                 }
             }
         }

@@ -18,6 +18,8 @@ use std::process::Command;
 // External crates
 use anyhow::{Context, Result};
 
+// Macros are automatically available at crate root via #[macro_export]
+
 /// Common prelude for VM Tool modules
 pub mod prelude {
     pub use anyhow::{Context, Result};
@@ -60,11 +62,12 @@ impl CommandOps {
             .with_context(|| format!("Failed to execute command: {}", cmd))?;
 
         if !output.status.success() {
-            anyhow::bail!(
+            vm_error!(
                 "Command {} failed with exit code: {:?}",
                 cmd,
                 output.status.code()
             );
+            return Err(anyhow::anyhow!("Command failed"));
         }
 
         Ok(String::from_utf8(output.stdout)?.trim().to_string())

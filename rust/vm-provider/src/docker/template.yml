@@ -25,9 +25,6 @@ services:
       # Host package mounts for development
       {% if host_mounts %}{% for mount in host_mounts %}- {{ mount.0 }}:{{ mount.1 }}:ro
       {% endfor %}{% endif %}
-      # Local package mounts (read-only for clean live updates)
-      {% if local_pipx_mounts %}{% for mount in local_pipx_mounts %}- {{ mount.0 }}:{{ mount.1 }}:ro
-      {% endfor %}{% endif %}
       # Container is now self-contained - no VM tool mount needed
     {% if config.ports and config.ports | length > 0 -%}
     ports:
@@ -45,9 +42,6 @@ services:
       - PYTHONDONTWRITEBYTECODE=1
       # Host package environment variables
       {% if host_env_vars %}{% for env_var in host_env_vars %}- {{ env_var.0 }}={{ env_var.1 }}
-      {% endfor %}{% endif %}
-      # Local package environment variables
-      {% if local_env_vars %}{% for env_var in local_env_vars %}- {{ env_var.0 }}={{ env_var.1 }}
       {% endfor %}{% endif %}
       {% if config.environment and config.environment | length > 0 -%}
       {% for name, value in config.environment %}- {{ name }}={{ value }}

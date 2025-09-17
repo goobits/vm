@@ -6,7 +6,7 @@ use std::process::{Command, Stdio};
 
 // External crates
 use anyhow::{Context, Result};
-use vm_common::vm_success;
+use vm_common::{vm_error, vm_success};
 
 // Internal imports
 use crate::link_detector::LinkDetector;
@@ -21,20 +21,23 @@ const LOCAL_BIN_PATH: &str = ".local/bin";
 fn validate_script_name(filename: &str) -> Result<()> {
     // Check for empty name
     if filename.is_empty() {
-        anyhow::bail!("Script name cannot be empty");
+        vm_error!("Script name cannot be empty");
+        return Err(anyhow::anyhow!("Script name cannot be empty"));
     }
 
     // Check for path separators
     if filename.contains('/') || filename.contains('\\') {
-        anyhow::bail!("Script name cannot contain path separators: {}", filename);
+        vm_error!("Script name cannot contain path separators: {}", filename);
+        return Err(anyhow::anyhow!("Script name cannot contain path separators"));
     }
 
     // Check for dangerous characters
     if filename.contains("..") || filename.starts_with('.') {
-        anyhow::bail!(
+        vm_error!(
             "Script name cannot contain '..' or start with '.': {}",
             filename
         );
+        return Err(anyhow::anyhow!("Script name cannot contain '..' or start with '.'"));
     }
 
     // Only allow alphanumeric, dash, underscore
@@ -42,10 +45,11 @@ fn validate_script_name(filename: &str) -> Result<()> {
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
-        anyhow::bail!(
+        vm_error!(
             "Script name can only contain alphanumeric characters, dashes, and underscores: {}",
             filename
         );
+        return Err(anyhow::anyhow!("Script name can only contain alphanumeric characters, dashes, and underscores"));
     }
 
     Ok(())
@@ -71,7 +75,8 @@ impl PackageInstaller {
     ) -> Result<()> {
         // Check if package manager is available
         if !manager.is_available() {
-            anyhow::bail!("Package manager {} is not available", manager);
+            vm_error!("Package manager {} is not available", manager);
+            return Err(anyhow::anyhow!("Package manager not available"));
         }
 
         // Check for linked package first (unless forcing registry install)
@@ -123,7 +128,8 @@ impl PackageInstaller {
         let status = cmd.status().context("Failed to execute cargo install")?;
 
         if !status.success() {
-            anyhow::bail!("Cargo install failed for linked package: {}", package);
+            vm_error!("Cargo install failed for linked package: {}", package);
+            return Err(anyhow::anyhow!("Cargo install failed"));
         }
 
         vm_success!("Installed linked cargo package: {}", package);
@@ -140,7 +146,8 @@ impl PackageInstaller {
         let status = cmd.status().context("Failed to execute cargo install")?;
 
         if !status.success() {
-            anyhow::bail!("Cargo install failed for package: {}", package);
+            vm_error!("Cargo install failed for package: {}", package);
+            return Err(anyhow::anyhow!("Cargo install failed"));
         }
 
         vm_success!("Installed cargo package from registry: {}", package);
@@ -164,7 +171,8 @@ impl PackageInstaller {
         let status = cmd.status().context("Failed to execute npm link")?;
 
         if !status.success() {
-            anyhow::bail!("NPM link failed for package: {}", package);
+            vm_error!("NPM link failed for package: {}", package);
+            return Err(anyhow::anyhow!("NPM link failed"));
         }
 
         vm_success!("Linked npm package: {}", package);
@@ -181,7 +189,8 @@ impl PackageInstaller {
         let status = cmd.status().context("Failed to execute npm install")?;
 
         if !status.success() {
-            anyhow::bail!("NPM install failed for package: {}", package);
+            vm_error!("NPM install failed for package: {}", package);
+            return Err(anyhow::anyhow!("NPM install failed"));
         }
 
         vm_success!("Installed npm package from registry: {}", package);
@@ -245,7 +254,8 @@ impl PackageInstaller {
         let status = cmd.status().context("Failed to execute pip install")?;
 
         if !status.success() {
-            anyhow::bail!("Pip install failed for package: {}", package);
+            vm_error!("Pip install failed for package: {}", package);
+            return Err(anyhow::anyhow!("Pip install failed"));
         }
 
         vm_success!("Installed Python package with pip: {}", package);
@@ -261,7 +271,8 @@ impl PackageInstaller {
         let status = cmd.status().context("Failed to execute pip install")?;
 
         if !status.success() {
-            anyhow::bail!("Pip editable install failed");
+            vm_error!("Pip editable install failed");
+            return Err(anyhow::anyhow!("Pip editable install failed"));
         }
 
         Ok(())
@@ -294,7 +305,8 @@ impl PackageInstaller {
         }
 
         // Some other error
-        anyhow::bail!("Pipx install failed: {}", stderr);
+        vm_error!("Pipx install failed: {}", stderr);
+        return Err(anyhow::anyhow!("Pipx install failed"));
     }
 
     fn create_pipx_wrappers(&self, package: &str, path: &Path) -> Result<()> {
