@@ -8,6 +8,7 @@ use anyhow::Result;
 use log::{debug, info, warn};
 
 // Internal imports
+use vm_common::vm_error;
 use vm_common::scoped_context;
 use vm_config::config::VmConfig;
 use vm_provider::{
@@ -133,7 +134,8 @@ pub fn handle_destroy(provider: Box<dyn Provider>, config: VmConfig, force: bool
     } else {
         debug!("Destroy confirmation: response='no', cancelling destruction");
         ProgressReporter::error("└─", "Destruction cancelled");
-        anyhow::bail!("VM destruction cancelled by user");
+        vm_error!("VM destruction cancelled by user");
+        return Err(anyhow::anyhow!("VM destruction cancelled by user"));
     }
 }
 

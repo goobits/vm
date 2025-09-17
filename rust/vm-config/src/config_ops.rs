@@ -10,7 +10,7 @@ use std::fs;
 use std::path::PathBuf;
 
 // External crates
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use serde_yaml::{Mapping, Value};
 use serde_yaml_ng as serde_yaml;
 
@@ -18,6 +18,7 @@ use serde_yaml_ng as serde_yaml;
 use crate::config::VmConfig;
 use crate::merge::ConfigMerger;
 use crate::paths;
+use vm_common::vm_error;
 use crate::preset::PresetDetector;
 use vm_common::user_paths;
 
@@ -179,9 +180,11 @@ impl ConfigOps {
 
         if !config_path.exists() {
             if global {
-                bail!("No global configuration found at {}", config_path.display());
+                vm_error!("No global configuration found at {}", config_path.display());
+                return Err(anyhow::anyhow!("No global configuration found"));
             } else {
-                bail!("No vm.yaml found in current directory or parent directories");
+                vm_error!("No vm.yaml found in current directory or parent directories");
+                return Err(anyhow::anyhow!("No vm.yaml found"));
             }
         }
 
@@ -215,7 +218,8 @@ impl ConfigOps {
         };
 
         if !config_path.exists() {
-            bail!("Configuration file not found: {}", config_path.display());
+            vm_error!("Configuration file not found: {}", config_path.display());
+            return Err(anyhow::anyhow!("Configuration file not found"));
         }
 
         let content = fs::read_to_string(&config_path)?;
@@ -295,7 +299,8 @@ impl ConfigOps {
         for preset_name in preset_iter {
             let preset_path = presets_dir.join(format!("{}.yaml", preset_name));
             if !preset_path.exists() {
-                bail!("Preset '{}' not found", preset_name);
+                vm_error!("Preset '{}' not found", preset_name);
+                return Err(anyhow::anyhow!("Preset not found"));
             }
 
             let preset_config = VmConfig::from_file(&preset_path)
@@ -367,7 +372,8 @@ fn find_local_config() -> Result<PathBuf> {
         }
     }
 
-    bail!("No vm.yaml found in current directory or parent directories")
+    vm_error!("No vm.yaml found in current directory or parent directories");
+    Err(anyhow::anyhow!("No vm.yaml found"))
 }
 
 fn find_or_create_local_config() -> Result<PathBuf> {
@@ -383,7 +389,8 @@ fn find_or_create_local_config() -> Result<PathBuf> {
 
 fn set_nested_field(value: &mut Value, field: &str, new_value: Value) -> Result<()> {
     if field.is_empty() {
-        bail!("Empty field path");
+        vm_error!("Empty field path");
+        return Err(anyhow::anyhow!("Empty field path"));
     }
 
     let parts: Vec<&str> = field.split('.').collect();
@@ -398,7 +405,10 @@ fn set_nested_field_recursive(value: &mut Value, parts: &[&str], new_value: Valu
                 map.insert(key, new_value);
                 return Ok(());
             }
-            _ => bail!("Cannot set field on non-object"),
+            _ => {
+                vm_error!("Cannot set field on non-object");
+                return Err(anyhow::anyhow!("Cannot set field on non-object"));
+            }
         }
     }
 
@@ -415,7 +425,10 @@ fn set_nested_field_recursive(value: &mut Value, parts: &[&str], new_value: Valu
                 }
             }
         }
-        _ => bail!("Cannot navigate field '{}' on non-object", parts[0]),
+        _ => {
+            vm_error!("Cannot navigate field '{}' on non-object", parts[0]);
+            return Err(anyhow::anyhow!("Cannot navigate field on non-object"));
+        }
     }
 
     Ok(())
@@ -446,7 +459,10 @@ fn get_nested_field<'a>(value: &'a Value, field: &str) -> Result<&'a Value> {
                     .get(&key)
                     .ok_or_else(|| anyhow::anyhow!("Field '{}' not found", part))?;
             }
-            _ => bail!("Cannot navigate field '{}' on non-object", part),
+            _ => {
+                vm_error!("Cannot navigate field '{}' on non-object", part);
+                return Err(anyhow::anyhow!("Cannot navigate field on non-object"));
+            }
         }
     }
 
@@ -455,7 +471,8 @@ fn get_nested_field<'a>(value: &'a Value, field: &str) -> Result<&'a Value> {
 
 fn unset_nested_field(value: &mut Value, field: &str) -> Result<()> {
     if field.is_empty() {
-        bail!("Empty field path");
+        vm_error!("Empty field path");
+        return Err(anyhow::anyhow!("Empty field path"));
     }
 
     let parts: Vec<&str> = field.split('.').collect();
@@ -468,11 +485,15 @@ fn unset_nested_field_recursive(value: &mut Value, parts: &[&str]) -> Result<()>
             Value::Mapping(map) => {
                 let key = Value::String(parts[0].into());
                 if map.remove(&key).is_none() {
-                    bail!("Field '{}' not found", parts[0]);
+                    vm_error!("Field '{}' not found", parts[0]);
+                    return Err(anyhow::anyhow!("Field not found"));
                 }
                 return Ok(());
             }
-            _ => bail!("Cannot unset field on non-object"),
+            _ => {
+                vm_error!("Cannot unset field on non-object");
+                return Err(anyhow::anyhow!("Cannot unset field on non-object"));
+            }
         }
     }
 
@@ -481,10 +502,16 @@ fn unset_nested_field_recursive(value: &mut Value, parts: &[&str]) -> Result<()>
             let key = Value::String(parts[0].into());
             match map.get_mut(&key) {
                 Some(nested) => unset_nested_field_recursive(nested, &parts[1..])?,
-                None => bail!("Field '{}' not found", parts[0]),
+                None => {
+                    vm_error!("Field '{}' not found", parts[0]);
+                    return Err(anyhow::anyhow!("Field not found"));
+                }
             }
         }
-        _ => bail!("Cannot navigate field '{}' on non-object", parts[0]),
+        _ => {
+            vm_error!("Cannot navigate field '{}' on non-object", parts[0]);
+            return Err(anyhow::anyhow!("Cannot navigate field on non-object"));
+        }
     }
 
     Ok(())

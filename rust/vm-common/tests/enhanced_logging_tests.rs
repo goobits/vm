@@ -14,7 +14,6 @@ use tempfile::TempDir;
 use vm_common::{
     log_context::{self, current_context},
     module_logger::{self, get_logger},
-    output_macros::{init_structured_output_with_config},
     scoped_context,
     structured_log::{LogConfig, LogFormat, LogOutput, TagPattern},
 };
@@ -32,16 +31,6 @@ fn init_test_logger() {
     });
 }
 
-/// Helper to create a test logger configuration
-fn create_test_config() -> LogConfig {
-    LogConfig {
-        level: log::Level::Debug,
-        format: LogFormat::Json,
-        output: LogOutput::Console,
-        tags: None,
-    }
-}
-
 /// Helper to create a test config that logs to a file
 fn create_file_config(file_path: &str) -> LogConfig {
     LogConfig {
@@ -49,16 +38,6 @@ fn create_file_config(file_path: &str) -> LogConfig {
         format: LogFormat::Json,
         output: LogOutput::File(file_path.to_string()),
         tags: None,
-    }
-}
-
-/// Helper to create a test config with tag filtering
-fn create_filtered_config(patterns: Vec<TagPattern>) -> LogConfig {
-    LogConfig {
-        level: log::Level::Debug,
-        format: LogFormat::Json,
-        output: LogOutput::Console,
-        tags: Some(patterns),
     }
 }
 
@@ -131,7 +110,7 @@ fn test_tag_filtering() {
     log_context::clear_context();
 
     // Create a config that only allows logs with component=docker
-    let patterns = vec![TagPattern {
+    let _patterns = vec![TagPattern {
         key: "component".to_string(),
         value: Some("docker".to_string()),
         regex: None,
@@ -176,7 +155,7 @@ fn test_wildcard_tag_filtering() {
 
     // Create a config that matches operations starting with "create"
     use regex::Regex;
-    let patterns = vec![TagPattern {
+    let _patterns = vec![TagPattern {
         key: "operation".to_string(),
         value: Some("create*".to_string()),
         regex: Some(Regex::new("^create.*$").unwrap()),
@@ -471,7 +450,7 @@ fn test_human_readable_format() {
     #[cfg(test)]
     log_context::clear_context();
 
-    let config = LogConfig {
+    let _config = LogConfig {
         level: log::Level::Info,
         format: LogFormat::Human,
         output: LogOutput::Console,

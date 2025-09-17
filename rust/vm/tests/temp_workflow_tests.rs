@@ -62,13 +62,38 @@ impl TempWorkflowTestFixture {
     }
 }
 
-/// Check if Docker is available on the system
+/// Check if Docker is available and working on the system
 fn is_docker_available() -> bool {
-    Command::new("docker")
+    // Check if docker command exists
+    let docker_version = Command::new("docker")
         .arg("--version")
         .output()
         .map(|output| output.status.success())
-        .unwrap_or(false)
+        .unwrap_or(false);
+
+    if !docker_version {
+        return false;
+    }
+
+    // Check if docker compose is available
+    let compose_available = Command::new("docker")
+        .args(["compose", "version"])
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false);
+
+    if !compose_available {
+        return false;
+    }
+
+    // Check if Docker daemon is actually running by trying a simple command
+    let daemon_running = Command::new("docker")
+        .args(["info"])
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false);
+
+    daemon_running
 }
 
 #[test]

@@ -1,4 +1,5 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
+use vm_common::vm_error;
 
 const MIN_CPU_CORES: u32 = 2;
 const MIN_MEMORY_GB: u64 = 4;
@@ -8,21 +9,23 @@ pub fn check_system_resources() -> Result<()> {
     // Check CPU cores
     let cpu_cores = get_cpu_core_count()?;
     if cpu_cores < MIN_CPU_CORES {
-        bail!(
+        vm_error!(
             "System has only {} physical CPU cores. A minimum of {} is recommended.",
             cpu_cores,
             MIN_CPU_CORES
         );
+        return Err(anyhow::anyhow!("Insufficient CPU cores"));
     }
 
     // Check Memory
     let total_memory_gb = get_total_memory_gb()?;
     if total_memory_gb < MIN_MEMORY_GB {
-        bail!(
+        vm_error!(
             "System has only {} GB of memory. A minimum of {} GB is recommended.",
             total_memory_gb,
             MIN_MEMORY_GB
         );
+        return Err(anyhow::anyhow!("Insufficient memory"));
     }
 
     Ok(())
@@ -42,7 +45,8 @@ fn get_total_memory_gb() -> Result<u64> {
             }
         }
     }
-    bail!("Could not parse memory information from /proc/meminfo");
+    vm_error!("Could not parse memory information from /proc/meminfo");
+    Err(anyhow::anyhow!("Could not parse memory information"))
 }
 
 #[cfg(target_os = "linux")]
@@ -63,7 +67,8 @@ fn get_total_memory_gb() -> Result<u64> {
         .output()?;
 
     if !output.status.success() {
-        bail!("Failed to get memory size via sysctl");
+        vm_error!("Failed to get memory size via sysctl");
+        return Err(anyhow::anyhow!("Failed to get memory size"));
     }
 
     let mem_bytes: u64 = String::from_utf8(output.stdout)
@@ -81,7 +86,8 @@ fn get_cpu_core_count() -> Result<u32> {
         .output()?;
 
     if !output.status.success() {
-        bail!("Failed to get CPU count via sysctl");
+        vm_error!("Failed to get CPU count via sysctl");
+        return Err(anyhow::anyhow!("Failed to get CPU count"));
     }
 
     let cpu_count: u32 = String::from_utf8(output.stdout)
