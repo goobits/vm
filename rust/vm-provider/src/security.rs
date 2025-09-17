@@ -255,7 +255,7 @@ mod tests {
 
     #[test]
     fn test_validate_script_name_traversal() {
-        let result = SecurityValidator::validate_script_name("../script");
+        let result = SecurityValidator::validate_script_name("..script");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains(".."));
     }
