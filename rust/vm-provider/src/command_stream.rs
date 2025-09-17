@@ -3,7 +3,7 @@ use std::ffi::OsStr;
 use std::io::{BufRead, BufReader};
 
 // External crates
-use anyhow::Result;
+use anyhow::{Context, Result};
 use duct::cmd;
 use which::which;
 
@@ -26,11 +26,19 @@ pub fn stream_command_with_progress<A: AsRef<OsStr>>(
     args: &[A],
     mut parser: Box<dyn ProgressParser>,
 ) -> Result<()> {
-    let reader = cmd(command, args).stderr_to_stdout().reader()?;
+    let reader = cmd(command, args).stderr_to_stdout().reader()
+        .with_context(|| {
+            let args_str = args.iter()
+                .map(|arg| arg.as_ref().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!("Failed to execute command '{}' with args: {}", command, args_str)
+        })?;
+
     let lines = BufReader::new(reader).lines();
 
-    for line in lines {
-        let line = line?;
+    for line_result in lines {
+        let line = line_result?;
         parser.parse_line(&line);
     }
 

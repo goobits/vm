@@ -115,6 +115,8 @@ fn test_temp_vm_full_lifecycle() -> Result<()> {
         return Ok(());
     }
 
+    println!("Docker is available, proceeding with integration test...");
+
     // Use the docker provider for this test
     fixture.create_config_file("provider: docker")?;
 
