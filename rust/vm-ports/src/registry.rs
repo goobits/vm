@@ -12,7 +12,7 @@ use std::path::PathBuf;
 // External crates
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use vm_common::vm_println;
+use vm_common::{user_paths, vm_println};
 
 // Internal imports
 use crate::range::PortRange;
@@ -40,10 +40,9 @@ impl PortRegistry {
     /// # Returns
     /// A `Result` containing the loaded registry or an error if loading fails.
     pub fn load() -> Result<Self> {
-        let home_dir = std::env::var("HOME")
-            .map_err(|_| anyhow::anyhow!("HOME environment variable not set"))?;
-        let registry_dir = PathBuf::from(home_dir).join(".vm");
-        let registry_path = registry_dir.join("port-registry.json");
+        let registry_path = user_paths::port_registry_path()?;
+        let registry_dir = registry_path.parent()
+            .ok_or_else(|| anyhow::anyhow!("Invalid registry path"))?;
 
         // Create registry directory if it doesn't exist
         if !registry_dir.exists() {

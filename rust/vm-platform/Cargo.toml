@@ -1,0 +1,14 @@
+[package]
+name = "vm-platform"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+dirs = { workspace = true }
+sysinfo = { workspace = true }
+
+[features]
+default = []

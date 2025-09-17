@@ -6,18 +6,14 @@ use std::process::{Command, Stdio};
 
 // External crates
 use anyhow::{Context, Result};
-use vm_common::vm_success;
+use vm_common::{user_paths, vm_success};
 
 // Internal imports
 use crate::platform;
 
-const BIN_DIR_NAME: &str = ".local/bin";
-
 pub fn install(clean: bool) -> Result<()> {
     let project_root = get_project_root()?;
-    let bin_dir = dirs::home_dir()
-        .context("Could not find home directory")?
-        .join(BIN_DIR_NAME);
+    let bin_dir = user_paths::user_bin_dir()?;
 
     if clean {
         run_cargo_clean(&project_root)?;
@@ -101,7 +97,7 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
 
 fn create_symlink(source_binary: &Path, bin_dir: &Path) -> Result<()> {
     println!("🔗 Creating global 'vm' command...");
-    fs::create_dir_all(bin_dir).context("Failed to create ~/.local/bin directory")?;
+    fs::create_dir_all(bin_dir).context("Failed to create user bin directory")?;
 
     let link_name = bin_dir.join("vm");
 

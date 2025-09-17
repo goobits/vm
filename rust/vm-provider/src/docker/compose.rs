@@ -65,7 +65,22 @@ impl<'a> ComposeOperations<'a> {
             if let Ok(pip_info) = detect_packages(&self.config.pip_packages, PackageManager::Pip) {
                 host_info.pip_site_packages = pip_info.pip_site_packages;
                 host_info.pipx_base_dir = pip_info.pipx_base_dir;
-                host_info.detected_packages.extend(pip_info.detected_packages);
+
+                // Filter out packages that will be handled by local pipx mounting
+                let local_pipx_packages: std::collections::HashSet<String> = if let Some(local_pipx) = self.config.extra_config.get("local_pipx_packages") {
+                    local_pipx.as_object().map_or_else(|| std::collections::HashSet::new(), |obj| {
+                        obj.keys().cloned().collect()
+                    })
+                } else {
+                    std::collections::HashSet::new()
+                };
+
+                // Only include packages that are NOT in local_pipx_packages
+                for (package_name, location) in pip_info.detected_packages {
+                    if !local_pipx_packages.contains(&package_name) {
+                        host_info.detected_packages.insert(package_name, location);
+                    }
+                }
             }
         }
 

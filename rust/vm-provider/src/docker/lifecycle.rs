@@ -249,6 +249,7 @@ impl<'a> LifecycleOperations<'a> {
 
     fn detect_and_add_local_pipx_packages(&self, config: &mut vm_config::config::VmConfig) -> Result<()> {
         let mut local_pipx_packages = std::collections::HashMap::new();
+        let mut pipx_managed_packages = std::collections::HashSet::new();
 
         if !self.config.pip_packages.is_empty() {
             let pipx_list_output = std::process::Command::new("pipx")
@@ -266,6 +267,9 @@ impl<'a> LifecycleOperations<'a> {
                                     .and_then(|mp| mp.get("package_or_url"))
                                     .and_then(|pu| pu.as_str())
                                 {
+                                    // This package is managed by pipx
+                                    pipx_managed_packages.insert(package.clone());
+
                                     // Store local packages with their source paths for mounting
                                     if package_url.starts_with('/') || package_url.contains("./") || package_url.contains("../") {
                                         local_pipx_packages.insert(package.clone(), package_url.to_string());
@@ -276,6 +280,15 @@ impl<'a> LifecycleOperations<'a> {
                     }
                 }
             }
+        }
+
+        // Remove pipx-managed packages from pip_packages to prevent double mounting
+        if !pipx_managed_packages.is_empty() {
+            config.pip_packages = config.pip_packages
+                .iter()
+                .filter(|pkg| !pipx_managed_packages.contains(*pkg))
+                .cloned()
+                .collect();
         }
 
         // Add local packages mapping to config for volume mounting

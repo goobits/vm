@@ -8,6 +8,7 @@ pub mod platform;
 pub mod security;
 pub mod structured_log;
 pub mod temp_dir;
+pub mod user_paths;
 
 // Standard library
 use std::path::Path;

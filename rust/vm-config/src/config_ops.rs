@@ -19,6 +19,7 @@ use crate::config::VmConfig;
 use crate::merge::ConfigMerger;
 use crate::paths;
 use crate::preset::PresetDetector;
+use vm_common::user_paths;
 
 /// Configuration operations for VM configuration management.
 ///
@@ -327,19 +328,15 @@ fn get_global_config_path() -> PathBuf {
             .join("global.yaml");
     }
 
-    dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("~/.config"))
-        .join("vm")
-        .join("global.yaml")
+    user_paths::global_config_path()
+        .unwrap_or_else(|_| PathBuf::from(".config/vm/global.yaml"))
 }
 
 fn get_or_create_global_config_path() -> Result<PathBuf> {
     let config_dir = if let Ok(home) = std::env::var("HOME") {
         PathBuf::from(home).join(".config").join("vm")
     } else {
-        dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("~/.config"))
-            .join("vm")
+        user_paths::user_config_dir()?
     };
 
     if !config_dir.exists() {

@@ -13,7 +13,7 @@ use crate::prompt::confirm_prompt;
 
 pub fn ensure_path(bin_dir: &Path) -> Result<()> {
     let path_var = env::var("PATH").unwrap_or_default();
-    let is_in_path = path_var.split(':').any(|p| Path::new(p) == bin_dir);
+    let is_in_path = env::split_paths(&path_var).any(|p| p == bin_dir);
 
     if is_in_path {
         println!("✅ {} is already in your PATH.", bin_dir.display());
@@ -53,15 +53,48 @@ pub fn ensure_path(bin_dir: &Path) -> Result<()> {
 }
 
 fn get_shell_profile() -> Result<Option<PathBuf>> {
-    let shell = env::var("SHELL").unwrap_or_default();
-    let home = dirs::home_dir().context("Could not find home directory")?;
+    #[cfg(windows)]
+    {
+        // On Windows, check for PowerShell profile
+        // First check if PROFILE env var is set (PowerShell sets this)
+        if let Ok(profile) = env::var("PROFILE") {
+            return Ok(Some(PathBuf::from(profile)));
+        }
 
-    Ok(match shell.split('/').next_back() {
-        Some("bash") => Some(home.join(".bashrc")),
-        Some("zsh") => Some(home.join(".zshrc")),
-        Some("fish") => Some(home.join(".config/fish/config.fish")),
-        _ => None,
-    })
+        // Fallback to standard PowerShell location
+        if let Some(docs) = dirs::document_dir() {
+            let ps_profile = docs.join("PowerShell").join("Microsoft.PowerShell_profile.ps1");
+            // Create the directory if it doesn't exist
+            if let Some(parent) = ps_profile.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            return Ok(Some(ps_profile));
+        }
+
+        // If we can't find Documents, try WindowsPowerShell in Documents
+        if let Some(home) = dirs::home_dir() {
+            let ps_profile = home.join("Documents").join("WindowsPowerShell").join("Microsoft.PowerShell_profile.ps1");
+            if let Some(parent) = ps_profile.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            return Ok(Some(ps_profile));
+        }
+
+        return Ok(None);
+    }
+
+    #[cfg(not(windows))]
+    {
+        let shell = env::var("SHELL").unwrap_or_default();
+        let home = dirs::home_dir().context("Could not find home directory")?;
+
+        Ok(match shell.split('/').next_back() {
+            Some("bash") => Some(home.join(".bashrc")),
+            Some("zsh") => Some(home.join(".zshrc")),
+            Some("fish") => Some(home.join(".config/fish/config.fish")),
+            _ => None,
+        })
+    }
 }
 
 fn add_to_profile(profile_path: &Path, bin_dir: &Path) -> Result<()> {
@@ -72,7 +105,14 @@ fn add_to_profile(profile_path: &Path, bin_dir: &Path) -> Result<()> {
 
     let line_to_add = if profile_path.ends_with("config.fish") {
         format!("\nfish_add_path -p \"{}\"", bin_dir.display())
+    } else if cfg!(windows) {
+        // PowerShell syntax for Windows
+        format!(
+            "\n# Added by VM tool installer\n$env:Path = \"{};$env:Path\"",
+            bin_dir.display()
+        )
     } else {
+        // Unix shell syntax
         format!(
             "\n# Added by VM tool installer\nexport PATH=\"{}:$PATH\"",
             bin_dir.display()
@@ -108,7 +148,7 @@ mod tests {
 
         // First part should be a known OS
         let os = parts[0];
-        assert!(matches!(os, "linux" | "macos" | "windows"));
+        assert!(matches!(os, "linux" | "darwin" | "windows"));
 
         // Second part should be a known architecture
         let arch = parts[1];

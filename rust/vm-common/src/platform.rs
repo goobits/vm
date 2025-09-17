@@ -29,6 +29,7 @@ pub fn portable_relative_path(base: &Path, target: &Path) -> Result<PathBuf> {
 pub enum Os {
     Linux,
     MacOS,
+    Windows,
     Unsupported,
 }
 
@@ -47,7 +48,8 @@ pub struct Platform {
 pub fn get_platform_info() -> Platform {
     let os = match env::consts::OS {
         "linux" => Os::Linux,
-        "macos" => Os::MacOS,
+        "darwin" => Os::MacOS,
+        "windows" => Os::Windows,
         _ => Os::Unsupported,
     };
 
@@ -65,6 +67,7 @@ impl std::fmt::Display for Platform {
         let os_str = match self.os {
             Os::Linux => "linux",
             Os::MacOS => "darwin", // Keep consistency with shell script output 'darwin' for macOS
+            Os::Windows => "windows",
             Os::Unsupported => "unsupported_os",
         };
         let arch_str = match self.arch {

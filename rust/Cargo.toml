@@ -4,6 +4,7 @@ members = [
     "vm-config",
     "vm-detector",
     "vm-pkg",
+    "vm-platform",
     "vm-ports",
     "vm-provider",
     "vm-temp",
@@ -49,6 +50,7 @@ pathdiff = "0.2"
 colored = "2.0"
 uuid = { version = "1.0", features = ["v4", "serde"] }
 lazy_static = "1.5"
+sysinfo = "0.30"
 
 [profile.release]
 opt-level = 3

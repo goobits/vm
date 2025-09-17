@@ -83,16 +83,16 @@ fn get_cpu_core_count() -> Result<u32> {
 
 #[cfg(target_os = "windows")]
 fn get_total_memory_gb() -> Result<u64> {
-    // For Windows, we'd use WMI or registry queries
-    // For now, return a conservative estimate
-    bail!("Windows system checking not implemented yet");
+    let mut sys = sysinfo::System::new_all();
+    sys.refresh_memory();
+    Ok(sys.total_memory() / 1024 / 1024 / 1024) // Convert bytes to GB
 }
 
 #[cfg(target_os = "windows")]
 fn get_cpu_core_count() -> Result<u32> {
-    // For Windows, we'd use WMI or GetSystemInfo
-    // For now, return a conservative estimate
-    bail!("Windows system checking not implemented yet");
+    let mut sys = sysinfo::System::new_all();
+    sys.refresh_cpu();
+    Ok(sys.physical_core_count().unwrap_or(1) as u32)
 }
 
 #[cfg(test)]
@@ -107,7 +107,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[cfg(any(target_os = "linux", target_os = "darwin"))]
     fn test_cpu_core_detection() {
         let result = get_cpu_core_count();
 
@@ -121,7 +121,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[cfg(any(target_os = "linux", target_os = "darwin"))]
     fn test_memory_detection() {
         let result = get_total_memory_gb();
 
@@ -136,15 +136,19 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "windows")]
-    fn test_windows_not_implemented() {
-        // On Windows, both functions should return errors indicating not implemented
+    fn test_windows_system_detection() {
+        // On Windows, both functions should now succeed using sysinfo
         let cpu_result = get_cpu_core_count();
-        assert!(cpu_result.is_err());
-        assert!(cpu_result.unwrap_err().to_string().contains("not implemented"));
+        assert!(cpu_result.is_ok());
+        let cpu_cores = cpu_result.unwrap();
+        assert!(cpu_cores > 0);
+        assert!(cpu_cores <= 256); // Sanity check
 
         let memory_result = get_total_memory_gb();
-        assert!(memory_result.is_err());
-        assert!(memory_result.unwrap_err().to_string().contains("not implemented"));
+        assert!(memory_result.is_ok());
+        let memory_gb = memory_result.unwrap();
+        assert!(memory_gb > 0);
+        assert!(memory_gb <= 1024); // Sanity check (1TB)
     }
 
     #[test]
