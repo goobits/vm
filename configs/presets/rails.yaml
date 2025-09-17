@@ -26,9 +26,9 @@ npm_packages:
   - webpack
 
 ports:
-  rails: 3000  # Rails server default
-  rails-alt: 3001  # Alternative Rails port
-  sidekiq: 4567  # Sidekiq web UI
+  rails: "${port.0}"  # Rails server default
+  rails-alt: "${port.1}"  # Alternative Rails port
+  sidekiq: "${port.2}"  # Sidekiq web UI
 
 services:
   postgresql:

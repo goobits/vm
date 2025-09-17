@@ -20,9 +20,9 @@ npm_packages:
   - prettier  # For frontend assets
 
 ports:
-  django: 8000  # Django dev server default
-  django-alt: 8001  # Alternative Django port
-  celery-flower: 5555  # Celery flower monitoring
+  django: "${port.0}"  # Django dev server default
+  django-alt: "${port.1}"  # Alternative Django port
+  celery-flower: "${port.2}"  # Celery flower monitoring
 
 services:
   postgresql:

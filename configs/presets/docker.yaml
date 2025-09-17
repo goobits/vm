@@ -24,9 +24,9 @@ aliases:
   dexec: "docker exec -it"
 
 ports:
-  docker-api: 2375  # Docker daemon API (non-TLS)
-  docker-tls: 2376  # Docker daemon API (TLS)
-  portainer: 9000  # Portainer web UI
+  docker-api: "${port.0}"  # Docker daemon API (non-TLS)
+  docker-tls: "${port.1}"  # Docker daemon API (TLS)
+  portainer: "${port.2}"  # Portainer web UI
 
 services:
   postgresql:

@@ -17,9 +17,9 @@ pip_packages:
   - git-filter-repo
 
 ports:
-  react: 3000  # React dev server default
-  react-alt: 3001  # Alternative React port
-  vite: 5173  # Vite dev server
+  react: "${port.0}"  # React dev server default
+  react-alt: "${port.1}"  # Alternative React port
+  vite: "${port.2}"  # Vite dev server
 
 services:
   redis:

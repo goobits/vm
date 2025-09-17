@@ -21,9 +21,9 @@ pip_packages:
   - git-filter-repo
 
 ports:
-  next: 3000  # Next.js dev server default
-  next-alt: 3001  # Alternative Next.js port
-  api: 3002  # API development port
+  next: "${port.0}"  # Next.js dev server default
+  next-alt: "${port.1}"  # Alternative Next.js port
+  api: "${port.2}"  # API development port
 
 services:
   redis:
