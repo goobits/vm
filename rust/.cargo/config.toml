@@ -4,6 +4,8 @@
 [build]
 # Enable incremental compilation by default for better development builds
 incremental = true
+# Suppress cfg warnings for known features
+rustflags = ["--check-cfg", "cfg(feature, values(\"structured-output\"))"]
 
 # Use faster linker when available (requires installation)
 # Uncomment the appropriate section for your platform:
