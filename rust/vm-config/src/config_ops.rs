@@ -118,8 +118,9 @@ impl ConfigOps {
             Value::Mapping(Mapping::new())
         };
 
-        // Parse the value with field-specific logic
-        let parsed_value = parse_field_value(field, value)?;
+        // Parse the value - try as YAML first, then as string
+        let parsed_value: Value =
+            serde_yaml::from_str(value).unwrap_or_else(|_| Value::String(value.into()));
 
         set_nested_field(&mut yaml_value, field, parsed_value)?;
 
@@ -580,95 +581,6 @@ fn unset_nested_field_recursive(value: &mut Value, parts: &[&str]) -> Result<()>
     Ok(())
 }
 
-/// Parse a value for a specific field with field-aware logic
-fn parse_field_value(field: &str, value: &str) -> Result<Value> {
-    // Handle field-specific parsing for ports
-    if field == "ports" {
-        return parse_ports_value(value);
-    }
-
-    // Check if this is a sub-field of ports (e.g., "ports.www")
-    if field.starts_with("ports.") {
-        return parse_single_port_value(value);
-    }
-
-    // Default parsing: try YAML first, then fall back to string
-    let parsed_value = serde_yaml::from_str(value).unwrap_or_else(|_| Value::String(value.into()));
-    Ok(parsed_value)
-}
-
-/// Parse a ports value that might be in key=value format
-fn parse_ports_value(value: &str) -> Result<Value> {
-    // If it contains an equals sign, try to parse as key=value
-    if value.contains('=') {
-        match parse_key_value_pair(value) {
-            Ok((key, port)) => {
-                let mut ports_map = Mapping::new();
-                ports_map.insert(Value::String(key), Value::Number(port.into()));
-                return Ok(Value::Mapping(ports_map));
-            }
-            Err(e) => {
-                return Err(anyhow::anyhow!(
-                    "Invalid port format '{}': {}\n\nExamples:\n  vm config set ports www=3070\n  vm config set ports \"{{frontend: 3000, backend: 3001}}\"",
-                    value, e
-                ));
-            }
-        }
-    }
-
-    // Try parsing as YAML (for complex port maps)
-    match serde_yaml::from_str(value) {
-        Ok(yaml_value) => {
-            // For ports, we only accept mappings (objects), not strings or other types
-            match &yaml_value {
-                Value::Mapping(_) => Ok(yaml_value),
-                _ => Err(anyhow::anyhow!(
-                    "Invalid ports format '{}': ports must be a mapping of names to port numbers\n\nExamples:\n  vm config set ports www=3070\n  vm config set ports \"{{frontend: 3000, backend: 3001}}\"",
-                    value
-                ))
-            }
-        },
-        Err(_) => Err(anyhow::anyhow!(
-            "Invalid ports format '{}'\n\nExamples:\n  vm config set ports www=3070\n  vm config set ports \"{{frontend: 3000, backend: 3001}}\"",
-            value
-        ))
-    }
-}
-
-/// Parse a single port value for a specific port key
-fn parse_single_port_value(value: &str) -> Result<Value> {
-    match value.parse::<u16>() {
-        Ok(port) => Ok(Value::Number(port.into())),
-        Err(_) => Err(anyhow::anyhow!(
-            "Invalid port number '{}': must be a number between 1 and 65535\n\nExample:\n  vm config set ports.www 3070",
-            value
-        ))
-    }
-}
-
-/// Parse a key=value pair for ports
-fn parse_key_value_pair(input: &str) -> Result<(String, u16)> {
-    let parts: Vec<&str> = input.split('=').collect();
-    if parts.len() != 2 {
-        return Err(anyhow::anyhow!("Expected format: key=port"));
-    }
-
-    let key = parts[0].trim();
-    let port_str = parts[1].trim();
-
-    if key.is_empty() {
-        return Err(anyhow::anyhow!("Port name cannot be empty"));
-    }
-
-    let port = port_str.parse::<u16>()
-        .map_err(|_| anyhow::anyhow!("Port '{}' must be a number between 1 and 65535", port_str))?;
-
-    if port == 0 {
-        return Err(anyhow::anyhow!("Port number must be greater than 0"));
-    }
-
-    Ok((key.to_string(), port))
-}
 
 /// Load global configuration if it exists
 pub fn load_global_config() -> Option<VmConfig> {
