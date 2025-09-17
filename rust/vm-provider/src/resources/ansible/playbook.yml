@@ -479,18 +479,62 @@
         become_user: '{{ project_user }}'
         ignore_errors: yes
 
-      - name: Install local packages in editable mode (with dependencies)
+      - name: Install dependencies for local packages
         shell: |
-            echo "Installing local package {{ item.key }} in editable mode..."
+            echo "Installing dependencies for local package {{ item.key }}..."
             cd /opt/local-packages/{{ item.key }}
             if [ -f pyproject.toml ]; then
-                pip3 install --user --break-system-packages -e .
+                python3 -c "
+import tomllib, subprocess, sys
+try:
+    with open('pyproject.toml', 'rb') as f:
+        data = tomllib.load(f)
+    deps = data.get('project', {}).get('dependencies', [])
+    if deps:
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--user', '--break-system-packages'] + deps)
+except Exception as e:
+    print(f'Could not install dependencies for {{ item.key }}: {e}', file=sys.stderr)
+"
             elif [ -f requirements.txt ]; then
                 pip3 install --user --break-system-packages -r requirements.txt
             fi
         args:
           executable: /bin/bash
         become_user: '{{ project_user }}'
+        loop: "{{ project_config.local_pipx_packages | dict2items | default([]) }}"
+        when: project_config.local_pipx_packages is defined
+        ignore_errors: yes
+
+      - name: Create console script wrappers for local packages
+        shell: |
+            echo "Creating script wrappers for local package {{ item.key }}..."
+            cd /opt/local-packages/{{ item.key }}
+            if [ -f pyproject.toml ]; then
+                python3 -c "
+import tomllib, os, stat, sys
+try:
+    with open('pyproject.toml', 'rb') as f:
+        data = tomllib.load(f)
+    scripts = data.get('project', {}).get('scripts', {})
+    for name, entry_point in scripts.items():
+        wrapper_path = f'/usr/local/bin/{name}'
+        module, function = entry_point.split(':')
+        print(f'Creating wrapper for {name} at {wrapper_path}')
+        wrapper_content = f'''#!/usr/bin/env python3
+import sys
+from {module} import {function}
+sys.exit({function}())
+'''
+        with open(wrapper_path, 'w') as f:
+            f.write(wrapper_content)
+        os.chmod(wrapper_path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+except Exception as e:
+    print(f'Could not create wrapper for {{ item.key }}: {e}', file=sys.stderr)
+"
+            fi
+        args:
+          executable: /bin/bash
+        become: yes
         loop: "{{ project_config.local_pipx_packages | dict2items | default([]) }}"
         when: project_config.local_pipx_packages is defined
         ignore_errors: yes
