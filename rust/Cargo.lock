@@ -1305,7 +1305,6 @@ version = "1.2.3"
 dependencies = [
  "anyhow",
  "clap",
- "dirs",
  "glob",
  "indexmap",
  "lazy_static",
@@ -1339,6 +1338,7 @@ dependencies = [
  "anyhow",
  "clap",
  "dirs",
+ "serde_json",
  "tempfile",
  "vm-common",
  "vm-platform",
@@ -1413,7 +1413,6 @@ version = "1.2.3"
 dependencies = [
  "anyhow",
  "clap",
- "dirs",
  "fs2",
  "is-terminal",
  "serde",
