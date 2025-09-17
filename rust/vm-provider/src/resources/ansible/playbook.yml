@@ -458,6 +458,15 @@
         when: project_config.gemini_sync | default(false)
         ignore_errors: yes
 
+      - name: Install container pipx packages
+        shell: |
+            pipx ensurepath
+            pipx install {{ item }}
+        become_user: '{{ project_user }}'
+        loop: "{{ project_config.container_pipx_packages | default([]) }}"
+        when: project_config.container_pipx_packages is defined and project_config.container_pipx_packages | length > 0
+        ignore_errors: yes
+
       - name: Install pnpm via npm as fallback
         shell: |
             source ~/.nvm/nvm.sh

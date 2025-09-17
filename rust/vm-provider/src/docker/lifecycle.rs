@@ -12,6 +12,7 @@ use std::path::Path;
 // External crates
 use anyhow::{Context, Result};
 use is_terminal::IsTerminal;
+use serde_json::Value;
 
 // Internal imports
 use super::{build::BuildOperations, compose::ComposeOperations, ComposeCommand, UserConfig};
@@ -242,6 +243,75 @@ impl<'a> LifecycleOperations<'a> {
         }
     }
 
+    fn prepare_and_copy_config(&self) -> Result<()> {
+        let mut config_clone = self.config.clone();
+        let mut container_pipx_packages = Vec::new();
+
+        if !self.config.pip_packages.is_empty() {
+            let pipx_list_output = std::process::Command::new("pipx")
+                .args(["list", "--json"])
+                .output();
+
+            if let Ok(output) = pipx_list_output {
+                if let Ok(pipx_json) = serde_json::from_slice::<Value>(&output.stdout) {
+                    if let Some(venvs) = pipx_json.get("venvs").and_then(|v| v.as_object()) {
+                        let pipx_managed_packages: std::collections::HashSet<String> = venvs
+                            .keys()
+                            .cloned()
+                            .collect();
+
+                        for package in &self.config.pip_packages {
+                            if pipx_managed_packages.contains(package) {
+                                // Check if this is a local package installation (contains "/" path)
+                                if let Some(package_venv) = venvs.get(package) {
+                                    if let Some(package_url) = package_venv
+                                        .get("metadata")
+                                        .and_then(|m| m.get("main_package"))
+                                        .and_then(|mp| mp.get("package_or_url"))
+                                        .and_then(|pu| pu.as_str())
+                                    {
+                                        // Skip local packages (paths starting with / or containing local paths)
+                                        if !package_url.starts_with('/') && !package_url.contains("./") && !package_url.contains("../") {
+                                            container_pipx_packages.push(package.clone());
+                                        }
+                                    }
+                                } else {
+                                    // If we can't determine the package source, include it (likely PyPI)
+                                    container_pipx_packages.push(package.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Add the new list to the config clone for Ansible
+        if !container_pipx_packages.is_empty() {
+            config_clone.extra_config.insert(
+                "container_pipx_packages".to_string(),
+                serde_json::to_value(container_pipx_packages).unwrap(),
+            );
+            // Clear the original pip_packages to prevent host-linking
+            config_clone.pip_packages = vec![];
+        }
+
+        let config_json = config_clone.to_json()?;
+        let temp_config_path = self.temp_dir.join("vm-config.json");
+        std::fs::write(&temp_config_path, config_json)?;
+        let copy_result = std::process::Command::new("docker")
+            .args([
+                "cp",
+                BuildOperations::path_to_string(&temp_config_path)?,
+                &format!("{}:{}", self.container_name(), TEMP_CONFIG_PATH),
+            ])
+            .output()?;
+        if !copy_result.status.success() {
+            return Err(anyhow::anyhow!("Failed to copy config to container"));
+        }
+        Ok(())
+    }
+
     fn provision_container(&self) -> Result<()> {
         // Step 6: Wait for readiness and run ansible (configuration only)
         println!("\n🔧 Provisioning environment");
@@ -268,20 +338,7 @@ impl<'a> LifecycleOperations<'a> {
         println!("✅");
 
         print!("📋 Loading project configuration... ");
-        let config_json = self.config.to_json()?;
-        let temp_config_path = self.temp_dir.join("vm-config.json");
-        std::fs::write(&temp_config_path, config_json)?;
-        let copy_result = std::process::Command::new("docker")
-            .args([
-                "cp",
-                BuildOperations::path_to_string(&temp_config_path)?,
-                &format!("{}:{}", self.container_name(), TEMP_CONFIG_PATH),
-            ])
-            .output()?;
-        if !copy_result.status.success() {
-            println!("❌");
-            return Err(anyhow::anyhow!("Failed to copy config to container"));
-        }
+        self.prepare_and_copy_config()?
         println!("✅");
 
         println!("🎭 Running Ansible provisioning (configuration only)...");
@@ -293,7 +350,7 @@ impl<'a> LifecycleOperations<'a> {
                 "bash",
                 "-c",
                 &format!(
-                    "ansible-playbook -i localhost, -c local {}",
+                    "ansible-playbook -i localhost, -c local {} -vvv",
                     ANSIBLE_PLAYBOOK_PATH
                 ),
             ],
@@ -490,17 +547,7 @@ impl<'a> LifecycleOperations<'a> {
         ProgressReporter::phase_header("🔧", "PROVISIONING PHASE");
         ProgressReporter::subtask("├─", "Re-running Ansible provisioning...");
 
-        let config_json = self.config.to_json()?;
-        let temp_config_path = self.temp_dir.join("vm-config.json");
-        std::fs::write(&temp_config_path, config_json)?;
-        stream_command(
-            "docker",
-            &[
-                "cp",
-                BuildOperations::path_to_string(&temp_config_path)?,
-                &format!("{}:{}", self.container_name(), TEMP_CONFIG_PATH),
-            ],
-        )?;
+        self.prepare_and_copy_config()?
 
         let ansible_result = stream_command(
             "docker",
@@ -510,7 +557,7 @@ impl<'a> LifecycleOperations<'a> {
                 "bash",
                 "-c",
                 &format!(
-                    "ansible-playbook -i localhost, -c local {}",
+                    "ansible-playbook -i localhost, -c local {} -vvv",
                     ANSIBLE_PLAYBOOK_PATH
                 ),
             ],

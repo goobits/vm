@@ -9,6 +9,8 @@
 //! Use the `scoped_context!` macro for automatic context management:
 //!
 //! ```rust
+//! use vm_common::scoped_context;
+//!
 //! let _guard = scoped_context! {
 //!     "operation" => "create_vm",
 //!     "provider" => "docker"

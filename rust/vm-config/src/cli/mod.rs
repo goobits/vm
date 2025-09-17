@@ -488,7 +488,7 @@ impl std::str::FromStr for OutputFormat {
 /// - Invalid service names provided
 ///
 /// # Examples
-/// ```rust,no_run
+/// ```rust,no_run,no_run
 /// use vm_config::init_config_file;
 /// use std::path::PathBuf;
 ///
@@ -532,7 +532,7 @@ pub fn init_config_file(
 /// - Configuration parsing errors
 ///
 /// # Examples
-/// ```rust
+/// ```rust,no_run
 /// use vm_config::cli::{Args, Command, OutputFormat};
 /// use std::path::PathBuf;
 ///

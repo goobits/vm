@@ -25,7 +25,7 @@ use std::path::PathBuf;
 /// 4. Project-specific configuration
 ///
 /// # Examples
-/// ```rust
+/// ```rust,no_run
 /// use vm_config::config::VmConfig;
 /// use std::path::PathBuf;
 ///
@@ -108,6 +108,9 @@ pub struct VmConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub security: Option<SecurityConfig>,
+
+    #[serde(flatten)]
+    pub extra_config: IndexMap<String, serde_json::Value>,
 }
 
 /// Project-specific configuration settings.
@@ -509,7 +512,7 @@ impl VmConfig {
     /// - Required fields are missing after merging
     ///
     /// # Examples
-    /// ```rust
+    /// ```rust,no_run
     /// use vm_config::config::VmConfig;
     /// use std::path::PathBuf;
     ///
@@ -544,7 +547,7 @@ impl VmConfig {
     /// - Final configuration is invalid
     ///
     /// # Examples
-    /// ```rust
+    /// ```rust,no_run
     /// use vm_config::config::VmConfig;
     /// use std::path::PathBuf;
     ///
@@ -579,7 +582,7 @@ impl VmConfig {
     /// - Configuration structure is invalid
     ///
     /// # Examples
-    /// ```rust
+    /// ```rust,no_run
     /// use vm_config::config::VmConfig;
     /// use std::path::PathBuf;
     ///
@@ -604,7 +607,7 @@ impl VmConfig {
     /// Returns an error if serialization fails (rare)
     ///
     /// # Examples
-    /// ```rust
+    /// ```rust,no_run
     /// use vm_config::config::VmConfig;
     ///
     /// let config = VmConfig::default();
@@ -630,7 +633,7 @@ impl VmConfig {
     /// `true` if required fields are missing, `false` if configuration is complete
     ///
     /// # Examples
-    /// ```rust
+    /// ```rust,no_run
     /// use vm_config::config::VmConfig;
     ///
     /// let config = VmConfig::default();

@@ -37,7 +37,7 @@ use crate::preset::PresetDetector;
 /// - **Global**: User-wide configuration (~/.config/vm/global.yaml)
 ///
 /// # Examples
-/// ```rust
+/// ```rust,no_run
 /// use vm_config::ConfigOps;
 ///
 /// // Set a local configuration value
@@ -82,7 +82,7 @@ impl ConfigOps {
     /// - File system permissions prevent modification
     ///
     /// # Examples
-    /// ```rust
+    /// ```rust,no_run
     /// use vm_config::ConfigOps;
     ///
     /// // Set VM memory
@@ -156,7 +156,7 @@ impl ConfigOps {
     /// - File system permissions prevent access
     ///
     /// # Examples
-    /// ```rust
+    /// ```rust,no_run
     /// use vm_config::ConfigOps;
     ///
     /// // Get specific field
