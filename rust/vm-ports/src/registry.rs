@@ -46,7 +46,7 @@ impl PortRegistry {
 
         // Create registry directory if it doesn't exist
         if !registry_dir.exists() {
-            fs::create_dir_all(&registry_dir)?;
+            fs::create_dir_all(registry_dir)?;
         }
 
         // Initialize empty registry file if it doesn't exist

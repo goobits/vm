@@ -198,7 +198,7 @@ fn detect_npm_package(package: &str, info: &HostPackageInfo) -> PackageLocation 
 
     // Check using npm list
     if let Ok(output) = Command::new("npm")
-        .args(&["list", "-g", "--depth=0", package])
+        .args(["list", "-g", "--depth=0", package])
         .output()
     {
         if output.status.success() {
@@ -223,7 +223,7 @@ fn detect_cargo_package(package: &str, info: &HostPackageInfo) -> PackageLocatio
 
     // Check using cargo
     if let Ok(output) = Command::new("cargo")
-        .args(&["install", "--list"])
+        .args(["install", "--list"])
         .output()
     {
         if output.status.success() {
@@ -243,7 +243,7 @@ fn detect_cargo_package(package: &str, info: &HostPackageInfo) -> PackageLocatio
 fn check_pip_package(package: &str, site_packages: &Path) -> bool {
     // Check using pip show command
     if let Ok(output) = Command::new("python3")
-        .args(&["-m", "pip", "show", package])
+        .args(["-m", "pip", "show", package])
         .output()
     {
         if output.status.success() {
@@ -253,7 +253,7 @@ fn check_pip_package(package: &str, site_packages: &Path) -> bool {
 
     // Fallback: check directory existence
     let package_dir = site_packages.join(package);
-    let package_underscore = site_packages.join(&package.replace("-", "_"));
+    let package_underscore = site_packages.join(package.replace("-", "_"));
 
     package_dir.exists() || package_underscore.exists()
 }
@@ -262,7 +262,7 @@ fn check_pip_package(package: &str, site_packages: &Path) -> bool {
 fn check_pipx_package(package: &str, pipx_base: &Path) -> Option<PathBuf> {
     // Check using pipx list
     if let Ok(output) = Command::new("pipx")
-        .args(&["list", "--short"])
+        .args(["list", "--short"])
         .output()
     {
         if output.status.success() {
@@ -363,7 +363,7 @@ pub fn get_volume_mounts(info: &HostPackageInfo) -> Vec<(PathBuf, String)> {
     if !skipped_paths.is_empty() {
         eprintln!("⚠️  Skipping host package mounts (not shared with Docker):");
         for (path, package_type) in skipped_paths {
-            eprintln!("   {} ({}): {}", package_type, path.display(), "Add to Docker Desktop File Sharing to enable");
+            eprintln!("   {} ({}): Add to Docker Desktop File Sharing to enable", package_type, path.display());
         }
         eprintln!("   💡 To enable: Docker Desktop → Settings → Resources → File Sharing");
     }

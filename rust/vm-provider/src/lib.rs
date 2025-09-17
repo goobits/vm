@@ -115,7 +115,7 @@ pub fn get_provider(config: VmConfig) -> Result<Box<dyn Provider>> {
     // In a test build, allow instantiating the mock provider.
     #[cfg(test)]
     if provider_name == "mock" {
-        return Ok(Box::new(mock::MockProvider::new(config)?));
+        return Ok(Box::new(mock::MockProvider::new(config)));
     }
 
     match provider_name {

@@ -102,12 +102,13 @@ mod tests {
     #[test]
     fn test_minimum_requirements_constants() {
         // Test that our constants are reasonable
-        assert!(MIN_CPU_CORES <= 16); // Sanity check - shouldn't require too many cores
-        assert!(MIN_MEMORY_GB <= 64); // Sanity check - shouldn't require excessive memory
+        // Verify constants are positive values
+        assert!(MIN_CPU_CORES > 0);
+        assert!(MIN_MEMORY_GB > 0);
     }
 
     #[test]
-    #[cfg(any(target_os = "linux", target_os = "darwin"))]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn test_cpu_core_detection() {
         let result = get_cpu_core_count();
 
@@ -121,7 +122,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(target_os = "linux", target_os = "darwin"))]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn test_memory_detection() {
         let result = get_total_memory_gb();
 

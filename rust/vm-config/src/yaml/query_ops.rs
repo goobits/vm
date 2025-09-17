@@ -145,7 +145,7 @@ impl QueryOperations {
             return value.clone();
         };
 
-        let Some(Value::Sequence(seq)) = map.get(&Value::String(field_name.to_string())) else {
+        let Some(Value::Sequence(seq)) = map.get(Value::String(field_name.to_string())) else {
             return value.clone();
         };
 
@@ -191,7 +191,7 @@ impl QueryOperations {
             return match item {
                 Value::Mapping(map) => {
                     // Check if the field exists and has a truthy value
-                    map.get(&Value::String(field_name.to_string()))
+                    map.get(Value::String(field_name.to_string()))
                         .map(|value| !matches!(value, Value::Null))
                         .unwrap_or(false)
                 }
@@ -223,7 +223,7 @@ impl QueryOperations {
                 return false;
             };
 
-            let Some(field_value) = map.get(&Value::String(field_name.to_string())) else {
+            let Some(field_value) = map.get(Value::String(field_name.to_string())) else {
                 return false;
             };
 
@@ -263,7 +263,7 @@ impl QueryOperations {
                 let field_name = condition.strip_prefix('.').unwrap();
                 match item {
                     Value::Mapping(map) => {
-                        map.get(&Value::String(field_name.to_string()))
+                        map.get(Value::String(field_name.to_string()))
                             .map(|value| !matches!(value, Value::Null))
                             .unwrap_or(false)
                     }

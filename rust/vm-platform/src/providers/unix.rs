@@ -60,7 +60,7 @@ impl PlatformProvider for UnixPlatform {
     fn detect_shell(&self) -> Result<Box<dyn ShellProvider>> {
         let shell = env::var("SHELL").unwrap_or_default();
 
-        match shell.split('/').last() {
+        match shell.split('/').next_back() {
             Some("bash") => Ok(Box::new(BashShell)),
             Some("zsh") => Ok(Box::new(ZshShell)),
             Some("fish") => Ok(Box::new(FishShell)),
@@ -161,12 +161,7 @@ impl PlatformProvider for UnixPlatform {
             {
                 if output.status.success() {
                     let output_str = String::from_utf8_lossy(&output.stdout);
-                    for path in output_str.lines() {
-                        let path = PathBuf::from(path.trim());
-                        if path.exists() && !paths.contains(&path) {
-                            paths.push(path);
-                        }
-                    }
+                    add_unique_site_packages(&output_str, &mut paths);
                     break; // Use first working Python
                 }
             }
@@ -198,9 +193,8 @@ impl PlatformProvider for UnixPlatform {
         if let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") {
             for line in meminfo.lines() {
                 if line.starts_with("MemTotal:") {
-                    let parts: Vec<&str> = line.split_whitespace().collect();
-                    if parts.len() >= 2 {
-                        if let Ok(mem_kb) = parts[1].parse::<u64>() {
+                    if let Some(mem_kb_str) = line.split_whitespace().nth(1) {
+                        if let Ok(mem_kb) = mem_kb_str.parse::<u64>() {
                             return Ok(mem_kb / 1024 / 1024); // Convert KB to GB
                         }
                     }
@@ -250,5 +244,15 @@ impl ProcessProvider for UnixProcessProvider {
             .output()
             .map(|output| output.status.success())
             .unwrap_or(false)
+    }
+}
+
+/// Helper function to add unique site packages from command output
+fn add_unique_site_packages(output_str: &str, paths: &mut Vec<PathBuf>) {
+    for path in output_str.lines() {
+        let path = PathBuf::from(path.trim());
+        if path.exists() && !paths.contains(&path) {
+            paths.push(path);
+        }
     }
 }

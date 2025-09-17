@@ -87,7 +87,7 @@ impl TempProvider for MockProvider {
 }
 
 impl MockProvider {
-    pub fn new(_config: VmConfig) -> Result<Self> {
-        Ok(Self)
+    pub fn new(_config: VmConfig) -> Self {
+        Self
     }
 }

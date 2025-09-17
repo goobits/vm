@@ -135,7 +135,7 @@ mod tests {
 
         // Current platform should be in the supported list
         let current_name = PlatformRegistry::current_platform_name();
-        assert!(platforms.iter().any(|&p| p == current_name));
+        assert!(platforms.contains(&current_name));
     }
 
     #[test]
