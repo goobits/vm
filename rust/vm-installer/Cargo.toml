@@ -10,6 +10,7 @@ description = "Installer for the VM development tool."
 anyhow = { workspace = true }
 clap = { workspace = true }
 dirs = { workspace = true }
+serde_json = { workspace = true }
 which = { workspace = true }
 vm-common = { path = "../vm-common" }
 vm-platform = { path = "../vm-platform" }

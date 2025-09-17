@@ -6,12 +6,19 @@ use std::process::{Command, Stdio};
 
 // External crates
 use anyhow::{Context, Result};
-use vm_common::{user_paths, vm_success};
+use vm_common::{user_paths, vm_success, vm_progress, module_logger_context, scoped_context};
 
 // Internal imports
 use crate::platform;
 
 pub fn install(clean: bool) -> Result<()> {
+    module_logger_context!();
+
+    let _guard = scoped_context! {
+        "operation" => "install",
+        "clean" => clean
+    };
+
     let project_root = get_project_root()?;
     let bin_dir = user_paths::user_bin_dir()?;
 
@@ -45,10 +52,17 @@ fn get_project_root() -> Result<PathBuf> {
 }
 
 fn run_cargo_clean(project_root: &Path) -> Result<()> {
-    println!("🧹 Cleaning build artifacts...");
+    module_logger_context!();
+
+    let platform = platform::detect_platform_string();
+    let _guard = scoped_context! {
+        "operation" => "cargo_clean",
+        "platform" => platform.clone()
+    };
+
+    vm_progress!("Cleaning build artifacts...");
 
     // Clean platform-specific target directory
-    let platform = platform::detect_platform_string();
     let target_dir = project_root.join(format!("target-{}", platform));
 
     let status = Command::new("cargo")
@@ -68,10 +82,18 @@ fn run_cargo_clean(project_root: &Path) -> Result<()> {
 }
 
 fn build_workspace(project_root: &Path) -> Result<PathBuf> {
-    println!("🔧 Building Rust binaries...");
+    module_logger_context!();
+
+    let platform = platform::detect_platform_string();
+    let _guard = scoped_context! {
+        "operation" => "cargo_build",
+        "platform" => platform.clone(),
+        "target" => "vm"
+    };
+
+    vm_progress!("Building Rust binaries...");
 
     // Use platform-specific target directory to avoid conflicts in shared filesystems
-    let platform = platform::detect_platform_string();
     let target_dir = project_root.join(format!("target-{}", platform));
 
     let status = Command::new("cargo")
@@ -97,7 +119,15 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
 }
 
 fn create_symlink(source_binary: &Path, bin_dir: &Path) -> Result<()> {
-    println!("🔗 Creating global 'vm' command...");
+    module_logger_context!();
+
+    let _guard = scoped_context! {
+        "operation" => "create_symlink",
+        "source" => source_binary.display().to_string(),
+        "bin_dir" => bin_dir.display().to_string()
+    };
+
+    vm_progress!("Creating global 'vm' command...");
     fs::create_dir_all(bin_dir).context("Failed to create user bin directory")?;
 
     let executable_name = vm_platform::platform::executable_name("vm");
@@ -112,8 +142,8 @@ fn create_symlink(source_binary: &Path, bin_dir: &Path) -> Result<()> {
     vm_platform::current().install_executable(source_binary, bin_dir, "vm")
         .context("Failed to install executable")?;
 
-    println!(
-        "✅ Executable installed: {} -> {}",
+    vm_success!(
+        "Executable installed: {} -> {}",
         link_name.display(),
         source_binary.display()
     );
