@@ -6,6 +6,7 @@
 //! management through Docker containers with progress reporting and error handling.
 
 // Standard library
+use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 
@@ -24,7 +25,7 @@ use crate::{
     command_stream::{stream_command, stream_docker_build},
     TempProvider, TempVmState,
 };
-use vm_common::{vm_error, vm_success, vm_warning};
+use vm_common::{vm_dbg, vm_error, vm_success, vm_warning};
 use vm_config::config::VmConfig;
 
 // Constants for container lifecycle operations
@@ -158,9 +159,57 @@ impl<'a> LifecycleOperations<'a> {
         .into())
     }
 
+    /// Check Docker build requirements (disk space, resources)
+    fn check_docker_build_requirements(&self) -> Result<()> {
+        // Check available disk space
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        {
+            if let Ok(output) = std::process::Command::new("df")
+                .args(["-BG", "."])
+                .output()
+            {
+                if output.status.success() {
+                    if let Ok(df_output) = String::from_utf8(output.stdout) {
+                        if let Some(line) = df_output.lines().nth(1) {
+                            if let Some(available) = line.split_whitespace().nth(3) {
+                                if let Ok(available_gb) = available.trim_end_matches('G').parse::<u32>() {
+                                    if available_gb < 2 {
+                                        vm_warning!("Low disk space: {}GB available. Docker builds may fail with insufficient storage.", available_gb);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            // Use PowerShell for Windows disk space check
+            if let Ok(output) = std::process::Command::new("powershell")
+                .args(["-Command", "(Get-PSDrive C).Free / 1GB"])
+                .output()
+            {
+                if output.status.success() {
+                    if let Ok(space_str) = String::from_utf8(output.stdout) {
+                        if let Ok(available_gb) = space_str.trim().parse::<f32>() {
+                            if available_gb < 2.0 {
+                                vm_warning!("Low disk space: {:.1}GB available. Docker builds may fail with insufficient storage.", available_gb);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn create_container(&self) -> Result<()> {
         self.check_daemon_is_running()?;
         self.handle_potential_issues();
+        self.check_docker_build_requirements()?;
 
         // Check if container already exists
         let container_name = self.container_name();
@@ -172,6 +221,7 @@ impl<'a> LifecycleOperations<'a> {
                     .lines()
                     .any(|line| line.trim() == container_name)
             })
+            .map_err(|e| vm_warning!("Failed to check existing containers (continuing): {}", e))
             .unwrap_or(false);
 
         if container_exists {
@@ -220,6 +270,14 @@ impl<'a> LifecycleOperations<'a> {
         all_args.extend(base_compose_args.iter().map(|s| s.as_str()));
         all_args.extend(build_args.iter().map(|s| s.as_str()));
 
+        // Debug logging for Docker build troubleshooting
+        vm_dbg!("Docker build command: docker {}", all_args.join(" "));
+        vm_dbg!("Build context directory: {}", build_context.display());
+        if let Ok(entries) = fs::read_dir(&build_context) {
+            let file_count = entries.count();
+            vm_dbg!("Build context contains {} files/directories", file_count);
+        }
+
         stream_docker_build(&all_args).context("Docker build failed")?;
         println!("✅ Build complete");
 
@@ -249,6 +307,7 @@ impl<'a> LifecycleOperations<'a> {
                     .lines()
                     .any(|line| line.trim() == container_name)
             })
+            .map_err(|e| vm_warning!("Failed to check running containers (continuing): {}", e))
             .unwrap_or(false);
 
         let status = if is_running { "running" } else { "stopped" };
