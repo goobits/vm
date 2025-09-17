@@ -16,9 +16,19 @@ use vm_provider::{
 };
 
 /// Handle VM creation
-pub fn handle_create(provider: Box<dyn Provider>) -> Result<()> {
+pub fn handle_create(provider: Box<dyn Provider>, force: bool) -> Result<()> {
     let _op_guard = scoped_context! { "operation" => "create" };
     info!("Starting VM creation");
+
+    if force {
+        debug!("Force flag set - will destroy existing VM if present");
+        // Check if VM exists and destroy it first
+        if provider.status().is_ok() {
+            warn!("VM exists, destroying due to --force flag");
+            provider.destroy()?;
+        }
+    }
+
     provider.create()
 }
 
@@ -73,7 +83,7 @@ pub fn handle_get_sync_directory(provider: Box<dyn Provider>) {
 }
 
 /// Handle VM destruction
-pub fn handle_destroy(provider: Box<dyn Provider>, config: VmConfig) -> Result<()> {
+pub fn handle_destroy(provider: Box<dyn Provider>, config: VmConfig, force: bool) -> Result<()> {
     // Get VM name from config for confirmation prompt
     let vm_name = config
         .project
@@ -83,22 +93,30 @@ pub fn handle_destroy(provider: Box<dyn Provider>, config: VmConfig) -> Result<(
         .unwrap_or("VM");
 
     debug!(
-        "Destroying VM: vm_name='{}', provider='{}'",
+        "Destroying VM: vm_name='{}', provider='{}', force={}",
         vm_name,
-        provider.name()
+        provider.name(),
+        force
     );
 
     // Initialize progress reporter (kept for potential future use)
     let _progress = ProgressReporter::new();
 
-    // Show confirmation prompt
-    ProgressReporter::phase_header("🗑️", "DESTROY PHASE");
-    let confirmation_msg = format!(
-        "├─ ⚠️  Are you sure you want to destroy {}? This will delete all data. (y/N): ",
-        vm_name
-    );
+    let should_destroy = if force {
+        debug!("Force flag set - skipping confirmation prompt");
+        ProgressReporter::phase_header("🗑️", "DESTROY PHASE (FORCED)");
+        true
+    } else {
+        // Show confirmation prompt
+        ProgressReporter::phase_header("🗑️", "DESTROY PHASE");
+        let confirmation_msg = format!(
+            "├─ ⚠️  Are you sure you want to destroy {}? This will delete all data. (y/N): ",
+            vm_name
+        );
+        confirm_prompt(&confirmation_msg)
+    };
 
-    if confirm_prompt(&confirmation_msg) {
+    if should_destroy {
         debug!("Destroy confirmation: response='yes', proceeding with destruction");
         ProgressReporter::subtask("├─", "Proceeding with destruction...");
 

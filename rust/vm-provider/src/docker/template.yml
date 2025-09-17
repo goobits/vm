@@ -46,6 +46,9 @@ services:
       # Host package environment variables
       {% if host_env_vars %}{% for env_var in host_env_vars %}- {{ env_var.0 }}={{ env_var.1 }}
       {% endfor %}{% endif %}
+      # Local package environment variables
+      {% if local_env_vars %}{% for env_var in local_env_vars %}- {{ env_var.0 }}={{ env_var.1 }}
+      {% endfor %}{% endif %}
       {% if config.environment and config.environment | length > 0 -%}
       {% for name, value in config.environment %}- {{ name }}={{ value }}
       {% endfor %}

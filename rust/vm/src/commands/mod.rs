@@ -53,11 +53,11 @@ pub fn execute_command(args: Args) -> Result<()> {
 
 fn handle_dry_run(args: &Args) -> Result<()> {
     match &args.command {
-        Command::Create
+        Command::Create { .. }
         | Command::Start
         | Command::Stop
         | Command::Restart
-        | Command::Destroy
+        | Command::Destroy { .. }
         | Command::Provision
         | Command::Kill { .. } => {
             vm_println!("🔍 DRY RUN MODE - showing what would be executed:");
@@ -124,7 +124,7 @@ fn handle_provider_command(args: Args) -> Result<()> {
     // Execute the command
     debug!("Executing command: {:?}", args.command);
     match args.command {
-        Command::Create => vm_ops::handle_create(provider),
+        Command::Create { force } => vm_ops::handle_create(provider, force),
         Command::Start => vm_ops::handle_start(provider),
         Command::Stop => vm_ops::handle_stop(provider),
         Command::Restart => vm_ops::handle_restart(provider),
@@ -135,7 +135,7 @@ fn handle_provider_command(args: Args) -> Result<()> {
             vm_ops::handle_get_sync_directory(provider);
             Ok(())
         }
-        Command::Destroy => vm_ops::handle_destroy(provider, config),
+        Command::Destroy { force } => vm_ops::handle_destroy(provider, config, force),
         Command::Ssh { path } => vm_ops::handle_ssh(provider, path, config),
         Command::Status => vm_ops::handle_status(provider, config),
         Command::Exec { command } => vm_ops::handle_exec(provider, command),

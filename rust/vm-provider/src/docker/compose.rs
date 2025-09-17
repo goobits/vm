@@ -28,6 +28,16 @@ impl<'a> ComposeOperations<'a> {
         }
     }
 
+    /// Helper method to extract local pipx package names from config
+    fn get_local_pipx_package_names(&self) -> std::collections::HashSet<String> {
+        self.config
+            .extra_config
+            .get("local_pipx_packages")
+            .and_then(|local_pipx| local_pipx.as_object())
+            .map(|obj| obj.keys().cloned().collect())
+            .unwrap_or_default()
+    }
+
     #[allow(dead_code)]
     pub fn load_docker_compose_template() -> Result<String> {
         // Try to load from file first (for development/customization)
@@ -61,19 +71,14 @@ impl<'a> ComposeOperations<'a> {
         let mut host_info = super::host_packages::HostPackageInfo::new();
 
         // Check pip packages only if pip linking is enabled
-        if self.config.package_linking.as_ref().map_or(false, |p| p.pip) && !self.config.pip_packages.is_empty() {
+        if self.config.package_linking.as_ref().is_some_and(|p| p.pip) && !self.config.pip_packages.is_empty() {
             if let Ok(pip_info) = detect_packages(&self.config.pip_packages, PackageManager::Pip) {
                 host_info.pip_site_packages = pip_info.pip_site_packages;
                 host_info.pipx_base_dir = pip_info.pipx_base_dir;
 
                 // Filter out packages that will be handled by local pipx mounting
-                let local_pipx_packages: std::collections::HashSet<String> = if let Some(local_pipx) = self.config.extra_config.get("local_pipx_packages") {
-                    local_pipx.as_object().map_or_else(|| std::collections::HashSet::new(), |obj| {
-                        obj.keys().cloned().collect()
-                    })
-                } else {
-                    std::collections::HashSet::new()
-                };
+                let local_pipx_packages: std::collections::HashSet<String> =
+                    self.get_local_pipx_package_names();
 
                 // Only include packages that are NOT in local_pipx_packages
                 for (package_name, location) in pip_info.detected_packages {
@@ -85,7 +90,7 @@ impl<'a> ComposeOperations<'a> {
         }
 
         // Check npm packages only if npm linking is enabled
-        if self.config.package_linking.as_ref().map_or(false, |p| p.npm) && !self.config.npm_packages.is_empty() {
+        if self.config.package_linking.as_ref().is_some_and(|p| p.npm) && !self.config.npm_packages.is_empty() {
             if let Ok(npm_info) = detect_packages(&self.config.npm_packages, PackageManager::Npm) {
                 host_info.npm_global_dir = npm_info.npm_global_dir;
                 host_info.npm_local_dir = npm_info.npm_local_dir;
@@ -94,7 +99,7 @@ impl<'a> ComposeOperations<'a> {
         }
 
         // Check cargo packages only if cargo linking is enabled
-        if self.config.package_linking.as_ref().map_or(false, |p| p.cargo) && !self.config.cargo_packages.is_empty() {
+        if self.config.package_linking.as_ref().is_some_and(|p| p.cargo) && !self.config.cargo_packages.is_empty() {
             if let Ok(cargo_info) = detect_packages(&self.config.cargo_packages, PackageManager::Cargo) {
                 host_info.cargo_registry = cargo_info.cargo_registry;
                 host_info.cargo_bin = cargo_info.cargo_bin;
@@ -137,6 +142,36 @@ impl<'a> ComposeOperations<'a> {
         context.insert("host_mounts", &host_mounts);
         context.insert("host_env_vars", &host_env_vars);
         context.insert("local_pipx_mounts", &local_pipx_mounts);
+
+        // Generate PATH and PYTHONPATH for local packages
+        let mut local_env_vars = Vec::new();
+        if !local_pipx_mounts.is_empty() {
+            let mut path_additions = Vec::new();
+            let mut pythonpath_additions = Vec::new();
+
+            for (_, container_path) in &local_pipx_mounts {
+                // Add package root and bin for executables
+                path_additions.push(container_path.clone());
+                path_additions.push(format!("{}/bin", container_path));
+                // Add package root and src for Python imports
+                pythonpath_additions.push(container_path.clone());
+                pythonpath_additions.push(format!("{}/src", container_path));
+            }
+
+            if !path_additions.is_empty() {
+                local_env_vars.push((
+                    "PATH".to_string(),
+                    format!("{}:$PATH", path_additions.join(":")),
+                ));
+            }
+            if !pythonpath_additions.is_empty() {
+                local_env_vars.push((
+                    "PYTHONPATH".to_string(),
+                    format!("{}:$PYTHONPATH", pythonpath_additions.join(":")),
+                ));
+            }
+        }
+        context.insert("local_env_vars", &local_env_vars);
 
         let content = tera.render("docker-compose.yml", &context)?;
         Ok(content)

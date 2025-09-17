@@ -467,29 +467,33 @@
         when: project_config.container_pipx_packages is defined and project_config.container_pipx_packages | length > 0
         ignore_errors: yes
 
-      - name: Setup local packages via PATH and PYTHONPATH (no installation needed)
-        lineinfile:
-            path: '/home/{{ project_user }}/.zshrc'
-            line: |
-                # Local package: {{ item.key }}
-                export PATH="/opt/local-packages/{{ item.key }}:/opt/local-packages/{{ item.key }}/bin:$PATH"
-                export PYTHONPATH="/opt/local-packages/{{ item.key }}:/opt/local-packages/{{ item.key }}/src:$PYTHONPATH"
-            create: yes
-            owner: '{{ project_user }}'
-            mode: '0644'
-        loop: "{{ project_config.local_pipx_packages | dict2items | default([]) }}"
-        when: project_config.local_pipx_packages is defined and project_config.local_pipx_packages | length > 0
+      - name: Ensure Python build tools are up-to-date
+        pip:
+          name:
+            - pip
+            - setuptools
+            - wheel
+          state: latest
+          extra_args: '--user --break-system-packages'
+          executable: pip3
+        become_user: '{{ project_user }}'
+        ignore_errors: yes
 
-      - name: Add git auto-update for local packages
-        cron:
-            name: "Auto-update local package {{ item.key }}"
-            minute: "*/2"
-            job: "cd /opt/local-packages/{{ item.key }} && git fetch && git reset --hard origin/main"
-            user: root
+      - name: Install local packages in editable mode (with dependencies)
+        shell: |
+            echo "Installing local package {{ item.key }} in editable mode..."
+            cd /opt/local-packages/{{ item.key }}
+            if [ -f pyproject.toml ]; then
+                pip3 install --user --break-system-packages -e .
+            elif [ -f requirements.txt ]; then
+                pip3 install --user --break-system-packages -r requirements.txt
+            fi
+        args:
+          executable: /bin/bash
+        become_user: '{{ project_user }}'
         loop: "{{ project_config.local_pipx_packages | dict2items | default([]) }}"
-        when:
-            - project_config.local_pipx_packages is defined and project_config.local_pipx_packages | length > 0
-            - project_config.auto_update_local_packages | default(true)
+        when: project_config.local_pipx_packages is defined
+        ignore_errors: yes
 
       - name: Install pnpm via npm as fallback
         shell: |

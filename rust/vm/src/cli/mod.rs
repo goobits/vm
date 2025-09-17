@@ -158,7 +158,11 @@ pub enum Command {
         ports: Option<u16>,
     },
     /// Create and provision a new VM
-    Create,
+    Create {
+        /// Force creation even if VM already exists
+        #[arg(long)]
+        force: bool,
+    },
     /// Start an existing VM
     Start,
     /// Stop a running VM
@@ -183,7 +187,11 @@ pub enum Command {
         command: PresetSubcommand,
     },
     /// Destroy a VM and its resources
-    Destroy,
+    Destroy {
+        /// Force destruction without confirmation
+        #[arg(long)]
+        force: bool,
+    },
     /// SSH into a VM
     Ssh {
         /// Optional path to start the shell in
