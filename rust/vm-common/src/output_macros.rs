@@ -1,9 +1,16 @@
-/// Output macros for gradual migration to structured logging
-///
-/// These macros provide a migration path from direct println!/eprintln! usage
-/// to structured logging. They maintain backward compatibility while allowing
-/// gradual adoption of structured logging throughout the codebase.
+//! Output macros for gradual migration to structured logging
+//!
+//! These macros provide a migration path from direct println!/eprintln! usage
+//! to structured logging. They maintain backward compatibility while allowing
+//! gradual adoption of structured logging throughout the codebase.
+//!
+//! All macros automatically inject the current logging context when structured
+//! logging is enabled, providing rich contextual information without requiring
+//! code changes at call sites.
 /// Print a line to stdout, with optional structured logging
+///
+/// When structured logging is enabled, automatically includes current context.
+/// Routes to appropriate log level (INFO) with proper output routing.
 #[macro_export]
 macro_rules! vm_println {
     () => {
@@ -12,8 +19,10 @@ macro_rules! vm_println {
     ($($arg:tt)*) => {{
         #[cfg(feature = "structured-output")]
         {
-            use $crate::structured_log;
-            structured_log::log_info(&format!($($arg)*));
+            let module_name = module_path!();
+            let logger = $crate::module_logger::get_logger(module_name);
+            let _guard = logger.with_context();
+            log::info!("{}", format!($($arg)*));
         }
         #[cfg(not(feature = "structured-output"))]
         {
@@ -23,6 +32,9 @@ macro_rules! vm_println {
 }
 
 /// Print a line to stderr, with optional structured logging
+///
+/// When structured logging is enabled, automatically includes current context.
+/// Routes to appropriate log level (ERROR) with proper output routing.
 #[macro_export]
 macro_rules! vm_eprintln {
     () => {
@@ -31,8 +43,10 @@ macro_rules! vm_eprintln {
     ($($arg:tt)*) => {{
         #[cfg(feature = "structured-output")]
         {
-            use $crate::structured_log;
-            structured_log::log_error(&format!($($arg)*));
+            let module_name = module_path!();
+            let logger = $crate::module_logger::get_logger(module_name);
+            let _guard = logger.with_context();
+            log::error!("{}", format!($($arg)*));
         }
         #[cfg(not(feature = "structured-output"))]
         {
@@ -42,13 +56,18 @@ macro_rules! vm_eprintln {
 }
 
 /// Print without newline to stdout
+///
+/// Note: In structured logging mode, this still produces complete log entries
+/// as structured logs are discrete events, not streaming output.
 #[macro_export]
 macro_rules! vm_print {
     ($($arg:tt)*) => {{
         #[cfg(feature = "structured-output")]
         {
-            use $crate::structured_log;
-            structured_log::log_info_no_newline(&format!($($arg)*));
+            let module_name = module_path!();
+            let logger = $crate::module_logger::get_logger(module_name);
+            let _guard = logger.with_context();
+            log::info!("{}", format!($($arg)*));
         }
         #[cfg(not(feature = "structured-output"))]
         {
@@ -58,13 +77,18 @@ macro_rules! vm_print {
 }
 
 /// Print without newline to stderr
+///
+/// Note: In structured logging mode, this still produces complete log entries
+/// as structured logs are discrete events, not streaming output.
 #[macro_export]
 macro_rules! vm_eprint {
     ($($arg:tt)*) => {{
         #[cfg(feature = "structured-output")]
         {
-            use $crate::structured_log;
-            structured_log::log_error_no_newline(&format!($($arg)*));
+            let module_name = module_path!();
+            let logger = $crate::module_logger::get_logger(module_name);
+            let _guard = logger.with_context();
+            log::error!("{}", format!($($arg)*));
         }
         #[cfg(not(feature = "structured-output"))]
         {
@@ -74,22 +98,61 @@ macro_rules! vm_eprint {
 }
 
 /// Debug print (only in debug builds)
+///
+/// In structured logging mode, uses DEBUG level with rich context.
+/// Only active in debug builds for performance.
 #[macro_export]
 macro_rules! vm_dbg {
     () => {
         #[cfg(debug_assertions)]
         {
-            eprintln!("[{}:{}]", file!(), line!());
+            #[cfg(feature = "structured-output")]
+            {
+                let module_name = module_path!();
+                let logger = $crate::module_logger::get_logger(module_name);
+                let _guard = logger.with_context();
+                $crate::log_context! {
+                    "message_type" => "debug",
+                    "file" => file!(),
+                    "line" => line!()
+                };
+                log::debug!("Debug checkpoint");
+            }
+            #[cfg(not(feature = "structured-output"))]
+            {
+                eprintln!("[{}:{}]", file!(), line!());
+            }
         }
     };
     ($val:expr $(,)?) => {{
         #[cfg(debug_assertions)]
         {
-            match $val {
-                tmp => {
-                    eprintln!("[{}:{}] {} = {:#?}",
-                        file!(), line!(), stringify!($val), &tmp);
-                    tmp
+            #[cfg(feature = "structured-output")]
+            {
+                match $val {
+                    tmp => {
+                        let module_name = module_path!();
+                        let logger = $crate::module_logger::get_logger(module_name);
+                        let _guard = logger.with_context();
+                        $crate::log_context! {
+                            "message_type" => "debug",
+                            "file" => file!(),
+                            "line" => line!(),
+                            "variable" => stringify!($val)
+                        };
+                        log::debug!("{} = {:#?}", stringify!($val), &tmp);
+                        tmp
+                    }
+                }
+            }
+            #[cfg(not(feature = "structured-output"))]
+            {
+                match $val {
+                    tmp => {
+                        eprintln!("[{}:{}] {} = {:#?}",
+                            file!(), line!(), stringify!($val), &tmp);
+                        tmp
+                    }
                 }
             }
         }
@@ -104,13 +167,20 @@ macro_rules! vm_dbg {
 }
 
 /// Progress indicator print (for CLI progress messages)
+///
+/// Uses INFO level with progress context when structured logging is enabled.
 #[macro_export]
 macro_rules! vm_progress {
     ($($arg:tt)*) => {{
         #[cfg(feature = "structured-output")]
         {
-            use $crate::structured_log;
-            structured_log::log_progress(&format!($($arg)*));
+            let module_name = module_path!();
+            let logger = $crate::module_logger::get_logger(module_name);
+            let _guard = logger.with_context();
+            $crate::log_context! {
+                "message_type" => "progress"
+            };
+            log::info!("{}", format!($($arg)*));
         }
         #[cfg(not(feature = "structured-output"))]
         {
@@ -120,13 +190,21 @@ macro_rules! vm_progress {
 }
 
 /// Success message print
+///
+/// Uses INFO level with success context when structured logging is enabled.
 #[macro_export]
 macro_rules! vm_success {
     ($($arg:tt)*) => {{
         #[cfg(feature = "structured-output")]
         {
-            use $crate::structured_log;
-            structured_log::log_success(&format!($($arg)*));
+            let module_name = module_path!();
+            let logger = $crate::module_logger::get_logger(module_name);
+            let _guard = logger.with_context();
+            $crate::log_context! {
+                "message_type" => "success",
+                "status" => "success"
+            };
+            log::info!("{}", format!($($arg)*));
         }
         #[cfg(not(feature = "structured-output"))]
         {
@@ -136,13 +214,21 @@ macro_rules! vm_success {
 }
 
 /// Warning message print
+///
+/// Uses WARN level with proper context when structured logging is enabled.
 #[macro_export]
 macro_rules! vm_warning {
     ($($arg:tt)*) => {{
         #[cfg(feature = "structured-output")]
         {
-            use $crate::structured_log;
-            structured_log::log_warning(&format!($($arg)*));
+            let module_name = module_path!();
+            let logger = $crate::module_logger::get_logger(module_name);
+            let _guard = logger.with_context();
+            $crate::log_context! {
+                "message_type" => "warning",
+                "status" => "warning"
+            };
+            log::warn!("{}", format!($($arg)*));
         }
         #[cfg(not(feature = "structured-output"))]
         {
@@ -152,13 +238,21 @@ macro_rules! vm_warning {
 }
 
 /// Error message print
+///
+/// Uses ERROR level with proper context when structured logging is enabled.
 #[macro_export]
 macro_rules! vm_error {
     ($($arg:tt)*) => {{
         #[cfg(feature = "structured-output")]
         {
-            use $crate::structured_log;
-            structured_log::log_error(&format!($($arg)*));
+            let module_name = module_path!();
+            let logger = $crate::module_logger::get_logger(module_name);
+            let _guard = logger.with_context();
+            $crate::log_context! {
+                "message_type" => "error",
+                "status" => "error"
+            };
+            log::error!("{}", format!($($arg)*));
         }
         #[cfg(not(feature = "structured-output"))]
         {
@@ -167,8 +261,26 @@ macro_rules! vm_error {
     }};
 }
 
+/// Initialize structured logging for use with output macros
+///
+/// This function should be called early in application startup to enable
+/// structured logging features. If not called, macros will fall back to
+/// standard print macros.
+pub fn init_structured_output() -> Result<(), log::SetLoggerError> {
+    crate::structured_log::init()
+}
+
+/// Initialize structured logging with custom configuration
+pub fn init_structured_output_with_config(
+    config: crate::structured_log::LogConfig,
+) -> Result<(), log::SetLoggerError> {
+    crate::structured_log::init_with_config(config)
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn test_vm_println() {
         // Just ensure macros compile
@@ -201,5 +313,21 @@ mod tests {
         let (a, b) = vm_dbg!(1 + 1, 2 * 2);
         assert_eq!(a, 2);
         assert_eq!(b, 4);
+    }
+
+    #[test]
+    fn test_init_functions() {
+        // Test that initialization functions don't panic
+        // Note: Multiple init calls are safe but will only use the first one
+        let _ = init_structured_output();
+
+        use crate::structured_log::{LogConfig, LogFormat, LogOutput};
+        let config = LogConfig {
+            level: log::Level::Debug,
+            format: LogFormat::Json,
+            output: LogOutput::Console,
+            tags: None,
+        };
+        let _ = init_structured_output_with_config(config);
     }
 }

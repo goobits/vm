@@ -153,7 +153,7 @@ pub fn init_context() {
 }
 
 /// Clear all context (mainly for testing)
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 pub fn clear_context() {
     LOG_CONTEXT.with(|stack| {
         stack.borrow_mut().clear();

@@ -3,6 +3,7 @@
 
 pub mod file_system;
 pub mod log_context;
+pub mod module_logger;
 pub mod output_macros;
 pub mod platform;
 pub mod security;
