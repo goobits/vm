@@ -1,5 +1,5 @@
 //! Configuration management operations for VM Tool.
-//!
+//! 
 //! This module provides high-level operations for managing VM configuration files,
 //! including setting, getting, and unsetting configuration values using dot notation,
 //! applying presets, and managing configuration state with dry-run capabilities.
@@ -10,7 +10,9 @@ use std::fs;
 use std::path::PathBuf;
 
 // External crates
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
+use lazy_static::lazy_static;
+use regex::Regex;
 use serde_yaml::{Mapping, Value};
 use serde_yaml_ng as serde_yaml;
 
@@ -18,9 +20,14 @@ use serde_yaml_ng as serde_yaml;
 use crate::config::VmConfig;
 use crate::merge::ConfigMerger;
 use crate::paths;
-use vm_common::vm_error;
 use crate::preset::PresetDetector;
 use vm_common::user_paths;
+use vm_common::{vm_error, vm_warning};
+use vm_ports::PortRange;
+
+lazy_static! {
+    static ref PORT_PLACEHOLDER_RE: Regex = Regex::new(r"\$\{port\.(\d+)\}").unwrap();
+}
 
 /// Configuration operations for VM configuration management.
 ///
@@ -99,9 +106,9 @@ impl ConfigOps {
     /// ```
     pub fn set(field: &str, value: &str, global: bool, dry_run: bool) -> Result<()> {
         let config_path = if global {
-            get_or_create_global_config_path()?
+            get_or_create_global_config_path()? 
         } else {
-            find_or_create_local_config()?
+            find_or_create_local_config()? 
         };
 
         let mut yaml_value = if config_path.exists() {
@@ -111,9 +118,8 @@ impl ConfigOps {
             Value::Mapping(Mapping::new())
         };
 
-        // Parse the value - try as YAML first, then as string
-        let parsed_value: Value =
-            serde_yaml::from_str(value).unwrap_or_else(|_| Value::String(value.into()));
+        // Parse the value with field-specific logic
+        let parsed_value = parse_field_value(field, value)?;
 
         set_nested_field(&mut yaml_value, field, parsed_value)?;
 
@@ -244,7 +250,7 @@ impl ConfigOps {
 
         if !config_path.exists() {
             println!("No configuration file to clear");
-            return Ok(());
+            return Ok(())
         }
 
         fs::remove_file(&config_path)?;
@@ -265,7 +271,7 @@ impl ConfigOps {
             for preset in presets {
                 println!("  - {}", preset);
             }
-            return Ok(());
+            return Ok(())
         }
 
         // Handle show command
@@ -274,14 +280,14 @@ impl ConfigOps {
             let yaml = serde_yaml::to_string(&preset_config)?;
             println!("Preset '{}' configuration:", name);
             println!("{}", yaml);
-            return Ok(());
+            return Ok(())
         }
 
         // Apply preset(s)
         let config_path = if global {
-            get_or_create_global_config_path()?
+            get_or_create_global_config_path()? 
         } else {
-            find_or_create_local_config()?
+            find_or_create_local_config()? 
         };
 
         // Load existing config or create empty
@@ -303,8 +309,20 @@ impl ConfigOps {
                 return Err(anyhow::anyhow!("Preset not found"));
             }
 
-            let preset_config = VmConfig::from_file(&preset_path)
+            let mut preset_config = VmConfig::from_file(&preset_path)
                 .with_context(|| format!("Failed to load preset: {}", preset_name))?;
+
+            // Convert to Value to traverse and replace placeholders
+            let mut preset_value = serde_yaml::to_value(&preset_config)?;
+
+            // Get port_range from the base config
+            let port_range = merged_config.port_range.clone();
+
+            // Replace placeholders
+            replace_port_placeholders(&mut preset_value, &port_range)?;
+
+            // Convert back to VmConfig
+            preset_config = serde_yaml::from_value(preset_value)?;
 
             merged_config = ConfigMerger::new(merged_config).merge(preset_config)?;
         }
@@ -316,13 +334,63 @@ impl ConfigOps {
         let scope = if global { "global" } else { "local" };
         println!(
             "✅ Applied preset(s) {} to {} configuration",
-            preset_names, scope
+            preset_names,
+            scope
         );
         Ok(())
     }
 }
 
 // Helper functions
+
+fn replace_port_placeholders(value: &mut Value, port_range_str: &Option<String>) -> Result<()> {
+    if port_range_str.is_none() {
+        return Ok(())
+    }
+    let port_range_str = port_range_str.as_ref().unwrap();
+
+    let port_range = match PortRange::parse(port_range_str) {
+        Ok(range) => range,
+        Err(_) => {
+            vm_warning!("Could not parse port_range '{}'", port_range_str);
+            return Ok(())
+        }
+    };
+
+    replace_placeholders_recursive(value, &port_range);
+    Ok(())
+}
+
+fn replace_placeholders_recursive(value: &mut Value, port_range: &PortRange) {
+    match value {
+        Value::Mapping(mapping) => {
+            for (_, val) in mapping.iter_mut() {
+                replace_placeholders_recursive(val, port_range);
+            }
+        }
+        Value::Sequence(sequence) => {
+            for val in sequence.iter_mut() {
+                replace_placeholders_recursive(val, port_range);
+            }
+        }
+        Value::String(s) => {
+            if let Some(captures) = PORT_PLACEHOLDER_RE.captures(s) {
+                if let Some(index_match) = captures.get(1) {
+                    if let Ok(index) = index_match.as_str().parse::<u16>() {
+                        if index < port_range.size() {
+                            let port = port_range.start + index;
+                            *value = Value::Number(port.into());
+                        } else {
+                            vm_warning!("Port index {} is out of bounds for the allocated range", index);
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 
 fn get_global_config_path() -> PathBuf {
     // Check for test environment override first
@@ -341,7 +409,7 @@ fn get_or_create_global_config_path() -> Result<PathBuf> {
     let config_dir = if let Ok(home) = std::env::var("HOME") {
         PathBuf::from(home).join(".config").join("vm")
     } else {
-        user_paths::user_config_dir()?
+        user_paths::user_config_dir()? 
     };
 
     if !config_dir.exists() {
@@ -403,7 +471,7 @@ fn set_nested_field_recursive(value: &mut Value, parts: &[&str], new_value: Valu
             Value::Mapping(map) => {
                 let key = Value::String(parts[0].into());
                 map.insert(key, new_value);
-                return Ok(());
+                return Ok(())
             }
             _ => {
                 vm_error!("Cannot set field on non-object");
@@ -437,7 +505,7 @@ fn set_nested_field_recursive(value: &mut Value, parts: &[&str], new_value: Valu
 /// Navigate through nested YAML structure using dot notation path
 ///
 /// This function traverses a YAML value structure following a dot-separated path
-/// (e.g., "vm.memory" -> value["vm"]["memory"]). Each part of the path must exist
+/// (e.g., "vm.memory" -> value["vm"]["memory"])). Each part of the path must exist
 /// as a key in a YAML mapping, or the function returns an error.
 ///
 /// # Arguments
@@ -471,8 +539,7 @@ fn get_nested_field<'a>(value: &'a Value, field: &str) -> Result<&'a Value> {
 
 fn unset_nested_field(value: &mut Value, field: &str) -> Result<()> {
     if field.is_empty() {
-        vm_error!("Empty field path");
-        return Err(anyhow::anyhow!("Empty field path"));
+        bail!("Empty field path");
     }
 
     let parts: Vec<&str> = field.split('.').collect();
@@ -485,14 +552,12 @@ fn unset_nested_field_recursive(value: &mut Value, parts: &[&str]) -> Result<()>
             Value::Mapping(map) => {
                 let key = Value::String(parts[0].into());
                 if map.remove(&key).is_none() {
-                    vm_error!("Field '{}' not found", parts[0]);
-                    return Err(anyhow::anyhow!("Field not found"));
+                    bail!("Field '{}' not found", parts[0]);
                 }
-                return Ok(());
+                return Ok(())
             }
             _ => {
-                vm_error!("Cannot unset field on non-object");
-                return Err(anyhow::anyhow!("Cannot unset field on non-object"));
+                bail!("Cannot unset field on non-object");
             }
         }
     }
@@ -503,18 +568,106 @@ fn unset_nested_field_recursive(value: &mut Value, parts: &[&str]) -> Result<()>
             match map.get_mut(&key) {
                 Some(nested) => unset_nested_field_recursive(nested, &parts[1..])?,
                 None => {
-                    vm_error!("Field '{}' not found", parts[0]);
-                    return Err(anyhow::anyhow!("Field not found"));
+                    bail!("Field '{}' not found", parts[0]);
                 }
             }
         }
         _ => {
-            vm_error!("Cannot navigate field '{}' on non-object", parts[0]);
-            return Err(anyhow::anyhow!("Cannot navigate field on non-object"));
+            bail!("Cannot navigate field '{}' on non-object", parts[0]);
         }
     }
 
     Ok(())
+}
+
+/// Parse a value for a specific field with field-aware logic
+fn parse_field_value(field: &str, value: &str) -> Result<Value> {
+    // Handle field-specific parsing for ports
+    if field == "ports" {
+        return parse_ports_value(value);
+    }
+
+    // Check if this is a sub-field of ports (e.g., "ports.www")
+    if field.starts_with("ports.") {
+        return parse_single_port_value(value);
+    }
+
+    // Default parsing: try YAML first, then fall back to string
+    let parsed_value = serde_yaml::from_str(value).unwrap_or_else(|_| Value::String(value.into()));
+    Ok(parsed_value)
+}
+
+/// Parse a ports value that might be in key=value format
+fn parse_ports_value(value: &str) -> Result<Value> {
+    // If it contains an equals sign, try to parse as key=value
+    if value.contains('=') {
+        match parse_key_value_pair(value) {
+            Ok((key, port)) => {
+                let mut ports_map = Mapping::new();
+                ports_map.insert(Value::String(key), Value::Number(port.into()));
+                return Ok(Value::Mapping(ports_map));
+            }
+            Err(e) => {
+                return Err(anyhow::anyhow!(
+                    "Invalid port format '{}': {}\n\nExamples:\n  vm config set ports www=3070\n  vm config set ports \"{{frontend: 3000, backend: 3001}}\"",
+                    value, e
+                ));
+            }
+        }
+    }
+
+    // Try parsing as YAML (for complex port maps)
+    match serde_yaml::from_str(value) {
+        Ok(yaml_value) => {
+            // For ports, we only accept mappings (objects), not strings or other types
+            match &yaml_value {
+                Value::Mapping(_) => Ok(yaml_value),
+                _ => Err(anyhow::anyhow!(
+                    "Invalid ports format '{}': ports must be a mapping of names to port numbers\n\nExamples:\n  vm config set ports www=3070\n  vm config set ports \"{{frontend: 3000, backend: 3001}}\"",
+                    value
+                ))
+            }
+        },
+        Err(_) => Err(anyhow::anyhow!(
+            "Invalid ports format '{}'\n\nExamples:\n  vm config set ports www=3070\n  vm config set ports \"{{frontend: 3000, backend: 3001}}\"",
+            value
+        ))
+    }
+}
+
+/// Parse a single port value for a specific port key
+fn parse_single_port_value(value: &str) -> Result<Value> {
+    match value.parse::<u16>() {
+        Ok(port) => Ok(Value::Number(port.into())),
+        Err(_) => Err(anyhow::anyhow!(
+            "Invalid port number '{}': must be a number between 1 and 65535\n\nExample:\n  vm config set ports.www 3070",
+            value
+        ))
+    }
+}
+
+/// Parse a key=value pair for ports
+fn parse_key_value_pair(input: &str) -> Result<(String, u16)> {
+    let parts: Vec<&str> = input.split('=').collect();
+    if parts.len() != 2 {
+        return Err(anyhow::anyhow!("Expected format: key=port"));
+    }
+
+    let key = parts[0].trim();
+    let port_str = parts[1].trim();
+
+    if key.is_empty() {
+        return Err(anyhow::anyhow!("Port name cannot be empty"));
+    }
+
+    let port = port_str.parse::<u16>()
+        .map_err(|_| anyhow::anyhow!("Port '{}' must be a number between 1 and 65535", port_str))?;
+
+    if port == 0 {
+        return Err(anyhow::anyhow!("Port number must be greater than 0"));
+    }
+
+    Ok((key.to_string(), port))
 }
 
 /// Load global configuration if it exists
