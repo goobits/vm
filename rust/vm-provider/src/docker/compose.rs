@@ -91,6 +91,26 @@ impl<'a> ComposeOperations<'a> {
         let host_mounts = get_volume_mounts(&host_info);
         let host_env_vars = get_package_env_vars(&host_info);
 
+        // Prepare local pipx package mounts separately (they need rw access)
+        let mut local_pipx_mounts = Vec::new();
+        if let Some(local_pipx) = self.config.extra_config.get("local_pipx_packages") {
+            if let Some(packages) = local_pipx.as_object() {
+                for (package_name, source_path) in packages {
+                    if let Some(path_str) = source_path.as_str() {
+                        let source_path = std::path::PathBuf::from(path_str);
+                        if source_path.exists() {
+                            // Local packages need read-write access for editable installs
+                            let container_path = format!("/opt/local-packages/{}", package_name);
+                            local_pipx_mounts.push((
+                                path_str.to_string(),
+                                container_path,
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
         let mut context = TeraContext::new();
         context.insert("config", &self.config);
         context.insert("project_dir", &project_dir_str);
@@ -101,6 +121,7 @@ impl<'a> ComposeOperations<'a> {
         context.insert("is_macos", &cfg!(target_os = "macos"));
         context.insert("host_mounts", &host_mounts);
         context.insert("host_env_vars", &host_env_vars);
+        context.insert("local_pipx_mounts", &local_pipx_mounts);
 
         let content = tera.render("docker-compose.yml", &context)?;
         Ok(content)

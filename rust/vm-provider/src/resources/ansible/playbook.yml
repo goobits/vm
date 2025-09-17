@@ -467,6 +467,15 @@
         when: project_config.container_pipx_packages is defined and project_config.container_pipx_packages | length > 0
         ignore_errors: yes
 
+      - name: Install local pipx packages in editable mode
+        shell: |
+            pipx ensurepath
+            pipx install -e /opt/local-packages/{{ item.key }}
+        become_user: '{{ project_user }}'
+        loop: "{{ project_config.local_pipx_packages | dict2items | default([]) }}"
+        when: project_config.local_pipx_packages is defined and project_config.local_pipx_packages | length > 0
+        ignore_errors: yes
+
       - name: Install pnpm via npm as fallback
         shell: |
             source ~/.nvm/nvm.sh

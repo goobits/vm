@@ -132,15 +132,19 @@ impl<'a> LifecycleOperations<'a> {
 
         println!("🐳 Creating Docker Environment");
 
-        // Step 1: Prepare build context with embedded resources
+        // Step 1: Detect local pipx packages and update config
+        let mut modified_config = self.config.clone();
+        self.detect_and_add_local_pipx_packages(&mut modified_config)?;
+
+        // Step 2: Prepare build context with embedded resources
         print!("📦 Preparing build context... ");
-        let build_ops = BuildOperations::new(self.config, self.temp_dir);
+        let build_ops = BuildOperations::new(&modified_config, self.temp_dir);
         let build_context = build_ops.prepare_build_context()?;
         println!("✅");
 
-        // Step 2: Generate docker-compose.yml with build context
+        // Step 3: Generate docker-compose.yml with build context and modified config
         print!("📄 Generating docker-compose.yml... ");
-        let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
+        let compose_ops = ComposeOperations::new(&modified_config, self.temp_dir, self.project_dir);
         let compose_path = compose_ops.write_docker_compose(&build_context)?;
         println!("✅");
 
@@ -243,9 +247,52 @@ impl<'a> LifecycleOperations<'a> {
         }
     }
 
+    fn detect_and_add_local_pipx_packages(&self, config: &mut vm_config::config::VmConfig) -> Result<()> {
+        let mut local_pipx_packages = std::collections::HashMap::new();
+
+        if !self.config.pip_packages.is_empty() {
+            let pipx_list_output = std::process::Command::new("pipx")
+                .args(["list", "--json"])
+                .output();
+
+            if let Ok(output) = pipx_list_output {
+                if let Ok(pipx_json) = serde_json::from_slice::<Value>(&output.stdout) {
+                    if let Some(venvs) = pipx_json.get("venvs").and_then(|v| v.as_object()) {
+                        for package in &self.config.pip_packages {
+                            if let Some(package_venv) = venvs.get(package) {
+                                if let Some(package_url) = package_venv
+                                    .get("metadata")
+                                    .and_then(|m| m.get("main_package"))
+                                    .and_then(|mp| mp.get("package_or_url"))
+                                    .and_then(|pu| pu.as_str())
+                                {
+                                    // Store local packages with their source paths for mounting
+                                    if package_url.starts_with('/') || package_url.contains("./") || package_url.contains("../") {
+                                        local_pipx_packages.insert(package.clone(), package_url.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Add local packages mapping to config for volume mounting
+        if !local_pipx_packages.is_empty() {
+            config.extra_config.insert(
+                "local_pipx_packages".to_string(),
+                serde_json::to_value(local_pipx_packages).unwrap(),
+            );
+        }
+
+        Ok(())
+    }
+
     fn prepare_and_copy_config(&self) -> Result<()> {
         let mut config_clone = self.config.clone();
         let mut container_pipx_packages = Vec::new();
+        let mut local_pipx_packages = std::collections::HashMap::new();
 
         if !self.config.pip_packages.is_empty() {
             let pipx_list_output = std::process::Command::new("pipx")
@@ -270,8 +317,12 @@ impl<'a> LifecycleOperations<'a> {
                                         .and_then(|mp| mp.get("package_or_url"))
                                         .and_then(|pu| pu.as_str())
                                     {
-                                        // Skip local packages (paths starting with / or containing local paths)
-                                        if !package_url.starts_with('/') && !package_url.contains("./") && !package_url.contains("../") {
+                                        // Separate local packages from PyPI packages
+                                        if package_url.starts_with('/') || package_url.contains("./") || package_url.contains("../") {
+                                            // Store local packages with their source paths for mounting
+                                            local_pipx_packages.insert(package.clone(), package_url.to_string());
+                                        } else {
+                                            // PyPI packages can be installed normally in container
                                             container_pipx_packages.push(package.clone());
                                         }
                                     }
@@ -286,14 +337,25 @@ impl<'a> LifecycleOperations<'a> {
             }
         }
 
-        // Add the new list to the config clone for Ansible
+        // Always clear pip_packages if we processed any pipx packages, regardless of whether they were included
+        if !self.config.pip_packages.is_empty() {
+            config_clone.pip_packages = vec![];
+        }
+
+        // Add PyPI packages list to config for Ansible
         if !container_pipx_packages.is_empty() {
             config_clone.extra_config.insert(
                 "container_pipx_packages".to_string(),
                 serde_json::to_value(container_pipx_packages).unwrap(),
             );
-            // Clear the original pip_packages to prevent host-linking
-            config_clone.pip_packages = vec![];
+        }
+
+        // Add local packages mapping to config for volume mounting and editable installation
+        if !local_pipx_packages.is_empty() {
+            config_clone.extra_config.insert(
+                "local_pipx_packages".to_string(),
+                serde_json::to_value(local_pipx_packages).unwrap(),
+            );
         }
 
         let config_json = config_clone.to_json()?;
@@ -338,7 +400,7 @@ impl<'a> LifecycleOperations<'a> {
         println!("✅");
 
         print!("📋 Loading project configuration... ");
-        self.prepare_and_copy_config()?
+        self.prepare_and_copy_config()?;
         println!("✅");
 
         println!("🎭 Running Ansible provisioning (configuration only)...");
@@ -547,7 +609,7 @@ impl<'a> LifecycleOperations<'a> {
         ProgressReporter::phase_header("🔧", "PROVISIONING PHASE");
         ProgressReporter::subtask("├─", "Re-running Ansible provisioning...");
 
-        self.prepare_and_copy_config()?
+        self.prepare_and_copy_config()?;
 
         let ansible_result = stream_command(
             "docker",

@@ -25,6 +25,9 @@ services:
       # Host package mounts for development
       {% if host_mounts %}{% for mount in host_mounts %}- {{ mount.0 }}:{{ mount.1 }}:ro
       {% endfor %}{% endif %}
+      # Local pipx package mounts (read-write for editable installs)
+      {% if local_pipx_mounts %}{% for mount in local_pipx_mounts %}- {{ mount.0 }}:{{ mount.1 }}:rw
+      {% endfor %}{% endif %}
       # Container is now self-contained - no VM tool mount needed
     {% if config.ports and config.ports | length > 0 -%}
     ports:
