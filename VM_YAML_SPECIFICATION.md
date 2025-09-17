@@ -2,8 +2,6 @@
 
 **Comprehensive reference for all vm.yaml configuration options with current implementation status.**
 
-> ⚠️ **IMPORTANT**: This specification indicates actual implementation support. Fields marked with `#NOT_WORKING` will cause parsing failures due to `serde(deny_unknown_fields)` in the Rust parser.
-
 ## Table of Contents
 
 - [Schema Validation](#schema-validation)
@@ -74,9 +72,8 @@ project:
 ```yaml
 vm:
   # Vagrant box (Vagrant provider only)
-  box: ubuntu/jammy64                    # ✅ WORKING (field name is 'box')
-  # box: bento/ubuntu-22.04              # ✅ WORKING
-  # Note: Rust struct uses 'box_name' internally
+  box_name: ubuntu/jammy64               # ✅ WORKING
+  # box_name: bento/ubuntu-22.04         # ✅ WORKING
 
   # Memory allocation in MB
   memory: 4096                           # ✅ WORKING

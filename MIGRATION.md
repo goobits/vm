@@ -2,19 +2,14 @@
 
 This document helps users migrate between versions of Goobits VM and understand breaking changes.
 
-## v2.0 - Security-First Defaults
+## Current Version - Security Configuration
 
-### 🔒 Breaking Change: Secure Defaults
+### 🔒 Security Defaults
 
-Starting with v2.0, containers use secure defaults to align with our "AI Agent Safe" promise.
+Containers use secure defaults for host protection.
 
-**Previous defaults (v1.x):**
-- `SYS_PTRACE` capability enabled
-- `seccomp=unconfined` (no syscall filtering)
-- No privilege escalation protection
-
-**New defaults (v2.0+):**
-- `SYS_PTRACE` capability **disabled** (debugging tools won't work by default)
+**Current defaults:**
+- `SYS_PTRACE` capability **disabled** (debugging tools disabled by default)
 - `seccomp` filtering **enabled** (blocks dangerous syscalls)
 - `no-new-privileges` **enabled** (blocks SUID escalation)
 
@@ -31,10 +26,10 @@ security:
   no_new_privileges: false   # Allows SUID operations
 ```
 
-### Why This Change?
+### Rationale
 
-1. **Host escape prevention** - Previous defaults were major attack vectors
-2. **"AI Agent Safe" promise** - Tool is marketed for secure execution
+1. **Host escape prevention** - Secure defaults reduce attack surface
+2. **Container isolation** - Tool provides secure execution environment
 3. **Industry best practice** - Security should be default, convenience opt-in
 4. **Performance** - Seccomp filtering and no ptrace reduces overhead
 
