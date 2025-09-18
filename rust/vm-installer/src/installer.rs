@@ -6,7 +6,9 @@ use std::process::{Command, Stdio};
 
 // External crates
 use anyhow::{Context, Result};
-use vm_common::{user_paths, vm_success, vm_progress, vm_error, module_logger_context, scoped_context};
+use vm_common::{
+    module_logger_context, scoped_context, user_paths, vm_error, vm_progress, vm_success,
+};
 
 // Internal imports
 use crate::platform;
@@ -116,7 +118,11 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
     let binary_name = vm_platform::platform::executable_name("vm");
     let binary_path = target_dir.join("release").join(&binary_name);
     if !binary_path.exists() {
-        vm_error!("Could not find compiled '{}' binary at {:?}", binary_name, binary_path);
+        vm_error!(
+            "Could not find compiled '{}' binary at {:?}",
+            binary_name,
+            binary_path
+        );
         return Err(anyhow::anyhow!("Could not find compiled binary"));
     }
     Ok(binary_path)
@@ -143,7 +149,8 @@ fn create_symlink(source_binary: &Path, bin_dir: &Path) -> Result<()> {
     }
 
     // Use platform abstraction for cross-platform installation
-    vm_platform::current().install_executable(source_binary, bin_dir, "vm")
+    vm_platform::current()
+        .install_executable(source_binary, bin_dir, "vm")
         .context("Failed to install executable")?;
 
     vm_success!(
@@ -157,8 +164,8 @@ fn create_symlink(source_binary: &Path, bin_dir: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use std::fs;
+    use tempfile::tempdir;
 
     #[test]
     fn test_project_root_detection() {
@@ -172,8 +179,11 @@ mod tests {
         fs::write(&cargo_toml, "[package]\nname = \"test\"").expect("Failed to create Cargo.toml");
 
         // Create a fake executable path within the project structure
-        let fake_exe = project_root.join("target").join("debug").join("vm-installer");
-        fs::create_dir_all(fake_exe.parent().unwrap()).expect("Failed to create target directory");
+        let fake_exe = project_root
+            .join("target")
+            .join("debug")
+            .join("vm-installer");
+        fs::create_dir_all(fake_exe.parent().expect("fake_exe should have parent")).expect("Failed to create target directory");
         fs::write(&fake_exe, "fake binary").expect("Failed to create fake binary");
 
         // Test project root detection logic manually
@@ -189,7 +199,7 @@ mod tests {
         }
 
         assert!(found_root.is_some());
-        assert_eq!(found_root.unwrap(), rust_dir);
+        assert_eq!(found_root.expect("should have found project root"), rust_dir);
     }
 
     #[test]
@@ -258,7 +268,8 @@ mod tests {
         let binary_path = target_dir.join("release").join("vm");
 
         // Create the directory structure
-        fs::create_dir_all(binary_path.parent().unwrap()).expect("Failed to create release directory");
+        fs::create_dir_all(binary_path.parent().expect("binary_path should have parent"))
+            .expect("Failed to create release directory");
 
         // Test binary existence check logic
         assert!(!binary_path.exists()); // Should not exist initially

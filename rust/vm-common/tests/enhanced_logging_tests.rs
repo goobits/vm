@@ -8,7 +8,7 @@ use std::env;
 use std::fs;
 use std::sync::Mutex;
 
-use log::{info, warn, error};
+use log::{error, info, warn};
 use tempfile::TempDir;
 
 use vm_common::{
@@ -29,7 +29,6 @@ fn init_test_logger() {
     LOGGER_INITIALIZED.get_or_init(|| {
         // Logger initialization happens automatically via the structured_log module
         // This is just a marker to ensure it only happens once
-        ()
     });
 }
 
@@ -77,7 +76,10 @@ fn test_context_propagation_in_logs() {
             let context = current_context();
             assert_eq!(context.get("request_id").unwrap().as_str(), Some("req123"));
             assert_eq!(context.get("user_id").unwrap().as_str(), Some("user456"));
-            assert_eq!(context.get("operation").unwrap().as_str(), Some("create_vm"));
+            assert_eq!(
+                context.get("operation").unwrap().as_str(),
+                Some("create_vm")
+            );
             assert_eq!(context.get("provider").unwrap().as_str(), Some("docker"));
 
             // Log messages should automatically include this context
@@ -112,7 +114,7 @@ fn test_tag_filtering() {
     log_context::clear_context();
 
     // Create a config that only allows logs with component=docker
-    let _patterns = vec![TagPattern {
+    let _patterns = [TagPattern {
         key: "component".to_string(),
         value: Some("docker".to_string()),
         regex: None,
@@ -157,7 +159,7 @@ fn test_wildcard_tag_filtering() {
 
     // Create a config that matches operations starting with "create"
     use regex::Regex;
-    let _patterns = vec![TagPattern {
+    let _patterns = [TagPattern {
         key: "operation".to_string(),
         value: Some("create*".to_string()),
         regex: Some(Regex::new("^create.*$").unwrap()),
@@ -217,9 +219,18 @@ fn test_module_logger_functionality() {
         let _guard = logger1.with_context();
         let context = current_context();
 
-        assert_eq!(context.get("module").unwrap().as_str(), Some("vm_provider::docker"));
-        assert_eq!(context.get("component").unwrap().as_str(), Some("vm_provider"));
-        assert_eq!(context.get("subcomponent").unwrap().as_str(), Some("docker"));
+        assert_eq!(
+            context.get("module").unwrap().as_str(),
+            Some("vm_provider::docker")
+        );
+        assert_eq!(
+            context.get("component").unwrap().as_str(),
+            Some("vm_provider")
+        );
+        assert_eq!(
+            context.get("subcomponent").unwrap().as_str(),
+            Some("docker")
+        );
 
         info!("Message with module context");
     }
@@ -290,10 +301,14 @@ fn test_log_output_routing() {
     init_test_logger();
 
     // Manually create a file to simulate the behavior
-    std::fs::write(&log_file, r#"{"level":"INFO","test_id":"file_output_test","component":"testing"}
+    std::fs::write(
+        &log_file,
+        r#"{"level":"INFO","test_id":"file_output_test","component":"testing"}
 {"level":"WARN","test_id":"file_output_test","component":"testing"}
 {"level":"ERROR","test_id":"file_output_test","component":"testing"}
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
     // Log some test messages
     {
@@ -499,7 +514,10 @@ fn test_macro_context_integration() {
 
         let context = current_context();
         assert_eq!(context.get("module").unwrap().as_str(), Some("test_module"));
-        assert_eq!(context.get("component").unwrap().as_str(), Some("test_module"));
+        assert_eq!(
+            context.get("component").unwrap().as_str(),
+            Some("test_module")
+        );
 
         // Test module_log macro
         module_log!(info, "Test message from macro");

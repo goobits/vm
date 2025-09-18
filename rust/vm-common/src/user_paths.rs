@@ -95,8 +95,7 @@ pub fn home_dir() -> Result<PathBuf> {
 #[must_use = "documents directory path should be used"]
 pub fn documents_dir() -> Result<PathBuf> {
     use anyhow::Context;
-    dirs::document_dir()
-        .context("Could not determine documents directory")
+    dirs::document_dir().context("Could not determine documents directory")
 }
 
 /// Check if a path looks like a Windows path (contains backslashes or drive letters).
@@ -128,7 +127,7 @@ mod tests {
     fn test_user_config_dir() {
         let result = user_config_dir();
         assert!(result.is_ok());
-        let path = result.unwrap();
+        let path = result.expect("user_config_dir should succeed in test");
         assert!(path.ends_with("vm"));
     }
 
@@ -136,7 +135,7 @@ mod tests {
     fn test_user_data_dir() {
         let result = user_data_dir();
         assert!(result.is_ok());
-        let path = result.unwrap();
+        let path = result.expect("user_data_dir should succeed in test");
         assert!(path.ends_with("vm"));
     }
 
@@ -144,7 +143,7 @@ mod tests {
     fn test_vm_state_dir() {
         let result = vm_state_dir();
         assert!(result.is_ok());
-        let path = result.unwrap();
+        let path = result.expect("vm_state_dir should succeed in test");
         assert!(path.ends_with(".vm"));
     }
 
@@ -186,7 +185,7 @@ mod tests {
 
         // documents_dir() might not be available in test environment
         match documents_dir() {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => println!("documents_dir() failed: {}", e),
         }
     }

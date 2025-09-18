@@ -19,10 +19,10 @@ use serde_json::Value;
 use super::{build::BuildOperations, compose::ComposeOperations, ComposeCommand, UserConfig};
 use crate::{
     audio::MacOSAudioManager,
+    command_stream::{stream_command, stream_docker_build},
     error::ProviderError,
     progress::ProgressReporter,
     security::SecurityValidator,
-    command_stream::{stream_command, stream_docker_build},
     TempProvider, TempVmState,
 };
 use vm_common::{vm_dbg, vm_error, vm_success, vm_warning};
@@ -60,7 +60,10 @@ impl<'a> LifecycleOperations<'a> {
 
     /// Helper to extract pipx managed packages (for filtering from pip_packages)
     #[must_use = "package extraction results should be checked"]
-    fn extract_pipx_managed_packages(&self, pipx_json: &Value) -> Result<std::collections::HashSet<String>> {
+    fn extract_pipx_managed_packages(
+        &self,
+        pipx_json: &Value,
+    ) -> Result<std::collections::HashSet<String>> {
         let mut pipx_managed_packages = std::collections::HashSet::new();
 
         if let Some(venvs) = pipx_json.get("venvs").and_then(|v| v.as_object()) {
@@ -100,10 +103,8 @@ impl<'a> LifecycleOperations<'a> {
         let mut container_pipx_packages = Vec::new();
 
         if let Some(venvs) = pipx_json.get("venvs").and_then(|v| v.as_object()) {
-            let pipx_managed_packages: std::collections::HashSet<String> = venvs
-                .keys()
-                .cloned()
-                .collect();
+            let pipx_managed_packages: std::collections::HashSet<String> =
+                venvs.keys().cloned().collect();
 
             for package in &self.config.pip_packages {
                 if pipx_managed_packages.contains(package) {
@@ -180,7 +181,10 @@ impl<'a> LifecycleOperations<'a> {
         };
 
         if available_gb < 2 {
-            vm_warning!("Low disk space: {}GB available. Docker builds may fail with insufficient storage.", available_gb);
+            vm_warning!(
+                "Low disk space: {}GB available. Docker builds may fail with insufficient storage.",
+                available_gb
+            );
         }
 
         Ok(())
@@ -419,7 +423,8 @@ impl<'a> LifecycleOperations<'a> {
 
         // Remove pipx-managed packages from pip_packages to prevent double installation
         if !pipx_managed_packages.is_empty() {
-            config.pip_packages = config.pip_packages
+            config.pip_packages = config
+                .pip_packages
                 .iter()
                 .filter(|pkg| !pipx_managed_packages.contains(*pkg))
                 .cloned()
@@ -452,11 +457,14 @@ impl<'a> LifecycleOperations<'a> {
             );
         }
 
-
         let config_json = config_clone.to_json()?;
         let temp_config_path = self.temp_dir.join("vm-config.json");
-        std::fs::write(&temp_config_path, config_json)
-            .with_context(|| format!("Failed to write configuration to {}", temp_config_path.display()))?;
+        std::fs::write(&temp_config_path, config_json).with_context(|| {
+            format!(
+                "Failed to write configuration to {}",
+                temp_config_path.display()
+            )
+        })?;
         let copy_result = std::process::Command::new("docker")
             .args([
                 "cp",
@@ -758,8 +766,7 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     pub fn get_sync_directory(&self) -> String {
-        self
-            .config
+        self.config
             .project
             .as_ref()
             .and_then(|p| p.workspace_path.as_deref())
@@ -790,7 +797,10 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
 
         ProgressReporter::task(&main_phase, "Checking container health...");
         if !self.check_container_health(&state.container_name)? {
-            ProgressReporter::finish_phase(&main_phase, "Mount update failed - container not healthy");
+            ProgressReporter::finish_phase(
+                &main_phase,
+                "Mount update failed - container not healthy",
+            );
             return Err(anyhow::anyhow!(
                 "Container is not healthy after mount update"
             ));
@@ -895,7 +905,7 @@ mod tests {
             }
         });
 
-        let managed_packages = lifecycle.extract_pipx_managed_packages(&pipx_json).unwrap();
+        let managed_packages = lifecycle.extract_pipx_managed_packages(&pipx_json).expect("Failed to extract pipx managed packages in test");
 
         // Should mark both as pipx-managed for filtering from pip_packages
         assert!(managed_packages.contains("claudeflow"));
@@ -928,7 +938,7 @@ mod tests {
             }
         });
 
-        let container_packages = lifecycle.categorize_pipx_packages(&pipx_json).unwrap();
+        let container_packages = lifecycle.categorize_pipx_packages(&pipx_json).expect("Failed to categorize pipx packages in test");
 
         // All pipx packages are now treated as container packages
         assert!(container_packages.contains(&"ruff".to_string()));
@@ -944,8 +954,8 @@ mod tests {
             "venvs": {}
         });
 
-        let managed_packages = lifecycle.extract_pipx_managed_packages(&pipx_json).unwrap();
-        let container_packages = lifecycle.categorize_pipx_packages(&pipx_json).unwrap();
+        let managed_packages = lifecycle.extract_pipx_managed_packages(&pipx_json).expect("Failed to extract pipx managed packages in test");
+        let container_packages = lifecycle.categorize_pipx_packages(&pipx_json).expect("Failed to categorize pipx packages in test");
 
         assert!(managed_packages.is_empty());
         assert!(container_packages.is_empty());
@@ -957,15 +967,22 @@ mod tests {
         let mut config = lifecycle.config.clone();
 
         // Set up test config with pip packages that overlap with pipx
-        config.pip_packages = vec!["ruff".to_string(), "black".to_string(), "claudeflow".to_string()];
+        config.pip_packages = vec![
+            "ruff".to_string(),
+            "black".to_string(),
+            "claudeflow".to_string(),
+        ];
 
         // Mock pipx detection to return ruff and claudeflow as managed
         // In a real test, this would be injected, but for simplicity we test the filtering logic
-        let pipx_managed: std::collections::HashSet<String> =
-            ["ruff", "claudeflow"].iter().map(|s| s.to_string()).collect();
+        let pipx_managed: std::collections::HashSet<String> = ["ruff", "claudeflow"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
 
         // Filter out pipx-managed packages
-        config.pip_packages = config.pip_packages
+        config.pip_packages = config
+            .pip_packages
             .iter()
             .filter(|pkg| !pipx_managed.contains(*pkg))
             .cloned()
