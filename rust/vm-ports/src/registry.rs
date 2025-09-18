@@ -6,8 +6,8 @@
 
 // Standard library
 use std::collections::HashMap;
-use std::fs::OpenOptions;
 use std::fs;
+use std::fs::OpenOptions;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -44,7 +44,8 @@ impl PortRegistry {
     /// A `Result` containing the loaded registry or an error if loading fails.
     pub fn load() -> Result<Self> {
         let registry_path = user_paths::port_registry_path()?;
-        let registry_dir = registry_path.parent()
+        let registry_dir = registry_path
+            .parent()
             .ok_or_else(|| anyhow::anyhow!("Invalid registry path"))?;
 
         // Create registry directory if it doesn't exist
@@ -201,8 +202,9 @@ impl PortRegistry {
         // Ensure parent directory exists
         if let Some(parent) = self.registry_path.parent() {
             if !parent.exists() {
-                fs::create_dir_all(parent)
-                    .with_context(|| format!("Failed to create registry directory: {:?}", parent))?;
+                fs::create_dir_all(parent).with_context(|| {
+                    format!("Failed to create registry directory: {:?}", parent)
+                })?;
             }
         }
 
@@ -211,6 +213,7 @@ impl PortRegistry {
             .create(true)
             .read(true)
             .write(true)
+            .truncate(false)
             .open(&self.registry_path)
             .with_context(|| format!("Failed to open registry file: {:?}", self.registry_path))?;
 
@@ -236,7 +239,8 @@ impl PortRegistry {
                     if attempts >= MAX_RETRIES {
                         return Err(anyhow::anyhow!(
                             "Maximum retry attempts ({}) exceeded for lock acquisition: {}",
-                            MAX_RETRIES, e
+                            MAX_RETRIES,
+                            e
                         ));
                     }
                     std::thread::sleep(RETRY_DELAY);
@@ -244,26 +248,22 @@ impl PortRegistry {
             }
         }
 
-        // Ensure we unlock the file when done
-        let _guard = scopeguard::guard((), |_| {
-            let _ = file.unlock();
-        });
+        // Note: File will be automatically unlocked when it goes out of scope
+        // Manual unlock is not available in MSRV 1.70.0
 
         // Read current state
-        let content = fs::read_to_string(&self.registry_path)
-            .unwrap_or_else(|_| String::from("{}"));
+        let content =
+            fs::read_to_string(&self.registry_path).unwrap_or_else(|_| String::from("{}"));
 
         let mut entries: HashMap<String, ProjectEntry> =
             if content.trim().is_empty() || content.trim() == "{}" {
                 HashMap::new()
             } else {
-                serde_json::from_str(&content)
-                    .with_context(|| "Failed to parse registry JSON")?
+                serde_json::from_str(&content).with_context(|| "Failed to parse registry JSON")?
             };
 
         // Apply the update
-        update_fn(&mut entries)
-            .with_context(|| "Update function failed")?;
+        update_fn(&mut entries).with_context(|| "Update function failed")?;
 
         // Write back to file
         let json_content = if entries.is_empty() {
@@ -277,7 +277,9 @@ impl PortRegistry {
         // This provides protection against corruption during write operations
         // Use thread ID to ensure unique temporary file names for concurrent access
         let thread_id = std::thread::current().id();
-        let temp_path = self.registry_path.with_extension(&format!("json.tmp.{:?}", thread_id));
+        let temp_path = self
+            .registry_path
+            .with_extension(format!("json.tmp.{:?}", thread_id));
         fs::write(&temp_path, &json_content)
             .with_context(|| format!("Failed to write temporary file: {:?}", temp_path))?;
         fs::rename(&temp_path, &self.registry_path)
@@ -442,11 +444,16 @@ mod tests {
         // race conditions compared to the old implementation.
         if successful_registrations == num_threads && actual_count == num_threads {
             // Perfect scenario - all operations succeeded and all entries preserved
-            println!("✅ Perfect result: All {} operations succeeded, all entries preserved", num_threads);
+            println!(
+                "✅ Perfect result: All {} operations succeeded, all entries preserved",
+                num_threads
+            );
         } else if successful_registrations >= num_threads - 2 && actual_count >= num_threads - 2 {
             // Acceptable scenario - minor data loss but much better than without locking
-            println!("✅ Good result: {}/{} operations succeeded, {}/{} entries preserved",
-                     successful_registrations, num_threads, actual_count, num_threads);
+            println!(
+                "✅ Good result: {}/{} operations succeeded, {}/{} entries preserved",
+                successful_registrations, num_threads, actual_count, num_threads
+            );
             println!("   This is a significant improvement over the unlocked version");
             println!("   (Original unlocked version typically lost 30-50% of entries)");
         } else {
@@ -486,17 +493,22 @@ mod tests {
 
                     assert_eq!(
                         entry.range, expected_range,
-                        "Range mismatch for project {}", project_name
+                        "Range mismatch for project {}",
+                        project_name
                     );
                     assert_eq!(
                         entry.path, expected_path,
-                        "Path mismatch for project {}", project_name
+                        "Path mismatch for project {}",
+                        project_name
                     );
                 }
             }
         }
 
         println!("File locking implementation successfully prevented major race conditions");
-        println!("Registry integrity maintained with {} entries preserved", actual_count);
+        println!(
+            "Registry integrity maintained with {} entries preserved",
+            actual_count
+        );
     }
 }

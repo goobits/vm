@@ -39,7 +39,8 @@ fn get_total_memory_gb() -> Result<u64> {
         if line.starts_with("MemTotal:") {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 2 {
-                let mem_kb: u64 = parts[1].parse()
+                let mem_kb: u64 = parts[1]
+                    .parse()
                     .context("Failed to parse memory value from /proc/meminfo")?;
                 return Ok(mem_kb / 1024 / 1024); // Convert KB to GB
             }
@@ -120,8 +121,9 @@ mod tests {
     fn test_minimum_requirements_constants() {
         // Test that our constants are reasonable
         // Verify constants are positive values
-        assert!(MIN_CPU_CORES > 0);
-        assert!(MIN_MEMORY_GB > 0);
+        // Ensure minimum requirements are positive
+        const _: () = assert!(MIN_CPU_CORES > 0);
+        const _: () = assert!(MIN_MEMORY_GB > 0);
     }
 
     #[test]

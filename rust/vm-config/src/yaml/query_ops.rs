@@ -186,7 +186,9 @@ impl QueryOperations {
 
         // Handle simple field existence checks like: .source
         if expression.starts_with('.') {
-            let field_name = expression.strip_prefix('.').expect("expression starts with '.' so strip_prefix should succeed"); // Remove the leading dot
+            let field_name = expression
+                .strip_prefix('.')
+                .expect("expression starts with '.' so strip_prefix should succeed"); // Remove the leading dot
 
             return match item {
                 Value::Mapping(map) => {
@@ -241,32 +243,33 @@ impl QueryOperations {
                 Value::String(s) => s == expected_value,
                 Value::Number(n) => {
                     // Try to parse expected_value as a number
-                    expected_value.parse::<i64>().ok()
-                        .and_then(|expected| n.as_i64().map(|actual| actual == expected))
-                        .unwrap_or_else(|| {
-                            // Try as float
-                            expected_value.parse::<f64>().ok()
-                                .and_then(|expected| n.as_f64().map(|actual| (actual - expected).abs() < f64::EPSILON))
-                                .unwrap_or(false)
-                        })
+                    if let Ok(expected) = expected_value.parse::<i64>() {
+                        n.as_i64() == Some(expected)
+                    } else if let (Ok(expected), Some(actual)) =
+                        (expected_value.parse::<f64>(), n.as_f64()) {
+                        (actual - expected).abs() < f64::EPSILON
+                    } else {
+                        false
+                    }
                 }
-                Value::Bool(b) => {
-                    expected_value.parse::<bool>().ok()
-                        .map(|expected| *b == expected)
-                        .unwrap_or(false)
-                }
+                Value::Bool(b) => expected_value
+                    .parse::<bool>()
+                    .ok()
+                    .map(|expected| *b == expected)
+                    .unwrap_or(false),
                 _ => false,
             }
         } else {
             // For non-equality conditions, just check field existence
             if condition.starts_with('.') {
-                let field_name = condition.strip_prefix('.').expect("condition starts with '.' so strip_prefix should succeed");
+                let field_name = condition
+                    .strip_prefix('.')
+                    .expect("condition starts with '.' so strip_prefix should succeed");
                 match item {
-                    Value::Mapping(map) => {
-                        map.get(Value::String(field_name.to_string()))
-                            .map(|value| !matches!(value, Value::Null))
-                            .unwrap_or(false)
-                    }
+                    Value::Mapping(map) => map
+                        .get(Value::String(field_name.to_string()))
+                        .map(|value| !matches!(value, Value::Null))
+                        .unwrap_or(false),
                     _ => false,
                 }
             } else {
