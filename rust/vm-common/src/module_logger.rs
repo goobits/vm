@@ -297,9 +297,14 @@ pub fn clear_module_loggers() {
 mod tests {
     use super::*;
     use std::env;
+    use std::sync::Mutex;
+
+    // Test synchronization to prevent race conditions with global logger state
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_get_logger() {
+        let _guard = TEST_MUTEX.lock().unwrap();
         clear_module_loggers();
 
         let logger1 = get_logger("test_module");
@@ -314,6 +319,7 @@ mod tests {
 
     #[test]
     fn test_module_level_parsing() {
+        let _guard = TEST_MUTEX.lock().unwrap();
         clear_module_loggers();
         // Test exact match
         env::set_var("LOG_LEVEL_test__module", "DEBUG");
@@ -353,6 +359,7 @@ mod tests {
 
     #[test]
     fn test_logger_enabled() {
+        let _guard = TEST_MUTEX.lock().unwrap();
         clear_module_loggers();
         env::set_var("LOG_LEVEL_test_enabled", "WARN");
         let logger = get_logger("test_enabled");
@@ -367,6 +374,7 @@ mod tests {
 
     #[test]
     fn test_with_context() {
+        let _guard = TEST_MUTEX.lock().unwrap();
         clear_module_loggers();
         use crate::log_context;
 
@@ -392,6 +400,8 @@ mod tests {
 
     #[test]
     fn test_list_module_loggers() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+
         clear_module_loggers();
 
         // Create unique test loggers
@@ -401,11 +411,10 @@ mod tests {
         let loggers = list_module_loggers();
 
         // Check that our specific test loggers are present
-        // Don't check exact count since other tests may run concurrently
         assert!(loggers.contains(&"test_list_module_loggers_mod1".to_string()));
         assert!(loggers.contains(&"test_list_module_loggers_mod2".to_string()));
 
-        // Verify we have at least our 2 test loggers
-        assert!(loggers.len() >= 2);
+        // Verify we have exactly our 2 test loggers
+        assert_eq!(loggers.len(), 2);
     }
 }

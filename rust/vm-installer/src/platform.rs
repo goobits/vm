@@ -153,7 +153,7 @@ mod tests {
 
         // First part should be a known OS
         let os = parts[0];
-        assert!(matches!(os, "linux" | "darwin" | "windows"));
+        assert!(matches!(os, "linux" | "macos" | "windows"));
 
         // Second part should be a known architecture
         let arch = parts[1];
