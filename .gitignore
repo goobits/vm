@@ -17,7 +17,7 @@ test-*/
 .test_artifacts/
 
 # Generated files
-docker-compose.yml
+# docker-compose.yml (now in .config/docker/)
 
 # Environment files
 .env
@@ -65,17 +65,12 @@ dist/
 build/
 out/
 
-# Rust build artifacts
+# Build artifacts (moved to .build/)
+.build/
 rust/target/
-rust/target-*/
 rust/**/target/
 **/*.rs.bk
 *.old
-
-# Platform-specific build artifacts
-rust/target/linux-*/
-rust/target/darwin-*/
-rust/target/windows-*/
 
 # Python
 __pycache__/
