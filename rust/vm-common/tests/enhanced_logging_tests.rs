@@ -27,7 +27,9 @@ static LOGGER_INITIALIZED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
 /// Initialize the logger only once across all tests
 fn init_test_logger() {
     LOGGER_INITIALIZED.get_or_init(|| {
-        init_test_logger();
+        // Logger initialization happens automatically via the structured_log module
+        // This is just a marker to ensure it only happens once
+        ()
     });
 }
 

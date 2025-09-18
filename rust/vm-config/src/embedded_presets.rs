@@ -40,6 +40,7 @@ pub fn get_embedded_presets() -> HashMap<&'static str, &'static str> {
         "tart-ubuntu",
         include_str!("../../../configs/presets/tart-ubuntu.yaml"),
     );
+    presets.insert("vibe", include_str!("../../../configs/presets/vibe.yaml"));
 
     presets
 }
