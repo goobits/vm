@@ -22,6 +22,7 @@ use crate::merge::ConfigMerger;
 use crate::paths;
 use crate::ports::PortRange;
 use crate::preset::PresetDetector;
+use crate::yaml::core::CoreOperations;
 use vm_common::user_paths;
 use vm_common::{vm_error, vm_warning};
 
@@ -134,8 +135,7 @@ impl ConfigOps {
             );
             println!("   (no changes were made to the file)");
         } else {
-            let yaml_str = serde_yaml::to_string(&yaml_value)?;
-            fs::write(&config_path, yaml_str)?;
+            CoreOperations::write_yaml_file(&config_path, &yaml_value)?;
             println!("✅ Set {} = {} in {}", field, value, config_path.display());
         }
         Ok(())
@@ -235,8 +235,7 @@ impl ConfigOps {
 
         unset_nested_field(&mut yaml_value, field)?;
 
-        let yaml_str = serde_yaml::to_string(&yaml_value)?;
-        fs::write(&config_path, yaml_str)?;
+        CoreOperations::write_yaml_file(&config_path, &yaml_value)?;
 
         println!("✅ Unset {} in {}", field, config_path.display());
         Ok(())
@@ -325,9 +324,11 @@ impl ConfigOps {
             merged_config = ConfigMerger::new(merged_config).merge(preset_config)?;
         }
 
-        // Save merged configuration
-        let yaml_str = serde_yaml::to_string(&merged_config)?;
-        fs::write(&config_path, yaml_str)?;
+        // Save merged configuration with consistent formatting
+        // Convert VmConfig to Value first
+        let config_yaml = serde_yaml::to_string(&merged_config)?;
+        let config_value: Value = serde_yaml::from_str(&config_yaml)?;
+        CoreOperations::write_yaml_file(&config_path, &config_value)?;
 
         let scope = if global { "global" } else { "local" };
         println!(

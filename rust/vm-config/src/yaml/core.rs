@@ -38,10 +38,19 @@ impl CoreOperations {
         serde_yaml::from_str(&content).with_context(|| format!("Invalid YAML in file: {:?}", file))
     }
 
-    /// Write Value to YAML file
+    /// Write Value to YAML file with consistent formatting
     pub fn write_yaml_file(file: &PathBuf, value: &Value) -> Result<()> {
-        let yaml = serde_yaml::to_string(value)?;
-        fs::write(file, yaml).with_context(|| format!("Failed to write file: {:?}", file))
+        // Format the value to ensure consistent field ordering
+        let formatted_value = super::formatter::format_yaml_value(value)?;
+
+        // Serialize to YAML
+        let yaml = serde_yaml::to_string(&formatted_value)?;
+
+        // Post-process for consistent formatting (indentation, etc.)
+        let formatted_yaml = super::formatter::post_process_yaml(&yaml);
+
+        // Write to file
+        fs::write(file, formatted_yaml).with_context(|| format!("Failed to write file: {:?}", file))
     }
 
     /// Get nested field from YAML value using dot notation

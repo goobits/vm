@@ -1,8 +1,10 @@
 use crate::config::VmConfig;
 use crate::ports::{PortRange, PortRegistry};
+use crate::yaml::core::CoreOperations;
 use anyhow::{Context, Result};
 use lazy_static::lazy_static;
 use regex::Regex;
+use serde_yaml::{Value};
 use serde_yaml_ng as serde_yaml;
 use std::path::PathBuf;
 use vm_common::{vm_error, vm_success, vm_warning};
@@ -15,50 +17,6 @@ lazy_static! {
         Regex::new(r"-+").expect("Invalid regex pattern for removing consecutive hyphens");
 }
 
-/// Fix YAML indentation issues by ensuring consistent 2-space indentation for arrays
-fn fix_yaml_indentation(yaml: &str) -> String {
-    let mut result = String::with_capacity(yaml.len() + 100); // Pre-allocate with estimated capacity
-    let mut in_apt_packages = false;
-    let mut in_npm_packages = false;
-
-    for line in yaml.lines() {
-        let trimmed = line.trim();
-
-        // Check if we're entering array sections
-        if trimmed == "apt_packages:" {
-            in_apt_packages = true;
-            result.push_str(line);
-            result.push('\n');
-            continue;
-        } else if trimmed == "npm_packages:" {
-            in_npm_packages = true;
-            result.push_str(line);
-            result.push('\n');
-            continue;
-        } else if trimmed.ends_with(':') && !trimmed.starts_with('-') {
-            // We've hit a new section, reset flags
-            in_apt_packages = false;
-            in_npm_packages = false;
-            result.push_str(line);
-            result.push('\n');
-            continue;
-        }
-
-        // Fix indentation for array items in specific sections
-        if (in_apt_packages || in_npm_packages) && trimmed.starts_with('-') {
-            // Ensure array items are indented with 2 spaces
-            result.push_str("  ");
-            result.push_str(trimmed);
-        } else {
-            // For all other lines, keep as-is
-            result.push_str(line);
-        }
-
-        result.push('\n');
-    }
-
-    result
-}
 
 pub fn execute(
     file_path: Option<PathBuf>,
@@ -196,18 +154,15 @@ pub fn execute(
         config.ports.insert("mongodb".to_string(), port_start + 7);
     }
 
-    // Convert to YAML
-    let mut yaml_content =
-        serde_yaml::to_string(&config).context("Failed to serialize configuration to YAML")?;
+    // Convert config to Value and write with consistent formatting
+    let config_yaml = serde_yaml::to_string(&config)
+        .context("Failed to serialize configuration to YAML")?;
+    let config_value: Value = serde_yaml::from_str(&config_yaml)
+        .context("Failed to convert config to YAML Value")?;
 
-    // Post-process YAML to fix indentation issues
-    yaml_content = fix_yaml_indentation(&yaml_content);
-
-    // Write the YAML to file
-    std::fs::write(&target_path, yaml_content).context(format!(
-        "Failed to write vm.yaml to {}",
-        target_path.display()
-    ))?;
+    // Write using the centralized function for consistent formatting
+    CoreOperations::write_yaml_file(&target_path, &config_value)
+        .context(format!("Failed to write vm.yaml to {}", target_path.display()))?;
 
     vm_success!("Created vm.yaml for project: {}", sanitized_name);
     println!("📍 Configuration file: {}", target_path.display());

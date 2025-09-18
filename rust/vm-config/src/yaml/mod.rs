@@ -3,6 +3,7 @@
 pub mod array_ops;
 pub mod core;
 pub mod field_ops;
+pub mod formatter;
 pub mod query_ops;
 pub mod transform_ops;
 
