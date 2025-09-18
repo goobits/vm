@@ -142,7 +142,7 @@ sudo systemctl start docker
 
 ## Test Configuration Files
 
-Test fixtures are located in `../test/configs/`:
+Test fixtures are located in `../fixtures/configs/`:
 
 - Service configs: `postgresql.yaml`, `redis.yaml`, `mongodb.yaml`, `docker.yaml`
 - Minimal configuration: `minimal.yaml`

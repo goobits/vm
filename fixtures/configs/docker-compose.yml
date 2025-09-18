@@ -17,7 +17,7 @@ services:
       - LC_ALL=en_US.UTF-8
       - TZ=UTC
     volumes:
-      - /workspace/test/configs:/workspace:delegated
+      - /workspace/fixtures/configs:/workspace:delegated
       - /workspace:/vm-tool:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - testminimalvm_nvm:/home/developer/.nvm

@@ -46,7 +46,7 @@ cd rust && cargo fmt --check
 cd rust && cargo clippy
 
 # YAML validation (if yamllint is available)
-yamllint configs/*.yaml test/configs/*.yaml
+yamllint configs/*.yaml fixtures/configs/*.yaml
 
 # Follow existing patterns in the codebase
 # - Use consistent indentation (2 spaces for YAML, 4 for shell)

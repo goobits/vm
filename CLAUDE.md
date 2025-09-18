@@ -179,3 +179,14 @@ The dead-code detection checks for:
 2. **For false positives** - Add `#[allow(dead_code)]` to specific items
 3. **For unused dependencies** - Run `cargo machete --fix` to auto-remove
 4. **For test/example code** - These are often false positives and can be ignored
+
+## Test Fixtures
+
+Test configuration files are located in `fixtures/configs/`:
+- `minimal.yaml` - Basic VM configuration
+- `postgresql.yaml`, `redis.yaml`, `mongodb.yaml` - Service configurations
+- `docker.yaml` - Docker service configuration
+- `languages/` - Language-specific package configurations (npm, pip, cargo)
+- `test-json-reject/` - JSON rejection test files
+
+These fixtures are used by the Rust test suite for validation and testing configuration parsing, merging, and service setup.
