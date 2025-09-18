@@ -392,6 +392,8 @@ mod tests {
 
     #[test]
     fn test_list_module_loggers() {
+        clear_module_loggers();
+
         // Create unique test loggers
         let _logger1 = get_logger("test_list_module_loggers_mod1");
         let _logger2 = get_logger("test_list_module_loggers_mod2");

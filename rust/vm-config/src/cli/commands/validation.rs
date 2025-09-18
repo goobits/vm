@@ -82,9 +82,9 @@ pub fn load_and_merge_config(file: Option<PathBuf>) -> Result<VmConfig> {
         VmConfig::default()
     };
 
-    // 5. Detect and load project-specific preset
+    // 5. Detect and load project-specific preset (only if no user config exists)
     let presets_dir = crate::paths::get_presets_dir();
-    let preset_config = {
+    let preset_config = if user_config.is_none() {
         let detector = crate::preset::PresetDetector::new(project_dir, presets_dir);
         if let Some(preset_name) = detector.detect() {
             if preset_name != "base" && preset_name != "generic" {
@@ -95,6 +95,9 @@ pub fn load_and_merge_config(file: Option<PathBuf>) -> Result<VmConfig> {
         } else {
             None
         }
+    } else {
+        // User has a config file, don't override with auto-detected presets
+        None
     };
 
     // 6. Load global configuration if it exists
