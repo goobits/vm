@@ -18,10 +18,7 @@ impl CliTestFixture {
         fs::create_dir_all(&test_dir)?;
 
         // Get the path to the vm binary
-        let workspace_root = std::env::current_dir()?;
-        // Go up to the rust directory root since we're in rust/vm
-        let rust_root = workspace_root.parent().unwrap();
-        let binary_path = rust_root.join("target").join("debug").join("vm");
+        let binary_path = PathBuf::from("/workspace/.build/target/debug/vm");
 
         Ok(Self {
             _temp_dir: temp_dir,
