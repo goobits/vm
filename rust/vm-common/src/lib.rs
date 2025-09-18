@@ -31,11 +31,13 @@ pub struct FileOps;
 
 impl FileOps {
     /// Read file contents with proper error context
+    #[must_use = "file read results should be used"]
     pub fn read_file_with_context(path: &Path) -> Result<String> {
         std::fs::read_to_string(path).with_context(|| format!("Failed to read file: {:?}", path))
     }
 
     /// Read from file or stdin if path is "-"
+    #[must_use = "file or stdin read results should be used"]
     pub fn read_file_or_stdin(path: &Path) -> Result<String> {
         if path.to_str() == Some("-") {
             use std::io::Read;
@@ -55,6 +57,7 @@ pub struct CommandOps;
 
 impl CommandOps {
     /// Execute a command with arguments and return stdout
+    #[must_use = "command execution results should be used"]
     pub fn execute_command_with_args(cmd: &str, args: &[&str]) -> Result<String> {
         let output = Command::new(cmd)
             .args(args)

@@ -13,6 +13,7 @@ use std::path::PathBuf;
 /// Returns:
 /// - Linux/macOS: `~/.config/vm` or `$XDG_CONFIG_HOME/vm`
 /// - Windows: `%APPDATA%\vm`
+#[must_use = "configuration directory path should be used"]
 pub fn user_config_dir() -> Result<PathBuf> {
     vm_platform::platform::user_config_dir()
 }
@@ -23,6 +24,7 @@ pub fn user_config_dir() -> Result<PathBuf> {
 /// - Linux: `~/.local/share/vm` or `$XDG_DATA_HOME/vm`
 /// - macOS: `~/Library/Application Support/vm`
 /// - Windows: `%LOCALAPPDATA%\vm`
+#[must_use = "data directory path should be used"]
 pub fn user_data_dir() -> Result<PathBuf> {
     vm_platform::platform::user_data_dir()
 }
@@ -32,6 +34,7 @@ pub fn user_data_dir() -> Result<PathBuf> {
 /// Returns:
 /// - Linux/macOS: `~/.local/bin`
 /// - Windows: `%LOCALAPPDATA%\vm\bin`
+#[must_use = "binary directory path should be used"]
 pub fn user_bin_dir() -> Result<PathBuf> {
     vm_platform::platform::user_bin_dir()
 }
@@ -41,6 +44,7 @@ pub fn user_bin_dir() -> Result<PathBuf> {
 /// Returns:
 /// - Linux/macOS: `~/.vm`
 /// - Windows: `%USERPROFILE%\.vm`
+#[must_use = "state directory path should be used"]
 pub fn vm_state_dir() -> Result<PathBuf> {
     vm_platform::platform::vm_state_dir()
 }
@@ -51,6 +55,7 @@ pub fn vm_state_dir() -> Result<PathBuf> {
 /// - Linux: `~/.cache/vm` or `$XDG_CACHE_HOME/vm`
 /// - macOS: `~/Library/Caches/vm`
 /// - Windows: `%LOCALAPPDATA%\vm\cache`
+#[must_use = "cache directory path should be used"]
 pub fn user_cache_dir() -> Result<PathBuf> {
     vm_platform::platform::user_cache_dir()
 }
@@ -60,6 +65,7 @@ pub fn user_cache_dir() -> Result<PathBuf> {
 /// Returns the path to the global configuration file:
 /// - Linux/macOS: `~/.config/vm/global.yaml`
 /// - Windows: `%APPDATA%\vm\global.yaml`
+#[must_use = "global configuration path should be used"]
 pub fn global_config_path() -> Result<PathBuf> {
     Ok(user_config_dir()?.join("global.yaml"))
 }
@@ -68,6 +74,7 @@ pub fn global_config_path() -> Result<PathBuf> {
 ///
 /// Returns the path to the port registry file:
 /// - All platforms: `~/.vm/port-registry.json`
+#[must_use = "port registry path should be used"]
 pub fn port_registry_path() -> Result<PathBuf> {
     Ok(vm_state_dir()?.join("port-registry.json"))
 }
@@ -75,6 +82,7 @@ pub fn port_registry_path() -> Result<PathBuf> {
 /// Get the user's home directory.
 ///
 /// This is a convenience wrapper that returns a Result with a proper error message.
+#[must_use = "home directory path should be used"]
 pub fn home_dir() -> Result<PathBuf> {
     vm_platform::platform::home_dir()
 }
@@ -84,6 +92,7 @@ pub fn home_dir() -> Result<PathBuf> {
 /// Returns:
 /// - Linux/macOS: `~/Documents`
 /// - Windows: `%USERPROFILE%\Documents`
+#[must_use = "documents directory path should be used"]
 pub fn documents_dir() -> Result<PathBuf> {
     use anyhow::Context;
     dirs::document_dir()

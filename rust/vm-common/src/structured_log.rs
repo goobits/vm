@@ -48,6 +48,7 @@ pub struct LogConfig {
 
 impl LogConfig {
     /// Create a LogConfig from environment variables
+    #[must_use = "log configuration should be used to initialize logging"]
     pub fn from_env() -> Self {
         let level = match std::env::var("LOG_LEVEL")
             .unwrap_or_else(|_| "INFO".to_string())
@@ -105,6 +106,7 @@ impl LogConfig {
     }
 
     /// Parse LOG_TAGS environment variable into tag patterns
+    #[must_use = "parsed tag patterns should be used for filtering"]
     fn parse_log_tags() -> Option<Vec<TagPattern>> {
         let tags_str = std::env::var("LOG_TAGS").ok()?;
         if tags_str.trim().is_empty() {
@@ -155,6 +157,7 @@ impl LogConfig {
     }
 
     /// Resolve auto format based on terminal detection
+    #[must_use = "resolved format should be used for logging"]
     fn resolve_format(&self) -> LogFormat {
         match self.format {
             LogFormat::Auto => {
@@ -183,6 +186,7 @@ pub struct TagFilter {
 }
 
 impl TagFilter {
+    #[must_use = "tag filter should be used for log filtering"]
     pub fn from_patterns(patterns: Vec<TagPattern>) -> Self {
         Self { patterns }
     }
@@ -223,6 +227,7 @@ pub struct StructuredLogger {
 }
 
 impl StructuredLogger {
+    #[must_use = "logger should be used to initialize logging system"]
     pub fn new(config: LogConfig) -> Self {
         Self { config }
     }
@@ -264,6 +269,7 @@ impl log::Log for StructuredLogger {
 
 impl StructuredLogger {
     /// Create a structured log entry with context injection
+    #[must_use = "log entry should be written to output"]
     fn create_log_entry(&self, record: &Record, context: &Map<String, Value>, _format: &LogFormat) -> Map<String, Value> {
         let mut log_entry = Map::new();
 
@@ -326,6 +332,7 @@ impl StructuredLogger {
     }
 
     /// Format the log entry according to the specified format
+    #[must_use = "formatted log entry should be written to output"]
     fn format_log_entry(&self, entry: &Map<String, Value>, format: &LogFormat) -> String {
         match format {
             LogFormat::Json => {
@@ -338,6 +345,7 @@ impl StructuredLogger {
     }
 
     /// Format log entry in human-readable format
+    #[must_use = "formatted log entry should be written to output"]
     fn format_human_readable(&self, entry: &Map<String, Value>) -> String {
         let timestamp = entry.get("timestamp")
             .and_then(|v| v.as_str())
@@ -392,6 +400,7 @@ impl StructuredLogger {
     }
 
     /// Write to file with proper error handling
+    #[must_use = "file write results should be checked"]
     fn write_to_file(&self, formatted: &str, path: &str) -> io::Result<()> {
         use std::fs::OpenOptions;
         let mut file = OpenOptions::new()
@@ -406,6 +415,7 @@ impl StructuredLogger {
 
 /// Create a test logger for unit tests
 #[cfg(test)]
+#[must_use = "test logger should be used for testing"]
 pub fn create_test_logger() -> StructuredLogger {
     StructuredLogger::new(LogConfig {
         level: Level::Debug,
@@ -416,6 +426,7 @@ pub fn create_test_logger() -> StructuredLogger {
 }
 
 /// Initialize the structured logging system
+#[must_use = "logging initialization results should be checked"]
 pub fn init() -> Result<(), log::SetLoggerError> {
     init_with_config(LogConfig::from_env())
 }
@@ -424,6 +435,7 @@ pub fn init() -> Result<(), log::SetLoggerError> {
 static LOGGER: OnceLock<StructuredLogger> = OnceLock::new();
 
 /// Initialize with a custom configuration
+#[must_use = "logging initialization results should be checked"]
 pub fn init_with_config(config: LogConfig) -> Result<(), log::SetLoggerError> {
     // Initialize context system
     log_context::init_context();

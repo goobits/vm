@@ -43,6 +43,7 @@ impl PortRange {
     ///
     /// # Returns
     /// A `Result` containing the parsed `PortRange` or an error if the format is invalid.
+    #[must_use = "parsed port range should be used for port allocation"]
     pub fn parse(range_str: &str) -> Result<Self> {
         // Validate format: START-END
         if !range_str.contains('-') {
@@ -89,6 +90,7 @@ impl PortRange {
     ///
     /// # Returns
     /// A `Result` containing the new `PortRange` or an error if start >= end.
+    #[must_use = "created port range should be used for port allocation"]
     pub fn new(start: u16, end: u16) -> Result<Self> {
         if start >= end {
             vm_error!(

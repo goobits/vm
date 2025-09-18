@@ -29,7 +29,7 @@ mod command_groups;
 mod commands;
 mod formatting;
 
-pub use commands::validation::{load_and_merge_config, load_and_merge_config_with_preset};
+pub use commands::validation::load_and_merge_config;
 pub use formatting::*;
 
 // Import command groups for organized dispatch
@@ -76,10 +76,6 @@ pub enum Command {
         /// Config file to validate (optional, searches for vm.yaml if not provided)
         #[arg()]
         file: Option<PathBuf>,
-
-        /// Disable automatic preset detection
-        #[arg(long)]
-        no_preset: bool,
 
         /// Verbose output
         #[arg(short, long)]
@@ -328,10 +324,6 @@ pub enum Command {
         /// Config file path (optional, searches for vm.yaml if not provided)
         #[arg(short, long)]
         file: Option<PathBuf>,
-
-        /// Disable automatic preset detection
-        #[arg(long)]
-        no_preset: bool,
     },
 
     /// Load, merge, and validate configuration, outputting as shell export commands.
@@ -339,10 +331,6 @@ pub enum Command {
         /// Config file path (optional, searches for vm.yaml if not provided)
         #[arg(short, long)]
         file: Option<PathBuf>,
-
-        /// Disable automatic preset detection
-        #[arg(long)]
-        no_preset: bool,
     },
 
     /// Set a configuration value
@@ -539,7 +527,6 @@ pub fn init_config_file(
 /// let args = Args {
 ///     command: Command::Validate {
 ///         file: Some(PathBuf::from("vm.yaml")),
-///         no_preset: false,
 ///         verbose: true,
 ///     }
 /// };
@@ -547,6 +534,7 @@ pub fn init_config_file(
 /// vm_config::cli::execute(args)?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
+#[must_use = "command execution results should be handled"]
 pub fn execute(args: Args) -> Result<()> {
     use Command::*;
 
@@ -625,13 +613,12 @@ pub fn execute(args: Args) -> Result<()> {
         Get { field, global } => ConfigOpsGroup::execute_get(field, global),
         Unset { field, global } => ConfigOpsGroup::execute_unset(field, global),
         Clear { global } => ConfigOpsGroup::execute_clear(global),
-        Validate {
-            file,
-            no_preset,
-            verbose,
-        } => { ConfigOpsGroup::execute_validate(file, no_preset, verbose); Ok(()) },
-        Dump { file, no_preset } => ConfigOpsGroup::execute_dump(file, no_preset),
-        Export { file, no_preset } => ConfigOpsGroup::execute_export(file, no_preset),
+        Validate { file, verbose } => {
+            ConfigOpsGroup::execute_validate(file, verbose);
+            Ok(())
+        }
+        Dump { file } => ConfigOpsGroup::execute_dump(file),
+        Export { file } => ConfigOpsGroup::execute_export(file),
 
         // Project Operations Group
         Preset {

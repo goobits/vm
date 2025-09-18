@@ -26,7 +26,8 @@ use vm_common::{vm_error, vm_warning};
 use vm_ports::PortRange;
 
 lazy_static! {
-    static ref PORT_PLACEHOLDER_RE: Regex = Regex::new(r"\$\{port\.(\d+)\}").unwrap();
+    static ref PORT_PLACEHOLDER_RE: Regex = Regex::new(r"\$\{port\.(\d+)\}")
+        .expect("PORT_PLACEHOLDER_RE regex should be valid");
 }
 
 /// Configuration operations for VM configuration management.
@@ -304,13 +305,8 @@ impl ConfigOps {
         let mut merged_config = base_config;
 
         for preset_name in preset_iter {
-            let preset_path = presets_dir.join(format!("{}.yaml", preset_name));
-            if !preset_path.exists() {
-                vm_error!("Preset '{}' not found", preset_name);
-                return Err(anyhow::anyhow!("Preset not found"));
-            }
-
-            let mut preset_config = VmConfig::from_file(&preset_path)
+            // Use the PresetDetector to load presets (handles embedded and filesystem)
+            let mut preset_config = detector.load_preset(preset_name)
                 .with_context(|| format!("Failed to load preset: {}", preset_name))?;
 
             // Convert to Value to traverse and replace placeholders
@@ -345,10 +341,9 @@ impl ConfigOps {
 // Helper functions
 
 fn replace_port_placeholders(value: &mut Value, port_range_str: &Option<String>) -> Result<()> {
-    if port_range_str.is_none() {
-        return Ok(())
-    }
-    let port_range_str = port_range_str.as_ref().unwrap();
+    let Some(port_range_str) = port_range_str.as_ref() else {
+        return Ok(());
+    };
 
     let port_range = match PortRange::parse(port_range_str) {
         Ok(range) => range,
@@ -360,6 +355,20 @@ fn replace_port_placeholders(value: &mut Value, port_range_str: &Option<String>)
 
     replace_placeholders_recursive(value, &port_range);
     Ok(())
+}
+
+/// Extract port number from placeholder string, using early returns to reduce nesting
+fn extract_port_from_placeholder(s: &str, port_range: &PortRange) -> Option<u16> {
+    let captures = PORT_PLACEHOLDER_RE.captures(s)?;
+    let index_match = captures.get(1)?;
+    let index = index_match.as_str().parse::<u16>().ok()?;
+
+    if index >= port_range.size() {
+        vm_warning!("Port index {} is out of bounds for the allocated range", index);
+        return None;
+    }
+
+    Some(port_range.start + index)
 }
 
 fn replace_placeholders_recursive(value: &mut Value, port_range: &PortRange) {
@@ -375,17 +384,8 @@ fn replace_placeholders_recursive(value: &mut Value, port_range: &PortRange) {
             }
         }
         Value::String(s) => {
-            if let Some(captures) = PORT_PLACEHOLDER_RE.captures(s) {
-                if let Some(index_match) = captures.get(1) {
-                    if let Ok(index) = index_match.as_str().parse::<u16>() {
-                        if index < port_range.size() {
-                            let port = port_range.start + index;
-                            *value = Value::Number(port.into());
-                        } else {
-                            vm_warning!("Port index {} is out of bounds for the allocated range", index);
-                        }
-                    }
-                }
+            if let Some(port_value) = extract_port_from_placeholder(s, port_range) {
+                *value = Value::Number(port_value.into());
             }
         }
         _ => {}

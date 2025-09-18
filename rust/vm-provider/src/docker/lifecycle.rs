@@ -59,6 +59,7 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     /// Helper to extract pipx managed packages (for filtering from pip_packages)
+    #[must_use = "package extraction results should be checked"]
     fn extract_pipx_managed_packages(&self, pipx_json: &Value) -> Result<std::collections::HashSet<String>> {
         let mut pipx_managed_packages = std::collections::HashSet::new();
 
@@ -74,6 +75,7 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     /// Helper to get pipx JSON output
+    #[must_use = "pipx command results should be checked"]
     fn get_pipx_json(&self) -> Result<Option<Value>> {
         if self.config.pip_packages.is_empty() {
             return Ok(None);
@@ -93,6 +95,7 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     /// Helper to categorize pipx packages (only returns container packages now)
+    #[must_use = "package categorization results should be checked"]
     fn categorize_pipx_packages(&self, pipx_json: &Value) -> Result<Vec<String>> {
         let mut container_pipx_packages = Vec::new();
 
@@ -145,6 +148,7 @@ impl<'a> LifecycleOperations<'a> {
         }
     }
 
+    #[must_use = "Docker daemon status should be checked"]
     pub fn check_daemon_is_running(&self) -> Result<()> {
         let status = std::process::Command::new("docker").arg("info").output();
         if let Ok(output) = status {
@@ -160,52 +164,90 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     /// Check Docker build requirements (disk space, resources)
+    #[must_use = "build requirement checks should be handled"]
     fn check_docker_build_requirements(&self) -> Result<()> {
-        // Check available disk space
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
-        {
-            if let Ok(output) = std::process::Command::new("df")
-                .args(["-BG", "."])
-                .output()
-            {
-                if output.status.success() {
-                    if let Ok(df_output) = String::from_utf8(output.stdout) {
-                        if let Some(line) = df_output.lines().nth(1) {
-                            if let Some(available) = line.split_whitespace().nth(3) {
-                                if let Ok(available_gb) = available.trim_end_matches('G').parse::<u32>() {
-                                    if available_gb < 2 {
-                                        vm_warning!("Low disk space: {}GB available. Docker builds may fail with insufficient storage.", available_gb);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        self.check_disk_space_unix()?;
+        self.check_disk_space_windows()?;
+        Ok(())
+    }
 
-        #[cfg(target_os = "windows")]
-        {
-            // Use PowerShell for Windows disk space check
-            if let Ok(output) = std::process::Command::new("powershell")
-                .args(["-Command", "(Get-PSDrive C).Free / 1GB"])
-                .output()
-            {
-                if output.status.success() {
-                    if let Ok(space_str) = String::from_utf8(output.stdout) {
-                        if let Ok(available_gb) = space_str.trim().parse::<f32>() {
-                            if available_gb < 2.0 {
-                                vm_warning!("Low disk space: {:.1}GB available. Docker builds may fail with insufficient storage.", available_gb);
-                            }
-                        }
-                    }
-                }
-            }
+    /// Check disk space on Unix-like systems (Linux and macOS)
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn check_disk_space_unix(&self) -> Result<()> {
+        let available_gb = match self.get_available_disk_space_unix() {
+            Some(gb) => gb,
+            None => return Ok(()), // Couldn't determine disk space, continue silently
+        };
+
+        if available_gb < 2 {
+            vm_warning!("Low disk space: {}GB available. Docker builds may fail with insufficient storage.", available_gb);
         }
 
         Ok(())
     }
 
+    /// Get available disk space on Unix systems, returning GB as u32
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn get_available_disk_space_unix(&self) -> Option<u32> {
+        let output = std::process::Command::new("df")
+            .args(["-BG", "."])
+            .output()
+            .ok()?;
+
+        if !output.status.success() {
+            return None;
+        }
+
+        let df_output = String::from_utf8(output.stdout).ok()?;
+        let line = df_output.lines().nth(1)?;
+        let available = line.split_whitespace().nth(3)?;
+        available.trim_end_matches('G').parse::<u32>().ok()
+    }
+
+    /// Check disk space on Windows systems
+    #[cfg(target_os = "windows")]
+    fn check_disk_space_windows(&self) -> Result<()> {
+        let available_gb = match self.get_available_disk_space_windows() {
+            Some(gb) => gb,
+            None => return Ok(()), // Couldn't determine disk space, continue silently
+        };
+
+        if available_gb < 2.0 {
+            vm_warning!("Low disk space: {:.1}GB available. Docker builds may fail with insufficient storage.", available_gb);
+        }
+
+        Ok(())
+    }
+
+    /// Get available disk space on Windows systems, returning GB as f32
+    #[cfg(target_os = "windows")]
+    fn get_available_disk_space_windows(&self) -> Option<f32> {
+        let output = std::process::Command::new("powershell")
+            .args(["-Command", "(Get-PSDrive C).Free / 1GB"])
+            .output()
+            .ok()?;
+
+        if !output.status.success() {
+            return None;
+        }
+
+        let space_str = String::from_utf8(output.stdout).ok()?;
+        space_str.trim().parse::<f32>().ok()
+    }
+
+    /// No-op implementation for non-Unix, non-Windows systems
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    fn check_disk_space_unix(&self) -> Result<()> {
+        Ok(())
+    }
+
+    /// No-op implementation for non-Windows systems
+    #[cfg(not(target_os = "windows"))]
+    fn check_disk_space_windows(&self) -> Result<()> {
+        Ok(())
+    }
+
+    #[must_use = "container creation results should be handled"]
     pub fn create_container(&self) -> Result<()> {
         self.check_daemon_is_running()?;
         self.handle_potential_issues();
@@ -295,6 +337,7 @@ impl<'a> LifecycleOperations<'a> {
         Ok(())
     }
 
+    #[must_use = "existing container handling results should be checked"]
     fn handle_existing_container(&self) -> Result<()> {
         let container_name = self.container_name();
 
@@ -366,6 +409,7 @@ impl<'a> LifecycleOperations<'a> {
         }
     }
 
+    #[must_use = "package filtering results should be checked"]
     fn filter_pipx_managed_packages(&self, config: &mut vm_config::config::VmConfig) -> Result<()> {
         let pipx_managed_packages = if let Some(pipx_json) = self.get_pipx_json()? {
             self.extract_pipx_managed_packages(&pipx_json)?
@@ -385,6 +429,7 @@ impl<'a> LifecycleOperations<'a> {
         Ok(())
     }
 
+    #[must_use = "config preparation results should be checked"]
     fn prepare_and_copy_config(&self) -> Result<()> {
         let mut config_clone = self.config.clone();
         let container_pipx_packages = if let Some(pipx_json) = self.get_pipx_json()? {
@@ -425,6 +470,7 @@ impl<'a> LifecycleOperations<'a> {
         Ok(())
     }
 
+    #[must_use = "container provisioning results should be handled"]
     fn provision_container(&self) -> Result<()> {
         // Step 6: Wait for readiness and run ansible (configuration only)
         println!("\n🔧 Provisioning environment");
@@ -491,11 +537,13 @@ impl<'a> LifecycleOperations<'a> {
         Ok(())
     }
 
+    #[must_use = "container start results should be handled"]
     pub fn start_container(&self) -> Result<()> {
         let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
         compose_ops.start_with_compose()
     }
 
+    #[must_use = "container stop results should be handled"]
     pub fn stop_container(&self) -> Result<()> {
         let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
         if compose_ops.stop_with_compose().is_err() {
@@ -507,6 +555,7 @@ impl<'a> LifecycleOperations<'a> {
         }
     }
 
+    #[must_use = "container destruction results should be handled"]
     pub fn destroy_container(&self) -> Result<()> {
         let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
         let result = if compose_ops.destroy_with_compose().is_err() {
@@ -531,6 +580,7 @@ impl<'a> LifecycleOperations<'a> {
         result
     }
 
+    #[must_use = "SSH connection results should be handled"]
     pub fn ssh_into_container(&self, relative_path: &Path) -> Result<()> {
         let workspace_path = self
             .config
@@ -581,6 +631,7 @@ impl<'a> LifecycleOperations<'a> {
         Ok(())
     }
 
+    #[must_use = "command execution results should be handled"]
     pub fn exec_in_container(&self, cmd: &[String]) -> Result<()> {
         let container = self.container_name();
         let workspace_path = self
@@ -605,6 +656,7 @@ impl<'a> LifecycleOperations<'a> {
         stream_command("docker", &args)
     }
 
+    #[must_use = "log display results should be handled"]
     pub fn show_logs(&self) -> Result<()> {
         // Show recent logs without following (-f) to avoid hanging indefinitely
         // Use --tail to show last 50 lines and add timestamps
@@ -614,6 +666,7 @@ impl<'a> LifecycleOperations<'a> {
         )
     }
 
+    #[must_use = "status display results should be handled"]
     pub fn show_status(&self) -> Result<()> {
         let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
         if compose_ops.status_with_compose().is_err() {
@@ -641,11 +694,13 @@ impl<'a> LifecycleOperations<'a> {
         Ok(())
     }
 
+    #[must_use = "container restart results should be handled"]
     pub fn restart_container(&self) -> Result<()> {
         self.stop_container()?;
         self.start_container()
     }
 
+    #[must_use = "existing container provisioning results should be handled"]
     pub fn provision_existing(&self) -> Result<()> {
         let container = self.container_name();
         let status_output = std::process::Command::new("docker")
@@ -688,12 +743,14 @@ impl<'a> LifecycleOperations<'a> {
         Ok(())
     }
 
+    #[must_use = "container listing results should be handled"]
     pub fn list_containers(&self) -> Result<()> {
         // Show all containers - let users see the full Docker environment
         // This provides better visibility than filtering by project name
         stream_command("docker", &["ps", "-a"]).context("Failed to list containers")
     }
 
+    #[must_use = "container kill results should be handled"]
     pub fn kill_container(&self, container: Option<&str>) -> Result<()> {
         let container_name = self.container_name();
         let target_container = container.unwrap_or(&container_name);
