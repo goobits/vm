@@ -1,12 +1,20 @@
+# Provider & Environment
+provider: docker
+
+# Project Identity
 project:
   name: test-docker
   hostname: dev.docker.local
   workspace_path: /workspace
-provider: docker
-terminal:
-  emoji: 🧪
-  username: test-dev
+
+# Services & Infrastructure
 services:
   docker:
     enabled: true
+
+# Development Environment
+terminal:
+  emoji: 🧪
+  username: test-dev
+
 aliases: {}

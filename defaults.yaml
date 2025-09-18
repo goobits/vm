@@ -2,15 +2,20 @@
 # Default VM configuration - contains all schema defaults
 # This file provides sensible defaults for all VM configuration options
 
+# Metadata & Schema
 version: "1.2.1"
+
+# Provider & Environment
 provider: docker
 os: auto
 
+# Project Identity
 project:
   name: vm-project
   hostname: dev.vm-project.local
   workspace_path: /workspace
 
+# VM Resources
 vm:
   box: ubuntu/jammy64
   memory: 8192
@@ -20,10 +25,12 @@ vm:
   gui: false
   timezone: America/Los_Angeles
 
+# Runtime Versions
 versions:
   node: "22"
   python: "3.11"
 
+# Development Environment
 terminal:
   emoji: "🚀"
   username: dev
