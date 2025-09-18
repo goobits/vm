@@ -1,0 +1,42 @@
+version: 1.2.1
+provider: docker
+os: auto
+project:
+  name: vm
+  hostname: dev.vm.local
+  workspace_path: /workspace
+vm:
+  user: developer
+  memory: 8192
+  cpus: 6
+  timezone: America/Los_Angeles
+  port_binding: 127.0.0.1
+  gui: false
+versions:
+  node: '22'
+  python: '3.11'
+port_range: 3070-3079
+apt_packages:
+- tree
+- ripgrep
+- unzip
+- htop
+npm_packages:
+- '@anthropic-ai/claude-code'
+- '@google/gemini-cli'
+pip_packages:
+- claudeflow
+aliases:
+  claudeyolo: claude --dangerously-skip-permissions
+  geminiyolo: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini
+terminal:
+  theme: dracula
+  emoji: 🚀
+  username: vm-dev
+  show_git_branch: true
+  show_timestamp: false
+claude_sync: true
+gemini_sync: true
+test_ordering:
+  provider_first: true
+  project_second: true
