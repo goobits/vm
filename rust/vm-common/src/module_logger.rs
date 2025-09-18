@@ -14,6 +14,7 @@
 //!
 //! // Use standard log macros - module context is automatically added
 //! log::info!("Starting container creation");
+//! let error = "connection timeout";
 //! log::error!("Failed to create container: {}", error);
 //! ```
 //!
@@ -165,7 +166,11 @@ pub fn get_logger(module_name: &str) -> ModuleLogger {
     let registry = MODULE_LOGGERS.get_or_init(|| Mutex::new(HashMap::new()));
 
     {
-        let loggers = registry.lock().unwrap();
+        let loggers = registry.lock().unwrap_or_else(|poisoned| {
+            // If the mutex is poisoned, recover the data and continue
+            eprintln!("Warning: Module logger registry mutex was poisoned, recovering...");
+            poisoned.into_inner()
+        });
         if let Some(logger) = loggers.get(module_name) {
             return logger.clone();
         }
@@ -175,7 +180,11 @@ pub fn get_logger(module_name: &str) -> ModuleLogger {
     let logger = ModuleLogger::new(module_name.to_string());
 
     {
-        let mut loggers = registry.lock().unwrap();
+        let mut loggers = registry.lock().unwrap_or_else(|poisoned| {
+            // If the mutex is poisoned, recover the data and continue
+            eprintln!("Warning: Module logger registry mutex was poisoned during insert, recovering...");
+            poisoned.into_inner()
+        });
         loggers.insert(module_name.to_string(), logger.clone());
     }
 
@@ -233,7 +242,9 @@ macro_rules! module_logger_context {
 ///
 /// // These will automatically include module context
 /// module_log!(info, "Operation started");
+/// let error_message = "connection timeout";
 /// module_log!(error, "Operation failed: {}", error_message);
+/// let value = 42;
 /// module_log!(debug, "Debug info: value={}", value);
 /// ```
 #[macro_export]
@@ -251,7 +262,11 @@ macro_rules! module_log {
 /// List all registered module loggers (useful for debugging)
 pub fn list_module_loggers() -> Vec<String> {
     let registry = MODULE_LOGGERS.get_or_init(|| Mutex::new(HashMap::new()));
-    let loggers = registry.lock().unwrap();
+    let loggers = registry.lock().unwrap_or_else(|poisoned| {
+        // If the mutex is poisoned, recover the data and continue
+        eprintln!("Warning: Module logger registry mutex was poisoned during list, recovering...");
+        poisoned.into_inner()
+    });
     loggers.keys().cloned().collect()
 }
 
@@ -259,7 +274,11 @@ pub fn list_module_loggers() -> Vec<String> {
 #[cfg(any(test, feature = "test-helpers"))]
 pub fn clear_module_loggers() {
     let registry = MODULE_LOGGERS.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut loggers = registry.lock().unwrap();
+    let mut loggers = registry.lock().unwrap_or_else(|poisoned| {
+        // If the mutex is poisoned, recover the data and continue
+        eprintln!("Warning: Module logger registry mutex was poisoned during clear, recovering...");
+        poisoned.into_inner()
+    });
     loggers.clear();
 }
 

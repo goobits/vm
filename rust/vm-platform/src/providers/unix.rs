@@ -190,16 +190,8 @@ impl PlatformProvider for UnixPlatform {
 
     fn total_memory_gb(&self) -> Result<u64> {
         // Try reading from /proc/meminfo first (Linux)
-        if let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") {
-            for line in meminfo.lines() {
-                if line.starts_with("MemTotal:") {
-                    if let Some(mem_kb_str) = line.split_whitespace().nth(1) {
-                        if let Ok(mem_kb) = mem_kb_str.parse::<u64>() {
-                            return Ok(mem_kb / 1024 / 1024); // Convert KB to GB
-                        }
-                    }
-                }
-            }
+        if let Some(memory_gb) = parse_memory_from_proc_meminfo()? {
+            return Ok(memory_gb);
         }
 
         // Fallback to sysinfo
@@ -245,6 +237,34 @@ impl ProcessProvider for UnixProcessProvider {
             .map(|output| output.status.success())
             .unwrap_or(false)
     }
+}
+
+/// Parse memory from /proc/meminfo, returning memory in GB
+fn parse_memory_from_proc_meminfo() -> Result<Option<u64>> {
+    let meminfo = match std::fs::read_to_string("/proc/meminfo") {
+        Ok(content) => content,
+        Err(_) => return Ok(None),
+    };
+
+    for line in meminfo.lines() {
+        if !line.starts_with("MemTotal:") {
+            continue;
+        }
+
+        let mem_kb_str = match line.split_whitespace().nth(1) {
+            Some(value) => value,
+            None => continue,
+        };
+
+        let mem_kb = match mem_kb_str.parse::<u64>() {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+
+        return Ok(Some(mem_kb / 1024 / 1024)); // Convert KB to GB
+    }
+
+    Ok(None)
 }
 
 /// Helper function to add unique site packages from command output
