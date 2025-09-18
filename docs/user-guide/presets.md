@@ -92,15 +92,10 @@ Ubuntu VMs on Apple Silicon (Tart)
 vm create
 ```
 
-### Force Specific Preset
+### Apply Specific Preset
 ```bash
-vm --preset django create
-vm --preset react create
-```
-
-### Disable Presets
-```bash
-vm --no-preset create
+vm config preset django
+vm config preset react
 ```
 
 ## How It Works

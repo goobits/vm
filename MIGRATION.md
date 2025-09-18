@@ -74,7 +74,7 @@ security:
 - **Zero-config startup** with automatic project detection
 - **Multi-technology support** (React + Django, etc.)
 - **Preset commands**: `vm preset list`, `vm preset show`
-- **Control flags**: `--no-preset`, `--preset <name>`
+- **Preset management**: `vm config preset <name>`
 
 ### Migration
 - Existing configurations work unchanged

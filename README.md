@@ -146,9 +146,8 @@ services:
 vm preset list               # Available presets
 vm preset show django        # Preset details
 
-# Override defaults
-vm --preset django create        # Force specific preset
-vm --no-preset create            # Manual configuration only
+# Apply specific presets
+vm config preset django          # Apply Django preset to config
 ```
 
 ## 🧪 Development

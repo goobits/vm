@@ -194,11 +194,8 @@ vm create
 # See what presets are detected
 vm preset list --detected
 
-# Force specific preset
-vm --preset django create
-
-# Disable preset detection
-vm --no-preset create
+# Apply specific preset manually
+vm config preset django
 
 # Check detection logic
 LOG_LEVEL=DEBUG vm create

@@ -150,7 +150,7 @@ test_detect_your_framework() {
 echo "your-framework-project/" > /tmp/test
 cd /tmp/test
 touch your-framework.config.js
-vm --preset your-framework create
+vm config preset your-framework  # Apply preset
 
 # Test configuration
 vm validate

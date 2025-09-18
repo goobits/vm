@@ -15,9 +15,8 @@
 ### create
 ```bash
 vm create                        # Auto-detect project type
-vm --preset django create        # Force preset
-vm --no-preset create            # Skip detection
 vm --config prod.yaml create     # Custom config
+vm config preset django          # Apply preset to configuration
 ```
 
 ### ssh
@@ -107,8 +106,8 @@ vm temp list                     # Show all temp VMs
 ### init / validate
 ```bash
 vm init                          # Create vm.yaml
-vm init --preset django          # With preset
 vm init --services postgresql,redis # With services
+vm config preset django          # Apply preset after init
 
 vm validate                      # Check vm.yaml
 vm validate --config custom.yaml # Check specific file
@@ -154,9 +153,8 @@ vm preset show react --yaml      # As YAML
 ### Global Flags
 ```bash
 vm --config <file> <command>    # Use specific config
-vm --preset <name> create        # Force preset
 vm --dry-run create              # Show what would run
-vm --no-preset create            # Skip presets
+vm config preset <name>         # Apply preset to configuration
 ```
 
 ### Environment Variables

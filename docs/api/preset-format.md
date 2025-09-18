@@ -428,7 +428,9 @@ touch my-framework.config.js
 vm preset list --detected
 
 # 4. Test preset application
-vm --preset my-framework create
+vm config preset my-framework  # Apply preset to existing config
+# Or let auto-detection use it
+vm create
 
 # 5. Add tests
 vi test/unit/preset-detection.test.sh
