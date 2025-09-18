@@ -141,7 +141,7 @@ impl ConfigValidator {
                         "Invalid provider: {}. Must be one of: docker, vagrant, tart",
                         provider
                     );
-                    return Err(anyhow::anyhow!("Invalid provider"));
+                    Err(anyhow::anyhow!("Invalid provider"))
                 }
             }
         } else {

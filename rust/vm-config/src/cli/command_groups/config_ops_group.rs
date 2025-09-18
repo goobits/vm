@@ -28,17 +28,17 @@ impl ConfigOpsGroup {
     }
 
     /// Execute validate command
-    pub fn execute_validate(file: Option<PathBuf>, no_preset: bool, verbose: bool) {
-        commands::validation::execute_validate(file, no_preset, verbose)
+    pub fn execute_validate(file: Option<PathBuf>, verbose: bool) {
+        commands::validation::execute_validate(file, verbose)
     }
 
     /// Execute dump command
-    pub fn execute_dump(file: Option<PathBuf>, no_preset: bool) -> Result<()> {
-        commands::dump::execute_dump(file, no_preset)
+    pub fn execute_dump(file: Option<PathBuf>) -> Result<()> {
+        commands::dump::execute_dump(file)
     }
 
     /// Execute export command
-    pub fn execute_export(file: Option<PathBuf>, no_preset: bool) -> Result<()> {
-        commands::dump::execute_export(file, no_preset)
+    pub fn execute_export(file: Option<PathBuf>) -> Result<()> {
+        commands::dump::execute_export(file)
     }
 }

@@ -10,14 +10,11 @@ use vm_common::{vm_error, vm_success};
 use vm_config::{config::VmConfig, ConfigOps};
 
 /// Handle configuration validation command
-pub fn handle_validate(config_file: Option<PathBuf>, no_preset: bool) -> Result<()> {
-    debug!(
-        "Validating configuration: config_file={:?}, no_preset={}",
-        config_file, no_preset
-    );
+pub fn handle_validate(config_file: Option<PathBuf>) -> Result<()> {
+    debug!("Validating configuration: config_file={:?}", config_file);
     // The `load` function performs validation internally. If it succeeds,
     // the configuration is valid.
-    match VmConfig::load(config_file, no_preset) {
+    match VmConfig::load(config_file) {
         Ok(config) => {
             debug!(
                 "Configuration validation successful: provider={:?}, project_name={:?}",
@@ -62,7 +59,7 @@ pub fn handle_config_command(command: &ConfigSubcommand, dry_run: bool) -> Resul
 }
 
 /// Load configuration with lenient validation for commands that don't require full project setup
-pub fn load_config_lenient(file: Option<PathBuf>, _no_preset: bool) -> Result<VmConfig> {
+pub fn load_config_lenient(file: Option<PathBuf>) -> Result<VmConfig> {
     use vm_config::config::VmConfig;
 
     // Try to load defaults as base

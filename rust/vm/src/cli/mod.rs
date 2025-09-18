@@ -15,17 +15,9 @@ pub struct Args {
     #[arg(short, long, global = true)]
     pub config: Option<PathBuf>,
 
-    /// Disable automatic preset detection
-    #[arg(long, global = true)]
-    pub no_preset: bool,
-
     /// Show what would be executed without running
     #[arg(long, global = true)]
     pub dry_run: bool,
-
-    /// Force specific preset
-    #[arg(long, global = true)]
-    pub preset: Option<String>,
 
     /// Enable debug output
     #[arg(short, long, global = true)]

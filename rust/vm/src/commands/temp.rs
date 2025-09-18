@@ -11,13 +11,12 @@ use vm_provider::get_provider;
 pub fn handle_temp_command(
     command: &TempSubcommand,
     config_file: Option<PathBuf>,
-    no_preset: bool,
 ) -> Result<()> {
     use vm_temp::TempVmOps;
 
     // For temp commands, we need a provider, but the config might not exist.
     // We load it leniently to ensure we can get a provider.
-    let config = config::load_config_lenient(config_file, no_preset)?;
+    let config = config::load_config_lenient(config_file)?;
     let provider = get_provider(config.clone())?;
 
     match command {
