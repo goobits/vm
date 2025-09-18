@@ -1,4 +1,5 @@
 use crate::config::VmConfig;
+use crate::ports::PortRange;
 use anyhow::Result;
 use regex::Regex;
 use std::path::PathBuf;
@@ -197,7 +198,7 @@ impl ConfigValidator {
 
         // Validate port range if present
         if let Some(range) = &self.config.port_range {
-            vm_ports::PortRange::parse(range)?;
+            PortRange::parse(range)?;
         }
 
         Ok(())

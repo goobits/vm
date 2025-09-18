@@ -1,5 +1,5 @@
 use super::fixtures::ProjectTestFixture;
-use crate::{detect_project_type, format_detected_types};
+use crate::detector::{detect_project_type, format_detected_types};
 use std::path::Path;
 
 #[test]

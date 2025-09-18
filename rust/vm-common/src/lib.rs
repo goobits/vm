@@ -1,6 +1,7 @@
 // Common utilities and types for VM Tool
 // This crate provides shared functionality across VM Tool components
 
+pub mod command_stream;
 pub mod file_system;
 pub mod log_context;
 pub mod module_logger;
@@ -8,6 +9,7 @@ pub mod output_macros;
 pub mod platform;
 pub mod security;
 pub mod structured_log;
+pub mod system_check;
 pub mod temp_dir;
 pub mod user_paths;
 

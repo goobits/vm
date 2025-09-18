@@ -1,4 +1,4 @@
-use crate::detect_project_type;
+use super::detect_project_type;
 use glob::glob;
 use std::collections::HashSet;
 use std::path::Path;

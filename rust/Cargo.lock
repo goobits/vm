@@ -1294,16 +1294,19 @@ dependencies = [
  "anyhow",
  "chrono",
  "dirs",
+ "duct",
  "is-terminal",
  "log",
  "pathdiff",
  "regex",
  "serde",
  "serde_json",
+ "sysinfo",
  "tempfile",
  "thiserror",
  "uuid",
  "vm-platform",
+ "which",
 ]
 
 [[package]]
@@ -1312,27 +1315,16 @@ version = "1.2.3"
 dependencies = [
  "anyhow",
  "clap",
+ "fs2",
  "glob",
  "indexmap",
  "lazy_static",
  "libc",
  "regex",
+ "scopeguard",
  "serde",
  "serde_json",
  "serde_yaml_ng",
- "tempfile",
- "vm-common",
- "vm-detector",
- "vm-ports",
-]
-
-[[package]]
-name = "vm-detector"
-version = "1.2.3"
-dependencies = [
- "anyhow",
- "glob",
- "serde_json",
  "tempfile",
  "vm-common",
  "which",
@@ -1363,7 +1355,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "vm-common",
- "vm-detector",
+ "vm-config",
  "vm-platform",
  "which",
 ]
@@ -1376,20 +1368,6 @@ dependencies = [
  "dirs",
  "sysinfo",
  "tempfile",
-]
-
-[[package]]
-name = "vm-ports"
-version = "1.2.3"
-dependencies = [
- "anyhow",
- "clap",
- "fs2",
- "scopeguard",
- "serde",
- "serde_json",
- "tempfile",
- "vm-common",
 ]
 
 [[package]]
@@ -1412,7 +1390,6 @@ dependencies = [
  "vm-common",
  "vm-config",
  "vm-platform",
- "vm-ports",
  "which",
 ]
 

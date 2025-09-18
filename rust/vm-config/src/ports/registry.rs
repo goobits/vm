@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use vm_common::{user_paths, vm_println};
 
 // Internal imports
-use crate::range::PortRange;
+use super::range::PortRange;
 
 /// A registry entry for a project's port allocation.
 #[derive(Debug, Serialize, Deserialize)]

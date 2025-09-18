@@ -1,5 +1,6 @@
 use super::fixtures::ProjectTestFixture;
-use crate::{detect_project_type, format_detected_types, test_fixture};
+use crate::detector::{detect_project_type, format_detected_types};
+use crate::test_fixture;
 
 #[test]
 fn test_react_detection() {

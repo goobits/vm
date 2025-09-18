@@ -67,7 +67,7 @@ pub fn load_and_merge_config(file: Option<PathBuf>) -> Result<VmConfig> {
     };
 
     // 4. Load OS-specific defaults as the new base
-    let default_os = vm_detector::detect_host_os();
+    let default_os = crate::detector::detect_host_os();
     let detected_os = user_config
         .as_ref()
         .and_then(|c| c.os.as_deref())

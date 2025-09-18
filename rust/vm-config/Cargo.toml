@@ -24,9 +24,10 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml_ng = { workspace = true }
 vm-common = { path = "../vm-common" }
-vm-ports = { path = "../vm-ports" }
-vm-detector = { path = "../vm-detector" }
 lazy_static = { workspace = true }
+which = { workspace = true }
+fs2 = { workspace = true }
+scopeguard = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }

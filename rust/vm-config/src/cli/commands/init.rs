@@ -1,4 +1,5 @@
 use crate::config::VmConfig;
+use crate::ports::{PortRegistry, PortRange};
 use anyhow::{Context, Result};
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -125,16 +126,16 @@ pub fn execute(
     }
 
     // Use vm-ports library to suggest and register an available port range
-    if let Ok(registry) = vm_ports::PortRegistry::load() {
+    if let Ok(registry) = PortRegistry::load() {
         if let Some(range_str) = registry.suggest_next_range(10, 3000) {
             config.port_range = Some(range_str.clone());
             println!("📡 Allocated port range: {}", range_str);
 
             // Register this range
-            if let Ok(range) = vm_ports::PortRange::parse(&range_str) {
-                let mut registry = vm_ports::PortRegistry::load().unwrap_or_else(|_| {
+            if let Ok(range) = PortRange::parse(&range_str) {
+                let mut registry = PortRegistry::load().unwrap_or_else(|_| {
                     vm_warning!("Failed to load port registry, using default");
-                    vm_ports::PortRegistry::default()
+                    PortRegistry::default()
                 });
                 if let Err(e) =
                     registry.register(sanitized_name, &range, &current_dir.to_string_lossy())

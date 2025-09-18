@@ -1,4 +1,4 @@
-use crate::command_stream::{is_tool_installed, stream_command};
+use vm_common::command_stream::{is_tool_installed, stream_command};
 use crate::{
     error::ProviderError, progress::ProgressReporter, security::SecurityValidator, Provider,
 };

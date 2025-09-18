@@ -13,12 +13,10 @@ use anyhow::Result;
 // Internal imports
 use vm_config::config::VmConfig;
 
-pub mod command_stream;
 pub mod error;
 pub mod progress;
 pub mod resources;
 pub mod security;
-pub mod system_check;
 pub mod temp_models;
 
 pub mod audio;

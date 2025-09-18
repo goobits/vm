@@ -39,6 +39,6 @@ impl ProjectTestFixture {
 #[macro_export]
 macro_rules! test_fixture {
     () => {
-        $crate::tests::fixtures::ProjectTestFixture::new().unwrap()
+        super::fixtures::ProjectTestFixture::new().unwrap()
     };
 }

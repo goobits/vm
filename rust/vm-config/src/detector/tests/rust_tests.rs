@@ -1,5 +1,5 @@
 use super::fixtures::ProjectTestFixture;
-use crate::detect_project_type;
+use crate::detector::detect_project_type;
 
 #[test]
 fn test_rust_detection() {

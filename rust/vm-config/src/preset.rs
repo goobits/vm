@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_yaml_ng as serde_yaml;
 use std::path::PathBuf;
 use vm_common::vm_error;
-use vm_detector::detect_preset_for_project;
+use crate::detector::detect_preset_for_project;
 
 /// Metadata about a preset
 #[derive(Debug, Clone, Serialize, Deserialize)]

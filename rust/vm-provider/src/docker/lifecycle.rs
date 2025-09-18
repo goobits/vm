@@ -19,12 +19,12 @@ use serde_json::Value;
 use super::{build::BuildOperations, compose::ComposeOperations, ComposeCommand, UserConfig};
 use crate::{
     audio::MacOSAudioManager,
-    command_stream::{stream_command, stream_docker_build},
     error::ProviderError,
     progress::ProgressReporter,
     security::SecurityValidator,
     TempProvider, TempVmState,
 };
+use vm_common::command_stream::{stream_command};
 use vm_common::{vm_dbg, vm_error, vm_success, vm_warning};
 use vm_config::config::VmConfig;
 
@@ -324,7 +324,7 @@ impl<'a> LifecycleOperations<'a> {
             vm_dbg!("Build context contains {} files/directories", file_count);
         }
 
-        stream_docker_build(&all_args).context("Docker build failed")?;
+        stream_command("docker", &all_args).context("Docker build failed")?;
         println!("✅ Build complete");
 
         // Step 5: Start containers
@@ -687,7 +687,7 @@ impl<'a> LifecycleOperations<'a> {
         if let Some(port_range) = &self.config.port_range {
             println!("\n📡 Port Range: {}", port_range);
             if !self.config.ports.is_empty() {
-                if let Ok(parsed_range) = vm_ports::PortRange::parse(port_range) {
+                if let Ok(parsed_range) = vm_config::ports::PortRange::parse(port_range) {
                     let (start, end) = (parsed_range.start, parsed_range.end);
                     let used_count = self
                         .config

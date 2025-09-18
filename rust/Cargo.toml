@@ -2,10 +2,8 @@
 members = [
     "vm-common",
     "vm-config",
-    "vm-detector",
     "vm-pkg",
     "vm-platform",
-    "vm-ports",
     "vm-provider",
     "vm-temp",
     "vm",

@@ -20,6 +20,9 @@ is-terminal = { workspace = true }
 dirs = { workspace = true }
 uuid = { workspace = true }
 vm-platform = { path = "../vm-platform" }
+duct = { workspace = true }
+which = { workspace = true }
+sysinfo = { workspace = true }
 
 [features]
 default = ["test-helpers"]

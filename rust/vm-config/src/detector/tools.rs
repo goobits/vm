@@ -194,7 +194,7 @@ pub fn detect_databases() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::is_python_project;
+    use crate::detector::is_python_project;
 
     #[test]
     fn test_has_command() {

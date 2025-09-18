@@ -12,9 +12,11 @@
 pub mod cli;
 pub mod config;
 mod config_ops;
+pub mod detector;
 mod embedded_presets;
 pub mod merge;
 mod paths; // Internal only
+pub mod ports;
 mod preset; // Internal only
 pub mod resources; // VM resource suggestions
 pub mod validate;

@@ -12,7 +12,8 @@ use super::host_packages::{
     detect_packages, get_package_env_vars, get_volume_mounts, PackageManager,
 };
 use super::{ComposeCommand, UserConfig};
-use crate::{command_stream::stream_command, TempVmState};
+use crate::TempVmState;
+use vm_common::command_stream::stream_command;
 use vm_config::config::VmConfig;
 
 pub struct ComposeOperations<'a> {

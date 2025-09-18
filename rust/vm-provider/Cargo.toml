@@ -17,7 +17,6 @@ thiserror = { workspace = true }
 which = { workspace = true }
 vm-common = { path = "../vm-common" }
 vm-config = { path = "../vm-config" }
-vm-ports = { path = "../vm-ports" }
 vm-platform = { path = "../vm-platform" }
 chrono = { workspace = true }
 is-terminal = { workspace = true }

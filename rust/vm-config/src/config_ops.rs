@@ -23,7 +23,7 @@ use crate::paths;
 use crate::preset::PresetDetector;
 use vm_common::user_paths;
 use vm_common::{vm_error, vm_warning};
-use vm_ports::PortRange;
+use crate::ports::PortRange;
 
 lazy_static! {
     static ref PORT_PLACEHOLDER_RE: Regex =

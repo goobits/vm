@@ -383,6 +383,43 @@ pub enum Command {
         #[arg(long)]
         ports: Option<u16>,
     },
+
+    /// Port range management commands
+    #[command(subcommand)]
+    Ports(PortsCommand),
+}
+
+/// Port management subcommands
+#[derive(Subcommand)]
+pub enum PortsCommand {
+    /// Check for port range conflicts
+    Check {
+        /// Port range (e.g., "3000-3009")
+        range: String,
+        /// Optional project name to exclude from conflict checking
+        project_name: Option<String>,
+    },
+    /// Register a port range for a project
+    Register {
+        /// Port range (e.g., "3000-3009")
+        range: String,
+        /// Project name
+        project: String,
+        /// Project path
+        path: String,
+    },
+    /// Suggest next available port range
+    Suggest {
+        /// Range size (default: 10)
+        size: Option<u16>,
+    },
+    /// List all registered port ranges
+    List,
+    /// Unregister a project's port range
+    Unregister {
+        /// Project name
+        project: String,
+    },
 }
 
 /// Output format options for configuration data.
@@ -497,6 +534,68 @@ pub fn init_config_file(
     ports: Option<u16>,
 ) -> Result<()> {
     commands::init::execute(file_path, services, ports)
+}
+
+/// Execute a ports subcommand
+fn execute_ports_command(cmd: PortsCommand) -> Result<()> {
+    use crate::ports::{PortRange, PortRegistry};
+    use vm_common::{vm_error, vm_success, vm_warning};
+
+    match cmd {
+        PortsCommand::Check {
+            range,
+            project_name,
+        } => {
+            let port_range = PortRange::parse(&range)?;
+            let registry = PortRegistry::load()?;
+
+            if let Some(conflicts) = registry.check_conflicts(&port_range, project_name.as_deref())
+            {
+                println!("{}", conflicts);
+                std::process::exit(1);
+            } else {
+                std::process::exit(0);
+            }
+        }
+        PortsCommand::Register {
+            range,
+            project,
+            path,
+        } => {
+            let port_range = PortRange::parse(&range)?;
+            let mut registry = PortRegistry::load()?;
+
+            if let Some(conflicts) = registry.check_conflicts(&port_range, Some(&project)) {
+                vm_warning!("Port range {} conflicts with: {}", range, conflicts);
+                std::process::exit(1);
+            } else {
+                registry.register(&project, &port_range, &path)?;
+                vm_success!("Registered port range {} for project '{}'", range, project);
+            }
+        }
+        PortsCommand::Suggest { size } => {
+            let registry = PortRegistry::load()?;
+            let size = size.unwrap_or(10);
+
+            if let Some(range) = registry.suggest_next_range(size, 3000) {
+                println!("{}", range);
+            } else {
+                vm_error!("No available port range of size {} found", size);
+                std::process::exit(1);
+            }
+        }
+        PortsCommand::List => {
+            let registry = PortRegistry::load()?;
+            registry.list();
+        }
+        PortsCommand::Unregister { project } => {
+            let mut registry = PortRegistry::load()?;
+            registry.unregister(&project)?;
+            vm_success!("Unregistered port range for project '{}'", project);
+        }
+    }
+
+    Ok(())
 }
 
 /// Execute a CLI command with the provided arguments.
@@ -639,5 +738,6 @@ pub fn execute(args: Args) -> Result<()> {
             services,
             ports,
         } => ProjectOpsGroup::execute_init(file, services, ports),
+        Ports(ports_cmd) => execute_ports_command(ports_cmd),
     }
 }
