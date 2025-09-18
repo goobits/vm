@@ -72,13 +72,26 @@ impl Provider for TartProvider {
 
         // Configure VM with memory/CPU settings if specified
         if let Some(vm_config) = &self.config.vm {
-            if let Some(memory) = vm_config.memory {
-                ProgressReporter::task(&main_phase, &format!("Setting memory to {} MB...", memory));
-                stream_command(
-                    "tart",
-                    &["set", &self.vm_name(), "--memory", &memory.to_string()],
-                )?;
-                ProgressReporter::task(&main_phase, "Memory configured.");
+            if let Some(memory) = &vm_config.memory {
+                match memory.to_mb() {
+                    Some(mb) => {
+                        ProgressReporter::task(
+                            &main_phase,
+                            &format!("Setting memory to {} MB...", mb),
+                        );
+                        stream_command(
+                            "tart",
+                            &["set", &self.vm_name(), "--memory", &mb.to_string()],
+                        )?;
+                        ProgressReporter::task(&main_phase, "Memory configured.");
+                    }
+                    None => {
+                        ProgressReporter::task(
+                            &main_phase,
+                            "Memory set to unlimited (no Tart limit).",
+                        );
+                    }
+                }
             }
 
             if let Some(cpus) = vm_config.cpus {

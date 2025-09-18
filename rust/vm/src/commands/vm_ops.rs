@@ -175,7 +175,10 @@ pub fn handle_status(provider: Box<dyn Provider>, config: VmConfig) -> Result<()
         .unwrap_or("vm-project");
 
     // Get memory and cpu info from config
-    let memory = config.vm.as_ref().and_then(|vm| vm.memory);
+    let memory = config
+        .vm
+        .as_ref()
+        .and_then(|vm| vm.memory.as_ref().and_then(|m| m.to_mb()));
     let cpus = config.vm.as_ref().and_then(|vm| vm.cpus);
 
     debug!(

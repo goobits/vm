@@ -92,7 +92,13 @@ mod config_ops_tests {
         // Test getting the value back by reading the config file directly
         let config_content = fs::read_to_string(&config_path)?;
         let config: VmConfig = serde_yaml::from_str(&config_content)?;
-        assert_eq!(config.vm.as_ref().and_then(|v| v.memory), Some(4096));
+        assert_eq!(
+            config
+                .vm
+                .as_ref()
+                .and_then(|v| v.memory.as_ref().and_then(|m| m.to_mb())),
+            Some(4096)
+        );
 
         // Test setting a nested value
         ConfigOps::set("services.docker.enabled", "true", false, false)?;
@@ -101,7 +107,13 @@ mod config_ops_tests {
         let config_content = fs::read_to_string(&config_path)?;
         let config: VmConfig = serde_yaml::from_str(&config_content)?;
 
-        assert_eq!(config.vm.as_ref().and_then(|v| v.memory), Some(4096));
+        assert_eq!(
+            config
+                .vm
+                .as_ref()
+                .and_then(|v| v.memory.as_ref().and_then(|m| m.to_mb())),
+            Some(4096)
+        );
         assert_eq!(
             config
                 .services
@@ -207,7 +219,13 @@ vm:
         let config_content = fs::read_to_string(&config_path)?;
         let config: VmConfig = serde_yaml::from_str(&config_content)?;
 
-        assert_eq!(config.vm.as_ref().and_then(|v| v.memory), Some(2048));
+        assert_eq!(
+            config
+                .vm
+                .as_ref()
+                .and_then(|v| v.memory.as_ref().and_then(|m| m.to_mb())),
+            Some(2048)
+        );
         assert_eq!(
             config
                 .services
