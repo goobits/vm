@@ -30,7 +30,7 @@ use std::path::PathBuf;
 /// use std::path::PathBuf;
 ///
 /// // Load configuration with auto-detection
-/// let config = VmConfig::load(Some(PathBuf::from("vm.yaml")), false)?;
+/// let config = VmConfig::load(Some(PathBuf::from("vm.yaml")))?;
 ///
 /// // Check if configuration is complete
 /// if config.is_partial() {
@@ -40,12 +40,14 @@ use std::path::PathBuf;
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct VmConfig {
+    // 1. Metadata & Schema
     #[serde(rename = "$schema", skip_serializing_if = "Option::is_none")]
     pub schema: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
 
+    // 2. Provider & Environment
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
 
@@ -53,23 +55,32 @@ pub struct VmConfig {
     pub os: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub tart: Option<TartConfig>,
+
+    // 3. Project Identity
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub project: Option<ProjectConfig>,
 
+    // 4. VM Resources
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vm: Option<VmSettings>,
 
+    // 5. Runtime Versions
     #[serde(skip_serializing_if = "Option::is_none")]
     pub versions: Option<VersionsConfig>,
 
+    // 6. Networking
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub ports: IndexMap<String, u16>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub port_range: Option<String>,
 
+    // 7. Services & Infrastructure
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub services: IndexMap<String, ServiceConfig>,
 
+    // 8. Package Management
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub apt_packages: Vec<String>,
 
@@ -82,18 +93,20 @@ pub struct VmConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cargo_packages: Vec<String>,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub package_linking: Option<PackageLinkingConfig>,
+
+    // 9. Development Environment
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminal: Option<TerminalConfig>,
+
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub aliases: IndexMap<String, String>,
 
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub environment: IndexMap<String, String>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub terminal: Option<TerminalConfig>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tart: Option<TartConfig>,
-
+    // 10. Feature Flags & Integrations
     #[serde(default, skip_serializing_if = "is_false")]
     pub claude_sync: bool,
 
@@ -103,12 +116,11 @@ pub struct VmConfig {
     #[serde(default, skip_serializing_if = "is_false")]
     pub persist_databases: bool,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub package_linking: Option<PackageLinkingConfig>,
-
+    // 11. Security
     #[serde(skip_serializing_if = "Option::is_none")]
     pub security: Option<SecurityConfig>,
 
+    // 12. Extra/Custom
     #[serde(flatten)]
     pub extra_config: IndexMap<String, serde_json::Value>,
 }
@@ -500,7 +512,6 @@ impl VmConfig {
     ///
     /// # Arguments
     /// * `file` - Optional path to configuration file (searches for vm.yaml if None)
-    /// * `no_preset` - If true, disables automatic preset detection
     ///
     /// # Returns
     /// A fully merged and validated `VmConfig` ready for use
@@ -516,51 +527,17 @@ impl VmConfig {
     /// use vm_config::config::VmConfig;
     /// use std::path::PathBuf;
     ///
-    /// // Load with auto-detection
-    /// let config = VmConfig::load(Some(PathBuf::from("vm.yaml")), false)?;
+    /// // Load from specific file
+    /// let config = VmConfig::load(Some(PathBuf::from("vm.yaml")))?;
     ///
-    /// // Load without preset auto-detection
-    /// let config = VmConfig::load(None, true)?;
+    /// // Load with automatic preset detection
+    /// let config = VmConfig::load(None)?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    pub fn load(file: Option<PathBuf>, no_preset: bool) -> anyhow::Result<Self> {
-        crate::cli::load_and_merge_config(file, no_preset)
+    pub fn load(file: Option<PathBuf>) -> anyhow::Result<Self> {
+        crate::cli::load_and_merge_config(file)
     }
 
-    /// Load configuration with a specific preset override.
-    ///
-    /// This allows forcing a specific preset regardless of auto-detection results.
-    /// Useful when you want to use a particular preset that might not be
-    /// automatically detected, or when overriding the detection logic.
-    ///
-    /// # Arguments
-    /// * `file` - Optional path to configuration file
-    /// * `preset_name` - Name of the preset to force (e.g., "react", "python")
-    ///
-    /// # Returns
-    /// A fully merged and validated `VmConfig` with the specified preset applied
-    ///
-    /// # Errors
-    /// Returns an error if:
-    /// - The specified preset cannot be found
-    /// - Configuration merging fails
-    /// - Final configuration is invalid
-    ///
-    /// # Examples
-    /// ```rust,no_run
-    /// use vm_config::config::VmConfig;
-    /// use std::path::PathBuf;
-    ///
-    /// // Force React preset
-    /// let config = VmConfig::load_with_preset(
-    ///     Some(PathBuf::from("vm.yaml")),
-    ///     "react".to_string()
-    /// )?;
-    /// # Ok::<(), Box<dyn std::error::Error>>(())
-    /// ```
-    pub fn load_with_preset(file: Option<PathBuf>, preset_name: String) -> anyhow::Result<Self> {
-        crate::cli::load_and_merge_config_with_preset(file, preset_name)
-    }
 
     /// Load configuration directly from a YAML file.
     ///

@@ -76,7 +76,7 @@ mod config_ops_tests {
 
     #[test]
     fn test_local_config_set_and_get() -> Result<()> {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = TEST_MUTEX.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let fixture = SimpleTestFixture::new()?;
         fixture.set_working_dir()?;
 
@@ -113,7 +113,7 @@ mod config_ops_tests {
 
     #[test]
     fn test_global_config_operations() -> Result<()> {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = TEST_MUTEX.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let fixture = SimpleTestFixture::new()?;
         fixture.set_working_dir()?;
 
@@ -150,7 +150,7 @@ mod config_ops_tests {
 
     #[test]
     fn test_config_clear() -> Result<()> {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = TEST_MUTEX.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let fixture = SimpleTestFixture::new()?;
         fixture.set_working_dir()?;
 
@@ -173,12 +173,15 @@ mod config_ops_tests {
 
     #[test]
     fn test_preset_application() -> Result<()> {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = TEST_MUTEX.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let fixture = SimpleTestFixture::new()?;
         fixture.set_working_dir()?;
 
         // Create a test preset
         let test_preset = r#"
+preset:
+  name: test-preset
+  description: Test preset for unit tests
 services:
   redis:
     enabled: true
@@ -210,7 +213,7 @@ vm:
 
     #[test]
     fn test_dot_notation_access() -> Result<()> {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = TEST_MUTEX.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let fixture = SimpleTestFixture::new()?;
         fixture.set_working_dir()?;
 
@@ -246,7 +249,7 @@ vm:
 
     #[test]
     fn test_error_handling() -> Result<()> {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = TEST_MUTEX.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let fixture = SimpleTestFixture::new()?;
         fixture.set_working_dir()?;
 
@@ -262,7 +265,9 @@ vm:
         // Test applying non-existent preset
         let result = ConfigOps::preset("nonexistent-preset", false, false, None);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("not found"));
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Failed to load preset") || err_msg.contains("not found"),
+                "Expected error message about failed preset loading, got: {}", err_msg);
 
         Ok(())
     }
