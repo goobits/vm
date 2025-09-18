@@ -81,11 +81,13 @@ impl LogConfig {
         {
             "console" => LogOutput::Console,
             "file" => {
-                let filename = std::env::var("LOG_FILE").unwrap_or_else(|_| "vm-tool.log".to_string());
+                let filename =
+                    std::env::var("LOG_FILE").unwrap_or_else(|_| "vm-tool.log".to_string());
                 LogOutput::File(filename)
             }
             "both" => {
-                let filename = std::env::var("LOG_FILE").unwrap_or_else(|_| "vm-tool.log".to_string());
+                let filename =
+                    std::env::var("LOG_FILE").unwrap_or_else(|_| "vm-tool.log".to_string());
                 LogOutput::Both(
                     Box::new(LogOutput::Console),
                     Box::new(LogOutput::File(filename)),
@@ -122,9 +124,7 @@ impl LogConfig {
 
                 // Check if value contains wildcards
                 let (pattern_value, regex) = if value.contains('*') || value.contains('?') {
-                    let regex_pattern = value
-                        .replace('*', ".*")
-                        .replace('?', ".");
+                    let regex_pattern = value.replace('*', ".*").replace('?', ".");
                     let regex_pattern = format!("^{}$", regex_pattern);
                     match Regex::new(&regex_pattern) {
                         Ok(regex) => (Some(value.to_string()), Some(regex)),
@@ -270,7 +270,12 @@ impl log::Log for StructuredLogger {
 impl StructuredLogger {
     /// Create a structured log entry with context injection
     #[must_use = "log entry should be written to output"]
-    fn create_log_entry(&self, record: &Record, context: &Map<String, Value>, _format: &LogFormat) -> Map<String, Value> {
+    fn create_log_entry(
+        &self,
+        record: &Record,
+        context: &Map<String, Value>,
+        _format: &LogFormat,
+    ) -> Map<String, Value> {
         let mut log_entry = Map::new();
 
         // Core log fields
@@ -335,33 +340,30 @@ impl StructuredLogger {
     #[must_use = "formatted log entry should be written to output"]
     fn format_log_entry(&self, entry: &Map<String, Value>, format: &LogFormat) -> String {
         match format {
-            LogFormat::Json => {
-                serde_json::to_string(entry).unwrap_or_else(|_| "{}".to_string())
-            }
-            LogFormat::Human | LogFormat::Auto => {
-                self.format_human_readable(entry)
-            }
+            LogFormat::Json => serde_json::to_string(entry).unwrap_or_else(|_| "{}".to_string()),
+            LogFormat::Human | LogFormat::Auto => self.format_human_readable(entry),
         }
     }
 
     /// Format log entry in human-readable format
     #[must_use = "formatted log entry should be written to output"]
     fn format_human_readable(&self, entry: &Map<String, Value>) -> String {
-        let timestamp = entry.get("timestamp")
+        let timestamp = entry
+            .get("timestamp")
             .and_then(|v| v.as_str())
             .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
             .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
             .unwrap_or_else(|| "unknown".to_string());
 
-        let level = entry.get("level")
+        let level = entry
+            .get("level")
             .and_then(|v| v.as_str())
             .unwrap_or("INFO");
 
-        let message = entry.get("message")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let message = entry.get("message").and_then(|v| v.as_str()).unwrap_or("");
 
-        let module = entry.get("module")
+        let module = entry
+            .get("module")
             .and_then(|v| v.as_str())
             .map(|m| format!(" [{}]", m))
             .unwrap_or_default();
@@ -369,7 +371,10 @@ impl StructuredLogger {
         // Add context fields if present
         let mut context_parts = Vec::new();
         for (key, value) in entry {
-            if !matches!(key.as_str(), "timestamp" | "level" | "message" | "module" | "file" | "line") {
+            if !matches!(
+                key.as_str(),
+                "timestamp" | "level" | "message" | "module" | "file" | "line"
+            ) {
                 if let Some(str_val) = value.as_str() {
                     context_parts.push(format!("{}={}", key, str_val));
                 } else {
@@ -384,7 +389,10 @@ impl StructuredLogger {
             format!(" [{}]", context_parts.join(", "))
         };
 
-        format!("[{}] {}{}: {}{}", timestamp, level, module, message, context_str)
+        format!(
+            "[{}] {}{}: {}{}",
+            timestamp, level, module, message, context_str
+        )
     }
 
     /// Write to console (stdout for info/debug, stderr for warn/error)
@@ -403,10 +411,7 @@ impl StructuredLogger {
     #[must_use = "file write results should be checked"]
     fn write_to_file(&self, formatted: &str, path: &str) -> io::Result<()> {
         use std::fs::OpenOptions;
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)?;
+        let mut file = OpenOptions::new().create(true).append(true).open(path)?;
         writeln!(file, "{}", formatted)?;
         file.flush()?;
         Ok(())

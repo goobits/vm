@@ -1,8 +1,8 @@
 use anyhow::Result;
 use std::path::PathBuf;
 
-use crate::cli::formatting::output_shell_exports;
 use super::validation::load_and_merge_config;
+use crate::cli::formatting::output_shell_exports;
 use serde_yaml_ng as serde_yaml;
 
 pub fn execute_dump(file: Option<PathBuf>) -> Result<()> {

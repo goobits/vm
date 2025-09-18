@@ -203,8 +203,7 @@ impl Provider for TartProvider {
 
     fn get_sync_directory(&self) -> String {
         // Return workspace_path from config
-        self
-            .config
+        self.config
             .project
             .as_ref()
             .and_then(|p| p.workspace_path.as_deref())

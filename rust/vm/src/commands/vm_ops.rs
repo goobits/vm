@@ -8,8 +8,8 @@ use anyhow::Result;
 use log::{debug, info, warn};
 
 // Internal imports
-use vm_common::vm_error;
 use vm_common::scoped_context;
+use vm_common::vm_error;
 use vm_config::config::VmConfig;
 use vm_provider::{
     progress::{confirm_prompt, ProgressReporter, StatusFormatter},

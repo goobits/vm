@@ -4,13 +4,13 @@
 //! eliminating the need for scattered `#[cfg]` conditionals throughout the codebase.
 //! All platform differences are encapsulated in trait implementations.
 
-pub mod traits;
 pub mod providers;
 pub mod registry;
+pub mod traits;
 
 // Re-export commonly used items
-pub use traits::{PlatformProvider, ShellProvider, ProcessProvider};
 pub use registry::PlatformRegistry;
+pub use traits::{PlatformProvider, ProcessProvider, ShellProvider};
 
 /// Get the current platform provider
 pub fn current() -> std::sync::Arc<dyn PlatformProvider> {

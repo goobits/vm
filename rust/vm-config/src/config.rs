@@ -538,7 +538,6 @@ impl VmConfig {
         crate::cli::load_and_merge_config(file)
     }
 
-
     /// Load configuration directly from a YAML file.
     ///
     /// This is a low-level loading function that reads and parses a single

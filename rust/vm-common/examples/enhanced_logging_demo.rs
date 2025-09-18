@@ -8,13 +8,9 @@
 
 use log::{debug, error, info, warn};
 use vm_common::{
-    log_context,
-    module_logger::get_logger,
-    module_logger_context,
-    output_macros::init_structured_output,
-    scoped_context,
-    structured_log::LogConfig,
-    vm_error, vm_progress, vm_success, vm_warning,
+    log_context, module_logger::get_logger, module_logger_context,
+    output_macros::init_structured_output, scoped_context, structured_log::LogConfig, vm_error,
+    vm_progress, vm_success, vm_warning,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -147,7 +143,9 @@ fn demo_environment_config() {
     println!("To test different configurations, try:");
     println!("  LOG_LEVEL=DEBUG cargo run --example enhanced_logging_demo");
     println!("  LOG_FORMAT=json cargo run --example enhanced_logging_demo");
-    println!("  LOG_TAGS=component:docker,operation:create* cargo run --example enhanced_logging_demo");
+    println!(
+        "  LOG_TAGS=component:docker,operation:create* cargo run --example enhanced_logging_demo"
+    );
     println!("  LOG_OUTPUT=file LOG_FILE=demo.log cargo run --example enhanced_logging_demo");
     println!();
 }

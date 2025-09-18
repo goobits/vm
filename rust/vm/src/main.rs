@@ -4,8 +4,8 @@ use uuid::Uuid;
 // External crates
 use anyhow::Result;
 use clap::Parser;
-use log::info;
 use lazy_static::lazy_static;
+use log::info;
 
 // Internal imports
 use vm_common::scoped_context;

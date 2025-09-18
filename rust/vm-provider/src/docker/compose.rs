@@ -8,7 +8,9 @@ use tera::Context as TeraContext;
 
 // Internal imports
 use super::build::BuildOperations;
-use super::host_packages::{detect_packages, get_package_env_vars, get_volume_mounts, PackageManager};
+use super::host_packages::{
+    detect_packages, get_package_env_vars, get_volume_mounts, PackageManager,
+};
 use super::{ComposeCommand, UserConfig};
 use crate::{command_stream::stream_command, TempVmState};
 use vm_config::config::VmConfig;
@@ -27,7 +29,6 @@ impl<'a> ComposeOperations<'a> {
             project_dir,
         }
     }
-
 
     #[allow(dead_code)]
     pub fn load_docker_compose_template() -> Result<String> {
@@ -62,38 +63,55 @@ impl<'a> ComposeOperations<'a> {
         let mut host_info = super::host_packages::HostPackageInfo::new();
 
         // Check pip packages only if pip linking is enabled
-        if self.config.package_linking.as_ref().is_some_and(|p| p.pip) && !self.config.pip_packages.is_empty() {
+        if self.config.package_linking.as_ref().is_some_and(|p| p.pip)
+            && !self.config.pip_packages.is_empty()
+        {
             if let Ok(pip_info) = detect_packages(&self.config.pip_packages, PackageManager::Pip) {
                 host_info.pip_site_packages = pip_info.pip_site_packages;
                 host_info.pipx_base_dir = pip_info.pipx_base_dir;
 
                 // Include all detected pip packages for host mounting
-                host_info.detected_packages.extend(pip_info.detected_packages);
+                host_info
+                    .detected_packages
+                    .extend(pip_info.detected_packages);
             }
         }
 
         // Check npm packages only if npm linking is enabled
-        if self.config.package_linking.as_ref().is_some_and(|p| p.npm) && !self.config.npm_packages.is_empty() {
+        if self.config.package_linking.as_ref().is_some_and(|p| p.npm)
+            && !self.config.npm_packages.is_empty()
+        {
             if let Ok(npm_info) = detect_packages(&self.config.npm_packages, PackageManager::Npm) {
                 host_info.npm_global_dir = npm_info.npm_global_dir;
                 host_info.npm_local_dir = npm_info.npm_local_dir;
-                host_info.detected_packages.extend(npm_info.detected_packages);
+                host_info
+                    .detected_packages
+                    .extend(npm_info.detected_packages);
             }
         }
 
         // Check cargo packages only if cargo linking is enabled
-        if self.config.package_linking.as_ref().is_some_and(|p| p.cargo) && !self.config.cargo_packages.is_empty() {
-            if let Ok(cargo_info) = detect_packages(&self.config.cargo_packages, PackageManager::Cargo) {
+        if self
+            .config
+            .package_linking
+            .as_ref()
+            .is_some_and(|p| p.cargo)
+            && !self.config.cargo_packages.is_empty()
+        {
+            if let Ok(cargo_info) =
+                detect_packages(&self.config.cargo_packages, PackageManager::Cargo)
+            {
                 host_info.cargo_registry = cargo_info.cargo_registry;
                 host_info.cargo_bin = cargo_info.cargo_bin;
-                host_info.detected_packages.extend(cargo_info.detected_packages);
+                host_info
+                    .detected_packages
+                    .extend(cargo_info.detected_packages);
             }
         }
 
         // Get volume mounts and environment variables
         let host_mounts = get_volume_mounts(&host_info);
         let host_env_vars = get_package_env_vars(&host_info);
-
 
         let mut context = TeraContext::new();
         context.insert("config", &self.config);

@@ -3,12 +3,12 @@
 //! macOS is Unix-like but has some specific differences in directory locations
 //! and system information gathering.
 
-use crate::traits::{PlatformProvider, ShellProvider, ProcessProvider};
-use crate::providers::shells::{BashShell, ZshShell, FishShell};
+use crate::providers::shells::{BashShell, FishShell, ZshShell};
+use crate::traits::{PlatformProvider, ProcessProvider, ShellProvider};
 use anyhow::{Context, Result};
+use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::env;
 
 /// macOS platform provider
 pub struct MacOSPlatform;
@@ -81,20 +81,17 @@ impl PlatformProvider for MacOSPlatform {
     }
 
     fn install_executable(&self, source: &Path, dest_dir: &Path, name: &str) -> Result<()> {
-        std::fs::create_dir_all(dest_dir)
-            .context("Failed to create destination directory")?;
+        std::fs::create_dir_all(dest_dir).context("Failed to create destination directory")?;
 
         let dest = dest_dir.join(name);
 
         // Remove existing file/symlink if it exists
         if dest.exists() || dest.is_symlink() {
-            std::fs::remove_file(&dest)
-                .context("Failed to remove existing file/symlink")?;
+            std::fs::remove_file(&dest).context("Failed to remove existing file/symlink")?;
         }
 
         // Create symlink
-        std::os::unix::fs::symlink(source, &dest)
-            .context("Failed to create symlink")?;
+        std::os::unix::fs::symlink(source, &dest).context("Failed to create symlink")?;
 
         Ok(())
     }
@@ -116,7 +113,10 @@ impl PlatformProvider for MacOSPlatform {
 
     fn npm_global_dir(&self) -> Result<Option<PathBuf>> {
         // Try to get npm global directory
-        if let Ok(output) = Command::new("npm").args(["config", "get", "prefix"]).output() {
+        if let Ok(output) = Command::new("npm")
+            .args(["config", "get", "prefix"])
+            .output()
+        {
             if output.status.success() {
                 let prefix_str = String::from_utf8_lossy(&output.stdout);
                 let prefix = prefix_str.trim();
@@ -160,7 +160,10 @@ impl PlatformProvider for MacOSPlatform {
 
         for cmd in &python_commands {
             if let Ok(output) = Command::new(cmd)
-                .args(["-c", "import site; print('\\n'.join(site.getsitepackages()))"])
+                .args([
+                    "-c",
+                    "import site; print('\\n'.join(site.getsitepackages()))",
+                ])
                 .output()
             {
                 if output.status.success() {

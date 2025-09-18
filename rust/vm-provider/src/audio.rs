@@ -1,9 +1,9 @@
 #[cfg(target_os = "macos")]
 use anyhow::{Context, Result};
 #[cfg(target_os = "macos")]
-use vm_common::vm_error;
-#[cfg(target_os = "macos")]
 use std::process::{Command, Stdio};
+#[cfg(target_os = "macos")]
+use vm_common::vm_error;
 
 #[cfg(target_os = "macos")]
 /// Manages PulseAudio server on macOS for container audio.

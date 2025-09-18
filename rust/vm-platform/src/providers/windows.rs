@@ -1,12 +1,12 @@
 //! Windows platform provider implementation.
 
-use crate::traits::{PlatformProvider, ShellProvider, ProcessProvider};
-use crate::providers::shells::{PowerShell, CmdShell};
+use crate::providers::shells::{CmdShell, PowerShell};
+use crate::traits::{PlatformProvider, ProcessProvider, ShellProvider};
 use anyhow::{Context, Result};
-use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::env;
 use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 /// Windows platform provider
 pub struct WindowsPlatform;
@@ -83,37 +83,32 @@ impl PlatformProvider for WindowsPlatform {
     }
 
     fn install_executable(&self, source: &Path, dest_dir: &Path, name: &str) -> Result<()> {
-        fs::create_dir_all(dest_dir)
-            .context("Failed to create destination directory")?;
+        fs::create_dir_all(dest_dir).context("Failed to create destination directory")?;
 
         let exe_name = self.executable_name(name);
         let dest = dest_dir.join(&exe_name);
 
         // Remove existing file if it exists
         if dest.exists() {
-            fs::remove_file(&dest)
-                .context("Failed to remove existing executable")?;
+            fs::remove_file(&dest).context("Failed to remove existing executable")?;
         }
 
         // Copy the executable
-        fs::copy(source, &dest)
-            .context("Failed to copy executable")?;
+        fs::copy(source, &dest).context("Failed to copy executable")?;
 
         // Create a batch file wrapper for better PATH integration
         let bat_name = format!("{}.bat", name);
         let bat_path = dest_dir.join(bat_name);
         let bat_content = format!("@echo off\n\"{}\" %*", dest.display());
 
-        fs::write(&bat_path, bat_content)
-            .context("Failed to create batch wrapper")?;
+        fs::write(&bat_path, bat_content).context("Failed to create batch wrapper")?;
 
         // Also create a PowerShell wrapper
         let ps1_name = format!("{}.ps1", name);
         let ps1_path = dest_dir.join(ps1_name);
         let ps1_content = format!("& \"{}\" @args", dest.display());
 
-        fs::write(&ps1_path, ps1_content)
-            .context("Failed to create PowerShell wrapper")?;
+        fs::write(&ps1_path, ps1_content).context("Failed to create PowerShell wrapper")?;
 
         Ok(())
     }
@@ -135,7 +130,10 @@ impl PlatformProvider for WindowsPlatform {
 
     fn npm_global_dir(&self) -> Result<Option<PathBuf>> {
         // Try to get npm global directory
-        if let Ok(output) = Command::new("npm").args(["config", "get", "prefix"]).output() {
+        if let Ok(output) = Command::new("npm")
+            .args(["config", "get", "prefix"])
+            .output()
+        {
             if output.status.success() {
                 let prefix_str = String::from_utf8_lossy(&output.stdout);
                 let prefix = prefix_str.trim();
@@ -144,12 +142,15 @@ impl PlatformProvider for WindowsPlatform {
         }
 
         // Fallback to common Windows npm locations
-        let appdata = dirs::data_dir()
-            .context("Could not determine app data directory")?;
+        let appdata = dirs::data_dir().context("Could not determine app data directory")?;
 
         let candidates = [
             appdata.join("npm").join("node_modules"),
-            self.home_dir()?.join("AppData").join("Roaming").join("npm").join("node_modules"),
+            self.home_dir()?
+                .join("AppData")
+                .join("Roaming")
+                .join("npm")
+                .join("node_modules"),
         ];
 
         for candidate in &candidates {
@@ -186,7 +187,10 @@ impl PlatformProvider for WindowsPlatform {
 
         for cmd in &python_commands {
             if let Ok(output) = Command::new(cmd)
-                .args(["-c", "import site; print('\\n'.join(site.getsitepackages()))"])
+                .args([
+                    "-c",
+                    "import site; print('\\n'.join(site.getsitepackages()))",
+                ])
                 .output()
             {
                 if output.status.success() {

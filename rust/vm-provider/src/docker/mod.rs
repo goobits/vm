@@ -18,7 +18,9 @@ use anyhow::{Context, Result};
 use tera::Tera;
 
 // Internal imports
-use crate::{error::ProviderError, preflight, command_stream::is_tool_installed, Provider, TempProvider};
+use crate::{
+    command_stream::is_tool_installed, error::ProviderError, preflight, Provider, TempProvider,
+};
 use vm_config::config::VmConfig;
 
 /// Container user and permission configuration

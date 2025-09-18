@@ -59,7 +59,10 @@ pub fn load_and_merge_config(file: Option<PathBuf>) -> Result<VmConfig> {
 
     // 3. Determine project directory for preset detection
     let project_dir = match user_config_path {
-        Some(ref path) => path.parent().unwrap_or_else(|| Path::new(".")).to_path_buf(),
+        Some(ref path) => path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf(),
         None => std::env::current_dir()?,
     };
 
@@ -114,4 +117,3 @@ pub fn load_and_merge_config(file: Option<PathBuf>) -> Result<VmConfig> {
 
     Ok(merged)
 }
-

@@ -1,11 +1,11 @@
 //! Unix platform provider implementation.
 
-use crate::traits::{PlatformProvider, ShellProvider, ProcessProvider};
-use crate::providers::shells::{BashShell, ZshShell, FishShell};
+use crate::providers::shells::{BashShell, FishShell, ZshShell};
+use crate::traits::{PlatformProvider, ProcessProvider, ShellProvider};
 use anyhow::{Context, Result};
+use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::env;
 
 /// Unix platform provider (Linux and other Unix-like systems)
 pub struct UnixPlatform;
@@ -78,20 +78,17 @@ impl PlatformProvider for UnixPlatform {
     }
 
     fn install_executable(&self, source: &Path, dest_dir: &Path, name: &str) -> Result<()> {
-        std::fs::create_dir_all(dest_dir)
-            .context("Failed to create destination directory")?;
+        std::fs::create_dir_all(dest_dir).context("Failed to create destination directory")?;
 
         let dest = dest_dir.join(name);
 
         // Remove existing file/symlink if it exists
         if dest.exists() || dest.is_symlink() {
-            std::fs::remove_file(&dest)
-                .context("Failed to remove existing file/symlink")?;
+            std::fs::remove_file(&dest).context("Failed to remove existing file/symlink")?;
         }
 
         // Create symlink
-        std::os::unix::fs::symlink(source, &dest)
-            .context("Failed to create symlink")?;
+        std::os::unix::fs::symlink(source, &dest).context("Failed to create symlink")?;
 
         Ok(())
     }
@@ -113,7 +110,10 @@ impl PlatformProvider for UnixPlatform {
 
     fn npm_global_dir(&self) -> Result<Option<PathBuf>> {
         // Try to get npm global directory
-        if let Ok(output) = Command::new("npm").args(["config", "get", "prefix"]).output() {
+        if let Ok(output) = Command::new("npm")
+            .args(["config", "get", "prefix"])
+            .output()
+        {
             if output.status.success() {
                 let prefix_str = String::from_utf8_lossy(&output.stdout);
                 let prefix = prefix_str.trim();
@@ -156,7 +156,10 @@ impl PlatformProvider for UnixPlatform {
 
         for cmd in &python_commands {
             if let Ok(output) = Command::new(cmd)
-                .args(["-c", "import site; print('\\n'.join(site.getsitepackages()))"])
+                .args([
+                    "-c",
+                    "import site; print('\\n'.join(site.getsitepackages()))",
+                ])
                 .output()
             {
                 if output.status.success() {
@@ -190,7 +193,7 @@ impl PlatformProvider for UnixPlatform {
 
     fn total_memory_gb(&self) -> Result<u64> {
         // Try reading from /proc/meminfo first (Linux)
-        if let Some(memory_gb) = parse_memory_from_proc_meminfo()? {
+        if let Some(memory_gb) = parse_memory_from_proc_meminfo() {
             return Ok(memory_gb);
         }
 
@@ -240,10 +243,10 @@ impl ProcessProvider for UnixProcessProvider {
 }
 
 /// Parse memory from /proc/meminfo, returning memory in GB
-fn parse_memory_from_proc_meminfo() -> Result<Option<u64>> {
+fn parse_memory_from_proc_meminfo() -> Option<u64> {
     let meminfo = match std::fs::read_to_string("/proc/meminfo") {
         Ok(content) => content,
-        Err(_) => return Ok(None),
+        Err(_) => return None,
     };
 
     for line in meminfo.lines() {
@@ -261,10 +264,10 @@ fn parse_memory_from_proc_meminfo() -> Result<Option<u64>> {
             Err(_) => continue,
         };
 
-        return Ok(Some(mem_kb / 1024 / 1024)); // Convert KB to GB
+        return Some(mem_kb / 1024 / 1024); // Convert KB to GB
     }
 
-    Ok(None)
+    None
 }
 
 /// Helper function to add unique site packages from command output

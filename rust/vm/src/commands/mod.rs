@@ -4,7 +4,7 @@ use anyhow::Result;
 use log::debug;
 // Import the CLI types
 use crate::cli::{Args, Command};
-use vm_common::{log_context, vm_println, vm_error};
+use vm_common::{log_context, vm_error, vm_println};
 use vm_config::{config::VmConfig, init_config_file};
 use vm_provider::get_provider;
 

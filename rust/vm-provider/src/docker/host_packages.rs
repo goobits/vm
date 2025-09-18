@@ -1,8 +1,8 @@
 // Host package detection for all package managers
+use anyhow::Result;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use anyhow::Result;
 
 #[derive(Debug, Clone)]
 pub enum PackageLocation {
@@ -62,10 +62,7 @@ impl HostPackageInfo {
 ///
 /// # Returns
 /// * `Result<HostPackageInfo>` - Information about detected packages and their locations
-pub fn detect_packages(
-    packages: &[String],
-    manager: PackageManager
-) -> Result<HostPackageInfo> {
+pub fn detect_packages(packages: &[String], manager: PackageManager) -> Result<HostPackageInfo> {
     let mut info = HostPackageInfo::new();
 
     // Detect package manager directories
@@ -74,15 +71,9 @@ pub fn detect_packages(
     // Check each package based on manager type
     for package in packages {
         let location = match manager {
-            PackageManager::Pip | PackageManager::Pipx => {
-                detect_python_package(package, &info)
-            },
-            PackageManager::Npm => {
-                detect_npm_package(package, &info)
-            },
-            PackageManager::Cargo => {
-                detect_cargo_package(package, &info)
-            },
+            PackageManager::Pip | PackageManager::Pipx => detect_python_package(package, &info),
+            PackageManager::Npm => detect_npm_package(package, &info),
+            PackageManager::Cargo => detect_cargo_package(package, &info),
         };
         info.detected_packages.insert(package.clone(), location);
     }
@@ -105,7 +96,12 @@ fn detect_package_directories(info: &mut HostPackageInfo) {
         }
     }
 
-    if let Ok(output) = Command::new("pipx").arg("environment").arg("--value").arg("PIPX_HOME").output() {
+    if let Ok(output) = Command::new("pipx")
+        .arg("environment")
+        .arg("--value")
+        .arg("PIPX_HOME")
+        .output()
+    {
         if output.status.success() {
             let path = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
             let pipx_venvs = path.join("venvs");
@@ -116,10 +112,7 @@ fn detect_package_directories(info: &mut HostPackageInfo) {
     }
 
     // NPM directories
-    if let Ok(output) = Command::new("npm")
-        .args(["root", "-g"])
-        .output()
-    {
+    if let Ok(output) = Command::new("npm").args(["root", "-g"]).output() {
         if output.status.success() {
             let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
             info.npm_global_dir = Some(PathBuf::from(path));
@@ -222,10 +215,7 @@ fn detect_cargo_package(package: &str, info: &HostPackageInfo) -> PackageLocatio
     }
 
     // Check using cargo
-    if let Ok(output) = Command::new("cargo")
-        .args(["install", "--list"])
-        .output()
-    {
+    if let Ok(output) = Command::new("cargo").args(["install", "--list"]).output() {
         if output.status.success() {
             let output_str = String::from_utf8_lossy(&output.stdout);
             if output_str.contains(package) {
@@ -261,10 +251,7 @@ fn check_pip_package(package: &str, site_packages: &Path) -> bool {
 /// Check if package exists in pipx and return its path
 fn check_pipx_package(package: &str, pipx_base: &Path) -> Option<PathBuf> {
     // Check using pipx list
-    if let Ok(output) = Command::new("pipx")
-        .args(["list", "--short"])
-        .output()
-    {
+    if let Ok(output) = Command::new("pipx").args(["list", "--short"]).output() {
         if output.status.success() {
             let output_str = String::from_utf8_lossy(&output.stdout);
             if output_str.contains(package) {
@@ -297,7 +284,9 @@ fn is_docker_accessible(path: &Path) -> bool {
         "/private/var/folders/", // Temp directories
     ];
 
-    let is_accessible = shared_prefixes.iter().any(|prefix| path_str.starts_with(prefix));
+    let is_accessible = shared_prefixes
+        .iter()
+        .any(|prefix| path_str.starts_with(prefix));
     is_accessible
 }
 
@@ -330,12 +319,20 @@ pub fn get_volume_mounts(info: &HostPackageInfo) -> Vec<(PathBuf, String)> {
             // For pipx, mount the specific package directory.
             PackageLocation::HostPipx(path) => {
                 let container_path = format!("/host/pipx/{}", package_name);
-                try_add_mount(path, &container_path, &format!("pipx package ({})", package_name));
+                try_add_mount(
+                    path,
+                    &container_path,
+                    &format!("pipx package ({})", package_name),
+                );
             }
             // For npm, mount the specific package directory.
             PackageLocation::HostNpm(path) => {
                 let container_path = format!("/host/npm/{}", package_name);
-                try_add_mount(path, &container_path, &format!("npm package ({})", package_name));
+                try_add_mount(
+                    path,
+                    &container_path,
+                    &format!("npm package ({})", package_name),
+                );
             }
             // For cargo, we mount the ~/.cargo/bin directory. Do it only once.
             PackageLocation::HostCargo(path) => {
@@ -358,12 +355,15 @@ pub fn get_volume_mounts(info: &HostPackageInfo) -> Vec<(PathBuf, String)> {
         try_add_mount(cargo_registry, "/host/cargo/registry", "cargo registry");
     }
 
-
     // Log warnings for skipped paths
     if !skipped_paths.is_empty() {
         eprintln!("⚠️  Skipping host package mounts (not shared with Docker):");
         for (path, package_type) in skipped_paths {
-            eprintln!("   {} ({}): Add to Docker Desktop File Sharing to enable", package_type, path.display());
+            eprintln!(
+                "   {} ({}): Add to Docker Desktop File Sharing to enable",
+                package_type,
+                path.display()
+            );
         }
         eprintln!("   💡 To enable: Docker Desktop → Settings → Resources → File Sharing");
     }
@@ -386,7 +386,10 @@ pub fn get_package_env_vars(info: &HostPackageInfo) -> Vec<(String, String)> {
 
     // NPM package environment variables
     if info.npm_global_dir.is_some() {
-        env_vars.push(("HOST_NPM_GLOBAL".to_string(), "/host/npm/global".to_string()));
+        env_vars.push((
+            "HOST_NPM_GLOBAL".to_string(),
+            "/host/npm/global".to_string(),
+        ));
     }
 
     if info.npm_local_dir.is_some() {
@@ -395,7 +398,10 @@ pub fn get_package_env_vars(info: &HostPackageInfo) -> Vec<(String, String)> {
 
     // Cargo package environment variables
     if info.cargo_registry.is_some() {
-        env_vars.push(("HOST_CARGO_REGISTRY".to_string(), "/host/cargo/registry".to_string()));
+        env_vars.push((
+            "HOST_CARGO_REGISTRY".to_string(),
+            "/host/cargo/registry".to_string(),
+        ));
     }
 
     if info.cargo_bin.is_some() {

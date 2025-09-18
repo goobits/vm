@@ -8,10 +8,7 @@ use crate::commands::config;
 use vm_provider::get_provider;
 
 /// Handle temporary VM commands
-pub fn handle_temp_command(
-    command: &TempSubcommand,
-    config_file: Option<PathBuf>,
-) -> Result<()> {
+pub fn handle_temp_command(command: &TempSubcommand, config_file: Option<PathBuf>) -> Result<()> {
     use vm_temp::TempVmOps;
 
     // For temp commands, we need a provider, but the config might not exist.

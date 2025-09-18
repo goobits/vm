@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 // External crates
 use anyhow::{Context, Result};
-use vm_common::{vm_success, vm_error};
+use vm_common::{vm_error, vm_success};
 
 // Internal imports
 use crate::{MountParser, MountPermission, StateManager, TempVmState};

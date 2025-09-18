@@ -68,7 +68,8 @@ impl VersionSync {
         vec![
             self.project_root.join("rust/Cargo.toml"),
             self.project_root.join("defaults.yaml"),
-            self.project_root.join("rust/version-sync/fixtures/config.yaml"),
+            self.project_root
+                .join("rust/version-sync/fixtures/config.yaml"),
             self.project_root.join("rust/version-sync/fixtures/vm.yaml"),
         ]
     }
@@ -85,7 +86,8 @@ impl VersionSync {
             .expect("Invalid regex pattern for version detection");
 
         if let Some(captures) = version_regex.captures(&content) {
-            let current_version = captures.get(1)
+            let current_version = captures
+                .get(1)
                 .expect("Regex should have captured version group")
                 .as_str();
             if current_version == self.package_version {

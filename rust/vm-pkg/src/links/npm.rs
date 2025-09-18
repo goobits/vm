@@ -1,9 +1,9 @@
 use anyhow::Result;
-use vm_common::vm_error;
 use rayon::prelude::*;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use vm_common::vm_error;
 
 pub fn detect_npm_packages(packages: &[String]) -> Vec<(String, String)> {
     let mut results = Vec::new();
@@ -25,7 +25,8 @@ pub fn detect_npm_packages(packages: &[String]) -> Vec<(String, String)> {
 
     // Check NVM directories in parallel
     if let Some(nvm_dir) = get_nvm_versions_dir() {
-        let nvm_detections = check_nvm_directories(&nvm_dir, &package_set, &found_packages).unwrap_or_else(|_| Vec::new());
+        let nvm_detections = check_nvm_directories(&nvm_dir, &package_set, &found_packages)
+            .unwrap_or_else(|_| Vec::new());
         for (package, path) in nvm_detections {
             if !found_packages.contains(&package) {
                 results.push((package.clone(), path));
@@ -67,7 +68,11 @@ fn get_nvm_versions_dir() -> Option<PathBuf> {
 }
 
 /// Helper function to check if a symlink points to a valid package
-fn check_symlink_package(link_path: &Path, base_path: &Path, package: &str) -> Option<(String, String)> {
+fn check_symlink_package(
+    link_path: &Path,
+    base_path: &Path,
+    package: &str,
+) -> Option<(String, String)> {
     if !link_path.is_symlink() {
         return None;
     }
@@ -84,16 +89,16 @@ fn check_symlink_package(link_path: &Path, base_path: &Path, package: &str) -> O
     // Canonicalize and check if path exists
     let canonical_path = absolute_target.canonicalize().ok()?;
     if canonical_path.exists() {
-        Some((package.to_string(), canonical_path.to_string_lossy().to_string()))
+        Some((
+            package.to_string(),
+            canonical_path.to_string_lossy().to_string(),
+        ))
     } else {
         None
     }
 }
 
-fn check_npm_directory(
-    npm_root: &Path,
-    package_set: &HashSet<&String>,
-) -> Vec<(String, String)> {
+fn check_npm_directory(npm_root: &Path, package_set: &HashSet<&String>) -> Vec<(String, String)> {
     let mut results = Vec::new();
 
     if !npm_root.exists() {

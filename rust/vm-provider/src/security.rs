@@ -116,7 +116,9 @@ impl SecurityValidator {
         // Check for path separators
         if filename.contains('/') || filename.contains('\\') {
             vm_error!("Script name cannot contain path separators: {}", filename);
-            return Err(anyhow::anyhow!("Script name cannot contain path separators"));
+            return Err(anyhow::anyhow!(
+                "Script name cannot contain path separators"
+            ));
         }
 
         // Check for dangerous characters
@@ -125,7 +127,9 @@ impl SecurityValidator {
                 "Script name cannot contain '..' or start with '.': {}",
                 filename
             );
-            return Err(anyhow::anyhow!("Script name cannot contain '..' or start with '.'"));
+            return Err(anyhow::anyhow!(
+                "Script name cannot contain '..' or start with '.'"
+            ));
         }
 
         // Only allow alphanumeric, dash, underscore, and dots (for extensions)

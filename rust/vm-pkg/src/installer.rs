@@ -29,7 +29,9 @@ fn validate_script_name(filename: &str) -> Result<()> {
     // Check for path separators
     if filename.contains('/') || filename.contains('\\') {
         vm_error!("Script name cannot contain path separators: {}", filename);
-        return Err(anyhow::anyhow!("Script name cannot contain path separators"));
+        return Err(anyhow::anyhow!(
+            "Script name cannot contain path separators"
+        ));
     }
 
     // Check for dangerous characters
@@ -38,7 +40,9 @@ fn validate_script_name(filename: &str) -> Result<()> {
             "Script name cannot contain '..' or start with '.': {}",
             filename
         );
-        return Err(anyhow::anyhow!("Script name cannot contain '..' or start with '.'"));
+        return Err(anyhow::anyhow!(
+            "Script name cannot contain '..' or start with '.'"
+        ));
     }
 
     // Only allow alphanumeric, dash, underscore
@@ -50,7 +54,9 @@ fn validate_script_name(filename: &str) -> Result<()> {
             "Script name can only contain alphanumeric characters, dashes, and underscores: {}",
             filename
         );
-        return Err(anyhow::anyhow!("Script name can only contain alphanumeric characters, dashes, and underscores"));
+        return Err(anyhow::anyhow!(
+            "Script name can only contain alphanumeric characters, dashes, and underscores"
+        ));
     }
 
     Ok(())

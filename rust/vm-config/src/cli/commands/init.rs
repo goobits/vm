@@ -1,16 +1,15 @@
 use crate::config::VmConfig;
 use anyhow::{Context, Result};
+use lazy_static::lazy_static;
 use regex::Regex;
 use serde_yaml_ng as serde_yaml;
 use std::path::PathBuf;
-use lazy_static::lazy_static;
 use vm_common::{vm_error, vm_success, vm_warning};
 
 // Compile regex patterns once at initialization for better performance
 lazy_static! {
     static ref INVALID_CHARS_RE: Regex =
         Regex::new(r"[^a-zA-Z0-9_-]").expect("Invalid regex pattern for sanitizing directory name");
-
     static ref CONSECUTIVE_HYPHENS_RE: Regex =
         Regex::new(r"-+").expect("Invalid regex pattern for removing consecutive hyphens");
 }

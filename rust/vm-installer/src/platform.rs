@@ -63,7 +63,9 @@ fn get_shell_profile() -> Result<Option<PathBuf>> {
 
         // Fallback to standard PowerShell location
         if let Some(docs) = dirs::document_dir() {
-            let ps_profile = docs.join("PowerShell").join("Microsoft.PowerShell_profile.ps1");
+            let ps_profile = docs
+                .join("PowerShell")
+                .join("Microsoft.PowerShell_profile.ps1");
             // Create the directory if it doesn't exist
             if let Some(parent) = ps_profile.parent() {
                 let _ = std::fs::create_dir_all(parent);
@@ -73,7 +75,10 @@ fn get_shell_profile() -> Result<Option<PathBuf>> {
 
         // If we can't find Documents, try WindowsPowerShell in Documents
         if let Some(home) = dirs::home_dir() {
-            let ps_profile = home.join("Documents").join("WindowsPowerShell").join("Microsoft.PowerShell_profile.ps1");
+            let ps_profile = home
+                .join("Documents")
+                .join("WindowsPowerShell")
+                .join("Microsoft.PowerShell_profile.ps1");
             if let Some(parent) = ps_profile.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
@@ -209,7 +214,8 @@ mod tests {
         std::fs::write(&fish_profile, "").expect("Failed to create fish profile");
 
         add_to_profile(&fish_profile, &bin_dir).expect("Failed to add to fish profile");
-        let fish_content = std::fs::read_to_string(&fish_profile).expect("Failed to read fish profile");
+        let fish_content =
+            std::fs::read_to_string(&fish_profile).expect("Failed to read fish profile");
 
         assert!(fish_content.contains(&format!("fish_add_path -p \"{}\"", bin_dir.display())));
     }

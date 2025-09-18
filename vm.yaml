@@ -37,6 +37,3 @@ terminal:
   show_timestamp: false
 claude_sync: true
 gemini_sync: true
-test_ordering:
-  provider_first: true
-  project_second: true

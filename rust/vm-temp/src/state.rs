@@ -363,8 +363,8 @@ impl Default for StateManager {
             Ok(manager) => manager,
             Err(_) => {
                 // Fallback to current directory if state directory creation fails
-                let fallback_dir = std::env::current_dir()
-                    .unwrap_or_else(|_| std::path::PathBuf::from("."));
+                let fallback_dir =
+                    std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
                 Self {
                     state_dir: fallback_dir.clone(),
                     state_file: fallback_dir.join(".vm_temp_state.yaml"),

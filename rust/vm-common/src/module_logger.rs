@@ -109,16 +109,25 @@ impl ModuleLogger {
     /// for the duration of the guard's lifetime.
     pub fn with_context(&self) -> ContextGuard {
         let mut context = Map::new();
-        context.insert("module".to_string(), Value::String(self.module_name.clone()));
+        context.insert(
+            "module".to_string(),
+            Value::String(self.module_name.clone()),
+        );
 
         // Extract component hierarchy for better filtering
         let parts: Vec<&str> = self.module_name.split("::").collect();
         if let Some(component) = parts.first() {
-            context.insert("component".to_string(), Value::String(component.to_string()));
+            context.insert(
+                "component".to_string(),
+                Value::String(component.to_string()),
+            );
         }
         if parts.len() > 1 {
             if let Some(subcomponent) = parts.get(1) {
-                context.insert("subcomponent".to_string(), Value::String(subcomponent.to_string()));
+                context.insert(
+                    "subcomponent".to_string(),
+                    Value::String(subcomponent.to_string()),
+                );
             }
         }
 
@@ -182,7 +191,9 @@ pub fn get_logger(module_name: &str) -> ModuleLogger {
     {
         let mut loggers = registry.lock().unwrap_or_else(|poisoned| {
             // If the mutex is poisoned, recover the data and continue
-            eprintln!("Warning: Module logger registry mutex was poisoned during insert, recovering...");
+            eprintln!(
+                "Warning: Module logger registry mutex was poisoned during insert, recovering..."
+            );
             poisoned.into_inner()
         });
         loggers.insert(module_name.to_string(), logger.clone());
@@ -325,10 +336,19 @@ mod tests {
 
     #[test]
     fn test_level_filter_parsing() {
-        assert_eq!(ModuleLogger::parse_level_filter("DEBUG"), LevelFilter::Debug);
-        assert_eq!(ModuleLogger::parse_level_filter("debug"), LevelFilter::Debug);
+        assert_eq!(
+            ModuleLogger::parse_level_filter("DEBUG"),
+            LevelFilter::Debug
+        );
+        assert_eq!(
+            ModuleLogger::parse_level_filter("debug"),
+            LevelFilter::Debug
+        );
         assert_eq!(ModuleLogger::parse_level_filter("INFO"), LevelFilter::Info);
-        assert_eq!(ModuleLogger::parse_level_filter("invalid"), LevelFilter::Info);
+        assert_eq!(
+            ModuleLogger::parse_level_filter("invalid"),
+            LevelFilter::Info
+        );
     }
 
     #[test]
@@ -356,9 +376,18 @@ mod tests {
         let _guard = logger.with_context();
 
         let context = log_context::current_context();
-        assert_eq!(context.get("module").unwrap().as_str(), Some("vm_provider::docker"));
-        assert_eq!(context.get("component").unwrap().as_str(), Some("vm_provider"));
-        assert_eq!(context.get("subcomponent").unwrap().as_str(), Some("docker"));
+        assert_eq!(
+            context.get("module").unwrap().as_str(),
+            Some("vm_provider::docker")
+        );
+        assert_eq!(
+            context.get("component").unwrap().as_str(),
+            Some("vm_provider")
+        );
+        assert_eq!(
+            context.get("subcomponent").unwrap().as_str(),
+            Some("docker")
+        );
     }
 
     #[test]

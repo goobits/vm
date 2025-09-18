@@ -36,11 +36,7 @@ impl LinkDetector {
     }
 
     /// Get the path to a linked package if it exists
-    pub fn get_linked_path(
-        &self,
-        package: &str,
-        manager: PackageManager,
-    ) -> Option<PathBuf> {
+    pub fn get_linked_path(&self, package: &str, manager: PackageManager) -> Option<PathBuf> {
         let links_dir = manager.links_dir(&self.user);
 
         // Direct package name check
@@ -62,10 +58,7 @@ impl LinkDetector {
     }
 
     /// List all linked packages for a manager (includes both controlled links and system links)
-    pub fn list_linked(
-        &self,
-        manager: Option<PackageManager>,
-    ) -> Vec<(PackageManager, String)> {
+    pub fn list_linked(&self, manager: Option<PackageManager>) -> Vec<(PackageManager, String)> {
         let mut results = Vec::new();
 
         let managers = match manager {

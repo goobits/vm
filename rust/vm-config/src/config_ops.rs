@@ -1,5 +1,5 @@
 //! Configuration management operations for VM Tool.
-//! 
+//!
 //! This module provides high-level operations for managing VM configuration files,
 //! including setting, getting, and unsetting configuration values using dot notation,
 //! applying presets, and managing configuration state with dry-run capabilities.
@@ -26,8 +26,8 @@ use vm_common::{vm_error, vm_warning};
 use vm_ports::PortRange;
 
 lazy_static! {
-    static ref PORT_PLACEHOLDER_RE: Regex = Regex::new(r"\$\{port\.(\d+)\}")
-        .expect("PORT_PLACEHOLDER_RE regex should be valid");
+    static ref PORT_PLACEHOLDER_RE: Regex =
+        Regex::new(r"\$\{port\.(\d+)\}").expect("PORT_PLACEHOLDER_RE regex should be valid");
 }
 
 /// Configuration operations for VM configuration management.
@@ -107,9 +107,9 @@ impl ConfigOps {
     /// ```
     pub fn set(field: &str, value: &str, global: bool, dry_run: bool) -> Result<()> {
         let config_path = if global {
-            get_or_create_global_config_path()? 
+            get_or_create_global_config_path()?
         } else {
-            find_or_create_local_config()? 
+            find_or_create_local_config()?
         };
 
         let mut yaml_value = if config_path.exists() {
@@ -252,7 +252,7 @@ impl ConfigOps {
 
         if !config_path.exists() {
             println!("No configuration file to clear");
-            return Ok(())
+            return Ok(());
         }
 
         fs::remove_file(&config_path)?;
@@ -273,7 +273,7 @@ impl ConfigOps {
             for preset in presets {
                 println!("  - {}", preset);
             }
-            return Ok(())
+            return Ok(());
         }
 
         // Handle show command
@@ -282,14 +282,14 @@ impl ConfigOps {
             let yaml = serde_yaml::to_string(&preset_config)?;
             println!("Preset '{}' configuration:", name);
             println!("{}", yaml);
-            return Ok(())
+            return Ok(());
         }
 
         // Apply preset(s)
         let config_path = if global {
-            get_or_create_global_config_path()? 
+            get_or_create_global_config_path()?
         } else {
-            find_or_create_local_config()? 
+            find_or_create_local_config()?
         };
 
         // Load existing config or create empty
@@ -306,7 +306,8 @@ impl ConfigOps {
 
         for preset_name in preset_iter {
             // Use the PresetDetector to load presets (handles embedded and filesystem)
-            let mut preset_config = detector.load_preset(preset_name)
+            let mut preset_config = detector
+                .load_preset(preset_name)
                 .with_context(|| format!("Failed to load preset: {}", preset_name))?;
 
             // Convert to Value to traverse and replace placeholders
@@ -331,8 +332,7 @@ impl ConfigOps {
         let scope = if global { "global" } else { "local" };
         println!(
             "✅ Applied preset(s) {} to {} configuration",
-            preset_names,
-            scope
+            preset_names, scope
         );
         Ok(())
     }
@@ -349,7 +349,7 @@ fn replace_port_placeholders(value: &mut Value, port_range_str: &Option<String>)
         Ok(range) => range,
         Err(_) => {
             vm_warning!("Could not parse port_range '{}'", port_range_str);
-            return Ok(())
+            return Ok(());
         }
     };
 
@@ -364,7 +364,10 @@ fn extract_port_from_placeholder(s: &str, port_range: &PortRange) -> Option<u16>
     let index = index_match.as_str().parse::<u16>().ok()?;
 
     if index >= port_range.size() {
-        vm_warning!("Port index {} is out of bounds for the allocated range", index);
+        vm_warning!(
+            "Port index {} is out of bounds for the allocated range",
+            index
+        );
         return None;
     }
 
@@ -392,7 +395,6 @@ fn replace_placeholders_recursive(value: &mut Value, port_range: &PortRange) {
     }
 }
 
-
 fn get_global_config_path() -> PathBuf {
     // Check for test environment override first
     if let Ok(home) = std::env::var("HOME") {
@@ -402,15 +404,14 @@ fn get_global_config_path() -> PathBuf {
             .join("global.yaml");
     }
 
-    user_paths::global_config_path()
-        .unwrap_or_else(|_| PathBuf::from(".config/vm/global.yaml"))
+    user_paths::global_config_path().unwrap_or_else(|_| PathBuf::from(".config/vm/global.yaml"))
 }
 
 fn get_or_create_global_config_path() -> Result<PathBuf> {
     let config_dir = if let Ok(home) = std::env::var("HOME") {
         PathBuf::from(home).join(".config").join("vm")
     } else {
-        user_paths::user_config_dir()? 
+        user_paths::user_config_dir()?
     };
 
     if !config_dir.exists() {
@@ -472,7 +473,7 @@ fn set_nested_field_recursive(value: &mut Value, parts: &[&str], new_value: Valu
             Value::Mapping(map) => {
                 let key = Value::String(parts[0].into());
                 map.insert(key, new_value);
-                return Ok(())
+                return Ok(());
             }
             _ => {
                 vm_error!("Cannot set field on non-object");
@@ -555,7 +556,7 @@ fn unset_nested_field_recursive(value: &mut Value, parts: &[&str]) -> Result<()>
                 if map.remove(&key).is_none() {
                     bail!("Field '{}' not found", parts[0]);
                 }
-                return Ok(())
+                return Ok(());
             }
             _ => {
                 bail!("Cannot unset field on non-object");
@@ -580,7 +581,6 @@ fn unset_nested_field_recursive(value: &mut Value, parts: &[&str]) -> Result<()>
 
     Ok(())
 }
-
 
 /// Load global configuration if it exists
 pub fn load_global_config() -> Option<VmConfig> {

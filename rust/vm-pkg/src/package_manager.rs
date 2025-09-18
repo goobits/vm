@@ -38,9 +38,7 @@ impl PackageManager {
         match self {
             PackageManager::Cargo => which::which("cargo").is_ok(),
             PackageManager::Npm => which::which("npm").is_ok() || which::which("node").is_ok(),
-            PackageManager::Pip => {
-                which::which("python3").is_ok() || which::which("pip3").is_ok()
-            }
+            PackageManager::Pip => which::which("python3").is_ok() || which::which("pip3").is_ok(),
         }
     }
 }

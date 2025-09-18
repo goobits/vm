@@ -1,5 +1,5 @@
 use anyhow::Result;
-use vm_common::{vm_println, vm_success, vm_error};
+use vm_common::{vm_error, vm_println, vm_success};
 use which::which;
 
 pub fn check() -> Result<()> {

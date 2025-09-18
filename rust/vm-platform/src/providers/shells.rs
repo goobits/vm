@@ -2,9 +2,9 @@
 
 use crate::traits::ShellProvider;
 use anyhow::Result;
-use std::path::PathBuf;
 use std::env;
 use std::fs;
+use std::path::PathBuf;
 
 /// Bash shell provider
 pub struct BashShell;
@@ -127,13 +127,15 @@ impl ShellProvider for PowerShell {
             .or_else(|| {
                 // Fallback to standard PowerShell profile location
                 dirs::document_dir().map(|docs| {
-                    docs.join("PowerShell").join("Microsoft.PowerShell_profile.ps1")
+                    docs.join("PowerShell")
+                        .join("Microsoft.PowerShell_profile.ps1")
                 })
             })
             .or_else(|| {
                 // Legacy WindowsPowerShell location
                 dirs::document_dir().map(|docs| {
-                    docs.join("WindowsPowerShell").join("Microsoft.PowerShell_profile.ps1")
+                    docs.join("WindowsPowerShell")
+                        .join("Microsoft.PowerShell_profile.ps1")
                 })
             })
     }

@@ -11,11 +11,17 @@ fn main() -> anyhow::Result<()> {
 
     // Use convenient functions
     println!("Home directory: {}", platform::home_dir()?.display());
-    println!("Config directory: {}", platform::user_config_dir()?.display());
+    println!(
+        "Config directory: {}",
+        platform::user_config_dir()?.display()
+    );
     println!("Bin directory: {}", platform::user_bin_dir()?.display());
 
     // Executable naming
-    println!("Executable 'vm' would be named: '{}'", platform::executable_name("vm"));
+    println!(
+        "Executable 'vm' would be named: '{}'",
+        platform::executable_name("vm")
+    );
 
     // Shell detection
     let shell = platform::detect_shell()?;
