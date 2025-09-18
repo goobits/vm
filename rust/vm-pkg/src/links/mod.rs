@@ -17,7 +17,7 @@ pub fn validate_package_manager(pm: &str) -> Result<()> {
                 "Package manager '{}' not in whitelist: [npm, pip, cargo]",
                 pm
             );
-            return Err(anyhow::anyhow!("Package manager not in whitelist"));
+            Err(anyhow::anyhow!("Package manager not in whitelist"))
         }
     }
 }
@@ -36,7 +36,7 @@ pub fn detect_packages(
                 "Package manager '{}' not supported. Use npm, pip, or cargo.",
                 package_manager
             );
-            return Err(anyhow::anyhow!("Package manager not supported"));
+            Err(anyhow::anyhow!("Package manager not supported"))
         }
     }
 }

@@ -49,7 +49,7 @@ fn get_project_root() -> Result<PathBuf> {
     }
 
     vm_error!("Could not find project root from executable location. Ensure the project structure is intact.");
-    return Err(anyhow::anyhow!("Could not find project root"));
+    Err(anyhow::anyhow!("Could not find project root"))
 }
 
 fn run_cargo_clean(project_root: &Path) -> Result<()> {

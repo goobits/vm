@@ -15,6 +15,7 @@ pub mod temp;
 pub mod vm_ops;
 
 /// Main command dispatcher
+#[must_use = "command execution results should be handled"]
 pub fn execute_command(args: Args) -> Result<()> {
     // Handle dry-run for provider commands
     if args.dry_run {
@@ -23,7 +24,7 @@ pub fn execute_command(args: Args) -> Result<()> {
 
     // Handle commands that don't need a provider first
     match &args.command {
-        Command::Validate => config::handle_validate(args.config, args.no_preset),
+        Command::Validate => config::handle_validate(args.config),
         Command::Init {
             file,
             services,
@@ -42,7 +43,7 @@ pub fn execute_command(args: Args) -> Result<()> {
         }
         Command::Temp { command } => {
             debug!("Calling temp VM operations directly");
-            temp::handle_temp_command(command, args.config, args.no_preset)
+            temp::handle_temp_command(command, args.config)
         }
         _ => {
             // Provider-based commands
@@ -65,9 +66,6 @@ fn handle_dry_run(args: &Args) -> Result<()> {
             if let Some(config) = &args.config {
                 vm_println!("   Config: {}", config.display());
             }
-            if let Some(preset) = &args.preset {
-                vm_println!("   Preset override: {}", preset);
-            }
             vm_println!("🚫 Dry run complete - no commands were executed");
             Ok(())
         }
@@ -82,26 +80,20 @@ fn handle_dry_run(args: &Args) -> Result<()> {
 
 fn handle_provider_command(args: Args) -> Result<()> {
     // Load configuration
-    debug!(
-        "Loading configuration: config_file={:?}, no_preset={}, preset_override={:?}",
-        args.config, args.no_preset, args.preset
-    );
+    debug!("Loading configuration: config_file={:?}", args.config);
 
-    let config = if let Some(preset) = args.preset {
-        debug!("Using preset override: {}", preset);
-        VmConfig::load_with_preset(args.config, preset)?
-    } else {
+    let config = {
         // For List command, try lenient loading first to avoid validation errors
         if matches!(args.command, Command::List) {
-            match config::load_config_lenient(args.config.clone(), args.no_preset) {
+            match config::load_config_lenient(args.config.clone()) {
                 Ok(config) => config,
                 Err(_) => {
                     // If lenient loading fails, fall back to strict loading
-                    VmConfig::load(args.config, args.no_preset)?
+                    VmConfig::load(args.config)?
                 }
             }
         } else {
-            VmConfig::load(args.config, args.no_preset)?
+            VmConfig::load(args.config)?
         }
     };
 
@@ -145,7 +137,7 @@ fn handle_provider_command(args: Args) -> Result<()> {
                 "Command {:?} should have been handled in earlier match statement",
                 cmd
             );
-            return Err(anyhow::anyhow!("Command not handled in match statement"));
+            Err(anyhow::anyhow!("Command not handled in match statement"))
         }
     }
 }

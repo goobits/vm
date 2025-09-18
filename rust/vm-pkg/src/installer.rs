@@ -18,6 +18,7 @@ const NVM_DIR_PATH: &str = ".nvm";
 const LOCAL_BIN_PATH: &str = ".local/bin";
 
 /// Validate a filename for script creation (no path separators, safe characters only)
+#[must_use = "validation results should be checked"]
 fn validate_script_name(filename: &str) -> Result<()> {
     // Check for empty name
     if filename.is_empty() {
@@ -67,6 +68,7 @@ impl PackageInstaller {
     }
 
     /// Install a package
+    #[must_use = "package installation results should be handled"]
     pub fn install(
         &self,
         package: &str,
@@ -96,6 +98,7 @@ impl PackageInstaller {
     }
 
     /// Install a linked package
+    #[must_use = "linked package installation results should be handled"]
     fn install_linked(&self, package: &str, manager: PackageManager, path: &Path) -> Result<()> {
         match manager {
             PackageManager::Cargo => self.install_cargo_linked(package, path),
@@ -105,6 +108,7 @@ impl PackageInstaller {
     }
 
     /// Install a package from registry
+    #[must_use = "registry package installation results should be handled"]
     fn install_from_registry(&self, package: &str, manager: PackageManager) -> Result<()> {
         match manager {
             PackageManager::Cargo => self.install_cargo_registry(package),
@@ -306,7 +310,7 @@ impl PackageInstaller {
 
         // Some other error
         vm_error!("Pipx install failed: {}", stderr);
-        return Err(anyhow::anyhow!("Pipx install failed"));
+        Err(anyhow::anyhow!("Pipx install failed"))
     }
 
     fn create_pipx_wrappers(&self, package: &str, path: &Path) -> Result<()> {
@@ -414,6 +418,7 @@ exec python3 "$SCRIPT_PATH" "$@"
 
     // === Helper methods ===
 
+    #[must_use = "link status check results should be used"]
     pub fn is_linked(&self, package: &str, manager: PackageManager) -> Result<bool> {
         self.detector.is_linked(package, manager)
     }
