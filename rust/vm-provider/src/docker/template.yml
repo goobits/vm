@@ -72,10 +72,16 @@ services:
       {% for cap in config.security.drop_capabilities %}- {{ cap }}
       {% endfor %}
     {% endif %}
-    {% if config.security.memory_limit %}
+    {% if config.vm.memory %}
+      {% if config.vm.memory != "unlimited" %}
+    mem_limit: {{ config.vm.memory }}m
+      {% endif %}
+    {% elif config.security.memory_limit %}
     mem_limit: {{ config.security.memory_limit }}
     {% endif %}
-    {% if config.security.cpu_limit %}
+    {% if config.vm.cpus %}
+    cpus: "{{ config.vm.cpus }}"
+    {% elif config.security.cpu_limit %}
     cpus: "{{ config.security.cpu_limit }}"
     {% endif %}
     {% if config.security.pids_limit %}

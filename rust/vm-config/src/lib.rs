@@ -22,6 +22,9 @@ pub mod resources; // VM resource suggestions
 pub mod validate;
 pub mod yaml; // YAML operations module
 
+#[cfg(test)]
+mod test_memory;
+
 // Re-export commonly needed path utilities
 pub use paths::{get_current_gid, get_current_uid, get_tool_dir, resolve_tool_path};
 

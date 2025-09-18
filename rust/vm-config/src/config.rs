@@ -1,5 +1,5 @@
 use indexmap::IndexMap;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_yaml_ng as serde_yaml;
 use std::path::PathBuf;
 
@@ -179,7 +179,7 @@ pub struct VmSettings {
     pub user: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory: Option<u32>,
+    pub memory: Option<MemoryLimit>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cpus: Option<u32>,
@@ -198,6 +198,111 @@ pub struct VmSettings {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gui: Option<bool>,
+}
+
+/// Memory limit configuration supporting both specific limits and unlimited access.
+///
+/// Supports two formats:
+/// - Numeric value: Memory limit in MB (e.g., 8192 for 8GB)
+/// - "unlimited": No memory restrictions
+///
+/// # Examples
+/// ```yaml
+/// vm:
+///   memory: 8192        # 8GB limit
+///   memory: "unlimited" # No limit
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+pub enum MemoryLimit {
+    /// Specific memory limit in MB
+    Limited(u32),
+    /// Unlimited memory access
+    Unlimited,
+}
+
+impl Serialize for MemoryLimit {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            MemoryLimit::Limited(mb) => serializer.serialize_u32(*mb),
+            MemoryLimit::Unlimited => serializer.serialize_str("unlimited"),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for MemoryLimit {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::{self, Visitor};
+        use std::fmt;
+
+        struct MemoryLimitVisitor;
+
+        impl<'de> Visitor<'de> for MemoryLimitVisitor {
+            type Value = MemoryLimit;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a positive integer (MB) or \"unlimited\"")
+            }
+
+            fn visit_u32<E>(self, value: u32) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(MemoryLimit::Limited(value))
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                if value <= u32::MAX as u64 {
+                    Ok(MemoryLimit::Limited(value as u32))
+                } else {
+                    Err(E::custom("memory limit too large (max: 4294967295 MB)"))
+                }
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                match value {
+                    "unlimited" => Ok(MemoryLimit::Unlimited),
+                    _ => Err(E::custom("expected \"unlimited\" for string memory value")),
+                }
+            }
+        }
+
+        deserializer.deserialize_any(MemoryLimitVisitor)
+    }
+}
+
+impl MemoryLimit {
+    /// Convert to megabytes if limited, None if unlimited
+    pub fn to_mb(&self) -> Option<u32> {
+        match self {
+            MemoryLimit::Limited(mb) => Some(*mb),
+            MemoryLimit::Unlimited => None,
+        }
+    }
+
+    /// Check if memory is unlimited
+    pub fn is_unlimited(&self) -> bool {
+        matches!(self, MemoryLimit::Unlimited)
+    }
+
+    /// Convert to Docker memory format (e.g., "8192m" or None for unlimited)
+    pub fn to_docker_format(&self) -> Option<String> {
+        match self {
+            MemoryLimit::Limited(mb) => Some(format!("{}m", mb)),
+            MemoryLimit::Unlimited => None,
+        }
+    }
 }
 
 /// Language runtime and tool version specifications.
