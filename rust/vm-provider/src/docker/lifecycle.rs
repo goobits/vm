@@ -22,6 +22,7 @@ use crate::{
     security::SecurityValidator, TempProvider, TempVmState,
 };
 use vm_common::command_stream::stream_command;
+use vm_common::vm_error_with_details;
 use vm_common::{vm_dbg, vm_error, vm_success, vm_warning};
 use vm_config::config::VmConfig;
 
@@ -126,13 +127,26 @@ impl<'a> LifecycleOperations<'a> {
         format!("{}{}", self.project_name(), CONTAINER_SUFFIX)
     }
 
+    /// Check memory allocation and provide guidance
+    fn check_memory_allocation(&self, vm_config: &vm_config::config::VmSettings) {
+        if let Some(memory) = &vm_config.memory {
+            match memory.to_mb() {
+                Some(mb) if mb > HIGH_MEMORY_THRESHOLD => {
+                    eprintln!("💡 Tip: High memory allocation detected ({}MB). Ensure your system has sufficient RAM.", mb);
+                }
+                None => {
+                    eprintln!("💡 Tip: Unlimited memory detected. Monitor system resources during development.");
+                }
+                _ => {} // Normal memory allocation, no warning needed
+            }
+        }
+    }
+
     /// Handle potential Docker issues proactively
     pub fn handle_potential_issues(&self) {
         // Check for port conflicts and provide helpful guidance
         if let Some(vm_config) = &self.config.vm {
-            if vm_config.memory.unwrap_or(0) > HIGH_MEMORY_THRESHOLD {
-                eprintln!("💡 Tip: High memory allocation detected. Ensure your system has sufficient RAM.");
-            }
+            self.check_memory_allocation(vm_config);
         }
 
         // Check Docker daemon status more thoroughly
@@ -141,8 +155,10 @@ impl<'a> LifecycleOperations<'a> {
             .output()
             .is_err()
         {
-            vm_warning!("Docker daemon may not be responding properly");
-            eprintln!("   Try: docker system prune -f");
+            vm_error_with_details!(
+                "Docker daemon may not be responding properly",
+                &["Try: docker system prune -f", "Or: restart Docker Desktop"]
+            );
         }
     }
 
@@ -266,7 +282,7 @@ impl<'a> LifecycleOperations<'a> {
             if audio_service.enabled {
                 #[cfg(target_os = "macos")]
                 if let Err(e) = MacOSAudioManager::setup() {
-                    eprintln!("⚠️  Audio setup warning: {}", e);
+                    vm_warning!("Audio setup failed: {}", e);
                 }
                 #[cfg(not(target_os = "macos"))]
                 MacOSAudioManager::setup();
@@ -713,6 +729,39 @@ impl<'a> LifecycleOperations<'a> {
 
         let _progress = ProgressReporter::new();
         ProgressReporter::phase_header("🔧", "PROVISIONING PHASE");
+
+        // Check if Ansible playbook exists in container
+        let check_playbook = std::process::Command::new("docker")
+            .args(["exec", &container, "test", "-f", ANSIBLE_PLAYBOOK_PATH])
+            .output()?;
+
+        // Only copy resources if they don't exist
+        if !check_playbook.status.success() {
+            ProgressReporter::subtask("├─", "Copying Ansible resources to container...");
+
+            // Create temporary directory for resources
+            let temp_resources = self.temp_dir.join("provision_resources");
+            if temp_resources.exists() {
+                fs::remove_dir_all(&temp_resources)?;
+            }
+            fs::create_dir_all(&temp_resources)?;
+
+            // Copy embedded resources (includes Ansible playbook)
+            let shared_dir = temp_resources.join("shared");
+            fs::create_dir_all(&shared_dir)?;
+            crate::resources::copy_embedded_resources(&shared_dir)?;
+
+            // Copy the shared directory to the container
+            std::process::Command::new("docker")
+                .args([
+                    "cp",
+                    &format!("{}/.", shared_dir.display()),
+                    &format!("{}:/app/shared/", &container),
+                ])
+                .output()
+                .context("Failed to copy Ansible resources to container")?;
+        }
+
         ProgressReporter::subtask("├─", "Re-running Ansible provisioning...");
 
         self.prepare_and_copy_config()?;
