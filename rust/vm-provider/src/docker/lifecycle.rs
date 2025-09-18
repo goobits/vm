@@ -18,13 +18,10 @@ use serde_json::Value;
 // Internal imports
 use super::{build::BuildOperations, compose::ComposeOperations, ComposeCommand, UserConfig};
 use crate::{
-    audio::MacOSAudioManager,
-    error::ProviderError,
-    progress::ProgressReporter,
-    security::SecurityValidator,
-    TempProvider, TempVmState,
+    audio::MacOSAudioManager, error::ProviderError, progress::ProgressReporter,
+    security::SecurityValidator, TempProvider, TempVmState,
 };
-use vm_common::command_stream::{stream_command};
+use vm_common::command_stream::stream_command;
 use vm_common::{vm_dbg, vm_error, vm_success, vm_warning};
 use vm_config::config::VmConfig;
 
@@ -63,7 +60,7 @@ impl<'a> LifecycleOperations<'a> {
     fn extract_pipx_managed_packages(
         &self,
         pipx_json: &Value,
-    ) -> Result<std::collections::HashSet<String>> {
+    ) -> std::collections::HashSet<String> {
         let mut pipx_managed_packages = std::collections::HashSet::new();
 
         if let Some(venvs) = pipx_json.get("venvs").and_then(|v| v.as_object()) {
@@ -74,7 +71,7 @@ impl<'a> LifecycleOperations<'a> {
             }
         }
 
-        Ok(pipx_managed_packages)
+        pipx_managed_packages
     }
 
     /// Helper to get pipx JSON output
@@ -99,7 +96,7 @@ impl<'a> LifecycleOperations<'a> {
 
     /// Helper to categorize pipx packages (only returns container packages now)
     #[must_use = "package categorization results should be checked"]
-    fn categorize_pipx_packages(&self, pipx_json: &Value) -> Result<Vec<String>> {
+    fn categorize_pipx_packages(&self, pipx_json: &Value) -> Vec<String> {
         let mut container_pipx_packages = Vec::new();
 
         if let Some(venvs) = pipx_json.get("venvs").and_then(|v| v.as_object()) {
@@ -114,7 +111,7 @@ impl<'a> LifecycleOperations<'a> {
             }
         }
 
-        Ok(container_pipx_packages)
+        container_pipx_packages
     }
 
     pub fn project_name(&self) -> &str {
@@ -165,19 +162,17 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     /// Check Docker build requirements (disk space, resources)
-    #[must_use = "build requirement checks should be handled"]
-    fn check_docker_build_requirements(&self) -> Result<()> {
-        self.check_disk_space_unix()?;
-        self.check_disk_space_windows()?;
-        Ok(())
+    fn check_docker_build_requirements(&self) {
+        self.check_disk_space_unix();
+        self.check_disk_space_windows();
     }
 
     /// Check disk space on Unix-like systems (Linux and macOS)
     #[cfg(any(target_os = "linux", target_os = "macos"))]
-    fn check_disk_space_unix(&self) -> Result<()> {
+    fn check_disk_space_unix(&self) {
         let available_gb = match self.get_available_disk_space_unix() {
             Some(gb) => gb,
-            None => return Ok(()), // Couldn't determine disk space, continue silently
+            None => return, // Couldn't determine disk space, continue silently
         };
 
         if available_gb < 2 {
@@ -186,8 +181,6 @@ impl<'a> LifecycleOperations<'a> {
                 available_gb
             );
         }
-
-        Ok(())
     }
 
     /// Get available disk space on Unix systems, returning GB as u32
@@ -210,17 +203,15 @@ impl<'a> LifecycleOperations<'a> {
 
     /// Check disk space on Windows systems
     #[cfg(target_os = "windows")]
-    fn check_disk_space_windows(&self) -> Result<()> {
+    fn check_disk_space_windows(&self) {
         let available_gb = match self.get_available_disk_space_windows() {
             Some(gb) => gb,
-            None => return Ok(()), // Couldn't determine disk space, continue silently
+            None => return, // Couldn't determine disk space, continue silently
         };
 
         if available_gb < 2.0 {
             vm_warning!("Low disk space: {:.1}GB available. Docker builds may fail with insufficient storage.", available_gb);
         }
-
-        Ok(())
     }
 
     /// Get available disk space on Windows systems, returning GB as f32
@@ -241,21 +232,17 @@ impl<'a> LifecycleOperations<'a> {
 
     /// No-op implementation for non-Unix, non-Windows systems
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    fn check_disk_space_unix(&self) -> Result<()> {
-        Ok(())
-    }
+    fn check_disk_space_unix(&self) {}
 
     /// No-op implementation for non-Windows systems
     #[cfg(not(target_os = "windows"))]
-    fn check_disk_space_windows(&self) -> Result<()> {
-        Ok(())
-    }
+    fn check_disk_space_windows(&self) {}
 
     #[must_use = "container creation results should be handled"]
     pub fn create_container(&self) -> Result<()> {
         self.check_daemon_is_running()?;
         self.handle_potential_issues();
-        self.check_docker_build_requirements()?;
+        self.check_docker_build_requirements();
 
         // Check if container already exists
         let container_name = self.container_name();
@@ -416,7 +403,7 @@ impl<'a> LifecycleOperations<'a> {
     #[must_use = "package filtering results should be checked"]
     fn filter_pipx_managed_packages(&self, config: &mut vm_config::config::VmConfig) -> Result<()> {
         let pipx_managed_packages = if let Some(pipx_json) = self.get_pipx_json()? {
-            self.extract_pipx_managed_packages(&pipx_json)?
+            self.extract_pipx_managed_packages(&pipx_json)
         } else {
             std::collections::HashSet::new()
         };
@@ -438,7 +425,7 @@ impl<'a> LifecycleOperations<'a> {
     fn prepare_and_copy_config(&self) -> Result<()> {
         let mut config_clone = self.config.clone();
         let container_pipx_packages = if let Some(pipx_json) = self.get_pipx_json()? {
-            self.categorize_pipx_packages(&pipx_json)?
+            self.categorize_pipx_packages(&pipx_json)
         } else {
             Vec::new()
         };
@@ -905,7 +892,7 @@ mod tests {
             }
         });
 
-        let managed_packages = lifecycle.extract_pipx_managed_packages(&pipx_json).expect("Failed to extract pipx managed packages in test");
+        let managed_packages = lifecycle.extract_pipx_managed_packages(&pipx_json);
 
         // Should mark both as pipx-managed for filtering from pip_packages
         assert!(managed_packages.contains("claudeflow"));
@@ -938,7 +925,7 @@ mod tests {
             }
         });
 
-        let container_packages = lifecycle.categorize_pipx_packages(&pipx_json).expect("Failed to categorize pipx packages in test");
+        let container_packages = lifecycle.categorize_pipx_packages(&pipx_json);
 
         // All pipx packages are now treated as container packages
         assert!(container_packages.contains(&"ruff".to_string()));
@@ -954,8 +941,8 @@ mod tests {
             "venvs": {}
         });
 
-        let managed_packages = lifecycle.extract_pipx_managed_packages(&pipx_json).expect("Failed to extract pipx managed packages in test");
-        let container_packages = lifecycle.categorize_pipx_packages(&pipx_json).expect("Failed to categorize pipx packages in test");
+        let managed_packages = lifecycle.extract_pipx_managed_packages(&pipx_json);
+        let container_packages = lifecycle.categorize_pipx_packages(&pipx_json);
 
         assert!(managed_packages.is_empty());
         assert!(container_packages.is_empty());

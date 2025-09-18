@@ -67,28 +67,26 @@ impl<'a> ComposeOperations<'a> {
         if self.config.package_linking.as_ref().is_some_and(|p| p.pip)
             && !self.config.pip_packages.is_empty()
         {
-            if let Ok(pip_info) = detect_packages(&self.config.pip_packages, PackageManager::Pip) {
-                host_info.pip_site_packages = pip_info.pip_site_packages;
-                host_info.pipx_base_dir = pip_info.pipx_base_dir;
+            let pip_info = detect_packages(&self.config.pip_packages, PackageManager::Pip);
+            host_info.pip_site_packages = pip_info.pip_site_packages;
+            host_info.pipx_base_dir = pip_info.pipx_base_dir;
 
-                // Include all detected pip packages for host mounting
-                host_info
-                    .detected_packages
-                    .extend(pip_info.detected_packages);
-            }
+            // Include all detected pip packages for host mounting
+            host_info
+                .detected_packages
+                .extend(pip_info.detected_packages);
         }
 
         // Check npm packages only if npm linking is enabled
         if self.config.package_linking.as_ref().is_some_and(|p| p.npm)
             && !self.config.npm_packages.is_empty()
         {
-            if let Ok(npm_info) = detect_packages(&self.config.npm_packages, PackageManager::Npm) {
-                host_info.npm_global_dir = npm_info.npm_global_dir;
-                host_info.npm_local_dir = npm_info.npm_local_dir;
-                host_info
-                    .detected_packages
-                    .extend(npm_info.detected_packages);
-            }
+            let npm_info = detect_packages(&self.config.npm_packages, PackageManager::Npm);
+            host_info.npm_global_dir = npm_info.npm_global_dir;
+            host_info.npm_local_dir = npm_info.npm_local_dir;
+            host_info
+                .detected_packages
+                .extend(npm_info.detected_packages);
         }
 
         // Check cargo packages only if cargo linking is enabled
@@ -99,15 +97,12 @@ impl<'a> ComposeOperations<'a> {
             .is_some_and(|p| p.cargo)
             && !self.config.cargo_packages.is_empty()
         {
-            if let Ok(cargo_info) =
-                detect_packages(&self.config.cargo_packages, PackageManager::Cargo)
-            {
-                host_info.cargo_registry = cargo_info.cargo_registry;
-                host_info.cargo_bin = cargo_info.cargo_bin;
-                host_info
-                    .detected_packages
-                    .extend(cargo_info.detected_packages);
-            }
+            let cargo_info = detect_packages(&self.config.cargo_packages, PackageManager::Cargo);
+            host_info.cargo_registry = cargo_info.cargo_registry;
+            host_info.cargo_bin = cargo_info.cargo_bin;
+            host_info
+                .detected_packages
+                .extend(cargo_info.detected_packages);
         }
 
         // Get volume mounts and environment variables

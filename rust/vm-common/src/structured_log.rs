@@ -255,7 +255,7 @@ impl log::Log for StructuredLogger {
         }
 
         let resolved_format = self.config.resolve_format();
-        let log_entry = self.create_log_entry(record, &context, &resolved_format);
+        let log_entry = Self::create_log_entry(record, &context, &resolved_format);
 
         self.write_log_entry(&log_entry, &resolved_format, record.level());
     }
@@ -271,7 +271,6 @@ impl StructuredLogger {
     /// Create a structured log entry with context injection
     #[must_use = "log entry should be written to output"]
     fn create_log_entry(
-        &self,
         record: &Record,
         context: &Map<String, Value>,
         _format: &LogFormat,
@@ -310,25 +309,25 @@ impl StructuredLogger {
 
     /// Write the log entry to the configured output(s)
     fn write_log_entry(&self, entry: &Map<String, Value>, format: &LogFormat, level: Level) {
-        let formatted = self.format_log_entry(entry, format);
+        let formatted = Self::format_log_entry(entry, format);
 
         match &self.config.output {
             LogOutput::Console => {
-                self.write_to_console(&formatted, level);
+                Self::write_to_console(&formatted, level);
             }
             LogOutput::File(path) => {
-                if let Err(e) = self.write_to_file(&formatted, path) {
+                if let Err(e) = Self::write_to_file(&formatted, path) {
                     eprintln!("Failed to write to log file {}: {}", path, e);
                 }
             }
             LogOutput::Both(console, file) => {
                 // Write to console first
                 if let LogOutput::Console = console.as_ref() {
-                    self.write_to_console(&formatted, level);
+                    Self::write_to_console(&formatted, level);
                 }
                 // Then write to file
                 if let LogOutput::File(path) = file.as_ref() {
-                    if let Err(e) = self.write_to_file(&formatted, path) {
+                    if let Err(e) = Self::write_to_file(&formatted, path) {
                         eprintln!("Failed to write to log file {}: {}", path, e);
                     }
                 }
@@ -338,16 +337,16 @@ impl StructuredLogger {
 
     /// Format the log entry according to the specified format
     #[must_use = "formatted log entry should be written to output"]
-    fn format_log_entry(&self, entry: &Map<String, Value>, format: &LogFormat) -> String {
+    fn format_log_entry(entry: &Map<String, Value>, format: &LogFormat) -> String {
         match format {
             LogFormat::Json => serde_json::to_string(entry).unwrap_or_else(|_| "{}".to_string()),
-            LogFormat::Human | LogFormat::Auto => self.format_human_readable(entry),
+            LogFormat::Human | LogFormat::Auto => Self::format_human_readable(entry),
         }
     }
 
     /// Format log entry in human-readable format
     #[must_use = "formatted log entry should be written to output"]
-    fn format_human_readable(&self, entry: &Map<String, Value>) -> String {
+    fn format_human_readable(entry: &Map<String, Value>) -> String {
         let timestamp = entry
             .get("timestamp")
             .and_then(|v| v.as_str())
@@ -396,7 +395,7 @@ impl StructuredLogger {
     }
 
     /// Write to console (stdout for info/debug, stderr for warn/error)
-    fn write_to_console(&self, formatted: &str, level: Level) {
+    fn write_to_console(formatted: &str, level: Level) {
         match level {
             Level::Error | Level::Warn => {
                 eprintln!("{}", formatted);
@@ -409,7 +408,7 @@ impl StructuredLogger {
 
     /// Write to file with proper error handling
     #[must_use = "file write results should be checked"]
-    fn write_to_file(&self, formatted: &str, path: &str) -> io::Result<()> {
+    fn write_to_file(formatted: &str, path: &str) -> io::Result<()> {
         use std::fs::OpenOptions;
         let mut file = OpenOptions::new().create(true).append(true).open(path)?;
         writeln!(file, "{}", formatted)?;

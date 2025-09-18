@@ -27,7 +27,7 @@ use std::fs;
 ///
 /// # Examples
 /// ```rust
-/// use vm_detector::detect_host_os;
+/// use vm_config::detector::detect_host_os;
 ///
 /// let os = detect_host_os();
 /// match os.as_str() {

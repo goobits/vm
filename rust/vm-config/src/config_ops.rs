@@ -20,10 +20,10 @@ use serde_yaml_ng as serde_yaml;
 use crate::config::VmConfig;
 use crate::merge::ConfigMerger;
 use crate::paths;
+use crate::ports::PortRange;
 use crate::preset::PresetDetector;
 use vm_common::user_paths;
 use vm_common::{vm_error, vm_warning};
-use crate::ports::PortRange;
 
 lazy_static! {
     static ref PORT_PLACEHOLDER_RE: Regex =
@@ -264,7 +264,7 @@ impl ConfigOps {
     pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) -> Result<()> {
         let presets_dir = paths::get_presets_dir();
         let project_dir = std::env::current_dir()?;
-        let detector = PresetDetector::new(project_dir, presets_dir.clone());
+        let detector = PresetDetector::new(project_dir, presets_dir);
 
         // Handle list command
         if list {
@@ -317,7 +317,7 @@ impl ConfigOps {
             let port_range = merged_config.port_range.clone();
 
             // Replace placeholders
-            replace_port_placeholders(&mut preset_value, &port_range)?;
+            replace_port_placeholders(&mut preset_value, &port_range);
 
             // Convert back to VmConfig
             preset_config = serde_yaml::from_value(preset_value)?;
@@ -340,21 +340,20 @@ impl ConfigOps {
 
 // Helper functions
 
-fn replace_port_placeholders(value: &mut Value, port_range_str: &Option<String>) -> Result<()> {
+fn replace_port_placeholders(value: &mut Value, port_range_str: &Option<String>) {
     let Some(port_range_str) = port_range_str.as_ref() else {
-        return Ok(());
+        return;
     };
 
     let port_range = match PortRange::parse(port_range_str) {
         Ok(range) => range,
         Err(_) => {
             vm_warning!("Could not parse port_range '{}'", port_range_str);
-            return Ok(());
+            return;
         }
     };
 
     replace_placeholders_recursive(value, &port_range);
-    Ok(())
 }
 
 /// Extract port number from placeholder string, using early returns to reduce nesting

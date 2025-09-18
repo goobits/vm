@@ -183,7 +183,8 @@ mod tests {
             .join("target")
             .join("debug")
             .join("vm-installer");
-        fs::create_dir_all(fake_exe.parent().expect("fake_exe should have parent")).expect("Failed to create target directory");
+        fs::create_dir_all(fake_exe.parent().expect("fake_exe should have parent"))
+            .expect("Failed to create target directory");
         fs::write(&fake_exe, "fake binary").expect("Failed to create fake binary");
 
         // Test project root detection logic manually
@@ -199,7 +200,10 @@ mod tests {
         }
 
         assert!(found_root.is_some());
-        assert_eq!(found_root.expect("should have found project root"), rust_dir);
+        assert_eq!(
+            found_root.expect("should have found project root"),
+            rust_dir
+        );
     }
 
     #[test]
@@ -268,8 +272,12 @@ mod tests {
         let binary_path = target_dir.join("release").join("vm");
 
         // Create the directory structure
-        fs::create_dir_all(binary_path.parent().expect("binary_path should have parent"))
-            .expect("Failed to create release directory");
+        fs::create_dir_all(
+            binary_path
+                .parent()
+                .expect("binary_path should have parent"),
+        )
+        .expect("Failed to create release directory");
 
         // Test binary existence check logic
         assert!(!binary_path.exists()); // Should not exist initially

@@ -1,5 +1,5 @@
 use crate::config::VmConfig;
-use crate::ports::{PortRegistry, PortRange};
+use crate::ports::{PortRange, PortRegistry};
 use anyhow::{Context, Result};
 use lazy_static::lazy_static;
 use regex::Regex;

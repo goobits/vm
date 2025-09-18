@@ -14,7 +14,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tera = { workspace = true }
 thiserror = { workspace = true }
-which = { workspace = true }
 vm-common = { path = "../vm-common" }
 vm-config = { path = "../vm-config" }
 vm-platform = { path = "../vm-platform" }
@@ -22,7 +21,6 @@ chrono = { workspace = true }
 is-terminal = { workspace = true }
 rayon = { workspace = true }
 lazy_static = { workspace = true }
-sysinfo = { workspace = true }
 
 [features]
 default = []

@@ -42,7 +42,7 @@ use std::path::PathBuf;
 /// # Examples
 /// ```rust
 /// use std::path::Path;
-/// use vm_detector::detect_preset_for_project;
+/// use vm_config::detector::detect_preset_for_project;
 ///
 /// let project_dir = Path::new("/path/to/react/app");
 /// if let Some(preset) = detect_preset_for_project(project_dir) {
@@ -155,7 +155,7 @@ fn has_any_dir(base_dir: &Path, dir_names: &[&str]) -> bool {
 /// # Examples
 /// ```rust
 /// use std::path::Path;
-/// use vm_detector::is_react_project;
+/// use vm_config::detector::is_react_project;
 ///
 /// let project_dir = Path::new("/path/to/my-app");
 /// if is_react_project(project_dir) {
@@ -191,7 +191,7 @@ pub fn is_react_project(project_dir: &Path) -> bool {
 /// # Examples
 /// ```rust
 /// use std::path::Path;
-/// use vm_detector::get_recommended_preset;
+/// use vm_config::detector::get_recommended_preset;
 ///
 /// let project_dir = Path::new("/path/to/project");
 /// let preset = get_recommended_preset(project_dir);
@@ -223,7 +223,7 @@ pub fn get_recommended_preset(project_dir: &Path) -> String {
 /// # Examples
 /// ```rust
 /// use std::path::Path;
-/// use vm_detector::is_multi_tech_project;
+/// use vm_config::detector::is_multi_tech_project;
 ///
 /// let project_dir = Path::new("/path/to/fullstack/app");
 /// if is_multi_tech_project(project_dir) {
@@ -258,7 +258,7 @@ pub fn is_multi_tech_project(project_dir: &Path) -> bool {
 /// # Examples
 /// ```rust
 /// use std::path::Path;
-/// use vm_detector::get_detected_technologies;
+/// use vm_config::detector::get_detected_technologies;
 ///
 /// let project_dir = Path::new("/path/to/project");
 /// let technologies = get_detected_technologies(project_dir);

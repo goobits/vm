@@ -246,7 +246,8 @@ impl QueryOperations {
                     if let Ok(expected) = expected_value.parse::<i64>() {
                         n.as_i64() == Some(expected)
                     } else if let (Ok(expected), Some(actual)) =
-                        (expected_value.parse::<f64>(), n.as_f64()) {
+                        (expected_value.parse::<f64>(), n.as_f64())
+                    {
                         (actual - expected).abs() < f64::EPSILON
                     } else {
                         false

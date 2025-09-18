@@ -1,5 +1,4 @@
 // Host package detection for all package managers
-use anyhow::Result;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -61,8 +60,8 @@ impl HostPackageInfo {
 /// * `manager` - The package manager to use for detection
 ///
 /// # Returns
-/// * `Result<HostPackageInfo>` - Information about detected packages and their locations
-pub fn detect_packages(packages: &[String], manager: PackageManager) -> Result<HostPackageInfo> {
+/// * `HostPackageInfo` - Information about detected packages and their locations
+pub fn detect_packages(packages: &[String], manager: PackageManager) -> HostPackageInfo {
     let mut info = HostPackageInfo::new();
 
     // Detect package manager directories
@@ -78,7 +77,7 @@ pub fn detect_packages(packages: &[String], manager: PackageManager) -> Result<H
         info.detected_packages.insert(package.clone(), location);
     }
 
-    Ok(info)
+    info
 }
 
 /// Detect all package manager directories on the host

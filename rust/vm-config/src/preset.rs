@@ -1,11 +1,11 @@
 use crate::config::VmConfig;
+use crate::detector::detect_preset_for_project;
 use anyhow::{Context, Result};
 use glob::glob;
 use serde::{Deserialize, Serialize};
 use serde_yaml_ng as serde_yaml;
 use std::path::PathBuf;
 use vm_common::vm_error;
-use crate::detector::detect_preset_for_project;
 
 /// Metadata about a preset
 #[derive(Debug, Clone, Serialize, Deserialize)]

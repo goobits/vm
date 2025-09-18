@@ -25,7 +25,7 @@ impl ToolDetector {
     ///
     /// # Examples
     /// ```rust
-    /// use vm_detector::ToolDetector;
+    /// use vm_config::detector::ToolDetector;
     ///
     /// if ToolDetector::has_command("git") {
     ///     println!("Git is installed");
@@ -53,7 +53,7 @@ impl ToolDetector {
     ///
     /// # Examples
     /// ```rust
-    /// use vm_detector::ToolDetector;
+    /// use vm_config::detector::ToolDetector;
     ///
     /// let languages = ToolDetector::detect_languages();
     /// for lang in languages {
@@ -101,7 +101,7 @@ impl ToolDetector {
     ///
     /// # Examples
     /// ```rust
-    /// use vm_detector::ToolDetector;
+    /// use vm_config::detector::ToolDetector;
     ///
     /// let databases = ToolDetector::detect_databases();
     /// if databases.contains(&"postgresql".to_string()) {
@@ -141,7 +141,7 @@ impl ToolDetector {
 ///
 /// # Examples
 /// ```rust
-/// use vm_detector::has_command;
+/// use vm_config::detector::has_command;
 ///
 /// if has_command("docker") {
 ///     println!("Docker is available");
@@ -161,7 +161,7 @@ pub fn has_command(cmd: &str) -> bool {
 ///
 /// # Examples
 /// ```rust
-/// use vm_detector::detect_languages;
+/// use vm_config::detector::detect_languages;
 ///
 /// let languages = detect_languages();
 /// println!("Available languages: {:?}", languages);
@@ -180,7 +180,7 @@ pub fn detect_languages() -> Vec<String> {
 ///
 /// # Examples
 /// ```rust
-/// use vm_detector::detect_databases;
+/// use vm_config::detector::detect_databases;
 ///
 /// let databases = detect_databases();
 /// for db in databases {

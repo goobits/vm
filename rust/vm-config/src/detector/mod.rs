@@ -16,7 +16,7 @@
 //!
 //! ```rust
 //! use std::path::Path;
-//! use vm_detector::{detect_project_type, get_recommended_preset, detect_host_os};
+//! use vm_config::detector::{detect_project_type, get_recommended_preset, detect_host_os};
 //!
 //! // Detect project technologies
 //! let project_dir = Path::new("/path/to/project");
@@ -66,7 +66,7 @@ pub use tools::{detect_databases, detect_languages, has_command, ToolDetector};
 /// # Examples
 /// ```rust
 /// use std::path::Path;
-/// use vm_detector::is_python_project;
+/// use vm_config::detector::is_python_project;
 ///
 /// let project_dir = Path::new("/path/to/python/project");
 /// if is_python_project(project_dir) {
@@ -94,7 +94,7 @@ pub fn is_python_project(dir: &Path) -> bool {
 /// # Examples
 /// ```rust
 /// use std::path::Path;
-/// use vm_detector::is_pipx_environment;
+/// use vm_config::detector::is_pipx_environment;
 ///
 /// let env_dir = Path::new("/home/user/.local/share/pipx/venvs/myapp");
 /// if is_pipx_environment(env_dir) {
@@ -153,7 +153,7 @@ fn detect_js_framework(json: &Value) -> String {
 /// # Examples
 /// ```rust
 /// use std::path::Path;
-/// use vm_detector::detect_project_type;
+/// use vm_config::detector::detect_project_type;
 ///
 /// let project_dir = Path::new("/path/to/react/project");
 /// let detected = detect_project_type(project_dir);
@@ -255,7 +255,7 @@ pub fn detect_project_type(dir: &Path) -> HashSet<String> {
 /// # Examples
 /// ```rust
 /// use std::collections::HashSet;
-/// use vm_detector::format_detected_types;
+/// use vm_config::detector::format_detected_types;
 ///
 /// let mut types = HashSet::new();
 /// types.insert("react".to_string());

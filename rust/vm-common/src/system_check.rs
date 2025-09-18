@@ -1,5 +1,5 @@
-use anyhow::{Context, Result};
 use crate::vm_error;
+use anyhow::{Context, Result};
 
 const MIN_CPU_CORES: u32 = 2;
 const MIN_MEMORY_GB: u64 = 4;

@@ -27,7 +27,6 @@ vm-common = { path = "../vm-common" }
 lazy_static = { workspace = true }
 which = { workspace = true }
 fs2 = { workspace = true }
-scopeguard = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }
