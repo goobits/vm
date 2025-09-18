@@ -19,32 +19,77 @@ pub trait PlatformProvider: Send + Sync {
     // === Path Operations ===
 
     /// Get the user's configuration directory for the VM tool
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the user's configuration directory cannot be determined
+    /// or if the platform doesn't support user configuration directories.
     fn user_config_dir(&self) -> Result<PathBuf>;
 
     /// Get the user's data directory for the VM tool
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the user's data directory cannot be determined
+    /// or if the platform doesn't support user data directories.
     fn user_data_dir(&self) -> Result<PathBuf>;
 
     /// Get the user's binary directory (where executables are installed)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the user's binary directory cannot be determined
+    /// or if the platform doesn't support user binary directories.
     fn user_bin_dir(&self) -> Result<PathBuf>;
 
     /// Get the user's cache directory for the VM tool
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the user's cache directory cannot be determined
+    /// or if the platform doesn't support user cache directories.
     fn user_cache_dir(&self) -> Result<PathBuf>;
 
     /// Get the user's home directory
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the user's home directory cannot be determined
+    /// or if the HOME environment variable is not set.
     fn home_dir(&self) -> Result<PathBuf>;
 
     /// Get the VM tool's state directory (e.g., ~/.vm)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the VM state directory cannot be determined
+    /// or if the required directories cannot be accessed.
     fn vm_state_dir(&self) -> Result<PathBuf>;
 
     /// Get the global configuration file path
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the global configuration path cannot be determined
+    /// or if the required directories cannot be accessed.
     fn global_config_path(&self) -> Result<PathBuf>;
 
     /// Get the port registry file path
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the port registry path cannot be determined
+    /// or if the required directories cannot be accessed.
     fn port_registry_path(&self) -> Result<PathBuf>;
 
     // === Shell Operations ===
 
     /// Detect the current shell and return a shell provider
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the current shell cannot be detected or if no
+    /// supported shell provider is available for the detected shell.
     fn detect_shell(&self) -> Result<Box<dyn ShellProvider>>;
 
     // === Binary Operations ===
@@ -54,31 +99,72 @@ pub trait PlatformProvider: Send + Sync {
 
     /// Install an executable to the user's bin directory
     /// On Unix: creates symlink, On Windows: copies file and creates wrapper
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the executable cannot be installed, the source file
+    /// doesn't exist, the destination directory is not writable, or if platform-specific
+    /// installation operations fail (e.g., symlink creation on Unix, file copying on Windows).
     fn install_executable(&self, source: &Path, dest_dir: &Path, name: &str) -> Result<()>;
 
     // === Package Manager Paths ===
 
     /// Get the Cargo home directory (where Rust packages are installed)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the Cargo home directory cannot be determined
+    /// or if the required environment variables are not set.
     fn cargo_home(&self) -> Result<PathBuf>;
 
     /// Get the Cargo binary directory
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the Cargo binary directory cannot be determined
+    /// or if the Cargo home directory is not accessible.
     fn cargo_bin_dir(&self) -> Result<PathBuf>;
 
     /// Get the NPM global directory (if available)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if there's a failure detecting NPM installation
+    /// or if NPM commands fail during directory detection.
     fn npm_global_dir(&self) -> Result<Option<PathBuf>>;
 
     /// Get the NVM versions directory (Node Version Manager)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if there's a failure detecting NVM installation
+    /// or if the NVM directory structure cannot be accessed.
     fn nvm_versions_dir(&self) -> Result<Option<PathBuf>>;
 
     /// Get Python site-packages directories
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Python installation cannot be detected
+    /// or if site-packages directories cannot be determined.
     fn python_site_packages(&self) -> Result<Vec<PathBuf>>;
 
     // === System Information ===
 
     /// Get the number of CPU cores
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the CPU core count cannot be determined
+    /// or if system information is not accessible.
     fn cpu_core_count(&self) -> Result<u32>;
 
     /// Get total system memory in GB
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the system memory information cannot be determined
+    /// or if system information is not accessible.
     fn total_memory_gb(&self) -> Result<u64>;
 
     // === Process Operations ===
@@ -108,6 +194,11 @@ pub trait ShellProvider: Send + Sync {
     fn path_export_syntax(&self, path: &Path) -> String;
 
     /// Create the profile file if it doesn't exist
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the profile file cannot be created, the parent
+    /// directory is not writable, or if file system operations fail.
     fn create_profile_if_missing(&self) -> Result<()>;
 
     /// Check if this shell is currently active
@@ -119,6 +210,11 @@ pub trait ShellProvider: Send + Sync {
 /// This trait handles platform-specific process execution details.
 pub trait ProcessProvider: Send + Sync {
     /// Prepare a command for execution (set platform-specific environment, etc.)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if platform-specific command preparation fails
+    /// or if required environment variables cannot be set.
     fn prepare_command(&self, cmd: &mut Command) -> Result<()>;
 
     /// Get the default shell command for the platform

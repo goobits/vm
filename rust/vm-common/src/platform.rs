@@ -25,6 +25,11 @@ pub fn portable_relative_path(base: &Path, target: &Path) -> Result<PathBuf> {
     Ok(relative_path)
 }
 
+/// Supported operating systems for platform detection.
+///
+/// This enum represents the different operating systems that the VM tool
+/// can detect and operate on. It maps Rust's `std::env::consts::OS` values
+/// to a more convenient enum representation.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Os {
     Linux,
@@ -33,6 +38,11 @@ pub enum Os {
     Unsupported,
 }
 
+/// Supported CPU architectures for platform detection.
+///
+/// This enum represents the different CPU architectures that the VM tool
+/// can detect and operate on. It maps Rust's `std::env::consts::ARCH` values
+/// to a more convenient enum representation.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Arch {
     Amd64,

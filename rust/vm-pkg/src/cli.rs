@@ -6,6 +6,11 @@ use clap::{Parser, Subcommand};
 use crate::installer::PackageInstaller;
 use crate::package_manager::PackageManager;
 
+/// Command-line arguments for the VM package manager.
+///
+/// This structure defines the top-level arguments and subcommands available
+/// for the vm-pkg tool, which provides unified package management across
+/// different package managers (npm, pip, cargo, etc.) within VM environments.
 #[derive(Parser)]
 #[command(name = "vm-pkg")]
 #[command(about = "Unified package manager for VM Tool")]
@@ -15,6 +20,11 @@ pub struct Args {
     pub command: Command,
 }
 
+/// Subcommands for managing linked packages.
+///
+/// These commands help detect and manage locally linked packages across different
+/// package managers, enabling development workflows where packages are linked
+/// from local directories rather than installed from registries.
 #[derive(Subcommand)]
 pub enum LinksSubcommand {
     /// Detect linked packages and output package:path pairs
