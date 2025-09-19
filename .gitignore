@@ -70,6 +70,7 @@ out/
 # Build artifacts (moved to .build/)
 .build/
 rust/target/
+rust/target*/
 rust/**/target/
 **/*.rs.bk
 *.old
