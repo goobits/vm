@@ -149,4 +149,4 @@ ports:
   - 9000
 ```
 
-For detailed preset creation, see the [Preset Format Guide](../api/preset-format.md).
+For preset creation details, check the existing presets in the `configs/presets/` directory for examples.

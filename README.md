@@ -12,18 +12,11 @@ Development environments that auto-configure based on your project type
 - **[CLI Reference](docs/user-guide/cli-reference.md)** - Complete command documentation
 - **[Configuration Guide](docs/user-guide/configuration.md)** - Full configuration options
 - **[Presets Guide](docs/user-guide/presets.md)** - Framework auto-detection
-- **[Security Guide](docs/user-guide/security.md)** - Security features and best practices
 - **[Troubleshooting](docs/user-guide/troubleshooting.md)** - Common issues and solutions
 
-### API Documentation
-- **[Configuration Schema](docs/api/configuration-schema.md)** - YAML configuration reference
-- **[Preset Format](docs/api/preset-format.md)** - Creating custom presets
-
 ### Development
-- **[Architecture Overview](docs/development/architecture.md)** - System design and components
 - **[Contributing Guide](docs/development/contributing.md)** - How to contribute
 - **[Testing Guide](docs/development/testing.md)** - Running and writing tests
-- **[Preferences](docs/development/preferences.md)** - Development preferences and conventions
 
 ## ✨ Key Features
 - **Minimal Configuration** - Detects React, Django, Rails, Vue, Angular, Next.js, Flask and more frameworks automatically
@@ -165,23 +158,7 @@ vm logs                      # View service logs
 
 ---
 
-## 🔄 Shell Integration (Advanced)
-
-```bash
-# Add to ~/.bashrc or ~/.zshrc for directory sync
-vm-cd() {
-    local sync_dir=$(vm get-sync-directory 2>/dev/null)
-    [[ -n "$sync_dir" ]] && cd "$sync_dir"
-}
-
-# Usage: SSH, change directory, exit, then sync
-vm ssh
-# Inside VM: cd src/components && exit
-vm-cd  # Now in ./src/components on host
-```
-
-<details>
-<summary><strong>Complete Command Reference</strong></summary>
+## 📖 Complete Command Reference
 
 ### VM Lifecycle
 ```bash
@@ -231,5 +208,3 @@ vm exec <command>            # Execute command in VM
 vm logs                      # View logs
 vm --config custom.yaml ssh # Use specific config
 ```
-
-</details>
