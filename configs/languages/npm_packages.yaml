@@ -1,5 +1,5 @@
 ---
-$schema: ./vm.schema.yaml
+$schema: ../schema/vm.schema.yaml
 provider: docker
 project:
   name: test-npm

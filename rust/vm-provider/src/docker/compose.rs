@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 // External crates
 use anyhow::{Context, Result};
 use tera::Context as TeraContext;
+use vm_common::vm_println;
 
 // Internal imports
 use super::build::BuildOperations;
@@ -38,7 +39,7 @@ impl<'a> ComposeOperations<'a> {
             vm_config::get_tool_dir().join("rust/vm-provider/src/docker/template.yml");
 
         if template_path.exists() {
-            eprintln!(
+            vm_println!(
                 "Loading Docker Compose template from: {}",
                 template_path.display()
             );
@@ -46,14 +47,14 @@ impl<'a> ComposeOperations<'a> {
                 .with_context(|| format!("Failed to read template from {:?}", template_path))
         } else {
             // Fallback to embedded template for production
-            eprintln!("Using embedded Docker Compose template");
+            vm_println!("Using embedded Docker Compose template");
             Ok(include_str!("template.yml").into())
         }
     }
 
     pub fn render_docker_compose(&self, build_context_dir: &Path) -> Result<String> {
         // Use shared template engine instead of creating new instance
-        let tera = &super::COMPOSE_TERA;
+        let tera = super::get_compose_tera();
 
         let project_dir_str = BuildOperations::path_to_string(self.project_dir)?;
         let build_context_str = BuildOperations::path_to_string(build_context_dir)?;
@@ -141,7 +142,7 @@ impl<'a> ComposeOperations<'a> {
 
     pub fn render_docker_compose_with_mounts(&self, state: &TempVmState) -> Result<String> {
         // Use shared template engine instead of creating new instance
-        let tera = &super::TEMP_COMPOSE_TERA;
+        let tera = super::get_temp_compose_tera();
 
         let mut context = TeraContext::new();
         context.insert("config", &self.config);
@@ -160,7 +161,34 @@ impl<'a> ComposeOperations<'a> {
             let build_context = build_ops.prepare_build_context()?;
             self.write_docker_compose(&build_context)?;
         }
-        let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
+
+        // Check if the container already exists (stopped or running)
+        let container_name = self
+            .config
+            .project
+            .as_ref()
+            .and_then(|p| p.name.as_ref())
+            .map(|s| format!("{}-dev", s))
+            .unwrap_or_else(|| "vm-project-dev".to_string());
+
+        let container_exists = std::process::Command::new("docker")
+            .args(["ps", "-a", "--format", "{{.Names}}"])
+            .output()
+            .map(|output| {
+                String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .any(|line| line.trim() == container_name)
+            })
+            .unwrap_or(false);
+
+        // Use 'start' if container exists, 'up -d' if it doesn't
+        let (command, extra_args) = if container_exists {
+            ("start", vec![])
+        } else {
+            ("up", vec!["-d"])
+        };
+
+        let args = ComposeCommand::build_args(&compose_path, command, &extra_args)?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         stream_command("docker", &args_refs)
             .context("Failed to start container with docker-compose")

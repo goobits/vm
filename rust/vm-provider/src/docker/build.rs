@@ -54,7 +54,7 @@ impl<'a> BuildOperations<'a> {
     /// Generate Dockerfile from template with build args
     pub fn generate_dockerfile(&self, output_path: &Path) -> Result<()> {
         // Use shared template engine instead of creating new instance
-        let tera = &super::DOCKERFILE_TERA;
+        let tera = super::get_dockerfile_tera();
 
         let user_config = self.get_user_config();
 

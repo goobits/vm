@@ -24,7 +24,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml_ng = { workspace = true }
 vm-common = { path = "../vm-common" }
-lazy_static = { workspace = true }
 which = { workspace = true }
 fs2 = { workspace = true }
 

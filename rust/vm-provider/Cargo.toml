@@ -20,7 +20,6 @@ vm-platform = { path = "../vm-platform" }
 chrono = { workspace = true }
 is-terminal = { workspace = true }
 rayon = { workspace = true }
-lazy_static = { workspace = true }
 
 [features]
 default = []

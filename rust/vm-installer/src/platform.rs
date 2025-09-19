@@ -131,7 +131,7 @@ fn add_to_profile(profile_path: &Path, bin_dir: &Path) -> Result<()> {
 pub fn detect_platform_string() -> String {
     let os = std::env::consts::OS;
     let arch = std::env::consts::ARCH;
-    format!("{}-{}", os, arch)
+    format!("{os}-{arch}")
 }
 
 #[cfg(test)]

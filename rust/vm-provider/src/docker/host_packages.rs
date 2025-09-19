@@ -2,6 +2,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use vm_common::{vm_error_hint, vm_warning};
 
 #[derive(Debug, Clone)]
 pub enum PackageLocation {
@@ -356,15 +357,15 @@ pub fn get_volume_mounts(info: &HostPackageInfo) -> Vec<(PathBuf, String)> {
 
     // Log warnings for skipped paths
     if !skipped_paths.is_empty() {
-        eprintln!("⚠️  Skipping host package mounts (not shared with Docker):");
+        vm_warning!("Skipping host package mounts (not shared with Docker):");
         for (path, package_type) in skipped_paths {
-            eprintln!(
+            vm_warning!(
                 "   {} ({}): Add to Docker Desktop File Sharing to enable",
                 package_type,
                 path.display()
             );
         }
-        eprintln!("   💡 To enable: Docker Desktop → Settings → Resources → File Sharing");
+        vm_error_hint!("To enable: Docker Desktop → Settings → Resources → File Sharing");
     }
 
     mounts

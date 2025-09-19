@@ -261,6 +261,56 @@ macro_rules! vm_error {
     }};
 }
 
+/// Enhanced error message with details and suggestions
+#[macro_export]
+macro_rules! vm_error_with_details {
+    ($main:expr, $details:expr) => {{
+        #[cfg(feature = "structured-output")]
+        {
+            let module_name = module_path!();
+            let logger = $crate::module_logger::get_logger(module_name);
+            let _guard = logger.with_context();
+            $crate::log_context! {
+                "message_type" => "error_detailed",
+                "status" => "error"
+            };
+            log::error!("❌ {}", $main);
+            for detail in $details {
+                log::error!("   └─ {}", detail);
+            }
+        }
+        #[cfg(not(feature = "structured-output"))]
+        {
+            eprintln!("❌ {}", $main);
+            for detail in $details {
+                eprintln!("   └─ {}", detail);
+            }
+        }
+    }};
+}
+
+/// Hint message for users
+#[macro_export]
+macro_rules! vm_error_hint {
+    ($($arg:tt)*) => {{
+        #[cfg(feature = "structured-output")]
+        {
+            let module_name = module_path!();
+            let logger = $crate::module_logger::get_logger(module_name);
+            let _guard = logger.with_context();
+            $crate::log_context! {
+                "message_type" => "hint",
+                "status" => "info"
+            };
+            log::info!("💡 {}", format!($($arg)*));
+        }
+        #[cfg(not(feature = "structured-output"))]
+        {
+            eprintln!("💡 {}", format!($($arg)*));
+        }
+    }};
+}
+
 /// Initialize structured logging for use with output macros
 ///
 /// This function should be called early in application startup to enable

@@ -2,6 +2,8 @@
 // This crate provides shared functionality across VM Tool components
 
 pub mod command_stream;
+pub mod error_messages;
+pub mod errors;
 pub mod file_system;
 pub mod log_context;
 pub mod module_logger;

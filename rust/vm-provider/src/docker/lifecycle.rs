@@ -6,6 +6,7 @@
 //! management through Docker containers with progress reporting and error handling.
 
 // Standard library
+use std::borrow::Cow;
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
@@ -292,8 +293,7 @@ impl<'a> LifecycleOperations<'a> {
         println!("🐳 Creating Docker Environment");
 
         // Step 1: Filter pipx-managed packages from pip_packages
-        let mut modified_config = self.config.clone();
-        self.filter_pipx_managed_packages(&mut modified_config)?;
+        let modified_config = self.prepare_config_for_build()?;
 
         // Step 2: Prepare build context with embedded resources
         print!("📦 Preparing build context... ");
@@ -416,51 +416,94 @@ impl<'a> LifecycleOperations<'a> {
         }
     }
 
-    #[must_use = "package filtering results should be checked"]
-    fn filter_pipx_managed_packages(&self, config: &mut vm_config::config::VmConfig) -> Result<()> {
+    #[must_use = "config preparation results should be checked"]
+    fn prepare_config_for_build(&self) -> Result<Cow<'_, vm_config::config::VmConfig>> {
         let pipx_managed_packages = if let Some(pipx_json) = self.get_pipx_json()? {
             self.extract_pipx_managed_packages(&pipx_json)
         } else {
             std::collections::HashSet::new()
         };
 
-        // Remove pipx-managed packages from pip_packages to prevent double installation
-        if !pipx_managed_packages.is_empty() {
+        // Only clone if we need to modify pip_packages
+        if pipx_managed_packages.is_empty() {
+            Ok(Cow::Borrowed(self.config))
+        } else {
+            let mut config = self.config.clone();
             config.pip_packages = config
                 .pip_packages
                 .iter()
                 .filter(|pkg| !pipx_managed_packages.contains(*pkg))
                 .cloned()
                 .collect();
+            Ok(Cow::Owned(config))
         }
-
-        Ok(())
     }
 
-    #[must_use = "config preparation results should be checked"]
-    fn prepare_and_copy_config(&self) -> Result<()> {
-        let mut config_clone = self.config.clone();
-        let container_pipx_packages = if let Some(pipx_json) = self.get_pipx_json()? {
-            self.categorize_pipx_packages(&pipx_json)
-        } else {
-            Vec::new()
-        };
+    #[must_use = "config copy preparation results should be checked"]
+    fn prepare_config_for_copy(
+        &self,
+        container_pipx_packages: &[String],
+    ) -> Result<Cow<'_, vm_config::config::VmConfig>> {
+        let needs_pip_clear = !self.config.pip_packages.is_empty();
+        let needs_extra_config = !container_pipx_packages.is_empty();
+
+        if !needs_pip_clear && !needs_extra_config {
+            return Ok(Cow::Borrowed(self.config));
+        }
+
+        let mut config = self.config.clone();
 
         // Always clear pip_packages if we processed any pipx packages, regardless of whether they were included
-        if !self.config.pip_packages.is_empty() {
-            config_clone.pip_packages = vec![];
+        if needs_pip_clear {
+            config.pip_packages = vec![];
         }
 
         // Add PyPI packages list to config for Ansible
-        if !container_pipx_packages.is_empty() {
-            config_clone.extra_config.insert(
+        if needs_extra_config {
+            config.extra_config.insert(
                 "container_pipx_packages".to_string(),
                 serde_json::to_value(container_pipx_packages)
                     .context("Failed to serialize container pipx packages for configuration")?,
             );
         }
 
-        let config_json = config_clone.to_json()?;
+        Ok(Cow::Owned(config))
+    }
+
+    #[must_use = "temp config preparation results should be checked"]
+    fn prepare_temp_config(&self) -> Result<Cow<'_, vm_config::config::VmConfig>> {
+        if let Some(ref project) = self.config.project {
+            if project.name.as_deref() == Some("vm-temp") {
+                // Already has the right name, no need to clone
+                return Ok(Cow::Borrowed(self.config));
+            }
+        }
+
+        // Need to clone to modify project name
+        let mut config = self.config.clone();
+        if let Some(ref mut project) = config.project {
+            project.name = Some("vm-temp".to_owned());
+        } else {
+            // Create project config if it doesn't exist
+            config.project = Some(vm_config::config::ProjectConfig {
+                name: Some("vm-temp".to_owned()),
+                ..Default::default()
+            });
+        }
+        Ok(Cow::Owned(config))
+    }
+
+    #[must_use = "config preparation results should be checked"]
+    fn prepare_and_copy_config(&self) -> Result<()> {
+        let container_pipx_packages = if let Some(pipx_json) = self.get_pipx_json()? {
+            self.categorize_pipx_packages(&pipx_json)
+        } else {
+            Vec::new()
+        };
+
+        let config_for_copy = self.prepare_config_for_copy(&container_pipx_packages)?;
+
+        let config_json = config_for_copy.to_json()?;
         let temp_config_path = self.temp_dir.join("vm-config.json");
         std::fs::write(&temp_config_path, config_json).with_context(|| {
             format!(
@@ -851,11 +894,7 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
         let phase = progress.start_phase("Recreating container configuration");
         ProgressReporter::task(&phase, "Generating updated docker-compose.yml...");
 
-        let mut temp_config = self.config.clone();
-        if let Some(ref mut project) = temp_config.project {
-            project.name = Some("vm-temp".to_owned());
-        }
-
+        let temp_config = self.prepare_temp_config()?;
         let compose_ops = ComposeOperations::new(&temp_config, self.temp_dir, self.project_dir);
         let content = compose_ops.render_docker_compose_with_mounts(state)?;
         let compose_path = self.temp_dir.join("docker-compose.yml");
@@ -905,13 +944,19 @@ mod tests {
     use std::path::PathBuf;
 
     fn create_test_lifecycle() -> LifecycleOperations<'static> {
-        // Leak the memory to get 'static lifetime for testing
-        let config = Box::leak(Box::new(VmConfig {
+        use std::sync::OnceLock;
+
+        static TEST_CONFIG: OnceLock<VmConfig> = OnceLock::new();
+        static TEST_TEMP_DIR: OnceLock<PathBuf> = OnceLock::new();
+        static TEST_PROJECT_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+        let config = TEST_CONFIG.get_or_init(|| VmConfig {
             pip_packages: vec!["claudeflow".to_string(), "ruff".to_string()],
             ..Default::default()
-        }));
-        let temp_dir = Box::leak(Box::new(PathBuf::from("/tmp/test")));
-        let project_dir = Box::leak(Box::new(PathBuf::from("/project")));
+        });
+
+        let temp_dir = TEST_TEMP_DIR.get_or_init(|| PathBuf::from("/tmp/test"));
+        let project_dir = TEST_PROJECT_DIR.get_or_init(|| PathBuf::from("/project"));
 
         LifecycleOperations::new(config, temp_dir, project_dir)
     }

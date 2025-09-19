@@ -59,7 +59,7 @@ impl CrossCrateTestFixture {
     }
 
     fn create_preset(&self, name: &str, content: &str) -> Result<()> {
-        let preset_path = self.config_dir.join("presets").join(format!("{}.yaml", name));
+        let preset_path = self.config_dir.join("presets").join(format!("{name}.yaml"));
         let full_content = format!(
             "---\npreset:\n  name: {}\n  description: \"Test preset\"\n\n{}",
             name, content
@@ -351,13 +351,13 @@ vm:
     // Should have npm packages from nodejs preset
     assert!(config.npm_packages.is_some());
     if let Some(npm_packages) = &config.npm_packages {
-        assert!(npm_packages.contains(&"express".to_string()));
+        assert!(npm_packages.iter().any(|pkg| pkg == "express"));
     }
 
     // Should have pip packages from python preset
     assert!(config.pip_packages.is_some());
     if let Some(pip_packages) = &config.pip_packages {
-        assert!(pip_packages.contains(&"fastapi".to_string()));
+        assert!(pip_packages.iter().any(|pkg| pkg == "fastapi"));
     }
 
     // Should have services from docker preset

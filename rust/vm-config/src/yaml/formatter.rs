@@ -4,8 +4,8 @@
 
 use anyhow::Result;
 use indexmap::IndexMap;
-use serde_yaml_ng as serde_yaml;
 use serde_yaml::{Mapping, Value};
+use serde_yaml_ng as serde_yaml;
 
 /// Canonical field order for VM configuration YAML files.
 /// This matches the logical sections in the VmConfig struct.
@@ -13,45 +13,35 @@ const FIELD_ORDER: &[&str] = &[
     // 1. Metadata & Schema
     "$schema",
     "version",
-
     // 2. Provider & Environment
     "provider",
     "os",
     "tart",
-
     // 3. Project Identity
     "project",
-
     // 4. VM Resources
     "vm",
-
     // 5. Runtime Versions
     "versions",
-
     // 6. Networking
     "ports",
     "port_range",
-
     // 7. Services & Infrastructure
     "services",
-
     // 8. Package Management
     "apt_packages",
     "npm_packages",
     "pip_packages",
     "cargo_packages",
     "package_linking",
-
     // 9. Development Environment
     "terminal",
     "aliases",
     "environment",
-
     // 10. Feature Flags & Integrations
     "claude_sync",
     "gemini_sync",
     "persist_databases",
-
     // 11. Security
     "security",
 ];
@@ -70,16 +60,10 @@ pub fn format_yaml_value(value: &Value) -> Result<Value> {
 
             // First, add fields in canonical order
             for field_name in FIELD_ORDER {
-                if let Some(key) = map.keys().find(|k| {
-                    k.as_str().map_or(false, |s| s == *field_name)
-                }) {
+                if let Some(key) = map.keys().find(|k| k.as_str() == Some(*field_name)) {
                     if let Some(val) = map.get(key) {
                         // Recursively format nested mappings
-                        let formatted_val = if should_format_nested(field_name) {
-                            format_nested_value(val)?
-                        } else {
-                            val.clone()
-                        };
+                        let formatted_val = format_field_value(field_name, val)?;
                         ordered_map.insert(key.clone(), formatted_val);
                     }
                 }
@@ -88,10 +72,8 @@ pub fn format_yaml_value(value: &Value) -> Result<Value> {
             // Then add any remaining fields not in FIELD_ORDER
             for (key, val) in map.iter() {
                 if let Some(key_str) = key.as_str() {
-                    if !FIELD_ORDER.contains(&key_str) {
-                        if !ordered_map.contains_key(key) {
-                            ordered_map.insert(key.clone(), val.clone());
-                        }
+                    if !FIELD_ORDER.contains(&key_str) && !ordered_map.contains_key(key) {
+                        ordered_map.insert(key.clone(), val.clone());
                     }
                 }
             }
@@ -104,6 +86,15 @@ pub fn format_yaml_value(value: &Value) -> Result<Value> {
             Ok(Value::Mapping(result))
         }
         _ => Ok(value.clone()),
+    }
+}
+
+/// Format a field value based on the field name.
+fn format_field_value(field_name: &str, value: &Value) -> Result<Value> {
+    if should_format_nested(field_name) {
+        format_nested_value(value)
+    } else {
+        Ok(value.clone())
     }
 }
 
@@ -198,14 +189,15 @@ mod tests {
         let mut input = Mapping::new();
         input.insert(Value::String("vm".into()), Value::String("test".into()));
         input.insert(Value::String("version".into()), Value::String("1.0".into()));
-        input.insert(Value::String("provider".into()), Value::String("docker".into()));
+        input.insert(
+            Value::String("provider".into()),
+            Value::String("docker".into()),
+        );
 
         let result = format_yaml_value(&Value::Mapping(input)).unwrap();
 
         if let Value::Mapping(map) = result {
-            let keys: Vec<_> = map.keys()
-                .filter_map(|k| k.as_str())
-                .collect();
+            let keys: Vec<_> = map.keys().filter_map(|k| k.as_str()).collect();
             assert_eq!(keys, vec!["version", "provider", "vm"]);
         } else {
             panic!("Expected Mapping");
@@ -215,7 +207,10 @@ mod tests {
     #[test]
     fn test_preserves_unknown_fields() {
         let mut input = Mapping::new();
-        input.insert(Value::String("custom_field".into()), Value::String("value".into()));
+        input.insert(
+            Value::String("custom_field".into()),
+            Value::String("value".into()),
+        );
         input.insert(Value::String("version".into()), Value::String("1.0".into()));
 
         let result = format_yaml_value(&Value::Mapping(input)).unwrap();

@@ -2,21 +2,34 @@ use crate::config::VmConfig;
 use crate::ports::{PortRange, PortRegistry};
 use crate::yaml::core::CoreOperations;
 use anyhow::{Context, Result};
-use lazy_static::lazy_static;
 use regex::Regex;
-use serde_yaml::{Value};
+use serde_yaml::Value;
 use serde_yaml_ng as serde_yaml;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 use vm_common::{vm_error, vm_success, vm_warning};
 
 // Compile regex patterns once at initialization for better performance
-lazy_static! {
-    static ref INVALID_CHARS_RE: Regex =
-        Regex::new(r"[^a-zA-Z0-9_-]").expect("Invalid regex pattern for sanitizing directory name");
-    static ref CONSECUTIVE_HYPHENS_RE: Regex =
-        Regex::new(r"-+").expect("Invalid regex pattern for removing consecutive hyphens");
+static INVALID_CHARS_RE: OnceLock<Regex> = OnceLock::new();
+static CONSECUTIVE_HYPHENS_RE: OnceLock<Regex> = OnceLock::new();
+
+fn get_invalid_chars_regex() -> &'static Regex {
+    INVALID_CHARS_RE.get_or_init(|| {
+        Regex::new(r"[^a-zA-Z0-9_-]").unwrap_or_else(|_| {
+            // Fallback to a safe pattern if the main one fails
+            Regex::new(r"[^\w-]").unwrap_or_else(|_| Regex::new(r"a^").unwrap())
+        })
+    })
 }
 
+fn get_consecutive_hyphens_regex() -> &'static Regex {
+    CONSECUTIVE_HYPHENS_RE.get_or_init(|| {
+        Regex::new(r"-+").unwrap_or_else(|_| {
+            // Fallback to a safe pattern if the main one fails
+            Regex::new(r"--+").unwrap_or_else(|_| Regex::new(r"a^").unwrap())
+        })
+    })
+}
 
 pub fn execute(
     file_path: Option<PathBuf>,
@@ -54,8 +67,8 @@ pub fn execute(
     // Sanitize directory name for use as project name
     // Replace dots, spaces, and other invalid characters with hyphens
     // Then remove any consecutive hyphens and trim leading/trailing hyphens
-    let sanitized_name = INVALID_CHARS_RE.replace_all(dir_name, "-");
-    let sanitized_name = CONSECUTIVE_HYPHENS_RE.replace_all(&sanitized_name, "-");
+    let sanitized_name = get_invalid_chars_regex().replace_all(dir_name, "-");
+    let sanitized_name = get_consecutive_hyphens_regex().replace_all(&sanitized_name, "-");
     let sanitized_name = sanitized_name.trim_matches('-');
 
     // If the sanitized name is different, inform the user
@@ -155,14 +168,16 @@ pub fn execute(
     }
 
     // Convert config to Value and write with consistent formatting
-    let config_yaml = serde_yaml::to_string(&config)
-        .context("Failed to serialize configuration to YAML")?;
-    let config_value: Value = serde_yaml::from_str(&config_yaml)
-        .context("Failed to convert config to YAML Value")?;
+    let config_yaml =
+        serde_yaml::to_string(&config).context("Failed to serialize configuration to YAML")?;
+    let config_value: Value =
+        serde_yaml::from_str(&config_yaml).context("Failed to convert config to YAML Value")?;
 
     // Write using the centralized function for consistent formatting
-    CoreOperations::write_yaml_file(&target_path, &config_value)
-        .context(format!("Failed to write vm.yaml to {}", target_path.display()))?;
+    CoreOperations::write_yaml_file(&target_path, &config_value).context(format!(
+        "Failed to write vm.yaml to {}",
+        target_path.display()
+    ))?;
 
     vm_success!("Created vm.yaml for project: {}", sanitized_name);
     println!("📍 Configuration file: {}", target_path.display());

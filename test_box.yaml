@@ -1,7 +1,0 @@
-version: "1.0"
-provider: vagrant
-project:
-  name: test
-vm:
-  box: ubuntu/jammy64
-  memory: 2048

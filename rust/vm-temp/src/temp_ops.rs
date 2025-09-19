@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 // External crates
 use anyhow::{Context, Result};
-use vm_common::{vm_error, vm_success};
+use vm_common::{errors, vm_error, vm_error_hint, vm_success};
 
 // Internal imports
 use crate::{MountParser, MountPermission, StateManager, TempVmState};
@@ -91,9 +91,9 @@ impl TempVmOps {
         let state_manager = StateManager::new().context("Failed to initialize state manager")?;
 
         if !state_manager.state_exists() {
-            return Err(anyhow::anyhow!(
-                "No temp VM found\n💡 Create one with: vm temp create ./your-directory"
-            ));
+            vm_error!("No temp VM found");
+            vm_error_hint!("Create one with: vm temp create ./your-directory");
+            return Err(anyhow::anyhow!("No temp VM found"));
         }
 
         provider.ssh(&PathBuf::from("."))
@@ -136,7 +136,11 @@ impl TempVmOps {
         let state_manager = StateManager::new().context("Failed to initialize state manager")?;
 
         if !state_manager.state_exists() {
-            return Err(anyhow::anyhow!("No temp VM found"));
+            // Use the new error function, which already provides a user-friendly
+            // message and returns an anyhow::Error.
+            return Err(errors::config::config_not_found(
+                state_manager.state_file_path(),
+            ));
         }
 
         println!("🗑️ Destroying temporary VM...");
@@ -433,7 +437,8 @@ impl TempVmOps {
     /// Simple confirmation prompt
     fn confirm_prompt(message: &str) -> bool {
         print!("{}", message);
-        io::stdout().flush().expect("Failed to flush stdout");
+        // If stdout flush fails, continue anyway - the prompt might still work
+        let _ = io::stdout().flush();
 
         let mut input = String::new();
         match io::stdin().read_line(&mut input) {

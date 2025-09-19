@@ -73,6 +73,26 @@ impl PackageInstaller {
         Self { user, detector }
     }
 
+    /// Helper to construct user home subdirectory paths efficiently
+    fn user_home_path(&self, subdir: &str) -> String {
+        format!("/home/{user}/{subdir}", user = self.user)
+    }
+
+    /// Get cargo home path for this user
+    fn cargo_home_path(&self) -> String {
+        self.user_home_path(CARGO_HOME_PATH)
+    }
+
+    /// Get NVM directory path for this user
+    fn nvm_dir_path(&self) -> String {
+        self.user_home_path(NVM_DIR_PATH)
+    }
+
+    /// Get local bin path for this user
+    fn local_bin_path(&self) -> PathBuf {
+        PathBuf::from(self.user_home_path(LOCAL_BIN_PATH))
+    }
+
     /// Install a package
     #[must_use = "package installation results should be handled"]
     pub fn install(
@@ -132,7 +152,7 @@ impl PackageInstaller {
         cmd.arg("install").arg("--path").arg(path);
 
         // Set CARGO_HOME if needed
-        let cargo_home = format!("/home/{}/{}", self.user, CARGO_HOME_PATH);
+        let cargo_home = self.cargo_home_path();
         cmd.env("CARGO_HOME", &cargo_home);
 
         let status = cmd.status().context("Failed to execute cargo install")?;
@@ -150,7 +170,7 @@ impl PackageInstaller {
         let mut cmd = Command::new("cargo");
         cmd.arg("install").arg(package);
 
-        let cargo_home = format!("/home/{}/{}", self.user, CARGO_HOME_PATH);
+        let cargo_home = self.cargo_home_path();
         cmd.env("CARGO_HOME", &cargo_home);
 
         let status = cmd.status().context("Failed to execute cargo install")?;
@@ -175,7 +195,7 @@ impl PackageInstaller {
         cmd.current_dir(path);
 
         // Set NVM_DIR if needed
-        let nvm_dir = format!("/home/{}/{}", self.user, NVM_DIR_PATH);
+        let nvm_dir = self.nvm_dir_path();
         cmd.env("NVM_DIR", &nvm_dir);
 
         let status = cmd.status().context("Failed to execute npm link")?;
@@ -193,7 +213,7 @@ impl PackageInstaller {
         let mut cmd = Command::new("npm");
         cmd.arg("install").arg("-g").arg(package);
 
-        let nvm_dir = format!("/home/{}/{}", self.user, NVM_DIR_PATH);
+        let nvm_dir = self.nvm_dir_path();
         cmd.env("NVM_DIR", &nvm_dir);
 
         let status = cmd.status().context("Failed to execute npm install")?;
@@ -326,7 +346,7 @@ impl PackageInstaller {
             return Ok(());
         }
 
-        let local_bin = PathBuf::from(format!("/home/{}/{}", self.user, LOCAL_BIN_PATH));
+        let local_bin = self.local_bin_path();
         fs::create_dir_all(&local_bin)?;
 
         println!("  -> Creating wrapper scripts in {:?}", local_bin);

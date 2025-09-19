@@ -8,15 +8,13 @@
   },
   "files": [
     "vm",
-    "vm.yaml",
-    "vm.schema.yaml",
+    "defaults.yaml",
     "install.sh",
     "providers/",
     "configs/",
     "lib/",
     "test/",
     "rust/",
-    "bin/",
     "scripts/"
   ],
   "scripts": {

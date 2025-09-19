@@ -11,24 +11,40 @@ use std::path::PathBuf;
 
 // External crates
 use anyhow::{bail, Context, Result};
-use lazy_static::lazy_static;
 use regex::Regex;
 use serde_yaml::{Mapping, Value};
 use serde_yaml_ng as serde_yaml;
+use std::sync::OnceLock;
 
 // Internal imports
 use crate::config::VmConfig;
 use crate::merge::ConfigMerger;
 use crate::paths;
 use crate::ports::PortRange;
-use crate::preset::PresetDetector;
+use crate::preset::{PresetDetector, PresetFile};
 use crate::yaml::core::CoreOperations;
 use vm_common::user_paths;
-use vm_common::{vm_error, vm_warning};
+use vm_common::{vm_error, vm_error_hint, vm_warning};
 
-lazy_static! {
-    static ref PORT_PLACEHOLDER_RE: Regex =
-        Regex::new(r"\$\{port\.(\d+)\}").expect("PORT_PLACEHOLDER_RE regex should be valid");
+static PORT_PLACEHOLDER_RE: OnceLock<Regex> = OnceLock::new();
+
+fn get_port_placeholder_regex() -> &'static Regex {
+    PORT_PLACEHOLDER_RE.get_or_init(|| {
+        // This regex pattern is known to be valid, but we handle the error case gracefully
+        match Regex::new(r"\$\{port\.(\d+)\}") {
+            Ok(regex) => regex,
+            Err(_) => {
+                // Fallback to a regex that matches nothing if the main pattern fails
+                // This is extremely unlikely to fail, but if it does, use a literal pattern
+                Regex::new(r"never_matches_anything_specific_placeholder_12345").unwrap_or_else(
+                    |_| {
+                        // Last resort - create a basic regex that will always work
+                        Regex::new(r"a^").unwrap() // matches nothing (a followed by start of string)
+                    },
+                )
+            }
+        }
+    })
 }
 
 /// Configuration operations for VM configuration management.
@@ -189,9 +205,11 @@ impl ConfigOps {
         if !config_path.exists() {
             if global {
                 vm_error!("No global configuration found at {}", config_path.display());
+                vm_error_hint!("Global configs are created automatically when needed");
                 return Err(anyhow::anyhow!("No global configuration found"));
             } else {
                 vm_error!("No vm.yaml found in current directory or parent directories");
+                vm_error_hint!("Create one with: vm init");
                 return Err(anyhow::anyhow!("No vm.yaml found"));
             }
         }
@@ -304,22 +322,12 @@ impl ConfigOps {
         let mut merged_config = base_config;
 
         for preset_name in preset_iter {
-            // Use the PresetDetector to load presets (handles embedded and filesystem)
-            let mut preset_config = detector
-                .load_preset(preset_name)
-                .with_context(|| format!("Failed to load preset: {}", preset_name))?;
-
-            // Convert to Value to traverse and replace placeholders
-            let mut preset_value = serde_yaml::to_value(&preset_config)?;
-
             // Get port_range from the base config
             let port_range = merged_config.port_range.clone();
 
-            // Replace placeholders
-            replace_port_placeholders(&mut preset_value, &port_range);
-
-            // Convert back to VmConfig
-            preset_config = serde_yaml::from_value(preset_value)?;
+            // Load preset with optimized placeholder replacement
+            let preset_config = load_preset_with_placeholders(&detector, preset_name, &port_range)
+                .with_context(|| format!("Failed to load preset: {}", preset_name))?;
 
             merged_config = ConfigMerger::new(merged_config).merge(preset_config)?;
         }
@@ -359,7 +367,7 @@ fn replace_port_placeholders(value: &mut Value, port_range_str: &Option<String>)
 
 /// Extract port number from placeholder string, using early returns to reduce nesting
 fn extract_port_from_placeholder(s: &str, port_range: &PortRange) -> Option<u16> {
-    let captures = PORT_PLACEHOLDER_RE.captures(s)?;
+    let captures = get_port_placeholder_regex().captures(s)?;
     let index_match = captures.get(1)?;
     let index = index_match.as_str().parse::<u16>().ok()?;
 
@@ -393,6 +401,94 @@ fn replace_placeholders_recursive(value: &mut Value, port_range: &PortRange) {
         }
         _ => {}
     }
+}
+
+/// Optimized preset loading with placeholder replacement
+/// This avoids the expensive serialize → modify → deserialize cycle by doing string replacement
+/// before YAML parsing
+fn load_preset_with_placeholders(
+    detector: &PresetDetector,
+    preset_name: &str,
+    port_range_str: &Option<String>,
+) -> Result<VmConfig> {
+    // First try to load the preset normally to get the raw content
+    // We'll use the same logic as PresetDetector::load_preset but with string processing
+    let raw_content =
+        if let Some(content) = crate::embedded_presets::get_preset_content(preset_name) {
+            content.to_string()
+        } else {
+            // For filesystem presets, we'd need access to presets_dir which is private
+            // For now, fall back to the original method and then do the replacement
+            // This is still more efficient than the original serialize/deserialize cycle
+            let original_config = detector.load_preset(preset_name)?;
+
+            // If no port_range, return the original config
+            let Some(port_range_str) = port_range_str else {
+                return Ok(original_config);
+            };
+
+            // For non-embedded presets, we fall back to the Value-based approach
+            // but this is still better than before since embedded presets (most common) are optimized
+            let mut preset_value = serde_yaml::to_value(&original_config)?;
+            replace_port_placeholders(&mut preset_value, &Some(port_range_str.clone()));
+            return Ok(serde_yaml::from_value(preset_value)?);
+        };
+
+    // Replace placeholders in the raw string if port_range is available
+    let processed_content = if let Some(port_range_str) = port_range_str {
+        replace_placeholders_in_string(&raw_content, port_range_str)?
+    } else {
+        raw_content
+    };
+
+    // Parse the processed content directly to VmConfig
+    let preset_file: PresetFile = serde_yaml::from_str(&processed_content)
+        .with_context(|| format!("Failed to parse preset '{}'", preset_name))?;
+
+    Ok(preset_file.config)
+}
+
+/// Replace placeholders in raw YAML string - much more efficient than serialize/deserialize
+fn replace_placeholders_in_string(content: &str, port_range_str: &str) -> Result<String> {
+    let port_range = match PortRange::parse(port_range_str) {
+        Ok(range) => range,
+        Err(_) => {
+            vm_warning!("Could not parse port_range '{}'", port_range_str);
+            return Ok(content.to_string());
+        }
+    };
+
+    let mut result = content.to_string();
+
+    // Use regex to find and replace all ${port.N} placeholders
+    let regex = get_port_placeholder_regex();
+
+    // We need to be careful about replacing in the correct order to avoid conflicts
+    // Collect all matches first, then replace them
+    let mut replacements = Vec::new();
+
+    for capture in regex.captures_iter(content) {
+        if let (Some(full_match), Some(index_match)) = (capture.get(0), capture.get(1)) {
+            if let Ok(index) = index_match.as_str().parse::<u16>() {
+                if index < port_range.size() {
+                    let port_value = port_range.start + index;
+                    replacements.push((full_match.as_str().to_string(), port_value.to_string()));
+                } else {
+                    vm_warning!(
+                        "Port index {} is out of bounds for the allocated range",
+                        index
+                    );
+                }
+            }
+        }
+    }
+
+    // Apply replacements
+    for (placeholder, replacement) in replacements {
+        result = result.replace(&placeholder, &replacement);
+    }
+
+    Ok(result)
 }
 
 fn get_global_config_path() -> PathBuf {

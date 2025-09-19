@@ -24,7 +24,7 @@
 
 ```yaml
 # JSON Schema reference for IDE support
-$schema: ./vm.schema.yaml                # ✅ WORKING
+$schema: ../../configs/schema/vm.schema.yaml  # ✅ WORKING
 ```
 
 ## Core Configuration
@@ -129,7 +129,7 @@ os: ubuntu                               # ✅ WORKING - supported by Rust parse
 - `linux` - Generic Linux (Docker/Vagrant, 4GB RAM)
 - `auto` - Auto-detect from project files
 
-> ✅ **SUPPORTED**: The `os` field is fully supported by the Rust parser and works reliably for configuration.
+> ✅ **SUPPORTED**: The `os` field is fully supported by the parser.
 
 ## Tart Provider (Apple Silicon)
 
@@ -165,7 +165,7 @@ tart:                                    # ✅ WORKING - fully supported by Rust
   # Default: ~/Library/Containers/sh.tart.Tart/Data/VMs
 ```
 
-> ✅ **WORKING**: Full Tart configuration support for Apple Silicon virtualization is implemented and functional in the Rust parser.
+> ✅ **WORKING**: Full Tart configuration support for Apple Silicon virtualization.
 
 ## Software Versions
 
@@ -296,7 +296,7 @@ services:
     memory_mb: 512                       # ✅ WORKING
 ```
 
-> ✅ **FULL SUPPORT**: All service configuration options including service-specific fields are fully supported by the Rust parser.
+> ✅ **FULL SUPPORT**: All service configuration options are fully supported.
 
 ## Package Management
 
@@ -369,7 +369,7 @@ terminal:
 
 **Expected Prompt:** `🚀 developer my-project (main) >`
 
-> ✅ **WORKING**: All terminal customization fields are fully supported and functional.
+> ✅ **WORKING**: All terminal customization fields are supported.
 
 ## Environment & Aliases
 
@@ -581,18 +581,9 @@ terminal:
 - Package linking (npm, pip, cargo)
 
 ### ✅ **UNIVERSAL SUPPORT**
-All documented configuration fields are fully supported by the Rust parser, including:
-- `os` field for simplified configuration
-- Complete `tart` configuration section for Apple Silicon
-- All service options (buildx, display, executable_path, driver, share_microphone, memory_mb)
-- `env_template_path` in project settings
+All documented configuration fields are fully supported, including `os` field, complete `tart` configuration, all service options, and `env_template_path`.
 
 ### 📊 **Support Rate: ~98%**
-
-Virtually all documented configuration options are supported by the Rust parser with full functionality.
-
----
-
-> ✅ **COMPATIBILITY**: All documented configuration examples work reliably with the current Rust parser.
+Virtually all documented configuration options are supported with full functionality.
 
 > 💡 **RECOMMENDATION**: Use any configuration pattern from this specification - they're all fully supported.

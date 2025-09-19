@@ -68,61 +68,62 @@ pub fn is_path_in_safe_locations(
 ) -> Result<()> {
     let resolved_path = resolve_path_secure(check_path, true)?;
 
-    let mut safe_path_prefixes: Vec<String> = vec![
-        String::from("/home/"),
-        String::from("/workspace/"),
-        String::from("/opt/"),
-        String::from("/srv/"),
-        String::from("/usr/local/"),
-        String::from("/data/"),
-        String::from("/projects/"),
+    // Static safe path prefixes - no allocations needed
+    const BASE_SAFE_PREFIXES: &[&str] = &[
+        "/home/",
+        "/workspace/",
+        "/opt/",
+        "/srv/",
+        "/usr/local/",
+        "/data/",
+        "/projects/",
     ];
 
-    // Add platform-specific temp directories
-    safe_path_prefixes.push(std::env::temp_dir().to_string_lossy().to_string());
-
+    // Platform-specific safe prefixes
     #[cfg(target_os = "macos")]
-    {
-        safe_path_prefixes.extend_from_slice(&[
-            String::from("/tmp/"),
-            String::from("/var/tmp/"),
-            String::from("/var/folders/"),
-            String::from("/private/tmp/"),
-        ]);
-    }
+    const PLATFORM_SAFE_PREFIXES: &[&str] =
+        &["/tmp/", "/var/tmp/", "/var/folders/", "/private/tmp/"];
     #[cfg(target_os = "linux")]
-    {
-        safe_path_prefixes.extend_from_slice(&[
-            String::from("/tmp/"),
-            String::from("/var/tmp/"),
-            String::from("/dev/shm/"),
-        ]);
-    }
+    const PLATFORM_SAFE_PREFIXES: &[&str] = &["/tmp/", "/var/tmp/", "/dev/shm/"];
     #[cfg(target_os = "windows")]
-    {
-        // Windows temp paths are handled by std::env::temp_dir()
+    const PLATFORM_SAFE_PREFIXES: &[&str] = &[];
+
+    // Check against static prefixes first (no allocations)
+    let is_safe = BASE_SAFE_PREFIXES
+        .iter()
+        .chain(PLATFORM_SAFE_PREFIXES.iter())
+        .any(|&prefix| resolved_path.starts_with(prefix));
+
+    if is_safe {
+        return Ok(());
+    }
+
+    // Only allocate for dynamic paths if static check failed
+    let temp_dir_path = std::env::temp_dir();
+    let temp_dir = temp_dir_path.to_string_lossy();
+    if resolved_path.starts_with(temp_dir.as_ref()) {
+        return Ok(());
     }
 
     if let Ok(current_dir) = std::env::current_dir() {
         if let Some(current_dir_str) = current_dir.to_str() {
-            safe_path_prefixes.push(current_dir_str.to_string());
+            if resolved_path.starts_with(current_dir_str) {
+                return Ok(());
+            }
         }
     }
 
     if let Some(additional_paths) = additional_safe_paths {
-        safe_path_prefixes.extend(additional_paths.iter().map(|s| s.to_string()));
+        if additional_paths
+            .iter()
+            .any(|&path| resolved_path.starts_with(path))
+        {
+            return Ok(());
+        }
     }
 
-    let is_safe = safe_path_prefixes
-        .iter()
-        .any(|safe_prefix| resolved_path.starts_with(safe_prefix));
-
-    if is_safe {
-        Ok(())
-    } else {
-        Err(anyhow!(
-            "Path '{:?}' is not in allowed safe locations",
-            resolved_path
-        ))
-    }
+    Err(anyhow!(
+        "Path '{:?}' is not in allowed safe locations",
+        resolved_path
+    ))
 }

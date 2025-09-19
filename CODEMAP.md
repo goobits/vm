@@ -11,8 +11,8 @@ PROJECT SUMMARY
   Framework:    Clap (CLI), Docker/libvirt (virtualization)
   Entry Point:  rust/vm/src/main.rs
 
-  Total Files:  136 (.rs files)
-  Total LOC:    248,661
+  Total Files:  ~120 (.rs files)
+  Total LOC:    ~200,000
 
 ================================================================================
 
@@ -33,10 +33,10 @@ PROJECT SUMMARY
 └─────────────┘     └─────────────┘     └─────────────┘
 
 Key Patterns:
-  • Workspace: Rust monorepo with 10 crates
+  • Workspace: Rust monorepo with 9 crates
   • Provider: Docker (fast) or libvirt (isolated) backends
   • Config: YAML-based VM definitions & service configs
-  • Detection: Auto-detects 30+ frameworks/languages
+  • Platform: Detects OS, container runtime, and environment
 
 ================================================================================
 
@@ -52,12 +52,10 @@ Key Patterns:
 │   │   ├── src/docker/    [Docker provider impl]
 │   │   ├── src/libvirt/   [Libvirt provider impl]
 │   │   └── src/resources/ [Ansible playbooks]
-│   ├── vm-detector/ [10]  [Framework detection]
-│   │   └── src/tests/     [Framework test fixtures]
+│   ├── vm-platform/ [5]  [Platform detection]
 │   ├── vm-config/ [8]     [Config management]
 │   │   └── configs/       [Default configurations]
 │   ├── vm-installer/ [3]  [Installation logic]
-│   ├── vm-ports/ [5]      [Port management]
 │   ├── vm-pkg/ [6]        [Package management]
 │   ├── vm-temp/ [4]       [Temp VM handling]
 │   ├── vm-common/ [4]     [Shared utilities]
@@ -82,7 +80,7 @@ ENTRY POINTS:
 
 CORE LOGIC:
   • [rust/vm-provider/src/lib.rs]      - Provider abstraction
-  • [rust/vm-detector/src/lib.rs] - Framework detection
+  • [rust/vm-platform/src/lib.rs]  - Platform detection
   • [rust/vm-config/src/config.rs]     - Config parsing/validation
 
 CONFIGURATION:
@@ -103,15 +101,15 @@ ANSIBLE/PROVISIONING:
    [vm/main.rs] → [cli/mod.rs] → [commands/*.rs]
 
 2. VM Creation:
-   [commands/create.rs] → [vm-detector] → [vm-provider] → [Docker/libvirt]
+   [commands/create.rs] → [vm-platform] → [vm-provider] → [Docker/libvirt]
 
 3. Configuration:
    [vm.yaml] → [vm-config] → [provider] → [Ansible playbook]
 
 Key Relationships:
-  • [vm] depends on → [vm-provider], [vm-config], [vm-detector]
+  • [vm] depends on → [vm-provider], [vm-config], [vm-platform]
   • [vm-provider] depends on → [vm-common], [bollard/virt]
-  • [vm-detector] uses → [framework patterns], [file signatures]
+  • [vm-platform] uses → [OS detection], [platform patterns]
 
 ================================================================================
 
@@ -145,15 +143,15 @@ To understand VM creation:
   Start with: [vm/src/commands/create.rs] → [vm-provider/src/lib.rs] →
   [provider/docker/mod.rs]
 
-To modify detection logic:
-  Core files: [vm-detector/src/lib.rs], [vm-detector/src/presets.rs]
-  Tests: [vm-detector/src/tests/*.rs]
+To modify platform detection:
+  Core files: [vm-platform/src/lib.rs]
+  Tests: [vm-platform/src/tests/]
 
 To add new service:
   1. Create config in [configs/services/]
   2. Add to [resources/services/service_definitions.yml]
   3. Update playbook in [resources/ansible/]
-  4. Add detection in [vm-detector/]
+  4. Add platform detection in [vm-platform/]
   5. Write tests in [tests/]
 
 ================================================================================

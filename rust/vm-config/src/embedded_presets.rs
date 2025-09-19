@@ -20,6 +20,7 @@ pub fn get_embedded_presets() -> HashMap<&'static str, &'static str> {
         include_str!("../../../configs/presets/django.yaml"),
     );
     presets.insert("rails", include_str!("../../../configs/presets/rails.yaml"));
+    presets.insert("rust", include_str!("../../../configs/presets/rust.yaml"));
     presets.insert(
         "docker",
         include_str!("../../../configs/presets/docker.yaml"),

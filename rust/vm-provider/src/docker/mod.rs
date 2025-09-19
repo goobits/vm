@@ -12,6 +12,7 @@ pub use lifecycle::LifecycleOperations;
 // Standard library
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 // External crates
 use anyhow::{Context, Result};
@@ -107,31 +108,35 @@ impl DockerProvider {
     }
 }
 
-use lazy_static::lazy_static;
+/// Shared template engine for Docker compose operations
+static COMPOSE_TERA: OnceLock<Tera> = OnceLock::new();
 
-lazy_static! {
-    /// Shared template engine for Docker compose operations
-    pub(crate) static ref COMPOSE_TERA: Tera = {
+pub(crate) fn get_compose_tera() -> &'static Tera {
+    COMPOSE_TERA.get_or_init(|| {
         let mut tera = Tera::default();
         tera.add_raw_template("docker-compose.yml", include_str!("template.yml"))
             .expect("Failed to add docker-compose template");
         tera
-    };
+    })
 }
 
-lazy_static! {
-    /// Shared template engine for Dockerfile operations
-    pub(crate) static ref DOCKERFILE_TERA: Tera = {
+/// Shared template engine for Dockerfile operations
+static DOCKERFILE_TERA: OnceLock<Tera> = OnceLock::new();
+
+pub(crate) fn get_dockerfile_tera() -> &'static Tera {
+    DOCKERFILE_TERA.get_or_init(|| {
         let mut tera = Tera::default();
         tera.add_raw_template("Dockerfile", include_str!("Dockerfile.j2"))
             .expect("Failed to add Dockerfile template");
         tera
-    };
+    })
 }
 
-lazy_static! {
-    /// Shared template engine for temporary VM docker-compose operations
-    pub(crate) static ref TEMP_COMPOSE_TERA: Tera = {
+/// Shared template engine for temporary VM docker-compose operations
+static TEMP_COMPOSE_TERA: OnceLock<Tera> = OnceLock::new();
+
+pub(crate) fn get_temp_compose_tera() -> &'static Tera {
+    TEMP_COMPOSE_TERA.get_or_init(|| {
         const TEMP_DOCKER_COMPOSE_TEMPLATE: &str = r#"
 # Temporary VM docker-compose.yml with custom mounts
 services:
@@ -176,7 +181,7 @@ volumes:
         tera.add_raw_template("docker-compose.yml", TEMP_DOCKER_COMPOSE_TEMPLATE)
             .expect("Failed to add temporary docker-compose template");
         tera
-    };
+    })
 }
 
 impl Drop for DockerProvider {

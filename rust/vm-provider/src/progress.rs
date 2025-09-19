@@ -37,7 +37,7 @@ impl DockerProgressParser {
                 .template(
                     "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}",
                 )
-                .expect("Failed to create progress bar template - template string is malformed")
+                .unwrap_or_else(|_| ProgressStyle::default_bar())
                 .progress_chars("#>-"),
         );
 
@@ -45,9 +45,9 @@ impl DockerProgressParser {
             mp,
             main_bar,
             step_regex: Regex::new(r"Step (\d+)/(\d+)")
-                .expect("Failed to compile step regex - regex pattern is invalid"),
+                .unwrap_or_else(|_| Regex::new(r"a^").unwrap()), // fallback to never-matching regex
             layer_pull_regex: Regex::new(r"([a-f0-9]{12}): Pulling fs layer")
-                .expect("Failed to compile layer pull regex - regex pattern is invalid"),
+                .unwrap_or_else(|_| Regex::new(r"a^").unwrap()), // fallback to never-matching regex
             total_steps: 0,
             current_step: 0,
             layer_bars: HashMap::new(),
@@ -89,9 +89,7 @@ impl ProgressParser for DockerProgressParser {
                     pb.set_style(
                         ProgressStyle::default_spinner()
                             .template("  {prefix:12} {spinner} {wide_msg}")
-                            .expect(
-                                "Failed to create spinner template - template string is malformed",
-                            ),
+                            .unwrap_or_else(|_| ProgressStyle::default_spinner()),
                     );
                     pb.set_prefix(layer_id.clone());
                     pb.set_message("Pulling...");
@@ -136,13 +134,13 @@ impl ProgressReporter {
     pub fn start_phase(&self, name: &str) -> ProgressBar {
         let pb = self.mp.add(ProgressBar::new_spinner());
         pb.set_style(self.style.clone());
-        pb.set_prefix(format!("[Phase] {}", name));
+        pb.set_prefix(format!("[Phase] {name}"));
         pb.enable_steady_tick(Duration::from_millis(100));
         pb
     }
 
     pub fn task(phase_pb: &ProgressBar, msg: &str) {
-        phase_pb.set_message(format!("- {}", msg));
+        phase_pb.set_message(format!("- {msg}"));
     }
 
     pub fn finish_phase(pb: &ProgressBar, msg: &str) {
@@ -167,6 +165,18 @@ impl ProgressReporter {
 
     pub fn error(connector: &str, message: &str) {
         println!("{} ❌ {}", connector, message);
+    }
+
+    pub fn error_with_details(connector: &str, main_message: &str, details: &[&str]) {
+        println!("{} ❌ {}", connector, main_message);
+        for detail in details {
+            println!("     └─ {}", detail);
+        }
+    }
+
+    pub fn error_with_hint(connector: &str, message: &str, hint: &str) {
+        println!("{} ❌ {}", connector, message);
+        println!("     💡 {}", hint);
     }
 }
 

@@ -79,7 +79,7 @@ This means you can run `vm create` from anywhere in your project tree! The tool 
 For autocompletion and validation in your editor:
 
 ```yaml
-# yaml-language-server: $schema=./vm.schema.yaml
+# yaml-language-server: $schema=../../configs/schema/vm.schema.yaml
 ports:
   frontend: 3020
 ```

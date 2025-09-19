@@ -15,4 +15,9 @@ anyhow = { workspace = true }
 serde_json = { workspace = true }
 regex = { workspace = true }
 clap = { workspace = true }
+log = { workspace = true }
 vm-common = { workspace = true }
+
+[features]
+default = ["structured-output"]
+structured-output = ["vm-common/structured-output"]
