@@ -42,6 +42,9 @@ cargo test --package vm-pkg
 cargo test --package vm-config config_ops_tests
 cargo test --package vm workflow_tests
 cargo test --package vm-detector tests::nodejs_tests
+
+# Test VM operations integration tests (requires Docker)
+cargo test --package vm --test vm_operations_integration_tests
 ```
 
 ### Integration vs Unit Tests
@@ -94,9 +97,48 @@ cargo test
 - `vm-config/tests/config_ops_tests.rs` - Configuration operations (uses TEST_MUTEX)
 - `vm/tests/workflow_tests.rs` - CLI end-to-end workflows (uses TEST_MUTEX)
 - `vm/tests/temp_workflow_tests.rs` - Temp VM lifecycle testing
+- `vm/tests/vm_operations_integration_tests.rs` - **VM operations integration tests (NEW)**
+- `vm/tests/config_cli_tests.rs` - CLI configuration command testing
 - `rust/tests/integration_tests.rs` - Cross-crate integration scenarios
 - `vm-detector/src/tests/` - Framework detection tests (9 modules)
 - `vm-ports/src/` - Port range and registry tests (embedded in source)
+
+### VM Operations Integration Tests (NEW)
+
+The `vm/tests/vm_operations_integration_tests.rs` file provides comprehensive testing for all core VM commands:
+
+**Commands Tested:**
+- `create` - VM creation with and without --force flag
+- `start` - Starting VMs and verifying running state
+- `stop` - Stopping VMs and verifying stopped state
+- `restart` - Restarting VMs and state transitions
+- `provision` - Re-running provisioning on existing VMs
+- `list` - Listing all VMs
+- `kill` - Force killing VM processes
+- `destroy` - Destroying VMs and cleanup verification
+- `ssh` - SSH connection handling
+- `status` - VM status reporting
+- `exec` - Command execution inside VMs
+- `logs` - VM log retrieval
+
+**Test Features:**
+- Uses real Docker provider (no mocks)
+- Runs in isolated temporary directories (`/tmp/`)
+- Safe cleanup of test containers
+- Unique project names to avoid conflicts
+- Graceful skipping when Docker unavailable
+- Full lifecycle integration testing
+
+```bash
+# Run all VM operations tests
+cargo test --package vm --test vm_operations_integration_tests
+
+# Run specific VM operation test
+cargo test --package vm test_vm_create_command
+
+# Run with output (helpful for debugging Docker issues)
+cargo test --package vm --test vm_operations_integration_tests -- --nocapture
+```
 
 ### Test Synchronization
 Environment-modifying tests use `TEST_MUTEX` to prevent race conditions:
