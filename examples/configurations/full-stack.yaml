@@ -1,0 +1,47 @@
+# Full Stack Development VM Configuration Example
+# This example shows a comprehensive setup with multiple services
+
+provider: docker
+
+project:
+  name: fullstack-app
+  hostname: dev.fullstack.local
+  workspace_path: /workspace
+
+vm:
+  memory: 8192
+  cpus: 4
+
+services:
+  postgresql:
+    enabled: true
+    version: 15
+  redis:
+    enabled: true
+    version: 7
+  docker:
+    enabled: true
+
+# Language-specific package managers
+npm_packages:
+  - typescript
+  - eslint
+  - prettier
+
+pip_packages:
+  - black
+  - pylint
+  - pytest
+
+ports:
+  web: 3000
+  api: 8000
+  db: 5432
+
+terminal:
+  username: developer
+
+aliases:
+  dc: docker-compose
+  gs: git status
+  ll: ls -la

@@ -1,0 +1,15 @@
+# MongoDB Service Configuration Example
+# This example shows how to enable MongoDB in your VM
+
+provider: docker
+
+project:
+  name: mongodb-example
+  hostname: dev.mongodb.local
+  workspace_path: /workspace
+
+services:
+  mongodb:
+    enabled: true
+    version: 6
+    port: 27017

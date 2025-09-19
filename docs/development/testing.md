@@ -140,15 +140,16 @@ newgrp docker
 sudo systemctl start docker
 ```
 
-## Test Configuration Files
+## Test Configuration
 
-Test fixtures are located in `../fixtures/configs/`:
+Tests use dynamic fixture generation rather than static configuration files:
 
-- Service configs: `postgresql.yaml`, `redis.yaml`, `mongodb.yaml`, `docker.yaml`
-- Minimal configuration: `minimal.yaml`
-- Language packages: `languages/npm_packages.yaml`, `languages/pip_packages.yaml`, `languages/cargo_packages.yaml`
+- Each test creates its own temporary directories and files
+- The `ProjectTestFixture` struct in `vm-config` handles test setup
+- Integration tests use `CrossCrateTestFixture` for cross-crate scenarios
+- No external fixture files are required
 
-These YAML files provide test data for configuration validation and integration tests.
+For example configurations, see the `examples/` directory at the project root.
 
 ## Migration Status
 

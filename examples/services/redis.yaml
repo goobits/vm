@@ -1,0 +1,15 @@
+# Redis Service Configuration Example
+# This example shows how to enable Redis in your VM
+
+provider: docker
+
+project:
+  name: redis-example
+  hostname: dev.redis.local
+  workspace_path: /workspace
+
+services:
+  redis:
+    enabled: true
+    version: 7
+    port: 6379

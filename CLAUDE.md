@@ -239,13 +239,12 @@ The dead-code detection checks for:
 4. **For test/example code** - These are often false positives and can be ignored
 
 
-## Test Fixtures
+## Test Structure
 
-Test configuration files are located in `fixtures/configs/`:
-- `minimal.yaml` - Basic VM configuration
-- `postgresql.yaml`, `redis.yaml`, `mongodb.yaml` - Service configurations
-- `docker.yaml` - Docker service configuration
-- `languages/` - Language-specific package configurations (npm, pip, cargo)
-- `test-json-reject/` - JSON rejection test files
+The Rust test suite uses dynamic fixture generation rather than static test files:
+- Tests create temporary directories and files as needed
+- Each crate manages its own test fixtures independently
+- The `vm-config` crate includes a `ProjectTestFixture` struct for test setup
+- Integration tests use `CrossCrateTestFixture` for cross-crate testing
 
-These fixtures are used by the Rust test suite for validation and testing configuration parsing, merging, and service setup.
+Example configuration files for users are available in the `examples/` directory.

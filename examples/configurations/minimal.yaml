@@ -1,0 +1,12 @@
+# Minimal VM Configuration Example
+# This demonstrates the bare minimum configuration needed for a VM
+
+provider: docker
+
+project:
+  name: minimal-example
+  hostname: dev.minimal.local
+  workspace_path: /workspace
+
+terminal:
+  username: developer
