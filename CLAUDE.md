@@ -180,6 +180,27 @@ The dead-code detection checks for:
 3. **For unused dependencies** - Run `cargo machete --fix` to auto-remove
 4. **For test/example code** - These are often false positives and can be ignored
 
+## Dead Code Detection
+
+Run dead code detection with:
+```bash
+source /home/developer/.cargo/env
+cd rust
+
+# Check for dead code (unused functions, structs, etc.)
+cargo dead-code
+
+# Check for unused dependencies
+cargo dead-deps
+```
+
+### Tools
+- **Clippy** (built-in): Detects unused code, imports, variables, unreachable code
+- **cargo-machete**: Detects unused dependencies in Cargo.toml files
+
+### Configuration
+- **Cargo aliases**: `.cargo/config.toml` - Contains dead-code detection commands
+
 ## Test Fixtures
 
 Test configuration files are located in `fixtures/configs/`:
