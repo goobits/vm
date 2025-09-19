@@ -35,3 +35,15 @@ pub fn parse_error(path: &Path, line: Option<usize>) -> anyhow::Error {
     }
     anyhow::anyhow!("Configuration parsing failed")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn test_config_not_found() {
+        let err = config_not_found(Path::new("test.yaml"));
+        assert!(err.to_string().contains("Configuration file not found"));
+    }
+}

@@ -15,3 +15,14 @@ pub fn network_unreachable(target: &str) -> anyhow::Error {
     vm_error_hint!("Check your internet connection and firewall settings");
     anyhow::anyhow!("Network unreachable: {}", target)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_port_in_use() {
+        let err = port_in_use(8080);
+        assert!(err.to_string().contains("Port 8080 unavailable"));
+    }
+}

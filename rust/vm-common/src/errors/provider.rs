@@ -29,3 +29,14 @@ pub fn provider_not_found(provider: &str) -> anyhow::Error {
     vm_error_hint!("Supported providers: docker, vagrant, tart");
     anyhow::anyhow!("Provider not found: {}", provider)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_docker_connection_failed() {
+        let err = docker_connection_failed();
+        assert!(err.to_string().contains("Docker daemon connection failed"));
+    }
+}

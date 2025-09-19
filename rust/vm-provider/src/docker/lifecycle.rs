@@ -23,8 +23,9 @@ use crate::{
     security::SecurityValidator, TempProvider, TempVmState,
 };
 use vm_common::command_stream::stream_command;
+use vm_common::errors;
 use vm_common::vm_error_with_details;
-use vm_common::{vm_dbg, vm_error, vm_success, vm_warning};
+use vm_common::{vm_dbg, vm_error, vm_error_hint, vm_success, vm_warning};
 use vm_config::config::VmConfig;
 
 // Constants for container lifecycle operations
@@ -133,10 +134,12 @@ impl<'a> LifecycleOperations<'a> {
         if let Some(memory) = &vm_config.memory {
             match memory.to_mb() {
                 Some(mb) if mb > HIGH_MEMORY_THRESHOLD => {
-                    eprintln!("💡 Tip: High memory allocation detected ({}MB). Ensure your system has sufficient RAM.", mb);
+                    vm_error_hint!("High memory allocation detected ({}MB). Ensure your system has sufficient RAM.", mb);
                 }
                 None => {
-                    eprintln!("💡 Tip: Unlimited memory detected. Monitor system resources during development.");
+                    vm_error_hint!(
+                        "Unlimited memory detected. Monitor system resources during development."
+                    );
                 }
                 _ => {} // Normal memory allocation, no warning needed
             }
@@ -171,11 +174,7 @@ impl<'a> LifecycleOperations<'a> {
                 return Ok(());
             }
         }
-        Err(ProviderError::DependencyNotFound(
-            "Docker daemon is not running. Please start Docker Desktop or the Docker service."
-                .into(),
-        )
-        .into())
+        Err(errors::provider::docker_connection_failed())
     }
 
     /// Check Docker build requirements (disk space, resources)
@@ -624,7 +623,7 @@ impl<'a> LifecycleOperations<'a> {
             if audio_service.enabled {
                 #[cfg(target_os = "macos")]
                 if let Err(e) = MacOSAudioManager::cleanup() {
-                    eprintln!("⚠️  Audio cleanup warning: {}", e);
+                    vm_warning!("Audio cleanup warning: {}", e);
                 }
                 #[cfg(not(target_os = "macos"))]
                 MacOSAudioManager::cleanup();

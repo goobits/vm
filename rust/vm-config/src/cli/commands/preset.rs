@@ -1,5 +1,6 @@
 use anyhow::Result;
 use std::path::PathBuf;
+use vm_common::vm_error;
 
 use crate::cli::formatting::output_config;
 use crate::cli::OutputFormat;
@@ -32,7 +33,7 @@ pub fn execute(
                 output_config(&preset, &OutputFormat::Yaml)?;
             }
             None => {
-                eprintln!("No preset detected for project");
+                vm_error!("No preset detected for project");
                 std::process::exit(1);
             }
         }
