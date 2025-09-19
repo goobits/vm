@@ -21,3 +21,6 @@ vm-common = { workspace = true }
 [features]
 default = ["structured-output"]
 structured-output = ["vm-common/structured-output"]
+
+[package.metadata.cargo-machete]
+ignored = ["log"]

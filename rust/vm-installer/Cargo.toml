@@ -21,3 +21,6 @@ tempfile = "3.22"
 [features]
 default = []
 structured-output = ["vm-common/structured-output"]
+
+[package.metadata.cargo-machete]
+ignored = ["serde_json"]
