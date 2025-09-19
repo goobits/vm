@@ -6,7 +6,7 @@ use std::process::{Command, Stdio};
 
 // External crates
 use anyhow::{Context, Result};
-use vm_common::{vm_error, vm_success};
+use vm_common::{errors, vm_error, vm_success};
 
 // Internal imports
 use crate::link_detector::LinkDetector;
@@ -22,27 +22,17 @@ const LOCAL_BIN_PATH: &str = ".local/bin";
 fn validate_script_name(filename: &str) -> Result<()> {
     // Check for empty name
     if filename.is_empty() {
-        vm_error!("Script name cannot be empty");
-        return Err(anyhow::anyhow!("Script name cannot be empty"));
+        return Err(errors::package::empty_script_name());
     }
 
     // Check for path separators
     if filename.contains('/') || filename.contains('\\') {
-        vm_error!("Script name cannot contain path separators: {}", filename);
-        return Err(anyhow::anyhow!(
-            "Script name cannot contain path separators"
-        ));
+        return Err(errors::package::script_name_has_path_separators(filename));
     }
 
     // Check for dangerous characters
     if filename.contains("..") || filename.starts_with('.') {
-        vm_error!(
-            "Script name cannot contain '..' or start with '.': {}",
-            filename
-        );
-        return Err(anyhow::anyhow!(
-            "Script name cannot contain '..' or start with '.'"
-        ));
+        return Err(errors::package::script_name_has_dangerous_chars(filename));
     }
 
     // Only allow alphanumeric, dash, underscore
@@ -50,13 +40,7 @@ fn validate_script_name(filename: &str) -> Result<()> {
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
-        vm_error!(
-            "Script name can only contain alphanumeric characters, dashes, and underscores: {}",
-            filename
-        );
-        return Err(anyhow::anyhow!(
-            "Script name can only contain alphanumeric characters, dashes, and underscores"
-        ));
+        return Err(errors::package::script_name_invalid_chars(filename));
     }
 
     Ok(())
@@ -103,8 +87,7 @@ impl PackageInstaller {
     ) -> Result<()> {
         // Check if package manager is available
         if !manager.is_available() {
-            vm_error!("Package manager {} is not available", manager);
-            return Err(anyhow::anyhow!("Package manager not available"));
+            return Err(errors::package::package_manager_unavailable(&manager));
         }
 
         // Check for linked package first (unless forcing registry install)
@@ -335,8 +318,7 @@ impl PackageInstaller {
         }
 
         // Some other error
-        vm_error!("Pipx install failed: {}", stderr);
-        Err(anyhow::anyhow!("Pipx install failed"))
+        Err(errors::package::pipx_install_failed(&stderr))
     }
 
     fn create_pipx_wrappers(&self, package: &str, path: &Path) -> Result<()> {

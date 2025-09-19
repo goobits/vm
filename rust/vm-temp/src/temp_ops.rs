@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 // External crates
 use anyhow::{Context, Result};
-use vm_common::{errors, vm_error, vm_error_hint, vm_success};
+use vm_common::{errors, vm_error, vm_success};
 
 // Internal imports
 use crate::{MountParser, MountPermission, StateManager, TempVmState};
@@ -56,7 +56,7 @@ impl TempVmOps {
         if let Some(_temp_provider) = provider.as_temp_provider() {
             provider.create()?;
         } else {
-            return Err(anyhow::anyhow!("Provider does not support temporary VMs"));
+            return Err(errors::temp::provider_unsupported());
         }
 
         // Save state
@@ -91,9 +91,7 @@ impl TempVmOps {
         let state_manager = StateManager::new().context("Failed to initialize state manager")?;
 
         if !state_manager.state_exists() {
-            vm_error!("No temp VM found");
-            vm_error_hint!("Create one with: vm temp create ./your-directory");
-            return Err(anyhow::anyhow!("No temp VM found"));
+            return Err(errors::temp::temp_vm_not_found());
         }
 
         provider.ssh(&PathBuf::from("."))

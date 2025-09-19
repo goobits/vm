@@ -3,17 +3,13 @@ use crate::ports::PortRange;
 use anyhow::Result;
 use regex::Regex;
 use std::path::PathBuf;
-use vm_common::vm_error;
+use vm_common::{errors, vm_error};
 
 /// Validate GPU type for GPU service
 fn validate_gpu_type(gpu_type: &Option<String>) -> Result<()> {
     if let Some(gpu_type) = gpu_type {
         if !matches!(gpu_type.as_str(), "nvidia" | "amd" | "intel" | "auto") {
-            vm_error!(
-                "Invalid GPU type: {}. Must be one of: nvidia, amd, intel, auto",
-                gpu_type
-            );
-            return Err(anyhow::anyhow!("Invalid GPU type"));
+            return Err(errors::validation::invalid_gpu_type(gpu_type));
         }
     }
     Ok(())
@@ -115,18 +111,15 @@ impl ConfigValidator {
     /// Check required fields are present
     fn validate_required_fields(&self) -> Result<()> {
         if self.config.provider.is_none() {
-            vm_error!("Missing required field: provider");
-            return Err(anyhow::anyhow!("Missing required field: provider"));
+            return Err(errors::validation::missing_required_field("provider"));
         }
 
         if let Some(project) = &self.config.project {
             if project.name.is_none() {
-                vm_error!("Missing required field: project.name");
-                return Err(anyhow::anyhow!("Missing required field: project.name"));
+                return Err(errors::validation::missing_required_field("project.name"));
             }
         } else {
-            vm_error!("Missing required field: project");
-            return Err(anyhow::anyhow!("Missing required field: project"));
+            return Err(errors::validation::missing_required_field("project"));
         }
 
         Ok(())
@@ -137,13 +130,7 @@ impl ConfigValidator {
         if let Some(provider) = &self.config.provider {
             match provider.as_str() {
                 "docker" | "vagrant" | "tart" => Ok(()),
-                _ => {
-                    vm_error!(
-                        "Invalid provider: {}. Must be one of: docker, vagrant, tart",
-                        provider
-                    );
-                    Err(anyhow::anyhow!("Invalid provider"))
-                }
+                _ => Err(errors::validation::invalid_provider(provider)),
             }
         } else {
             Ok(())

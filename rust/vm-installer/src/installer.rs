@@ -7,7 +7,7 @@ use std::process::{Command, Stdio};
 // External crates
 use anyhow::{Context, Result};
 use vm_common::{
-    module_logger_context, scoped_context, user_paths, vm_error, vm_progress, vm_success,
+    errors, module_logger_context, scoped_context, user_paths, vm_progress, vm_success,
 };
 
 // Internal imports
@@ -50,8 +50,7 @@ fn get_project_root() -> Result<PathBuf> {
         }
     }
 
-    vm_error!("Could not find project root from executable location. Ensure the project structure is intact.");
-    Err(anyhow::anyhow!("Could not find project root"))
+    Err(errors::installer::project_root_not_found())
 }
 
 fn run_cargo_clean(project_root: &Path) -> Result<()> {
@@ -78,8 +77,9 @@ fn run_cargo_clean(project_root: &Path) -> Result<()> {
         .context("Failed to execute 'cargo clean'")?;
 
     if !status.success() {
-        vm_error!("'cargo clean' failed.");
-        return Err(anyhow::anyhow!("cargo clean failed"));
+        return Err(errors::installer::cargo_clean_failed(
+            status.code().unwrap_or(-1),
+        ));
     }
     vm_success!("Build artifacts cleaned.");
     Ok(())
@@ -110,20 +110,16 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
         .context("Failed to execute 'cargo build'")?;
 
     if !status.success() {
-        vm_error!("Failed to build Rust binaries.");
-        return Err(anyhow::anyhow!("Failed to build Rust binaries"));
+        return Err(errors::installer::cargo_build_failed(
+            status.code().unwrap_or(-1),
+        ));
     }
     vm_success!("Rust binaries built successfully.");
 
     let binary_name = vm_platform::platform::executable_name("vm");
     let binary_path = target_dir.join("release").join(&binary_name);
     if !binary_path.exists() {
-        vm_error!(
-            "Could not find compiled '{}' binary at {:?}",
-            binary_name,
-            binary_path
-        );
-        return Err(anyhow::anyhow!("Could not find compiled binary"));
+        return Err(errors::installer::binary_not_found(&binary_path));
     }
     Ok(binary_path)
 }
