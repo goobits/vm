@@ -4,13 +4,11 @@
 # VM links (symlinked packages) - moved to /home/developer/.links/
 .links/
 
-# Node modules (if installing dependencies locally)
+# Package manager files (if needed for development)
 node_modules/
-
-# npm debug logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
 
 # Test directories
 test-*/
@@ -18,6 +16,10 @@ test-*/
 
 # Generated files
 # docker-compose.yml (now in .config/docker/)
+
+# Built binaries (should not be committed)
+vm
+vm.exe
 
 # Environment files
 .env

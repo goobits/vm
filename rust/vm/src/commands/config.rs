@@ -63,7 +63,7 @@ pub fn load_config_lenient(file: Option<PathBuf>) -> Result<VmConfig> {
     use vm_config::config::VmConfig;
 
     // Try to load defaults as base
-    const EMBEDDED_DEFAULTS: &str = include_str!("../../../../defaults.yaml");
+    const EMBEDDED_DEFAULTS: &str = include_str!("../../../../configs/defaults.yaml");
     let mut config: VmConfig =
         serde_yaml::from_str(EMBEDDED_DEFAULTS).context("Failed to parse embedded defaults")?;
 

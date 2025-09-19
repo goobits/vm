@@ -29,12 +29,12 @@ Development environments that auto-configure based on your project type
 ## 🚀 Quick Start
 
 ```bash
-# Installation
+# Installation (recommended)
+cargo install vm
+
+# Alternative: from source
 git clone https://github.com/goobits/vm.git
 cd vm && ./install.sh
-
-# Restart shell or source profile
-source ~/.zshrc
 
 # Create environment (auto-detects your project)
 vm create

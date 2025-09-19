@@ -82,7 +82,7 @@ pub fn execute(
     }
 
     // Load embedded defaults
-    const EMBEDDED_DEFAULTS: &str = include_str!("../../../../../defaults.yaml");
+    const EMBEDDED_DEFAULTS: &str = include_str!("../../../../../configs/defaults.yaml");
     let mut config: VmConfig =
         serde_yaml::from_str(EMBEDDED_DEFAULTS).context("Failed to parse embedded defaults")?;
 
