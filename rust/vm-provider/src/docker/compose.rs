@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 // External crates
 use anyhow::{Context, Result};
 use tera::Context as TeraContext;
-use vm_common::vm_println;
 
 // Internal imports
 use super::build::BuildOperations;
@@ -29,26 +28,6 @@ impl<'a> ComposeOperations<'a> {
             config,
             temp_dir,
             project_dir,
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn load_docker_compose_template() -> Result<String> {
-        // Try to load from file first (for development/customization)
-        let template_path =
-            vm_config::get_tool_dir().join("rust/vm-provider/src/docker/template.yml");
-
-        if template_path.exists() {
-            vm_println!(
-                "Loading Docker Compose template from: {}",
-                template_path.display()
-            );
-            std::fs::read_to_string(&template_path)
-                .with_context(|| format!("Failed to read template from {:?}", template_path))
-        } else {
-            // Fallback to embedded template for production
-            vm_println!("Using embedded Docker Compose template");
-            Ok(include_str!("template.yml").into())
         }
     }
 
