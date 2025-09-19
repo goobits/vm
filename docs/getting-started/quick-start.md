@@ -6,8 +6,8 @@ Setup guide for getting your development environment running.
 
 ```bash
 # 1. Install the tool
-npm install -g @goobits/vm
-# OR from source: git clone <repo> && cd vm && ./install.sh
+cargo install vm
+# OR from source: git clone https://github.com/goobits/vm.git && cd vm && ./install.sh
 
 # 2. Create environment (auto-detects your project)
 vm create
@@ -57,6 +57,9 @@ Only customize if the auto-detection doesn't work for you:
 ```yaml
 # vm.yaml - minimal override
 os: ubuntu
+provider: docker
+project:
+  name: my-project
 ports:
   frontend: 3000
   backend: 8000

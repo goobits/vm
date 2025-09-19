@@ -21,8 +21,11 @@ For configuration examples, see the [Examples Guide](../getting-started/examples
 Just specify your OS - everything else is auto-configured:
 
 ```yaml
-# That's it! Provider, memory, and tools auto-selected
+# Minimal setup with defaults
 os: ubuntu
+provider: docker
+project:
+  name: my-project
 ```
 
 ### Add Ports
@@ -31,6 +34,9 @@ Need specific ports? Just add them:
 
 ```yaml
 os: ubuntu
+provider: docker
+project:
+  name: my-project
 ports:
   frontend: 3020
   backend: 3022
@@ -42,6 +48,9 @@ Want PostgreSQL? Just enable it:
 
 ```yaml
 os: ubuntu
+provider: docker
+project:
+  name: my-project
 ports:
   backend: 3022
   postgresql: 3025

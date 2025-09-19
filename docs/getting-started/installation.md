@@ -8,7 +8,7 @@ Development environment setup. Choose between Docker (lightweight containers, de
 
 ```bash
 # 1. Clone repository and install globally
-git clone <repository-url>
+git clone https://github.com/goobits/vm.git
 cd vm
 ./install.sh
 
@@ -34,7 +34,7 @@ ports:
 
 ```bash
 # 1. Clone to your project directory
-git clone <repository-url> vm
+git clone https://github.com/goobits/vm.git vm
 cd vm
 
 # 2. Use directly without global installation
@@ -45,7 +45,7 @@ cd vm
 
 ```bash
 # 1. Clone to your project
-git clone <repository-url> vm
+git clone https://github.com/goobits/vm.git vm
 
 # 2. Add to package.json scripts
 {

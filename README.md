@@ -47,6 +47,8 @@ vm ssh
 # Optional: vm.yaml for custom configuration
 os: ubuntu
 provider: docker  # or vagrant for full isolation
+project:
+  name: my-project
 ```
 
 ## 🛠️ Environment Types
@@ -61,6 +63,8 @@ vm create  # Auto-selects Docker for most projects
 ```yaml
 # vm.yaml for maximum security
 provider: vagrant
+project:
+  name: my-project
 ```
 
 ### Auto-Detection
@@ -117,6 +121,8 @@ vm temp mounts                  # List current mounts
 ```yaml
 # Minimal configuration
 os: ubuntu
+project:
+  name: my-project
 
 # Add ports (mapped as key-value pairs)
 ports:

@@ -158,11 +158,11 @@ All testing functionality has been migrated from shell scripts to Rust:
 
 | Component | Test Type | Location | Test Count |
 |-----------|-----------|----------|------------|
-| Framework detection | Unit tests | `rust/vm-detector/src/tests/*.rs` | 55 tests |
+| Framework detection | Unit tests | `rust/vm-config/src/detector/tests/*.rs` | 12 test files |
 | Configuration | Unit & Integration | `rust/vm-config/src/` & `tests/` | 18 tests |
 | VM workflows | Integration tests | `rust/vm/tests/` | 21 tests |
 | Provider security | Unit tests | `rust/vm-provider/src/` | 22 tests |
-| Port management | Unit tests | `rust/vm-ports/src/` | 13 tests |
+| Platform detection | Unit tests | `rust/vm-platform/src/` | Various tests |
 | Package management | Integration tests | `rust/vm-pkg/tests/` | 10 tests |
 | Installer | Unit tests | `rust/vm-installer/src/` | 11 tests |
 | Temp operations | Integration tests | `rust/vm-temp/tests/` | 8 tests |

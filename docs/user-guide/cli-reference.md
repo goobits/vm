@@ -139,11 +139,16 @@ vm preset show react --yaml      # As YAML
 
 ## Testing
 
-### test
+### Running Tests
 ```bash
-./test/test.sh                   # Run all tests
-./test/test.sh --suite minimal   # Basic tests
-./test/test.sh --list            # Show suites
+# Run all Rust tests
+cd rust && cargo test --workspace
+
+# Run tests with output
+cd rust && cargo test --workspace -- --nocapture
+
+# Run specific package tests
+cd rust && cargo test --package vm-config
 ```
 
 ---

@@ -38,7 +38,6 @@ cd rust && cargo test vm_provider
 
 ### Code Style
 ```bash
-# Shell script formatting (if shellcheck is available)
 # Check Rust code formatting
 cd rust && cargo fmt --check
 
@@ -49,31 +48,37 @@ cd rust && cargo clippy
 yamllint configs/*.yaml fixtures/configs/*.yaml
 
 # Follow existing patterns in the codebase
-# - Use consistent indentation (2 spaces for YAML, 4 for shell)
+# - Use consistent indentation (2 spaces for YAML, 4 for Rust)
 # - Add comments for complex logic
 # - Use descriptive variable names
+# - Follow Rust naming conventions
 ```
 
 ## 📁 Project Structure
 
 ```
 .
-├── vm                              # Main entry point (wrapper for Rust binary)
-├── shared/                         # Shared utilities
-│   ├── config-processor.sh         # Configuration handling
-│   ├── project-detector.sh         # Framework detection
-│   ├── provider-interface.sh       # Provider abstraction
-│   └── temporary-vm-utils.sh       # Temp VM functionality
-├── providers/                      # Provider implementations
-│   ├── docker/                     # Docker provider
-│   ├── vagrant/                    # Vagrant provider
-│   └── tart/                       # Tart provider (Apple Silicon)
+├── install.sh                      # Installation script
+├── CLAUDE.md                       # Development notes
+├── README.md                       # User documentation
 ├── configs/                        # Configuration files
-│   ├── presets/                    # Framework presets
-│   └── schemas/                    # Validation schemas
+│   └── defaults.yaml               # Default configuration
+├── fixtures/                       # Test configuration files
 ├── docs/                           # Documentation
-├── test/                           # Test suite
-└── rust/                           # Performance improvements (WIP)
+│   ├── getting-started/            # Installation & quick start
+│   ├── user-guide/                 # User documentation
+│   └── development/                # Contributing guides
+└── rust/                           # Rust workspace (main codebase)
+    ├── Cargo.toml                  # Workspace configuration
+    ├── vm/                         # Main CLI application
+    ├── vm-common/                  # Shared utilities
+    ├── vm-config/                  # Configuration handling
+    ├── vm-pkg/                     # Package management
+    ├── vm-platform/                # Platform detection
+    ├── vm-provider/                # Provider implementations
+    ├── vm-temp/                    # Temporary VM functionality
+    ├── vm-installer/               # Installation management
+    └── version-sync/               # Version synchronization
 ```
 
 ## 🎨 Types of Contributions
@@ -125,20 +130,16 @@ services:
   postgresql:
     enabled: true
 
-# 2. Add detection logic
-# Edit shared/project-detector.sh
-detect_your_framework() {
-    [[ -f "your-framework.config.js" ]] && echo "your-framework"
-}
+# 2. Add detection logic in Rust
+# Edit rust/vm-detector/src/detectors/
+# Create your_framework.rs with detection logic
 
 # 3. Add tests
-# Edit test/unit/preset-detection.test.sh
-test_detect_your_framework() {
-    create_temp_project
-    touch your-framework.config.js
-    result=$(detect_project_type)
-    assert_contains "$result" "your-framework"
-}
+# Edit rust/vm-detector/src/tests/
+# Add test for your framework detection
+
+# 4. Register detector in mod.rs
+# Add your detector to the detection pipeline
 
 # 4. Update documentation
 # Edit docs/user-guide/presets.md
@@ -159,59 +160,61 @@ vm preset show your-framework
 
 ## 🏗️ Provider Development
 
+### Current Provider Architecture
+Providers are implemented in Rust in the `rust/vm-provider/` package.
+
 ### Adding New Providers
 ```bash
-# 1. Create provider directory
-mkdir providers/your-provider
+# 1. Add provider implementation in Rust
+# Edit rust/vm-provider/src/providers/
+# Create your_provider.rs
 
-# 2. Implement provider interface (see providers/docker/provider.sh)
-# Required functions:
-# - provider_available()
-# - provider_create()
-# - provider_start()
-# - provider_stop()
-# - provider_destroy()
-# - provider_ssh()
-# - provider_status()
+# 2. Implement the Provider trait
+# See rust/vm-provider/src/providers/docker.rs for example
 
-# 3. Add provider to detection logic
-# Edit shared/provider-interface.sh
+# 3. Register provider in mod.rs
+# Add your provider to the provider registry
 
 # 4. Add tests
-# Edit test/system/vm-lifecycle.test.sh
+# Edit rust/vm-provider/src/tests/
 ```
 
-### Provider Interface
-All providers must implement these functions:
-```bash
-# Lifecycle
-provider_available()     # Check if provider is available
-provider_create()        # Create new VM/container
-provider_start()         # Start stopped VM/container
-provider_stop()          # Stop running VM/container
-provider_destroy()       # Delete VM/container completely
+### Provider Trait
+All providers must implement the Provider trait defined in Rust:
+```rust
+// Lifecycle methods
+fn is_available(&self) -> Result<bool>;
+fn create(&self, config: &Config) -> Result<()>;
+fn start(&self, name: &str) -> Result<()>;
+fn stop(&self, name: &str) -> Result<()>;
+fn destroy(&self, name: &str) -> Result<()>;
 
-# Access
-provider_ssh()           # SSH into VM/container
-provider_exec()          # Execute command in VM/container
+// Access methods
+fn ssh(&self, name: &str, path: Option<&str>) -> Result<()>;
+fn exec(&self, name: &str, command: &[String]) -> Result<()>;
 
-# Info
-provider_status()        # Get VM/container status
-provider_logs()          # Get VM/container logs
-provider_list()          # List all VMs/containers
+// Info methods
+fn status(&self, name: &str) -> Result<ProviderStatus>;
+fn logs(&self, name: &str) -> Result<String>;
+fn list(&self) -> Result<Vec<String>>;
 ```
 
-## 🔬 Performance Improvements
+## 🔬 Rust Architecture
 
-### Shell to Rust Migration (WIP)
-The project is gradually migrating performance-critical components to Rust:
+### Current Rust Packages
+The project is fully implemented in Rust with the following packages:
 
 ```bash
-# Current Rust projects
-ls rust/
-vm-config/    # YAML processing (replaces config-processor.sh)
-vm-links/     # Package link detection (replaces link-detector.sh)
-vm-ports/     # Port management (replaces port-manager.sh)
+# Core packages
+vm/              # Main CLI application
+vm-common/       # Shared utilities and error handling
+vm-config/       # Configuration processing and validation
+vm-provider/     # Provider implementations (Docker, Vagrant, Tart)
+vm-temp/         # Temporary VM functionality
+vm-pkg/          # Package management
+vm-platform/     # Platform detection
+vm-installer/    # Installation management
+version-sync/    # Version synchronization
 
 # Contributing to Rust components
 cd rust/vm-config
@@ -275,24 +278,25 @@ hyperfine 'old_command' 'new_command'  # If hyperfine is available
 ### Understanding the Codebase
 ```bash
 # Start with main entry point
-less vm  # Wrapper script
+less install.sh  # Installation script
 
 # Understand the Rust implementation
-less rust/src/main.rs
+less rust/vm/src/main.rs
 less rust/vm-config/src/lib.rs
 less rust/vm-provider/src/lib.rs
+less rust/vm-common/src/lib.rs
 
-# Legacy shell scripts (being migrated)
-less shared/config-processor.sh
-less providers/docker/provider.sh
+# Review workspace structure
+less rust/Cargo.toml
 ```
 
-### Shell Scripting Best Practices
-- Use `set -euo pipefail` for error handling
-- Quote variables: `"$variable"` not `$variable`
-- Use `[[` instead of `[` for conditionals
-- Use functions for reusable code
-- Add error checking for external commands
+### Rust Development Best Practices
+- Use `Result<T, E>` for error handling
+- Implement proper error types with `thiserror`
+- Use `clap` for CLI argument parsing
+- Follow Rust naming conventions
+- Add comprehensive unit tests
+- Use `cargo fmt` and `cargo clippy`
 
 ### YAML Configuration
 - Use 2-space indentation

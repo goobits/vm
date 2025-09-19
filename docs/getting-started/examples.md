@@ -7,6 +7,8 @@ Real-world configuration examples for different project types and use cases.
 ### React Development
 ```yaml
 # vm.yaml
+os: ubuntu
+provider: docker
 project:
   name: react-app
   hostname: dev.react-app.local
@@ -23,6 +25,9 @@ npm_packages:
 ```yaml
 # vm.yaml
 os: ubuntu
+provider: docker
+project:
+  name: vue-app
 ports:
   dev: 5173
   preview: 4173
@@ -39,6 +44,8 @@ aliases:
 ### Django API
 ```yaml
 # vm.yaml
+os: ubuntu
+provider: docker
 project:
   name: django-api
   hostname: dev.django-api.local
@@ -65,6 +72,8 @@ aliases:
 ### Rails Application
 ```yaml
 # vm.yaml
+os: ubuntu
+provider: docker
 project:
   name: rails-app
   hostname: dev.rails-app.local
@@ -91,6 +100,8 @@ aliases:
 ### React + Node.js API
 ```yaml
 # vm.yaml
+os: ubuntu
+provider: docker
 project:
   name: fullstack-app
   hostname: dev.fullstack-app.local
@@ -118,6 +129,8 @@ aliases:
 ### Vue + Django
 ```yaml
 # vm.yaml
+os: ubuntu
+provider: docker
 project:
   name: vue-django
   hostname: dev.vue-django.local
@@ -147,6 +160,8 @@ aliases:
 ### Mobile Development Backend
 ```yaml
 # vm.yaml
+os: ubuntu
+provider: docker
 project:
   name: mobile-backend
   hostname: dev.mobile-backend.local
@@ -176,6 +191,8 @@ environment:
 ### Machine Learning / Data Science
 ```yaml
 # vm.yaml
+os: ubuntu
+provider: docker
 project:
   name: ml-project
   hostname: dev.ml-project.local
@@ -203,6 +220,8 @@ aliases:
 ### Multi-Language Project
 ```yaml
 # vm.yaml
+os: ubuntu
+provider: docker
 project:
   name: polyglot-project
   hostname: dev.polyglot-project.local
@@ -234,6 +253,8 @@ aliases:
 ### Microservices Development
 ```yaml
 # vm.yaml
+os: ubuntu
+provider: docker
 project:
   name: microservices
   hostname: dev.microservices.local
@@ -262,9 +283,13 @@ aliases:
 ### Database-Heavy Development
 ```yaml
 # vm.yaml
+os: ubuntu
+provider: docker
 project:
   name: data-heavy
   hostname: dev.data-heavy.local
+  persist_databases: true  # Survive VM rebuilds
+  backup_pattern: "*backup*.sql.gz"  # Auto-restore backups
 vm:
   memory: 8192
 services:
@@ -281,9 +306,6 @@ ports:
   mongodb: 27017
   redis: 6379
   pgadmin: 5050
-project:
-  persist_databases: true  # Survive VM rebuilds
-  backup_pattern: "*backup*.sql.gz"  # Auto-restore backups
 ```
 
 ## 🎨 Customization Patterns
@@ -291,18 +313,30 @@ project:
 ### Port Strategy (Team Development)
 ```yaml
 # Project 1: ports 3000-3009
+os: ubuntu
+provider: docker
+project:
+  name: team-project-1
 ports:
   frontend: 3000
   backend: 3001
   database: 3002
 
 # Project 2: ports 3010-3019
+os: ubuntu
+provider: docker
+project:
+  name: team-project-2
 ports:
   frontend: 3010
   backend: 3011
   database: 3012
 
 # Project 3: ports 3020-3029
+os: ubuntu
+provider: docker
+project:
+  name: team-project-3
 ports:
   frontend: 3020
   backend: 3021
@@ -322,11 +356,19 @@ vm --config staging.yaml create   # Staging mirror
 ### Resource Optimization
 ```yaml
 # Lightweight for simple projects
+os: ubuntu
+provider: docker
+project:
+  name: lightweight-project
 vm:
   memory: 2048
   cpus: 1
 
 # Heavy for complex workloads
+os: ubuntu
+provider: docker
+project:
+  name: heavy-project
 vm:
   memory: 12288
   cpus: 8
@@ -335,10 +377,18 @@ vm:
 ### Network Access
 ```yaml
 # Local development (default)
+os: ubuntu
+provider: docker
+project:
+  name: local-dev-project
 vm:
   port_binding: 127.0.0.1
 
 # Team sharing / mobile testing
+os: ubuntu
+provider: docker
+project:
+  name: shared-dev-project
 vm:
   port_binding: "0.0.0.0"
 ```
@@ -346,10 +396,17 @@ vm:
 ### Auto Defaults
 ```yaml
 # Let the tool figure it out
-os: ubuntu  # Everything else auto-configured
+os: ubuntu
+provider: docker
+project:
+  name: auto-config-project
+# Everything else auto-configured
 
 # vs explicit control
+os: ubuntu
 provider: docker
+project:
+  name: explicit-config-project
 vm:
   memory: 4096
   # ... many more options
