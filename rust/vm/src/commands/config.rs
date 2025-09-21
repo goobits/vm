@@ -141,9 +141,18 @@ pub fn handle_ports_command(fix: bool) -> Result<()> {
     vm_println!("   Project: {}", project_name);
     vm_println!("   Port range: {}", current_port_range);
 
+    if !fix {
+        // For basic ports command, just show the configuration
+        return Ok(());
+    }
+
     // Parse current range
     let current_range =
         PortRange::parse(current_port_range).context("Failed to parse current port range")?;
+
+    // Only check for conflicts when --fix is specified
+    vm_println!();
+    vm_println!("🔍 Checking for port conflicts...");
 
     // Check for conflicts with running Docker containers
     let conflicts = check_docker_port_conflicts(&current_range)?;
@@ -160,13 +169,6 @@ pub fn handle_ports_command(fix: bool) -> Result<()> {
             conflict.port,
             conflict.container
         );
-    }
-
-    if !fix {
-        vm_println!();
-        vm_println!("💡 To automatically fix these conflicts, run:");
-        vm_println!("   vm config ports --fix");
-        return Ok(());
     }
 
     // Fix conflicts by finding a new port range

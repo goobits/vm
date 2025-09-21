@@ -483,4 +483,73 @@ services:
 
         Ok(())
     }
+
+    #[test]
+    fn test_config_ports_basic() -> Result<()> {
+        let fixture = CliTestFixture::new()?;
+
+        // Set up a basic vm.yaml with required fields and port_range configuration
+        fixture.run_vm_command(&["config", "set", "provider", "docker"])?;
+        fixture.run_vm_command(&["config", "set", "project.name", "test-project"])?;
+        fixture.run_vm_command(&["config", "set", "port_range", "3000-3009"])?;
+
+        // Test basic ports command (should show current configuration)
+        let output = fixture.run_vm_command(&["config", "ports"])?;
+
+        let stdout = String::from_utf8(output.stdout)?;
+        assert!(output.status.success());
+        assert!(stdout.contains("Current port configuration:"));
+        assert!(stdout.contains("3000-3009"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_config_ports_fix_no_conflicts() -> Result<()> {
+        let fixture = CliTestFixture::new()?;
+
+        // Set up a vm.yaml with required fields and port_range configuration
+        fixture.run_vm_command(&["config", "set", "provider", "docker"])?;
+        fixture.run_vm_command(&["config", "set", "project.name", "test-project"])?;
+        fixture.run_vm_command(&["config", "set", "port_range", "3000-3009"])?;
+
+        // Test ports --fix when there are no conflicts
+        let output = fixture.run_vm_command(&["config", "ports", "--fix"])?;
+
+        let stdout = String::from_utf8(output.stdout)?;
+        let stderr = String::from_utf8(output.stderr)?;
+
+        // The command might succeed or fail depending on Docker availability
+        // If Docker is not available, it should gracefully handle the error
+        if output.status.success() {
+            assert!(
+                stdout.contains("Checking for port conflicts") || stdout.contains("No conflicts")
+            );
+        } else {
+            // If Docker is not available, should get a reasonable error message
+            assert!(
+                stderr.contains("docker")
+                    || stderr.contains("Docker")
+                    || stderr.contains("Failed to run docker")
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_config_ports_help() -> Result<()> {
+        let fixture = CliTestFixture::new()?;
+
+        // Test ports subcommand help
+        let output = fixture.run_vm_command(&["config", "ports", "--help"])?;
+        assert!(output.status.success());
+
+        let stdout = String::from_utf8(output.stdout)?;
+        assert!(stdout.contains("Manage port configuration"));
+        assert!(stdout.contains("--fix"));
+        assert!(stdout.contains("Fix port conflicts automatically"));
+
+        Ok(())
+    }
 }
