@@ -124,9 +124,7 @@ pub enum TempSubcommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum Command {
-    // Configuration & Setup
-    #[command(next_help_heading = "Configuration & Setup")]
-    /// Initialize a new vm.yaml configuration file
+    /// Initialize a new VM configuration file
     Init {
         /// Custom configuration file path
         #[arg(short, long)]
@@ -140,77 +138,58 @@ pub enum Command {
         #[arg(long)]
         ports: Option<u16>,
     },
-    #[command(next_help_heading = "Configuration & Setup")]
-    /// Validate the configuration
+    /// Validate VM configuration
     Validate,
-    #[command(next_help_heading = "Configuration & Setup")]
-    /// Manage configuration settings (basic operations - use 'vm-config' tool for advanced features)
+    /// Manage VM configuration settings
     Config {
         #[command(subcommand)]
         command: ConfigSubcommand,
     },
 
-    // VM Lifecycle
-    #[command(next_help_heading = "VM Lifecycle")]
     /// Create and provision a new VM
     Create {
         /// Force creation even if VM already exists
         #[arg(long)]
         force: bool,
     },
-    #[command(next_help_heading = "VM Lifecycle")]
-    /// Start an existing VM
+    /// Start a VM
     Start,
-    #[command(next_help_heading = "VM Lifecycle")]
-    /// Stop a running VM or force kill a specific container
+    /// Stop a VM or force-kill a specific container
     Stop {
         /// Optional container name or ID to stop. If not provided, stops the current project's VM gracefully.
         container: Option<String>,
     },
-    #[command(next_help_heading = "VM Lifecycle")]
-    /// Restart a VM (stop then start)
+    /// Restart a VM
     Restart,
-    #[command(next_help_heading = "VM Lifecycle")]
-    /// Destroy a VM and its resources
+    /// Re-run VM provisioning
+    Provision,
+    /// Destroy a VM and clean up resources
     Destroy {
         /// Force destruction without confirmation
         #[arg(long)]
         force: bool,
     },
-    #[command(next_help_heading = "VM Lifecycle")]
-    /// Re-run provisioning on existing VM
-    Provision,
 
-    // VM Operations
-    #[command(next_help_heading = "VM Operations")]
-    /// SSH into a VM
+    /// List all VMs with status and resource usage
+    List,
+    /// Show VM status and health
+    Status,
+    /// Connect to VM via SSH
     Ssh {
         /// Optional path to start the shell in
         #[arg()]
         path: Option<PathBuf>,
     },
-    #[command(next_help_heading = "VM Operations")]
-    /// Execute a command in the VM
+    /// Execute commands inside VM
     Exec {
         /// The command to execute
         #[arg(required = true, num_args = 1..)]
         command: Vec<String>,
     },
-
-    // Monitoring & Information
-    #[command(next_help_heading = "Monitoring & Information")]
-    /// List all VMs
-    List,
-    #[command(next_help_heading = "Monitoring & Information")]
-    /// Get the status of a VM
-    Status,
-    #[command(next_help_heading = "Monitoring & Information")]
-    /// View logs of the VM
+    /// View VM logs
     Logs,
 
-    // Temporary VMs
-    #[command(next_help_heading = "Temporary VMs")]
-    /// Temporary VM operations
+    /// Manage temporary VMs
     Temp {
         #[command(subcommand)]
         command: TempSubcommand,
