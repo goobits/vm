@@ -40,11 +40,22 @@ pub fn handle_start(provider: Box<dyn Provider>) -> Result<()> {
     provider.start()
 }
 
-/// Handle VM stop
-pub fn handle_stop(provider: Box<dyn Provider>) -> Result<()> {
-    let _op_guard = scoped_context! { "operation" => "stop" };
-    info!("Stopping VM");
-    provider.stop()
+/// Handle VM stop - graceful stop for current project or force kill specific container
+pub fn handle_stop(provider: Box<dyn Provider>, container: Option<String>) -> Result<()> {
+    match container {
+        None => {
+            // Graceful stop of current project VM
+            let _op_guard = scoped_context! { "operation" => "stop" };
+            info!("Stopping VM");
+            provider.stop()
+        }
+        Some(container_name) => {
+            // Force kill specific container
+            let _op_guard = scoped_context! { "operation" => "kill" };
+            warn!("Force killing container: {}", container_name);
+            provider.kill(Some(&container_name))
+        }
+    }
 }
 
 /// Handle VM restart
@@ -66,13 +77,6 @@ pub fn handle_list(provider: Box<dyn Provider>) -> Result<()> {
     let _op_guard = scoped_context! { "operation" => "list" };
     debug!("Listing VMs");
     provider.list()
-}
-
-/// Handle VM kill
-pub fn handle_kill(provider: Box<dyn Provider>, container: Option<String>) -> Result<()> {
-    let _op_guard = scoped_context! { "operation" => "kill" };
-    warn!("Force killing VM processes: container={:?}", container);
-    provider.kill(container.as_deref())
 }
 
 /// Handle get sync directory

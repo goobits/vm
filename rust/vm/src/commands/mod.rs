@@ -56,11 +56,10 @@ fn handle_dry_run(args: &Args) -> Result<()> {
     match &args.command {
         Command::Create { .. }
         | Command::Start
-        | Command::Stop
+        | Command::Stop { .. }
         | Command::Restart
         | Command::Destroy { .. }
-        | Command::Provision
-        | Command::Kill { .. } => {
+        | Command::Provision => {
             vm_println!("🔍 DRY RUN MODE - showing what would be executed:");
             vm_println!("   Command: {:?}", args.command);
             if let Some(config) = &args.config {
@@ -118,11 +117,10 @@ fn handle_provider_command(args: Args) -> Result<()> {
     match args.command {
         Command::Create { force } => vm_ops::handle_create(provider, force),
         Command::Start => vm_ops::handle_start(provider),
-        Command::Stop => vm_ops::handle_stop(provider),
+        Command::Stop { container } => vm_ops::handle_stop(provider, container),
         Command::Restart => vm_ops::handle_restart(provider),
         Command::Provision => vm_ops::handle_provision(provider),
         Command::List => vm_ops::handle_list(provider),
-        Command::Kill { container } => vm_ops::handle_kill(provider, container),
         Command::GetSyncDirectory => {
             vm_ops::handle_get_sync_directory(provider);
             Ok(())

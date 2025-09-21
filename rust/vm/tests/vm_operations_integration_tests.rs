@@ -293,7 +293,7 @@ fn test_vm_stop_command() -> Result<()> {
     // Wait for it to be running
     assert!(fixture.wait_for_container_state("running", 30));
 
-    // Stop the VM
+    // Stop the VM (graceful stop)
     let output = fixture.run_vm_command(&["stop"])?;
     assert!(
         output.status.success(),
@@ -306,6 +306,36 @@ fn test_vm_stop_command() -> Result<()> {
         fixture.wait_for_container_state("exited", 30),
         "Container did not stop within timeout"
     );
+
+    // Test stop with specific container (force kill)
+    fixture.run_vm_command(&["start"])?;
+    assert!(fixture.wait_for_container_state("running", 30));
+
+    let output = fixture.run_vm_command(&["stop", &fixture.project_name])?;
+    assert!(
+        output.status.success(),
+        "VM stop with container name failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Verify container is no longer running
+    std::thread::sleep(Duration::from_secs(2));
+    let check_output = Command::new("docker")
+        .args([
+            "inspect",
+            "--format",
+            "{{.State.Status}}",
+            &fixture.project_name,
+        ])
+        .output()?;
+    if check_output.status.success() {
+        let stdout = String::from_utf8_lossy(&check_output.stdout);
+        let state = stdout.trim();
+        assert_ne!(
+            state, "running",
+            "Container should not be running after force kill"
+        );
+    }
 
     fixture.cleanup_test_containers()?;
     Ok(())
@@ -520,87 +550,7 @@ fn test_vm_logs_command() -> Result<()> {
     Ok(())
 }
 
-#[test]
-fn test_vm_kill_command() -> Result<()> {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let fixture = VmOpsTestFixture::new()?;
 
-    if !fixture.binary_path.exists() || !fixture.is_docker_available() {
-        println!("Skipping test - vm binary or Docker not available");
-        return Ok(());
-    }
-
-    fixture.cleanup_test_containers()?;
-    fixture.create_test_config()?;
-    fixture.create_test_dockerfile()?;
-
-    // Create and start VM
-    fixture.run_vm_command(&["create"])?;
-    fixture.run_vm_command(&["start"])?;
-    assert!(fixture.wait_for_container_state("running", 30));
-
-    // Test kill command
-    let output = fixture.run_vm_command(&["kill"])?;
-    assert!(
-        output.status.success(),
-        "VM kill failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    // Verify container is no longer running
-    std::thread::sleep(Duration::from_secs(2));
-    let check_output = Command::new("docker")
-        .args([
-            "inspect",
-            "--format",
-            "{{.State.Status}}",
-            &fixture.project_name,
-        ])
-        .output()?;
-
-    if check_output.status.success() {
-        let stdout = String::from_utf8_lossy(&check_output.stdout);
-        let state = stdout.trim();
-        assert_ne!(
-            state, "running",
-            "Container should not be running after kill"
-        );
-    }
-
-    fixture.cleanup_test_containers()?;
-    Ok(())
-}
-
-#[test]
-fn test_vm_kill_specific_container() -> Result<()> {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let fixture = VmOpsTestFixture::new()?;
-
-    if !fixture.binary_path.exists() || !fixture.is_docker_available() {
-        println!("Skipping test - vm binary or Docker not available");
-        return Ok(());
-    }
-
-    fixture.cleanup_test_containers()?;
-    fixture.create_test_config()?;
-    fixture.create_test_dockerfile()?;
-
-    // Create and start VM
-    fixture.run_vm_command(&["create"])?;
-    fixture.run_vm_command(&["start"])?;
-    assert!(fixture.wait_for_container_state("running", 30));
-
-    // Test kill command with specific container name
-    let output = fixture.run_vm_command(&["kill", &fixture.project_name])?;
-    assert!(
-        output.status.success(),
-        "VM kill with container name failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    fixture.cleanup_test_containers()?;
-    Ok(())
-}
 
 #[test]
 fn test_vm_destroy_command() -> Result<()> {

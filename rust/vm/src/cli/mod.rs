@@ -163,19 +163,17 @@ pub enum Command {
     },
     /// Start an existing VM
     Start,
-    /// Stop a running VM
-    Stop,
+    /// Stop a running VM or force kill a specific container
+    Stop {
+        /// Optional container name or ID to stop. If not provided, stops the current project's VM gracefully.
+        container: Option<String>,
+    },
     /// Restart a VM (stop then start)
     Restart,
     /// Re-run provisioning on existing VM
     Provision,
     /// List all VMs
     List,
-    /// Force kill VM processes
-    Kill {
-        /// Optional container name or ID to kill. If not provided, kills the current project's container.
-        container: Option<String>,
-    },
     /// Get workspace directory
     #[command(hide = true)]
     GetSyncDirectory,
