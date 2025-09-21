@@ -259,24 +259,6 @@ impl ConfigOps {
         Ok(())
     }
 
-    /// Clear all configuration
-    pub fn clear(global: bool) -> Result<()> {
-        let config_path = if global {
-            get_global_config_path()
-        } else {
-            find_local_config()?
-        };
-
-        if !config_path.exists() {
-            println!("No configuration file to clear");
-            return Ok(());
-        }
-
-        fs::remove_file(&config_path)?;
-        println!("✅ Cleared {}", config_path.display());
-        Ok(())
-    }
-
     /// Apply preset(s) to configuration
     pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) -> Result<()> {
         let presets_dir = paths::get_presets_dir();

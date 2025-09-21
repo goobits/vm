@@ -155,7 +155,6 @@ vm config preset your-framework  # Apply preset
 
 # Test configuration
 vm validate
-vm preset show your-framework
 ```
 
 ## 🏗️ Provider Development

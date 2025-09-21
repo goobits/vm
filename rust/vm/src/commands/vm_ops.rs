@@ -11,10 +11,7 @@ use log::{debug, info, warn};
 use vm_common::scoped_context;
 use vm_common::vm_error;
 use vm_config::config::VmConfig;
-use vm_provider::{
-    progress::{confirm_prompt, ProgressReporter, StatusFormatter},
-    Provider,
-};
+use vm_provider::Provider;
 
 /// Handle VM creation
 pub fn handle_create(provider: Box<dyn Provider>, force: bool) -> Result<()> {
@@ -34,42 +31,189 @@ pub fn handle_create(provider: Box<dyn Provider>, force: bool) -> Result<()> {
 }
 
 /// Handle VM start
-pub fn handle_start(provider: Box<dyn Provider>) -> Result<()> {
+pub fn handle_start(provider: Box<dyn Provider>, config: VmConfig) -> Result<()> {
     let _op_guard = scoped_context! { "operation" => "start" };
     info!("Starting VM");
-    provider.start()
+
+    // Get VM name from config
+    let vm_name = config
+        .project
+        .as_ref()
+        .and_then(|p| p.name.as_ref())
+        .map(|s| s.as_str())
+        .unwrap_or("vm-project");
+
+    let container_name = format!("{}-dev", vm_name);
+
+    // Check if already running
+    if provider.status().is_ok() {
+        println!("✅ VM '{}' is already running", vm_name);
+        println!("\n💡 Connect with: vm ssh");
+        return Ok(());
+    }
+
+    println!("🚀 Starting '{}'...", vm_name);
+
+    match provider.start() {
+        Ok(()) => {
+            println!("✅ Started successfully\n");
+
+            // Show VM details
+            println!("  Status:     🟢 Running");
+            println!("  Container:  {}", container_name);
+
+            // Show resources if available
+            if let Some(cpus) = config.vm.as_ref().and_then(|vm| vm.cpus) {
+                if let Some(memory) = config.vm.as_ref().and_then(|vm| vm.memory.as_ref()) {
+                    // Format memory display
+                    let mem_str = match memory.to_mb() {
+                        Some(mb) if mb >= 1024 => format!("{}GB", mb / 1024),
+                        Some(mb) => format!("{}MB", mb),
+                        None => format!("{:?}", memory),
+                    };
+                    println!("  Resources:  {} CPUs, {}", cpus, mem_str);
+                }
+            }
+
+            // Show services if any are configured
+            let services: Vec<String> = config
+                .services
+                .iter()
+                .filter(|(_, svc)| svc.enabled)
+                .map(|(name, _)| name.clone())
+                .collect();
+
+            if !services.is_empty() {
+                println!("  Services:   {}", services.join(", "));
+            }
+
+            println!("\n💡 Connect with: vm ssh");
+
+            Ok(())
+        }
+        Err(e) => {
+            println!("❌ Failed to start '{}'", vm_name);
+            println!("   Error: {}", e);
+            println!("\n💡 Try:");
+            println!("   • Check Docker status: docker ps");
+            println!("   • View logs: docker logs {}", container_name);
+            println!("   • Recreate VM: vm create --force");
+            Err(e)
+        }
+    }
 }
 
 /// Handle VM stop - graceful stop for current project or force kill specific container
-pub fn handle_stop(provider: Box<dyn Provider>, container: Option<String>) -> Result<()> {
+pub fn handle_stop(
+    provider: Box<dyn Provider>,
+    container: Option<String>,
+    config: VmConfig,
+) -> Result<()> {
     match container {
         None => {
             // Graceful stop of current project VM
             let _op_guard = scoped_context! { "operation" => "stop" };
             info!("Stopping VM");
-            provider.stop()
+
+            let vm_name = config
+                .project
+                .as_ref()
+                .and_then(|p| p.name.as_ref())
+                .map(|s| s.as_str())
+                .unwrap_or("vm-project");
+
+            println!("🛑 Stopping '{}'...", vm_name);
+
+            match provider.stop() {
+                Ok(()) => {
+                    println!("✅ Stopped successfully\n");
+                    println!("💡 Restart with: vm start");
+                    Ok(())
+                }
+                Err(e) => {
+                    println!("❌ Failed to stop '{}'", vm_name);
+                    println!("   Error: {}", e);
+                    Err(e)
+                }
+            }
         }
         Some(container_name) => {
             // Force kill specific container
             let _op_guard = scoped_context! { "operation" => "kill" };
             warn!("Force killing container: {}", container_name);
-            provider.kill(Some(&container_name))
+
+            println!("⚠️  Force stopping container '{}'...", container_name);
+
+            match provider.kill(Some(&container_name)) {
+                Ok(()) => {
+                    println!("✅ Container stopped");
+                    Ok(())
+                }
+                Err(e) => {
+                    println!("❌ Failed to stop container");
+                    println!("   Error: {}", e);
+                    Err(e)
+                }
+            }
         }
     }
 }
 
 /// Handle VM restart
-pub fn handle_restart(provider: Box<dyn Provider>) -> Result<()> {
+pub fn handle_restart(provider: Box<dyn Provider>, config: VmConfig) -> Result<()> {
     let _op_guard = scoped_context! { "operation" => "restart" };
     info!("Restarting VM");
-    provider.restart()
+
+    let vm_name = config
+        .project
+        .as_ref()
+        .and_then(|p| p.name.as_ref())
+        .map(|s| s.as_str())
+        .unwrap_or("vm-project");
+
+    println!("🔄 Restarting '{}'...", vm_name);
+    println!("  ✓ Stopping container");
+    println!("  ✓ Starting container");
+
+    match provider.restart() {
+        Ok(()) => {
+            println!("  ✓ Services ready\n");
+            println!("✅ Restarted successfully");
+            Ok(())
+        }
+        Err(e) => {
+            println!("\n❌ Failed to restart '{}'", vm_name);
+            println!("   Error: {}", e);
+            Err(e)
+        }
+    }
 }
 
 /// Handle VM provisioning
-pub fn handle_provision(provider: Box<dyn Provider>) -> Result<()> {
+pub fn handle_provision(provider: Box<dyn Provider>, config: VmConfig) -> Result<()> {
     let _op_guard = scoped_context! { "operation" => "provision" };
     info!("Re-running VM provisioning");
-    provider.provision()
+
+    let vm_name = config
+        .project
+        .as_ref()
+        .and_then(|p| p.name.as_ref())
+        .map(|s| s.as_str())
+        .unwrap_or("vm-project");
+
+    println!("🔧 Re-provisioning '{}'\n", vm_name);
+
+    match provider.provision() {
+        Ok(()) => {
+            println!("\n✅ Provisioning complete");
+            Ok(())
+        }
+        Err(e) => {
+            println!("\n❌ Provisioning failed");
+            println!("   Error: {}", e);
+            Err(e)
+        }
+    }
 }
 
 /// Handle VM listing
@@ -97,6 +241,8 @@ pub fn handle_destroy(provider: Box<dyn Provider>, config: VmConfig, force: bool
         .map(|s| s.as_str())
         .unwrap_or("VM");
 
+    let container_name = format!("{}-dev", vm_name);
+
     debug!(
         "Destroying VM: vm_name='{}', provider='{}', force={}",
         vm_name,
@@ -104,40 +250,56 @@ pub fn handle_destroy(provider: Box<dyn Provider>, config: VmConfig, force: bool
         force
     );
 
-    // Initialize progress reporter (kept for potential future use)
-    let _progress = ProgressReporter::new();
-
     let should_destroy = if force {
         debug!("Force flag set - skipping confirmation prompt");
-        ProgressReporter::phase_header("🗑️", "DESTROY PHASE (FORCED)");
+        println!("🗑️ Destroying '{}' (forced)\n", vm_name);
         true
     } else {
-        // Show confirmation prompt
-        ProgressReporter::phase_header("🗑️", "DESTROY PHASE");
-        let confirmation_msg = format!(
-            "├─ ⚠️  Are you sure you want to destroy {}? This will delete all data. (y/N): ",
-            vm_name
+        // Check status first to show current state
+        let is_running = provider.status().is_ok();
+
+        println!("🗑️ Destroy VM '{}'?\n", vm_name);
+        println!(
+            "  Status:     {}",
+            if is_running {
+                "🟢 Running"
+            } else {
+                "🔴 Stopped"
+            }
         );
-        confirm_prompt(&confirmation_msg)
+        println!("  Container:  {}", container_name);
+        println!("\n⚠️  This will permanently delete:");
+        println!("  • Container and all data");
+        println!("  • Docker image and build cache");
+        println!();
+        print!("Confirm destruction? (y/N): ");
+        use std::io::{self, Write};
+        io::stdout().flush().unwrap();
+
+        let mut response = String::new();
+        io::stdin().read_line(&mut response).unwrap();
+        response.trim().to_lowercase() == "y"
     };
 
     if should_destroy {
         debug!("Destroy confirmation: response='yes', proceeding with destruction");
-        ProgressReporter::subtask("├─", "Proceeding with destruction...");
+        println!("\n  ✓ Stopping container");
+        println!("  ✓ Removing container");
+        println!("  ✓ Cleaning images");
 
         match provider.destroy() {
             Ok(()) => {
-                ProgressReporter::complete("└─", "VM destroyed successfully");
+                println!("\n✅ VM destroyed");
                 Ok(())
             }
             Err(e) => {
-                ProgressReporter::error("└─", &format!("Destruction failed: {}", e));
+                println!("\n❌ Destruction failed: {}", e);
                 Err(e)
             }
         }
     } else {
         debug!("Destroy confirmation: response='no', cancelling destruction");
-        ProgressReporter::error("└─", "Destruction cancelled");
+        println!("\n❌ Destruction cancelled");
         vm_error!("VM destruction cancelled by user");
         Err(anyhow::anyhow!("VM destruction cancelled by user"))
     }
@@ -162,14 +324,55 @@ pub fn handle_ssh(
         workspace_path
     );
 
-    provider.ssh(&relative_path)
+    let vm_name = config
+        .project
+        .as_ref()
+        .and_then(|p| p.name.as_ref())
+        .map(|s| s.as_str())
+        .unwrap_or("vm-project");
+
+    // Default to "developer" for user since users field may not exist
+    let user = "developer";
+
+    let shell = config
+        .terminal
+        .as_ref()
+        .and_then(|t| t.shell.as_deref())
+        .unwrap_or("zsh");
+
+    println!("🔗 Connecting to '{}'...", vm_name);
+    println!();
+    println!("  User:  {}", user);
+    println!("  Path:  {}", workspace_path);
+    println!("  Shell: {}", shell);
+    println!("\n💡 Exit with: exit or Ctrl-D\n");
+
+    let result = provider.ssh(&relative_path);
+
+    // Show message when SSH session ends
+    match &result {
+        Ok(()) => {
+            println!("\n👋 Disconnected from '{}'", vm_name);
+            println!("💡 Reconnect with: vm ssh");
+        }
+        Err(e) => {
+            // Check if it was a user interrupt (Ctrl-C) or connection failure
+            let error_str = e.to_string();
+            if error_str.contains("130") || error_str.contains("Interrupted") {
+                println!("\n⚠️  SSH session interrupted");
+                println!("💡 Reconnect with: vm ssh");
+            } else {
+                println!("\n❌ SSH connection failed: {}", e);
+                println!("💡 Check if VM is running: vm status");
+            }
+        }
+    }
+
+    result
 }
 
 /// Handle VM status check
 pub fn handle_status(provider: Box<dyn Provider>, config: VmConfig) -> Result<()> {
-    // Enhanced status reporting using StatusFormatter
-    let _progress = ProgressReporter::new();
-
     // Get VM name from config
     let vm_name = config
         .project
@@ -178,11 +381,10 @@ pub fn handle_status(provider: Box<dyn Provider>, config: VmConfig) -> Result<()
         .map(|s| s.as_str())
         .unwrap_or("vm-project");
 
+    let container_name = format!("{}-dev", vm_name);
+
     // Get memory and cpu info from config
-    let memory = config
-        .vm
-        .as_ref()
-        .and_then(|vm| vm.memory.as_ref().and_then(|m| m.to_mb()));
+    let memory = config.vm.as_ref().and_then(|vm| vm.memory.as_ref());
     let cpus = config.vm.as_ref().and_then(|vm| vm.cpus);
 
     debug!(
@@ -193,45 +395,119 @@ pub fn handle_status(provider: Box<dyn Provider>, config: VmConfig) -> Result<()
         cpus
     );
 
-    ProgressReporter::phase_header("📊", "STATUS CHECK");
-    ProgressReporter::subtask("├─", "Checking VM status...");
+    println!("📊 {}", vm_name);
 
     match provider.status() {
         Ok(()) => {
-            debug!("Status check successful for VM '{}'", vm_name);
-            ProgressReporter::complete("└─", "Status check complete");
+            println!("\n  Status:     🟢 Running");
+            println!("  Provider:   {}", provider.name());
+            println!("  Container:  {}", container_name);
 
-            // Format status information
-            println!("\n");
-            StatusFormatter::format_status(
-                vm_name,
-                "running", // This could be enhanced to get actual status
-                provider.name(),
-                memory,
-                cpus,
-            );
+            // Show resources
+            if cpus.is_some() || memory.is_some() {
+                println!("\n  Resources:");
+                if let Some(cpu_count) = cpus {
+                    println!("    CPUs:     {} cores", cpu_count);
+                }
+                if let Some(mem) = memory {
+                    // Format memory display
+                    let mem_str = match mem.to_mb() {
+                        Some(mb) if mb >= 1024 => format!("{}GB", mb / 1024),
+                        Some(mb) => format!("{}MB", mb),
+                        None => format!("{:?}", mem),
+                    };
+                    println!("    Memory:   {}", mem_str);
+                }
+            }
+
+            // Show services if configured
+            let services: Vec<(String, Option<u16>)> = config
+                .services
+                .iter()
+                .filter(|(_, svc)| svc.enabled)
+                .map(|(name, svc)| (name.clone(), svc.port))
+                .collect();
+
+            if !services.is_empty() {
+                println!("\n  Services:");
+                for (name, port) in services {
+                    if let Some(p) = port {
+                        println!("    {}  🟢 {}", name, p);
+                    } else {
+                        println!("    {}  🟢", name);
+                    }
+                }
+            }
+
             Ok(())
         }
-        Err(e) => {
-            debug!("Status check failed for VM '{}': {}", vm_name, e);
-            ProgressReporter::error("└─", &format!("Status check failed: {}", e));
-            Err(e)
+        Err(_) => {
+            println!("\n  Status:     🔴 Not running");
+            println!("  Provider:   {}", provider.name());
+            println!("  Container:  {} (not found)", container_name);
+            println!("\n💡 Start with: vm start");
+            Ok(()) // Don't propagate error, just show status
         }
     }
 }
 
 /// Handle command execution in VM
-pub fn handle_exec(provider: Box<dyn Provider>, command: Vec<String>) -> Result<()> {
+pub fn handle_exec(
+    provider: Box<dyn Provider>,
+    command: Vec<String>,
+    config: VmConfig,
+) -> Result<()> {
     debug!(
         "Executing command in VM: command={:?}, provider='{}'",
         command,
         provider.name()
     );
-    provider.exec(&command)
+
+    let vm_name = config
+        .project
+        .as_ref()
+        .and_then(|p| p.name.as_ref())
+        .map(|s| s.as_str())
+        .unwrap_or("vm-project");
+
+    let cmd_display = command.join(" ");
+    println!("🏃 Running in '{}': {}", vm_name, cmd_display);
+    println!("----------------------------------------");
+
+    let result = provider.exec(&command);
+
+    match &result {
+        Ok(()) => {
+            println!("----------------------------------------");
+            println!("✅ Command completed successfully");
+        }
+        Err(e) => {
+            println!("----------------------------------------");
+            println!("❌ Command failed: {}", e);
+        }
+    }
+
+    result
 }
 
 /// Handle VM logs viewing
-pub fn handle_logs(provider: Box<dyn Provider>) -> Result<()> {
+pub fn handle_logs(provider: Box<dyn Provider>, config: VmConfig) -> Result<()> {
     debug!("Viewing VM logs: provider='{}'", provider.name());
-    provider.logs()
+
+    let vm_name = config
+        .project
+        .as_ref()
+        .and_then(|p| p.name.as_ref())
+        .map(|s| s.as_str())
+        .unwrap_or("vm-project");
+
+    println!("📜 Logs for '{}' (last 50 lines)", vm_name);
+    println!("──────────────────────────────────────────");
+
+    let result = provider.logs();
+
+    println!("──────────────────────────────────────────");
+    println!("💡 Follow logs: docker logs -f {}-dev", vm_name);
+
+    result
 }

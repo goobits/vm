@@ -25,17 +25,6 @@ pub struct Args {
 }
 
 #[derive(Debug, Clone, Subcommand)]
-pub enum PresetSubcommand {
-    /// List available presets
-    List,
-    /// Show details of a specific preset
-    Show {
-        /// Name of the preset to show
-        name: String,
-    },
-}
-
-#[derive(Debug, Clone, Subcommand)]
 pub enum ConfigSubcommand {
     /// Set a configuration value
     Set {
@@ -60,12 +49,6 @@ pub enum ConfigSubcommand {
         /// Field path to remove
         field: String,
         /// Remove from global config
-        #[arg(long)]
-        global: bool,
-    },
-    /// Clear all configuration
-    Clear {
-        /// Clear global config
         #[arg(long)]
         global: bool,
     },
@@ -141,6 +124,8 @@ pub enum TempSubcommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum Command {
+    // Configuration & Setup
+    #[command(next_help_heading = "Configuration & Setup")]
     /// Initialize a new vm.yaml configuration file
     Init {
         /// Custom configuration file path
@@ -155,65 +140,83 @@ pub enum Command {
         #[arg(long)]
         ports: Option<u16>,
     },
+    #[command(next_help_heading = "Configuration & Setup")]
+    /// Validate the configuration
+    Validate,
+    #[command(next_help_heading = "Configuration & Setup")]
+    /// Manage configuration settings (basic operations - use 'vm-config' tool for advanced features)
+    Config {
+        #[command(subcommand)]
+        command: ConfigSubcommand,
+    },
+
+    // VM Lifecycle
+    #[command(next_help_heading = "VM Lifecycle")]
     /// Create and provision a new VM
     Create {
         /// Force creation even if VM already exists
         #[arg(long)]
         force: bool,
     },
+    #[command(next_help_heading = "VM Lifecycle")]
     /// Start an existing VM
     Start,
+    #[command(next_help_heading = "VM Lifecycle")]
     /// Stop a running VM or force kill a specific container
     Stop {
         /// Optional container name or ID to stop. If not provided, stops the current project's VM gracefully.
         container: Option<String>,
     },
+    #[command(next_help_heading = "VM Lifecycle")]
     /// Restart a VM (stop then start)
     Restart,
-    /// Re-run provisioning on existing VM
-    Provision,
-    /// List all VMs
-    List,
-    /// Get workspace directory
-    #[command(hide = true)]
-    GetSyncDirectory,
-    /// Preset operations
-    Preset {
-        #[command(subcommand)]
-        command: PresetSubcommand,
-    },
+    #[command(next_help_heading = "VM Lifecycle")]
     /// Destroy a VM and its resources
     Destroy {
         /// Force destruction without confirmation
         #[arg(long)]
         force: bool,
     },
+    #[command(next_help_heading = "VM Lifecycle")]
+    /// Re-run provisioning on existing VM
+    Provision,
+
+    // VM Operations
+    #[command(next_help_heading = "VM Operations")]
     /// SSH into a VM
     Ssh {
         /// Optional path to start the shell in
         #[arg()]
         path: Option<PathBuf>,
     },
-    /// Get the status of a VM
-    Status,
+    #[command(next_help_heading = "VM Operations")]
     /// Execute a command in the VM
     Exec {
         /// The command to execute
         #[arg(required = true, num_args = 1..)]
         command: Vec<String>,
     },
+
+    // Monitoring & Information
+    #[command(next_help_heading = "Monitoring & Information")]
+    /// List all VMs
+    List,
+    #[command(next_help_heading = "Monitoring & Information")]
+    /// Get the status of a VM
+    Status,
+    #[command(next_help_heading = "Monitoring & Information")]
     /// View logs of the VM
     Logs,
-    /// Validate the configuration
-    Validate,
-    /// Manage configuration settings (basic operations - use 'vm-config' tool for advanced features)
-    Config {
-        #[command(subcommand)]
-        command: ConfigSubcommand,
-    },
+
+    // Temporary VMs
+    #[command(next_help_heading = "Temporary VMs")]
     /// Temporary VM operations
     Temp {
         #[command(subcommand)]
         command: TempSubcommand,
     },
+
+    /// Get workspace directory
+    #[command(hide = true)]
+    GetSyncDirectory,
 }

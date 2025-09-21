@@ -362,13 +362,6 @@ pub enum Command {
         global: bool,
     },
 
-    /// Clear all configuration
-    Clear {
-        /// Clear global config
-        #[arg(long)]
-        global: bool,
-    },
-
     /// Initialize a new vm.yaml configuration file
     Init {
         /// Target file or directory (defaults to current directory)
@@ -711,7 +704,6 @@ pub fn execute(args: Args) -> Result<()> {
         } => ConfigOpsGroup::execute_set(field, value, global),
         Get { field, global } => ConfigOpsGroup::execute_get(field, global),
         Unset { field, global } => ConfigOpsGroup::execute_unset(field, global),
-        Clear { global } => ConfigOpsGroup::execute_clear(global),
         Validate { file, verbose } => {
             ConfigOpsGroup::execute_validate(file, verbose);
             Ok(())

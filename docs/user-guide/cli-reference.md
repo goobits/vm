@@ -127,13 +127,13 @@ vm config preset nodejs,docker   # Apply presets
 
 ### preset commands
 ```bash
-vm preset list                   # Show all presets
-vm preset list --verbose         # With descriptions
-vm preset show django            # Show preset details
-vm preset show react --yaml      # As YAML
+vm config preset nodejs          # Apply nodejs preset
+vm config preset django,docker   # Apply multiple presets
 ```
 
-**Available:** base, django, docker, kubernetes, nodejs, python, rails, react, tart-linux, tart-macos, tart-ubuntu
+**Available presets:** base, django, docker, kubernetes, nodejs, python, rails, react, tart-linux, tart-macos, tart-ubuntu
+
+**See:** [Presets Guide](./presets.md) for detailed preset information
 
 ---
 

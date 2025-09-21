@@ -94,7 +94,7 @@ vm temp destroy              # Clean up when done
 ## 🆘 Need Help?
 
 - **Not working?** Try `vm destroy && vm create` to reset
-- **Missing features?** Check `vm preset list` for available configurations
+- **Missing features?** Check the [Presets Guide](../user-guide/presets.md) for available configurations
 - **Custom setup?** See the [Configuration Guide](../user-guide/configuration.md)
 - **All commands?** View the [CLI Reference](../user-guide/cli-reference.md)
 

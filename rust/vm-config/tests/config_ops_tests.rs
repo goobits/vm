@@ -164,30 +164,8 @@ mod config_ops_tests {
         Ok(())
     }
 
-    #[test]
-    fn test_config_clear() -> Result<()> {
-        let _guard = TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let fixture = SimpleTestFixture::new()?;
-        fixture.set_working_dir()?;
-
-        // Create a local config file
-        ConfigOps::set("vm.memory", "2048", false, false)?;
-        ConfigOps::set("provider", "docker", false, false)?;
-
-        // Verify file exists
-        let config_path = std::env::current_dir()?.join("vm.yaml");
-        assert!(config_path.exists());
-
-        // Clear the config
-        ConfigOps::clear(false)?;
-
-        // Verify file is gone
-        assert!(!config_path.exists());
-
-        Ok(())
-    }
+    // Note: test_config_clear removed as ConfigOps::clear() was removed
+    // Users should manually delete config files if needed
 
     #[test]
     fn test_preset_application() -> Result<()> {

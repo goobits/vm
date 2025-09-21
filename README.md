@@ -98,7 +98,6 @@ vm exec "cmd"    # Run command in VM
 # Configuration
 vm init          # Create vm.yaml
 vm validate      # Check config
-vm preset list   # Available presets
 ```
 
 ## 🧪 Temporary VMs
@@ -141,10 +140,6 @@ services:
 ```
 
 ```bash
-# View configurations
-vm preset list               # Available presets
-vm preset show django        # Preset details
-
 # Apply specific presets
 vm config preset django          # Apply Django preset to config
 ```
@@ -199,12 +194,9 @@ vm temp restart              # Restart temp VM
 ```bash
 vm init                      # Create vm.yaml
 vm validate                  # Check config
-vm preset list               # Show presets
-vm preset show <name>        # Preset details
 vm config get [field]        # Get config value(s)
 vm config set <field> <value> # Set config value
 vm config unset <field>      # Remove config field
-vm config clear              # Clear all config
 vm config preset <names>     # Apply preset(s)
 ```
 

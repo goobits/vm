@@ -22,11 +22,6 @@ impl ConfigOpsGroup {
         commands::config_ops::execute_unset(field, global)
     }
 
-    /// Execute clear command
-    pub fn execute_clear(global: bool) -> Result<()> {
-        commands::config_ops::execute_clear(global)
-    }
-
     /// Execute validate command
     pub fn execute_validate(file: Option<PathBuf>, verbose: bool) {
         commands::validation::execute_validate(file, verbose)

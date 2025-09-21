@@ -10,7 +10,6 @@ use vm_provider::{error::ProviderError, get_provider};
 
 // Individual command modules
 pub mod config;
-pub mod preset;
 pub mod temp;
 pub mod vm_ops;
 
@@ -36,10 +35,6 @@ pub fn execute_command(args: Args) -> Result<()> {
         Command::Config { command } => {
             debug!("Calling ConfigOps methods directly");
             config::handle_config_command(command, args.dry_run)
-        }
-        Command::Preset { command } => {
-            debug!("Calling preset methods directly");
-            preset::handle_preset_command(command)
         }
         Command::Temp { command } => {
             debug!("Calling temp VM operations directly");
@@ -116,10 +111,10 @@ fn handle_provider_command(args: Args) -> Result<()> {
     debug!("Executing command: {:?}", args.command);
     let result = match args.command {
         Command::Create { force } => vm_ops::handle_create(provider, force),
-        Command::Start => vm_ops::handle_start(provider),
-        Command::Stop { container } => vm_ops::handle_stop(provider, container),
-        Command::Restart => vm_ops::handle_restart(provider),
-        Command::Provision => vm_ops::handle_provision(provider),
+        Command::Start => vm_ops::handle_start(provider, config.clone()),
+        Command::Stop { container } => vm_ops::handle_stop(provider, container, config.clone()),
+        Command::Restart => vm_ops::handle_restart(provider, config.clone()),
+        Command::Provision => vm_ops::handle_provision(provider, config.clone()),
         Command::List => vm_ops::handle_list(provider),
         Command::GetSyncDirectory => {
             vm_ops::handle_get_sync_directory(provider);
@@ -128,8 +123,8 @@ fn handle_provider_command(args: Args) -> Result<()> {
         Command::Destroy { force } => vm_ops::handle_destroy(provider, config, force),
         Command::Ssh { path } => vm_ops::handle_ssh(provider, path, config),
         Command::Status => vm_ops::handle_status(provider, config),
-        Command::Exec { command } => vm_ops::handle_exec(provider, command),
-        Command::Logs => vm_ops::handle_logs(provider),
+        Command::Exec { command } => vm_ops::handle_exec(provider, command, config.clone()),
+        Command::Logs => vm_ops::handle_logs(provider, config.clone()),
         cmd => {
             vm_error!(
                 "Command {:?} should have been handled in earlier match statement",

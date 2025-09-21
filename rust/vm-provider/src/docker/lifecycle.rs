@@ -289,28 +289,38 @@ impl<'a> LifecycleOperations<'a> {
             }
         }
 
-        println!("🐳 Creating Docker Environment");
+        let vm_name = self
+            .config
+            .project
+            .as_ref()
+            .and_then(|p| p.name.as_ref())
+            .map(|s| s.as_str())
+            .unwrap_or("vm-project");
+
+        println!("🐳 Creating VM '{}'\n", vm_name);
+        println!("📦 Build Phase:");
 
         // Step 1: Filter pipx-managed packages from pip_packages
         let modified_config = self.prepare_config_for_build()?;
 
         // Step 2: Prepare build context with embedded resources
-        print!("📦 Preparing build context... ");
+        print!("  ✓ Preparing context");
         let build_ops = BuildOperations::new(&modified_config, self.temp_dir);
         let build_context = build_ops.prepare_build_context()?;
-        println!("✅");
+        println!();
 
         // Step 3: Generate docker-compose.yml with build context and modified config
-        print!("📄 Generating docker-compose.yml... ");
+        print!("  ✓ Generating compose file");
         let compose_ops = ComposeOperations::new(&modified_config, self.temp_dir, self.project_dir);
         let compose_path = compose_ops.write_docker_compose(&build_context)?;
-        println!("✅");
+        println!();
 
         // Step 3: Gather build arguments for packages
         let build_args = build_ops.gather_build_args();
 
         // Step 4: Build with all package arguments
-        println!("\n🔨 Building container image with packages (this may take a while)...");
+        println!("  ✓ Building image");
+        println!("\n💡 This may take a few minutes. Press Ctrl-C to cancel.\n");
         let base_compose_args = ComposeCommand::build_args(&compose_path, "build", &[])?;
 
         // Combine compose args with dynamic build args
@@ -327,19 +337,58 @@ impl<'a> LifecycleOperations<'a> {
         }
 
         stream_command("docker", &all_args).context("Docker build failed")?;
-        println!("✅ Build complete");
+        println!("\n  ✓ Image built successfully");
+        println!("  ✓ Creating container");
 
         // Step 5: Start containers
-        println!("\n🚀 Starting containers");
+        println!("\n🚀 Startup Phase:");
+        print!("  ✓ Starting container");
         let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         stream_command("docker", &args_refs).context("Docker up failed")?;
-        println!("✅ Containers started");
+        println!();
 
+        print!("  ✓ Verifying health");
         self.provision_container()?;
+        println!("\n  ✓ Services ready");
 
-        vm_success!("Docker environment created successfully!");
-        println!("🎉 All packages installed at build time for faster startup!");
+        println!("\n✅ VM '{}' created successfully!\n", vm_name);
+
+        // Show details
+        println!("  Container:  {}-dev", vm_name);
+        println!(
+            "  Workspace:  {}",
+            self.config
+                .project
+                .as_ref()
+                .and_then(|p| p.workspace_path.as_deref())
+                .unwrap_or("/workspace")
+        );
+
+        // Show services if configured
+        let services: Vec<(String, Option<u16>)> = self
+            .config
+            .services
+            .iter()
+            .filter(|(_, svc)| svc.enabled)
+            .map(|(name, svc)| (name.clone(), svc.port))
+            .collect();
+
+        if !services.is_empty() {
+            let service_list: Vec<String> = services
+                .iter()
+                .map(|(name, port)| {
+                    if let Some(p) = port {
+                        format!("{} ({})", name, p)
+                    } else {
+                        name.clone()
+                    }
+                })
+                .collect();
+            println!("  Services:   {}", service_list.join(", "));
+        }
+
+        println!("\n💡 Connect with: vm ssh");
         Ok(())
     }
 
@@ -568,10 +617,9 @@ impl<'a> LifecycleOperations<'a> {
             ],
         )
         .context("Ansible provisioning failed")?;
-        println!("✅ Provisioning complete");
 
-        print!("🔄 Starting services... ");
-        if std::process::Command::new("docker")
+        // Start services silently
+        std::process::Command::new("docker")
             .args([
                 "exec",
                 &self.container_name(),
@@ -580,12 +628,7 @@ impl<'a> LifecycleOperations<'a> {
                 "supervisorctl reread && supervisorctl update",
             ])
             .output()
-            .is_ok()
-        {
-            println!("✅");
-        } else {
-            println!("⚠️ (services may start later)");
-        }
+            .ok();
 
         Ok(())
     }
@@ -923,9 +966,16 @@ impl<'a> LifecycleOperations<'a> {
                     name
                 };
 
-                // Print in clean minimal format
+                // Print in clean minimal format with better alignment
+                // Truncate long names to prevent misalignment
+                let display_name = if display_name.len() > 20 {
+                    &display_name[..20]
+                } else {
+                    display_name
+                };
+
                 println!(
-                    "{} {:<12} {:<6} {:<8} {:<13} [{}]",
+                    "{} {:<20} {:>7} {:>8} {:<13} [{}]",
                     icon, display_name, cpu_display, mem_display, ports_display, duration
                 );
             }
@@ -968,26 +1018,64 @@ impl<'a> LifecycleOperations<'a> {
                 }
             }
 
-            // Parse memory (format: "156MB / 2GB" or "156MB")
+            // Parse memory (format: "156MiB / 2GiB" or "156MB / 2GB")
             if let Some(mem_used) = mem.split('/').next() {
-                if let Some(mb_val) = mem_used.trim().strip_suffix("MB") {
-                    if let Ok(mb_num) = mb_val.parse::<u64>() {
-                        *total_memory_mb += mb_num;
+                let trimmed = mem_used.trim();
+                if let Some(mb_val) = trimmed
+                    .strip_suffix("MiB")
+                    .or_else(|| trimmed.strip_suffix("MB"))
+                {
+                    if let Ok(mb_num) = mb_val.parse::<f64>() {
+                        *total_memory_mb += mb_num.round() as u64;
                     }
-                } else if let Some(gb_val) = mem_used.trim().strip_suffix("GB") {
+                } else if let Some(gb_val) = trimmed
+                    .strip_suffix("GiB")
+                    .or_else(|| trimmed.strip_suffix("GB"))
+                {
                     if let Ok(gb_num) = gb_val.parse::<f64>() {
-                        *total_memory_mb += (gb_num * 1024.0) as u64;
+                        *total_memory_mb += (gb_num * 1024.0).round() as u64;
                     }
                 }
             }
 
-            (
-                cpu.clone(),
-                mem.split('/').next().unwrap_or(mem).trim().to_string(),
-            )
+            // Clean up memory display
+            let mem_display = self.format_memory_display(mem.split('/').next().unwrap_or(mem));
+            (cpu.clone(), mem_display)
         } else {
             ("--".to_string(), "--".to_string())
         }
+    }
+
+    /// Format memory display to clean format (1.2GB, 156MB)
+    fn format_memory_display(&self, mem_str: &str) -> String {
+        let trimmed = mem_str.trim();
+
+        // Parse MiB/MB values
+        if let Some(mb_val) = trimmed
+            .strip_suffix("MiB")
+            .or_else(|| trimmed.strip_suffix("MB"))
+        {
+            if let Ok(mb_num) = mb_val.parse::<f64>() {
+                if mb_num >= 1024.0 {
+                    return format!("{:.1}GB", mb_num / 1024.0);
+                } else {
+                    return format!("{}MB", mb_num as u64);
+                }
+            }
+        }
+
+        // Parse GiB/GB values
+        if let Some(gb_val) = trimmed
+            .strip_suffix("GiB")
+            .or_else(|| trimmed.strip_suffix("GB"))
+        {
+            if let Ok(gb_num) = gb_val.parse::<f64>() {
+                return format!("{:.1}GB", gb_num);
+            }
+        }
+
+        // Return as-is if can't parse
+        trimmed.to_string()
     }
 
     /// Parse container status to extract icon, running state, and duration

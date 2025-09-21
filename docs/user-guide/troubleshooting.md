@@ -191,8 +191,8 @@ vm create
 
 ### Preset Detection Problems
 ```bash
-# See what presets are detected
-vm preset list --detected
+# Apply a preset manually if detection fails
+vm config preset nodejs
 
 # Apply specific preset manually
 vm config preset django

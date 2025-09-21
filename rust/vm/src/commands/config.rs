@@ -44,7 +44,6 @@ pub fn handle_config_command(command: &ConfigSubcommand, dry_run: bool) -> Resul
         } => ConfigOps::set(field, value, *global, dry_run),
         ConfigSubcommand::Get { field, global } => ConfigOps::get(field.as_deref(), *global),
         ConfigSubcommand::Unset { field, global } => ConfigOps::unset(field, *global),
-        ConfigSubcommand::Clear { global } => ConfigOps::clear(*global),
         ConfigSubcommand::Preset {
             names,
             global,
