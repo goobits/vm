@@ -90,14 +90,14 @@ vm temp ssh                      # Enter temp VM
 vm temp destroy                  # Clean up
 
 # Management
-vm list          # Show all VMs
-vm status        # Check if running
-vm logs          # View logs
-vm exec "cmd"    # Run command in VM
+vm list          # List all VMs with status and resource usage
+vm status        # Show VM status and health
+vm logs          # View VM logs
+vm exec "cmd"    # Execute commands inside VM
 
 # Configuration
-vm init          # Create vm.yaml
-vm validate      # Check config
+vm init          # Initialize a new VM configuration file
+vm validate      # Validate VM configuration
 ```
 
 ## 🧪 Temporary VMs
@@ -163,46 +163,47 @@ vm logs                      # View service logs
 
 ### VM Lifecycle
 ```bash
-vm create                    # Create new VM with provisioning
-vm start                     # Start existing VM
-vm stop                      # Stop VM (keeps data)
-vm restart                   # Restart without reprovisioning
-vm ssh                       # Connect to VM
-vm destroy                   # Delete VM completely
-vm status                    # Check if running
-vm provision                 # Re-run provisioning
-vm kill [container]          # Force kill VM processes
+vm create                    # Create and provision a new VM
+vm start                     # Start a VM
+vm stop [container]          # Stop a VM or force-kill specific container
+vm restart                   # Restart a VM
+vm provision                 # Re-run VM provisioning
+vm destroy                   # Destroy a VM and clean up resources
+vm status                    # Show VM status and health
+vm ssh                       # Connect to VM via SSH
 ```
 
 ### Temporary VMs
 ```bash
-vm temp create <folders>     # Create ephemeral VM
-vm temp ssh                  # SSH into temp VM
-vm temp destroy              # Clean up
-vm temp mount <path>         # Add mount to running VM
-vm temp unmount <path>       # Remove specific mount
+vm temp create <folders>     # Create temporary VM with mounts
+vm temp ssh                  # Connect to temporary VM via SSH
+vm temp status               # Show temporary VM status
+vm temp destroy              # Destroy temporary VM
+vm temp mount <path>         # Add mount to running temporary VM
+vm temp unmount <path>       # Remove mount from temporary VM
 vm temp unmount --all        # Remove all mounts
 vm temp mounts               # List current mounts
-vm temp list                 # List all temp VMs
-vm temp status               # Check temp VM status
-vm temp stop                 # Stop temp VM
-vm temp start                # Start temp VM
-vm temp restart              # Restart temp VM
+vm temp list                 # List all temporary VMs
+vm temp stop                 # Stop temporary VM
+vm temp start                # Start temporary VM
+vm temp restart              # Restart temporary VM
 ```
 
 ### Configuration
 ```bash
-vm init                      # Create vm.yaml
-vm validate                  # Check config
-vm config get [field]        # Get config value(s)
-vm config set <field> <value> # Set config value
-vm config unset <field>      # Remove config field
-vm config preset <names>     # Apply preset(s)
+vm init                      # Initialize a new VM configuration file
+vm validate                  # Validate VM configuration
+vm config get [field]        # Get configuration values
+vm config set <field> <value> # Set configuration value
+vm config unset <field>      # Remove configuration field
+vm config preset <names>     # Apply configuration presets
+vm config ports --fix        # Manage port configuration and resolve conflicts
 ```
 
 ### Advanced
 ```bash
-vm exec <command>            # Execute command in VM
-vm logs                      # View logs
+vm list                      # List all VMs with status and resource usage
+vm exec <command>            # Execute commands inside VM
+vm logs                      # View VM logs
 vm --config custom.yaml ssh # Use specific config
 ```

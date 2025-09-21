@@ -4,7 +4,18 @@ Development environment setup. Choose between Docker (lightweight containers, de
 
 ## 🏃 Quick Start
 
-### Option 1: Clone and Install (Recommended)
+### Option 1: Cargo Install (Recommended)
+
+```bash
+# Install from crates.io
+cargo install vm
+
+# Start using immediately
+vm create  # Works with default configuration
+vm ssh     # Enter the Ubuntu environment
+```
+
+### Option 2: From Source
 
 ```bash
 # 1. Clone repository and install globally
@@ -12,11 +23,9 @@ git clone https://github.com/goobits/vm.git
 cd vm
 ./install.sh
 
-# 2. Start immediately with defaults OR create custom vm.yaml
+# 2. Start using immediately
 vm create  # Works with default configuration
 vm ssh     # Enter the Ubuntu environment
-
-# OR customize with vm.yaml
 ```
 
 Create a vm.yaml file (or use `vm init`):
@@ -30,7 +39,7 @@ ports:
 # Default provider is Docker - add "provider": "vagrant" for full VM isolation
 ```
 
-### Option 2: Per-Project Installation
+### Option 3: Per-Project Installation
 
 ```bash
 # 1. Clone to your project directory
@@ -41,31 +50,14 @@ cd vm
 ./vm create
 ```
 
-### Option 3: Package.json Integration
-
-```bash
-# 1. Clone to your project
-git clone https://github.com/goobits/vm.git vm
-
-# 2. Add to package.json scripts
-{
-  "scripts": {
-    "vm": "./vm/vm"
-  }
-}
-
-# 3. Launch via package manager
-npm run vm create
-# or
-pnpm vm create
-```
-
 ## 📋 Prerequisites
+
+### For Cargo Installation
+- **Rust** (get from [rustup.rs](https://rustup.rs/))
 
 ### For Docker Provider (Default)
 - **Docker Desktop** (macOS/Windows) or **Docker Engine** (Linux)
 - **docker-compose**
-- **Python3** (macOS only - for cross-platform path operations)
 
 ### For Vagrant Provider
 - **VirtualBox** or **Parallels**
@@ -201,12 +193,12 @@ echo 'export VM_TOOL_DIR=/path/to/vm' >> ~/.zshrc
 
 ## 🔄 Updating
 
-### npm Installation
+### Cargo Installation
 ```bash
-npm update -g @goobits/vm
+cargo install vm --force
 ```
 
-### Manual Installation
+### Source Installation
 ```bash
 cd vm
 git pull
@@ -215,12 +207,12 @@ git pull
 
 ## 🗑️ Uninstallation
 
-### npm Installation
+### Cargo Installation
 ```bash
-npm uninstall -g @goobits/vm
+cargo uninstall vm
 ```
 
-### Manual Installation
+### Source Installation
 ```bash
 # Remove from PATH (edit your shell profile)
 # Remove the installed directory

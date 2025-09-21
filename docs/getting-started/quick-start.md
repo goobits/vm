@@ -45,7 +45,7 @@ python manage.py runserver   # Database already configured
 ### Quick Experiments
 ```bash
 # Test code in isolated environment
-vm temp ./src ./tests        # Mount specific folders
+vm temp create ./src ./tests # Mount specific folders
 vm temp ssh                  # Jump in and experiment
 vm temp destroy              # Clean up when done
 ```

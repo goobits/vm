@@ -41,26 +41,25 @@ vm destroy                       # Remove VM completely
 
 ### status / list
 ```bash
-vm status                        # Check if running
-vm list                          # Show all VMs
+vm status                        # Show VM status and health
+vm list                          # List all VMs with status and resource usage
 ```
 
 ### logs
 ```bash
-vm logs                          # View logs
+vm logs                          # View VM logs
 ```
 
 ### exec
 ```bash
-vm exec "npm test"               # Run in VM
+vm exec "npm test"               # Execute commands inside VM
 vm exec "python manage.py migrate"
 vm exec "rake db:migrate"
 ```
 
-### provision / kill
+### provision
 ```bash
-vm provision                     # Re-run setup scripts
-vm kill                          # Force kill processes
+vm provision                     # Re-run VM provisioning
 ```
 
 ---
@@ -69,34 +68,31 @@ vm kill                          # Force kill processes
 
 ### temp create
 ```bash
-vm temp ./src ./tests            # Mount folders
-vm temp /absolute/path ./relative
-vm temp ./configs:ro             # Read-only mount
-vm tmp ./src                     # Alias for temp
+vm temp create ./src ./tests            # Create temporary VM with mounts
+vm temp create /absolute/path ./relative
+vm temp create ./configs:ro             # Read-only mount
 ```
 
 ### temp commands
 ```bash
-vm temp ssh                      # Enter temp VM
-vm temp ssh -c "npm test"       # Run command
-vm temp status                   # Show status
-vm temp destroy                  # Remove temp VM
+vm temp ssh                      # Connect to temporary VM via SSH
+vm temp status                   # Show temporary VM status
+vm temp destroy                  # Destroy temporary VM
 ```
 
 ### temp mounts
 ```bash
-vm temp mount ./new-feature      # Add mount
-vm temp unmount ./old-code      # Remove mount
-vm temp mounts                   # List mounts
+vm temp mount ./new-feature      # Add mount to running temporary VM
+vm temp unmount ./old-code       # Remove mount from temporary VM
+vm temp mounts                   # List current mounts
 ```
 
 ### temp lifecycle
 ```bash
-vm temp start                    # Start stopped
-vm temp stop                     # Stop (keep state)
-vm temp restart                  # Restart
-vm temp logs                     # View logs
-vm temp list                     # Show all temp VMs
+vm temp start                    # Start temporary VM
+vm temp stop                     # Stop temporary VM
+vm temp restart                  # Restart temporary VM
+vm temp list                     # List all temporary VMs
 ```
 
 ---
@@ -105,20 +101,19 @@ vm temp list                     # Show all temp VMs
 
 ### init / validate
 ```bash
-vm init                          # Create vm.yaml
+vm init                          # Initialize a new VM configuration file
 vm init --services postgresql,redis # With services
 vm config preset django          # Apply preset after init
 
-vm validate                      # Check vm.yaml
+vm validate                      # Validate VM configuration
 vm validate --config custom.yaml # Check specific file
-vm validate --verbose            # Detailed output
 ```
 
 ### config
 ```bash
-vm config set vm.memory 4096     # Set memory
-vm config get                    # Show all config
-vm config preset nodejs,docker   # Apply presets
+vm config set vm.memory 4096     # Set configuration value
+vm config get                    # Get configuration values
+vm config preset nodejs,docker   # Apply configuration presets
 ```
 
 ---
@@ -200,8 +195,8 @@ vm start && vm ssh               # Resume
 vm destroy                       # Cleanup
 
 # Quick experiment
-vm temp ./src                    # Test environment
-vm temp ssh -c "npm test"        # Run tests
+vm temp create ./src             # Test environment
+vm temp ssh                      # Enter environment
 vm temp destroy                  # Cleanup
 
 # Multiple environments

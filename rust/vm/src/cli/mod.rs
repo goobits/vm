@@ -11,7 +11,7 @@ pub struct Args {
     #[command(subcommand)]
     pub command: Command,
 
-    /// Path to a custom vm.yaml configuration file
+    /// Path to a custom VM configuration file
     #[arg(short, long, global = true)]
     pub config: Option<PathBuf>,
 
@@ -26,37 +26,37 @@ pub struct Args {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum ConfigSubcommand {
-    /// Set a configuration value
+    /// Set configuration value
     Set {
-        /// Field path (e.g., "vm.memory" or "services.docker.enabled")
+        /// Configuration field path (e.g., "vm.memory" or "services.docker.enabled")
         field: String,
         /// Value to set
         value: String,
-        /// Apply to global config (~/.config/vm/global.yaml)
+        /// Apply to global configuration (~/.config/vm/global.yaml)
         #[arg(long)]
         global: bool,
     },
-    /// Get configuration value(s)
+    /// Get configuration values
     Get {
-        /// Field path (omit to show all configuration)
+        /// Configuration field path (omit to show all)
         field: Option<String>,
-        /// Read from global config
+        /// Read from global configuration
         #[arg(long)]
         global: bool,
     },
-    /// Remove a configuration field
+    /// Remove configuration field
     Unset {
-        /// Field path to remove
+        /// Configuration field path to remove
         field: String,
-        /// Remove from global config
+        /// Remove from global configuration
         #[arg(long)]
         global: bool,
     },
-    /// Apply preset(s) to configuration
+    /// Apply configuration presets
     Preset {
-        /// Preset name(s), comma-separated for multiple (e.g., "nodejs,docker")
+        /// Preset names (comma-separated for multiple, e.g., "nodejs,docker")
         names: Option<String>,
-        /// Apply to global config
+        /// Apply to global configuration
         #[arg(long)]
         global: bool,
         /// List available presets
@@ -76,22 +76,22 @@ pub enum ConfigSubcommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum TempSubcommand {
-    /// Create temp VM with mounts
+    /// Create temporary VM with mounts
     Create {
         /// Directories to mount (e.g., ./src,./config:ro)
         mounts: Vec<String>,
 
-        /// Auto-destroy on exit
+        /// Automatically destroy VM on exit
         #[arg(long)]
         auto_destroy: bool,
     },
-    /// SSH into temp VM
+    /// Connect to temporary VM via SSH
     Ssh,
-    /// Show temp VM status
+    /// Show temporary VM status
     Status,
-    /// Destroy temp VM
+    /// Destroy temporary VM
     Destroy,
-    /// Add mount to running temp VM
+    /// Add mount to running temporary VM
     Mount {
         /// Path to mount (e.g., ./src or ./config:ro)
         path: String,
@@ -99,7 +99,7 @@ pub enum TempSubcommand {
         #[arg(long)]
         yes: bool,
     },
-    /// Remove mount from temp VM
+    /// Remove mount from temporary VM
     Unmount {
         /// Path to unmount (omit for --all)
         path: Option<String>,
@@ -112,13 +112,13 @@ pub enum TempSubcommand {
     },
     /// List current mounts
     Mounts,
-    /// List all temp VMs
+    /// List all temporary VMs
     List,
-    /// Stop temp VM
+    /// Stop temporary VM
     Stop,
-    /// Start temp VM
+    /// Start temporary VM
     Start,
-    /// Restart temp VM
+    /// Restart temporary VM
     Restart,
 }
 
@@ -126,11 +126,11 @@ pub enum TempSubcommand {
 pub enum Command {
     /// Initialize a new VM configuration file
     Init {
-        /// Custom configuration file path
+        /// Custom VM configuration file path
         #[arg(short, long)]
         file: Option<PathBuf>,
 
-        /// Comma-separated services to enable (postgresql,redis,mongodb,docker)
+        /// Services to enable (comma-separated: postgresql,redis,mongodb,docker)
         #[arg(long)]
         services: Option<String>,
 
@@ -156,7 +156,7 @@ pub enum Command {
     Start,
     /// Stop a VM or force-kill a specific container
     Stop {
-        /// Optional container name or ID to stop. If not provided, stops the current project's VM gracefully.
+        /// Container name or ID to stop (if not provided, stops current project VM gracefully)
         container: Option<String>,
     },
     /// Restart a VM
@@ -176,13 +176,13 @@ pub enum Command {
     Status,
     /// Connect to VM via SSH
     Ssh {
-        /// Optional path to start the shell in
+        /// Directory path to start shell in
         #[arg()]
         path: Option<PathBuf>,
     },
     /// Execute commands inside VM
     Exec {
-        /// The command to execute
+        /// Command to execute inside VM
         #[arg(required = true, num_args = 1..)]
         command: Vec<String>,
     },
