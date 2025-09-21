@@ -4,7 +4,9 @@
 //! such as Docker, Vagrant, and Tart.
 
 use thiserror::Error;
-use vm_common::error_messages::{messages, suggestions};
+use vm_common::error_messages::{
+    command_messages, command_suggestions, container_states, messages, suggestions,
+};
 
 /// Errors that can occur during VM provider operations.
 ///
@@ -31,6 +33,44 @@ impl ProviderError {
     /// Convert provider error to user-friendly message with suggestions
     pub fn user_friendly(&self) -> String {
         match self {
+            // Container state errors
+            Self::CommandFailed(cmd) if cmd.contains("is not running") => {
+                format!(
+                    "{}\n{}",
+                    container_states::NOT_RUNNING,
+                    command_suggestions::START_VM
+                )
+            }
+            Self::CommandFailed(cmd) if cmd.contains("No such container") => {
+                format!(
+                    "{}\n{}",
+                    container_states::NOT_FOUND,
+                    command_suggestions::CREATE_VM
+                )
+            }
+            Self::CommandFailed(cmd) if cmd.contains("already running") => {
+                format!(
+                    "{}\n{}",
+                    container_states::ALREADY_RUNNING,
+                    command_suggestions::USE_SSH
+                )
+            }
+            Self::CommandFailed(cmd) if cmd.contains("SSH command failed") => {
+                format!(
+                    "{}\n{}",
+                    command_messages::SSH_FAILED,
+                    command_suggestions::CHECK_STATUS
+                )
+            }
+            Self::CommandFailed(cmd) if cmd.contains("exited with code") => {
+                format!(
+                    "{}\n{}",
+                    command_messages::EXEC_FAILED,
+                    command_suggestions::VIEW_LOGS
+                )
+            }
+
+            // Docker daemon errors
             Self::CommandFailed(cmd)
                 if cmd.contains("docker") && cmd.contains("connection refused") =>
             {
@@ -54,6 +94,8 @@ impl ProviderError {
                     suggestions::START_DOCKER_DESKTOP
                 )
             }
+
+            // Config and permission errors
             Self::ConfigError(_) => {
                 format!(
                     "{}\n💡 {}",
@@ -68,6 +110,8 @@ impl ProviderError {
                     suggestions::CHECK_PERMISSIONS
                 )
             }
+
+            // Fallback to original error
             _ => self.to_string(),
         }
     }

@@ -6,7 +6,7 @@ use log::debug;
 use crate::cli::{Args, Command};
 use vm_common::{log_context, vm_error, vm_println};
 use vm_config::{config::VmConfig, init_config_file};
-use vm_provider::get_provider;
+use vm_provider::{error::ProviderError, get_provider};
 
 // Individual command modules
 pub mod config;
@@ -112,9 +112,9 @@ fn handle_provider_command(args: Args) -> Result<()> {
 
     debug!("Using provider: {}", provider.name());
 
-    // Execute the command
+    // Execute the command with friendly error handling
     debug!("Executing command: {:?}", args.command);
-    match args.command {
+    let result = match args.command {
         Command::Create { force } => vm_ops::handle_create(provider, force),
         Command::Start => vm_ops::handle_start(provider),
         Command::Stop { container } => vm_ops::handle_stop(provider, container),
@@ -137,5 +137,26 @@ fn handle_provider_command(args: Args) -> Result<()> {
             );
             Err(anyhow::anyhow!("Command not handled in match statement"))
         }
-    }
+    };
+
+    // Convert errors to user-friendly messages
+    result.map_err(|e| {
+        if let Some(provider_error) = e.downcast_ref::<ProviderError>() {
+            anyhow::anyhow!(provider_error.user_friendly())
+        } else {
+            // Check if it's an anyhow error containing a ProviderError
+            let error_chain = format!("{:?}", e);
+            if error_chain.contains("is not running") {
+                anyhow::anyhow!("🔴 VM is stopped\n🚀 Start with: vm start")
+            } else if error_chain.contains("No such container") {
+                anyhow::anyhow!("🔍 VM doesn't exist\n💡 Create with: vm create")
+            } else if error_chain.contains("SSH command failed")
+                || error_chain.contains("exited with code 1")
+            {
+                anyhow::anyhow!("🔌 Cannot connect to VM\n📊 Check status: vm status")
+            } else {
+                e
+            }
+        }
+    })
 }

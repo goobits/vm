@@ -831,16 +831,363 @@ impl<'a> LifecycleOperations<'a> {
 
     #[must_use = "container listing results should be handled"]
     pub fn list_containers(&self) -> Result<()> {
-        // Show all containers - let users see the full Docker environment
-        // This provides better visibility than filtering by project name
-        stream_command("docker", &["ps", "-a"]).context("Failed to list containers")
+        self.list_containers_with_stats()
+    }
+
+    /// Enhanced container listing with CPU/RAM stats in clean minimal format
+    #[must_use = "container listing results should be handled"]
+    pub fn list_containers_with_stats(&self) -> Result<()> {
+        // Get container info
+        let ps_output = std::process::Command::new("docker")
+            .args([
+                "ps",
+                "-a",
+                "--format",
+                "{{.Names}}\t{{.Status}}\t{{.Ports}}\t{{.CreatedAt}}",
+            ])
+            .output()
+            .context("Failed to get container info")?;
+
+        if !ps_output.status.success() {
+            return Err(anyhow::anyhow!("Docker ps command failed"));
+        }
+
+        // Get stats for running containers
+        let stats_output = std::process::Command::new("docker")
+            .args([
+                "stats",
+                "--no-stream",
+                "--format",
+                "{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}",
+            ])
+            .output()
+            .context("Failed to get container stats")?;
+
+        let stats_data = if stats_output.status.success() {
+            String::from_utf8_lossy(&stats_output.stdout)
+        } else {
+            "".into() // Continue without stats if command fails
+        };
+
+        // Parse stats into a map
+        let mut stats_map = std::collections::HashMap::new();
+        for line in stats_data.lines() {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 3 {
+                let name = parts[0];
+                let cpu = parts[1];
+                let memory = parts[2];
+                stats_map.insert(name.to_string(), (cpu.to_string(), memory.to_string()));
+            }
+        }
+
+        println!("vm list");
+        println!("-------");
+
+        let mut total_cpu = 0.0;
+        let mut total_memory_mb = 0u64;
+        let mut running_count = 0;
+
+        let ps_data = String::from_utf8_lossy(&ps_output.stdout);
+        for line in ps_data.lines() {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 4 {
+                let name = parts[0];
+                let status = parts[1];
+                let ports = parts[2];
+                let _created = parts[3];
+
+                // Determine status icon and running state
+                let (icon, is_running, duration) = self.parse_container_status(status);
+
+                // Get stats if running
+                let (cpu_display, mem_display) = if is_running {
+                    self.process_container_stats(
+                        name,
+                        &stats_map,
+                        &mut total_cpu,
+                        &mut total_memory_mb,
+                        &mut running_count,
+                    )
+                } else {
+                    ("--".to_string(), "--".to_string())
+                };
+
+                // Format ports (clean up the display)
+                let ports_display = self.format_ports_minimal(ports);
+
+                // Shorten container name (remove -dev suffix for display)
+                let display_name = if let Some(stripped) = name.strip_suffix("-dev") {
+                    stripped
+                } else {
+                    name
+                };
+
+                // Print in clean minimal format
+                println!(
+                    "{} {:<12} {:<6} {:<8} {:<13} [{}]",
+                    icon, display_name, cpu_display, mem_display, ports_display, duration
+                );
+            }
+        }
+
+        // Print totals
+        if running_count > 0 {
+            let total_memory_display = if total_memory_mb >= 1024 {
+                format!("{:.1}GB", total_memory_mb as f64 / 1024.0)
+            } else {
+                format!("{}MB", total_memory_mb)
+            };
+
+            println!(
+                "\nTotal: {:.1}% CPU, {} RAM",
+                total_cpu, total_memory_display
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Process container stats and update totals
+    #[allow(clippy::excessive_nesting)]
+    fn process_container_stats(
+        &self,
+        name: &str,
+        stats_map: &std::collections::HashMap<String, (String, String)>,
+        total_cpu: &mut f64,
+        total_memory_mb: &mut u64,
+        running_count: &mut usize,
+    ) -> (String, String) {
+        if let Some((cpu, mem)) = stats_map.get(name) {
+            *running_count += 1;
+
+            // Parse CPU percentage
+            if let Some(cpu_val) = cpu.strip_suffix('%') {
+                if let Ok(cpu_num) = cpu_val.parse::<f64>() {
+                    *total_cpu += cpu_num;
+                }
+            }
+
+            // Parse memory (format: "156MB / 2GB" or "156MB")
+            if let Some(mem_used) = mem.split('/').next() {
+                if let Some(mb_val) = mem_used.trim().strip_suffix("MB") {
+                    if let Ok(mb_num) = mb_val.parse::<u64>() {
+                        *total_memory_mb += mb_num;
+                    }
+                } else if let Some(gb_val) = mem_used.trim().strip_suffix("GB") {
+                    if let Ok(gb_num) = gb_val.parse::<f64>() {
+                        *total_memory_mb += (gb_num * 1024.0) as u64;
+                    }
+                }
+            }
+
+            (
+                cpu.clone(),
+                mem.split('/').next().unwrap_or(mem).trim().to_string(),
+            )
+        } else {
+            ("--".to_string(), "--".to_string())
+        }
+    }
+
+    /// Parse container status to extract icon, running state, and duration
+    fn parse_container_status(&self, status: &str) -> (&'static str, bool, String) {
+        if status.starts_with("Up") {
+            let duration = if status.len() > 3 {
+                // Extract duration from "Up 3 hours" -> "3h"
+                let duration_part = &status[3..];
+                self.format_duration_short(duration_part)
+            } else {
+                "now".to_string()
+            };
+            ("🟢", true, duration)
+        } else if status.starts_with("Exited") {
+            // Extract exit info from "Exited (0) 3 seconds ago" -> "stopped"
+            if status.contains("ago") {
+                ("🔴", false, "stopped".to_string())
+            } else {
+                ("🔴", false, "exited".to_string())
+            }
+        } else if status.contains("Created") {
+            ("🔴", false, "created".to_string())
+        } else {
+            ("⚫", false, "unknown".to_string())
+        }
+    }
+
+    /// Format duration to short form (3 hours -> 3h, 2 days -> 2d)
+    fn format_duration_short(&self, duration: &str) -> String {
+        let duration = duration.trim();
+
+        if duration.contains("day") {
+            if let Some(days) = duration.split_whitespace().next() {
+                return format!("{}d", days);
+            }
+        } else if duration.contains("hour") {
+            if let Some(hours) = duration.split_whitespace().next() {
+                return format!("{}h", hours);
+            }
+        } else if duration.contains("minute") {
+            if let Some(minutes) = duration.split_whitespace().next() {
+                return format!("{}m", minutes);
+            }
+        } else if duration.contains("second") {
+            return "now".to_string();
+        }
+
+        // Fallback: try to extract first number + first letter of unit
+        if let Some(first_word) = duration.split_whitespace().next() {
+            if let Some(unit_word) = duration.split_whitespace().nth(1) {
+                if let Some(unit_char) = unit_word.chars().next() {
+                    return format!("{}{}", first_word, unit_char);
+                }
+            }
+        }
+
+        duration.to_string()
+    }
+
+    /// Format ports for minimal display
+    fn format_ports_minimal(&self, ports: &str) -> String {
+        if ports.is_empty() {
+            return "-".to_string();
+        }
+
+        // Parse port mappings and simplify display
+        // "0.0.0.0:3100-3101->3100-3101/tcp, [::]:3100-3101->3100-3101/tcp" -> "3100-3101"
+        let mut port_ranges = Vec::new();
+
+        for mapping in ports.split(", ") {
+            if let Some(port_part) = self.extract_port_from_mapping(mapping) {
+                port_ranges.push(port_part);
+            }
+        }
+
+        // Remove duplicates and join
+        port_ranges.sort();
+        port_ranges.dedup();
+
+        if port_ranges.is_empty() {
+            "-".to_string()
+        } else {
+            port_ranges.join(",")
+        }
+    }
+
+    /// Extract port from a Docker port mapping string
+    fn extract_port_from_mapping(&self, mapping: &str) -> Option<String> {
+        if mapping.contains("->") {
+            if let Some(external_part) = mapping.split("->").next() {
+                // Extract port range from "0.0.0.0:3100-3101" or "[::]:3100-3101"
+                if let Some(port_part) = external_part.split(':').next_back() {
+                    return Some(port_part.to_string());
+                }
+            }
+        }
+        None
     }
 
     #[must_use = "container kill results should be handled"]
     pub fn kill_container(&self, container: Option<&str>) -> Result<()> {
         let container_name = self.container_name();
-        let target_container = container.unwrap_or(&container_name);
-        stream_command("docker", &["kill", target_container]).context("Failed to kill container")
+        let target_container = match container {
+            None => container_name.clone(),
+            Some(provided_name) => {
+                // Try to resolve partial container names
+                match self.resolve_container_name(provided_name) {
+                    Ok(resolved_name) => resolved_name,
+                    Err(_) => provided_name.to_string(), // Fall back to original name if resolution fails
+                }
+            }
+        };
+        stream_command("docker", &["kill", &target_container]).context("Failed to kill container")
+    }
+
+    /// Resolve a partial container name to a full container name
+    /// Supports matching by:
+    /// - Exact container name
+    /// - Project name (resolves to project-dev)
+    /// - Partial container ID
+    #[must_use = "container resolution results should be checked"]
+    fn resolve_container_name(&self, partial_name: &str) -> Result<String> {
+        // Get list of all containers
+        let output = std::process::Command::new("docker")
+            .args(["ps", "-a", "--format", "{{.Names}}\t{{.ID}}"])
+            .output()
+            .context("Failed to list containers for name resolution")?;
+
+        if !output.status.success() {
+            return Err(anyhow::anyhow!("Docker ps command failed"));
+        }
+
+        let containers_output = String::from_utf8_lossy(&output.stdout);
+
+        // First, try exact name match
+        for line in containers_output.lines() {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 2 {
+                let name = parts[0];
+                let id = parts[1];
+
+                // Exact name match
+                if name == partial_name {
+                    return Ok(name.to_string());
+                }
+
+                // Exact ID match (full or partial)
+                if id.starts_with(partial_name) {
+                    return Ok(name.to_string());
+                }
+            }
+        }
+
+        // Second, try project name resolution (partial_name -> partial_name-dev)
+        let candidate_name = format!("{}-dev", partial_name);
+        for line in containers_output.lines() {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if !parts.is_empty() {
+                let name = parts[0];
+                if name == candidate_name {
+                    return Ok(name.to_string());
+                }
+            }
+        }
+
+        // Third, try fuzzy matching on container names
+        let mut matches = Vec::new();
+        for line in containers_output.lines() {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if !parts.is_empty() {
+                let name = parts[0];
+                if name.contains(partial_name) {
+                    matches.push(name.to_string());
+                }
+            }
+        }
+
+        match matches.len() {
+            0 => Err(anyhow::anyhow!(
+                "No container found matching '{}'",
+                partial_name
+            )),
+            1 => Ok(matches[0].clone()),
+            _ => {
+                // Multiple matches - prefer exact project name match
+                for name in &matches {
+                    if name == &format!("{}-dev", partial_name) {
+                        return Ok(name.clone());
+                    }
+                }
+                // Otherwise return first match but warn about ambiguity
+                eprintln!(
+                    "Warning: Multiple containers match '{}': {}",
+                    partial_name,
+                    matches.join(", ")
+                );
+                eprintln!("Using: {}", matches[0]);
+                Ok(matches[0].clone())
+            }
+        }
     }
 
     pub fn get_sync_directory(&self) -> String {

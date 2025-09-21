@@ -550,8 +550,6 @@ fn test_vm_logs_command() -> Result<()> {
     Ok(())
 }
 
-
-
 #[test]
 fn test_vm_destroy_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
