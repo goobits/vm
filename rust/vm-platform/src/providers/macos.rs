@@ -63,7 +63,7 @@ impl PlatformProvider for MacOSPlatform {
     fn detect_shell(&self) -> Result<Box<dyn ShellProvider>> {
         let shell = env::var("SHELL").unwrap_or_default();
 
-        match shell.split('/').last() {
+        match shell.split('/').next_back() {
             Some("bash") => Ok(Box::new(BashShell)),
             Some("zsh") => Ok(Box::new(ZshShell)), // Default on newer macOS
             Some("fish") => Ok(Box::new(FishShell)),
@@ -159,23 +159,8 @@ impl PlatformProvider for MacOSPlatform {
         let python_commands = ["python3", "python"];
 
         for cmd in &python_commands {
-            if let Ok(output) = Command::new(cmd)
-                .args([
-                    "-c",
-                    "import site; print('\\n'.join(site.getsitepackages()))",
-                ])
-                .output()
-            {
-                if output.status.success() {
-                    let output_str = String::from_utf8_lossy(&output.stdout);
-                    for path in output_str.lines() {
-                        let path = PathBuf::from(path.trim());
-                        if path.exists() && !paths.contains(&path) {
-                            paths.push(path);
-                        }
-                    }
-                    break; // Use first working Python
-                }
+            if self.try_get_python_paths(cmd, &mut paths)? {
+                break; // Use first working Python
             }
         }
 
@@ -240,6 +225,35 @@ impl PlatformProvider for MacOSPlatform {
         env::join_paths(paths)
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_default()
+    }
+}
+
+impl MacOSPlatform {
+    fn try_get_python_paths(&self, cmd: &str, paths: &mut Vec<PathBuf>) -> Result<bool> {
+        let output = Command::new(cmd)
+            .args([
+                "-c",
+                "import site; print('\\n'.join(site.getsitepackages()))",
+            ])
+            .output();
+
+        let Ok(output) = output else {
+            return Ok(false);
+        };
+
+        if !output.status.success() {
+            return Ok(false);
+        }
+
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        for path in output_str.lines() {
+            let path = PathBuf::from(path.trim());
+            if path.exists() && !paths.contains(&path) {
+                paths.push(path);
+            }
+        }
+
+        Ok(true)
     }
 }
 

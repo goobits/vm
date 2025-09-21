@@ -83,6 +83,12 @@ pub enum ConfigSubcommand {
         #[arg(long)]
         show: Option<String>,
     },
+    /// Manage port configuration and resolve conflicts
+    Ports {
+        /// Fix port conflicts automatically
+        #[arg(long)]
+        fix: bool,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
