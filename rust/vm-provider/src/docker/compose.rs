@@ -11,7 +11,7 @@ use super::build::BuildOperations;
 use super::host_packages::{
     detect_packages, get_package_env_vars, get_volume_mounts, PackageManager,
 };
-use super::{ComposeCommand, UserConfig};
+use super::{ComposeCommand, DockerOps, UserConfig};
 use crate::TempVmState;
 use vm_common::command_stream::stream_command;
 use vm_config::config::VmConfig;
@@ -150,15 +150,7 @@ impl<'a> ComposeOperations<'a> {
             .map(|s| format!("{}-dev", s))
             .unwrap_or_else(|| "vm-project-dev".to_string());
 
-        let container_exists = std::process::Command::new("docker")
-            .args(["ps", "-a", "--format", "{{.Names}}"])
-            .output()
-            .map(|output| {
-                String::from_utf8_lossy(&output.stdout)
-                    .lines()
-                    .any(|line| line.trim() == container_name)
-            })
-            .unwrap_or(false);
+        let container_exists = DockerOps::container_exists(&container_name).unwrap_or(false);
 
         // Use 'start' if container exists, 'up -d' if it doesn't
         let (command, extra_args) = if container_exists {
@@ -170,7 +162,7 @@ impl<'a> ComposeOperations<'a> {
         let args = ComposeCommand::build_args(&compose_path, command, &extra_args)?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         stream_command("docker", &args_refs)
-            .context("Failed to start container with docker-compose")
+            .with_context(|| "Failed to start container using docker-compose. Check that docker-compose.yml is valid and Docker is running")
     }
 
     pub fn stop_with_compose(&self) -> Result<()> {
@@ -179,9 +171,12 @@ impl<'a> ComposeOperations<'a> {
             let args = ComposeCommand::build_args(&compose_path, "stop", &[])?;
             let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
             stream_command("docker", &args_refs)
-                .context("Failed to stop container with docker-compose")
+                .with_context(|| "Failed to stop container using docker-compose. Container may already be stopped or docker-compose may be inaccessible")
         } else {
-            Err(anyhow::anyhow!("docker-compose.yml not found"))
+            Err(anyhow::anyhow!(
+                "docker-compose.yml not found in '{}'. Cannot stop container without compose configuration",
+                self.temp_dir.display()
+            ))
         }
     }
 
@@ -189,7 +184,8 @@ impl<'a> ComposeOperations<'a> {
         let compose_path = self.temp_dir.join("docker-compose.yml");
         if !compose_path.exists() {
             return Err(anyhow::anyhow!(
-                "docker-compose.yml not found for destruction"
+                "docker-compose.yml not found in '{}' for container destruction. Use direct Docker commands instead",
+                self.temp_dir.display()
             ));
         }
         let args = ComposeCommand::build_args(&compose_path, "down", &["--volumes"])?;
@@ -204,7 +200,10 @@ impl<'a> ComposeOperations<'a> {
             let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
             stream_command("docker", &args_refs)
         } else {
-            Err(anyhow::anyhow!("docker-compose.yml not found"))
+            Err(anyhow::anyhow!(
+                "docker-compose.yml not found in '{}'. Cannot show container status without compose configuration",
+                self.temp_dir.display()
+            ))
         }
     }
 }

@@ -95,7 +95,8 @@ fn test_concurrent_state_operations() -> Result<()> {
 
     // Wait for all threads to complete
     for handle in handles {
-        handle.join().unwrap()?;
+        handle.join()
+            .expect("Thread panicked during concurrent state operations test - check for race conditions or resource conflicts")?;
     }
 
     // Verify final state integrity
@@ -143,7 +144,7 @@ fn test_mount_workflow_integration() -> Result<()> {
     let ro_mount = fixture
         .mount_source
         .parent()
-        .unwrap()
+        .expect("Failed to get parent directory of mount source - filesystem structure issue")
         .join("readonly_mount");
     fs::create_dir_all(&ro_mount)?;
     state.add_mount(ro_mount.clone(), MountPermission::ReadOnly)?;
@@ -167,10 +168,14 @@ fn test_mount_workflow_integration() -> Result<()> {
     assert!(loaded_state.has_mount(&fixture.mount_source));
     assert!(loaded_state.has_mount(&ro_mount));
 
-    let rw_mount = loaded_state.get_mount(&fixture.mount_source).unwrap();
+    let rw_mount = loaded_state
+        .get_mount(&fixture.mount_source)
+        .expect("ReadWrite mount not found in loaded state - mount persistence failed");
     assert_eq!(rw_mount.permissions, MountPermission::ReadWrite);
 
-    let ro_mount_obj = loaded_state.get_mount(&ro_mount).unwrap();
+    let ro_mount_obj = loaded_state
+        .get_mount(&ro_mount)
+        .expect("ReadOnly mount not found in loaded state - mount persistence failed");
     assert_eq!(ro_mount_obj.permissions, MountPermission::ReadOnly);
 
     // Test mount removal workflow

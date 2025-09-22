@@ -47,7 +47,8 @@ impl SimpleTestFixture {
     }
 
     fn create_preset(name: &str, content: &str) -> Result<()> {
-        let tool_dir = std::env::var("VM_TOOL_DIR").unwrap();
+        let tool_dir = std::env::var("VM_TOOL_DIR")
+            .expect("VM_TOOL_DIR environment variable not set - test fixture setup failed");
         let presets_dir = PathBuf::from(tool_dir).join("configs").join("presets");
         fs::create_dir_all(&presets_dir)?;
         let preset_path = presets_dir.join(format!("{}.yaml", name));
@@ -233,11 +234,17 @@ vm:
         let config_content = fs::read_to_string(&config_path)?;
         let config: VmConfig = serde_yaml::from_str(&config_content)?;
 
-        let postgresql = config.services.get("postgresql").unwrap();
+        let postgresql = config
+            .services
+            .get("postgresql")
+            .expect("postgresql service not found in config - preset loading may have failed");
         assert_eq!(postgresql.version.as_deref(), Some("15"));
         assert_eq!(postgresql.port, Some(5432));
 
-        let redis = config.services.get("redis").unwrap();
+        let redis = config
+            .services
+            .get("redis")
+            .expect("redis service not found in config - preset loading may have failed");
         assert!(redis.enabled);
 
         // Test unsetting nested values
@@ -246,7 +253,9 @@ vm:
         let updated_content = fs::read_to_string(&config_path)?;
         let updated_config: VmConfig = serde_yaml::from_str(&updated_content)?;
 
-        let updated_postgresql = updated_config.services.get("postgresql").unwrap();
+        let updated_postgresql = updated_config.services.get("postgresql").expect(
+            "postgresql service not found in updated config - config modification may have failed",
+        );
         assert_eq!(updated_postgresql.version, None);
         assert_eq!(updated_postgresql.port, Some(5432)); // Should still exist
 

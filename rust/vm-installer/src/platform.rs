@@ -129,8 +129,8 @@ fn add_to_profile(profile_path: &Path, bin_dir: &Path) -> Result<()> {
 
 /// Detect platform string for use in build target directories
 pub fn detect_platform_string() -> String {
-    let os = std::env::consts::OS;
-    let arch = std::env::consts::ARCH;
+    let os = env::consts::OS;
+    let arch = env::consts::ARCH;
     format!("{os}-{arch}")
 }
 

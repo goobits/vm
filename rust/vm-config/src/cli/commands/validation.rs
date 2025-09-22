@@ -83,7 +83,7 @@ pub fn load_and_merge_config(file: Option<PathBuf>) -> Result<VmConfig> {
     };
 
     // 5. Detect and load project-specific preset (only if no user config exists)
-    let presets_dir = crate::paths::get_presets_dir();
+    let presets_dir = paths::get_presets_dir();
     let preset_config = if user_config.is_none() {
         let detector = crate::preset::PresetDetector::new(project_dir, presets_dir);
         if let Some(preset_name) = detector.detect() {
@@ -112,7 +112,7 @@ pub fn load_and_merge_config(file: Option<PathBuf>) -> Result<VmConfig> {
     )?;
 
     // 8. Validate the final merged configuration against the schema
-    let schema_path = crate::paths::get_schema_path();
+    let schema_path = paths::get_schema_path();
     let validator = crate::validate::ConfigValidator::new(merged.clone(), schema_path);
     validator
         .validate()

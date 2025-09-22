@@ -17,7 +17,9 @@ use is_terminal::IsTerminal;
 use serde_json::Value;
 
 // Internal imports
-use super::{build::BuildOperations, compose::ComposeOperations, ComposeCommand, UserConfig};
+use super::{
+    build::BuildOperations, compose::ComposeOperations, ComposeCommand, DockerOps, UserConfig,
+};
 use crate::{
     audio::MacOSAudioManager, error::ProviderError, progress::ProgressReporter,
     security::SecurityValidator, TempProvider, TempVmState,
@@ -90,7 +92,7 @@ impl<'a> LifecycleOperations<'a> {
 
         if pipx_list_output.status.success() {
             let pipx_json = serde_json::from_slice::<Value>(&pipx_list_output.stdout)
-                .context("Failed to parse pipx list output as JSON")?;
+                .with_context(|| "Failed to parse pipx package listing output as JSON. pipx may have returned invalid output")?;
             Ok(Some(pipx_json))
         } else {
             Ok(None)
@@ -168,13 +170,7 @@ impl<'a> LifecycleOperations<'a> {
 
     #[must_use = "Docker daemon status should be checked"]
     pub fn check_daemon_is_running(&self) -> Result<()> {
-        let status = std::process::Command::new("docker").arg("info").output();
-        if let Ok(output) = status {
-            if output.status.success() {
-                return Ok(());
-            }
-        }
-        Err(errors::provider::docker_connection_failed())
+        DockerOps::check_daemon_running().map_err(|_| errors::provider::docker_connection_failed())
     }
 
     /// Check Docker build requirements (disk space, resources)
@@ -262,14 +258,7 @@ impl<'a> LifecycleOperations<'a> {
 
         // Check if container already exists
         let container_name = self.container_name();
-        let container_exists = std::process::Command::new("docker")
-            .args(["ps", "-a", "--format", "{{.Names}}"])
-            .output()
-            .map(|output| {
-                String::from_utf8_lossy(&output.stdout)
-                    .lines()
-                    .any(|line| line.trim() == container_name)
-            })
+        let container_exists = DockerOps::container_exists(&container_name)
             .map_err(|e| vm_warning!("Failed to check existing containers (continuing): {}", e))
             .unwrap_or(false);
 
@@ -336,7 +325,9 @@ impl<'a> LifecycleOperations<'a> {
             vm_dbg!("Build context contains {} files/directories", file_count);
         }
 
-        stream_command("docker", &all_args).context("Docker build failed")?;
+        stream_command("docker", &all_args).with_context(|| {
+            format!("Docker build failed for project '{}'. Check that Docker is running and build context is valid", self.project_name())
+        })?;
         println!("\n  ✓ Image built successfully");
         println!("  ✓ Creating container");
 
@@ -345,7 +336,12 @@ impl<'a> LifecycleOperations<'a> {
         print!("  ✓ Starting container");
         let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        stream_command("docker", &args_refs).context("Docker up failed")?;
+        stream_command("docker", &args_refs).with_context(|| {
+            format!(
+                "Failed to start container '{}'. Container may have failed to start properly",
+                self.container_name()
+            )
+        })?;
         println!();
 
         print!("  ✓ Verifying health");
@@ -397,14 +393,7 @@ impl<'a> LifecycleOperations<'a> {
         let container_name = self.container_name();
 
         // Check if it's running
-        let is_running = std::process::Command::new("docker")
-            .args(["ps", "--format", "{{.Names}}"])
-            .output()
-            .map(|output| {
-                String::from_utf8_lossy(&output.stdout)
-                    .lines()
-                    .any(|line| line.trim() == container_name)
-            })
+        let is_running = DockerOps::is_container_running(&container_name)
             .map_err(|e| vm_warning!("Failed to check running containers (continuing): {}", e))
             .unwrap_or(false);
 
@@ -416,7 +405,7 @@ impl<'a> LifecycleOperations<'a> {
         );
 
         // Check if we're in an interactive terminal
-        if std::io::stdin().is_terminal() {
+        if io::stdin().is_terminal() {
             println!("\nWhat would you like to do?");
             if is_running {
                 println!("  1. Keep using the existing running container");
@@ -427,10 +416,10 @@ impl<'a> LifecycleOperations<'a> {
             println!("  3. Cancel operation");
 
             print!("\nChoice [1-3]: ");
-            std::io::stdout().flush()?;
+            io::stdout().flush()?;
 
             let mut input = String::new();
-            std::io::stdin().read_line(&mut input)?;
+            io::stdin().read_line(&mut input)?;
 
             match input.trim() {
                 "1" => {
@@ -465,7 +454,7 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     #[must_use = "config preparation results should be checked"]
-    fn prepare_config_for_build(&self) -> Result<Cow<'_, vm_config::config::VmConfig>> {
+    fn prepare_config_for_build(&self) -> Result<Cow<'_, VmConfig>> {
         let pipx_managed_packages = if let Some(pipx_json) = self.get_pipx_json()? {
             self.extract_pipx_managed_packages(&pipx_json)
         } else {
@@ -491,7 +480,7 @@ impl<'a> LifecycleOperations<'a> {
     fn prepare_config_for_copy(
         &self,
         container_pipx_packages: &[String],
-    ) -> Result<Cow<'_, vm_config::config::VmConfig>> {
+    ) -> Result<Cow<'_, VmConfig>> {
         let needs_pip_clear = !self.config.pip_packages.is_empty();
         let needs_extra_config = !container_pipx_packages.is_empty();
 
@@ -510,8 +499,9 @@ impl<'a> LifecycleOperations<'a> {
         if needs_extra_config {
             config.extra_config.insert(
                 "container_pipx_packages".to_string(),
-                serde_json::to_value(container_pipx_packages)
-                    .context("Failed to serialize container pipx packages for configuration")?,
+                serde_json::to_value(container_pipx_packages).with_context(|| {
+                    "Failed to serialize pipx package list for container configuration"
+                })?,
             );
         }
 
@@ -519,7 +509,7 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     #[must_use = "temp config preparation results should be checked"]
-    fn prepare_temp_config(&self) -> Result<Cow<'_, vm_config::config::VmConfig>> {
+    fn prepare_temp_config(&self) -> Result<Cow<'_, VmConfig>> {
         if let Some(ref project) = self.config.project {
             if project.name.as_deref() == Some("vm-temp") {
                 // Already has the right name, no need to clone
@@ -553,7 +543,7 @@ impl<'a> LifecycleOperations<'a> {
 
         let config_json = config_for_copy.to_json()?;
         let temp_config_path = self.temp_dir.join("vm-config.json");
-        std::fs::write(&temp_config_path, config_json).with_context(|| {
+        fs::write(&temp_config_path, config_json).with_context(|| {
             format!(
                 "Failed to write configuration to {}",
                 temp_config_path.display()
@@ -567,7 +557,10 @@ impl<'a> LifecycleOperations<'a> {
             ])
             .output()?;
         if !copy_result.status.success() {
-            return Err(anyhow::anyhow!("Failed to copy config to container"));
+            return Err(anyhow::anyhow!(
+                "Failed to copy VM configuration to container '{}'. Container may not be running or accessible",
+                self.container_name()
+            ));
         }
         Ok(())
     }
@@ -579,17 +572,16 @@ impl<'a> LifecycleOperations<'a> {
         print!("⏳ Waiting for container readiness... ");
         let mut attempt = 1;
         while attempt <= CONTAINER_READINESS_MAX_ATTEMPTS {
-            if let Ok(output) = std::process::Command::new("docker")
-                .args(["exec", &self.container_name(), "echo", "ready"])
-                .output()
-            {
-                if output.status.success() {
-                    break;
-                }
+            if DockerOps::test_container_readiness(&self.container_name()) {
+                break;
             }
             if attempt == CONTAINER_READINESS_MAX_ATTEMPTS {
                 vm_error!("Container failed to become ready");
-                return Err(anyhow::anyhow!("Container failed to become ready"));
+                return Err(anyhow::anyhow!(
+                    "Container '{}' failed to become ready after {} seconds. Container may be unhealthy or not starting properly",
+                    self.container_name(),
+                    u64::from(CONTAINER_READINESS_MAX_ATTEMPTS) * CONTAINER_READINESS_SLEEP_SECONDS
+                ));
             }
             std::thread::sleep(std::time::Duration::from_secs(
                 CONTAINER_READINESS_SLEEP_SECONDS,
@@ -616,7 +608,9 @@ impl<'a> LifecycleOperations<'a> {
                 ),
             ],
         )
-        .context("Ansible provisioning failed")?;
+        .with_context(|| {
+            format!("Ansible provisioning failed for container '{}'. Check container logs for detailed error information", self.container_name())
+        })?;
 
         // Start services silently
         std::process::Command::new("docker")
@@ -644,8 +638,12 @@ impl<'a> LifecycleOperations<'a> {
         let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
         if compose_ops.stop_with_compose().is_err() {
             // Fallback to direct container stop
-            stream_command("docker", &["stop", &self.container_name()])
-                .context("Failed to stop container")
+            stream_command("docker", &["stop", &self.container_name()]).with_context(|| {
+                format!(
+                    "Failed to stop container '{}' using direct Docker command",
+                    self.container_name()
+                )
+            })
         } else {
             Ok(())
         }
@@ -844,7 +842,9 @@ impl<'a> LifecycleOperations<'a> {
                     &format!("{}:/app/shared/", &container),
                 ])
                 .output()
-                .context("Failed to copy Ansible resources to container")?;
+                .with_context(|| {
+                    format!("Failed to copy Ansible provisioning resources to container '{}'. Container may not be accessible", &container)
+                })?;
         }
 
         ProgressReporter::subtask("├─", "Re-running Ansible provisioning...");
@@ -866,7 +866,9 @@ impl<'a> LifecycleOperations<'a> {
         );
         if let Err(e) = ansible_result {
             ProgressReporter::error("└─", &format!("Provisioning failed: {}", e));
-            return Err(e).context("Ansible provisioning failed during container setup");
+            return Err(e).with_context(|| {
+                format!("Ansible provisioning failed during setup for container '{}'. Check provisioning logs for details", self.container_name())
+            });
         }
         ProgressReporter::complete("└─", "Provisioning complete");
         Ok(())
@@ -889,10 +891,12 @@ impl<'a> LifecycleOperations<'a> {
                 "{{.Names}}\t{{.Status}}\t{{.Ports}}\t{{.CreatedAt}}",
             ])
             .output()
-            .context("Failed to get container info")?;
+            .with_context(|| "Failed to get container information from Docker. Ensure Docker is running and accessible")?;
 
         if !ps_output.status.success() {
-            return Err(anyhow::anyhow!("Docker ps command failed"));
+            return Err(anyhow::anyhow!(
+                "Docker ps command failed. Check that Docker is installed, running, and accessible"
+            ));
         }
 
         // Get stats for running containers
@@ -904,7 +908,7 @@ impl<'a> LifecycleOperations<'a> {
                 "{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}",
             ])
             .output()
-            .context("Failed to get container stats")?;
+            .with_context(|| "Failed to get container resource statistics from Docker. Some containers may not be running")?;
 
         let stats_data = if stats_output.status.success() {
             String::from_utf8_lossy(&stats_output.stdout)
@@ -1188,7 +1192,9 @@ impl<'a> LifecycleOperations<'a> {
                 }
             }
         };
-        stream_command("docker", &["kill", &target_container]).context("Failed to kill container")
+        stream_command("docker", &["kill", &target_container]).with_context(|| {
+            format!("Failed to kill container '{}'. Container may not exist or Docker may be unresponsive", &target_container)
+        })
     }
 
     /// Resolve a partial container name to a full container name
@@ -1202,10 +1208,12 @@ impl<'a> LifecycleOperations<'a> {
         let output = std::process::Command::new("docker")
             .args(["ps", "-a", "--format", "{{.Names}}\t{{.ID}}"])
             .output()
-            .context("Failed to list containers for name resolution")?;
+            .with_context(|| "Failed to list containers for name resolution. Docker may not be running or accessible")?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Docker ps command failed"));
+            return Err(anyhow::anyhow!(
+                "Docker container listing failed during name resolution. Check Docker daemon status"
+            ));
         }
 
         let containers_output = String::from_utf8_lossy(&output.stdout);
@@ -1255,7 +1263,7 @@ impl<'a> LifecycleOperations<'a> {
 
         match matches.len() {
             0 => Err(anyhow::anyhow!(
-                "No container found matching '{}'",
+                "No container found matching '{}'. Use 'vm list' to see available containers",
                 partial_name
             )),
             1 => Ok(matches[0].clone()),
@@ -1315,7 +1323,8 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
                 "Mount update failed - container not healthy",
             );
             return Err(anyhow::anyhow!(
-                "Container is not healthy after mount update"
+                "Container '{}' is not healthy after mount update. Check container logs for issues",
+                &state.container_name
             ));
         }
 
@@ -1332,7 +1341,7 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
         let compose_ops = ComposeOperations::new(&temp_config, self.temp_dir, self.project_dir);
         let content = compose_ops.render_docker_compose_with_mounts(state)?;
         let compose_path = self.temp_dir.join("docker-compose.yml");
-        std::fs::write(&compose_path, content.as_bytes())?;
+        fs::write(&compose_path, content.as_bytes())?;
 
         ProgressReporter::task(&phase, "Removing old container...");
         if let Err(e) = stream_command("docker", &["rm", "-f", &state.container_name]) {

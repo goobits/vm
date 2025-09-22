@@ -1,3 +1,31 @@
+//! Preset detection and management commands.
+//!
+//! This module provides functionality for detecting, listing, and loading VM configuration
+//! presets based on project structure and technology stack. Presets automatically configure
+//! VM environments for common development frameworks and languages.
+//!
+//! ## Commands
+//!
+//! - **Detection**: Automatically detect appropriate preset for current project
+//! - **Listing**: Show all available presets in the presets directory
+//! - **Loading**: Load and display preset configuration in YAML format
+//!
+//! ## Usage Examples
+//!
+//! ```bash
+//! # Detect preset for current project
+//! vm-config preset --detect-only
+//!
+//! # List all available presets
+//! vm-config preset --list
+//!
+//! # Load and display detected preset configuration
+//! vm-config preset
+//! ```
+//!
+//! The preset detector examines project files (package.json, Cargo.toml, etc.) to
+//! automatically determine the most appropriate VM configuration preset.
+
 use anyhow::Result;
 use std::path::PathBuf;
 use vm_common::vm_error;

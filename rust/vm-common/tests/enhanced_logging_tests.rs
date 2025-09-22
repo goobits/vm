@@ -291,9 +291,13 @@ fn test_log_output_routing() {
     log_context::clear_context();
 
     // Create a temporary file for testing file output
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new().expect(
+        "Failed to create temporary directory for logging test - check disk space and permissions",
+    );
     let log_file = temp_dir.path().join("test.log");
-    let log_path = log_file.to_str().unwrap();
+    let log_path = log_file
+        .to_str()
+        .expect("Failed to convert log file path to string - path contains invalid Unicode");
 
     // Note: In a real application, you'd create a separate logger instance
     // for file output. For this test, we'll verify the config creation works.
@@ -410,11 +414,18 @@ fn test_both_output_configuration() {
         }
     };
 
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new().expect(
+        "Failed to create temporary directory for logging test - check disk space and permissions",
+    );
     let log_file = temp_dir.path().join("both_test.log");
 
     env::set_var("LOG_OUTPUT", "both");
-    env::set_var("LOG_FILE", log_file.to_str().unwrap());
+    env::set_var(
+        "LOG_FILE",
+        log_file
+            .to_str()
+            .expect("Failed to convert log file path to string - path contains invalid Unicode"),
+    );
 
     let config = LogConfig::from_env();
 

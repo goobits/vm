@@ -39,6 +39,7 @@ impl ProjectTestFixture {
 #[macro_export]
 macro_rules! test_fixture {
     () => {
-        super::fixtures::ProjectTestFixture::new().unwrap()
+        super::fixtures::ProjectTestFixture::new()
+            .expect("Failed to create test fixture - check temp directory permissions and available disk space")
     };
 }

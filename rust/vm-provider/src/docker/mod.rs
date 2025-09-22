@@ -1,12 +1,14 @@
 // Docker provider implementation split into logical modules
 
 pub mod build;
+pub mod command;
 pub mod compose;
 pub mod host_packages;
 pub mod lifecycle;
 
 // Re-export the main types and functions for backwards compatibility
 pub use build::BuildOperations;
+pub use command::DockerOps;
 pub use lifecycle::LifecycleOperations;
 
 // Standard library
@@ -220,7 +222,7 @@ impl Provider for DockerProvider {
         lifecycle.destroy_container()
     }
 
-    fn ssh(&self, relative_path: &std::path::Path) -> Result<()> {
+    fn ssh(&self, relative_path: &Path) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
         lifecycle.ssh_into_container(relative_path)
     }

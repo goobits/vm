@@ -1,3 +1,48 @@
+//! Configuration querying and data extraction commands.
+//!
+//! This module provides comprehensive functionality for querying, filtering, and extracting
+//! data from VM configuration files. It supports various query operations including field
+//! extraction, array manipulation, conditional filtering, and data validation.
+//!
+//! ## Commands
+//!
+//! - **query**: Extract specific field values using dot notation
+//! - **filter**: Apply JQ-style expressions to filter configuration data
+//! - **array-length**: Get the length of arrays in configuration
+//! - **has-field**: Check if a specific field exists in configuration
+//! - **select-where**: Filter arrays based on field conditions
+//! - **count**: Count items in arrays or objects
+//!
+//! ## Query Features
+//!
+//! - **Dot notation**: Access nested fields (e.g., `project.name`)
+//! - **Default values**: Fallback values when fields don't exist
+//! - **Raw output**: Extract string values without JSON formatting
+//! - **Array operations**: Length, filtering, and conditional selection
+//! - **Type checking**: Validate field existence and structure
+//!
+//! ## Usage Examples
+//!
+//! ```bash
+//! # Extract project name with default fallback
+//! vm-config query --field project.name --default "unnamed-project"
+//!
+//! # Get raw string value without quotes
+//! vm-config query --field project.hostname --raw
+//!
+//! # Filter services that are enabled
+//! vm-config filter '.services | map(select(.enabled == true))'
+//!
+//! # Check if postgresql service exists
+//! vm-config has-field services postgresql
+//!
+//! # Count number of configured ports
+//! vm-config count ports
+//! ```
+//!
+//! All query operations work on both local configuration files and merged
+//! configurations that include presets and global settings.
+
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use vm_common::vm_error;

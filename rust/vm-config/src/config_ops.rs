@@ -206,11 +206,16 @@ impl ConfigOps {
             if global {
                 vm_error!("No global configuration found at {}", config_path.display());
                 vm_error_hint!("Global configs are created automatically when needed");
-                return Err(anyhow::anyhow!("No global configuration found"));
+                return Err(anyhow::anyhow!(
+                    "No global configuration found at '{}'. Global configuration is created automatically when needed",
+                    config_path.display()
+                ));
             } else {
                 vm_error!("No vm.yaml found in current directory or parent directories");
                 vm_error_hint!("Create one with: vm init");
-                return Err(anyhow::anyhow!("No vm.yaml found"));
+                return Err(anyhow::anyhow!(
+                    "No vm.yaml found in current directory or parent directories. Create one with: vm init"
+                ));
             }
         }
 
@@ -245,7 +250,10 @@ impl ConfigOps {
 
         if !config_path.exists() {
             vm_error!("Configuration file not found: {}", config_path.display());
-            return Err(anyhow::anyhow!("Configuration file not found"));
+            return Err(anyhow::anyhow!(
+                "Configuration file not found at '{}'. Use 'vm init' to create a configuration",
+                config_path.display()
+            ));
         }
 
         let content = fs::read_to_string(&config_path)?;
@@ -521,7 +529,9 @@ fn find_local_config() -> Result<PathBuf> {
     }
 
     vm_error!("No vm.yaml found in current directory or parent directories");
-    Err(anyhow::anyhow!("No vm.yaml found"))
+    Err(anyhow::anyhow!(
+        "No vm.yaml configuration found in current directory or parent directories. Create one with: vm init"
+    ))
 }
 
 fn find_or_create_local_config() -> Result<PathBuf> {
@@ -538,7 +548,9 @@ fn find_or_create_local_config() -> Result<PathBuf> {
 fn set_nested_field(value: &mut Value, field: &str, new_value: Value) -> Result<()> {
     if field.is_empty() {
         vm_error!("Empty field path");
-        return Err(anyhow::anyhow!("Empty field path"));
+        return Err(anyhow::anyhow!(
+            "Empty field path provided. Specify a field name like 'provider' or 'project.name'"
+        ));
     }
 
     let parts: Vec<&str> = field.split('.').collect();
@@ -555,7 +567,10 @@ fn set_nested_field_recursive(value: &mut Value, parts: &[&str], new_value: Valu
             }
             _ => {
                 vm_error!("Cannot set field on non-object");
-                return Err(anyhow::anyhow!("Cannot set field on non-object"));
+                return Err(anyhow::anyhow!(
+                    "Cannot set field '{}' on non-object value. Field path may be invalid",
+                    parts[0]
+                ));
             }
         }
     }

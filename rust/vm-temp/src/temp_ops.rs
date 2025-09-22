@@ -22,14 +22,19 @@ impl TempVmOps {
         _config: VmConfig,
         provider: Box<dyn Provider>,
     ) -> Result<()> {
-        let state_manager = StateManager::new().context("Failed to initialize state manager")?;
+        let state_manager = StateManager::new().with_context(|| {
+            "Failed to initialize temporary VM state manager. Check filesystem permissions"
+        })?;
 
         // Parse mount strings using MountParser
-        let parsed_mounts =
-            MountParser::parse_mount_strings(&mounts).context("Failed to parse mount strings")?;
+        let parsed_mounts = MountParser::parse_mount_strings(&mounts).with_context(|| {
+            "Failed to parse mount path specifications. Check mount string format"
+        })?;
 
         // Get current project directory
-        let project_dir = std::env::current_dir().context("Failed to get current directory")?;
+        let project_dir = std::env::current_dir().with_context(|| {
+            "Failed to get current working directory. Check directory permissions"
+        })?;
 
         // Create temp VM state
         let mut temp_state = TempVmState::new(
@@ -42,13 +47,21 @@ impl TempVmOps {
         // Add all mounts to the state
         for (source, target, permissions) in parsed_mounts {
             if let Some(target_path) = target {
+                let source_display = source.display().to_string();
+                let target_display = target_path.display().to_string();
                 temp_state
                     .add_mount_with_target(source, target_path, permissions)
-                    .context("Failed to add mount with custom target")?;
+                    .with_context(|| {
+                        format!(
+                            "Failed to add mount '{}' with custom target '{}'",
+                            source_display, target_display
+                        )
+                    })?;
             } else {
-                temp_state
-                    .add_mount(source, permissions)
-                    .context("Failed to add mount")?;
+                let source_display = source.display().to_string();
+                temp_state.add_mount(source, permissions).with_context(|| {
+                    format!("Failed to add mount for path '{}'", source_display)
+                })?;
             }
         }
 
@@ -62,7 +75,7 @@ impl TempVmOps {
         // Save state
         state_manager
             .save_state(&temp_state)
-            .context("Failed to save temp VM state")?;
+            .with_context(|| "Failed to save temporary VM state to disk. Check filesystem permissions and available space")?;
 
         println!(
             "✅ Temporary VM created with {} mount(s)",
@@ -77,7 +90,7 @@ impl TempVmOps {
             provider.destroy()?;
             state_manager
                 .delete_state()
-                .context("Failed to delete temp VM state")?;
+                .with_context(|| "Failed to delete temporary VM state from disk. State file may be in use or filesystem is read-only")?;
         } else {
             println!("💡 Use 'vm temp ssh' to connect");
             println!("   Use 'vm temp destroy' when done");
@@ -88,7 +101,8 @@ impl TempVmOps {
 
     /// SSH into the temporary VM
     pub fn ssh(provider: Box<dyn Provider>) -> Result<()> {
-        let state_manager = StateManager::new().context("Failed to initialize state manager")?;
+        let state_manager = StateManager::new()
+            .with_context(|| "Failed to initialize state manager for SSH connection")?;
 
         if !state_manager.state_exists() {
             return Err(errors::temp::temp_vm_not_found());
@@ -99,7 +113,8 @@ impl TempVmOps {
 
     /// Show temporary VM status
     pub fn status(provider: Box<dyn Provider>) -> Result<()> {
-        let state_manager = StateManager::new().context("Failed to initialize state manager")?;
+        let state_manager = StateManager::new()
+            .with_context(|| "Failed to initialize state manager for status check")?;
 
         if !state_manager.state_exists() {
             vm_error!("No temp VM found");
@@ -107,9 +122,9 @@ impl TempVmOps {
             return Ok(());
         }
 
-        let state = state_manager
-            .load_state()
-            .context("Failed to load temp VM state")?;
+        let state = state_manager.load_state().with_context(|| {
+            "Failed to load temporary VM state from disk. State file may be corrupted"
+        })?;
 
         println!("📊 Temp VM Status:");
         println!("   Container: {}", state.container_name);
@@ -131,7 +146,8 @@ impl TempVmOps {
 
     /// Destroy the temporary VM
     pub fn destroy(provider: Box<dyn Provider>) -> Result<()> {
-        let state_manager = StateManager::new().context("Failed to initialize state manager")?;
+        let state_manager = StateManager::new()
+            .with_context(|| "Failed to initialize state manager for VM destruction")?;
 
         if !state_manager.state_exists() {
             // Use the new error function, which already provides a user-friendly
@@ -146,7 +162,7 @@ impl TempVmOps {
 
         state_manager
             .delete_state()
-            .context("Failed to delete temp VM state")?;
+            .with_context(|| "Failed to delete temporary VM state from disk. State file may be in use or filesystem is read-only")?;
 
         vm_success!("Temporary VM destroyed");
         Ok(())
@@ -154,7 +170,8 @@ impl TempVmOps {
 
     /// Add mount to running temporary VM
     pub fn mount(path: String, yes: bool, provider: Box<dyn Provider>) -> Result<()> {
-        let state_manager = StateManager::new().context("Failed to initialize state manager")?;
+        let state_manager = StateManager::new()
+            .with_context(|| "Failed to initialize state manager for mount operation")?;
 
         if !state_manager.state_exists() {
             return Err(anyhow::anyhow!(
@@ -164,12 +181,17 @@ impl TempVmOps {
 
         // Parse the mount string
         let (source, target, permissions) =
-            MountParser::parse_mount_string(&path).context("Failed to parse mount string")?;
+            MountParser::parse_mount_string(&path).with_context(|| {
+                format!(
+                    "Failed to parse mount string '{}'. Check mount path format",
+                    path
+                )
+            })?;
 
         // Load current state
         let mut state = state_manager
             .load_state()
-            .context("Failed to load temp VM state")?;
+            .with_context(|| "Failed to load temporary VM state from disk for mount operation. State file may be corrupted")?;
 
         // Check if mount already exists
         if state.has_mount(&source) {
@@ -232,7 +254,8 @@ impl TempVmOps {
         yes: bool,
         provider: Box<dyn Provider>,
     ) -> Result<()> {
-        let state_manager = StateManager::new().context("Failed to initialize state manager")?;
+        let state_manager = StateManager::new()
+            .with_context(|| "Failed to initialize state manager for SSH connection")?;
 
         if !state_manager.state_exists() {
             return Err(anyhow::anyhow!("No temp VM found"));
@@ -326,7 +349,8 @@ impl TempVmOps {
 
     /// List current mounts
     pub fn mounts() -> Result<()> {
-        let state_manager = StateManager::new().context("Failed to initialize state manager")?;
+        let state_manager = StateManager::new()
+            .with_context(|| "Failed to initialize state manager for SSH connection")?;
 
         if !state_manager.state_exists() {
             vm_error!("No temp VM found");
@@ -362,7 +386,8 @@ impl TempVmOps {
 
     /// List all temporary VMs
     pub fn list() -> Result<()> {
-        let state_manager = StateManager::new().context("Failed to initialize state manager")?;
+        let state_manager = StateManager::new()
+            .with_context(|| "Failed to initialize state manager for SSH connection")?;
 
         // For now, just show if there's a temp VM
         if state_manager.state_exists() {
@@ -387,7 +412,8 @@ impl TempVmOps {
 
     /// Stop temporary VM
     pub fn stop(provider: Box<dyn Provider>) -> Result<()> {
-        let state_manager = StateManager::new().context("Failed to initialize state manager")?;
+        let state_manager = StateManager::new()
+            .with_context(|| "Failed to initialize state manager for SSH connection")?;
 
         if !state_manager.state_exists() {
             return Err(anyhow::anyhow!("No temp VM found"));
@@ -402,7 +428,8 @@ impl TempVmOps {
 
     /// Start temporary VM
     pub fn start(provider: Box<dyn Provider>) -> Result<()> {
-        let state_manager = StateManager::new().context("Failed to initialize state manager")?;
+        let state_manager = StateManager::new()
+            .with_context(|| "Failed to initialize state manager for SSH connection")?;
 
         if !state_manager.state_exists() {
             return Err(anyhow::anyhow!("No temp VM found"));
@@ -417,7 +444,8 @@ impl TempVmOps {
 
     /// Restart temporary VM
     pub fn restart(provider: Box<dyn Provider>) -> Result<()> {
-        let state_manager = StateManager::new().context("Failed to initialize state manager")?;
+        let state_manager = StateManager::new()
+            .with_context(|| "Failed to initialize state manager for SSH connection")?;
 
         if !state_manager.state_exists() {
             return Err(anyhow::anyhow!("No temp VM found"));
