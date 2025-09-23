@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use crate::cli::ConfigSubcommand;
 use serde_yaml_ng as serde_yaml;
-use vm_common::{vm_error, vm_println, vm_success, vm_warning};
+use vm_common::{vm_println, vm_success, vm_warning};
 use vm_config::ports::{PortRange, PortRegistry};
 use vm_config::{config::VmConfig, ConfigOps};
 
@@ -40,16 +40,19 @@ pub fn handle_validate(config_file: Option<PathBuf>) -> Result<()> {
             }
 
             // Count and display services
-            let enabled_services: Vec<String> = config.services
+            let enabled_services: Vec<String> = config
+                .services
                 .iter()
                 .filter(|(_, svc)| svc.enabled)
                 .map(|(name, _)| name.clone())
                 .collect();
 
             if !enabled_services.is_empty() {
-                println!("  Services:   {} configured ({})",
+                println!(
+                    "  Services:   {} configured ({})",
                     enabled_services.len(),
-                    enabled_services.join(", "));
+                    enabled_services.join(", ")
+                );
             }
 
             // Display port range

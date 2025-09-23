@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 // External crates
 use anyhow::{Context, Result};
-use vm_common::{errors, vm_error, vm_success};
+use vm_common::{errors, vm_error};
 
 // Internal imports
 use crate::{MountParser, MountPermission, StateManager, TempVmState};
@@ -213,6 +213,7 @@ impl TempVmOps {
 
         // Add the mount
         let permissions_display = permissions.to_string();
+        let target_clone = target.clone();
         if let Some(target_path) = target {
             state
                 .add_mount_with_target(source.clone(), target_path, permissions)
@@ -242,8 +243,10 @@ impl TempVmOps {
                 .context("Failed to update container mounts")?;
             println!("\n✅ Mount successfully applied");
             println!("  Source: {}", source.display());
-            println!("  Target: {}", target.display());
-            println!("  Access: {}\n", permissions);
+            if let Some(target_path) = &target_clone {
+                println!("  Target: {}", target_path.display());
+            }
+            println!("  Access: {}\n", permissions_display);
             println!("💡 View all mounts: vm temp mounts");
         } else {
             return Err(anyhow::anyhow!("Provider does not support mount updates"));
@@ -299,7 +302,7 @@ impl TempVmOps {
                 temp_provider
                     .update_mounts(&state)
                     .context("Failed to update container mounts")?;
-                println!("\n✅ All mounts removed ({})", mounts_to_remove.len());
+                println!("\n✅ All mounts removed ({})", mount_count);
                 println!("\n💡 Add new mounts: vm temp mount <source>:<target>");
             }
         } else if let Some(path_str) = path {
@@ -345,7 +348,7 @@ impl TempVmOps {
                     .update_mounts(&state)
                     .context("Failed to update container mounts")?;
                 println!("\n✅ Mount removed");
-                println!("  Path: {}\n", mount_path.display());
+                println!("  Path: {}\n", source_path.display());
                 println!("💡 View remaining mounts: vm temp mounts");
             }
         } else {
@@ -431,7 +434,9 @@ impl TempVmOps {
             .with_context(|| "Failed to initialize state manager for SSH connection")?;
 
         if !state_manager.state_exists() {
-            return Err(anyhow::anyhow!("No temp VM found. Create one with: vm temp create <directory>"));
+            return Err(anyhow::anyhow!(
+                "No temp VM found. Create one with: vm temp create <directory>"
+            ));
         }
 
         println!("🛑 Stopping temporary VM...");
@@ -456,10 +461,13 @@ impl TempVmOps {
             .with_context(|| "Failed to initialize state manager for SSH connection")?;
 
         if !state_manager.state_exists() {
-            return Err(anyhow::anyhow!("No temp VM found. Create one with: vm temp create <directory>"));
+            return Err(anyhow::anyhow!(
+                "No temp VM found. Create one with: vm temp create <directory>"
+            ));
         }
 
-        let state = state_manager.load_state()
+        let state = state_manager
+            .load_state()
             .context("Failed to load temp VM state")?;
 
         println!("🚀 Starting temporary VM...");
@@ -491,10 +499,13 @@ impl TempVmOps {
             .with_context(|| "Failed to initialize state manager for SSH connection")?;
 
         if !state_manager.state_exists() {
-            return Err(anyhow::anyhow!("No temp VM found. Create one with: vm temp create <directory>"));
+            return Err(anyhow::anyhow!(
+                "No temp VM found. Create one with: vm temp create <directory>"
+            ));
         }
 
-        let state = state_manager.load_state()
+        let state = state_manager
+            .load_state()
             .context("Failed to load temp VM state")?;
 
         println!("🔄 Restarting temporary VM...");

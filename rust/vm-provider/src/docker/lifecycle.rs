@@ -275,7 +275,7 @@ impl<'a> LifecycleOperations<'a> {
             }
         }
 
-        let vm_name = self
+        let _vm_name = self
             .config
             .project
             .as_ref()
