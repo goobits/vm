@@ -13,25 +13,6 @@ use vm_common::{vm_dbg, vm_error};
 ///
 /// Provides a centralized way to construct and execute Docker commands with
 /// proper argument validation, error handling, and logging.
-///
-/// # Examples
-///
-/// ```ignore
-/// use vm_provider::docker::command::DockerCommand;
-///
-/// // Check if container exists
-/// let exists = DockerCommand::new()
-///     .subcommand("ps")
-///     .args(&["-a", "--format", "{{.Names}}"])
-///     .execute_with_output()?
-///     .contains("my-container");
-///
-/// // Execute command in container
-/// DockerCommand::new()
-///     .subcommand("exec")
-///     .args(&["my-container", "echo", "hello"])
-///     .execute()?;
-/// ```
 #[derive(Debug, Clone)]
 #[allow(dead_code)] // Infrastructure for future refactoring
 pub struct DockerCommand {
