@@ -132,6 +132,7 @@ impl<'a> ComposeOperations<'a> {
         Ok(content)
     }
 
+    #[allow(dead_code)]
     pub fn start_with_compose(&self) -> Result<()> {
         let compose_path = self.temp_dir.join("docker-compose.yml");
         if !compose_path.exists() {
@@ -165,6 +166,7 @@ impl<'a> ComposeOperations<'a> {
             .with_context(|| "Failed to start container using docker-compose. Check that docker-compose.yml is valid and Docker is running")
     }
 
+    #[allow(dead_code)]
     pub fn stop_with_compose(&self) -> Result<()> {
         let compose_path = self.temp_dir.join("docker-compose.yml");
         if compose_path.exists() {
@@ -180,6 +182,7 @@ impl<'a> ComposeOperations<'a> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn destroy_with_compose(&self) -> Result<()> {
         let compose_path = self.temp_dir.join("docker-compose.yml");
         if !compose_path.exists() {

@@ -207,49 +207,49 @@ impl Provider for DockerProvider {
         lifecycle.create_container()
     }
 
-    fn start(&self) -> Result<()> {
+    fn start(&self, container: Option<&str>) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
-        lifecycle.start_container()
+        lifecycle.start_container(container)
     }
 
-    fn stop(&self) -> Result<()> {
+    fn stop(&self, container: Option<&str>) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
-        lifecycle.stop_container()
+        lifecycle.stop_container(container)
     }
 
-    fn destroy(&self) -> Result<()> {
+    fn destroy(&self, container: Option<&str>) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
-        lifecycle.destroy_container()
+        lifecycle.destroy_container(container)
     }
 
-    fn ssh(&self, relative_path: &Path) -> Result<()> {
+    fn ssh(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
-        lifecycle.ssh_into_container(relative_path)
+        lifecycle.ssh_into_container(container, relative_path)
     }
 
-    fn exec(&self, cmd: &[String]) -> Result<()> {
+    fn exec(&self, container: Option<&str>, cmd: &[String]) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
-        lifecycle.exec_in_container(cmd)
+        lifecycle.exec_in_container(container, cmd)
     }
 
-    fn logs(&self) -> Result<()> {
+    fn logs(&self, container: Option<&str>) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
-        lifecycle.show_logs()
+        lifecycle.show_logs(container)
     }
 
-    fn status(&self) -> Result<()> {
+    fn status(&self, container: Option<&str>) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
-        lifecycle.show_status()
+        lifecycle.show_status(container)
     }
 
-    fn restart(&self) -> Result<()> {
+    fn restart(&self, container: Option<&str>) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
-        lifecycle.restart_container()
+        lifecycle.restart_container(container)
     }
 
-    fn provision(&self) -> Result<()> {
+    fn provision(&self, container: Option<&str>) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
-        lifecycle.provision_existing()
+        lifecycle.provision_existing(container)
     }
 
     fn list(&self) -> Result<()> {

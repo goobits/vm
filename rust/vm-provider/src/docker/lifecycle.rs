@@ -374,12 +374,12 @@ impl<'a> LifecycleOperations<'a> {
                         Ok(())
                     } else {
                         println!("\n▶️  Starting existing container...");
-                        self.start_container()
+                        self.start_container(None)
                     }
                 }
                 "2" => {
                     println!("\n🔄 Recreating container...");
-                    self.destroy_container()?;
+                    self.destroy_container(None)?;
                     // Continue with creation below
                     self.create_container()
                 }
@@ -559,36 +559,22 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     #[must_use = "container start results should be handled"]
-    pub fn start_container(&self) -> Result<()> {
-        let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
-        compose_ops.start_with_compose()
+    pub fn start_container(&self, container: Option<&str>) -> Result<()> {
+        let target_container = self.resolve_target_container(container)?;
+        stream_command("docker", &["start", &target_container])
     }
 
     #[must_use = "container stop results should be handled"]
-    pub fn stop_container(&self) -> Result<()> {
-        let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
-        if compose_ops.stop_with_compose().is_err() {
-            // Fallback to direct container stop
-            stream_command("docker", &["stop", &self.container_name()]).with_context(|| {
-                format!(
-                    "Failed to stop container '{}' using direct Docker command",
-                    self.container_name()
-                )
-            })
-        } else {
-            Ok(())
-        }
+    pub fn stop_container(&self, container: Option<&str>) -> Result<()> {
+        let target_container = self.resolve_target_container(container)?;
+        stream_command("docker", &["stop", &target_container])
+            .with_context(|| format!("Failed to stop container '{}'", target_container))
     }
 
     #[must_use = "container destruction results should be handled"]
-    pub fn destroy_container(&self) -> Result<()> {
-        let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
-        let result = if compose_ops.destroy_with_compose().is_err() {
-            println!("docker-compose.yml not found. Attempting to remove container by name.");
-            stream_command("docker", &["rm", "-f", &self.container_name()])
-        } else {
-            Ok(())
-        };
+    pub fn destroy_container(&self, container: Option<&str>) -> Result<()> {
+        let target_container = self.resolve_target_container(container)?;
+        let result = stream_command("docker", &["rm", "-f", &target_container]);
 
         // Only cleanup audio if it was enabled in the configuration
         if let Some(audio_service) = self.config.services.get("audio") {
@@ -606,7 +592,7 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     #[must_use = "SSH connection results should be handled"]
-    pub fn ssh_into_container(&self, relative_path: &Path) -> Result<()> {
+    pub fn ssh_into_container(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {
         let workspace_path = self
             .config
             .project
@@ -638,7 +624,7 @@ impl<'a> LifecycleOperations<'a> {
                 tty_flag,
                 "-e",
                 &format!("VM_TARGET_DIR={}", target_dir),
-                &self.container_name(),
+                &self.resolve_target_container(container)?,
                 "sudo",
                 "-u",
                 project_user,
@@ -663,8 +649,8 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     #[must_use = "command execution results should be handled"]
-    pub fn exec_in_container(&self, cmd: &[String]) -> Result<()> {
-        let container = self.container_name();
+    pub fn exec_in_container(&self, container: Option<&str>, cmd: &[String]) -> Result<()> {
+        let target_container = self.resolve_target_container(container)?;
         let workspace_path = self
             .config
             .project
@@ -680,7 +666,7 @@ impl<'a> LifecycleOperations<'a> {
             workspace_path,
             "--user",
             project_user,
-            &container,
+            &target_container,
         ];
         let cmd_strs: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
         args.extend_from_slice(&cmd_strs);
@@ -688,22 +674,24 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     #[must_use = "log display results should be handled"]
-    pub fn show_logs(&self) -> Result<()> {
+    pub fn show_logs(&self, container: Option<&str>) -> Result<()> {
         // Show recent logs without following (-f) to avoid hanging indefinitely
         // Use --tail to show last 50 lines and add timestamps
-        stream_command(
-            "docker",
-            &["logs", "--tail", "50", "-t", &self.container_name()],
-        )
+        let target_container = self.resolve_target_container(container)?;
+        stream_command("docker", &["logs", "--tail", "50", "-t", &target_container])
     }
 
     #[must_use = "status display results should be handled"]
-    pub fn show_status(&self) -> Result<()> {
+    pub fn show_status(&self, container: Option<&str>) -> Result<()> {
         let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
         if compose_ops.status_with_compose().is_err() {
             stream_command(
                 "docker",
-                &["ps", "-f", &format!("name={}", self.container_name())],
+                &[
+                    "ps",
+                    "-f",
+                    &format!("name={}", self.resolve_target_container(container)?),
+                ],
             )?;
         }
 
@@ -727,16 +715,21 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     #[must_use = "container restart results should be handled"]
-    pub fn restart_container(&self) -> Result<()> {
-        self.stop_container()?;
-        self.start_container()
+    pub fn restart_container(&self, container: Option<&str>) -> Result<()> {
+        self.stop_container(container)?;
+        self.start_container(container)
     }
 
     #[must_use = "existing container provisioning results should be handled"]
-    pub fn provision_existing(&self) -> Result<()> {
-        let container = self.container_name();
+    pub fn provision_existing(&self, container: Option<&str>) -> Result<()> {
+        let target_container = self.resolve_target_container(container)?;
         let status_output = std::process::Command::new("docker")
-            .args(["inspect", "--format", "{{.State.Status}}", &container])
+            .args([
+                "inspect",
+                "--format",
+                "{{.State.Status}}",
+                &target_container,
+            ])
             .output()?;
         let status = String::from_utf8_lossy(&status_output.stdout)
             .trim()
@@ -744,7 +737,7 @@ impl<'a> LifecycleOperations<'a> {
         if status != "running" {
             return Err(anyhow::anyhow!(
                 "Container {} is not running. Start it first with 'vm start'",
-                container
+                target_container
             ));
         }
 
@@ -754,7 +747,7 @@ impl<'a> LifecycleOperations<'a> {
         // Check if Ansible playbook exists in container
         let check_playbook = DockerCommand::new()
             .subcommand("exec")
-            .arg(&container)
+            .arg(&target_container)
             .arg("test")
             .arg("-f")
             .arg(ANSIBLE_PLAYBOOK_PATH)
@@ -778,10 +771,10 @@ impl<'a> LifecycleOperations<'a> {
 
             // Copy the shared directory to the container
             let source = format!("{}/.", shared_dir.display());
-            let destination = format!("{}:/app/shared/", &container);
+            let destination = format!("{}:/app/shared/", &target_container);
             DockerOps::copy(&source, &destination)
                 .with_context(|| {
-                    format!("Failed to copy Ansible provisioning resources to container '{}'. Container may not be accessible", &container)
+                    format!("Failed to copy Ansible provisioning resources to container '{}'. Container may not be accessible", &target_container)
                 })?;
         }
 
@@ -793,7 +786,7 @@ impl<'a> LifecycleOperations<'a> {
             "docker",
             &[
                 "exec",
-                &self.container_name(),
+                &target_container,
                 "bash",
                 "-c",
                 &format!(
@@ -805,7 +798,7 @@ impl<'a> LifecycleOperations<'a> {
         if let Err(e) = ansible_result {
             ProgressReporter::error("└─", &format!("Provisioning failed: {}", e));
             return Err(e).with_context(|| {
-                format!("Ansible provisioning failed during setup for container '{}'. Check provisioning logs for details", self.container_name())
+                format!("Ansible provisioning failed during setup for container '{}'. Check provisioning logs for details", target_container)
             });
         }
         ProgressReporter::complete("└─", "Provisioning complete");
@@ -1129,6 +1122,17 @@ impl<'a> LifecycleOperations<'a> {
         stream_command("docker", &["kill", &target_container]).with_context(|| {
             format!("Failed to kill container '{}'. Container may not exist or Docker may be unresponsive", &target_container)
         })
+    }
+
+    /// Resolve target container from optional container parameter
+    /// If container is None, uses the current project's container
+    /// If container is Some, resolves using resolve_container_name
+    #[must_use = "container resolution results should be checked"]
+    fn resolve_target_container(&self, container: Option<&str>) -> Result<String> {
+        match container {
+            None => Ok(self.container_name()),
+            Some(name) => self.resolve_container_name(name),
+        }
     }
 
     /// Resolve a partial container name to a full container name

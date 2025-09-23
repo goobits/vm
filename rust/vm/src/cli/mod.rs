@@ -156,18 +156,33 @@ pub enum Command {
         force: bool,
     },
     /// Start a VM
-    Start,
+    Start {
+        /// Container name, ID, or project name to start
+        #[arg()]
+        container: Option<String>,
+    },
     /// Stop a VM or force-kill a specific container
     Stop {
         /// Container name or ID to stop (if not provided, stops current project VM gracefully)
         container: Option<String>,
     },
     /// Restart a VM
-    Restart,
+    Restart {
+        /// Container name, ID, or project name to restart
+        #[arg()]
+        container: Option<String>,
+    },
     /// Re-run VM provisioning
-    Provision,
+    Provision {
+        /// Container name, ID, or project name to provision
+        #[arg()]
+        container: Option<String>,
+    },
     /// Destroy a VM and clean up resources
     Destroy {
+        /// Container name, ID, or project name to destroy
+        #[arg()]
+        container: Option<String>,
         /// Force destruction without confirmation
         #[arg(long)]
         force: bool,
@@ -176,21 +191,35 @@ pub enum Command {
     /// List all VMs with status and resource usage
     List,
     /// Show VM status and health
-    Status,
+    Status {
+        /// Container name, ID, or project name
+        #[arg()]
+        container: Option<String>,
+    },
     /// Connect to VM via SSH
     Ssh {
-        /// Directory path to start shell in
+        /// Container name, ID, or project name to connect to
         #[arg()]
+        container: Option<String>,
+        /// Directory path to start shell in
+        #[arg(long)]
         path: Option<PathBuf>,
     },
     /// Execute commands inside VM
     Exec {
+        /// Container name, ID, or project name
+        #[arg()]
+        container: Option<String>,
         /// Command to execute inside VM
         #[arg(required = true, num_args = 1..)]
         command: Vec<String>,
     },
     /// View VM logs
-    Logs,
+    Logs {
+        /// Container name, ID, or project name
+        #[arg()]
+        container: Option<String>,
+    },
 
     /// Manage temporary VMs
     Temp {

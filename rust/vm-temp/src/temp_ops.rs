@@ -85,9 +85,9 @@ impl TempVmOps {
         if auto_destroy {
             // SSH then destroy
             println!("🔗 Connecting to temporary VM...");
-            provider.ssh(&PathBuf::from("."))?;
+            provider.ssh(None, &PathBuf::from("."))?;
             println!("🗑️ Auto-destroying temporary VM...");
-            provider.destroy()?;
+            provider.destroy(None)?;
             state_manager
                 .delete_state()
                 .with_context(|| "Failed to delete temporary VM state from disk. State file may be in use or filesystem is read-only")?;
@@ -108,7 +108,7 @@ impl TempVmOps {
             return Err(errors::temp::temp_vm_not_found());
         }
 
-        provider.ssh(&PathBuf::from("."))
+        provider.ssh(None, &PathBuf::from("."))
     }
 
     /// Show temporary VM status
@@ -141,7 +141,7 @@ impl TempVmOps {
         }
 
         // Check provider status
-        provider.status()
+        provider.status(None)
     }
 
     /// Destroy the temporary VM
@@ -158,7 +158,7 @@ impl TempVmOps {
         }
 
         println!("🗑️ Destroying temporary VM...");
-        provider.destroy()?;
+        provider.destroy(None)?;
 
         state_manager
             .delete_state()
@@ -441,7 +441,7 @@ impl TempVmOps {
 
         println!("🛑 Stopping temporary VM...");
 
-        match provider.stop() {
+        match provider.stop(None) {
             Ok(()) => {
                 println!("\n✅ Temporary VM stopped");
                 println!("\n💡 Restart with: vm temp start");
@@ -472,7 +472,7 @@ impl TempVmOps {
 
         println!("🚀 Starting temporary VM...");
 
-        match provider.start() {
+        match provider.start(None) {
             Ok(()) => {
                 println!("\n✅ Temporary VM started");
 
@@ -512,7 +512,7 @@ impl TempVmOps {
         println!("  ✓ Stopping container");
         println!("  ✓ Starting container");
 
-        match provider.restart() {
+        match provider.restart(None) {
             Ok(()) => {
                 println!("  ✓ Services ready\n");
                 println!("✅ Temporary VM restarted");

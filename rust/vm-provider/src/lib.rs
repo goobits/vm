@@ -54,31 +54,31 @@ pub trait Provider {
     fn create(&self) -> Result<()>;
 
     /// Start an existing, stopped VM.
-    fn start(&self) -> Result<()>;
+    fn start(&self, container: Option<&str>) -> Result<()>;
 
     /// Stop a running VM without destroying it.
-    fn stop(&self) -> Result<()>;
+    fn stop(&self, container: Option<&str>) -> Result<()>;
 
     /// Destroy a VM, removing all associated resources.
-    fn destroy(&self) -> Result<()>;
+    fn destroy(&self, container: Option<&str>) -> Result<()>;
 
     /// Open an interactive shell (SSH) into the VM.
-    fn ssh(&self, relative_path: &Path) -> Result<()>;
+    fn ssh(&self, container: Option<&str>, relative_path: &Path) -> Result<()>;
 
     /// Execute a command inside the VM.
-    fn exec(&self, cmd: &[String]) -> Result<()>;
+    fn exec(&self, container: Option<&str>, cmd: &[String]) -> Result<()>;
 
     /// Get the logs of the VM.
-    fn logs(&self) -> Result<()>;
+    fn logs(&self, container: Option<&str>) -> Result<()>;
 
     /// Get the status of the VM.
-    fn status(&self) -> Result<()>;
+    fn status(&self, container: Option<&str>) -> Result<()>;
 
     /// Restart a VM (stop then start).
-    fn restart(&self) -> Result<()>;
+    fn restart(&self, container: Option<&str>) -> Result<()>;
 
     /// Re-run provisioning on existing VM.
-    fn provision(&self) -> Result<()>;
+    fn provision(&self, container: Option<&str>) -> Result<()>;
 
     /// List all VMs.
     fn list(&self) -> Result<()>;

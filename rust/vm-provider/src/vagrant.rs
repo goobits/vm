@@ -136,20 +136,24 @@ impl Provider for VagrantProvider {
         Ok(())
     }
 
-    fn start(&self) -> Result<()> {
+    fn start(&self, _container: Option<&str>) -> Result<()> {
+        // Note: Vagrant doesn't support multiple containers, container parameter is ignored
         self.run_vagrant_command(&["resume"])
             .or_else(|_| self.run_vagrant_command(&["up"]))
     }
 
-    fn stop(&self) -> Result<()> {
+    fn stop(&self, _container: Option<&str>) -> Result<()> {
+        // Note: Vagrant doesn't support multiple containers, container parameter is ignored
         self.run_vagrant_command(&["halt"])
     }
 
-    fn destroy(&self) -> Result<()> {
+    fn destroy(&self, _container: Option<&str>) -> Result<()> {
+        // Note: Vagrant doesn't support multiple containers, container parameter is ignored
         self.run_vagrant_command(&["destroy", "-f"])
     }
 
-    fn ssh(&self, relative_path: &Path) -> Result<()> {
+    fn ssh(&self, _container: Option<&str>, relative_path: &Path) -> Result<()> {
+        // Note: Vagrant doesn't support multiple containers, container parameter is ignored
         let vagrant_cwd = self.project_dir.join("providers/vagrant");
         env::set_var("VAGRANT_CWD", &vagrant_cwd);
 
@@ -192,14 +196,16 @@ impl Provider for VagrantProvider {
         Ok(())
     }
 
-    fn exec(&self, cmd: &[String]) -> Result<()> {
+    fn exec(&self, _container: Option<&str>, cmd: &[String]) -> Result<()> {
+        // Note: Vagrant doesn't support multiple containers, container parameter is ignored
         // Safely escape each argument for shell execution
         let escaped_args: Vec<String> = cmd.iter().map(|arg| shell_escape(arg)).collect();
         let safe_cmd = escaped_args.join(" ");
         self.run_vagrant_command(&["ssh", "-c", &safe_cmd])
     }
 
-    fn logs(&self) -> Result<()> {
+    fn logs(&self, _container: Option<&str>) -> Result<()> {
+        // Note: Vagrant doesn't support multiple containers, container parameter is ignored
         vm_println!("Showing service logs - Press Ctrl+C to stop...");
         self.run_vagrant_command(&[
             "ssh",
@@ -208,16 +214,19 @@ impl Provider for VagrantProvider {
         ])
     }
 
-    fn status(&self) -> Result<()> {
+    fn status(&self, _container: Option<&str>) -> Result<()> {
+        // Note: Vagrant doesn't support multiple containers, container parameter is ignored
         self.run_vagrant_command(&["status"])
     }
 
-    fn restart(&self) -> Result<()> {
+    fn restart(&self, _container: Option<&str>) -> Result<()> {
+        // Note: Vagrant doesn't support multiple containers, container parameter is ignored
         // Use vagrant reload to restart
         self.run_vagrant_command(&["reload"])
     }
 
-    fn provision(&self) -> Result<()> {
+    fn provision(&self, _container: Option<&str>) -> Result<()> {
+        // Note: Vagrant doesn't support multiple containers, container parameter is ignored
         // Use vagrant provision to re-run provisioning
         self.run_vagrant_command(&["provision"])
     }

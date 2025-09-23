@@ -15,39 +15,39 @@ impl Provider for MockProvider {
         Ok(())
     }
 
-    fn start(&self) -> Result<()> {
+    fn start(&self, _container: Option<&str>) -> Result<()> {
         Ok(())
     }
 
-    fn stop(&self) -> Result<()> {
+    fn stop(&self, _container: Option<&str>) -> Result<()> {
         Ok(())
     }
 
-    fn destroy(&self) -> Result<()> {
+    fn destroy(&self, _container: Option<&str>) -> Result<()> {
         Ok(())
     }
 
-    fn ssh(&self, _relative_path: &Path) -> Result<()> {
+    fn ssh(&self, _container: Option<&str>, _relative_path: &Path) -> Result<()> {
         Ok(())
     }
 
-    fn exec(&self, _cmd: &[String]) -> Result<()> {
+    fn exec(&self, _container: Option<&str>, _cmd: &[String]) -> Result<()> {
         Ok(())
     }
 
-    fn logs(&self) -> Result<()> {
+    fn logs(&self, _container: Option<&str>) -> Result<()> {
         Ok(())
     }
 
-    fn status(&self) -> Result<()> {
+    fn status(&self, _container: Option<&str>) -> Result<()> {
         Ok(())
     }
 
-    fn restart(&self) -> Result<()> {
+    fn restart(&self, _container: Option<&str>) -> Result<()> {
         Ok(())
     }
 
-    fn provision(&self) -> Result<()> {
+    fn provision(&self, _container: Option<&str>) -> Result<()> {
         Ok(())
     }
 

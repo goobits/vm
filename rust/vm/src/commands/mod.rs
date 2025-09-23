@@ -50,11 +50,11 @@ pub fn execute_command(args: Args) -> Result<()> {
 fn handle_dry_run(args: &Args) -> Result<()> {
     match &args.command {
         Command::Create { .. }
-        | Command::Start
+        | Command::Start { .. }
         | Command::Stop { .. }
-        | Command::Restart
+        | Command::Restart { .. }
         | Command::Destroy { .. }
-        | Command::Provision => {
+        | Command::Provision { .. } => {
             vm_println!("🔍 DRY RUN MODE - showing what would be executed:");
             vm_println!("   Command: {:?}", args.command);
             if let Some(config) = &args.config {
@@ -111,20 +111,38 @@ fn handle_provider_command(args: Args) -> Result<()> {
     debug!("Executing command: {:?}", args.command);
     let result = match args.command {
         Command::Create { force } => vm_ops::handle_create(provider, config.clone(), force),
-        Command::Start => vm_ops::handle_start(provider, config.clone()),
-        Command::Stop { container } => vm_ops::handle_stop(provider, container, config.clone()),
-        Command::Restart => vm_ops::handle_restart(provider, config.clone()),
-        Command::Provision => vm_ops::handle_provision(provider, config.clone()),
+        Command::Start { container } => {
+            vm_ops::handle_start(provider, container.as_deref(), config.clone())
+        }
+        Command::Stop { container } => {
+            vm_ops::handle_stop(provider, container.as_deref(), config.clone())
+        }
+        Command::Restart { container } => {
+            vm_ops::handle_restart(provider, container.as_deref(), config.clone())
+        }
+        Command::Provision { container } => {
+            vm_ops::handle_provision(provider, container.as_deref(), config.clone())
+        }
         Command::List => vm_ops::handle_list(provider),
         Command::GetSyncDirectory => {
             vm_ops::handle_get_sync_directory(provider);
             Ok(())
         }
-        Command::Destroy { force } => vm_ops::handle_destroy(provider, config, force),
-        Command::Ssh { path } => vm_ops::handle_ssh(provider, path, config),
-        Command::Status => vm_ops::handle_status(provider, config),
-        Command::Exec { command } => vm_ops::handle_exec(provider, command, config.clone()),
-        Command::Logs => vm_ops::handle_logs(provider, config.clone()),
+        Command::Destroy { container, force } => {
+            vm_ops::handle_destroy(provider, container.as_deref(), config, force)
+        }
+        Command::Ssh { container, path } => {
+            vm_ops::handle_ssh(provider, container.as_deref(), path, config)
+        }
+        Command::Status { container } => {
+            vm_ops::handle_status(provider, container.as_deref(), config)
+        }
+        Command::Exec { container, command } => {
+            vm_ops::handle_exec(provider, container.as_deref(), command, config.clone())
+        }
+        Command::Logs { container } => {
+            vm_ops::handle_logs(provider, container.as_deref(), config.clone())
+        }
         cmd => {
             vm_error!(
                 "Command {:?} should have been handled in earlier match statement",

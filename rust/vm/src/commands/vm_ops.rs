@@ -28,10 +28,10 @@ pub fn handle_create(provider: Box<dyn Provider>, config: VmConfig, force: bool)
     if force {
         debug!("Force flag set - will destroy existing VM if present");
         // Check if VM exists and destroy it first
-        if provider.status().is_ok() {
+        if provider.status(None).is_ok() {
             warn!("VM exists, destroying due to --force flag");
             println!("🔄 Force recreating '{}'...", vm_name);
-            provider.destroy()?;
+            provider.destroy(None)?;
         }
     }
 
@@ -98,7 +98,11 @@ pub fn handle_create(provider: Box<dyn Provider>, config: VmConfig, force: bool)
 }
 
 /// Handle VM start
-pub fn handle_start(provider: Box<dyn Provider>, config: VmConfig) -> Result<()> {
+pub fn handle_start(
+    provider: Box<dyn Provider>,
+    container: Option<&str>,
+    config: VmConfig,
+) -> Result<()> {
     let _op_guard = scoped_context! { "operation" => "start" };
     info!("Starting VM");
 
@@ -153,7 +157,7 @@ pub fn handle_start(provider: Box<dyn Provider>, config: VmConfig) -> Result<()>
 
     println!("🚀 Starting '{}'...", vm_name);
 
-    match provider.start() {
+    match provider.start(container) {
         Ok(()) => {
             println!("✅ Started successfully\n");
 
@@ -205,7 +209,7 @@ pub fn handle_start(provider: Box<dyn Provider>, config: VmConfig) -> Result<()>
 /// Handle VM stop - graceful stop for current project or force kill specific container
 pub fn handle_stop(
     provider: Box<dyn Provider>,
-    container: Option<String>,
+    container: Option<&str>,
     config: VmConfig,
 ) -> Result<()> {
     match container {
@@ -223,7 +227,7 @@ pub fn handle_stop(
 
             println!("🛑 Stopping '{}'...", vm_name);
 
-            match provider.stop() {
+            match provider.stop(None) {
                 Ok(()) => {
                     println!("✅ Stopped successfully\n");
                     println!("💡 Restart with: vm start");
@@ -243,7 +247,7 @@ pub fn handle_stop(
 
             println!("⚠️  Force stopping container '{}'...", container_name);
 
-            match provider.kill(Some(&container_name)) {
+            match provider.kill(Some(container_name)) {
                 Ok(()) => {
                     println!("✅ Container stopped");
                     Ok(())
@@ -259,7 +263,11 @@ pub fn handle_stop(
 }
 
 /// Handle VM restart
-pub fn handle_restart(provider: Box<dyn Provider>, config: VmConfig) -> Result<()> {
+pub fn handle_restart(
+    provider: Box<dyn Provider>,
+    container: Option<&str>,
+    config: VmConfig,
+) -> Result<()> {
     let _op_guard = scoped_context! { "operation" => "restart" };
     info!("Restarting VM");
 
@@ -274,7 +282,7 @@ pub fn handle_restart(provider: Box<dyn Provider>, config: VmConfig) -> Result<(
     println!("  ✓ Stopping container");
     println!("  ✓ Starting container");
 
-    match provider.restart() {
+    match provider.restart(container) {
         Ok(()) => {
             println!("  ✓ Services ready\n");
             println!("✅ Restarted successfully");
@@ -289,7 +297,11 @@ pub fn handle_restart(provider: Box<dyn Provider>, config: VmConfig) -> Result<(
 }
 
 /// Handle VM provisioning
-pub fn handle_provision(provider: Box<dyn Provider>, config: VmConfig) -> Result<()> {
+pub fn handle_provision(
+    provider: Box<dyn Provider>,
+    container: Option<&str>,
+    config: VmConfig,
+) -> Result<()> {
     let _op_guard = scoped_context! { "operation" => "provision" };
     info!("Re-running VM provisioning");
 
@@ -306,7 +318,7 @@ pub fn handle_provision(provider: Box<dyn Provider>, config: VmConfig) -> Result
     println!("  ✓ Configuring services");
     println!("  ✓ Restarting services");
 
-    match provider.provision() {
+    match provider.provision(container) {
         Ok(()) => {
             println!("\n✅ Provisioning complete");
             println!("\n💡 Changes applied to running container");
@@ -337,7 +349,12 @@ pub fn handle_get_sync_directory(provider: Box<dyn Provider>) {
 }
 
 /// Handle VM destruction
-pub fn handle_destroy(provider: Box<dyn Provider>, config: VmConfig, force: bool) -> Result<()> {
+pub fn handle_destroy(
+    provider: Box<dyn Provider>,
+    container: Option<&str>,
+    config: VmConfig,
+    force: bool,
+) -> Result<()> {
     // Get VM name from config for confirmation prompt
     let vm_name = config
         .project
@@ -361,7 +378,7 @@ pub fn handle_destroy(provider: Box<dyn Provider>, config: VmConfig, force: bool
         true
     } else {
         // Check status first to show current state
-        let is_running = provider.status().is_ok();
+        let is_running = provider.status(None).is_ok();
 
         println!("🗑️ Destroy VM '{}'?\n", vm_name);
         println!(
@@ -394,7 +411,7 @@ pub fn handle_destroy(provider: Box<dyn Provider>, config: VmConfig, force: bool
         println!("  ✓ Removing container");
         println!("  ✓ Cleaning images");
 
-        match provider.destroy() {
+        match provider.destroy(container) {
             Ok(()) => {
                 println!("\n✅ VM destroyed");
                 Ok(())
@@ -415,6 +432,7 @@ pub fn handle_destroy(provider: Box<dyn Provider>, config: VmConfig, force: bool
 /// Handle SSH into VM
 pub fn handle_ssh(
     provider: Box<dyn Provider>,
+    container: Option<&str>,
     path: Option<PathBuf>,
     config: VmConfig,
 ) -> Result<()> {
@@ -454,7 +472,7 @@ pub fn handle_ssh(
     println!("  Shell: {}", shell);
     println!("\n💡 Exit with: exit or Ctrl-D\n");
 
-    let result = provider.ssh(&relative_path);
+    let result = provider.ssh(container, &relative_path);
 
     // Show message when SSH session ends
     match &result {
@@ -480,7 +498,11 @@ pub fn handle_ssh(
 }
 
 /// Handle VM status check
-pub fn handle_status(provider: Box<dyn Provider>, config: VmConfig) -> Result<()> {
+pub fn handle_status(
+    provider: Box<dyn Provider>,
+    container: Option<&str>,
+    config: VmConfig,
+) -> Result<()> {
     // Get VM name from config
     let vm_name = config
         .project
@@ -505,7 +527,7 @@ pub fn handle_status(provider: Box<dyn Provider>, config: VmConfig) -> Result<()
 
     println!("📊 {}", vm_name);
 
-    match provider.status() {
+    match provider.status(container) {
         Ok(()) => {
             println!("\n  Status:     🟢 Running");
             println!("  Provider:   {}", provider.name());
@@ -562,6 +584,7 @@ pub fn handle_status(provider: Box<dyn Provider>, config: VmConfig) -> Result<()
 /// Handle command execution in VM
 pub fn handle_exec(
     provider: Box<dyn Provider>,
+    container: Option<&str>,
     command: Vec<String>,
     config: VmConfig,
 ) -> Result<()> {
@@ -582,7 +605,7 @@ pub fn handle_exec(
     println!("🏃 Running in '{}': {}", vm_name, cmd_display);
     println!("──────────────────────────────────────────");
 
-    let result = provider.exec(&command);
+    let result = provider.exec(container, &command);
 
     match &result {
         Ok(()) => {
@@ -612,7 +635,11 @@ pub fn handle_exec(
 }
 
 /// Handle VM logs viewing
-pub fn handle_logs(provider: Box<dyn Provider>, config: VmConfig) -> Result<()> {
+pub fn handle_logs(
+    provider: Box<dyn Provider>,
+    container: Option<&str>,
+    config: VmConfig,
+) -> Result<()> {
     debug!("Viewing VM logs: provider='{}'", provider.name());
 
     let vm_name = config
@@ -625,7 +652,7 @@ pub fn handle_logs(provider: Box<dyn Provider>, config: VmConfig) -> Result<()> 
     println!("📜 Logs for '{}' (last 50 lines)", vm_name);
     println!("──────────────────────────────────────────");
 
-    let result = provider.logs();
+    let result = provider.logs(container);
 
     println!("──────────────────────────────────────────");
     println!("💡 Follow live: docker logs -f {}-dev", vm_name);
