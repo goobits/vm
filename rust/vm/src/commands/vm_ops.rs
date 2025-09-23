@@ -2,7 +2,8 @@
 // Enhanced with multi-instance support and proper tooling
 
 // Standard library
-use std::path::PathBuf;
+use std::io::{self, IsTerminal, Write};
+use std::path::{Path, PathBuf};
 
 // External crates
 use anyhow::{Context, Result};
@@ -806,6 +807,71 @@ fn match_pattern(name: &str, pattern: &str) -> bool {
     }
 }
 
+/// Helper function to handle SSH start prompt interaction
+fn handle_ssh_start_prompt(
+    provider: Box<dyn Provider>,
+    container: Option<&str>,
+    relative_path: &Path,
+    vm_name: &str,
+    user: &str,
+    workspace_path: &str,
+    shell: &str,
+) -> Result<Option<Result<()>>> {
+    // Check if we're in an interactive terminal
+    if !io::stdin().is_terminal() {
+        println!("\n💡 Start the VM with: vm start");
+        println!("💡 Then reconnect with: vm ssh");
+        return Ok(None);
+    }
+
+    print!("\nWould you like to start it now? (y/n): ");
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+
+    if !matches!(input.trim().to_lowercase().as_str(), "y" | "yes") {
+        println!("\n❌ SSH connection aborted");
+        println!("💡 Start the VM manually with: vm start");
+        return Ok(None);
+    }
+
+    // Start the VM
+    println!("\n🚀 Starting '{}'...", vm_name);
+
+    if let Err(e) = provider.start(container) {
+        println!("❌ Failed to start '{}': {}", vm_name, e);
+        println!("\n💡 Try:");
+        println!("   • Check Docker status: docker ps");
+        println!("   • View logs: docker logs {}-dev", vm_name);
+        println!("   • Recreate VM: vm create --force");
+        return Ok(None);
+    }
+
+    println!("✅ Started successfully");
+
+    // Now retry the SSH connection
+    println!("\n🔗 Reconnecting to '{}'...", vm_name);
+    println!();
+    println!("  User:  {}", user);
+    println!("  Path:  {}", workspace_path);
+    println!("  Shell: {}", shell);
+    println!("\n💡 Exit with: exit or Ctrl-D\n");
+
+    let retry_result = provider.ssh(container, relative_path);
+    match &retry_result {
+        Ok(()) => {
+            println!("\n👋 Disconnected from '{}'", vm_name);
+            println!("💡 Reconnect with: vm ssh");
+        }
+        Err(e) => {
+            println!("\n❌ SSH connection failed: {}", e);
+        }
+    }
+
+    Ok(Some(retry_result))
+}
+
 /// Handle SSH into VM
 pub fn handle_ssh(
     provider: Box<dyn Provider>,
@@ -858,9 +924,27 @@ pub fn handle_ssh(
             println!("💡 Reconnect with: vm ssh");
         }
         Err(e) => {
-            // Only show error if it's an actual connection failure
             let error_str = e.to_string();
-            if error_str.contains("connection lost") || error_str.contains("connection failed") {
+
+            // Check if the error is because the container is not running
+            if error_str.contains("is not running") || error_str.contains("No such container") {
+                println!("\n⚠️  VM '{}' is not running", vm_name);
+
+                // Handle interactive prompt
+                if let Some(retry_result) = handle_ssh_start_prompt(
+                    provider,
+                    container,
+                    &relative_path,
+                    vm_name,
+                    user,
+                    workspace_path,
+                    shell,
+                )? {
+                    return retry_result;
+                }
+            } else if error_str.contains("connection lost")
+                || error_str.contains("connection failed")
+            {
                 println!("\n⚠️  Lost connection to VM");
                 println!("💡 Check if VM is running: vm status");
             } else {
