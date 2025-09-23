@@ -78,7 +78,7 @@ fn handle_provider_command(args: Args) -> Result<()> {
 
     let config = {
         // For List command, try lenient loading first to avoid validation errors
-        if matches!(args.command, Command::List) {
+        if matches!(args.command, Command::List { .. }) {
             match config::load_config_lenient(args.config.clone()) {
                 Ok(config) => config,
                 Err(_) => {
@@ -125,14 +125,35 @@ fn handle_provider_command(args: Args) -> Result<()> {
         Command::Provision { container } => {
             vm_ops::handle_provision(provider, container.as_deref(), config.clone())
         }
-        Command::List => vm_ops::handle_list(provider),
+        Command::List {
+            all_providers,
+            provider: provider_filter,
+            verbose,
+        } => vm_ops::handle_list_enhanced(
+            provider,
+            &all_providers,
+            provider_filter.as_deref(),
+            &verbose,
+        ),
         Command::GetSyncDirectory => {
             vm_ops::handle_get_sync_directory(provider);
             Ok(())
         }
-        Command::Destroy { container, force } => {
-            vm_ops::handle_destroy(provider, container.as_deref(), config, force)
-        }
+        Command::Destroy {
+            container,
+            force,
+            all,
+            provider: provider_filter,
+            pattern,
+        } => vm_ops::handle_destroy_enhanced(
+            provider,
+            container.as_deref(),
+            config,
+            &force,
+            &all,
+            provider_filter.as_deref(),
+            pattern.as_deref(),
+        ),
         Command::Ssh { container, path } => {
             vm_ops::handle_ssh(provider, container.as_deref(), path, config)
         }

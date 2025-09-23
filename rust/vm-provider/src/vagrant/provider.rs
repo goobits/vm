@@ -99,11 +99,7 @@ impl VagrantProvider {
     }
 
     /// Run vagrant command with optional machine name
-    fn run_vagrant_command_with_machine(
-        &self,
-        args: &[&str],
-        machine: Option<&str>,
-    ) -> Result<()> {
+    fn run_vagrant_command_with_machine(&self, args: &[&str], machine: Option<&str>) -> Result<()> {
         match machine {
             Some(machine_name) => {
                 let resolved_name = self.resolve_machine_name(Some(machine_name))?;
@@ -175,6 +171,78 @@ impl Provider for VagrantProvider {
         Ok(())
     }
 
+    fn create_instance(&self, instance_name: &str) -> Result<()> {
+        let progress = ProgressReporter::new();
+        let main_phase = progress.start_phase(&format!(
+            "Creating Vagrant Environment Instance '{}'",
+            instance_name
+        ));
+
+        // Check if VM already exists with instance name
+        ProgressReporter::task(&main_phase, "Checking existing VM instance status...");
+        let status_output = std::process::Command::new("vagrant")
+            .env("VAGRANT_CWD", self.project_dir.join("providers/vagrant"))
+            .args(["status", instance_name])
+            .output();
+
+        if let Ok(output) = status_output {
+            let status_str = String::from_utf8_lossy(&output.stdout);
+            if status_str.contains("running")
+                || status_str.contains("poweroff")
+                || status_str.contains("saved")
+            {
+                ProgressReporter::task(&main_phase, "VM instance already exists.");
+                vm_warning!("Vagrant VM instance '{}' already exists.", instance_name);
+                vm_println!("To recreate, first run: vm destroy {}", instance_name);
+                ProgressReporter::finish_phase(&main_phase, "Skipped creation.");
+                return Ok(());
+            }
+        }
+        ProgressReporter::task(&main_phase, "No existing VM instance found.");
+
+        // Create multi-machine Vagrantfile for this instance
+        ProgressReporter::task(&main_phase, "Creating Vagrantfile for instance...");
+        let instance_manager = self.instance_manager();
+        instance_manager.create_multi_machine_config(&[instance_name])?;
+
+        // Start VM with full provisioning for specific instance
+        ProgressReporter::task(
+            &main_phase,
+            &format!(
+                "Starting Vagrant VM instance '{}' with provisioning...",
+                instance_name
+            ),
+        );
+        let vagrant_cwd = self.project_dir.join("providers/vagrant");
+
+        // Create sanitized config without sensitive environment variables
+        let sanitized_config = self.create_sanitized_config();
+        let config_json = serde_json::to_string_pretty(&sanitized_config)?;
+
+        env::set_var("VAGRANT_CWD", &vagrant_cwd);
+        env::set_var("VM_CONFIG_JSON", &config_json);
+
+        let up_result = stream_command("vagrant", &["up", instance_name, "--provision"]);
+        if up_result.is_err() {
+            ProgressReporter::task(&main_phase, "VM instance creation failed.");
+            ProgressReporter::finish_phase(&main_phase, "Creation failed.");
+            return up_result;
+        }
+
+        ProgressReporter::task(&main_phase, "VM instance created successfully.");
+        ProgressReporter::finish_phase(&main_phase, "Environment ready.");
+
+        vm_success!(
+            "Vagrant environment instance '{}' created successfully!",
+            instance_name
+        );
+        vm_println!(
+            "Use 'vm ssh {}' to connect to the VM instance",
+            instance_name
+        );
+        Ok(())
+    }
+
     fn start(&self, container: Option<&str>) -> Result<()> {
         self.run_vagrant_command_with_machine(&["up"], container)
     }
@@ -236,7 +304,15 @@ impl Provider for VagrantProvider {
             } else {
                 duct::cmd(
                     "vagrant",
-                    &["ssh", &machine_name, "-c", &safe_cmd, "--", &target_dir, shell],
+                    &[
+                        "ssh",
+                        &machine_name,
+                        "-c",
+                        &safe_cmd,
+                        "--",
+                        &target_dir,
+                        shell,
+                    ],
                 )
                 .run()?;
             }

@@ -33,7 +33,9 @@ impl<'a> TartInstanceManager<'a> {
         let output = std::process::Command::new("tart")
             .args(["list"])
             .output()
-            .with_context(|| "Failed to execute 'tart list'. Ensure Tart is installed and accessible")?;
+            .with_context(|| {
+                "Failed to execute 'tart list'. Ensure Tart is installed and accessible"
+            })?;
 
         if !output.status.success() {
             return Err(anyhow::anyhow!(
@@ -66,6 +68,7 @@ impl<'a> TartInstanceManager<'a> {
     }
 
     /// Create a new instance with unique name
+    #[allow(dead_code)]
     pub fn create_instance(&self, instance_name: &str, base_image: &str) -> Result<()> {
         let vm_name = self.project_instance_name(instance_name);
 
@@ -167,7 +170,10 @@ mod tests {
         let manager = TartInstanceManager::new(&config);
 
         assert_eq!(manager.project_instance_name("dev"), "testproject-dev");
-        assert_eq!(manager.project_instance_name("staging"), "testproject-staging");
+        assert_eq!(
+            manager.project_instance_name("staging"),
+            "testproject-staging"
+        );
     }
 
     #[test]

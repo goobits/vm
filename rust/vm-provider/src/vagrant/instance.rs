@@ -41,7 +41,9 @@ impl<'a> VagrantInstanceManager<'a> {
             .env("VAGRANT_CWD", &vagrant_cwd)
             .args(["status"])
             .output()
-            .with_context(|| "Failed to execute 'vagrant status'. Ensure Vagrant is installed and accessible")?;
+            .with_context(|| {
+                "Failed to execute 'vagrant status'. Ensure Vagrant is installed and accessible"
+            })?;
 
         if !output.status.success() {
             return Err(anyhow::anyhow!(
@@ -126,26 +128,15 @@ impl<'a> VagrantInstanceManager<'a> {
         content.push_str("Vagrant.configure(\"2\") do |config|\n");
 
         // Add VM configuration from vm.yaml if available
-        if let Some(vm_config) = &self.config.vm {
-            if let Some(memory) = &vm_config.memory {
-                if let Some(mb) = memory.to_mb() {
-                    content.push_str(&format!("  config.vm.provider \"virtualbox\" do |vb|\n"));
-                    content.push_str(&format!("    vb.memory = \"{}\"\n", mb));
-                    if let Some(cpus) = vm_config.cpus {
-                        content.push_str(&format!("    vb.cpus = {}\n", cpus));
-                    }
-                    content.push_str("  end\n\n");
-                }
-            }
-        }
+        self.add_vm_provider_config(&mut content)?;
 
         // Generate machine definitions
         for machine in machines {
-            content.push_str(&format!("  config.vm.define \"{}\" do |{}|\n", machine, machine));
             content.push_str(&format!(
-                "    {}.vm.box = \"ubuntu/focal64\"\n",
-                machine
+                "  config.vm.define \"{}\" do |{}|\n",
+                machine, machine
             ));
+            content.push_str(&format!("    {}.vm.box = \"ubuntu/focal64\"\n", machine));
             content.push_str(&format!(
                 "    {}.vm.hostname = \"{}-{}\"\n",
                 machine,
@@ -175,7 +166,36 @@ impl<'a> VagrantInstanceManager<'a> {
         fuzzy_match_instances(partial, &instances)
     }
 
+    /// Add VM provider configuration to content
+    fn add_vm_provider_config(&self, content: &mut String) -> Result<()> {
+        let vm_config = match &self.config.vm {
+            Some(config) => config,
+            None => return Ok(()),
+        };
+
+        let memory = match &vm_config.memory {
+            Some(mem) => mem,
+            None => return Ok(()),
+        };
+
+        let mb = match memory.to_mb() {
+            Some(mb) => mb,
+            None => return Ok(()),
+        };
+
+        content.push_str("  config.vm.provider \"virtualbox\" do |vb|\n");
+        content.push_str(&format!("    vb.memory = \"{}\"\n", mb));
+
+        if let Some(cpus) = vm_config.cpus {
+            content.push_str(&format!("    vb.cpus = {}\n", cpus));
+        }
+
+        content.push_str("  end\n\n");
+        Ok(())
+    }
+
     /// Resolve machine names within current Vagrantfile
+    #[allow(dead_code)]
     pub fn find_defined_machine(&self, partial: &str) -> Result<String> {
         let instances = self.parse_vagrant_status()?;
 
@@ -258,7 +278,9 @@ mod tests {
         let manager = VagrantInstanceManager::new(&config, &project_dir);
 
         let machines = vec!["web", "db"];
-        let content = manager.generate_multi_machine_vagrantfile(&machines).unwrap();
+        let content = manager
+            .generate_multi_machine_vagrantfile(&machines)
+            .unwrap();
 
         assert!(content.contains("config.vm.define \"web\""));
         assert!(content.contains("config.vm.define \"db\""));

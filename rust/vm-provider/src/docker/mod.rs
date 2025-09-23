@@ -207,6 +207,13 @@ impl Provider for DockerProvider {
         lifecycle.create_container()
     }
 
+    fn create_instance(&self, instance_name: &str) -> Result<()> {
+        preflight::check_system_resources()?;
+
+        let lifecycle = self.lifecycle_ops();
+        lifecycle.create_container_with_instance(instance_name)
+    }
+
     fn start(&self, container: Option<&str>) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
         lifecycle.start_container(container)

@@ -189,10 +189,29 @@ pub enum Command {
         /// Force destruction without confirmation
         #[arg(long)]
         force: bool,
+        /// Destroy all instances across all providers
+        #[arg(long)]
+        all: bool,
+        /// Destroy all instances from specific provider
+        #[arg(long)]
+        provider: Option<String>,
+        /// Match pattern for instance names (e.g., "*-dev")
+        #[arg(long)]
+        pattern: Option<String>,
     },
 
     /// List all VMs with status and resource usage
-    List,
+    List {
+        /// Show instances from all providers (already default behavior)
+        #[arg(long)]
+        all_providers: bool,
+        /// Filter by specific provider (docker, tart, vagrant)
+        #[arg(long)]
+        provider: Option<String>,
+        /// Show detailed information
+        #[arg(long)]
+        verbose: bool,
+    },
     /// Show VM status and health
     Status {
         /// Container name, ID, or project name

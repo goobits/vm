@@ -132,6 +132,11 @@ impl<'a> LifecycleOperations<'a> {
         format!("{}{}", self.project_name(), CONTAINER_SUFFIX)
     }
 
+    /// Generate container name with custom instance suffix
+    pub fn container_name_with_instance(&self, instance_name: &str) -> String {
+        format!("{}-{}", self.project_name(), instance_name)
+    }
+
     /// Check memory allocation and provide guidance
     fn check_memory_allocation(&self, vm_config: &vm_config::config::VmSettings) {
         if let Some(memory) = &vm_config.memory {
@@ -334,6 +339,95 @@ impl<'a> LifecycleOperations<'a> {
         Ok(())
     }
 
+    /// Create a container with a specific instance name
+    #[must_use = "container creation results should be handled"]
+    pub fn create_container_with_instance(&self, instance_name: &str) -> Result<()> {
+        self.check_daemon_is_running()?;
+        self.handle_potential_issues();
+        self.check_docker_build_requirements();
+
+        // Check if container already exists (with custom instance name)
+        let container_name = self.container_name_with_instance(instance_name);
+        let container_exists = DockerOps::container_exists(&container_name)
+            .map_err(|e| vm_warning!("Failed to check existing containers (continuing): {}", e))
+            .unwrap_or(false);
+
+        if container_exists {
+            return self.handle_existing_container_with_instance(instance_name);
+        }
+
+        // Only setup audio if it's enabled in the configuration
+        if let Some(audio_service) = self.config.services.get("audio") {
+            if audio_service.enabled {
+                #[cfg(target_os = "macos")]
+                if let Err(e) = MacOSAudioManager::setup() {
+                    vm_warning!("Audio setup failed: {}", e);
+                }
+                #[cfg(not(target_os = "macos"))]
+                MacOSAudioManager::setup();
+            }
+        }
+
+        let _vm_name = self
+            .config
+            .project
+            .as_ref()
+            .and_then(|p| p.name.as_ref())
+            .map(|s| s.as_str())
+            .unwrap_or("vm-project");
+
+        // Messages are now handled at the command level for consistency
+
+        // Step 1: Filter pipx-managed packages from pip_packages
+        let modified_config = self.prepare_config_for_build()?;
+
+        // Step 2: Prepare build context with embedded resources
+        let build_ops = BuildOperations::new(&modified_config, self.temp_dir);
+        let build_context = build_ops.prepare_build_context()?;
+
+        // Step 3: Generate docker-compose.yml with custom instance name
+        let compose_ops = ComposeOperations::new(&modified_config, self.temp_dir, self.project_dir);
+        let compose_path =
+            compose_ops.write_docker_compose_with_instance(&build_context, instance_name)?;
+
+        // Step 3: Gather build arguments for packages
+        let build_args = build_ops.gather_build_args();
+
+        // Step 4: Build with all package arguments
+        let base_compose_args = ComposeCommand::build_args(&compose_path, "build", &[])?;
+
+        // Combine compose args with dynamic build args
+        let mut all_args = Vec::with_capacity(base_compose_args.len() + build_args.len());
+        all_args.extend(base_compose_args.iter().map(|s| s.as_str()));
+        all_args.extend(build_args.iter().map(|s| s.as_str()));
+
+        // Debug logging for Docker build troubleshooting
+        vm_dbg!("Docker build command: docker {}", all_args.join(" "));
+        vm_dbg!("Build context directory: {}", build_context.display());
+        if let Ok(entries) = fs::read_dir(&build_context) {
+            let file_count = entries.count();
+            vm_dbg!("Build context contains {} files/directories", file_count);
+        }
+
+        stream_command("docker", &all_args).with_context(|| {
+            format!("Docker build failed for project '{}' instance '{}'. Check that Docker is running and build context is valid", self.project_name(), instance_name)
+        })?;
+
+        // Step 5: Start containers
+        let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
+        let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        stream_command("docker", &args_refs).with_context(|| {
+            format!(
+                "Failed to start container '{}'. Container may have failed to start properly",
+                container_name
+            )
+        })?;
+
+        self.provision_container_with_instance(instance_name)?;
+
+        Ok(())
+    }
+
     #[must_use = "existing container handling results should be checked"]
     fn handle_existing_container(&self) -> Result<()> {
         let container_name = self.container_name();
@@ -395,6 +489,75 @@ impl<'a> LifecycleOperations<'a> {
                  - 'vm start' to start the existing container\n\
                  - 'vm destroy' followed by 'vm create' to recreate it",
                 container_name
+            ))
+        }
+    }
+
+    /// Handle existing container with custom instance name
+    #[must_use = "existing container handling results should be checked"]
+    fn handle_existing_container_with_instance(&self, instance_name: &str) -> Result<()> {
+        let container_name = self.container_name_with_instance(instance_name);
+
+        // Check if it's running
+        let is_running = DockerOps::is_container_running(&container_name)
+            .map_err(|e| vm_warning!("Failed to check running containers (continuing): {}", e))
+            .unwrap_or(false);
+
+        let status = if is_running { "running" } else { "stopped" };
+        vm_warning!(
+            "Container '{}' already exists (status: {}).",
+            container_name,
+            status
+        );
+
+        // Check if we're in an interactive terminal
+        if io::stdin().is_terminal() {
+            println!("\nWhat would you like to do?");
+            if is_running {
+                println!("  1. Keep using the existing running container");
+            } else {
+                println!("  1. Start the existing container");
+            }
+            println!("  2. Recreate the container (destroy and rebuild)");
+            println!("  3. Cancel operation");
+
+            print!("\nChoice [1-3]: ");
+            io::stdout().flush()?;
+
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+
+            match input.trim() {
+                "1" => {
+                    if is_running {
+                        vm_success!("Using existing running container.");
+                        Ok(())
+                    } else {
+                        println!("\n▶️  Starting existing container...");
+                        self.start_container(Some(&container_name))
+                    }
+                }
+                "2" => {
+                    println!("\n🔄 Recreating container...");
+                    self.destroy_container(Some(&container_name))?;
+                    // Continue with creation below
+                    self.create_container_with_instance(instance_name)
+                }
+                _ => {
+                    vm_error!("Operation cancelled.");
+                    Ok(())
+                }
+            }
+        } else {
+            // Non-interactive mode: fail with informative error
+            Err(anyhow::anyhow!(
+                "Container '{}' already exists. In non-interactive mode, please use:\n\
+                 - 'vm start {}' to start the existing container\n\
+                 - 'vm destroy {}' followed by 'vm create --instance {}' to recreate it",
+                container_name,
+                container_name,
+                container_name,
+                instance_name
             ))
         }
     }
@@ -551,6 +714,59 @@ impl<'a> LifecycleOperations<'a> {
         // Start services silently
         DockerOps::exec_in_container(
             &self.container_name(),
+            &["bash", "-c", "supervisorctl reread && supervisorctl update"],
+        )
+        .ok();
+
+        Ok(())
+    }
+
+    /// Provision container with custom instance name
+    fn provision_container_with_instance(&self, instance_name: &str) -> Result<()> {
+        let container_name = self.container_name_with_instance(instance_name);
+
+        // Step 6: Wait for readiness and run ansible (configuration only)
+        let mut attempt = 1;
+        while attempt <= CONTAINER_READINESS_MAX_ATTEMPTS {
+            if DockerOps::test_container_readiness(&container_name) {
+                break;
+            }
+            if attempt == CONTAINER_READINESS_MAX_ATTEMPTS {
+                vm_error!("Container failed to become ready");
+                return Err(anyhow::anyhow!(
+                    "Container '{}' failed to become ready after {} seconds. Container may be unhealthy or not starting properly",
+                    container_name,
+                    u64::from(CONTAINER_READINESS_MAX_ATTEMPTS) * CONTAINER_READINESS_SLEEP_SECONDS
+                ));
+            }
+            std::thread::sleep(std::time::Duration::from_secs(
+                CONTAINER_READINESS_SLEEP_SECONDS,
+            ));
+            attempt += 1;
+        }
+
+        self.prepare_and_copy_config()?;
+
+        stream_command(
+            "docker",
+            &[
+                "exec",
+                &container_name,
+                "bash",
+                "-c",
+                &format!(
+                    "ansible-playbook -i localhost, -c local {} -vvv",
+                    ANSIBLE_PLAYBOOK_PATH
+                ),
+            ],
+        )
+        .with_context(|| {
+            format!("Ansible provisioning failed for container '{}'. Check container logs for detailed error information", container_name)
+        })?;
+
+        // Start services silently
+        DockerOps::exec_in_container(
+            &container_name,
             &["bash", "-c", "supervisorctl reread && supervisorctl update"],
         )
         .ok();

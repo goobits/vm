@@ -19,6 +19,10 @@ pub struct InstanceInfo {
     pub provider: String,
     /// Associated project name, if any
     pub project: Option<String>,
+    /// Uptime information (if available)
+    pub uptime: Option<String>,
+    /// Creation time (if available)
+    pub created_at: Option<String>,
 }
 
 /// Common interface for instance resolution across providers
@@ -100,11 +104,9 @@ pub fn fuzzy_match_instances(partial: &str, instances: &[InstanceInfo]) -> Resul
 /// Helper to create InstanceInfo for Docker containers
 pub fn create_docker_instance_info(name: &str, id: &str, status: &str) -> InstanceInfo {
     // Extract project name from container name (e.g., "myproject-dev" -> "myproject")
-    let project = if let Some(project_part) = name.strip_suffix("-dev") {
-        Some(project_part.to_string())
-    } else {
-        None
-    };
+    let project = name
+        .strip_suffix("-dev")
+        .map(|project_part| project_part.to_string());
 
     InstanceInfo {
         name: name.to_string(),
@@ -112,19 +114,21 @@ pub fn create_docker_instance_info(name: &str, id: &str, status: &str) -> Instan
         status: status.to_string(),
         provider: "docker".to_string(),
         project,
+        uptime: None,     // TODO: Extract from Docker status
+        created_at: None, // TODO: Extract from Docker created_at
     }
 }
 
 /// Helper to create InstanceInfo for Tart VMs
 pub fn create_tart_instance_info(name: &str, status: &str) -> InstanceInfo {
     // Extract project name from VM name (e.g., "myproject-dev" -> "myproject")
-    let project = if let Some(project_part) = name.strip_suffix("-dev") {
-        Some(project_part.to_string())
-    } else if let Some(project_part) = name.strip_suffix("-staging") {
-        Some(project_part.to_string())
-    } else {
-        None
-    };
+    let project = name
+        .strip_suffix("-dev")
+        .map(|project_part| project_part.to_string())
+        .or_else(|| {
+            name.strip_suffix("-staging")
+                .map(|project_part| project_part.to_string())
+        });
 
     InstanceInfo {
         name: name.to_string(),
@@ -132,6 +136,8 @@ pub fn create_tart_instance_info(name: &str, status: &str) -> InstanceInfo {
         status: status.to_string(),
         provider: "tart".to_string(),
         project,
+        uptime: None,     // TODO: Extract from Tart status
+        created_at: None, // TODO: Extract from Tart created time
     }
 }
 
@@ -143,6 +149,8 @@ pub fn create_vagrant_instance_info(name: &str, status: &str, project_name: &str
         status: status.to_string(),
         provider: "vagrant".to_string(),
         project: Some(project_name.to_string()),
+        uptime: None,     // TODO: Extract from Vagrant status
+        created_at: None, // TODO: Extract from Vagrant created time
     }
 }
 
@@ -152,15 +160,15 @@ mod tests {
 
     #[test]
     fn test_fuzzy_match_exact_name() {
-        let instances = vec![
-            InstanceInfo {
-                name: "myproject-dev".to_string(),
-                id: "abc123".to_string(),
-                status: "running".to_string(),
-                provider: "docker".to_string(),
-                project: Some("myproject".to_string()),
-            },
-        ];
+        let instances = vec![InstanceInfo {
+            name: "myproject-dev".to_string(),
+            id: "abc123".to_string(),
+            status: "running".to_string(),
+            provider: "docker".to_string(),
+            project: Some("myproject".to_string()),
+            uptime: None,
+            created_at: None,
+        }];
 
         let result = fuzzy_match_instances("myproject-dev", &instances).unwrap();
         assert_eq!(result, "myproject-dev");
@@ -168,15 +176,15 @@ mod tests {
 
     #[test]
     fn test_fuzzy_match_partial_id() {
-        let instances = vec![
-            InstanceInfo {
-                name: "myproject-dev".to_string(),
-                id: "abc123def456".to_string(),
-                status: "running".to_string(),
-                provider: "docker".to_string(),
-                project: Some("myproject".to_string()),
-            },
-        ];
+        let instances = vec![InstanceInfo {
+            name: "myproject-dev".to_string(),
+            id: "abc123def456".to_string(),
+            status: "running".to_string(),
+            provider: "docker".to_string(),
+            project: Some("myproject".to_string()),
+            uptime: None,
+            created_at: None,
+        }];
 
         let result = fuzzy_match_instances("abc123", &instances).unwrap();
         assert_eq!(result, "myproject-dev");
@@ -184,15 +192,15 @@ mod tests {
 
     #[test]
     fn test_fuzzy_match_project_name() {
-        let instances = vec![
-            InstanceInfo {
-                name: "myproject-dev".to_string(),
-                id: "abc123".to_string(),
-                status: "running".to_string(),
-                provider: "docker".to_string(),
-                project: Some("myproject".to_string()),
-            },
-        ];
+        let instances = vec![InstanceInfo {
+            name: "myproject-dev".to_string(),
+            id: "abc123".to_string(),
+            status: "running".to_string(),
+            provider: "docker".to_string(),
+            project: Some("myproject".to_string()),
+            uptime: None,
+            created_at: None,
+        }];
 
         let result = fuzzy_match_instances("myproject", &instances).unwrap();
         assert_eq!(result, "myproject-dev");
@@ -200,19 +208,22 @@ mod tests {
 
     #[test]
     fn test_fuzzy_match_no_matches() {
-        let instances = vec![
-            InstanceInfo {
-                name: "otherproject-dev".to_string(),
-                id: "xyz789".to_string(),
-                status: "running".to_string(),
-                provider: "docker".to_string(),
-                project: Some("otherproject".to_string()),
-            },
-        ];
+        let instances = vec![InstanceInfo {
+            name: "otherproject-dev".to_string(),
+            id: "xyz789".to_string(),
+            status: "running".to_string(),
+            provider: "docker".to_string(),
+            project: Some("otherproject".to_string()),
+            uptime: None,
+            created_at: None,
+        }];
 
         let result = fuzzy_match_instances("nonexistent", &instances);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("No instance found"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("No instance found"));
     }
 
     #[test]

@@ -11,7 +11,7 @@ use log::{debug, info, warn};
 use vm_common::scoped_context;
 use vm_common::vm_error;
 use vm_config::config::VmConfig;
-use vm_provider::Provider;
+use vm_provider::{InstanceInfo, Provider};
 
 /// Handle VM creation
 pub fn handle_create(
@@ -33,14 +33,20 @@ pub fn handle_create(
     // Check if this is a multi-instance provider and handle accordingly
     if provider.supports_multi_instance() && instance.is_some() {
         let instance_name = instance.as_deref().unwrap();
-        println!("🚀 Creating instance '{}' for project '{}'...", instance_name, vm_name);
+        println!(
+            "🚀 Creating instance '{}' for project '{}'...",
+            instance_name, vm_name
+        );
 
         if force {
             debug!("Force flag set - will destroy existing instance if present");
             // Try to destroy specific instance first
             println!("🔄 Force recreating instance '{}'...", instance_name);
             if let Err(e) = provider.destroy(Some(instance_name)) {
-                warn!("Failed to destroy existing instance '{}' during force create: {}", instance_name, e);
+                warn!(
+                    "Failed to destroy existing instance '{}' during force create: {}",
+                    instance_name, e
+                );
                 // Continue with creation even if destroy fails
             }
         }
@@ -68,11 +74,26 @@ pub fn handle_create(
     println!("  ✓ Starting container");
     println!("  ✓ Running initial provisioning");
 
-    match provider.create() {
+    // Call the appropriate create method based on whether instance is specified
+    let create_result = if let Some(instance_name) = &instance {
+        if provider.supports_multi_instance() {
+            provider.create_instance(instance_name)
+        } else {
+            provider.create()
+        }
+    } else {
+        provider.create()
+    };
+
+    match create_result {
         Ok(()) => {
             println!("\n✅ Created successfully\n");
 
-            let container_name = format!("{}-dev", vm_name);
+            let container_name = if let Some(instance_name) = &instance {
+                format!("{}-{}", vm_name, instance_name)
+            } else {
+                format!("{}-dev", vm_name)
+            };
             println!("  Status:     🟢 Running");
             println!("  Container:  {}", container_name);
 
@@ -359,11 +380,197 @@ pub fn handle_provision(
     }
 }
 
-/// Handle VM listing
-pub fn handle_list(provider: Box<dyn Provider>) -> Result<()> {
+/// Handle VM listing with enhanced filtering options
+pub fn handle_list_enhanced(
+    _provider: Box<dyn Provider>,
+    _all_providers: &bool,
+    provider_filter: Option<&str>,
+    verbose: &bool,
+) -> Result<()> {
     let _op_guard = scoped_context! { "operation" => "list" };
-    debug!("Listing VMs");
-    provider.list()
+    debug!(
+        "Listing VMs with enhanced filtering - provider_filter: {:?}, verbose: {}",
+        provider_filter, *verbose
+    );
+
+    // Get all instances from all providers (or filtered)
+    let all_instances = if let Some(provider_name) = provider_filter {
+        get_instances_from_provider(provider_name)?
+    } else {
+        get_all_instances()?
+    };
+
+    if all_instances.is_empty() {
+        if let Some(provider_name) = provider_filter {
+            println!("No VMs found for provider '{}'", provider_name);
+        } else {
+            println!("No VMs found");
+        }
+        return Ok(());
+    }
+
+    // Print header
+    if *verbose {
+        println!(
+            "{:<20} {:<10} {:<10} {:<20} {:<10} {:<15}",
+            "INSTANCE", "PROVIDER", "STATUS", "ID", "UPTIME", "PROJECT"
+        );
+        println!("{}", "-".repeat(95));
+    } else {
+        println!(
+            "{:<20} {:<10} {:<10} {:<15} {:<10}",
+            "INSTANCE", "PROVIDER", "STATUS", "ID", "UPTIME"
+        );
+        println!("{}", "-".repeat(75));
+    }
+
+    // Sort instances by provider then name for consistent output
+    let mut sorted_instances = all_instances;
+    sorted_instances.sort_by(|a, b| a.provider.cmp(&b.provider).then(a.name.cmp(&b.name)));
+
+    for instance in sorted_instances {
+        if *verbose {
+            println!(
+                "{:<20} {:<10} {:<10} {:<20} {:<10} {:<15}",
+                truncate_string(&instance.name, 20),
+                instance.provider,
+                format_status(&instance.status),
+                truncate_string(&instance.id, 20),
+                format_uptime(&instance.uptime),
+                instance.project.as_deref().unwrap_or("--")
+            );
+        } else {
+            println!(
+                "{:<20} {:<10} {:<10} {:<15} {:<10}",
+                truncate_string(&instance.name, 20),
+                instance.provider,
+                format_status(&instance.status),
+                truncate_string(&instance.id, 15),
+                format_uptime(&instance.uptime)
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// Legacy handle_list for backward compatibility
+#[allow(dead_code)]
+pub fn handle_list(provider: Box<dyn Provider>) -> Result<()> {
+    handle_list_enhanced(provider, &true, None, &false)
+}
+
+// Helper function to get instances from all available providers
+fn get_all_instances() -> Result<Vec<InstanceInfo>> {
+    use vm_config::config::VmConfig;
+    use vm_provider::get_provider;
+
+    let mut all_instances = Vec::new();
+    let providers = ["docker", "tart", "vagrant"];
+
+    for provider_name in providers {
+        // Try to create each provider
+        let config = VmConfig {
+            provider: Some(provider_name.to_string()),
+            ..Default::default()
+        };
+
+        match get_provider(config) {
+            Ok(provider) => {
+                // Get instances from this provider
+                match provider.list_instances() {
+                    Ok(instances) => {
+                        debug!(
+                            "Found {} instances from {} provider",
+                            instances.len(),
+                            provider_name
+                        );
+                        all_instances.extend(instances);
+                    }
+                    Err(e) => {
+                        debug!(
+                            "Failed to list instances from {} provider: {}",
+                            provider_name, e
+                        );
+                        // Continue with other providers
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("Provider {} not available: {}", provider_name, e);
+                // Continue with other providers - this is expected if they're not installed
+            }
+        }
+    }
+
+    Ok(all_instances)
+}
+
+// Helper function to get instances from a specific provider
+fn get_instances_from_provider(provider_name: &str) -> Result<Vec<InstanceInfo>> {
+    use vm_config::config::VmConfig;
+    use vm_provider::get_provider;
+
+    let config = VmConfig {
+        provider: Some(provider_name.to_string()),
+        ..Default::default()
+    };
+
+    match get_provider(config) {
+        Ok(provider) => match provider.list_instances() {
+            Ok(instances) => {
+                debug!(
+                    "Found {} instances from {} provider",
+                    instances.len(),
+                    provider_name
+                );
+                Ok(instances)
+            }
+            Err(e) => {
+                debug!(
+                    "Failed to list instances from {} provider: {}",
+                    provider_name, e
+                );
+                Ok(Vec::new())
+            }
+        },
+        Err(e) => {
+            debug!("Provider {} not available: {}", provider_name, e);
+            Ok(Vec::new())
+        }
+    }
+}
+
+fn truncate_string(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max_len - 3])
+    }
+}
+
+fn format_status(status: &str) -> String {
+    // Normalize status strings across providers
+    let lower_status = status.to_lowercase();
+    if lower_status.contains("running") || lower_status.contains("up") {
+        "running".to_string()
+    } else if lower_status.contains("stopped")
+        || lower_status.contains("exited")
+        || lower_status.contains("poweroff")
+    {
+        "stopped".to_string()
+    } else if lower_status.contains("paused") {
+        "paused".to_string()
+    } else {
+        status.to_string()
+    }
+}
+
+fn format_uptime(uptime: &Option<String>) -> String {
+    match uptime {
+        Some(time) => time.clone(),
+        None => "--".to_string(),
+    }
 }
 
 /// Handle get sync directory
@@ -452,6 +659,149 @@ pub fn handle_destroy(
         println!("\n❌ Destruction cancelled");
         vm_error!("VM destruction cancelled by user");
         Err(anyhow::anyhow!("VM destruction cancelled by user"))
+    }
+}
+
+/// Enhanced destroy handler with cross-provider support
+pub fn handle_destroy_enhanced(
+    provider: Box<dyn Provider>,
+    container: Option<&str>,
+    config: VmConfig,
+    force: &bool,
+    all: &bool,
+    provider_filter: Option<&str>,
+    pattern: Option<&str>,
+) -> Result<()> {
+    let _op_guard = scoped_context! { "operation" => "destroy" };
+
+    if *all || provider_filter.is_some() || pattern.is_some() {
+        // Cross-provider destroy operations
+        return handle_cross_provider_destroy(*all, provider_filter, pattern, *force);
+    }
+
+    // Single instance destroy (existing behavior)
+    handle_destroy(provider, container, config, *force)
+}
+
+/// Handle destroying instances across providers
+fn handle_cross_provider_destroy(
+    all: bool,
+    provider_filter: Option<&str>,
+    pattern: Option<&str>,
+    force: bool,
+) -> Result<()> {
+    debug!(
+        "Cross-provider destroy: all={}, provider_filter={:?}, pattern={:?}, force={}",
+        all, provider_filter, pattern, force
+    );
+
+    // Get all instances to destroy
+    let instances_to_destroy = if let Some(provider_name) = provider_filter {
+        get_instances_from_provider(provider_name)?
+    } else {
+        get_all_instances()?
+    };
+
+    // Filter by pattern if provided
+    let filtered_instances: Vec<_> = if let Some(pattern_str) = pattern {
+        instances_to_destroy
+            .into_iter()
+            .filter(|instance| match_pattern(&instance.name, pattern_str))
+            .collect()
+    } else {
+        instances_to_destroy
+    };
+
+    if filtered_instances.is_empty() {
+        println!("No instances found to destroy");
+        return Ok(());
+    }
+
+    // Show what will be destroyed
+    println!("Instances to destroy:");
+    for instance in &filtered_instances {
+        println!("  {} ({})", instance.name, instance.provider);
+    }
+
+    let should_destroy = if force {
+        true
+    } else {
+        println!(
+            "\nAre you sure you want to destroy {} instance(s)? [y/N]",
+            filtered_instances.len()
+        );
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+        matches!(input.trim().to_lowercase().as_str(), "y" | "yes")
+    };
+
+    if !should_destroy {
+        println!("Destroy operation cancelled");
+        return Ok(());
+    }
+
+    // Destroy each instance
+    let mut success_count = 0;
+    let mut error_count = 0;
+
+    for instance in filtered_instances {
+        println!("Destroying {} ({})...", instance.name, instance.provider);
+
+        let result = destroy_single_instance(&instance);
+        match result {
+            Ok(()) => {
+                println!("  ✅ Successfully destroyed {}", instance.name);
+                success_count += 1;
+            }
+            Err(e) => {
+                println!("  ❌ Failed to destroy {}: {}", instance.name, e);
+                error_count += 1;
+            }
+        }
+    }
+
+    println!("\nDestroy operation completed:");
+    println!("  Success: {}", success_count);
+    if error_count > 0 {
+        println!("  Errors: {}", error_count);
+    }
+
+    Ok(())
+}
+
+/// Destroy a single instance using its provider
+fn destroy_single_instance(instance: &InstanceInfo) -> Result<()> {
+    use vm_config::config::VmConfig;
+    use vm_provider::get_provider;
+
+    let config = VmConfig {
+        provider: Some(instance.provider.clone()),
+        ..Default::default()
+    };
+
+    let provider = get_provider(config)?;
+    provider.destroy(Some(&instance.name))
+}
+
+/// Simple pattern matching for instance names
+fn match_pattern(name: &str, pattern: &str) -> bool {
+    if pattern.contains('*') {
+        // Simple wildcard matching
+        if pattern == "*" {
+            true
+        } else if pattern.starts_with('*') && pattern.ends_with('*') {
+            let middle = &pattern[1..pattern.len() - 1];
+            name.contains(middle)
+        } else if let Some(suffix) = pattern.strip_prefix('*') {
+            name.ends_with(suffix)
+        } else if let Some(prefix) = pattern.strip_suffix('*') {
+            name.starts_with(prefix)
+        } else {
+            // Pattern has * in the middle - basic implementation
+            name == pattern
+        }
+    } else {
+        name == pattern
     }
 }
 

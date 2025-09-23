@@ -57,6 +57,14 @@ pub trait Provider {
     /// This is the main provisioning step.
     fn create(&self) -> Result<()>;
 
+    /// Create a new VM instance with a specific name.
+    /// This allows creating multiple instances of the same project.
+    fn create_instance(&self, _instance_name: &str) -> Result<()> {
+        // Default implementation falls back to regular create()
+        // Providers can override this for true multi-instance support
+        self.create()
+    }
+
     /// Start an existing, stopped VM.
     fn start(&self, container: Option<&str>) -> Result<()>;
 

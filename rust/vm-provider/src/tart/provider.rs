@@ -164,6 +164,116 @@ impl Provider for TartProvider {
         Ok(())
     }
 
+    fn create_instance(&self, instance_name: &str) -> Result<()> {
+        let progress = ProgressReporter::new();
+        let main_phase =
+            progress.start_phase(&format!("Creating Tart VM instance '{}'", instance_name));
+
+        // Get VM name with instance suffix
+        let vm_name_with_suffix = format!("{}-{}", self.vm_name(), instance_name);
+
+        // Check if VM already exists
+        ProgressReporter::task(&main_phase, "Checking if VM instance exists...");
+        let list_output = std::process::Command::new("tart").args(["list"]).output();
+
+        if let Ok(output) = list_output {
+            let list_str = String::from_utf8_lossy(&output.stdout);
+            if list_str.contains(&vm_name_with_suffix) {
+                ProgressReporter::task(&main_phase, "VM instance already exists.");
+                println!(
+                    "⚠️  Tart VM instance '{}' already exists.",
+                    vm_name_with_suffix
+                );
+                println!("To recreate, first run: vm destroy {}", vm_name_with_suffix);
+                ProgressReporter::finish_phase(&main_phase, "Skipped creation.");
+                return Ok(());
+            }
+        }
+        ProgressReporter::task(
+            &main_phase,
+            "VM instance not found, proceeding with creation.",
+        );
+
+        // Get image from config
+        let image = self
+            .config
+            .tart
+            .as_ref()
+            .and_then(|t| t.image.as_deref())
+            .unwrap_or("ghcr.io/cirruslabs/ubuntu:latest");
+
+        // Clone the base image
+        ProgressReporter::task(
+            &main_phase,
+            &format!(
+                "Cloning image '{}' for instance '{}'...",
+                image, instance_name
+            ),
+        );
+        let clone_result = stream_command("tart", &["clone", image, &vm_name_with_suffix]);
+        if clone_result.is_err() {
+            ProgressReporter::task(&main_phase, "Clone failed.");
+            ProgressReporter::finish_phase(&main_phase, "Creation failed.");
+            return clone_result;
+        }
+        ProgressReporter::task(&main_phase, "Image cloned successfully.");
+
+        // Configure VM with memory/CPU settings if specified
+        if let Some(vm_config) = &self.config.vm {
+            if let Some(memory) = &vm_config.memory {
+                match memory.to_mb() {
+                    Some(mb) => {
+                        ProgressReporter::task(
+                            &main_phase,
+                            &format!("Setting memory to {} MB...", mb),
+                        );
+                        stream_command(
+                            "tart",
+                            &["set", &vm_name_with_suffix, "--memory", &mb.to_string()],
+                        )?;
+                        ProgressReporter::task(&main_phase, "Memory configured.");
+                    }
+                    None => {
+                        ProgressReporter::task(&main_phase, "Memory set to unlimited");
+                    }
+                }
+            }
+
+            if let Some(cpus) = vm_config.cpus {
+                ProgressReporter::task(&main_phase, &format!("Setting CPUs to {}...", cpus));
+                stream_command(
+                    "tart",
+                    &["set", &vm_name_with_suffix, "--cpu", &cpus.to_string()],
+                )?;
+                ProgressReporter::task(&main_phase, "CPU count configured.");
+            }
+
+            // Note: disk_size is not available in VmSettings, skipping disk configuration
+        }
+
+        // Start VM
+        ProgressReporter::task(&main_phase, "Starting VM instance...");
+        let start_result = stream_command("tart", &["run", "--no-graphics", &vm_name_with_suffix]);
+        if start_result.is_err() {
+            ProgressReporter::task(&main_phase, "VM instance start failed.");
+            ProgressReporter::finish_phase(&main_phase, "Creation failed.");
+            return start_result;
+        }
+
+        ProgressReporter::task(&main_phase, "VM instance started successfully.");
+        ProgressReporter::finish_phase(&main_phase, "Environment ready.");
+
+        println!(
+            "\n✅ Tart VM instance '{}' created successfully!",
+            instance_name
+        );
+        println!(
+            "💡 Use 'vm ssh {}' to connect to the VM instance",
+            vm_name_with_suffix
+        );
+        Ok(())
+    }
+
     fn start(&self, container: Option<&str>) -> Result<()> {
         let vm_name = self.vm_name_with_instance(container)?;
         stream_command("tart", &["run", "--no-graphics", &vm_name])
@@ -220,20 +330,20 @@ impl Provider for TartProvider {
             Some(_) => {
                 // Show specific VM status
                 let vm_name = self.vm_name_with_instance(container)?;
-                let output = std::process::Command::new("tart")
-                    .args(["list"])
-                    .output()?;
+                let output = std::process::Command::new("tart").args(["list"]).output()?;
 
-                if output.status.success() {
-                    let list_output = String::from_utf8_lossy(&output.stdout);
-                    for line in list_output.lines() {
-                        if line.contains(&vm_name) {
-                            println!("{}", line);
-                            return Ok(());
-                        }
-                    }
-                    println!("VM '{}' not found", vm_name);
+                if !output.status.success() {
+                    return Ok(());
                 }
+
+                let list_output = String::from_utf8_lossy(&output.stdout);
+                for line in list_output.lines() {
+                    if line.contains(&vm_name) {
+                        println!("{}", line);
+                        return Ok(());
+                    }
+                }
+                println!("VM '{}' not found", vm_name);
                 Ok(())
             }
             None => {
