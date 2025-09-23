@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 // External crates
-use anyhow::Result;
+use anyhow::{Context, Result};
 use log::{debug, info, warn};
 
 // Internal imports
@@ -379,10 +379,12 @@ pub fn handle_destroy(provider: Box<dyn Provider>, config: VmConfig, force: bool
         println!();
         print!("Confirm destruction? (y/N): ");
         use std::io::{self, Write};
-        io::stdout().flush().unwrap();
+        io::stdout().flush().context("Failed to flush stdout")?;
 
         let mut response = String::new();
-        io::stdin().read_line(&mut response).unwrap();
+        io::stdin()
+            .read_line(&mut response)
+            .context("Failed to read user input")?;
         response.trim().to_lowercase() == "y"
     };
 
