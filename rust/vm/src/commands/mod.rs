@@ -110,7 +110,7 @@ fn handle_provider_command(args: Args) -> Result<()> {
     // Execute the command with friendly error handling
     debug!("Executing command: {:?}", args.command);
     let result = match args.command {
-        Command::Create { force } => vm_ops::handle_create(provider, force),
+        Command::Create { force } => vm_ops::handle_create(provider, config.clone(), force),
         Command::Start => vm_ops::handle_start(provider, config.clone()),
         Command::Stop { container } => vm_ops::handle_stop(provider, container, config.clone()),
         Command::Restart => vm_ops::handle_restart(provider, config.clone()),
@@ -141,14 +141,23 @@ fn handle_provider_command(args: Args) -> Result<()> {
         } else {
             // Check if it's an anyhow error containing a ProviderError
             let error_chain = format!("{:?}", e);
-            if error_chain.contains("is not running") {
-                anyhow::anyhow!("🔴 VM is stopped\n🚀 Start with: vm start")
-            } else if error_chain.contains("No such container") {
-                anyhow::anyhow!("🔍 VM doesn't exist\n💡 Create with: vm create")
-            } else if error_chain.contains("SSH command failed")
-                || error_chain.contains("exited with code 1")
-            {
-                anyhow::anyhow!("🔌 Cannot connect to VM\n📊 Check status: vm status")
+            let error_str = e.to_string();
+
+            // More specific error recovery suggestions
+            if error_chain.contains("is not running") || error_str.contains("is not running") {
+                anyhow::anyhow!("🔴 VM is stopped\n\n💡 Try:\n  • Start VM: vm start\n  • Check status: vm status\n  • View logs: vm logs")
+            } else if error_chain.contains("No such container") || error_str.contains("No such container") {
+                anyhow::anyhow!("🔍 VM doesn't exist\n\n💡 Try:\n  • Create VM: vm create\n  • List all VMs: vm list\n  • Check config: vm validate")
+            } else if error_chain.contains("SSH command failed") || error_chain.contains("exited with code 1") {
+                anyhow::anyhow!("🔌 Cannot connect to VM\n\n💡 Try:\n  • Check status: vm status\n  • Restart VM: vm restart\n  • View logs: vm logs")
+            } else if error_chain.contains("port") || error_str.contains("port") {
+                anyhow::anyhow!("⚠️ Port conflict detected\n\n💡 Try:\n  • Fix ports: vm config ports --fix\n  • Check ports: docker ps\n  • Recreate: vm create --force")
+            } else if error_chain.contains("permission") || error_str.contains("permission") {
+                anyhow::anyhow!("🔐 Permission denied\n\n💡 Try:\n  • Check Docker: docker ps\n  • Verify Docker permissions\n  • Restart Docker daemon")
+            } else if error_chain.contains("Docker") || error_str.contains("Docker daemon") {
+                anyhow::anyhow!("🐳 Docker issue detected\n\n💡 Try:\n  • Start Docker\n  • Check Docker: docker version\n  • Restart Docker daemon")
+            } else if error_chain.contains("config") || error_str.contains("configuration") {
+                anyhow::anyhow!("⚙️ Configuration issue\n\n💡 Try:\n  • Validate config: vm validate\n  • Check vm.yaml syntax\n  • Reset config: vm init")
             } else {
                 e
             }

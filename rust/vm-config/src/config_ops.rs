@@ -153,6 +153,7 @@ impl ConfigOps {
         } else {
             CoreOperations::write_yaml_file(&config_path, &yaml_value)?;
             println!("✅ Set {} = {} in {}", field, value, config_path.display());
+            println!("\n💡 Apply changes: vm restart");
         }
         Ok(())
     }
@@ -232,8 +233,10 @@ impl ConfigOps {
                 }
             }
             None => {
-                // Show all configuration
+                // Show all configuration with nice formatting
+                println!("📋 Current configuration\n");
                 println!("{}", serde_yaml::to_string(&yaml_value)?);
+                println!("💡 Modify with: vm config set <field> <value>");
             }
         }
 
@@ -276,10 +279,23 @@ impl ConfigOps {
         // Handle list command
         if list {
             let presets = detector.list_presets()?;
-            println!("Available presets:");
+            println!("📦 Available presets:\n");
             for preset in presets {
-                println!("  - {}", preset);
+                // Try to add descriptions for common presets
+                let description = match preset.as_str() {
+                    "nodejs" => " - Node.js development environment",
+                    "python" => " - Python development with pip/pipx",
+                    "rust" => " - Rust development with cargo",
+                    "go" => " - Go development environment",
+                    "docker" => " - Docker/containerization tools",
+                    "react" => " - React frontend development",
+                    "django" => " - Django web framework",
+                    "rails" => " - Ruby on Rails development",
+                    _ => "",
+                };
+                println!("  • {}{}", preset, description);
             }
+            println!("\n💡 Apply preset: vm config preset <name>");
             return Ok(());
         }
 
@@ -287,8 +303,9 @@ impl ConfigOps {
         if let Some(name) = show {
             let preset_config = detector.load_preset(name)?;
             let yaml = serde_yaml::to_string(&preset_config)?;
-            println!("Preset '{}' configuration:", name);
+            println!("📋 Preset '{}' configuration:\n", name);
             println!("{}", yaml);
+            println!("💡 Apply this preset: vm config preset {}", name);
             return Ok(());
         }
 
@@ -340,6 +357,17 @@ impl ConfigOps {
             "✅ Applied preset(s) {} to {} configuration",
             preset_names, scope
         );
+
+        // Show what was applied for clarity
+        let preset_list: Vec<&str> = preset_names.split(',').map(|s| s.trim()).collect();
+        if preset_list.len() > 1 {
+            println!("\n  Applied presets:");
+            for preset in preset_list {
+                println!("    • {}", preset);
+            }
+        }
+
+        println!("\n💡 Restart VM to apply changes: vm restart");
         Ok(())
     }
 }

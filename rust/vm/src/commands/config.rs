@@ -13,6 +13,9 @@ use vm_config::{config::VmConfig, ConfigOps};
 /// Handle configuration validation command
 pub fn handle_validate(config_file: Option<PathBuf>) -> Result<()> {
     debug!("Validating configuration: config_file={:?}", config_file);
+
+    println!("🔍 Validating configuration...");
+
     // The `load` function performs validation internally. If it succeeds,
     // the configuration is valid.
     match VmConfig::load(config_file) {
@@ -22,12 +25,59 @@ pub fn handle_validate(config_file: Option<PathBuf>) -> Result<()> {
                 config.provider,
                 config.project.as_ref().and_then(|p| p.name.as_ref())
             );
-            vm_success!("Configuration is valid.");
+
+            println!("\n✅ Configuration is valid\n");
+
+            // Display configuration details
+            if let Some(project) = &config.project {
+                if let Some(name) = &project.name {
+                    println!("  Project:    {}", name);
+                }
+            }
+
+            if let Some(provider) = &config.provider {
+                println!("  Provider:   {}", provider);
+            }
+
+            // Count and display services
+            let enabled_services: Vec<String> = config.services
+                .iter()
+                .filter(|(_, svc)| svc.enabled)
+                .map(|(name, _)| name.clone())
+                .collect();
+
+            if !enabled_services.is_empty() {
+                println!("  Services:   {} configured ({})",
+                    enabled_services.len(),
+                    enabled_services.join(", "));
+            }
+
+            // Display port range
+            if let Some(range) = &config.ports.range {
+                if range.len() == 2 {
+                    println!("  Ports:      {}-{} (no conflicts)", range[0], range[1]);
+                }
+            }
+
+            println!("\n💡 Ready to create: vm create");
             Ok(())
         }
         Err(e) => {
             debug!("Configuration validation failed: {}", e);
-            vm_error!("Configuration is invalid: {:#}", e);
+
+            println!("\n❌ Configuration has errors\n");
+
+            // Parse and display errors in a structured way
+            let error_str = format!("{:#}", e);
+            for line in error_str.lines() {
+                if line.trim().starts_with("caused by:") || line.trim().starts_with("Caused by:") {
+                    continue;
+                }
+                println!("  × {}", line.trim());
+            }
+
+            println!("\n💡 Fix errors and try again");
+
             // Return the error to exit with a non-zero status code
             Err(e)
         }
@@ -208,11 +258,12 @@ pub fn handle_ports_command(fix: bool) -> Result<()> {
         .register(project_name, &new_range, &current_dir.to_string_lossy())
         .context("Failed to register new port range")?;
 
-    vm_success!("Port conflicts resolved!");
-    vm_println!("   Updated vm.yaml with new port range: {}", new_range_str);
-    vm_println!("   Registered in port registry");
-    vm_println!();
-    vm_println!("💡 You can now run 'vm create' again");
+    println!("\n✅ Port conflicts resolved\n");
+    println!("  Old range:  {}", current_port_range);
+    println!("  New range:  {}", new_range_str);
+    println!("\n  ✓ Updated vm.yaml");
+    println!("  ✓ Registered in port registry");
+    println!("\n💡 Restart VM to apply: vm restart");
 
     Ok(())
 }

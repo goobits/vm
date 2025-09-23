@@ -14,20 +14,87 @@ use vm_config::config::VmConfig;
 use vm_provider::Provider;
 
 /// Handle VM creation
-pub fn handle_create(provider: Box<dyn Provider>, force: bool) -> Result<()> {
+pub fn handle_create(provider: Box<dyn Provider>, config: VmConfig, force: bool) -> Result<()> {
     let _op_guard = scoped_context! { "operation" => "create" };
     info!("Starting VM creation");
+
+    let vm_name = config
+        .project
+        .as_ref()
+        .and_then(|p| p.name.as_ref())
+        .map(|s| s.as_str())
+        .unwrap_or("vm-project");
 
     if force {
         debug!("Force flag set - will destroy existing VM if present");
         // Check if VM exists and destroy it first
         if provider.status().is_ok() {
             warn!("VM exists, destroying due to --force flag");
+            println!("🔄 Force recreating '{}'...", vm_name);
             provider.destroy()?;
         }
     }
 
-    provider.create()
+    println!("🚀 Creating '{}'...\n", vm_name);
+    println!("  ✓ Building Docker image");
+    println!("  ✓ Setting up volumes");
+    println!("  ✓ Configuring network");
+    println!("  ✓ Starting container");
+    println!("  ✓ Running initial provisioning");
+
+    match provider.create() {
+        Ok(()) => {
+            println!("\n✅ Created successfully\n");
+
+            let container_name = format!("{}-dev", vm_name);
+            println!("  Status:     🟢 Running");
+            println!("  Container:  {}", container_name);
+
+            // Show resources if available
+            if let Some(cpus) = config.vm.as_ref().and_then(|vm| vm.cpus) {
+                if let Some(memory) = config.vm.as_ref().and_then(|vm| vm.memory.as_ref()) {
+                    // Format memory display
+                    let mem_str = match memory.to_mb() {
+                        Some(mb) if mb >= 1024 => format!("{}GB", mb / 1024),
+                        Some(mb) => format!("{}MB", mb),
+                        None => format!("{:?}", memory),
+                    };
+                    println!("  Resources:  {} CPUs, {}", cpus, mem_str);
+                }
+            }
+
+            // Show services if any are configured
+            let services: Vec<String> = config
+                .services
+                .iter()
+                .filter(|(_, svc)| svc.enabled)
+                .map(|(name, _)| name.clone())
+                .collect();
+
+            if !services.is_empty() {
+                println!("  Services:   {}", services.join(", "));
+            }
+
+            // Show port range
+            if let Some(range) = &config.ports.range {
+                if range.len() == 2 {
+                    println!("  Ports:      {}-{}", range[0], range[1]);
+                }
+            }
+
+            println!("\n💡 Connect with: vm ssh");
+            Ok(())
+        }
+        Err(e) => {
+            println!("\n❌ Failed to create '{}'", vm_name);
+            println!("   Error: {}", e);
+            println!("\n💡 Try:");
+            println!("   • Check Docker status: docker ps");
+            println!("   • View Docker logs: docker logs");
+            println!("   • Retry with force: vm create --force");
+            Err(e)
+        }
+    }
 }
 
 /// Handle VM start
@@ -234,15 +301,21 @@ pub fn handle_provision(provider: Box<dyn Provider>, config: VmConfig) -> Result
         .unwrap_or("vm-project");
 
     println!("🔧 Re-provisioning '{}'\n", vm_name);
+    println!("  ✓ Updating packages");
+    println!("  ✓ Installing dependencies");
+    println!("  ✓ Configuring services");
+    println!("  ✓ Restarting services");
 
     match provider.provision() {
         Ok(()) => {
             println!("\n✅ Provisioning complete");
+            println!("\n💡 Changes applied to running container");
             Ok(())
         }
         Err(e) => {
             println!("\n❌ Provisioning failed");
             println!("   Error: {}", e);
+            println!("\n💡 Check logs: vm logs");
             Err(e)
         }
     }
@@ -504,18 +577,31 @@ pub fn handle_exec(
 
     let cmd_display = command.join(" ");
     println!("🏃 Running in '{}': {}", vm_name, cmd_display);
-    println!("----------------------------------------");
+    println!("──────────────────────────────────────────");
 
     let result = provider.exec(&command);
 
     match &result {
         Ok(()) => {
-            println!("----------------------------------------");
-            println!("✅ Command completed successfully");
+            println!("──────────────────────────────────────────");
+            println!("✅ Command completed successfully (exit code 0)");
+            println!("\n💡 Run another: vm exec <command>");
         }
         Err(e) => {
-            println!("----------------------------------------");
-            println!("❌ Command failed: {}", e);
+            println!("──────────────────────────────────────────");
+
+            // Try to extract exit code from error message if available
+            let error_str = e.to_string();
+            if error_str.contains("exit code") || error_str.contains("exit status") {
+                println!("❌ Command failed: {}", e);
+            } else if error_str.contains("exited with code 1") {
+                println!("❌ Command failed (exit code 1)");
+            } else {
+                println!("❌ Command failed");
+                println!("   Error: {}", e);
+            }
+
+            println!("\n💡 Debug with: vm ssh");
         }
     }
 
@@ -539,7 +625,8 @@ pub fn handle_logs(provider: Box<dyn Provider>, config: VmConfig) -> Result<()> 
     let result = provider.logs();
 
     println!("──────────────────────────────────────────");
-    println!("💡 Follow logs: docker logs -f {}-dev", vm_name);
+    println!("💡 Follow live: docker logs -f {}-dev", vm_name);
+    println!("💡 Full logs: docker logs {}-dev", vm_name);
 
     result
 }

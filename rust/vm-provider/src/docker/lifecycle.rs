@@ -283,30 +283,23 @@ impl<'a> LifecycleOperations<'a> {
             .map(|s| s.as_str())
             .unwrap_or("vm-project");
 
-        println!("🐳 Creating VM '{}'\n", vm_name);
-        println!("📦 Build Phase:");
+        // Messages are now handled at the command level for consistency
 
         // Step 1: Filter pipx-managed packages from pip_packages
         let modified_config = self.prepare_config_for_build()?;
 
         // Step 2: Prepare build context with embedded resources
-        print!("  ✓ Preparing context");
         let build_ops = BuildOperations::new(&modified_config, self.temp_dir);
         let build_context = build_ops.prepare_build_context()?;
-        println!();
 
         // Step 3: Generate docker-compose.yml with build context and modified config
-        print!("  ✓ Generating compose file");
         let compose_ops = ComposeOperations::new(&modified_config, self.temp_dir, self.project_dir);
         let compose_path = compose_ops.write_docker_compose(&build_context)?;
-        println!();
 
         // Step 3: Gather build arguments for packages
         let build_args = build_ops.gather_build_args();
 
         // Step 4: Build with all package arguments
-        println!("  ✓ Building image");
-        println!("\n💡 This may take a few minutes. Press Ctrl-C to cancel.\n");
         let base_compose_args = ComposeCommand::build_args(&compose_path, "build", &[])?;
 
         // Combine compose args with dynamic build args
@@ -325,12 +318,8 @@ impl<'a> LifecycleOperations<'a> {
         stream_command("docker", &all_args).with_context(|| {
             format!("Docker build failed for project '{}'. Check that Docker is running and build context is valid", self.project_name())
         })?;
-        println!("\n  ✓ Image built successfully");
-        println!("  ✓ Creating container");
 
         // Step 5: Start containers
-        println!("\n🚀 Startup Phase:");
-        print!("  ✓ Starting container");
         let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         stream_command("docker", &args_refs).with_context(|| {
@@ -339,49 +328,9 @@ impl<'a> LifecycleOperations<'a> {
                 self.container_name()
             )
         })?;
-        println!();
 
-        print!("  ✓ Verifying health");
         self.provision_container()?;
-        println!("\n  ✓ Services ready");
 
-        println!("\n✅ VM '{}' created successfully!\n", vm_name);
-
-        // Show details
-        println!("  Container:  {}-dev", vm_name);
-        println!(
-            "  Workspace:  {}",
-            self.config
-                .project
-                .as_ref()
-                .and_then(|p| p.workspace_path.as_deref())
-                .unwrap_or("/workspace")
-        );
-
-        // Show services if configured
-        let services: Vec<(String, Option<u16>)> = self
-            .config
-            .services
-            .iter()
-            .filter(|(_, svc)| svc.enabled)
-            .map(|(name, svc)| (name.clone(), svc.port))
-            .collect();
-
-        if !services.is_empty() {
-            let service_list: Vec<String> = services
-                .iter()
-                .map(|(name, port)| {
-                    if let Some(p) = port {
-                        format!("{} ({})", name, p)
-                    } else {
-                        name.clone()
-                    }
-                })
-                .collect();
-            println!("  Services:   {}", service_list.join(", "));
-        }
-
-        println!("\n💡 Connect with: vm ssh");
         Ok(())
     }
 
@@ -561,8 +510,6 @@ impl<'a> LifecycleOperations<'a> {
     #[must_use = "container provisioning results should be handled"]
     fn provision_container(&self) -> Result<()> {
         // Step 6: Wait for readiness and run ansible (configuration only)
-        println!("\n🔧 Provisioning environment");
-        print!("⏳ Waiting for container readiness... ");
         let mut attempt = 1;
         while attempt <= CONTAINER_READINESS_MAX_ATTEMPTS {
             if DockerOps::test_container_readiness(&self.container_name()) {
@@ -581,13 +528,9 @@ impl<'a> LifecycleOperations<'a> {
             ));
             attempt += 1;
         }
-        println!("✅");
 
-        print!("📋 Loading project configuration... ");
         self.prepare_and_copy_config()?;
-        println!("✅");
 
-        println!("🎭 Running Ansible provisioning (configuration only)...");
         stream_command(
             "docker",
             &[

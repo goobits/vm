@@ -14,7 +14,7 @@ impl MacOSAudioManager {
     /// Ensures PulseAudio is installed and running.
     pub fn setup() -> Result<()> {
         if !is_pulseaudio_installed()? {
-            println!("PulseAudio not found, attempting to install via Homebrew...");
+            println!("🎧 Installing PulseAudio via Homebrew...");
             install_pulseaudio()?;
         }
         start_pulseaudio_daemon()
@@ -22,7 +22,7 @@ impl MacOSAudioManager {
 
     /// Stops the PulseAudio daemon.
     pub fn cleanup() -> Result<()> {
-        println!("Stopping PulseAudio daemon...");
+        println!("⏹️ Stopping audio services...");
         Command::new("pulseaudio")
             .arg("-k")
             .status()
@@ -56,7 +56,7 @@ fn install_pulseaudio() -> Result<()> {
 
 #[cfg(target_os = "macos")]
 fn start_pulseaudio_daemon() -> Result<()> {
-    println!("Starting PulseAudio daemon for container audio...");
+    println!("🎧 Starting audio services...");
     let status = Command::new("pulseaudio")
         .args([
             "--load=module-native-protocol-unix",
