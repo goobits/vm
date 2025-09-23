@@ -196,7 +196,7 @@ source $HOME/.cargo/env
 cd rust
 
 # Check for dead code using Clippy
-cargo dead-code
+cargo clippy --workspace -- -D dead_code
 
 # Check for unused dependencies
 cargo dead-deps
