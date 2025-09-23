@@ -83,7 +83,7 @@ vm temp destroy                  # Destroy temporary VM
 ### temp mounts
 ```bash
 vm temp mount ./new-feature      # Add mount to running temporary VM
-vm temp unmount --path ./old-code # Remove specific mount from temporary VM
+vm temp unmount ./old-code       # Remove mount from temporary VM
 vm temp mounts                   # List current mounts
 ```
 

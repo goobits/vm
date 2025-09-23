@@ -110,7 +110,7 @@ vm temp destroy          # Clean up when done
 
 # Dynamic mount management
 vm temp mount ./new-feature     # Add directories while working
-vm temp unmount --path ./old-code # Remove specific mount
+vm temp unmount ./old-code      # Remove specific mount
 vm temp unmount --all           # Remove all mounts
 vm temp mounts                  # List current mounts
 ```
@@ -182,7 +182,7 @@ vm temp ssh                  # Connect to temporary VM via SSH
 vm temp status               # Show temporary VM status
 vm temp destroy              # Destroy temporary VM
 vm temp mount <path>         # Add mount to running temporary VM
-vm temp unmount --path <path> # Remove specific mount from temporary VM
+vm temp unmount <path>       # Remove mount from temporary VM
 vm temp unmount --all        # Remove all mounts
 vm temp mounts               # List current mounts
 vm temp list                 # List all temporary VMs
