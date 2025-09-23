@@ -1,9 +1,16 @@
-use crate::{error::ProviderError, progress::ProgressReporter, Provider};
+use crate::{
+    common::instance::{InstanceInfo, InstanceResolver},
+    error::ProviderError,
+    progress::ProgressReporter,
+    Provider,
+};
 use anyhow::Result;
 use std::path::Path;
 use vm_common::command_stream::{is_tool_installed, stream_command};
 use vm_common::{vm_error, vm_println};
 use vm_config::config::VmConfig;
+
+use super::instance::TartInstanceManager;
 
 pub struct TartProvider {
     config: VmConfig,
@@ -24,6 +31,22 @@ impl TartProvider {
             .and_then(|p| p.name.as_deref())
             .unwrap_or("vm-project")
             .to_string()
+    }
+
+    /// Create instance manager for multi-instance operations
+    fn instance_manager(&self) -> TartInstanceManager<'_> {
+        TartInstanceManager::new(&self.config)
+    }
+
+    /// Resolve VM name with instance support
+    fn vm_name_with_instance(&self, instance: Option<&str>) -> Result<String> {
+        match instance {
+            Some(_) => {
+                let manager = self.instance_manager();
+                manager.resolve_instance_name(instance)
+            }
+            None => Ok(self.vm_name()), // Use existing default behavior for backward compatibility
+        }
     }
 }
 
@@ -141,48 +164,47 @@ impl Provider for TartProvider {
         Ok(())
     }
 
-    fn start(&self, _container: Option<&str>) -> Result<()> {
-        // Note: Tart doesn't support multiple containers, container parameter is ignored
-        stream_command("tart", &["run", "--no-graphics", &self.vm_name()])
+    fn start(&self, container: Option<&str>) -> Result<()> {
+        let vm_name = self.vm_name_with_instance(container)?;
+        stream_command("tart", &["run", "--no-graphics", &vm_name])
     }
 
-    fn stop(&self, _container: Option<&str>) -> Result<()> {
-        // Note: Tart doesn't support multiple containers, container parameter is ignored
-        stream_command("tart", &["stop", &self.vm_name()])
+    fn stop(&self, container: Option<&str>) -> Result<()> {
+        let vm_name = self.vm_name_with_instance(container)?;
+        stream_command("tart", &["stop", &vm_name])
     }
 
-    fn destroy(&self, _container: Option<&str>) -> Result<()> {
-        // Note: Tart doesn't support multiple containers, container parameter is ignored
-        stream_command("tart", &["delete", &self.vm_name()])
+    fn destroy(&self, container: Option<&str>) -> Result<()> {
+        let vm_name = self.vm_name_with_instance(container)?;
+        stream_command("tart", &["delete", &vm_name])
     }
 
-    fn ssh(&self, _container: Option<&str>, _relative_path: &Path) -> Result<()> {
-        // Note: Tart doesn't support multiple containers, container parameter is ignored
-        duct::cmd("tart", &["ssh", &self.vm_name()]).run()?;
+    fn ssh(&self, container: Option<&str>, _relative_path: &Path) -> Result<()> {
+        let vm_name = self.vm_name_with_instance(container)?;
+        duct::cmd("tart", &["ssh", &vm_name]).run()?;
         Ok(())
     }
 
-    fn exec(&self, _container: Option<&str>, cmd: &[String]) -> Result<()> {
-        // Note: Tart doesn't support multiple containers, container parameter is ignored
-        let vm = self.vm_name();
-        let mut args = vec!["ssh", &vm, "--"];
+    fn exec(&self, container: Option<&str>, cmd: &[String]) -> Result<()> {
+        let vm_name = self.vm_name_with_instance(container)?;
+        let mut args = vec!["ssh", &vm_name, "--"];
         let cmd_strs: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
         args.extend_from_slice(&cmd_strs);
         stream_command("tart", &args)
     }
 
-    fn logs(&self, _container: Option<&str>) -> Result<()> {
-        // Note: Tart doesn't support multiple containers, container parameter is ignored
+    fn logs(&self, container: Option<&str>) -> Result<()> {
+        let vm_name = self.vm_name_with_instance(container)?;
         // Try to read logs from ~/.tart/vms/{name}/app.log
         let home_env = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-        let log_path = format!("{}/.tart/vms/{}/app.log", home_env, self.vm_name());
+        let log_path = format!("{}/.tart/vms/{}/app.log", home_env, vm_name);
 
         // Check if log file exists before attempting to tail
         if !Path::new(&log_path).exists() {
             let error_msg = format!("Log file not found at: {}", log_path);
             vm_error!("{}", error_msg);
             vm_println!("The VM might not be running or logs may not be available yet.");
-            vm_println!("Expected location: ~/.tart/vms/{}/app.log", self.vm_name());
+            vm_println!("Expected location: ~/.tart/vms/{}/app.log", vm_name);
             return Err(anyhow::anyhow!(error_msg));
         }
 
@@ -193,20 +215,41 @@ impl Provider for TartProvider {
         stream_command("tail", &["-f", &log_path])
     }
 
-    fn status(&self, _container: Option<&str>) -> Result<()> {
-        // Note: Tart doesn't support multiple containers, container parameter is ignored
-        stream_command("tart", &["list"])
+    fn status(&self, container: Option<&str>) -> Result<()> {
+        match container {
+            Some(_) => {
+                // Show specific VM status
+                let vm_name = self.vm_name_with_instance(container)?;
+                let output = std::process::Command::new("tart")
+                    .args(["list"])
+                    .output()?;
+
+                if output.status.success() {
+                    let list_output = String::from_utf8_lossy(&output.stdout);
+                    for line in list_output.lines() {
+                        if line.contains(&vm_name) {
+                            println!("{}", line);
+                            return Ok(());
+                        }
+                    }
+                    println!("VM '{}' not found", vm_name);
+                }
+                Ok(())
+            }
+            None => {
+                // Show all VMs (existing behavior)
+                stream_command("tart", &["list"])
+            }
+        }
     }
 
-    fn restart(&self, _container: Option<&str>) -> Result<()> {
-        // Note: Tart doesn't support multiple containers, container parameter is ignored
+    fn restart(&self, container: Option<&str>) -> Result<()> {
         // Stop then start the VM
-        self.stop(None)?;
-        self.start(None)
+        self.stop(container)?;
+        self.start(container)
     }
 
     fn provision(&self, _container: Option<&str>) -> Result<()> {
-        // Note: Tart doesn't support multiple containers, container parameter is ignored
         // Provisioning not supported for Tart
         println!("Provisioning not supported for Tart VMs");
         println!("Tart VMs use pre-built images and don't support dynamic provisioning");
@@ -218,9 +261,10 @@ impl Provider for TartProvider {
         stream_command("tart", &["list"])
     }
 
-    fn kill(&self, _container: Option<&str>) -> Result<()> {
+    fn kill(&self, container: Option<&str>) -> Result<()> {
+        let vm_name = self.vm_name_with_instance(container)?;
         // Force stop the VM
-        stream_command("tart", &["stop", &self.vm_name()])
+        stream_command("tart", &["stop", &vm_name])
     }
 
     fn get_sync_directory(&self) -> String {
@@ -231,5 +275,19 @@ impl Provider for TartProvider {
             .and_then(|p| p.workspace_path.as_deref())
             .unwrap_or("/workspace")
             .to_string()
+    }
+
+    fn supports_multi_instance(&self) -> bool {
+        true
+    }
+
+    fn resolve_instance_name(&self, instance: Option<&str>) -> Result<String> {
+        let manager = self.instance_manager();
+        manager.resolve_instance_name(instance)
+    }
+
+    fn list_instances(&self) -> Result<Vec<InstanceInfo>> {
+        let manager = self.instance_manager();
+        manager.list_instances()
     }
 }

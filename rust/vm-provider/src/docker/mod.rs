@@ -270,6 +270,53 @@ impl Provider for DockerProvider {
     fn as_temp_provider(&self) -> Option<&dyn TempProvider> {
         Some(self)
     }
+
+    fn supports_multi_instance(&self) -> bool {
+        true
+    }
+
+    fn resolve_instance_name(&self, instance: Option<&str>) -> Result<String> {
+        let lifecycle = self.lifecycle_ops();
+        lifecycle.resolve_target_container(instance)
+    }
+
+    fn list_instances(&self) -> Result<Vec<crate::InstanceInfo>> {
+        use crate::common::instance::create_docker_instance_info;
+
+        // Parse docker ps output to get instance info
+        let output = std::process::Command::new("docker")
+            .args(["ps", "-a", "--format", "{{.Names}}\t{{.ID}}\t{{.Status}}"])
+            .output()
+            .with_context(|| "Failed to list containers for instance information")?;
+
+        if !output.status.success() {
+            return Err(anyhow::anyhow!(
+                "Docker container listing failed while gathering instance information"
+            ));
+        }
+
+        let containers_output = String::from_utf8_lossy(&output.stdout);
+        let mut instances = Vec::new();
+        let lifecycle = self.lifecycle_ops();
+        let project_name = lifecycle.project_name();
+
+        // Filter for project containers
+        for line in containers_output.lines() {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 3 {
+                let name = parts[0];
+                let id = parts[1];
+                let status = parts[2];
+
+                // Only include containers that belong to this project
+                if name.starts_with(&format!("{}-", project_name)) || name == project_name {
+                    instances.push(create_docker_instance_info(name, id, status));
+                }
+            }
+        }
+
+        Ok(instances)
+    }
 }
 
 impl TempProvider for DockerProvider {

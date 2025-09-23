@@ -14,7 +14,12 @@ use vm_config::config::VmConfig;
 use vm_provider::Provider;
 
 /// Handle VM creation
-pub fn handle_create(provider: Box<dyn Provider>, config: VmConfig, force: bool) -> Result<()> {
+pub fn handle_create(
+    provider: Box<dyn Provider>,
+    config: VmConfig,
+    force: bool,
+    instance: Option<String>,
+) -> Result<()> {
     let _op_guard = scoped_context! { "operation" => "create" };
     info!("Starting VM creation");
 
@@ -25,13 +30,34 @@ pub fn handle_create(provider: Box<dyn Provider>, config: VmConfig, force: bool)
         .map(|s| s.as_str())
         .unwrap_or("vm-project");
 
-    if force {
-        debug!("Force flag set - will destroy existing VM if present");
-        // Check if VM exists and destroy it first
-        if provider.status(None).is_ok() {
-            warn!("VM exists, destroying due to --force flag");
-            println!("🔄 Force recreating '{}'...", vm_name);
-            provider.destroy(None)?;
+    // Check if this is a multi-instance provider and handle accordingly
+    if provider.supports_multi_instance() && instance.is_some() {
+        let instance_name = instance.as_deref().unwrap();
+        println!("🚀 Creating instance '{}' for project '{}'...", instance_name, vm_name);
+
+        if force {
+            debug!("Force flag set - will destroy existing instance if present");
+            // Try to destroy specific instance first
+            println!("🔄 Force recreating instance '{}'...", instance_name);
+            if let Err(e) = provider.destroy(Some(instance_name)) {
+                warn!("Failed to destroy existing instance '{}' during force create: {}", instance_name, e);
+                // Continue with creation even if destroy fails
+            }
+        }
+    } else {
+        // Standard single-instance creation
+        if let Some(instance_name) = &instance {
+            println!("ℹ️  Instance name '{}' specified but provider '{}' doesn't support multi-instance. Using default behavior.", instance_name, provider.name());
+        }
+
+        if force {
+            debug!("Force flag set - will destroy existing VM if present");
+            // Check if VM exists and destroy it first
+            if provider.status(None).is_ok() {
+                warn!("VM exists, destroying due to --force flag");
+                println!("🔄 Force recreating '{}'...", vm_name);
+                provider.destroy(None)?;
+            }
         }
     }
 

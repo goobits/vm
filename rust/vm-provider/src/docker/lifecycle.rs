@@ -1128,7 +1128,7 @@ impl<'a> LifecycleOperations<'a> {
     /// If container is None, uses the current project's container
     /// If container is Some, resolves using resolve_container_name
     #[must_use = "container resolution results should be checked"]
-    fn resolve_target_container(&self, container: Option<&str>) -> Result<String> {
+    pub fn resolve_target_container(&self, container: Option<&str>) -> Result<String> {
         match container {
             None => Ok(self.container_name()),
             Some(name) => self.resolve_container_name(name),

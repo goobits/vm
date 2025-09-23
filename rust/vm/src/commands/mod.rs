@@ -110,7 +110,9 @@ fn handle_provider_command(args: Args) -> Result<()> {
     // Execute the command with friendly error handling
     debug!("Executing command: {:?}", args.command);
     let result = match args.command {
-        Command::Create { force } => vm_ops::handle_create(provider, config.clone(), force),
+        Command::Create { force, instance } => {
+            vm_ops::handle_create(provider, config.clone(), force, instance)
+        }
         Command::Start { container } => {
             vm_ops::handle_start(provider, container.as_deref(), config.clone())
         }

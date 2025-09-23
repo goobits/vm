@@ -1,5 +1,9 @@
 use crate::{
-    error::ProviderError, progress::ProgressReporter, security::SecurityValidator, Provider,
+    common::instance::{InstanceInfo, InstanceResolver},
+    error::ProviderError,
+    progress::ProgressReporter,
+    security::SecurityValidator,
+    Provider,
 };
 use anyhow::{Context, Result};
 use std::env;
@@ -7,6 +11,8 @@ use std::path::Path;
 use vm_common::command_stream::{is_tool_installed, stream_command};
 use vm_common::{vm_println, vm_success, vm_warning};
 use vm_config::config::VmConfig;
+
+use super::instance::VagrantInstanceManager;
 
 /// Safely escape a string for shell execution by wrapping in single quotes
 /// and escaping any existing single quotes
@@ -75,6 +81,39 @@ impl VagrantProvider {
 
         sanitized
     }
+
+    /// Create instance manager for multi-machine operations
+    fn instance_manager(&self) -> VagrantInstanceManager<'_> {
+        VagrantInstanceManager::new(&self.config, &self.project_dir)
+    }
+
+    /// Resolve machine name with instance support
+    fn resolve_machine_name(&self, instance: Option<&str>) -> Result<String> {
+        match instance {
+            Some(_) => {
+                let manager = self.instance_manager();
+                manager.resolve_instance_name(instance)
+            }
+            None => Ok("default".to_string()), // Vagrant's default machine name
+        }
+    }
+
+    /// Run vagrant command with optional machine name
+    fn run_vagrant_command_with_machine(
+        &self,
+        args: &[&str],
+        machine: Option<&str>,
+    ) -> Result<()> {
+        match machine {
+            Some(machine_name) => {
+                let resolved_name = self.resolve_machine_name(Some(machine_name))?;
+                let mut command_args = Vec::from(args);
+                command_args.push(&resolved_name);
+                self.run_vagrant_command(&command_args)
+            }
+            None => self.run_vagrant_command(args),
+        }
+    }
 }
 
 impl Provider for VagrantProvider {
@@ -136,30 +175,31 @@ impl Provider for VagrantProvider {
         Ok(())
     }
 
-    fn start(&self, _container: Option<&str>) -> Result<()> {
-        // Note: Vagrant doesn't support multiple containers, container parameter is ignored
-        self.run_vagrant_command(&["resume"])
-            .or_else(|_| self.run_vagrant_command(&["up"]))
+    fn start(&self, container: Option<&str>) -> Result<()> {
+        self.run_vagrant_command_with_machine(&["up"], container)
     }
 
-    fn stop(&self, _container: Option<&str>) -> Result<()> {
-        // Note: Vagrant doesn't support multiple containers, container parameter is ignored
-        self.run_vagrant_command(&["halt"])
+    fn stop(&self, container: Option<&str>) -> Result<()> {
+        self.run_vagrant_command_with_machine(&["halt"], container)
     }
 
-    fn destroy(&self, _container: Option<&str>) -> Result<()> {
-        // Note: Vagrant doesn't support multiple containers, container parameter is ignored
-        self.run_vagrant_command(&["destroy", "-f"])
+    fn destroy(&self, container: Option<&str>) -> Result<()> {
+        self.run_vagrant_command_with_machine(&["destroy", "-f"], container)
     }
 
-    fn ssh(&self, _container: Option<&str>, relative_path: &Path) -> Result<()> {
-        // Note: Vagrant doesn't support multiple containers, container parameter is ignored
+    fn ssh(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {
         let vagrant_cwd = self.project_dir.join("providers/vagrant");
         env::set_var("VAGRANT_CWD", &vagrant_cwd);
 
+        let machine_name = self.resolve_machine_name(container)?;
+
         if relative_path.as_os_str().is_empty() || relative_path == Path::new(".") {
             // Simple SSH without path change
-            duct::cmd("vagrant", &["ssh"]).run()?;
+            if machine_name == "default" {
+                duct::cmd("vagrant", &["ssh"]).run()?;
+            } else {
+                duct::cmd("vagrant", &["ssh", &machine_name]).run()?;
+            }
         } else {
             // SSH with directory change
             let workspace_path = self
@@ -187,48 +227,77 @@ impl Provider for VagrantProvider {
             // This prevents injection even if target_dir or shell contain special characters
             let safe_cmd = "cd \"$1\" && exec \"$2\"".to_string();
 
-            duct::cmd(
-                "vagrant",
-                &["ssh", "-c", &safe_cmd, "--", &target_dir, shell],
-            )
-            .run()?;
+            if machine_name == "default" {
+                duct::cmd(
+                    "vagrant",
+                    &["ssh", "-c", &safe_cmd, "--", &target_dir, shell],
+                )
+                .run()?;
+            } else {
+                duct::cmd(
+                    "vagrant",
+                    &["ssh", &machine_name, "-c", &safe_cmd, "--", &target_dir, shell],
+                )
+                .run()?;
+            }
         }
         Ok(())
     }
 
-    fn exec(&self, _container: Option<&str>, cmd: &[String]) -> Result<()> {
-        // Note: Vagrant doesn't support multiple containers, container parameter is ignored
+    fn exec(&self, container: Option<&str>, cmd: &[String]) -> Result<()> {
         // Safely escape each argument for shell execution
         let escaped_args: Vec<String> = cmd.iter().map(|arg| shell_escape(arg)).collect();
         let safe_cmd = escaped_args.join(" ");
-        self.run_vagrant_command(&["ssh", "-c", &safe_cmd])
+        let machine_name = self.resolve_machine_name(container)?;
+
+        if machine_name == "default" {
+            self.run_vagrant_command(&["ssh", "-c", &safe_cmd])
+        } else {
+            self.run_vagrant_command(&["ssh", &machine_name, "-c", &safe_cmd])
+        }
     }
 
-    fn logs(&self, _container: Option<&str>) -> Result<()> {
-        // Note: Vagrant doesn't support multiple containers, container parameter is ignored
+    fn logs(&self, container: Option<&str>) -> Result<()> {
         vm_println!("Showing service logs - Press Ctrl+C to stop...");
-        self.run_vagrant_command(&[
-            "ssh",
-            "-c",
-            "sudo journalctl -u postgresql -u redis-server -u mongod -f",
-        ])
+        let machine_name = self.resolve_machine_name(container)?;
+
+        if machine_name == "default" {
+            self.run_vagrant_command(&[
+                "ssh",
+                "-c",
+                "sudo journalctl -u postgresql -u redis-server -u mongod -f",
+            ])
+        } else {
+            self.run_vagrant_command(&[
+                "ssh",
+                &machine_name,
+                "-c",
+                "sudo journalctl -u postgresql -u redis-server -u mongod -f",
+            ])
+        }
     }
 
-    fn status(&self, _container: Option<&str>) -> Result<()> {
-        // Note: Vagrant doesn't support multiple containers, container parameter is ignored
-        self.run_vagrant_command(&["status"])
+    fn status(&self, container: Option<&str>) -> Result<()> {
+        match container {
+            Some(_) => {
+                let machine_name = self.resolve_machine_name(container)?;
+                self.run_vagrant_command(&["status", &machine_name])
+            }
+            None => {
+                // Show all machines status
+                self.run_vagrant_command(&["status"])
+            }
+        }
     }
 
-    fn restart(&self, _container: Option<&str>) -> Result<()> {
-        // Note: Vagrant doesn't support multiple containers, container parameter is ignored
+    fn restart(&self, container: Option<&str>) -> Result<()> {
         // Use vagrant reload to restart
-        self.run_vagrant_command(&["reload"])
+        self.run_vagrant_command_with_machine(&["reload"], container)
     }
 
-    fn provision(&self, _container: Option<&str>) -> Result<()> {
-        // Note: Vagrant doesn't support multiple containers, container parameter is ignored
+    fn provision(&self, container: Option<&str>) -> Result<()> {
         // Use vagrant provision to re-run provisioning
-        self.run_vagrant_command(&["provision"])
+        self.run_vagrant_command_with_machine(&["provision"], container)
     }
 
     fn list(&self) -> Result<()> {
@@ -236,9 +305,9 @@ impl Provider for VagrantProvider {
         stream_command("vagrant", &["global-status"])
     }
 
-    fn kill(&self, _container: Option<&str>) -> Result<()> {
+    fn kill(&self, container: Option<&str>) -> Result<()> {
         // Force destroy the VM
-        self.run_vagrant_command(&["destroy", "-f"])
+        self.run_vagrant_command_with_machine(&["destroy", "-f"], container)
     }
 
     fn get_sync_directory(&self) -> String {
@@ -249,5 +318,19 @@ impl Provider for VagrantProvider {
             .and_then(|p| p.workspace_path.as_deref())
             .unwrap_or("/workspace")
             .to_string()
+    }
+
+    fn supports_multi_instance(&self) -> bool {
+        true
+    }
+
+    fn resolve_instance_name(&self, instance: Option<&str>) -> Result<String> {
+        let manager = self.instance_manager();
+        manager.resolve_instance_name(instance)
+    }
+
+    fn list_instances(&self) -> Result<Vec<InstanceInfo>> {
+        let manager = self.instance_manager();
+        manager.list_instances()
     }
 }

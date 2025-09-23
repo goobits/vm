@@ -154,6 +154,9 @@ pub enum Command {
         /// Force creation even if VM already exists
         #[arg(long)]
         force: bool,
+        /// Instance name (defaults to 'dev' for multi-instance providers)
+        #[arg(long)]
+        instance: Option<String>,
     },
     /// Start a VM
     Start {

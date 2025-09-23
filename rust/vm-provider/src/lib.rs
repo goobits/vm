@@ -13,6 +13,10 @@ use anyhow::Result;
 // Internal imports
 use vm_config::config::VmConfig;
 
+// Re-export common types for convenience
+pub use common::instance::{InstanceInfo, InstanceResolver};
+
+pub mod common;
 pub mod error;
 pub mod progress;
 pub mod resources;
@@ -93,6 +97,28 @@ pub trait Provider {
     /// Get access to temp provider capabilities if supported
     fn as_temp_provider(&self) -> Option<&dyn TempProvider> {
         None
+    }
+
+    /// Resolve a partial instance name to a full instance name
+    /// Returns the default instance if partial is None
+    fn resolve_instance_name(&self, instance: Option<&str>) -> Result<String> {
+        // Default implementation for backward compatibility
+        match instance {
+            Some(name) => Ok(name.to_string()),
+            None => Ok("default".to_string()),
+        }
+    }
+
+    /// List all instances managed by this provider
+    fn list_instances(&self) -> Result<Vec<InstanceInfo>> {
+        // Default implementation calls existing list() method and returns empty
+        self.list()?;
+        Ok(vec![])
+    }
+
+    /// Check if this provider supports multiple instances
+    fn supports_multi_instance(&self) -> bool {
+        false // Default to single instance for backward compatibility
     }
 }
 
