@@ -273,7 +273,10 @@ vm:
         // Test getting from non-existent local config
         let result = ConfigOps::get(Some("vm.memory"), false);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("No vm.yaml found"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("No vm.yaml configuration found"));
 
         // Test unsetting from non-existent config
         let result = ConfigOps::unset("vm.memory", false);

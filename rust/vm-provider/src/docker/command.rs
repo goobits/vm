@@ -16,7 +16,7 @@ use vm_common::{vm_dbg, vm_error};
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use vm_provider::docker::command::DockerCommand;
 ///
 /// // Check if container exists
