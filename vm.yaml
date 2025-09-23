@@ -9,16 +9,14 @@ vm:
   cpus: 6
   gui: false
   memory: 8192
-  port_binding: 127.0.0.1
+  port_binding: 0.0.0.0
   timezone: America/Los_Angeles
   user: developer
 versions:
   node: '22'
   python: '3.11'
 ports:
-  _range:
-  - 3080
-  - 3089
+  _range: [3120, 3129]
 apt_packages:
   - tree
   - ripgrep

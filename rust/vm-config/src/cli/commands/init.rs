@@ -7,7 +7,7 @@ use serde_yaml::Value;
 use serde_yaml_ng as serde_yaml;
 use std::path::PathBuf;
 use std::sync::OnceLock;
-use vm_common::{vm_error, vm_success, vm_warning};
+use vm_common::{vm_error, vm_warning};
 
 // Compile regex patterns once at initialization for better performance
 static INVALID_CHARS_RE: OnceLock<Regex> = OnceLock::new();
@@ -50,11 +50,16 @@ pub fn execute(
 
     // Check if vm.yaml already exists
     if target_path.exists() {
-        vm_error!(
-            "vm.yaml already exists at {}\nUse --file to specify a different location or remove the existing file.",
-            target_path.display()
-        );
-        return Err(anyhow::anyhow!("vm.yaml already exists"));
+        println!("🚀 VM Development Environment");
+        println!();
+        println!("⚠️  Configuration already exists");
+        println!("   📁 {}", target_path.display());
+        println!();
+        println!("💡 Options:");
+        println!("   rm vm.yaml && vm init           # Start fresh");
+        println!("   vm init --file other.yaml      # Create elsewhere");
+        println!("   vm create                       # Use existing config");
+        std::process::exit(1);
     }
 
     // Get current directory name for project name
@@ -102,10 +107,6 @@ pub fn execute(
             // Parse the range string to get start and end
             if let Ok(range) = PortRange::parse(&range_str) {
                 config.ports.range = Some(vec![range.start, range.end]);
-                println!(
-                    "📡 Allocated port range: {} (ports {}-{})",
-                    range_str, range.start, range.end
-                );
 
                 // Register this range
                 let mut registry = PortRegistry::load().unwrap_or_else(|_| {
@@ -177,18 +178,30 @@ pub fn execute(
         target_path.display()
     ))?;
 
-    vm_success!("Created vm.yaml for project: {}", sanitized_name);
-    println!("📍 Configuration file: {}", target_path.display());
-    if let Some(ref services_str) = services {
-        println!("🔧 Services: {}", services_str);
-    }
-    if let Some(port_start) = ports {
-        println!("🔌 Port range: {}-{}", port_start, port_start + 9);
-    }
+    // Get the port range for display
+    let port_display = if let Some(range) = &config.ports.range {
+        format!("{}-{}", range[0], range[1])
+    } else if let Some(port_start) = ports {
+        format!("{}-{}", port_start, port_start + 9)
+    } else {
+        "auto".to_string()
+    };
+
+    // Clean success output
+    println!("🚀 VM Development Environment");
     println!();
-    println!("Next steps:");
-    println!("  1. Review and customize vm.yaml as needed");
-    println!("  2. Run \"vm create\" to start your development environment");
+    println!("✓ Initializing project: {}", sanitized_name);
+    println!("✓ Port range allocated: {}", port_display);
+    if let Some(ref services_str) = services {
+        println!("✓ Services configured: {}", services_str);
+    }
+    println!("✓ Configuration created: vm.yaml");
+    println!();
+    println!("🎉 Ready to go! Next steps:");
+    println!("   vm create    # Launch your development environment");
+    println!("   vm --help    # View all available commands");
+    println!();
+    println!("📁 {}", target_path.display());
 
     Ok(())
 }

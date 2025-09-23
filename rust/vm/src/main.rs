@@ -40,7 +40,9 @@ fn main() -> Result<()> {
         "debug" => args.debug
     };
 
-    info!("Starting vm command");
+    if args.debug {
+        info!("Starting vm command");
+    }
 
     // Execute the command using the new command dispatcher
     execute_command(args)
