@@ -458,8 +458,10 @@ mod tests {
             println!("   (Original unlocked version typically lost 30-50% of entries)");
         } else {
             // Unacceptable scenario - significant data loss suggesting locking isn't working well
-            panic!("❌ Poor result: Only {}/{} operations succeeded, only {}/{} entries preserved. File locking may not be working correctly.",
-                   successful_registrations, num_threads, actual_count, num_threads);
+            panic!(
+                "❌ Poor result: Only {}/{} operations succeeded, only {}/{} entries preserved. File locking may not be working correctly.",
+                successful_registrations, num_threads, actual_count, num_threads
+            );
         }
 
         // Verify that all preserved entries are valid (don't require all to be present due to test non-determinism)

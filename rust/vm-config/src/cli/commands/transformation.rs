@@ -1,6 +1,10 @@
-use anyhow::Result;
+// Standard library imports
 use std::path::PathBuf;
 
+// External crate imports
+use anyhow::Result;
+
+// Local module imports
 use super::super::TransformFormat;
 
 pub fn execute(file: PathBuf, expression: String, format: TransformFormat) -> Result<()> {

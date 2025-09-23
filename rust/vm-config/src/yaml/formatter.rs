@@ -228,7 +228,7 @@ mod tests {
             let keys: Vec<_> = map.keys().filter_map(|k| k.as_str()).collect();
             assert_eq!(keys, vec!["version", "provider", "vm"]);
         } else {
-            panic!("Expected Mapping");
+            panic!("Expected Mapping, but got: {:?}", result);
         }
     }
 
@@ -247,7 +247,7 @@ mod tests {
             assert!(map.contains_key("custom_field"));
             assert!(map.contains_key("version"));
         } else {
-            panic!("Expected Mapping");
+            panic!("Expected Mapping, but got: {:?}", result);
         }
     }
 

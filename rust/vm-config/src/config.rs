@@ -1,7 +1,10 @@
+// Standard library imports
+use std::path::PathBuf;
+
+// External crate imports
 use indexmap::IndexMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_yaml_ng as serde_yaml;
-use std::path::PathBuf;
 
 /// Main VM configuration structure.
 ///

@@ -1,13 +1,20 @@
-use crate::config::VmConfig;
-use crate::ports::{PortRange, PortRegistry};
-use crate::yaml::core::CoreOperations;
+// Standard library imports
+use std::path::PathBuf;
+use std::sync::OnceLock;
+
+// External crate imports
 use anyhow::{Context, Result};
 use regex::Regex;
 use serde_yaml::Value;
 use serde_yaml_ng as serde_yaml;
-use std::path::PathBuf;
-use std::sync::OnceLock;
+
+// Internal crate imports
 use vm_common::{vm_error, vm_warning};
+
+// Local module imports
+use crate::config::VmConfig;
+use crate::ports::{PortRange, PortRegistry};
+use crate::yaml::core::CoreOperations;
 
 // Compile regex patterns once at initialization for better performance
 static INVALID_CHARS_RE: OnceLock<Regex> = OnceLock::new();
@@ -17,7 +24,10 @@ fn get_invalid_chars_regex() -> &'static Regex {
     INVALID_CHARS_RE.get_or_init(|| {
         Regex::new(r"[^a-zA-Z0-9_-]").unwrap_or_else(|_| {
             // Fallback to a safe pattern if the main one fails
-            Regex::new(r"[^\w-]").unwrap_or_else(|_| Regex::new(r"a^").unwrap())
+            Regex::new(r"[^\w-]").unwrap_or_else(|_| {
+                // Final fallback - should never fail
+                Regex::new(r"(?-u)a^").expect("Failed to create fallback regex for invalid chars")
+            })
         })
     })
 }
@@ -26,7 +36,11 @@ fn get_consecutive_hyphens_regex() -> &'static Regex {
     CONSECUTIVE_HYPHENS_RE.get_or_init(|| {
         Regex::new(r"-+").unwrap_or_else(|_| {
             // Fallback to a safe pattern if the main one fails
-            Regex::new(r"--+").unwrap_or_else(|_| Regex::new(r"a^").unwrap())
+            Regex::new(r"--+").unwrap_or_else(|_| {
+                // Final fallback - should never fail
+                Regex::new(r"(?-u)a^")
+                    .expect("Failed to create fallback regex for consecutive hyphens")
+            })
         })
     })
 }

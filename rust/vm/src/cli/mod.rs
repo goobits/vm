@@ -1,7 +1,10 @@
 // CLI argument parsing and definitions
 
-use clap::{Parser, Subcommand};
+// Standard library imports
 use std::path::PathBuf;
+
+// External crate imports
+use clap::{Parser, Subcommand};
 
 #[derive(Debug, Clone, Parser)]
 #[command(name = "vm")]

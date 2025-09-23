@@ -8,13 +8,13 @@
 // Standard library
 use std::fs;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 // External crates
 use anyhow::{bail, Context, Result};
 use regex::Regex;
 use serde_yaml::{Mapping, Value};
 use serde_yaml_ng as serde_yaml;
-use std::sync::OnceLock;
 
 // Internal imports
 use crate::config::VmConfig;
@@ -39,7 +39,9 @@ fn get_port_placeholder_regex() -> &'static Regex {
                 Regex::new(r"never_matches_anything_specific_placeholder_12345").unwrap_or_else(
                     |_| {
                         // Last resort - create a basic regex that will always work
-                        Regex::new(r"a^").unwrap() // matches nothing (a followed by start of string)
+                        // Last resort - create a never-matching regex (should never fail)
+                        Regex::new(r"(?-u)a^")
+                            .expect("Failed to create never-matching fallback regex")
                     },
                 )
             }

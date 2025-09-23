@@ -7,24 +7,6 @@ use anyhow::Result;
 use std::fmt;
 use vm_common::vm_error;
 
-#[cfg(test)]
-mod test_constants {
-    // These constants were defined for consistency but are unused in practice
-    // Tests use inline values for clarity
-    #[allow(dead_code)]
-    pub const DEFAULT_START_PORT: u16 = 3000;
-    #[allow(dead_code)]
-    pub const DEFAULT_END_PORT: u16 = 3009;
-    #[allow(dead_code)]
-    pub const OVERLAP_START_PORT: u16 = 3005;
-    #[allow(dead_code)]
-    pub const OVERLAP_END_PORT: u16 = 3015;
-    #[allow(dead_code)]
-    pub const ADJACENT_START_PORT: u16 = 3010;
-    #[allow(dead_code)]
-    pub const ADJACENT_END_PORT: u16 = 3019;
-}
-
 /// Represents a range of network ports.
 ///
 /// A port range defines a continuous range of ports from `start` to `end` (inclusive).
@@ -119,7 +101,6 @@ impl PortRange {
     ///
     /// # Returns
     /// The count of ports in the range (end - start + 1).
-    #[allow(dead_code)]
     pub fn size(&self) -> u16 {
         self.end - self.start + 1
     }

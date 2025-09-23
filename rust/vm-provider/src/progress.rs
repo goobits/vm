@@ -44,10 +44,18 @@ impl DockerProgressParser {
         Self {
             mp,
             main_bar,
-            step_regex: Regex::new(r"Step (\d+)/(\d+)")
-                .unwrap_or_else(|_| Regex::new(r"a^").unwrap()), // fallback to never-matching regex
-            layer_pull_regex: Regex::new(r"([a-f0-9]{12}): Pulling fs layer")
-                .unwrap_or_else(|_| Regex::new(r"a^").unwrap()), // fallback to never-matching regex
+            step_regex: Regex::new(r"Step (\d+)/(\d+)").unwrap_or_else(|_| {
+                // If the primary regex fails, create a never-matching regex
+                // This should never fail as it's a simple pattern
+                Regex::new(r"(?-u)a^").expect("Failed to create fallback regex")
+            }),
+            layer_pull_regex: Regex::new(r"([a-f0-9]{12}): Pulling fs layer").unwrap_or_else(
+                |_| {
+                    // If the primary regex fails, create a never-matching regex
+                    // This should never fail as it's a simple pattern
+                    Regex::new(r"(?-u)a^").expect("Failed to create fallback regex")
+                },
+            ),
             total_steps: 0,
             current_step: 0,
             layer_bars: HashMap::new(),
