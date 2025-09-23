@@ -18,7 +18,8 @@ use serde_json::Value;
 
 // Internal imports
 use super::{
-    build::BuildOperations, compose::ComposeOperations, ComposeCommand, DockerOps, UserConfig,
+    build::BuildOperations, command::DockerCommand, compose::ComposeOperations, ComposeCommand,
+    DockerOps, UserConfig,
 };
 use crate::{
     audio::MacOSAudioManager, error::ProviderError, progress::ProgressReporter,
@@ -156,9 +157,9 @@ impl<'a> LifecycleOperations<'a> {
         }
 
         // Check Docker daemon status more thoroughly
-        if std::process::Command::new("docker")
-            .arg("ps")
-            .output()
+        if DockerCommand::new()
+            .subcommand("ps")
+            .execute()
             .is_err()
         {
             vm_error_with_details!(
@@ -549,14 +550,10 @@ impl<'a> LifecycleOperations<'a> {
                 temp_config_path.display()
             )
         })?;
-        let copy_result = std::process::Command::new("docker")
-            .args([
-                "cp",
-                BuildOperations::path_to_string(&temp_config_path)?,
-                &format!("{}:{}", self.container_name(), TEMP_CONFIG_PATH),
-            ])
-            .output()?;
-        if !copy_result.status.success() {
+        let source = BuildOperations::path_to_string(&temp_config_path)?;
+        let destination = format!("{}:{}", self.container_name(), TEMP_CONFIG_PATH);
+        let copy_result = DockerOps::copy(&source, &destination);
+        if copy_result.is_err() {
             return Err(anyhow::anyhow!(
                 "Failed to copy VM configuration to container '{}'. Container may not be running or accessible",
                 self.container_name()
@@ -613,16 +610,11 @@ impl<'a> LifecycleOperations<'a> {
         })?;
 
         // Start services silently
-        std::process::Command::new("docker")
-            .args([
-                "exec",
-                &self.container_name(),
-                "bash",
-                "-c",
-                "supervisorctl reread && supervisorctl update",
-            ])
-            .output()
-            .ok();
+        DockerOps::exec_in_container(
+            &self.container_name(),
+            &["bash", "-c", "supervisorctl reread && supervisorctl update"],
+        )
+        .ok();
 
         Ok(())
     }
@@ -814,9 +806,13 @@ impl<'a> LifecycleOperations<'a> {
         ProgressReporter::phase_header("🔧", "PROVISIONING PHASE");
 
         // Check if Ansible playbook exists in container
-        let check_playbook = std::process::Command::new("docker")
-            .args(["exec", &container, "test", "-f", ANSIBLE_PLAYBOOK_PATH])
-            .output()?;
+        let check_playbook = DockerCommand::new()
+            .subcommand("exec")
+            .arg(&container)
+            .arg("test")
+            .arg("-f")
+            .arg(ANSIBLE_PLAYBOOK_PATH)
+            .execute_raw()?;
 
         // Only copy resources if they don't exist
         if !check_playbook.status.success() {
@@ -835,13 +831,9 @@ impl<'a> LifecycleOperations<'a> {
             crate::resources::copy_embedded_resources(&shared_dir)?;
 
             // Copy the shared directory to the container
-            std::process::Command::new("docker")
-                .args([
-                    "cp",
-                    &format!("{}/.", shared_dir.display()),
-                    &format!("{}:/app/shared/", &container),
-                ])
-                .output()
+            let source = format!("{}/.", shared_dir.display());
+            let destination = format!("{}:/app/shared/", &container);
+            DockerOps::copy(&source, &destination)
                 .with_context(|| {
                     format!("Failed to copy Ansible provisioning resources to container '{}'. Container may not be accessible", &container)
                 })?;
@@ -883,14 +875,12 @@ impl<'a> LifecycleOperations<'a> {
     #[must_use = "container listing results should be handled"]
     pub fn list_containers_with_stats(&self) -> Result<()> {
         // Get container info
-        let ps_output = std::process::Command::new("docker")
-            .args([
-                "ps",
-                "-a",
-                "--format",
-                "{{.Names}}\t{{.Status}}\t{{.Ports}}\t{{.CreatedAt}}",
-            ])
-            .output()
+        let ps_output = DockerCommand::new()
+            .subcommand("ps")
+            .arg("-a")
+            .arg("--format")
+            .arg("{{.Names}}\t{{.Status}}\t{{.Ports}}\t{{.CreatedAt}}")
+            .execute_raw()
             .with_context(|| "Failed to get container information from Docker. Ensure Docker is running and accessible")?;
 
         if !ps_output.status.success() {
@@ -900,14 +890,12 @@ impl<'a> LifecycleOperations<'a> {
         }
 
         // Get stats for running containers
-        let stats_output = std::process::Command::new("docker")
-            .args([
-                "stats",
-                "--no-stream",
-                "--format",
-                "{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}",
-            ])
-            .output()
+        let stats_output = DockerCommand::new()
+            .subcommand("stats")
+            .arg("--no-stream")
+            .arg("--format")
+            .arg("{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}")
+            .execute_raw()
             .with_context(|| "Failed to get container resource statistics from Docker. Some containers may not be running")?;
 
         let stats_data = if stats_output.status.success() {

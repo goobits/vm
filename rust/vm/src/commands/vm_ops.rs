@@ -45,11 +45,43 @@ pub fn handle_start(provider: Box<dyn Provider>, config: VmConfig) -> Result<()>
 
     let container_name = format!("{}-dev", vm_name);
 
-    // Check if already running
-    if provider.status().is_ok() {
-        println!("✅ VM '{}' is already running", vm_name);
-        println!("\n💡 Connect with: vm ssh");
-        return Ok(());
+    // Check if container exists and is running
+    // We need to check using Docker directly since provider.status() just shows status
+    let container_exists = std::process::Command::new("docker")
+        .args(["ps", "-a", "--format", "{{.Names}}"])
+        .output()
+        .ok()
+        .and_then(|output| {
+            let names = String::from_utf8_lossy(&output.stdout);
+            if names.lines().any(|name| name.trim() == container_name) {
+                Some(())
+            } else {
+                None
+            }
+        })
+        .is_some();
+
+    if container_exists {
+        // Check if it's actually running
+        let is_running = std::process::Command::new("docker")
+            .args(["inspect", "--format", "{{.State.Status}}", &container_name])
+            .output()
+            .ok()
+            .and_then(|output| {
+                let status = String::from_utf8_lossy(&output.stdout);
+                if status.trim() == "running" {
+                    Some(())
+                } else {
+                    None
+                }
+            })
+            .is_some();
+
+        if is_running {
+            println!("✅ VM '{}' is already running", vm_name);
+            println!("\n💡 Connect with: vm ssh");
+            return Ok(());
+        }
     }
 
     println!("🚀 Starting '{}'...", vm_name);
