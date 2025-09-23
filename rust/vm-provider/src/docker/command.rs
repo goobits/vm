@@ -14,11 +14,10 @@ use vm_common::{vm_dbg, vm_error};
 /// Provides a centralized way to construct and execute Docker commands with
 /// proper argument validation, error handling, and logging.
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Infrastructure for future refactoring
 pub struct DockerCommand {
     subcommand: Option<String>,
     args: Vec<String>,
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Will be used for output capture in monitoring features
     capture_output: bool,
 }
 
@@ -45,7 +44,7 @@ impl DockerCommand {
     }
 
     /// Add multiple arguments to the command.
-    #[allow(dead_code)] // Infrastructure for future refactoring
+    #[allow(dead_code)] // Will be used for batch operations and plugin system
     pub fn args<I, S>(mut self, args: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -56,7 +55,7 @@ impl DockerCommand {
     }
 
     /// Enable output capture for the command (useful for parsing results).
-    #[allow(dead_code)] // Infrastructure for future refactoring
+    #[allow(dead_code)] // Will be used for monitoring and health checks
     pub fn capture_output(mut self) -> Self {
         self.capture_output = true;
         self
@@ -114,7 +113,6 @@ impl DockerCommand {
     ///
     /// Use this when you need access to both stdout and stderr,
     /// or need to handle non-zero exit codes manually.
-    #[allow(dead_code)] // Infrastructure for future refactoring
     pub fn execute_raw(self) -> Result<Output> {
         let mut cmd = self.build_command()?;
 
@@ -191,7 +189,6 @@ impl DockerOps {
     /// # Arguments
     /// * `container_name` - Name of the container
     /// * `command_args` - Command and arguments to execute
-    #[allow(dead_code)] // Infrastructure for future refactoring
     pub fn exec_in_container(container_name: &str, command_args: &[&str]) -> Result<()> {
         let mut cmd = DockerCommand::new().subcommand("exec").arg(container_name);
 
@@ -203,7 +200,7 @@ impl DockerOps {
     }
 
     /// Execute a command inside a container and capture output.
-    #[allow(dead_code)] // Infrastructure for future refactoring
+    #[allow(dead_code)] // Will be used for interactive diagnostics
     pub fn exec_in_container_with_output(
         container_name: &str,
         command_args: &[&str],
@@ -222,7 +219,6 @@ impl DockerOps {
     /// # Arguments
     /// * `source` - Source path (container:path or local path)
     /// * `destination` - Destination path (container:path or local path)
-    #[allow(dead_code)] // Infrastructure for future refactoring
     pub fn copy(source: &str, destination: &str) -> Result<()> {
         DockerCommand::new()
             .subcommand("cp")
@@ -232,7 +228,7 @@ impl DockerOps {
     }
 
     /// Get container statistics with specified format.
-    #[allow(dead_code)] // Infrastructure for future refactoring
+    #[allow(dead_code)] // Will be used for resource monitoring
     pub fn stats(container_name: &str, format: &str) -> Result<String> {
         DockerCommand::new()
             .subcommand("stats")
@@ -244,7 +240,7 @@ impl DockerOps {
     }
 
     /// Start a container by name.
-    #[allow(dead_code)] // Infrastructure for future refactoring
+    #[allow(dead_code)] // Will be used for lifecycle management
     pub fn start_container(container_name: &str) -> Result<()> {
         DockerCommand::new()
             .subcommand("start")
@@ -253,7 +249,7 @@ impl DockerOps {
     }
 
     /// Stop a container by name.
-    #[allow(dead_code)] // Infrastructure for future refactoring
+    #[allow(dead_code)] // Will be used for lifecycle management
     pub fn stop_container(container_name: &str) -> Result<()> {
         DockerCommand::new()
             .subcommand("stop")
@@ -262,7 +258,7 @@ impl DockerOps {
     }
 
     /// Remove a container by name (with force flag).
-    #[allow(dead_code)] // Infrastructure for future refactoring
+    #[allow(dead_code)] // Will be used for cleanup operations
     pub fn remove_container(container_name: &str, force: bool) -> Result<()> {
         let mut cmd = DockerCommand::new().subcommand("rm");
 

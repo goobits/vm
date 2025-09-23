@@ -166,21 +166,21 @@ mod tests {
         env::set_var("SHELL", "/bin/bash");
         let result = get_shell_profile().expect("Should detect shell profile");
         assert!(result.is_some());
-        let profile = result.unwrap();
+        let profile = result.expect("Profile should exist for bash shell");
         assert!(profile.to_string_lossy().ends_with(".bashrc"));
 
         // Test zsh detection
         env::set_var("SHELL", "/usr/bin/zsh");
         let result = get_shell_profile().expect("Should detect shell profile");
         assert!(result.is_some());
-        let profile = result.unwrap();
+        let profile = result.expect("Profile should exist for zsh shell");
         assert!(profile.to_string_lossy().ends_with(".zshrc"));
 
         // Test fish detection
         env::set_var("SHELL", "/usr/local/bin/fish");
         let result = get_shell_profile().expect("Should detect shell profile");
         assert!(result.is_some());
-        let profile = result.unwrap();
+        let profile = result.expect("Profile should exist for fish shell");
         assert!(profile.to_string_lossy().ends_with("config.fish"));
 
         // Test unknown shell

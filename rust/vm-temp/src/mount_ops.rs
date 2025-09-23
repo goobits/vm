@@ -58,20 +58,23 @@ mod tests {
     #[test]
     fn test_mount_parser() {
         // Test simple source
-        let (source, target, perm) = MountParser::parse_mount_string("/home/user").unwrap();
+        let (source, target, perm) = MountParser::parse_mount_string("/home/user")
+            .expect("Should parse simple mount string");
         assert_eq!(source, PathBuf::from("/home/user"));
         assert_eq!(target, None);
         assert_eq!(perm, MountPermission::ReadWrite);
 
         // Test source with permissions
-        let (source, target, perm) = MountParser::parse_mount_string("/home/user:ro").unwrap();
+        let (source, target, perm) = MountParser::parse_mount_string("/home/user:ro")
+            .expect("Should parse mount string with permissions");
         assert_eq!(source, PathBuf::from("/home/user"));
         assert_eq!(target, None);
         assert_eq!(perm, MountPermission::ReadOnly);
 
         // Test source with target and permissions
         let (source, target, perm) =
-            MountParser::parse_mount_string("/home/user:/workspace/user:rw").unwrap();
+            MountParser::parse_mount_string("/home/user:/workspace/user:rw")
+                .expect("Should parse mount string with target and permissions");
         assert_eq!(source, PathBuf::from("/home/user"));
         assert_eq!(target, Some(PathBuf::from("/workspace/user")));
         assert_eq!(perm, MountPermission::ReadWrite);
