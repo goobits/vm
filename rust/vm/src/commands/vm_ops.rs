@@ -463,14 +463,15 @@ pub fn handle_ssh(
             println!("💡 Reconnect with: vm ssh");
         }
         Err(e) => {
-            // Check if it was a user interrupt (Ctrl-C) or connection failure
+            // Only show error if it's an actual connection failure
             let error_str = e.to_string();
-            if error_str.contains("130") || error_str.contains("Interrupted") {
-                println!("\n⚠️  SSH session interrupted");
-                println!("💡 Reconnect with: vm ssh");
-            } else {
-                println!("\n❌ SSH connection failed: {}", e);
+            if error_str.contains("connection lost") || error_str.contains("connection failed") {
+                println!("\n⚠️  Lost connection to VM");
                 println!("💡 Check if VM is running: vm status");
+            } else {
+                // For other errors, show the actual error but clean up the message
+                println!("\n⚠️  Session ended unexpectedly");
+                println!("💡 Check VM status: vm status");
             }
         }
     }

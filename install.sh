@@ -25,7 +25,30 @@ echo "🚀 Installing VM Infrastructure from source..."
 
 # 1. Check for required dependencies (cargo).
 if ! command_exists cargo; then
-    fail "'cargo' is required to build from source. Please install the Rust toolchain: https://rustup.rs"
+    echo -e "${YELLOW}⚠️  Cargo not found. Installing Rust toolchain...${NC}"
+
+    # Auto-install Rust
+    if command_exists curl; then
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    elif command_exists wget; then
+        wget -qO- https://sh.rustup.rs | sh -s -- -y
+    else
+        fail "Neither 'curl' nor 'wget' found. Cannot auto-install Rust. Please install manually: https://rustup.rs"
+    fi
+
+    # Source the cargo environment
+    if [[ -f "$HOME/.cargo/env" ]]; then
+        source "$HOME/.cargo/env"
+    else
+        fail "Failed to locate Rust environment after installation"
+    fi
+
+    # Verify installation
+    if ! command_exists cargo; then
+        fail "Rust installation completed but 'cargo' is still not available. Please check your PATH"
+    fi
+
+    echo -e "${GREEN}✅ Rust toolchain installed successfully${NC}"
 fi
 
 # 2. Get the directory where this script is located to reliably find the Cargo.toml.

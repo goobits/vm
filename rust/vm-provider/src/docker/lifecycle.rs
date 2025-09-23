@@ -650,10 +650,16 @@ impl<'a> LifecycleOperations<'a> {
         .run()?
         .status;
 
-        if !status.success() {
-            return Err(ProviderError::CommandFailed(String::from("SSH command failed")).into());
+        // Handle exit codes gracefully
+        match status.code() {
+            Some(0) | Some(2) => Ok(()), // Normal exit or shell builtin exit
+            Some(127) => Ok(()), // Command not found (happens when user types non-existent command then exits)
+            Some(130) => Ok(()), // Ctrl-C interrupt - treat as normal exit
+            _ => {
+                // Only return error for actual connection failures
+                Err(ProviderError::CommandFailed(String::from("SSH connection lost")).into())
+            }
         }
-        Ok(())
     }
 
     #[must_use = "command execution results should be handled"]

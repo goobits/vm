@@ -148,8 +148,9 @@ fn handle_provider_command(args: Args) -> Result<()> {
                 anyhow::anyhow!("🔴 VM is stopped\n\n💡 Try:\n  • Start VM: vm start\n  • Check status: vm status\n  • View logs: vm logs")
             } else if error_chain.contains("No such container") || error_str.contains("No such container") {
                 anyhow::anyhow!("🔍 VM doesn't exist\n\n💡 Try:\n  • Create VM: vm create\n  • List all VMs: vm list\n  • Check config: vm validate")
-            } else if error_chain.contains("SSH command failed") || error_chain.contains("exited with code 1") {
-                anyhow::anyhow!("🔌 Cannot connect to VM\n\n💡 Try:\n  • Check status: vm status\n  • Restart VM: vm restart\n  • View logs: vm logs")
+            } else if error_chain.contains("SSH connection lost") {
+                // Don't show duplicate message for normal SSH exits
+                e
             } else if error_chain.contains("port") || error_str.contains("port") {
                 anyhow::anyhow!("⚠️ Port conflict detected\n\n💡 Try:\n  • Fix ports: vm config ports --fix\n  • Check ports: docker ps\n  • Recreate: vm create --force")
             } else if error_chain.contains("permission") || error_str.contains("permission") {
