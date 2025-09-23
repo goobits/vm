@@ -98,7 +98,7 @@ pub fn execute(
 
     // Use vm-ports library to suggest and register an available port range
     if let Ok(registry) = PortRegistry::load() {
-        if let Some(range_str) = registry.suggest_next_range(100, 3000) {
+        if let Some(range_str) = registry.suggest_next_range(10, 3000) {
             // Parse the range string to get start and end
             if let Ok(range) = PortRange::parse(&range_str) {
                 config.ports.range = Some(vec![range.start, range.end]);
@@ -162,7 +162,7 @@ pub fn execute(
         }
 
         // Set up port range instead of individual ports - services will auto-assign
-        config.ports.range = Some(vec![port_start, port_start + 99]);
+        config.ports.range = Some(vec![port_start, port_start + 9]);
     }
 
     // Convert config to Value and write with consistent formatting

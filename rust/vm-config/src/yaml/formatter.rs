@@ -135,18 +135,46 @@ fn format_nested_value(value: &Value) -> Result<Value> {
 /// - Consistent 2-space indentation
 /// - Proper array formatting
 /// - Clean line breaks
+/// - Inline formatting for _range arrays
 pub fn post_process_yaml(yaml: &str) -> String {
     let mut result = String::with_capacity(yaml.len());
     let mut in_array_section = false;
+    let lines: Vec<&str> = yaml.lines().collect();
+    let mut i = 0;
 
-    for line in yaml.lines() {
+    while i < lines.len() {
+        let line = lines[i];
         let trimmed = line.trim();
+
+        // Check for _range array pattern to convert to inline format
+        if trimmed == "_range:" && i + 2 < lines.len() {
+            let next_line = lines[i + 1].trim();
+            let third_line = lines[i + 2].trim();
+
+            // Check if next two lines are array items with numbers
+            if next_line.starts_with("- ") && third_line.starts_with("- ") {
+                if let (Ok(first_val), Ok(second_val)) = (
+                    next_line[2..].trim().parse::<u16>(),
+                    third_line[2..].trim().parse::<u16>(),
+                ) {
+                    // Get the indentation from the original _range: line
+                    let indent = &line[..line.len() - trimmed.len()];
+                    result.push_str(&format!(
+                        "{}_range: [{}, {}]\n",
+                        indent, first_val, second_val
+                    ));
+                    i += 3; // Skip the next two lines
+                    continue;
+                }
+            }
+        }
 
         // Detect array sections
         if trimmed.ends_with("_packages:") || trimmed == "aliases:" || trimmed == "environment:" {
             in_array_section = true;
             result.push_str(line);
             result.push('\n');
+            i += 1;
             continue;
         } else if !trimmed.is_empty() && trimmed.ends_with(':') && !trimmed.starts_with('-') {
             // New section, reset array flag
@@ -169,6 +197,7 @@ pub fn post_process_yaml(yaml: &str) -> String {
             result.push_str(line);
         }
         result.push('\n');
+        i += 1;
     }
 
     // Remove trailing newline if present (we'll add one in write)
@@ -220,5 +249,36 @@ mod tests {
         } else {
             panic!("Expected Mapping");
         }
+    }
+
+    #[test]
+    fn test_range_inline_formatting() {
+        let input = "_range:\n- 3300\n- 3309\n";
+        let result = post_process_yaml(input);
+        assert_eq!(result, "_range: [3300, 3309]\n");
+    }
+
+    #[test]
+    fn test_range_inline_formatting_with_indentation() {
+        let input = "ports:\n  _range:\n  - 3300\n  - 3309\n  frontend: 3301\n";
+        let result = post_process_yaml(input);
+        assert!(result.contains("  _range: [3300, 3309]"));
+        assert!(result.contains("  frontend: 3301"));
+    }
+
+    #[test]
+    fn test_range_inline_formatting_preserves_other_arrays() {
+        let input = "npm_packages:\n- prettier\n- eslint\nports:\n  _range:\n  - 3300\n  - 3309\n";
+        let result = post_process_yaml(input);
+        assert!(result.contains("npm_packages:\n  - prettier\n  - eslint"));
+        assert!(result.contains("  _range: [3300, 3309]"));
+    }
+
+    #[test]
+    fn test_range_non_numeric_values_ignored() {
+        let input = "_range:\n- start\n- end\n";
+        let result = post_process_yaml(input);
+        // Should not be converted to inline since values aren't numeric
+        assert_eq!(result, "_range:\n- start\n- end\n");
     }
 }
