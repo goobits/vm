@@ -4,7 +4,7 @@ This module provides a structured, user-friendly approach to error handling.
 
 ## Guiding Principles
 
-1. **User-Friendly Messages:** All errors shown to the user should be clear, concise, and helpful. Use the `vm_error!`, `vm_warning!`, and `vm_error_hint!` macros.
+1. **User-Friendly Messages:** All errors shown to the user should be clear, concise, and helpful. Follow standardized messaging patterns: ❌ for errors with specific troubleshooting tips, ⚠️ for warnings, and 💡 for helpful next steps.
 2. **Centralized Logic:** Error creation logic should not be scattered throughout the application. It should be centralized into reusable functions within this module.
 3. **Clean Application Code:** The main application logic should be kept clean of error formatting. Instead of building an error message manually, it should make a single call to an error function.
 

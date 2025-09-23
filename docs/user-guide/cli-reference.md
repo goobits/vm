@@ -83,7 +83,7 @@ vm temp destroy                  # Destroy temporary VM
 ### temp mounts
 ```bash
 vm temp mount ./new-feature      # Add mount to running temporary VM
-vm temp unmount ./old-code       # Remove mount from temporary VM
+vm temp unmount --path ./old-code # Remove specific mount from temporary VM
 vm temp mounts                   # List current mounts
 ```
 
@@ -114,6 +114,8 @@ vm validate --config custom.yaml # Check specific file
 vm config set vm.memory 4096     # Set configuration value
 vm config get                    # Get configuration values
 vm config preset nodejs,docker   # Apply configuration presets
+vm config preset list            # List all available presets
+vm config preset --show nodejs   # Show specific preset details
 ```
 
 ---
@@ -124,6 +126,8 @@ vm config preset nodejs,docker   # Apply configuration presets
 ```bash
 vm config preset nodejs          # Apply nodejs preset
 vm config preset django,docker   # Apply multiple presets
+vm config preset list            # List available presets
+vm config preset --show django   # Show preset details
 ```
 
 **Available presets:** base, django, docker, kubernetes, nodejs, python, rails, react, tart-linux, tart-macos, tart-ubuntu

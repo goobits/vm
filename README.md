@@ -110,7 +110,7 @@ vm temp destroy          # Clean up when done
 
 # Dynamic mount management
 vm temp mount ./new-feature     # Add directories while working
-vm temp unmount ./old-code      # Remove specific mount
+vm temp unmount --path ./old-code # Remove specific mount
 vm temp unmount --all           # Remove all mounts
 vm temp mounts                  # List current mounts
 ```
@@ -142,6 +142,8 @@ services:
 ```bash
 # Apply specific presets
 vm config preset django          # Apply Django preset to config
+vm config preset list            # List available presets
+vm config preset --show nodejs   # Show specific preset details
 ```
 
 ## 🧪 Development
@@ -180,7 +182,7 @@ vm temp ssh                  # Connect to temporary VM via SSH
 vm temp status               # Show temporary VM status
 vm temp destroy              # Destroy temporary VM
 vm temp mount <path>         # Add mount to running temporary VM
-vm temp unmount <path>       # Remove mount from temporary VM
+vm temp unmount --path <path> # Remove specific mount from temporary VM
 vm temp unmount --all        # Remove all mounts
 vm temp mounts               # List current mounts
 vm temp list                 # List all temporary VMs
@@ -197,6 +199,8 @@ vm config get [field]        # Get configuration values
 vm config set <field> <value> # Set configuration value
 vm config unset <field>      # Remove configuration field
 vm config preset <names>     # Apply configuration presets
+vm config preset list        # List available presets
+vm config preset --show <name> # Show preset details
 vm config ports --fix        # Manage port configuration and resolve conflicts
 ```
 
