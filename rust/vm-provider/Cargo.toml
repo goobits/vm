@@ -9,6 +9,7 @@ license.workspace = true
 anyhow = { workspace = true }
 duct = { workspace = true }
 indicatif = { workspace = true }
+log = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
