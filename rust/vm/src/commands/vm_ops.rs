@@ -1,4 +1,5 @@
 // VM operation command handlers
+// Enhanced with multi-instance support
 
 // Standard library
 use std::path::PathBuf;
