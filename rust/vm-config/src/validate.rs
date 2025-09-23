@@ -1,5 +1,4 @@
 use crate::config::VmConfig;
-use crate::ports::PortRange;
 use anyhow::Result;
 use regex::Regex;
 use std::path::PathBuf;
@@ -175,17 +174,35 @@ impl ConfigValidator {
 
     /// Validate port mappings
     fn validate_ports(&self) -> Result<()> {
-        // Validate individual port mappings
-        for (name, port) in &self.config.ports {
-            if *port == 0 {
+        // Validate manual ports
+        for (name, &port) in &self.config.ports.manual_ports {
+            if port == 0 {
                 vm_error!("Invalid port {} for {}: port 0 is reserved", port, name);
                 return Err(anyhow::anyhow!("Invalid port: port 0 is reserved"));
             }
         }
 
-        // Validate port range if present
-        if let Some(range) = &self.config.port_range {
-            PortRange::parse(range)?;
+        // Validate _range if present
+        if let Some(range) = &self.config.ports.range {
+            if range.len() != 2 {
+                vm_error!("Invalid port range: must have exactly 2 elements [start, end]");
+                return Err(anyhow::anyhow!(
+                    "Invalid port range: must have exactly 2 elements"
+                ));
+            }
+            let (start, end) = (range[0], range[1]);
+            if start >= end {
+                vm_error!(
+                    "Invalid port range: start ({}) must be less than end ({})",
+                    start,
+                    end
+                );
+                return Err(anyhow::anyhow!("Invalid port range"));
+            }
+            if start == 0 {
+                vm_error!("Invalid port range: port 0 is reserved");
+                return Err(anyhow::anyhow!("Port 0 is reserved"));
+            }
         }
 
         Ok(())
@@ -295,7 +312,7 @@ mod tests {
             name: Some("test".to_string()),
             ..Default::default()
         });
-        config.ports.insert("web".to_string(), 0); // Port 0 is invalid
+        config.ports.manual_ports.insert("web".to_string(), 0); // Port 0 is invalid
 
         let validator = ConfigValidator::new(config, std::path::PathBuf::from("test.yaml"));
         assert!(validator.validate().is_err());

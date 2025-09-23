@@ -132,8 +132,16 @@ pub fn handle_ports_command(fix: bool) -> Result<()> {
 
     // Get current port range from config
     let current_port_range = config
-        .port_range
+        .ports
+        .range
         .as_ref()
+        .and_then(|range| {
+            if range.len() == 2 {
+                Some(format!("{}-{}", range[0], range[1]))
+            } else {
+                None
+            }
+        })
         .context("No port range found in configuration")?;
 
     vm_println!("📡 Current port configuration:");
@@ -147,7 +155,7 @@ pub fn handle_ports_command(fix: bool) -> Result<()> {
 
     // Parse current range
     let current_range =
-        PortRange::parse(current_port_range).context("Failed to parse current port range")?;
+        PortRange::parse(&current_port_range).context("Failed to parse current port range")?;
 
     // Only check for conflicts when --fix is specified
     vm_println!();

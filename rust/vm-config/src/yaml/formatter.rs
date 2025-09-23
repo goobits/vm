@@ -25,7 +25,6 @@ const FIELD_ORDER: &[&str] = &[
     "versions",
     // 6. Networking
     "ports",
-    "port_range",
     // 7. Services & Infrastructure
     "services",
     // 8. Package Management

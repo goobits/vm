@@ -98,12 +98,16 @@ pub fn execute(
 
     // Use vm-ports library to suggest and register an available port range
     if let Ok(registry) = PortRegistry::load() {
-        if let Some(range_str) = registry.suggest_next_range(10, 3000) {
-            config.port_range = Some(range_str.clone());
-            println!("📡 Allocated port range: {}", range_str);
-
-            // Register this range
+        if let Some(range_str) = registry.suggest_next_range(100, 3000) {
+            // Parse the range string to get start and end
             if let Ok(range) = PortRange::parse(&range_str) {
+                config.ports.range = Some(vec![range.start, range.end]);
+                println!(
+                    "📡 Allocated port range: {} (ports {}-{})",
+                    range_str, range.start, range.end
+                );
+
+                // Register this range
                 let mut registry = PortRegistry::load().unwrap_or_else(|_| {
                     vm_warning!("Failed to load port registry, using default");
                     PortRegistry::default()
@@ -157,14 +161,8 @@ pub fn execute(
             ));
         }
 
-        // Allocate sequential ports - use &str literals to avoid String allocation
-        config.ports.insert("web".to_string(), port_start);
-        config.ports.insert("api".to_string(), port_start + 1);
-        config
-            .ports
-            .insert("postgresql".to_string(), port_start + 5);
-        config.ports.insert("redis".to_string(), port_start + 6);
-        config.ports.insert("mongodb".to_string(), port_start + 7);
+        // Set up port range instead of individual ports - services will auto-assign
+        config.ports.range = Some(vec![port_start, port_start + 99]);
     }
 
     // Convert config to Value and write with consistent formatting

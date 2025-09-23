@@ -157,11 +157,7 @@ impl<'a> LifecycleOperations<'a> {
         }
 
         // Check Docker daemon status more thoroughly
-        if DockerCommand::new()
-            .subcommand("ps")
-            .execute()
-            .is_err()
-        {
+        if DockerCommand::new().subcommand("ps").execute().is_err() {
             vm_error_with_details!(
                 "Docker daemon may not be responding properly",
                 &["Try: docker system prune -f", "Or: restart Docker Desktop"]
@@ -552,7 +548,7 @@ impl<'a> LifecycleOperations<'a> {
         })?;
         let source = BuildOperations::path_to_string(&temp_config_path)?;
         let destination = format!("{}:{}", self.container_name(), TEMP_CONFIG_PATH);
-        let copy_result = DockerOps::copy(&source, &destination);
+        let copy_result = DockerOps::copy(source, &destination);
         if copy_result.is_err() {
             return Err(anyhow::anyhow!(
                 "Failed to copy VM configuration to container '{}'. Container may not be running or accessible",
@@ -762,14 +758,15 @@ impl<'a> LifecycleOperations<'a> {
             )?;
         }
 
-        if let Some(port_range) = &self.config.port_range {
-            println!("\n📡 Port Range: {}", port_range);
-            if !self.config.ports.is_empty() {
-                if let Ok(parsed_range) = vm_config::ports::PortRange::parse(port_range) {
-                    let (start, end) = (parsed_range.start, parsed_range.end);
+        if let Some(range) = &self.config.ports.range {
+            if range.len() == 2 {
+                let (start, end) = (range[0], range[1]);
+                println!("\n📡 Port Range: {}-{}", start, end);
+                if !self.config.ports.manual_ports.is_empty() {
                     let used_count = self
                         .config
                         .ports
+                        .manual_ports
                         .values()
                         .filter(|&&p| p >= start && p <= end)
                         .count();

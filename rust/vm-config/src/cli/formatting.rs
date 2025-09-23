@@ -166,14 +166,17 @@ fn flatten_config_to_shell(prefix: &str, config: &VmConfig, exports: &mut Vec<St
         add_export(exports, "os", os);
     }
 
-    // Handle ports map
-    for (port_name, port_value) in &config.ports {
+    // Handle new ports structure
+    for (port_name, &port_value) in &config.ports.manual_ports {
         let port_key = format!("ports_{}", port_name.replace('-', "_"));
         add_export_num(exports, &port_key, &port_value.to_string());
     }
 
-    if let Some(ref port_range) = config.port_range {
-        add_export(exports, "port_range", port_range);
+    if let Some(range) = &config.ports.range {
+        if range.len() == 2 {
+            add_export_num(exports, "port_range_start", &range[0].to_string());
+            add_export_num(exports, "port_range_end", &range[1].to_string());
+        }
     }
 
     // Handle aliases map

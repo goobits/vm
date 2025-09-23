@@ -312,12 +312,19 @@ impl ConfigOps {
         let mut merged_config = base_config;
 
         for preset_name in preset_iter {
-            // Get port_range from the base config
-            let port_range = merged_config.port_range.clone();
+            // Convert port range to string for placeholder replacement
+            let port_range_str = merged_config.ports.range.as_ref().and_then(|range| {
+                if range.len() == 2 {
+                    Some(format!("{}-{}", range[0], range[1]))
+                } else {
+                    None
+                }
+            });
 
             // Load preset with optimized placeholder replacement
-            let preset_config = load_preset_with_placeholders(&detector, preset_name, &port_range)
-                .with_context(|| format!("Failed to load preset: {}", preset_name))?;
+            let preset_config =
+                load_preset_with_placeholders(&detector, preset_name, &port_range_str)
+                    .with_context(|| format!("Failed to load preset: {}", preset_name))?;
 
             merged_config = ConfigMerger::new(merged_config).merge(preset_config)?;
         }

@@ -70,11 +70,8 @@ pub struct VmConfig {
     pub versions: Option<VersionsConfig>,
 
     // 6. Networking
-    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
-    pub ports: IndexMap<String, u16>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub port_range: Option<String>,
+    #[serde(default)]
+    pub ports: PortsConfig,
 
     // 7. Services & Infrastructure
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
@@ -123,6 +120,98 @@ pub struct VmConfig {
     // 12. Extra/Custom
     #[serde(flatten)]
     pub extra_config: IndexMap<String, serde_json::Value>,
+}
+
+/// Port configuration with support for both ranges and individual ports.
+///
+/// Supports the new `_range` syntax for bulk port allocation and individual
+/// port mapping for services that need specific ports.
+///
+/// # Examples
+/// ```yaml
+/// ports:
+///   _range: [3000, 3020]  # Reserve ports 3000-3020 for this VM
+///   postgresql: 5432      # PostgreSQL on specific port outside range
+///   redis: 6379          # Redis on specific port outside range
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PortsConfig {
+    /// Port range allocated to this VM instance. Services will auto-assign from this range.
+    #[serde(rename = "_range", skip_serializing_if = "Option::is_none")]
+    pub range: Option<Vec<u16>>,
+
+    /// Manual port assignments that override auto-assignment or specify ports outside the range.
+    #[serde(flatten)]
+    pub manual_ports: IndexMap<String, u16>,
+}
+
+impl PortsConfig {
+    /// Get the port for a service, either from manual assignment or auto-assigned from range.
+    ///
+    /// # Arguments
+    /// * `service_name` - Name of the service
+    /// * `service_index` - Index for auto-assignment within the range (0-based)
+    ///
+    /// # Returns
+    /// The port number if available, None if no range and no manual assignment
+    pub fn get_service_port(&self, service_name: &str, service_index: usize) -> Option<u16> {
+        // 1. Manual override takes precedence
+        if let Some(&port) = self.manual_ports.get(service_name) {
+            return Some(port);
+        }
+
+        // 2. Auto-assign from range
+        if let Some(range) = &self.range {
+            if range.len() == 2 {
+                let (start, end) = (range[0], range[1]);
+                let assigned = start + service_index as u16;
+                if assigned <= end {
+                    return Some(assigned);
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Get all ports that should be exposed to the host.
+    ///
+    /// # Returns
+    /// Vector of port mapping strings in docker-compose format (e.g., "3000-3020:3000-3020", "5432:5432")
+    pub fn get_all_exposed_ports(&self) -> Vec<String> {
+        let mut ports = Vec::new();
+
+        // Add range if present
+        if let Some(range) = &self.range {
+            if range.len() == 2 {
+                let (start, end) = (range[0], range[1]);
+                ports.push(format!("{}-{}:{}-{}", start, end, start, end));
+            }
+        }
+
+        // Add manual ports that are outside the range
+        for (_name, &port) in &self.manual_ports {
+            let should_add_port = match &self.range {
+                Some(range) if range.len() == 2 => {
+                    let (range_start, range_end) = (range[0], range[1]);
+                    // Only add manual ports that are outside the range
+                    port < range_start || port > range_end
+                }
+                _ => true, // No range defined, add all manual ports
+            };
+
+            if should_add_port {
+                ports.push(format!("{}:{}", port, port));
+            }
+        }
+
+        ports
+    }
+
+    /// Check if the configuration has any ports to expose.
+    pub fn has_ports(&self) -> bool {
+        self.range.is_some() || !self.manual_ports.is_empty()
+    }
 }
 
 /// Project-specific configuration settings.

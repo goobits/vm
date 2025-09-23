@@ -15,7 +15,8 @@ vm:
 versions:
   node: '22'
   python: '3.11'
-port_range: 3070-3079
+ports:
+  _range: [3070, 3079]
 apt_packages:
 - tree
 - ripgrep

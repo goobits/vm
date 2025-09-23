@@ -118,26 +118,35 @@ properties:
         type: string
         default: "3.11"
         description: Python version to install via pyenv (e.g., '3.11', '3.12.0')
-  port_range:
-    type: string
-    description: Reserved port range for this project (e.g., "3170-3179")
-    pattern: '^[0-9]+-[0-9]+$'
-    examples:
-      - "3170-3179"
-      - "8080-8089"
-      - "3000-3009"
   ports:
     type: object
-    description: Port forwarding configuration. Maps service names to host ports.
+    description: Port configuration for services and port range allocation
+    properties:
+      _range:
+        type: array
+        description: Reserved port range for this project [start, end]
+        items:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        minItems: 2
+        maxItems: 2
+        examples:
+          - [3170, 3179]
+          - [8080, 8089]
+          - [3000, 3009]
     additionalProperties:
       type: integer
       minimum: 1
       maximum: 65535
+      description: Manual port assignments for specific services
     examples:
-      - frontend: 3000
-        backend: 3001
-        postgresql: 5432
-        redis: 6379
+      - _range: [3170, 3179]
+        frontend: 3001
+        backend: 3002
+      - _range: [8080, 8089]
+        api: 8081
+        web: 8082
   tart:
     type: object
     description: Tart provider configuration (Apple Silicon only)

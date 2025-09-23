@@ -26,19 +26,16 @@ services:
       {% if host_mounts %}{% for mount in host_mounts %}- {{ mount.0 }}:{{ mount.1 }}:ro
       {% endfor %}{% endif %}
       # Container is now self-contained - no VM tool mount needed
-    {% if (config.port_range) or (config.ports and config.ports | length > 0) -%}
+    {% if config.ports._range or (config.ports and config.ports | length > 0) -%}
     ports:
-      {% if config.port_range -%}
-      {% set range_parts = config.port_range.split('-') %}
-      {% if range_parts | length == 2 -%}
+      {% if config.ports._range -%}
       # Application port range
-      - "{{ range_parts[0] }}-{{ range_parts[1] }}:{{ range_parts[0] }}-{{ range_parts[1] }}"
-      {%- endif %}
+      - "{{ config.ports._range[0] }}-{{ config.ports._range[1] }}:{{ config.ports._range[0] }}-{{ config.ports._range[1] }}"
       {%- endif %}
       {% if config.ports and config.ports | length > 0 -%}
-      # Service-specific ports
-      {% for name, port in config.ports %}- "{{ port }}:{{ port }}"  # {{ name }}
-      {% endfor %}
+      # Manual port assignments
+      {% for name, port in config.ports %}{% if name != "_range" %}- "{{ port }}:{{ port }}"  # {{ name }}
+      {% endif %}{% endfor %}
       {%- endif %}
     {%- endif %}
     environment:
