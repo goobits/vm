@@ -3,23 +3,10 @@ Development environments that auto-configure based on your project type
 
 ## 📚 Documentation
 
-### Getting Started
-- **[Quick Start Guide](docs/getting-started/quick-start.md)** - 5-minute setup tutorial
-- **[Installation Guide](docs/getting-started/installation.md)** - Platform-specific setup
-- **[Examples](docs/getting-started/examples.md)** - Common use cases and patterns
-
-### User Guide
-- **[CLI Reference](docs/user-guide/cli-reference.md)** - Complete command documentation
-- **[Configuration Guide](docs/user-guide/configuration.md)** - Full configuration options
-- **[Presets Guide](docs/user-guide/presets.md)** - Framework auto-detection
-- **[Troubleshooting](docs/user-guide/troubleshooting.md)** - Common issues and solutions
-
-### Development
-- **[Contributing Guide](docs/development/contributing.md)** - How to contribute
-- **[Testing Guide](docs/development/testing.md)** - Running and writing tests
+- **[CLAUDE.md](CLAUDE.md)** - Development notes and testing guide
 
 ## ✨ Key Features
-- **Minimal Configuration** - Detects React, Django, Rails, Vue, Angular, Next.js, Flask and more frameworks automatically
+- **Minimal Configuration** - Detects Next.js, React, Angular, Vue, Django, Flask, Rails, Node.js, Python, Rust, Go, PHP, Docker, and Kubernetes automatically
 - **Container Isolation** - Docker containers with secure defaults
 - **Quick Setup** - Docker environments typically ready in under a minute
 - **Temporary VMs** - Ephemeral environments with specific folder mounts
@@ -33,7 +20,7 @@ Development environments that auto-configure based on your project type
 cargo install vm
 
 # Alternative: from source
-git clone https://github.com/goobits/vm.git
+git clone <repository-url>
 cd vm && ./install.sh
 
 # Create environment (auto-detects your project)
@@ -142,7 +129,7 @@ services:
 ```bash
 # Apply specific presets
 vm config preset django          # Apply Django preset to config
-vm config preset list            # List available presets
+vm config preset --list          # List available presets
 vm config preset --show nodejs   # Show specific preset details
 ```
 
@@ -155,8 +142,7 @@ vm logs                      # View service logs
 ```
 
 ## 💡 Support
-- **Issues**: Report at [GitHub Issues](https://github.com/goobits/vm/issues)
-- **Troubleshooting**: See [Troubleshooting Guide](docs/user-guide/troubleshooting.md)
+- **Issues**: Report issues at project repository
 - **Quick fixes**: `vm destroy && vm create` for most problems
 
 ---

@@ -29,8 +29,6 @@ cargo test --workspace
 ```bash
 # Test specific packages
 cargo test --package vm-config
-cargo test --package vm-detector
-cargo test --package vm-ports
 cargo test --package vm-provider
 cargo test --package vm-installer
 cargo test --package vm-temp
@@ -41,7 +39,7 @@ cargo test --package vm-pkg
 # Test specific modules within packages
 cargo test --package vm-config config_ops_tests
 cargo test --package vm workflow_tests
-cargo test --package vm-detector tests::nodejs_tests
+cargo test --package vm-config detector::tests::nodejs_tests
 
 # Test VM operations integration tests (requires Docker)
 cargo test --package vm --test vm_operations_integration_tests
@@ -100,8 +98,7 @@ cargo test
 - `vm/tests/vm_operations_integration_tests.rs` - **VM operations integration tests (NEW)**
 - `vm/tests/config_cli_tests.rs` - CLI configuration command testing
 - `rust/tests/integration_tests.rs` - Cross-crate integration scenarios
-- `vm-detector/src/tests/` - Framework detection tests (9 modules)
-- `vm-ports/src/` - Port range and registry tests (embedded in source)
+- `vm-config/src/detector/tests/` - Framework detection tests
 
 ### VM Operations Integration Tests (NEW)
 
@@ -195,20 +192,14 @@ rustc --version
 
 Run dead code detection with:
 ```bash
-source /home/developer/.cargo/env
+source $HOME/.cargo/env
 cd rust
 
-# Check for dead code (unused functions, structs, etc.)
+# Check for dead code using Clippy
 cargo dead-code
-
-# Quick dead code check with error on findings
-cargo dead-code-quick
 
 # Check for unused dependencies
 cargo dead-deps
-
-# Comprehensive analysis (both code and dependencies)
-cargo dead-all
 ```
 
 ### Tools
@@ -216,7 +207,7 @@ cargo dead-all
 - **cargo-machete**: Detects unused dependencies in Cargo.toml files
 
 ### Configuration
-- **Cargo aliases**: `.cargo/config.toml` - Contains dead-code detection commands
+- **Cargo aliases**: `.cargo/config.toml` in rust directory - Contains dead-code detection commands
 - **Clippy config**: `clippy.toml` - Additional linting rules for code quality
 
 ### Lint Categories
