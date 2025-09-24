@@ -81,8 +81,8 @@ impl ModuleLogger {
             return Self::parse_level_filter(&level_str);
         }
 
-        // Default to Info
-        LevelFilter::Info
+        // Default to Warn
+        LevelFilter::Warn
     }
 
     /// Parse a level string into LevelFilter
@@ -94,7 +94,7 @@ impl ModuleLogger {
             "INFO" => LevelFilter::Info,
             "DEBUG" => LevelFilter::Debug,
             "TRACE" => LevelFilter::Trace,
-            _ => LevelFilter::Info,
+            _ => LevelFilter::Warn,
         }
     }
 
@@ -353,7 +353,7 @@ mod tests {
         assert_eq!(ModuleLogger::parse_level_filter("INFO"), LevelFilter::Info);
         assert_eq!(
             ModuleLogger::parse_level_filter("invalid"),
-            LevelFilter::Info
+            LevelFilter::Warn
         );
     }
 

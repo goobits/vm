@@ -60,7 +60,7 @@ impl LogConfig {
             "INFO" => Level::Info,
             "DEBUG" => Level::Debug,
             "TRACE" => Level::Trace,
-            _ => Level::Info,
+            _ => Level::Warn,
         };
 
         let format = match std::env::var("LOG_FORMAT")
