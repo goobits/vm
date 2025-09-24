@@ -860,7 +860,10 @@ impl<'a> LifecycleOperations<'a> {
                     Some(130) => Ok(()), // Ctrl-C interrupt - treat as normal exit
                     _ => {
                         // Only return error for actual connection failures
-                        Err(ProviderError::CommandFailed(String::from("SSH connection lost")).into())
+                        Err(
+                            ProviderError::CommandFailed(String::from("SSH connection lost"))
+                                .into(),
+                        )
                     }
                 }
             }
