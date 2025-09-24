@@ -930,7 +930,9 @@ pub fn handle_ssh(
             if error_str.contains("is not running")
                 || error_str.contains("No such container")
                 || error_str.contains("Container is not running")
-                || (error_str.contains("docker") && error_str.contains("exec") && error_str.contains("exited with code 1"))
+                || (error_str.contains("docker")
+                    && error_str.contains("exec")
+                    && error_str.contains("exited with code 1"))
             {
                 println!("\n⚠️  VM '{}' is not running", vm_name);
 
