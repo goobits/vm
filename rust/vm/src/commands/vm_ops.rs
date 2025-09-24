@@ -927,7 +927,9 @@ pub fn handle_ssh(
             let error_str = e.to_string();
 
             // Check if the error is because the container is not running
-            if error_str.contains("is not running") || error_str.contains("No such container") {
+            if error_str.contains("is not running")
+                || error_str.contains("No such container")
+                || error_str.contains("Container is not running") {
                 println!("\n⚠️  VM '{}' is not running", vm_name);
 
                 // Handle interactive prompt

@@ -833,7 +833,7 @@ impl<'a> LifecycleOperations<'a> {
             "-i"
         };
 
-        let status = duct::cmd(
+        let result = duct::cmd(
             "docker",
             &[
                 "exec",
@@ -849,17 +849,31 @@ impl<'a> LifecycleOperations<'a> {
                 &format!("cd \"$VM_TARGET_DIR\" && exec {}", shell),
             ],
         )
-        .run()?
-        .status;
+        .run();
 
-        // Handle exit codes gracefully
-        match status.code() {
-            Some(0) | Some(2) => Ok(()), // Normal exit or shell builtin exit
-            Some(127) => Ok(()), // Command not found (happens when user types non-existent command then exits)
-            Some(130) => Ok(()), // Ctrl-C interrupt - treat as normal exit
-            _ => {
-                // Only return error for actual connection failures
-                Err(ProviderError::CommandFailed(String::from("SSH connection lost")).into())
+        match result {
+            Ok(output) => {
+                // Handle exit codes gracefully
+                match output.status.code() {
+                    Some(0) | Some(2) => Ok(()), // Normal exit or shell builtin exit
+                    Some(127) => Ok(()), // Command not found (happens when user types non-existent command then exits)
+                    Some(130) => Ok(()), // Ctrl-C interrupt - treat as normal exit
+                    _ => {
+                        // Only return error for actual connection failures
+                        Err(ProviderError::CommandFailed(String::from("SSH connection lost")).into())
+                    }
+                }
+            }
+            Err(e) => {
+                // Check if the error is because the container is not running
+                let error_str = e.to_string();
+                if error_str.contains("is not running") {
+                    // Return a clear error that indicates the container is not running
+                    Err(anyhow::anyhow!("Container is not running"))
+                } else {
+                    // Pass through other errors
+                    Err(e.into())
+                }
             }
         }
     }
