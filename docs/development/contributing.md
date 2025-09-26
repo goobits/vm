@@ -54,6 +54,35 @@ yamllint configs/*.yaml examples/**/*.yaml
 # - Follow Rust naming conventions
 ```
 
+### User-Facing Messages
+
+All user-facing messages (e.g., status updates, errors, hints) MUST use the centralized `vm-messages` system to ensure consistency. Do not use `println!` or `eprintln!` directly for user output in application code.
+
+The system is exposed through macros in the `vm-common` crate.
+
+**How to Use:**
+
+1. **Add a Template:** If a suitable message doesn't exist, add a new template to `rust/vm-messages/src/messages.rs`.
+   ```rust
+   // in MESSAGES struct
+   pub my_new_message: &'static str,
+   // in MESSAGES constant
+   my_new_message: "✅ My new message for {item} is complete.",
+   ```
+
+2. **Use the Macros:** Use the `vm_println!`, `vm_error!`, or `vm_suggest!` macros in your code. Use the `msg!` macro for variable substitution.
+   ```rust
+   use vm_common::output_macros::{vm_println, msg};
+   use vm_common::messages::MESSAGES;
+
+   // Simple message
+   vm_println!("{}", MESSAGES.some_static_message);
+
+   // With variables
+   vm_println!("{}", msg!(MESSAGES.my_new_message, item = "widgets"));
+   // Output: ✅ My new message for widgets is complete.
+   ```
+
 ## 📁 Project Structure
 
 ```
