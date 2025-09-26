@@ -4,7 +4,11 @@ use std::path::PathBuf;
 
 // External crates
 use anyhow::{Context, Result};
-use vm_common::{errors, vm_error};
+use vm_common::{
+    errors,
+    messages::{messages::MESSAGES, msg},
+    vm_error, vm_println,
+};
 
 // Internal imports
 use crate::{MountParser, MountPermission, StateManager, TempVmState};
@@ -77,23 +81,25 @@ impl TempVmOps {
             .save_state(&temp_state)
             .with_context(|| "Failed to save temporary VM state to disk. Check filesystem permissions and available space")?;
 
-        println!(
-            "✅ Temporary VM created with {} mount(s)",
-            temp_state.mount_count()
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.temp_vm_created_with_mounts,
+                count = temp_state.mount_count().to_string()
+            )
         );
 
         if auto_destroy {
             // SSH then destroy
-            println!("🔗 Connecting to temporary VM...");
+            vm_println!("{}", MESSAGES.temp_vm_connecting);
             provider.ssh(None, &PathBuf::from("."))?;
-            println!("🗑️ Auto-destroying temporary VM...");
+            vm_println!("{}", MESSAGES.temp_vm_auto_destroying);
             provider.destroy(None)?;
             state_manager
                 .delete_state()
                 .with_context(|| "Failed to delete temporary VM state from disk. State file may be in use or filesystem is read-only")?;
         } else {
-            println!("💡 Use 'vm temp ssh' to connect");
-            println!("   Use 'vm temp destroy' when done");
+            vm_println!("{}", MESSAGES.temp_vm_usage_hint);
         }
 
         Ok(())
@@ -117,8 +123,8 @@ impl TempVmOps {
             .with_context(|| "Failed to initialize state manager for status check")?;
 
         if !state_manager.state_exists() {
-            vm_error!("No temp VM found");
-            println!("💡 Create one with: vm temp create ./your-directory");
+            vm_println!("{}", MESSAGES.temp_vm_no_vm_found);
+            vm_println!("{}", MESSAGES.temp_vm_create_hint);
             return Ok(());
         }
 
@@ -126,18 +132,39 @@ impl TempVmOps {
             "Failed to load temporary VM state from disk. State file may be corrupted"
         })?;
 
-        println!("📊 Temp VM Status:");
-        println!("   Container: {}", state.container_name);
-        println!("   Provider: {}", state.provider);
-        println!(
+        vm_println!("{}", MESSAGES.temp_vm_status);
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.temp_vm_container_info,
+                name = &state.container_name
+            )
+        );
+        vm_println!(
+            "{}",
+            msg!(MESSAGES.temp_vm_provider_info, provider = &state.provider)
+        );
+        vm_println!(
             "   Created: {}",
             state.created_at.format("%Y-%m-%d %H:%M:%S UTC")
         );
-        println!("   Project: {}", state.project_dir.display());
-        println!("   Mounts: {}", state.mount_count());
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.temp_vm_project_info,
+                path = state.project_dir.display().to_string()
+            )
+        );
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.temp_vm_mounts_info,
+                count = state.mount_count().to_string()
+            )
+        );
 
         if state.is_auto_destroy() {
-            println!("   Auto-destroy: enabled");
+            vm_println!("{}", MESSAGES.temp_vm_auto_destroy_enabled);
         }
 
         // Check provider status
@@ -157,15 +184,15 @@ impl TempVmOps {
             ));
         }
 
-        println!("🗑️ Destroying temporary VM...");
+        vm_println!("{}", MESSAGES.temp_vm_destroying);
         provider.destroy(None)?;
 
         state_manager
             .delete_state()
             .with_context(|| "Failed to delete temporary VM state from disk. State file may be in use or filesystem is read-only")?;
 
-        println!("\n✅ Temporary VM destroyed");
-        println!("\n💡 Create a new one: vm temp create <directory>");
+        vm_println!("{}", MESSAGES.temp_vm_destroyed);
+        vm_println!("{}", MESSAGES.temp_vm_create_hint);
         Ok(())
     }
 
@@ -229,7 +256,7 @@ impl TempVmOps {
             .save_state(&state)
             .context("Failed to save updated temp VM state")?;
 
-        println!(
+        vm_println!(
             "🔗 Mount added: {} ({})",
             source.display(),
             permissions_display
@@ -237,17 +264,32 @@ impl TempVmOps {
 
         // Apply mount changes using TempProvider
         if let Some(temp_provider) = provider.as_temp_provider() {
-            println!("🔄 Updating container with new mount...");
+            vm_println!("{}", MESSAGES.temp_vm_updating_container);
             temp_provider
                 .update_mounts(&state)
                 .context("Failed to update container mounts")?;
-            println!("\n✅ Mount successfully applied");
-            println!("  Source: {}", source.display());
+            vm_println!("{}", MESSAGES.temp_vm_mount_applied);
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.temp_vm_mount_source,
+                    source = source.display().to_string()
+                )
+            );
             if let Some(target_path) = &target_clone {
-                println!("  Target: {}", target_path.display());
+                vm_println!(
+                    "{}",
+                    msg!(
+                        MESSAGES.temp_vm_mount_target,
+                        target = target_path.display().to_string()
+                    )
+                );
             }
-            println!("  Access: {}\n", permissions_display);
-            println!("💡 View all mounts: vm temp mounts");
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.temp_vm_mount_access, access = permissions_display)
+            );
+            vm_println!("{}", MESSAGES.temp_vm_view_mounts_hint);
         } else {
             return Err(anyhow::anyhow!("Provider does not support mount updates"));
         }
@@ -294,16 +336,28 @@ impl TempVmOps {
                 .save_state(&state)
                 .context("Failed to save updated temp VM state")?;
 
-            println!("🗑️ Removed all {} mount(s)", mount_count);
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.temp_vm_mounts_removed,
+                    count = mount_count.to_string()
+                )
+            );
 
             // Apply mount changes using TempProvider
             if let Some(temp_provider) = provider.as_temp_provider() {
-                println!("🔄 Updating container with removed mounts...");
+                vm_println!("{}", MESSAGES.temp_vm_updating_container);
                 temp_provider
                     .update_mounts(&state)
                     .context("Failed to update container mounts")?;
-                println!("\n✅ All mounts removed ({})", mount_count);
-                println!("\n💡 Add new mounts: vm temp mount <source>:<target>");
+                vm_println!(
+                    "{}",
+                    msg!(
+                        MESSAGES.temp_vm_all_mounts_removed,
+                        count = mount_count.to_string()
+                    )
+                );
+                vm_println!("{}", MESSAGES.temp_vm_add_mounts_hint);
             }
         } else if let Some(path_str) = path {
             let source_path = PathBuf::from(path_str);
@@ -343,19 +397,19 @@ impl TempVmOps {
 
             // Apply mount changes using TempProvider
             if let Some(temp_provider) = provider.as_temp_provider() {
-                println!("🔄 Updating container with removed mount...");
+                vm_println!("{}", MESSAGES.temp_vm_updating_container);
                 temp_provider
                     .update_mounts(&state)
                     .context("Failed to update container mounts")?;
-                println!("\n✅ Mount removed");
-                println!("  Path: {}\n", source_path.display());
-                println!("💡 View remaining mounts: vm temp mounts");
+                vm_println!("{}", MESSAGES.temp_vm_mount_removed);
+                vm_println!("  Path: {}", source_path.display());
+                vm_println!("{}", MESSAGES.temp_vm_view_remaining_hint);
             }
         } else {
-            println!("❌ Must specify what to unmount\n");
-            println!("💡 Options:");
-            println!("  • Unmount specific: vm temp unmount --path <path>");
-            println!("  • Unmount all: vm temp unmount --all");
+            vm_println!("{}", MESSAGES.temp_vm_unmount_required);
+            vm_println!("{}", MESSAGES.temp_vm_unmount_options);
+            vm_println!("{}", MESSAGES.temp_vm_unmount_specific);
+            vm_println!("{}", MESSAGES.temp_vm_unmount_all);
             return Err(anyhow::anyhow!("Must specify --path or --all"));
         }
 
@@ -368,8 +422,8 @@ impl TempVmOps {
             .with_context(|| "Failed to initialize state manager for SSH connection")?;
 
         if !state_manager.state_exists() {
-            println!("🔍 No temp VM found\n");
-            println!("💡 Create one with: vm temp create <directory>");
+            vm_println!("{}", MESSAGES.temp_vm_no_vm_found);
+            vm_println!("{}", MESSAGES.temp_vm_create_hint);
             return Ok(());
         }
 
@@ -378,12 +432,18 @@ impl TempVmOps {
             .context("Failed to load temp VM state")?;
 
         if state.mount_count() == 0 {
-            println!("📁 No mounts configured\n");
-            println!("💡 Add a mount: vm temp mount <source>:<target>");
+            vm_println!("{}", MESSAGES.temp_vm_no_mounts);
+            vm_println!("{}", MESSAGES.temp_vm_add_mount_hint);
             return Ok(());
         }
 
-        println!("📁 Current mounts ({})", state.mount_count());
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.temp_vm_current_mounts,
+                count = state.mount_count().to_string()
+            )
+        );
         for mount in state.get_mounts() {
             println!(
                 "   {} → {} ({})",
@@ -396,7 +456,14 @@ impl TempVmOps {
         // Show mount summary by permission
         let ro_count = state.mount_count_by_permission(MountPermission::ReadOnly);
         let rw_count = state.mount_count_by_permission(MountPermission::ReadWrite);
-        println!("   {} read-only, {} read-write", ro_count, rw_count);
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.temp_vm_mount_summary,
+                ro_count = ro_count.to_string(),
+                rw_count = rw_count.to_string()
+            )
+        );
 
         Ok(())
     }
@@ -412,17 +479,36 @@ impl TempVmOps {
                 .load_state()
                 .context("Failed to load temp VM state")?;
 
-            println!("📋 Temp VMs:");
-            println!("   {} ({})", state.container_name, state.provider);
+            vm_println!("{}", MESSAGES.temp_vm_list_header);
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.temp_vm_list_item,
+                    name = &state.container_name,
+                    provider = &state.provider
+                )
+            );
             println!(
                 "      Created: {}",
                 state.created_at.format("%Y-%m-%d %H:%M:%S")
             );
-            println!("      Project: {}", state.project_dir.display());
-            println!("      Mounts: {}", state.mount_count());
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.temp_vm_list_project,
+                    path = state.project_dir.display().to_string()
+                )
+            );
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.temp_vm_list_mounts,
+                    count = state.mount_count().to_string()
+                )
+            );
         } else {
-            println!("📋 No temp VMs found\n");
-            println!("💡 Create one: vm temp create <directory>");
+            vm_println!("{}", MESSAGES.temp_vm_list_empty);
+            vm_println!("{}", MESSAGES.temp_vm_list_create_hint);
         }
 
         Ok(())
@@ -439,17 +525,17 @@ impl TempVmOps {
             ));
         }
 
-        println!("🛑 Stopping temporary VM...");
+        vm_println!("{}", MESSAGES.temp_vm_stopping);
 
         match provider.stop(None) {
             Ok(()) => {
-                println!("\n✅ Temporary VM stopped");
-                println!("\n💡 Restart with: vm temp start");
+                vm_println!("{}", MESSAGES.temp_vm_stopped_success);
+                vm_println!("{}", MESSAGES.temp_vm_restart_hint);
                 Ok(())
             }
             Err(e) => {
-                println!("\n❌ Failed to stop temporary VM");
-                println!("   Error: {}", e);
+                vm_println!("{}", MESSAGES.temp_vm_failed_to_stop);
+                vm_println!("   Error: {}", e);
                 Err(e)
             }
         }
@@ -470,24 +556,30 @@ impl TempVmOps {
             .load_state()
             .context("Failed to load temp VM state")?;
 
-        println!("🚀 Starting temporary VM...");
+        vm_println!("{}", MESSAGES.temp_vm_starting);
 
         match provider.start(None) {
             Ok(()) => {
-                println!("\n✅ Temporary VM started");
+                vm_println!("{}", MESSAGES.temp_vm_started_success);
 
                 // Show mount info if any
                 if state.mount_count() > 0 {
-                    println!("  Mounts:     {} configured", state.mount_count());
+                    vm_println!(
+                        "{}",
+                        msg!(
+                            MESSAGES.temp_vm_mounts_configured,
+                            count = state.mount_count().to_string()
+                        )
+                    );
                 }
 
-                println!("\n💡 Connect with: vm temp ssh");
+                vm_println!("{}", MESSAGES.temp_vm_connect_hint);
                 Ok(())
             }
             Err(e) => {
-                println!("\n❌ Failed to start temporary VM");
-                println!("   Error: {}", e);
-                println!("\n💡 Try: vm temp destroy && vm temp create <directory>");
+                vm_println!("{}", MESSAGES.temp_vm_failed_to_start);
+                vm_println!("   {}", msg!(MESSAGES.error_generic, error = e.to_string()));
+                vm_println!("\n💡 Try: vm temp destroy && vm temp create <directory>");
                 Err(e)
             }
         }
@@ -508,25 +600,31 @@ impl TempVmOps {
             .load_state()
             .context("Failed to load temp VM state")?;
 
-        println!("🔄 Restarting temporary VM...");
-        println!("  ✓ Stopping container");
-        println!("  ✓ Starting container");
+        vm_println!("{}", MESSAGES.temp_vm_restarting);
+        vm_println!("{}", MESSAGES.temp_vm_stopping_step);
+        vm_println!("{}", MESSAGES.temp_vm_starting_step);
 
         match provider.restart(None) {
             Ok(()) => {
-                println!("  ✓ Services ready\n");
-                println!("✅ Temporary VM restarted");
+                vm_println!("{}", MESSAGES.temp_vm_services_ready);
+                vm_println!("{}", MESSAGES.temp_vm_restarted_success);
 
                 if state.mount_count() > 0 {
-                    println!("  Mounts:     {} active", state.mount_count());
+                    vm_println!(
+                        "{}",
+                        msg!(
+                            MESSAGES.temp_vm_mounts_active,
+                            count = state.mount_count().to_string()
+                        )
+                    );
                 }
 
-                println!("\n💡 Connect with: vm temp ssh");
+                vm_println!("{}", MESSAGES.temp_vm_connect_hint);
                 Ok(())
             }
             Err(e) => {
-                println!("\n❌ Failed to restart temporary VM");
-                println!("   Error: {}", e);
+                vm_println!("{}", MESSAGES.temp_vm_failed_to_restart);
+                vm_println!("   Error: {}", e);
                 Err(e)
             }
         }

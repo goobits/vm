@@ -5,6 +5,10 @@
 //! resolution and information handling.
 
 use anyhow::Result;
+use vm_common::{
+    messages::{messages::MESSAGES, msg},
+    vm_error,
+};
 
 /// Information about a VM instance
 #[derive(Debug, Clone)]
@@ -90,12 +94,11 @@ pub fn fuzzy_match_instances(partial: &str, instances: &[InstanceInfo]) -> Resul
                 }
             }
             // Otherwise return first match but warn about ambiguity
-            eprintln!(
-                "Warning: Multiple instances match '{}': {}",
-                partial,
-                matches.join(", ")
-            );
-            eprintln!("Using: {}", matches[0]);
+            vm_error!("{}", MESSAGES.vm_ambiguous);
+            for name in &matches {
+                vm_error!("  • {}", name);
+            }
+            vm_error!("{}", msg!(MESSAGES.vm_using, name = &matches[0]));
             Ok(matches[0].clone())
         }
     }

@@ -1,6 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use vm_common::{vm_error, vm_println, vm_success};
+use vm_messages::messages::MESSAGES;
 
 mod cli;
 mod dependencies;
@@ -21,7 +22,7 @@ fn main() {
 fn run() -> Result<()> {
     let args = Args::parse();
 
-    vm_println!("Installing VM Infrastructure...");
+    vm_println!("{}", MESSAGES.installer_installing);
 
     // 1. Check dependencies (like cargo)
     dependencies::check()?;
@@ -30,7 +31,7 @@ fn run() -> Result<()> {
     install(args.clean)?;
 
     vm_success!("Installation complete!");
-    vm_println!("The 'vm' command is now available in new terminal sessions.");
-    vm_println!("For more information, run: vm --help");
+    vm_println!("{}", MESSAGES.installer_complete);
+    vm_println!("{}", MESSAGES.installer_help_hint);
     Ok(())
 }

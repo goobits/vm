@@ -6,7 +6,8 @@ use std::process::{Command, Stdio};
 
 // External crates
 use anyhow::{Context, Result};
-use vm_common::{errors, vm_error, vm_success};
+use vm_common::{errors, vm_error, vm_println, vm_success};
+use vm_messages::{messages::MESSAGES, msg};
 
 // Internal imports
 use crate::link_detector::LinkDetector;
@@ -93,15 +94,16 @@ impl PackageInstaller {
         // Check for linked package first (unless forcing registry install)
         if !force_registry {
             if let Some(linked_path) = self.detector.get_linked_path(package, manager) {
-                println!("🔗 Found linked local package: {}", package);
+                vm_println!("{}", msg!(MESSAGES.pkg_linked_package, name = package));
                 return self.install_linked(package, manager, &linked_path);
             }
         }
 
         // Install from registry
-        println!(
+        vm_println!(
             "📦 Installing {} package from registry: {}",
-            manager, package
+            manager,
+            package
         );
         self.install_from_registry(package, manager)
     }
@@ -129,7 +131,13 @@ impl PackageInstaller {
     // === Cargo Implementation ===
 
     fn install_cargo_linked(&self, package: &str, path: &Path) -> Result<()> {
-        println!("  -> Installing local cargo package from: {:?}", path);
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.pkg_installing_local_cargo,
+                path = path.display().to_string()
+            )
+        );
 
         let mut cmd = Command::new("cargo");
         cmd.arg("install").arg("--path").arg(path);
@@ -170,7 +178,10 @@ impl PackageInstaller {
     // === NPM Implementation ===
 
     fn install_npm_linked(&self, package: &str, path: &Path) -> Result<()> {
-        println!("  -> Linking local npm package from: {:?}", path);
+        vm_println!(
+            "{}",
+            msg!(MESSAGES.pkg_linking_npm, path = path.display().to_string())
+        );
 
         // Change to package directory first
         let mut cmd = Command::new("npm");
@@ -224,18 +235,18 @@ impl PackageInstaller {
     fn install_pip_linked(&self, package: &str, path: &Path) -> Result<()> {
         // Check if it's a pipx environment
         if LinkDetector::is_pipx_environment(path) {
-            println!("  -> Detected as a pipx environment");
+            vm_println!("{}", MESSAGES.pkg_pipx_detected);
             return self.create_pipx_wrappers(package, path);
         }
 
         // Check if it's a Python project
         if LinkDetector::is_python_project(path) {
-            println!("  -> Detected as a Python project, installing in editable mode");
+            vm_println!("{}", MESSAGES.pkg_python_editable);
             return Self::install_pip_editable(package, path);
         }
 
         // Fallback to editable install
-        println!("  -> Installing as editable Python package");
+        vm_println!("{}", MESSAGES.pkg_installing_editable);
         Self::install_pip_editable(package, path)
     }
 
@@ -248,14 +259,14 @@ impl PackageInstaller {
             }
             Ok(false) => {
                 // Pipx indicated it's a library, not a CLI tool
-                println!(
+                vm_println!(
                     "📚 {} appears to be a library, installing with pip...",
                     package
                 );
             }
             Err(_) => {
                 // Pipx not available or other error, try pip
-                println!("  -> Pipx not available, using pip");
+                vm_println!("{}", MESSAGES.pkg_pipx_not_available);
             }
         }
 
@@ -324,14 +335,20 @@ impl PackageInstaller {
     fn create_pipx_wrappers(&self, package: &str, path: &Path) -> Result<()> {
         let bin_dir = path.join("bin");
         if !bin_dir.exists() {
-            println!("  -> No bin directory found in pipx environment");
+            vm_println!("{}", MESSAGES.pkg_no_bin_directory);
             return Ok(());
         }
 
         let local_bin = self.local_bin_path();
         fs::create_dir_all(&local_bin)?;
 
-        println!("  -> Creating wrapper scripts in {:?}", local_bin);
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.pkg_creating_wrappers,
+                path = local_bin.display().to_string()
+            )
+        );
 
         for entry in fs::read_dir(&bin_dir)? {
             let entry = entry?;
@@ -351,12 +368,12 @@ impl PackageInstaller {
                 let wrapper_path = local_bin.join(script_name);
                 Self::create_wrapper_script(&wrapper_path, &script_path, path)?;
 
-                println!("    - Created wrapper: {}", script_name);
+                vm_println!("{}", msg!(MESSAGES.pkg_wrapper_created, name = script_name));
             }
         }
 
         vm_success!("Wrapper scripts created for pipx package: {}", package);
-        println!("  -> Please restart your shell to use them");
+        vm_println!("{}", MESSAGES.pkg_restart_shell);
         Ok(())
     }
 
@@ -435,19 +452,19 @@ exec python3 "$SCRIPT_PATH" "$@"
         let linked = self.detector.list_linked(manager);
 
         if linked.is_empty() {
-            println!("No linked packages found");
+            vm_println!("{}", MESSAGES.pkg_no_linked_packages);
             return;
         }
 
-        println!("🔗 Linked packages:");
+        vm_println!("{}", MESSAGES.pkg_linked_packages_header);
         let mut current_manager = None;
 
         for (mgr, package) in linked {
             if current_manager != Some(mgr) {
-                println!("\n  {}:", mgr);
+                vm_println!("\n  {}:", mgr);
                 current_manager = Some(mgr);
             }
-            println!("    - {}", package);
+            vm_println!("    - {}", package);
         }
     }
 }

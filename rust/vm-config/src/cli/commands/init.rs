@@ -9,7 +9,8 @@ use serde_yaml::Value;
 use serde_yaml_ng as serde_yaml;
 
 // Internal crate imports
-use vm_common::{vm_error, vm_warning};
+use vm_common::{vm_error, vm_println, vm_warning};
+use vm_messages::messages::MESSAGES;
 
 // Local module imports
 use crate::config::VmConfig;
@@ -64,15 +65,15 @@ pub fn execute(
 
     // Check if vm.yaml already exists
     if target_path.exists() {
-        println!("🚀 VM Development Environment");
-        println!();
-        println!("⚠️  Configuration already exists");
-        println!("   📁 {}", target_path.display());
-        println!();
-        println!("💡 Options:");
-        println!("   rm vm.yaml && vm init           # Start fresh");
-        println!("   vm init --file other.yaml      # Create elsewhere");
-        println!("   vm create                       # Use existing config");
+        vm_println!("{}", MESSAGES.init_welcome);
+        vm_println!();
+        vm_println!("{}", MESSAGES.init_already_exists);
+        vm_println!("   📁 {}", target_path.display());
+        vm_println!();
+        vm_println!("{}", MESSAGES.init_options_hint);
+        vm_println!("   rm vm.yaml && vm init           # Start fresh");
+        vm_println!("   vm init --file other.yaml      # Create elsewhere");
+        vm_println!("   vm create                       # Use existing config");
         std::process::exit(1);
     }
 
@@ -92,12 +93,12 @@ pub fn execute(
 
     // If the sanitized name is different, inform the user
     if sanitized_name != dir_name {
-        println!(
+        vm_println!(
             "📝 Note: Directory name '{}' contains invalid characters for project names.",
             dir_name
         );
-        println!("   Using sanitized name: '{}'", sanitized_name);
-        println!();
+        vm_println!("   Using sanitized name: '{}'", sanitized_name);
+        vm_println!();
     }
 
     // Load embedded defaults
@@ -202,20 +203,21 @@ pub fn execute(
     };
 
     // Clean success output
-    println!("🚀 VM Development Environment");
-    println!();
-    println!("✓ Initializing project: {}", sanitized_name);
-    println!("✓ Port range allocated: {}", port_display);
+    vm_println!("{}", MESSAGES.init_welcome);
+    vm_println!();
+    vm_println!("✓ Initializing project: {}", sanitized_name);
+    vm_println!("✓ Port range allocated: {}", port_display);
     if let Some(ref services_str) = services {
-        println!("✓ Services configured: {}", services_str);
+        vm_println!("✓ Services configured: {}", services_str);
     }
-    println!("✓ Configuration created: vm.yaml");
-    println!();
-    println!("🎉 Ready to go! Next steps:");
-    println!("   vm create    # Launch your development environment");
-    println!("   vm --help    # View all available commands");
-    println!();
-    println!("📁 {}", target_path.display());
+    vm_println!("✓ Configuration created: vm.yaml");
+    vm_println!();
+    vm_println!("{}", MESSAGES.init_success);
+    vm_println!("{}", MESSAGES.init_next_steps);
+    vm_println!("   vm create    # Launch your development environment");
+    vm_println!("   vm --help    # View all available commands");
+    vm_println!();
+    vm_println!("📁 {}", target_path.display());
 
     Ok(())
 }

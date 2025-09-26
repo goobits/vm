@@ -14,6 +14,7 @@ log = { workspace = true }
 serde_json = { workspace = true }
 which = { workspace = true }
 vm-common = { path = "../vm-common" }
+vm-messages = { path = "../vm-messages" }
 vm-platform = { path = "../vm-platform" }
 
 [dev-dependencies]

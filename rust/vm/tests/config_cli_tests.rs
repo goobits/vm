@@ -260,7 +260,7 @@ npm_packages:
         assert!(output.status.success());
 
         let stdout = String::from_utf8(output.stdout)?;
-        assert!(stdout.contains("✅ Applied preset(s) test-preset to local configuration"));
+        assert!(stdout.contains("✅ Applied preset 'test-preset' to local"));
 
         // Verify the preset was applied
         assert!(fixture.file_exists("vm.yaml"));
@@ -315,7 +315,7 @@ ports:
         assert!(output.status.success());
 
         let stdout = String::from_utf8(output.stdout)?;
-        assert!(stdout.contains("✅ Applied preset(s) preset1,preset2 to local configuration"));
+        assert!(stdout.contains("✅ Applied preset 'preset1,preset2' to local"));
 
         // Verify both presets were merged correctly
         let config_content = fixture.read_file("vm.yaml")?;
@@ -362,7 +362,7 @@ services:
         assert!(output.status.success());
 
         let stdout = String::from_utf8(output.stdout)?;
-        assert!(stdout.contains("✅ Applied preset(s) global-preset to global configuration"));
+        assert!(stdout.contains("✅ Applied preset 'global-preset' to global"));
 
         // Verify global config was created
         assert!(fixture.global_config_path().exists());

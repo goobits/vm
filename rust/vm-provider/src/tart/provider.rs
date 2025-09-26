@@ -7,7 +7,10 @@ use crate::{
 use anyhow::Result;
 use std::path::Path;
 use vm_common::command_stream::{is_tool_installed, stream_command};
-use vm_common::{vm_error, vm_println};
+use vm_common::{
+    messages::{messages::MESSAGES, msg},
+    vm_error, vm_println,
+};
 use vm_config::config::VmConfig;
 
 use super::instance::TartInstanceManager;
@@ -67,8 +70,11 @@ impl Provider for TartProvider {
             let list_str = String::from_utf8_lossy(&output.stdout);
             if list_str.contains(&self.vm_name()) {
                 ProgressReporter::task(&main_phase, "VM already exists.");
-                println!("⚠️  Tart VM '{}' already exists.", self.vm_name());
-                println!("To recreate, first run: vm destroy");
+                vm_println!(
+                    "{}",
+                    msg!(MESSAGES.provider_tart_vm_exists, name = self.vm_name())
+                );
+                vm_println!("{}", MESSAGES.provider_tart_recreate_hint);
                 ProgressReporter::finish_phase(&main_phase, "Skipped creation.");
                 return Ok(());
             }
@@ -159,8 +165,8 @@ impl Provider for TartProvider {
         ProgressReporter::task(&main_phase, "VM started successfully.");
         ProgressReporter::finish_phase(&main_phase, "Environment ready.");
 
-        println!("\n✅ Tart VM created successfully!");
-        println!("💡 Use 'vm ssh' to connect to the VM");
+        vm_println!("{}", MESSAGES.provider_tart_created_success);
+        vm_println!("{}", MESSAGES.provider_tart_connect_hint);
         Ok(())
     }
 
@@ -180,11 +186,20 @@ impl Provider for TartProvider {
             let list_str = String::from_utf8_lossy(&output.stdout);
             if list_str.contains(&vm_name_with_suffix) {
                 ProgressReporter::task(&main_phase, "VM instance already exists.");
-                println!(
-                    "⚠️  Tart VM instance '{}' already exists.",
-                    vm_name_with_suffix
+                vm_println!(
+                    "{}",
+                    msg!(
+                        MESSAGES.provider_tart_vm_exists,
+                        name = &vm_name_with_suffix
+                    )
                 );
-                println!("To recreate, first run: vm destroy {}", vm_name_with_suffix);
+                vm_println!(
+                    "{}",
+                    msg!(
+                        MESSAGES.provider_tart_vm_recreate_hint,
+                        name = &vm_name_with_suffix
+                    )
+                );
                 ProgressReporter::finish_phase(&main_phase, "Skipped creation.");
                 return Ok(());
             }
@@ -263,11 +278,15 @@ impl Provider for TartProvider {
         ProgressReporter::task(&main_phase, "VM instance started successfully.");
         ProgressReporter::finish_phase(&main_phase, "Environment ready.");
 
-        println!(
-            "\n✅ Tart VM instance '{}' created successfully!",
-            instance_name
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.provider_tart_vm_created,
+                name = instance_name,
+                image = image
+            )
         );
-        println!(
+        vm_println!(
             "💡 Use 'vm ssh {}' to connect to the VM instance",
             vm_name_with_suffix
         );
@@ -313,13 +332,16 @@ impl Provider for TartProvider {
         if !Path::new(&log_path).exists() {
             let error_msg = format!("Log file not found at: {}", log_path);
             vm_error!("{}", error_msg);
-            vm_println!("The VM might not be running or logs may not be available yet.");
-            vm_println!("Expected location: ~/.tart/vms/{}/app.log", vm_name);
+            vm_println!("{}", MESSAGES.provider_logs_unavailable);
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.provider_logs_expected_location, name = vm_name)
+            );
             return Err(anyhow::anyhow!(error_msg));
         }
 
-        vm_println!("Showing Tart VM logs from: {}", log_path);
-        println!("Press Ctrl+C to stop...\n");
+        vm_println!("{}", msg!(MESSAGES.provider_logs_showing, path = &log_path));
+        vm_println!("{}", MESSAGES.press_ctrl_c_to_stop);
 
         // Use tail -f to follow the log file
         stream_command("tail", &["-f", &log_path])
@@ -343,7 +365,7 @@ impl Provider for TartProvider {
                         return Ok(());
                     }
                 }
-                println!("VM '{}' not found", vm_name);
+                vm_println!("{}", msg!(MESSAGES.provider_vm_not_found, name = vm_name));
                 Ok(())
             }
             None => {
@@ -361,8 +383,8 @@ impl Provider for TartProvider {
 
     fn provision(&self, _container: Option<&str>) -> Result<()> {
         // Provisioning not supported for Tart
-        println!("Provisioning not supported for Tart VMs");
-        println!("Tart VMs use pre-built images and don't support dynamic provisioning");
+        vm_println!("{}", MESSAGES.provider_provisioning_unsupported);
+        vm_println!("{}", MESSAGES.provider_provisioning_explanation);
         Ok(())
     }
 

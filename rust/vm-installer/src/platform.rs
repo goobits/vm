@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 // External crates
 use anyhow::{Context, Result};
 use vm_common::vm_println;
+use vm_messages::{messages::MESSAGES, msg};
 
 // Internal imports
 use crate::prompt::confirm_prompt;
@@ -16,15 +17,27 @@ pub fn ensure_path(bin_dir: &Path) -> Result<()> {
     let is_in_path = env::split_paths(&path_var).any(|p| p == bin_dir);
 
     if is_in_path {
-        println!("✅ {} is already in your PATH.", bin_dir.display());
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.installer_path_already_configured,
+                path = bin_dir.display().to_string()
+            )
+        );
         return Ok(());
     }
 
-    println!("⚠️ {} is not in your PATH", bin_dir.display());
+    vm_println!(
+        "{}",
+        msg!(
+            MESSAGES.installer_path_not_configured,
+            path = bin_dir.display().to_string()
+        )
+    );
 
     let shell_profile = get_shell_profile()?;
     let Some(profile_path) = shell_profile else {
-        println!(
+        vm_println!(
             "Could not detect shell profile. Please add {} to your PATH manually.",
             bin_dir.display()
         );
@@ -38,15 +51,13 @@ pub fn ensure_path(bin_dir: &Path) -> Result<()> {
 
     if confirm_prompt(&prompt)? {
         add_to_profile(&profile_path, bin_dir)?;
-        println!(
+        vm_println!(
             "✅ Added PATH to {}. Please restart your shell.",
             profile_path.display()
         );
     } else {
-        vm_println!(
-            "Please add the following to your shell profile:\n  export PATH=\"{}:$PATH\"",
-            bin_dir.display()
-        );
+        vm_println!("{}", msg!(MESSAGES.installer_manual_path_hint));
+        vm_println!("  export PATH=\"{}:$PATH\"", bin_dir.display());
     }
 
     Ok(())

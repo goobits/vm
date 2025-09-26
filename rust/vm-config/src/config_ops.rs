@@ -24,7 +24,8 @@ use crate::ports::PortRange;
 use crate::preset::{PresetDetector, PresetFile};
 use crate::yaml::core::CoreOperations;
 use vm_common::user_paths;
-use vm_common::{vm_error, vm_error_hint, vm_warning};
+use vm_common::{vm_error, vm_error_hint, vm_println, vm_warning};
+use vm_messages::{messages::MESSAGES, msg};
 
 static PORT_PLACEHOLDER_RE: OnceLock<Regex> = OnceLock::new();
 
@@ -145,17 +146,25 @@ impl ConfigOps {
         set_nested_field(&mut yaml_value, field, parsed_value)?;
 
         if dry_run {
-            println!(
+            vm_println!(
                 "🔍 DRY RUN - Would set {} = {} in {}",
                 field,
                 value,
                 config_path.display()
             );
-            println!("   (no changes were made to the file)");
+            vm_println!("{}", MESSAGES.config_no_changes);
         } else {
             CoreOperations::write_yaml_file(&config_path, &yaml_value)?;
-            println!("✅ Set {} = {} in {}", field, value, config_path.display());
-            println!("\n💡 Apply changes: vm restart");
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.config_set_success,
+                    field = field,
+                    value = value,
+                    path = config_path.display().to_string()
+                )
+            );
+            vm_println!("{}", MESSAGES.config_apply_changes_hint);
         }
         Ok(())
     }
@@ -230,15 +239,15 @@ impl ConfigOps {
                 // Get specific field
                 let value = get_nested_field(&yaml_value, f)?;
                 match value {
-                    Value::String(s) => println!("{}", s),
-                    _ => println!("{}", serde_yaml::to_string(value)?),
+                    Value::String(s) => vm_println!("{}", s),
+                    _ => vm_println!("{}", serde_yaml::to_string(value)?),
                 }
             }
             None => {
                 // Show all configuration with nice formatting
-                println!("📋 Current configuration\n");
-                println!("{}", serde_yaml::to_string(&yaml_value)?);
-                println!("💡 Modify with: vm config set <field> <value>");
+                vm_println!("{}", MESSAGES.config_current_configuration);
+                vm_println!("{}", serde_yaml::to_string(&yaml_value)?);
+                vm_println!("{}", MESSAGES.config_modify_hint);
             }
         }
 
@@ -268,7 +277,14 @@ impl ConfigOps {
 
         CoreOperations::write_yaml_file(&config_path, &yaml_value)?;
 
-        println!("✅ Unset {} in {}", field, config_path.display());
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.config_unset_success,
+                field = field,
+                path = config_path.display().to_string()
+            )
+        );
         Ok(())
     }
 
@@ -281,7 +297,7 @@ impl ConfigOps {
         // Handle list command
         if list {
             let presets = detector.list_presets()?;
-            println!("📦 Available presets:\n");
+            vm_println!("{}", MESSAGES.config_available_presets);
             for preset in presets {
                 // Try to add descriptions for common presets
                 let description = match preset.as_str() {
@@ -295,9 +311,12 @@ impl ConfigOps {
                     "rails" => " - Ruby on Rails development",
                     _ => "",
                 };
-                println!("  • {}{}", preset, description);
+                vm_println!("  • {}{}", preset, description);
             }
-            println!("\n💡 Apply preset: vm config preset <name>");
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.config_apply_preset_hint, name = "<name>")
+            );
             return Ok(());
         }
 
@@ -305,9 +324,9 @@ impl ConfigOps {
         if let Some(name) = show {
             let preset_config = detector.load_preset(name)?;
             let yaml = serde_yaml::to_string(&preset_config)?;
-            println!("📋 Preset '{}' configuration:\n", name);
-            println!("{}", yaml);
-            println!("💡 Apply this preset: vm config preset {}", name);
+            vm_println!("📋 Preset '{}' configuration:\n", name);
+            vm_println!("{}", yaml);
+            vm_println!("{}", msg!(MESSAGES.config_apply_preset_hint, name = name));
             return Ok(());
         }
 
@@ -355,21 +374,25 @@ impl ConfigOps {
         CoreOperations::write_yaml_file(&config_path, &config_value)?;
 
         let scope = if global { "global" } else { "local" };
-        println!(
-            "✅ Applied preset(s) {} to {} configuration",
-            preset_names, scope
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.config_preset_applied,
+                preset = preset_names,
+                path = scope
+            )
         );
 
         // Show what was applied for clarity
         let preset_list: Vec<&str> = preset_names.split(',').map(|s| s.trim()).collect();
         if preset_list.len() > 1 {
-            println!("\n  Applied presets:");
+            vm_println!("{}", MESSAGES.config_applied_presets);
             for preset in preset_list {
-                println!("    • {}", preset);
+                vm_println!("    • {}", preset);
             }
         }
 
-        println!("\n💡 Restart VM to apply changes: vm restart");
+        vm_println!("{}", MESSAGES.config_restart_hint);
         Ok(())
     }
 }

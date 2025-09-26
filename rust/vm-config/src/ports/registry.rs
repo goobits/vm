@@ -16,6 +16,7 @@ use anyhow::{Context, Result};
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use vm_common::{user_paths, vm_println};
+use vm_messages::{messages::MESSAGES, msg};
 
 // Internal imports
 use super::range::PortRange;
@@ -152,9 +153,9 @@ impl PortRegistry {
     /// Lists all registered project port ranges to stdout.
     pub fn list(&self) {
         if self.entries.is_empty() {
-            vm_println!("No port ranges registered yet");
+            vm_println!("{}", MESSAGES.ports_no_ranges);
         } else {
-            vm_println!("Registered port ranges:");
+            vm_println!("{}", MESSAGES.ports_registered_ranges);
             vm_println!();
 
             // Sort entries by project name for consistent output
@@ -162,7 +163,15 @@ impl PortRegistry {
             sorted_entries.sort_by_key(|(name, _)| *name);
 
             for (project_name, entry) in sorted_entries {
-                vm_println!("  {}: {} → {}", project_name, entry.range, entry.path);
+                vm_println!(
+                    "{}",
+                    msg!(
+                        MESSAGES.ports_range_entry,
+                        project = project_name,
+                        range = &entry.range,
+                        path = &entry.path
+                    )
+                );
             }
         }
     }
