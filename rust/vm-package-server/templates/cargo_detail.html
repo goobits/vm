@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ package_name }} - Cargo Crate</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>{{ package_name }}</h1>
+            <nav class="breadcrumb">
+                <a href="/">Home</a> / <a href="/ui/cargo">Cargo</a> / {{ package_name }}
+            </nav>
+        </header>
+
+        <section class="package-info">
+            <div class="package-header">
+                <span class="package-type package-type-cargo">Cargo</span>
+                <h2>Crate Details</h2>
+            </div>
+
+            <div class="install-command">
+                <h3>Configuration</h3>
+                <p>Add to your <code>Cargo.toml</code>:</p>
+                <code>[dependencies]<br>{{ package_name }} = "X.Y.Z"</code>
+                <p>Configure your registry in <code>~/.cargo/config.toml</code>:</p>
+                <code>[registries.goobits]<br>index = "{{ "{your-server-url}" }}/cargo/index"</code>
+            </div>
+
+            {% if versions.is_empty() %}
+                <p class="empty-message">No versions available for this crate.</p>
+            {% else %}
+                <div class="versions">
+                    <h3>Available Versions</h3>
+                    {% for version_info in versions %}
+                    <div class="version-block">
+                        <h4>Version {{ version_info.version }}</h4>
+                        <div class="file-list">
+                            <div class="file-item">
+                                <a href="/cargo/api/v1/crates/{{ package_name }}/{{ version_info.version }}/download" class="file-name">
+                                    {{ package_name }}-{{ version_info.version }}.crate
+                                </a>
+                                <div class="file-meta">
+                                    <span class="file-size">Size: {{ version_info.size_formatted }}</span>
+                                    <span class="hash">Checksum: <code>{{ version_info.checksum }}</code></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </section>
+
+        <footer>
+            <p>Crate: {{ package_name }} | Total versions: {{ versions.len() }}</p>
+        </footer>
+    </div>
+</body>
+</html>

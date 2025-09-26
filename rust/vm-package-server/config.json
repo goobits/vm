@@ -1,0 +1,40 @@
+{
+  "server": {
+    "default_host": "0.0.0.0",
+    "default_port": 3080,
+    "scheme": "http"
+  },
+  "storage": {
+    "default_data_dir": "./data",
+    "directories": {
+      "pypi": {
+        "packages": "pypi/packages"
+      },
+      "npm": {
+        "tarballs": "npm/tarballs",
+        "metadata": "npm/metadata"
+      },
+      "cargo": {
+        "crates": "cargo/crates",
+        "index": "cargo/index"
+      }
+    }
+  },
+  "external_urls": {
+    "pypi_fallback": "https://pypi.org"
+  },
+  "limits": {
+    "max_upload_size_mb": 100,
+    "max_request_body_size_mb": 150,
+    "rate_limit": {
+      "enabled": false,
+      "requests_per_minute": 60,
+      "burst_size": 100
+    }
+  },
+  "security": {
+    "require_authentication": false,
+    "api_keys": [],
+    "allowed_publishers": []
+  }
+}

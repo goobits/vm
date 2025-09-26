@@ -1,0 +1,54 @@
+# Git
+.git
+.gitignore
+
+# Rust build artifacts
+target/
+**/*.rs.bk
+*.pdb
+
+# Data and logs
+data/
+log/
+
+# Documentation
+docs/
+*.md
+
+# Development files
+vm.yaml
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+*.orig
+
+# Test files
+tests/
+
+# CI/CD
+.github/
+
+# Build artifacts from other tools
+build/
+dist/
+node_modules/
+__pycache__/
+*.py[cod]

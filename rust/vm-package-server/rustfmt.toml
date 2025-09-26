@@ -1,0 +1,24 @@
+# Rust formatting configuration
+# This file configures rustfmt to enforce consistent code style
+# Only includes stable rustfmt features compatible with stable Rust
+
+# Maximum line width (stable)
+max_width = 100
+
+# Hard tabs vs spaces (stable)
+hard_tabs = false
+tab_spaces = 4
+
+# Import formatting (stable)
+reorder_imports = true
+reorder_modules = true
+
+# Use small heuristics to improve formatting (stable)
+use_small_heuristics = "Default"
+
+# Edition (stable)
+edition = "2021"
+
+# Note: Additional formatting options are available with nightly Rust
+# For a complete list of unstable features, see:
+# https://rust-lang.github.io/rustfmt/?version=master&search=

@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Goobits</title>
+    <style>
+        /* ===== W3C DESIGN TOKENS ===== */
+        /* W3C Design Tokens Community Group Standard */
+        /* https://www.w3.org/community/design-tokens/ */
+
+        :root {
+            /* ===== COLOR SYSTEM (HSL for better manipulation) ===== */
+
+            /* Gray Scale (neutral colors) */
+            --color-gray-50: hsl(210, 40%, 98%);
+            --color-gray-100: hsl(210, 40%, 96%);
+            --color-gray-200: hsl(214, 32%, 91%);
+            --color-gray-300: hsl(213, 27%, 84%);
+            --color-gray-400: hsl(215, 20%, 65%);
+            --color-gray-500: hsl(215, 16%, 47%);
+            --color-gray-600: hsl(215, 19%, 35%);
+            --color-gray-700: hsl(215, 25%, 27%);
+            --color-gray-800: hsl(217, 33%, 17%);
+            --color-gray-900: hsl(222, 47%, 11%);
+
+            /* Primary Brand Colors (Purple/Blue gradient) */
+            --color-primary-50: hsl(250, 100%, 97%);
+            --color-primary-100: hsl(251, 91%, 95%);
+            --color-primary-200: hsl(251, 95%, 92%);
+            --color-primary-300: hsl(252, 95%, 85%);
+            --color-primary-400: hsl(255, 92%, 76%);
+            --color-primary-500: hsl(258, 90%, 66%); /* #667eea */
+            --color-primary-600: hsl(262, 83%, 58%);
+            --color-primary-700: hsl(263, 70%, 50%);
+            --color-primary-800: hsl(263, 69%, 42%);
+            --color-primary-900: hsl(264, 67%, 35%);
+
+            /* Accent Colors (Pink for gradient) */
+            --color-accent-50: hsl(330, 100%, 97%);
+            --color-accent-100: hsl(330, 93%, 94%);
+            --color-accent-200: hsl(330, 96%, 89%);
+            --color-accent-300: hsl(330, 94%, 82%);
+            --color-accent-400: hsl(330, 91%, 71%);
+            --color-accent-500: hsl(330, 81%, 60%); /* #ec4899 */
+            --color-accent-600: hsl(330, 72%, 51%);
+            --color-accent-700: hsl(330, 74%, 42%);
+            --color-accent-800: hsl(330, 70%, 35%);
+            --color-accent-900: hsl(330, 63%, 31%);
+
+            /* Success Colors */
+            --color-success-50: hsl(138, 76%, 97%);
+            --color-success-100: hsl(141, 84%, 93%);
+            --color-success-200: hsl(141, 79%, 85%);
+            --color-success-300: hsl(142, 77%, 73%);
+            --color-success-400: hsl(142, 69%, 58%);
+            --color-success-500: hsl(142, 71%, 45%);
+            --color-success-600: hsl(142, 76%, 36%);
+            --color-success-700: hsl(142, 72%, 29%);
+            --color-success-800: hsl(143, 64%, 24%);
+            --color-success-900: hsl(144, 61%, 20%);
+
+            /* ===== SEMANTIC COLORS ===== */
+            --color-background: var(--color-gray-50);
+            --color-surface: hsl(0, 0%, 100%);
+            --color-surface-variant: var(--color-gray-100);
+            --color-text-primary: hsl(220, 13%, 13%);
+            --color-text-secondary: hsl(220, 9%, 46%);
+            --color-text-tertiary: var(--color-gray-500);
+            --color-border: hsl(220, 13%, 91%);
+            --color-border-subtle: var(--color-gray-100);
+            --color-white: hsl(0, 0%, 100%);
+
+            /* Gradient definitions */
+            --gradient-primary: linear-gradient(135deg, var(--color-primary-500) 0%, var(--color-accent-500) 100%);
+            --gradient-glow: linear-gradient(135deg, var(--color-primary-500) 0%, var(--color-accent-500) 50%, var(--color-primary-500) 100%);
+            --gradient-success: linear-gradient(135deg, #00bf88, #00d68f);
+            --gradient-mesh: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(236, 72, 153, 0.1) 100%);
+
+            /* ===== SPACING SCALE (8pt grid system) ===== */
+            --space-0: 0;
+            --space-px: 1px;
+            --space-0-5: 0.125rem;  /* 2px */
+            --space-1: 0.25rem;     /* 4px */
+            --space-1-5: 0.375rem;  /* 6px */
+            --space-2: 0.5rem;      /* 8px */
+            --space-2-5: 0.625rem;  /* 10px */
+            --space-3: 0.75rem;     /* 12px */
+            --space-3-5: 0.875rem;  /* 14px */
+            --space-4: 1rem;        /* 16px */
+            --space-5: 1.25rem;     /* 20px */
+            --space-6: 1.5rem;      /* 24px */
+            --space-7: 1.75rem;     /* 28px */
+            --space-8: 2rem;        /* 32px */
+            --space-10: 2.5rem;     /* 40px */
+            --space-12: 3rem;       /* 48px */
+            --space-16: 4rem;       /* 64px */
+            --space-20: 5rem;       /* 80px */
+            --space-24: 6rem;       /* 96px */
+
+            /* ===== TYPOGRAPHY SCALE ===== */
+            --font-size-xs: 0.75rem;    /* 12px */
+            --font-size-sm: 0.875rem;   /* 14px */
+            --font-size-base: 1rem;     /* 16px */
+            --font-size-lg: 1.125rem;   /* 18px */
+            --font-size-xl: 1.25rem;    /* 20px */
+            --font-size-2xl: 1.5rem;    /* 24px */
+            --font-size-3xl: 1.875rem;  /* 30px */
+            --font-size-4xl: 2.25rem;   /* 36px */
+            --font-size-5xl: 3rem;      /* 48px */
+            --font-size-6xl: 3.75rem;   /* 60px */
+
+            /* Font Weights */
+            --font-weight-normal: 400;
+            --font-weight-medium: 500;
+            --font-weight-semibold: 600;
+            --font-weight-bold: 700;
+
+            /* Line Heights */
+            --line-height-tight: 1.25;
+            --line-height-normal: 1.5;
+            --line-height-relaxed: 1.625;
+
+            /* Font Families */
+            --font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica", "Arial", sans-serif;
+            --font-family-mono: 'SF Mono', Monaco, 'Inconsolata', 'Fira Code', monospace;
+
+            /* ===== BORDER RADIUS ===== */
+            --radius-sm: 0.25rem;    /* 4px */
+            --radius-md: 0.5rem;     /* 8px */
+            --radius-lg: 0.75rem;    /* 12px */
+            --radius-xl: 1rem;       /* 16px */
+            --radius-2xl: 1.5rem;    /* 24px */
+            --radius-full: 9999px;
+
+            /* ===== SHADOWS ===== */
+            --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow-sm: 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            --shadow-glow: 0 0 40px rgba(102, 126, 234, 0.3);
+
+            /* ===== TRANSITIONS ===== */
+            --transition-all: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-colors: color 300ms cubic-bezier(0.4, 0, 0.2, 1), background-color 300ms cubic-bezier(0.4, 0, 0.2, 1), border-color 300ms cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-transform: transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-opacity: opacity 300ms cubic-bezier(0.4, 0, 0.2, 1);
+
+            /* Duration */
+            --duration-150: 150ms;
+            --duration-300: 300ms;
+            --duration-500: 500ms;
+
+            /* ===== Z-INDEX SCALE ===== */
+            --z-negative: -1;
+            --z-0: 0;
+            --z-10: 10;
+            --z-20: 20;
+            --z-30: 30;
+            --z-40: 40;
+            --z-50: 50;
+        }
+
+        /* ===== RESET & BASE STYLES ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-family-base);
+            font-size: var(--font-size-sm);
+            line-height: var(--line-height-normal);
+            font-weight: var(--font-weight-normal);
+            letter-spacing: -0.01em;
+            background: var(--color-background);
+            color: var(--color-text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ===== BACKGROUND EFFECTS ===== */
+        .page-background {
+            position: fixed;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background:
+                radial-gradient(circle at 20% 50%, rgba(102, 126, 234, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(236, 72, 153, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 40% 20%, rgba(0, 122, 255, 0.08) 0%, transparent 50%);
+            z-index: var(--z-negative);
+            animation: backgroundShift 20s ease-in-out infinite;
+        }
+
+        .page-background__mesh {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            opacity: 0.03;
+            z-index: var(--z-negative);
+            background:
+                repeating-linear-gradient(
+                    90deg,
+                    transparent,
+                    transparent 2px,
+                    rgba(0, 0, 0, 0.02) 2px,
+                    rgba(0, 0, 0, 0.02) 4px
+                );
+        }
+
+        /* ===== ANIMATIONS ===== */
+        @keyframes backgroundShift {
+            0%, 100% { transform: scale(1) rotate(0deg); }
+            50% { transform: scale(1.1) rotate(10deg); }
+        }
+
+        @keyframes gradientShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(30px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* ===== CONTAINER COMPONENT ===== */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 var(--space-5);
+            position: relative;
+            z-index: var(--z-10);
+        }
+
+        /* ===== HEADER COMPONENT (BEM) ===== */
+        .header {
+            padding: var(--space-10) 0 var(--space-8);
+            text-align: center;
+            position: relative;
+        }
+
+        .header__title {
+            font-size: var(--font-size-5xl);
+            line-height: 1;
+            font-weight: var(--font-weight-bold);
+            letter-spacing: -0.03em;
+            background: linear-gradient(135deg, var(--color-primary-500) 0%, var(--color-accent-500) 25%, var(--color-primary-500) 50%, var(--color-accent-500) 75%, var(--color-primary-500) 100%);
+            background-size: 400% 100%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: var(--space-2);
+            animation: fadeInUp 0.8s ease-out, gradientShift 8s ease-in-out infinite;
+        }
+
+        .header__subtitle {
+            font-size: var(--font-size-base);
+            line-height: var(--line-height-tight);
+            font-weight: var(--font-weight-normal);
+            letter-spacing: 0.01em;
+            color: var(--color-text-secondary);
+            margin-bottom: var(--space-5);
+            animation: fadeInUp 0.8s ease-out 0.1s both;
+        }
+
+        .header__actions {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-5);
+            animation: fadeInUp 0.8s ease-out 0.2s both;
+        }
+
+        /* ===== STATUS BADGE COMPONENT (BEM) ===== */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-2);
+            padding: var(--space-2) var(--space-4);
+            background: var(--gradient-success);
+            color: var(--color-white);
+            border-radius: var(--radius-full);
+            font-size: var(--font-size-xs);
+            font-weight: var(--font-weight-semibold);
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            transition: var(--transition-transform);
+        }
+
+        .status-badge:hover {
+            transform: scale(1.05);
+        }
+
+        .status-badge__dot {
+            width: 8px;
+            height: 8px;
+            background: var(--color-white);
+            border-radius: var(--radius-full);
+            animation: pulse 2s infinite;
+        }
+
+        /* ===== BUTTON COMPONENT (BEM) ===== */
+        .button {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-2);
+            padding: var(--space-3) var(--space-6);
+            background: var(--gradient-primary);
+            color: var(--color-white);
+            border: none;
+            border-radius: var(--radius-lg);
+            font-size: var(--font-size-sm);
+            font-weight: var(--font-weight-semibold);
+            text-decoration: none;
+            transition: var(--transition-transform);
+            overflow: hidden;
+            cursor: pointer;
+        }
+
+        .button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--gradient-glow);
+            opacity: 0;
+            transition: var(--transition-opacity);
+        }
+
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-glow);
+        }
+
+        .button:hover::before {
+            opacity: 1;
+        }
+
+        .button__text {
+            position: relative;
+            z-index: var(--z-10);
+        }
+
+        .button--upload {
+            /* Modifier for upload button */
+        }
+
+        /* ===== STATS COMPONENT (BEM) ===== */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: var(--space-6);
+            margin-bottom: var(--space-10);
+        }
+
+        .stats__card {
+            position: relative;
+            display: block;
+            padding: var(--space-8);
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: var(--radius-2xl);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: var(--shadow-xs);
+            transition: var(--transition-all);
+            animation: slideIn 0.6s ease-out forwards;
+            animation-play-state: paused;
+            text-decoration: none;
+            color: inherit;
+            cursor: pointer;
+        }
+
+        .stats__card::before {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            background: var(--gradient-primary);
+            border-radius: var(--radius-2xl);
+            padding: 1px;
+            -webkit-mask:
+                linear-gradient(#fff 0 0) content-box,
+                linear-gradient(#fff 0 0);
+            -webkit-mask-composite: exclude;
+            mask-composite: exclude;
+            opacity: 0.1;
+            transition: var(--transition-opacity);
+        }
+
+        .stats__card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .stats__card:hover::before {
+            opacity: 0.3;
+        }
+
+        .stats__value {
+            font-size: var(--font-size-4xl);
+            font-weight: var(--font-weight-bold);
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            line-height: 1;
+            margin-bottom: var(--space-2);
+        }
+
+        .stats__label {
+            font-size: var(--font-size-sm);
+            color: var(--color-text-secondary);
+            font-weight: var(--font-weight-medium);
+            margin-bottom: var(--space-3);
+        }
+
+        .stats__link {
+            color: var(--color-primary-600);
+            text-decoration: none;
+            font-size: var(--font-size-sm);
+            font-weight: var(--font-weight-medium);
+            transition: var(--transition-colors);
+        }
+
+        .stats__link:hover {
+            color: var(--color-primary-700);
+            text-decoration: underline;
+        }
+
+        /* ===== SECTION COMPONENT (BEM) ===== */
+        .section {
+            margin-bottom: var(--space-12);
+        }
+
+        .section__title {
+            font-size: var(--font-size-2xl);
+            font-weight: var(--font-weight-bold);
+            margin-bottom: var(--space-6);
+            color: var(--color-text-primary);
+        }
+
+        /* ===== CARD COMPONENT (BEM) ===== */
+        .card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px);
+            border-radius: var(--radius-xl);
+            padding: var(--space-6);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: var(--shadow-sm);
+            transition: var(--transition-all);
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+            background: rgba(255, 255, 255, 0.8);
+        }
+
+        .card__title {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            font-size: var(--font-size-lg);
+            font-weight: var(--font-weight-semibold);
+            color: var(--color-text-primary);
+            margin-bottom: var(--space-4);
+        }
+
+        .card__icon {
+            width: 20px;
+            height: 20px;
+            stroke: currentColor;
+        }
+
+        /* ===== PACKAGE LIST COMPONENT (BEM) ===== */
+        .package-list {
+            padding: var(--space-4) 0;
+        }
+
+        .package-list__item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            padding: var(--space-3) 0;
+            border-bottom: 1px solid var(--color-border-subtle);
+            transition: var(--transition-colors);
+        }
+
+        .package-list__item:last-child {
+            border-bottom: none;
+        }
+
+        .package-list__item:hover {
+            background: rgba(102, 126, 234, 0.03);
+            margin: 0 calc(-1 * var(--space-3));
+            padding-left: var(--space-3);
+            padding-right: var(--space-3);
+            border-radius: var(--radius-md);
+        }
+
+        .package-list__type {
+            padding: var(--space-1) var(--space-2);
+            border-radius: var(--radius-sm);
+            font-size: var(--font-size-xs);
+            font-weight: var(--font-weight-semibold);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .package-list__type--pypi {
+            background: rgba(59, 130, 246, 0.1);
+            color: rgb(59, 130, 246);
+        }
+
+        .package-list__type--npm {
+            background: rgba(239, 68, 68, 0.1);
+            color: rgb(239, 68, 68);
+        }
+
+        .package-list__type--cargo {
+            background: rgba(251, 146, 60, 0.1);
+            color: rgb(251, 146, 60);
+        }
+
+        .package-list__name {
+            flex: 1;
+            font-weight: var(--font-weight-medium);
+            color: var(--color-text-primary);
+            text-decoration: none;
+        }
+
+        .package-list__name:hover {
+            color: var(--color-primary-600);
+            text-decoration: underline;
+        }
+
+        .package-list__version {
+            font-size: var(--font-size-sm);
+            color: var(--color-text-tertiary);
+        }
+
+        /* ===== SETUP COMPONENT (BEM) ===== */
+        .setup {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: var(--space-4);
+            margin: var(--space-4) 0;
+        }
+
+        .setup__card {
+            /* Inherits from card component */
+        }
+
+        .setup__command-group {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: var(--space-2-5);
+        }
+
+        .setup__code {
+            flex: 1;
+            font-family: var(--font-family-mono);
+            font-size: var(--font-size-sm);
+            padding: var(--space-3);
+            background: rgba(0, 0, 0, 0.03);
+            border-radius: var(--radius-md);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            overflow-x: auto;
+            white-space: pre;
+        }
+
+        .setup__copy-button {
+            padding: var(--space-2);
+            background: var(--gradient-primary);
+            border: none;
+            border-radius: var(--radius-md);
+            color: var(--color-white);
+            cursor: pointer;
+            transition: var(--transition-all);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .setup__copy-button:hover {
+            transform: scale(1.1);
+            box-shadow: var(--shadow-md);
+        }
+
+        .setup__copy-icon {
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+        }
+
+        /* ===== ENDPOINTS COMPONENT (BEM) ===== */
+        .endpoints {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: var(--space-4);
+        }
+
+        .endpoints__card {
+            /* Inherits from card component */
+        }
+
+        .endpoints__list {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-3);
+        }
+
+        .endpoints__item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            padding: var(--space-2) 0;
+        }
+
+        .endpoints__method {
+            padding: var(--space-1) var(--space-2);
+            background: rgba(34, 197, 94, 0.1);
+            color: rgb(34, 197, 94);
+            border-radius: var(--radius-sm);
+            font-size: var(--font-size-xs);
+            font-weight: var(--font-weight-bold);
+            min-width: 45px;
+            text-align: center;
+        }
+
+        .endpoints__method--post {
+            background: rgba(59, 130, 246, 0.1);
+            color: rgb(59, 130, 246);
+        }
+
+        .endpoints__method--put {
+            background: rgba(251, 146, 60, 0.1);
+            color: rgb(251, 146, 60);
+        }
+
+        .endpoints__path {
+            font-family: var(--font-family-mono);
+            font-size: var(--font-size-xs);
+            color: var(--color-text-primary);
+        }
+
+        /* ===== FOOTER COMPONENT (BEM) ===== */
+        .footer {
+            text-align: center;
+            padding: var(--space-8) 0;
+            margin-top: var(--space-16);
+            border-top: 1px solid var(--color-border-subtle);
+        }
+
+        .footer__text {
+            font-size: var(--font-size-sm);
+            color: var(--color-text-secondary);
+        }
+
+        /* ===== RESPONSIVE UTILITIES ===== */
+        @media (max-width: 1024px) {
+
+            .setup {
+                grid-template-columns: 1fr;
+            }
+
+            .endpoints {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .header__title {
+                font-size: var(--font-size-4xl);
+            }
+
+            .container {
+                padding: 0 var(--space-4);
+            }
+
+            .stats__value {
+                font-size: var(--font-size-3xl);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Background effects -->
+    <div class="page-background"></div>
+    <div class="page-background__mesh"></div>
+
+    <!-- Main container -->
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1 class="header__title">Goobits</h1>
+            <p class="header__subtitle">Local Package Server for pip, npm, and cargo</p>
+            <div class="header__actions">
+                <a href="/upload" class="button button--upload">
+                    <span class="button__text">Upload Package</span>
+                </a>
+            </div>
+        </header>
+
+        <!-- Stats Section -->
+        <div class="stats">
+            <a href="/ui/pypi" class="stats__card">
+                <div class="stats__value">{{ pypi_count }}</div>
+                <div class="stats__label">PyPI Packages</div>
+                <span class="stats__link">Browse →</span>
+            </a>
+            <a href="/ui/npm" class="stats__card">
+                <div class="stats__value">{{ npm_count }}</div>
+                <div class="stats__label">npm Packages</div>
+                <span class="stats__link">Browse →</span>
+            </a>
+            <a href="/ui/cargo" class="stats__card">
+                <div class="stats__value">{{ cargo_count }}</div>
+                <div class="stats__label">Cargo Crates</div>
+                <span class="stats__link">Browse →</span>
+            </a>
+        </div>
+
+        <!-- Recent Packages Section -->
+        {% if !recent_packages.is_empty() %}
+        <section class="section">
+            <h2 class="section__title">Recently Published</h2>
+            <div class="card">
+                <div class="package-list">
+                    {% for package in recent_packages %}
+                    <div class="package-list__item">
+                        <span class="package-list__type package-list__type--{{ package.pkg_type }}">{{ package.pkg_type }}</span>
+                        <a href="/ui/{{ package.pkg_type }}/{{ package.name }}" class="package-list__name">
+                            {{ package.name }}
+                        </a>
+                        <span class="package-list__version">v{{ package.version }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- Setup Section -->
+        <section class="section">
+            <h2 class="section__title">Quick Setup</h2>
+            <div class="setup">
+                <div class="card setup__card">
+                    <h3 class="card__title">Automatic Setup (All Package Managers)</h3>
+                    <div class="setup__command-group">
+                        <code class="setup__code" id="auto-setup">curl -fsSL http://localhost:3080/setup.sh | bash</code>
+                        <button class="setup__copy-button" onclick="copyToClipboard('auto-setup')">
+                            <svg class="setup__copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="card setup__card">
+                    <h3 class="card__title">PyPI</h3>
+                    <div class="setup__command-group">
+                        <code class="setup__code" id="pypi-config">pip config set global.index-url http://localhost:3080/pypi/simple/</code>
+                        <button class="setup__copy-button" onclick="copyToClipboard('pypi-config')">
+                            <svg class="setup__copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="card setup__card">
+                    <h3 class="card__title">npm</h3>
+                    <div class="setup__command-group">
+                        <code class="setup__code" id="npm-config">npm config set registry http://localhost:3080/npm/</code>
+                        <button class="setup__copy-button" onclick="copyToClipboard('npm-config')">
+                            <svg class="setup__copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="card setup__card">
+                    <h3 class="card__title">Cargo</h3>
+                    <div class="setup__command-group">
+                        <code class="setup__code" id="cargo-config">echo '[registries.local]
+index = "http://localhost:3080/cargo/index"' >> ~/.cargo/config.toml</code>
+                        <button class="setup__copy-button" onclick="copyToClipboard('cargo-config')">
+                            <svg class="setup__copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- API Endpoints Section -->
+        <section class="section">
+            <h2 class="section__title">API Endpoints</h2>
+            <div class="endpoints">
+                <div class="card endpoints__card">
+                    <h3 class="card__title">
+                        <svg class="card__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                            <line x1="12" y1="22.08" x2="12" y2="12"/>
+                        </svg>
+                        PyPI
+                    </h3>
+                    <div class="endpoints__list">
+                        <div class="endpoints__item">
+                            <span class="endpoints__method">GET</span>
+                            <code class="endpoints__path">/pypi/simple/</code>
+                        </div>
+                        <div class="endpoints__item">
+                            <span class="endpoints__method endpoints__method--post">POST</span>
+                            <code class="endpoints__path">/pypi/upload</code>
+                        </div>
+                    </div>
+                </div>
+                <div class="card endpoints__card">
+                    <h3 class="card__title">
+                        <svg class="card__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                            <path d="M3 9h18"/>
+                            <path d="M9 21V9"/>
+                        </svg>
+                        npm
+                    </h3>
+                    <div class="endpoints__list">
+                        <div class="endpoints__item">
+                            <span class="endpoints__method">GET</span>
+                            <code class="endpoints__path">/npm/:scope/:package</code>
+                        </div>
+                        <div class="endpoints__item">
+                            <span class="endpoints__method endpoints__method--put">PUT</span>
+                            <code class="endpoints__path">/npm/:scope/:package</code>
+                        </div>
+                    </div>
+                </div>
+                <div class="card endpoints__card">
+                    <h3 class="card__title">
+                        <svg class="card__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                            <path d="M2 17l10 5 10-5"/>
+                            <path d="M2 12l10 5 10-5"/>
+                        </svg>
+                        Cargo
+                    </h3>
+                    <div class="endpoints__list">
+                        <div class="endpoints__item">
+                            <span class="endpoints__method">GET</span>
+                            <code class="endpoints__path">/cargo/index</code>
+                        </div>
+                        <div class="endpoints__item">
+                            <span class="endpoints__method endpoints__method--put">PUT</span>
+                            <code class="endpoints__path">/cargo/api/v1/crates/new</code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p class="footer__text">Goobits Package Server v{{ version }}</p>
+        </footer>
+    </div>
+
+    <script>
+        // Get the current server URL
+        const serverUrl = window.location.origin;
+
+        // Update config commands with actual server URL
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('pypi-config').textContent = `pip config set global.index-url ${serverUrl}/pypi/simple/`;
+            document.getElementById('npm-config').textContent = `npm config set registry ${serverUrl}/npm/`;
+            document.getElementById('cargo-config').textContent = `echo '[registries.local]\nindex = "${serverUrl}/cargo/index"' >> ~/.cargo/config.toml`;
+        });
+
+        // Copy to clipboard function
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            const text = element.textContent;
+            const button = element.nextElementSibling;
+
+            navigator.clipboard.writeText(text).then(() => {
+                const originalHTML = button.innerHTML;
+                button.innerHTML = '<svg class="setup__copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
+                button.style.background = 'var(--gradient-success)';
+
+                setTimeout(() => {
+                    button.innerHTML = originalHTML;
+                    button.style.background = '';
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                const originalHTML = button.innerHTML;
+                button.innerHTML = '<svg class="setup__copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+                button.style.background = 'linear-gradient(135deg, #ff6b6b, #ff5252)';
+
+                setTimeout(() => {
+                    button.innerHTML = originalHTML;
+                    button.style.background = '';
+                }, 2000);
+            });
+        }
+
+        // Animate elements on scroll
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.animationPlayState = 'running';
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, observerOptions);
+
+        // Observe all animated elements
+        document.querySelectorAll('.stats__card, .card').forEach(element => {
+            element.style.animationPlayState = 'paused';
+            observer.observe(element);
+        });
+    </script>
+
+    <!-- Live reload script (only in development) -->
+    {% if !live_reload_script.is_empty() %}
+        {{ live_reload_script }}
+    {% endif %}
+</body>
+</html>

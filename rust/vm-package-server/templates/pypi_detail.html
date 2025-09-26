@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ package_name }} - PyPI Package</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>{{ package_name }}</h1>
+            <nav class="breadcrumb">
+                <a href="/">Home</a> / <a href="/ui/pypi">PyPI</a> / {{ package_name }}
+            </nav>
+        </header>
+
+        <section class="package-info">
+            <div class="package-header">
+                <span class="package-type package-type-pypi">PyPI</span>
+                <h2>Package Details</h2>
+            </div>
+
+            <div class="install-command">
+                <h3>Installation</h3>
+                <code>pip install {{ package_name }} --index-url {{ "{your-server-url}" }}/pypi/simple/</code>
+            </div>
+
+            {% if versions.is_empty() %}
+                <p class="empty-message">No versions available for this package.</p>
+            {% else %}
+                <div class="versions">
+                    <h3>Available Versions</h3>
+                    {% for version_info in versions %}
+                    <div class="version-block">
+                        <h4>Version {{ version_info.version }}</h4>
+                        <div class="file-list">
+                            {% for file in version_info.files %}
+                            <div class="file-item">
+                                <a href="/pypi/packages/{{ file.filename }}" class="file-name">
+                                    {{ file.filename }}
+                                </a>
+                                <div class="file-meta">
+                                    <span class="file-size">Size: {{ file.size_formatted }}</span>
+                                    <span class="hash">SHA256: <code>{{ file.sha256 }}</code></span>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </section>
+
+        <footer>
+            <p>Package: {{ package_name }} | Total versions: {{ versions.len() }}</p>
+        </footer>
+    </div>
+</body>
+</html>

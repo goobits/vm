@@ -1,0 +1,23 @@
+# Clippy configuration file
+# This file configures clippy linting rules for consistent code quality
+
+# Avoid false positives on large types
+stack-size-threshold = 512
+
+# Allow slightly more complex types
+type-complexity-threshold = 250
+
+# Allow longer function names for descriptive APIs
+too-many-arguments-threshold = 7
+
+# Allow reasonable cyclomatic complexity
+cognitive-complexity-threshold = 30
+
+# Avoid noisy lints for this project
+avoid-breaking-exported-api = false
+
+# Arithmetic lints
+arithmetic-side-effects-allowed = ["*", "/", "%"]
+
+# Verbose bit mask threshold
+verbose-bit-mask-threshold = 1

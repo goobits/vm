@@ -1,0 +1,34 @@
+# Git
+.git
+.gitignore
+
+# Rust build artifacts
+target/
+Cargo.lock
+
+# Development files
+*.sh
+CI_*.md
+CONTRIBUTING.md
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation build
+docs/
+
+# Test data
+test-data/
+data/
+
+# CI/CD
+.github/
+rustfmt.toml
+clippy.toml

@@ -1,0 +1,62 @@
+version: '3.9'
+
+services:
+  # Main Goobits package server - serves Python and Node.js packages
+  package-server:
+    build:
+      context: ..
+      dockerfile: ../server/Dockerfile
+    ports:
+      - "3080:3080"
+    volumes:
+      - package-data:/home/appuser/data
+    environment:
+      - RUST_LOG=info
+    restart: unless-stopped
+    networks:
+      - package-net
+
+  # Example Python client app - demonstrates pip integration with package server
+  python-app:
+    build:
+      context: .
+      dockerfile: python.Dockerfile
+      args:
+        PKG_SERVER_URL: http://package-server:3080
+    depends_on:
+      - package-server
+    networks:
+      - package-net
+    command: |
+      sh -c "
+        echo 'Testing pip with package server...'
+        pip install --verbose requests
+        python -c 'import requests; print(\"✅ Requests installed successfully!\")'
+      "
+
+  # Example Node.js client app - demonstrates npm integration with package server
+  node-app:
+    build:
+      context: .
+      dockerfile: node.Dockerfile
+      args:
+        PKG_SERVER_URL: http://package-server:3080
+    depends_on:
+      - package-server
+    networks:
+      - package-net
+    command: |
+      sh -c "
+        echo 'Testing npm with package server...'
+        npm install express
+        node -e 'console.log(\"✅ Express installed successfully!\")'
+      "
+
+volumes:
+  # Persistent storage for package server data
+  package-data:
+
+networks:
+  # Internal network for communication between services
+  package-net:
+    driver: bridge

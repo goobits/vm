@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Package - Goobits Package Server</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Upload Package</h1>
+            <nav class="breadcrumb">
+                <a href="/">Home</a> / Upload
+            </nav>
+        </header>
+
+        <section class="upload-section">
+            <div class="upload-tabs">
+                <button class="tab-button active" data-type="pypi">PyPI</button>
+                <button class="tab-button" data-type="npm">npm</button>
+                <button class="tab-button" data-type="cargo">Cargo</button>
+            </div>
+
+            <div class="upload-panel" id="pypi-panel">
+                <div class="upload-zone" id="pypi-zone">
+                    <svg class="upload-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    <p class="upload-text">Drag and drop PyPI packages here (.whl, .tar.gz)</p>
+                    <p class="upload-subtext">or click to browse</p>
+                    <input type="file" id="pypi-file" accept=".whl,.tar.gz" multiple hidden>
+                </div>
+                <div class="upload-status" id="pypi-status"></div>
+            </div>
+
+            <div class="upload-panel hidden" id="npm-panel">
+                <div class="upload-zone" id="npm-zone">
+                    <svg class="upload-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    <p class="upload-text">Drag and drop npm packages here (.tgz)</p>
+                    <p class="upload-subtext">or click to browse</p>
+                    <input type="file" id="npm-file" accept=".tgz" multiple hidden>
+                </div>
+                <div class="upload-status" id="npm-status"></div>
+            </div>
+
+            <div class="upload-panel hidden" id="cargo-panel">
+                <div class="upload-zone" id="cargo-zone">
+                    <svg class="upload-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    <p class="upload-text">Drag and drop Cargo crates here (.crate)</p>
+                    <p class="upload-subtext">or click to browse</p>
+                    <input type="file" id="cargo-file" accept=".crate" multiple hidden>
+                </div>
+                <div class="upload-status" id="cargo-status"></div>
+            </div>
+        </section>
+
+        <footer>
+            <p>Upload packages directly through the browser interface</p>
+        </footer>
+    </div>
+
+    <script src="/upload.js"></script>
+</body>
+</html>

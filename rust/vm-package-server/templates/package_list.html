@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ pkg_type|upper }} Packages - Goobits Package Server</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>{{ pkg_type|upper }} Packages</h1>
+            <nav class="breadcrumb">
+                <a href="/">Home</a> / {{ pkg_type|upper }}
+            </nav>
+        </header>
+
+        <div class="package-grid">
+            {% if packages.is_empty() %}
+                <p class="empty-message">No {{ pkg_type }} packages have been published yet.</p>
+            {% else %}
+                {% for package_name in packages %}
+                <a href="/ui/{{ pkg_type }}/{{ package_name }}" class="package-card">
+                    <span class="package-card-type">{{ pkg_type }}</span>
+                    <span class="package-card-name">{{ package_name }}</span>
+                </a>
+                {% endfor %}
+            {% endif %}
+        </div>
+
+        <footer>
+            <p>Total packages: {{ packages.len() }}</p>
+        </footer>
+    </div>
+</body>
+</html>
