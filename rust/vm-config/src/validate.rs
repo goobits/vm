@@ -262,8 +262,8 @@ impl ConfigValidator {
             || version == "lts"
             || version.parse::<u32>().is_ok()
             || Regex::new(r"^\d+\.\d+(\.\d+)?$")
-                .expect("Semantic version regex should be valid")
-                .is_match(version)
+                .map(|regex| regex.is_match(version))
+                .unwrap_or(false)
     }
 }
 

@@ -1,5 +1,5 @@
 [package]
-name = "vm-pkg"
+name = "vm-package-manager"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -27,5 +27,5 @@ structured-output = ["vm-common/structured-output"]
 [dev-dependencies]
 
 [[bin]]
-name = "vm-pkg"
+name = "vm-package-manager"
 path = "src/main.rs"

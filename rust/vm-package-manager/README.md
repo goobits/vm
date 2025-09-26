@@ -1,6 +1,6 @@
-# vm-pkg - Unified Package Manager for VM Tool
+# vm-package-manager - Unified Package Manager for VM Tool
 
-`vm-pkg` consolidates the functionality of three shell scripts (`install-cargo-package.sh`, `install-npm-package.sh`, `install-pip-package.sh`) into a single, robust Rust binary.
+`vm-package-manager` consolidates the functionality of three shell scripts (`install-cargo-package.sh`, `install-npm-package.sh`, `install-pip-package.sh`) into a single, robust Rust binary.
 
 ## Features
 
@@ -16,52 +16,52 @@
 
 ```bash
 # Install a cargo package
-vm-pkg install --package-type cargo ripgrep
+vm-package-manager install --package-type cargo ripgrep
 
 # Install an npm package
-vm-pkg install --package-type npm typescript
+vm-package-manager install --package-type npm typescript
 
 # Install a Python package (automatically uses pip or pipx)
-vm-pkg install --package-type pip black
+vm-package-manager install --package-type pip black
 
 # Force registry install (ignore linked packages)
-vm-pkg install --package-type npm --force-registry my-package
+vm-package-manager install --package-type npm --force-registry my-package
 
 # Specify user (defaults to "developer")
-vm-pkg install --package-type cargo ripgrep --user developer
+vm-package-manager install --package-type cargo ripgrep --user developer
 ```
 
 ### Check if a Package is Linked
 
 ```bash
-vm-pkg check --package-type cargo my-crate
-vm-pkg check --package-type npm my-module
-vm-pkg check --package-type pip my-package
+vm-package-manager check --package-type cargo my-crate
+vm-package-manager check --package-type npm my-module
+vm-package-manager check --package-type pip my-package
 ```
 
 ### List Linked Packages
 
 ```bash
 # List all linked packages
-vm-pkg list
+vm-package-manager list
 
 # List only npm linked packages
-vm-pkg list --package-type npm
+vm-package-manager list --package-type npm
 ```
 
 ### Detect Linked Packages
 
 ```bash
 # Detect if packages are linked
-vm-pkg links detect npm express react
-vm-pkg links detect cargo ripgrep fd-find
+vm-package-manager links detect npm express react
+vm-package-manager links detect cargo ripgrep fd-find
 ```
 
 ### Generate Docker Mounts
 
 ```bash
 # Generate Docker mount strings for linked packages
-vm-pkg links mounts npm express react
+vm-package-manager links mounts npm express react
 # Output: -v /home/developer/.links/npm/express:/workspace/node_modules/express:ro
 ```
 
@@ -83,15 +83,15 @@ vm-pkg links mounts npm express react
 ### After (1 unified binary):
 
 ```bash
-vm-pkg install --package-type cargo ripgrep --user developer
-vm-pkg install --package-type npm typescript --user developer
-vm-pkg install --package-type pip black --user developer
+vm-package-manager install --package-type cargo ripgrep --user developer
+vm-package-manager install --package-type npm typescript --user developer
+vm-package-manager install --package-type pip black --user developer
 ```
 
 ## Architecture
 
 ```
-vm-pkg/
+vm-package-manager/
 ├── src/
 │   ├── main.rs           # Entry point
 │   ├── cli.rs            # Command-line interface
@@ -123,7 +123,7 @@ vm-pkg/
 The main `vm` binary can now call:
 
 ```bash
-vm-pkg install --type "$package_type" "$package" --user "$PROJECT_USER"
+vm-package-manager install --type "$package_type" "$package" --user "$PROJECT_USER"
 ```
 
 Instead of:
@@ -148,7 +148,7 @@ This is now cleanly organized in Rust with proper error handling and clear contr
 ```bash
 cd /workspace/rust
 cargo build --release
-# Binary will be at: target/release/vm-pkg
+# Binary will be at: target/release/vm-package-manager
 ```
 
 ## Testing
@@ -156,18 +156,18 @@ cargo build --release
 ```bash
 # Test with a linked package
 mkdir -p /home/developer/.links/npm/my-module
-vm-pkg check --package-type npm my-module
+vm-package-manager check --package-type npm my-module
 # Output: 🔗 Package 'my-module' is linked for npm
 
 # Test with non-linked package
-vm-pkg check --package-type npm non-linked-module
+vm-package-manager check --package-type npm non-linked-module
 # Output: 📦 Package 'non-linked-module' is not linked (would install from registry)
 
 # Test installation
-vm-pkg install --package-type pip black
+vm-package-manager install --package-type pip black
 # Output: 📦 Installing pip package from registry: black
 #         ✅ Installed black as CLI tool with pipx
 
 # Run integration tests
-cargo test --package vm-pkg
+cargo test --package vm-package-manager
 ```

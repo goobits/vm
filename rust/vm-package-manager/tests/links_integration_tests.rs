@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use tempfile::TempDir;
 
-/// Test fixture for vm-pkg links integration testing
+/// Test fixture for vm-package-manager links integration testing
 struct LinksTestFixture {
     _temp_dir: TempDir,
     test_dir: PathBuf,

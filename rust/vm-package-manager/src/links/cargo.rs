@@ -3,6 +3,7 @@ use rayon::prelude::*;
 use regex::Regex;
 use std::collections::HashSet;
 use std::process::Command;
+use vm_common::vm_error;
 
 pub fn detect_cargo_packages(packages: &[String]) -> Result<Vec<(String, String)>> {
     let package_set: HashSet<&String> = packages.iter().collect();
@@ -48,20 +49,24 @@ fn parse_cargo_install_list(output: &str) -> Result<Vec<(String, String)>> {
 
     for line in output.lines() {
         if let Some(captures) = re.captures(line) {
-            let pkg_name = captures
-                .get(1)
-                .expect("Regex group 1 should exist for cargo package name")
-                .as_str()
-                .to_string();
-            let pkg_path = captures
-                .get(2)
-                .expect("Regex group 2 should exist for cargo package path")
-                .as_str()
-                .to_string();
+            let pkg_name = match captures.get(1) {
+                Some(m) => m.as_str().to_string(),
+                None => {
+                    vm_error!("Malformed cargo metadata line: missing package name");
+                    continue;
+                }
+            };
+            let pkg_path = match captures.get(2) {
+                Some(m) => m.as_str(),
+                None => {
+                    vm_error!("Malformed cargo metadata line: missing package path");
+                    continue;
+                }
+            };
 
             // Only include path-based installs (not registry installs)
             if pkg_path.contains('/') && !pkg_path.starts_with("registry+") {
-                installations.push((pkg_name, pkg_path));
+                installations.push((pkg_name, pkg_path.to_string()));
             }
         }
     }

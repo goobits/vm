@@ -14,6 +14,12 @@ pub struct Messages {
     pub warning_generic: &'static str,
     pub press_ctrl_c_to_stop: &'static str,
 
+    // Error Handling
+    pub error_command_failed: &'static str,
+    pub error_with_context: &'static str,
+    pub error_unexpected: &'static str,
+    pub error_debug_info: &'static str,
+
     // VM Operations
     pub vm_is_running: &'static str,
     pub vm_is_stopped: &'static str,
@@ -97,8 +103,14 @@ pub struct Messages {
     pub temp_vm_list_item: &'static str,
     pub temp_vm_list_project: &'static str,
     pub temp_vm_list_mounts: &'static str,
+    pub temp_vm_mount_removed_detail: &'static str,
+    pub temp_vm_mount_display_item: &'static str,
+    pub temp_vm_list_created_date: &'static str,
     pub temp_vm_list_empty: &'static str,
     pub temp_vm_list_create_hint: &'static str,
+    pub temp_vm_confirm_add_mount: &'static str,
+    pub temp_vm_confirm_remove_all_mounts: &'static str,
+    pub temp_vm_confirm_remove_mount: &'static str,
 
     // Docker
     pub docker_is_running: &'static str,
@@ -139,6 +151,7 @@ pub struct Messages {
     pub provider_tart_connect_hint: &'static str,
     pub provider_tart_vm_created: &'static str,
     pub provider_tart_vm_recreate_hint: &'static str,
+    pub provider_tart_vm_connect_hint: &'static str,
     pub provider_logs_unavailable: &'static str,
     pub provider_logs_expected_location: &'static str,
     pub provider_logs_showing: &'static str,
@@ -155,6 +168,24 @@ pub struct Messages {
     pub ports_no_ranges: &'static str,
     pub ports_registered_ranges: &'static str,
     pub ports_range_entry: &'static str,
+
+    // Progress Reporter
+    pub progress_phase_header: &'static str,
+    pub progress_subtask: &'static str,
+    pub progress_complete: &'static str,
+    pub progress_warning: &'static str,
+    pub progress_error: &'static str,
+    pub progress_error_detail: &'static str,
+    pub progress_error_hint: &'static str,
+
+    // Status Formatter
+    pub status_report_header: &'static str,
+    pub status_report_separator: &'static str,
+    pub status_report_name: &'static str,
+    pub status_report_status: &'static str,
+    pub status_report_provider: &'static str,
+    pub status_report_memory: &'static str,
+    pub status_report_cpus: &'static str,
 }
 
 pub const MESSAGES: Messages = Messages {
@@ -164,6 +195,12 @@ pub const MESSAGES: Messages = Messages {
     error_generic: "Error: {error}",
     warning_generic: "Warning: {warning}",
     press_ctrl_c_to_stop: "Press Ctrl+C to stop...",
+
+    // Error Handling
+    error_command_failed: "❌ Command failed: {command}",
+    error_with_context: "{error}",
+    error_unexpected: "❌ Unexpected error occurred",
+    error_debug_info: "Debug info: {details}",
 
     // VM Operations
     vm_is_running: "✅ VM '{name}' is running",
@@ -248,8 +285,14 @@ pub const MESSAGES: Messages = Messages {
     temp_vm_list_item: "   {name} ({provider})",
     temp_vm_list_project: "      Project: {path}",
     temp_vm_list_mounts: "      Mounts: {count}",
+    temp_vm_mount_removed_detail: "🗑️ Removed mount: {source} ({permissions})",
+    temp_vm_mount_display_item: "   {source} → {target} ({permissions})",
+    temp_vm_list_created_date: "      Created: {date}",
     temp_vm_list_empty: "📋 No temp VMs found\n",
     temp_vm_list_create_hint: "💡 Create one: vm temp create <directory>",
+    temp_vm_confirm_add_mount: "Add mount {source} to temp VM? (y/N): ",
+    temp_vm_confirm_remove_all_mounts: "Remove all {count} mounts from temp VM? (y/N): ",
+    temp_vm_confirm_remove_mount: "Remove mount {source} from temp VM? (y/N): ",
 
     // Docker
     docker_is_running: "Docker is running.",
@@ -265,7 +308,7 @@ pub const MESSAGES: Messages = Messages {
     installer_path_already_configured: "✅ {path} is already in your PATH.",
     installer_path_not_configured: "⚠️ {path} is not in your PATH",
     installer_add_to_path_hint: "To add {path} to your PATH, add this line to your {profile}:",
-    installer_manual_path_hint: "Or run: vm pkg link",
+    installer_manual_path_hint: "Or run: vm-package-manager link",
 
     // Package Management
     pkg_linking: "🔗 Package '{name}' is linked for {package_type}",
@@ -290,6 +333,7 @@ pub const MESSAGES: Messages = Messages {
     provider_tart_connect_hint: "💡 Use 'vm ssh' to connect to the VM",
     provider_tart_vm_created: "✅ Created Tart VM '{name}' from image '{image}'",
     provider_tart_vm_recreate_hint: "To recreate, first run: vm destroy {name}",
+    provider_tart_vm_connect_hint: "💡 Use 'vm ssh {name}' to connect to the VM instance",
     provider_logs_unavailable: "The VM might not be running or logs may not be available yet.",
     provider_logs_expected_location: "Expected location: ~/.tart/vms/{name}/app.log",
     provider_logs_showing: "Showing Tart VM logs from: {path}",
@@ -307,4 +351,22 @@ pub const MESSAGES: Messages = Messages {
     ports_no_ranges: "No port ranges registered yet",
     ports_registered_ranges: "Registered port ranges:",
     ports_range_entry: "  {project}: {range} → {path}",
+
+    // Progress Reporter
+    progress_phase_header: "{icon} {phase}",
+    progress_subtask: "{connector} {task}",
+    progress_complete: "{connector} ✅ {message}",
+    progress_warning: "{connector} ⚠️ {message}",
+    progress_error: "{connector} ❌ {message}",
+    progress_error_detail: "     └─ {detail}",
+    progress_error_hint: "     💡 {hint}",
+
+    // Status Formatter
+    status_report_header: "VM Status Report",
+    status_report_separator: "================",
+    status_report_name: "Name: {name}",
+    status_report_status: "Status: {status}",
+    status_report_provider: "Provider: {provider}",
+    status_report_memory: "Memory: {memory} MB",
+    status_report_cpus: "CPUs: {cpus}",
 };

@@ -2,7 +2,7 @@
 members = [
     "vm-common",
     "vm-config",
-    "vm-pkg",
+    "vm-package-manager",
     "vm-platform",
     "vm-provider",
     "vm-temp",

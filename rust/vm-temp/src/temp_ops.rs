@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use vm_common::{
     errors,
     messages::{messages::MESSAGES, msg},
-    vm_error, vm_println,
+    vm_error, vm_print, vm_println,
 };
 
 // Internal imports
@@ -231,7 +231,10 @@ impl TempVmOps {
 
         // Confirm action unless --yes flag is used
         if !yes {
-            let confirmation_msg = format!("Add mount {} to temp VM? (y/N): ", source.display());
+            let confirmation_msg = msg!(
+                MESSAGES.temp_vm_confirm_add_mount,
+                source = source.display().to_string()
+            );
             if !Self::confirm_prompt(&confirmation_msg) {
                 vm_error!("Mount operation cancelled");
                 return Ok(());
@@ -318,9 +321,9 @@ impl TempVmOps {
 
         if all {
             if !yes {
-                let confirmation_msg = format!(
-                    "Remove all {} mounts from temp VM? (y/N): ",
-                    state.mount_count()
+                let confirmation_msg = msg!(
+                    MESSAGES.temp_vm_confirm_remove_all_mounts,
+                    count = state.mount_count().to_string()
                 );
                 if !Self::confirm_prompt(&confirmation_msg) {
                     vm_error!("Unmount operation cancelled");
@@ -370,9 +373,9 @@ impl TempVmOps {
             }
 
             if !yes {
-                let confirmation_msg = format!(
-                    "Remove mount {} from temp VM? (y/N): ",
-                    source_path.display()
+                let confirmation_msg = msg!(
+                    MESSAGES.temp_vm_confirm_remove_mount,
+                    source = source_path.display().to_string()
                 );
                 if !Self::confirm_prompt(&confirmation_msg) {
                     vm_error!("Unmount operation cancelled");
@@ -389,10 +392,13 @@ impl TempVmOps {
                 .save_state(&state)
                 .context("Failed to save updated temp VM state")?;
 
-            println!(
-                "🗑️ Removed mount: {} ({})",
-                removed_mount.source.display(),
-                removed_mount.permissions
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.temp_vm_mount_removed_detail,
+                    source = removed_mount.source.display().to_string(),
+                    permissions = removed_mount.permissions.to_string()
+                )
             );
 
             // Apply mount changes using TempProvider
@@ -445,11 +451,14 @@ impl TempVmOps {
             )
         );
         for mount in state.get_mounts() {
-            println!(
-                "   {} → {} ({})",
-                mount.source.display(),
-                mount.target.display(),
-                mount.permissions
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.temp_vm_mount_display_item,
+                    source = mount.source.display().to_string(),
+                    target = mount.target.display().to_string(),
+                    permissions = mount.permissions.to_string()
+                )
             );
         }
 
@@ -488,9 +497,12 @@ impl TempVmOps {
                     provider = &state.provider
                 )
             );
-            println!(
-                "      Created: {}",
-                state.created_at.format("%Y-%m-%d %H:%M:%S")
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.temp_vm_list_created_date,
+                    date = state.created_at.format("%Y-%m-%d %H:%M:%S").to_string()
+                )
             );
             vm_println!(
                 "{}",
@@ -634,7 +646,7 @@ impl TempVmOps {
 
     /// Simple confirmation prompt
     fn confirm_prompt(message: &str) -> bool {
-        print!("{}", message);
+        vm_print!("{}", message);
         // If stdout flush fails, continue anyway - the prompt might still work
         let _ = io::stdout().flush();
 

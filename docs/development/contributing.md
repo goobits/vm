@@ -103,7 +103,7 @@ The system is exposed through macros in the `vm-common` crate.
     ├── vm-common/                  # Shared utilities
     ├── vm-config/                  # Configuration handling
     ├── vm-messages/                # Centralized user-facing messages
-    ├── vm-pkg/                     # Package management
+    ├── vm-package-manager/                     # Package management
     ├── vm-platform/                # Platform detection
     ├── vm-provider/                # Provider implementations
     ├── vm-temp/                    # Temporary VM functionality
@@ -241,7 +241,7 @@ vm-config/       # Configuration processing and validation
 vm-messages/     # Centralized user-facing messages
 vm-provider/     # Provider implementations (Docker, Vagrant, Tart)
 vm-temp/         # Temporary VM functionality
-vm-pkg/          # Package management
+vm-package-manager/          # Package management
 vm-platform/     # Platform detection
 vm-installer/    # Installation management
 version-sync/    # Version synchronization

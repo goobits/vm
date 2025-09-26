@@ -11,7 +11,7 @@ rust/
 ├── vm-temp/            # Mount validation & filesystem integration (8 tests)
 ├── vm-provider/        # Security validation & path protection (22 tests)
 ├── vm-ports/           # Port registry and range management (13 tests)
-├── vm-pkg/             # Package management operations (10 tests)
+├── vm-package-manager/             # Package management operations (10 tests)
 ├── vm-installer/       # Installation management (11 tests)
 ├── vm-common/          # Common utilities (10 tests)
 └── vm/                 # CLI and workflows (21 tests)
@@ -164,7 +164,7 @@ All testing functionality has been migrated from shell scripts to Rust:
 | VM workflows | Integration tests | `rust/vm/tests/` | 21 tests |
 | Provider security | Unit tests | `rust/vm-provider/src/` | 22 tests |
 | Platform detection | Unit tests | `rust/vm-platform/src/` | Various tests |
-| Package management | Integration tests | `rust/vm-pkg/tests/` | 10 tests |
+| Package management | Integration tests | `rust/vm-package-manager/tests/` | 10 tests |
 | Installer | Unit tests | `rust/vm-installer/src/` | 11 tests |
 | Temp operations | Integration tests | `rust/vm-temp/tests/` | 8 tests |
 

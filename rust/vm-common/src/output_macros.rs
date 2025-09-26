@@ -12,6 +12,13 @@ use crate::messages::{categories::VM_OPS, messages::MESSAGES};
 pub use crate::messages::msg;
 
 #[macro_export]
+macro_rules! vm_print {
+    ($($arg:tt)*) => {
+        print!("{}", format!($($arg)*));
+    }
+}
+
+#[macro_export]
 macro_rules! vm_println {
     () => {
         println!();

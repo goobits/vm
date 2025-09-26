@@ -55,7 +55,7 @@ return Err(anyhow::anyhow!("Docker connection failed"));
 - Validation errors (`validation.rs`)
 
 🔄 **Migration Progress:**
-- **vm-pkg**: ✅ Fully migrated (12 patterns)
+- **vm-package-manager**: ✅ Fully migrated (12 patterns)
 - **vm-temp**: ✅ Key patterns migrated (1 pattern)
 - **vm-config**: ✅ Validation patterns migrated (5 patterns)
 - **vm-installer**: ✅ Build patterns migrated (4 patterns)

@@ -94,7 +94,7 @@ impl LinkDetector {
             // For now, we'll just indicate that system link detection is available
             results.push((
                 mgr,
-                "(use 'vm-pkg links detect' for system-wide detection)".into(),
+                "(use 'vm-package-manager links detect' for system-wide detection)".into(),
             ));
         }
 

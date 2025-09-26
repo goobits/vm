@@ -32,21 +32,15 @@ static PORT_PLACEHOLDER_RE: OnceLock<Regex> = OnceLock::new();
 fn get_port_placeholder_regex() -> &'static Regex {
     PORT_PLACEHOLDER_RE.get_or_init(|| {
         // This regex pattern is known to be valid, but we handle the error case gracefully
-        match Regex::new(r"\$\{port\.(\d+)\}") {
-            Ok(regex) => regex,
-            Err(_) => {
-                // Fallback to a regex that matches nothing if the main pattern fails
-                // This is extremely unlikely to fail, but if it does, use a literal pattern
-                Regex::new(r"never_matches_anything_specific_placeholder_12345").unwrap_or_else(
-                    |_| {
-                        // Last resort - create a basic regex that will always work
-                        // Last resort - create a never-matching regex (should never fail)
-                        Regex::new(r"(?-u)a^")
-                            .expect("Failed to create never-matching fallback regex")
-                    },
-                )
-            }
-        }
+        Regex::new(r"\$\{port\.(\d+)\}").unwrap_or_else(|_| {
+            // Fallback to a pattern that never matches if the main one fails
+            Regex::new(r"never_matches_anything_specific_placeholder_12345").unwrap_or_else(|_| {
+                // Final fallback - empty regex is always valid
+                Regex::new("").unwrap_or_else(|_| {
+                    panic!("Critical: Even empty regex pattern is failing - regex engine corrupted")
+                })
+            })
+        })
     })
 }
 

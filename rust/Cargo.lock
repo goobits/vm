@@ -1347,7 +1347,7 @@ name = "vm-messages"
 version = "1.2.4"
 
 [[package]]
-name = "vm-pkg"
+name = "vm-package-manager"
 version = "1.2.4"
 dependencies = [
  "anyhow",

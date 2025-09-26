@@ -9,10 +9,10 @@ use crate::package_manager::PackageManager;
 /// Command-line arguments for the VM package manager.
 ///
 /// This structure defines the top-level arguments and subcommands available
-/// for the vm-pkg tool, which provides unified package management across
+/// for the vm-package-manager tool, which provides unified package management across
 /// different package managers (npm, pip, cargo, etc.) within VM environments.
 #[derive(Parser)]
-#[command(name = "vm-pkg")]
+#[command(name = "vm-package-manager")]
 #[command(about = "Unified package manager for VM Tool")]
 #[command(version)]
 pub struct Args {

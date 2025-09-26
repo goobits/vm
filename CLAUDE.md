@@ -34,7 +34,7 @@ cargo test --package vm-installer
 cargo test --package vm-temp
 cargo test --package vm
 cargo test --package vm-common
-cargo test --package vm-pkg
+cargo test --package vm-package-manager
 
 # Test specific modules within packages
 cargo test --package vm-config config_ops_tests

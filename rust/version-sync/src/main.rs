@@ -85,8 +85,10 @@ impl VersionSync {
         let version_regex = Regex::new(r#"version\s*[:=]\s*"?([^"\s]+)"?"#).unwrap_or_else(|_| {
             // Fallback to a simpler pattern if the main one fails
             Regex::new(r#"version.+?([0-9]+\.[0-9]+\.[0-9]+)"#).unwrap_or_else(|_| {
-                // Last resort - pattern that never matches (should never fail)
-                Regex::new(r"(?-u)a^").expect("Failed to create never-matching fallback regex")
+                // Last resort - use a simple fallback that cannot fail
+                Regex::new(r"").unwrap_or_else(|_| {
+                    panic!("Critical: Even empty regex pattern is failing - regex engine corrupted")
+                })
             })
         });
 
@@ -107,12 +109,16 @@ impl VersionSync {
             .with_context(|| format!("Failed to read {}", path.display()))?;
 
         let version_regex = Regex::new(r#"version\s*=\s*"[^"]+""#).unwrap_or_else(|_| {
-            // Fallback to never-matching regex (should never fail)
-            Regex::new(r"(?-u)a^").expect("Failed to create never-matching fallback regex")
+            // Fallback to simple pattern that cannot fail
+            Regex::new(r"").unwrap_or_else(|_| {
+                panic!("Critical: Even empty regex pattern is failing - regex engine corrupted")
+            })
         });
         let yaml_version_regex = Regex::new(r#"version:\s*"?[^"\s]+"?"#).unwrap_or_else(|_| {
-            // Fallback to never-matching regex (should never fail)
-            Regex::new(r"(?-u)a^").expect("Failed to create never-matching fallback regex")
+            // Fallback to simple pattern that cannot fail
+            Regex::new(r"").unwrap_or_else(|_| {
+                panic!("Critical: Even empty regex pattern is failing - regex engine corrupted")
+            })
         });
 
         let updated = if version_regex.is_match(&content) {

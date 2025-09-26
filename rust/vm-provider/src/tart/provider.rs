@@ -287,8 +287,11 @@ impl Provider for TartProvider {
             )
         );
         vm_println!(
-            "💡 Use 'vm ssh {}' to connect to the VM instance",
-            vm_name_with_suffix
+            "{}",
+            msg!(
+                MESSAGES.provider_tart_vm_connect_hint,
+                name = vm_name_with_suffix
+            )
         );
         Ok(())
     }
@@ -361,7 +364,7 @@ impl Provider for TartProvider {
                 let list_output = String::from_utf8_lossy(&output.stdout);
                 for line in list_output.lines() {
                     if line.contains(&vm_name) {
-                        println!("{}", line);
+                        vm_println!("{}", line);
                         return Ok(());
                     }
                 }

@@ -8,7 +8,8 @@ use clap::Parser;
 use log::info;
 
 // Internal imports
-use vm_common::{scoped_context, vm_warning};
+use vm_common::messages::{messages::MESSAGES, msg};
+use vm_common::{scoped_context, vm_error, vm_println, vm_warning};
 
 // Local modules
 mod cli;
@@ -44,6 +45,49 @@ fn main() -> Result<()> {
         info!("Starting vm command");
     }
 
-    // Execute the command using the new command dispatcher
-    execute_command(args)
+    // Execute the command using the new command dispatcher with error handling
+    match execute_command(args.clone()) {
+        Ok(_) => Ok(()),
+        Err(error) => {
+            handle_error(&error, &args);
+            std::process::exit(1);
+        }
+    }
+}
+
+/// Centralized error handler that formats errors using the messaging system
+fn handle_error(error: &anyhow::Error, args: &Args) {
+    // Display the primary error using our centralized message system
+    vm_error!(
+        "{}",
+        msg!(MESSAGES.error_with_context, error = error.to_string())
+    );
+
+    // Display the error chain for context
+    let error_chain: Vec<String> = error
+        .chain()
+        .skip(1) // Skip the root error we already displayed
+        .map(|e| e.to_string())
+        .collect();
+
+    if !error_chain.is_empty() {
+        for cause in error_chain {
+            vm_println!("  └─ {}", cause);
+        }
+    }
+
+    // In debug mode, show additional debugging information
+    if args.debug {
+        vm_println!(
+            "{}",
+            msg!(MESSAGES.error_debug_info, details = format!("{:?}", error))
+        );
+
+        // Show backtrace if available
+        let backtrace = error.backtrace();
+        let backtrace_str = backtrace.to_string();
+        if !backtrace_str.trim().is_empty() && backtrace_str != "disabled backtrace" {
+            vm_println!("Backtrace:\n{}", backtrace_str);
+        }
+    }
 }

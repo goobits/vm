@@ -26,8 +26,10 @@ fn get_invalid_chars_regex() -> &'static Regex {
         Regex::new(r"[^a-zA-Z0-9_-]").unwrap_or_else(|_| {
             // Fallback to a safe pattern if the main one fails
             Regex::new(r"[^\w-]").unwrap_or_else(|_| {
-                // Final fallback - should never fail
-                Regex::new(r"(?-u)a^").expect("Failed to create fallback regex for invalid chars")
+                // Final fallback - use simple pattern that cannot fail
+                Regex::new(r"").unwrap_or_else(|_| {
+                    panic!("Critical: Even empty regex pattern is failing - regex engine corrupted")
+                })
             })
         })
     })
@@ -38,9 +40,10 @@ fn get_consecutive_hyphens_regex() -> &'static Regex {
         Regex::new(r"-+").unwrap_or_else(|_| {
             // Fallback to a safe pattern if the main one fails
             Regex::new(r"--+").unwrap_or_else(|_| {
-                // Final fallback - should never fail
-                Regex::new(r"(?-u)a^")
-                    .expect("Failed to create fallback regex for consecutive hyphens")
+                // Final fallback - use simple pattern that cannot fail
+                Regex::new(r"").unwrap_or_else(|_| {
+                    panic!("Critical: Even empty regex pattern is failing - regex engine corrupted")
+                })
             })
         })
     })

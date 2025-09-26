@@ -4,6 +4,10 @@ use std::collections::HashMap;
 use std::io::{self, Write};
 use std::sync::Arc;
 use std::time::Duration;
+use vm_common::{
+    messages::{messages::MESSAGES, msg},
+    vm_println,
+};
 
 // --- Generic Progress Parsing --- //
 
@@ -47,13 +51,25 @@ impl DockerProgressParser {
             step_regex: Regex::new(r"Step (\d+)/(\d+)").unwrap_or_else(|_| {
                 // If the primary regex fails, create a never-matching regex
                 // This should never fail as it's a simple pattern
-                Regex::new(r"(?-u)a^").expect("Failed to create fallback regex")
+                Regex::new(r"(?-u)a^").unwrap_or_else(|_| {
+                    // Last resort: Create a pattern that never matches
+                    Regex::new("").unwrap_or_else(|_| {
+                        // This is unreachable as empty regex is valid
+                        panic!("Regex compilation failed for empty pattern")
+                    })
+                })
             }),
             layer_pull_regex: Regex::new(r"([a-f0-9]{12}): Pulling fs layer").unwrap_or_else(
                 |_| {
                     // If the primary regex fails, create a never-matching regex
                     // This should never fail as it's a simple pattern
-                    Regex::new(r"(?-u)a^").expect("Failed to create fallback regex")
+                    Regex::new(r"(?-u)a^").unwrap_or_else(|_| {
+                        // Last resort: Create a pattern that never matches
+                        Regex::new("").unwrap_or_else(|_| {
+                            // This is unreachable as empty regex is valid
+                            panic!("Regex compilation failed for empty pattern")
+                        })
+                    })
                 },
             ),
             total_steps: 0,
@@ -156,35 +172,80 @@ impl ProgressReporter {
     }
 
     pub fn phase_header(icon: &str, phase: &str) {
-        println!("{} {}", icon, phase);
+        vm_println!(
+            "{}",
+            msg!(MESSAGES.progress_phase_header, icon = icon, phase = phase)
+        );
     }
 
     pub fn subtask(connector: &str, task: &str) {
-        println!("{} {}", connector, task);
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.progress_subtask,
+                connector = connector,
+                task = task
+            )
+        );
     }
 
     pub fn complete(connector: &str, message: &str) {
-        println!("{} ✅ {}", connector, message);
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.progress_complete,
+                connector = connector,
+                message = message
+            )
+        );
     }
 
     pub fn warning(connector: &str, message: &str) {
-        println!("{} ⚠️ {}", connector, message);
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.progress_warning,
+                connector = connector,
+                message = message
+            )
+        );
     }
 
     pub fn error(connector: &str, message: &str) {
-        println!("{} ❌ {}", connector, message);
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.progress_error,
+                connector = connector,
+                message = message
+            )
+        );
     }
 
     pub fn error_with_details(connector: &str, main_message: &str, details: &[&str]) {
-        println!("{} ❌ {}", connector, main_message);
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.progress_error,
+                connector = connector,
+                message = main_message
+            )
+        );
         for detail in details {
-            println!("     └─ {}", detail);
+            vm_println!("{}", msg!(MESSAGES.progress_error_detail, detail = *detail));
         }
     }
 
     pub fn error_with_hint(connector: &str, message: &str, hint: &str) {
-        println!("{} ❌ {}", connector, message);
-        println!("     💡 {}", hint);
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.progress_error,
+                connector = connector,
+                message = message
+            )
+        );
+        vm_println!("{}", msg!(MESSAGES.progress_error_hint, hint = hint));
     }
 }
 
@@ -211,24 +272,36 @@ impl StatusFormatter {
         memory: Option<u32>,
         cpus: Option<u32>,
     ) {
-        println!("VM Status Report");
-        println!("================");
-        println!("Name: {}", vm_name);
+        vm_println!("{}", MESSAGES.status_report_header);
+        vm_println!("{}", MESSAGES.status_report_separator);
+        vm_println!("{}", msg!(MESSAGES.status_report_name, name = vm_name));
 
         let status_icon = match state.to_lowercase().as_str() {
             "running" => "🟢 Running",
             "stopped" | "exited" => "🔴 Stopped",
             _ => "⚫ Not Found",
         };
-        println!("Status: {}", status_icon);
-        println!("Provider: {}", provider);
+        vm_println!(
+            "{}",
+            msg!(MESSAGES.status_report_status, status = status_icon)
+        );
+        vm_println!(
+            "{}",
+            msg!(MESSAGES.status_report_provider, provider = provider)
+        );
 
         if let Some(mem) = memory {
-            println!("Memory: {} MB", mem);
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.status_report_memory, memory = mem.to_string())
+            );
         }
 
         if let Some(cpu) = cpus {
-            println!("CPUs: {}", cpu);
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.status_report_cpus, cpus = cpu.to_string())
+            );
         }
     }
 }
