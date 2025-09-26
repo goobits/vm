@@ -3011,7 +3011,7 @@ checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 
 [[package]]
 name = "version-sync"
-version = "1.2.4"
+version = "1.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -3029,7 +3029,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vm"
-version = "1.2.4"
+version = "1.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -3047,7 +3047,7 @@ dependencies = [
 
 [[package]]
 name = "vm-common"
-version = "1.2.4"
+version = "1.3.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3070,7 +3070,7 @@ dependencies = [
 
 [[package]]
 name = "vm-config"
-version = "1.2.4"
+version = "1.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -3091,7 +3091,7 @@ dependencies = [
 
 [[package]]
 name = "vm-installer"
-version = "1.2.4"
+version = "1.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -3107,11 +3107,11 @@ dependencies = [
 
 [[package]]
 name = "vm-messages"
-version = "1.2.4"
+version = "1.3.0"
 
 [[package]]
 name = "vm-package-manager"
-version = "1.2.4"
+version = "1.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -3129,7 +3129,7 @@ dependencies = [
 
 [[package]]
 name = "vm-package-server"
-version = "1.2.4"
+version = "1.3.0"
 dependencies = [
  "anyhow",
  "askama",
@@ -3168,7 +3168,7 @@ dependencies = [
 
 [[package]]
 name = "vm-platform"
-version = "1.2.4"
+version = "1.3.0"
 dependencies = [
  "anyhow",
  "dirs",
@@ -3178,7 +3178,7 @@ dependencies = [
 
 [[package]]
 name = "vm-provider"
-version = "1.2.4"
+version = "1.3.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3199,7 +3199,7 @@ dependencies = [
 
 [[package]]
 name = "vm-temp"
-version = "1.2.4"
+version = "1.3.0"
 dependencies = [
  "anyhow",
  "clap",
