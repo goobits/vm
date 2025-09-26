@@ -47,8 +47,10 @@ fn main() {
     // Execute the command and handle any top-level errors
     if let Err(e) = execute_command(args) {
         // Use the new messaging system to format the final error output
-        vm_error!("{}", msg!(MESSAGES.error_generic, error = format!("{:?}", e)));
+        vm_error!(
+            "{}",
+            msg!(MESSAGES.error_generic, error = format!("{:?}", e))
+        );
         std::process::exit(1);
     }
 }
-
