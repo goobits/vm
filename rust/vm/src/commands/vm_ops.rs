@@ -813,9 +813,9 @@ fn handle_ssh_start_prompt(
     container: Option<&str>,
     relative_path: &Path,
     vm_name: &str,
-    user: &str,
-    workspace_path: &str,
-    shell: &str,
+    _user: &str,
+    _workspace_path: &str,
+    _shell: &str,
 ) -> Result<Option<Result<()>>> {
     // Check if we're in an interactive terminal
     if !io::stdin().is_terminal() {
@@ -852,11 +852,6 @@ fn handle_ssh_start_prompt(
 
     // Now retry the SSH connection
     println!("\n🔗 Reconnecting to '{}'...", vm_name);
-    println!();
-    println!("  User:  {}", user);
-    println!("  Path:  {}", workspace_path);
-    println!("  Shell: {}", shell);
-    println!("\n💡 Exit with: exit or Ctrl-D\n");
 
     let retry_result = provider.ssh(container, relative_path);
     match &retry_result {
@@ -909,11 +904,6 @@ pub fn handle_ssh(
         .unwrap_or("zsh");
 
     println!("🔗 Connecting to '{}'...", vm_name);
-    println!();
-    println!("  User:  {}", user);
-    println!("  Path:  {}", workspace_path);
-    println!("  Shell: {}", shell);
-    println!("\n💡 Exit with: exit or Ctrl-D\n");
 
     let result = provider.ssh(container, &relative_path);
 

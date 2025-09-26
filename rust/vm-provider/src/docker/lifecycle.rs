@@ -833,6 +833,13 @@ impl<'a> LifecycleOperations<'a> {
             "-i"
         };
 
+        // Display connection details only when we're about to connect
+        println!();
+        println!("  User:  {}", project_user);
+        println!("  Path:  {}", target_dir);
+        println!("  Shell: {}", shell);
+        println!("\n💡 Exit with: exit or Ctrl-D\n");
+
         let result = duct::cmd(
             "docker",
             &[
@@ -873,6 +880,14 @@ impl<'a> LifecycleOperations<'a> {
                 if error_str.contains("is not running") {
                     // Return a clear error that indicates the container is not running
                     Err(anyhow::anyhow!("Container is not running"))
+                } else if error_str.contains("exited with code") {
+                    // Clean up duct command errors that include the full command
+                    // Extract just the essential error without the command details
+                    if error_str.contains("exited with code 1") {
+                        Err(anyhow::anyhow!("Docker command failed"))
+                    } else {
+                        Err(anyhow::anyhow!("Command execution failed"))
+                    }
                 } else {
                     // Pass through other errors
                     Err(e.into())
