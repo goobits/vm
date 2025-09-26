@@ -783,8 +783,13 @@ impl<'a> LifecycleOperations<'a> {
     #[must_use = "container stop results should be handled"]
     pub fn stop_container(&self, container: Option<&str>) -> Result<()> {
         let target_container = self.resolve_target_container(container)?;
-        stream_command("docker", &["stop", &target_container])
-            .with_context(|| format!("Failed to stop container '{}'", target_container))
+        // Use a 3-second timeout for faster stops (default is 10 seconds)
+        // Development VMs can typically be stopped quickly without data loss
+        // Run docker stop without streaming output to keep things clean
+        duct::cmd("docker", &["stop", "-t", "3", &target_container])
+            .run()
+            .with_context(|| format!("Failed to stop container '{}'", target_container))?;
+        Ok(())
     }
 
     #[must_use = "container destruction results should be handled"]
@@ -833,12 +838,27 @@ impl<'a> LifecycleOperations<'a> {
             "-i"
         };
 
-        // Display connection details only when we're about to connect
-        println!();
-        println!("  User:  {}", project_user);
-        println!("  Path:  {}", target_dir);
-        println!("  Shell: {}", shell);
-        println!("\n💡 Exit with: exit or Ctrl-D\n");
+        // Resolve the container name first
+        let container_name = self.resolve_target_container(container)?;
+
+        // Check if container is running before showing connection details
+        // Use a quick docker inspect to check status
+        let status_check = duct::cmd(
+            "docker",
+            &["inspect", "--format", "{{.State.Running}}", &container_name],
+        )
+        .read();
+
+        let is_running = status_check.is_ok_and(|output| output.trim() == "true");
+
+        // Only show connection details if container is running and it's interactive
+        if is_running && io::stdin().is_terminal() && io::stdout().is_terminal() {
+            println!();
+            println!("  User:  {}", project_user);
+            println!("  Path:  {}", target_dir);
+            println!("  Shell: {}", shell);
+            println!("\n💡 Exit with: exit or Ctrl-D\n");
+        }
 
         let result = duct::cmd(
             "docker",
@@ -847,7 +867,7 @@ impl<'a> LifecycleOperations<'a> {
                 tty_flag,
                 "-e",
                 &format!("VM_TARGET_DIR={}", target_dir),
-                &self.resolve_target_container(container)?,
+                &container_name,
                 "sudo",
                 "-u",
                 project_user,
@@ -878,11 +898,14 @@ impl<'a> LifecycleOperations<'a> {
                 // Check if the error is because the container is not running
                 let error_str = e.to_string();
                 if error_str.contains("is not running") {
-                    // Return a clear error that indicates the container is not running
-                    Err(anyhow::anyhow!("Container is not running"))
-                } else if error_str.contains("exited with code") {
-                    // Clean up duct command errors that include the full command
-                    // Extract just the essential error without the command details
+                    // Pass through the original error so the SSH handler can detect it
+                    // and offer to start the VM
+                    Err(e.into())
+                } else if error_str.contains("exited with code")
+                    && !error_str.contains("is not running")
+                {
+                    // Only clean up other duct command errors that include the full command
+                    // but preserve "is not running" errors for proper handling
                     if error_str.contains("exited with code 1") {
                         Err(anyhow::anyhow!("Docker command failed"))
                     } else {

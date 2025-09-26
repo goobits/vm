@@ -4,8 +4,8 @@ use crate::{vm_error, vm_error_hint};
 
 /// Handle missing required field error
 pub fn missing_required_field(field: &str) -> anyhow::Error {
-    vm_error!("Missing required field: {}", field);
-    vm_error_hint!("Add the '{}' field to your configuration", field);
+    // Don't log these errors - they'll be handled at a higher level
+    // This prevents cluttering the output with technical details
     anyhow::anyhow!("Missing required field: {}", field)
 }
 

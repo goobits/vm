@@ -83,11 +83,41 @@ fn handle_provider_command(args: Args) -> Result<()> {
                 Ok(config) => config,
                 Err(_) => {
                     // If lenient loading fails, fall back to strict loading
-                    VmConfig::load(args.config)?
+                    match VmConfig::load(args.config) {
+                        Ok(config) => config,
+                        Err(e) => {
+                            let error_str = e.to_string();
+                            #[allow(clippy::excessive_nesting)]
+                            if error_str.contains("No vm.yaml found") {
+                                println!("❌ No vm.yaml configuration file found\n");
+                                println!("💡 You need a configuration file to run VMs. Try:");
+                                println!("   • Initialize config: vm init");
+                                println!("   • Change to project directory: cd <project>");
+                                println!("   • List existing VMs: vm list --all-providers");
+                                return Err(anyhow::anyhow!("Configuration required"));
+                            }
+                            return Err(e);
+                        }
+                    }
                 }
             }
         } else {
-            VmConfig::load(args.config)?
+            match VmConfig::load(args.config) {
+                Ok(config) => config,
+                Err(e) => {
+                    let error_str = e.to_string();
+                    #[allow(clippy::excessive_nesting)]
+                    if error_str.contains("No vm.yaml found") {
+                        println!("❌ No vm.yaml configuration file found\n");
+                        println!("💡 You need a configuration file to run VMs. Try:");
+                        println!("   • Initialize config: vm init");
+                        println!("   • Change to project directory: cd <project>");
+                        println!("   • List existing VMs: vm list --all-providers");
+                        return Err(anyhow::anyhow!("Configuration required"));
+                    }
+                    return Err(e);
+                }
+            }
         }
     };
 
@@ -196,7 +226,9 @@ fn handle_provider_command(args: Args) -> Result<()> {
                 anyhow::anyhow!("⚠️ Port conflict detected\n\n💡 Try:\n  • Fix ports: vm config ports --fix\n  • Check ports: docker ps\n  • Recreate: vm create --force")
             } else if error_chain.contains("permission") || error_str.contains("permission") {
                 anyhow::anyhow!("🔐 Permission denied\n\n💡 Try:\n  • Check Docker: docker ps\n  • Verify Docker permissions\n  • Restart Docker daemon")
-            } else if error_chain.contains("Docker") || error_str.contains("Docker daemon") {
+            } else if (error_chain.contains("Docker") || error_str.contains("Docker daemon"))
+                && !error_str.contains("No such container")
+                && !error_str.contains("No such object") {
                 anyhow::anyhow!("🐳 Docker issue detected\n\n💡 Try:\n  • Start Docker\n  • Check Docker: docker version\n  • Restart Docker daemon")
             } else if error_chain.contains("config") || error_str.contains("configuration") {
                 anyhow::anyhow!("⚙️ Configuration issue\n\n💡 Try:\n  • Validate config: vm validate\n  • Check vm.yaml syntax\n  • Reset config: vm init")

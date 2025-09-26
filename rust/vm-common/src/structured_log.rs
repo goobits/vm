@@ -51,7 +51,7 @@ impl LogConfig {
     #[must_use = "log configuration should be used to initialize logging"]
     pub fn from_env() -> Self {
         let level = match std::env::var("LOG_LEVEL")
-            .unwrap_or_else(|_| "INFO".to_string())
+            .unwrap_or_else(|_| "WARN".to_string())
             .to_uppercase()
             .as_str()
         {

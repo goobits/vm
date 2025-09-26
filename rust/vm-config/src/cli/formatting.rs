@@ -63,8 +63,11 @@ pub fn find_vm_config_file() -> Result<PathBuf> {
         }
     }
 
-    vm_error!("Could not find vm.yaml file in current directory or any parent directory");
-    Err(anyhow::anyhow!("Could not find vm.yaml file"))
+    // Don't log this as an error - it's a normal situation
+    // Just return a clean error that can be handled appropriately
+    Err(anyhow::anyhow!(
+        "No vm.yaml found in current or parent directories"
+    ))
 }
 
 pub fn output_shell_exports(value: &Value) {

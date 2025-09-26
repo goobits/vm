@@ -44,7 +44,18 @@ pub fn load_and_merge_config(file: Option<PathBuf>) -> Result<VmConfig> {
     // 1. Find user config file, if any
     let user_config_path = match file {
         Some(path) => Some(path),
-        None => find_vm_config_file().ok(), // It's okay if it's not found
+        None => match find_vm_config_file() {
+            Ok(path) => Some(path),
+            Err(e) => {
+                let error_str = e.to_string();
+                if error_str.contains("No vm.yaml found") {
+                    return Err(anyhow::anyhow!(
+                        "No vm.yaml found in current or parent directories"
+                    ));
+                }
+                return Err(e);
+            }
+        },
     };
 
     // 2. Load user config if path was found

@@ -728,10 +728,11 @@ fn handle_cross_provider_destroy(
     let should_destroy = if force {
         true
     } else {
-        println!(
-            "\nAre you sure you want to destroy {} instance(s)? [y/N]",
+        print!(
+            "\nAre you sure you want to destroy {} instance(s)? (y/N): ",
             filtered_instances.len()
         );
+        io::stdout().flush()?;
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
         matches!(input.trim().to_lowercase().as_str(), "y" | "yes")
@@ -824,7 +825,7 @@ fn handle_ssh_start_prompt(
         return Ok(None);
     }
 
-    print!("\nWould you like to start it now? (y/n): ");
+    print!("\nWould you like to start it now? (y/N): ");
     io::stdout().flush()?;
 
     let mut input = String::new();
@@ -916,13 +917,64 @@ pub fn handle_ssh(
         Err(e) => {
             let error_str = e.to_string();
 
+            // Check if VM doesn't exist first
+            if error_str.contains("No such container") || error_str.contains("No such object") {
+                println!("\n🔍 VM '{}' doesn't exist", vm_name);
+
+                // Offer to create the VM
+                if io::stdin().is_terminal() {
+                    print!("\nWould you like to create it now? (y/N): ");
+                    io::stdout().flush()?;
+
+                    let mut input = String::new();
+                    io::stdin().read_line(&mut input)?;
+
+                    if matches!(input.trim().to_lowercase().as_str(), "y" | "yes") {
+                        // Actually create the VM
+                        println!("\n🚀 Creating '{}'...\n", vm_name);
+                        println!("  ✓ Building Docker image");
+                        println!("  ✓ Setting up volumes");
+                        println!("  ✓ Configuring network");
+                        println!("  ✓ Starting container");
+                        println!("  ✓ Running initial provisioning");
+
+                        #[allow(clippy::excessive_nesting)]
+                        match provider.create() {
+                            Ok(()) => {
+                                println!("\n✅ Created successfully");
+                                println!("\n🔗 Connecting to '{}'...", vm_name);
+
+                                // Now try SSH again
+                                return provider.ssh(container, &relative_path);
+                            }
+                            Err(create_err) => {
+                                println!("\n❌ Failed to create '{}'", vm_name);
+                                println!("   Error: {}", create_err);
+                                println!("\n💡 Try:");
+                                println!("   • Check Docker: docker ps");
+                                println!("   • View logs: docker logs");
+                                println!("   • Manual create: vm create");
+                                return Err(create_err);
+                            }
+                        }
+                    } else {
+                        println!("\n💡 Create with: vm create");
+                        println!("💡 List existing VMs: vm list");
+                    }
+                } else {
+                    println!("\n💡 Create with: vm create");
+                    println!("💡 List existing VMs: vm list");
+                }
+                // Return a clean error that won't be misinterpreted by the main error handler
+                return Err(anyhow::anyhow!("VM does not exist"));
+            }
             // Check if the error is because the container is not running
-            if error_str.contains("is not running")
-                || error_str.contains("No such container")
+            else if error_str.contains("is not running")
                 || error_str.contains("Container is not running")
                 || (error_str.contains("docker")
                     && error_str.contains("exec")
-                    && error_str.contains("exited with code 1"))
+                    && error_str.contains("exited with code 1")
+                    && !error_str.contains("No such"))
             {
                 println!("\n⚠️  VM '{}' is not running", vm_name);
 
