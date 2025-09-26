@@ -15,6 +15,9 @@ pub mod system_check;
 pub mod temp_dir;
 pub mod user_paths;
 
+// Re-export vm-messages for easy access
+pub use vm_messages as messages;
+
 // Standard library
 use std::path::Path;
 use std::process::Command;

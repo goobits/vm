@@ -19,6 +19,7 @@ chrono = { workspace = true }
 is-terminal = { workspace = true }
 dirs = { workspace = true }
 uuid = { workspace = true }
+vm-messages = { path = "../vm-messages" }
 vm-platform = { path = "../vm-platform" }
 duct = { workspace = true }
 which = { workspace = true }

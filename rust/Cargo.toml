@@ -8,6 +8,7 @@ members = [
     "vm-temp",
     "vm",
     "vm-installer",
+    "vm-messages",
     "version-sync",
 ]
 resolver = "2"
