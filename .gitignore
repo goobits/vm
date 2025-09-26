@@ -115,3 +115,7 @@ test-temp-file-cleanup.sh
 SECURITY-*.md
 TEMP_FILE_SECURITY_IMPROVEMENTS.md
 error-handling-summary.md
+
+# Package server data directories
+data/
+*/data/
