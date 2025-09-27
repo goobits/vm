@@ -18,10 +18,10 @@ pub mod vm_ops;
 
 /// Main command dispatcher
 #[must_use = "command execution results should be handled"]
-pub fn execute_command(args: Args) -> Result<()> {
+pub async fn execute_command(args: Args) -> Result<()> {
     // Handle dry-run for provider commands
     if args.dry_run {
-        return handle_dry_run(&args);
+        return handle_dry_run(&args).await;
     }
 
     // Handle commands that don't need a provider first
@@ -45,18 +45,15 @@ pub fn execute_command(args: Args) -> Result<()> {
         }
         Command::Pkg { command } => {
             debug!("Calling package registry operations");
-            tokio::runtime::Runtime::new()?
-                .block_on(async { pkg::handle_pkg_command(command, args.config).await })
+            pkg::handle_pkg_command(command, args.config).await
         }
         Command::Auth { command } => {
             debug!("Calling auth proxy operations");
-            tokio::runtime::Runtime::new()?
-                .block_on(async { auth::handle_auth_command(command, args.config).await })
+            auth::handle_auth_command(command, args.config).await
         }
         Command::Registry { command } => {
             debug!("Calling Docker registry operations");
-            tokio::runtime::Runtime::new()?
-                .block_on(async { registry::handle_registry_command(command, args.config).await })
+            registry::handle_registry_command(command, args.config).await
         }
         _ => {
             // Provider-based commands
@@ -65,7 +62,7 @@ pub fn execute_command(args: Args) -> Result<()> {
     }
 }
 
-fn handle_dry_run(args: &Args) -> Result<()> {
+async fn handle_dry_run(args: &Args) -> Result<()> {
     match &args.command {
         Command::Create { .. }
         | Command::Start { .. }
@@ -85,7 +82,7 @@ fn handle_dry_run(args: &Args) -> Result<()> {
             // Non-provider commands proceed normally
             let mut args_copy = args.clone();
             args_copy.dry_run = false;
-            execute_command(args_copy)
+            Box::pin(execute_command(args_copy)).await
         }
     }
 }

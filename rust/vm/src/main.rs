@@ -24,7 +24,8 @@ fn get_request_id() -> &'static str {
     REQUEST_ID.get_or_init(|| Uuid::new_v4().to_string())
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // Initialize tracing system first, but only if not in test mode
     // Tests expect clean stdout output, so we disable logging for test runs
     if std::env::var("VM_TEST_MODE").is_err() {
@@ -48,7 +49,7 @@ fn main() {
     }
 
     // Execute the command and handle any top-level errors
-    if let Err(e) = execute_command(args) {
+    if let Err(e) = execute_command(args).await {
         // Use the new messaging system to format the final error output
         vm_error!(
             "{}",
