@@ -19,7 +19,7 @@
 //! across different package managers:
 //!
 //! ```rust
-//! use vm_package_server::package_utils::{RegistryPattern, count_packages_by_pattern};
+//! use crate::package_utils::{RegistryPattern, count_packages_by_pattern};
 //!
 //! // Count PyPI packages
 //! let count = count_packages_by_pattern(
@@ -54,7 +54,7 @@
 //! ### Basic File Discovery
 //!
 //! ```rust
-//! use vm_package_server::package_utils::list_files_with_extensions;
+//! use crate::package_utils::list_files_with_extensions;
 //!
 //! let files = list_files_with_extensions(
 //!     "/data/pypi/packages",
@@ -65,7 +65,7 @@
 //! ### Custom Package Extraction
 //!
 //! ```rust
-//! use vm_package_server::package_utils::count_packages_by_name_extraction;
+//! use crate::package_utils::count_packages_by_name_extraction;
 //!
 //! let count = count_packages_by_name_extraction(
 //!     dir,

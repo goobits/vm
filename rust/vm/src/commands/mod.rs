@@ -10,6 +10,7 @@ use vm_provider::{error::ProviderError, get_provider};
 
 // Individual command modules
 pub mod config;
+pub mod pkg;
 pub mod temp;
 pub mod vm_ops;
 
@@ -39,6 +40,11 @@ pub fn execute_command(args: Args) -> Result<()> {
         Command::Temp { command } => {
             debug!("Calling temp VM operations directly");
             temp::handle_temp_command(command, args.config)
+        }
+        Command::Pkg { command } => {
+            debug!("Calling package registry operations");
+            tokio::runtime::Runtime::new()?
+                .block_on(async { pkg::handle_pkg_command(command, args.config).await })
         }
         _ => {
             // Provider-based commands

@@ -37,7 +37,7 @@
 //! ## Usage
 //!
 //! ```rust,no_run
-//! use vm_package_server::error::{AppError, AppResult};
+//! use crate::error::{AppError, AppResult};
 //!
 //! fn validate_package_name(name: &str) -> AppResult<()> {
 //!     if name.is_empty() {

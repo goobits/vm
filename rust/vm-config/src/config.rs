@@ -114,6 +114,9 @@ pub struct VmConfig {
     pub gemini_sync: bool,
 
     #[serde(default, skip_serializing_if = "is_false")]
+    pub package_registry: bool,
+
+    #[serde(default, skip_serializing_if = "is_false")]
     pub persist_databases: bool,
 
     // 11. Security

@@ -3,9 +3,9 @@ name = "vm-package-server"
 version = { workspace = true }
 edition = { workspace = true }
 
-[[bin]]
-name = "pkg-server"
-path = "src/main.rs"
+[lib]
+name = "vm_package_server"
+path = "src/lib.rs"
 
 [dependencies]
 axum = { workspace = true }

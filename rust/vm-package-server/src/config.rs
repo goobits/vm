@@ -26,7 +26,7 @@
 //! Configuration can be loaded from a JSON file or use sensible defaults:
 //!
 //! ```rust,no_run
-//! # use vm_package_server::config::Config;
+//! # use crate::config::Config;
 //! // Load from file with fallback to defaults
 //! let config = Config::load_or_default("config.json")?;
 //!

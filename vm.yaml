@@ -38,3 +38,4 @@ aliases:
   geminiyolo: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini
 claude_sync: true
 gemini_sync: true
+package_registry: true

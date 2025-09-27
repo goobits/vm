@@ -1,455 +1,17 @@
-use anyhow::{Context, Result};
+//! Main CLI commands for package management
+//!
+//! This module contains the primary user-facing commands for adding, removing,
+//! listing, and managing packages across different package managers.
+
+use super::builders::*;
+use super::detection::*;
+use crate::api::PackageServerClient;
+use anyhow::Result;
 use colored::Colorize;
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, MultiSelect, Select};
-use indicatif::{ProgressBar, ProgressStyle};
-use serde_json::Value;
-use std::env;
 use std::fs;
 use std::io::{self, Write};
-use std::path::Path;
-use std::process::Command;
 use tracing::{debug, error, info, warn};
-use which::which;
-
-use vm_package_server::api::PackageServerClient;
-
-/// Utility for creating consistent progress bars across build operations
-struct ProgressBarManager {
-    pb: ProgressBar,
-}
-
-impl ProgressBarManager {
-    /// Create a new progress bar with consistent styling
-    fn new(message: &str) -> Self {
-        let pb = ProgressBar::new_spinner();
-        pb.set_style(
-            ProgressStyle::default_spinner()
-                .template("{spinner:.green} {msg}")
-                .unwrap_or_else(|_| ProgressStyle::default_spinner()),
-        );
-        pb.set_message(message.to_string());
-        Self { pb }
-    }
-
-    /// Finish the progress bar and clear it
-    fn finish(self) {
-        self.pb.finish_and_clear();
-    }
-}
-
-/// Helper function to validate that a required tool is available
-fn ensure_tool_available(tool_name: &str) -> Result<()> {
-    if which(tool_name).is_err() {
-        error!("{} is not installed or not in PATH", tool_name);
-        anyhow::bail!("{} is not installed or not in PATH", tool_name);
-    }
-    Ok(())
-}
-
-/// Trait for package builders that can create build artifacts
-trait PackageBuilder {
-    type Output;
-
-    /// The name of the tool required for building
-    fn tool_name(&self) -> &str;
-
-    /// Create the build command with appropriate arguments
-    fn build_command(&self) -> Command;
-
-    /// Process the output directory to find build artifacts
-    fn process_build_output(&self) -> Result<Self::Output>;
-
-    /// The progress message to show during building
-    fn progress_message(&self) -> &str;
-
-    /// Execute the full build process
-    fn build(&self) -> Result<Self::Output> {
-        ensure_tool_available(self.tool_name())?;
-
-        let pb = ProgressBarManager::new(self.progress_message());
-
-        let output = self
-            .build_command()
-            .output()
-            .with_context(|| format!("Failed to run {} build command", self.tool_name()))?;
-
-        pb.finish();
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            error!(tool = %self.tool_name(), stderr = %stderr, "Build command failed");
-            anyhow::bail!("Build failed: {}", stderr);
-        }
-
-        self.process_build_output()
-    }
-}
-
-/// Python package builder
-struct PythonBuilder;
-
-impl PackageBuilder for PythonBuilder {
-    type Output = Vec<std::path::PathBuf>;
-
-    fn tool_name(&self) -> &str {
-        "python"
-    }
-
-    fn build_command(&self) -> Command {
-        if Path::new("pyproject.toml").exists() {
-            // Try to install build if not available
-            let _ = Command::new("python")
-                .args(["-m", "pip", "install", "build"])
-                .output();
-
-            let mut cmd = Command::new("python");
-            cmd.args(["-m", "build"]);
-            cmd
-        } else {
-            let mut cmd = Command::new("python");
-            cmd.args(["setup.py", "sdist", "bdist_wheel"]);
-            cmd
-        }
-    }
-
-    fn process_build_output(&self) -> Result<Self::Output> {
-        let dist_dir = Path::new("dist");
-        if !dist_dir.exists() {
-            anyhow::bail!("dist/ directory not found after build");
-        }
-
-        let mut package_files = Vec::new();
-        for entry in fs::read_dir(dist_dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_file() {
-                if let Some(ext) = path.extension() {
-                    if ext == "whl" || ext == "gz" {
-                        package_files.push(path);
-                    }
-                }
-            }
-        }
-        Ok(package_files)
-    }
-
-    fn progress_message(&self) -> &str {
-        "Building package..."
-    }
-}
-
-/// NPM package builder
-struct NpmBuilder;
-
-impl PackageBuilder for NpmBuilder {
-    type Output = (std::path::PathBuf, Value);
-
-    fn tool_name(&self) -> &str {
-        "npm"
-    }
-
-    fn build_command(&self) -> Command {
-        let mut cmd = Command::new("npm");
-        cmd.args(["pack"]);
-        cmd
-    }
-
-    fn process_build_output(&self) -> Result<Self::Output> {
-        // Read package.json to create metadata
-        let package_json = fs::read_to_string("package.json")?;
-        let metadata: Value = serde_json::from_str(&package_json)?;
-
-        // Find .tgz files in current directory (created by npm pack)
-        let current_dir = std::env::current_dir()?;
-        for entry in fs::read_dir(&current_dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_file() && path.extension() == Some(std::ffi::OsStr::new("tgz")) {
-                return Ok((path, metadata));
-            }
-        }
-
-        anyhow::bail!("No .tgz file found after npm pack");
-    }
-
-    fn progress_message(&self) -> &str {
-        "Creating package tarball..."
-    }
-}
-
-/// Cargo package builder
-struct CargoBuilder;
-
-impl PackageBuilder for CargoBuilder {
-    type Output = std::path::PathBuf;
-
-    fn tool_name(&self) -> &str {
-        "cargo"
-    }
-
-    fn build_command(&self) -> Command {
-        let mut cmd = Command::new("cargo");
-        cmd.args(["package", "--allow-dirty"]);
-        cmd
-    }
-
-    fn process_build_output(&self) -> Result<Self::Output> {
-        let target_package_dir = Path::new("target/package");
-        for entry in fs::read_dir(target_package_dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_file() && path.extension() == Some(std::ffi::OsStr::new("crate")) {
-                return Ok(path);
-            }
-        }
-        anyhow::bail!("Could not find .crate file in target/package/");
-    }
-
-    fn progress_message(&self) -> &str {
-        "Packaging crate..."
-    }
-}
-
-/// Package types that can be detected and managed
-#[derive(Debug, Clone, PartialEq)]
-pub enum PackageType {
-    Python,
-    Npm,
-    Cargo,
-}
-
-impl std::fmt::Display for PackageType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            PackageType::Python => write!(f, "Python"),
-            PackageType::Npm => write!(f, "Node.js"),
-            PackageType::Cargo => write!(f, "Rust"),
-        }
-    }
-}
-
-impl PackageType {
-    /// Get the package name from the current directory
-    pub fn get_package_name(&self) -> Result<String> {
-        match self {
-            PackageType::Python => get_python_package_name(),
-            PackageType::Npm => get_npm_package_name(),
-            PackageType::Cargo => get_cargo_package_name(),
-        }
-    }
-
-    /// Add package locally
-    pub fn add_package_local(&self, package_name: &str) -> Result<()> {
-        match self {
-            PackageType::Python => add_python_package_local(package_name),
-            PackageType::Npm => add_npm_package_local(package_name),
-            PackageType::Cargo => add_cargo_package_local(package_name),
-        }
-    }
-
-    /// Add package to server
-    pub fn add_package(&self, client: &PackageServerClient, package_name: &str) -> Result<()> {
-        match self {
-            PackageType::Python => add_python_package(client, package_name),
-            PackageType::Npm => add_npm_package(client, package_name),
-            PackageType::Cargo => add_cargo_package(client, package_name),
-        }
-    }
-
-    /// Get package versions from server
-    pub fn get_versions(
-        &self,
-        client: &PackageServerClient,
-        package_name: &str,
-    ) -> Result<Vec<String>> {
-        match self {
-            PackageType::Python => client.get_pypi_versions(package_name),
-            PackageType::Npm => client.get_npm_versions(package_name),
-            PackageType::Cargo => client.get_cargo_versions(package_name),
-        }
-    }
-
-    /// Delete a specific package version
-    pub fn delete_version(
-        &self,
-        client: &PackageServerClient,
-        package_name: &str,
-        version: &str,
-        force_delete: bool,
-    ) -> Result<()> {
-        match self {
-            PackageType::Python => client.delete_pypi_version(package_name, version),
-            PackageType::Npm => client.delete_npm_version(package_name, version),
-            PackageType::Cargo => client.delete_cargo_version(package_name, version, force_delete),
-        }
-    }
-
-    /// Delete entire package
-    pub fn delete_package(&self, client: &PackageServerClient, package_name: &str) -> Result<()> {
-        match self {
-            PackageType::Python => client.delete_pypi_package(package_name),
-            PackageType::Npm => client.delete_npm_package(package_name),
-            PackageType::Cargo => client.delete_cargo_crate(package_name),
-        }
-    }
-
-    /// Remove package from local storage
-    pub fn remove_package_local(
-        &self,
-        package_name: &str,
-        data_dir: &std::path::Path,
-    ) -> Result<()> {
-        match self {
-            PackageType::Python => {
-                vm_package_server::local_storage::remove_pypi_package_local(package_name, data_dir)
-            }
-            PackageType::Npm => {
-                vm_package_server::local_storage::remove_npm_package_local(package_name, data_dir)
-            }
-            PackageType::Cargo => {
-                vm_package_server::local_storage::remove_cargo_package_local(package_name, data_dir)
-            }
-        }
-    }
-
-    /// Get action description for deletion
-    pub fn delete_action_description(&self, delete_all: bool, force_delete: bool) -> &str {
-        match (self, delete_all, force_delete) {
-            (_, true, _) => "delete ALL versions of",
-            (PackageType::Cargo, false, false) => "yank version",
-            (PackageType::Cargo, false, true) => "force delete version",
-            (PackageType::Npm, false, _) => "unpublish version",
-            (PackageType::Python, false, _) => "delete version",
-        }
-    }
-
-    /// Create from index (for UI)
-    pub fn from_index(index: usize) -> Self {
-        match index {
-            0 => PackageType::Python,
-            1 => PackageType::Npm,
-            2 => PackageType::Cargo,
-            _ => unreachable!(),
-        }
-    }
-}
-
-/// Package information containing type and name
-#[derive(Debug, Clone)]
-pub struct PackageInfo {
-    pub package_type: PackageType,
-    pub name: String,
-}
-
-/// Detect package type in current directory
-#[allow(dead_code)]
-pub fn detect_package_type() -> Result<PackageType> {
-    let package_types = detect_package_types()?;
-    if package_types.is_empty() {
-        anyhow::bail!(
-            "No package detected in current directory.\n\
-            Supported: Python (setup.py/pyproject.toml), NPM (package.json), Cargo (Cargo.toml)"
-        );
-    }
-    Ok(package_types[0].clone())
-}
-
-/// Detect all package types in current directory
-pub fn detect_package_types() -> Result<Vec<PackageType>> {
-    let current_dir = env::current_dir().context("Failed to get current directory")?;
-    let mut detected_types = Vec::new();
-
-    // Check for Python packages
-    if current_dir.join("setup.py").exists() || current_dir.join("pyproject.toml").exists() {
-        detected_types.push(PackageType::Python);
-    }
-
-    // Check for Node.js packages
-    if current_dir.join("package.json").exists() {
-        detected_types.push(PackageType::Npm);
-    }
-
-    // Check for Rust packages
-    if current_dir.join("Cargo.toml").exists() {
-        detected_types.push(PackageType::Cargo);
-    }
-
-    Ok(detected_types)
-}
-
-/// Get package name from current directory
-pub fn get_package_name(package_type: &PackageType) -> Result<String> {
-    package_type.get_package_name()
-}
-
-fn get_python_package_name() -> Result<String> {
-    // Try pyproject.toml first
-    if Path::new("pyproject.toml").exists() {
-        let content = fs::read_to_string("pyproject.toml")?;
-        if let Some(line) = content.lines().find(|line| line.trim().starts_with("name")) {
-            if let Some(name) = line.split('=').nth(1) {
-                return Ok(name.trim().trim_matches('"').trim_matches('\'').to_string());
-            }
-        }
-    }
-
-    // Fall back to setup.py
-    if Path::new("setup.py").exists() {
-        let output = Command::new("python")
-            .args(["setup.py", "--name"])
-            .output()
-            .context("Failed to get package name from setup.py")?;
-
-        if output.status.success() {
-            let name = String::from_utf8(output.stdout)?.trim().to_string();
-            if !name.is_empty() {
-                return Ok(name);
-            }
-        }
-    }
-
-    anyhow::bail!("Could not determine Python package name");
-}
-
-fn get_npm_package_name() -> Result<String> {
-    let package_json = fs::read_to_string("package.json").context("Failed to read package.json")?;
-
-    let parsed: Value =
-        serde_json::from_str(&package_json).context("Failed to parse package.json")?;
-
-    parsed["name"]
-        .as_str()
-        .map(|s| s.to_string())
-        .context("No 'name' field found in package.json")
-}
-
-fn get_cargo_package_name() -> Result<String> {
-    let cargo_toml = fs::read_to_string("Cargo.toml").context("Failed to read Cargo.toml")?;
-
-    // Simple toml parsing - look for name = "..." in [package] section
-    let mut in_package_section = false;
-    for line in cargo_toml.lines() {
-        let line = line.trim();
-        if line == "[package]" {
-            in_package_section = true;
-            continue;
-        }
-        if line.starts_with('[') && line != "[package]" {
-            in_package_section = false;
-            continue;
-        }
-        if in_package_section && line.starts_with("name") {
-            if let Some(name_part) = line.split('=').nth(1) {
-                let name = name_part.trim().trim_matches('"').trim_matches('\'');
-                if !name.is_empty() {
-                    return Ok(name.to_string());
-                }
-            }
-        }
-    }
-
-    anyhow::bail!("Could not find package name in Cargo.toml");
-}
 
 /// Add/publish package from current directory
 pub fn add_package(server_url: &str, type_filter: Option<&str>) -> Result<()> {
@@ -653,19 +215,7 @@ fn select_package_types_interactive(detected_types: &[PackageType]) -> Result<Ve
     Ok(selected_types)
 }
 
-fn build_python_package() -> Result<Vec<std::path::PathBuf>> {
-    PythonBuilder.build()
-}
-
-fn build_npm_package() -> Result<(std::path::PathBuf, Value)> {
-    NpmBuilder.build()
-}
-
-fn build_cargo_package() -> Result<std::path::PathBuf> {
-    CargoBuilder.build()
-}
-
-fn add_python_package_local(package_name: &str) -> Result<()> {
+pub fn add_python_package_local(package_name: &str) -> Result<()> {
     info!(package_name = %package_name, "Building Python package for local storage");
     println!("🔨 Building Python package...");
 
@@ -677,14 +227,14 @@ fn add_python_package_local(package_name: &str) -> Result<()> {
 
     // Add each built package to local storage
     for package_file in package_files {
-        vm_package_server::local_storage::add_pypi_package_local(&package_file, &data_dir)?;
+        crate::local_storage::add_pypi_package_local(&package_file, &data_dir)?;
     }
 
     println!("✅ {} successfully added to local storage", package_name);
     Ok(())
 }
 
-fn add_npm_package_local(package_name: &str) -> Result<()> {
+pub fn add_npm_package_local(package_name: &str) -> Result<()> {
     info!(package_name = %package_name, "Building NPM package for local storage");
     println!("🔨 Building NPM package...");
 
@@ -695,7 +245,7 @@ fn add_npm_package_local(package_name: &str) -> Result<()> {
     let data_dir = std::path::PathBuf::from("./data");
 
     // Add to local storage
-    vm_package_server::local_storage::add_npm_package_local(&tarball_file, &metadata, &data_dir)?;
+    crate::local_storage::add_npm_package_local(&tarball_file, &metadata, &data_dir)?;
 
     // Clean up the tarball file
     let _ = std::fs::remove_file(&tarball_file);
@@ -704,7 +254,7 @@ fn add_npm_package_local(package_name: &str) -> Result<()> {
     Ok(())
 }
 
-fn add_cargo_package_local(package_name: &str) -> Result<()> {
+pub fn add_cargo_package_local(package_name: &str) -> Result<()> {
     info!(package_name = %package_name, "Building Cargo package for local storage");
     println!("🔨 Building Cargo package...");
 
@@ -715,13 +265,13 @@ fn add_cargo_package_local(package_name: &str) -> Result<()> {
     let data_dir = std::path::PathBuf::from("./data");
 
     // Add to local storage
-    vm_package_server::local_storage::add_cargo_package_local(&crate_file, &data_dir)?;
+    crate::local_storage::add_cargo_package_local(&crate_file, &data_dir)?;
 
     println!("✅ {} successfully added to local storage", package_name);
     Ok(())
 }
 
-fn add_python_package(client: &PackageServerClient, package_name: &str) -> Result<()> {
+pub fn add_python_package(client: &PackageServerClient, package_name: &str) -> Result<()> {
     info!(package_name = %package_name, "Building Python package");
     println!("🔨 Building Python package...");
 
@@ -742,7 +292,7 @@ fn add_python_package(client: &PackageServerClient, package_name: &str) -> Resul
     Ok(())
 }
 
-fn add_npm_package(client: &PackageServerClient, package_name: &str) -> Result<()> {
+pub fn add_npm_package(client: &PackageServerClient, package_name: &str) -> Result<()> {
     info!(package_name = %package_name, "Building NPM package");
     println!("🔨 Building NPM package...");
 
@@ -764,7 +314,7 @@ fn add_npm_package(client: &PackageServerClient, package_name: &str) -> Result<(
     Ok(())
 }
 
-fn add_cargo_package(client: &PackageServerClient, package_name: &str) -> Result<()> {
+pub fn add_cargo_package(client: &PackageServerClient, package_name: &str) -> Result<()> {
     info!(package_name = %package_name, "Building Cargo package");
     println!("🔨 Building Cargo package...");
 
@@ -787,7 +337,7 @@ fn remove_package_local(force: bool) -> Result<()> {
         println!("🔍 Listing available packages from local storage...");
 
         // List all packages from local storage
-        let packages = vm_package_server::local_storage::list_local_packages()?;
+        let packages = crate::local_storage::list_local_packages()?;
 
         let mut all_packages = Vec::new();
         for (package_type, package_list) in &packages {
@@ -836,9 +386,7 @@ fn remove_package_local(force: bool) -> Result<()> {
         for (pkg_type, pkg_name) in packages_to_delete {
             match pkg_type.as_str() {
                 "pypi" => {
-                    match vm_package_server::local_storage::remove_pypi_package_local(
-                        &pkg_name, &data_dir,
-                    ) {
+                    match crate::local_storage::remove_pypi_package_local(&pkg_name, &data_dir) {
                         Ok(_) => println!("✅ Removed Python package: {}", pkg_name),
                         Err(e) => {
                             println!("❌ Failed to remove Python package {}: {}", pkg_name, e)
@@ -846,17 +394,13 @@ fn remove_package_local(force: bool) -> Result<()> {
                     }
                 }
                 "npm" => {
-                    match vm_package_server::local_storage::remove_npm_package_local(
-                        &pkg_name, &data_dir,
-                    ) {
+                    match crate::local_storage::remove_npm_package_local(&pkg_name, &data_dir) {
                         Ok(_) => println!("✅ Removed NPM package: {}", pkg_name),
                         Err(e) => println!("❌ Failed to remove NPM package {}: {}", pkg_name, e),
                     }
                 }
                 "cargo" => {
-                    match vm_package_server::local_storage::remove_cargo_package_local(
-                        &pkg_name, &data_dir,
-                    ) {
+                    match crate::local_storage::remove_cargo_package_local(&pkg_name, &data_dir) {
                         Ok(_) => println!("✅ Removed Cargo crate: {}", pkg_name),
                         Err(e) => println!("❌ Failed to remove Cargo crate {}: {}", pkg_name, e),
                     }
@@ -1061,7 +605,7 @@ pub fn list_packages(server_url: &str) -> Result<()> {
         info!("Server not running, reading packages from local storage");
         println!("ℹ️  Server not running, listing packages from local storage");
         println!();
-        vm_package_server::local_storage::list_local_packages()?
+        crate::local_storage::list_local_packages()?
     };
 
     info!("Listing all packages");

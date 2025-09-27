@@ -9,8 +9,8 @@ use serde_json::{json, Value};
 use tracing::{debug, info, warn};
 
 use crate::validation;
-use vm_package_server::validation_utils::FileStreamValidator;
-use vm_package_server::{
+use crate::validation_utils::FileStreamValidator;
+use crate::{
     package_utils, sha1_hash, storage, validate_filename, AppError, AppResult, AppState,
     SuccessResponse,
 };
@@ -497,13 +497,13 @@ pub async fn publish_package(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{AppState, UpstreamClient, UpstreamConfig};
     use axum::http::StatusCode;
     use axum_test::TestServer;
     use base64::engine::general_purpose;
     use serde_json::json;
     use std::sync::Arc;
     use tempfile::TempDir;
-    use vm_package_server::{AppState, UpstreamClient, UpstreamConfig};
 
     fn create_npm_test_state() -> (Arc<AppState>, TempDir) {
         let temp_dir = TempDir::new().unwrap();
@@ -514,7 +514,7 @@ mod tests {
         std::fs::create_dir_all(data_dir.join("npm/metadata")).unwrap();
 
         let upstream_config = UpstreamConfig::default();
-        let config = Arc::new(vm_package_server::config::Config::default());
+        let config = Arc::new(crate::config::Config::default());
         let state = Arc::new(AppState {
             data_dir,
             server_addr: "http://localhost:8080".to_string(),

@@ -126,6 +126,72 @@ pub enum TempSubcommand {
 }
 
 #[derive(Debug, Clone, Subcommand)]
+pub enum PkgSubcommand {
+    /// Start package registry server
+    Start {
+        /// Port to run the server on
+        #[arg(long, default_value = "3080")]
+        port: u16,
+        /// Host to bind the server to
+        #[arg(long, default_value = "0.0.0.0")]
+        host: String,
+        /// Run server in foreground
+        #[arg(long, short = 'f')]
+        foreground: bool,
+    },
+    /// Stop package registry server
+    Stop,
+    /// Show registry status and package counts
+    Status,
+    /// Add package from current directory
+    Add {
+        /// Specify package type(s) to publish (python,npm,cargo)
+        #[arg(long, short = 't')]
+        r#type: Option<String>,
+    },
+    /// Remove package from registry
+    Remove {
+        /// Skip confirmation prompts
+        #[arg(long, short = 'f')]
+        force: bool,
+    },
+    /// List all packages in registry
+    List,
+    /// Configuration management
+    Config {
+        #[command(subcommand)]
+        action: PkgConfigAction,
+    },
+    /// Generate shell configuration for package managers
+    Use {
+        /// Shell type (bash, zsh, fish)
+        #[arg(long)]
+        shell: Option<String>,
+        /// Package server port
+        #[arg(long, default_value = "3080")]
+        port: u16,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum PkgConfigAction {
+    /// Show all configuration values
+    Show,
+    /// Get a specific configuration value
+    Get {
+        /// Configuration key
+        key: String,
+    },
+    /// Set a configuration value
+    Set {
+        /// Configuration key
+        key: String,
+        /// New value
+        value: String,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
 pub enum Command {
     /// Initialize a new VM configuration file
     Init {
@@ -247,6 +313,12 @@ pub enum Command {
     Temp {
         #[command(subcommand)]
         command: TempSubcommand,
+    },
+
+    /// Package registry management
+    Pkg {
+        #[command(subcommand)]
+        command: PkgSubcommand,
     },
 
     /// Get workspace directory

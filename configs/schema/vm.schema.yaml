@@ -447,6 +447,10 @@ properties:
     type: boolean
     default: true
     description: Enable Gemini AI data synchronization to ~/.gemini/vms/{project_name}
+  package_registry:
+    type: boolean
+    default: false
+    description: Enable local package registry (npm/pip/cargo) to cache packages across VMs
   persist_databases:
     type: boolean
     default: false

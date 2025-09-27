@@ -11,13 +11,17 @@ clap = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml_ng = { workspace = true }
 tempfile = { workspace = true }
+tokio = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
+reqwest = { workspace = true }
+dialoguer = { workspace = true }
 vm-common = { path = "../vm-common" }
 vm-messages = { path = "../vm-messages" }
 vm-config = { path = "../vm-config" }
 vm-provider = { path = "../vm-provider" }
 vm-temp = { path = "../vm-temp" }
+vm-package-server = { path = "../vm-package-server" }
 
 [features]
 default = []

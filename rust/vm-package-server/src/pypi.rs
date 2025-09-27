@@ -9,8 +9,8 @@ use axum::{
 use tracing::{debug, info, warn};
 
 use crate::validation;
-use vm_package_server::validation_utils::FileStreamValidator;
-use vm_package_server::{
+use crate::validation_utils::FileStreamValidator;
+use crate::{
     normalize_pypi_name, package_utils, sha256_hash, storage, validate_filename, AppError,
     AppResult, AppState, SuccessResponse,
 };
@@ -524,6 +524,7 @@ pub async fn upload_package(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{AppState, UpstreamClient, UpstreamConfig};
     use axum::http::StatusCode;
     use axum_test::{
         multipart::{MultipartForm, Part},
@@ -531,7 +532,6 @@ mod tests {
     };
     use std::sync::Arc;
     use tempfile::TempDir;
-    use vm_package_server::{AppState, UpstreamClient, UpstreamConfig};
 
     fn create_pypi_test_state() -> (Arc<AppState>, TempDir) {
         let temp_dir = TempDir::new().unwrap();
@@ -542,7 +542,7 @@ mod tests {
         std::fs::create_dir_all(data_dir.join("pypi/simple")).unwrap();
 
         let upstream_config = UpstreamConfig::default();
-        let config = Arc::new(vm_package_server::config::Config::default());
+        let config = Arc::new(crate::config::Config::default());
         let state = Arc::new(AppState {
             data_dir,
             server_addr: "http://127.0.0.1:3080".to_string(),
@@ -639,7 +639,7 @@ mod tests {
         std::fs::write(&package_file, content).unwrap();
 
         // Create corresponding .meta file with hash
-        use vm_package_server::sha256_hash;
+        use crate::sha256_hash;
         let hash = sha256_hash(content);
         let meta_file = package_file.with_extension("whl.meta");
         std::fs::write(&meta_file, hash).unwrap();
@@ -666,7 +666,7 @@ mod tests {
         std::fs::write(&package_file, content).unwrap();
 
         // Create corresponding .meta file with hash
-        use vm_package_server::sha256_hash;
+        use crate::sha256_hash;
         let hash = sha256_hash(content);
         let meta_file = package_file.with_extension("whl.meta");
         std::fs::write(&meta_file, hash).unwrap();

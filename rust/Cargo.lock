@@ -3058,6 +3058,8 @@ version = "1.3.0"
 dependencies = [
  "anyhow",
  "clap",
+ "dialoguer",
+ "reqwest",
  "serde_json",
  "serde_yaml_ng",
  "tempfile",
@@ -3067,6 +3069,7 @@ dependencies = [
  "vm-common",
  "vm-config",
  "vm-messages",
+ "vm-package-server",
  "vm-provider",
  "vm-temp",
 ]

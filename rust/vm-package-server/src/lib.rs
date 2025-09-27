@@ -31,24 +31,34 @@
 // Module declarations
 pub mod api;
 pub mod auth;
+pub mod cargo;
+pub mod client_ops;
 pub mod config;
 pub mod deletion;
 pub mod error;
+pub mod live_reload;
 pub mod local_storage;
+pub mod npm;
 pub mod package_utils;
-pub mod registries;
-pub mod registry_trait;
+pub mod pypi;
+pub mod server;
 pub mod state;
 pub mod storage;
 pub mod types;
+pub mod ui;
 pub mod upstream;
-pub mod user_config;
 pub mod utils;
 pub mod validation;
 pub mod validation_utils;
 
+// Simplified configuration for VM tool integration
+pub mod simple_config;
+
 // Re-export key types for convenience
+pub use client_ops::{add_package, list_packages, remove_package, show_status};
+pub use config::Config;
 pub use error::{ApiErrorResponse, AppError, AppResult, ErrorCode};
+pub use server::{run_server, run_server_background};
 pub use state::{AppState, SuccessResponse};
 pub use upstream::{UpstreamClient, UpstreamConfig};
 pub use validation::{
@@ -78,7 +88,7 @@ pub use validation::{
 /// # Examples
 ///
 /// ```
-/// # use vm_package_server::normalize_pypi_name;
+/// # use crate::normalize_pypi_name;
 /// assert_eq!(normalize_pypi_name("Django-REST-framework"), "django-rest-framework");
 /// assert_eq!(normalize_pypi_name("some_package"), "some-package");
 /// assert_eq!(normalize_pypi_name("package.name"), "package-name");
@@ -113,7 +123,7 @@ pub fn normalize_pypi_name(name: &str) -> String {
 /// # Examples
 ///
 /// ```
-/// # use vm_package_server::sha256_hash;
+/// # use crate::sha256_hash;
 /// let data = b"hello world";
 /// let hash = sha256_hash(data);
 /// assert_eq!(hash.len(), 64); // SHA256 produces 64 hex characters
@@ -142,7 +152,7 @@ pub fn sha256_hash(data: &[u8]) -> String {
 /// # Examples
 ///
 /// ```
-/// # use vm_package_server::sha1_hash;
+/// # use crate::sha1_hash;
 /// let data = b"hello world";
 /// let hash = sha1_hash(data);
 /// assert_eq!(hash.len(), 40); // SHA1 produces 40 hex characters
@@ -184,7 +194,7 @@ pub fn sha1_hash(data: &[u8]) -> String {
 /// # Examples
 ///
 /// ```
-/// # use vm_package_server::{validate_filename, AppError};
+/// # use crate::{validate_filename, AppError};
 /// assert!(validate_filename("safe_file.txt").is_ok());
 /// assert!(validate_filename("../etc/passwd").is_err());
 /// assert!(validate_filename("/absolute/path").is_err());

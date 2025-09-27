@@ -17,6 +17,12 @@ pub struct LiveReloadState {
     pub tx: broadcast::Sender<()>,
 }
 
+impl Default for LiveReloadState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LiveReloadState {
     pub fn new() -> Self {
         let (tx, _) = broadcast::channel(100);

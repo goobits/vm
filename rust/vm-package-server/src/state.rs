@@ -15,8 +15,8 @@
 //!
 //! ```rust,no_run
 //! use std::sync::Arc;
-//! use vm_package_server::state::AppState;
-//! use vm_package_server::upstream::{UpstreamClient, UpstreamConfig};
+//! use crate::state::AppState;
+//! use crate::upstream::{UpstreamClient, UpstreamConfig};
 //!
 //! let upstream_config = UpstreamConfig::default();
 //! let upstream_client = Arc::new(UpstreamClient::new(upstream_config)?);

@@ -27,7 +27,7 @@
 //! ## Usage Example
 //!
 //! ```rust
-//! use vm_package_server::deletion::{remove_files_matching_pattern, DeletionOptions};
+//! use crate::deletion::{remove_files_matching_pattern, DeletionOptions};
 //! use std::path::Path;
 //!
 //! // Remove PyPI package files

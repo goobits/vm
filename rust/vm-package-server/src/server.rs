@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Query, State},
     http::{header, HeaderMap, StatusCode},
     response::{Html, IntoResponse, Response},
     routing::{get, put},
@@ -22,18 +22,15 @@ use tokio::net::TcpListener;
 use tracing::{error, info, warn};
 
 use crate::validation;
-use crate::{cargo, npm, pypi};
+use crate::{
+    cargo,
+    config::Config,
+    npm, pypi,
+    state::AppState,
+    upstream::{UpstreamClient, UpstreamConfig},
+};
 
-#[derive(Clone)]
-pub struct AppState {
-    pub data_dir: PathBuf,
-}
-
-pub async fn run_server_background(
-    host: String,
-    port: u16,
-    data_dir: PathBuf,
-) -> Result<()> {
+pub async fn run_server_background(host: String, port: u16, data_dir: PathBuf) -> Result<()> {
     info!("Starting Goobits Package Server in background");
     println!("🚀 Starting Goobits Package Server in background...");
 
@@ -43,7 +40,7 @@ pub async fn run_server_background(
         std::process::exit(1);
     }
 
-    if let Err(e) = validation::validate_port_range(port) {
+    if let Err(e) = validation::validate_docker_port(port) {
         error!(port = %port, error = %e, "Invalid port parameter");
         eprintln!("❌ Invalid port parameter: {}", e);
         std::process::exit(1);
@@ -128,7 +125,7 @@ pub async fn run_server(host: String, port: u16, data_dir: PathBuf) -> Result<()
         std::process::exit(1);
     }
 
-    if let Err(e) = validation::validate_port_range(port) {
+    if let Err(e) = validation::validate_docker_port(port) {
         error!(port = %port, error = %e, "Invalid port parameter");
         eprintln!("❌ Invalid port parameter: {}", e);
         std::process::exit(1);
@@ -153,8 +150,17 @@ pub async fn run_server(host: String, port: u16, data_dir: PathBuf) -> Result<()
     info!(host = %host, port = %port, "Starting server");
     println!("📂 Using data directory: {}", abs_data_dir.display());
 
+    // Create required components for AppState
+    let upstream_config = UpstreamConfig::default();
+    let upstream_client = Arc::new(UpstreamClient::new(upstream_config)?);
+    let config = Arc::new(Config::default());
+    let server_addr = format!("http://{}:{}", host, port);
+
     let state = AppState {
         data_dir: abs_data_dir,
+        server_addr,
+        upstream_client,
+        config,
     };
 
     let app = Router::new()
@@ -162,20 +168,31 @@ pub async fn run_server(host: String, port: u16, data_dir: PathBuf) -> Result<()
         .route("/status", get(status_handler))
         .route("/setup.sh", get(setup_script_handler))
         .route("/health", get(health_handler))
-        .route("/npm/:package", put(npm::upload_package))
-        .route("/npm/:package/-/:filename", get(npm::download_tarball))
-        .route("/npm/:package", get(npm::get_package_metadata))
-        .route("/npm/:package/:version", get(npm::get_package_version))
-        .route("/pypi/simple/:package/", get(pypi::simple_package_index))
-        .route("/pypi/packages/:filename", get(pypi::download_file))
-        .route("/pypi/legacy/api/pypi", get(pypi::package_info))
-        .route("/pypi/legacy/api/pypi/:package/", get(pypi::package_info))
-        .route("/pypi/legacy/api/pypi/:package/:version", get(pypi::package_info))
+        .route("/npm/{package}", put(npm::publish_package))
+        .route("/npm/{package}/-/{filename}", get(npm::download_tarball))
+        .route("/npm/{package}", get(npm::package_metadata))
+        .route("/pypi/simple/{package}/", get(pypi::package_index))
+        .route("/pypi/packages/{filename}", get(pypi::download_file))
+        .route("/pypi/legacy/api/pypi", get(pypi::simple_index))
+        .route("/pypi/legacy/api/pypi/{package}/", get(pypi::package_index))
+        .route(
+            "/pypi/legacy/api/pypi/{package}/{version}",
+            get(pypi::package_index),
+        )
         .route("/pypi/upload", put(pypi::upload_package))
-        .route("/cargo/api/v1/crates", put(cargo::upload_crate))
-        .route("/cargo/api/v1/crates/:crate/:version/download", get(cargo::download_crate))
-        .route("/cargo/api/v1/crates/:crate", get(cargo::get_crate_metadata))
-        .route("/cargo/api/v1/crates/:crate/:version", get(cargo::get_crate_version))
+        .route("/cargo/api/v1/crates", put(cargo::publish_crate))
+        .route(
+            "/cargo/api/v1/crates/{crate}/{version}/download",
+            get(cargo::download_crate),
+        )
+        .route(
+            "/cargo/api/v1/crates/{crate}",
+            get(cargo::get_crate_versions_api),
+        )
+        .route(
+            "/cargo/api/v1/crates/{crate}/{version}",
+            get(cargo::download_crate),
+        )
         .with_state(Arc::new(state));
 
     let addr: SocketAddr = format!("{}:{}", host, port).parse().map_err(|e| {
@@ -269,7 +286,7 @@ async fn setup_script_handler(Query(params): Query<SetupQuery>) -> Response {
     headers.insert(header::CONTENT_TYPE, "text/plain".parse().unwrap());
     headers.insert(
         header::CONTENT_DISPOSITION,
-        "attachment; filename=\"setup.sh\"".parse().unwrap()
+        "attachment; filename=\"setup.sh\"".parse().unwrap(),
     );
 
     (StatusCode::OK, headers, script).into_response()

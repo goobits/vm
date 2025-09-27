@@ -24,7 +24,7 @@ use url::Url;
 ///
 /// ```rust
 /// use std::time::Duration;
-/// use vm_package_server::upstream::UpstreamConfig;
+/// use crate::upstream::UpstreamConfig;
 ///
 /// // Use default configuration
 /// let config = UpstreamConfig::default();
@@ -83,7 +83,7 @@ impl Default for UpstreamConfig {
 /// ```rust,no_run
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// use vm_package_server::upstream::{UpstreamClient, UpstreamConfig};
+/// use crate::upstream::{UpstreamClient, UpstreamConfig};
 ///
 /// let config = UpstreamConfig::default();
 /// let client = UpstreamClient::new(config)?;
@@ -151,7 +151,7 @@ impl UpstreamClient {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// # use vm_package_server::upstream::{UpstreamClient, UpstreamConfig};
+    /// # use crate::upstream::{UpstreamClient, UpstreamConfig};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let client = UpstreamClient::new(UpstreamConfig::default())?;
     /// let html = client.fetch_pypi_simple("requests").await?;
@@ -384,7 +384,7 @@ impl UpstreamClient {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// # use vm_package_server::upstream::{UpstreamClient, UpstreamConfig};
+    /// # use crate::upstream::{UpstreamClient, UpstreamConfig};
     /// # use serde_json::Value;
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let client = UpstreamClient::new(UpstreamConfig::default())?;

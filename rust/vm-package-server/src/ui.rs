@@ -7,7 +7,7 @@ use axum::{
 };
 use tracing::{error, warn};
 
-use vm_package_server::{registry_trait, AppError, AppResult, AppState};
+use crate::{AppError, AppResult, AppState};
 
 /// Format file size in human-readable format
 fn format_size(size: u64) -> String {
@@ -114,45 +114,28 @@ pub struct PackageFile {
 
 /// Render the home page with package statistics and recent packages
 pub async fn home(State(state): State<Arc<AppState>>) -> AppResult<Html<String>> {
-    // Fetch package counts using trait system with fallback to 0 on error
-    let pypi_count = match registry_trait::get_registry("pypi") {
-        Ok(registry) => match registry.count_packages(&state).await {
-            Ok(count) => count,
-            Err(e) => {
-                warn!("Failed to get PyPI package count: {}", e);
-                0
-            }
-        },
+    // Fetch package counts with fallback to 0 on error
+    #[allow(deprecated)]
+    let pypi_count = match crate::pypi::count_packages(&state).await {
+        Ok(count) => count,
         Err(e) => {
-            warn!("Failed to get PyPI registry: {}", e);
+            warn!("Failed to get PyPI package count: {}", e);
             0
         }
     };
 
-    let npm_count = match registry_trait::get_registry("npm") {
-        Ok(registry) => match registry.count_packages(&state).await {
-            Ok(count) => count,
-            Err(e) => {
-                warn!("Failed to get npm package count: {}", e);
-                0
-            }
-        },
+    let npm_count = match crate::npm::count_packages(&state).await {
+        Ok(count) => count,
         Err(e) => {
-            warn!("Failed to get npm registry: {}", e);
+            warn!("Failed to get npm package count: {}", e);
             0
         }
     };
 
-    let cargo_count = match registry_trait::get_registry("cargo") {
-        Ok(registry) => match registry.count_packages(&state).await {
-            Ok(count) => count,
-            Err(e) => {
-                warn!("Failed to get Cargo crate count: {}", e);
-                0
-            }
-        },
+    let cargo_count = match crate::cargo::count_crates(&state).await {
+        Ok(count) => count,
         Err(e) => {
-            warn!("Failed to get Cargo registry: {}", e);
+            warn!("Failed to get Cargo crate count: {}", e);
             0
         }
     };
@@ -194,10 +177,10 @@ pub async fn list_packages(
     State(state): State<Arc<AppState>>,
 ) -> AppResult<Html<String>> {
     let packages = match pkg_type.as_str() {
-        "pypi" | "npm" | "cargo" => {
-            let registry = registry_trait::get_registry(&pkg_type)?;
-            registry.list_all_packages(&state).await?
-        }
+        #[allow(deprecated)]
+        "pypi" => crate::pypi::list_all_packages(&state).await?,
+        "npm" => crate::npm::list_all_packages(&state).await?,
+        "cargo" => crate::cargo::list_all_crates(&state).await?,
         _ => return Err(AppError::NotFound("Invalid package type".to_string())),
     };
 
