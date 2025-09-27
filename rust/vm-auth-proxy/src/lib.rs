@@ -40,6 +40,7 @@ pub use server::{run_server, run_server_background};
 // Re-export client operations for CLI
 pub use client_ops::{
     add_secret, check_server_running, get_secret_for_vm, list_secrets, remove_secret,
+    start_server_if_needed,
 };
 
 /// Default port for the auth proxy service
