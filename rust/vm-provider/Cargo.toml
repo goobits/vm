@@ -23,5 +23,8 @@ is-terminal = { workspace = true }
 rayon = { workspace = true }
 
 [features]
-default = []
+default = ["docker"]
+docker = []
+vagrant = []
+tart = []
 structured-output = ["vm-common/structured-output"]

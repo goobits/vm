@@ -135,7 +135,7 @@ impl ConfigOps {
 
         // Parse the value - try as YAML first, then as string
         let parsed_value: Value =
-            serde_yaml::from_str(value).unwrap_or_else(|_| Value::String(value.into()));
+            serde_yaml::from_str(value).unwrap_or_else(|_| Value::String(value.to_string()));
 
         set_nested_field(&mut yaml_value, field, parsed_value)?;
 
@@ -498,7 +498,7 @@ fn replace_placeholders_in_string(content: &str, port_range_str: &str) -> Result
         Ok(range) => range,
         Err(_) => {
             vm_warning!("Could not parse port_range '{}'", port_range_str);
-            return Ok(content.to_string());
+            return Ok(content.to_owned());
         }
     };
 

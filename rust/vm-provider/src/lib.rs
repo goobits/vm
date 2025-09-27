@@ -26,8 +26,11 @@ pub mod temp_models;
 pub mod audio;
 pub mod preflight;
 
+#[cfg(feature = "docker")]
 mod docker;
+#[cfg(feature = "tart")]
 mod tart;
+#[cfg(feature = "vagrant")]
 mod vagrant;
 
 pub use temp_models::{Mount, MountPermission, TempVmState};
@@ -151,8 +154,11 @@ pub fn get_provider(config: VmConfig) -> Result<Box<dyn Provider>> {
     }
 
     match provider_name {
+        #[cfg(feature = "docker")]
         "docker" => Ok(Box::new(docker::DockerProvider::new(config)?)),
+        #[cfg(feature = "vagrant")]
         "vagrant" => Ok(Box::new(vagrant::VagrantProvider::new(config)?)),
+        #[cfg(feature = "tart")]
         "tart" => Ok(Box::new(tart::TartProvider::new(config)?)),
         _ => Err(error::ProviderError::UnknownProvider(provider_name.into()).into()),
     }

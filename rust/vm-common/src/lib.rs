@@ -13,6 +13,7 @@ pub mod system_check;
 pub mod temp_dir;
 pub mod tracing_init;
 pub mod user_paths;
+pub mod yaml_utils;
 
 // Re-export vm-messages for easy access
 pub use vm_messages as messages;
