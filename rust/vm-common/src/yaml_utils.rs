@@ -83,14 +83,18 @@ pub fn write_yaml_file<T: Serialize>(path: &Path, data: &T) -> Result<()> {
 /// ```rust
 /// use vm_common::yaml_utils::parse_yaml_str;
 /// use serde::Deserialize;
+/// use anyhow::Result;
 ///
 /// #[derive(Deserialize)]
 /// struct Config {
 ///     name: String,
 /// }
 ///
-/// let yaml_content = "name: test";
-/// let config: Config = parse_yaml_str(yaml_content)?;
+/// fn example() -> Result<()> {
+///     let yaml_content = "name: test";
+///     let config: Config = parse_yaml_str(yaml_content)?;
+///     Ok(())
+/// }
 /// ```
 pub fn parse_yaml_str<T: DeserializeOwned>(content: &str) -> Result<T> {
     serde_yaml_ng::from_str(content).with_context(|| "Failed to parse YAML content")
