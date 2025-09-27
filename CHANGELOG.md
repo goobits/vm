@@ -5,6 +5,35 @@ All notable changes to the VM tool will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+#### 🧪 Test Suite Reliability Improvements
+- **Fixed flaky test failures** that were causing CI instability
+  - `test_add_and_list_secrets` - Eliminated port conflicts by implementing dynamic port allocation
+  - `test_pkg_status_command` - Resolved Tokio runtime conflicts with alternative test implementation
+- **Improved test strategy** for environment-dependent tests
+  - Replaced "always ignored" tests with conditional execution based on environment capabilities
+  - Added `test_pkg_status_functionality` as alternative to CLI-dependent test
+  - Made `test_pkg_full_lifecycle` conditional on `VM_INTEGRATION_TESTS` environment variable
+  - Made `test_cargo_package_lifecycle` conditional on `cargo-tests` feature flag
+
+#### 📚 Documentation Testing
+- **Fixed all 24 doc test failures** in vm-package-server crate
+  - Corrected import paths from `crate::` to `vm_package_server::` in documentation examples
+  - Added proper async context and missing dependencies to doc test examples
+  - Converted HTTP endpoint examples from rust to text format for appropriate rendering
+  - Enhanced documentation examples with proper setup and teardown code
+
+### Changed
+
+- **Test execution model** now supports conditional testing based on environment capabilities rather than blanket ignoring
+- **CI reliability** significantly improved with elimination of flaky tests
+- **Developer experience** enhanced with clearer test failure messages and better error handling
+
+---
+
 ## [1.4.0] - 2024-09-27
 
 ### Added
