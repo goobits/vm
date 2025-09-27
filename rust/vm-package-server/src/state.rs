@@ -15,16 +15,19 @@
 //!
 //! ```rust,no_run
 //! use std::sync::Arc;
-//! use crate::state::AppState;
-//! use crate::upstream::{UpstreamClient, UpstreamConfig};
+//! use vm_package_server::state::AppState;
+//! use vm_package_server::upstream::{UpstreamClient, UpstreamConfig};
+//! use vm_package_server::config::Config;
 //!
 //! let upstream_config = UpstreamConfig::default();
 //! let upstream_client = Arc::new(UpstreamClient::new(upstream_config)?);
+//! let config = Arc::new(Config::default());
 //!
 //! let state = Arc::new(AppState {
 //!     data_dir: "/path/to/data".into(),
 //!     server_addr: "http://localhost:3080".to_string(),
 //!     upstream_client,
+//!     config,
 //! });
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```

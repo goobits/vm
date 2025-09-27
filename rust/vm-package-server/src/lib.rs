@@ -88,7 +88,7 @@ pub use validation::{
 /// # Examples
 ///
 /// ```
-/// # use crate::normalize_pypi_name;
+/// # use vm_package_server::normalize_pypi_name;
 /// assert_eq!(normalize_pypi_name("Django-REST-framework"), "django-rest-framework");
 /// assert_eq!(normalize_pypi_name("some_package"), "some-package");
 /// assert_eq!(normalize_pypi_name("package.name"), "package-name");
@@ -123,7 +123,7 @@ pub fn normalize_pypi_name(name: &str) -> String {
 /// # Examples
 ///
 /// ```
-/// # use crate::sha256_hash;
+/// # use vm_package_server::sha256_hash;
 /// let data = b"hello world";
 /// let hash = sha256_hash(data);
 /// assert_eq!(hash.len(), 64); // SHA256 produces 64 hex characters
@@ -152,7 +152,7 @@ pub fn sha256_hash(data: &[u8]) -> String {
 /// # Examples
 ///
 /// ```
-/// # use crate::sha1_hash;
+/// # use vm_package_server::sha1_hash;
 /// let data = b"hello world";
 /// let hash = sha1_hash(data);
 /// assert_eq!(hash.len(), 40); // SHA1 produces 40 hex characters
@@ -194,7 +194,7 @@ pub fn sha1_hash(data: &[u8]) -> String {
 /// # Examples
 ///
 /// ```
-/// # use crate::{validate_filename, AppError};
+/// # use vm_package_server::{validate_filename, AppError};
 /// assert!(validate_filename("safe_file.txt").is_ok());
 /// assert!(validate_filename("../etc/passwd").is_err());
 /// assert!(validate_filename("/absolute/path").is_err());

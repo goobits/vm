@@ -14,7 +14,7 @@
 //! ## Usage
 //!
 //! ```rust
-//! use crate::validation::{escape_shell_arg, validate_safe_path, sanitize_docker_name};
+//! use vm_package_server::validation::{escape_shell_arg, validate_safe_path, sanitize_docker_name};
 //!
 //! // Safely escape shell arguments
 //! let safe_arg = escape_shell_arg("user input with spaces");
@@ -150,7 +150,7 @@ pub type ValidationResult<T> = Result<T, ValidationError>;
 /// # Examples
 ///
 /// ```rust
-/// use crate::validation::escape_shell_arg;
+/// use vm_package_server::validation::escape_shell_arg;
 ///
 /// let safe = escape_shell_arg("file with spaces.txt");
 /// assert_eq!(safe, "'file with spaces.txt'");
@@ -198,7 +198,7 @@ pub fn escape_shell_arg(arg: &str) -> String {
 /// # Examples
 ///
 /// ```rust
-/// use crate::validation::validate_safe_path;
+/// use vm_package_server::validation::validate_safe_path;
 ///
 /// // Safe relative path
 /// assert!(validate_safe_path("packages/mypackage/1.0.0").is_ok());
@@ -285,7 +285,7 @@ pub fn validate_safe_path<P: AsRef<Path>>(path: P) -> ValidationResult<PathBuf> 
 /// # Examples
 ///
 /// ```rust
-/// use crate::validation::sanitize_docker_name;
+/// use vm_package_server::validation::sanitize_docker_name;
 ///
 /// // Valid Docker name
 /// assert!(sanitize_docker_name("my-app-container").is_ok());

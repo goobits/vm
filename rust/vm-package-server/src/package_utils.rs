@@ -18,15 +18,20 @@
 //! The module implements a registry pattern system that abstracts common operations
 //! across different package managers:
 //!
-//! ```rust
-//! use crate::package_utils::{RegistryPattern, count_packages_by_pattern};
-//!
+//! ```rust,no_run
+//! use vm_package_server::package_utils::{RegistryPattern, count_packages_by_pattern};
+//! # use std::path::Path;
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! # let data_dir = Path::new("/data");
+//! # fn extract_pypi_package_name(filename: &str) -> Option<String> { Some(filename.to_string()) }
 //! // Count PyPI packages
 //! let count = count_packages_by_pattern(
 //!     data_dir,
 //!     &RegistryPattern::PYPI,
 //!     |filename| extract_pypi_package_name(filename)
 //! ).await?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! ## Supported Registry Types
@@ -53,19 +58,25 @@
 //!
 //! ### Basic File Discovery
 //!
-//! ```rust
-//! use crate::package_utils::list_files_with_extensions;
+//! ```rust,no_run
+//! use vm_package_server::package_utils::list_files_with_extensions;
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //!
 //! let files = list_files_with_extensions(
 //!     "/data/pypi/packages",
 //!     &[".whl", ".tar.gz"]
 //! ).await?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! ### Custom Package Extraction
 //!
-//! ```rust
-//! use crate::package_utils::count_packages_by_name_extraction;
+//! ```rust,no_run
+//! use vm_package_server::package_utils::count_packages_by_name_extraction;
+//! # use std::path::Path;
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! # let dir = Path::new("/data");
 //!
 //! let count = count_packages_by_name_extraction(
 //!     dir,
@@ -75,6 +86,8 @@
 //!         filename.split('-').next().map(|s| s.to_string())
 //!     }
 //! ).await?;
+//! # Ok(())
+//! # }
 //! ```
 
 use crate::error::AppResult;
@@ -139,12 +152,16 @@ pub async fn list_files_with_extensions<P: AsRef<Path>>(
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,no_run
+/// use vm_package_server::package_utils::count_packages_by_name_extraction;
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let count = count_packages_by_name_extraction(
 ///     "/data/pypi/packages",
 ///     &[".whl"],
 ///     |filename| filename.split('-').next().map(|s| s.to_string())
 /// ).await?;
+/// # Ok(())
+/// # }
 /// ```
 pub async fn count_packages_by_name_extraction<P: AsRef<Path>, F>(
     dir: P,

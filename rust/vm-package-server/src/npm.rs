@@ -27,9 +27,14 @@ use crate::{
 /// The number of unique NPM packages stored in the repository
 ///
 /// # Example
-/// ```rust
+/// ```rust,no_run
+/// use vm_package_server::npm::count_packages;
+/// # use vm_package_server::AppState;
+/// # async fn example(app_state: &AppState) -> Result<(), Box<dyn std::error::Error>> {
 /// let count = count_packages(&app_state).await?;
 /// println!("Repository contains {} NPM packages", count);
+/// # Ok(())
+/// # }
 /// ```
 #[allow(dead_code)]
 pub async fn count_packages(state: &AppState) -> AppResult<usize> {
@@ -56,11 +61,16 @@ pub async fn count_packages(state: &AppState) -> AppResult<usize> {
 /// A vector of package names sorted alphabetically
 ///
 /// # Example
-/// ```rust
+/// ```rust,no_run
+/// use vm_package_server::npm::list_all_packages;
+/// # use vm_package_server::AppState;
+/// # async fn example(app_state: &AppState) -> Result<(), Box<dyn std::error::Error>> {
 /// let packages = list_all_packages(&app_state).await?;
 /// for package in packages {
 ///     println!("NPM Package: {}", package);
 /// }
+/// # Ok(())
+/// # }
 /// ```
 #[allow(dead_code)]
 pub async fn list_all_packages(state: &AppState) -> AppResult<Vec<String>> {
@@ -265,7 +275,7 @@ pub async fn package_metadata(
 /// - Only serves .tgz files from the designated tarballs directory
 ///
 /// # Example Request
-/// ```
+/// ```text
 /// GET /npm/express/-/express-4.18.2.tgz
 /// ```
 ///

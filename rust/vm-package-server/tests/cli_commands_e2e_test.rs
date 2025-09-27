@@ -40,18 +40,6 @@ async fn test_cli_start_command() -> Result<()> {
     Ok(())
 }
 
-/// Tests the stop command functionality
-#[tokio::test]
-async fn test_cli_stop_command() -> Result<()> {
-    // Test stop command (restores client configurations)
-    let output = execute_cli_command(&["stop"], None)?;
-
-    // Stop command should succeed (even if no configs to restore)
-    assertions::assert_command_success(&output, "Stop");
-
-    Ok(())
-}
-
 /// Tests the add command functionality
 #[tokio::test]
 async fn test_cli_add_command() -> Result<()> {

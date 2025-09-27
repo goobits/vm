@@ -174,7 +174,13 @@ pub fn execute_cli_command(
     current_dir: Option<&Path>,
 ) -> Result<std::process::Output> {
     let mut cmd = Command::new("cargo");
-    cmd.args(["run", "--bin", "pkg-server", "--"]);
+    cmd.args([
+        "run",
+        "--features=standalone-binary",
+        "--bin",
+        "pkg-server",
+        "--",
+    ]);
     cmd.args(args);
 
     if let Some(dir) = current_dir {

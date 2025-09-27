@@ -183,9 +183,14 @@ pub async fn package_index(
 /// The number of unique packages stored in the repository
 ///
 /// # Example
-/// ```rust
+/// ```rust,no_run
+/// use vm_package_server::pypi::count_packages;
+/// # use vm_package_server::AppState;
+/// # async fn example(app_state: &AppState) -> Result<(), Box<dyn std::error::Error>> {
 /// let count = count_packages(&app_state).await?;
 /// println!("Repository contains {} packages", count);
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// **Deprecated**: Use `get_registry("pypi")?.count_packages(state)` via trait system instead.
@@ -218,11 +223,16 @@ pub async fn count_packages(state: &AppState) -> AppResult<usize> {
 /// A vector of normalized package names sorted alphabetically
 ///
 /// # Example
-/// ```rust
+/// ```rust,no_run
+/// use vm_package_server::pypi::list_all_packages;
+/// # use vm_package_server::AppState;
+/// # async fn example(app_state: &AppState) -> Result<(), Box<dyn std::error::Error>> {
 /// let packages = list_all_packages(&app_state).await?;
 /// for package in packages {
 ///     println!("Package: {}", package);
 /// }
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// **Deprecated**: Use `get_registry("pypi")?.list_all_packages(state)` via trait system instead.
@@ -364,7 +374,7 @@ pub async fn get_recent_packages(
 /// - Only serves files from the designated packages directory
 ///
 /// # Example
-/// ```
+/// ```text
 /// GET /pypi/packages/package-name-1.0.0-py3-none-any.whl
 /// ```
 pub async fn download_file(

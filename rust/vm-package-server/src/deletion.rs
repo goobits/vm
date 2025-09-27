@@ -26,10 +26,11 @@
 //!
 //! ## Usage Example
 //!
-//! ```rust
-//! use crate::deletion::{remove_files_matching_pattern, DeletionOptions};
+//! ```rust,no_run
+//! use vm_package_server::deletion::{remove_files_matching_pattern, DeletionOptions};
 //! use std::path::Path;
 //!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! // Remove PyPI package files
 //! let deleted = remove_files_matching_pattern(
 //!     Path::new("/data/pypi/packages"),
@@ -37,6 +38,8 @@
 //!     "1.0.0",
 //!     &[".whl", ".tar.gz"]
 //! ).await?;
+//! # Ok(())
+//! # }
 //! ```
 
 use anyhow::Result;
