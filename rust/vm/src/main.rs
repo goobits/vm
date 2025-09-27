@@ -13,6 +13,7 @@ use vm_common::{vm_error, vm_warning};
 // Local modules
 mod cli;
 mod commands;
+mod error;
 
 use cli::Args;
 use commands::execute_command;
