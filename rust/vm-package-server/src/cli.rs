@@ -266,8 +266,11 @@ async fn handle_stop() -> Result<()> {
         if let Ok(pid_str) = std::fs::read_to_string(&pid_file_path) {
             if let Ok(pid) = pid_str.trim().parse::<i32>() {
                 // Try to terminate the process
-                unsafe {
-                    if libc::kill(pid, libc::SIGTERM) == 0 {
+                let mut system = sysinfo::System::new();
+                system.refresh_processes();
+
+                if let Some(process) = system.process(sysinfo::Pid::from(pid as usize)) {
+                    if process.kill() {
                         println!("✅ Background server stopped (PID: {})", pid);
                         // Clean up the PID file
                         let _ = std::fs::remove_file(&pid_file_path);
@@ -279,6 +282,13 @@ async fn handle_stop() -> Result<()> {
                         // Clean up stale PID file
                         let _ = std::fs::remove_file(&pid_file_path);
                     }
+                } else {
+                    println!(
+                        "⚠️  Process (PID: {}) not found. It may have already stopped.",
+                        pid
+                    );
+                    // Clean up stale PID file
+                    let _ = std::fs::remove_file(&pid_file_path);
                 }
             } else {
                 println!("⚠️  Invalid PID in .pkg-server.pid file");
@@ -358,7 +368,9 @@ async fn handle_status(server: String) -> Result<()> {
         if let Ok(pid_str) = std::fs::read_to_string(&pid_file_path) {
             if let Ok(pid) = pid_str.trim().parse::<i32>() {
                 // Check if process is actually running
-                let running = unsafe { libc::kill(pid, 0) == 0 };
+                let mut system = sysinfo::System::new();
+                system.refresh_processes();
+                let running = system.process(sysinfo::Pid::from(pid as usize)).is_some();
 
                 if running {
                     println!("✅ Background server is running (PID: {})", pid);

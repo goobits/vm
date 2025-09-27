@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::os::unix::io::IntoRawFd;
+use std::fs::File;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
@@ -68,10 +69,6 @@ async fn main() -> anyhow::Result<()> {
 
 /// Run the server in background mode
 async fn run_server_background(host: String, port: u16, data: PathBuf) -> anyhow::Result<()> {
-    use std::fs::File;
-    use std::io::Write;
-    use std::os::unix::process::CommandExt;
-
     // Create a PID file location
     let pid_file_path = data.join(".pkg-server.pid");
 
@@ -95,73 +92,58 @@ async fn run_server_background(host: String, port: u16, data: PathBuf) -> anyhow
         }
     }
 
-    // Fork the process
-    unsafe {
-        let pid = libc::fork();
+    // Start the server in background using tokio spawn
+    let exe_path = std::env::current_exe()?;
+    let log_file_path = data.join("server.log");
 
-        if pid < 0 {
-            Err(anyhow::anyhow!("Failed to fork process"))
-        } else if pid > 0 {
-            // Parent process
-            println!("✅ Server started in background mode");
-            println!();
-            println!("🌐 Server will be accessible at:");
-            println!("   Local:      http://localhost:{}", port);
-            println!("   Network:    http://{}:{}", host, port);
-            println!();
-            println!("📋 Commands:");
-            println!("   Stop server:  pkg-server stop");
-            println!("   View status:  pkg-server status");
-            println!("   View logs:    tail -f {}/server.log", data.display());
-            println!();
-            println!("💡 To run in foreground mode (for debugging):");
-            println!("   pkg-server start --foreground");
+    // Prepare arguments for the foreground server
+    let args = vec![
+        "start".to_string(),
+        "--foreground".to_string(),
+        "--host".to_string(),
+        host.clone(),
+        "--port".to_string(),
+        port.to_string(),
+        "--data".to_string(),
+        data.to_string_lossy().to_string(),
+        "--no-config".to_string(), // Already configured
+    ];
 
-            Ok(())
-        } else {
-            // Child process - become a daemon
+    // Create log file for output redirection
+    let log_file = File::create(&log_file_path)?;
 
-            // Create a new session
-            libc::setsid();
+    // Spawn the background process
+    let child = Command::new(exe_path)
+        .args(&args)
+        .stdout(log_file.try_clone()?)
+        .stderr(log_file)
+        .stdin(Stdio::null())
+        .spawn()?;
 
-            // Get the current executable path
-            let exe_path = std::env::current_exe()?;
+    // Save the child PID to file
+    let pid = child.id();
+    let mut pid_file = File::create(&pid_file_path)?;
+    writeln!(pid_file, "{}", pid)?;
 
-            // Prepare arguments for the foreground server
-            let args = vec![
-                "start".to_string(),
-                "--foreground".to_string(),
-                "--host".to_string(),
-                host.clone(),
-                "--port".to_string(),
-                port.to_string(),
-                "--data".to_string(),
-                data.to_string_lossy().to_string(),
-                "--no-config".to_string(), // Already configured
-            ];
+    // Detach the child process so it continues running independently
+    // Note: The child process will become orphaned when parent exits
+    std::mem::forget(child);
 
-            // Redirect stdout/stderr to log file
-            let log_file = File::create(data.join("server.log"))?;
-            let log_fd = log_file.into_raw_fd();
+    println!("✅ Server started in background mode");
+    println!();
+    println!("🌐 Server will be accessible at:");
+    println!("   Local:      http://localhost:{}", port);
+    println!("   Network:    http://{}:{}", host, port);
+    println!();
+    println!("📋 Commands:");
+    println!("   Stop server:  pkg-server stop");
+    println!("   View status:  pkg-server status");
+    println!("   View logs:    tail -f {}", log_file_path.display());
+    println!();
+    println!("💡 To run in foreground mode (for debugging):");
+    println!("   pkg-server start --foreground");
 
-            libc::dup2(log_fd, 1); // stdout
-            libc::dup2(log_fd, 2); // stderr
-
-            // Close stdin
-            libc::close(0);
-
-            // Save PID to file
-            let pid = std::process::id();
-            let mut pid_file = File::create(&pid_file_path)?;
-            writeln!(pid_file, "{}", pid)?;
-
-            // Execute the server in foreground mode
-            let _ = Command::new(exe_path).args(&args).exec();
-
-            // If exec fails
-            std::process::exit(1);
-        }
-    }
+    Ok(())
 }
 
 async fn run_server(host: String, port: u16, data: PathBuf) -> anyhow::Result<()> {

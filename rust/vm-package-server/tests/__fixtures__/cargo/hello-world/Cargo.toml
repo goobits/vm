@@ -6,3 +6,6 @@ authors = ["Test Author <test@example.com>"]
 description = "A simple hello world package for testing"
 license = "MIT"
 repository = "https://github.com/example/hello-world"
+
+# Prevent this test fixture from being included in parent workspace
+[workspace]

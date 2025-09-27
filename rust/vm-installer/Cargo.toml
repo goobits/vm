@@ -18,7 +18,7 @@ vm-messages = { path = "../vm-messages" }
 vm-platform = { path = "../vm-platform" }
 
 [dev-dependencies]
-tempfile = "3.22"
+tempfile = { workspace = true }
 
 [features]
 default = []

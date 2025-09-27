@@ -1,6 +1,9 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
+#[cfg(unix)]
+use nix::unistd;
+
 /// Helper function to derive tool directory from a target directory path
 fn derive_tool_dir_from_target(target: &Path) -> Option<PathBuf> {
     let parent = target.parent()?;
@@ -74,26 +77,8 @@ pub fn get_tool_dir() -> PathBuf {
 pub fn get_current_uid() -> u32 {
     #[cfg(unix)]
     {
-        // SAFETY: This is safe because libc::getuid() is a pure system call that:
-        // - Returns the real user ID of the calling process (always a valid u32)
-        // - Takes no parameters that could cause undefined behavior
-        // - Cannot fail or return an error code (always succeeds)
-        // - Does not access or modify any memory beyond kernel space
-        // - Is thread-safe and reentrant
-        // - Maps directly to the getuid(2) POSIX system call
-        //
-        // Invariants:
-        // - The returned UID is always valid for the current process
-        // - No memory safety issues as no pointers are involved
-        //
-        // What could go wrong:
-        // - Nothing; this is one of the safest system calls available
-        // - The UID value itself is trustworthy as it comes from the kernel
-        //
-        // Safe alternative:
-        // - No safe Rust alternative exists for this fundamental Unix operation
-        // - This is the canonical way to get the current user ID in Unix systems
-        unsafe { libc::getuid() }
+        // Safe nix wrapper for getuid system call
+        unistd::getuid().as_raw()
     }
     #[cfg(not(unix))]
     {
@@ -105,26 +90,8 @@ pub fn get_current_uid() -> u32 {
 pub fn get_current_gid() -> u32 {
     #[cfg(unix)]
     {
-        // SAFETY: This is safe because libc::getgid() is a pure system call that:
-        // - Returns the real group ID of the calling process (always a valid u32)
-        // - Takes no parameters that could cause undefined behavior
-        // - Cannot fail or return an error code (always succeeds)
-        // - Does not access or modify any memory beyond kernel space
-        // - Is thread-safe and reentrant
-        // - Maps directly to the getgid(2) POSIX system call
-        //
-        // Invariants:
-        // - The returned GID is always valid for the current process
-        // - No memory safety issues as no pointers are involved
-        //
-        // What could go wrong:
-        // - Nothing; this is one of the safest system calls available
-        // - The GID value itself is trustworthy as it comes from the kernel
-        //
-        // Safe alternative:
-        // - No safe Rust alternative exists for this fundamental Unix operation
-        // - This is the canonical way to get the current group ID in Unix systems
-        unsafe { libc::getgid() }
+        // Safe nix wrapper for getgid system call
+        unistd::getgid().as_raw()
     }
     #[cfg(not(unix))]
     {
