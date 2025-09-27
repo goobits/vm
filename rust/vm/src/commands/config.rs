@@ -1,8 +1,8 @@
 // Configuration-related command handlers
 
 use anyhow::{Context, Result};
-use log::debug;
 use std::path::PathBuf;
+use tracing::debug;
 
 use crate::cli::ConfigSubcommand;
 use serde_yaml_ng as serde_yaml;

@@ -1,10 +1,10 @@
 // Command handlers for VM operations
 
 use anyhow::Result;
-use log::debug;
+use tracing::debug;
 // Import the CLI types
 use crate::cli::{Args, Command};
-use vm_common::{log_context, vm_error, vm_println};
+use vm_common::{vm_error, vm_println};
 use vm_config::{config::VmConfig, init_config_file};
 use vm_provider::{error::ProviderError, get_provider};
 
@@ -130,12 +130,8 @@ fn handle_provider_command(args: Args) -> Result<()> {
     // Get the appropriate provider
     let provider = get_provider(config.clone())?;
 
-    // Add provider context that will be inherited by all subsequent logs
-    log_context! {
-        "provider" => provider.name()
-    };
-
-    debug!("Using provider: {}", provider.name());
+    // Log provider being used
+    debug!(provider = %provider.name(), "Using provider");
 
     // Execute the command with friendly error handling
     debug!("Executing command: {:?}", args.command);

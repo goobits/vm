@@ -4,10 +4,6 @@
 //! across all crates. It uses the `vm-messages` crate for templates
 //! and formatting.
 
-// These imports will be used during the gradual migration to the new messaging system
-#[allow(unused_imports)]
-use crate::messages::{categories::VM_OPS, messages::MESSAGES};
-
 // Re-export the base msg macro for convenience
 pub use crate::messages::msg;
 
@@ -144,18 +140,15 @@ macro_rules! vm_dbg {
     };
 }
 
-/// Initialize structured logging for use with output macros
+/// Initialize tracing for use with output macros
 ///
 /// This function should be called early in application startup to enable
-/// structured logging features. If not called, macros will fall back to
-/// standard print macros.
-pub fn init_structured_output() -> Result<(), log::SetLoggerError> {
-    crate::structured_log::init()
+/// tracing features.
+pub fn init_logging() -> anyhow::Result<()> {
+    crate::tracing_init::init()
 }
 
-/// Initialize structured logging with custom configuration
-pub fn init_structured_output_with_config(
-    config: crate::structured_log::LogConfig,
-) -> Result<(), log::SetLoggerError> {
-    crate::structured_log::init_with_config(config)
+/// Initialize tracing with a default filter
+pub fn init_logging_with_defaults(default_filter: &str) -> anyhow::Result<()> {
+    crate::tracing_init::init_with_defaults(default_filter)
 }

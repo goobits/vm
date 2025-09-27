@@ -5,14 +5,12 @@ pub mod command_stream;
 pub mod error_messages;
 pub mod errors;
 pub mod file_system;
-pub mod log_context;
-pub mod module_logger;
 pub mod output_macros;
 pub mod platform;
 pub mod security;
-pub mod structured_log;
 pub mod system_check;
 pub mod temp_dir;
+pub mod tracing_init;
 pub mod user_paths;
 
 // Re-export vm-messages for easy access

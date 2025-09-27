@@ -4,11 +4,11 @@ use uuid::Uuid;
 
 // External crates
 use clap::Parser;
-use log::info;
+use tracing::{info, info_span};
 
 // Internal imports
 use vm_common::messages::{messages::MESSAGES, msg};
-use vm_common::{scoped_context, vm_error, vm_warning};
+use vm_common::{vm_error, vm_warning};
 
 // Local modules
 mod cli;
@@ -25,20 +25,23 @@ fn get_request_id() -> &'static str {
 }
 
 fn main() {
-    // Initialize structured logging system first, but only if not in test mode
+    // Initialize tracing system first, but only if not in test mode
     // Tests expect clean stdout output, so we disable logging for test runs
-    if std::env::var("VM_TEST_MODE").is_err() && vm_common::structured_log::init().is_err() {
-        vm_warning!("Failed to initialize structured logging, falling back to basic logging");
+    if std::env::var("VM_TEST_MODE").is_err() {
+        if let Err(e) = vm_common::tracing_init::init_with_defaults("warn") {
+            vm_warning!("Failed to initialize tracing: {}", e);
+        }
     }
 
     let args = Args::parse();
 
-    // Set up request-level context that will be inherited by all logs
-    let _request_guard = scoped_context! {
-        "request_id" => get_request_id(),
-        "command" => format!("{:?}", args.command),
-        "debug" => args.debug
-    };
+    // Set up request-level span that will be inherited by all logs
+    let span = info_span!("request",
+        request_id = %get_request_id(),
+        command = ?args.command,
+        debug = args.debug
+    );
+    let _enter = span.enter();
 
     if args.debug {
         info!("Starting vm command");

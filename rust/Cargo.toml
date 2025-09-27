@@ -12,6 +12,9 @@ members = [
     "version-sync",
     "vm-package-server",
 ]
+exclude = [
+    "vm-package-server/tests/__fixtures__",
+]
 resolver = "2"
 
 [workspace.package]
@@ -45,7 +48,6 @@ is-terminal = "0.4"
 base64 = "0.22"
 libc = "0.2"
 fs2 = "0.4"
-log = "0.4"
 pathdiff = "0.2"
 colored = "2.0"
 uuid = { version = "1.0", features = ["v4", "serde"] }
@@ -56,7 +58,7 @@ sha1 = "0.10"
 sha2 = "0.10"
 digest = "0.10"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter", "json"] }
 tower-http = { version = "0.6", features = ["trace", "fs"] }
 askama = "0.12"
 reqwest = { version = "0.12.23", features = ["blocking", "json", "multipart", "rustls-tls", "stream"], default-features = false }

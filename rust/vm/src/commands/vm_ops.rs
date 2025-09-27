@@ -7,10 +7,9 @@ use std::path::{Path, PathBuf};
 
 // External crates
 use anyhow::{Context, Result};
-use log::{debug, info, warn};
+use tracing::{debug, info, info_span, warn};
 
 // Internal imports
-use vm_common::scoped_context;
 use vm_common::vm_error;
 use vm_config::config::VmConfig;
 use vm_provider::{InstanceInfo, Provider};
@@ -22,7 +21,8 @@ pub fn handle_create(
     force: bool,
     instance: Option<String>,
 ) -> Result<()> {
-    let _op_guard = scoped_context! { "operation" => "create" };
+    let span = info_span!("vm_operation", operation = "create");
+    let _enter = span.enter();
     info!("Starting VM creation");
 
     let vm_name = config
@@ -152,7 +152,8 @@ pub fn handle_start(
     container: Option<&str>,
     config: VmConfig,
 ) -> Result<()> {
-    let _op_guard = scoped_context! { "operation" => "start" };
+    let span = info_span!("vm_operation", operation = "start");
+    let _enter = span.enter();
     info!("Starting VM");
 
     // Get VM name from config
@@ -264,7 +265,8 @@ pub fn handle_stop(
     match container {
         None => {
             // Graceful stop of current project VM
-            let _op_guard = scoped_context! { "operation" => "stop" };
+            let span = info_span!("vm_operation", operation = "stop");
+            let _enter = span.enter();
             info!("Stopping VM");
 
             let vm_name = config
@@ -291,7 +293,8 @@ pub fn handle_stop(
         }
         Some(container_name) => {
             // Force kill specific container
-            let _op_guard = scoped_context! { "operation" => "kill" };
+            let span = info_span!("vm_operation", operation = "kill");
+            let _enter = span.enter();
             warn!("Force killing container: {}", container_name);
 
             println!("⚠️  Force stopping container '{}'...", container_name);
@@ -317,7 +320,8 @@ pub fn handle_restart(
     container: Option<&str>,
     config: VmConfig,
 ) -> Result<()> {
-    let _op_guard = scoped_context! { "operation" => "restart" };
+    let span = info_span!("vm_operation", operation = "restart");
+    let _enter = span.enter();
     info!("Restarting VM");
 
     let vm_name = config
@@ -351,7 +355,8 @@ pub fn handle_provision(
     container: Option<&str>,
     config: VmConfig,
 ) -> Result<()> {
-    let _op_guard = scoped_context! { "operation" => "provision" };
+    let span = info_span!("vm_operation", operation = "provision");
+    let _enter = span.enter();
     info!("Re-running VM provisioning");
 
     let vm_name = config
@@ -389,7 +394,8 @@ pub fn handle_list_enhanced(
     provider_filter: Option<&str>,
     verbose: &bool,
 ) -> Result<()> {
-    let _op_guard = scoped_context! { "operation" => "list" };
+    let span = info_span!("vm_operation", operation = "list");
+    let _enter = span.enter();
     debug!(
         "Listing VMs with enhanced filtering - provider_filter: {:?}, verbose: {}",
         provider_filter, *verbose
@@ -674,7 +680,8 @@ pub fn handle_destroy_enhanced(
     provider_filter: Option<&str>,
     pattern: Option<&str>,
 ) -> Result<()> {
-    let _op_guard = scoped_context! { "operation" => "destroy" };
+    let span = info_span!("vm_operation", operation = "destroy");
+    let _enter = span.enter();
 
     if *all || provider_filter.is_some() || pattern.is_some() {
         // Cross-provider destroy operations
