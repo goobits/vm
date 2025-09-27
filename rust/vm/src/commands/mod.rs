@@ -1,16 +1,17 @@
 // Command handlers for VM operations
 
-use anyhow::Result;
+use crate::error::{VmError, VmResult};
 use tracing::debug;
 // Import the CLI types
 use crate::cli::{Args, Command};
 use vm_common::{vm_error, vm_println};
 use vm_config::{config::VmConfig, init_config_file};
-use vm_provider::{error::ProviderError, get_provider};
+use vm_provider::get_provider;
 
 // Individual command modules
 pub mod auth;
 pub mod config;
+pub mod doctor;
 pub mod pkg;
 pub mod registry;
 pub mod temp;
@@ -18,7 +19,7 @@ pub mod vm_ops;
 
 /// Main command dispatcher
 #[must_use = "command execution results should be handled"]
-pub async fn execute_command(args: Args) -> Result<()> {
+pub async fn execute_command(args: Args) -> VmResult<()> {
     // Handle dry-run for provider commands
     if args.dry_run {
         return handle_dry_run(&args).await;
@@ -27,13 +28,14 @@ pub async fn execute_command(args: Args) -> Result<()> {
     // Handle commands that don't need a provider first
     match &args.command {
         Command::Validate => config::handle_validate(args.config),
+        Command::Doctor => doctor::handle_doctor_command().await,
         Command::Init {
             file,
             services,
             ports,
         } => {
             debug!("Calling init_config_file directly");
-            init_config_file(file.clone(), services.clone(), *ports)
+            init_config_file(file.clone(), services.clone(), *ports).map_err(VmError::from)
         }
         Command::Config { command } => {
             debug!("Calling ConfigOps methods directly");
@@ -62,7 +64,7 @@ pub async fn execute_command(args: Args) -> Result<()> {
     }
 }
 
-async fn handle_dry_run(args: &Args) -> Result<()> {
+async fn handle_dry_run(args: &Args) -> VmResult<()> {
     match &args.command {
         Command::Create { .. }
         | Command::Start { .. }
@@ -87,7 +89,7 @@ async fn handle_dry_run(args: &Args) -> Result<()> {
     }
 }
 
-fn handle_provider_command(args: Args) -> Result<()> {
+fn handle_provider_command(args: Args) -> VmResult<()> {
     // Load configuration
     debug!("Loading configuration: config_file={:?}", args.config);
 
@@ -109,9 +111,15 @@ fn handle_provider_command(args: Args) -> Result<()> {
                                 println!("   • Initialize config: vm init");
                                 println!("   • Change to project directory: cd <project>");
                                 println!("   • List existing VMs: vm list --all-providers");
-                                return Err(anyhow::anyhow!("Configuration required"));
+                                return Err(VmError::config(
+                                    std::io::Error::new(
+                                        std::io::ErrorKind::NotFound,
+                                        "Configuration required",
+                                    ),
+                                    "No vm.yaml configuration file found",
+                                ));
                             }
-                            return Err(e);
+                            return Err(VmError::from(e));
                         }
                     }
                 }
@@ -128,9 +136,15 @@ fn handle_provider_command(args: Args) -> Result<()> {
                         println!("   • Initialize config: vm init");
                         println!("   • Change to project directory: cd <project>");
                         println!("   • List existing VMs: vm list --all-providers");
-                        return Err(anyhow::anyhow!("Configuration required"));
+                        return Err(VmError::config(
+                            std::io::Error::new(
+                                std::io::ErrorKind::NotFound,
+                                "Configuration required",
+                            ),
+                            "No vm.yaml configuration file found",
+                        ));
                     }
-                    return Err(e);
+                    return Err(VmError::from(e));
                 }
             }
         }
@@ -142,8 +156,25 @@ fn handle_provider_command(args: Args) -> Result<()> {
         config.project.as_ref().and_then(|p| p.name.as_ref())
     );
 
+    // Validate configuration before proceeding
+    let validation_errors = config.validate();
+    if !validation_errors.is_empty() {
+        vm_error!("Configuration validation failed:");
+        for error in &validation_errors {
+            vm_println!("  ❌ {}", error);
+        }
+        vm_println!("\n💡 Fix the configuration errors above or run 'vm doctor' for more details");
+        return Err(VmError::validation(
+            format!(
+                "Configuration has {} validation error(s)",
+                validation_errors.len()
+            ),
+            None::<String>,
+        ));
+    }
+
     // Get the appropriate provider
-    let provider = get_provider(config.clone())?;
+    let provider = get_provider(config.clone()).map_err(VmError::from)?;
 
     // Log provider being used
     debug!(provider = %provider.name(), "Using provider");
@@ -212,40 +243,12 @@ fn handle_provider_command(args: Args) -> Result<()> {
                 "Command {:?} should have been handled in earlier match statement",
                 cmd
             );
-            Err(anyhow::anyhow!("Command not handled in match statement"))
+            Err(VmError::general(
+                std::io::Error::new(std::io::ErrorKind::InvalidInput, "Command not handled"),
+                format!("Command {:?} not handled in match statement", cmd),
+            ))
         }
     };
 
-    // Convert errors to user-friendly messages
-    result.map_err(|e| {
-        if let Some(provider_error) = e.downcast_ref::<ProviderError>() {
-            anyhow::anyhow!(provider_error.user_friendly())
-        } else {
-            // Check if it's an anyhow error containing a ProviderError
-            let error_chain = format!("{:?}", e);
-            let error_str = e.to_string();
-
-            // More specific error recovery suggestions
-            if error_chain.contains("is not running") || error_str.contains("is not running") {
-                anyhow::anyhow!("🔴 VM is stopped\n\n💡 Try:\n  • Start VM: vm start\n  • Check status: vm status\n  • View logs: vm logs")
-            } else if error_chain.contains("No such container") || error_str.contains("No such container") {
-                anyhow::anyhow!("🔍 VM doesn't exist\n\n💡 Try:\n  • Create VM: vm create\n  • List all VMs: vm list\n  • Check config: vm validate")
-            } else if error_chain.contains("SSH connection lost") {
-                // Don't show duplicate message for normal SSH exits
-                e
-            } else if error_chain.contains("port") || error_str.contains("port") {
-                anyhow::anyhow!("⚠️ Port conflict detected\n\n💡 Try:\n  • Fix ports: vm config ports --fix\n  • Check ports: docker ps\n  • Recreate: vm create --force")
-            } else if error_chain.contains("permission") || error_str.contains("permission") {
-                anyhow::anyhow!("🔐 Permission denied\n\n💡 Try:\n  • Check Docker: docker ps\n  • Verify Docker permissions\n  • Restart Docker daemon")
-            } else if (error_chain.contains("Docker") || error_str.contains("Docker daemon"))
-                && !error_str.contains("No such container")
-                && !error_str.contains("No such object") {
-                anyhow::anyhow!("🐳 Docker issue detected\n\n💡 Try:\n  • Start Docker\n  • Check Docker: docker version\n  • Restart Docker daemon")
-            } else if error_chain.contains("config") || error_str.contains("configuration") {
-                anyhow::anyhow!("⚙️ Configuration issue\n\n💡 Try:\n  • Validate config: vm validate\n  • Check vm.yaml syntax\n  • Reset config: vm init")
-            } else {
-                e
-            }
-        }
-    })
+    result
 }

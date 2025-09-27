@@ -1,22 +1,22 @@
 // Temporary VM command handlers
 
-use anyhow::Result;
 use std::path::PathBuf;
 
 use crate::cli::TempSubcommand;
 use crate::commands::config;
+use crate::error::{VmError, VmResult};
 use vm_provider::get_provider;
 
 /// Handle temporary VM commands
-pub fn handle_temp_command(command: &TempSubcommand, config_file: Option<PathBuf>) -> Result<()> {
+pub fn handle_temp_command(command: &TempSubcommand, config_file: Option<PathBuf>) -> VmResult<()> {
     use vm_temp::TempVmOps;
 
     // For temp commands, we need a provider, but the config might not exist.
     // We load it leniently to ensure we can get a provider.
     let config = config::load_config_lenient(config_file)?;
-    let provider = get_provider(config.clone())?;
+    let provider = get_provider(config.clone()).map_err(VmError::from)?;
 
-    match command {
+    let result = match command {
         TempSubcommand::Create {
             mounts,
             auto_destroy,
@@ -33,5 +33,7 @@ pub fn handle_temp_command(command: &TempSubcommand, config_file: Option<PathBuf
         TempSubcommand::Stop => TempVmOps::stop(provider),
         TempSubcommand::Start => TempVmOps::start(provider),
         TempSubcommand::Restart => TempVmOps::restart(provider),
-    }
+    };
+
+    result.map_err(VmError::from)
 }

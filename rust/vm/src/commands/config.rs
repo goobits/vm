@@ -1,17 +1,18 @@
 // Configuration-related command handlers
 
-use anyhow::{Context, Result};
+use anyhow::Context;
 use std::path::PathBuf;
 use tracing::debug;
 
 use crate::cli::ConfigSubcommand;
+use crate::error::{VmError, VmResult};
 use serde_yaml_ng as serde_yaml;
 use vm_common::{vm_println, vm_success, vm_warning};
 use vm_config::ports::{PortRange, PortRegistry};
 use vm_config::{config::VmConfig, ConfigOps};
 
 /// Handle configuration validation command
-pub fn handle_validate(config_file: Option<PathBuf>) -> Result<()> {
+pub fn handle_validate(config_file: Option<PathBuf>) -> VmResult<()> {
     debug!("Validating configuration: config_file={:?}", config_file);
 
     println!("🔍 Validating configuration...");
@@ -82,30 +83,32 @@ pub fn handle_validate(config_file: Option<PathBuf>) -> Result<()> {
             println!("\n💡 Fix errors and try again");
 
             // Return the error to exit with a non-zero status code
-            Err(e)
+            Err(VmError::from(e))
         }
     }
 }
 
 /// Handle configuration management commands
-pub fn handle_config_command(command: &ConfigSubcommand, dry_run: bool) -> Result<()> {
+pub fn handle_config_command(command: &ConfigSubcommand, dry_run: bool) -> VmResult<()> {
     match command {
         ConfigSubcommand::Set {
             field,
             value,
             global,
-        } => ConfigOps::set(field, value, *global, dry_run),
-        ConfigSubcommand::Get { field, global } => ConfigOps::get(field.as_deref(), *global),
-        ConfigSubcommand::Unset { field, global } => ConfigOps::unset(field, *global),
+        } => Ok(ConfigOps::set(field, value, *global, dry_run)?),
+        ConfigSubcommand::Get { field, global } => Ok(ConfigOps::get(field.as_deref(), *global)?),
+        ConfigSubcommand::Unset { field, global } => Ok(ConfigOps::unset(field, *global)?),
         ConfigSubcommand::Preset {
             names,
             global,
             list,
             show,
         } => match (list, show, names) {
-            (true, _, _) => ConfigOps::preset("", *global, true, None),
-            (_, Some(show_name), _) => ConfigOps::preset("", *global, false, Some(show_name)),
-            (_, _, Some(preset_names)) => ConfigOps::preset(preset_names, *global, false, None),
+            (true, _, _) => Ok(ConfigOps::preset("", *global, true, None)?),
+            (_, Some(show_name), _) => Ok(ConfigOps::preset("", *global, false, Some(show_name))?),
+            (_, _, Some(preset_names)) => {
+                Ok(ConfigOps::preset(preset_names, *global, false, None)?)
+            }
             _ => Ok(()),
         },
         ConfigSubcommand::Ports { fix } => handle_ports_command(*fix),
@@ -113,20 +116,21 @@ pub fn handle_config_command(command: &ConfigSubcommand, dry_run: bool) -> Resul
 }
 
 /// Load configuration with lenient validation for commands that don't require full project setup
-pub fn load_config_lenient(file: Option<PathBuf>) -> Result<VmConfig> {
+pub fn load_config_lenient(file: Option<PathBuf>) -> VmResult<VmConfig> {
     use vm_config::config::VmConfig;
 
     // Try to load defaults as base
     const EMBEDDED_DEFAULTS: &str = include_str!("../../../../configs/defaults.yaml");
-    let mut config: VmConfig =
-        serde_yaml::from_str(EMBEDDED_DEFAULTS).context("Failed to parse embedded defaults")?;
+    let mut config: VmConfig = serde_yaml::from_str(EMBEDDED_DEFAULTS)
+        .map_err(|e| VmError::config(e, "Failed to parse embedded defaults"))?;
 
     // Try to find and load user config if it exists
     let user_config_path = match file {
         Some(path) => Some(path),
         None => {
             // Look for vm.yaml in current directory
-            let current_dir = std::env::current_dir()?;
+            let current_dir = std::env::current_dir()
+                .map_err(|e| VmError::filesystem(e, ".", "get current directory"))?;
             let vm_yaml_path = current_dir.join("vm.yaml");
             if vm_yaml_path.exists() {
                 Some(vm_yaml_path)
@@ -170,7 +174,7 @@ pub fn load_config_lenient(file: Option<PathBuf>) -> Result<VmConfig> {
 }
 
 /// Handle ports command
-pub fn handle_ports_command(fix: bool) -> Result<()> {
+pub fn handle_ports_command(fix: bool) -> VmResult<()> {
     debug!("Handling ports command: fix={}", fix);
 
     // Load current project configuration
@@ -278,7 +282,7 @@ struct PortConflict {
 }
 
 /// Check for conflicts between the given port range and running Docker containers
-fn check_docker_port_conflicts(range: &PortRange) -> Result<Vec<PortConflict>> {
+fn check_docker_port_conflicts(range: &PortRange) -> VmResult<Vec<PortConflict>> {
     use std::process::Command;
 
     let mut conflicts = Vec::new();
@@ -290,9 +294,15 @@ fn check_docker_port_conflicts(range: &PortRange) -> Result<Vec<PortConflict>> {
         .context("Failed to run docker ps command")?;
 
     if !output.status.success() {
-        return Err(anyhow::anyhow!(
-            "Docker command failed: {}",
-            String::from_utf8_lossy(&output.stderr)
+        return Err(VmError::general(
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!(
+                    "Docker command failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ),
+            ),
+            "Failed to check Docker port conflicts",
         ));
     }
 
@@ -345,13 +355,17 @@ fn extract_host_port(port_mapping: &str) -> Option<u16> {
 }
 
 /// Update vm.yaml with new port range
-fn update_vm_config_ports(new_range: &str) -> Result<()> {
+fn update_vm_config_ports(new_range: &str) -> VmResult<()> {
     use std::fs;
 
     let config_path = std::env::current_dir()?.join("vm.yaml");
 
     if !config_path.exists() {
-        return Err(anyhow::anyhow!("vm.yaml not found in current directory"));
+        return Err(VmError::filesystem(
+            std::io::Error::new(std::io::ErrorKind::NotFound, "vm.yaml not found"),
+            "vm.yaml",
+            "update configuration",
+        ));
     }
 
     let content = fs::read_to_string(&config_path).context("Failed to read vm.yaml")?;

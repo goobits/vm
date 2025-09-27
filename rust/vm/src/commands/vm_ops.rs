@@ -6,10 +6,11 @@ use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 
 // External crates
-use anyhow::{Context, Result};
+// use anyhow::Context; // Currently unused
 use tracing::{debug, info, info_span, warn};
 
 // Internal imports
+use crate::error::{VmError, VmResult};
 use vm_common::vm_error;
 use vm_config::config::VmConfig;
 use vm_provider::{InstanceInfo, Provider};
@@ -21,7 +22,7 @@ pub fn handle_create(
     config: VmConfig,
     force: bool,
     instance: Option<String>,
-) -> Result<()> {
+) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "create");
     let _enter = span.enter();
     info!("Starting VM creation");
@@ -65,7 +66,7 @@ pub fn handle_create(
             if provider.status(None).is_ok() {
                 warn!("VM exists, destroying due to --force flag");
                 println!("🔄 Force recreating '{}'...", vm_name);
-                provider.destroy(None)?;
+                provider.destroy(None).map_err(VmError::from)?;
             }
         }
     }
@@ -158,7 +159,7 @@ pub fn handle_create(
             println!("   • Check Docker status: docker ps");
             println!("   • View Docker logs: docker logs");
             println!("   • Retry with force: vm create --force");
-            Err(e)
+            Err(VmError::from(e))
         }
     }
 }
@@ -168,7 +169,7 @@ pub fn handle_start(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     config: VmConfig,
-) -> Result<()> {
+) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "start");
     let _enter = span.enter();
     info!("Starting VM");
@@ -284,7 +285,7 @@ pub fn handle_start(
             println!("   • Check Docker status: docker ps");
             println!("   • View logs: docker logs {}", container_name);
             println!("   • Recreate VM: vm create --force");
-            Err(e)
+            Err(VmError::from(e))
         }
     }
 }
@@ -294,7 +295,7 @@ pub fn handle_stop(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     config: VmConfig,
-) -> Result<()> {
+) -> VmResult<()> {
     match container {
         None => {
             // Graceful stop of current project VM
@@ -320,7 +321,7 @@ pub fn handle_stop(
                 Err(e) => {
                     println!("❌ Failed to stop '{}'", vm_name);
                     println!("   Error: {}", e);
-                    Err(e)
+                    Err(VmError::from(e))
                 }
             }
         }
@@ -340,7 +341,7 @@ pub fn handle_stop(
                 Err(e) => {
                     println!("❌ Failed to stop container");
                     println!("   Error: {}", e);
-                    Err(e)
+                    Err(VmError::from(e))
                 }
             }
         }
@@ -352,7 +353,7 @@ pub fn handle_restart(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     config: VmConfig,
-) -> Result<()> {
+) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "restart");
     let _enter = span.enter();
     info!("Restarting VM");
@@ -377,7 +378,7 @@ pub fn handle_restart(
         Err(e) => {
             println!("\n❌ Failed to restart '{}'", vm_name);
             println!("   Error: {}", e);
-            Err(e)
+            Err(VmError::from(e))
         }
     }
 }
@@ -387,7 +388,7 @@ pub fn handle_provision(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     config: VmConfig,
-) -> Result<()> {
+) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "provision");
     let _enter = span.enter();
     info!("Re-running VM provisioning");
@@ -415,7 +416,7 @@ pub fn handle_provision(
             println!("\n❌ Provisioning failed");
             println!("   Error: {}", e);
             println!("\n💡 Check logs: vm logs");
-            Err(e)
+            Err(VmError::from(e))
         }
     }
 }
@@ -426,7 +427,7 @@ pub fn handle_list_enhanced(
     _all_providers: &bool,
     provider_filter: Option<&str>,
     verbose: &bool,
-) -> Result<()> {
+) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "list");
     let _enter = span.enter();
     debug!(
@@ -497,12 +498,12 @@ pub fn handle_list_enhanced(
 
 /// Legacy handle_list for backward compatibility
 #[allow(dead_code)]
-pub fn handle_list(provider: Box<dyn Provider>) -> Result<()> {
+pub fn handle_list(provider: Box<dyn Provider>) -> VmResult<()> {
     handle_list_enhanced(provider, &true, None, &false)
 }
 
 // Helper function to get instances from all available providers
-fn get_all_instances() -> Result<Vec<InstanceInfo>> {
+fn get_all_instances() -> VmResult<Vec<InstanceInfo>> {
     use vm_config::config::VmConfig;
     use vm_provider::get_provider;
 
@@ -548,7 +549,7 @@ fn get_all_instances() -> Result<Vec<InstanceInfo>> {
 }
 
 // Helper function to get instances from a specific provider
-fn get_instances_from_provider(provider_name: &str) -> Result<Vec<InstanceInfo>> {
+fn get_instances_from_provider(provider_name: &str) -> VmResult<Vec<InstanceInfo>> {
     use vm_config::config::VmConfig;
     use vm_provider::get_provider;
 
@@ -628,7 +629,7 @@ pub fn handle_destroy(
     container: Option<&str>,
     config: VmConfig,
     force: bool,
-) -> Result<()> {
+) -> VmResult<()> {
     // Get VM name from config for confirmation prompt
     let vm_name = config
         .project
@@ -670,12 +671,14 @@ pub fn handle_destroy(
         println!();
         print!("Confirm destruction? (y/N): ");
         use std::io::{self, Write};
-        io::stdout().flush().context("Failed to flush stdout")?;
+        io::stdout()
+            .flush()
+            .map_err(|e| VmError::general(e, "Failed to flush stdout"))?;
 
         let mut response = String::new();
         io::stdin()
             .read_line(&mut response)
-            .context("Failed to read user input")?;
+            .map_err(|e| VmError::general(e, "Failed to read user input"))?;
         response.trim().to_lowercase() == "y"
     };
 
@@ -692,14 +695,20 @@ pub fn handle_destroy(
             }
             Err(e) => {
                 println!("\n❌ Destruction failed: {}", e);
-                Err(e)
+                Err(VmError::from(e))
             }
         }
     } else {
         debug!("Destroy confirmation: response='no', cancelling destruction");
         println!("\n❌ Destruction cancelled");
         vm_error!("VM destruction cancelled by user");
-        Err(anyhow::anyhow!("VM destruction cancelled by user"))
+        Err(VmError::general(
+            std::io::Error::new(
+                std::io::ErrorKind::Interrupted,
+                "VM destruction cancelled by user",
+            ),
+            "User cancelled VM destruction",
+        ))
     }
 }
 
@@ -712,7 +721,7 @@ pub fn handle_destroy_enhanced(
     all: &bool,
     provider_filter: Option<&str>,
     pattern: Option<&str>,
-) -> Result<()> {
+) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "destroy");
     let _enter = span.enter();
 
@@ -731,7 +740,7 @@ fn handle_cross_provider_destroy(
     provider_filter: Option<&str>,
     pattern: Option<&str>,
     force: bool,
-) -> Result<()> {
+) -> VmResult<()> {
     debug!(
         "Cross-provider destroy: all={}, provider_filter={:?}, pattern={:?}, force={}",
         all, provider_filter, pattern, force
@@ -813,7 +822,7 @@ fn handle_cross_provider_destroy(
 }
 
 /// Destroy a single instance using its provider
-fn destroy_single_instance(instance: &InstanceInfo) -> Result<()> {
+fn destroy_single_instance(instance: &InstanceInfo) -> VmResult<()> {
     use vm_config::config::VmConfig;
     use vm_provider::get_provider;
 
@@ -823,7 +832,7 @@ fn destroy_single_instance(instance: &InstanceInfo) -> Result<()> {
     };
 
     let provider = get_provider(config)?;
-    provider.destroy(Some(&instance.name))
+    Ok(provider.destroy(Some(&instance.name))?)
 }
 
 /// Simple pattern matching for instance names
@@ -857,7 +866,7 @@ fn handle_ssh_start_prompt(
     _user: &str,
     _workspace_path: &str,
     _shell: &str,
-) -> Result<Option<Result<()>>> {
+) -> VmResult<Option<VmResult<()>>> {
     // Check if we're in an interactive terminal
     if !io::stdin().is_terminal() {
         println!("\n💡 Start the VM with: vm start");
@@ -866,10 +875,14 @@ fn handle_ssh_start_prompt(
     }
 
     print!("\nWould you like to start it now? (y/N): ");
-    io::stdout().flush()?;
+    io::stdout()
+        .flush()
+        .map_err(|e| VmError::general(e, "Failed to flush stdout"))?;
 
     let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
+    io::stdin()
+        .read_line(&mut input)
+        .map_err(|e| VmError::general(e, "Failed to read user input"))?;
 
     if !matches!(input.trim().to_lowercase().as_str(), "y" | "yes") {
         println!("\n❌ SSH connection aborted");
@@ -905,7 +918,7 @@ fn handle_ssh_start_prompt(
         }
     }
 
-    Ok(Some(retry_result))
+    Ok(Some(retry_result.map_err(VmError::from)))
 }
 
 /// Handle SSH into VM
@@ -914,7 +927,7 @@ pub fn handle_ssh(
     container: Option<&str>,
     path: Option<PathBuf>,
     config: VmConfig,
-) -> Result<()> {
+) -> VmResult<()> {
     let relative_path = path.unwrap_or_else(|| PathBuf::from("."));
     let workspace_path = config
         .project
@@ -985,7 +998,7 @@ pub fn handle_ssh(
                                 println!("\n🔗 Connecting to '{}'...", vm_name);
 
                                 // Now try SSH again
-                                return provider.ssh(container, &relative_path);
+                                return Ok(provider.ssh(container, &relative_path)?);
                             }
                             Err(create_err) => {
                                 println!("\n❌ Failed to create '{}'", vm_name);
@@ -994,7 +1007,7 @@ pub fn handle_ssh(
                                 println!("   • Check Docker: docker ps");
                                 println!("   • View logs: docker logs");
                                 println!("   • Manual create: vm create");
-                                return Err(create_err);
+                                return Err(create_err.into());
                             }
                         }
                     } else {
@@ -1006,7 +1019,11 @@ pub fn handle_ssh(
                     println!("💡 List existing VMs: vm list");
                 }
                 // Return a clean error that won't be misinterpreted by the main error handler
-                return Err(anyhow::anyhow!("VM does not exist"));
+                return Err(VmError::vm_operation(
+                    std::io::Error::new(std::io::ErrorKind::NotFound, "VM does not exist"),
+                    Some(vm_name),
+                    "ssh",
+                ));
             }
             // Check if the error is because the container is not running
             else if error_str.contains("is not running")
@@ -1043,7 +1060,7 @@ pub fn handle_ssh(
         }
     }
 
-    result
+    Ok(result?)
 }
 
 /// Handle VM status check
@@ -1051,7 +1068,7 @@ pub fn handle_status(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     config: VmConfig,
-) -> Result<()> {
+) -> VmResult<()> {
     // Get VM name from config
     let vm_name = config
         .project
@@ -1173,7 +1190,7 @@ pub fn handle_exec(
     container: Option<&str>,
     command: Vec<String>,
     config: VmConfig,
-) -> Result<()> {
+) -> VmResult<()> {
     debug!(
         "Executing command in VM: command={:?}, provider='{}'",
         command,
@@ -1217,7 +1234,7 @@ pub fn handle_exec(
         }
     }
 
-    result
+    result.map_err(VmError::from)
 }
 
 /// Handle VM logs viewing
@@ -1225,7 +1242,7 @@ pub fn handle_logs(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     config: VmConfig,
-) -> Result<()> {
+) -> VmResult<()> {
     debug!("Viewing VM logs: provider='{}'", provider.name());
 
     let vm_name = config
@@ -1244,11 +1261,11 @@ pub fn handle_logs(
     println!("💡 Follow live: docker logs -f {}-dev", vm_name);
     println!("💡 Full logs: docker logs {}-dev", vm_name);
 
-    result
+    result.map_err(VmError::from)
 }
 
 /// Start package registry server in background
-fn start_package_registry_background() -> Result<()> {
+fn start_package_registry_background() -> VmResult<()> {
     use std::process::Command;
     use std::thread;
     use std::time::Duration;

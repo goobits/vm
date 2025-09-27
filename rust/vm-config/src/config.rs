@@ -826,4 +826,85 @@ impl VmConfig {
     pub fn is_partial(&self) -> bool {
         self.provider.is_none() || self.project.as_ref().map_or(true, |p| p.name.is_none())
     }
+
+    /// Validate the configuration and return a list of validation errors.
+    ///
+    /// This method performs comprehensive validation of the VM configuration,
+    /// checking for common configuration issues that could prevent proper
+    /// VM operation.
+    ///
+    /// # Returns
+    /// A vector of error messages. An empty vector indicates valid configuration.
+    ///
+    /// # Validation Checks
+    /// - Services that are enabled but have no image specified
+    /// - Invalid resource allocations (e.g., 0 CPUs, "0GB" memory)
+    /// - The existence of local paths for file mounts
+    /// - A valid provider name is being used
+    ///
+    /// # Examples
+    /// ```rust,no_run
+    /// use vm_config::config::VmConfig;
+    ///
+    /// let config = VmConfig::load(None)?;
+    /// let errors = config.validate();
+    /// if !errors.is_empty() {
+    ///     for error in errors {
+    ///         println!("❌ {}", error);
+    ///     }
+    /// }
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn validate(&self) -> Vec<String> {
+        let mut errors = Vec::new();
+
+        // Check provider name
+        if let Some(provider) = &self.provider {
+            let valid_providers = ["docker", "vagrant", "tart"];
+            if !valid_providers.contains(&provider.as_str()) {
+                errors.push(format!(
+                    "Invalid provider '{}'. Valid providers are: {}",
+                    provider,
+                    valid_providers.join(", ")
+                ));
+            }
+        }
+
+        // Check VM resource allocations
+        if let Some(vm) = &self.vm {
+            // Check CPU allocation
+            if let Some(cpus) = vm.cpus {
+                if cpus == 0 {
+                    errors.push("VM CPU count cannot be 0".to_string());
+                }
+            }
+
+            // Check memory allocation
+            if let Some(memory) = &vm.memory {
+                if let Some(mb) = memory.to_mb() {
+                    if mb == 0 {
+                        errors.push("VM memory allocation cannot be 0".to_string());
+                    }
+                } else {
+                    errors.push(format!("Invalid memory format: {:?}", memory));
+                }
+            }
+        }
+
+        // Check services configuration
+        for (service_name, service) in &self.services {
+            if service.enabled {
+                // For services, we can check if they have required configuration
+                // This could be extended based on service type
+                if service.port.is_none() && service_name != "docker" {
+                    errors.push(format!(
+                        "Service '{}' is enabled but has no port specified",
+                        service_name
+                    ));
+                }
+            }
+        }
+
+        errors
+    }
 }

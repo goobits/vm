@@ -281,6 +281,9 @@ pub enum Command {
     },
     /// Validate VM configuration
     Validate,
+    /// Run comprehensive health checks on VM environment
+    #[command(about = "Check system dependencies, configuration, and service health")]
+    Doctor,
     /// Manage VM configuration settings
     Config {
         #[command(subcommand)]
