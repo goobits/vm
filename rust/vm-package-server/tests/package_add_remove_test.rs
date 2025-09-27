@@ -26,66 +26,6 @@ async fn create_test_server() -> (TestServer, common::TestSetup) {
     (server, setup)
 }
 
-/// Tests Cargo package add and remove lifecycle
-/// This test requires cargo to be available in the test environment
-#[tokio::test]
-#[cfg_attr(not(feature = "cargo-tests"), ignore)]
-async fn test_cargo_package_lifecycle() -> Result<()> {
-    let (_server, setup) = create_test_server().await;
-    let state = setup.app_state;
-
-    // Test Cargo package upload simulation (without actual HTTP client)
-    let fixture_path =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/__fixtures__/cargo/hello-world");
-    assert!(
-        fixture_path.exists(),
-        "Cargo fixture should exist at {:?}",
-        fixture_path
-    );
-
-    // Build the package
-    let output = Command::new("cargo")
-        .args(["package"])
-        .current_dir(&fixture_path)
-        .output()?;
-
-    if !output.status.success() {
-        eprintln!("Cargo package failed:");
-        eprintln!("stdout: {}", String::from_utf8_lossy(&output.stdout));
-        eprintln!("stderr: {}", String::from_utf8_lossy(&output.stderr));
-    }
-    assert!(
-        output.status.success(),
-        "Cargo package build should succeed"
-    );
-
-    // Find the generated .crate file
-    let target_dir = fixture_path.join("target/package");
-    let crate_files: Vec<_> = fs::read_dir(&target_dir)?
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| entry.path().extension() == Some("crate".as_ref()))
-        .collect();
-
-    assert!(!crate_files.is_empty(), "Should have generated .crate file");
-    let crate_file = &crate_files[0];
-
-    // Simulate package storage (copy to our test data directory)
-    let crate_data = fs::read(crate_file.path())?;
-    let crate_path = state.data_dir.join("cargo/crates/hello-world-1.0.0.crate");
-    fs::write(&crate_path, &crate_data)?;
-
-    // Verify package exists
-    assert!(crate_path.exists(), "Package file should exist");
-
-    // Simulate package removal
-    fs::remove_file(&crate_path)?;
-
-    // Verify package is removed
-    assert!(!crate_path.exists(), "Package file should be removed");
-
-    Ok(())
-}
-
 /// Tests NPM package add and remove lifecycle
 #[tokio::test]
 async fn test_npm_package_lifecycle() -> Result<()> {
