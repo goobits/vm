@@ -371,13 +371,25 @@ pub async fn start_server_if_needed(port: u16) -> Result<()> {
 mod tests {
     use super::*;
     use crate::server::run_server;
+    use std::net::TcpListener;
     use std::time::Duration;
     use tempfile::TempDir;
     use tokio::task;
 
-    async fn start_test_server() -> (u16, tempfile::TempDir) {
+    fn find_available_port() -> anyhow::Result<u16> {
+        let listener = TcpListener::bind("127.0.0.1:0")?;
+        let port = listener.local_addr()?.port();
+        drop(listener);
+        Ok(port)
+    }
+
+    async fn start_test_server() -> (u16, tempfile::TempDir, String) {
         let temp_dir = TempDir::new().unwrap();
-        let port = 13090; // Test port
+        let port = find_available_port().expect("Failed to find available port");
+
+        // Create a SecretStore to get the auth token
+        let store = crate::storage::SecretStore::new(temp_dir.path().to_path_buf()).unwrap();
+        let auth_token = store.get_auth_token().unwrap().to_string();
 
         let data_dir = temp_dir.path().to_path_buf();
         task::spawn(async move {
@@ -387,12 +399,89 @@ mod tests {
         // Wait for server to start
         tokio::time::sleep(Duration::from_millis(500)).await;
 
-        (port, temp_dir)
+        (port, temp_dir, auth_token)
+    }
+
+    /// Helper function for tests that adds a secret with provided auth token
+    async fn add_secret_with_token(
+        server_url: &str,
+        name: &str,
+        value: &str,
+        scope: Option<&str>,
+        description: Option<&str>,
+        auth_token: &str,
+    ) -> Result<()> {
+        use crate::types::{SecretRequest, SecretScope};
+
+        // Parse scope
+        let secret_scope = match scope {
+            Some("global") | None => SecretScope::Global,
+            Some(s) if s.starts_with("project:") => {
+                let project_name = s.strip_prefix("project:").unwrap();
+                SecretScope::Project(project_name.to_string())
+            }
+            Some(s) if s.starts_with("instance:") => {
+                let instance_name = s.strip_prefix("instance:").unwrap();
+                SecretScope::Instance(instance_name.to_string())
+            }
+            Some(s) => {
+                return Err(anyhow!(
+                    "Invalid scope '{}'. Use 'global', 'project:NAME', or 'instance:NAME'",
+                    s
+                ))
+            }
+        };
+
+        let request = SecretRequest {
+            value: value.to_string(),
+            scope: secret_scope,
+            description: description.map(|s| s.to_string()),
+        };
+
+        let client = Client::new();
+        let url = format!("{}/secrets/{}", server_url, name);
+
+        let response = client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", auth_token))
+            .json(&request)
+            .send()
+            .await
+            .context("Failed to send request")?;
+
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            Err(anyhow!("Failed to add secret: {} - {}", status, body))
+        }
+    }
+
+    /// Helper function for tests that lists secrets with provided auth token
+    async fn list_secrets_with_token(server_url: &str, auth_token: &str) -> Result<()> {
+        let client = Client::new();
+        let url = format!("{}/secrets", server_url);
+
+        let response = client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", auth_token))
+            .send()
+            .await
+            .context("Failed to send request")?;
+
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            Err(anyhow!("Failed to list secrets: {} - {}", status, body))
+        }
     }
 
     #[tokio::test]
     async fn test_server_health_check() {
-        let (port, _temp_dir) = start_test_server().await;
+        let (port, _temp_dir, _auth_token) = start_test_server().await;
 
         // Check if server is running
         let running = check_server_running(port).await;
@@ -400,24 +489,30 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "Flaky test - port conflict"]
     async fn test_add_and_list_secrets() {
-        let (port, _temp_dir) = start_test_server().await;
+        let (port, _temp_dir, auth_token) = start_test_server().await;
         let server_url = format!("http://127.0.0.1:{}", port);
 
         // Add a secret
-        let result = add_secret(
+        let result = add_secret_with_token(
             &server_url,
             "test_key",
             "test_value",
             None,
             Some("Test secret"),
+            &auth_token,
         )
         .await;
+        if let Err(e) = &result {
+            eprintln!("add_secret failed: {}", e);
+        }
         assert!(result.is_ok());
 
         // List secrets
-        let result = list_secrets(&server_url, false).await;
+        let result = list_secrets_with_token(&server_url, &auth_token).await;
+        if let Err(e) = &result {
+            eprintln!("list_secrets failed: {}", e);
+        }
         assert!(result.is_ok());
     }
 }

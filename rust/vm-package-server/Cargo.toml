@@ -10,6 +10,7 @@ path = "src/lib.rs"
 [features]
 default = []
 standalone-binary = []
+cargo-tests = []
 
 [[bin]]
 name = "pkg-server"

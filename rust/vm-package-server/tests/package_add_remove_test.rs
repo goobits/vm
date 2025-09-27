@@ -27,8 +27,9 @@ async fn create_test_server() -> (TestServer, common::TestSetup) {
 }
 
 /// Tests Cargo package add and remove lifecycle
+/// This test requires cargo to be available in the test environment
 #[tokio::test]
-#[ignore = "Cargo command not available in test environment"]
+#[cfg_attr(not(feature = "cargo-tests"), ignore)]
 async fn test_cargo_package_lifecycle() -> Result<()> {
     let (_server, setup) = create_test_server().await;
     let state = setup.app_state;
