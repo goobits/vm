@@ -1,3 +1,9 @@
+//! VM Management Tool
+//!
+//! A fast, portable, and modern command-line tool for managing virtual machines across
+//! multiple providers (Docker, Vagrant, Tart). Provides a unified interface for creating,
+//! starting, stopping, and managing development environments.
+
 // Standard library
 use std::sync::OnceLock;
 use uuid::Uuid;
@@ -7,7 +13,7 @@ use clap::Parser;
 use tracing::{info, info_span};
 
 // Internal imports
-use vm_common::messages::{messages::MESSAGES, msg};
+// use vm_common::messages::{messages::MESSAGES, msg}; // Currently unused
 use vm_common::{vm_error, vm_warning};
 
 // Local modules
@@ -51,11 +57,8 @@ async fn main() {
 
     // Execute the command and handle any top-level errors
     if let Err(e) = execute_command(args).await {
-        // Use the new messaging system to format the final error output
-        vm_error!(
-            "{}",
-            msg!(MESSAGES.error_generic, error = format!("{:?}", e))
-        );
+        // Use the Display trait for user-friendly error messages
+        vm_error!("{}", e);
         std::process::exit(1);
     }
 }

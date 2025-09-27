@@ -22,6 +22,12 @@ pub fn init() -> Result<()> {
 }
 
 /// Initialize with a default filter if RUST_LOG is not set
+///
+/// # Arguments
+/// * `default_filter` - The filter string to use if RUST_LOG is not set (e.g., "info", "debug")
+///
+/// # Returns
+/// Ok(()) on success, or an error if tracing initialization fails
 pub fn init_with_defaults(default_filter: &str) -> Result<()> {
     // Create the env filter with fallback
     let env_filter =

@@ -881,12 +881,14 @@ impl VmConfig {
 
             // Check memory allocation
             if let Some(memory) = &vm.memory {
-                if let Some(mb) = memory.to_mb() {
-                    if mb == 0 {
+                match memory.to_mb() {
+                    Some(0) => {
                         errors.push("VM memory allocation cannot be 0".to_string());
                     }
-                } else {
-                    errors.push(format!("Invalid memory format: {:?}", memory));
+                    Some(_) => {} // Valid memory allocation
+                    None => {
+                        errors.push(format!("Invalid memory format: {:?}", memory));
+                    }
                 }
             }
         }

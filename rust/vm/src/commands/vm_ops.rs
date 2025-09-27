@@ -6,7 +6,6 @@ use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 
 // External crates
-// use anyhow::Context; // Currently unused
 use tracing::{debug, info, info_span, warn};
 
 // Internal imports
@@ -14,7 +13,6 @@ use crate::error::{VmError, VmResult};
 use vm_common::vm_error;
 use vm_config::config::VmConfig;
 use vm_provider::{InstanceInfo, Provider};
-// use vm_package_server;  // Temporarily disabled
 
 /// Handle VM creation
 pub fn handle_create(
@@ -1274,20 +1272,9 @@ fn start_package_registry_background() -> VmResult<()> {
 
     // Start the server in a background thread
     thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        // Temporarily disabled for syntax check
-        // if let Err(e) = rt.block_on(vm_package_server::run_server_background(
-        //     "0.0.0.0".to_string(),
-        //     3080,
-        //     data_dir,
-        // )) {
-        let _ = rt; // Silence unused warning
-        let _ = data_dir; // Silence unused warning
-        if false {
-            // Never execute this block
-            let e = "test error";
-            warn!("Package registry server failed: {}", e);
-        }
+        // Package registry functionality is disabled for now
+        // When enabled, this will start the vm-package-server
+        let _ = data_dir; // Avoid unused variable warning
     });
 
     // Give the server a moment to start

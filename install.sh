@@ -1,6 +1,11 @@
 #!/bin/bash
 # Installation Script for VM Infrastructure
 # This script builds and installs the 'vm' tool from the local source code.
+#
+# Usage:
+#   ./install.sh                    # Install vm tool only
+#   ./install.sh --pkg-server       # Install vm + standalone pkg-server
+#   ./install.sh --pkg-server-only  # Install only standalone pkg-server
 
 set -e
 set -u
@@ -59,13 +64,79 @@ if [[ ! -f "$MANIFEST_PATH" ]]; then
     fail "Could not find the Rust workspace at '$MANIFEST_PATH'. Please run this script from within the project directory."
 fi
 
-# 3. Execute the Rust installer, passing along all script arguments.
+# 3. Parse install options
+PKG_SERVER_MODE="none"
+INSTALLER_ARGS=()
+
+for arg in "$@"; do
+    case $arg in
+        --pkg-server)
+            PKG_SERVER_MODE="both"
+            ;;
+        --pkg-server-only)
+            PKG_SERVER_MODE="standalone"
+            ;;
+        *)
+            INSTALLER_ARGS+=("$arg")
+            ;;
+    esac
+done
+
+# 4. Build standalone package server if requested
+if [[ "$PKG_SERVER_MODE" == "both" || "$PKG_SERVER_MODE" == "standalone" ]]; then
+    echo "📦 Building standalone package server..."
+    cd "$SCRIPT_DIR/rust"
+
+    if cargo build --release --features standalone-binary -p vm-package-server; then
+        echo -e "${GREEN}✅ Standalone package server built successfully${NC}"
+
+        # Install the standalone binary
+        PKG_SERVER_BIN="$SCRIPT_DIR/rust/target/release/pkg-server"
+        if [[ -f "$PKG_SERVER_BIN" ]]; then
+            # Determine install directory
+            if [[ -w "/usr/local/bin" ]]; then
+                INSTALL_DIR="/usr/local/bin"
+            elif [[ -w "$HOME/.local/bin" ]]; then
+                INSTALL_DIR="$HOME/.local/bin"
+                mkdir -p "$INSTALL_DIR"
+            else
+                fail "No writable install directory found. Try running with sudo or ensure ~/.local/bin exists"
+            fi
+
+            echo "📥 Installing pkg-server to $INSTALL_DIR..."
+            cp "$PKG_SERVER_BIN" "$INSTALL_DIR/pkg-server"
+            chmod +x "$INSTALL_DIR/pkg-server"
+            echo -e "${GREEN}✅ pkg-server installed to $INSTALL_DIR/pkg-server${NC}"
+        else
+            fail "Built package server binary not found at $PKG_SERVER_BIN"
+        fi
+    else
+        fail "Failed to build standalone package server"
+    fi
+
+    cd "$SCRIPT_DIR"
+fi
+
+# 5. Skip vm installation if only building standalone package server
+if [[ "$PKG_SERVER_MODE" == "standalone" ]]; then
+    echo -e "\n${GREEN}✅ Standalone package server installation completed.${NC}"
+    echo "🚀 You can now use: pkg-server --help"
+    exit 0
+fi
+
+# 6. Execute the Rust installer, passing along filtered arguments.
 # The Rust installer handles the build, symlinking, and PATH configuration.
 echo "🔧 Invoking the Rust installer..."
-if cargo run --package vm-installer --manifest-path "$MANIFEST_PATH" -- "$@"; then
+if cargo run --package vm-installer --manifest-path "$MANIFEST_PATH" -- "${INSTALLER_ARGS[@]}"; then
     # The Rust installer now prints its own success messages.
     # A final confirmation is still useful here.
     echo -e "\n${GREEN}✅ The Rust installer completed successfully.${NC}"
+
+    if [[ "$PKG_SERVER_MODE" == "both" ]]; then
+        echo "🚀 You can now use:"
+        echo "   vm pkg --help          # Package server via vm CLI"
+        echo "   pkg-server --help      # Standalone package server"
+    fi
 else
     fail "The Rust installer encountered an error."
 fi

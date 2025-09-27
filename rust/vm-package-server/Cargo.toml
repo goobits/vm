@@ -7,6 +7,15 @@ edition = { workspace = true }
 name = "vm_package_server"
 path = "src/lib.rs"
 
+[features]
+default = []
+standalone-binary = []
+
+[[bin]]
+name = "pkg-server"
+path = "src/main.rs"
+required-features = ["standalone-binary"]
+
 [dependencies]
 axum = { workspace = true }
 tokio = { workspace = true }
