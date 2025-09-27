@@ -35,6 +35,11 @@ cargo test --package vm-temp
 cargo test --package vm
 cargo test --package vm-common
 cargo test --package vm-package-manager
+cargo test --package vm-package-server
+cargo test --package vm-auth-proxy
+cargo test --package vm-docker-registry
+cargo test --package vm-platform
+cargo test --package vm-messages
 
 # Test specific modules within packages
 cargo test --package vm-config config_ops_tests

@@ -138,18 +138,34 @@ vm temp unmount --all           # Remove all mounts
 vm temp mounts                  # List current mounts
 ```
 
+## 🔐 Auth Proxy & Services
+
+**Centralized secrets management and Docker registry** — Manage credentials and cache images across VMs:
+
+```bash
+# Auth proxy for secrets management
+vm auth start                    # Start auth service
+vm auth add openai sk-xxx        # Store API key
+vm auth list                     # List stored secrets
+vm auth status                   # Service status
+
+# Docker registry for image caching
+vm registry start                # Start Docker registry
+vm registry status               # Check registry status
+vm registry gc                   # Garbage collect old images
+```
+
 ## 📦 Package Registry
 
 **Private package registry for npm, pip, and cargo** — Host your own packages with automatic upstream fallback:
 
 ```bash
-# Start package server (both interfaces available)
-vm pkg start --port 3080        # Via VM CLI
-pkg-server start --port 3080    # Standalone CLI
+# Start package server
+vm pkg start --port 3080
 
 # Publish packages
 vm pkg add                       # Auto-detect and publish
-pkg-server add --type python    # Specific package type
+vm pkg add --type python        # Specific package type
 
 # Manage packages
 vm pkg list                      # List all packages
@@ -157,18 +173,16 @@ vm pkg remove                    # Interactive removal
 vm pkg status                    # Server status
 ```
 
-**Installation Options:**
+**Installation:**
 ```bash
-./install.sh                    # VM CLI only (includes pkg subcommand)
-./install.sh --pkg-server       # Both VM CLI + standalone pkg-server
-./install.sh --pkg-server-only  # Standalone pkg-server only
+./install.sh                    # Install VM CLI with package management
 ```
 
 **Features:**
 - **Multi-registry support** — PyPI, npm, and Cargo in one server
 - **Upstream fallback** — Serves local packages first, fetches from official registries when needed
 - **Zero dependencies** — Single binary, no database required
-- **Dual CLI access** — Use via `vm pkg` or standalone `pkg-server` commands
+- **Integrated workflow** — Package management built into VM tool
 
 ## ⚙️ Configuration
 
