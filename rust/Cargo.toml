@@ -11,6 +11,8 @@ members = [
     "vm-messages",
     "version-sync",
     "vm-package-server",
+    "vm-auth-proxy",
+    "vm-docker-registry",
 ]
 exclude = [
     "vm-package-server/tests/__fixtures__",
@@ -54,6 +56,9 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 sysinfo = "0.30"
 axum = { version = "0.8", features = ["multipart", "ws"] }
 tokio = { version = "1.47", features = ["net", "rt-multi-thread", "macros", "fs", "process"] }
+aes-gcm = "0.10"
+pbkdf2 = "0.12"
+rand = "0.8"
 sha1 = "0.10"
 sha2 = "0.10"
 digest = "0.10"

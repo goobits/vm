@@ -117,6 +117,12 @@ pub struct VmConfig {
     pub package_registry: bool,
 
     #[serde(default, skip_serializing_if = "is_false")]
+    pub auth_proxy: bool,
+
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub docker_registry: bool,
+
+    #[serde(default, skip_serializing_if = "is_false")]
     pub persist_databases: bool,
 
     // 11. Security

@@ -9,8 +9,10 @@ use vm_config::{config::VmConfig, init_config_file};
 use vm_provider::{error::ProviderError, get_provider};
 
 // Individual command modules
+pub mod auth;
 pub mod config;
 pub mod pkg;
+pub mod registry;
 pub mod temp;
 pub mod vm_ops;
 
@@ -45,6 +47,16 @@ pub fn execute_command(args: Args) -> Result<()> {
             debug!("Calling package registry operations");
             tokio::runtime::Runtime::new()?
                 .block_on(async { pkg::handle_pkg_command(command, args.config).await })
+        }
+        Command::Auth { command } => {
+            debug!("Calling auth proxy operations");
+            tokio::runtime::Runtime::new()?
+                .block_on(async { auth::handle_auth_command(command, args.config).await })
+        }
+        Command::Registry { command } => {
+            debug!("Calling Docker registry operations");
+            tokio::runtime::Runtime::new()?
+                .block_on(async { registry::handle_registry_command(command, args.config).await })
         }
         _ => {
             // Provider-based commands

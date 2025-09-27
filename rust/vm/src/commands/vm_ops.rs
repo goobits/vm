@@ -1118,12 +1118,40 @@ pub fn handle_status(
                 }
             }
 
-            // Show package registry status if enabled
+            // Show additional services status if enabled
+            let mut additional_services = Vec::new();
+
             if config.package_registry {
-                println!("\n  Registry:");
-                match check_registry_status_sync() {
-                    true => println!("    Package Registry  🟢 http://localhost:3080"),
-                    false => println!("    Package Registry  🔴 Not running"),
+                let status = if check_registry_status_sync() {
+                    ("Package Registry", "🟢", "http://localhost:3080")
+                } else {
+                    ("Package Registry", "🔴", "Not running")
+                };
+                additional_services.push(status);
+            }
+
+            if config.auth_proxy {
+                let status = if check_auth_proxy_status_sync() {
+                    ("Auth Proxy", "🟢", "http://localhost:3090")
+                } else {
+                    ("Auth Proxy", "🔴", "Not running")
+                };
+                additional_services.push(status);
+            }
+
+            if config.docker_registry {
+                let status = if check_docker_registry_status_sync() {
+                    ("Docker Registry", "🟢", "http://localhost:5000")
+                } else {
+                    ("Docker Registry", "🔴", "Not running")
+                };
+                additional_services.push(status);
+            }
+
+            if !additional_services.is_empty() {
+                println!("\n  Additional Services:");
+                for (name, icon, url) in additional_services {
+                    println!("    {}  {} {}", name, icon, url);
                 }
             }
 
@@ -1298,6 +1326,70 @@ fn check_registry_status_sync() -> bool {
 
     TcpStream::connect_timeout(
         &"127.0.0.1:3080".parse().unwrap(),
+        Duration::from_millis(1000),
+    )
+    .is_ok()
+}
+
+/// Check if auth proxy is running (synchronous version)
+fn check_auth_proxy_status_sync() -> bool {
+    use std::process::Command;
+    // Try to check with curl first
+    let curl_result = Command::new("curl")
+        .args([
+            "-s",
+            "-o",
+            "/dev/null",
+            "-w",
+            "%{http_code}",
+            "http://localhost:3090/health",
+        ])
+        .output();
+
+    if let Ok(output) = curl_result {
+        if output.stdout == b"200" {
+            return true;
+        }
+    }
+
+    // If curl failed or not available, try with a simple TCP connection test
+    use std::net::TcpStream;
+    use std::time::Duration;
+
+    TcpStream::connect_timeout(
+        &"127.0.0.1:3090".parse().unwrap(),
+        Duration::from_millis(1000),
+    )
+    .is_ok()
+}
+
+/// Check if Docker registry is running (synchronous version)
+fn check_docker_registry_status_sync() -> bool {
+    use std::process::Command;
+    // Try to check with curl first
+    let curl_result = Command::new("curl")
+        .args([
+            "-s",
+            "-o",
+            "/dev/null",
+            "-w",
+            "%{http_code}",
+            "http://localhost:5000/health",
+        ])
+        .output();
+
+    if let Ok(output) = curl_result {
+        if output.stdout == b"200" {
+            return true;
+        }
+    }
+
+    // If curl failed or not available, try with a simple TCP connection test
+    use std::net::TcpStream;
+    use std::time::Duration;
+
+    TcpStream::connect_timeout(
+        &"127.0.0.1:5000".parse().unwrap(),
         Duration::from_millis(1000),
     )
     .is_ok()

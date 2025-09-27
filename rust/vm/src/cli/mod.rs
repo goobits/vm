@@ -192,6 +192,78 @@ pub enum PkgConfigAction {
 }
 
 #[derive(Debug, Clone, Subcommand)]
+pub enum AuthSubcommand {
+    /// Start auth proxy server
+    Start {
+        /// Port to run the server on
+        #[arg(long, default_value = "3090")]
+        port: u16,
+        /// Host to bind the server to
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+        /// Run server in foreground
+        #[arg(long, short = 'f')]
+        foreground: bool,
+    },
+    /// Stop auth proxy server
+    Stop,
+    /// Show auth proxy status and secret counts
+    Status,
+    /// Add a secret
+    Add {
+        /// Secret name
+        name: String,
+        /// Secret value
+        value: String,
+        /// Secret scope (global, project:NAME, instance:NAME)
+        #[arg(long)]
+        scope: Option<String>,
+        /// Optional description
+        #[arg(long)]
+        description: Option<String>,
+    },
+    /// List all secrets
+    List {
+        /// Show secret values (masked)
+        #[arg(long)]
+        show_values: bool,
+    },
+    /// Remove a secret
+    Remove {
+        /// Secret name
+        name: String,
+        /// Skip confirmation prompt
+        #[arg(long, short = 'f')]
+        force: bool,
+    },
+    /// Interactively add a secret
+    Interactive,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum RegistrySubcommand {
+    /// Start Docker registry
+    Start,
+    /// Stop Docker registry
+    Stop,
+    /// Show registry status and storage usage
+    Status,
+    /// Run garbage collection
+    Gc {
+        /// Force delete untagged images
+        #[arg(long, short = 'f')]
+        force: bool,
+        /// Show what would be deleted without doing it
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Show registry configuration
+    Config,
+    /// List cached images
+    List,
+}
+
+#[derive(Debug, Clone, Subcommand)]
 pub enum Command {
     /// Initialize a new VM configuration file
     Init {
@@ -319,6 +391,18 @@ pub enum Command {
     Pkg {
         #[command(subcommand)]
         command: PkgSubcommand,
+    },
+
+    /// Auth proxy management
+    Auth {
+        #[command(subcommand)]
+        command: AuthSubcommand,
+    },
+
+    /// Docker registry management
+    Registry {
+        #[command(subcommand)]
+        command: RegistrySubcommand,
     },
 
     /// Get workspace directory

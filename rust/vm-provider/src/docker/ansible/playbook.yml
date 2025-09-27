@@ -156,6 +156,41 @@
             mode: '0644'
         when: project_config.gemini_sync | default(false)
 
+      # Auth Proxy Configuration
+      - name: Add auth proxy environment variables
+        lineinfile:
+            path: '/home/{{ project_user }}/.zshrc'
+            line: "{{ item }}"
+            state: present
+        loop:
+          - "# Auth Proxy Integration"
+          - "export VM_AUTH_PROXY_URL='http://host.docker.internal:3090'"
+          - "alias vm-secrets='curl -s $VM_AUTH_PROXY_URL/env/{{ project_config.project.name | default('project') }}'"
+        when: project_config.auth_proxy | default(false)
+
+      # Docker Registry Configuration
+      - name: Configure Docker daemon for registry cache
+        copy:
+            content: |
+              {
+                "registry-mirrors": ["http://host.docker.internal:5000"],
+                "insecure-registries": ["host.docker.internal:5000"]
+              }
+            dest: '/etc/docker/daemon.json'
+            backup: yes
+        when: project_config.docker_registry | default(false) and is_docker_container
+
+      - name: Add Docker registry environment variables
+        lineinfile:
+            path: '/home/{{ project_user }}/.zshrc'
+            line: "{{ item }}"
+            state: present
+        loop:
+          - "# Docker Registry Cache"
+          - "export DOCKER_REGISTRY_MIRROR='http://host.docker.internal:5000'"
+          - "alias docker-cache-status='curl -s http://host.docker.internal:5000/health'"
+        when: project_config.docker_registry | default(false)
+
       # Final ownership fix
       - name: Fix ownership of user home directory
         file:

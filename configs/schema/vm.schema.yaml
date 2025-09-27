@@ -451,6 +451,14 @@ properties:
     type: boolean
     default: false
     description: Enable local package registry (npm/pip/cargo) to cache packages across VMs
+  auth_proxy:
+    type: boolean
+    default: false
+    description: Enable auth proxy service for secure secret management and environment variable injection
+  docker_registry:
+    type: boolean
+    default: false
+    description: Enable Docker registry with pull-through caching to reduce bandwidth and improve performance
   persist_databases:
     type: boolean
     default: false

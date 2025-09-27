@@ -1,0 +1,42 @@
+[package]
+name = "vm-auth-proxy"
+version = { workspace = true }
+edition = { workspace = true }
+
+[lib]
+name = "vm_auth_proxy"
+path = "src/lib.rs"
+
+[dependencies]
+# Core
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# HTTP Server
+axum = { workspace = true }
+tokio = { workspace = true }
+tower-http = { workspace = true }
+reqwest = { workspace = true }
+
+# Cryptography
+aes-gcm = "0.10"
+pbkdf2 = "0.12"
+rand = "0.8"
+sha2 = { workspace = true }
+
+# System integration
+dirs = { workspace = true }
+dialoguer = { workspace = true }
+colored = { workspace = true }
+
+# Utilities
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+base64 = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+axum-test = "18.1"
