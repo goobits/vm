@@ -69,19 +69,19 @@ fn test_vm_registry_help_excludes_start_stop() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
 
     let fixture = CliTestFixture::new()?;
-    let output = fixture.run_vm_command(&["registry", "--help"])?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Test that registry command no longer exists (auto-managed design)
+    let output = fixture.run_vm_command(&["registry", "--help"]);
 
-    // Verify the help doesn't include start/stop commands
-    assert!(!stdout.contains("Start Docker registry"));
-    assert!(!stdout.contains("Stop Docker registry"));
+    // The registry command should no longer exist at all
+    assert!(output.is_err() || !output.unwrap().status.success());
 
-    // Verify it still includes the expected commands
-    assert!(stdout.contains("status"));
-    assert!(stdout.contains("gc"));
-    assert!(stdout.contains("config"));
-    assert!(stdout.contains("list"));
+    // Verify that the main help doesn't include registry commands
+    let help_output = fixture.run_vm_command(&["--help"])?;
+    let help_stdout = String::from_utf8_lossy(&help_output.stdout);
+
+    // Should not mention manual registry management
+    assert!(!help_stdout.contains("Docker registry management"));
 
     Ok(())
 }
@@ -131,13 +131,15 @@ fn test_vm_registry_status_shows_lifecycle_info() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
 
     let fixture = CliTestFixture::new()?;
-    let output = fixture.run_vm_command(&["registry", "status"])?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Test that registry status command no longer exists (auto-managed design)
+    let output = fixture.run_vm_command(&["registry", "status"]);
 
-    // Verify status includes lifecycle management information
-    assert!(stdout.contains("automatically managed"));
-    assert!(stdout.contains("VM lifecycle"));
+    // The registry command should no longer exist at all
+    assert!(output.is_err() || !output.unwrap().status.success());
+
+    // Registry is now managed automatically by service manager
+    // Status can be checked via doctor command instead
 
     Ok(())
 }

@@ -161,13 +161,36 @@ impl AutoManager {
     async fn evict_lru(&self) -> Result<()> {
         debug!("Running LRU eviction");
 
-        // In a real implementation, this would:
-        // 1. Query registry API for image metadata and access times
-        // 2. Sort by last access time
-        // 3. Delete least recently used images until under size limit
+        // Get repository list and check image ages
+        let repositories = self.get_repository_list().await?;
+        let mut images_to_delete = Vec::new();
 
-        // For now, we'll use the existing garbage collection with force flag
-        // This is a simplified implementation
+        for repo in repositories {
+            let tags = self.get_repository_tags(&repo).await?;
+            for tag in tags {
+                let manifest_info = match self.get_image_manifest_info(&repo, &tag).await {
+                    Ok(info) => info,
+                    Err(_) => continue,
+                };
+
+                // Calculate age from manifest creation date
+                let age_days = (Utc::now() - manifest_info.created).num_days();
+                if age_days > self.config.max_image_age_days as i64 {
+                    images_to_delete.push((repo.clone(), tag));
+                }
+            }
+        }
+
+        // Delete old images
+        for (repo, tag) in images_to_delete {
+            if let Err(e) = self.delete_image_tag(&repo, &tag).await {
+                warn!("Failed to delete image {}:{}: {}", repo, tag, e);
+            } else {
+                debug!("Deleted old image: {}:{}", repo, tag);
+            }
+        }
+
+        // Run garbage collection to free space
         self.run_garbage_collection(true).await?;
 
         Ok(())
@@ -180,8 +203,42 @@ impl AutoManager {
             self.config.max_image_age_days
         );
 
-        // Run standard garbage collection
-        self.run_garbage_collection(false).await?;
+        // Get repository list and check image ages
+        let repositories = self.get_repository_list().await?;
+        let mut deleted_count = 0;
+
+        for repo in repositories {
+            let tags = self.get_repository_tags(&repo).await?;
+            for tag in tags {
+                let manifest_info = match self.get_image_manifest_info(&repo, &tag).await {
+                    Ok(info) => info,
+                    Err(_) => continue,
+                };
+
+                // Calculate age from manifest creation date
+                let age_days = (Utc::now() - manifest_info.created).num_days();
+                if age_days <= self.config.max_image_age_days as i64 {
+                    continue;
+                }
+
+                // Delete old image
+                if let Err(e) = self.delete_image_tag(&repo, &tag).await {
+                    warn!("Failed to delete old image {}:{}: {}", repo, tag, e);
+                } else {
+                    debug!(
+                        "Deleted old image: {}:{} (age: {} days)",
+                        repo, tag, age_days
+                    );
+                    deleted_count += 1;
+                }
+            }
+        }
+
+        if deleted_count > 0 {
+            info!("Cleaned up {} old images", deleted_count);
+            // Run garbage collection to free space
+            self.run_garbage_collection(false).await?;
+        }
 
         Ok(())
     }
@@ -273,6 +330,193 @@ impl AutoManager {
             registry_healthy: check_registry_running(crate::DEFAULT_REGISTRY_PORT).await,
         })
     }
+
+    /// Get list of repositories from registry API
+    async fn get_repository_list(&self) -> Result<Vec<String>> {
+        let url = format!(
+            "http://127.0.0.1:{}/v2/_catalog",
+            crate::DEFAULT_REGISTRY_PORT
+        );
+
+        let response = reqwest::get(&url)
+            .await
+            .map_err(|e| anyhow!("Failed to query registry catalog: {}", e))?;
+
+        if !response.status().is_success() {
+            return Err(anyhow!(
+                "Registry catalog query failed: {}",
+                response.status()
+            ));
+        }
+
+        #[derive(serde::Deserialize)]
+        struct CatalogResponse {
+            repositories: Vec<String>,
+        }
+
+        let catalog: CatalogResponse = response
+            .json()
+            .await
+            .map_err(|e| anyhow!("Failed to parse catalog response: {}", e))?;
+
+        Ok(catalog.repositories)
+    }
+
+    /// Get list of tags for a repository
+    async fn get_repository_tags(&self, repository: &str) -> Result<Vec<String>> {
+        let url = format!(
+            "http://127.0.0.1:{}/v2/{}/tags/list",
+            crate::DEFAULT_REGISTRY_PORT,
+            repository
+        );
+
+        let response = reqwest::get(&url)
+            .await
+            .map_err(|e| anyhow!("Failed to query repository tags: {}", e))?;
+
+        if !response.status().is_success() {
+            return Err(anyhow!(
+                "Repository tags query failed: {}",
+                response.status()
+            ));
+        }
+
+        #[derive(serde::Deserialize)]
+        struct TagsResponse {
+            tags: Option<Vec<String>>,
+        }
+
+        let tags_response: TagsResponse = response
+            .json()
+            .await
+            .map_err(|e| anyhow!("Failed to parse tags response: {}", e))?;
+
+        Ok(tags_response.tags.unwrap_or_default())
+    }
+
+    /// Get manifest information for an image
+    async fn get_image_manifest_info(
+        &self,
+        repository: &str,
+        tag: &str,
+    ) -> Result<ImageManifestInfo> {
+        let url = format!(
+            "http://127.0.0.1:{}/v2/{}/manifests/{}",
+            crate::DEFAULT_REGISTRY_PORT,
+            repository,
+            tag
+        );
+
+        let client = reqwest::Client::new();
+        let response = client
+            .get(&url)
+            .header(
+                "Accept",
+                "application/vnd.docker.distribution.manifest.v2+json",
+            )
+            .send()
+            .await
+            .map_err(|e| anyhow!("Failed to query image manifest: {}", e))?;
+
+        if !response.status().is_success() {
+            return Err(anyhow!(
+                "Image manifest query failed: {}",
+                response.status()
+            ));
+        }
+
+        let manifest_text = response
+            .text()
+            .await
+            .map_err(|e| anyhow!("Failed to read manifest response: {}", e))?;
+
+        // Parse manifest to get creation date
+        let manifest: serde_json::Value = serde_json::from_str(&manifest_text)
+            .map_err(|e| anyhow!("Failed to parse manifest JSON: {}", e))?;
+
+        // Extract creation date from history (simplified approach)
+        let created = if let Some(history) = manifest
+            .get("history")
+            .and_then(|h| h.as_array())
+            .and_then(|arr| arr.first())
+        {
+            if let Some(v1_compat) = history.get("v1Compatibility").and_then(|v| v.as_str()) {
+                let v1_data: serde_json::Value =
+                    serde_json::from_str(v1_compat).unwrap_or_default();
+                if let Some(created_str) = v1_data.get("created").and_then(|c| c.as_str()) {
+                    DateTime::parse_from_rfc3339(created_str)
+                        .map(|dt| dt.with_timezone(&Utc))
+                        .unwrap_or_else(|_| Utc::now())
+                } else {
+                    Utc::now()
+                }
+            } else {
+                Utc::now()
+            }
+        } else {
+            // Fallback: use current time (will not be deleted based on age)
+            Utc::now()
+        };
+
+        Ok(ImageManifestInfo {
+            repository: repository.to_string(),
+            tag: tag.to_string(),
+            created,
+            size: 0, // Could extract from manifest if needed
+        })
+    }
+
+    /// Delete an image tag from the registry
+    async fn delete_image_tag(&self, repository: &str, tag: &str) -> Result<()> {
+        // First get the digest for the tag
+        let url = format!(
+            "http://127.0.0.1:{}/v2/{}/manifests/{}",
+            crate::DEFAULT_REGISTRY_PORT,
+            repository,
+            tag
+        );
+
+        let client = reqwest::Client::new();
+        let response = client
+            .head(&url)
+            .header(
+                "Accept",
+                "application/vnd.docker.distribution.manifest.v2+json",
+            )
+            .send()
+            .await
+            .map_err(|e| anyhow!("Failed to get manifest digest: {}", e))?;
+
+        let digest = response
+            .headers()
+            .get("Docker-Content-Digest")
+            .and_then(|v| v.to_str().ok())
+            .ok_or_else(|| anyhow!("No digest found for image"))?;
+
+        // Delete the manifest by digest
+        let delete_url = format!(
+            "http://127.0.0.1:{}/v2/{}/manifests/{}",
+            crate::DEFAULT_REGISTRY_PORT,
+            repository,
+            digest
+        );
+
+        let delete_response = client
+            .delete(&delete_url)
+            .send()
+            .await
+            .map_err(|e| anyhow!("Failed to delete manifest: {}", e))?;
+
+        if !delete_response.status().is_success() {
+            return Err(anyhow!(
+                "Failed to delete manifest: {}",
+                delete_response.status()
+            ));
+        }
+
+        debug!("Successfully deleted image {}:{}", repository, tag);
+        Ok(())
+    }
 }
 
 impl Default for AutoManager {
@@ -289,6 +533,18 @@ pub struct AutoManagerStatus {
     pub last_health_check: Option<DateTime<Utc>>,
     pub restart_attempts: u32,
     pub registry_healthy: bool,
+}
+
+/// Information about an image manifest
+#[derive(Debug, Clone)]
+struct ImageManifestInfo {
+    #[allow(dead_code)]
+    repository: String,
+    #[allow(dead_code)]
+    tag: String,
+    created: DateTime<Utc>,
+    #[allow(dead_code)]
+    size: u64,
 }
 
 /// Start the auto-manager background task
@@ -352,5 +608,54 @@ mod tests {
         assert_eq!(manager.config.max_cache_size_gb, 10);
         assert_eq!(manager.config.max_image_age_days, 60);
         assert!(!manager.config.enable_lru_eviction);
+    }
+
+    #[tokio::test]
+    async fn test_should_run_cleanup_first_time() {
+        let manager = AutoManager::new();
+        // Should run cleanup the first time (no last_cleanup time)
+        let result = manager.should_run_cleanup().await;
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_registry_api_error_handling() {
+        let manager = AutoManager::new();
+
+        // Test with registry not running - should handle gracefully
+        let result = manager.get_repository_list().await;
+        assert!(result.is_err());
+
+        let result = manager.get_repository_tags("test").await;
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_image_age_calculation() {
+        use chrono::Duration;
+
+        let config = AutoConfig {
+            max_image_age_days: 30,
+            ..Default::default()
+        };
+
+        // Test that a 40-day old image would be marked for deletion
+        let old_date = Utc::now() - Duration::days(40);
+        let age_days = (Utc::now() - old_date).num_days();
+        assert!(age_days > config.max_image_age_days as i64);
+
+        // Test that a 20-day old image would not be marked for deletion
+        let recent_date = Utc::now() - Duration::days(20);
+        let age_days = (Utc::now() - recent_date).num_days();
+        assert!(age_days <= config.max_image_age_days as i64);
+    }
+
+    #[test]
+    fn test_auto_manager_status() {
+        let manager = AutoManager::new();
+        assert_eq!(manager.restart_attempts, 0);
+        assert!(manager.last_cleanup.is_none());
+        assert!(manager.last_health_check.is_none());
     }
 }

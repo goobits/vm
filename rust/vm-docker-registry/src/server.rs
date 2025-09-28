@@ -1,15 +1,13 @@
 //! Docker registry server management
 
-use crate::auto_manager::start_auto_manager;
 use crate::config::{get_registry_data_dir, write_config_files};
-use crate::docker_config::configure_docker_daemon;
 use crate::types::{ContainerStatus, RegistryConfig, RegistryStatus};
 use anyhow::{anyhow, Context, Result};
 use duct::cmd;
 use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
-use tracing::{debug, warn};
+use tracing::debug;
 
 /// Start the Docker registry service
 pub async fn start_registry() -> Result<()> {
@@ -43,19 +41,6 @@ pub async fn start_registry_with_config(config: &RegistryConfig) -> Result<()> {
 
     // Wait for services to be ready
     wait_for_registry_ready(config.registry_port, 30).await?;
-
-    // Configure Docker daemon to use local registry as mirror
-    let registry_url = format!("http://{}:{}", config.host, config.registry_port);
-    if let Err(e) = configure_docker_daemon(&registry_url).await {
-        warn!("Failed to configure Docker daemon automatically: {}", e);
-        // Don't fail startup, just warn
-    }
-
-    // Start auto-manager background task
-    if let Err(e) = start_auto_manager() {
-        warn!("Failed to start auto-manager: {}", e);
-        // Don't fail startup, auto-management is optional
-    }
 
     debug!(
         "Docker registry started successfully on port {}",

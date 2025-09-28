@@ -370,13 +370,30 @@ impl ServiceManager {
 
     /// Start Docker registry service
     async fn start_docker_registry(&self) -> Result<()> {
-        use vm_docker_registry;
+        use vm_docker_registry::{
+            self, auto_manager::start_auto_manager, docker_config::configure_docker_daemon,
+        };
 
+        // Start the registry service in the background
         tokio::spawn(async move {
             if let Err(e) = vm_docker_registry::start_registry().await {
                 warn!("Docker registry exited with error: {}", e);
             }
         });
+
+        // Wait a moment for the service to be available
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        // Configure the Docker daemon now that the registry is starting
+        let registry_url = "http://127.0.0.1:5000"; // Or get from config
+        if let Err(e) = configure_docker_daemon(registry_url).await {
+            warn!("Failed to auto-configure Docker daemon: {}", e);
+        }
+
+        // Start the auto-manager background task
+        if let Err(e) = start_auto_manager() {
+            warn!("Failed to start registry auto-manager: {}", e);
+        }
 
         Ok(())
     }
