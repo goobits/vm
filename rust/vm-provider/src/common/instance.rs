@@ -106,6 +106,17 @@ pub fn fuzzy_match_instances(partial: &str, instances: &[InstanceInfo]) -> Resul
 
 /// Helper to create InstanceInfo for Docker containers
 pub fn create_docker_instance_info(name: &str, id: &str, status: &str) -> InstanceInfo {
+    create_docker_instance_info_with_metadata(name, id, status, None, None)
+}
+
+/// Helper to create InstanceInfo for Docker containers with metadata
+pub fn create_docker_instance_info_with_metadata(
+    name: &str,
+    id: &str,
+    status: &str,
+    created_at: Option<&str>,
+    uptime: Option<&str>,
+) -> InstanceInfo {
     // Extract project name from container name (e.g., "myproject-dev" -> "myproject")
     let project = name
         .strip_suffix("-dev")
@@ -117,13 +128,23 @@ pub fn create_docker_instance_info(name: &str, id: &str, status: &str) -> Instan
         status: status.to_string(),
         provider: "docker".to_string(),
         project,
-        uptime: None,     // TODO: Extract from Docker status
-        created_at: None, // TODO: Extract from Docker created_at
+        uptime: uptime.map(|s| s.to_string()),
+        created_at: created_at.map(|s| s.to_string()),
     }
 }
 
 /// Helper to create InstanceInfo for Tart VMs
 pub fn create_tart_instance_info(name: &str, status: &str) -> InstanceInfo {
+    create_tart_instance_info_with_metadata(name, status, None, None)
+}
+
+/// Helper to create InstanceInfo for Tart VMs with metadata
+pub fn create_tart_instance_info_with_metadata(
+    name: &str,
+    status: &str,
+    created_at: Option<&str>,
+    uptime: Option<&str>,
+) -> InstanceInfo {
     // Extract project name from VM name (e.g., "myproject-dev" -> "myproject")
     let project = name
         .strip_suffix("-dev")
@@ -139,21 +160,32 @@ pub fn create_tart_instance_info(name: &str, status: &str) -> InstanceInfo {
         status: status.to_string(),
         provider: "tart".to_string(),
         project,
-        uptime: None,     // TODO: Extract from Tart status
-        created_at: None, // TODO: Extract from Tart created time
+        uptime: uptime.map(|s| s.to_string()),
+        created_at: created_at.map(|s| s.to_string()),
     }
 }
 
 /// Helper to create InstanceInfo for Vagrant machines
 pub fn create_vagrant_instance_info(name: &str, status: &str, project_name: &str) -> InstanceInfo {
+    create_vagrant_instance_info_with_metadata(name, status, project_name, None, None)
+}
+
+/// Helper to create InstanceInfo for Vagrant machines with metadata
+pub fn create_vagrant_instance_info_with_metadata(
+    name: &str,
+    status: &str,
+    project_name: &str,
+    created_at: Option<&str>,
+    uptime: Option<&str>,
+) -> InstanceInfo {
     InstanceInfo {
         name: name.to_string(),
         id: format!("{}:{}", project_name, name), // Combine project and machine name
         status: status.to_string(),
         provider: "vagrant".to_string(),
         project: Some(project_name.to_string()),
-        uptime: None,     // TODO: Extract from Vagrant status
-        created_at: None, // TODO: Extract from Vagrant created time
+        uptime: uptime.map(|s| s.to_string()),
+        created_at: created_at.map(|s| s.to_string()),
     }
 }
 

@@ -288,11 +288,16 @@ impl Provider for DockerProvider {
     }
 
     fn list_instances(&self) -> Result<Vec<crate::InstanceInfo>> {
-        use crate::common::instance::create_docker_instance_info;
+        use crate::common::instance::create_docker_instance_info_with_metadata;
 
-        // Parse docker ps output to get instance info
+        // Parse docker ps output to get instance info including creation time and uptime
         let output = std::process::Command::new("docker")
-            .args(["ps", "-a", "--format", "{{.Names}}\t{{.ID}}\t{{.Status}}"])
+            .args([
+                "ps",
+                "-a",
+                "--format",
+                "{{.Names}}\t{{.ID}}\t{{.Status}}\t{{.CreatedAt}}\t{{.RunningFor}}",
+            ])
             .output()
             .with_context(|| "Failed to list containers for instance information")?;
 
@@ -310,14 +315,22 @@ impl Provider for DockerProvider {
         // Filter for project containers
         for line in containers_output.lines() {
             let parts: Vec<&str> = line.split('\t').collect();
-            if parts.len() >= 3 {
+            if parts.len() >= 5 {
                 let name = parts[0];
                 let id = parts[1];
                 let status = parts[2];
+                let created_at = parts[3];
+                let running_for = parts[4];
 
                 // Only include containers that belong to this project
                 if name.starts_with(&format!("{}-", project_name)) || name == project_name {
-                    instances.push(create_docker_instance_info(name, id, status));
+                    instances.push(create_docker_instance_info_with_metadata(
+                        name,
+                        id,
+                        status,
+                        Some(created_at),
+                        Some(running_for),
+                    ));
                 }
             }
         }
