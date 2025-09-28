@@ -422,7 +422,7 @@ pub fn handle_provision(
 
 /// Handle VM listing with enhanced filtering options
 pub fn handle_list_enhanced(
-    provider: Box<dyn Provider>,
+    _provider: Box<dyn Provider>,
     _all_providers: &bool,
     provider_filter: Option<&str>,
     verbose: &bool,
@@ -434,26 +434,11 @@ pub fn handle_list_enhanced(
         provider_filter, *verbose
     );
 
-    // Get instances from current provider first, then fallback to all providers
+    // Get all instances from all providers (or filtered)
     let all_instances = if let Some(provider_name) = provider_filter {
         get_instances_from_provider(provider_name)?
     } else {
-        // Try current provider first (project-aware)
-        match provider.list_instances() {
-            Ok(instances) => {
-                // If current provider has instances, use them
-                if !instances.is_empty() {
-                    instances
-                } else {
-                    // Fallback to checking all providers
-                    get_all_instances()?
-                }
-            }
-            Err(_) => {
-                // If current provider fails, fallback to all providers
-                get_all_instances()?
-            }
-        }
+        get_all_instances()?
     };
 
     if all_instances.is_empty() {
