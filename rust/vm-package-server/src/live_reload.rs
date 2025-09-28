@@ -6,10 +6,14 @@ use axum::{
     response::IntoResponse,
 };
 use futures_util::{SinkExt, StreamExt};
-use notify::{Event, RecursiveMode, Watcher};
-use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::broadcast;
+
+#[cfg(debug_assertions)]
+use notify::{Event, RecursiveMode, Watcher};
+#[cfg(debug_assertions)]
+use std::path::Path;
+#[cfg(debug_assertions)]
 use tracing::info;
 
 #[derive(Clone)]
