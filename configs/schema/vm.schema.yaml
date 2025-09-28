@@ -447,24 +447,6 @@ properties:
     type: boolean
     default: true
     description: Enable Gemini AI data synchronization to ~/.gemini/vms/{project_name}
-  package_registry:
-    type: boolean
-    default: false
-    deprecated: true
-    description: "[DEPRECATED] Enable local package registry (npm/pip/cargo) to cache packages across VMs. Please move this to ~/.vm/config.yaml under 'services.package_registry.enabled'"
-    deprecationMessage: "The 'package_registry' field in vm.yaml is deprecated. Please move it to ~/.vm/config.yaml under 'services.package_registry.enabled'"
-  auth_proxy:
-    type: boolean
-    default: false
-    deprecated: true
-    description: "[DEPRECATED] Enable auth proxy service for secure secret management and environment variable injection. Please move this to ~/.vm/config.yaml under 'services.auth_proxy.enabled'"
-    deprecationMessage: "The 'auth_proxy' field in vm.yaml is deprecated. Please move it to ~/.vm/config.yaml under 'services.auth_proxy.enabled'"
-  docker_registry:
-    type: boolean
-    default: false
-    deprecated: true
-    description: "[DEPRECATED] Enable Docker registry with pull-through caching to reduce bandwidth and improve performance. Please move this to ~/.vm/config.yaml under 'services.docker_registry.enabled'"
-    deprecationMessage: "The 'docker_registry' field in vm.yaml is deprecated. Please move it to ~/.vm/config.yaml under 'services.docker_registry.enabled'"
   persist_databases:
     type: boolean
     default: false

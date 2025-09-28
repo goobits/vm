@@ -77,62 +77,13 @@ impl AppConfig {
         })
     }
 
-    /// Handle deprecated fields for backward compatibility
+    /// Handle deprecated fields for backward compatibility (deprecated fields removed in v2.0.0+)
     pub fn handle_deprecated_fields_raw(
-        vm_yaml_path: Option<PathBuf>,
-        global: &mut GlobalConfig,
+        _vm_yaml_path: Option<PathBuf>,
+        _global: &mut GlobalConfig,
     ) -> Result<()> {
-        use std::collections::HashMap;
-        use tracing::warn;
-
-        // Read the raw YAML to check for deprecated fields
-        let yaml_path = match vm_yaml_path {
-            Some(path) => path,
-            None => {
-                // Try to find vm.yaml in current directory
-                let current_dir =
-                    std::env::current_dir().context("Failed to get current directory")?;
-                current_dir.join("vm.yaml")
-            }
-        };
-
-        if !yaml_path.exists() {
-            return Ok(()); // No file, no deprecated fields
-        }
-
-        let yaml_content = std::fs::read_to_string(&yaml_path)
-            .with_context(|| format!("Failed to read {:?}", yaml_path))?;
-
-        // Parse as raw YAML to check for deprecated fields
-        let raw_yaml: HashMap<String, serde_yaml_ng::Value> =
-            serde_yaml_ng::from_str(&yaml_content)
-                .context("Failed to parse YAML for deprecated field detection")?;
-
-        // Check for deprecated fields and warn
-        if let Some(serde_yaml_ng::Value::Bool(true)) = raw_yaml.get("docker_registry") {
-            warn!(
-                "The 'docker_registry' field in vm.yaml is deprecated. \
-                Please move it to ~/.vm/config.yaml under 'services.docker_registry.enabled'"
-            );
-            global.services.docker_registry.enabled = true;
-        }
-
-        if let Some(serde_yaml_ng::Value::Bool(true)) = raw_yaml.get("auth_proxy") {
-            warn!(
-                "The 'auth_proxy' field in vm.yaml is deprecated. \
-                Please move it to ~/.vm/config.yaml under 'services.auth_proxy.enabled'"
-            );
-            global.services.auth_proxy.enabled = true;
-        }
-
-        if let Some(serde_yaml_ng::Value::Bool(true)) = raw_yaml.get("package_registry") {
-            warn!(
-                "The 'package_registry' field in vm.yaml is deprecated. \
-                Please move it to ~/.vm/config.yaml under 'services.package_registry.enabled'"
-            );
-            global.services.package_registry.enabled = true;
-        }
-
+        // All deprecated vm.yaml service flags have been removed in v2.0.0+
+        // Services are now configured purely through global config (~/.vm/config.yaml)
         Ok(())
     }
 }
