@@ -4,8 +4,9 @@ Complete reference for configuring your VM development environment with YAML.
 
 ## 📖 Table of Contents
 
-- [Quick Start](#-quick-start)
 - [Configuration Files](#-configuration-files)
+- [Quick Start](#-quick-start)
+- [Global Services Configuration](#-global-services-configuration)
 - [Full Reference](#-full-reference)
 - [Services](#-services)
 - [Language Runtimes](#-language-runtimes)
@@ -13,6 +14,48 @@ Complete reference for configuring your VM development environment with YAML.
 - [Advanced Features](#-advanced-features)
 
 For configuration examples, see the [Examples Guide](../getting-started/examples.md).
+
+## 📁 Configuration Files
+
+The VM tool uses two types of configuration files:
+
+### VM-Specific Configuration (`vm.yaml`)
+Located in your project directory, this configures VM-specific settings:
+- **Project settings** (name, ports, workspace path)
+- **VM resources** (memory, CPUs, operating system)
+- **VM-specific services** (PostgreSQL, Redis, MongoDB for this project)
+- **Development environment** (packages, aliases, versions)
+
+```yaml
+# vm.yaml - Controls THIS project's VM
+os: ubuntu
+project:
+  name: my-project
+ports:
+  frontend: 3000
+services:
+  postgresql:
+    enabled: true
+```
+
+### Global Configuration (`~/.vm/config.yaml`)
+Located in your home directory, this configures system-wide settings:
+- **Global services** (Docker registry, auth proxy, package registry)
+- **Default values** for new VMs (provider, memory, terminal settings)
+- **Feature flags** and user preferences
+
+```yaml
+# ~/.vm/config.yaml - Controls global settings for ALL VMs
+services:
+  docker_registry:
+    enabled: true
+    max_cache_size_gb: 10
+defaults:
+  provider: docker
+  memory: 4096
+```
+
+**Key Difference:** VM config controls individual projects, global config controls shared infrastructure.
 
 ## 🚀 Quick Start
 
@@ -233,16 +276,23 @@ services:
     enabled: true  # Installs Chrome/Chromium for testing
 ```
 
+## 🌐 Global Services Configuration
+
+Global services are configured in `~/.vm/config.yaml` and serve **all** VMs on your system.
+
 ### Docker Registry (Automatic Caching) 🆕
 
 Enable intelligent Docker image caching that works like a browser cache - completely invisible while dramatically speeding up Docker pulls:
 
 ```yaml
-docker_registry: true  # That's it! Zero-configuration caching
+# ~/.vm/config.yaml - Global configuration
+services:
+  docker_registry:
+    enabled: true  # That's it! Zero-configuration caching
 ```
 
 **What it does:**
-- **Auto-starts** when your VM needs it
+- **Auto-starts** when any VM needs it
 - **Caches all Docker images** locally for instant pulls
 - **Self-manages** with automatic cleanup of old images
 - **Auto-configures** Docker daemon to use local mirror
@@ -250,14 +300,16 @@ docker_registry: true  # That's it! Zero-configuration caching
 
 **Advanced configuration** (optional):
 ```yaml
-docker_registry: true
-docker_registry_config:
-  max_cache_size_gb: 10        # Max cache size (default: 5GB)
-  max_image_age_days: 60       # Keep images for 60 days (default: 30)
-  cleanup_interval_hours: 2    # Cleanup frequency (default: 1 hour)
-  enable_lru_eviction: true     # LRU when cache full (default: true)
-  enable_auto_restart: true     # Auto-restart on failure (default: true)
-  health_check_interval_minutes: 30  # Health check interval (default: 15)
+# ~/.vm/config.yaml
+services:
+  docker_registry:
+    enabled: true
+    max_cache_size_gb: 10        # Max cache size (default: 5GB)
+    max_image_age_days: 60       # Keep images for 60 days (default: 30)
+    cleanup_interval_hours: 2    # Cleanup frequency (default: 1 hour)
+    enable_lru_eviction: true     # LRU when cache full (default: true)
+    enable_auto_restart: true     # Auto-restart on failure (default: true)
+    health_check_interval_minutes: 30  # Health check interval (default: 15)
 ```
 
 **Benefits:**
@@ -265,6 +317,46 @@ docker_registry_config:
 - 💾 **Bandwidth savings** - images pulled once, used many times
 - 🤖 **Zero maintenance** - automatic cleanup and management
 - 🔄 **Shared cache** - all VMs share the same image cache
+
+### Auth Proxy (Secure Secrets) 🔐
+
+Enable secure secret management across all VMs:
+
+```yaml
+# ~/.vm/config.yaml
+services:
+  auth_proxy:
+    enabled: true
+    port: 3090              # Port for auth proxy (default: 3090)
+    token_expiry_hours: 24  # Token expiry (default: 24)
+```
+
+### Package Registry (Shared Cache) 📦
+
+Enable shared package caching for npm, pip, and cargo:
+
+```yaml
+# ~/.vm/config.yaml
+services:
+  package_registry:
+    enabled: true
+    port: 3080           # Port for package registry (default: 3080)
+    max_storage_gb: 10   # Max storage size (default: 10GB)
+```
+
+### ⚠️ Migration Notice
+
+If you have `docker_registry`, `auth_proxy`, or `package_registry` in your `vm.yaml` files, you'll see deprecation warnings. Move them to `~/.vm/config.yaml`:
+
+```yaml
+# OLD (vm.yaml) - Still works but deprecated
+docker_registry: true
+
+# NEW (~/.vm/config.yaml) - Recommended
+services:
+  docker_registry:
+    enabled: true
+```
 
 ## 🖥️ Operating System Configuration
 

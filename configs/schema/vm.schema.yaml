@@ -1,7 +1,7 @@
 ---
 $schema: http://json-schema.org/draft-07/schema#
 title: VM Configuration Schema
-description: Configuration schema for the VM development environment tool
+description: Configuration schema for VM-specific settings (vm.yaml). For global settings like services, see global.schema.yaml
 type: object
 properties:
   version:
@@ -450,15 +450,21 @@ properties:
   package_registry:
     type: boolean
     default: false
-    description: Enable local package registry (npm/pip/cargo) to cache packages across VMs
+    deprecated: true
+    description: "[DEPRECATED] Enable local package registry (npm/pip/cargo) to cache packages across VMs. Please move this to ~/.vm/config.yaml under 'services.package_registry.enabled'"
+    deprecationMessage: "The 'package_registry' field in vm.yaml is deprecated. Please move it to ~/.vm/config.yaml under 'services.package_registry.enabled'"
   auth_proxy:
     type: boolean
     default: false
-    description: Enable auth proxy service for secure secret management and environment variable injection
+    deprecated: true
+    description: "[DEPRECATED] Enable auth proxy service for secure secret management and environment variable injection. Please move this to ~/.vm/config.yaml under 'services.auth_proxy.enabled'"
+    deprecationMessage: "The 'auth_proxy' field in vm.yaml is deprecated. Please move it to ~/.vm/config.yaml under 'services.auth_proxy.enabled'"
   docker_registry:
     type: boolean
     default: false
-    description: Enable Docker registry with pull-through caching to reduce bandwidth and improve performance
+    deprecated: true
+    description: "[DEPRECATED] Enable Docker registry with pull-through caching to reduce bandwidth and improve performance. Please move this to ~/.vm/config.yaml under 'services.docker_registry.enabled'"
+    deprecationMessage: "The 'docker_registry' field in vm.yaml is deprecated. Please move it to ~/.vm/config.yaml under 'services.docker_registry.enabled'"
   persist_databases:
     type: boolean
     default: false

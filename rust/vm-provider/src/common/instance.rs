@@ -290,4 +290,39 @@ mod tests {
         assert_eq!(info.provider, "vagrant");
         assert_eq!(info.project, Some("myproject".to_string()));
     }
+
+    #[test]
+    fn test_create_docker_instance_info_with_metadata() {
+        let info = create_docker_instance_info_with_metadata(
+            "myproject-dev",
+            "abc123",
+            "running",
+            Some("2023-01-01T00:00:00Z"),
+            Some("2 hours ago"),
+        );
+        assert_eq!(info.name, "myproject-dev");
+        assert_eq!(info.id, "abc123");
+        assert_eq!(info.status, "running");
+        assert_eq!(info.provider, "docker");
+        assert_eq!(info.project, Some("myproject".to_string()));
+        assert_eq!(info.created_at, Some("2023-01-01T00:00:00Z".to_string()));
+        assert_eq!(info.uptime, Some("2 hours ago".to_string()));
+    }
+
+    #[test]
+    fn test_create_tart_instance_info_with_metadata() {
+        let info = create_tart_instance_info_with_metadata(
+            "myproject-staging",
+            "running",
+            Some("Created: 2023-01-01"),
+            Some("running"),
+        );
+        assert_eq!(info.name, "myproject-staging");
+        assert_eq!(info.id, "myproject-staging");
+        assert_eq!(info.status, "running");
+        assert_eq!(info.provider, "tart");
+        assert_eq!(info.project, Some("myproject".to_string()));
+        assert_eq!(info.created_at, Some("Created: 2023-01-01".to_string()));
+        assert_eq!(info.uptime, Some("running".to_string()));
+    }
 }
