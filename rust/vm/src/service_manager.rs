@@ -50,6 +50,8 @@ pub struct ServiceManager {
     state: Arc<Mutex<HashMap<String, ServiceState>>>,
     /// Path to persistent state file
     state_file: PathBuf,
+    /// Shutdown handles for services that support graceful shutdown
+    shutdown_handles: Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
 }
 
 impl ServiceManager {
@@ -60,6 +62,7 @@ impl ServiceManager {
         let manager = Self {
             state: Arc::new(Mutex::new(HashMap::new())),
             state_file,
+            shutdown_handles: Arc::new(Mutex::new(HashMap::new())),
         };
 
         // Load existing state if available
@@ -101,7 +104,7 @@ impl ServiceManager {
                     state_guard
                         .entry(service_name.to_string())
                         .or_insert_with(|| ServiceState {
-                            port: self.get_service_port(service_name),
+                            port: self.get_service_port(service_name, global_config),
                             ..Default::default()
                         });
 
@@ -126,7 +129,7 @@ impl ServiceManager {
 
         // Start services that need starting
         for service_name in services_needing_start {
-            if let Err(e) = self.start_service(&service_name).await {
+            if let Err(e) = self.start_service(&service_name, global_config).await {
                 warn!("Failed to start service '{}': {}", service_name, e);
                 // Don't fail VM creation if service startup fails
                 vm_warning!("Service '{}' failed to start: {}", service_name, e);
@@ -234,10 +237,10 @@ impl ServiceManager {
     }
 
     /// Start a service
-    async fn start_service(&self, service_name: &str) -> Result<()> {
+    async fn start_service(&self, service_name: &str, global_config: &GlobalConfig) -> Result<()> {
         info!("Starting service: {}", service_name);
 
-        let port = self.get_service_port(service_name);
+        let port = self.get_service_port(service_name, global_config);
 
         match service_name {
             "auth_proxy" => {
@@ -319,19 +322,24 @@ impl ServiceManager {
         Ok(())
     }
 
-    /// Get the default port for a service
-    fn get_service_port(&self, service_name: &str) -> u16 {
+    /// Get the port for a service from global configuration
+    fn get_service_port(&self, service_name: &str, global_config: &GlobalConfig) -> u16 {
         match service_name {
-            "auth_proxy" => 3090, // TODO: Get from global_config.services.auth_proxy.port
-            "docker_registry" => 5000, // TODO: Get from global_config.services.docker_registry.port
-            "package_registry" => 3080, // TODO: Get from global_config.services.package_registry.port
+            "auth_proxy" => global_config.services.auth_proxy.port,
+            "docker_registry" => global_config.services.docker_registry.port,
+            "package_registry" => global_config.services.package_registry.port,
             _ => 0,
         }
     }
 
-    /// Check if a service is healthy
+    /// Check if a service is healthy (uses default ports)
     async fn check_service_health(&self, service_name: &str) -> bool {
-        let port = self.get_service_port(service_name);
+        let port = match service_name {
+            "auth_proxy" => 3090,
+            "docker_registry" => 5000,
+            "package_registry" => 3080,
+            _ => return false,
+        };
         let endpoint = match service_name {
             "auth_proxy" => format!("http://localhost:{}/health", port),
             "docker_registry" => format!("http://localhost:{}/v2/", port),
@@ -414,11 +422,22 @@ impl ServiceManager {
 
         let data_dir = std::env::current_dir()?.join(".vm-packages");
 
+        // Create shutdown channel
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+
+        // Store shutdown handle for later use
+        {
+            let mut handles = self.shutdown_handles.lock().unwrap();
+            handles.insert("package_registry".to_string(), shutdown_tx);
+        }
+
+        // Spawn server with shutdown capability
         tokio::spawn(async move {
-            if let Err(e) = vm_package_server::server::run_server_background(
+            if let Err(e) = vm_package_server::server::run_server_with_shutdown(
                 "0.0.0.0".to_string(),
                 port,
                 data_dir,
+                Some(shutdown_rx),
             )
             .await
             {
@@ -431,9 +450,28 @@ impl ServiceManager {
 
     /// Stop package registry service
     async fn stop_package_registry(&self) -> Result<()> {
-        // Implementation would send shutdown signal to package registry
-        // For now, this is a placeholder
         debug!("Package registry stop requested");
+
+        // Get shutdown handle
+        let shutdown_tx = {
+            let mut handles = self.shutdown_handles.lock().unwrap();
+            handles.remove("package_registry")
+        };
+
+        if let Some(shutdown_tx) = shutdown_tx {
+            // Send shutdown signal
+            if shutdown_tx.send(()).is_err() {
+                warn!("Failed to send shutdown signal to package registry (receiver may have been dropped)");
+            } else {
+                info!("Shutdown signal sent to package registry");
+
+                // Give the server a moment to shut down gracefully
+                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+            }
+        } else {
+            warn!("No shutdown handle found for package registry - it may not be running or was started externally");
+        }
+
         Ok(())
     }
 

@@ -58,7 +58,7 @@ pub mod simple_config;
 pub use client_ops::{add_package, list_packages, remove_package, show_status};
 pub use config::Config;
 pub use error::{ApiErrorResponse, AppError, AppResult, ErrorCode};
-pub use server::{run_server, run_server_background};
+pub use server::{run_server, run_server_background, run_server_with_shutdown};
 pub use state::{AppState, SuccessResponse};
 pub use upstream::{UpstreamClient, UpstreamConfig};
 pub use validation::{

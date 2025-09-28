@@ -6,7 +6,6 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -14,7 +13,7 @@ use axum::{
     extract::{Query, State},
     http::{header, HeaderMap, StatusCode},
     response::{Html, IntoResponse, Response},
-    routing::{get, put},
+    routing::{get, post, put},
     Router,
 };
 use serde::Deserialize;
@@ -31,91 +30,28 @@ use crate::{
 };
 
 pub async fn run_server_background(host: String, port: u16, data_dir: PathBuf) -> Result<()> {
-    info!("Starting Goobits Package Server in background");
-    println!("🚀 Starting Goobits Package Server in background...");
+    run_server_with_shutdown(host, port, data_dir, None).await
+}
 
-    if let Err(e) = validation::validate_hostname(&host) {
-        error!(host = %host, error = %e, "Invalid host parameter");
-        eprintln!("❌ Invalid host parameter: {}", e);
-        std::process::exit(1);
-    }
-
-    if let Err(e) = validation::validate_docker_port(port) {
-        error!(port = %port, error = %e, "Invalid port parameter");
-        eprintln!("❌ Invalid port parameter: {}", e);
-        std::process::exit(1);
-    }
-
-    let abs_data_dir = match std::fs::canonicalize(&data_dir) {
-        Ok(path) => path,
-        Err(_) => {
-            std::fs::create_dir_all(&data_dir)?;
-            match std::env::current_dir() {
-                Ok(current) => current.join(&data_dir),
-                Err(e) => {
-                    error!(error = %e, "Failed to get current directory");
-                    eprintln!("❌ Failed to get current directory: {}", e);
-                    std::process::exit(1);
-                }
-            }
-        }
-    };
-
-    info!(data_dir = %abs_data_dir.display(), "Using data directory");
-    info!(host = %host, port = %port, "Starting background server");
-    println!("📂 Using data directory: {}", abs_data_dir.display());
-
-    let pid_file = abs_data_dir.join("server.pid");
-    let log_file = abs_data_dir.join("server.log");
-
-    let current_exe = std::env::current_exe().map_err(|e| {
-        error!(error = %e, "Failed to get current executable path");
-        anyhow::anyhow!("Failed to get current executable path: {}", e)
-    })?;
-
-    let mut cmd = Command::new(&current_exe);
-    cmd.args([
-        "start",
-        "--host",
-        &host,
-        "--port",
-        &port.to_string(),
-        "--data",
-        &abs_data_dir.to_string_lossy(),
-    ]);
-
-    cmd.stdout(Stdio::null()).stderr(Stdio::null());
-
-    let child = cmd.spawn().map_err(|e| {
-        error!(error = %e, "Failed to spawn background process");
-        anyhow::anyhow!("Failed to spawn background process: {}", e)
-    })?;
-
-    std::fs::write(&pid_file, child.id().to_string()).map_err(|e| {
-        error!(error = %e, pid_file = %pid_file.display(), "Failed to write PID file");
-        anyhow::anyhow!("Failed to write PID file: {}", e)
-    })?;
-
-    println!("✅ Server started in background with PID: {}", child.id());
-    println!("📄 PID file: {}", pid_file.display());
-    println!("📋 Log file: {}", log_file.display());
-    println!();
-    println!("🌐 Server will be accessible at:");
-    println!("   Local:      http://localhost:{}", port);
-    println!("   Network:    http://<your-ip>:{}", port);
-    println!();
-    println!("🔧 Configure other machines:");
-    println!("   curl http://<your-ip>:{}/setup.sh | bash", port);
-    println!();
-    println!("📋 Management commands:");
-    println!("   Stop:       goobits-pkg-server stop");
-    println!("   Status:     goobits-pkg-server status");
-    println!("   Logs:       tail -f {}", log_file.display());
-
-    Ok(())
+pub async fn run_server_with_shutdown(
+    host: String,
+    port: u16,
+    data_dir: PathBuf,
+    shutdown_receiver: Option<tokio::sync::oneshot::Receiver<()>>,
+) -> Result<()> {
+    run_server_internal(host, port, data_dir, shutdown_receiver).await
 }
 
 pub async fn run_server(host: String, port: u16, data_dir: PathBuf) -> Result<()> {
+    run_server_internal(host, port, data_dir, None).await
+}
+
+async fn run_server_internal(
+    host: String,
+    port: u16,
+    data_dir: PathBuf,
+    shutdown_receiver: Option<tokio::sync::oneshot::Receiver<()>>,
+) -> Result<()> {
     info!("Starting Goobits Package Server");
     println!("🚀 Starting Goobits Package Server...");
 
@@ -168,6 +104,7 @@ pub async fn run_server(host: String, port: u16, data_dir: PathBuf) -> Result<()
         .route("/status", get(status_handler))
         .route("/setup.sh", get(setup_script_handler))
         .route("/health", get(health_handler))
+        .route("/shutdown", post(shutdown_handler))
         .route("/npm/{package}", put(npm::publish_package))
         .route("/npm/{package}/-/{filename}", get(npm::download_tarball))
         .route("/npm/{package}", get(npm::package_metadata))
@@ -220,10 +157,29 @@ pub async fn run_server(host: String, port: u16, data_dir: PathBuf) -> Result<()
     println!("   Setup:      curl http://localhost:{}/setup.sh", port);
 
     info!("Server listening on {}", addr);
-    axum::serve(listener, app).await.map_err(|e| {
-        error!(error = %e, "Server error");
-        anyhow::anyhow!("Server error: {}", e)
-    })?;
+
+    match shutdown_receiver {
+        Some(shutdown_rx) => {
+            // Use graceful shutdown when shutdown receiver is provided
+            axum::serve(listener, app)
+                .with_graceful_shutdown(async {
+                    shutdown_rx.await.ok();
+                    info!("Received shutdown signal, stopping server gracefully");
+                })
+                .await
+                .map_err(|e| {
+                    error!(error = %e, "Server error");
+                    anyhow::anyhow!("Server error: {}", e)
+                })?;
+        }
+        None => {
+            // Original behavior - run indefinitely
+            axum::serve(listener, app).await.map_err(|e| {
+                error!(error = %e, "Server error");
+                anyhow::anyhow!("Server error: {}", e)
+            })?;
+        }
+    }
 
     Ok(())
 }
@@ -263,6 +219,16 @@ async fn status_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse
 
 async fn health_handler() -> impl IntoResponse {
     let response = r#"{"status": "healthy"}"#;
+
+    let mut headers = HeaderMap::new();
+    headers.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+
+    (StatusCode::OK, headers, response)
+}
+
+async fn shutdown_handler() -> impl IntoResponse {
+    info!("Shutdown endpoint called");
+    let response = r#"{"status": "shutdown_initiated"}"#;
 
     let mut headers = HeaderMap::new();
     headers.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());

@@ -1146,11 +1146,7 @@ pub fn handle_status(
             let mut additional_services = Vec::new();
 
             // Check global services that might be running
-            let package_status = if check_registry_status_sync() {
-                ("Package Registry", "🟢", "http://localhost:3080")
-            } else {
-                ("Package Registry", "🔴", "Not running")
-            };
+            let package_status = ("Package Registry", "🔴", "See 'vm pkg status' for details");
             additional_services.push(package_status);
 
             let auth_status = if check_auth_proxy_status_sync() {
@@ -1264,80 +1260,6 @@ pub fn handle_logs(
     println!("💡 Full logs: docker logs {}-dev", vm_name);
 
     result.map_err(VmError::from)
-}
-
-/// Start package registry server in background
-#[allow(dead_code)] // TODO: Remove this function after ServiceManager integration is complete
-fn start_package_registry_background() -> VmResult<()> {
-    use std::process::Command;
-    use std::thread;
-    use std::time::Duration;
-
-    let data_dir = std::env::current_dir()?.join(".vm-packages");
-
-    // Start the server in a background thread
-    thread::spawn(move || {
-        // Package registry functionality is disabled for now
-        // When enabled, this will start the vm-package-server
-        let _ = data_dir; // Avoid unused variable warning
-    });
-
-    // Give the server a moment to start
-    thread::sleep(Duration::from_millis(1000));
-
-    // Verify it started successfully
-    let output = Command::new("curl")
-        .args([
-            "-s",
-            "-o",
-            "/dev/null",
-            "-w",
-            "%{http_code}",
-            "http://localhost:3080/health",
-        ])
-        .output();
-
-    match output {
-        Ok(result) if result.stdout == b"200" => Ok(()),
-        _ => {
-            // Try a different verification method if curl isn't available
-            thread::sleep(Duration::from_millis(1000));
-            Ok(()) // Assume success for now
-        }
-    }
-}
-
-/// Check if package registry is running (synchronous version)
-fn check_registry_status_sync() -> bool {
-    use std::process::Command;
-
-    // Try to check with curl first
-    let curl_result = Command::new("curl")
-        .args([
-            "-s",
-            "-o",
-            "/dev/null",
-            "-w",
-            "%{http_code}",
-            "http://localhost:3080/health",
-        ])
-        .output();
-
-    if let Ok(output) = curl_result {
-        if output.stdout == b"200" {
-            return true;
-        }
-    }
-
-    // If curl failed or not available, try with a simple TCP connection test
-    use std::net::TcpStream;
-    use std::time::Duration;
-
-    TcpStream::connect_timeout(
-        &"127.0.0.1:3080".parse().unwrap(),
-        Duration::from_millis(1000),
-    )
-    .is_ok()
 }
 
 /// Check if auth proxy is running (synchronous version)
