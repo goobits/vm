@@ -8,34 +8,41 @@ use crate::cli::AuthSubcommand;
 use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
 use crate::service_registry::get_service_registry;
-use std::path::PathBuf;
 use vm_common::{vm_println, vm_success};
+use vm_config::GlobalConfig;
 
-use vm_auth_proxy::{
-    self, check_server_running, start_server_if_needed, DEFAULT_HOST, DEFAULT_PORT,
-};
+use vm_auth_proxy::{self, check_server_running, start_server_if_needed};
 
 /// Handle auth proxy commands
 pub async fn handle_auth_command(
     command: &AuthSubcommand,
-    _config: Option<PathBuf>,
+    global_config: GlobalConfig,
 ) -> VmResult<()> {
     match command {
-        AuthSubcommand::Status => handle_status().await,
+        AuthSubcommand::Status => handle_status(&global_config).await,
         AuthSubcommand::Add {
             name,
             value,
             scope,
             description,
-        } => handle_add(name, value, scope.as_deref(), description.as_deref()).await,
-        AuthSubcommand::List { show_values } => handle_list(*show_values).await,
-        AuthSubcommand::Remove { name, force } => handle_remove(name, *force).await,
-        AuthSubcommand::Interactive => handle_interactive().await,
+        } => {
+            handle_add(
+                name,
+                value,
+                scope.as_deref(),
+                description.as_deref(),
+                &global_config,
+            )
+            .await
+        }
+        AuthSubcommand::List { show_values } => handle_list(*show_values, &global_config).await,
+        AuthSubcommand::Remove { name, force } => handle_remove(name, *force, &global_config).await,
+        AuthSubcommand::Interactive => handle_interactive(&global_config).await,
     }
 }
 
 /// Show auth proxy status with service manager information
-async fn handle_status() -> VmResult<()> {
+async fn handle_status(global_config: &GlobalConfig) -> VmResult<()> {
     let registry = get_service_registry();
     let service_manager = get_service_manager();
 
@@ -57,10 +64,13 @@ async fn handle_status() -> VmResult<()> {
     }
 
     // Check actual server status for verification
-    let server_url = format!("http://{}:{}", DEFAULT_HOST, DEFAULT_PORT);
+    let server_url = format!(
+        "http://127.0.0.1:{}",
+        global_config.services.auth_proxy.port
+    );
     vm_println!("   Server URL: {}", server_url);
 
-    if check_server_running(DEFAULT_PORT).await {
+    if check_server_running(global_config.services.auth_proxy.port).await {
         vm_println!("   Health Check: ✅ Server responding");
     } else {
         vm_println!("   Health Check: ❌ Server not responding");
@@ -79,11 +89,15 @@ async fn handle_add(
     value: &str,
     scope: Option<&str>,
     description: Option<&str>,
+    global_config: &GlobalConfig,
 ) -> VmResult<()> {
-    let server_url = format!("http://{}:{}", DEFAULT_HOST, DEFAULT_PORT);
+    let server_url = format!(
+        "http://127.0.0.1:{}",
+        global_config.services.auth_proxy.port
+    );
 
     // Ensure server is running before attempting to add secret
-    start_server_if_needed(DEFAULT_PORT)
+    start_server_if_needed(global_config.services.auth_proxy.port)
         .await
         .map_err(VmError::from)?;
 
@@ -98,11 +112,14 @@ async fn handle_add(
 }
 
 /// List secrets
-async fn handle_list(show_values: bool) -> VmResult<()> {
-    let server_url = format!("http://{}:{}", DEFAULT_HOST, DEFAULT_PORT);
+async fn handle_list(show_values: bool, global_config: &GlobalConfig) -> VmResult<()> {
+    let server_url = format!(
+        "http://127.0.0.1:{}",
+        global_config.services.auth_proxy.port
+    );
 
     // Ensure server is running
-    start_server_if_needed(DEFAULT_PORT)
+    start_server_if_needed(global_config.services.auth_proxy.port)
         .await
         .map_err(VmError::from)?;
 
@@ -114,11 +131,14 @@ async fn handle_list(show_values: bool) -> VmResult<()> {
 }
 
 /// Remove a secret
-async fn handle_remove(name: &str, force: bool) -> VmResult<()> {
-    let server_url = format!("http://{}:{}", DEFAULT_HOST, DEFAULT_PORT);
+async fn handle_remove(name: &str, force: bool, global_config: &GlobalConfig) -> VmResult<()> {
+    let server_url = format!(
+        "http://127.0.0.1:{}",
+        global_config.services.auth_proxy.port
+    );
 
     // Ensure server is running
-    start_server_if_needed(DEFAULT_PORT)
+    start_server_if_needed(global_config.services.auth_proxy.port)
         .await
         .map_err(VmError::from)?;
 
@@ -133,11 +153,14 @@ async fn handle_remove(name: &str, force: bool) -> VmResult<()> {
 }
 
 /// Interactive secret addition
-async fn handle_interactive() -> VmResult<()> {
-    let server_url = format!("http://{}:{}", DEFAULT_HOST, DEFAULT_PORT);
+async fn handle_interactive(global_config: &GlobalConfig) -> VmResult<()> {
+    let server_url = format!(
+        "http://127.0.0.1:{}",
+        global_config.services.auth_proxy.port
+    );
 
     // Ensure server is running before attempting interactive session
-    start_server_if_needed(DEFAULT_PORT)
+    start_server_if_needed(global_config.services.auth_proxy.port)
         .await
         .map_err(VmError::from)?;
 

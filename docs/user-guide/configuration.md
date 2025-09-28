@@ -23,7 +23,7 @@ The VM tool uses two types of configuration files:
 Located in your project directory, this configures VM-specific settings:
 - **Project settings** (name, ports, workspace path)
 - **VM resources** (memory, CPUs, operating system)
-- **VM-specific services** (PostgreSQL, Redis, MongoDB for this project)
+- **VM-specific services** (PostgreSQL, Redis, MongoDB for this VM)
 - **Development environment** (packages, aliases, versions)
 
 ```yaml
@@ -55,7 +55,7 @@ defaults:
   memory: 4096
 ```
 
-**Key Difference:** VM config controls individual projects, global config controls shared infrastructure.
+**Key Difference:** VM config controls individual project services, global config controls shared infrastructure services.
 
 ## 🚀 Quick Start
 
@@ -225,11 +225,12 @@ terminal:
 
 ## 🛠️ Services
 
-All services run **inside** the VM/container and are accessed via `localhost`.
+VM-scoped services are configured in `vm.yaml` and run **inside** each VM/container. Global services are configured in `~/.vm/config.yaml` and shared across all VMs. All services are accessed via `localhost` from within the VM.
 
 ### PostgreSQL
 
 ```yaml
+# vm.yaml - VM-scoped service
 services:
   postgresql:
     enabled: true
@@ -243,6 +244,7 @@ ports:
 ### Redis
 
 ```yaml
+# vm.yaml - VM-scoped service
 services:
   redis:
     enabled: true
@@ -253,6 +255,7 @@ ports:
 ### MongoDB
 
 ```yaml
+# vm.yaml - VM-scoped service
 services:
   mongodb:
     enabled: true
@@ -263,6 +266,7 @@ ports:
 ### Docker-in-Docker
 
 ```yaml
+# vm.yaml - VM-scoped service
 services:
   docker:
     enabled: true  # Allows running docker commands inside VM
@@ -271,6 +275,7 @@ services:
 ### Headless Browser (for testing)
 
 ```yaml
+# vm.yaml - VM-scoped service
 services:
   headless_browser:
     enabled: true  # Installs Chrome/Chromium for testing
@@ -279,6 +284,35 @@ services:
 ## 🌐 Global Services Configuration
 
 Global services are configured in `~/.vm/config.yaml` and serve **all** VMs on your system.
+
+### Service Architecture Overview
+
+The VM tool supports two types of services:
+
+#### VM-Scoped Services (configured in `vm.yaml`)
+Each VM gets its own instance of these services:
+- **postgresql** - Database per VM
+- **redis** - Cache per VM
+- **mongodb** - Database per VM
+- **mysql** - Database per VM
+- **docker** - Docker-in-Docker per VM
+- **headless_browser** - Browser testing per VM
+- **audio** - Audio support per VM
+- **gpu** - GPU acceleration per VM
+
+#### Global Services (configured in `~/.vm/config.yaml`)
+Shared across all VMs with automatic lifecycle management:
+- **docker_registry** - Docker image caching and registry mirror
+- **auth_proxy** - Authentication proxy for secure secret management
+- **package_registry** - Package caching for npm, pip, and cargo
+
+### Global Service Lifecycle
+
+Global services use reference counting:
+1. **Auto-start** when first VM needs them
+2. **Auto-stop** when last VM stops using them
+3. **Zero maintenance** - fully automated lifecycle
+4. **Shared resources** - all VMs benefit from the same service instance
 
 ### Docker Registry (Automatic Caching) 🆕
 
@@ -344,19 +378,54 @@ services:
     max_storage_gb: 10   # Max storage size (default: 10GB)
 ```
 
-### ⚠️ Migration Notice
+### Managing Global Services
 
-If you have `docker_registry`, `auth_proxy`, or `package_registry` in your `vm.yaml` files, you'll see deprecation warnings. Move them to `~/.vm/config.yaml`:
+#### Check Service Status
+```bash
+# View all service status
+vm config get services --global
 
-```yaml
-# OLD (vm.yaml) - Still works but deprecated
-docker_registry: true
-
-# NEW (~/.vm/config.yaml) - Recommended
-services:
-  docker_registry:
-    enabled: true
+# Check specific service
+vm config get services.docker_registry --global
 ```
+
+#### Enable/Disable Services
+```bash
+# Enable Docker registry
+vm config set services.docker_registry.enabled true --global
+
+# Disable auth proxy
+vm config set services.auth_proxy.enabled false --global
+
+# Configure service settings
+vm config set services.docker_registry.max_cache_size_gb 20 --global
+```
+
+#### Service Commands
+```bash
+# Package registry management
+vm pkg status              # Check package registry status
+vm pkg list               # List cached packages
+
+# Auth proxy management
+vm auth status            # Check auth proxy status
+vm auth list              # List stored secrets
+```
+
+#### Service Logs and Debugging
+Global services run in the background and log to the system journal. To debug issues:
+
+```bash
+# Check if services are running
+docker ps | grep vm-registry   # Docker registry containers
+curl http://localhost:3080/health  # Package registry health
+curl http://localhost:3090/health  # Auth proxy health
+
+# View service logs
+docker logs vm-registry-proxy      # Docker registry logs
+docker logs vm-package-server      # Package registry logs
+```
+
 
 ## 🖥️ Operating System Configuration
 

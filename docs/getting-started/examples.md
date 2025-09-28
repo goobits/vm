@@ -81,18 +81,22 @@ ports:
   web: 3000
   postgresql: 5432
   redis: 6379
-services:
-  postgresql:
-    enabled: true
-    database: rails_dev
-  redis:
-    enabled: true
 environment:
   RAILS_ENV: development
   DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rails_dev
 aliases:
   console: "rails console"
   migrate: "rails db:migrate"
+```
+
+```yaml
+# ~/.vm/config.yaml - Global services
+services:
+  postgresql:
+    enabled: true
+    database: rails_dev
+  redis:
+    enabled: true
 ```
 
 ## 🔗 Full-Stack Projects
@@ -110,12 +114,6 @@ ports:
   backend: 3001
   postgresql: 5432
   redis: 6379
-services:
-  postgresql:
-    enabled: true
-    database: app_dev
-  redis:
-    enabled: true
 npm_packages:
   - nodemon
   - "@types/node"
@@ -124,6 +122,16 @@ aliases:
   dev: "concurrently \"cd frontend && npm start\" \"cd backend && npm run dev\""
   test: "cd backend && npm test"
   migrate: "cd backend && npm run migrate"
+```
+
+```yaml
+# ~/.vm/config.yaml - Global services
+services:
+  postgresql:
+    enabled: true
+    database: app_dev
+  redis:
+    enabled: true
 ```
 
 ### Vue + Django
@@ -140,10 +148,6 @@ ports:
   frontend: 8080
   api: 8000
   postgresql: 5432
-services:
-  postgresql:
-    enabled: true
-    database: vuedjango_dev
 npm_packages:
   - "@vue/cli"
 pip_packages:
@@ -153,6 +157,14 @@ aliases:
   dev-frontend: "cd frontend && npm run serve"
   dev-backend: "cd backend && python manage.py runserver"
   dev-all: "concurrently \"cd frontend && npm run serve\" \"cd backend && python manage.py runserver\""
+```
+
+```yaml
+# ~/.vm/config.yaml - Global services
+services:
+  postgresql:
+    enabled: true
+    database: vuedjango_dev
 ```
 
 ## 🚀 Specialized Environments
@@ -168,13 +180,6 @@ project:
 vm:
   memory: 8192  # More RAM for mobile tooling
   port_binding: "0.0.0.0"  # Network accessible for devices
-services:
-  postgresql:
-    enabled: true
-  redis:
-    enabled: true
-  docker:
-    enabled: true  # For containerized services
 ports:
   api: 3000
   websocket: 3001
@@ -186,6 +191,17 @@ npm_packages:
 environment:
   NODE_ENV: development
   CORS_ORIGIN: "*"  # Allow mobile device access
+```
+
+```yaml
+# ~/.vm/config.yaml - Global services
+services:
+  postgresql:
+    enabled: true
+  redis:
+    enabled: true
+  docker:
+    enabled: true  # For containerized services
 ```
 
 ### Machine Learning / Data Science
@@ -260,13 +276,6 @@ project:
   hostname: dev.microservices.local
 vm:
   memory: 10240  # Large memory for multiple services
-services:
-  postgresql:
-    enabled: true
-  redis:
-    enabled: true
-  docker:
-    enabled: true  # For service containers
 ports:
   gateway: 8080
   user_service: 8081
@@ -278,6 +287,17 @@ aliases:
   start-all: "docker-compose up -d"
   logs-all: "docker-compose logs -f"
   stop-all: "docker-compose down"
+```
+
+```yaml
+# ~/.vm/config.yaml - Global services
+services:
+  postgresql:
+    enabled: true
+  redis:
+    enabled: true
+  docker:
+    enabled: true  # For service containers
 ```
 
 ### Database-Heavy Development
@@ -292,14 +312,6 @@ project:
   backup_pattern: "*backup*.sql.gz"  # Auto-restore backups
 vm:
   memory: 8192
-services:
-  postgresql:
-    enabled: true
-    database: primary_db
-  mongodb:
-    enabled: true
-  redis:
-    enabled: true
 ports:
   api: 8000
   postgresql: 5432
@@ -308,33 +320,56 @@ ports:
   pgadmin: 5050
 ```
 
+```yaml
+# ~/.vm/config.yaml - Global services
+services:
+  postgresql:
+    enabled: true
+    database: primary_db
+  mongodb:
+    enabled: true
+  redis:
+    enabled: true
+```
+
 ## 🐳 Docker Registry Caching
 
 ### Simple Docker Registry Setup
 ```yaml
-# vm.yaml - Zero-configuration Docker caching
+# vm.yaml - Project configuration
 os: ubuntu
 provider: docker
 project:
   name: docker-app
-docker_registry: true  # That's it! Auto-managed Docker cache
+```
+
+```yaml
+# ~/.vm/config.yaml - Global Docker registry caching
+services:
+  docker_registry:
+    enabled: true  # That's it! Auto-managed Docker cache
 ```
 
 ### Docker Registry with Custom Settings
 ```yaml
-# vm.yaml - Advanced registry configuration
+# vm.yaml - Project configuration
 os: ubuntu
 provider: docker
 project:
   name: docker-heavy-app
-docker_registry: true
-docker_registry_config:
-  max_cache_size_gb: 20        # 20GB cache for large images
-  max_image_age_days: 90       # Keep images for 3 months
-  cleanup_interval_hours: 4    # Less frequent cleanup
-  enable_lru_eviction: true    # Auto-remove least used when full
-  enable_auto_restart: true    # Restart on failures
-  health_check_interval_minutes: 60  # Hourly health checks
+```
+
+```yaml
+# ~/.vm/config.yaml - Advanced registry configuration
+services:
+  docker_registry:
+    enabled: true
+    max_cache_size_gb: 20        # 20GB cache for large images
+    max_image_age_days: 90       # Keep images for 3 months
+    cleanup_interval_hours: 4    # Less frequent cleanup
+    enable_lru_eviction: true    # Auto-remove least used when full
+    enable_auto_restart: true    # Restart on failures
+    health_check_interval_minutes: 60  # Hourly health checks
 ```
 
 ### Microservices with Docker Caching
@@ -346,18 +381,22 @@ project:
   name: microservices-platform
 vm:
   memory: 12288
-services:
-  docker:
-    enabled: true  # Docker-in-Docker for building
-docker_registry: true  # Cache all pulled images
-docker_registry_config:
-  max_cache_size_gb: 15  # Large cache for many microservice images
 ports:
   gateway: 8080
   services: 8081-8090
 aliases:
   build-all: "docker-compose build --parallel"
   pull-all: "docker-compose pull"  # Uses local cache after first pull
+```
+
+```yaml
+# ~/.vm/config.yaml - Global services
+services:
+  docker:
+    enabled: true  # Docker-in-Docker for building
+  docker_registry:
+    enabled: true  # Cache all pulled images
+    max_cache_size_gb: 15  # Large cache for many microservice images
 ```
 
 ### CI/CD Development Environment
@@ -367,19 +406,23 @@ os: ubuntu
 provider: docker
 project:
   name: cicd-testing
-services:
-  docker:
-    enabled: true
-docker_registry: true
-docker_registry_config:
-  max_cache_size_gb: 10
-  max_image_age_days: 7  # Short retention for CI images
-  cleanup_interval_hours: 1  # Aggressive cleanup
 ports:
   jenkins: 8080
   nexus: 8081
 environment:
   DOCKER_REGISTRY_MIRROR: "http://127.0.0.1:5000"
+```
+
+```yaml
+# ~/.vm/config.yaml - Global services
+services:
+  docker:
+    enabled: true
+  docker_registry:
+    enabled: true
+    max_cache_size_gb: 10
+    max_image_age_days: 7  # Short retention for CI images
+    cleanup_interval_hours: 1  # Aggressive cleanup
 ```
 
 ## 🎨 Customization Patterns

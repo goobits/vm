@@ -9,25 +9,30 @@ use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
 use crate::service_registry::get_service_registry;
 use dialoguer::Confirm;
-use std::path::PathBuf;
 use vm_common::{vm_error, vm_println, vm_success};
+use vm_config::GlobalConfig;
 
 use vm_package_server;
 
 /// Handle package registry commands
-pub async fn handle_pkg_command(command: &PkgSubcommand, _config: Option<PathBuf>) -> VmResult<()> {
+pub async fn handle_pkg_command(
+    command: &PkgSubcommand,
+    global_config: GlobalConfig,
+) -> VmResult<()> {
     match command {
-        PkgSubcommand::Status => handle_status().await,
-        PkgSubcommand::Add { r#type } => handle_add(r#type.as_deref()).await,
-        PkgSubcommand::Remove { force } => handle_remove(*force).await,
-        PkgSubcommand::List => handle_list().await,
-        PkgSubcommand::Config { action } => handle_config(action).await,
-        PkgSubcommand::Use { shell, port } => handle_use(shell.as_deref(), *port).await,
+        PkgSubcommand::Status => handle_status(&global_config).await,
+        PkgSubcommand::Add { r#type } => handle_add(r#type.as_deref(), &global_config).await,
+        PkgSubcommand::Remove { force } => handle_remove(*force, &global_config).await,
+        PkgSubcommand::List => handle_list(&global_config).await,
+        PkgSubcommand::Config { action } => handle_config(action, &global_config).await,
+        PkgSubcommand::Use { shell, port } => {
+            handle_use(shell.as_deref(), *port, &global_config).await
+        }
     }
 }
 
 /// Show package registry status with service manager information
-async fn handle_status() -> VmResult<()> {
+async fn handle_status(global_config: &GlobalConfig) -> VmResult<()> {
     let registry = get_service_registry();
     let service_manager = get_service_manager();
 
@@ -49,8 +54,11 @@ async fn handle_status() -> VmResult<()> {
     }
 
     // Check actual server status for verification
-    let server_url = "http://localhost:3080";
-    if check_server_running().await {
+    let server_url = format!(
+        "http://localhost:{}",
+        global_config.services.package_registry.port
+    );
+    if check_server_running_with_url(&server_url).await {
         vm_println!("   Health Check: ✅ Server responding");
     } else {
         vm_println!("   Health Check: ❌ Server not responding");
@@ -61,58 +69,68 @@ async fn handle_status() -> VmResult<()> {
     vm_println!("   • Auto-stops when last VM using it is destroyed");
 
     // Show additional package registry info
-    vm_package_server::show_status(server_url).map_err(VmError::from)
+    vm_package_server::show_status(&server_url).map_err(VmError::from)
 }
 
 /// Add package from current directory
-async fn handle_add(package_type: Option<&str>) -> VmResult<()> {
-    let server_url = "http://localhost:3080";
+async fn handle_add(package_type: Option<&str>, global_config: &GlobalConfig) -> VmResult<()> {
+    let server_url = format!(
+        "http://localhost:{}",
+        global_config.services.package_registry.port
+    );
 
     // Ensure server is running before attempting to add package
-    start_server_if_needed().await?;
+    start_server_if_needed(global_config).await?;
 
     vm_println!("📦 Publishing package to local registry...");
 
-    vm_package_server::client_ops::add_package(server_url, package_type)?;
+    vm_package_server::client_ops::add_package(&server_url, package_type)?;
 
     vm_success!("Package published successfully");
     Ok(())
 }
 
 /// Remove package from registry
-async fn handle_remove(force: bool) -> VmResult<()> {
-    let server_url = "http://localhost:3080";
+async fn handle_remove(force: bool, global_config: &GlobalConfig) -> VmResult<()> {
+    let server_url = format!(
+        "http://localhost:{}",
+        global_config.services.package_registry.port
+    );
 
     vm_println!("🗑️  Removing package from registry...");
 
-    vm_package_server::client_ops::remove_package(server_url, force)?;
+    vm_package_server::client_ops::remove_package(&server_url, force)?;
 
     vm_success!("Package removed successfully");
     Ok(())
 }
 
 /// List packages in registry
-async fn handle_list() -> VmResult<()> {
-    let server_url = "http://localhost:3080";
+async fn handle_list(global_config: &GlobalConfig) -> VmResult<()> {
+    let server_url = format!(
+        "http://localhost:{}",
+        global_config.services.package_registry.port
+    );
 
-    vm_package_server::client_ops::list_packages(server_url)?;
+    vm_package_server::client_ops::list_packages(&server_url)?;
 
     Ok(())
 }
 
 /// Handle configuration commands
-async fn handle_config(action: &PkgConfigAction) -> VmResult<()> {
+async fn handle_config(action: &PkgConfigAction, global_config: &GlobalConfig) -> VmResult<()> {
+    let port = global_config.services.package_registry.port;
     match action {
         PkgConfigAction::Show => {
             vm_println!("Package Registry Configuration:");
-            vm_println!("  Port: 3080");
+            vm_println!("  Port: {}", port);
             vm_println!("  Host: 0.0.0.0");
             vm_println!("  Fallback: enabled");
             Ok(())
         }
         PkgConfigAction::Get { key } => {
             match key.as_str() {
-                "port" => vm_println!("3080"),
+                "port" => vm_println!("{}", port),
                 "host" => vm_println!("0.0.0.0"),
                 "fallback" => vm_println!("true"),
                 _ => vm_error!("Unknown configuration key: {}", key),
@@ -128,16 +146,26 @@ async fn handle_config(action: &PkgConfigAction) -> VmResult<()> {
 }
 
 /// Generate shell configuration
-async fn handle_use(shell: Option<&str>, port: u16) -> VmResult<()> {
+async fn handle_use(shell: Option<&str>, port: u16, global_config: &GlobalConfig) -> VmResult<()> {
     let shell_type = shell.unwrap_or("bash");
+
+    // Use provided port if non-zero, otherwise use global config port
+    let actual_port = if port != 0 {
+        port
+    } else {
+        global_config.services.package_registry.port
+    };
 
     match shell_type {
         "bash" | "zsh" => {
             vm_println!("# Package registry configuration for {}", shell_type);
-            vm_println!("export NPM_CONFIG_REGISTRY=http://localhost:{}/npm/", port);
+            vm_println!(
+                "export NPM_CONFIG_REGISTRY=http://localhost:{}/npm/",
+                actual_port
+            );
             vm_println!(
                 "export PIP_INDEX_URL=http://localhost:{}/pypi/simple/",
-                port
+                actual_port
             );
             vm_println!("export PIP_TRUSTED_HOST=localhost");
             vm_println!("");
@@ -145,10 +173,13 @@ async fn handle_use(shell: Option<&str>, port: u16) -> VmResult<()> {
         }
         "fish" => {
             vm_println!("# Package registry configuration for fish");
-            vm_println!("set -x NPM_CONFIG_REGISTRY http://localhost:{}/npm/", port);
+            vm_println!(
+                "set -x NPM_CONFIG_REGISTRY http://localhost:{}/npm/",
+                actual_port
+            );
             vm_println!(
                 "set -x PIP_INDEX_URL http://localhost:{}/pypi/simple/",
-                port
+                actual_port
             );
             vm_println!("set -x PIP_TRUSTED_HOST localhost");
         }
@@ -162,8 +193,18 @@ async fn handle_use(shell: Option<&str>, port: u16) -> VmResult<()> {
 }
 
 /// Check if the package registry server is running
-async fn check_server_running() -> bool {
-    match reqwest::get("http://localhost:3080/health").await {
+async fn check_server_running(global_config: &GlobalConfig) -> bool {
+    let server_url = format!(
+        "http://localhost:{}",
+        global_config.services.package_registry.port
+    );
+    check_server_running_with_url(&server_url).await
+}
+
+/// Check if the package registry server is running at a specific URL
+async fn check_server_running_with_url(base_url: &str) -> bool {
+    let health_url = format!("{}/health", base_url);
+    match reqwest::get(&health_url).await {
         Ok(response) => response.status().is_success(),
         Err(_) => false,
     }
@@ -181,8 +222,8 @@ fn prompt_start_server() -> VmResult<bool> {
 }
 
 /// Start server in background if needed
-async fn start_server_if_needed() -> VmResult<()> {
-    if check_server_running().await {
+async fn start_server_if_needed(global_config: &GlobalConfig) -> VmResult<()> {
+    if check_server_running(global_config).await {
         return Ok(());
     }
 
@@ -190,13 +231,14 @@ async fn start_server_if_needed() -> VmResult<()> {
         vm_println!("🚀 Starting package registry server...");
 
         let data_dir = std::env::current_dir()?.join(".vm-packages");
+        let port = global_config.services.package_registry.port;
 
         // Start server in background using existing function
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
             if let Err(e) = rt.block_on(vm_package_server::server::run_server_background(
                 "0.0.0.0".to_string(),
-                3080,
+                port,
                 data_dir,
             )) {
                 eprintln!("❌ Failed to start package registry: {}", e);
@@ -207,7 +249,7 @@ async fn start_server_if_needed() -> VmResult<()> {
         tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
 
         // Verify it started
-        if check_server_running().await {
+        if check_server_running(global_config).await {
             vm_success!("Package registry started successfully");
         } else {
             return Err(VmError::from(anyhow::anyhow!(

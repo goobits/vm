@@ -16,7 +16,7 @@ use axum::{
 use serde::Deserialize;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
 use tracing::{info, warn};
@@ -34,8 +34,13 @@ struct EnvQuery {
     project: Option<String>,
 }
 
-/// Run the auth proxy server in foreground
-pub async fn run_server(host: String, port: u16, data_dir: PathBuf) -> Result<()> {
+/// Run the auth proxy server with optional graceful shutdown
+pub async fn run_server_with_shutdown(
+    host: String,
+    port: u16,
+    data_dir: PathBuf,
+    shutdown_receiver: Option<tokio::sync::oneshot::Receiver<()>>,
+) -> Result<()> {
     info!("Starting auth proxy server on {}:{}", host, port);
 
     // Initialize secret store
@@ -64,27 +69,35 @@ pub async fn run_server(host: String, port: u16, data_dir: PathBuf) -> Result<()
 
     info!("Auth proxy server listening on {}", addr);
 
-    axum::serve(listener, app)
-        .await
-        .context("Server failed to start")?;
+    match shutdown_receiver {
+        Some(shutdown_rx) => {
+            // Use graceful shutdown when shutdown receiver is provided
+            axum::serve(listener, app)
+                .with_graceful_shutdown(async {
+                    shutdown_rx.await.ok();
+                    info!("Received shutdown signal, stopping auth proxy gracefully");
+                })
+                .await
+                .context("Server failed to start")?;
+        }
+        None => {
+            // Original behavior - run indefinitely
+            axum::serve(listener, app)
+                .await
+                .context("Server failed to start")?;
+        }
+    }
 
     Ok(())
 }
 
-/// Run the auth proxy server in background
+/// Run the auth proxy server in foreground
+pub async fn run_server(host: String, port: u16, data_dir: PathBuf) -> Result<()> {
+    run_server_with_shutdown(host, port, data_dir, None).await
+}
+
 pub async fn run_server_background(host: String, port: u16, data_dir: PathBuf) -> Result<()> {
-    // For background mode, we spawn the server in a separate task
-    // This allows the CLI to return while keeping the server running
-    tokio::spawn(async move {
-        if let Err(e) = run_server(host, port, data_dir).await {
-            warn!("Auth proxy server error: {}", e);
-        }
-    });
-
-    // Give the server a moment to start
-    tokio::time::sleep(Duration::from_millis(1000)).await;
-
-    Ok(())
+    run_server_with_shutdown(host, port, data_dir, None).await
 }
 
 /// Check if the auth proxy server is running

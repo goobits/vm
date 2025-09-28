@@ -35,7 +35,7 @@ pub mod types;
 pub use types::{Secret, SecretScope, SecretStorage};
 
 // Re-export server functions
-pub use server::{run_server, run_server_background};
+pub use server::{run_server, run_server_background, run_server_with_shutdown};
 
 // Re-export client operations for CLI
 pub use client_ops::{

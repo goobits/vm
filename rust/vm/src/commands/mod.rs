@@ -27,7 +27,10 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
     // Handle commands that don't need a provider first
     match &args.command {
         Command::Validate => config::handle_validate(args.config),
-        Command::Doctor => doctor::handle_doctor_command().await,
+        Command::Doctor => {
+            let app_config = AppConfig::load(args.config.clone())?;
+            doctor::handle_doctor_command(app_config.global).await
+        }
         Command::Init {
             file,
             services,
@@ -46,11 +49,13 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         }
         Command::Pkg { command } => {
             debug!("Calling package registry operations");
-            pkg::handle_pkg_command(command, args.config).await
+            let app_config = AppConfig::load(args.config.clone())?;
+            pkg::handle_pkg_command(command, app_config.global).await
         }
         Command::Auth { command } => {
             debug!("Calling auth proxy operations");
-            auth::handle_auth_command(command, args.config).await
+            let app_config = AppConfig::load(args.config.clone())?;
+            auth::handle_auth_command(command, app_config.global).await
         }
         _ => {
             // Provider-based commands
@@ -257,9 +262,12 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
         Command::Ssh { container, path } => {
             vm_ops::handle_ssh(provider, container.as_deref(), path, config)
         }
-        Command::Status { container } => {
-            vm_ops::handle_status(provider, container.as_deref(), config)
-        }
+        Command::Status { container } => vm_ops::handle_status(
+            provider,
+            container.as_deref(),
+            config,
+            global_config.clone(),
+        ),
         Command::Exec { container, command } => {
             vm_ops::handle_exec(provider, container.as_deref(), command, config.clone())
         }

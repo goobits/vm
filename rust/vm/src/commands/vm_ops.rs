@@ -1081,6 +1081,7 @@ pub fn handle_status(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     config: VmConfig,
+    global_config: GlobalConfig,
 ) -> VmResult<()> {
     // Get VM name from config
     let vm_name = config
@@ -1152,18 +1153,23 @@ pub fn handle_status(
             let mut additional_services = Vec::new();
 
             // Check global services that might be running
+            let _package_port = global_config.services.package_registry.port;
             let package_status = ("Package Registry", "🔴", "See 'vm pkg status' for details");
             additional_services.push(package_status);
 
-            let auth_status = if check_auth_proxy_status_sync() {
-                ("Auth Proxy", "🟢", "http://localhost:3090")
+            let auth_port = global_config.services.auth_proxy.port;
+            let auth_url = format!("http://localhost:{}", auth_port);
+            let auth_status = if check_auth_proxy_status_sync(auth_port) {
+                ("Auth Proxy", "🟢", auth_url.as_str())
             } else {
                 ("Auth Proxy", "🔴", "Not running")
             };
             additional_services.push(auth_status);
 
-            let docker_registry_status = if check_docker_registry_status_sync() {
-                ("Docker Registry", "🟢", "http://localhost:5000")
+            let docker_port = global_config.services.docker_registry.port;
+            let docker_url = format!("http://localhost:{}", docker_port);
+            let docker_registry_status = if check_docker_registry_status_sync(docker_port) {
+                ("Docker Registry", "🟢", docker_url.as_str())
             } else {
                 ("Docker Registry", "🔴", "Not running")
             };
@@ -1269,7 +1275,7 @@ pub fn handle_logs(
 }
 
 /// Check if auth proxy is running (synchronous version)
-fn check_auth_proxy_status_sync() -> bool {
+fn check_auth_proxy_status_sync(port: u16) -> bool {
     use std::process::Command;
     // Try to check with curl first
     let curl_result = Command::new("curl")
@@ -1279,7 +1285,7 @@ fn check_auth_proxy_status_sync() -> bool {
             "/dev/null",
             "-w",
             "%{http_code}",
-            "http://localhost:3090/health",
+            &format!("http://localhost:{}/health", port),
         ])
         .output();
 
@@ -1294,14 +1300,14 @@ fn check_auth_proxy_status_sync() -> bool {
     use std::time::Duration;
 
     TcpStream::connect_timeout(
-        &"127.0.0.1:3090".parse().unwrap(),
+        &format!("127.0.0.1:{}", port).parse().unwrap(),
         Duration::from_millis(1000),
     )
     .is_ok()
 }
 
 /// Check if Docker registry is running (synchronous version)
-fn check_docker_registry_status_sync() -> bool {
+fn check_docker_registry_status_sync(port: u16) -> bool {
     use std::process::Command;
     // Try to check with curl first
     let curl_result = Command::new("curl")
@@ -1311,7 +1317,7 @@ fn check_docker_registry_status_sync() -> bool {
             "/dev/null",
             "-w",
             "%{http_code}",
-            "http://localhost:5000/health",
+            &format!("http://localhost:{}/v2/", port),
         ])
         .output();
 
@@ -1326,7 +1332,7 @@ fn check_docker_registry_status_sync() -> bool {
     use std::time::Duration;
 
     TcpStream::connect_timeout(
-        &"127.0.0.1:5000".parse().unwrap(),
+        &format!("127.0.0.1:{}", port).parse().unwrap(),
         Duration::from_millis(1000),
     )
     .is_ok()

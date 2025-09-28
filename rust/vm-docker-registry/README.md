@@ -67,12 +67,13 @@ The `vm-docker-registry` crate provides a transparent caching layer for Docker i
 
 ### For VM Users
 
-Simply enable the registry in your VM configuration:
+Simply enable the registry in your global configuration:
 
 ```yaml
-# vm.yaml
-name: my-vm
-docker_registry: true  # That's it! Registry is now auto-managed
+# ~/.vm/config.yaml - Global configuration
+services:
+  docker_registry:
+    enabled: true  # That's it! Registry is now auto-managed
 ```
 
 The registry will:
@@ -86,22 +87,22 @@ The registry will:
 While the registry works with zero configuration, advanced users can customize its behavior:
 
 ```yaml
-# vm.yaml with advanced registry configuration
-name: my-vm
-docker_registry: true
-docker_registry_config:
-  max_cache_size_gb: 10        # Maximum cache size (default: 5)
-  max_image_age_days: 60       # Keep images for 60 days (default: 30)
-  cleanup_interval_hours: 2    # Run cleanup every 2 hours (default: 1)
-  enable_lru_eviction: true     # Use LRU when cache is full (default: true)
-  enable_auto_restart: true     # Auto-restart on failure (default: true)
-  health_check_interval_minutes: 30  # Check health every 30min (default: 15)
+# ~/.vm/config.yaml - Advanced registry configuration
+services:
+  docker_registry:
+    enabled: true
+    max_cache_size_gb: 10        # Maximum cache size (default: 5)
+    max_image_age_days: 60       # Keep images for 60 days (default: 30)
+    cleanup_interval_hours: 2    # Run cleanup every 2 hours (default: 1)
+    enable_lru_eviction: true     # Use LRU when cache is full (default: true)
+    enable_auto_restart: true     # Auto-restart on failure (default: true)
+    health_check_interval_minutes: 30  # Check health every 30min (default: 15)
 ```
 
 ## How It Works
 
 ### 1. Automatic Startup
-When a VM with `docker_registry: true` is created, the Service Manager:
+When a VM is created and docker_registry is enabled in global config, the Service Manager:
 - Starts the registry containers (nginx proxy + registry backend)
 - Configures the Docker daemon to use `http://127.0.0.1:5000` as a mirror
 - Spawns the auto-manager background task

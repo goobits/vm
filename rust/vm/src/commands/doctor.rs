@@ -8,10 +8,10 @@ use crate::error::{VmError, VmResult};
 // use std::path::PathBuf; // Currently unused
 use std::process::Command;
 use vm_common::{vm_error, vm_println, vm_success};
-use vm_config::config::VmConfig;
+use vm_config::{config::VmConfig, GlobalConfig};
 
 /// Handle the doctor command - perform comprehensive health checks
-pub async fn handle_doctor_command() -> VmResult<()> {
+pub async fn handle_doctor_command(global_config: GlobalConfig) -> VmResult<()> {
     vm_println!("🩺 VM Environment Health Check");
     vm_println!("==============================\n");
 
@@ -33,7 +33,7 @@ pub async fn handle_doctor_command() -> VmResult<()> {
 
     // 3. Background services
     vm_println!("🔄 Background Services:");
-    if !check_background_services().await {
+    if !check_background_services(&global_config).await {
         all_checks_passed = false;
     }
     vm_println!();
@@ -149,11 +149,15 @@ async fn check_system_dependencies() -> bool {
 }
 
 /// Check the health of background services
-async fn check_background_services() -> bool {
+async fn check_background_services(global_config: &GlobalConfig) -> bool {
     let mut services_ok = true;
 
     // Check auth proxy service
-    match check_service_health("http://127.0.0.1:3090/health").await {
+    let auth_url = format!(
+        "http://127.0.0.1:{}/health",
+        global_config.services.auth_proxy.port
+    );
+    match check_service_health(&auth_url).await {
         Ok(true) => vm_success!("Auth proxy service is healthy"),
         Ok(false) => {
             vm_error!("Auth proxy service is not responding");
@@ -167,7 +171,11 @@ async fn check_background_services() -> bool {
     }
 
     // Check package server service
-    match check_service_health("http://127.0.0.1:3080/health").await {
+    let pkg_url = format!(
+        "http://127.0.0.1:{}/health",
+        global_config.services.package_registry.port
+    );
+    match check_service_health(&pkg_url).await {
         Ok(true) => vm_success!("Package server service is healthy"),
         Ok(false) => {
             vm_error!("Package server service is not responding");
@@ -181,7 +189,11 @@ async fn check_background_services() -> bool {
     }
 
     // Check Docker registry service (silent unless there are active VMs)
-    match check_service_health("http://127.0.0.1:5000/v2/").await {
+    let docker_url = format!(
+        "http://127.0.0.1:{}/v2/",
+        global_config.services.docker_registry.port
+    );
+    match check_service_health(&docker_url).await {
         Ok(true) => vm_success!("Docker registry service is healthy"),
         Ok(false) => {
             // Only warn if there are active VMs that would benefit from the registry
