@@ -25,11 +25,23 @@ impl fmt::Display for PackageManager {
 impl PackageManager {
     /// Get the links directory for this package manager
     pub fn links_dir(&self, user: &str) -> PathBuf {
-        let base = PathBuf::from(format!("/home/{}/.links", user));
+        let base = Self::get_user_links_dir(user);
         match self {
             PackageManager::Cargo => base.join("cargo"),
             PackageManager::Npm => base.join("npm"),
             PackageManager::Pip => base.join("pip"),
+        }
+    }
+
+    /// Get the base .links directory for a user in a cross-platform way
+    fn get_user_links_dir(user: &str) -> PathBuf {
+        #[cfg(windows)]
+        {
+            PathBuf::from(format!("C:\\Users\\{}", user)).join(".links")
+        }
+        #[cfg(not(windows))]
+        {
+            PathBuf::from(format!("/home/{}", user)).join(".links")
         }
     }
 
