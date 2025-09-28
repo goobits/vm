@@ -3185,7 +3185,7 @@ checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 
 [[package]]
 name = "version-sync"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -3203,7 +3203,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vm"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -3229,7 +3229,7 @@ dependencies = [
 
 [[package]]
 name = "vm-auth-proxy"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -3256,7 +3256,7 @@ dependencies = [
 
 [[package]]
 name = "vm-common"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3281,7 +3281,7 @@ dependencies = [
 
 [[package]]
 name = "vm-config"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -3302,7 +3302,7 @@ dependencies = [
 
 [[package]]
 name = "vm-docker-registry"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3325,7 +3325,7 @@ dependencies = [
 
 [[package]]
 name = "vm-installer"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -3341,11 +3341,11 @@ dependencies = [
 
 [[package]]
 name = "vm-messages"
-version = "2.0.0"
+version = "2.0.1"
 
 [[package]]
 name = "vm-package-manager"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -3363,7 +3363,7 @@ dependencies = [
 
 [[package]]
 name = "vm-package-server"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "anyhow",
  "askama",
@@ -3403,7 +3403,7 @@ dependencies = [
 
 [[package]]
 name = "vm-platform"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "anyhow",
  "dirs",
@@ -3413,7 +3413,7 @@ dependencies = [
 
 [[package]]
 name = "vm-provider"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3434,7 +3434,7 @@ dependencies = [
 
 [[package]]
 name = "vm-temp"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "anyhow",
  "clap",
