@@ -21,6 +21,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use futures::future;
 use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
@@ -44,7 +45,7 @@ pub struct ServiceState {
 }
 
 /// Central service lifecycle manager with reference counting
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ServiceManager {
     /// Service state map protected by mutex for thread safety
     state: Arc<Mutex<HashMap<String, ServiceState>>>,
@@ -178,12 +179,21 @@ impl ServiceManager {
             }
         }
 
-        // Stop services with zero references
-        for service_name in services_to_stop {
-            if let Err(e) = self.stop_service(&service_name).await {
-                warn!("Failed to stop service '{}': {}", service_name, e);
-            }
-        }
+        // Stop services with zero references in parallel for faster shutdown
+        let stop_futures: Vec<_> = services_to_stop
+            .into_iter()
+            .map(|service_name| {
+                let self_clone = self.clone();
+                async move {
+                    if let Err(e) = self_clone.stop_service(&service_name).await {
+                        warn!("Failed to stop service '{}': {}", service_name, e);
+                    }
+                }
+            })
+            .collect();
+
+        // Wait for all services to stop
+        future::join_all(stop_futures).await;
 
         self.save_state()?;
         Ok(())
@@ -401,8 +411,9 @@ impl ServiceManager {
             } else {
                 info!("Shutdown signal sent to auth proxy");
 
-                // Give the server a moment to shut down gracefully
-                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                // Give the server a brief moment to shut down gracefully
+                // Reduced from 1000ms to 200ms for faster stops
+                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
             }
         } else {
             warn!("No shutdown handle found for auth proxy - it may not be running or was started externally");
@@ -503,8 +514,9 @@ impl ServiceManager {
             } else {
                 info!("Shutdown signal sent to package registry");
 
-                // Give the server a moment to shut down gracefully
-                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                // Give the server a brief moment to shut down gracefully
+                // Reduced from 1000ms to 200ms for faster stops
+                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
             }
         } else {
             warn!("No shutdown handle found for package registry - it may not be running or was started externally");

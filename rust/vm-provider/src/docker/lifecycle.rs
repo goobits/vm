@@ -783,10 +783,11 @@ impl<'a> LifecycleOperations<'a> {
     #[must_use = "container stop results should be handled"]
     pub fn stop_container(&self, container: Option<&str>) -> Result<()> {
         let target_container = self.resolve_target_container(container)?;
-        // Use a 3-second timeout for faster stops (default is 10 seconds)
-        // Development VMs can typically be stopped quickly without data loss
-        // Run docker stop without streaming output to keep things clean
-        duct::cmd("docker", &["stop", "-t", "3", &target_container])
+        // Use a 1-second timeout for faster stops
+        // Development VMs should respond quickly to SIGTERM
+        // If they don't stop gracefully in 1 second, Docker will force kill
+        // This is safe for dev environments where data persistence isn't critical
+        duct::cmd("docker", &["stop", "-t", "1", &target_container])
             .run()
             .with_context(|| format!("Failed to stop container '{}'", target_container))?;
         Ok(())
