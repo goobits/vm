@@ -105,12 +105,7 @@ pub fn fuzzy_match_instances(partial: &str, instances: &[InstanceInfo]) -> Resul
 }
 
 /// Helper to create InstanceInfo for Docker containers
-pub fn create_docker_instance_info(name: &str, id: &str, status: &str) -> InstanceInfo {
-    create_docker_instance_info_with_metadata(name, id, status, None, None)
-}
-
-/// Helper to create InstanceInfo for Docker containers with metadata
-pub fn create_docker_instance_info_with_metadata(
+pub fn create_docker_instance_info(
     name: &str,
     id: &str,
     status: &str,
@@ -134,12 +129,7 @@ pub fn create_docker_instance_info_with_metadata(
 }
 
 /// Helper to create InstanceInfo for Tart VMs
-pub fn create_tart_instance_info(name: &str, status: &str) -> InstanceInfo {
-    create_tart_instance_info_with_metadata(name, status, None, None)
-}
-
-/// Helper to create InstanceInfo for Tart VMs with metadata
-pub fn create_tart_instance_info_with_metadata(
+pub fn create_tart_instance_info(
     name: &str,
     status: &str,
     created_at: Option<&str>,
@@ -166,12 +156,7 @@ pub fn create_tart_instance_info_with_metadata(
 }
 
 /// Helper to create InstanceInfo for Vagrant machines
-pub fn create_vagrant_instance_info(name: &str, status: &str, project_name: &str) -> InstanceInfo {
-    create_vagrant_instance_info_with_metadata(name, status, project_name, None, None)
-}
-
-/// Helper to create InstanceInfo for Vagrant machines with metadata
-pub fn create_vagrant_instance_info_with_metadata(
+pub fn create_vagrant_instance_info(
     name: &str,
     status: &str,
     project_name: &str,
@@ -263,37 +248,43 @@ mod tests {
 
     #[test]
     fn test_create_docker_instance_info() {
-        let info = create_docker_instance_info("myproject-dev", "abc123", "running");
+        let info = create_docker_instance_info("myproject-dev", "abc123", "running", None, None);
         assert_eq!(info.name, "myproject-dev");
         assert_eq!(info.id, "abc123");
         assert_eq!(info.status, "running");
         assert_eq!(info.provider, "docker");
         assert_eq!(info.project, Some("myproject".to_string()));
+        assert_eq!(info.uptime, None);
+        assert_eq!(info.created_at, None);
     }
 
     #[test]
     fn test_create_tart_instance_info() {
-        let info = create_tart_instance_info("myproject-staging", "running");
+        let info = create_tart_instance_info("myproject-staging", "running", None, None);
         assert_eq!(info.name, "myproject-staging");
         assert_eq!(info.id, "myproject-staging");
         assert_eq!(info.status, "running");
         assert_eq!(info.provider, "tart");
         assert_eq!(info.project, Some("myproject".to_string()));
+        assert_eq!(info.uptime, None);
+        assert_eq!(info.created_at, None);
     }
 
     #[test]
     fn test_create_vagrant_instance_info() {
-        let info = create_vagrant_instance_info("web", "running", "myproject");
+        let info = create_vagrant_instance_info("web", "running", "myproject", None, None);
         assert_eq!(info.name, "web");
         assert_eq!(info.id, "myproject:web");
         assert_eq!(info.status, "running");
         assert_eq!(info.provider, "vagrant");
         assert_eq!(info.project, Some("myproject".to_string()));
+        assert_eq!(info.uptime, None);
+        assert_eq!(info.created_at, None);
     }
 
     #[test]
     fn test_create_docker_instance_info_with_metadata() {
-        let info = create_docker_instance_info_with_metadata(
+        let info = create_docker_instance_info(
             "myproject-dev",
             "abc123",
             "running",
@@ -311,7 +302,7 @@ mod tests {
 
     #[test]
     fn test_create_tart_instance_info_with_metadata() {
-        let info = create_tart_instance_info_with_metadata(
+        let info = create_tart_instance_info(
             "myproject-staging",
             "running",
             Some("Created: 2023-01-01"),

@@ -59,7 +59,14 @@ impl<'a> TartInstanceManager<'a> {
 
                 // Only include VMs that belong to this project
                 if name.starts_with(&project_prefix) || name == self.project_name() {
-                    instances.push(create_tart_instance_info(name, status));
+                    // Try to get additional metadata for this VM
+                    let (created_at, uptime) = self.get_vm_metadata(name);
+                    instances.push(create_tart_instance_info(
+                        name,
+                        status,
+                        created_at.as_deref(),
+                        uptime.as_deref(),
+                    ));
                 }
             }
         }

@@ -112,6 +112,7 @@ pub fn handle_config_command(command: &ConfigSubcommand, dry_run: bool) -> VmRes
             _ => Ok(()),
         },
         ConfigSubcommand::Ports { fix } => handle_ports_command(*fix),
+        ConfigSubcommand::Clear { global } => Ok(ConfigOps::clear(*global)?),
     }
 }
 

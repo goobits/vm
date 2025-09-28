@@ -83,10 +83,14 @@ impl<'a> VagrantInstanceManager<'a> {
                     let machine_name = parts[0];
                     let status = parts[1];
 
+                    // Try to get additional metadata for this machine
+                    let (created_at, uptime) = self.get_machine_metadata(machine_name);
                     instances.push(create_vagrant_instance_info(
                         machine_name,
                         status,
                         project_name,
+                        created_at.as_deref(),
+                        uptime.as_deref(),
                     ));
                 }
             }

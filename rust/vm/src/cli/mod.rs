@@ -75,6 +75,12 @@ pub enum ConfigSubcommand {
         #[arg(long)]
         fix: bool,
     },
+    /// Clear configuration file
+    Clear {
+        /// Clear global configuration instead of local
+        #[arg(long)]
+        global: bool,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]

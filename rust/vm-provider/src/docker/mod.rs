@@ -288,7 +288,7 @@ impl Provider for DockerProvider {
     }
 
     fn list_instances(&self) -> Result<Vec<crate::InstanceInfo>> {
-        use crate::common::instance::create_docker_instance_info_with_metadata;
+        use crate::common::instance::create_docker_instance_info;
 
         // Parse docker ps output to get instance info including creation time and uptime
         let output = std::process::Command::new("docker")
@@ -324,7 +324,7 @@ impl Provider for DockerProvider {
 
                 // Only include containers that belong to this project
                 if name.starts_with(&format!("{}-", project_name)) || name == project_name {
-                    instances.push(create_docker_instance_info_with_metadata(
+                    instances.push(create_docker_instance_info(
                         name,
                         id,
                         status,

@@ -23,8 +23,34 @@ impl WorkflowTestFixture {
 
         // Get the path to the vm binary
         let workspace_root = std::env::current_dir()?;
-        let rust_root = workspace_root.parent().unwrap();
-        let binary_path = rust_root.join("target").join("debug").join("vm");
+
+        // Try multiple possible binary locations (prioritize .build location)
+        let possible_paths = vec![
+            // From workspace root (two levels up from rust/vm): /workspace/.build/target/debug/vm
+            workspace_root
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .join(".build")
+                .join("target")
+                .join("debug")
+                .join("vm"),
+            // From rust root (one level up from rust/vm): /workspace/rust/target/debug/vm
+            workspace_root
+                .parent()
+                .unwrap()
+                .join("target")
+                .join("debug")
+                .join("vm"),
+            // From current dir: /workspace/rust/vm/target/debug/vm
+            workspace_root.join("target").join("debug").join("vm"),
+        ];
+
+        let binary_path = possible_paths
+            .into_iter()
+            .find(|path| path.exists())
+            .expect("Could not find vm binary in any of the expected locations");
 
         Ok(Self {
             _temp_dir: temp_dir,
@@ -471,6 +497,16 @@ fn test_configuration_clear_workflow() -> Result<()> {
 
     // Step 3: Clear the configuration
     let output = fixture.run_vm_command(&["config", "clear"])?;
+    if !output.status.success() {
+        println!(
+            "Command failed with stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        println!(
+            "Command failed with stdout: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+    }
     assert!(output.status.success());
 
     // Step 4: Verify file is gone

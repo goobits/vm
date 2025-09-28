@@ -282,6 +282,63 @@ impl ConfigOps {
         Ok(())
     }
 
+    /// Clear (delete) configuration file
+    ///
+    /// Removes the entire configuration file from the filesystem. This is a
+    /// destructive operation that cannot be undone.
+    ///
+    /// # Arguments
+    /// * `global` - If true, clears global config; if false, clears local config
+    ///
+    /// # Returns
+    /// `Ok(())` if the file was successfully removed or didn't exist
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - File system permissions prevent deletion
+    /// - Configuration file is locked by another process
+    ///
+    /// # Examples
+    /// ```rust,no_run
+    /// use vm_config::ConfigOps;
+    ///
+    /// // Clear local configuration
+    /// ConfigOps::clear(false)?;
+    ///
+    /// // Clear global configuration
+    /// ConfigOps::clear(true)?;
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn clear(global: bool) -> Result<()> {
+        let config_path = if global {
+            get_global_config_path()
+        } else {
+            find_local_config()?
+        };
+
+        if !config_path.exists() {
+            let config_type = if global { "global" } else { "local" };
+            vm_println!("No {} configuration file found to clear", config_type);
+            return Ok(());
+        }
+
+        fs::remove_file(&config_path).with_context(|| {
+            format!(
+                "Failed to remove configuration file: {}",
+                config_path.display()
+            )
+        })?;
+
+        let config_type = if global { "global" } else { "local" };
+        vm_println!(
+            "✅ Cleared {} configuration: {}",
+            config_type,
+            config_path.display()
+        );
+
+        Ok(())
+    }
+
     /// Apply preset(s) to configuration
     pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) -> Result<()> {
         let presets_dir = paths::get_presets_dir();
