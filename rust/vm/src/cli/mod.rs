@@ -127,20 +127,6 @@ pub enum TempSubcommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum PkgSubcommand {
-    /// Start package registry server
-    Start {
-        /// Port to run the server on
-        #[arg(long, default_value = "3080")]
-        port: u16,
-        /// Host to bind the server to
-        #[arg(long, default_value = "0.0.0.0")]
-        host: String,
-        /// Run server in foreground
-        #[arg(long, short = 'f')]
-        foreground: bool,
-    },
-    /// Stop package registry server
-    Stop,
     /// Show registry status and package counts
     Status,
     /// Add package from current directory
@@ -193,20 +179,6 @@ pub enum PkgConfigAction {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum AuthSubcommand {
-    /// Start auth proxy server
-    Start {
-        /// Port to run the server on
-        #[arg(long, default_value = "3090")]
-        port: u16,
-        /// Host to bind the server to
-        #[arg(long, default_value = "127.0.0.1")]
-        host: String,
-        /// Run server in foreground
-        #[arg(long, short = 'f')]
-        foreground: bool,
-    },
-    /// Stop auth proxy server
-    Stop,
     /// Show auth proxy status and secret counts
     Status,
     /// Add a secret
@@ -242,10 +214,6 @@ pub enum AuthSubcommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum RegistrySubcommand {
-    /// Start Docker registry
-    Start,
-    /// Stop Docker registry
-    Stop,
     /// Show registry status and storage usage
     Status,
     /// Run garbage collection

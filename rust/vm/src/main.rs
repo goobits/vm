@@ -20,6 +20,8 @@ use vm_common::{vm_error, vm_warning};
 mod cli;
 mod commands;
 mod error;
+mod service_manager;
+mod service_registry;
 
 use cli::Args;
 use commands::execute_command;

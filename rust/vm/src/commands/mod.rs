@@ -59,7 +59,7 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         }
         _ => {
             // Provider-based commands
-            handle_provider_command(args)
+            handle_provider_command(args).await
         }
     }
 }
@@ -89,7 +89,7 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
     }
 }
 
-fn handle_provider_command(args: Args) -> VmResult<()> {
+async fn handle_provider_command(args: Args) -> VmResult<()> {
     // Load configuration
     debug!("Loading configuration: config_file={:?}", args.config);
 
@@ -183,7 +183,7 @@ fn handle_provider_command(args: Args) -> VmResult<()> {
     debug!("Executing command: {:?}", args.command);
     let result = match args.command {
         Command::Create { force, instance } => {
-            vm_ops::handle_create(provider, config.clone(), force, instance)
+            vm_ops::handle_create(provider, config.clone(), force, instance).await
         }
         Command::Start { container } => {
             vm_ops::handle_start(provider, container.as_deref(), config.clone())
@@ -217,15 +217,18 @@ fn handle_provider_command(args: Args) -> VmResult<()> {
             all,
             provider: provider_filter,
             pattern,
-        } => vm_ops::handle_destroy_enhanced(
-            provider,
-            container.as_deref(),
-            config,
-            &force,
-            &all,
-            provider_filter.as_deref(),
-            pattern.as_deref(),
-        ),
+        } => {
+            vm_ops::handle_destroy_enhanced(
+                provider,
+                container.as_deref(),
+                config,
+                &force,
+                &all,
+                provider_filter.as_deref(),
+                pattern.as_deref(),
+            )
+            .await
+        }
         Command::Ssh { container, path } => {
             vm_ops::handle_ssh(provider, container.as_deref(), path, config)
         }

@@ -127,7 +127,7 @@ fi
 # 6. Execute the Rust installer, passing along filtered arguments.
 # The Rust installer handles the build, symlinking, and PATH configuration.
 echo "🔧 Invoking the Rust installer..."
-if cargo run --package vm-installer --manifest-path "$MANIFEST_PATH" -- "${INSTALLER_ARGS[@]}"; then
+if cargo run --package vm-installer --manifest-path "$MANIFEST_PATH" -- "${INSTALLER_ARGS[@]+"${INSTALLER_ARGS[@]}"}"; then
     # The Rust installer now prints its own success messages.
     # A final confirmation is still useful here.
     echo -e "\n${GREEN}✅ The Rust installer completed successfully.${NC}"

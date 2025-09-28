@@ -10,12 +10,13 @@ use tracing::{debug, info, info_span, warn};
 
 // Internal imports
 use crate::error::{VmError, VmResult};
+use crate::service_manager::get_service_manager;
 use vm_common::vm_error;
 use vm_config::config::VmConfig;
 use vm_provider::{InstanceInfo, Provider};
 
 /// Handle VM creation
-pub fn handle_create(
+pub async fn handle_create(
     provider: Box<dyn Provider>,
     config: VmConfig,
     force: bool,
@@ -131,20 +132,22 @@ pub fn handle_create(
                 }
             }
 
-            // Start package registry if enabled
-            if config.package_registry {
-                println!("\n📦 Starting package registry...");
-                match start_package_registry_background() {
-                    Ok(()) => {
-                        println!(
-                            "  Status:     🟢 Package registry running on http://localhost:3080"
-                        );
-                    }
-                    Err(e) => {
-                        warn!("Failed to start package registry: {}", e);
-                        println!("  Status:     ⚠️  Package registry failed to start: {}", e);
-                    }
-                }
+            // Register VM services and auto-start them
+            let vm_instance_name = if let Some(instance_name) = &instance {
+                format!("{}-{}", vm_name, instance_name)
+            } else {
+                format!("{}-dev", vm_name)
+            };
+
+            println!("\n🔧 Configuring services...");
+            if let Err(e) = get_service_manager()
+                .register_vm_services(&vm_instance_name, &config)
+                .await
+            {
+                warn!("Failed to register VM services: {}", e);
+                println!("  Status:     ⚠️  Service configuration failed: {}", e);
+            } else {
+                println!("  Status:     ✅ Services configured successfully");
             }
 
             println!("\n💡 Connect with: vm ssh");
@@ -622,7 +625,7 @@ pub fn handle_get_sync_directory(provider: Box<dyn Provider>) {
 }
 
 /// Handle VM destruction
-pub fn handle_destroy(
+pub async fn handle_destroy(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     config: VmConfig,
@@ -688,6 +691,24 @@ pub fn handle_destroy(
 
         match provider.destroy(container) {
             Ok(()) => {
+                // Unregister VM services after successful destruction
+                let vm_instance_name = if let Some(container_name) = container {
+                    container_name.to_string()
+                } else {
+                    container_name.clone()
+                };
+
+                if let Err(e) = get_service_manager()
+                    .unregister_vm_services(&vm_instance_name)
+                    .await
+                {
+                    warn!("Failed to unregister VM services: {}", e);
+                    // Don't fail the destroy operation for service cleanup issues
+                    println!("  ⚠️  Service cleanup failed: {}", e);
+                } else {
+                    println!("  ✓ Services cleaned up");
+                }
+
                 println!("\n✅ VM destroyed");
                 Ok(())
             }
@@ -711,7 +732,7 @@ pub fn handle_destroy(
 }
 
 /// Enhanced destroy handler with cross-provider support
-pub fn handle_destroy_enhanced(
+pub async fn handle_destroy_enhanced(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     config: VmConfig,
@@ -729,7 +750,7 @@ pub fn handle_destroy_enhanced(
     }
 
     // Single instance destroy (existing behavior)
-    handle_destroy(provider, container, config, *force)
+    handle_destroy(provider, container, config, *force).await
 }
 
 /// Handle destroying instances across providers
