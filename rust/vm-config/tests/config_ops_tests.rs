@@ -139,11 +139,7 @@ mod config_ops_tests {
         ConfigOps::set("vm.cpus", "8", true, false)?;
 
         // Verify global config file was created
-        let global_config_path = fixture
-            .test_dir
-            .join(".config")
-            .join("vm")
-            .join("global.yaml");
+        let global_config_path = fixture.test_dir.join(".vm").join("config.yaml");
         assert!(global_config_path.exists());
 
         // Test getting global config
