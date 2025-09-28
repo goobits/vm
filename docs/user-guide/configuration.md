@@ -233,6 +233,39 @@ services:
     enabled: true  # Installs Chrome/Chromium for testing
 ```
 
+### Docker Registry (Automatic Caching) 🆕
+
+Enable intelligent Docker image caching that works like a browser cache - completely invisible while dramatically speeding up Docker pulls:
+
+```yaml
+docker_registry: true  # That's it! Zero-configuration caching
+```
+
+**What it does:**
+- **Auto-starts** when your VM needs it
+- **Caches all Docker images** locally for instant pulls
+- **Self-manages** with automatic cleanup of old images
+- **Auto-configures** Docker daemon to use local mirror
+- **Stops automatically** when no VMs need it
+
+**Advanced configuration** (optional):
+```yaml
+docker_registry: true
+docker_registry_config:
+  max_cache_size_gb: 10        # Max cache size (default: 5GB)
+  max_image_age_days: 60       # Keep images for 60 days (default: 30)
+  cleanup_interval_hours: 2    # Cleanup frequency (default: 1 hour)
+  enable_lru_eviction: true     # LRU when cache full (default: true)
+  enable_auto_restart: true     # Auto-restart on failure (default: true)
+  health_check_interval_minutes: 30  # Health check interval (default: 15)
+```
+
+**Benefits:**
+- 🚀 **10-100x faster** Docker pulls after first cache
+- 💾 **Bandwidth savings** - images pulled once, used many times
+- 🤖 **Zero maintenance** - automatic cleanup and management
+- 🔄 **Shared cache** - all VMs share the same image cache
+
 ## 🖥️ Operating System Configuration
 
 ### OS Field (Recommended)

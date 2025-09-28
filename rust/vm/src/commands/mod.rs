@@ -5,7 +5,7 @@ use tracing::debug;
 // Import the CLI types
 use crate::cli::{Args, Command};
 use vm_common::{vm_error, vm_println};
-use vm_config::{config::VmConfig, init_config_file};
+use vm_config::{init_config_file, AppConfig};
 use vm_provider::get_provider;
 
 // Individual command modules
@@ -88,14 +88,14 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
     // Load configuration
     debug!("Loading configuration: config_file={:?}", args.config);
 
-    let config = {
+    let app_config = {
         // For List command, try lenient loading first to avoid validation errors
         if matches!(args.command, Command::List { .. }) {
-            match config::load_config_lenient(args.config.clone()) {
+            match config::load_app_config_lenient(args.config.clone()) {
                 Ok(config) => config,
                 Err(_) => {
                     // If lenient loading fails, fall back to strict loading
-                    match VmConfig::load(args.config) {
+                    match AppConfig::load(args.config) {
                         Ok(config) => config,
                         Err(e) => {
                             let error_str = e.to_string();
@@ -120,7 +120,7 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
                 }
             }
         } else {
-            match VmConfig::load(args.config) {
+            match AppConfig::load(args.config) {
                 Ok(config) => config,
                 Err(e) => {
                     let error_str = e.to_string();
@@ -144,6 +144,10 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             }
         }
     };
+
+    // Extract VM config and global config
+    let config = app_config.vm;
+    let global_config = app_config.global;
 
     debug!(
         "Loaded configuration: provider={:?}, project_name={:?}",
@@ -178,7 +182,14 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
     debug!("Executing command: {:?}", args.command);
     let result = match args.command {
         Command::Create { force, instance } => {
-            vm_ops::handle_create(provider, config.clone(), force, instance).await
+            vm_ops::handle_create(
+                provider,
+                config.clone(),
+                global_config.clone(),
+                force,
+                instance,
+            )
+            .await
         }
         Command::Start { container } => {
             vm_ops::handle_start(provider, container.as_deref(), config.clone())

@@ -9,7 +9,7 @@ use crate::error::{VmError, VmResult};
 use serde_yaml_ng as serde_yaml;
 use vm_common::{vm_println, vm_success, vm_warning};
 use vm_config::ports::{PortRange, PortRegistry};
-use vm_config::{config::VmConfig, ConfigOps};
+use vm_config::{config::VmConfig, AppConfig, ConfigOps, GlobalConfig};
 
 /// Handle configuration validation command
 pub fn handle_validate(config_file: Option<PathBuf>) -> VmResult<()> {
@@ -113,6 +113,38 @@ pub fn handle_config_command(command: &ConfigSubcommand, dry_run: bool) -> VmRes
         },
         ConfigSubcommand::Ports { fix } => handle_ports_command(*fix),
     }
+}
+
+/// Load app configuration with lenient validation for commands that don't require full project setup
+pub fn load_app_config_lenient(file: Option<PathBuf>) -> VmResult<AppConfig> {
+    // Load global config (always use defaults if not found)
+    let global_config = GlobalConfig::load().unwrap_or_default();
+
+    // Load VM config leniently
+    let vm_config = load_config_lenient(file)?;
+
+    // Apply backward compatibility
+    let mut runtime_global = global_config.clone();
+    let mut vm_config_mut = vm_config.clone();
+
+    // Check for deprecated fields
+    if vm_config_mut.docker_registry {
+        runtime_global.services.docker_registry.enabled = true;
+        vm_config_mut.docker_registry = false;
+    }
+    if vm_config_mut.auth_proxy {
+        runtime_global.services.auth_proxy.enabled = true;
+        vm_config_mut.auth_proxy = false;
+    }
+    if vm_config_mut.package_registry {
+        runtime_global.services.package_registry.enabled = true;
+        vm_config_mut.package_registry = false;
+    }
+
+    Ok(AppConfig {
+        global: runtime_global,
+        vm: vm_config_mut,
+    })
 }
 
 /// Load configuration with lenient validation for commands that don't require full project setup

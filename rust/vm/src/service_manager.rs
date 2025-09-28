@@ -26,7 +26,7 @@ use tokio::time::sleep;
 use tracing::{debug, info, warn};
 
 use vm_common::{vm_println, vm_success, vm_warning};
-use vm_config::config::VmConfig;
+use vm_config::GlobalConfig;
 
 /// Represents the current state of a managed service
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -71,20 +71,24 @@ impl ServiceManager {
         Ok(manager)
     }
 
-    /// Register services for a VM based on its configuration
-    pub async fn register_vm_services(&self, vm_name: &str, config: &VmConfig) -> Result<()> {
+    /// Register services for a VM based on global configuration
+    pub async fn register_vm_services(
+        &self,
+        vm_name: &str,
+        global_config: &GlobalConfig,
+    ) -> Result<()> {
         info!("Registering services for VM: {}", vm_name);
 
         let mut services_to_start = Vec::new();
 
-        // Check which services are enabled in config
-        if config.auth_proxy {
+        // Check which services are enabled in global config
+        if global_config.services.auth_proxy.enabled {
             services_to_start.push("auth_proxy");
         }
-        if config.docker_registry {
+        if global_config.services.docker_registry.enabled {
             services_to_start.push("docker_registry");
         }
-        if config.package_registry {
+        if global_config.services.package_registry.enabled {
             services_to_start.push("package_registry");
         }
 
@@ -318,9 +322,9 @@ impl ServiceManager {
     /// Get the default port for a service
     fn get_service_port(&self, service_name: &str) -> u16 {
         match service_name {
-            "auth_proxy" => 3090,
-            "docker_registry" => 5000,
-            "package_registry" => 3080,
+            "auth_proxy" => 3090, // TODO: Get from global_config.services.auth_proxy.port
+            "docker_registry" => 5000, // TODO: Get from global_config.services.docker_registry.port
+            "package_registry" => 3080, // TODO: Get from global_config.services.package_registry.port
             _ => 0,
         }
     }

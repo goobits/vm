@@ -12,13 +12,14 @@ use tracing::{debug, info, info_span, warn};
 use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
 use vm_common::vm_error;
-use vm_config::config::VmConfig;
+use vm_config::{config::VmConfig, GlobalConfig};
 use vm_provider::{InstanceInfo, Provider};
 
 /// Handle VM creation
 pub async fn handle_create(
     provider: Box<dyn Provider>,
     config: VmConfig,
+    global_config: GlobalConfig,
     force: bool,
     instance: Option<String>,
 ) -> VmResult<()> {
@@ -141,7 +142,7 @@ pub async fn handle_create(
 
             println!("\n🔧 Configuring services...");
             if let Err(e) = get_service_manager()
-                .register_vm_services(&vm_instance_name, &config)
+                .register_vm_services(&vm_instance_name, &global_config)
                 .await
             {
                 warn!("Failed to register VM services: {}", e);
