@@ -64,12 +64,12 @@ impl AppConfig {
         let global = GlobalConfig::load().context("Failed to load global configuration")?;
 
         // Load VM configuration with all merging logic
-        let mut vm = config::VmConfig::load(config_path)?;
+        let vm = config::VmConfig::load(config_path.clone())?;
 
         // Handle backward compatibility: if deprecated fields are in vm.yaml,
         // warn and apply them to the runtime global config (but don't save)
         let mut runtime_global = global.clone();
-        Self::handle_deprecated_fields(&mut vm, &mut runtime_global)?;
+        Self::handle_deprecated_fields_raw(config_path, &mut runtime_global)?;
 
         Ok(Self {
             global: runtime_global,
@@ -78,40 +78,59 @@ impl AppConfig {
     }
 
     /// Handle deprecated fields for backward compatibility
-    fn handle_deprecated_fields(
-        vm: &mut config::VmConfig,
+    pub fn handle_deprecated_fields_raw(
+        vm_yaml_path: Option<PathBuf>,
         global: &mut GlobalConfig,
     ) -> Result<()> {
+        use std::collections::HashMap;
         use tracing::warn;
 
-        // Check for deprecated docker_registry field
-        if vm.docker_registry {
+        // Read the raw YAML to check for deprecated fields
+        let yaml_path = match vm_yaml_path {
+            Some(path) => path,
+            None => {
+                // Try to find vm.yaml in current directory
+                let current_dir =
+                    std::env::current_dir().context("Failed to get current directory")?;
+                current_dir.join("vm.yaml")
+            }
+        };
+
+        if !yaml_path.exists() {
+            return Ok(()); // No file, no deprecated fields
+        }
+
+        let yaml_content = std::fs::read_to_string(&yaml_path)
+            .with_context(|| format!("Failed to read {:?}", yaml_path))?;
+
+        // Parse as raw YAML to check for deprecated fields
+        let raw_yaml: HashMap<String, serde_yaml_ng::Value> =
+            serde_yaml_ng::from_str(&yaml_content)
+                .context("Failed to parse YAML for deprecated field detection")?;
+
+        // Check for deprecated fields and warn
+        if let Some(serde_yaml_ng::Value::Bool(true)) = raw_yaml.get("docker_registry") {
             warn!(
                 "The 'docker_registry' field in vm.yaml is deprecated. \
                 Please move it to ~/.vm/config.yaml under 'services.docker_registry.enabled'"
             );
             global.services.docker_registry.enabled = true;
-            vm.docker_registry = false;
         }
 
-        // Check for deprecated auth_proxy field
-        if vm.auth_proxy {
+        if let Some(serde_yaml_ng::Value::Bool(true)) = raw_yaml.get("auth_proxy") {
             warn!(
                 "The 'auth_proxy' field in vm.yaml is deprecated. \
                 Please move it to ~/.vm/config.yaml under 'services.auth_proxy.enabled'"
             );
             global.services.auth_proxy.enabled = true;
-            vm.auth_proxy = false;
         }
 
-        // Check for deprecated package_registry field
-        if vm.package_registry {
+        if let Some(serde_yaml_ng::Value::Bool(true)) = raw_yaml.get("package_registry") {
             warn!(
                 "The 'package_registry' field in vm.yaml is deprecated. \
                 Please move it to ~/.vm/config.yaml under 'services.package_registry.enabled'"
             );
             global.services.package_registry.enabled = true;
-            vm.package_registry = false;
         }
 
         Ok(())

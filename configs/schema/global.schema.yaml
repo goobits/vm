@@ -1,0 +1,214 @@
+# JSON Schema for global VM configuration file (~/.vm/config.yaml)
+# This file defines the structure and validation rules for the global configuration
+
+$schema: "http://json-schema.org/draft-07/schema#"
+$id: "https://vm-tool.org/schemas/global.schema.yaml"
+title: "VM Tool Global Configuration"
+description: "Global configuration for VM tool containing services and defaults that apply to all VMs"
+type: object
+
+properties:
+  $schema:
+    type: string
+    description: "JSON Schema reference for IDE support"
+
+  services:
+    type: object
+    description: "Global services configuration"
+    properties:
+      docker_registry:
+        $ref: "#/definitions/DockerRegistrySettings"
+      auth_proxy:
+        $ref: "#/definitions/AuthProxySettings"
+      package_registry:
+        $ref: "#/definitions/PackageRegistrySettings"
+    additionalProperties: false
+
+  defaults:
+    type: object
+    description: "Default values for VM configurations"
+    properties:
+      provider:
+        type: string
+        enum: ["docker", "vagrant", "tart"]
+        description: "Default provider when not specified in vm.yaml"
+      terminal:
+        $ref: "#/definitions/TerminalConfig"
+      memory:
+        type: integer
+        minimum: 512
+        maximum: 131072
+        description: "Default memory allocation in MB"
+      cpus:
+        type: integer
+        minimum: 1
+        maximum: 64
+        description: "Default CPU count"
+      user:
+        type: string
+        description: "Default user in VMs"
+    additionalProperties: false
+
+  features:
+    type: object
+    description: "Global feature flags"
+    properties:
+      auto_detect_presets:
+        type: boolean
+        default: true
+        description: "Enable automatic preset detection"
+      auto_port_allocation:
+        type: boolean
+        default: true
+        description: "Enable automatic port allocation"
+      telemetry:
+        type: boolean
+        default: false
+        description: "Enable telemetry (anonymous usage statistics)"
+      update_notifications:
+        type: boolean
+        default: true
+        description: "Enable update notifications"
+    additionalProperties: false
+
+additionalProperties: true
+
+definitions:
+  DockerRegistrySettings:
+    type: object
+    description: "Docker registry cache configuration"
+    properties:
+      enabled:
+        type: boolean
+        default: false
+        description: "Whether the registry is enabled"
+      port:
+        type: integer
+        minimum: 1024
+        maximum: 65535
+        default: 5000
+        description: "Port for the registry"
+      max_cache_size_gb:
+        type: integer
+        minimum: 1
+        maximum: 1024
+        default: 5
+        description: "Maximum cache size in GB"
+      max_image_age_days:
+        type: integer
+        minimum: 1
+        maximum: 365
+        default: 30
+        description: "Maximum age of cached images in days"
+      cleanup_interval_hours:
+        type: integer
+        minimum: 1
+        maximum: 168
+        default: 1
+        description: "Cleanup interval in hours"
+      enable_lru_eviction:
+        type: boolean
+        default: true
+        description: "Enable LRU eviction when cache is full"
+      enable_auto_restart:
+        type: boolean
+        default: true
+        description: "Auto-restart on failure"
+      health_check_interval_minutes:
+        type: integer
+        minimum: 1
+        maximum: 1440
+        default: 15
+        description: "Health check interval in minutes"
+    additionalProperties: false
+
+  AuthProxySettings:
+    type: object
+    description: "Authentication proxy configuration"
+    properties:
+      enabled:
+        type: boolean
+        default: false
+        description: "Whether the auth proxy is enabled"
+      port:
+        type: integer
+        minimum: 1024
+        maximum: 65535
+        default: 3090
+        description: "Port for the auth proxy"
+      token_expiry_hours:
+        type: integer
+        minimum: 1
+        maximum: 8760
+        default: 24
+        description: "Token expiry in hours"
+    additionalProperties: false
+
+  PackageRegistrySettings:
+    type: object
+    description: "Package registry configuration"
+    properties:
+      enabled:
+        type: boolean
+        default: false
+        description: "Whether the package registry is enabled"
+      port:
+        type: integer
+        minimum: 1024
+        maximum: 65535
+        default: 3080
+        description: "Port for the package registry"
+      max_storage_gb:
+        type: integer
+        minimum: 1
+        maximum: 1024
+        default: 10
+        description: "Maximum storage size in GB"
+    additionalProperties: false
+
+  TerminalConfig:
+    type: object
+    description: "Terminal configuration"
+    properties:
+      theme:
+        type: string
+        description: "Terminal theme"
+      shell:
+        type: string
+        description: "Default shell"
+    additionalProperties: false
+
+# Examples
+examples:
+  - # Minimal configuration
+    services:
+      docker_registry:
+        enabled: true
+
+  - # Full configuration
+    $schema: "https://vm-tool.org/schemas/global.schema.yaml"
+    services:
+      docker_registry:
+        enabled: true
+        max_cache_size_gb: 20
+        max_image_age_days: 90
+        cleanup_interval_hours: 4
+      auth_proxy:
+        enabled: true
+        port: 3090
+        token_expiry_hours: 48
+      package_registry:
+        enabled: true
+        port: 3080
+        max_storage_gb: 15
+    defaults:
+      provider: docker
+      memory: 4096
+      cpus: 2
+      terminal:
+        theme: dracula
+    features:
+      auto_detect_presets: true
+      auto_port_allocation: true
+      telemetry: false
+      update_notifications: true

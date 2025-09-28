@@ -260,21 +260,8 @@ pub fn handle_start(
                 println!("  Services:   {}", services.join(", "));
             }
 
-            // Start package registry if enabled
-            if config.package_registry {
-                println!("\n📦 Starting package registry...");
-                match start_package_registry_background() {
-                    Ok(()) => {
-                        println!(
-                            "  Status:     🟢 Package registry running on http://localhost:3080"
-                        );
-                    }
-                    Err(e) => {
-                        warn!("Failed to start package registry: {}", e);
-                        println!("  Status:     ⚠️  Package registry failed to start: {}", e);
-                    }
-                }
-            }
+            // Global services (package registry, auth proxy, docker registry) are now
+            // managed automatically by the ServiceManager during VM registration
 
             println!("\n💡 Connect with: vm ssh");
 
@@ -1155,35 +1142,30 @@ pub fn handle_status(
                 }
             }
 
-            // Show additional services status if enabled
+            // Show global services status (now managed globally)
             let mut additional_services = Vec::new();
 
-            if config.package_registry {
-                let status = if check_registry_status_sync() {
-                    ("Package Registry", "🟢", "http://localhost:3080")
-                } else {
-                    ("Package Registry", "🔴", "Not running")
-                };
-                additional_services.push(status);
-            }
+            // Check global services that might be running
+            let package_status = if check_registry_status_sync() {
+                ("Package Registry", "🟢", "http://localhost:3080")
+            } else {
+                ("Package Registry", "🔴", "Not running")
+            };
+            additional_services.push(package_status);
 
-            if config.auth_proxy {
-                let status = if check_auth_proxy_status_sync() {
-                    ("Auth Proxy", "🟢", "http://localhost:3090")
-                } else {
-                    ("Auth Proxy", "🔴", "Not running")
-                };
-                additional_services.push(status);
-            }
+            let auth_status = if check_auth_proxy_status_sync() {
+                ("Auth Proxy", "🟢", "http://localhost:3090")
+            } else {
+                ("Auth Proxy", "🔴", "Not running")
+            };
+            additional_services.push(auth_status);
 
-            if config.docker_registry {
-                let status = if check_docker_registry_status_sync() {
-                    ("Docker Registry", "🟢", "http://localhost:5000")
-                } else {
-                    ("Docker Registry", "🔴", "Not running")
-                };
-                additional_services.push(status);
-            }
+            let docker_registry_status = if check_docker_registry_status_sync() {
+                ("Docker Registry", "🟢", "http://localhost:5000")
+            } else {
+                ("Docker Registry", "🔴", "Not running")
+            };
+            additional_services.push(docker_registry_status);
 
             if !additional_services.is_empty() {
                 println!("\n  Additional Services:");
@@ -1285,6 +1267,7 @@ pub fn handle_logs(
 }
 
 /// Start package registry server in background
+#[allow(dead_code)] // TODO: Remove this function after ServiceManager integration is complete
 fn start_package_registry_background() -> VmResult<()> {
     use std::process::Command;
     use std::thread;

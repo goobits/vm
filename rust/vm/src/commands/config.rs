@@ -121,29 +121,15 @@ pub fn load_app_config_lenient(file: Option<PathBuf>) -> VmResult<AppConfig> {
     let global_config = GlobalConfig::load().unwrap_or_default();
 
     // Load VM config leniently
-    let vm_config = load_config_lenient(file)?;
+    let vm_config = load_config_lenient(file.clone())?;
 
-    // Apply backward compatibility
+    // Apply backward compatibility using the same logic as AppConfig::load
     let mut runtime_global = global_config.clone();
-    let mut vm_config_mut = vm_config.clone();
-
-    // Check for deprecated fields
-    if vm_config_mut.docker_registry {
-        runtime_global.services.docker_registry.enabled = true;
-        vm_config_mut.docker_registry = false;
-    }
-    if vm_config_mut.auth_proxy {
-        runtime_global.services.auth_proxy.enabled = true;
-        vm_config_mut.auth_proxy = false;
-    }
-    if vm_config_mut.package_registry {
-        runtime_global.services.package_registry.enabled = true;
-        vm_config_mut.package_registry = false;
-    }
+    AppConfig::handle_deprecated_fields_raw(file, &mut runtime_global)?;
 
     Ok(AppConfig {
         global: runtime_global,
-        vm: vm_config_mut,
+        vm: vm_config,
     })
 }
 

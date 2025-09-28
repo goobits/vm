@@ -108,20 +108,10 @@ impl ServiceRegistry {
 
     /// Get service names that should be enabled based on VM configuration
     #[allow(dead_code)]
-    pub fn get_enabled_services(&self, config: &vm_config::config::VmConfig) -> Vec<String> {
-        let mut enabled = Vec::new();
-
-        if config.auth_proxy {
-            enabled.push("auth_proxy".to_string());
-        }
-        if config.docker_registry {
-            enabled.push("docker_registry".to_string());
-        }
-        if config.package_registry {
-            enabled.push("package_registry".to_string());
-        }
-
-        enabled
+    pub fn get_enabled_services(&self, _config: &vm_config::config::VmConfig) -> Vec<String> {
+        // Global services (auth_proxy, docker_registry, package_registry) are now
+        // configured in GlobalConfig and are not checked here.
+        Vec::new()
     }
 
     /// Check if a service is defined in the registry
@@ -231,29 +221,20 @@ mod tests {
     fn test_enabled_services_from_config() {
         let registry = ServiceRegistry::new();
 
-        // Test with all services enabled
+        // Global services are no longer configured per-VM, so this test
+        // now verifies that no services are returned for VM-specific config
+        let config = VmConfig::default();
+
+        let enabled = registry.get_enabled_services(&config);
+        assert_eq!(enabled.len(), 0); // No VM-specific global services
+
+        // Test with default config (no longer uses deprecated fields)
         let config = VmConfig {
-            auth_proxy: true,
-            docker_registry: true,
-            package_registry: true,
             ..Default::default()
         };
 
         let enabled = registry.get_enabled_services(&config);
-        assert_eq!(enabled.len(), 3);
-        assert!(enabled.contains(&"auth_proxy".to_string()));
-        assert!(enabled.contains(&"docker_registry".to_string()));
-        assert!(enabled.contains(&"package_registry".to_string()));
-
-        // Test with only auth proxy enabled
-        let config = VmConfig {
-            auth_proxy: true,
-            ..Default::default()
-        };
-
-        let enabled = registry.get_enabled_services(&config);
-        assert_eq!(enabled.len(), 1);
-        assert!(enabled.contains(&"auth_proxy".to_string()));
+        assert_eq!(enabled.len(), 0); // No global services from VM config
     }
 
     #[test]

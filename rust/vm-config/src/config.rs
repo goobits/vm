@@ -113,15 +113,8 @@ pub struct VmConfig {
     #[serde(default, skip_serializing_if = "is_false")]
     pub gemini_sync: bool,
 
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub package_registry: bool,
-
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub auth_proxy: bool,
-
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub docker_registry: bool,
-
+    // Deprecated global service fields (handled during deserialization)
+    // These fields are no longer part of VmConfig but are detected for migration
     #[serde(default, skip_serializing_if = "is_false")]
     pub persist_databases: bool,
 
