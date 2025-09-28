@@ -874,6 +874,25 @@ impl<'a> LifecycleOperations<'a> {
             return Err(anyhow::anyhow!("No such container: {}", container_name));
         }
 
+        // Check if container is actually running before trying to exec
+        let container_running = duct::cmd(
+            "docker",
+            &["inspect", "-f", "{{.State.Running}}", &container_name],
+        )
+        .stderr_null()
+        .read()
+        .map(|output| output.trim() == "true")
+        .unwrap_or(false);
+
+        if !container_running {
+            // Return error that will trigger the start prompt
+            return Err(anyhow::anyhow!(
+                "Container {} is not running",
+                container_name
+            ));
+        }
+
+        // Container is running, proceed with exec
         let result = duct::cmd(
             "docker",
             &[
