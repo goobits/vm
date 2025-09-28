@@ -213,25 +213,6 @@ pub enum AuthSubcommand {
 }
 
 #[derive(Debug, Clone, Subcommand)]
-pub enum RegistrySubcommand {
-    /// Show registry status and storage usage
-    Status,
-    /// Run garbage collection
-    Gc {
-        /// Force delete untagged images
-        #[arg(long, short = 'f')]
-        force: bool,
-        /// Show what would be deleted without doing it
-        #[arg(long)]
-        dry_run: bool,
-    },
-    /// Show registry configuration
-    Config,
-    /// List cached images
-    List,
-}
-
-#[derive(Debug, Clone, Subcommand)]
 pub enum Command {
     /// Initialize a new VM configuration file
     Init {
@@ -368,12 +349,6 @@ pub enum Command {
     Auth {
         #[command(subcommand)]
         command: AuthSubcommand,
-    },
-
-    /// Docker registry management
-    Registry {
-        #[command(subcommand)]
-        command: RegistrySubcommand,
     },
 
     /// Get workspace directory

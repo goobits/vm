@@ -31,19 +31,23 @@
 //! # }
 //! ```
 
-pub mod client_ops;
+pub mod auto_manager;
 pub mod config;
+pub mod docker_config;
 pub mod server;
 pub mod types;
 
 // Re-export main types
-pub use types::{ContainerInfo, RegistryConfig, RegistryStatus};
+pub use types::{AutoConfig, ContainerInfo, RegistryConfig, RegistryStatus};
 
 // Re-export server functions
 pub use server::{check_registry_running, start_registry, stop_registry};
 
-// Re-export client operations for CLI
-pub use client_ops::{garbage_collect, list_cached_images, show_config, status_registry};
+// Re-export auto-manager functions
+pub use auto_manager::{start_auto_manager, start_auto_manager_with_config};
+
+// Re-export docker configuration functions
+pub use docker_config::{configure_docker_daemon, is_docker_configured, unconfigure_docker_daemon};
 
 /// Default port for the Docker registry proxy
 pub const DEFAULT_REGISTRY_PORT: u16 = 5000;

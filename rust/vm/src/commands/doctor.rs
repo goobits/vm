@@ -180,17 +180,30 @@ async fn check_background_services() -> bool {
         }
     }
 
-    // Check Docker registry service
+    // Check Docker registry service (silent unless there are active VMs)
     match check_service_health("http://127.0.0.1:5000/v2/").await {
         Ok(true) => vm_success!("Docker registry service is healthy"),
         Ok(false) => {
-            vm_error!("Docker registry service is not responding");
-            vm_println!("   💡 Start with: vm registry start");
-            services_ok = false;
+            // Only warn if there are active VMs that would benefit from the registry
+            if has_active_vms().await {
+                vm_error!("Docker registry service is not responding (needed for active VMs)");
+                vm_println!("   💡 Registry helps cache Docker images for faster VM operations");
+                services_ok = false;
+            } else {
+                // Silent check - registry not needed without active VMs
+                vm_println!(
+                    "   ℹ️  Docker registry service not running (not needed without active VMs)"
+                );
+            }
         }
         Err(e) => {
-            vm_error!("Failed to check Docker registry: {}", e);
-            services_ok = false;
+            // Only treat as error if there are active VMs
+            if has_active_vms().await {
+                vm_error!("Failed to check Docker registry: {}", e);
+                services_ok = false;
+            } else {
+                vm_println!("   ℹ️  Docker registry check skipped (not needed without active VMs)");
+            }
         }
     }
 
@@ -227,5 +240,23 @@ async fn check_service_health(url: &str) -> Result<bool, Box<dyn std::error::Err
     match client.get(url).send().await {
         Ok(response) => Ok(response.status().is_success()),
         Err(_) => Ok(false), // Service not responding
+    }
+}
+
+/// Check if there are any active VMs across all providers
+async fn has_active_vms() -> bool {
+    // Try to check for running Docker containers that look like VMs
+    match Command::new("docker")
+        .args(["ps", "--format", "{{.Names}}", "--filter", "status=running"])
+        .output()
+    {
+        Ok(output) if output.status.success() => {
+            let output_str = String::from_utf8_lossy(&output.stdout);
+            // Look for common VM container patterns
+            output_str
+                .lines()
+                .any(|line| line.contains("vm-") || line.contains("dev") || line.contains("temp"))
+        }
+        _ => false, // If we can't check, assume no active VMs
     }
 }

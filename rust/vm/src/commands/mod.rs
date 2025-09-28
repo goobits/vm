@@ -13,7 +13,6 @@ pub mod auth;
 pub mod config;
 pub mod doctor;
 pub mod pkg;
-pub mod registry;
 pub mod temp;
 pub mod vm_ops;
 
@@ -52,10 +51,6 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         Command::Auth { command } => {
             debug!("Calling auth proxy operations");
             auth::handle_auth_command(command, args.config).await
-        }
-        Command::Registry { command } => {
-            debug!("Calling Docker registry operations");
-            registry::handle_registry_command(command, args.config).await
         }
         _ => {
             // Provider-based commands

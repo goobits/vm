@@ -170,3 +170,33 @@ impl DaemonConfig {
         }
     }
 }
+
+/// Auto-management configuration for the Docker registry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutoConfig {
+    /// Maximum cache size in GB before cleanup
+    pub max_cache_size_gb: u64,
+    /// Maximum age for cached images in days
+    pub max_image_age_days: u32,
+    /// Cleanup interval in hours
+    pub cleanup_interval_hours: u32,
+    /// Enable LRU eviction when approaching size limit
+    pub enable_lru_eviction: bool,
+    /// Enable auto-restart on health check failures
+    pub enable_auto_restart: bool,
+    /// Health check interval in minutes
+    pub health_check_interval_minutes: u32,
+}
+
+impl Default for AutoConfig {
+    fn default() -> Self {
+        Self {
+            max_cache_size_gb: 5,
+            max_image_age_days: 30,
+            cleanup_interval_hours: 1,
+            enable_lru_eviction: true,
+            enable_auto_restart: true,
+            health_check_interval_minutes: 15,
+        }
+    }
+}

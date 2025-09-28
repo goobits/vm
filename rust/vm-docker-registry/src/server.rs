@@ -1,13 +1,15 @@
 //! Docker registry server management
 
+use crate::auto_manager::start_auto_manager;
 use crate::config::{get_registry_data_dir, write_config_files};
+use crate::docker_config::configure_docker_daemon;
 use crate::types::{ContainerStatus, RegistryConfig, RegistryStatus};
 use anyhow::{anyhow, Context, Result};
 use duct::cmd;
 use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
-use tracing::{debug, info};
+use tracing::{debug, warn};
 
 /// Start the Docker registry service
 pub async fn start_registry() -> Result<()> {
@@ -16,14 +18,14 @@ pub async fn start_registry() -> Result<()> {
 
 /// Start the Docker registry service with custom configuration
 pub async fn start_registry_with_config(config: &RegistryConfig) -> Result<()> {
-    info!("Starting Docker registry service...");
+    debug!("Starting Docker registry service...");
 
     // Check if Docker is available
     ensure_docker_available()?;
 
     // Check if already running
     if check_registry_running(config.registry_port).await {
-        info!(
+        debug!(
             "Docker registry is already running on port {}",
             config.registry_port
         );
@@ -36,13 +38,26 @@ pub async fn start_registry_with_config(config: &RegistryConfig) -> Result<()> {
     // Write configuration files
     write_config_files(config, &data_dir).context("Failed to write configuration files")?;
 
-    // Start containers using docker-compose
-    start_containers(&data_dir)?;
+    // Start containers using docker-compose with retry mechanism
+    start_containers_with_retry(&data_dir).await?;
 
     // Wait for services to be ready
     wait_for_registry_ready(config.registry_port, 30).await?;
 
-    info!(
+    // Configure Docker daemon to use local registry as mirror
+    let registry_url = format!("http://{}:{}", config.host, config.registry_port);
+    if let Err(e) = configure_docker_daemon(&registry_url).await {
+        warn!("Failed to configure Docker daemon automatically: {}", e);
+        // Don't fail startup, just warn
+    }
+
+    // Start auto-manager background task
+    if let Err(e) = start_auto_manager() {
+        warn!("Failed to start auto-manager: {}", e);
+        // Don't fail startup, auto-management is optional
+    }
+
+    debug!(
         "Docker registry started successfully on port {}",
         config.registry_port
     );
@@ -51,12 +66,12 @@ pub async fn start_registry_with_config(config: &RegistryConfig) -> Result<()> {
 
 /// Stop the Docker registry service
 pub async fn stop_registry() -> Result<()> {
-    info!("Stopping Docker registry service...");
+    debug!("Stopping Docker registry service...");
 
     // Stop and remove containers
     stop_containers()?;
 
-    info!("Docker registry stopped successfully");
+    debug!("Docker registry stopped successfully");
     Ok(())
 }
 
@@ -116,6 +131,36 @@ fn ensure_docker_available() -> Result<()> {
 
     debug!("Docker is available and running");
     Ok(())
+}
+
+/// Start the registry containers using docker-compose with retry mechanism
+async fn start_containers_with_retry(data_dir: &Path) -> Result<()> {
+    debug!("Starting registry containers...");
+
+    let max_retries = 2;
+    let mut last_error = None;
+
+    for attempt in 1..=max_retries {
+        match start_containers(data_dir) {
+            Ok(()) => {
+                debug!(
+                    "Registry containers started successfully on attempt {}",
+                    attempt
+                );
+                return Ok(());
+            }
+            Err(e) => {
+                last_error = Some(e);
+                if attempt < max_retries {
+                    debug!("Attempt {} failed, retrying in 2 seconds...", attempt);
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                }
+            }
+        }
+    }
+
+    Err(last_error
+        .unwrap_or_else(|| anyhow!("Failed to start containers after {} attempts", max_retries)))
 }
 
 /// Start the registry containers using docker-compose
@@ -366,16 +411,15 @@ fn parse_gc_output(output: &str) -> (u32, u32, u64) {
     (repositories, images, bytes)
 }
 
-/// Auto-start registry if needed for VM operations
+/// Auto-start registry if needed for VM operations (silent)
 pub async fn start_registry_if_needed() -> Result<()> {
     if check_registry_running(crate::DEFAULT_REGISTRY_PORT).await {
         debug!("Docker registry is already running");
         return Ok(());
     }
 
-    // For now, just start with default config
-    // In production, this could prompt the user or check preferences
-    info!("Docker registry not running, starting with default configuration...");
+    // Start silently with default config - no user prompts
+    debug!("Docker registry not running, starting with default configuration...");
     start_registry().await
 }
 
