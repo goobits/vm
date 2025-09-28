@@ -192,13 +192,31 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             .await
         }
         Command::Start { container } => {
-            vm_ops::handle_start(provider, container.as_deref(), config.clone())
+            vm_ops::handle_start(
+                provider,
+                container.as_deref(),
+                config.clone(),
+                global_config.clone(),
+            )
+            .await
         }
         Command::Stop { container } => {
-            vm_ops::handle_stop(provider, container.as_deref(), config.clone())
+            vm_ops::handle_stop(
+                provider,
+                container.as_deref(),
+                config.clone(),
+                global_config.clone(),
+            )
+            .await
         }
         Command::Restart { container } => {
-            vm_ops::handle_restart(provider, container.as_deref(), config.clone())
+            vm_ops::handle_restart(
+                provider,
+                container.as_deref(),
+                config.clone(),
+                global_config.clone(),
+            )
+            .await
         }
         Command::Provision { container } => {
             vm_ops::handle_provision(provider, container.as_deref(), config.clone())
@@ -228,6 +246,7 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
                 provider,
                 container.as_deref(),
                 config,
+                global_config.clone(),
                 &force,
                 &all,
                 provider_filter.as_deref(),

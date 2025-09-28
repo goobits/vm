@@ -133,7 +133,7 @@ pub async fn handle_create(
                 }
             }
 
-            // Register VM services and auto-start them
+            // Register VM services (VM is already created and started by provider.create())
             let vm_instance_name = if let Some(instance_name) = &instance {
                 format!("{}-{}", vm_name, instance_name)
             } else {
@@ -141,15 +141,7 @@ pub async fn handle_create(
             };
 
             println!("\n🔧 Configuring services...");
-            if let Err(e) = get_service_manager()
-                .register_vm_services(&vm_instance_name, &global_config)
-                .await
-            {
-                warn!("Failed to register VM services: {}", e);
-                println!("  Status:     ⚠️  Service configuration failed: {}", e);
-            } else {
-                println!("  Status:     ✅ Services configured successfully");
-            }
+            register_vm_services_helper(&vm_instance_name, &global_config).await?;
 
             println!("\n💡 Connect with: vm ssh");
             Ok(())
@@ -167,10 +159,11 @@ pub async fn handle_create(
 }
 
 /// Handle VM start
-pub fn handle_start(
+pub async fn handle_start(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     config: VmConfig,
+    global_config: GlobalConfig,
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "start");
     let _enter = span.enter();
@@ -260,8 +253,11 @@ pub fn handle_start(
                 println!("  Services:   {}", services.join(", "));
             }
 
-            // Global services (package registry, auth proxy, docker registry) are now
-            // managed automatically by the ServiceManager during VM registration
+            // Register VM services and auto-start them
+            let vm_instance_name = format!("{}-dev", vm_name);
+
+            println!("\n🔧 Configuring services...");
+            register_vm_services_helper(&vm_instance_name, &global_config).await?;
 
             println!("\n💡 Connect with: vm ssh");
 
@@ -280,10 +276,11 @@ pub fn handle_start(
 }
 
 /// Handle VM stop - graceful stop for current project or force kill specific container
-pub fn handle_stop(
+pub async fn handle_stop(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     config: VmConfig,
+    _global_config: GlobalConfig,
 ) -> VmResult<()> {
     match container {
         None => {
@@ -303,8 +300,14 @@ pub fn handle_stop(
 
             match provider.stop(None) {
                 Ok(()) => {
-                    println!("✅ Stopped successfully\n");
-                    println!("💡 Restart with: vm start");
+                    // Unregister VM services after successful stop
+                    let vm_instance_name = format!("{}-dev", vm_name);
+
+                    println!("✅ Stopped successfully");
+                    println!("\n🔧 Cleaning up services...");
+                    unregister_vm_services_helper(&vm_instance_name).await?;
+
+                    println!("\n💡 Restart with: vm start");
                     Ok(())
                 }
                 Err(e) => {
@@ -324,7 +327,10 @@ pub fn handle_stop(
 
             match provider.kill(Some(container_name)) {
                 Ok(()) => {
+                    // For force kill, still unregister services for cleanup
                     println!("✅ Container stopped");
+                    println!("\n🔧 Cleaning up services...");
+                    unregister_vm_services_helper(container_name).await?;
                     Ok(())
                 }
                 Err(e) => {
@@ -338,10 +344,11 @@ pub fn handle_stop(
 }
 
 /// Handle VM restart
-pub fn handle_restart(
+pub async fn handle_restart(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     config: VmConfig,
+    global_config: GlobalConfig,
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "restart");
     let _enter = span.enter();
@@ -355,21 +362,24 @@ pub fn handle_restart(
         .unwrap_or("vm-project");
 
     println!("🔄 Restarting '{}'...", vm_name);
-    println!("  ✓ Stopping container");
-    println!("  ✓ Starting container");
 
+    // Use provider.restart() for the actual VM restart, then handle services
     match provider.restart(container) {
         Ok(()) => {
-            println!("  ✓ Services ready\n");
-            println!("✅ Restarted successfully");
-            Ok(())
+            // After successful restart, register services
+            let vm_instance_name = format!("{}-dev", vm_name);
+            println!("\n🔧 Configuring services...");
+            register_vm_services_helper(&vm_instance_name, &global_config).await?;
         }
         Err(e) => {
             println!("\n❌ Failed to restart '{}'", vm_name);
             println!("   Error: {}", e);
-            Err(VmError::from(e))
+            return Err(VmError::from(e));
         }
     }
+
+    println!("✅ Restarted successfully");
+    Ok(())
 }
 
 /// Handle VM provisioning
@@ -617,6 +627,7 @@ pub async fn handle_destroy(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     config: VmConfig,
+    _global_config: GlobalConfig,
     force: bool,
 ) -> VmResult<()> {
     // Get VM name from config for confirmation prompt
@@ -686,16 +697,9 @@ pub async fn handle_destroy(
                     container_name.clone()
                 };
 
-                if let Err(e) = get_service_manager()
-                    .unregister_vm_services(&vm_instance_name)
-                    .await
-                {
-                    warn!("Failed to unregister VM services: {}", e);
-                    // Don't fail the destroy operation for service cleanup issues
-                    println!("  ⚠️  Service cleanup failed: {}", e);
-                } else {
-                    println!("  ✓ Services cleaned up");
-                }
+                println!("  ✓ Container destroyed");
+                println!("\n🔧 Cleaning up services...");
+                unregister_vm_services_helper(&vm_instance_name).await?;
 
                 println!("\n✅ VM destroyed");
                 Ok(())
@@ -720,10 +724,12 @@ pub async fn handle_destroy(
 }
 
 /// Enhanced destroy handler with cross-provider support
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_destroy_enhanced(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     config: VmConfig,
+    global_config: GlobalConfig,
     force: &bool,
     all: &bool,
     provider_filter: Option<&str>,
@@ -738,7 +744,7 @@ pub async fn handle_destroy_enhanced(
     }
 
     // Single instance destroy (existing behavior)
-    handle_destroy(provider, container, config, *force).await
+    handle_destroy(provider, container, config, global_config, *force).await
 }
 
 /// Handle destroying instances across providers
@@ -1324,4 +1330,31 @@ fn check_docker_registry_status_sync() -> bool {
         Duration::from_millis(1000),
     )
     .is_ok()
+}
+
+/// Helper function to register VM services
+async fn register_vm_services_helper(vm_name: &str, global_config: &GlobalConfig) -> VmResult<()> {
+    if let Err(e) = get_service_manager()
+        .register_vm_services(vm_name, global_config)
+        .await
+    {
+        warn!("Failed to register VM services: {}", e);
+        println!("  Status:     ⚠️  Service configuration failed: {}", e);
+        // Don't fail the operation if service registration fails
+    } else {
+        println!("  Status:     ✅ Services configured successfully");
+    }
+    Ok(())
+}
+
+/// Helper function to unregister VM services
+async fn unregister_vm_services_helper(vm_name: &str) -> VmResult<()> {
+    if let Err(e) = get_service_manager().unregister_vm_services(vm_name).await {
+        warn!("Failed to unregister VM services: {}", e);
+        println!("  Status:     ⚠️  Service cleanup failed: {}", e);
+        // Don't fail the operation if service cleanup fails
+    } else {
+        println!("  Status:     ✅ Services cleaned up successfully");
+    }
+    Ok(())
 }
