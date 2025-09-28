@@ -46,7 +46,7 @@ impl StateManager {
     pub fn new() -> Result<Self> {
         let state_dir = Self::default_state_dir()?;
         fs::create_dir_all(&state_dir)?;
-        let state_file = state_dir.join("temp-vm.state");
+        let state_file = vm_common::user_paths::temp_vms_state_path()?;
         let temp_file_registry = state_dir.join(".temp_files.registry");
         let lock_file = state_dir.join(".temp-vm.lock");
 

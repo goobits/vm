@@ -536,15 +536,15 @@ fn replace_placeholders_in_string(content: &str, port_range_str: &str) -> Result
 }
 
 fn get_global_config_path() -> PathBuf {
-    // Check for test environment override first
-    if let Ok(home) = std::env::var("HOME") {
-        return PathBuf::from(home)
-            .join(".config")
-            .join("vm")
-            .join("global.yaml");
-    }
-
-    user_paths::global_config_path().unwrap_or_else(|_| PathBuf::from(".config/vm/global.yaml"))
+    // Use unified path with automatic migration
+    user_paths::global_config_path().unwrap_or_else(|_| {
+        // Test environment fallback
+        if let Ok(home) = std::env::var("HOME") {
+            PathBuf::from(home).join(".vm").join("config.yaml")
+        } else {
+            PathBuf::from(".vm/config.yaml")
+        }
+    })
 }
 
 fn get_or_create_global_config_path() -> Result<PathBuf> {

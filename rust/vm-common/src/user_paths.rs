@@ -62,21 +62,126 @@ pub fn user_cache_dir() -> Result<PathBuf> {
 
 /// Get the global configuration path for the VM tool.
 ///
-/// Returns the path to the global configuration file:
-/// - Linux/macOS: `~/.config/vm/global.yaml`
-/// - Windows: `%APPDATA%\vm\global.yaml`
+/// Returns the path to the global configuration file with automatic migration:
+/// - New location: `~/.vm/config.yaml`
+/// - Old location: `~/.config/vm/global.yaml` (migrated automatically)
 #[must_use = "global configuration path should be used"]
 pub fn global_config_path() -> Result<PathBuf> {
-    Ok(user_config_dir()?.join("global.yaml"))
+    // Try new unified location first
+    let new_path = vm_state_dir()?.join("config.yaml");
+    if new_path.exists() {
+        return Ok(new_path);
+    }
+
+    // Auto-migrate if old location exists
+    let old_path = user_config_dir()?.join("global.yaml");
+    if old_path.exists() {
+        // Run migration system to handle this
+        if let Err(e) = crate::migrations::run_pending_migrations() {
+            tracing::warn!("Migration failed, using old path: {}", e);
+            return Ok(old_path);
+        }
+        // Check if migration succeeded
+        if new_path.exists() {
+            return Ok(new_path);
+        }
+    }
+
+    // Return new path as default (even if doesn't exist yet)
+    Ok(new_path)
 }
 
 /// Get the port registry path for the VM tool.
 ///
-/// Returns the path to the port registry file:
-/// - All platforms: `~/.vm/port-registry.json`
+/// Returns the path to the port registry file with automatic migration:
+/// - New location: `~/.vm/ports.json`
+/// - Old location: `~/.vm/port-registry.json` (migrated automatically)
 #[must_use = "port registry path should be used"]
 pub fn port_registry_path() -> Result<PathBuf> {
-    Ok(vm_state_dir()?.join("port-registry.json"))
+    // Try new unified location first
+    let new_path = vm_state_dir()?.join("ports.json");
+    if new_path.exists() {
+        return Ok(new_path);
+    }
+
+    // Auto-migrate if old location exists
+    let old_path = vm_state_dir()?.join("port-registry.json");
+    if old_path.exists() {
+        // Run migration system to handle this
+        if let Err(e) = crate::migrations::run_pending_migrations() {
+            tracing::warn!("Migration failed, using old path: {}", e);
+            return Ok(old_path);
+        }
+        // Check if migration succeeded
+        if new_path.exists() {
+            return Ok(new_path);
+        }
+    }
+
+    // Return new path as default (even if doesn't exist yet)
+    Ok(new_path)
+}
+
+/// Get the services state path for the VM tool.
+///
+/// Returns the path to the services state file with automatic migration:
+/// - New location: `~/.vm/services.json`
+/// - Old location: `~/.vm/service_state.json` (migrated automatically)
+#[must_use = "services state path should be used"]
+pub fn services_state_path() -> Result<PathBuf> {
+    // Try new unified location first
+    let new_path = vm_state_dir()?.join("services.json");
+    if new_path.exists() {
+        return Ok(new_path);
+    }
+
+    // Auto-migrate if old location exists
+    let old_path = vm_state_dir()?.join("service_state.json");
+    if old_path.exists() {
+        // Run migration system to handle this
+        if let Err(e) = crate::migrations::run_pending_migrations() {
+            tracing::warn!("Migration failed, using old path: {}", e);
+            return Ok(old_path);
+        }
+        // Check if migration succeeded
+        if new_path.exists() {
+            return Ok(new_path);
+        }
+    }
+
+    // Return new path as default (even if doesn't exist yet)
+    Ok(new_path)
+}
+
+/// Get the temp VMs state path for the VM tool.
+///
+/// Returns the path to the temp VMs state file with automatic migration:
+/// - New location: `~/.vm/temp-vms.json`
+/// - Old location: `~/.vm/temp-vm.state` (migrated automatically)
+#[must_use = "temp VMs state path should be used"]
+pub fn temp_vms_state_path() -> Result<PathBuf> {
+    // Try new unified location first
+    let new_path = vm_state_dir()?.join("temp-vms.json");
+    if new_path.exists() {
+        return Ok(new_path);
+    }
+
+    // Auto-migrate if old location exists
+    let old_path = vm_state_dir()?.join("temp-vm.state");
+    if old_path.exists() {
+        // Run migration system to handle this
+        if let Err(e) = crate::migrations::run_pending_migrations() {
+            tracing::warn!("Migration failed, using old path: {}", e);
+            return Ok(old_path);
+        }
+        // Check if migration succeeded
+        if new_path.exists() {
+            return Ok(new_path);
+        }
+    }
+
+    // Return new path as default (even if doesn't exist yet)
+    Ok(new_path)
 }
 
 /// Get the user's home directory.

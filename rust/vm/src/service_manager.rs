@@ -55,8 +55,7 @@ pub struct ServiceManager {
 impl ServiceManager {
     /// Create a new ServiceManager instance
     pub fn new() -> Result<Self> {
-        let vm_tool_dir = vm_common::user_paths::vm_state_dir()?;
-        let state_file = vm_tool_dir.join("service_state.json");
+        let state_file = vm_common::user_paths::services_state_path()?;
 
         let manager = Self {
             state: Arc::new(Mutex::new(HashMap::new())),

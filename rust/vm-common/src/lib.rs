@@ -9,6 +9,7 @@ pub mod error_messages;
 pub mod error_traits;
 pub mod errors;
 pub mod file_system;
+pub mod migrations;
 pub mod output_macros;
 pub mod platform;
 pub mod security;
