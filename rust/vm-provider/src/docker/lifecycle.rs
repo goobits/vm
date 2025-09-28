@@ -842,11 +842,12 @@ impl<'a> LifecycleOperations<'a> {
         let container_name = self.resolve_target_container(container)?;
 
         // Check if container is running before showing connection details
-        // Use a quick docker inspect to check status
+        // Use a quick docker inspect to check status (suppress errors)
         let status_check = duct::cmd(
             "docker",
             &["inspect", "--format", "{{.State.Running}}", &container_name],
         )
+        .stderr_null()
         .read();
 
         let is_running = status_check.is_ok_and(|output| output.trim() == "true");
@@ -858,6 +859,18 @@ impl<'a> LifecycleOperations<'a> {
             println!("  Path:  {}", target_dir);
             println!("  Shell: {}", shell);
             println!("\n💡 Exit with: exit or Ctrl-D\n");
+        }
+
+        // First check if container exists to provide better error messages
+        let container_exists = duct::cmd("docker", &["inspect", &container_name])
+            .stdout_null()
+            .stderr_null()
+            .run()
+            .is_ok();
+
+        if !container_exists {
+            // Return error without printing raw Docker messages
+            return Err(anyhow::anyhow!("No such container: {}", container_name));
         }
 
         let result = duct::cmd(
