@@ -289,49 +289,53 @@ impl Provider for DockerProvider {
 
     fn list_instances(&self) -> Result<Vec<crate::InstanceInfo>> {
         use crate::common::instance::create_docker_instance_info;
+        use anyhow::Context;
 
-        // Parse docker ps output to get instance info including creation time and uptime
+        // Use label-based filtering to find all vm-managed containers
         let output = std::process::Command::new("docker")
             .args([
                 "ps",
                 "-a",
+                "--filter",
+                "label=com.vm.managed=true",
                 "--format",
-                "{{.Names}}\t{{.ID}}\t{{.Status}}\t{{.CreatedAt}}\t{{.RunningFor}}",
+                "{{.Names}}\t{{.ID}}\t{{.Status}}\t{{.CreatedAt}}\t{{.RunningFor}}\t{{.Label \"com.vm.project\"}}",
             ])
             .output()
-            .with_context(|| "Failed to list containers for instance information")?;
+            .with_context(|| "Failed to list containers with vm label")?;
 
         if !output.status.success() {
             return Err(anyhow::anyhow!(
-                "Docker container listing failed while gathering instance information"
+                "Docker container listing failed: {}",
+                String::from_utf8_lossy(&output.stderr)
             ));
         }
 
         let containers_output = String::from_utf8_lossy(&output.stdout);
         let mut instances = Vec::new();
-        let lifecycle = self.lifecycle_ops();
-        let project_name = lifecycle.project_name();
 
-        // Filter for project containers
         for line in containers_output.lines() {
+            if line.is_empty() {
+                continue;
+            }
             let parts: Vec<&str> = line.split('\t').collect();
             if parts.len() >= 5 {
+                // project label is optional
                 let name = parts[0];
                 let id = parts[1];
                 let status = parts[2];
                 let created_at = parts[3];
                 let running_for = parts[4];
+                let project = parts.get(5).map(|s| s.to_string());
 
-                // Only include containers that belong to this project
-                if name.starts_with(&format!("{}-", project_name)) || name == project_name {
-                    instances.push(create_docker_instance_info(
-                        name,
-                        id,
-                        status,
-                        Some(created_at),
-                        Some(running_for),
-                    ));
-                }
+                instances.push(create_docker_instance_info(
+                    name,
+                    id,
+                    status,
+                    Some(created_at),
+                    Some(running_for),
+                    project,
+                ));
             }
         }
 

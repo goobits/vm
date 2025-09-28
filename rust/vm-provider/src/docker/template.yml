@@ -2,8 +2,8 @@
 # It will be rendered by the vm-provider crate.
 
 services:
-  {{ config.project.name | default(value="vm-project") }}-dev:
-    container_name: {{ config.project.name | default(value="vm-project") }}-dev
+  {{ project_name }}-dev:
+    container_name: {{ project_name }}-dev
     build:
       context: {{ build_context_dir }}
       dockerfile: Dockerfile.generated
@@ -11,7 +11,10 @@ services:
         PROJECT_UID: {{ project_uid }}
         PROJECT_GID: {{ project_gid }}
         PROJECT_USER: {{ project_user }}
-    image: {{ config.project.name | default(value="vm-project") }}:latest
+    image: {{ project_name }}:latest
+    labels:
+      - "com.vm.managed=true"
+      - "com.vm.project={{ project_name }}"
     {% if config.services.postgresql.enabled | default(value=false) -%}
     depends_on:
       - postgres
@@ -43,7 +46,7 @@ services:
       - PULSE_SERVER=unix:/tmp/pulseaudio.socket
       {% endif %}
       {% if config.services.postgresql.enabled | default(value=false) %}
-      - DATABASE_URL=postgresql://{{ config.services.postgresql.user | default(value="postgres") }}:{{ config.services.postgresql.password | default(value="postgres") }}@postgres:5432/{{ config.services.postgresql.database | default(value=config.project.name ~ "_dev") }}
+      - DATABASE_URL=postgresql://{{ config.services.postgresql.user | default(value="postgres") }}:{{ config.services.postgresql.password | default(value="postgres") }}@postgres:5432/{{ config.services.postgresql.database | default(value=project_name ~ "_dev") }}
       {% endif %}
       # Disable Python bytecode generation for clean read-only mounting
       - PYTHONDONTWRITEBYTECODE=1
@@ -107,9 +110,9 @@ services:
   {% if config.services.postgresql.enabled | default(value=false) %}
   postgres:
     image: postgres:15-alpine
-    container_name: {{ config.project.name | default(value="vm-project") }}-postgres
+    container_name: {{ project_name }}-postgres
     environment:
-      - POSTGRES_DB={{ config.services.postgresql.database | default(value=config.project.name ~ "_dev") }}
+      - POSTGRES_DB={{ config.services.postgresql.database | default(value=project_name ~ "_dev") }}
       - POSTGRES_USER={{ config.services.postgresql.user | default(value="postgres") }}
       - POSTGRES_PASSWORD={{ config.services.postgresql.password | default(value="postgres") }}
     volumes:

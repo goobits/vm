@@ -111,11 +111,13 @@ pub fn create_docker_instance_info(
     status: &str,
     created_at: Option<&str>,
     uptime: Option<&str>,
+    project: Option<String>,
 ) -> InstanceInfo {
-    // Extract project name from container name (e.g., "myproject-dev" -> "myproject")
-    let project = name
-        .strip_suffix("-dev")
-        .map(|project_part| project_part.to_string());
+    // Use provided project name, or fallback to extracting from container name
+    let project = project.or_else(|| {
+        name.strip_suffix("-dev")
+            .map(|project_part| project_part.to_string())
+    });
 
     InstanceInfo {
         name: name.to_string(),
@@ -248,7 +250,8 @@ mod tests {
 
     #[test]
     fn test_create_docker_instance_info() {
-        let info = create_docker_instance_info("myproject-dev", "abc123", "running", None, None);
+        let info =
+            create_docker_instance_info("myproject-dev", "abc123", "running", None, None, None);
         assert_eq!(info.name, "myproject-dev");
         assert_eq!(info.id, "abc123");
         assert_eq!(info.status, "running");
@@ -290,6 +293,7 @@ mod tests {
             "running",
             Some("2023-01-01T00:00:00Z"),
             Some("2 hours ago"),
+            None,
         );
         assert_eq!(info.name, "myproject-dev");
         assert_eq!(info.id, "abc123");

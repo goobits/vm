@@ -89,8 +89,16 @@ impl<'a> ComposeOperations<'a> {
         let host_mounts = get_volume_mounts(&host_info);
         let host_env_vars = get_package_env_vars(&host_info);
 
+        let project_name = self
+            .config
+            .project
+            .as_ref()
+            .and_then(|p| p.name.as_deref())
+            .unwrap_or("vm-project");
+
         let mut context = TeraContext::new();
         context.insert("config", &self.config);
+        context.insert("project_name", &project_name);
         context.insert("project_dir", &project_dir_str);
         context.insert("build_context_dir", &build_context_str);
         context.insert("project_uid", &user_config.uid.to_string());
@@ -196,6 +204,13 @@ impl<'a> ComposeOperations<'a> {
         let host_mounts = get_volume_mounts(&host_info);
         let host_env_vars = get_package_env_vars(&host_info);
 
+        let project_name = self
+            .config
+            .project
+            .as_ref()
+            .and_then(|p| p.name.as_deref())
+            .unwrap_or("vm-project");
+
         // Create a custom config with the instance name
         let mut custom_config = self.config.clone();
         if let Some(ref mut project) = custom_config.project {
@@ -213,6 +228,10 @@ impl<'a> ComposeOperations<'a> {
 
         let mut context = TeraContext::new();
         context.insert("config", &custom_config);
+        context.insert(
+            "project_name",
+            &format!("{}-{}", project_name, instance_name),
+        );
         context.insert("project_dir", &project_dir_str);
         context.insert("build_context_dir", &build_context_str);
         context.insert("project_uid", &user_config.uid.to_string());
