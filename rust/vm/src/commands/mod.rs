@@ -49,13 +49,29 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         }
         Command::Pkg { command } => {
             debug!("Calling package registry operations");
-            let app_config = AppConfig::load(args.config.clone())?;
-            pkg::handle_pkg_command(command, app_config.global).await
+            // For pkg commands, use default GlobalConfig if no config file exists
+            let global_config = match AppConfig::load(args.config.clone()) {
+                Ok(app_config) => app_config.global,
+                Err(_) => {
+                    // Use default GlobalConfig when no config file exists
+                    // This allows pkg commands to work without a vm.yaml
+                    vm_config::GlobalConfig::default()
+                }
+            };
+            pkg::handle_pkg_command(command, global_config).await
         }
         Command::Auth { command } => {
             debug!("Calling auth proxy operations");
-            let app_config = AppConfig::load(args.config.clone())?;
-            auth::handle_auth_command(command, app_config.global).await
+            // For auth commands, use default GlobalConfig if no config file exists
+            let global_config = match AppConfig::load(args.config.clone()) {
+                Ok(app_config) => app_config.global,
+                Err(_) => {
+                    // Use default GlobalConfig when no config file exists
+                    // This allows auth commands to work without a vm.yaml
+                    vm_config::GlobalConfig::default()
+                }
+            };
+            auth::handle_auth_command(command, global_config).await
         }
         _ => {
             // Provider-based commands
