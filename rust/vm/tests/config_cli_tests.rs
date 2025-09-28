@@ -57,14 +57,13 @@ impl CliTestFixture {
         self.test_dir.join(filename).exists()
     }
 
-    /// Get global config path
+    /// Get global config path (new unified location)
     fn global_config_path(&self) -> PathBuf {
         self.test_dir
             .parent()
             .unwrap()
-            .join(".config")
-            .join("vm")
-            .join("global.yaml")
+            .join(".vm")
+            .join("config.yaml")
     }
 
     /// Create a preset file for testing
@@ -139,7 +138,6 @@ mod cli_integration_tests {
 
         let stdout = String::from_utf8(output.stdout)?;
         assert!(stdout.contains("✅ Set provider = tart"));
-        assert!(stdout.contains("global.yaml"));
 
         // Verify global config file was created
         assert!(fixture.global_config_path().exists());

@@ -548,22 +548,19 @@ fn get_global_config_path() -> PathBuf {
 }
 
 fn get_or_create_global_config_path() -> Result<PathBuf> {
-    let config_dir = if let Ok(home) = std::env::var("HOME") {
-        PathBuf::from(home).join(".config").join("vm")
-    } else {
-        user_paths::user_config_dir()?
-    };
+    // Use the unified path structure
+    let config_path = get_global_config_path();
 
-    if !config_dir.exists() {
-        fs::create_dir_all(&config_dir).with_context(|| {
-            format!(
-                "Failed to create config directory: {}",
-                config_dir.display()
-            )
-        })?;
+    // Ensure parent directory exists
+    if let Some(parent) = config_path.parent() {
+        if !parent.exists() {
+            fs::create_dir_all(parent).with_context(|| {
+                format!("Failed to create config directory: {}", parent.display())
+            })?;
+        }
     }
 
-    Ok(config_dir.join("global.yaml"))
+    Ok(config_path)
 }
 
 fn find_local_config() -> Result<PathBuf> {
