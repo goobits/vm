@@ -10,7 +10,6 @@ path = "src/lib.rs"
 [dependencies]
 # Core
 anyhow = { workspace = true }
-thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
@@ -33,7 +32,6 @@ colored = { workspace = true }
 
 # Utilities
 tracing = { workspace = true }
-uuid = { workspace = true }
 chrono = { workspace = true }
 base64 = { workspace = true }
 

@@ -12,12 +12,10 @@ serde_json = { workspace = true }
 serde_yaml_ng = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
-regex = { workspace = true }
 tempfile = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 pathdiff = { workspace = true }
-chrono = { workspace = true }
 is-terminal = { workspace = true }
 dirs = { workspace = true }
 uuid = { workspace = true }
@@ -34,7 +32,6 @@ test-helpers = []
 
 [package.metadata.cargo-machete]
 ignored = [
-    "dirs",        # Used transitively by multiple crates
     "is-terminal", # Used transitively by terminal output logic
     "thiserror",   # Used transitively for error handling
     "uuid"         # Used transitively for ID generation

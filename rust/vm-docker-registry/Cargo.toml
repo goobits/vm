@@ -10,7 +10,6 @@ path = "src/lib.rs"
 [dependencies]
 # Core
 anyhow = { workspace = true }
-thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
@@ -20,18 +19,12 @@ which = { workspace = true }
 
 # File operations
 dirs = { workspace = true }
-fs2 = { workspace = true }
-
-# User interaction
-dialoguer = { workspace = true }
-colored = { workspace = true }
 
 # HTTP client for health checks
 reqwest = { workspace = true }
 
 # Utilities
 tracing = { workspace = true }
-uuid = { workspace = true }
 chrono = { workspace = true }
 
 # Template engine for config generation

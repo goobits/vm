@@ -171,17 +171,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-trait"
-version = "0.1.89"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9035ad2d096bed7955a320ee7e2230574d28fd3c3a0f186cbea1ff3c7eed5dbb"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "atomic-waker"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2372,15 +2361,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_spanned"
-version = "0.6.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf41e0cfaf7226dca15e8197172c295a782857fcb97fad1808a166870dee75a3"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "serde_urlencoded"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2803,47 +2783,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "toml"
-version = "0.8.23"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc1beb996b9d83529a9e75c17a1686767d148d70663143c7854d8b4a09ced362"
-dependencies = [
- "serde",
- "serde_spanned",
- "toml_datetime",
- "toml_edit",
-]
-
-[[package]]
-name = "toml_datetime"
-version = "0.6.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22cddaf88f4fbc13c51aebbf5f8eceb5c7c5a9da2ac40a13519eb5b0a0e8f11c"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "toml_edit"
-version = "0.22.27"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41fe8c660ae4257887cf66394862d21dbca4a6ddd26f04a3560410406a2f819a"
-dependencies = [
- "indexmap",
- "serde",
- "serde_spanned",
- "toml_datetime",
- "toml_write",
- "winnow",
-]
-
-[[package]]
-name = "toml_write"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
-
-[[package]]
 name = "tower"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3191,7 +3130,6 @@ dependencies = [
  "clap",
  "regex",
  "serde_json",
- "tracing",
  "vm-common",
 ]
 
@@ -3247,11 +3185,9 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
- "thiserror 2.0.16",
  "tokio",
  "tower-http",
  "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -3259,12 +3195,10 @@ name = "vm-common"
 version = "2.0.1"
 dependencies = [
  "anyhow",
- "chrono",
  "dirs",
  "duct",
  "is-terminal",
  "pathdiff",
- "regex",
  "serde",
  "serde_json",
  "serde_yaml_ng",
@@ -3294,7 +3228,6 @@ dependencies = [
  "serde_json",
  "serde_yaml_ng",
  "tempfile",
- "tracing",
  "vm-common",
  "vm-messages",
  "which",
@@ -3306,20 +3239,15 @@ version = "2.0.1"
 dependencies = [
  "anyhow",
  "chrono",
- "colored",
- "dialoguer",
  "dirs",
  "duct",
- "fs2",
  "reqwest",
  "serde",
  "serde_json",
  "tempfile",
  "tera",
- "thiserror 2.0.16",
  "tokio",
  "tracing",
- "uuid",
  "which",
 ]
 
@@ -3353,7 +3281,6 @@ dependencies = [
  "regex",
  "serde_json",
  "tempfile",
- "tracing",
  "vm-common",
  "vm-config",
  "vm-messages",
@@ -3367,7 +3294,6 @@ version = "2.0.1"
 dependencies = [
  "anyhow",
  "askama",
- "async-trait",
  "axum",
  "axum-test",
  "base64",
@@ -3376,11 +3302,9 @@ dependencies = [
  "clap",
  "colored",
  "dialoguer",
- "digest",
  "dirs",
  "futures-util",
  "indicatif",
- "libc",
  "notify",
  "once_cell",
  "regex",
@@ -3389,12 +3313,9 @@ dependencies = [
  "serde_json",
  "sha1",
  "sha2",
- "sysinfo",
  "tempfile",
  "thiserror 2.0.16",
  "tokio",
- "toml",
- "tower-http",
  "tracing",
  "tracing-subscriber",
  "url",
@@ -3426,7 +3347,6 @@ dependencies = [
  "serde_json",
  "tera",
  "thiserror 2.0.16",
- "tracing",
  "vm-common",
  "vm-config",
  "vm-platform",
@@ -3444,7 +3364,6 @@ dependencies = [
  "serde_yaml_ng",
  "tempfile",
  "thiserror 2.0.16",
- "tracing",
  "vm-common",
  "vm-config",
  "vm-platform",
@@ -3964,15 +3883,6 @@ name = "windows_x86_64_msvc"
 version = "0.53.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "271414315aff87387382ec3d271b52d7ae78726f5d44ac98b4f4030c91880486"
-
-[[package]]
-name = "winnow"
-version = "0.7.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21a0236b59786fed61e2a80582dd500fe61f18b5dca67a4a067d0bc9039339cf"
-dependencies = [
- "memchr",
-]
 
 [[package]]
 name = "winsafe"
