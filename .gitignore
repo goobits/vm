@@ -75,6 +75,10 @@ rust/**/target/
 **/*.rs.bk
 *.old
 
+# Nested Cargo.lock files (workspace members should use root Cargo.lock)
+rust/**/Cargo.lock
+!rust/Cargo.lock
+
 # Python
 __pycache__/
 *.py[cod]

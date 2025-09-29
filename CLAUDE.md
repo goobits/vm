@@ -174,6 +174,54 @@ cargo clean
 cargo update
 ```
 
+## Cross-Platform Compilation
+
+The project supports multiple target platforms for distribution. Cross-compilation targets are stored in separate directories to avoid conflicts.
+
+### Supported Targets
+
+- **Linux x86_64**: `x86_64-unknown-linux-gnu` (default)
+- **Linux ARM64**: `aarch64-unknown-linux-gnu`
+- **macOS Intel**: `x86_64-apple-darwin`
+- **macOS Apple Silicon**: `aarch64-apple-darwin`
+- **Windows**: `x86_64-pc-windows-msvc`
+
+### Build for Specific Target
+
+```bash
+# Install target (one-time setup)
+rustup target add aarch64-unknown-linux-gnu
+
+# Build for Linux ARM64
+cargo build --workspace --release --target aarch64-unknown-linux-gnu
+
+# Build for macOS ARM64 (requires macOS host or cross-compilation tools)
+cargo build --workspace --release --target aarch64-apple-darwin
+```
+
+### Cross-Compilation Setup
+
+For Linux ARM64 on x86_64 host:
+```bash
+# Install cross-compilation toolchain
+sudo apt-get install gcc-aarch64-linux-gnu
+
+# Build with custom linker
+CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+  cargo build --workspace --release --target aarch64-unknown-linux-gnu
+```
+
+### Target Directories
+
+Cross-compilation builds are stored in separate directories:
+- `rust/target/` - Default target (native architecture)
+- `rust/target-linux-aarch64/` - Linux ARM64 builds (custom target dir)
+- `rust/target-macos-aarch64/` - macOS ARM64 builds (custom target dir)
+
+These directories are excluded from version control (`.gitignore`) and managed by CI/CD pipelines.
+
+**Note**: The custom target directories are created during release builds to keep cross-platform artifacts separate.
+
 ## Troubleshooting
 
 ### Common Issues

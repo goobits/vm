@@ -290,3 +290,33 @@ vm update [--version v1.2.3]    # Update to latest or specific version
 vm uninstall [--keep-config]    # Uninstall vm from the system
 vm doctor                        # Run comprehensive health checks
 ```
+
+---
+
+## 🏗️ Architecture & Development
+
+### Rust Crate Overview
+
+The VM tool is built from multiple focused Rust crates:
+
+| Crate | Purpose | Key Responsibilities |
+|-------|---------|---------------------|
+| `vm` | Main CLI application | Command orchestration, user interaction |
+| `vm-core` | Foundation utilities | Error handling, file system, command execution |
+| `vm-messages` | Message templates | Centralized user-facing text and messages |
+| `vm-cli` | CLI formatting | Structured output, message building |
+| `vm-config` | Configuration management | Config parsing, validation, project detection |
+| `vm-provider` | Provider abstraction | Docker/Vagrant/Tart lifecycle management |
+| `vm-temp` | Temporary VMs | Ephemeral environment management |
+| `vm-platform` | Cross-platform support | OS detection, platform-specific paths |
+| `vm-package-manager` | Package integration | npm/pip/cargo link detection |
+| `vm-package-server` | Private registry | Local package hosting for npm/pip/cargo |
+| `vm-auth-proxy` | Authentication | Centralized secrets management |
+| `vm-docker-registry` | Docker registry | Local Docker image hosting |
+| `vm-installer` | Installation | Self-installation and updates |
+| `version-sync` | Build tool | Cross-workspace version synchronization |
+
+**For detailed architecture documentation**, see:
+- [rust/ARCHITECTURE.md](rust/ARCHITECTURE.md) - Comprehensive crate architecture
+- [docs/development/architecture.md](docs/development/architecture.md) - High-level overview
+- [CLAUDE.md](CLAUDE.md) - Development and testing guide
