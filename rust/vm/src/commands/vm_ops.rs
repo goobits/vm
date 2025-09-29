@@ -13,7 +13,7 @@ use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::vm_error;
-use vm_provider::{InstanceInfo, Provider, ProviderContext};
+use vm_provider::{InstanceInfo, Provider, ProviderContext, VmStatusReport};
 
 /// Handle VM creation
 pub async fn handle_create(
@@ -429,13 +429,13 @@ pub fn handle_list_enhanced(
     _provider: Box<dyn Provider>,
     _all_providers: &bool,
     provider_filter: Option<&str>,
-    verbose: &bool,
+    _verbose: &bool,
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "list");
     let _enter = span.enter();
     debug!(
-        "Listing VMs with enhanced filtering - provider_filter: {:?}, verbose: {}",
-        provider_filter, *verbose
+        "Listing VMs with enhanced filtering - provider_filter: {:?}",
+        provider_filter
     );
 
     // Get all instances from all providers (or filtered)
@@ -454,46 +454,27 @@ pub fn handle_list_enhanced(
         return Ok(());
     }
 
-    // Print header
-    if *verbose {
-        println!(
-            "{:<20} {:<10} {:<10} {:<20} {:<10} {:<15}",
-            "INSTANCE", "PROVIDER", "STATUS", "ID", "UPTIME", "PROJECT"
-        );
-        println!("{}", "-".repeat(95));
-    } else {
-        println!(
-            "{:<20} {:<10} {:<10} {:<15} {:<10}",
-            "INSTANCE", "PROVIDER", "STATUS", "ID", "UPTIME"
-        );
-        println!("{}", "-".repeat(75));
-    }
+    // Rich dashboard table (always displayed)
+    println!(
+        "{:<20} {:<10} {:<12} {:<20} {:<10} {:<15}",
+        "INSTANCE", "PROVIDER", "STATUS", "ID", "UPTIME", "PROJECT"
+    );
+    println!("{}", "─".repeat(97));
 
     // Sort instances by provider then name for consistent output
     let mut sorted_instances = all_instances;
     sorted_instances.sort_by(|a, b| a.provider.cmp(&b.provider).then(a.name.cmp(&b.name)));
 
     for instance in sorted_instances {
-        if *verbose {
-            println!(
-                "{:<20} {:<10} {:<10} {:<20} {:<10} {:<15}",
-                truncate_string(&instance.name, 20),
-                instance.provider,
-                format_status(&instance.status),
-                truncate_string(&instance.id, 20),
-                format_uptime(&instance.uptime),
-                instance.project.as_deref().unwrap_or("--")
-            );
-        } else {
-            println!(
-                "{:<20} {:<10} {:<10} {:<15} {:<10}",
-                truncate_string(&instance.name, 20),
-                instance.provider,
-                format_status(&instance.status),
-                truncate_string(&instance.id, 15),
-                format_uptime(&instance.uptime)
-            );
-        }
+        println!(
+            "{:<20} {:<10} {:<12} {:<20} {:<10} {:<15}",
+            truncate_string(&instance.name, 20),
+            instance.provider,
+            format_status(&instance.status),
+            truncate_string(&instance.id, 20),
+            format_uptime(&instance.uptime),
+            instance.project.as_deref().unwrap_or("--")
+        );
     }
 
     Ok(())
@@ -595,19 +576,19 @@ fn truncate_string(s: &str, max_len: usize) -> String {
 }
 
 fn format_status(status: &str) -> String {
-    // Normalize status strings across providers
+    // Normalize status strings across providers with icons
     let lower_status = status.to_lowercase();
     if lower_status.contains("running") || lower_status.contains("up") {
-        "running".to_string()
+        "✅ Running".to_string()
     } else if lower_status.contains("stopped")
         || lower_status.contains("exited")
         || lower_status.contains("poweroff")
     {
-        "stopped".to_string()
+        "🔴 Stopped".to_string()
     } else if lower_status.contains("paused") {
-        "paused".to_string()
+        "⏸️  Paused".to_string()
     } else {
-        status.to_string()
+        format!("❓ {}", status)
     }
 }
 
@@ -1080,12 +1061,12 @@ pub fn handle_ssh(
     Ok(result?)
 }
 
-/// Handle VM status check
+/// Handle VM status check with enhanced dashboard
 pub fn handle_status(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     config: VmConfig,
-    global_config: GlobalConfig,
+    _global_config: GlobalConfig,
 ) -> VmResult<()> {
     // Get VM name from config
     let vm_name = config
@@ -1095,106 +1076,185 @@ pub fn handle_status(
         .map(|s| s.as_str())
         .unwrap_or("vm-project");
 
-    let container_name = format!("{}-dev", vm_name);
-
-    // Get memory and cpu info from config
-    let memory = config.vm.as_ref().and_then(|vm| vm.memory.as_ref());
-    let cpus = config.vm.as_ref().and_then(|vm| vm.cpus);
-
     debug!(
-        "Status check: vm_name='{}', provider='{}', memory={:?}, cpus={:?}",
+        "Status check: vm_name='{}', provider='{}'",
         vm_name,
-        provider.name(),
-        memory,
-        cpus
+        provider.name()
     );
 
-    println!("📊 {}", vm_name);
-
-    match provider.status(container) {
-        Ok(()) => {
-            println!("\n  Status:     🟢 Running");
-            println!("  Provider:   {}", provider.name());
-            println!("  Container:  {}", container_name);
-
-            // Show resources
-            if cpus.is_some() || memory.is_some() {
-                println!("\n  Resources:");
-                if let Some(cpu_count) = cpus {
-                    println!("    CPUs:     {} cores", cpu_count);
-                }
-                if let Some(mem) = memory {
-                    // Format memory display
-                    let mem_str = match mem.to_mb() {
-                        Some(mb) if mb >= 1024 => format!("{}GB", mb / 1024),
-                        Some(mb) => format!("{}MB", mb),
-                        None => format!("{:?}", mem),
-                    };
-                    println!("    Memory:   {}", mem_str);
-                }
-            }
-
-            // Show services if configured
-            let services: Vec<(String, Option<u16>)> = config
-                .services
-                .iter()
-                .filter(|(_, svc)| svc.enabled)
-                .map(|(name, svc)| (name.clone(), svc.port))
-                .collect();
-
-            if !services.is_empty() {
-                println!("\n  Services:");
-                for (name, port) in services {
-                    if let Some(p) = port {
-                        println!("    {}  🟢 {}", name, p);
-                    } else {
-                        println!("    {}  🟢", name);
-                    }
-                }
-            }
-
-            // Show global services status (now managed globally)
-            let mut additional_services = Vec::new();
-
-            // Check global services that might be running
-            let _package_port = global_config.services.package_registry.port;
-            let package_status = ("Package Registry", "🔴", "See 'vm pkg status' for details");
-            additional_services.push(package_status);
-
-            let auth_port = global_config.services.auth_proxy.port;
-            let auth_url = format!("http://localhost:{}", auth_port);
-            let auth_status = if check_auth_proxy_status_sync(auth_port) {
-                ("Auth Proxy", "🟢", auth_url.as_str())
-            } else {
-                ("Auth Proxy", "🔴", "Not running")
-            };
-            additional_services.push(auth_status);
-
-            let docker_port = global_config.services.docker_registry.port;
-            let docker_url = format!("http://localhost:{}", docker_port);
-            let docker_registry_status = if check_docker_registry_status_sync(docker_port) {
-                ("Docker Registry", "🟢", docker_url.as_str())
-            } else {
-                ("Docker Registry", "🔴", "Not running")
-            };
-            additional_services.push(docker_registry_status);
-
-            if !additional_services.is_empty() {
-                println!("\n  Additional Services:");
-                for (name, icon, url) in additional_services {
-                    println!("    {}  {} {}", name, icon, url);
-                }
-            }
-
+    // Get comprehensive status report
+    match provider.get_status_report(container) {
+        Ok(report) => {
+            display_status_dashboard(&report);
             Ok(())
         }
-        Err(_) => {
-            println!("\n  Status:     🔴 Not running");
-            println!("  Provider:   {}", provider.name());
-            println!("  Container:  {} (not found)", container_name);
-            println!("\n💡 Start with: vm start");
+        Err(e) => {
+            debug!("Status report failed: {}, falling back to basic status", e);
+            // Fallback to basic stopped status display for providers that don't support enhanced status
+            display_basic_stopped_status(vm_name, provider.name());
             Ok(()) // Don't propagate error, just show status
         }
+    }
+}
+
+/// Display the compact status dashboard
+fn display_status_dashboard(report: &VmStatusReport) {
+    // Header with VM name
+    println!("🖥️  {} ({})", report.name, report.provider);
+
+    // Status line with uptime
+    let status_icon = if report.is_running { "🟢" } else { "🔴" };
+    let status_text = if report.is_running {
+        "Running"
+    } else {
+        "Stopped"
+    };
+
+    if let Some(uptime) = &report.uptime {
+        println!("   {} {} • Uptime: {}", status_icon, status_text, uptime);
+    } else {
+        println!("   {} {}", status_icon, status_text);
+    }
+
+    // Container ID (shortened)
+    if let Some(id) = &report.container_id {
+        let short_id = if id.len() > 12 { &id[..12] } else { id };
+        println!("   📦 {}", short_id);
+    }
+
+    // Resource usage (if available)
+    if report.is_running && has_resource_data(&report.resources) {
+        display_resource_usage(&report.resources);
+    }
+
+    // Service health (if any services)
+    if !report.services.is_empty() {
+        display_service_health(&report.services);
+    }
+
+    // Connection hint
+    if report.is_running {
+        println!("\n💡 Connect: vm ssh");
+    } else {
+        println!("\n💡 Start: vm start");
+    }
+}
+
+/// Display basic stopped status for providers without enhanced status support
+fn display_basic_stopped_status(vm_name: &str, provider_name: &str) {
+    println!("🖥️  {} ({})", vm_name, provider_name);
+    println!("   🔴 Stopped");
+    println!("   📦 Container not found");
+    println!("\n💡 Start: vm start");
+}
+
+/// Check if resource data is available and meaningful
+fn has_resource_data(resources: &vm_provider::ResourceUsage) -> bool {
+    resources.cpu_percent.is_some()
+        || resources.memory_used_mb.is_some()
+        || resources.disk_used_gb.is_some()
+}
+
+/// Display resource usage information
+fn display_resource_usage(resources: &vm_provider::ResourceUsage) {
+    println!();
+
+    // CPU usage
+    if let Some(cpu) = resources.cpu_percent {
+        let cpu_icon = if cpu > 80.0 {
+            "🔥"
+        } else if cpu > 50.0 {
+            "⚡"
+        } else {
+            "💚"
+        };
+        println!("   {} CPU:    {:.1}%", cpu_icon, cpu);
+    }
+
+    // Memory usage
+    if let Some(used) = resources.memory_used_mb {
+        let memory_text = if let Some(limit) = resources.memory_limit_mb {
+            let usage_pct = (used as f64 / limit as f64) * 100.0;
+            let mem_icon = if usage_pct > 90.0 {
+                "🔥"
+            } else if usage_pct > 70.0 {
+                "⚡"
+            } else {
+                "💚"
+            };
+            let used_display = format_memory_mb(used);
+            let limit_display = format_memory_mb(limit);
+            format!(
+                "   {} Memory: {} / {} ({:.0}%)",
+                mem_icon, used_display, limit_display, usage_pct
+            )
+        } else {
+            let used_display = format_memory_mb(used);
+            format!("   💚 Memory: {}", used_display)
+        };
+        println!("{}", memory_text);
+    }
+
+    // Disk usage
+    if let Some(used) = resources.disk_used_gb {
+        let disk_text = if let Some(total) = resources.disk_total_gb {
+            let usage_pct = (used / total) * 100.0;
+            let disk_icon = if usage_pct > 90.0 {
+                "🔥"
+            } else if usage_pct > 80.0 {
+                "⚡"
+            } else {
+                "💚"
+            };
+            format!(
+                "   {} Disk:   {:.1}GB / {:.1}GB ({:.0}%)",
+                disk_icon, used, total, usage_pct
+            )
+        } else {
+            format!("   💚 Disk:   {:.1}GB", used)
+        };
+        println!("{}", disk_text);
+    }
+}
+
+/// Display service health information
+fn display_service_health(services: &[vm_provider::ServiceStatus]) {
+    println!();
+
+    for service in services {
+        let health_icon = if service.is_running { "🟢" } else { "🔴" };
+        let port_info = match (service.port, service.host_port) {
+            (Some(container_port), Some(host_port)) if container_port != host_port => {
+                format!(" ({}→{})", host_port, container_port)
+            }
+            (Some(port), _) => format!(" ({})", port),
+            _ => String::new(),
+        };
+
+        let service_line = if let Some(metrics) = &service.metrics {
+            format!(
+                "   {} {}{} • {}",
+                health_icon, service.name, port_info, metrics
+            )
+        } else if let Some(error) = &service.error {
+            format!(
+                "   {} {}{} • {}",
+                health_icon, service.name, port_info, error
+            )
+        } else {
+            format!("   {} {}{}", health_icon, service.name, port_info)
+        };
+
+        println!("{}", service_line);
+    }
+}
+
+/// Format memory size in MB to human-readable format
+fn format_memory_mb(mb: u64) -> String {
+    if mb >= 1024 {
+        format!("{:.1}GB", mb as f64 / 1024.0)
+    } else {
+        format!("{}MB", mb)
     }
 }
 
@@ -1276,70 +1336,6 @@ pub fn handle_logs(
     println!("💡 Full logs: docker logs {}-dev", vm_name);
 
     result.map_err(VmError::from)
-}
-
-/// Check if auth proxy is running (synchronous version)
-fn check_auth_proxy_status_sync(port: u16) -> bool {
-    use std::process::Command;
-    // Try to check with curl first
-    let curl_result = Command::new("curl")
-        .args([
-            "-s",
-            "-o",
-            "/dev/null",
-            "-w",
-            "%{http_code}",
-            &format!("http://localhost:{}/health", port),
-        ])
-        .output();
-
-    if let Ok(output) = curl_result {
-        if output.stdout == b"200" {
-            return true;
-        }
-    }
-
-    // If curl failed or not available, try with a simple TCP connection test
-    use std::net::TcpStream;
-    use std::time::Duration;
-
-    TcpStream::connect_timeout(
-        &format!("127.0.0.1:{}", port).parse().unwrap(),
-        Duration::from_millis(1000),
-    )
-    .is_ok()
-}
-
-/// Check if Docker registry is running (synchronous version)
-fn check_docker_registry_status_sync(port: u16) -> bool {
-    use std::process::Command;
-    // Try to check with curl first
-    let curl_result = Command::new("curl")
-        .args([
-            "-s",
-            "-o",
-            "/dev/null",
-            "-w",
-            "%{http_code}",
-            &format!("http://localhost:{}/v2/", port),
-        ])
-        .output();
-
-    if let Ok(output) = curl_result {
-        if output.stdout == b"200" {
-            return true;
-        }
-    }
-
-    // If curl failed or not available, try with a simple TCP connection test
-    use std::net::TcpStream;
-    use std::time::Duration;
-
-    TcpStream::connect_timeout(
-        &format!("127.0.0.1:{}", port).parse().unwrap(),
-        Duration::from_millis(1000),
-    )
-    .is_ok()
 }
 
 /// Helper function to register VM services

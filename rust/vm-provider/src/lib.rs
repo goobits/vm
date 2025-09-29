@@ -18,6 +18,37 @@ pub use common::instance::{InstanceInfo, InstanceResolver};
 pub use context::ProviderContext;
 pub use vm_core::error::{Result as VmResult, VmError};
 
+// Status report structures for enhanced dashboard
+#[derive(Debug, Clone, Default)]
+pub struct ResourceUsage {
+    pub cpu_percent: Option<f64>,
+    pub memory_used_mb: Option<u64>,
+    pub memory_limit_mb: Option<u64>,
+    pub disk_used_gb: Option<f64>,
+    pub disk_total_gb: Option<f64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ServiceStatus {
+    pub name: String,
+    pub is_running: bool,
+    pub port: Option<u16>,
+    pub host_port: Option<u16>,
+    pub metrics: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct VmStatusReport {
+    pub name: String,
+    pub provider: String,
+    pub container_id: Option<String>,
+    pub is_running: bool,
+    pub uptime: Option<String>,
+    pub resources: ResourceUsage,
+    pub services: Vec<ServiceStatus>,
+}
+
 pub mod common;
 pub mod context;
 pub mod progress;
@@ -148,6 +179,13 @@ pub trait Provider {
     /// Check if this provider supports multiple instances
     fn supports_multi_instance(&self) -> bool {
         false // Default to single instance for backward compatibility
+    }
+
+    /// Get comprehensive status report for enhanced dashboard
+    fn get_status_report(&self, _container: Option<&str>) -> Result<VmStatusReport> {
+        Err(VmError::Provider(
+            "Enhanced status not supported by this provider".to_string(),
+        ))
     }
 }
 

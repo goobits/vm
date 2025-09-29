@@ -26,7 +26,7 @@ use crate::{
     context::ProviderContext,
     progress::{AnsibleProgressParser, ProgressParser, ProgressReporter},
     security::SecurityValidator,
-    TempProvider, TempVmState,
+    ResourceUsage, ServiceStatus, TempProvider, TempVmState, VmStatusReport,
 };
 use vm_config::config::VmConfig;
 use vm_core::command_stream::{
@@ -1076,39 +1076,6 @@ impl<'a> LifecycleOperations<'a> {
             .map_err(|e| VmError::Internal(format!("Failed to show logs: {}", e)))
     }
 
-    #[must_use = "status display results should be handled"]
-    pub fn show_status(&self, container: Option<&str>) -> Result<()> {
-        let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
-        if compose_ops.status_with_compose().is_err() {
-            stream_command(
-                "docker",
-                &[
-                    "ps",
-                    "-f",
-                    &format!("name={}", self.resolve_target_container(container)?),
-                ],
-            )?;
-        }
-
-        if let Some(range) = &self.config.ports.range {
-            if range.len() == 2 {
-                let (start, end) = (range[0], range[1]);
-                println!("\n📡 Port Range: {}-{}", start, end);
-                if !self.config.ports.manual_ports.is_empty() {
-                    let used_count = self
-                        .config
-                        .ports
-                        .manual_ports
-                        .values()
-                        .filter(|&&p| p >= start && p <= end)
-                        .count();
-                    println!("   Used: {}/{} ports", used_count, (end - start + 1));
-                }
-            }
-        }
-        Ok(())
-    }
-
     #[must_use = "container restart results should be handled"]
     pub fn restart_container(&self, container: Option<&str>) -> Result<()> {
         self.stop_container(container)?;
@@ -1627,6 +1594,411 @@ impl<'a> LifecycleOperations<'a> {
             .and_then(|p| p.workspace_path.as_deref())
             .unwrap_or("/workspace")
             .to_string()
+    }
+
+    /// Get comprehensive status report with real-time metrics and service health
+    pub fn get_status_report(&self, container: Option<&str>) -> Result<VmStatusReport> {
+        let container_name = self.resolve_target_container(container)?;
+
+        // Get basic container info via docker inspect
+        let inspect_output = std::process::Command::new("docker")
+            .args(["inspect", &container_name])
+            .output()
+            .map_err(|e| VmError::Internal(format!("Failed to inspect container: {}", e)))?;
+
+        if !inspect_output.status.success() {
+            return Err(VmError::Internal(format!(
+                "Container '{}' not found",
+                container_name
+            )));
+        }
+
+        let inspect_data: serde_json::Value = serde_json::from_slice(&inspect_output.stdout)
+            .map_err(|e| VmError::Internal(format!("Failed to parse container info: {}", e)))?;
+
+        let container_info = &inspect_data[0];
+        let state = &container_info["State"];
+        let config = &container_info["Config"];
+
+        let is_running = state["Running"].as_bool().unwrap_or(false);
+        let container_id = container_info["Id"]
+            .as_str()
+            .unwrap_or("unknown")
+            .to_string();
+
+        // Calculate uptime
+        let uptime = if is_running {
+            self.calculate_uptime(state)?
+        } else {
+            None
+        };
+
+        // Get resource usage only if container is running
+        let resources = if is_running {
+            self.get_container_resources(&container_name)?
+        } else {
+            ResourceUsage::default()
+        };
+
+        // Check service health only if container is running
+        let services = if is_running {
+            self.check_all_services(&container_name, config)?
+        } else {
+            vec![]
+        };
+
+        Ok(VmStatusReport {
+            name: container_name,
+            provider: "docker".to_string(),
+            container_id: Some(container_id),
+            is_running,
+            uptime,
+            resources,
+            services,
+        })
+    }
+
+    /// Calculate container uptime from Docker inspect data
+    fn calculate_uptime(&self, state: &serde_json::Value) -> Result<Option<String>> {
+        let Some(started_at) = state["StartedAt"].as_str() else {
+            return Ok(None);
+        };
+
+        if started_at == "0001-01-01T00:00:00Z" {
+            return Ok(None);
+        }
+
+        let start_time = match chrono::DateTime::parse_from_rfc3339(started_at) {
+            Ok(time) => time,
+            Err(_) => return Ok(Some("unknown".to_string())),
+        };
+
+        let now = chrono::Utc::now();
+        let duration = now.signed_duration_since(start_time.with_timezone(&chrono::Utc));
+
+        let uptime = if duration.num_days() > 0 {
+            format!("{}d", duration.num_days())
+        } else if duration.num_hours() > 0 {
+            format!("{}h", duration.num_hours())
+        } else if duration.num_minutes() > 0 {
+            format!("{}m", duration.num_minutes())
+        } else {
+            "now".to_string()
+        };
+
+        Ok(Some(uptime))
+    }
+
+    /// Get real-time resource usage from docker stats
+    fn get_container_resources(&self, container_name: &str) -> Result<ResourceUsage> {
+        let stats_output = std::process::Command::new("docker")
+            .args([
+                "stats",
+                "--no-stream",
+                "--format",
+                "{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}",
+                container_name,
+            ])
+            .output()
+            .map_err(|e| VmError::Internal(format!("Failed to get container stats: {}", e)))?;
+
+        if !stats_output.status.success() {
+            return Ok(ResourceUsage::default());
+        }
+
+        let stats_line = String::from_utf8_lossy(&stats_output.stdout);
+        let parts: Vec<&str> = stats_line.trim().split('\t').collect();
+
+        if parts.len() >= 2 {
+            let cpu_str = parts[0].trim_end_matches('%');
+            let memory_parts = parts[1].split('/').collect::<Vec<&str>>();
+
+            let cpu_percent = cpu_str.parse::<f64>().ok();
+            let (memory_used_mb, memory_limit_mb) = if memory_parts.len() >= 2 {
+                let used = self.parse_memory_value(memory_parts[0].trim());
+                let limit = self.parse_memory_value(memory_parts[1].trim());
+                (used, limit)
+            } else {
+                (None, None)
+            };
+
+            // Get disk usage from container filesystem
+            let (disk_used_gb, disk_total_gb) = self.get_disk_usage(container_name);
+
+            return Ok(ResourceUsage {
+                cpu_percent,
+                memory_used_mb,
+                memory_limit_mb,
+                disk_used_gb,
+                disk_total_gb,
+            });
+        }
+
+        Ok(ResourceUsage::default())
+    }
+
+    /// Parse memory value from Docker stats (e.g., "123MiB" -> 123, "1.5GiB" -> 1536)
+    fn parse_memory_value(&self, value: &str) -> Option<u64> {
+        if let Some(mb_val) = value
+            .strip_suffix("MiB")
+            .or_else(|| value.strip_suffix("MB"))
+        {
+            mb_val.parse::<f64>().ok().map(|v| v as u64)
+        } else if let Some(gb_val) = value
+            .strip_suffix("GiB")
+            .or_else(|| value.strip_suffix("GB"))
+        {
+            gb_val.parse::<f64>().ok().map(|v| (v * 1024.0) as u64)
+        } else {
+            None
+        }
+    }
+
+    /// Get disk usage from container using df command
+    fn get_disk_usage(&self, container_name: &str) -> (Option<f64>, Option<f64>) {
+        let df_output = std::process::Command::new("docker")
+            .args(["exec", container_name, "df", "-h", "/"])
+            .output();
+
+        let Ok(output) = df_output else {
+            return (None, None);
+        };
+        if !output.status.success() {
+            return (None, None);
+        }
+
+        let df_text = String::from_utf8_lossy(&output.stdout);
+        for line in df_text.lines().skip(1) {
+            // Skip header
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 4 {
+                let used = self.parse_disk_value(parts[2]);
+                let total = self.parse_disk_value(parts[1]);
+                return (used, total);
+            }
+        }
+        (None, None)
+    }
+
+    /// Parse disk value from df output (e.g., "1.5G" -> 1.5, "512M" -> 0.5)
+    fn parse_disk_value(&self, value: &str) -> Option<f64> {
+        if let Some(gb_val) = value.strip_suffix('G') {
+            gb_val.parse::<f64>().ok()
+        } else if let Some(mb_val) = value.strip_suffix('M') {
+            mb_val.parse::<f64>().ok().map(|v| v / 1024.0)
+        } else if let Some(kb_val) = value.strip_suffix('K') {
+            kb_val.parse::<f64>().ok().map(|v| v / (1024.0 * 1024.0))
+        } else {
+            None
+        }
+    }
+
+    /// Check health of all configured services
+    fn check_all_services(
+        &self,
+        container_name: &str,
+        config: &serde_json::Value,
+    ) -> Result<Vec<ServiceStatus>> {
+        let mut services = Vec::new();
+
+        // Get port mappings from container config
+        let Some(exposed_ports) = config["ExposedPorts"].as_object() else {
+            return Ok(services);
+        };
+
+        for (port_spec, _) in exposed_ports {
+            let Some(port_str) = port_spec.split('/').next() else {
+                continue;
+            };
+            let Ok(port) = port_str.parse::<u16>() else {
+                continue;
+            };
+
+            let service_name = self.identify_service_by_port(port);
+            let service_status = match service_name.as_str() {
+                "postgresql" => self.check_postgres_status(container_name, port),
+                "redis" => self.check_redis_status(container_name, port),
+                "mongodb" => self.check_mongodb_status(container_name, port),
+                _ => ServiceStatus {
+                    name: service_name,
+                    is_running: true, // Assume running if port is exposed
+                    port: Some(port),
+                    host_port: self.get_host_port(container_name, port),
+                    metrics: None,
+                    error: None,
+                },
+            };
+            services.push(service_status);
+        }
+
+        Ok(services)
+    }
+
+    /// Identify service type by port number
+    fn identify_service_by_port(&self, port: u16) -> String {
+        match port {
+            5432 => "postgresql".to_string(),
+            6379 => "redis".to_string(),
+            27017 => "mongodb".to_string(),
+            3306 => "mysql".to_string(),
+            8080 => "http".to_string(),
+            3000 => "node".to_string(),
+            8000 => "python".to_string(),
+            _ => format!("service-{}", port),
+        }
+    }
+
+    /// Get the host port mapping for a container port
+    fn get_host_port(&self, container_name: &str, container_port: u16) -> Option<u16> {
+        let port_output = std::process::Command::new("docker")
+            .args(["port", container_name, &container_port.to_string()])
+            .output()
+            .ok()?;
+
+        if port_output.status.success() {
+            let port_text = String::from_utf8_lossy(&port_output.stdout);
+            // Parse "0.0.0.0:8080" -> 8080
+            if let Some(host_port_str) = port_text.trim().split(':').next_back() {
+                return host_port_str.parse::<u16>().ok();
+            }
+        }
+        None
+    }
+
+    /// Check PostgreSQL service health using pg_isready
+    fn check_postgres_status(&self, container_name: &str, port: u16) -> ServiceStatus {
+        let result = std::process::Command::new("docker")
+            .args([
+                "exec",
+                container_name,
+                "pg_isready",
+                "-p",
+                &port.to_string(),
+            ])
+            .output();
+
+        match result {
+            Ok(output) => {
+                let is_running = output.status.success();
+                ServiceStatus {
+                    name: "postgresql".to_string(),
+                    is_running,
+                    port: Some(port),
+                    host_port: self.get_host_port(container_name, port),
+                    metrics: if is_running {
+                        Some("accepting connections".to_string())
+                    } else {
+                        None
+                    },
+                    error: if !is_running {
+                        Some(String::from_utf8_lossy(&output.stderr).trim().to_string())
+                    } else {
+                        None
+                    },
+                }
+            }
+            Err(e) => ServiceStatus {
+                name: "postgresql".to_string(),
+                is_running: false,
+                port: Some(port),
+                host_port: self.get_host_port(container_name, port),
+                metrics: None,
+                error: Some(format!("Health check failed: {}", e)),
+            },
+        }
+    }
+
+    /// Check Redis service health using redis-cli ping
+    fn check_redis_status(&self, container_name: &str, port: u16) -> ServiceStatus {
+        let result = std::process::Command::new("docker")
+            .args([
+                "exec",
+                container_name,
+                "redis-cli",
+                "-p",
+                &port.to_string(),
+                "ping",
+            ])
+            .output();
+
+        match result {
+            Ok(output) => {
+                let response = String::from_utf8_lossy(&output.stdout)
+                    .trim()
+                    .to_lowercase();
+                let is_running = output.status.success() && response == "pong";
+                ServiceStatus {
+                    name: "redis".to_string(),
+                    is_running,
+                    port: Some(port),
+                    host_port: self.get_host_port(container_name, port),
+                    metrics: if is_running {
+                        Some("PONG".to_string())
+                    } else {
+                        None
+                    },
+                    error: if !is_running {
+                        Some(String::from_utf8_lossy(&output.stderr).trim().to_string())
+                    } else {
+                        None
+                    },
+                }
+            }
+            Err(e) => ServiceStatus {
+                name: "redis".to_string(),
+                is_running: false,
+                port: Some(port),
+                host_port: self.get_host_port(container_name, port),
+                metrics: None,
+                error: Some(format!("Health check failed: {}", e)),
+            },
+        }
+    }
+
+    /// Check MongoDB service health using mongosh ping
+    fn check_mongodb_status(&self, container_name: &str, port: u16) -> ServiceStatus {
+        let result = std::process::Command::new("docker")
+            .args([
+                "exec",
+                container_name,
+                "mongosh",
+                "--port",
+                &port.to_string(),
+                "--eval",
+                "db.adminCommand('ping')",
+            ])
+            .output();
+
+        match result {
+            Ok(output) => {
+                let response = String::from_utf8_lossy(&output.stdout);
+                let is_running = output.status.success() && response.contains("ok");
+                ServiceStatus {
+                    name: "mongodb".to_string(),
+                    is_running,
+                    port: Some(port),
+                    host_port: self.get_host_port(container_name, port),
+                    metrics: if is_running {
+                        Some("ping ok".to_string())
+                    } else {
+                        None
+                    },
+                    error: if !is_running {
+                        Some(String::from_utf8_lossy(&output.stderr).trim().to_string())
+                    } else {
+                        None
+                    },
+                }
+            }
+            Err(e) => ServiceStatus {
+                name: "mongodb".to_string(),
+                is_running: false,
+                port: Some(port),
+                host_port: self.get_host_port(container_name, port),
+                metrics: None,
+                error: Some(format!("Health check failed: {}", e)),
+            },
+        }
     }
 }
 

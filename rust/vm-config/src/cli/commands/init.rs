@@ -144,33 +144,44 @@ pub fn execute(
         vm_warning!("Failed to load port registry");
     }
 
+    // Smart service detection and configuration
+    let services_to_configure = match services {
+        Some(ref services_str) => {
+            // Manual service specification
+            services_str
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .collect()
+        }
+        None => {
+            // Smart detection
+            detect_and_recommend_services(&current_dir)?
+        }
+    };
+
     // Apply service configurations
-    if let Some(ref services_str) = services {
-        let service_list: Vec<&str> = services_str.split(',').map(|s| s.trim()).collect();
+    for service in services_to_configure {
+        // Load service config
+        let service_path =
+            crate::paths::resolve_tool_path(format!("configs/services/{}.yaml", service));
+        if !service_path.exists() {
+            vm_error!("Unknown service: {}", service);
+            vm_error!("Available services: postgresql, redis, mongodb, docker");
+            return Err(VmError::Config(
+                "Service configuration not found".to_string(),
+            ));
+        }
 
-        for service in service_list {
-            // Load service config
-            let service_path =
-                crate::paths::resolve_tool_path(format!("configs/services/{}.yaml", service));
-            if !service_path.exists() {
-                vm_error!("Unknown service: {}", service);
-                vm_error!("Available services: postgresql, redis, mongodb, docker");
-                return Err(VmError::Config(
-                    "Service configuration not found".to_string(),
-                ));
-            }
+        let service_config = VmConfig::from_file(&service_path).map_err(|e| {
+            VmError::Config(format!("Failed to load service config: {}: {}", service, e))
+        })?;
 
-            let service_config = VmConfig::from_file(&service_path).map_err(|e| {
-                VmError::Config(format!("Failed to load service config: {}: {}", service, e))
-            })?;
-
-            // Extract only the specific service we want to enable from the service config
-            if let Some(specific_service_config) = service_config.services.get(service) {
-                // Enable the specific service with its configuration
-                let mut enabled_service = specific_service_config.clone();
-                enabled_service.enabled = true;
-                config.services.insert(service.to_string(), enabled_service);
-            }
+        // Extract only the specific service we want to enable from the service config
+        if let Some(specific_service_config) = service_config.services.get(&service) {
+            // Enable the specific service with its configuration
+            let mut enabled_service = specific_service_config.clone();
+            enabled_service.enabled = true;
+            config.services.insert(service, enabled_service);
         }
     }
 
@@ -231,4 +242,66 @@ pub fn execute(
     vm_println!("📁 {}", target_path.display());
 
     Ok(())
+}
+
+/// Detect project technologies and recommend services
+fn detect_and_recommend_services(project_dir: &std::path::Path) -> Result<Vec<String>> {
+    use crate::detector::get_detected_technologies;
+
+    let detected = get_detected_technologies(project_dir);
+
+    if !detected.is_empty() {
+        let services = get_recommended_services(&detected);
+
+        // Show what was detected
+        let detected_list: Vec<String> = detected.iter().cloned().collect();
+        println!("🔍 Detected: {}", detected_list.join(", "));
+        if !services.is_empty() {
+            println!("✓ Services: {}", services.join(", "));
+        }
+
+        Ok(services)
+    } else {
+        // No detection, no services
+        Ok(vec![])
+    }
+}
+
+/// Map detected technologies to recommended services
+fn get_recommended_services(detected_types: &std::collections::HashSet<String>) -> Vec<String> {
+    let mut services = Vec::new();
+
+    for tech in detected_types {
+        match tech.as_str() {
+            "nodejs" | "react" | "vue" | "next" | "angular" => {
+                if !services.contains(&"postgresql".to_string()) {
+                    services.push("postgresql".to_string());
+                }
+            }
+            "python" | "django" | "flask" => {
+                if !services.contains(&"postgresql".to_string()) {
+                    services.push("postgresql".to_string());
+                }
+                if !services.contains(&"redis".to_string()) {
+                    services.push("redis".to_string());
+                }
+            }
+            "rails" | "ruby" => {
+                if !services.contains(&"postgresql".to_string()) {
+                    services.push("postgresql".to_string());
+                }
+                if !services.contains(&"redis".to_string()) {
+                    services.push("redis".to_string());
+                }
+            }
+            "docker" => {
+                if !services.contains(&"docker".to_string()) {
+                    services.push("docker".to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+
+    services
 }

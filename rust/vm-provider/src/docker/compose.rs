@@ -342,19 +342,4 @@ impl<'a> ComposeOperations<'a> {
         stream_command("docker", &args_refs)
             .map_err(|e| VmError::Internal(format!("Failed to destroy container: {}", e)))
     }
-
-    pub fn status_with_compose(&self) -> Result<()> {
-        let compose_path = self.temp_dir.join("docker-compose.yml");
-        if compose_path.exists() {
-            let args = ComposeCommand::build_args(&compose_path, "ps", &[])?;
-            let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-            stream_command("docker", &args_refs)
-                .map_err(|e| VmError::Internal(format!("Failed to get container status: {}", e)))
-        } else {
-            Err(VmError::Internal(format!(
-                "docker-compose.yml not found in '{}'. Cannot show container status without compose configuration",
-                self.temp_dir.display()
-            )))
-        }
-    }
 }

@@ -21,7 +21,7 @@ use tera::Tera;
 use vm_core::error::{Result, VmError};
 
 // Internal imports
-use crate::{context::ProviderContext, preflight, Provider, TempProvider};
+use crate::{context::ProviderContext, preflight, Provider, TempProvider, VmStatusReport};
 use vm_config::config::VmConfig;
 use vm_core::command_stream::is_tool_installed;
 
@@ -262,8 +262,38 @@ impl Provider for DockerProvider {
     }
 
     fn status(&self, container: Option<&str>) -> Result<()> {
+        // Legacy status method - just check if container exists
+        // The enhanced status is handled via get_status_report()
         let lifecycle = self.lifecycle_ops();
-        lifecycle.show_status(container)
+        let target_container = lifecycle.resolve_target_container(container)?;
+
+        let output = std::process::Command::new("docker")
+            .args([
+                "inspect",
+                "--format",
+                "{{.State.Running}}",
+                &target_container,
+            ])
+            .output()
+            .map_err(|e| VmError::Internal(format!("Failed to check container status: {}", e)))?;
+
+        if !output.status.success() {
+            return Err(VmError::Internal(format!(
+                "Container '{}' not found",
+                target_container
+            )));
+        }
+
+        let is_running = String::from_utf8_lossy(&output.stdout).trim() == "true";
+
+        if !is_running {
+            return Err(VmError::Internal(format!(
+                "Container '{}' is not running",
+                target_container
+            )));
+        }
+
+        Ok(())
     }
 
     fn restart(&self, container: Option<&str>) -> Result<()> {
@@ -284,6 +314,11 @@ impl Provider for DockerProvider {
     fn kill(&self, container: Option<&str>) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
         lifecycle.kill_container(container)
+    }
+
+    fn get_status_report(&self, container: Option<&str>) -> Result<VmStatusReport> {
+        let lifecycle = self.lifecycle_ops();
+        lifecycle.get_status_report(container)
     }
 
     fn get_sync_directory(&self) -> String {
