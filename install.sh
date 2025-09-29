@@ -1,15 +1,15 @@
 #!/bin/bash
 #
 # VM Infrastructure Installation Script
-# Version: 2.1.0
+# Version: 3.0.0
 #
 # Supports: macOS, Ubuntu/Debian, Fedora/RHEL, Arch Linux
 # Security: Enterprise-grade with verification and comprehensive error handling
 #
 # Usage:
-#   ./install.sh                    # Install vm tool only
-#   ./install.sh --pkg-server       # Install vm + standalone pkg-server
-#   ./install.sh --pkg-server-only  # Install only standalone pkg-server
+#   ./install.sh                    # Install vm tool from pre-compiled binary
+#   ./install.sh --version v1.2.3   # Install specific version
+#   ./install.sh --build-from-source  # Build from source (legacy mode)
 #
 
 set -euo pipefail  # Exit on error, undefined vars, pipe failures
@@ -19,12 +19,13 @@ IFS=$'\n\t'       # Secure Internal Field Separator
 # Configuration Constants
 # ============================================================================
 
-readonly SCRIPT_VERSION="2.1.0"
+readonly SCRIPT_VERSION="3.0.0"
 readonly SCRIPT_NAME="$(basename "$0")"
 readonly LOG_PREFIX="🔧 VM Installer"
 readonly TIMEOUT_SECONDS=30
 readonly CARGO_TIMEOUT_SECONDS=120  # Longer timeout for cargo operations
 readonly LOG_FILE="$HOME/.vm-install.log"
+readonly REPO_URL="https://github.com/goobits/vm"  # Replace with your repo
 
 # Error codes
 readonly ERR_PLATFORM_DETECT=1
@@ -56,7 +57,8 @@ SHELL_CONFIG=""
 SHELL_TYPE=""  # bash, zsh, fish, etc.
 
 # Installation options (parsed from arguments)
-PKG_SERVER_MODE="none"  # none, both, standalone
+INSTALL_MODE="binary"  # binary or source
+INSTALL_VERSION="latest"
 INSTALLER_ARGS=()
 
 # ============================================================================
@@ -252,7 +254,227 @@ detect_shell_config() {
 }
 
 # ============================================================================
-# Secure Rust Installation (Phase 1)
+# Binary Download and Installation
+# ============================================================================
+
+download_and_verify_binary() {
+    local download_url="$1"
+    local output_file="$2"
+    local checksum_url="$3"
+
+    log_info "Downloading binary from $download_url..."
+
+    if ! timeout "$TIMEOUT_SECONDS" curl \
+        --proto '=https' \
+        --tlsv1.2 \
+        --silent \
+        --show-error \
+        --fail \
+        --location \
+        --output "$output_file" \
+        "$download_url"; then
+
+        handle_error $ERR_NETWORK_TIMEOUT \
+            "Failed to download binary" \
+            "Check your internet connection and try again"
+    fi
+
+    # Verify checksum if available
+    if [[ -n "$checksum_url" ]]; then
+        log_info "Downloading and verifying checksum..."
+
+        local checksum_file
+        checksum_file=$(mktemp)
+        trap "rm -f '$checksum_file'" EXIT
+
+        if timeout "$TIMEOUT_SECONDS" curl \
+            --proto '=https' \
+            --tlsv1.2 \
+            --silent \
+            --fail \
+            --location \
+            --output "$checksum_file" \
+            "$checksum_url"; then
+
+            # Extract expected hash for our file
+            local expected_hash
+            local filename
+            filename=$(basename "$output_file")
+            expected_hash=$(grep "$filename" "$checksum_file" 2>/dev/null | cut -d' ' -f1)
+
+            if [[ -n "$expected_hash" ]]; then
+                # Calculate actual hash
+                local actual_hash
+                if command_exists sha256sum; then
+                    actual_hash=$(sha256sum "$output_file" | cut -d' ' -f1)
+                elif command_exists shasum; then
+                    actual_hash=$(shasum -a 256 "$output_file" | cut -d' ' -f1)
+                elif command_exists openssl; then
+                    actual_hash=$(openssl dgst -sha256 "$output_file" | cut -d' ' -f2)
+                fi
+
+                if [[ "$expected_hash" == "$actual_hash" ]]; then
+                    log_success "SHA256 checksum verification passed"
+                else
+                    handle_error $ERR_VERIFICATION_FAILED \
+                        "Checksum verification failed" \
+                        "The download may be corrupted"
+                fi
+            else
+                log_warning "Could not find checksum for $filename in checksum file"
+            fi
+        else
+            log_warning "Could not download checksum file, skipping verification"
+        fi
+
+        trap - EXIT
+        rm -f "$checksum_file"
+    fi
+
+    # Verify file size
+    local file_size
+    file_size=$(stat -f%z "$output_file" 2>/dev/null || stat -c%s "$output_file" 2>/dev/null || echo "0")
+
+    if [[ "$file_size" -lt 1000000 ]]; then  # Expect at least 1MB
+        handle_error $ERR_VERIFICATION_FAILED \
+            "Downloaded file too small ($file_size bytes)" \
+            "The download may have failed"
+    fi
+
+    log_success "Binary downloaded successfully ($file_size bytes)"
+}
+
+install_from_release() {
+    log_info "Installing pre-compiled binary from GitHub release..."
+
+    # Determine target triple for download
+    local target_arch
+    case "$ARCH" in
+        x86_64) target_arch="x86_64" ;;
+        aarch64|arm64) target_arch="aarch64" ;;
+        *) handle_error $ERR_PLATFORM_DETECT "Unsupported architecture: $ARCH" ;;
+    esac
+
+    local target_os
+    case "$OS_TYPE" in
+        macos) target_os="apple-darwin" ;;
+        *) target_os="unknown-linux-gnu" ;;  # Assuming Linux for others
+    esac
+
+    local target_triple="${target_arch}-${target_os}"
+    log_info "Detected target: $target_triple"
+
+    # Fetch release info from GitHub API
+    local api_url
+    if [[ "$INSTALL_VERSION" == "latest" ]]; then
+        api_url="https://api.github.com/repos/${REPO_URL#*github.com/}/releases/latest"
+    else
+        api_url="https://api.github.com/repos/${REPO_URL#*github.com/}/releases/tags/${INSTALL_VERSION}"
+    fi
+
+    log_info "Fetching release info from GitHub..."
+
+    local release_info
+    release_info=$(mktemp)
+    trap "rm -f '$release_info'" EXIT
+
+    if ! timeout "$TIMEOUT_SECONDS" curl \
+        --proto '=https' \
+        --tlsv1.2 \
+        --silent \
+        --fail \
+        --location \
+        --header "Accept: application/vnd.github.v3+json" \
+        --output "$release_info" \
+        "$api_url"; then
+
+        handle_error $ERR_NETWORK_TIMEOUT \
+            "Failed to fetch release information" \
+            "Check if version '$INSTALL_VERSION' exists at ${REPO_URL}/releases"
+    fi
+
+    # Extract download URL for our platform
+    local asset_url
+    local checksum_url
+
+    # For compressed archives (.tar.gz or .zip)
+    if [[ "$OS_TYPE" == "macos" ]] || [[ "$target_os" == "unknown-linux-gnu" ]]; then
+        # Unix systems use tar.gz
+        asset_url=$(grep "browser_download_url.*vm-${target_triple}\.tar\.gz" "$release_info" | head -1 | cut -d '"' -f 4)
+        checksum_url=$(grep "browser_download_url.*vm-${target_triple}\.tar\.gz\.sha256" "$release_info" | head -1 | cut -d '"' -f 4)
+    else
+        # Windows would use .zip
+        asset_url=$(grep "browser_download_url.*vm-${target_triple}\.zip" "$release_info" | head -1 | cut -d '"' -f 4)
+        checksum_url=$(grep "browser_download_url.*vm-${target_triple}\.zip\.sha256" "$release_info" | head -1 | cut -d '"' -f 4)
+    fi
+
+    if [[ -z "$asset_url" ]]; then
+        handle_error $ERR_NETWORK_TIMEOUT \
+            "Could not find a download URL for platform: $target_triple" \
+            "Check available releases at ${REPO_URL}/releases"
+    fi
+
+    # Download binary archive
+    local temp_archive
+    temp_archive=$(mktemp)
+    trap "rm -f '$temp_archive' '$release_info'" EXIT
+
+    download_and_verify_binary "$asset_url" "$temp_archive" "$checksum_url"
+
+    # Extract binary
+    log_info "Extracting binary..."
+    local temp_dir
+    temp_dir=$(mktemp -d)
+    trap "rm -rf '$temp_dir' '$temp_archive' '$release_info'" EXIT
+
+    if [[ "$asset_url" == *.tar.gz ]]; then
+        tar -xzf "$temp_archive" -C "$temp_dir" || handle_error $ERR_INSTALL_FAILED \
+            "Failed to extract archive" \
+            "Archive may be corrupted"
+    elif [[ "$asset_url" == *.zip ]]; then
+        unzip -q "$temp_archive" -d "$temp_dir" || handle_error $ERR_INSTALL_FAILED \
+            "Failed to extract archive" \
+            "Archive may be corrupted"
+    fi
+
+    # Find the vm binary
+    local vm_binary="$temp_dir/vm-${target_triple}"
+    if [[ ! -f "$vm_binary" ]]; then
+        # Try without the triple suffix
+        vm_binary="$temp_dir/vm"
+    fi
+
+    if [[ ! -f "$vm_binary" ]]; then
+        handle_error $ERR_INSTALL_FAILED \
+            "Binary not found in archive" \
+            "Archive structure may be unexpected"
+    fi
+
+    # Install the binary
+    local install_dir="$HOME/.cargo/bin"
+
+    # Create install directory if it doesn't exist
+    mkdir -p "$install_dir" || handle_error $ERR_PERMISSION_DENIED \
+        "Failed to create install directory" \
+        "Check permissions for $install_dir"
+
+    log_info "Installing to $install_dir/vm..."
+    mv "$vm_binary" "$install_dir/vm" || handle_error $ERR_INSTALL_FAILED \
+        "Failed to install binary" \
+        "Check permissions for $install_dir"
+
+    chmod +x "$install_dir/vm" || handle_error $ERR_PERMISSION_DENIED \
+        "Failed to make binary executable" \
+        "Check file permissions"
+
+    trap - EXIT
+    rm -rf "$temp_dir" "$temp_archive" "$release_info"
+
+    log_success "vm installed successfully to $install_dir/vm"
+}
+
+# ============================================================================
+# Secure Rust Installation (Phase 1) - Only for source builds
 # ============================================================================
 
 verify_rustup_checksum() {
@@ -610,24 +832,14 @@ verify_installation() {
         ((checks_passed++))  # Not a critical error
     fi
 
-    # Check 5: Optional pkg-server (if installed)
-    if [[ "$PKG_SERVER_MODE" == "both" ]] || [[ "$PKG_SERVER_MODE" == "standalone" ]]; then
-        ((checks_total++))
-        if command_exists pkg-server; then
-            if timeout 10 pkg-server --version &>/dev/null; then
-                local pkg_version
-                pkg_version=$(pkg-server --version 2>/dev/null | head -1)
-                log_success "pkg-server operational: $pkg_version"
-                ((checks_passed++))
-            else
-                log_error "pkg-server not responding"
-                has_errors=true
-            fi
-        else
-            log_error "pkg-server not found"
-            has_errors=true
-        fi
+    # Check 5: Installation mode
+    ((checks_total++))
+    if [[ "$INSTALL_MODE" == "binary" ]]; then
+        log_success "Installed from pre-compiled binary"
+    else
+        log_success "Built from source"
     fi
+    ((checks_passed++))
 
     # Report results
     echo ""
@@ -650,19 +862,21 @@ verify_installation() {
 parse_arguments() {
     for arg in "$@"; do
         case "$arg" in
-            --pkg-server)
-                PKG_SERVER_MODE="both"
-                log_info "Will install VM tool and standalone pkg-server"
+            --build-from-source)
+                INSTALL_MODE="source"
+                log_info "Will build from source instead of downloading binary"
                 ;;
-            --pkg-server-only)
-                PKG_SERVER_MODE="standalone"
-                log_info "Will install standalone pkg-server only"
+            --version)
+                # Get next argument as version
+                shift
+                INSTALL_VERSION="${1:-latest}"
+                log_info "Will install version: $INSTALL_VERSION"
                 ;;
             --help|-h)
                 show_help
                 exit 0
                 ;;
-            --version|-v)
+            -v)
                 echo "VM Installer v$SCRIPT_VERSION"
                 exit 0
                 ;;
@@ -681,26 +895,25 @@ Usage:
   $SCRIPT_NAME [OPTIONS]
 
 Options:
-  --pkg-server       Install VM tool + standalone package server
-  --pkg-server-only  Install only the standalone package server
-  --help, -h         Show this help message
-  --version, -v      Show version information
+  --version VERSION      Install specific version (default: latest)
+  --build-from-source    Build from source instead of downloading binary
+  --help, -h             Show this help message
+  -v                     Show installer version information
 
 Environment Variables:
-  CARGO_HOME         Override Cargo installation directory
-  RUSTUP_HOME        Override Rustup installation directory
+  CARGO_HOME             Override installation directory (default: ~/.cargo)
 
 Examples:
-  # Install VM tool only
+  # Install latest version
   ./$SCRIPT_NAME
 
-  # Install VM tool and package server
-  ./$SCRIPT_NAME --pkg-server
+  # Install specific version
+  ./$SCRIPT_NAME --version v1.2.3
 
-  # Install package server only
-  ./$SCRIPT_NAME --pkg-server-only
+  # Build from source (requires Rust)
+  ./$SCRIPT_NAME --build-from-source
 
-For more information, visit: https://github.com/vm-tools/vm
+For more information, visit: $REPO_URL
 EOF
 }
 
@@ -713,11 +926,12 @@ main() {
     echo "═══════════════════════════════════════════" > "$LOG_FILE"
     echo "VM Installation Log - $(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE"
     echo "Version: $SCRIPT_VERSION" >> "$LOG_FILE"
+    echo "Mode: $INSTALL_MODE" >> "$LOG_FILE"
     echo "═══════════════════════════════════════════" >> "$LOG_FILE"
 
     echo ""
     echo -e "${GREEN}${LOG_PREFIX} v$SCRIPT_VERSION${NC}"
-    echo -e "${BLUE}Enterprise-grade secure installation${NC}"
+    echo -e "${BLUE}Installing from: ${INSTALL_MODE}${NC}"
     echo ""
 
     # Step 1: Platform detection
@@ -728,56 +942,49 @@ main() {
     detect_shell_config
     echo ""
 
-    # Step 2: Install Rust if needed
-    install_rust_secure || handle_error $ERR_INSTALL_FAILED \
-        "Rust installation failed" \
-        "Try installing Rust manually from https://rustup.rs"
+    # Step 2: Install based on mode
+    if [[ "$INSTALL_MODE" == "binary" ]]; then
+        # Install from pre-compiled binary
+        install_from_release
+    else
+        # Build from source (legacy mode)
+        log_info "Building from source..."
+
+        # Install Rust if needed
+        install_rust_secure || handle_error $ERR_INSTALL_FAILED \
+            "Rust installation failed" \
+            "Try installing Rust manually from https://rustup.rs"
+        echo ""
+
+        # Install VM tool from source
+        install_vm_tool
+    fi
     echo ""
 
-    # Step 3: Build/install based on mode
-    if [[ "$PKG_SERVER_MODE" == "both" ]] || [[ "$PKG_SERVER_MODE" == "standalone" ]]; then
-        build_standalone_pkg_server
-        echo ""
-    fi
-
-    # Step 4: Install VM tool (unless standalone-only mode)
-    if [[ "$PKG_SERVER_MODE" != "standalone" ]]; then
-        install_vm_tool
-        echo ""
-    fi
-
-    # Step 5: Configure PATH
+    # Step 3: Configure PATH
     configure_path_safely
     echo ""
 
-    # Step 6: Verify installation
+    # Step 4: Verify installation
     if ! verify_installation; then
         log_warning "Installation completed with warnings"
         log_info "Please check the log file: $LOG_FILE"
     fi
 
-    # Step 7: Success message
+    # Step 5: Success message
     echo ""
     echo -e "${GREEN}═══════════════════════════════════════════${NC}"
     echo -e "${GREEN}🎉 Installation completed successfully!${NC}"
     echo -e "${GREEN}═══════════════════════════════════════════${NC}"
     echo ""
 
-    # Show next steps based on what was installed
+    # Show next steps
     echo -e "${BLUE}Next steps:${NC}"
     echo -e "  1. Restart your terminal or run: ${YELLOW}source $SHELL_CONFIG${NC}"
-
-    if [[ "$PKG_SERVER_MODE" != "standalone" ]]; then
-        echo -e "  2. Get started with: ${YELLOW}vm --help${NC}"
-    fi
-
-    if [[ "$PKG_SERVER_MODE" == "both" ]] || [[ "$PKG_SERVER_MODE" == "standalone" ]]; then
-        echo -e "  3. Package server: ${YELLOW}pkg-server --help${NC}"
-    fi
-
+    echo -e "  2. Get started with: ${YELLOW}vm --help${NC}"
     echo ""
-    echo -e "${BLUE}Documentation:${NC} https://github.com/vm-tools/vm"
-    echo -e "${BLUE}Support:${NC} https://github.com/vm-tools/vm/issues"
+    echo -e "${BLUE}Documentation:${NC} $REPO_URL"
+    echo -e "${BLUE}Support:${NC} ${REPO_URL}/issues"
     echo ""
 
     return 0

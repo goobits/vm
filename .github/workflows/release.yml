@@ -1,0 +1,97 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Only trigger on version tags
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+
+    - name: Install cross-compilation tools
+      if: matrix.target == 'aarch64-unknown-linux-gnu'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu
+
+    - name: Build release binary
+      run: |
+        cargo build --workspace --release --target ${{ matrix.target }}
+      working-directory: rust
+      env:
+        CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+
+    - name: Package binary (Unix)
+      if: runner.os != 'Windows'
+      run: |
+        mkdir -p release_assets
+        cp rust/target/${{ matrix.target }}/release/vm release_assets/vm-${{ matrix.target }}
+        cd release_assets
+        tar czf vm-${{ matrix.target }}.tar.gz vm-${{ matrix.target }}
+        sha256sum vm-${{ matrix.target }}.tar.gz > vm-${{ matrix.target }}.tar.gz.sha256
+        cd ..
+
+    - name: Package binary (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        New-Item -ItemType Directory -Force -Path release_assets
+        Copy-Item rust/target/${{ matrix.target }}/release/vm.exe release_assets/vm-${{ matrix.target }}.exe
+        cd release_assets
+        Compress-Archive -Path vm-${{ matrix.target }}.exe -DestinationPath vm-${{ matrix.target }}.zip
+        Get-FileHash vm-${{ matrix.target }}.zip -Algorithm SHA256 | Select-Object -ExpandProperty Hash | Out-File vm-${{ matrix.target }}.zip.sha256
+        cd ..
+
+    - name: Upload release assets
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          release_assets/vm-*.tar.gz
+          release_assets/vm-*.tar.gz.sha256
+          release_assets/vm-*.zip
+          release_assets/vm-*.zip.sha256
+        body: |
+          ## Installation
+
+          Download the appropriate binary for your platform and extract it:
+
+          ### Linux/macOS
+          ```bash
+          curl -LO https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/vm-<TARGET>.tar.gz
+          tar xzf vm-<TARGET>.tar.gz
+          sudo mv vm-<TARGET> /usr/local/bin/vm
+          chmod +x /usr/local/bin/vm
+          ```
+
+          ### Windows
+          Download and extract the `.zip` file, then add to your PATH.
+
+          ## Checksums
+          Verify your download with the `.sha256` files.
+        prerelease: false
