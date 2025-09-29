@@ -12,6 +12,8 @@ serde_yaml_ng = { workspace = true }
 vm-provider = { path = "../vm-provider" }
 vm-common = { path = "../vm-common" }
 vm-platform = { path = "../vm-platform" }
+vm-cli = { path = "../vm-cli" }
+vm-messages = { path = "../vm-messages" }
 
 thiserror = { workspace = true }
 clap = { workspace = true }

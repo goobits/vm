@@ -9,17 +9,17 @@ pub struct ConfigOpsGroup;
 impl ConfigOpsGroup {
     /// Execute set command
     pub fn execute_set(field: String, value: String, global: bool) -> Result<()> {
-        commands::config_ops::execute_set(field, value, global)
+        Ok(commands::config_ops::execute_set(field, value, global)?)
     }
 
     /// Execute get command
     pub fn execute_get(field: Option<String>, global: bool) -> Result<()> {
-        commands::config_ops::execute_get(field, global)
+        Ok(commands::config_ops::execute_get(field, global)?)
     }
 
     /// Execute unset command
     pub fn execute_unset(field: String, global: bool) -> Result<()> {
-        commands::config_ops::execute_unset(field, global)
+        Ok(commands::config_ops::execute_unset(field, global)?)
     }
 
     /// Execute validate command

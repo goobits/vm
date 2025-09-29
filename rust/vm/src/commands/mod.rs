@@ -202,13 +202,18 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
     // Execute the command with friendly error handling
     debug!("Executing command: {:?}", args.command);
     let result = match args.command {
-        Command::Create { force, instance } => {
+        Command::Create {
+            force,
+            instance,
+            verbose,
+        } => {
             vm_ops::handle_create(
                 provider,
                 config.clone(),
                 global_config.clone(),
                 force,
                 instance,
+                verbose,
             )
             .await
         }

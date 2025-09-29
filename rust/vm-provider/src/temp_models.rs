@@ -1,24 +1,8 @@
+use crate::VmError;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum MountError {
-    #[error("Mount source does not exist: {path}")]
-    SourceNotFound { path: PathBuf },
-    #[error("Mount source is not a directory: {path}")]
-    SourceNotDirectory { path: PathBuf },
-    #[error("Dangerous mount path not allowed: {path}")]
-    DangerousPath { path: PathBuf },
-    #[error("Mount already exists for source: {path}")]
-    MountExists { path: PathBuf },
-    #[error("Mount not found for source: {path}")]
-    MountNotFound { path: PathBuf },
-    #[error("Invalid target path: {path}")]
-    InvalidTarget { path: PathBuf },
-}
 
 /// Mount permission levels for temp VM mounts
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -166,13 +150,16 @@ impl TempVmState {
         &mut self,
         source: PathBuf,
         permissions: MountPermission,
-    ) -> Result<(), MountError> {
+    ) -> Result<(), VmError> {
         // Validate the mount source
         Self::validate_mount_source(&source)?;
 
         // Check if mount already exists
         if self.has_mount(&source) {
-            return Err(MountError::MountExists { path: source });
+            return Err(VmError::Config(format!(
+                "Mount already exists for source: {}",
+                source.display()
+            )));
         }
 
         // Create the mount
@@ -188,7 +175,7 @@ impl TempVmState {
         source: PathBuf,
         target: PathBuf,
         permissions: MountPermission,
-    ) -> Result<(), MountError> {
+    ) -> Result<(), VmError> {
         // Validate the mount source
         Self::validate_mount_source(&source)?;
 
@@ -197,7 +184,10 @@ impl TempVmState {
 
         // Check if mount already exists
         if self.has_mount(&source) {
-            return Err(MountError::MountExists { path: source });
+            return Err(VmError::Config(format!(
+                "Mount already exists for source: {}",
+                source.display()
+            )));
         }
 
         // Create the mount
@@ -208,13 +198,13 @@ impl TempVmState {
     }
 
     /// Remove a mount by source path
-    pub fn remove_mount(&mut self, source: &Path) -> Result<Mount, MountError> {
+    pub fn remove_mount(&mut self, source: &Path) -> Result<Mount, VmError> {
         let index = self
             .mounts
             .iter()
             .position(|mount| mount.source == source)
-            .ok_or_else(|| MountError::MountNotFound {
-                path: source.to_path_buf(),
+            .ok_or_else(|| {
+                VmError::Config(format!("Mount not found for source: {}", source.display()))
             })?;
 
         Ok(self.mounts.remove(index))
@@ -250,12 +240,10 @@ impl TempVmState {
         &mut self,
         source: &Path,
         permissions: MountPermission,
-    ) -> Result<(), MountError> {
-        let mount = self
-            .get_mount_mut(source)
-            .ok_or_else(|| MountError::MountNotFound {
-                path: source.to_path_buf(),
-            })?;
+    ) -> Result<(), VmError> {
+        let mount = self.get_mount_mut(source).ok_or_else(|| {
+            VmError::Config(format!("Mount not found for source: {}", source.display()))
+        })?;
 
         mount.permissions = permissions;
         Ok(())
@@ -278,38 +266,42 @@ impl TempVmState {
     }
 
     /// Validate a mount source path
-    fn validate_mount_source(source: &Path) -> Result<(), MountError> {
+    fn validate_mount_source(source: &Path) -> Result<(), VmError> {
         // Check if source exists
         if !source.exists() {
-            return Err(MountError::SourceNotFound {
-                path: source.to_path_buf(),
-            });
+            return Err(VmError::Config(format!(
+                "Mount source does not exist: {}",
+                source.display()
+            )));
         }
 
         // Check if source is a directory
         if !source.is_dir() {
-            return Err(MountError::SourceNotDirectory {
-                path: source.to_path_buf(),
-            });
+            return Err(VmError::Config(format!(
+                "Mount source is not a directory: {}",
+                source.display()
+            )));
         }
 
         // Security check: prevent mounting dangerous system directories
         if Self::is_dangerous_mount_path(source) {
-            return Err(MountError::DangerousPath {
-                path: source.to_path_buf(),
-            });
+            return Err(VmError::Config(format!(
+                "Dangerous mount path not allowed: {}",
+                source.display()
+            )));
         }
 
         Ok(())
     }
 
     /// Validate a target path for mounting
-    fn validate_target_path(target: &Path) -> Result<(), MountError> {
+    fn validate_target_path(target: &Path) -> Result<(), VmError> {
         // Target should be absolute and under /workspace or /tmp
         if !target.is_absolute() {
-            return Err(MountError::InvalidTarget {
-                path: target.to_path_buf(),
-            });
+            return Err(VmError::Config(format!(
+                "Invalid target path: {}",
+                target.display()
+            )));
         }
 
         // Check if target is under allowed directories
@@ -320,9 +312,10 @@ impl TempVmState {
             .iter()
             .any(|prefix| target_str.starts_with(prefix))
         {
-            return Err(MountError::InvalidTarget {
-                path: target.to_path_buf(),
-            });
+            return Err(VmError::Config(format!(
+                "Invalid target path: {}",
+                target.display()
+            )));
         }
 
         Ok(())

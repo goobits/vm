@@ -1,9 +1,9 @@
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use tracing::{debug, info, warn};
+use vm_core::error::Result;
 
 pub trait Migration {
     fn id(&self) -> &'static str;

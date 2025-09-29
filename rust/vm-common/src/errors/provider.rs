@@ -1,6 +1,6 @@
 //! Provider-related error handling
 
-use crate::{vm_error, vm_error_hint, vm_error_with_details};
+use vm_core::{vm_error, vm_error_hint, vm_error_with_details};
 
 /// Handle Docker daemon connection error
 pub fn docker_connection_failed() -> anyhow::Error {

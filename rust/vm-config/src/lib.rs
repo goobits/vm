@@ -38,8 +38,9 @@ pub use cli::init_config_file;
 // Re-export global config for use by other crates
 pub use global_config::GlobalConfig;
 
-use anyhow::{Context, Result};
+use anyhow::Context;
 use std::path::PathBuf;
+use vm_core::error::Result;
 
 /// Complete application configuration containing both global and VM-specific settings
 #[derive(Debug, Clone)]

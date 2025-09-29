@@ -11,10 +11,11 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 // External crates
-use anyhow::{bail, Context, Result};
+use anyhow::Context;
 use regex::Regex;
 use serde_yaml::{Mapping, Value};
 use serde_yaml_ng as serde_yaml;
+use vm_core::error::Result;
 
 // Internal imports
 use crate::config::VmConfig;
@@ -23,9 +24,10 @@ use crate::paths;
 use crate::ports::PortRange;
 use crate::preset::{PresetDetector, PresetFile};
 use crate::yaml::core::CoreOperations;
-use vm_common::user_paths;
+use vm_cli::msg;
 use vm_common::{vm_error, vm_error_hint, vm_println, vm_warning};
-use vm_messages::{messages::MESSAGES, msg};
+use vm_core::user_paths;
+use vm_messages::messages::MESSAGES;
 
 static PORT_PLACEHOLDER_RE: OnceLock<Regex> = OnceLock::new();
 
@@ -212,15 +214,15 @@ impl ConfigOps {
             if global {
                 vm_error!("No global configuration found at {}", config_path.display());
                 vm_error_hint!("Global configs are created automatically when needed");
-                return Err(anyhow::anyhow!(
+                return Err(vm_core::error::VmError::Config(format!(
                     "No global configuration found at '{}'. Global configuration is created automatically when needed",
                     config_path.display()
-                ));
+                )));
             } else {
                 vm_error!("No vm.yaml found in current directory or parent directories");
                 vm_error_hint!("Create one with: vm init");
-                return Err(anyhow::anyhow!(
-                    "No vm.yaml found in current directory or parent directories. Create one with: vm init"
+                return Err(vm_core::error::VmError::Config(
+                    "No vm.yaml found in current directory or parent directories. Create one with: vm init".to_string()
                 ));
             }
         }
@@ -258,10 +260,10 @@ impl ConfigOps {
 
         if !config_path.exists() {
             vm_error!("Configuration file not found: {}", config_path.display());
-            return Err(anyhow::anyhow!(
+            return Err(vm_core::error::VmError::Config(format!(
                 "Configuration file not found at '{}'. Use 'vm init' to create a configuration",
                 config_path.display()
-            ));
+            )));
         }
 
         let content = fs::read_to_string(&config_path)?;
@@ -637,8 +639,8 @@ fn find_local_config() -> Result<PathBuf> {
     }
 
     vm_error!("No vm.yaml found in current directory or parent directories");
-    Err(anyhow::anyhow!(
-        "No vm.yaml configuration found in current directory or parent directories. Create one with: vm init"
+    Err(vm_core::error::VmError::Config(
+        "No vm.yaml configuration found in current directory or parent directories. Create one with: vm init".to_string()
     ))
 }
 
@@ -656,8 +658,9 @@ fn find_or_create_local_config() -> Result<PathBuf> {
 fn set_nested_field(value: &mut Value, field: &str, new_value: Value) -> Result<()> {
     if field.is_empty() {
         vm_error!("Empty field path");
-        return Err(anyhow::anyhow!(
+        return Err(vm_core::error::VmError::Config(
             "Empty field path provided. Specify a field name like 'provider' or 'project.name'"
+                .to_string(),
         ));
     }
 
@@ -675,10 +678,10 @@ fn set_nested_field_recursive(value: &mut Value, parts: &[&str], new_value: Valu
             }
             _ => {
                 vm_error!("Cannot set field on non-object");
-                return Err(anyhow::anyhow!(
+                return Err(vm_core::error::VmError::Config(format!(
                     "Cannot set field '{}' on non-object value. Field path may be invalid",
                     parts[0]
-                ));
+                )));
             }
         }
     }
@@ -698,7 +701,9 @@ fn set_nested_field_recursive(value: &mut Value, parts: &[&str], new_value: Valu
         }
         _ => {
             vm_error!("Cannot navigate field '{}' on non-object", parts[0]);
-            return Err(anyhow::anyhow!("Cannot navigate field on non-object"));
+            return Err(vm_core::error::VmError::Config(
+                "Cannot navigate field on non-object".to_string(),
+            ));
         }
     }
 
@@ -726,13 +731,15 @@ fn get_nested_field<'a>(value: &'a Value, field: &str) -> Result<&'a Value> {
         match current {
             Value::Mapping(map) => {
                 let key = Value::String(part.into());
-                current = map
-                    .get(&key)
-                    .ok_or_else(|| anyhow::anyhow!("Field '{}' not found", part))?;
+                current = map.get(&key).ok_or_else(|| {
+                    vm_core::error::VmError::Config(format!("Field '{}' not found", part))
+                })?;
             }
             _ => {
                 vm_error!("Cannot navigate field '{}' on non-object", part);
-                return Err(anyhow::anyhow!("Cannot navigate field on non-object"));
+                return Err(vm_core::error::VmError::Config(
+                    "Cannot navigate field on non-object".to_string(),
+                ));
             }
         }
     }
@@ -742,7 +749,9 @@ fn get_nested_field<'a>(value: &'a Value, field: &str) -> Result<&'a Value> {
 
 fn unset_nested_field(value: &mut Value, field: &str) -> Result<()> {
     if field.is_empty() {
-        bail!("Empty field path");
+        return Err(vm_core::error::VmError::Config(
+            "Empty field path".to_string(),
+        ));
     }
 
     let parts: Vec<&str> = field.split('.').collect();
@@ -755,12 +764,17 @@ fn unset_nested_field_recursive(value: &mut Value, parts: &[&str]) -> Result<()>
             Value::Mapping(map) => {
                 let key = Value::String(parts[0].into());
                 if map.remove(&key).is_none() {
-                    bail!("Field '{}' not found", parts[0]);
+                    return Err(vm_core::error::VmError::Config(format!(
+                        "Field '{}' not found",
+                        parts[0]
+                    )));
                 }
                 return Ok(());
             }
             _ => {
-                bail!("Cannot unset field on non-object");
+                return Err(vm_core::error::VmError::Config(
+                    "Cannot unset field on non-object".to_string(),
+                ));
             }
         }
     }
@@ -771,12 +785,18 @@ fn unset_nested_field_recursive(value: &mut Value, parts: &[&str]) -> Result<()>
             match map.get_mut(&key) {
                 Some(nested) => unset_nested_field_recursive(nested, &parts[1..])?,
                 None => {
-                    bail!("Field '{}' not found", parts[0]);
+                    return Err(vm_core::error::VmError::Config(format!(
+                        "Field '{}' not found",
+                        parts[0]
+                    )));
                 }
             }
         }
         _ => {
-            bail!("Cannot navigate field '{}' on non-object", parts[0]);
+            return Err(vm_core::error::VmError::Config(format!(
+                "Cannot navigate field '{}' on non-object",
+                parts[0]
+            )));
         }
     }
 

@@ -15,9 +15,11 @@ use vm_config::config::VmConfig;
 
 // Re-export common types for convenience
 pub use common::instance::{InstanceInfo, InstanceResolver};
+pub use context::ProviderContext;
+pub use vm_core::error::{Result as VmResult, VmError};
 
 pub mod common;
-pub mod error;
+pub mod context;
 pub mod progress;
 pub mod resources;
 pub mod security;
@@ -58,7 +60,12 @@ pub trait Provider {
 
     /// Create a new VM instance.
     /// This is the main provisioning step.
-    fn create(&self) -> Result<()>;
+    fn create(&self) -> Result<()> {
+        self.create_with_context(&ProviderContext::default())
+    }
+
+    /// Create a new VM instance with context.
+    fn create_with_context(&self, context: &ProviderContext) -> Result<()>;
 
     /// Create a new VM instance with a specific name.
     /// This allows creating multiple instances of the same project.
@@ -66,6 +73,17 @@ pub trait Provider {
         // Default implementation falls back to regular create()
         // Providers can override this for true multi-instance support
         self.create()
+    }
+
+    /// Create a new VM instance with a specific name and context.
+    fn create_instance_with_context(
+        &self,
+        instance_name: &str,
+        context: &ProviderContext,
+    ) -> Result<()> {
+        // Default implementation ignores context and calls old method for backward compatibility
+        let _ = context;
+        self.create_instance(instance_name)
     }
 
     /// Start an existing, stopped VM.
@@ -160,7 +178,7 @@ pub fn get_provider(config: VmConfig) -> Result<Box<dyn Provider>> {
         "vagrant" => Ok(Box::new(vagrant::VagrantProvider::new(config)?)),
         #[cfg(feature = "tart")]
         "tart" => Ok(Box::new(tart::TartProvider::new(config)?)),
-        _ => Err(error::ProviderError::UnknownProvider(provider_name.into()).into()),
+        _ => Err(VmError::Provider(format!("Unknown provider: {}", provider_name)).into()),
     }
 }
 

@@ -3156,8 +3156,10 @@ dependencies = [
  "tracing",
  "uuid",
  "vm-auth-proxy",
+ "vm-cli",
  "vm-common",
  "vm-config",
+ "vm-core",
  "vm-docker-registry",
  "vm-messages",
  "vm-package-server",
@@ -3191,11 +3193,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "vm-cli"
+version = "2.0.2"
+dependencies = [
+ "vm-core",
+ "vm-messages",
+]
+
+[[package]]
 name = "vm-common"
 version = "2.0.2"
 dependencies = [
  "anyhow",
- "dirs",
  "duct",
  "is-terminal",
  "pathdiff",
@@ -3208,6 +3217,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "vm-core",
  "vm-messages",
  "vm-platform",
  "which",
@@ -3228,8 +3238,28 @@ dependencies = [
  "serde_json",
  "serde_yaml_ng",
  "tempfile",
+ "vm-cli",
  "vm-common",
+ "vm-core",
  "vm-messages",
+ "which",
+]
+
+[[package]]
+name = "vm-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dirs",
+ "duct",
+ "pathdiff",
+ "serde_json",
+ "serde_yaml_ng",
+ "sysinfo",
+ "tempfile",
+ "thiserror 1.0.69",
+ "vm-messages",
+ "vm-platform",
  "which",
 ]
 
@@ -3261,6 +3291,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tracing",
+ "vm-cli",
  "vm-common",
  "vm-messages",
  "vm-platform",
@@ -3281,6 +3312,7 @@ dependencies = [
  "regex",
  "serde_json",
  "tempfile",
+ "vm-cli",
  "vm-common",
  "vm-config",
  "vm-messages",
@@ -3346,9 +3378,11 @@ dependencies = [
  "serde",
  "serde_json",
  "tera",
- "thiserror 2.0.16",
+ "vm-cli",
  "vm-common",
  "vm-config",
+ "vm-core",
+ "vm-messages",
  "vm-platform",
 ]
 
@@ -3364,8 +3398,10 @@ dependencies = [
  "serde_yaml_ng",
  "tempfile",
  "thiserror 2.0.16",
+ "vm-cli",
  "vm-common",
  "vm-config",
+ "vm-messages",
  "vm-platform",
  "vm-provider",
 ]

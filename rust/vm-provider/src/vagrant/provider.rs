@@ -1,16 +1,15 @@
 use crate::{
     common::instance::{InstanceInfo, InstanceResolver},
-    error::ProviderError,
     progress::ProgressReporter,
     security::SecurityValidator,
-    Provider,
+    Provider, VmError,
 };
 use anyhow::{Context, Result};
 use std::env;
 use std::path::Path;
-use vm_common::command_stream::{is_tool_installed, stream_command};
 use vm_common::{vm_println, vm_success, vm_warning};
 use vm_config::config::VmConfig;
+use vm_core::command_stream::{is_tool_installed, stream_command};
 
 use super::instance::VagrantInstanceManager;
 
@@ -37,7 +36,7 @@ pub struct VagrantProvider {
 impl VagrantProvider {
     pub fn new(config: VmConfig) -> Result<Self> {
         if !is_tool_installed("vagrant") {
-            return Err(ProviderError::DependencyNotFound("Vagrant".into()).into());
+            return Err(VmError::Dependency("Vagrant".into()).into());
         }
         let project_dir = env::current_dir()?;
         Ok(Self {

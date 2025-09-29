@@ -292,8 +292,8 @@ fn default_true() -> bool {
 
 impl GlobalConfig {
     /// Load global configuration from the standard location
-    pub fn load() -> anyhow::Result<Self> {
-        let config_path = vm_common::user_paths::global_config_path()?;
+    pub fn load() -> vm_core::error::Result<Self> {
+        let config_path = vm_core::user_paths::global_config_path()?;
 
         if !config_path.exists() {
             // Return defaults if no global config exists
@@ -304,39 +304,27 @@ impl GlobalConfig {
     }
 
     /// Load global configuration from a specific path
-    pub fn load_from_path(path: &std::path::Path) -> anyhow::Result<Self> {
-        use anyhow::Context;
-
-        let contents = std::fs::read_to_string(path)
-            .with_context(|| format!("Failed to read global config from {:?}", path))?;
-
-        let config: Self = serde_yaml_ng::from_str(&contents)
-            .with_context(|| format!("Failed to parse global config from {:?}", path))?;
-
+    pub fn load_from_path(path: &std::path::Path) -> vm_core::error::Result<Self> {
+        let contents = std::fs::read_to_string(path)?;
+        let config: Self = serde_yaml_ng::from_str(&contents)?;
         Ok(config)
     }
 
     /// Save global configuration to the standard location
-    pub fn save(&self) -> anyhow::Result<()> {
-        let config_path = vm_common::user_paths::global_config_path()?;
+    pub fn save(&self) -> vm_core::error::Result<()> {
+        let config_path = vm_core::user_paths::global_config_path()?;
         self.save_to_path(&config_path)
     }
 
     /// Save global configuration to a specific path
-    pub fn save_to_path(&self, path: &std::path::Path) -> anyhow::Result<()> {
-        use anyhow::Context;
-
+    pub fn save_to_path(&self, path: &std::path::Path) -> vm_core::error::Result<()> {
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create config directory {:?}", parent))?;
+            std::fs::create_dir_all(parent)?;
         }
 
-        let yaml =
-            serde_yaml_ng::to_string(self).context("Failed to serialize global config to YAML")?;
-
-        std::fs::write(path, yaml)
-            .with_context(|| format!("Failed to write global config to {:?}", path))?;
+        let yaml = serde_yaml_ng::to_string(self)?;
+        std::fs::write(path, yaml)?;
 
         Ok(())
     }

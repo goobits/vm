@@ -15,6 +15,10 @@ impl Provider for MockProvider {
         Ok(())
     }
 
+    fn create_with_context(&self, _context: &crate::context::ProviderContext) -> Result<()> {
+        Ok(())
+    }
+
     fn start(&self, _container: Option<&str>) -> Result<()> {
         Ok(())
     }

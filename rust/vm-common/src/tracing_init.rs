@@ -3,8 +3,8 @@
 //! This module provides a clean tracing setup without any legacy code.
 //! It replaces the old structured_log, log_context, and module_logger systems.
 
-use anyhow::Result;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use vm_core::error::Result;
 
 /// Initialize the tracing subscriber with environment-based configuration
 ///
@@ -42,20 +42,38 @@ pub fn init_with_defaults(default_filter: &str) -> Result<()> {
             tracing_subscriber::registry()
                 .with(env_filter)
                 .with(fmt::layer().with_ansi(false).json())
-                .try_init()?;
+                .try_init()
+                .map_err(|e| {
+                    vm_core::error::VmError::Internal(format!(
+                        "Failed to initialize tracing: {}",
+                        e
+                    ))
+                })?;
         }
         "compact" => {
             tracing_subscriber::registry()
                 .with(env_filter)
                 .with(fmt::layer().compact())
-                .try_init()?;
+                .try_init()
+                .map_err(|e| {
+                    vm_core::error::VmError::Internal(format!(
+                        "Failed to initialize tracing: {}",
+                        e
+                    ))
+                })?;
         }
         _ => {
             // Default to pretty format
             tracing_subscriber::registry()
                 .with(env_filter)
                 .with(fmt::layer().pretty())
-                .try_init()?;
+                .try_init()
+                .map_err(|e| {
+                    vm_core::error::VmError::Internal(format!(
+                        "Failed to initialize tracing: {}",
+                        e
+                    ))
+                })?;
         }
     }
 
@@ -72,7 +90,9 @@ pub fn init_for_testing() -> Result<()> {
         .with(env_filter)
         .with(fmt::layer().with_test_writer())
         .try_init()
-        .map_err(|e| anyhow::anyhow!("Failed to initialize test tracing: {}", e))
+        .map_err(|e| {
+            vm_core::error::VmError::Internal(format!("Failed to initialize test tracing: {}", e))
+        })
 }
 
 /// Helper function to create a span with common fields

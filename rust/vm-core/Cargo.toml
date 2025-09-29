@@ -1,0 +1,18 @@
+[package]
+name = "vm-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+thiserror = "1.0"
+dirs = { workspace = true }
+anyhow = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml_ng = { workspace = true }
+duct = { workspace = true }
+which = { workspace = true }
+tempfile = { workspace = true }
+pathdiff = { workspace = true }
+sysinfo = { workspace = true }
+vm-messages = { path = "../vm-messages" }
+vm-platform = { path = "../vm-platform" }

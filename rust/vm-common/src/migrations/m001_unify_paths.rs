@@ -1,7 +1,7 @@
 use super::Migration;
-use anyhow::Result;
 use std::fs;
 use tracing::{debug, info};
+use vm_core::error::Result;
 
 pub struct UnifyPaths;
 

@@ -1,17 +1,16 @@
 use crate::{
     common::instance::{InstanceInfo, InstanceResolver},
-    error::ProviderError,
     progress::ProgressReporter,
-    Provider,
+    Provider, VmError,
 };
 use anyhow::Result;
 use std::path::Path;
-use vm_common::command_stream::{is_tool_installed, stream_command};
 use vm_common::{
     messages::{messages::MESSAGES, msg},
     vm_error, vm_println,
 };
 use vm_config::config::VmConfig;
+use vm_core::command_stream::{is_tool_installed, stream_command};
 
 use super::instance::TartInstanceManager;
 
@@ -22,7 +21,7 @@ pub struct TartProvider {
 impl TartProvider {
     pub fn new(config: VmConfig) -> Result<Self> {
         if !is_tool_installed("tart") {
-            return Err(ProviderError::DependencyNotFound("Tart".into()).into());
+            return Err(VmError::Dependency("Tart".into()).into());
         }
         Ok(Self { config })
     }

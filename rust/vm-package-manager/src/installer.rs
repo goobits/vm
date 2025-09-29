@@ -6,8 +6,9 @@ use std::process::{Command, Stdio};
 
 // External crates
 use anyhow::{Context, Result};
+use vm_cli::msg;
 use vm_common::{errors, vm_error, vm_println, vm_success};
-use vm_messages::{messages::MESSAGES, msg};
+use vm_messages::messages::MESSAGES;
 
 // Internal imports
 use crate::link_detector::LinkDetector;

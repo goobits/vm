@@ -23,8 +23,10 @@ regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml_ng = { workspace = true }
+vm-core = { path = "../vm-core" }
 vm-common = { path = "../vm-common" }
 vm-messages = { path = "../vm-messages" }
+vm-cli = { path = "../vm-cli" }
 which = { workspace = true }
 fs2 = { workspace = true }
 

@@ -12,11 +12,13 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 // External crates
-use anyhow::{Context, Result};
+use anyhow::Context;
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
-use vm_common::{user_paths, vm_println};
-use vm_messages::{messages::MESSAGES, msg};
+use vm_cli::msg;
+use vm_common::vm_println;
+use vm_core::{error::Result, user_paths};
+use vm_messages::messages::MESSAGES;
 
 // Internal imports
 use super::range::PortRange;
@@ -47,7 +49,7 @@ impl PortRegistry {
         let registry_path = user_paths::port_registry_path()?;
         let registry_dir = registry_path
             .parent()
-            .ok_or_else(|| anyhow::anyhow!("Invalid registry path"))?;
+            .ok_or_else(|| vm_core::error::VmError::Config("Invalid registry path".to_string()))?;
 
         // Create registry directory if it doesn't exist
         if !registry_dir.exists() {
@@ -240,17 +242,16 @@ impl PortRegistry {
                 Err(e) => {
                     attempts += 1;
                     if lock_start.elapsed() > LOCK_TIMEOUT {
-                        return Err(anyhow::anyhow!(
+                        return Err(vm_core::error::VmError::Internal(format!(
                             "Timeout waiting for exclusive lock on registry file after {} attempts: {}",
                             attempts, e
-                        ));
+                        )));
                     }
                     if attempts >= MAX_RETRIES {
-                        return Err(anyhow::anyhow!(
+                        return Err(vm_core::error::VmError::Internal(format!(
                             "Maximum retry attempts ({}) exceeded for lock acquisition: {}",
-                            MAX_RETRIES,
-                            e
-                        ));
+                            MAX_RETRIES, e
+                        )));
                     }
                     std::thread::sleep(RETRY_DELAY);
                 }
@@ -304,6 +305,7 @@ impl PortRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::error::Error;
     use tempfile::tempdir;
 
     #[test]

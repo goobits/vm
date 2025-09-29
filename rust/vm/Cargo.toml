@@ -17,8 +17,10 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 reqwest = { workspace = true }
 dialoguer = { workspace = true }
+vm-core = { path = "../vm-core" }
 vm-common = { path = "../vm-common" }
 vm-messages = { path = "../vm-messages" }
+vm-cli = { path = "../vm-cli" }
 vm-config = { path = "../vm-config" }
 vm-provider = { path = "../vm-provider" }
 vm-temp = { path = "../vm-temp" }

@@ -5,8 +5,9 @@
 
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Context;
 use serde::{de::DeserializeOwned, Serialize};
+use vm_core::error::Result;
 
 /// Read and parse a YAML file into the specified type
 ///
@@ -33,8 +34,7 @@ pub fn read_yaml_file<T: DeserializeOwned>(path: &Path) -> Result<T> {
     let content = std::fs::read_to_string(path)
         .with_context(|| format!("Failed to read YAML file: {}", path.display()))?;
 
-    serde_yaml_ng::from_str(&content)
-        .with_context(|| format!("Failed to parse YAML file: {}", path.display()))
+    Ok(serde_yaml_ng::from_str(&content)?)
 }
 
 /// Write a data structure to a YAML file
@@ -67,8 +67,7 @@ pub fn write_yaml_file<T: Serialize>(path: &Path, data: &T) -> Result<()> {
     let content =
         serde_yaml_ng::to_string(data).with_context(|| "Failed to serialize data to YAML")?;
 
-    std::fs::write(path, content)
-        .with_context(|| format!("Failed to write YAML file: {}", path.display()))
+    Ok(std::fs::write(path, content)?)
 }
 
 /// Parse YAML content from a string
@@ -97,7 +96,7 @@ pub fn write_yaml_file<T: Serialize>(path: &Path, data: &T) -> Result<()> {
 /// }
 /// ```
 pub fn parse_yaml_str<T: DeserializeOwned>(content: &str) -> Result<T> {
-    serde_yaml_ng::from_str(content).with_context(|| "Failed to parse YAML content")
+    Ok(serde_yaml_ng::from_str(content)?)
 }
 
 /// Serialize a data structure to YAML string
@@ -108,7 +107,7 @@ pub fn parse_yaml_str<T: DeserializeOwned>(content: &str) -> Result<T> {
 /// # Returns
 /// * `Result<String>` - The YAML string or an error
 pub fn to_yaml_string<T: Serialize>(data: &T) -> Result<String> {
-    serde_yaml_ng::to_string(data).with_context(|| "Failed to serialize data to YAML string")
+    Ok(serde_yaml_ng::to_string(data)?)
 }
 
 #[cfg(test)]

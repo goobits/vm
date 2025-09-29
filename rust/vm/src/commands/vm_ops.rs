@@ -13,7 +13,7 @@ use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
 use vm_common::vm_error;
 use vm_config::{config::VmConfig, GlobalConfig};
-use vm_provider::{InstanceInfo, Provider};
+use vm_provider::{InstanceInfo, Provider, ProviderContext};
 
 /// Handle VM creation
 pub async fn handle_create(
@@ -22,6 +22,7 @@ pub async fn handle_create(
     global_config: GlobalConfig,
     force: bool,
     instance: Option<String>,
+    verbose: bool,
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "create");
     let _enter = span.enter();
@@ -78,15 +79,18 @@ pub async fn handle_create(
     println!("  ✓ Starting container");
     println!("  ✓ Running initial provisioning");
 
+    // Create provider context with verbose flag
+    let context = ProviderContext::with_verbose(verbose);
+
     // Call the appropriate create method based on whether instance is specified
     let create_result = if let Some(instance_name) = &instance {
         if provider.supports_multi_instance() {
-            provider.create_instance(instance_name)
+            provider.create_instance_with_context(instance_name, &context)
         } else {
-            provider.create()
+            provider.create_with_context(&context)
         }
     } else {
-        provider.create()
+        provider.create_with_context(&context)
     };
 
     match create_result {

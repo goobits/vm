@@ -1,4 +1,4 @@
-use anyhow::Result;
+use vm_core::error::Result;
 
 pub fn execute_set(field: String, value: String, global: bool) -> Result<()> {
     crate::config_ops::ConfigOps::set(&field, &value, global, false)

@@ -5,10 +5,9 @@
 //! resolution and information handling.
 
 use anyhow::Result;
-use vm_common::{
-    messages::{messages::MESSAGES, msg},
-    vm_error,
-};
+use vm_cli::msg;
+use vm_common::vm_error;
+use vm_messages::messages::MESSAGES;
 
 /// Information about a VM instance
 #[derive(Debug, Clone)]

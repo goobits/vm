@@ -6,8 +6,9 @@ use std::path::{Path, PathBuf};
 
 // External crates
 use anyhow::{Context, Result};
+use vm_cli::msg;
 use vm_common::vm_println;
-use vm_messages::{messages::MESSAGES, msg};
+use vm_messages::messages::MESSAGES;
 
 // Internal imports
 use crate::prompt::confirm_prompt;

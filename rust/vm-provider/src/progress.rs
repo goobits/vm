@@ -2,12 +2,11 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use regex::Regex;
 use std::collections::HashMap;
 use std::io::{self, Write};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use vm_common::{
-    messages::{messages::MESSAGES, msg},
-    vm_println,
-};
+use vm_cli::msg;
+use vm_common::vm_println;
+use vm_messages::messages::MESSAGES;
 
 // --- Generic Progress Parsing --- //
 
@@ -127,6 +126,184 @@ impl ProgressParser for DockerProgressParser {
         self.main_bar.finish_with_message("Build complete");
         for bar in self.layer_bars.values() {
             bar.finish_and_clear();
+        }
+    }
+}
+
+// --- Ansible Progress Parser --- //
+
+/// Progress tracking for Ansible playbook execution
+#[derive(Clone)]
+pub struct AnsibleProgressParser {
+    tasks: Arc<Mutex<Vec<TaskProgress>>>,
+    current_task: Arc<Mutex<Option<String>>>,
+    show_output: bool,
+}
+
+#[derive(Debug, Clone)]
+struct TaskProgress {
+    name: String,
+    status: TaskStatus,
+    subtasks: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
+enum TaskStatus {
+    Pending,
+    Running,
+    Completed,
+    Failed,
+    Skipped,
+}
+
+impl AnsibleProgressParser {
+    pub fn new(show_output: bool) -> Self {
+        Self {
+            tasks: Arc::new(Mutex::new(Vec::new())),
+            current_task: Arc::new(Mutex::new(None)),
+            show_output,
+        }
+    }
+
+    fn update_display(&self) {
+        if self.show_output {
+            return; // In verbose mode, don't show progress
+        }
+
+        // Clear screen and redraw
+        print!("\x1B[2J\x1B[1;1H"); // Clear screen and move to top
+        println!("Creating VM...");
+
+        let tasks = self.tasks.lock().unwrap();
+        for task in tasks.iter() {
+            let icon = match task.status {
+                TaskStatus::Completed => "  ✓",
+                TaskStatus::Running => "  ⠴",
+                TaskStatus::Failed => "  ✗",
+                TaskStatus::Skipped => "  -",
+                TaskStatus::Pending => "  ○",
+            };
+
+            println!("{} {}", icon, task.name);
+
+            // Show subtasks for running task
+            if task.status == TaskStatus::Running && !task.subtasks.is_empty() {
+                for subtask in &task.subtasks {
+                    println!("      {}", subtask);
+                }
+            }
+        }
+
+        io::stdout().flush().unwrap();
+    }
+
+    fn extract_task_name(line: &str) -> Option<String> {
+        // Parse TASK [task name] format
+        if line.starts_with("TASK [") {
+            if let Some(end) = line.find(']') {
+                let name = line[6..end].to_string();
+                return Some(name);
+            }
+        }
+        None
+    }
+}
+
+impl ProgressParser for AnsibleProgressParser {
+    fn parse_line(&mut self, line: &str) {
+        if self.show_output {
+            println!("{}", line); // In verbose mode, show everything
+            return;
+        }
+
+        // Detect new task
+        if let Some(task_name) = Self::extract_task_name(line) {
+            let mut tasks = self.tasks.lock().unwrap();
+
+            // Mark previous task as completed
+            if let Some(last_task) = tasks.last_mut() {
+                if last_task.status == TaskStatus::Running {
+                    last_task.status = TaskStatus::Completed;
+                }
+            }
+
+            // Add new task
+            tasks.push(TaskProgress {
+                name: task_name.clone(),
+                status: TaskStatus::Running,
+                subtasks: Vec::new(),
+            });
+
+            *self.current_task.lock().unwrap() = Some(task_name);
+            drop(tasks);
+            self.update_display();
+        }
+        // Detect task completion
+        else if line.contains("ok:") || line.contains("changed:") {
+            let mut tasks = self.tasks.lock().unwrap();
+            if let Some(last_task) = tasks.last_mut() {
+                if last_task.status == TaskStatus::Running {
+                    last_task.status = TaskStatus::Completed;
+                }
+            }
+            drop(tasks);
+            self.update_display();
+        }
+        // Detect skipped task
+        else if line.contains("skipping:") {
+            let mut tasks = self.tasks.lock().unwrap();
+            if let Some(last_task) = tasks.last_mut() {
+                last_task.status = TaskStatus::Skipped;
+            }
+            drop(tasks);
+            self.update_display();
+        }
+        // Detect failed task
+        else if line.contains("failed:") || line.contains("FAILED") {
+            let mut tasks = self.tasks.lock().unwrap();
+            if let Some(last_task) = tasks.last_mut() {
+                last_task.status = TaskStatus::Failed;
+            }
+            drop(tasks);
+
+            // Show error in full
+            println!("\n❌ Error: {}", line);
+            self.update_display();
+        }
+        // Track package installations
+        else if line.contains("Installing") || line.contains("Downloading") {
+            let mut tasks = self.tasks.lock().unwrap();
+            if let Some(last_task) = tasks.last_mut() {
+                if last_task.status == TaskStatus::Running {
+                    // Extract package info if possible
+                    #[allow(clippy::excessive_nesting)]
+                    if let Some(pkg_info) = line.split_whitespace().nth(1) {
+                        last_task.subtasks.push(format!("Installing {}", pkg_info));
+                        // Keep only last 3 subtasks
+                        if last_task.subtasks.len() > 3 {
+                            last_task.subtasks.remove(0);
+                        }
+                    }
+                }
+            }
+            drop(tasks);
+            self.update_display();
+        }
+    }
+
+    fn finish(&self) {
+        if !self.show_output {
+            let mut tasks = self.tasks.lock().unwrap();
+            // Mark any remaining running tasks as completed
+            for task in tasks.iter_mut() {
+                if task.status == TaskStatus::Running {
+                    task.status = TaskStatus::Completed;
+                }
+            }
+            drop(tasks);
+            self.update_display();
+            println!("\n✅ Provisioning complete");
         }
     }
 }

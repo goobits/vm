@@ -13,9 +13,11 @@ regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tera = { workspace = true }
-thiserror = { workspace = true }
+vm-core = { path = "../vm-core" }
 vm-common = { path = "../vm-common" }
 vm-config = { path = "../vm-config" }
+vm-cli = { path = "../vm-cli" }
+vm-messages = { path = "../vm-messages" }
 vm-platform = { path = "../vm-platform" }
 chrono = { workspace = true }
 is-terminal = { workspace = true }

@@ -22,14 +22,19 @@ use super::{
     DockerOps, UserConfig,
 };
 use crate::{
-    audio::MacOSAudioManager, error::ProviderError, progress::ProgressReporter,
-    security::SecurityValidator, TempProvider, TempVmState,
+    audio::MacOSAudioManager,
+    context::ProviderContext,
+    progress::{AnsibleProgressParser, ProgressParser, ProgressReporter},
+    security::SecurityValidator,
+    TempProvider, TempVmState, VmError,
 };
-use vm_common::command_stream::stream_command;
 use vm_common::errors;
 use vm_common::vm_error_with_details;
 use vm_common::{vm_dbg, vm_error, vm_error_hint, vm_success, vm_warning};
 use vm_config::config::VmConfig;
+use vm_core::command_stream::{
+    stream_command, stream_command_with_progress, ProgressParser as CoreProgressParser,
+};
 
 // Constants for container lifecycle operations
 const DEFAULT_PROJECT_NAME: &str = "vm-project";
@@ -254,6 +259,11 @@ impl<'a> LifecycleOperations<'a> {
 
     #[must_use = "container creation results should be handled"]
     pub fn create_container(&self) -> Result<()> {
+        self.create_container_with_context(&ProviderContext::default())
+    }
+
+    #[must_use = "container creation results should be handled"]
+    pub fn create_container_with_context(&self, context: &ProviderContext) -> Result<()> {
         self.check_daemon_is_running()?;
         self.handle_potential_issues();
         self.check_docker_build_requirements();
@@ -334,7 +344,7 @@ impl<'a> LifecycleOperations<'a> {
             )
         })?;
 
-        self.provision_container()?;
+        self.provision_container_with_context(context)?;
 
         Ok(())
     }
@@ -342,6 +352,16 @@ impl<'a> LifecycleOperations<'a> {
     /// Create a container with a specific instance name
     #[must_use = "container creation results should be handled"]
     pub fn create_container_with_instance(&self, instance_name: &str) -> Result<()> {
+        self.create_container_with_instance_and_context(instance_name, &ProviderContext::default())
+    }
+
+    /// Create a container with a specific instance name and context
+    #[must_use = "container creation results should be handled"]
+    pub fn create_container_with_instance_and_context(
+        &self,
+        instance_name: &str,
+        context: &ProviderContext,
+    ) -> Result<()> {
         self.check_daemon_is_running()?;
         self.handle_potential_issues();
         self.check_docker_build_requirements();
@@ -423,7 +443,7 @@ impl<'a> LifecycleOperations<'a> {
             )
         })?;
 
-        self.provision_container_with_instance(instance_name)?;
+        self.provision_container_with_instance_and_context(instance_name, context)?;
 
         Ok(())
     }
@@ -671,7 +691,13 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     #[must_use = "container provisioning results should be handled"]
+    #[allow(dead_code)]
     fn provision_container(&self) -> Result<()> {
+        self.provision_container_with_context(&ProviderContext::default())
+    }
+
+    #[must_use = "container provisioning results should be handled"]
+    fn provision_container_with_context(&self, context: &ProviderContext) -> Result<()> {
         // Step 6: Wait for readiness and run ansible (configuration only)
         let mut attempt = 1;
         while attempt <= CONTAINER_READINESS_MAX_ATTEMPTS {
@@ -694,7 +720,27 @@ impl<'a> LifecycleOperations<'a> {
 
         self.prepare_and_copy_config()?;
 
-        stream_command(
+        // Use progress-aware streaming with AnsibleProgressParser
+        let parser = if context.is_verbose() {
+            None
+        } else {
+            // Implement the trait adapter
+            struct AnsibleParserAdapter(AnsibleProgressParser);
+            impl CoreProgressParser for AnsibleParserAdapter {
+                fn parse_line(&mut self, line: &str) {
+                    ProgressParser::parse_line(&mut self.0, line);
+                }
+                fn finish(&self) {
+                    ProgressParser::finish(&self.0);
+                }
+            }
+            Some(
+                Box::new(AnsibleParserAdapter(AnsibleProgressParser::new(false)))
+                    as Box<dyn CoreProgressParser>,
+            )
+        };
+
+        stream_command_with_progress(
             "docker",
             &[
                 "exec",
@@ -702,10 +748,12 @@ impl<'a> LifecycleOperations<'a> {
                 "bash",
                 "-c",
                 &format!(
-                    "ansible-playbook -i localhost, -c local {} -vvv",
-                    ANSIBLE_PLAYBOOK_PATH
+                    "ansible-playbook -i localhost, -c local {} {}",
+                    ANSIBLE_PLAYBOOK_PATH,
+                    context.ansible_verbosity()
                 ),
             ],
+            parser,
         )
         .with_context(|| {
             format!("Ansible provisioning failed for container '{}'. Check container logs for detailed error information", self.container_name())
@@ -722,7 +770,20 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     /// Provision container with custom instance name
+    #[allow(dead_code)]
     fn provision_container_with_instance(&self, instance_name: &str) -> Result<()> {
+        self.provision_container_with_instance_and_context(
+            instance_name,
+            &ProviderContext::default(),
+        )
+    }
+
+    /// Provision container with custom instance name and context
+    fn provision_container_with_instance_and_context(
+        &self,
+        instance_name: &str,
+        context: &ProviderContext,
+    ) -> Result<()> {
         let container_name = self.container_name_with_instance(instance_name);
 
         // Step 6: Wait for readiness and run ansible (configuration only)
@@ -747,7 +808,27 @@ impl<'a> LifecycleOperations<'a> {
 
         self.prepare_and_copy_config()?;
 
-        stream_command(
+        // Use progress-aware streaming with AnsibleProgressParser
+        let parser = if context.is_verbose() {
+            None
+        } else {
+            // Implement the trait adapter
+            struct AnsibleParserAdapter(AnsibleProgressParser);
+            impl CoreProgressParser for AnsibleParserAdapter {
+                fn parse_line(&mut self, line: &str) {
+                    ProgressParser::parse_line(&mut self.0, line);
+                }
+                fn finish(&self) {
+                    ProgressParser::finish(&self.0);
+                }
+            }
+            Some(
+                Box::new(AnsibleParserAdapter(AnsibleProgressParser::new(false)))
+                    as Box<dyn CoreProgressParser>,
+            )
+        };
+
+        stream_command_with_progress(
             "docker",
             &[
                 "exec",
@@ -755,10 +836,12 @@ impl<'a> LifecycleOperations<'a> {
                 "bash",
                 "-c",
                 &format!(
-                    "ansible-playbook -i localhost, -c local {} -vvv",
-                    ANSIBLE_PLAYBOOK_PATH
+                    "ansible-playbook -i localhost, -c local {} {}",
+                    ANSIBLE_PLAYBOOK_PATH,
+                    context.ansible_verbosity()
                 ),
             ],
+            parser,
         )
         .with_context(|| {
             format!("Ansible provisioning failed for container '{}'. Check container logs for detailed error information", container_name)
@@ -777,7 +860,7 @@ impl<'a> LifecycleOperations<'a> {
     #[must_use = "container start results should be handled"]
     pub fn start_container(&self, container: Option<&str>) -> Result<()> {
         let target_container = self.resolve_target_container(container)?;
-        stream_command("docker", &["start", &target_container])
+        Ok(stream_command("docker", &["start", &target_container])?)
     }
 
     #[must_use = "container stop results should be handled"]
@@ -810,7 +893,7 @@ impl<'a> LifecycleOperations<'a> {
             }
         }
 
-        result
+        Ok(result?)
     }
 
     #[must_use = "SSH connection results should be handled"]
@@ -920,10 +1003,7 @@ impl<'a> LifecycleOperations<'a> {
                     Some(130) => Ok(()), // Ctrl-C interrupt - treat as normal exit
                     _ => {
                         // Only return error for actual connection failures
-                        Err(
-                            ProviderError::CommandFailed(String::from("SSH connection lost"))
-                                .into(),
-                        )
+                        Err(VmError::Command(String::from("SSH connection lost")).into())
                     }
                 }
             }
@@ -974,7 +1054,7 @@ impl<'a> LifecycleOperations<'a> {
         ];
         let cmd_strs: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
         args.extend_from_slice(&cmd_strs);
-        stream_command("docker", &args)
+        Ok(stream_command("docker", &args)?)
     }
 
     #[must_use = "log display results should be handled"]
@@ -983,6 +1063,7 @@ impl<'a> LifecycleOperations<'a> {
         // Use --tail to show last 50 lines and add timestamps
         let target_container = self.resolve_target_container(container)?;
         stream_command("docker", &["logs", "--tail", "50", "-t", &target_container])
+            .map_err(|e| anyhow::anyhow!("Failed to show logs: {}", e))
     }
 
     #[must_use = "status display results should be handled"]
@@ -1026,6 +1107,7 @@ impl<'a> LifecycleOperations<'a> {
 
     #[must_use = "existing container provisioning results should be handled"]
     pub fn provision_existing(&self, container: Option<&str>) -> Result<()> {
+        let context = ProviderContext::default();
         let target_container = self.resolve_target_container(container)?;
         let status_output = std::process::Command::new("docker")
             .args([
@@ -1094,8 +1176,9 @@ impl<'a> LifecycleOperations<'a> {
                 "bash",
                 "-c",
                 &format!(
-                    "ansible-playbook -i localhost, -c local {} -vvv",
-                    ANSIBLE_PLAYBOOK_PATH
+                    "ansible-playbook -i localhost, -c local {} {}",
+                    ANSIBLE_PLAYBOOK_PATH,
+                    context.ansible_verbosity()
                 ),
             ],
         );

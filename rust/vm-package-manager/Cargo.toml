@@ -15,6 +15,7 @@ tempfile = { workspace = true }
 vm-config = { path = "../vm-config" }
 vm-common = { path = "../vm-common" }
 vm-messages = { path = "../vm-messages" }
+vm-cli = { path = "../vm-cli" }
 vm-platform = { path = "../vm-platform" }
 rayon = { workspace = true }
 regex = { workspace = true }

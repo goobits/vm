@@ -253,6 +253,9 @@ pub enum Command {
         /// Instance name (defaults to 'dev' for multi-instance providers)
         #[arg(long)]
         instance: Option<String>,
+        /// Show detailed output including all Ansible tasks
+        #[arg(long)]
+        verbose: bool,
     },
     /// Start a VM
     Start {

@@ -21,9 +21,9 @@ use anyhow::{Context, Result};
 use tera::Tera;
 
 // Internal imports
-use crate::{error::ProviderError, preflight, Provider, TempProvider};
-use vm_common::command_stream::is_tool_installed;
+use crate::{context::ProviderContext, preflight, Provider, TempProvider, VmError};
 use vm_config::config::VmConfig;
+use vm_core::command_stream::is_tool_installed;
 
 /// Container user and permission configuration
 #[derive(Debug, Clone)]
@@ -82,7 +82,7 @@ pub struct DockerProvider {
 impl DockerProvider {
     pub fn new(config: VmConfig) -> Result<Self> {
         if !is_tool_installed("docker") {
-            return Err(ProviderError::DependencyNotFound("Docker".into()).into());
+            return Err(VmError::Dependency("Docker".into()).into());
         }
 
         let project_dir = std::env::current_dir()?;
@@ -201,17 +201,29 @@ impl Provider for DockerProvider {
     }
 
     fn create(&self) -> Result<()> {
+        self.create_with_context(&ProviderContext::default())
+    }
+
+    fn create_with_context(&self, context: &ProviderContext) -> Result<()> {
         preflight::check_system_resources()?;
 
         let lifecycle = self.lifecycle_ops();
-        lifecycle.create_container()
+        lifecycle.create_container_with_context(context)
     }
 
     fn create_instance(&self, instance_name: &str) -> Result<()> {
+        self.create_instance_with_context(instance_name, &ProviderContext::default())
+    }
+
+    fn create_instance_with_context(
+        &self,
+        instance_name: &str,
+        context: &ProviderContext,
+    ) -> Result<()> {
         preflight::check_system_resources()?;
 
         let lifecycle = self.lifecycle_ops();
-        lifecycle.create_container_with_instance(instance_name)
+        lifecycle.create_container_with_instance_and_context(instance_name, context)
     }
 
     fn start(&self, container: Option<&str>) -> Result<()> {

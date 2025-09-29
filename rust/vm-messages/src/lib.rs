@@ -1,11 +1,8 @@
 //! vm-messages
 //!
-//! Centralized messaging system for the vm CLI.
-//! Provides standardized templates, a message builder, and semantic categories
-//! for user-facing output.
+//! Centralized message templates for the vm CLI.
+//! This crate contains only message constants and templates,
+//! with no dependencies on other workspace crates.
 
-pub mod builder;
 pub mod categories;
-pub mod errors;
-pub mod macros;
 pub mod messages;

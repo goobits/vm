@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "vm-core",
     "vm-common",
     "vm-config",
     "vm-package-manager",
@@ -9,6 +10,7 @@ members = [
     "vm",
     "vm-installer",
     "vm-messages",
+    "vm-cli",
     "version-sync",
     "vm-package-server",
     "vm-auth-proxy",

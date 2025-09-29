@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 // External crates
-use anyhow::{Context, Result};
+use anyhow::Result;
 use tera::Context as TeraContext;
 
 // Internal imports
@@ -13,8 +13,8 @@ use super::host_packages::{
 };
 use super::{ComposeCommand, DockerOps, UserConfig};
 use crate::TempVmState;
-use vm_common::command_stream::stream_command;
 use vm_config::config::VmConfig;
+use vm_core::command_stream::stream_command;
 
 pub struct ComposeOperations<'a> {
     pub config: &'a VmConfig,
@@ -295,7 +295,7 @@ impl<'a> ComposeOperations<'a> {
         let args = ComposeCommand::build_args(&compose_path, command, &extra_args)?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         stream_command("docker", &args_refs)
-            .with_context(|| "Failed to start container using docker-compose. Check that docker-compose.yml is valid and Docker is running")
+            .map_err(|e| anyhow::anyhow!("Failed to start container using docker-compose: {}", e))
     }
 
     #[allow(dead_code)]
@@ -304,8 +304,9 @@ impl<'a> ComposeOperations<'a> {
         if compose_path.exists() {
             let args = ComposeCommand::build_args(&compose_path, "stop", &[])?;
             let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-            stream_command("docker", &args_refs)
-                .with_context(|| "Failed to stop container using docker-compose. Container may already be stopped or docker-compose may be inaccessible")
+            stream_command("docker", &args_refs).map_err(|e| {
+                anyhow::anyhow!("Failed to stop container using docker-compose: {}", e)
+            })
         } else {
             Err(anyhow::anyhow!(
                 "docker-compose.yml not found in '{}'. Cannot stop container without compose configuration",
@@ -326,6 +327,7 @@ impl<'a> ComposeOperations<'a> {
         let args = ComposeCommand::build_args(&compose_path, "down", &["--volumes"])?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         stream_command("docker", &args_refs)
+            .map_err(|e| anyhow::anyhow!("Failed to destroy container: {}", e))
     }
 
     pub fn status_with_compose(&self) -> Result<()> {
@@ -334,6 +336,7 @@ impl<'a> ComposeOperations<'a> {
             let args = ComposeCommand::build_args(&compose_path, "ps", &[])?;
             let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
             stream_command("docker", &args_refs)
+                .map_err(|e| anyhow::anyhow!("Failed to get container status: {}", e))
         } else {
             Err(anyhow::anyhow!(
                 "docker-compose.yml not found in '{}'. Cannot show container status without compose configuration",
