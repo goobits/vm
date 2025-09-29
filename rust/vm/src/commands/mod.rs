@@ -14,6 +14,7 @@ pub mod config;
 pub mod doctor;
 pub mod pkg;
 pub mod temp;
+pub mod uninstall;
 pub mod update;
 pub mod vm_ops;
 
@@ -260,6 +261,10 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
         ),
         Command::Update { version, force } => {
             update::handle_update(version.as_deref(), force)?;
+            Ok(())
+        }
+        Command::Uninstall { keep_config, yes } => {
+            uninstall::handle_uninstall(keep_config, yes)?;
             Ok(())
         }
         Command::GetSyncDirectory => {

@@ -369,6 +369,15 @@ pub enum Command {
         #[arg(long)]
         force: bool,
     },
+    /// Uninstall vm from the system
+    Uninstall {
+        /// Keep configuration files
+        #[arg(long)]
+        keep_config: bool,
+        /// Skip confirmation prompt
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
     /// Get workspace directory
     #[command(hide = true)]
     GetSyncDirectory,

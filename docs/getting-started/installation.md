@@ -261,7 +261,27 @@ git pull
 
 ## 🗑️ Uninstallation
 
-### Binary Installation
+### Automated Uninstall (Recommended)
+```bash
+# Interactive uninstall with confirmation
+vm uninstall
+
+# Keep configuration files
+vm uninstall --keep-config
+
+# Skip confirmation prompt
+vm uninstall -y
+```
+
+The `vm uninstall` command will:
+- Remove the vm binary
+- Clean up configuration files (unless --keep-config is used)
+- Remove PATH entries from shell configuration files
+- Provide instructions for final cleanup
+
+### Manual Uninstall
+
+#### Binary Installation
 ```bash
 # Remove the binary
 rm ~/.cargo/bin/vm
@@ -270,14 +290,18 @@ rm ~/.cargo/bin/vm
 rm $(which vm)
 ```
 
-### Cargo Installation
+#### Cargo Installation
 ```bash
 cargo uninstall vm
 ```
 
-### Source Installation
+#### Configuration Cleanup
 ```bash
-# Remove from PATH (edit your shell profile)
-# Remove the installed directory
-rm -rf ~/.cargo/bin/vm  # or wherever it was installed
+# Remove configuration files (optional)
+rm -rf ~/.vm
+rm -rf ~/.config/vm
+rm ~/.vm-install.log
+
+# Remove PATH entries from your shell config
+# Edit ~/.bashrc, ~/.zshrc, or relevant shell config
 ```
