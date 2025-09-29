@@ -47,7 +47,9 @@ vm ssh myproject-dev         # Connect to specific instance
 **From source:**
 ```bash
 git clone <repository-url>
-cd vm && ./install.sh
+cd vm/rust
+cargo build --release
+cargo install --path vm
 ```
 
 ```yaml
@@ -138,21 +140,17 @@ vm temp unmount --all           # Remove all mounts
 vm temp mounts                  # List current mounts
 ```
 
-## 🔐 Auth Proxy & Services
+## 🔐 Auth Proxy
 
-**Centralized secrets management and Docker registry** — Manage credentials and cache images across VMs:
+**Centralized secrets management** — Store and manage credentials securely across VMs:
 
 ```bash
 # Auth proxy for secrets management
-vm auth start                    # Start auth service
+vm auth status                   # Service status
 vm auth add openai sk-xxx        # Store API key
 vm auth list                     # List stored secrets
-vm auth status                   # Service status
-
-# Docker registry for image caching
-vm registry start                # Start Docker registry
-vm registry status               # Check registry status
-vm registry gc                   # Garbage collect old images
+vm auth remove <name>            # Remove a secret
+vm auth interactive              # Interactively add secrets
 ```
 
 ## 📦 Package Registry
@@ -160,23 +158,15 @@ vm registry gc                   # Garbage collect old images
 **Private package registry for npm, pip, and cargo** — Host your own packages with automatic upstream fallback:
 
 ```bash
-# Start package server
-vm pkg start --port 3080
-
-# Publish packages
-vm pkg add                       # Auto-detect and publish
-vm pkg add --type python        # Specific package type
-
-# Manage packages
+# Package management
+vm pkg status                    # Server status and package counts
+vm pkg add                       # Auto-detect and publish from current directory
+vm pkg add --type python         # Specific package type
 vm pkg list                      # List all packages
 vm pkg remove                    # Interactive removal
-vm pkg status                    # Server status
+vm pkg use --shell bash          # Generate shell configuration for package managers
 ```
 
-**Installation:**
-```bash
-./install.sh                    # Install VM CLI with package management
-```
 
 **Features:**
 - **Multi-registry support** — PyPI, npm, and Cargo in one server
@@ -289,4 +279,12 @@ vm list [--provider name] [--verbose]    # List all VMs with status and resource
 vm exec [container] <command>            # Execute commands inside VM
 vm logs [container]                      # View VM logs
 vm --config custom.yaml ssh [container] # Use specific config
+```
+
+**System Management** — Update and maintain the VM tool itself:
+
+```bash
+vm update [--version v1.2.3]    # Update to latest or specific version
+vm uninstall [--keep-config]    # Uninstall vm from the system
+vm doctor                        # Run comprehensive health checks
 ```

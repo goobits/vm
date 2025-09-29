@@ -18,10 +18,10 @@ This major release transforms VM from a development environment tool into a **co
 #### **Unified CLI Experience**
 All functionality now accessible through a single `vm` command:
 - **`vm auth`** - Centralized secrets management
-- **`vm registry`** - Docker image caching
 - **`vm pkg`** - Package registry (npm, pip, cargo)
 - **`vm create`** - Smart project detection and provisioning
 - **`vm temp`** - Instant temporary environments
+- **`vm config`** - Configuration management
 
 #### **Intelligent Auto-Configuration**
 VMs automatically configure themselves with host services:
@@ -37,9 +37,10 @@ package_registry: true  # Auto-use local package cache
 **Centralized secrets management** eliminating manual credential setup:
 
 ```bash
-vm auth start                    # Start encrypted secrets service
+vm auth status                   # Check service status
 vm auth add openai sk-xxxxx      # Store API key once
 vm auth add db_password secret   # All VMs get access automatically
+vm auth list                     # List stored secrets
 ```
 
 **Features:**
@@ -53,11 +54,8 @@ vm auth add db_password secret   # All VMs get access automatically
 
 **Local Docker image caching** eliminating redundant downloads:
 
-```bash
-vm registry start               # Start pull-through cache
-# First VM: Downloads from Docker Hub → cache
-# Subsequent VMs: Instant retrieval from cache
-```
+Docker registry is automatically managed when VMs have `docker_registry: true` in their config.
+The service starts automatically when needed and caches images for all VMs.
 
 **Benefits:**
 - **80-95% bandwidth savings** for teams reusing base images
@@ -70,8 +68,9 @@ vm registry start               # Start pull-through cache
 **Private package registry** now fully integrated into VM workflow:
 
 ```bash
-vm pkg start                    # Start multi-registry server
+vm pkg status                   # Check server status
 vm pkg add                      # Publish packages
+vm pkg list                     # List all packages
 vm pkg use --shell bash        # Configure shell integration
 ```
 
@@ -99,11 +98,11 @@ Next.js, React, Angular, Vue, Django, Flask, Rails, Node.js, Python, Rust, Go, P
 
 #### **Simplified Installation**
 ```bash
-# Before: Multiple installation methods
-./install.sh --pkg-server
+# Single unified installation via Cargo
+cargo install vm
 
-# Now: Single unified installation
-./install.sh
+# Or from source
+cd rust && cargo install --path vm
 ```
 
 #### **Configuration Changes**
@@ -143,12 +142,11 @@ Next.js, React, Angular, Vue, Django, Flask, Rails, Node.js, Python, Rust, Go, P
 
 1. **Update installation**:
    ```bash
-   cargo install vm  # or ./install.sh
+   cargo install vm
    ```
 
 2. **Migrate secrets** (if using claude_sync/gemini_sync):
    ```bash
-   vm auth start
    vm auth add openai $OPENAI_API_KEY
    vm auth add anthropic $ANTHROPIC_API_KEY
    ```
@@ -229,12 +227,12 @@ For complete documentation, see [README.md](README.md)
 - **VM integration** via automatic environment variable injection during provisioning
 
 #### 🐳 Docker Registry Service
-- **New `vm registry` command suite** for local Docker image caching
+- **Internal Docker registry management** for local image caching (auto-managed)
 - **Pull-through caching** using nginx proxy + registry:2 backend architecture
 - **Bandwidth optimization** reducing redundant downloads by 80-95% for teams
-- **Garbage collection** with `vm registry gc` supporting force and dry-run modes
+- **Automatic garbage collection** with configurable policies
 - **Docker daemon auto-configuration** for seamless VM integration
-- **Cache statistics** showing hit rates, storage usage, and repository counts
+- **Cache statistics** integrated in service status reporting
 - **Offline capability** for previously pulled images
 
 #### 📦 Package Registry Enhancement
@@ -263,31 +261,24 @@ For complete documentation, see [README.md](README.md)
 #### CLI Commands Added
 ```bash
 # Auth Proxy Management
-vm auth start [--port 3090] [--host 127.0.0.1] [--foreground]
-vm auth stop
 vm auth status
 vm auth add <name> <value> [--scope global|project:NAME|instance:NAME] [--description TEXT]
 vm auth list [--show-values]
 vm auth remove <name> [--force]
 vm auth interactive
 
-# Docker Registry Management
-vm registry start
-vm registry stop
-vm registry status
-vm registry gc [--force] [--dry-run]
-vm registry config
-vm registry list
-
 # Package Registry (Enhanced)
-vm pkg start [--port 3080] [--host 0.0.0.0] [--foreground]
-vm pkg stop
 vm pkg status
 vm pkg add [--type python,npm,cargo]
 vm pkg remove [--force]
 vm pkg list
 vm pkg config show|get|set
 vm pkg use [--shell bash|zsh|fish]
+
+# System Management
+vm update [--version v1.2.3] [--force]
+vm uninstall [--keep-config] [--yes]
+vm doctor
 ```
 
 #### Configuration Schema Updates

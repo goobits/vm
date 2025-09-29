@@ -10,11 +10,10 @@ cargo install vm
 ### From Source
 ```bash
 git clone <repository-url>
-cd vm
-./install.sh
+cd vm/rust
+cargo build --release
+cargo install --path vm
 ```
-
-The `install.sh` script builds the binary and sets up symlinks automatically.
 
 ## Running Tests
 
@@ -33,7 +32,8 @@ cargo test --package vm-provider
 cargo test --package vm-installer
 cargo test --package vm-temp
 cargo test --package vm
-cargo test --package vm-common
+cargo test --package vm-core
+cargo test --package vm-cli
 cargo test --package vm-package-manager
 cargo test --package vm-package-server
 cargo test --package vm-auth-proxy
@@ -112,11 +112,10 @@ The `vm/tests/vm_operations_integration_tests.rs` file provides comprehensive te
 **Commands Tested:**
 - `create` - VM creation with and without --force flag
 - `start` - Starting VMs and verifying running state
-- `stop` - Stopping VMs and verifying stopped state
+- `stop` - Stopping VMs and verifying stopped state (including force-kill)
 - `restart` - Restarting VMs and state transitions
 - `provision` - Re-running provisioning on existing VMs
 - `list` - Listing all VMs
-- `kill` - Force killing VM processes
 - `destroy` - Destroying VMs and cleanup verification
 - `ssh` - SSH connection handling
 - `status` - VM status reporting
