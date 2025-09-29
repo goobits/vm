@@ -360,6 +360,15 @@ pub enum Command {
         command: AuthSubcommand,
     },
 
+    /// Update vm to the latest version
+    Update {
+        /// Specific version to install (e.g., v1.2.3)
+        #[arg(long)]
+        version: Option<String>,
+        /// Force update even if already at latest version
+        #[arg(long)]
+        force: bool,
+    },
     /// Get workspace directory
     #[command(hide = true)]
     GetSyncDirectory,

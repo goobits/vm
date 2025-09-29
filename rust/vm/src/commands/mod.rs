@@ -14,6 +14,7 @@ pub mod config;
 pub mod doctor;
 pub mod pkg;
 pub mod temp;
+pub mod update;
 pub mod vm_ops;
 
 /// Main command dispatcher
@@ -257,6 +258,10 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             provider_filter.as_deref(),
             &verbose,
         ),
+        Command::Update { version, force } => {
+            update::handle_update(version.as_deref(), force)?;
+            Ok(())
+        }
         Command::GetSyncDirectory => {
             vm_ops::handle_get_sync_directory(provider);
             Ok(())

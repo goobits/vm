@@ -4,10 +4,29 @@ Development environment setup. Choose between Docker (lightweight containers, de
 
 ## 🏃 Quick Start
 
-### Option 1: Cargo Install (Recommended)
+### Option 1: Binary Installation (Recommended)
 
 ```bash
-# Install from crates.io
+# Download and install the latest pre-compiled binary
+curl -sSL https://raw.githubusercontent.com/goobits/vm/main/install.sh | bash
+
+# Or install a specific version
+curl -sSL https://raw.githubusercontent.com/goobits/vm/main/install.sh | bash -s -- --version v1.2.3
+
+# Start using immediately
+vm create  # Works with default configuration
+vm ssh     # Enter the Ubuntu environment
+```
+
+**Installation Script Options:**
+- `--version VERSION` - Install specific version (e.g., v1.2.3)
+- `--build-from-source` - Build from source instead of downloading binary
+- `--help` - Show all available options
+
+### Option 2: Cargo Install
+
+```bash
+# Install from crates.io (requires Rust toolchain)
 cargo install vm
 
 # Start using immediately
@@ -15,7 +34,7 @@ vm create  # Works with default configuration
 vm ssh     # Enter the Ubuntu environment
 ```
 
-### Option 2: From Source
+### Option 3: From Source
 
 ```bash
 # 1. Clone repository and install globally
@@ -39,7 +58,16 @@ ports:
 # Default provider is Docker - add "provider": "vagrant" for full VM isolation
 ```
 
-### Option 3: Per-Project Installation
+### Option 4: Build from Source (Development)
+
+```bash
+# Clone and build from source (requires Rust toolchain)
+git clone https://github.com/goobits/vm.git
+cd vm
+./install.sh --build-from-source
+```
+
+### Option 5: Per-Project Installation
 
 ```bash
 # 1. Clone to your project directory
@@ -52,7 +80,13 @@ cd vm
 
 ## 📋 Prerequisites
 
+### For Binary Installation (Recommended)
+- **No prerequisites!** The installer downloads a pre-compiled binary
+
 ### For Cargo Installation
+- **Rust** (get from [rustup.rs](https://rustup.rs/))
+
+### For Building from Source
 - **Rust** (get from [rustup.rs](https://rustup.rs/))
 
 ### For Docker Provider (Default)
@@ -193,19 +227,48 @@ echo 'export VM_TOOL_DIR=/path/to/vm' >> ~/.zshrc
 
 ## 🔄 Updating
 
-### Cargo Installation
+### Self-Update Command (All Installation Methods)
+```bash
+# Update to latest version
+vm update
+
+# Update to specific version
+vm update --version v1.2.3
+
+# Force update even if already at latest
+vm update --force
+```
+
+### Manual Update Methods
+
+#### Binary Installation
+```bash
+# Re-run the installer to get the latest version
+curl -sSL https://raw.githubusercontent.com/goobits/vm/main/install.sh | bash
+```
+
+#### Cargo Installation
 ```bash
 cargo install vm --force
 ```
 
-### Source Installation
+#### Source Installation
 ```bash
 cd vm
 git pull
-./install.sh
+./install.sh --build-from-source
 ```
 
 ## 🗑️ Uninstallation
+
+### Binary Installation
+```bash
+# Remove the binary
+rm ~/.cargo/bin/vm
+
+# Or if installed elsewhere
+rm $(which vm)
+```
 
 ### Cargo Installation
 ```bash
@@ -216,5 +279,5 @@ cargo uninstall vm
 ```bash
 # Remove from PATH (edit your shell profile)
 # Remove the installed directory
-rm -rf /usr/local/bin/vm  # or wherever it was installed
+rm -rf ~/.cargo/bin/vm  # or wherever it was installed
 ```
