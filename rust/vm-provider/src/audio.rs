@@ -26,7 +26,7 @@ impl MacOSAudioManager {
         Command::new("pulseaudio")
             .arg("-k")
             .status()
-            .context("Failed to stop PulseAudio daemon.")?;
+            .map_err(|e| VmError::Internal(format!("Failed to stop PulseAudio daemon: {}", e)))?;
         Ok(())
     }
 }
@@ -46,10 +46,17 @@ fn install_pulseaudio() -> Result<()> {
     let status = Command::new("brew")
         .args(["install", "pulseaudio"])
         .status()
-        .context("Failed to execute 'brew install pulseaudio'. Make sure Homebrew is installed.")?;
+        .map_err(|e| {
+            VmError::Internal(format!(
+                "Failed to execute 'brew install pulseaudio'. Make sure Homebrew is installed: {}",
+                e
+            ))
+        })?;
     if !status.success() {
         vm_error!("'brew install pulseaudio' failed.");
-        return Err(VmError::Internal("brew install pulseaudio failed"));
+        return Err(VmError::Internal(
+            "brew install pulseaudio failed".to_string(),
+        ));
     }
     Ok(())
 }
@@ -64,10 +71,12 @@ fn start_pulseaudio_daemon() -> Result<()> {
             "--daemon",
         ])
         .status()
-        .context("Failed to start PulseAudio daemon.")?;
+        .map_err(|e| VmError::Internal(format!("Failed to start PulseAudio daemon: {}", e)))?;
     if !status.success() {
         vm_error!("Failed to start PulseAudio daemon.");
-        return Err(VmError::Internal("Failed to start PulseAudio daemon"));
+        return Err(VmError::Internal(
+            "Failed to start PulseAudio daemon".to_string(),
+        ));
     }
     Ok(())
 }
