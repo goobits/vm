@@ -26,8 +26,8 @@
 //! The conversion process validates the input configuration and ensures
 //! proper formatting in the target output format.
 
-use anyhow::{Context, Result};
 use std::path::PathBuf;
+use vm_core::error::{Result, VmError};
 
 use crate::cli::formatting::output_config;
 use crate::cli::OutputFormat;
@@ -35,6 +35,6 @@ use crate::config::VmConfig;
 
 pub fn execute(input: PathBuf, format: OutputFormat) -> Result<()> {
     let config = VmConfig::from_file(&input)
-        .with_context(|| format!("Failed to load config: {:?}", input))?;
+        .map_err(|e| VmError::Config(format!("Failed to load config: {:?}: {}", input, e)))?;
     output_config(&config, &format)
 }

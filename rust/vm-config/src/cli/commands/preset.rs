@@ -26,9 +26,9 @@
 //! The preset detector examines project files (package.json, Cargo.toml, etc.) to
 //! automatically determine the most appropriate VM configuration preset.
 
-use anyhow::Result;
 use std::path::PathBuf;
-use vm_common::vm_error;
+use vm_core::error::Result;
+use vm_core::vm_error;
 
 use crate::cli::formatting::output_config;
 use crate::cli::OutputFormat;

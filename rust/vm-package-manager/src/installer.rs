@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 // External crates
-use anyhow::{Context, Result};
 use vm_cli::msg;
-use vm_common::{errors, vm_error, vm_println, vm_success};
+use vm_core::error::{Result, VmError};
+use vm_core::{vm_error, vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 
 // Internal imports
@@ -24,17 +24,21 @@ const LOCAL_BIN_PATH: &str = ".local/bin";
 fn validate_script_name(filename: &str) -> Result<()> {
     // Check for empty name
     if filename.is_empty() {
-        return Err(errors::package::empty_script_name());
+        return Err(VmError::Internal("Script name cannot be empty".to_string()));
     }
 
     // Check for path separators
     if filename.contains('/') || filename.contains('\\') {
-        return Err(errors::package::script_name_has_path_separators(filename));
+        return Err(VmError::Internal(
+            "Script name cannot contain path separators".to_string(),
+        ));
     }
 
     // Check for dangerous characters
     if filename.contains("..") || filename.starts_with('.') {
-        return Err(errors::package::script_name_has_dangerous_chars(filename));
+        return Err(VmError::Internal(
+            "Script name cannot contain dangerous characters".to_string(),
+        ));
     }
 
     // Only allow alphanumeric, dash, underscore
@@ -42,7 +46,10 @@ fn validate_script_name(filename: &str) -> Result<()> {
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
-        return Err(errors::package::script_name_invalid_chars(filename));
+        return Err(VmError::Internal(
+            "Script name can only contain alphanumeric, dash, and underscore characters"
+                .to_string(),
+        ));
     }
 
     Ok(())
@@ -89,7 +96,9 @@ impl PackageInstaller {
     ) -> Result<()> {
         // Check if package manager is available
         if !manager.is_available() {
-            return Err(errors::package::package_manager_unavailable(&manager));
+            return Err(VmError::Internal(
+                "Package manager not available".to_string(),
+            ));
         }
 
         // Check for linked package first (unless forcing registry install)
@@ -147,11 +156,13 @@ impl PackageInstaller {
         let cargo_home = self.cargo_home_path();
         cmd.env("CARGO_HOME", &cargo_home);
 
-        let status = cmd.status().context("Failed to execute cargo install")?;
+        let status = cmd
+            .status()
+            .map_err(|e| VmError::Internal(format!("Failed to execute cargo install: {}", e)))?;
 
         if !status.success() {
             vm_error!("Cargo install failed for linked package: {}", package);
-            return Err(anyhow::anyhow!("Cargo install failed"));
+            return Err(VmError::Internal("Cargo install failed".to_string()));
         }
 
         vm_success!("Installed linked cargo package: {}", package);
@@ -165,11 +176,13 @@ impl PackageInstaller {
         let cargo_home = self.cargo_home_path();
         cmd.env("CARGO_HOME", &cargo_home);
 
-        let status = cmd.status().context("Failed to execute cargo install")?;
+        let status = cmd
+            .status()
+            .map_err(|e| VmError::Internal(format!("Failed to execute cargo install: {}", e)))?;
 
         if !status.success() {
             vm_error!("Cargo install failed for package: {}", package);
-            return Err(anyhow::anyhow!("Cargo install failed"));
+            return Err(VmError::Internal("Cargo install failed".to_string()));
         }
 
         vm_success!("Installed cargo package from registry: {}", package);
@@ -193,11 +206,13 @@ impl PackageInstaller {
         let nvm_dir = self.nvm_dir_path();
         cmd.env("NVM_DIR", &nvm_dir);
 
-        let status = cmd.status().context("Failed to execute npm link")?;
+        let status = cmd
+            .status()
+            .map_err(|e| VmError::Internal(format!("Failed to execute npm link: {}", e)))?;
 
         if !status.success() {
             vm_error!("NPM link failed for package: {}", package);
-            return Err(anyhow::anyhow!("NPM link failed"));
+            return Err(VmError::Internal("NPM link failed".to_string()));
         }
 
         vm_success!("Linked npm package: {}", package);
@@ -211,11 +226,13 @@ impl PackageInstaller {
         let nvm_dir = self.nvm_dir_path();
         cmd.env("NVM_DIR", &nvm_dir);
 
-        let status = cmd.status().context("Failed to execute npm install")?;
+        let status = cmd
+            .status()
+            .map_err(|e| VmError::Internal(format!("Failed to execute npm install: {}", e)))?;
 
         if !status.success() {
             vm_error!("NPM install failed for package: {}", package);
-            return Err(anyhow::anyhow!("NPM install failed"));
+            return Err(VmError::Internal("NPM install failed".to_string()));
         }
 
         vm_success!("Installed npm package from registry: {}", package);
@@ -276,11 +293,13 @@ impl PackageInstaller {
         let mut cmd = Command::new(pip_exe);
         cmd.args(["install", "--user", "--break-system-packages", package]);
 
-        let status = cmd.status().context("Failed to execute pip install")?;
+        let status = cmd
+            .status()
+            .map_err(|e| VmError::Internal(format!("Failed to execute pip install: {}", e)))?;
 
         if !status.success() {
             vm_error!("Pip install failed for package: {}", package);
-            return Err(anyhow::anyhow!("Pip install failed"));
+            return Err(VmError::Internal("Pip install failed".to_string()));
         }
 
         vm_success!("Installed Python package with pip: {}", package);
@@ -293,11 +312,13 @@ impl PackageInstaller {
         cmd.args(["install", "--user", "--break-system-packages", "-e"]);
         cmd.arg(path);
 
-        let status = cmd.status().context("Failed to execute pip install")?;
+        let status = cmd
+            .status()
+            .map_err(|e| VmError::Internal(format!("Failed to execute pip install: {}", e)))?;
 
         if !status.success() {
             vm_error!("Pip editable install failed");
-            return Err(anyhow::anyhow!("Pip editable install failed"));
+            return Err(VmError::Internal("Pip editable install failed".to_string()));
         }
 
         Ok(())
@@ -314,7 +335,7 @@ impl PackageInstaller {
             .arg(package)
             .stderr(Stdio::piped())
             .output()
-            .context("Failed to execute pipx")?;
+            .map_err(|e| VmError::Internal(format!("Failed to execute pipx: {}", e)))?;
 
         if output.status.success() {
             return Ok(true);
@@ -330,7 +351,7 @@ impl PackageInstaller {
         }
 
         // Some other error
-        Err(errors::package::pipx_install_failed(&stderr))
+        Err(VmError::Internal("Pipx installation failed".to_string()))
     }
 
     fn create_pipx_wrappers(&self, package: &str, path: &Path) -> Result<()> {
@@ -359,11 +380,14 @@ impl PackageInstaller {
                 let script_name = script_path
                     .file_name()
                     .and_then(|n| n.to_str())
-                    .context("Invalid script name")?;
+                    .ok_or_else(|| VmError::Internal("Invalid script name".to_string()))?;
 
                 // Validate script name for security
-                validate_script_name(script_name).with_context(|| {
-                    format!("Invalid script name from pipx environment: {}", script_name)
+                validate_script_name(script_name).map_err(|e| {
+                    VmError::Internal(format!(
+                        "Invalid script name from pipx environment '{}': {}",
+                        script_name, e
+                    ))
                 })?;
 
                 let wrapper_path = local_bin.join(script_name);

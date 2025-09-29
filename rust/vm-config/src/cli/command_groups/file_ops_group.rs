@@ -1,5 +1,5 @@
-use anyhow::Result;
 use std::path::PathBuf;
+use vm_core::error::Result;
 
 use crate::cli::commands;
 use crate::cli::{OutputFormat, TransformFormat};

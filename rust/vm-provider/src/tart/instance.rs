@@ -6,8 +6,8 @@
 use crate::common::instance::{
     create_tart_instance_info, fuzzy_match_instances, InstanceInfo, InstanceResolver,
 };
-use anyhow::{Context, Result};
 use vm_config::config::VmConfig;
+use vm_core::error::{Result, VmError};
 
 /// Tart instance manager
 pub struct TartInstanceManager<'a> {
@@ -38,8 +38,8 @@ impl<'a> TartInstanceManager<'a> {
             })?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!(
-                "Tart list command failed. Check that Tart is properly installed and configured"
+            return Err(VmError::Internal(
+                "Tart list command failed. Check that Tart is properly installed and configured",
             ));
         }
 
@@ -82,10 +82,10 @@ impl<'a> TartInstanceManager<'a> {
         // Check if VM already exists
         let instances = self.parse_tart_list()?;
         if instances.iter().any(|i| i.name == vm_name) {
-            return Err(anyhow::anyhow!(
+            return Err(VmError::Internal(
                 "Tart VM '{}' already exists. Use 'vm destroy {}' to remove it first",
                 vm_name,
-                instance_name
+                instance_name,
             ));
         }
 
@@ -102,10 +102,10 @@ impl<'a> TartInstanceManager<'a> {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(anyhow::anyhow!(
+            return Err(VmError::Internal(
                 "Tart clone failed: {}. Check that base image '{}' exists and is accessible",
                 stderr.trim(),
-                base_image
+                base_image,
             ));
         }
 

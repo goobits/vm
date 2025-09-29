@@ -6,7 +6,6 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-anyhow = { workspace = true }
 duct = { workspace = true }
 indicatif = { workspace = true }
 regex = { workspace = true }
@@ -14,7 +13,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tera = { workspace = true }
 vm-core = { path = "../vm-core" }
-vm-common = { path = "../vm-common" }
 vm-config = { path = "../vm-config" }
 vm-cli = { path = "../vm-cli" }
 vm-messages = { path = "../vm-messages" }
@@ -28,4 +26,4 @@ default = ["docker"]
 docker = []
 vagrant = []
 tart = []
-structured-output = ["vm-common/structured-output"]
+structured-output = []

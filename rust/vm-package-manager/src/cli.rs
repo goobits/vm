@@ -1,6 +1,6 @@
 // External crates
-use anyhow::Result;
 use clap::{Parser, Subcommand};
+use vm_core::error::Result;
 
 // Internal imports
 use crate::installer::PackageInstaller;

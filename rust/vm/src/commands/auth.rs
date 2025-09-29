@@ -8,8 +8,8 @@ use crate::cli::AuthSubcommand;
 use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
 use crate::service_registry::get_service_registry;
-use vm_common::{vm_println, vm_success};
 use vm_config::GlobalConfig;
+use vm_core::{vm_println, vm_success};
 
 use vm_auth_proxy::{self, check_server_running, start_server_if_needed};
 

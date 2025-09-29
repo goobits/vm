@@ -12,9 +12,9 @@ use std::io::{self, Write};
 use std::path::Path;
 
 // External crates
-use anyhow::{Context, Result};
 use is_terminal::IsTerminal;
 use serde_json::Value;
+use vm_core::error::{Result, VmError};
 
 // Internal imports
 use super::{
@@ -26,15 +26,14 @@ use crate::{
     context::ProviderContext,
     progress::{AnsibleProgressParser, ProgressParser, ProgressReporter},
     security::SecurityValidator,
-    TempProvider, TempVmState, VmError,
+    TempProvider, TempVmState,
 };
-use vm_common::errors;
-use vm_common::vm_error_with_details;
-use vm_common::{vm_dbg, vm_error, vm_error_hint, vm_success, vm_warning};
 use vm_config::config::VmConfig;
 use vm_core::command_stream::{
     stream_command, stream_command_with_progress, ProgressParser as CoreProgressParser,
 };
+use vm_core::vm_error_with_details;
+use vm_core::{vm_dbg, vm_error, vm_error_hint, vm_success, vm_warning};
 
 // Constants for container lifecycle operations
 const DEFAULT_PROJECT_NAME: &str = "vm-project";
@@ -98,7 +97,7 @@ impl<'a> LifecycleOperations<'a> {
 
         if pipx_list_output.status.success() {
             let pipx_json = serde_json::from_slice::<Value>(&pipx_list_output.stdout)
-                .with_context(|| "Failed to parse pipx package listing output as JSON. pipx may have returned invalid output")?;
+                .map_err(|e| VmError::Internal(format!("Failed to parse pipx package listing output as JSON. pipx may have returned invalid output: {}", e)))?;
             Ok(Some(pipx_json))
         } else {
             Ok(None)
@@ -177,7 +176,8 @@ impl<'a> LifecycleOperations<'a> {
 
     #[must_use = "Docker daemon status should be checked"]
     pub fn check_daemon_is_running(&self) -> Result<()> {
-        DockerOps::check_daemon_running().map_err(|_| errors::provider::docker_connection_failed())
+        DockerOps::check_daemon_running()
+            .map_err(|_| VmError::Internal("Docker daemon is not running".to_string()))
     }
 
     /// Check Docker build requirements (disk space, resources)
@@ -330,18 +330,19 @@ impl<'a> LifecycleOperations<'a> {
             vm_dbg!("Build context contains {} files/directories", file_count);
         }
 
-        stream_command("docker", &all_args).with_context(|| {
-            format!("Docker build failed for project '{}'. Check that Docker is running and build context is valid", self.project_name())
+        stream_command("docker", &all_args).map_err(|e| {
+            VmError::Internal(format!("Docker build failed for project '{}'. Check that Docker is running and build context is valid: {}", self.project_name(), e))
         })?;
 
         // Step 5: Start containers
         let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        stream_command("docker", &args_refs).with_context(|| {
-            format!(
-                "Failed to start container '{}'. Container may have failed to start properly",
-                self.container_name()
-            )
+        stream_command("docker", &args_refs).map_err(|e| {
+            VmError::Internal(format!(
+                "Failed to start container '{}'. Container may have failed to start properly: {}",
+                self.container_name(),
+                e
+            ))
         })?;
 
         self.provision_container_with_context(context)?;
@@ -429,18 +430,18 @@ impl<'a> LifecycleOperations<'a> {
             vm_dbg!("Build context contains {} files/directories", file_count);
         }
 
-        stream_command("docker", &all_args).with_context(|| {
-            format!("Docker build failed for project '{}' instance '{}'. Check that Docker is running and build context is valid", self.project_name(), instance_name)
+        stream_command("docker", &all_args).map_err(|e| {
+            VmError::Internal(format!("Docker build failed for project '{}' instance '{}'. Check that Docker is running and build context is valid: {}", self.project_name(), instance_name, e))
         })?;
 
         // Step 5: Start containers
         let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        stream_command("docker", &args_refs).with_context(|| {
-            format!(
-                "Failed to start container '{}'. Container may have failed to start properly",
-                container_name
-            )
+        stream_command("docker", &args_refs).map_err(|e| {
+            VmError::Internal(format!(
+                "Failed to start container '{}'. Container may have failed to start properly: {}",
+                container_name, e
+            ))
         })?;
 
         self.provision_container_with_instance_and_context(instance_name, context)?;
@@ -504,12 +505,12 @@ impl<'a> LifecycleOperations<'a> {
             }
         } else {
             // Non-interactive mode: fail with informative error
-            Err(anyhow::anyhow!(
+            Err(VmError::Internal(format!(
                 "Container '{}' already exists. In non-interactive mode, please use:\n\
                  - 'vm start' to start the existing container\n\
                  - 'vm destroy' followed by 'vm create' to recreate it",
                 container_name
-            ))
+            )))
         }
     }
 
@@ -570,15 +571,12 @@ impl<'a> LifecycleOperations<'a> {
             }
         } else {
             // Non-interactive mode: fail with informative error
-            Err(anyhow::anyhow!(
+            Err(VmError::Internal(format!(
                 "Container '{}' already exists. In non-interactive mode, please use:\n\
                  - 'vm start {}' to start the existing container\n\
                  - 'vm destroy {}' followed by 'vm create --instance {}' to recreate it",
-                container_name,
-                container_name,
-                container_name,
-                instance_name
-            ))
+                container_name, container_name, container_name, instance_name
+            )))
         }
     }
 
@@ -628,8 +626,11 @@ impl<'a> LifecycleOperations<'a> {
         if needs_extra_config {
             config.extra_config.insert(
                 "container_pipx_packages".to_string(),
-                serde_json::to_value(container_pipx_packages).with_context(|| {
-                    "Failed to serialize pipx package list for container configuration"
+                serde_json::to_value(container_pipx_packages).map_err(|e| {
+                    VmError::Internal(format!(
+                        "Failed to serialize pipx package list for container configuration: {}",
+                        e
+                    ))
                 })?,
             );
         }
@@ -672,20 +673,21 @@ impl<'a> LifecycleOperations<'a> {
 
         let config_json = config_for_copy.to_json()?;
         let temp_config_path = self.temp_dir.join("vm-config.json");
-        fs::write(&temp_config_path, config_json).with_context(|| {
-            format!(
-                "Failed to write configuration to {}",
-                temp_config_path.display()
-            )
+        fs::write(&temp_config_path, config_json).map_err(|e| {
+            VmError::Internal(format!(
+                "Failed to write configuration to {}: {}",
+                temp_config_path.display(),
+                e
+            ))
         })?;
         let source = BuildOperations::path_to_string(&temp_config_path)?;
         let destination = format!("{}:{}", self.container_name(), TEMP_CONFIG_PATH);
         let copy_result = DockerOps::copy(source, &destination);
         if copy_result.is_err() {
-            return Err(anyhow::anyhow!(
+            return Err(VmError::Internal(format!(
                 "Failed to copy VM configuration to container '{}'. Container may not be running or accessible",
                 self.container_name()
-            ));
+            )));
         }
         Ok(())
     }
@@ -706,11 +708,11 @@ impl<'a> LifecycleOperations<'a> {
             }
             if attempt == CONTAINER_READINESS_MAX_ATTEMPTS {
                 vm_error!("Container failed to become ready");
-                return Err(anyhow::anyhow!(
+                return Err(VmError::Internal(format!(
                     "Container '{}' failed to become ready after {} seconds. Container may be unhealthy or not starting properly",
                     self.container_name(),
                     u64::from(CONTAINER_READINESS_MAX_ATTEMPTS) * CONTAINER_READINESS_SLEEP_SECONDS
-                ));
+                )));
             }
             std::thread::sleep(std::time::Duration::from_secs(
                 CONTAINER_READINESS_SLEEP_SECONDS,
@@ -755,8 +757,8 @@ impl<'a> LifecycleOperations<'a> {
             ],
             parser,
         )
-        .with_context(|| {
-            format!("Ansible provisioning failed for container '{}'. Check container logs for detailed error information", self.container_name())
+        .map_err(|e| {
+            VmError::Internal(format!("Ansible provisioning failed for container '{}'. Check container logs for detailed error information: {}", self.container_name(), e))
         })?;
 
         // Start services silently
@@ -794,11 +796,11 @@ impl<'a> LifecycleOperations<'a> {
             }
             if attempt == CONTAINER_READINESS_MAX_ATTEMPTS {
                 vm_error!("Container failed to become ready");
-                return Err(anyhow::anyhow!(
+                return Err(VmError::Internal(format!(
                     "Container '{}' failed to become ready after {} seconds. Container may be unhealthy or not starting properly",
                     container_name,
                     u64::from(CONTAINER_READINESS_MAX_ATTEMPTS) * CONTAINER_READINESS_SLEEP_SECONDS
-                ));
+                )));
             }
             std::thread::sleep(std::time::Duration::from_secs(
                 CONTAINER_READINESS_SLEEP_SECONDS,
@@ -843,8 +845,8 @@ impl<'a> LifecycleOperations<'a> {
             ],
             parser,
         )
-        .with_context(|| {
-            format!("Ansible provisioning failed for container '{}'. Check container logs for detailed error information", container_name)
+        .map_err(|e| {
+            VmError::Internal(format!("Ansible provisioning failed for container '{}'. Check container logs for detailed error information: {}", container_name, e))
         })?;
 
         // Start services silently
@@ -860,7 +862,7 @@ impl<'a> LifecycleOperations<'a> {
     #[must_use = "container start results should be handled"]
     pub fn start_container(&self, container: Option<&str>) -> Result<()> {
         let target_container = self.resolve_target_container(container)?;
-        Ok(stream_command("docker", &["start", &target_container])?)
+        stream_command("docker", &["start", &target_container])
     }
 
     #[must_use = "container stop results should be handled"]
@@ -872,7 +874,12 @@ impl<'a> LifecycleOperations<'a> {
         // This is safe for dev environments where data persistence isn't critical
         duct::cmd("docker", &["stop", "-t", "1", &target_container])
             .run()
-            .with_context(|| format!("Failed to stop container '{}'", target_container))?;
+            .map_err(|e| {
+                VmError::Internal(format!(
+                    "Failed to stop container '{}': {}",
+                    target_container, e
+                ))
+            })?;
         Ok(())
     }
 
@@ -893,7 +900,7 @@ impl<'a> LifecycleOperations<'a> {
             }
         }
 
-        Ok(result?)
+        result
     }
 
     #[must_use = "SSH connection results should be handled"]
@@ -954,7 +961,10 @@ impl<'a> LifecycleOperations<'a> {
 
         if !container_exists {
             // Return error without printing raw Docker messages
-            return Err(anyhow::anyhow!("No such container: {}", container_name));
+            return Err(VmError::Internal(format!(
+                "No such container: {}",
+                container_name
+            )));
         }
 
         // Check if container is actually running before trying to exec
@@ -969,10 +979,10 @@ impl<'a> LifecycleOperations<'a> {
 
         if !container_running {
             // Return error that will trigger the start prompt
-            return Err(anyhow::anyhow!(
+            return Err(VmError::Internal(format!(
                 "Container {} is not running",
                 container_name
-            ));
+            )));
         }
 
         // Container is running, proceed with exec
@@ -1003,7 +1013,7 @@ impl<'a> LifecycleOperations<'a> {
                     Some(130) => Ok(()), // Ctrl-C interrupt - treat as normal exit
                     _ => {
                         // Only return error for actual connection failures
-                        Err(VmError::Command(String::from("SSH connection lost")).into())
+                        Err(VmError::Command(String::from("SSH connection lost")))
                     }
                 }
             }
@@ -1020,9 +1030,9 @@ impl<'a> LifecycleOperations<'a> {
                     // Only clean up other duct command errors that include the full command
                     // but preserve "is not running" errors for proper handling
                     if error_str.contains("exited with code 1") {
-                        Err(anyhow::anyhow!("Docker command failed"))
+                        Err(VmError::Internal("Docker command failed".to_string()))
                     } else {
-                        Err(anyhow::anyhow!("Command execution failed"))
+                        Err(VmError::Internal("Command execution failed".to_string()))
                     }
                 } else {
                     // Pass through other errors
@@ -1054,7 +1064,7 @@ impl<'a> LifecycleOperations<'a> {
         ];
         let cmd_strs: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
         args.extend_from_slice(&cmd_strs);
-        Ok(stream_command("docker", &args)?)
+        stream_command("docker", &args)
     }
 
     #[must_use = "log display results should be handled"]
@@ -1063,7 +1073,7 @@ impl<'a> LifecycleOperations<'a> {
         // Use --tail to show last 50 lines and add timestamps
         let target_container = self.resolve_target_container(container)?;
         stream_command("docker", &["logs", "--tail", "50", "-t", &target_container])
-            .map_err(|e| anyhow::anyhow!("Failed to show logs: {}", e))
+            .map_err(|e| VmError::Internal(format!("Failed to show logs: {}", e)))
     }
 
     #[must_use = "status display results should be handled"]
@@ -1121,10 +1131,10 @@ impl<'a> LifecycleOperations<'a> {
             .trim()
             .to_owned();
         if status != "running" {
-            return Err(anyhow::anyhow!(
+            return Err(VmError::Internal(format!(
                 "Container {} is not running. Start it first with 'vm start'",
                 target_container
-            ));
+            )));
         }
 
         let _progress = ProgressReporter::new();
@@ -1159,8 +1169,8 @@ impl<'a> LifecycleOperations<'a> {
             let source = format!("{}/.", shared_dir.display());
             let destination = format!("{}:/app/shared/", &target_container);
             DockerOps::copy(&source, &destination)
-                .with_context(|| {
-                    format!("Failed to copy Ansible provisioning resources to container '{}'. Container may not be accessible", &target_container)
+                .map_err(|e| {
+                    VmError::Internal(format!("Failed to copy Ansible provisioning resources to container '{}'. Container may not be accessible: {}", &target_container, e))
                 })?;
         }
 
@@ -1184,9 +1194,7 @@ impl<'a> LifecycleOperations<'a> {
         );
         if let Err(e) = ansible_result {
             ProgressReporter::error("└─", &format!("Provisioning failed: {}", e));
-            return Err(e).with_context(|| {
-                format!("Ansible provisioning failed during setup for container '{}'. Check provisioning logs for details", target_container)
-            });
+            return Err(VmError::Internal(format!("Ansible provisioning failed during setup for container '{}'. Check provisioning logs for details: {}", target_container, e)));
         }
         ProgressReporter::complete("└─", "Provisioning complete");
         Ok(())
@@ -1207,11 +1215,12 @@ impl<'a> LifecycleOperations<'a> {
             .arg("--format")
             .arg("{{.Names}}\t{{.Status}}\t{{.Ports}}\t{{.CreatedAt}}")
             .execute_raw()
-            .with_context(|| "Failed to get container information from Docker. Ensure Docker is running and accessible")?;
+            .map_err(|e| VmError::Internal(format!("Failed to get container information from Docker. Ensure Docker is running and accessible: {}", e)))?;
 
         if !ps_output.status.success() {
-            return Err(anyhow::anyhow!(
+            return Err(VmError::Internal(
                 "Docker ps command failed. Check that Docker is installed, running, and accessible"
+                    .to_string(),
             ));
         }
 
@@ -1222,7 +1231,7 @@ impl<'a> LifecycleOperations<'a> {
             .arg("--format")
             .arg("{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}")
             .execute_raw()
-            .with_context(|| "Failed to get container resource statistics from Docker. Some containers may not be running")?;
+            .map_err(|e| VmError::Internal(format!("Failed to get container resource statistics from Docker. Some containers may not be running: {}", e)))?;
 
         let stats_data = if stats_output.status.success() {
             String::from_utf8_lossy(&stats_output.stdout)
@@ -1506,8 +1515,8 @@ impl<'a> LifecycleOperations<'a> {
                 }
             }
         };
-        stream_command("docker", &["kill", &target_container]).with_context(|| {
-            format!("Failed to kill container '{}'. Container may not exist or Docker may be unresponsive", &target_container)
+        stream_command("docker", &["kill", &target_container]).map_err(|e| {
+            VmError::Internal(format!("Failed to kill container '{}'. Container may not exist or Docker may be unresponsive: {}", &target_container, e))
         })
     }
 
@@ -1533,11 +1542,11 @@ impl<'a> LifecycleOperations<'a> {
         let output = std::process::Command::new("docker")
             .args(["ps", "-a", "--format", "{{.Names}}\t{{.ID}}"])
             .output()
-            .with_context(|| "Failed to list containers for name resolution. Docker may not be running or accessible")?;
+            .map_err(|e| VmError::Internal(format!("Failed to list containers for name resolution. Docker may not be running or accessible: {}", e)))?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!(
-                "Docker container listing failed during name resolution. Check Docker daemon status"
+            return Err(VmError::Internal(
+                "Docker container listing failed during name resolution. Check Docker daemon status".to_string()
             ));
         }
 
@@ -1587,10 +1596,10 @@ impl<'a> LifecycleOperations<'a> {
         }
 
         match matches.len() {
-            0 => Err(anyhow::anyhow!(
+            0 => Err(VmError::Internal(format!(
                 "No container found matching '{}'. Use 'vm list' to see available containers",
                 partial_name
-            )),
+            ))),
             1 => Ok(matches[0].clone()),
             _ => {
                 // Multiple matches - prefer exact project name match
@@ -1647,10 +1656,10 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
                 &main_phase,
                 "Mount update failed - container not healthy",
             );
-            return Err(anyhow::anyhow!(
+            return Err(VmError::Internal(format!(
                 "Container '{}' is not healthy after mount update. Check container logs for issues",
                 &state.container_name
-            ));
+            )));
         }
 
         ProgressReporter::finish_phase(&main_phase, "Mounts updated successfully");

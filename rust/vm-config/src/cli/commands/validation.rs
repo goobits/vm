@@ -2,8 +2,8 @@
 use std::path::{Path, PathBuf};
 
 // External crates
-use anyhow::{Context, Result};
-use vm_common::{vm_error, vm_println, vm_success};
+use vm_core::error::{Result, VmError};
+use vm_core::{vm_error, vm_println, vm_success};
 
 // Internal imports
 use crate::cli::formatting::find_vm_config_file;
@@ -49,8 +49,8 @@ pub fn load_and_merge_config(file: Option<PathBuf>) -> Result<VmConfig> {
             Err(e) => {
                 let error_str = e.to_string();
                 if error_str.contains("No vm.yaml found") {
-                    return Err(anyhow::anyhow!(
-                        "No vm.yaml found in current or parent directories"
+                    return Err(VmError::Config(
+                        "No vm.yaml found in current or parent directories".to_string(),
                     ));
                 }
                 return Err(e);
@@ -60,10 +60,12 @@ pub fn load_and_merge_config(file: Option<PathBuf>) -> Result<VmConfig> {
 
     // 2. Load user config if path was found
     let user_config = if let Some(ref path) = user_config_path {
-        Some(
-            VmConfig::from_file(path)
-                .with_context(|| format!("Failed to load user config from: {:?}", path))?,
-        )
+        Some(VmConfig::from_file(path).map_err(|e| {
+            VmError::Config(format!(
+                "Failed to load user config from: {:?}: {}",
+                path, e
+            ))
+        })?)
     } else {
         None
     };
@@ -127,7 +129,7 @@ pub fn load_and_merge_config(file: Option<PathBuf>) -> Result<VmConfig> {
     let validator = crate::validate::ConfigValidator::new(merged.clone(), schema_path);
     validator
         .validate()
-        .with_context(|| "Final configuration validation failed")?;
+        .map_err(|e| VmError::Config(format!("Final configuration validation failed: {}", e)))?;
 
     Ok(merged)
 }

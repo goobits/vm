@@ -3,8 +3,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 // External crates
-use anyhow::Result;
 use tera::Context as TeraContext;
+use vm_core::error::{Result, VmError};
 
 // Internal imports
 use super::UserConfig;
@@ -24,10 +24,10 @@ impl<'a> BuildOperations<'a> {
     /// Safely convert a path to string with descriptive error message
     pub fn path_to_string(path: &Path) -> Result<&str> {
         path.to_str().ok_or_else(|| {
-            anyhow::anyhow!(
+            VmError::Internal(format!(
                 "Path '{}' contains invalid UTF-8 characters and cannot be used as Docker build argument",
                 path.display()
-            )
+            ))
         })
     }
 
@@ -66,7 +66,9 @@ impl<'a> BuildOperations<'a> {
         context.insert("project_gid", &user_config.gid.to_string());
         context.insert("project_user", &user_config.username);
 
-        let content = tera.render("Dockerfile", &context)?;
+        let content = tera.render("Dockerfile", &context).map_err(|e| {
+            VmError::Internal(format!("Failed to render Dockerfile template: {}", e))
+        })?;
         fs::write(output_path, content.as_bytes())?;
 
         Ok(())

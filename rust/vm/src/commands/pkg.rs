@@ -9,8 +9,8 @@ use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
 use crate::service_registry::get_service_registry;
 use dialoguer::Confirm;
-use vm_common::{vm_error, vm_println, vm_success};
 use vm_config::GlobalConfig;
+use vm_core::{vm_error, vm_println, vm_success};
 
 use vm_package_server;
 

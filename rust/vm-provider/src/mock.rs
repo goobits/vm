@@ -1,7 +1,7 @@
 use crate::{Provider, TempProvider};
-use anyhow::Result;
 use std::path::Path;
 use vm_config::config::VmConfig;
+use vm_core::error::Result;
 
 #[derive(Debug)]
 pub struct MockProvider;

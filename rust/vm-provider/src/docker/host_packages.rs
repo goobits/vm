@@ -2,7 +2,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use vm_common::{vm_error_hint, vm_warning};
+use vm_core::{vm_error_hint, vm_warning};
 
 #[derive(Debug, Clone)]
 pub enum PackageLocation {

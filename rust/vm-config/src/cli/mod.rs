@@ -21,9 +21,9 @@
 //! This pattern keeps the main CLI file focused on structure while delegating
 //! implementation details to specialized modules.
 
-use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+use vm_core::error::Result;
 
 mod command_groups;
 mod commands;
@@ -454,7 +454,7 @@ pub enum TransformFormat {
 impl std::str::FromStr for TransformFormat {
     type Err = String;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "lines" => Ok(TransformFormat::Lines),
             "space" => Ok(TransformFormat::Space),
@@ -469,7 +469,7 @@ impl std::str::FromStr for TransformFormat {
 impl std::str::FromStr for OutputFormat {
     type Err = String;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "yaml" | "yml" => Ok(OutputFormat::Yaml),
             "json" => Ok(OutputFormat::Json),
@@ -532,7 +532,7 @@ pub fn init_config_file(
 /// Execute a ports subcommand
 fn execute_ports_command(cmd: PortsCommand) -> Result<()> {
     use crate::ports::{PortRange, PortRegistry};
-    use vm_common::{vm_error, vm_success, vm_warning};
+    use vm_core::{vm_error, vm_success, vm_warning};
 
     match cmd {
         PortsCommand::Check {

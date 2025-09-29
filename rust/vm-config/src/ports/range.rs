@@ -3,9 +3,9 @@
 //! This module provides types and functions for representing and manipulating
 //! network port ranges, including parsing, validation, and overlap detection.
 
-use anyhow::Result;
 use std::fmt;
-use vm_common::vm_error;
+use vm_core::error::{Result, VmError};
+use vm_core::vm_error;
 
 /// Represents a range of network ports.
 ///
@@ -33,7 +33,7 @@ impl PortRange {
                 "Invalid port range format: {}\n💡 Expected format: START-END (e.g., 3170-3179)",
                 range_str
             );
-            return Err(anyhow::anyhow!("Invalid port range format"));
+            return Err(VmError::Config("Invalid port range format".to_string()));
         }
 
         let parts: Vec<&str> = range_str.split('-').collect();
@@ -42,15 +42,15 @@ impl PortRange {
                 "Invalid port range format: {}\n💡 Expected format: START-END (e.g., 3170-3179)",
                 range_str
             );
-            return Err(anyhow::anyhow!("Invalid port range format"));
+            return Err(VmError::Config("Invalid port range format".to_string()));
         }
 
         let start: u16 = parts[0]
             .parse()
-            .map_err(|_| anyhow::anyhow!("Invalid start port: {}", parts[0]))?;
+            .map_err(|_| VmError::Config(format!("Invalid start port: {}", parts[0])))?;
         let end: u16 = parts[1]
             .parse()
-            .map_err(|_| anyhow::anyhow!("Invalid end port: {}", parts[1]))?;
+            .map_err(|_| VmError::Config(format!("Invalid end port: {}", parts[1])))?;
 
         if start >= end {
             vm_error!(
@@ -58,7 +58,7 @@ impl PortRange {
                 start,
                 end
             );
-            return Err(anyhow::anyhow!("Invalid range values"));
+            return Err(VmError::Config("Invalid range values".to_string()));
         }
 
         Ok(PortRange { start, end })
@@ -80,7 +80,7 @@ impl PortRange {
                 start,
                 end
             );
-            return Err(anyhow::anyhow!("Invalid range values"));
+            return Err(VmError::Config("Invalid range values".to_string()));
         }
         Ok(PortRange { start, end })
     }

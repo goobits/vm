@@ -1,9 +1,9 @@
 // Embedded resources for VM provisioning
 // These are compiled into the binary for portability
 
-use anyhow::Result;
 use std::fs;
 use std::path::Path;
+use vm_core::error::Result;
 
 pub const ANSIBLE_PLAYBOOK: &str = include_str!("resources/ansible/playbook.yml");
 pub const MANAGE_SERVICE_TASK: &str = include_str!("resources/ansible/tasks/manage-service.yml");

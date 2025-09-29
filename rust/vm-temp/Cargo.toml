@@ -6,25 +6,24 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-anyhow = { workspace = true }
 serde = { workspace = true }
 serde_yaml_ng = { workspace = true }
 vm-provider = { path = "../vm-provider" }
-vm-common = { path = "../vm-common" }
 vm-platform = { path = "../vm-platform" }
+vm-core = { path = "../vm-core" }
 vm-cli = { path = "../vm-cli" }
 vm-messages = { path = "../vm-messages" }
 
 thiserror = { workspace = true }
 clap = { workspace = true }
 vm-config = { path = "../vm-config" }
-tempfile = { workspace = true }
-fs2 = { workspace = true }
 is-terminal = { workspace = true }
+fs2 = { workspace = true }
+tempfile = { workspace = true }
 
 [features]
 default = []
-structured-output = ["vm-common/structured-output"]
+structured-output = []
 
 [package.metadata.cargo-machete]
 ignored = [

@@ -7,8 +7,8 @@
 use crate::error::{VmError, VmResult};
 // use std::path::PathBuf; // Currently unused
 use std::process::Command;
-use vm_common::{vm_error, vm_println, vm_success};
 use vm_config::{config::VmConfig, GlobalConfig};
+use vm_core::{vm_error, vm_println, vm_success};
 
 /// Handle the doctor command - perform comprehensive health checks
 pub async fn handle_doctor_command(global_config: GlobalConfig) -> VmResult<()> {

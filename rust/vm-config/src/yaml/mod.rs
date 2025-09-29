@@ -15,8 +15,8 @@ pub use query_ops::QueryOperations;
 pub use transform_ops::TransformOperations;
 
 use crate::cli::{OutputFormat, TransformFormat};
-use anyhow::Result;
 use std::path::PathBuf;
+use vm_core::error::Result;
 
 /// Main YAML operations interface - delegates to specialized modules
 pub struct YamlOperations;

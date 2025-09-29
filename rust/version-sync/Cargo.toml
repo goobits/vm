@@ -11,15 +11,14 @@ name = "version-sync"
 path = "src/main.rs"
 
 [dependencies]
-anyhow = { workspace = true }
 serde_json = { workspace = true }
 regex = { workspace = true }
 clap = { workspace = true }
-vm-common = { workspace = true }
+vm-core = { path = "../vm-core" }
 
 [features]
 default = ["structured-output"]
-structured-output = ["vm-common/structured-output"]
+structured-output = []
 
 [package.metadata.cargo-machete]
 ignored = ["log"]

@@ -1,11 +1,11 @@
 use crate::config::VmConfig;
 use crate::detector::detect_preset_for_project;
-use anyhow::{Context, Result};
 use glob::glob;
 use serde::{Deserialize, Serialize};
 use serde_yaml_ng as serde_yaml;
 use std::path::PathBuf;
-use vm_common::vm_error;
+use vm_core::error::{Result, VmError};
+use vm_core::vm_error;
 
 /// Metadata about a preset
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,8 +48,9 @@ impl PresetDetector {
     pub fn load_preset(&self, name: &str) -> Result<VmConfig> {
         // Try embedded presets first
         if let Some(content) = crate::embedded_presets::get_preset_content(name) {
-            let preset_file: PresetFile = serde_yaml::from_str(content)
-                .with_context(|| format!("Failed to parse embedded preset '{}'", name))?;
+            let preset_file: PresetFile = serde_yaml::from_str(content).map_err(|e| {
+                VmError::Serialization(format!("Failed to parse embedded preset '{}': {}", name, e))
+            })?;
             return Ok(preset_file.config);
         }
 
@@ -61,12 +62,13 @@ impl PresetDetector {
                 name,
                 preset_path
             );
-            return Err(anyhow::anyhow!("Preset not found"));
+            return Err(VmError::Config("Preset not found".to_string()));
         }
 
         let content = std::fs::read_to_string(&preset_path)?;
-        let preset_file: PresetFile = serde_yaml::from_str(&content)
-            .with_context(|| format!("Failed to parse preset '{}'", name))?;
+        let preset_file: PresetFile = serde_yaml::from_str(&content).map_err(|e| {
+            VmError::Serialization(format!("Failed to parse preset '{}': {}", name, e))
+        })?;
 
         Ok(preset_file.config)
     }
@@ -87,7 +89,10 @@ impl PresetDetector {
                 .join("*.yaml")
                 .to_string_lossy()
                 .to_string();
-            for path in glob(&pattern)?.flatten() {
+            for path in glob(&pattern)
+                .map_err(|e| VmError::Filesystem(format!("Glob pattern error: {}", e)))?
+                .flatten()
+            {
                 let Some(stem) = path.file_stem() else {
                     continue;
                 };

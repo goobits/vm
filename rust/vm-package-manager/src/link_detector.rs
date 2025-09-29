@@ -1,8 +1,8 @@
 use crate::links::SystemLinkDetector;
 use crate::package_manager::PackageManager;
-use anyhow::Result;
 use std::fs;
 use std::path::{Path, PathBuf};
+use vm_core::error::Result;
 
 pub struct LinkDetector {
     user: String,

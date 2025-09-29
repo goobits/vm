@@ -38,9 +38,9 @@ pub use cli::init_config_file;
 // Re-export global config for use by other crates
 pub use global_config::GlobalConfig;
 
-use anyhow::Context;
 use std::path::PathBuf;
 use vm_core::error::Result;
+use vm_core::error::VmError;
 
 /// Complete application configuration containing both global and VM-specific settings
 #[derive(Debug, Clone)]
@@ -62,7 +62,8 @@ impl AppConfig {
     /// 5. Handles backward compatibility for deprecated fields
     pub fn load(config_path: Option<PathBuf>) -> Result<Self> {
         // Load global configuration
-        let global = GlobalConfig::load().context("Failed to load global configuration")?;
+        let global = GlobalConfig::load()
+            .map_err(|e| VmError::Config(format!("Failed to load global configuration: {}", e)))?;
 
         // Load VM configuration with all merging logic
         let vm = config::VmConfig::load(config_path.clone())?;

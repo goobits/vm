@@ -4,13 +4,13 @@
 //! including state file operations, locking mechanisms, and validation.
 
 use crate::TempVmState;
-use anyhow::{Context, Result};
 use fs2::FileExt;
 use serde_yaml_ng as serde_yaml;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
+use vm_core::error::{Result, VmError};
 
 /// Errors that can occur during state management operations.
 #[derive(Error, Debug)]
@@ -21,10 +21,28 @@ pub enum StateError {
     InvalidFormat(#[from] serde_yaml::Error),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("Context error: {0}")]
-    Context(#[from] anyhow::Error),
+    #[error("VM error: {0}")]
+    Vm(#[from] VmError),
     #[error("State validation failed: {reason}")]
     ValidationFailed { reason: String },
+}
+
+impl From<StateError> for VmError {
+    fn from(err: StateError) -> Self {
+        match err {
+            StateError::StateNotFound { path } => {
+                VmError::Config(format!("State file not found at {}", path.display()))
+            }
+            StateError::InvalidFormat(e) => {
+                VmError::Serialization(format!("Invalid state file format: {}", e))
+            }
+            StateError::Io(e) => VmError::Io(e),
+            StateError::Vm(e) => e,
+            StateError::ValidationFailed { reason } => {
+                VmError::Config(format!("State validation failed: {}", reason))
+            }
+        }
+    }
 }
 
 /// Manages temp VM state persistence and validation
@@ -46,7 +64,7 @@ impl StateManager {
     pub fn new() -> Result<Self> {
         let state_dir = Self::default_state_dir()?;
         fs::create_dir_all(&state_dir)?;
-        let state_file = vm_common::user_paths::temp_vms_state_path()?;
+        let state_file = vm_core::user_paths::temp_vms_state_path()?;
         let temp_file_registry = state_dir.join(".temp_files.registry");
         let lock_file = state_dir.join(".temp-vm.lock");
 
@@ -85,6 +103,7 @@ impl StateManager {
     /// A `Result` containing the default state directory path or an error if the home directory cannot be found.
     pub fn default_state_dir() -> Result<PathBuf> {
         vm_platform::platform::vm_state_dir()
+            .map_err(|e| VmError::Internal(format!("Failed to get VM state directory: {}", e)))
     }
 
     /// Get the state file path
@@ -98,22 +117,26 @@ impl StateManager {
     }
 
     /// Acquire an exclusive lock for state operations
-    fn acquire_lock(&self) -> Result<File, StateError> {
+    fn acquire_lock(&self) -> std::result::Result<File, StateError> {
         let lock_file = OpenOptions::new()
             .create(true)
             .truncate(true)
             .write(true)
             .open(&self.lock_file)?;
 
-        lock_file
-            .lock_exclusive()
-            .with_context(|| format!("Failed to acquire lock: {}", self.lock_file.display()))?;
+        lock_file.lock_exclusive().map_err(|e| {
+            StateError::Vm(VmError::Internal(format!(
+                "Failed to acquire lock {}: {}",
+                self.lock_file.display(),
+                e
+            )))
+        })?;
 
         Ok(lock_file)
     }
 
     /// Load temp VM state from disk
-    pub fn load_state(&self) -> Result<TempVmState, StateError> {
+    pub fn load_state(&self) -> std::result::Result<TempVmState, StateError> {
         let _lock = self.acquire_lock()?;
 
         if !self.state_file.exists() {
@@ -122,11 +145,15 @@ impl StateManager {
             });
         }
 
-        let content = fs::read_to_string(&self.state_file)
-            .with_context(|| format!("Failed to read state file: {}", self.state_file.display()))?;
+        let content =
+            fs::read_to_string(&self.state_file).map_err(|e| StateError::Vm(VmError::Io(e)))?;
 
-        let state: TempVmState = serde_yaml::from_str(&content).with_context(|| {
-            format!("Failed to parse state file: {}", self.state_file.display())
+        let state: TempVmState = serde_yaml::from_str(&content).map_err(|e| {
+            StateError::Vm(VmError::Serialization(format!(
+                "Failed to parse state file {}: {}",
+                self.state_file.display(),
+                e
+            )))
         })?;
 
         Self::validate_state(&state)?;
@@ -134,22 +161,27 @@ impl StateManager {
     }
 
     /// Save temp VM state to disk atomically
-    pub fn save_state(&self, state: &TempVmState) -> Result<(), StateError> {
+    pub fn save_state(&self, state: &TempVmState) -> std::result::Result<(), StateError> {
         let _lock = self.acquire_lock()?;
 
         Self::validate_state(state)?;
 
         // Create state directory if it doesn't exist
-        fs::create_dir_all(&self.state_dir).with_context(|| {
-            format!(
-                "Failed to create state directory: {}",
-                self.state_dir.display()
-            )
+        fs::create_dir_all(&self.state_dir).map_err(|e| {
+            StateError::Vm(VmError::Filesystem(format!(
+                "Failed to create state directory {}: {}",
+                self.state_dir.display(),
+                e
+            )))
         })?;
 
         // Serialize state to YAML
-        let yaml_content =
-            serde_yaml::to_string(state).with_context(|| "Failed to serialize state to YAML")?;
+        let yaml_content = serde_yaml::to_string(state).map_err(|e| {
+            StateError::Vm(VmError::Serialization(format!(
+                "Failed to serialize state to YAML: {}",
+                e
+            )))
+        })?;
 
         // Write atomically using a unique temporary file
         let temp_file = tempfile::Builder::new()
@@ -160,34 +192,37 @@ impl StateManager {
         temp_file
             .as_file()
             .write_all(yaml_content.as_bytes())
-            .with_context(|| {
-                format!(
-                    "Failed to write temporary state file: {}",
-                    temp_file.path().display()
-                )
+            .map_err(|e| {
+                StateError::Vm(VmError::Filesystem(format!(
+                    "Failed to write temporary state file {}: {}",
+                    temp_file.path().display(),
+                    e
+                )))
             })?;
 
         // Atomic move to final location
-        temp_file
-            .persist(&self.state_file)
-            .map_err(|e| e.error)
-            .with_context(|| {
-                format!(
-                    "Failed to move state file to final location: {}",
-                    self.state_file.display()
-                )
-            })?;
+        temp_file.persist(&self.state_file).map_err(|e| {
+            StateError::Vm(VmError::Filesystem(format!(
+                "Failed to move state file to final location {}: {}",
+                self.state_file.display(),
+                e.error
+            )))
+        })?;
 
         Ok(())
     }
 
     /// Delete the state file
-    pub fn delete_state(&self) -> Result<(), StateError> {
+    pub fn delete_state(&self) -> std::result::Result<(), StateError> {
         let _lock = self.acquire_lock()?;
 
         if self.state_file.exists() {
-            fs::remove_file(&self.state_file).with_context(|| {
-                format!("Failed to delete state file: {}", self.state_file.display())
+            fs::remove_file(&self.state_file).map_err(|e| {
+                StateError::Vm(VmError::Filesystem(format!(
+                    "Failed to delete state file {}: {}",
+                    self.state_file.display(),
+                    e
+                )))
             })?;
         }
         Ok(())
@@ -238,7 +273,7 @@ impl StateManager {
     }
 
     /// Validate temp VM state for consistency and security
-    pub fn validate_state(state: &TempVmState) -> Result<(), StateError> {
+    pub fn validate_state(state: &TempVmState) -> std::result::Result<(), StateError> {
         // Validate container name is not empty
         if state.container_name.trim().is_empty() {
             return Err(StateError::ValidationFailed {

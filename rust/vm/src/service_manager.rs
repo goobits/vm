@@ -26,8 +26,8 @@ use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
 
-use vm_common::{vm_println, vm_success, vm_warning};
 use vm_config::GlobalConfig;
+use vm_core::{vm_println, vm_success, vm_warning};
 
 /// Represents the current state of a managed service
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -58,7 +58,7 @@ pub struct ServiceManager {
 impl ServiceManager {
     /// Create a new ServiceManager instance
     pub fn new() -> Result<Self> {
-        let state_file = vm_common::user_paths::services_state_path()?;
+        let state_file = vm_core::user_paths::services_state_path()?;
 
         let manager = Self {
             state: Arc::new(Mutex::new(HashMap::new())),

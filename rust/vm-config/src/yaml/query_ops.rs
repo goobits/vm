@@ -6,10 +6,10 @@
 
 use super::core::CoreOperations;
 use crate::cli::OutputFormat;
-use anyhow::{Context, Result};
 use serde_yaml::Value;
 use serde_yaml_ng as serde_yaml;
 use std::path::PathBuf;
+use vm_core::error::{Result, VmError};
 
 /// Query-specific YAML operations
 pub struct QueryOperations;
@@ -19,8 +19,9 @@ impl QueryOperations {
     pub fn filter(file: &PathBuf, expression: &str, output_format: &OutputFormat) -> Result<()> {
         let content = CoreOperations::read_file_or_stdin(file)?;
 
-        let value: Value = serde_yaml::from_str(&content)
-            .with_context(|| format!("Invalid YAML in file: {:?}", file))?;
+        let value: Value = serde_yaml::from_str(&content).map_err(|e| {
+            VmError::Serialization(format!("Invalid YAML in file: {:?}: {}", file, e))
+        })?;
 
         // Apply the filter expression
         let result = Self::apply_filter(&value, expression);
@@ -83,7 +84,11 @@ impl QueryOperations {
                 }
                 Value::Sequence(matching_items)
             }
-            _ => return Err(anyhow::anyhow!("Path does not point to an array")),
+            _ => {
+                return Err(VmError::Config(
+                    "Path does not point to an array".to_string(),
+                ))
+            }
         };
 
         // Output results

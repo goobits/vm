@@ -1,5 +1,5 @@
-use anyhow::{Context, Result};
 use std::path::PathBuf;
+use vm_core::error::{Result, VmError};
 
 use crate::cli::formatting::output_config;
 use crate::cli::OutputFormat;
@@ -7,12 +7,12 @@ use crate::{config::VmConfig, merge};
 
 pub fn execute_merge(base: PathBuf, overlay: Vec<PathBuf>, format: OutputFormat) -> Result<()> {
     let base_config = VmConfig::from_file(&base)
-        .with_context(|| format!("Failed to load base config: {:?}", base))?;
+        .map_err(|e| VmError::Config(format!("Failed to load base config: {:?}: {}", base, e)))?;
 
     let mut overlays = Vec::new();
     for path in overlay {
         let config = VmConfig::from_file(&path)
-            .with_context(|| format!("Failed to load overlay: {:?}", path))?;
+            .map_err(|e| VmError::Config(format!("Failed to load overlay: {:?}: {}", path, e)))?;
         overlays.push(config);
     }
 

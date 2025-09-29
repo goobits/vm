@@ -1,9 +1,9 @@
 use super::core::CoreOperations;
 use crate::cli::{OutputFormat, TransformFormat};
-use anyhow::Result;
 use serde_yaml::Value;
 use serde_yaml_ng as serde_yaml;
 use std::path::PathBuf;
+use vm_core::error::{Result, VmError};
 
 /// Transform-specific YAML operations
 pub struct TransformOperations;
@@ -52,7 +52,9 @@ impl TransformOperations {
     /// Merge multiple YAML files with deep merging
     pub fn merge_eval_all(files: &[PathBuf], format: &OutputFormat) -> Result<()> {
         if files.len() < 2 {
-            return Err(anyhow::anyhow!("Need at least 2 files to merge"));
+            return Err(VmError::Config(
+                "Need at least 2 files to merge".to_string(),
+            ));
         }
 
         // Load first file as base

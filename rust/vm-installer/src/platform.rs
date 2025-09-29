@@ -5,9 +5,9 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 // External crates
-use anyhow::{Context, Result};
 use vm_cli::msg;
-use vm_common::vm_println;
+use vm_core::error::Result;
+use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
 
 // Internal imports
@@ -74,7 +74,7 @@ fn get_shell_profile() -> Result<Option<PathBuf>> {
         }
 
         // Fallback to standard PowerShell location
-        if let Some(docs) = dirs::document_dir() {
+        if let Ok(docs) = vm_core::user_paths::documents_dir() {
             let ps_profile = docs
                 .join("PowerShell")
                 .join("Microsoft.PowerShell_profile.ps1");
@@ -86,7 +86,7 @@ fn get_shell_profile() -> Result<Option<PathBuf>> {
         }
 
         // If we can't find Documents, try WindowsPowerShell in Documents
-        if let Some(home) = dirs::home_dir() {
+        if let Ok(home) = vm_core::user_paths::home_dir() {
             let ps_profile = home
                 .join("Documents")
                 .join("WindowsPowerShell")
@@ -103,7 +103,7 @@ fn get_shell_profile() -> Result<Option<PathBuf>> {
     #[cfg(not(windows))]
     {
         let shell = env::var("SHELL").unwrap_or_default();
-        let home = dirs::home_dir().context("Could not find home directory")?;
+        let home = vm_core::user_paths::home_dir()?;
 
         Ok(match shell.split('/').next_back() {
             Some("bash") => Some(home.join(".bashrc")),
@@ -136,7 +136,9 @@ fn add_to_profile(profile_path: &Path, bin_dir: &Path) -> Result<()> {
         )
     };
 
-    writeln!(file, "{}", line_to_add).context("Failed to write to shell profile")
+    writeln!(file, "{}", line_to_add).map_err(|e| {
+        vm_core::error::VmError::Internal(format!("Failed to write to shell profile: {}", e))
+    })
 }
 
 /// Detect platform string for use in build target directories

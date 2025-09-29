@@ -1,9 +1,9 @@
 #[cfg(target_os = "macos")]
-use anyhow::{Context, Result};
-#[cfg(target_os = "macos")]
 use std::process::{Command, Stdio};
 #[cfg(target_os = "macos")]
-use vm_common::vm_error;
+use vm_core::error::{Result, VmError};
+#[cfg(target_os = "macos")]
+use vm_core::vm_error;
 
 #[cfg(target_os = "macos")]
 /// Manages PulseAudio server on macOS for container audio.
@@ -49,7 +49,7 @@ fn install_pulseaudio() -> Result<()> {
         .context("Failed to execute 'brew install pulseaudio'. Make sure Homebrew is installed.")?;
     if !status.success() {
         vm_error!("'brew install pulseaudio' failed.");
-        return Err(anyhow::anyhow!("brew install pulseaudio failed"));
+        return Err(VmError::Internal("brew install pulseaudio failed"));
     }
     Ok(())
 }
@@ -67,7 +67,7 @@ fn start_pulseaudio_daemon() -> Result<()> {
         .context("Failed to start PulseAudio daemon.")?;
     if !status.success() {
         vm_error!("Failed to start PulseAudio daemon.");
-        return Err(anyhow::anyhow!("Failed to start PulseAudio daemon"));
+        return Err(VmError::Internal("Failed to start PulseAudio daemon"));
     }
     Ok(())
 }

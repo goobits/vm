@@ -5,8 +5,8 @@ pub mod system;
 
 pub use system::SystemLinkDetector;
 
-use anyhow::Result;
-use vm_common::vm_error;
+use vm_core::error::{Result, VmError};
+use vm_core::vm_error;
 
 /// Validate package manager type
 pub fn validate_package_manager(pm: &str) -> Result<()> {
@@ -17,7 +17,9 @@ pub fn validate_package_manager(pm: &str) -> Result<()> {
                 "Package manager '{}' not in whitelist: [npm, pip, cargo]",
                 pm
             );
-            Err(anyhow::anyhow!("Package manager not in whitelist"))
+            Err(VmError::Internal(
+                "Package manager not in whitelist".to_string(),
+            ))
         }
     }
 }
@@ -36,7 +38,9 @@ pub fn detect_packages(
                 "Package manager '{}' not supported. Use npm, pip, or cargo.",
                 package_manager
             );
-            Err(anyhow::anyhow!("Package manager not supported"))
+            Err(VmError::Internal(
+                "Package manager not supported".to_string(),
+            ))
         }
     }
 }

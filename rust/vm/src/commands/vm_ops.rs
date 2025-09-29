@@ -11,8 +11,8 @@ use tracing::{debug, info, info_span, warn};
 // Internal imports
 use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
-use vm_common::vm_error;
 use vm_config::{config::VmConfig, GlobalConfig};
+use vm_core::vm_error;
 use vm_provider::{InstanceInfo, Provider, ProviderContext};
 
 /// Handle VM creation

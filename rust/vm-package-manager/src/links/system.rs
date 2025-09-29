@@ -1,5 +1,5 @@
 use crate::links::*;
-use anyhow::Result;
+use vm_core::error::Result;
 
 /// System-wide package link detector that coordinates detection across all package managers
 pub struct SystemLinkDetector;

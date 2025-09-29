@@ -5,7 +5,7 @@ use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use vm_cli::msg;
-use vm_common::vm_println;
+use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
 
 // --- Generic Progress Parsing --- //

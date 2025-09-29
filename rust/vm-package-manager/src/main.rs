@@ -4,8 +4,8 @@ mod link_detector;
 mod links;
 mod package_manager;
 
-use anyhow::Result;
 use clap::Parser;
+use vm_core::error::Result;
 
 fn main() -> Result<()> {
     let args = cli::Args::parse();

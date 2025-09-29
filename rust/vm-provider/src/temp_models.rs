@@ -1,8 +1,7 @@
-use crate::VmError;
-use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use vm_core::error::{Result, VmError};
 
 /// Mount permission levels for temp VM mounts
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -30,16 +29,16 @@ impl std::fmt::Display for MountPermission {
 }
 
 impl std::str::FromStr for MountPermission {
-    type Err = anyhow::Error;
+    type Err = VmError;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
             "ro" => Ok(MountPermission::ReadOnly),
             "rw" => Ok(MountPermission::ReadWrite),
-            _ => Err(anyhow::anyhow!(
+            _ => Err(VmError::Internal(format!(
                 "Invalid permission '{}'. Use 'ro' or 'rw'",
                 s
-            )),
+            ))),
         }
     }
 }
@@ -146,11 +145,7 @@ impl TempVmState {
     }
 
     /// Add a new mount to the temp VM
-    pub fn add_mount(
-        &mut self,
-        source: PathBuf,
-        permissions: MountPermission,
-    ) -> Result<(), VmError> {
+    pub fn add_mount(&mut self, source: PathBuf, permissions: MountPermission) -> Result<()> {
         // Validate the mount source
         Self::validate_mount_source(&source)?;
 
@@ -175,7 +170,7 @@ impl TempVmState {
         source: PathBuf,
         target: PathBuf,
         permissions: MountPermission,
-    ) -> Result<(), VmError> {
+    ) -> Result<()> {
         // Validate the mount source
         Self::validate_mount_source(&source)?;
 
@@ -198,7 +193,7 @@ impl TempVmState {
     }
 
     /// Remove a mount by source path
-    pub fn remove_mount(&mut self, source: &Path) -> Result<Mount, VmError> {
+    pub fn remove_mount(&mut self, source: &Path) -> Result<Mount> {
         let index = self
             .mounts
             .iter()
@@ -240,7 +235,7 @@ impl TempVmState {
         &mut self,
         source: &Path,
         permissions: MountPermission,
-    ) -> Result<(), VmError> {
+    ) -> Result<()> {
         let mount = self.get_mount_mut(source).ok_or_else(|| {
             VmError::Config(format!("Mount not found for source: {}", source.display()))
         })?;
@@ -266,7 +261,7 @@ impl TempVmState {
     }
 
     /// Validate a mount source path
-    fn validate_mount_source(source: &Path) -> Result<(), VmError> {
+    fn validate_mount_source(source: &Path) -> Result<()> {
         // Check if source exists
         if !source.exists() {
             return Err(VmError::Config(format!(
@@ -295,7 +290,7 @@ impl TempVmState {
     }
 
     /// Validate a target path for mounting
-    fn validate_target_path(target: &Path) -> Result<(), VmError> {
+    fn validate_target_path(target: &Path) -> Result<()> {
         // Target should be absolute and under /workspace or /tmp
         if !target.is_absolute() {
             return Err(VmError::Config(format!(

@@ -7,9 +7,9 @@ use tracing::debug;
 use crate::cli::ConfigSubcommand;
 use crate::error::{VmError, VmResult};
 use serde_yaml_ng as serde_yaml;
-use vm_common::{vm_println, vm_success, vm_warning};
 use vm_config::ports::{PortRange, PortRegistry};
 use vm_config::{config::VmConfig, AppConfig, ConfigOps, GlobalConfig};
+use vm_core::{vm_println, vm_success, vm_warning};
 
 /// Handle configuration validation command
 pub fn handle_validate(config_file: Option<PathBuf>) -> VmResult<()> {

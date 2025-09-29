@@ -155,5 +155,4 @@ macro_rules! vm_dbg {
     };
 }
 
-// Note: tracing initialization functions remain in vm-common
-// Use vm_common::tracing_init for logging initialization
+// Note: Output macros for consistent CLI formatting across crates

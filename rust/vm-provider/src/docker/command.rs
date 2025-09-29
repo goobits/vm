@@ -5,9 +5,9 @@
 //! code duplication across Docker operations by providing common patterns
 //! for executing Docker subcommands.
 
-use anyhow::{Context, Result};
 use std::process::{Command, Output};
-use vm_common::{vm_dbg, vm_error};
+use vm_core::error::{Result, VmError};
+use vm_core::{vm_dbg, vm_error};
 
 /// Builder for Docker commands with fluent interface and consistent error handling.
 ///
@@ -72,15 +72,15 @@ impl DockerCommand {
 
         let status = cmd
             .status()
-            .with_context(|| "Failed to execute Docker command")?;
+            .map_err(|e| VmError::Internal(format!("Failed to execute Docker command: {}", e)))?;
 
         if status.success() {
             Ok(())
         } else {
-            Err(anyhow::anyhow!(
+            Err(VmError::Internal(format!(
                 "Docker command failed with status: {}",
                 status
-            ))
+            )))
         }
     }
 
@@ -94,18 +94,17 @@ impl DockerCommand {
 
         let output = cmd
             .output()
-            .with_context(|| "Failed to execute Docker command")?;
+            .map_err(|e| VmError::Internal(format!("Failed to execute Docker command: {}", e)))?;
 
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).to_string())
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
             vm_error!("Docker command failed: {}", stderr);
-            Err(anyhow::anyhow!(
+            Err(VmError::Internal(format!(
                 "Docker command failed with status: {}. Error: {}",
-                output.status,
-                stderr
-            ))
+                output.status, stderr
+            )))
         }
     }
 
@@ -119,7 +118,7 @@ impl DockerCommand {
         vm_dbg!("Executing Docker command (raw): {:?}", &cmd);
 
         cmd.output()
-            .with_context(|| "Failed to execute Docker command")
+            .map_err(|e| VmError::Internal(format!("Failed to execute Docker command: {}", e)))
     }
 
     /// Build the underlying Command object.
@@ -154,7 +153,12 @@ impl DockerOps {
         DockerCommand::new()
             .subcommand("info")
             .execute()
-            .with_context(|| "Docker daemon is not running or not accessible")
+            .map_err(|e| {
+                VmError::Internal(format!(
+                    "Docker daemon is not running or not accessible: {}",
+                    e
+                ))
+            })
     }
 
     /// List all containers with specified format.

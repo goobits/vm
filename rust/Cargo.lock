@@ -3126,11 +3126,10 @@ checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 name = "version-sync"
 version = "2.0.2"
 dependencies = [
- "anyhow",
  "clap",
  "regex",
  "serde_json",
- "vm-common",
+ "vm-core",
 ]
 
 [[package]]
@@ -3154,10 +3153,10 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "uuid",
  "vm-auth-proxy",
  "vm-cli",
- "vm-common",
  "vm-config",
  "vm-core",
  "vm-docker-registry",
@@ -3201,33 +3200,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "vm-common"
-version = "2.0.2"
-dependencies = [
- "anyhow",
- "duct",
- "is-terminal",
- "pathdiff",
- "serde",
- "serde_json",
- "serde_yaml_ng",
- "sysinfo",
- "tempfile",
- "thiserror 2.0.16",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "vm-core",
- "vm-messages",
- "vm-platform",
- "which",
-]
-
-[[package]]
 name = "vm-config"
 version = "2.0.2"
 dependencies = [
- "anyhow",
  "clap",
  "fs2",
  "glob",
@@ -3239,7 +3214,6 @@ dependencies = [
  "serde_yaml_ng",
  "tempfile",
  "vm-cli",
- "vm-common",
  "vm-core",
  "vm-messages",
  "which",
@@ -3285,17 +3259,14 @@ dependencies = [
 name = "vm-installer"
 version = "2.0.2"
 dependencies = [
- "anyhow",
  "clap",
- "dirs",
  "serde_json",
  "tempfile",
  "tracing",
  "vm-cli",
- "vm-common",
+ "vm-core",
  "vm-messages",
  "vm-platform",
- "which",
 ]
 
 [[package]]
@@ -3306,15 +3277,13 @@ version = "2.0.2"
 name = "vm-package-manager"
 version = "2.0.2"
 dependencies = [
- "anyhow",
  "clap",
  "rayon",
  "regex",
  "serde_json",
- "tempfile",
  "vm-cli",
- "vm-common",
  "vm-config",
+ "vm-core",
  "vm-messages",
  "vm-platform",
  "which",
@@ -3368,7 +3337,6 @@ dependencies = [
 name = "vm-provider"
 version = "2.0.2"
 dependencies = [
- "anyhow",
  "chrono",
  "duct",
  "indicatif",
@@ -3379,7 +3347,6 @@ dependencies = [
  "serde_json",
  "tera",
  "vm-cli",
- "vm-common",
  "vm-config",
  "vm-core",
  "vm-messages",
@@ -3390,7 +3357,6 @@ dependencies = [
 name = "vm-temp"
 version = "2.0.2"
 dependencies = [
- "anyhow",
  "clap",
  "fs2",
  "is-terminal",
@@ -3399,8 +3365,8 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.16",
  "vm-cli",
- "vm-common",
  "vm-config",
+ "vm-core",
  "vm-messages",
  "vm-platform",
  "vm-provider",

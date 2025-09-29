@@ -6,9 +6,9 @@
 use crate::common::instance::{
     create_vagrant_instance_info, fuzzy_match_instances, InstanceInfo, InstanceResolver,
 };
-use anyhow::{Context, Result};
 use std::path::PathBuf;
 use vm_config::config::VmConfig;
+use vm_core::error::{Result, VmError};
 
 /// Vagrant instance manager
 pub struct VagrantInstanceManager<'a> {
@@ -46,7 +46,7 @@ impl<'a> VagrantInstanceManager<'a> {
             })?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!(
+            return Err(VmError::Internal(
                 "Vagrant status command failed. Check that Vagrant is properly installed and configured"
             ));
         }

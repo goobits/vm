@@ -4,12 +4,12 @@ use crate::{
     security::SecurityValidator,
     Provider, VmError,
 };
-use anyhow::{Context, Result};
 use std::env;
 use std::path::Path;
-use vm_common::{vm_println, vm_success, vm_warning};
 use vm_config::config::VmConfig;
 use vm_core::command_stream::{is_tool_installed, stream_command};
+use vm_core::error::{Result, VmError};
+use vm_core::{vm_println, vm_success, vm_warning};
 
 use super::instance::VagrantInstanceManager;
 

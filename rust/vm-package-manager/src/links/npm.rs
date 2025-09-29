@@ -1,9 +1,9 @@
-use anyhow::Result;
 use rayon::prelude::*;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use vm_common::vm_error;
+use vm_core::error::{Result, VmError};
+use vm_core::vm_error;
 
 pub fn detect_npm_packages(packages: &[String]) -> Vec<(String, String)> {
     let mut results = Vec::new();
@@ -43,10 +43,15 @@ fn get_npm_root() -> Result<PathBuf> {
 
     if !output.status.success() {
         vm_error!("Failed to get npm root directory");
-        return Err(anyhow::anyhow!("Failed to get npm root directory"));
+        return Err(VmError::Internal(
+            "Failed to get npm root directory".to_string(),
+        ));
     }
 
-    let root_str = String::from_utf8(output.stdout)?.trim().to_string();
+    let root_str = String::from_utf8(output.stdout)
+        .map_err(|e| VmError::Internal(format!("Failed to parse npm command output: {}", e)))?
+        .trim()
+        .to_string();
     Ok(PathBuf::from(root_str))
 }
 

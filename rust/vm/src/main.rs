@@ -11,10 +11,11 @@ use uuid::Uuid;
 // External crates
 use clap::Parser;
 use tracing::{info, info_span};
+use tracing_subscriber::fmt;
 
 // Internal imports
-// use vm_common::messages::{messages::MESSAGES, msg}; // Currently unused
-use vm_common::{vm_error, vm_warning};
+// use vm_core::messages::{messages::MESSAGES, msg}; // Currently unused
+use vm_core::{vm_error, vm_warning};
 
 // Local modules
 mod cli;
@@ -38,7 +39,7 @@ async fn main() {
     // Initialize tracing system first, but only if not in test mode
     // Tests expect clean stdout output, so we disable logging for test runs
     if std::env::var("VM_TEST_MODE").is_err() {
-        if let Err(e) = vm_common::tracing_init::init_with_defaults("warn") {
+        if let Err(e) = fmt().with_env_filter("warn").try_init() {
             vm_warning!("Failed to initialize tracing: {}", e);
         }
     }

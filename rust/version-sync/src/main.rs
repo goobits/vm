@@ -1,10 +1,10 @@
-use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
-use vm_common::vm_error;
+use vm_core::error::Result;
+use vm_core::vm_error;
 
 #[derive(Parser)]
 #[command(name = "version-sync")]
@@ -46,22 +46,30 @@ impl VersionSync {
             }
             if !current.pop() {
                 vm_error!("Could not find project root (no package.json found)");
-                return Err(anyhow::anyhow!("Could not find project root"));
+                return Err(vm_core::error::VmError::Internal(
+                    "Could not find project root".to_string(),
+                ));
             }
         }
     }
 
     fn read_package_version(root: &Path) -> Result<String> {
-        let package_json =
-            fs::read_to_string(root.join("package.json")).context("Failed to read package.json")?;
+        let package_json = fs::read_to_string(root.join("package.json")).map_err(|e| {
+            vm_core::error::VmError::Internal(format!("Failed to read package.json: {}", e))
+        })?;
 
-        let json: serde_json::Value =
-            serde_json::from_str(&package_json).context("Failed to parse package.json")?;
+        let json: serde_json::Value = serde_json::from_str(&package_json).map_err(|e| {
+            vm_core::error::VmError::Internal(format!("Failed to parse package.json: {}", e))
+        })?;
 
         json.get("version")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
-            .context("No version field found in package.json")
+            .ok_or_else(|| {
+                vm_core::error::VmError::Internal(
+                    "No version field found in package.json".to_string(),
+                )
+            })
     }
 
     fn files_to_sync(&self) -> Vec<PathBuf> {
@@ -79,8 +87,9 @@ impl VersionSync {
             return Ok(FileVersionStatus::Missing);
         }
 
-        let content = fs::read_to_string(path)
-            .with_context(|| format!("Failed to read {}", path.display()))?;
+        let content = fs::read_to_string(path).map_err(|e| {
+            vm_core::error::VmError::Internal(format!("Failed to read {}: {}", path.display(), e))
+        })?;
 
         let version_regex = Regex::new(r#"version\s*[:=]\s*"?([^"\s]+)"?"#).unwrap_or_else(|_| {
             // Fallback to a simpler pattern if the main one fails
@@ -105,8 +114,9 @@ impl VersionSync {
     }
 
     fn update_file_version(&self, path: &Path) -> Result<bool> {
-        let content = fs::read_to_string(path)
-            .with_context(|| format!("Failed to read {}", path.display()))?;
+        let content = fs::read_to_string(path).map_err(|e| {
+            vm_core::error::VmError::Internal(format!("Failed to read {}: {}", path.display(), e))
+        })?;
 
         let version_regex = Regex::new(r#"version\s*=\s*"[^"]+""#).unwrap_or_else(|_| {
             // Fallback to simple pattern that cannot fail
@@ -132,8 +142,13 @@ impl VersionSync {
         };
 
         if updated != content {
-            fs::write(path, updated.as_ref())
-                .with_context(|| format!("Failed to write {}", path.display()))?;
+            fs::write(path, updated.as_ref()).map_err(|e| {
+                vm_core::error::VmError::Internal(format!(
+                    "Failed to write {}: {}",
+                    path.display(),
+                    e
+                ))
+            })?;
             Ok(true)
         } else {
             Ok(false)

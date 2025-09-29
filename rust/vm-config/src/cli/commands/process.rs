@@ -1,5 +1,5 @@
-use anyhow::{Context, Result};
 use std::path::PathBuf;
+use vm_core::error::{Result, VmError};
 
 use crate::cli::formatting::output_config;
 use crate::cli::OutputFormat;
@@ -18,14 +18,13 @@ pub fn execute(
 
     // Load default config
     let default_config = VmConfig::from_file(&defaults)
-        .with_context(|| format!("Failed to load defaults: {:?}", defaults))?;
+        .map_err(|e| VmError::Config(format!("Failed to load defaults: {:?}: {}", defaults, e)))?;
 
     // Load user config if provided
     let user_config = if let Some(path) = config {
-        Some(
-            VmConfig::from_file(&path)
-                .with_context(|| format!("Failed to load user config: {:?}", path))?,
-        )
+        Some(VmConfig::from_file(&path).map_err(|e| {
+            VmError::Config(format!("Failed to load user config: {:?}: {}", path, e))
+        })?)
     } else {
         None
     };

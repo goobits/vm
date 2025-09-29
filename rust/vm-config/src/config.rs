@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use indexmap::IndexMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_yaml_ng as serde_yaml;
+use vm_core::error::Result;
 
 /// Main VM configuration structure.
 ///
@@ -315,7 +316,7 @@ pub enum MemoryLimit {
 }
 
 impl Serialize for MemoryLimit {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -327,7 +328,7 @@ impl Serialize for MemoryLimit {
 }
 
 impl<'de> Deserialize<'de> for MemoryLimit {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
@@ -343,14 +344,14 @@ impl<'de> Deserialize<'de> for MemoryLimit {
                 formatter.write_str("a positive integer (MB) or \"unlimited\"")
             }
 
-            fn visit_u32<E>(self, value: u32) -> Result<Self::Value, E>
+            fn visit_u32<E>(self, value: u32) -> std::result::Result<Self::Value, E>
             where
                 E: de::Error,
             {
                 Ok(MemoryLimit::Limited(value))
             }
 
-            fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+            fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E>
             where
                 E: de::Error,
             {
@@ -361,7 +362,7 @@ impl<'de> Deserialize<'de> for MemoryLimit {
                 }
             }
 
-            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
             where
                 E: de::Error,
             {
@@ -733,7 +734,7 @@ impl VmConfig {
     /// let config = VmConfig::load(None)?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    pub fn load(file: Option<PathBuf>) -> anyhow::Result<Self> {
+    pub fn load(file: Option<PathBuf>) -> Result<Self> {
         crate::cli::load_and_merge_config(file)
     }
 
@@ -764,7 +765,7 @@ impl VmConfig {
     /// let config = VmConfig::from_file(&PathBuf::from("config.yaml"))?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    pub fn from_file(path: &PathBuf) -> anyhow::Result<Self> {
+    pub fn from_file(path: &PathBuf) -> Result<Self> {
         let content = std::fs::read_to_string(path)?;
         Ok(serde_yaml::from_str(&content)?)
     }
@@ -790,7 +791,7 @@ impl VmConfig {
     /// println!("Config: {}", json);
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    pub fn to_json(&self) -> anyhow::Result<String> {
+    pub fn to_json(&self) -> Result<String> {
         Ok(serde_json::to_string_pretty(self)?)
     }
 

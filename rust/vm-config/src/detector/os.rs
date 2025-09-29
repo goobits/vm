@@ -6,8 +6,8 @@
 //! - Provide platform-specific recommendations
 //! - Enable host-aware virtualization optimizations
 
-use anyhow::Result;
 use std::fs;
+use vm_core::error::{Result, VmError};
 
 /// Detects the host operating system and distribution.
 ///
@@ -54,8 +54,8 @@ fn detect_linux_distro() -> Result<String> {
             return Ok(id.trim_matches('"').to_lowercase());
         }
     }
-    Err(anyhow::anyhow!(
-        "Could not determine Linux distribution from /etc/os-release"
+    Err(VmError::Config(
+        "Could not determine Linux distribution from /etc/os-release".to_string(),
     ))
 }
 

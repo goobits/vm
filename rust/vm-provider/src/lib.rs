@@ -8,7 +8,7 @@
 use std::path::Path;
 
 // External crates
-use anyhow::Result;
+use vm_core::error::Result;
 
 // Internal imports
 use vm_config::config::VmConfig;
@@ -178,7 +178,10 @@ pub fn get_provider(config: VmConfig) -> Result<Box<dyn Provider>> {
         "vagrant" => Ok(Box::new(vagrant::VagrantProvider::new(config)?)),
         #[cfg(feature = "tart")]
         "tart" => Ok(Box::new(tart::TartProvider::new(config)?)),
-        _ => Err(VmError::Provider(format!("Unknown provider: {}", provider_name)).into()),
+        _ => Err(VmError::Provider(format!(
+            "Unknown provider: {}",
+            provider_name
+        ))),
     }
 }
 

@@ -3,13 +3,13 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 // External crate imports
-use anyhow::{Context, Result};
 use regex::Regex;
 use serde_yaml::Value;
 use serde_yaml_ng as serde_yaml;
+use vm_core::error::{Result, VmError};
 
 // Internal crate imports
-use vm_common::{vm_error, vm_println, vm_warning};
+use vm_core::{vm_error, vm_println, vm_warning};
 use vm_messages::messages::MESSAGES;
 
 // Local module imports
@@ -106,8 +106,8 @@ pub fn execute(
 
     // Load embedded defaults
     const EMBEDDED_DEFAULTS: &str = include_str!("../../../../../configs/defaults.yaml");
-    let mut config: VmConfig =
-        serde_yaml::from_str(EMBEDDED_DEFAULTS).context("Failed to parse embedded defaults")?;
+    let mut config: VmConfig = serde_yaml::from_str(EMBEDDED_DEFAULTS)
+        .map_err(|e| VmError::Serialization(format!("Failed to parse embedded defaults: {}", e)))?;
 
     // Customize config for this directory
     if let Some(ref mut project) = config.project {
@@ -155,11 +155,14 @@ pub fn execute(
             if !service_path.exists() {
                 vm_error!("Unknown service: {}", service);
                 vm_error!("Available services: postgresql, redis, mongodb, docker");
-                return Err(anyhow::anyhow!("Service configuration not found"));
+                return Err(VmError::Config(
+                    "Service configuration not found".to_string(),
+                ));
             }
 
-            let service_config = VmConfig::from_file(&service_path)
-                .with_context(|| format!("Failed to load service config: {}", service))?;
+            let service_config = VmConfig::from_file(&service_path).map_err(|e| {
+                VmError::Config(format!("Failed to load service config: {}: {}", service, e))
+            })?;
 
             // Extract only the specific service we want to enable from the service config
             if let Some(specific_service_config) = service_config.services.get(service) {
@@ -174,10 +177,10 @@ pub fn execute(
     // Apply port configuration
     if let Some(port_start) = ports {
         if port_start < 1024 {
-            return Err(anyhow::anyhow!(
+            return Err(VmError::Config(format!(
                 "Invalid port number: {} (must be >= 1024)",
                 port_start
-            ));
+            )));
         }
 
         // Set up port range instead of individual ports - services will auto-assign
@@ -185,16 +188,21 @@ pub fn execute(
     }
 
     // Convert config to Value and write with consistent formatting
-    let config_yaml =
-        serde_yaml::to_string(&config).context("Failed to serialize configuration to YAML")?;
-    let config_value: Value =
-        serde_yaml::from_str(&config_yaml).context("Failed to convert config to YAML Value")?;
+    let config_yaml = serde_yaml::to_string(&config).map_err(|e| {
+        VmError::Serialization(format!("Failed to serialize configuration to YAML: {}", e))
+    })?;
+    let config_value: Value = serde_yaml::from_str(&config_yaml).map_err(|e| {
+        VmError::Serialization(format!("Failed to convert config to YAML Value: {}", e))
+    })?;
 
     // Write using the centralized function for consistent formatting
-    CoreOperations::write_yaml_file(&target_path, &config_value).context(format!(
-        "Failed to write vm.yaml to {}",
-        target_path.display()
-    ))?;
+    CoreOperations::write_yaml_file(&target_path, &config_value).map_err(|e| {
+        VmError::Filesystem(format!(
+            "Failed to write vm.yaml to {}: {}",
+            target_path.display(),
+            e
+        ))
+    })?;
 
     // Get the port range for display
     let port_display = if let Some(range) = &config.ports.range {

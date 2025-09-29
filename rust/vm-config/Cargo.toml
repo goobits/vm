@@ -15,8 +15,8 @@ name = "vm-config"
 path = "src/main.rs"
 
 [dependencies]
-anyhow = { workspace = true }
 clap = { workspace = true }
+fs2 = { workspace = true }
 glob = { workspace = true }
 indexmap = { workspace = true }
 regex = { workspace = true }
@@ -24,18 +24,16 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml_ng = { workspace = true }
 vm-core = { path = "../vm-core" }
-vm-common = { path = "../vm-common" }
 vm-messages = { path = "../vm-messages" }
 vm-cli = { path = "../vm-cli" }
 which = { workspace = true }
-fs2 = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 nix = { workspace = true }
 
 [features]
 default = []
-structured-output = ["vm-common/structured-output"]
+structured-output = []
 
 [dev-dependencies]
 tempfile = { workspace = true }

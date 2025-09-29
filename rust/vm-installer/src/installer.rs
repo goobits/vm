@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 // External crates
-use anyhow::{Context, Result};
 use tracing::info_span;
-use vm_common::{errors, user_paths, vm_progress, vm_success};
+use vm_core::error::Result;
+use vm_core::{user_paths, vm_progress, vm_success};
 
 // Internal imports
 use crate::platform;
@@ -45,7 +45,9 @@ fn get_project_root() -> Result<PathBuf> {
         }
     }
 
-    Err(errors::installer::project_root_not_found())
+    Err(vm_core::error::VmError::Internal(
+        "Project root not found".to_string(),
+    ))
 }
 
 fn run_cargo_clean(project_root: &Path) -> Result<()> {
@@ -68,12 +70,15 @@ fn run_cargo_clean(project_root: &Path) -> Result<()> {
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .status()
-        .context("Failed to execute 'cargo clean'")?;
+        .map_err(|e| {
+            vm_core::error::VmError::Internal(format!("Failed to execute 'cargo clean': {}", e))
+        })?;
 
     if !status.success() {
-        return Err(errors::installer::cargo_clean_failed(
-            status.code().unwrap_or(-1),
-        ));
+        return Err(vm_core::error::VmError::Internal(format!(
+            "Cargo clean failed with exit code: {}",
+            status.code().unwrap_or(-1)
+        )));
     }
     vm_success!("Build artifacts cleaned.");
     Ok(())
@@ -100,19 +105,25 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .status()
-        .context("Failed to execute 'cargo build'")?;
+        .map_err(|e| {
+            vm_core::error::VmError::Internal(format!("Failed to execute 'cargo build': {}", e))
+        })?;
 
     if !status.success() {
-        return Err(errors::installer::cargo_build_failed(
-            status.code().unwrap_or(-1),
-        ));
+        return Err(vm_core::error::VmError::Internal(format!(
+            "Cargo build failed with exit code: {}",
+            status.code().unwrap_or(-1)
+        )));
     }
     vm_success!("Rust binaries built successfully.");
 
     let binary_name = vm_platform::platform::executable_name("vm");
     let binary_path = target_dir.join("release").join(&binary_name);
     if !binary_path.exists() {
-        return Err(errors::installer::binary_not_found(&binary_path));
+        return Err(vm_core::error::VmError::Internal(format!(
+            "Binary not found at: {}",
+            binary_path.display()
+        )));
     }
     Ok(binary_path)
 }
@@ -126,20 +137,29 @@ fn create_symlink(source_binary: &Path, bin_dir: &Path) -> Result<()> {
     let _enter = span.enter();
 
     vm_progress!("Creating global 'vm' command...");
-    fs::create_dir_all(bin_dir).context("Failed to create user bin directory")?;
+    fs::create_dir_all(bin_dir).map_err(|e| {
+        vm_core::error::VmError::Internal(format!("Failed to create user bin directory: {}", e))
+    })?;
 
     let executable_name = vm_platform::platform::executable_name("vm");
     let link_name = bin_dir.join(&executable_name);
 
     // Remove existing link or file if it exists
     if link_name.exists() || link_name.is_symlink() {
-        fs::remove_file(&link_name).context("Failed to remove existing 'vm' file/symlink")?;
+        fs::remove_file(&link_name).map_err(|e| {
+            vm_core::error::VmError::Internal(format!(
+                "Failed to remove existing 'vm' file/symlink: {}",
+                e
+            ))
+        })?;
     }
 
     // Use platform abstraction for cross-platform installation
     vm_platform::current()
         .install_executable(source_binary, bin_dir, "vm")
-        .context("Failed to install executable")?;
+        .map_err(|e| {
+            vm_core::error::VmError::Internal(format!("Failed to install executable: {}", e))
+        })?;
 
     vm_success!(
         "Executable installed: {} -> {}",

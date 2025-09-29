@@ -17,11 +17,11 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 // External crates
-use anyhow::{Context, Result};
 use tera::Tera;
+use vm_core::error::{Result, VmError};
 
 // Internal imports
-use crate::{context::ProviderContext, preflight, Provider, TempProvider, VmError};
+use crate::{context::ProviderContext, preflight, Provider, TempProvider};
 use vm_config::config::VmConfig;
 use vm_core::command_stream::is_tool_installed;
 
@@ -61,7 +61,7 @@ impl ComposeCommand {
         compose_path: &Path,
         subcommand: &str,
         extra_args: &[&str],
-    ) -> Result<Vec<String>, anyhow::Error> {
+    ) -> Result<Vec<String>> {
         let mut args = vec![
             "compose".to_string(),
             "-f".to_string(),
@@ -82,7 +82,7 @@ pub struct DockerProvider {
 impl DockerProvider {
     pub fn new(config: VmConfig) -> Result<Self> {
         if !is_tool_installed("docker") {
-            return Err(VmError::Dependency("Docker".into()).into());
+            return Err(VmError::Dependency("Docker".into()));
         }
 
         let project_dir = std::env::current_dir()?;
@@ -95,7 +95,12 @@ impl DockerProvider {
             .unwrap_or("vm-project");
 
         let temp_dir = std::env::temp_dir().join(format!("vm-{}", project_name));
-        fs::create_dir_all(&temp_dir).context("Failed to create project-specific directory")?;
+        fs::create_dir_all(&temp_dir).map_err(|e| {
+            VmError::Internal(format!(
+                "Failed to create project-specific directory: {}",
+                e
+            ))
+        })?;
 
         Ok(Self {
             config,
@@ -301,7 +306,6 @@ impl Provider for DockerProvider {
 
     fn list_instances(&self) -> Result<Vec<crate::InstanceInfo>> {
         use crate::common::instance::create_docker_instance_info;
-        use anyhow::Context;
 
         // Use label-based filtering to find all vm-managed containers
         let output = std::process::Command::new("docker")
@@ -314,13 +318,13 @@ impl Provider for DockerProvider {
                 "{{.Names}}\t{{.ID}}\t{{.Status}}\t{{.CreatedAt}}\t{{.RunningFor}}\t{{.Label \"com.vm.project\"}}",
             ])
             .output()
-            .with_context(|| "Failed to list containers with vm label")?;
+            .map_err(|e| VmError::Internal(format!("Failed to list containers with vm label: {}", e)))?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!(
+            return Err(VmError::Internal(format!(
                 "Docker container listing failed: {}",
                 String::from_utf8_lossy(&output.stderr)
-            ));
+            )));
         }
 
         let containers_output = String::from_utf8_lossy(&output.stdout);

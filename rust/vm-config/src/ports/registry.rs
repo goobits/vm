@@ -12,12 +12,11 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 // External crates
-use anyhow::Context;
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use vm_cli::msg;
-use vm_common::vm_println;
-use vm_core::{error::Result, user_paths};
+use vm_core::error::VmError;
+use vm_core::{error::Result, user_paths, vm_println};
 use vm_messages::messages::MESSAGES;
 
 // Internal imports
@@ -213,8 +212,11 @@ impl PortRegistry {
         // Ensure parent directory exists
         if let Some(parent) = self.registry_path.parent() {
             if !parent.exists() {
-                fs::create_dir_all(parent).with_context(|| {
-                    format!("Failed to create registry directory: {:?}", parent)
+                fs::create_dir_all(parent).map_err(|e| {
+                    VmError::Filesystem(format!(
+                        "Failed to create registry directory: {:?}: {}",
+                        parent, e
+                    ))
                 })?;
             }
         }
@@ -226,7 +228,12 @@ impl PortRegistry {
             .write(true)
             .truncate(false)
             .open(&self.registry_path)
-            .with_context(|| format!("Failed to open registry file: {:?}", self.registry_path))?;
+            .map_err(|e| {
+                VmError::Filesystem(format!(
+                    "Failed to open registry file: {:?}: {}",
+                    self.registry_path, e
+                ))
+            })?;
 
         // Acquire exclusive lock with timeout and retry logic
         const MAX_RETRIES: u32 = 100; // More retries for lock acquisition
@@ -269,18 +276,22 @@ impl PortRegistry {
             if content.trim().is_empty() || content.trim() == "{}" {
                 HashMap::new()
             } else {
-                serde_json::from_str(&content).with_context(|| "Failed to parse registry JSON")?
+                serde_json::from_str(&content).map_err(|e| {
+                    VmError::Serialization(format!("Failed to parse registry JSON: {}", e))
+                })?
             };
 
         // Apply the update
-        update_fn(&mut entries).with_context(|| "Update function failed")?;
+        update_fn(&mut entries)
+            .map_err(|e| VmError::Internal(format!("Update function failed: {}", e)))?;
 
         // Write back to file
         let json_content = if entries.is_empty() {
             String::from("{}")
         } else {
-            serde_json::to_string_pretty(&entries)
-                .with_context(|| "Failed to serialize registry to JSON")?
+            serde_json::to_string_pretty(&entries).map_err(|e| {
+                VmError::Serialization(format!("Failed to serialize registry to JSON: {}", e))
+            })?
         };
 
         // Write to a temporary file first, then atomically rename
@@ -290,10 +301,15 @@ impl PortRegistry {
         let temp_path = self
             .registry_path
             .with_extension(format!("json.tmp.{:?}", thread_id));
-        fs::write(&temp_path, &json_content)
-            .with_context(|| format!("Failed to write temporary file: {:?}", temp_path))?;
-        fs::rename(&temp_path, &self.registry_path)
-            .with_context(|| "Failed to atomically rename temporary file")?;
+        fs::write(&temp_path, &json_content).map_err(|e| {
+            VmError::Filesystem(format!(
+                "Failed to write temporary file: {:?}: {}",
+                temp_path, e
+            ))
+        })?;
+        fs::rename(&temp_path, &self.registry_path).map_err(|e| {
+            VmError::Filesystem(format!("Failed to atomically rename temporary file: {}", e))
+        })?;
 
         // Update our local state
         self.entries = entries;

@@ -1,9 +1,9 @@
 use crate::config::VmConfig;
-use anyhow::Result;
 use serde_yaml::Value;
 use serde_yaml_ng as serde_yaml;
 use std::path::PathBuf;
-use vm_common::vm_error;
+use vm_core::error::{Result, VmError};
+use vm_core::vm_error;
 
 use super::OutputFormat;
 
@@ -34,11 +34,13 @@ pub fn query_field(value: &serde_json::Value, field: &str) -> Result<serde_json:
             serde_json::Value::Object(map) => {
                 current = map
                     .get(part)
-                    .ok_or_else(|| anyhow::anyhow!("Field '{}' not found", part))?;
+                    .ok_or_else(|| VmError::Config(format!("Field '{}' not found", part)))?;
             }
             _ => {
                 vm_error!("Cannot access field '{}' on non-object", part);
-                return Err(anyhow::anyhow!("Cannot access field on non-object"));
+                return Err(VmError::Config(
+                    "Cannot access field on non-object".to_string(),
+                ));
             }
         }
     }
@@ -65,8 +67,8 @@ pub fn find_vm_config_file() -> Result<PathBuf> {
 
     // Don't log this as an error - it's a normal situation
     // Just return a clean error that can be handled appropriately
-    Err(anyhow::anyhow!(
-        "No vm.yaml found in current or parent directories"
+    Err(VmError::Config(
+        "No vm.yaml found in current or parent directories".to_string(),
     ))
 }
 

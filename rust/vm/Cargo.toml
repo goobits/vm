@@ -14,11 +14,11 @@ serde_yaml_ng = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 reqwest = { workspace = true }
 dialoguer = { workspace = true }
 vm-core = { path = "../vm-core" }
-vm-common = { path = "../vm-common" }
 vm-messages = { path = "../vm-messages" }
 vm-cli = { path = "../vm-cli" }
 vm-config = { path = "../vm-config" }
@@ -31,7 +31,7 @@ futures = "0.3.31"
 
 [features]
 default = []
-structured-output = ["vm-common/structured-output"]
+structured-output = []
 
 [package.metadata.cargo-machete]
 ignored = [

@@ -1,8 +1,8 @@
 use super::core::CoreOperations;
-use anyhow::{Context, Result};
 use serde_yaml::{Mapping, Value};
 use serde_yaml_ng as serde_yaml;
 use std::path::PathBuf;
+use vm_core::error::{Result, VmError};
 
 /// Field-specific YAML operations
 pub struct FieldOperations;
@@ -13,8 +13,9 @@ impl FieldOperations {
         let mut value = CoreOperations::load_yaml_file(file)?;
 
         // Parse new value as YAML
-        let parsed_value: Value = serde_yaml::from_str(new_value)
-            .with_context(|| format!("Failed to parse new value: {}", new_value))?;
+        let parsed_value: Value = serde_yaml::from_str(new_value).map_err(|e| {
+            VmError::Serialization(format!("Failed to parse new value: {}: {}", new_value, e))
+        })?;
 
         // Set the field
         Self::set_field_value(&mut value, field, parsed_value)?;
@@ -53,7 +54,7 @@ impl FieldOperations {
     // Helper function to set nested field
     fn set_nested_field(value: &mut Value, path: &[&str], new_value: Value) -> Result<()> {
         if path.is_empty() {
-            return Err(anyhow::anyhow!("Empty path"));
+            return Err(VmError::Config("Empty path".to_string()));
         }
 
         if path.len() == 1 {
@@ -64,7 +65,11 @@ impl FieldOperations {
                     map.insert(key, new_value);
                     return Ok(());
                 }
-                _ => return Err(anyhow::anyhow!("Cannot set field on non-object")),
+                _ => {
+                    return Err(VmError::Config(
+                        "Cannot set field on non-object".to_string(),
+                    ))
+                }
             }
         }
 
@@ -82,7 +87,11 @@ impl FieldOperations {
                     }
                 }
             }
-            _ => return Err(anyhow::anyhow!("Cannot navigate path on non-object")),
+            _ => {
+                return Err(VmError::Config(
+                    "Cannot navigate path on non-object".to_string(),
+                ))
+            }
         }
 
         Ok(())

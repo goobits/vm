@@ -11,11 +11,11 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 // External crates
-use anyhow::Context;
 use regex::Regex;
 use serde_yaml::{Mapping, Value};
 use serde_yaml_ng as serde_yaml;
 use vm_core::error::Result;
+use vm_core::error::VmError;
 
 // Internal imports
 use crate::config::VmConfig;
@@ -25,8 +25,8 @@ use crate::ports::PortRange;
 use crate::preset::{PresetDetector, PresetFile};
 use crate::yaml::core::CoreOperations;
 use vm_cli::msg;
-use vm_common::{vm_error, vm_error_hint, vm_println, vm_warning};
 use vm_core::user_paths;
+use vm_core::{vm_error, vm_error_hint, vm_println, vm_warning};
 use vm_messages::messages::MESSAGES;
 
 static PORT_PLACEHOLDER_RE: OnceLock<Regex> = OnceLock::new();
@@ -324,11 +324,12 @@ impl ConfigOps {
             return Ok(());
         }
 
-        fs::remove_file(&config_path).with_context(|| {
-            format!(
-                "Failed to remove configuration file: {}",
-                config_path.display()
-            )
+        fs::remove_file(&config_path).map_err(|e| {
+            VmError::Filesystem(format!(
+                "Failed to remove configuration file: {}: {}",
+                config_path.display(),
+                e
+            ))
         })?;
 
         let config_type = if global { "global" } else { "local" };
@@ -414,8 +415,9 @@ impl ConfigOps {
 
             // Load preset with optimized placeholder replacement
             let preset_config =
-                load_preset_with_placeholders(&detector, preset_name, &port_range_str)
-                    .with_context(|| format!("Failed to load preset: {}", preset_name))?;
+                load_preset_with_placeholders(&detector, preset_name, &port_range_str).map_err(
+                    |e| VmError::Config(format!("Failed to load preset: {}: {}", preset_name, e)),
+                )?;
 
             merged_config = ConfigMerger::new(merged_config).merge(preset_config)?;
         }
@@ -546,7 +548,7 @@ fn load_preset_with_placeholders(
 
     // Parse the processed content directly to VmConfig
     let preset_file: PresetFile = serde_yaml::from_str(&processed_content)
-        .with_context(|| format!("Failed to parse preset '{}'", preset_name))?;
+        .map_err(|e| VmError::Config(format!("Failed to parse preset '{}': {}", preset_name, e)))?;
 
     Ok(preset_file.config)
 }
@@ -613,8 +615,12 @@ fn get_or_create_global_config_path() -> Result<PathBuf> {
     // Ensure parent directory exists
     if let Some(parent) = config_path.parent() {
         if !parent.exists() {
-            fs::create_dir_all(parent).with_context(|| {
-                format!("Failed to create config directory: {}", parent.display())
+            fs::create_dir_all(parent).map_err(|e| {
+                VmError::Filesystem(format!(
+                    "Failed to create config directory: {}: {}",
+                    parent.display(),
+                    e
+                ))
             })?;
         }
     }

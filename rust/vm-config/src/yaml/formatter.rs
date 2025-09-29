@@ -2,10 +2,10 @@
 //!
 //! This module ensures consistent formatting and field ordering for all YAML output.
 
-use anyhow::Result;
 use indexmap::IndexMap;
 use serde_yaml::{Mapping, Value};
 use serde_yaml_ng as serde_yaml;
+use vm_core::error::Result;
 
 /// Canonical field order for VM configuration YAML files.
 /// This matches the logical sections in the VmConfig struct.

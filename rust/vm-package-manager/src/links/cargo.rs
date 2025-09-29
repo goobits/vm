@@ -1,9 +1,9 @@
-use anyhow::Result;
 use rayon::prelude::*;
 use regex::Regex;
 use std::collections::HashSet;
 use std::process::Command;
-use vm_common::vm_error;
+use vm_core::error::{Result, VmError};
+use vm_core::vm_error;
 
 pub fn detect_cargo_packages(packages: &[String]) -> Result<Vec<(String, String)>> {
     let package_set: HashSet<&String> = packages.iter().collect();
@@ -16,7 +16,8 @@ pub fn detect_cargo_packages(packages: &[String]) -> Result<Vec<(String, String)
         return Ok(results);
     }
 
-    let output_str = String::from_utf8(output.stdout)?;
+    let output_str = String::from_utf8(output.stdout)
+        .map_err(|e| VmError::Internal(format!("Failed to parse cargo command output: {}", e)))?;
     let installations = parse_cargo_install_list(&output_str)?;
 
     // Check each installation against requested packages in parallel
@@ -45,7 +46,8 @@ fn parse_cargo_install_list(output: &str) -> Result<Vec<(String, String)>> {
 
     // Regex to match cargo install list format:
     // package_name v1.0.0 (/path/to/source):
-    let re = Regex::new(r"^([a-zA-Z0-9_-]+)\s+[^\(]*\(([^)]+)\):$")?;
+    let re = Regex::new(r"^([a-zA-Z0-9_-]+)\s+[^\(]*\(([^)]+)\):$")
+        .map_err(|e| VmError::Internal(format!("Failed to compile regex: {}", e)))?;
 
     for line in output.lines() {
         if let Some(captures) = re.captures(line) {

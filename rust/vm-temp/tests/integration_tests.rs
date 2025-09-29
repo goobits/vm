@@ -1,10 +1,10 @@
-use anyhow::Result;
 use serde_yaml_ng as serde_yaml;
 use std::fs;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use tempfile::TempDir;
+use vm_core::error::Result;
 use vm_temp::{MountPermission, StateManager, TempVmState};
 
 /// Test fixture for integration testing with real filesystem operations
@@ -66,7 +66,7 @@ fn test_concurrent_state_operations() -> Result<()> {
     let num_threads = 5;
 
     for i in 0..num_threads {
-        let state_manager = Arc::clone(&state_manager);
+        let state_manager: Arc<StateManager> = Arc::clone(&state_manager);
         let mount_source = fixture.mount_source.join(format!("thread_{}", i));
         fs::create_dir_all(&mount_source)?;
 

@@ -1,6 +1,6 @@
-use anyhow::Result;
 use clap::Parser;
-use vm_common::{vm_error, vm_println, vm_success};
+use vm_core::error::Result;
+use vm_core::{vm_error, vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 
 mod cli;

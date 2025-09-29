@@ -1,4 +1,3 @@
-use anyhow::Result;
 use serde_yaml_ng as serde_yaml;
 use std::fs;
 use std::path::PathBuf;
@@ -6,6 +5,7 @@ use std::sync::Mutex;
 use tempfile::TempDir;
 use vm_config::config::VmConfig;
 use vm_config::ConfigOps;
+use vm_core::error::Result;
 
 // Global mutex to ensure tests run sequentially to avoid environment variable conflicts
 static TEST_MUTEX: Mutex<()> = Mutex::new(());

@@ -1,4 +1,4 @@
-use crate::error::Result;
+use crate::error::{Result, VmError};
 use crate::vm_error;
 use anyhow::Context;
 
@@ -15,9 +15,7 @@ pub fn check_system_resources() -> Result<()> {
             cpu_cores,
             MIN_CPU_CORES
         );
-        return Err(crate::error::VmError::Internal(
-            "Insufficient CPU cores".to_string(),
-        ));
+        return Err(VmError::Internal("Insufficient CPU cores".to_string()));
     }
 
     // Check Memory
@@ -28,9 +26,7 @@ pub fn check_system_resources() -> Result<()> {
             total_memory_gb,
             MIN_MEMORY_GB
         );
-        return Err(crate::error::VmError::Internal(
-            "Insufficient memory".to_string(),
-        ));
+        return Err(VmError::Internal("Insufficient memory".to_string()));
     }
 
     Ok(())
@@ -52,7 +48,7 @@ fn get_total_memory_gb() -> Result<u64> {
         }
     }
     vm_error!("Could not parse memory information from /proc/meminfo");
-    Err(crate::error::VmError::Internal(
+    Err(VmError::Internal(
         "Could not parse memory information".to_string(),
     ))
 }
@@ -76,7 +72,7 @@ fn get_total_memory_gb() -> Result<u64> {
 
     if !output.status.success() {
         vm_error!("Failed to get memory size via sysctl");
-        return Err(anyhow::anyhow!("Failed to get memory size"));
+        return Err(VmError::Internal("Failed to get memory size".to_string()));
     }
 
     let mem_bytes: u64 = String::from_utf8(output.stdout)
@@ -95,7 +91,7 @@ fn get_cpu_core_count() -> Result<u32> {
 
     if !output.status.success() {
         vm_error!("Failed to get CPU count via sysctl");
-        return Err(anyhow::anyhow!("Failed to get CPU count"));
+        return Err(VmError::Internal("Failed to get CPU count".to_string()));
     }
 
     let cpu_count: u32 = String::from_utf8(output.stdout)

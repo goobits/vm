@@ -4,9 +4,9 @@
 //! across different providers. It defines a unified interface for instance
 //! resolution and information handling.
 
-use anyhow::Result;
 use vm_cli::msg;
-use vm_common::vm_error;
+use vm_core::error::{Result, VmError};
+use vm_core::vm_error;
 use vm_messages::messages::MESSAGES;
 
 /// Information about a VM instance
@@ -45,10 +45,10 @@ pub trait InstanceResolver {
 /// This is extracted from Docker's sophisticated resolution logic
 pub fn fuzzy_match_instances(partial: &str, instances: &[InstanceInfo]) -> Result<String> {
     if instances.is_empty() {
-        return Err(anyhow::anyhow!(
+        return Err(VmError::Internal(format!(
             "No instances found matching '{}'. Use 'vm list' to see available instances",
             partial
-        ));
+        )));
     }
 
     // First, try exact name match
@@ -80,10 +80,10 @@ pub fn fuzzy_match_instances(partial: &str, instances: &[InstanceInfo]) -> Resul
     }
 
     match matches.len() {
-        0 => Err(anyhow::anyhow!(
+        0 => Err(VmError::Internal(format!(
             "No instance found matching '{}'. Use 'vm list' to see available instances",
             partial
-        )),
+        ))),
         1 => Ok(matches[0].clone()),
         _ => {
             // Multiple matches - prefer exact project name match

@@ -1,6 +1,6 @@
 use crate::config::VmConfig;
-use anyhow::Result;
 use serde_json::Value;
+use vm_core::error::Result;
 
 /// Deep merge strategy for VM configurations.
 ///

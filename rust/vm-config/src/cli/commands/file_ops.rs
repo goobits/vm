@@ -2,7 +2,7 @@
 use std::path::PathBuf;
 
 // External crates
-use anyhow::Result;
+use vm_core::error::Result;
 
 // Internal imports
 use super::super::OutputFormat;

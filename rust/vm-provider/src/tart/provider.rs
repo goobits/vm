@@ -3,14 +3,14 @@ use crate::{
     progress::ProgressReporter,
     Provider, VmError,
 };
-use anyhow::Result;
 use std::path::Path;
-use vm_common::{
+use vm_config::config::VmConfig;
+use vm_core::command_stream::{is_tool_installed, stream_command};
+use vm_core::error::Result;
+use vm_core::{
     messages::{messages::MESSAGES, msg},
     vm_error, vm_println,
 };
-use vm_config::config::VmConfig;
-use vm_core::command_stream::{is_tool_installed, stream_command};
 
 use super::instance::TartInstanceManager;
 
@@ -339,7 +339,7 @@ impl Provider for TartProvider {
                 "{}",
                 msg!(MESSAGES.provider_logs_expected_location, name = vm_name)
             );
-            return Err(anyhow::anyhow!(error_msg));
+            return Err(VmError::Internal(error_msg));
         }
 
         vm_println!("{}", msg!(MESSAGES.provider_logs_showing, path = &log_path));

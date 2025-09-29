@@ -1,6 +1,6 @@
-use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
-use vm_common::vm_error;
+use vm_core::error::{Result, VmError};
+use vm_core::vm_error;
 
 /// Security utilities for path validation and command sanitization
 pub struct SecurityValidator;
@@ -22,7 +22,7 @@ impl SecurityValidator {
                 "Path too long (max 4096 characters): {} characters provided",
                 path_str.len()
             );
-            return Err(anyhow::anyhow!("Path too long"));
+            return Err(VmError::Internal("Path too long".to_string()));
         }
         // Reject absolute paths
         if relative_path.is_absolute() {
@@ -30,7 +30,7 @@ impl SecurityValidator {
                 "Absolute paths are not allowed (use relative paths from workspace root): {}",
                 relative_path.display()
             );
-            return Err(anyhow::anyhow!("Absolute paths not allowed"));
+            return Err(VmError::Internal("Absolute paths not allowed".to_string()));
         }
 
         // Check for dangerous path components
@@ -41,7 +41,7 @@ impl SecurityValidator {
                         "Path traversal attempts (..) are not allowed: {}",
                         relative_path.display()
                     );
-                    return Err(anyhow::anyhow!("Path traversal not allowed"));
+                    return Err(VmError::Internal("Path traversal not allowed".to_string()));
                 }
                 std::path::Component::CurDir => {
                     // "." is okay
@@ -53,7 +53,7 @@ impl SecurityValidator {
                 }
                 _ => {
                     vm_error!("Invalid path component in: {}", relative_path.display());
-                    return Err(anyhow::anyhow!("Invalid path component"));
+                    return Err(VmError::Internal("Invalid path component".to_string()));
                 }
             }
         }
@@ -90,7 +90,9 @@ impl SecurityValidator {
                 target_path.display(),
                 workspace_str
             );
-            return Err(anyhow::anyhow!("Path escapes workspace boundary"));
+            return Err(VmError::Internal(
+                "Path escapes workspace boundary".to_string(),
+            ));
         }
 
         Ok(target_path)
@@ -101,7 +103,7 @@ impl SecurityValidator {
         // Check for empty name
         if filename.is_empty() {
             vm_error!("Script name cannot be empty");
-            return Err(anyhow::anyhow!("Script name cannot be empty"));
+            return Err(VmError::Internal("Script name cannot be empty".to_string()));
         }
 
         // Check for reasonable length
@@ -110,14 +112,14 @@ impl SecurityValidator {
                 "Script name too long (max 255 characters): {} characters provided",
                 filename.len()
             );
-            return Err(anyhow::anyhow!("Script name too long"));
+            return Err(VmError::Internal("Script name too long".to_string()));
         }
 
         // Check for path separators
         if filename.contains('/') || filename.contains('\\') {
             vm_error!("Script name cannot contain path separators: {}", filename);
-            return Err(anyhow::anyhow!(
-                "Script name cannot contain path separators"
+            return Err(VmError::Internal(
+                "Script name cannot contain path separators".to_string(),
             ));
         }
 
@@ -127,8 +129,8 @@ impl SecurityValidator {
                 "Script name cannot contain '..' or start with '.': {}",
                 filename
             );
-            return Err(anyhow::anyhow!(
-                "Script name cannot contain '..' or start with '.'"
+            return Err(VmError::Internal(
+                "Script name cannot contain '..' or start with '.'".to_string(),
             ));
         }
 
@@ -138,7 +140,9 @@ impl SecurityValidator {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
         {
             vm_error!("Script name can only contain alphanumeric characters, dashes, underscores, and dots: {}", filename);
-            return Err(anyhow::anyhow!("Script name invalid characters"));
+            return Err(VmError::Internal(
+                "Script name invalid characters".to_string(),
+            ));
         }
 
         Ok(())
@@ -152,15 +156,17 @@ impl SecurityValidator {
         // Ensure base directory exists and is absolute
         if !base_dir.is_absolute() {
             vm_error!("Base directory must be absolute: {}", base_dir.display());
-            return Err(anyhow::anyhow!("Base directory must be absolute"));
+            return Err(VmError::Internal(
+                "Base directory must be absolute".to_string(),
+            ));
         }
 
         let destination = base_dir.join(filename);
 
         // Double-check that we haven't escaped the base directory
-        let canonical_base = base_dir
-            .canonicalize()
-            .context("Failed to canonicalize base directory")?;
+        let canonical_base = base_dir.canonicalize().map_err(|e| {
+            VmError::Internal(format!("Failed to canonicalize base directory: {}", e))
+        })?;
 
         // Since destination might not exist, we check the parent
         if let Some(parent) = destination.parent() {
@@ -170,7 +176,9 @@ impl SecurityValidator {
                         "Destination escapes base directory: {}",
                         destination.display()
                     );
-                    return Err(anyhow::anyhow!("Destination escapes base directory"));
+                    return Err(VmError::Internal(
+                        "Destination escapes base directory".to_string(),
+                    ));
                 }
             }
         }

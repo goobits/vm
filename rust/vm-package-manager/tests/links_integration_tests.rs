@@ -4,8 +4,8 @@ use std::os::unix::fs::symlink;
 use std::path::PathBuf;
 
 // External crates
-use anyhow::Result;
 use tempfile::TempDir;
+use vm_core::error::Result;
 
 /// Test fixture for vm-package-manager links integration testing
 struct LinksTestFixture {

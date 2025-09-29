@@ -43,9 +43,9 @@
 //! All query operations work on both local configuration files and merged
 //! configurations that include presets and global settings.
 
-use anyhow::{Context, Result};
 use std::path::PathBuf;
-use vm_common::vm_error;
+use vm_core::error::{Result, VmError};
+use vm_core::vm_error;
 
 use crate::cli::formatting::query_field;
 use crate::cli::OutputFormat;
@@ -58,34 +58,36 @@ pub fn execute_query(
     default: Option<String>,
 ) -> Result<()> {
     let config = VmConfig::from_file(&config)
-        .with_context(|| format!("Failed to load config: {:?}", config))?;
+        .map_err(|e| VmError::Config(format!("Failed to load config: {:?}: {}", config, e)))?;
 
     let json_value = serde_json::to_value(&config)?;
-    let value = match query_field(&json_value, &field) {
-        Ok(val) => {
-            if val.is_null() && default.is_some() {
-                serde_json::Value::String(
-                    default.ok_or_else(|| anyhow::anyhow!("Default value not available"))?,
-                )
-            } else {
-                val
+    let value =
+        match query_field(&json_value, &field) {
+            Ok(val) => {
+                if val.is_null() && default.is_some() {
+                    serde_json::Value::String(default.ok_or_else(|| {
+                        VmError::Config("Default value not available".to_string())
+                    })?)
+                } else {
+                    val
+                }
             }
-        }
-        Err(_) => {
-            if let Some(default_val) = default {
-                serde_json::Value::String(default_val)
-            } else {
-                return Err(anyhow::anyhow!("Field not found: {}", field));
+            Err(_) => {
+                if let Some(default_val) = default {
+                    serde_json::Value::String(default_val)
+                } else {
+                    return Err(VmError::Config(format!("Field not found: {}", field)));
+                }
             }
-        }
-    };
+        };
 
     if raw && value.is_string() {
         println!(
             "{}",
-            value
-                .as_str()
-                .ok_or_else(|| anyhow::anyhow!("Expected string value, got: {:?}", value))?
+            value.as_str().ok_or_else(|| VmError::Config(format!(
+                "Expected string value, got: {:?}",
+                value
+            )))?
         );
     } else {
         println!("{}", serde_json::to_string(&value)?);

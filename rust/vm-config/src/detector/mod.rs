@@ -36,7 +36,7 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
-use vm_common::file_system::{has_any_dir, has_any_file, has_file, has_file_containing};
+use vm_core::file_system::{has_any_dir, has_any_file, has_file, has_file_containing};
 
 pub mod os;
 pub mod presets;
@@ -278,7 +278,7 @@ pub fn format_detected_types(detected_types: HashSet<String>) -> String {
 }
 
 // --- Helper Functions ---
-// (Now using shared utilities from vm_common::file_system)
+// (Now using shared utilities from vm_core)
 
 #[cfg(test)]
 mod tests;

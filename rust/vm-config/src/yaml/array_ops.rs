@@ -1,9 +1,9 @@
 use super::core::CoreOperations;
 use crate::cli::OutputFormat;
-use anyhow::{Context, Result};
 use serde_yaml::{Mapping, Value};
 use serde_yaml_ng as serde_yaml;
 use std::path::PathBuf;
+use vm_core::error::{Result, VmError};
 
 /// Array-specific YAML operations
 pub struct ArrayOperations;
@@ -13,12 +13,13 @@ impl ArrayOperations {
     pub fn add(file: &PathBuf, path: &str, item: &str) -> Result<()> {
         let content = CoreOperations::read_file_or_stdin(file)?;
 
-        let mut value: Value = serde_yaml::from_str(&content)
-            .with_context(|| format!("Invalid YAML in file: {:?}", file))?;
+        let mut value: Value = serde_yaml::from_str(&content).map_err(|e| {
+            VmError::Serialization(format!("Invalid YAML in file: {:?}: {}", file, e))
+        })?;
 
         // Parse the item as YAML
-        let new_item: Value =
-            serde_yaml::from_str(item).with_context(|| format!("Invalid YAML item: {}", item))?;
+        let new_item: Value = serde_yaml::from_str(item)
+            .map_err(|e| VmError::Serialization(format!("Invalid YAML item: {}: {}", item, e)))?;
 
         // Navigate to the path and add the item
         let path_parts: Vec<&str> = path.split('.').collect();
@@ -30,11 +31,11 @@ impl ArrayOperations {
 
     /// Remove items from a YAML array based on filter
     pub fn remove(file: &PathBuf, path: &str, filter: &str) -> Result<()> {
-        let content = CoreOperations::read_file_or_stdin(file)
-            .with_context(|| format!("Failed to read file: {:?}", file))?;
+        let content = CoreOperations::read_file_or_stdin(file)?;
 
-        let mut value: Value = serde_yaml::from_str(&content)
-            .with_context(|| format!("Invalid YAML in file: {:?}", file))?;
+        let mut value: Value = serde_yaml::from_str(&content).map_err(|e| {
+            VmError::Serialization(format!("Invalid YAML in file: {:?}: {}", file, e))
+        })?;
 
         // Navigate to the path and remove matching items
         let path_parts: Vec<&str> = path.split('.').collect();
@@ -71,13 +72,18 @@ impl ArrayOperations {
         let mut value = CoreOperations::load_yaml_file(file)?;
 
         // Parse the JSON object and convert to YAML
-        let json_value: serde_json::Value = serde_json::from_str(object_json)
-            .with_context(|| format!("Failed to parse JSON object: {}", object_json))?;
+        let json_value: serde_json::Value = serde_json::from_str(object_json).map_err(|e| {
+            VmError::Serialization(format!(
+                "Failed to parse JSON object: {}: {}",
+                object_json, e
+            ))
+        })?;
 
         // Convert via string to avoid type compatibility issues
         let yaml_string = serde_yaml::to_string(&json_value)?;
-        let yaml_value: Value =
-            serde_yaml::from_str(&yaml_string).with_context(|| "Failed to convert JSON to YAML")?;
+        let yaml_value: Value = serde_yaml::from_str(&yaml_string).map_err(|e| {
+            VmError::Serialization(format!("Failed to convert JSON to YAML: {}", e))
+        })?;
 
         // Navigate to the path and add the object
         let path_parts: Vec<&str> = path.split('.').collect();
@@ -128,7 +134,11 @@ impl ArrayOperations {
                     field_str != match_value
                 });
             }
-            _ => return Err(anyhow::anyhow!("Path does not point to an array")),
+            _ => {
+                return Err(VmError::Config(
+                    "Path does not point to an array".to_string(),
+                ))
+            }
         }
 
         // Output results
@@ -153,7 +163,7 @@ impl ArrayOperations {
     // Helper function to navigate to array and add item
     fn add_to_array_at_path(value: &mut Value, path: &[&str], item: Value) -> Result<()> {
         if path.is_empty() {
-            return Err(anyhow::anyhow!("Empty path"));
+            return Err(VmError::Config("Empty path".to_string()));
         }
 
         if path.len() == 1 {
@@ -171,7 +181,10 @@ impl ArrayOperations {
                             return Ok(());
                         }
                         Some(_) => {
-                            return Err(anyhow::anyhow!("Path '{}' is not an array", path[0]))
+                            return Err(VmError::Config(format!(
+                                "Path '{}' is not an array",
+                                path[0]
+                            )))
                         }
                         None => {
                             // Create new array
@@ -180,7 +193,11 @@ impl ArrayOperations {
                         }
                     }
                 }
-                _ => return Err(anyhow::anyhow!("Cannot navigate path on non-object")),
+                _ => {
+                    return Err(VmError::Config(
+                        "Cannot navigate path on non-object".to_string(),
+                    ))
+                }
             }
         }
 
@@ -198,7 +215,11 @@ impl ArrayOperations {
                     }
                 }
             }
-            _ => return Err(anyhow::anyhow!("Cannot navigate path on non-object")),
+            _ => {
+                return Err(VmError::Config(
+                    "Cannot navigate path on non-object".to_string(),
+                ))
+            }
         }
 
         Ok(())
@@ -207,7 +228,7 @@ impl ArrayOperations {
     // Helper function to navigate to array and remove items
     fn remove_from_array_at_path(value: &mut Value, path: &[&str], filter: &str) -> Result<()> {
         if path.is_empty() {
-            return Err(anyhow::anyhow!("Empty path"));
+            return Err(VmError::Config("Empty path".to_string()));
         }
 
         if path.len() == 1 {
@@ -221,12 +242,21 @@ impl ArrayOperations {
                             return Ok(());
                         }
                         Some(_) => {
-                            return Err(anyhow::anyhow!("Path '{}' is not an array", path[0]))
+                            return Err(VmError::Config(format!(
+                                "Path '{}' is not an array",
+                                path[0]
+                            )))
                         }
-                        None => return Err(anyhow::anyhow!("Path '{}' not found", path[0])),
+                        None => {
+                            return Err(VmError::Config(format!("Path '{}' not found", path[0])))
+                        }
                     }
                 }
-                _ => return Err(anyhow::anyhow!("Cannot navigate path on non-object")),
+                _ => {
+                    return Err(VmError::Config(
+                        "Cannot navigate path on non-object".to_string(),
+                    ))
+                }
             }
         }
 
@@ -236,10 +266,14 @@ impl ArrayOperations {
                 let key = Value::String(path[0].to_string());
                 match map.get_mut(&key) {
                     Some(nested) => Self::remove_from_array_at_path(nested, &path[1..], filter)?,
-                    None => return Err(anyhow::anyhow!("Path '{}' not found", path[0])),
+                    None => return Err(VmError::Config(format!("Path '{}' not found", path[0]))),
                 }
             }
-            _ => return Err(anyhow::anyhow!("Cannot navigate path on non-object")),
+            _ => {
+                return Err(VmError::Config(
+                    "Cannot navigate path on non-object".to_string(),
+                ))
+            }
         }
 
         Ok(())
@@ -292,13 +326,13 @@ impl ArrayOperations {
                     let key = Value::String(part.to_string());
                     current = map
                         .get_mut(&key)
-                        .ok_or_else(|| anyhow::anyhow!("Field '{}' not found", part))?;
+                        .ok_or_else(|| VmError::Config(format!("Field '{}' not found", part)))?;
                 }
                 _ => {
-                    return Err(anyhow::anyhow!(
+                    return Err(VmError::Config(format!(
                         "Cannot access field '{}' on non-object",
                         part
-                    ))
+                    )))
                 }
             }
         }

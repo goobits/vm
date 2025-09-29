@@ -1,8 +1,8 @@
-use anyhow::Result;
 use rayon::prelude::*;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::process::Command;
+use vm_core::error::{Result, VmError};
 
 pub fn detect_pip_packages(packages: &[String]) -> Vec<(String, String)> {
     let package_set: HashSet<&String> = packages.iter().collect();
@@ -52,7 +52,8 @@ fn get_editable_packages_for_command(cmd: &str) -> Result<Vec<(String, String)>>
         return Ok(Vec::new());
     }
 
-    let output_str = String::from_utf8(output.stdout)?;
+    let output_str = String::from_utf8(output.stdout)
+        .map_err(|e| VmError::Internal(format!("Failed to parse pip command output: {}", e)))?;
     let json_data: Value = serde_json::from_str(&output_str)?;
 
     let mut packages = Vec::new();
