@@ -117,7 +117,7 @@ async fn run_server_internal(
             get(pypi::package_index),
         )
         .route("/pypi/upload", put(pypi::upload_package))
-        .route("/cargo/api/v1/crates", put(cargo::publish_crate))
+        .route("/cargo/api/v1/crates/new", put(cargo::publish_crate))
         .route(
             "/cargo/api/v1/crates/{crate}/{version}/download",
             get(cargo::download_crate),

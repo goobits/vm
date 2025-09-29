@@ -658,7 +658,7 @@ pub fn show_status(server_url: &str) -> Result<()> {
     if !client.is_server_running() {
         warn!(server_url = %server_url, "Package server is not running");
         println!("❌ Package server is not running at {}", server_url);
-        println!("   Start it with: pkg-server start");
+        println!("   Hint: Enable this service in vm.yaml for automatic startup (services.package_registry.enabled: true)");
         return Ok(());
     }
 

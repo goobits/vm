@@ -193,15 +193,50 @@ impl PackageBuilder for CargoBuilder {
     }
 
     fn process_build_output(&self) -> Result<Self::Output> {
-        let target_package_dir = Path::new("target/package");
-        for entry in fs::read_dir(target_package_dir)? {
+        // Try to get the target directory from CARGO_TARGET_DIR or cargo metadata
+        let target_dir = if let Ok(output) = Command::new("cargo")
+            .args(["metadata", "--format-version", "1", "--no-deps"])
+            .output()
+        {
+            if let Ok(metadata_str) = String::from_utf8(output.stdout) {
+                if let Ok(metadata) = serde_json::from_str::<Value>(&metadata_str) {
+                    if let Some(target_dir) =
+                        metadata.get("target_directory").and_then(|v| v.as_str())
+                    {
+                        std::path::PathBuf::from(target_dir)
+                    } else {
+                        std::path::PathBuf::from("target")
+                    }
+                } else {
+                    std::path::PathBuf::from("target")
+                }
+            } else {
+                std::path::PathBuf::from("target")
+            }
+        } else {
+            std::path::PathBuf::from("target")
+        };
+
+        let target_package_dir = target_dir.join("package");
+
+        if !target_package_dir.exists() {
+            anyhow::bail!(
+                "Package directory not found at: {}",
+                target_package_dir.display()
+            );
+        }
+
+        for entry in fs::read_dir(&target_package_dir)? {
             let entry = entry?;
             let path = entry.path();
             if path.is_file() && path.extension() == Some(std::ffi::OsStr::new("crate")) {
                 return Ok(path);
             }
         }
-        anyhow::bail!("Could not find .crate file in target/package/");
+        anyhow::bail!(
+            "Could not find .crate file in {}",
+            target_package_dir.display()
+        );
     }
 
     fn progress_message(&self) -> &str {
