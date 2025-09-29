@@ -98,11 +98,11 @@ Next.js, React, Angular, Vue, Django, Flask, Rails, Node.js, Python, Rust, Go, P
 
 #### **Simplified Installation**
 ```bash
-# Single unified installation via Cargo
-cargo install vm
+# Before: Multiple installation methods
+./install.sh --pkg-server
 
-# Or from source
-cd rust && cargo install --path vm
+# Now: Single unified installation
+./install.sh
 ```
 
 #### **Configuration Changes**
@@ -142,7 +142,7 @@ cd rust && cargo install --path vm
 
 1. **Update installation**:
    ```bash
-   cargo install vm
+   cargo install vm  # or ./install.sh
    ```
 
 2. **Migrate secrets** (if using claude_sync/gemini_sync):

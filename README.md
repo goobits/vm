@@ -47,9 +47,7 @@ vm ssh myproject-dev         # Connect to specific instance
 **From source:**
 ```bash
 git clone <repository-url>
-cd vm/rust
-cargo build --release
-cargo install --path vm
+cd vm && ./install.sh
 ```
 
 ```yaml
@@ -167,6 +165,10 @@ vm pkg remove                    # Interactive removal
 vm pkg use --shell bash          # Generate shell configuration for package managers
 ```
 
+**Installation:**
+```bash
+./install.sh                    # Install VM CLI with package management
+```
 
 **Features:**
 - **Multi-registry support** — PyPI, npm, and Cargo in one server

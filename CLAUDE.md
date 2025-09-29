@@ -10,10 +10,11 @@ cargo install vm
 ### From Source
 ```bash
 git clone <repository-url>
-cd vm/rust
-cargo build --release
-cargo install --path vm
+cd vm
+./install.sh
 ```
+
+The `install.sh` script builds the binary and sets up symlinks automatically.
 
 ## Running Tests
 
