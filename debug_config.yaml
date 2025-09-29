@@ -1,6 +1,0 @@
-version: 1.2.1
-provider: docker
-project:
-  name: test
-ports:
-  _range: [3120, 3129]
