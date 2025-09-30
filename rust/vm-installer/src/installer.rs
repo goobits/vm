@@ -7,7 +7,7 @@ use std::process::{Command, Stdio};
 // External crates
 use tracing::info_span;
 use vm_core::error::Result;
-use vm_core::{user_paths, vm_progress, vm_success};
+use vm_core::{user_paths, vm_progress, vm_success, vm_warning};
 
 // Internal imports
 use crate::platform;
@@ -96,22 +96,42 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
     vm_progress!("Building Rust binaries...");
     println!("   This may take a few minutes on first build...");
 
+    // Check for sccache availability
+    let has_sccache = Command::new("sccache")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+
+    if has_sccache {
+        println!("   Using sccache for faster builds");
+    } else {
+        vm_warning!("sccache not found - builds will be slower. Install: cargo install sccache");
+    }
+
     // Use platform-specific target directory to avoid conflicts in shared filesystems
     let target_dir = project_root.join(format!("target-{}", platform));
 
-    let status = Command::new("cargo")
-        .args(["build", "--release", "--bin", "vm"])
+    let mut cmd = Command::new("cargo");
+    cmd.args(["build", "--release", "--bin", "vm"])
         .env("CARGO_TARGET_DIR", &target_dir)
         .env("CARGO_TERM_PROGRESS_WHEN", "always") // Force progress display
         .env("CARGO_TERM_PROGRESS_WIDTH", "80") // Set reasonable width
         .env("CARGO_TERM_COLOR", "always") // Enable colors
         .current_dir(project_root)
         .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .map_err(|e| {
-            vm_core::error::VmError::Internal(format!("Failed to execute 'cargo build': {}", e))
-        })?;
+        .stderr(Stdio::inherit());
+
+    // Enable sccache only if available
+    if has_sccache {
+        cmd.env("RUSTC_WRAPPER", "sccache");
+    }
+
+    let status = cmd.status().map_err(|e| {
+        vm_core::error::VmError::Internal(format!("Failed to execute 'cargo build': {}", e))
+    })?;
 
     if !status.success() {
         return Err(vm_core::error::VmError::Internal(format!(

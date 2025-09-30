@@ -1,7 +1,5 @@
 [build]
 target-dir = "../.build/target"
-# Use sccache for distributed compilation caching
-rustc-wrapper = "sccache"
 
 [alias]
 dead-code = "clippy -- -D dead_code"
