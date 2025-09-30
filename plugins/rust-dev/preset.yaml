@@ -1,0 +1,12 @@
+packages:
+  - build-essential
+  - libssl-dev
+  - pkg-config
+
+services:
+  - redis
+  - postgresql
+
+environment:
+  RUST_BACKTRACE: "1"
+  CARGO_TERM_COLOR: always

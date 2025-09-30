@@ -1,0 +1,5 @@
+name: next
+version: 1.0.0
+description: Next.js Development - Full-stack React framework with SSR, API routes, and modern tooling
+author: VM Tool Team
+plugin_type: preset

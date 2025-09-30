@@ -1,0 +1,5 @@
+name: nodejs
+version: 1.0.0
+description: Node.js Development - Optimized for JavaScript/TypeScript projects
+author: VM Tool Team
+plugin_type: preset

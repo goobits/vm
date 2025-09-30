@@ -1,0 +1,5 @@
+name: react
+version: 1.0.0
+description: React Development - Modern frontend development with React, Vite, and testing tools
+author: VM Tool Team
+plugin_type: preset

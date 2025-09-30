@@ -1,0 +1,17 @@
+npm_packages:
+  - prettier
+  - eslint
+  - typescript
+  - ts-node
+  - nodemon
+  - npm-check-updates
+
+pip_packages:
+  - git-filter-repo
+
+services:
+  - redis
+  - postgresql
+
+environment:
+  NODE_ENV: development

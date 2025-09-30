@@ -1,0 +1,18 @@
+pip_packages:
+  - black
+  - flake8
+  - pytest
+  - ipython
+  - pip-tools
+  - git-filter-repo
+  - pre-commit
+
+npm_packages:
+  - pyright
+
+services:
+  - postgresql
+  - redis
+
+environment:
+  PYTHONDONTWRITEBYTECODE: "1"

@@ -6,30 +6,6 @@ pub fn get_embedded_presets() -> HashMap<&'static str, &'static str> {
 
     presets.insert("base", include_str!("../../../configs/presets/base.yaml"));
     presets.insert(
-        "nodejs",
-        include_str!("../../../configs/presets/nodejs.yaml"),
-    );
-    presets.insert(
-        "python",
-        include_str!("../../../configs/presets/python.yaml"),
-    );
-    presets.insert("react", include_str!("../../../configs/presets/react.yaml"));
-    presets.insert("next", include_str!("../../../configs/presets/next.yaml"));
-    presets.insert(
-        "django",
-        include_str!("../../../configs/presets/django.yaml"),
-    );
-    presets.insert("rails", include_str!("../../../configs/presets/rails.yaml"));
-    presets.insert("rust", include_str!("../../../configs/presets/rust.yaml"));
-    presets.insert(
-        "docker",
-        include_str!("../../../configs/presets/docker.yaml"),
-    );
-    presets.insert(
-        "kubernetes",
-        include_str!("../../../configs/presets/kubernetes.yaml"),
-    );
-    presets.insert(
         "tart-linux",
         include_str!("../../../configs/presets/tart-linux.yaml"),
     );
@@ -41,7 +17,6 @@ pub fn get_embedded_presets() -> HashMap<&'static str, &'static str> {
         "tart-ubuntu",
         include_str!("../../../configs/presets/tart-ubuntu.yaml"),
     );
-    presets.insert("vibe", include_str!("../../../configs/presets/vibe.yaml"));
 
     presets
 }

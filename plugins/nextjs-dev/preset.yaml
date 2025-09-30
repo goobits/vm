@@ -1,0 +1,25 @@
+npm_packages:
+  - next
+  - "@next/eslint-plugin-next"
+  - "@next/font"
+  - sharp
+  - typescript
+  - "@types/node"
+  - "@types/react"
+  - "@types/react-dom"
+  - eslint-config-next
+  - react-testing-library
+  - jest
+  - jest-environment-jsdom
+
+pip_packages:
+  - git-filter-repo
+
+services:
+  - redis
+  - postgresql
+
+environment:
+  NODE_ENV: development
+  NEXT_PUBLIC_ENV: development
+  NEXT_TELEMETRY_DISABLED: "1"

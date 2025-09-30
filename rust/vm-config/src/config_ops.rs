@@ -353,18 +353,11 @@ impl ConfigOps {
             let presets = detector.list_presets()?;
             vm_println!("{}", MESSAGES.config_available_presets);
             for preset in presets {
-                // Try to add descriptions for common presets
-                let description = match preset.as_str() {
-                    "nodejs" => " - Node.js development environment",
-                    "python" => " - Python development with pip/pipx",
-                    "rust" => " - Rust development with cargo",
-                    "go" => " - Go development environment",
-                    "docker" => " - Docker/containerization tools",
-                    "react" => " - React frontend development",
-                    "django" => " - Django web framework",
-                    "rails" => " - Ruby on Rails development",
-                    _ => "",
-                };
+                // Get description dynamically from plugin metadata or embedded preset
+                let description = detector
+                    .get_preset_description(&preset)
+                    .map(|d| format!(" - {}", d))
+                    .unwrap_or_default();
                 vm_println!("  • {}{}", preset, description);
             }
             vm_println!(
@@ -518,13 +511,31 @@ fn load_preset_with_placeholders(
 ) -> Result<VmConfig> {
     // First try to load the preset normally to get the raw content
     // We'll use the same logic as PresetDetector::load_preset but with string processing
-    let raw_content =
+    let raw_content = {
+        // Try plugin presets first
+        if let Ok(plugins) = vm_plugin::discover_plugins() {
+            let plugin_preset = plugins.iter().find(|p| {
+                p.info.plugin_type == vm_plugin::PluginType::Preset && p.info.name == preset_name
+            });
+
+            if plugin_preset.is_some() {
+                // For plugin presets, use detector.load_preset which handles conversion
+                let original_config = detector.load_preset(preset_name)?;
+                let Some(port_range_str) = port_range_str else {
+                    return Ok(original_config);
+                };
+                let mut preset_value = serde_yaml::to_value(&original_config)?;
+                replace_port_placeholders(&mut preset_value, &Some(port_range_str.clone()));
+                return Ok(serde_yaml::from_value(preset_value)?);
+            }
+        }
+
+        // Try embedded presets second (optimization for base, tart-* presets)
         if let Some(content) = crate::embedded_presets::get_preset_content(preset_name) {
             content.to_string()
         } else {
             // For filesystem presets, we'd need access to presets_dir which is private
             // For now, fall back to the original method and then do the replacement
-            // This is still more efficient than the original serialize/deserialize cycle
             let original_config = detector.load_preset(preset_name)?;
 
             // If no port_range, return the original config
@@ -533,11 +544,11 @@ fn load_preset_with_placeholders(
             };
 
             // For non-embedded presets, we fall back to the Value-based approach
-            // but this is still better than before since embedded presets (most common) are optimized
             let mut preset_value = serde_yaml::to_value(&original_config)?;
             replace_port_placeholders(&mut preset_value, &Some(port_range_str.clone()));
             return Ok(serde_yaml::from_value(preset_value)?);
-        };
+        }
+    };
 
     // Replace placeholders in the raw string if port_range is available
     let processed_content = if let Some(port_range_str) = port_range_str {

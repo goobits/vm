@@ -1,0 +1,29 @@
+packages:
+  - curl
+  - gnupg2
+  - software-properties-common
+
+pip_packages:
+  - kubernetes
+  - pykube-ng
+
+npm_packages:
+  - kubernetes-yaml-completion
+
+aliases:
+  k: "kubectl"
+  kgp: "kubectl get pods"
+  kgs: "kubectl get services"
+  kgd: "kubectl get deployments"
+  kdesc: "kubectl describe"
+  klog: "kubectl logs"
+  kexec: "kubectl exec -it"
+
+environment:
+  KUBECONFIG: "~/.kube/config"
+  KUBE_EDITOR: "nano"
+
+provision:
+  - curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+  - sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+  - curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash

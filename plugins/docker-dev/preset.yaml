@@ -1,0 +1,23 @@
+packages:
+  - docker.io
+  - docker-compose
+  - docker-buildx
+
+pip_packages:
+  - docker-compose
+  - docker
+  - portainer-py
+
+npm_packages:
+  - dockerfile-language-server
+
+aliases:
+  dc: "docker-compose"
+  dps: "docker ps"
+  di: "docker images"
+  dlog: "docker logs"
+  dexec: "docker exec -it"
+
+environment:
+  DOCKER_BUILDKIT: "1"
+  COMPOSE_DOCKER_CLI_BUILD: "1"

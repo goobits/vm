@@ -1,0 +1,5 @@
+name: docker
+version: 1.0.0
+description: Docker Development - Container development and deployment tools
+author: VM Tool Team
+plugin_type: preset

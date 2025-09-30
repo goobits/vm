@@ -46,17 +46,17 @@ impl PresetDetector {
 
     /// Load a preset configuration by name
     pub fn load_preset(&self, name: &str) -> Result<VmConfig> {
-        // Try embedded presets first
+        // Try plugin presets first (user-facing presets)
+        if let Some(config) = self.load_plugin_preset(name)? {
+            return Ok(config);
+        }
+
+        // Try embedded presets second (system presets: base, tart-*)
         if let Some(content) = crate::embedded_presets::get_preset_content(name) {
             let preset_file: PresetFile = serde_yaml::from_str(content).map_err(|e| {
                 VmError::Serialization(format!("Failed to parse embedded preset '{}': {}", name, e))
             })?;
             return Ok(preset_file.config);
-        }
-
-        // Try plugin presets second
-        if let Some(config) = self.load_plugin_preset(name)? {
-            return Ok(config);
         }
 
         // Fallback to file system (for custom presets)
@@ -203,6 +203,29 @@ impl PresetDetector {
             .collect();
 
         Ok(preset_names)
+    }
+
+    /// Get description for a preset (from plugin or embedded)
+    pub fn get_preset_description(&self, name: &str) -> Option<String> {
+        // Try plugins first
+        if let Ok(plugins) = vm_plugin::discover_plugins() {
+            for plugin in plugins {
+                if plugin.info.plugin_type == vm_plugin::PluginType::Preset
+                    && plugin.info.name == name
+                {
+                    return plugin.info.description.clone();
+                }
+            }
+        }
+
+        // Fall back to embedded preset descriptions
+        match name {
+            "base" => Some("Generic development preset with basic tools".to_string()),
+            "tart-linux" => Some("Ubuntu Linux VM for development on Apple Silicon".to_string()),
+            "tart-macos" => Some("macOS VM for development on Apple Silicon".to_string()),
+            "tart-ubuntu" => Some("Ubuntu Linux VM for Tart provider".to_string()),
+            _ => None,
+        }
     }
 }
 

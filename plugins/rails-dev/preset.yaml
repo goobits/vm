@@ -1,0 +1,21 @@
+packages:
+  - ruby-dev
+  - build-essential
+  - libpq-dev
+  - nodejs
+  - yarn
+
+npm_packages:
+  - prettier
+  - webpack
+
+services:
+  - postgresql
+  - redis
+
+environment:
+  RAILS_ENV: development
+  BUNDLE_PATH: vendor/bundle
+
+provision:
+  - gem install rails pg redis sidekiq rspec-rails factory_bot_rails rubocop brakeman bundler-audit
