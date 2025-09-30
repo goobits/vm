@@ -234,21 +234,34 @@ rustc --version
 
 ## Dead Code Detection
 
-Run dead code detection with:
+### Installation
+```bash
+# Install required tools (one-time setup)
+cargo install cargo-machete cargo-audit
+
+# cargo-audit: Security vulnerability scanning
+# cargo-machete: Unused dependency detection
+```
+
+### Running Checks
 ```bash
 source $HOME/.cargo/env
 cd rust
 
-# Check for dead code using Clippy
+# Check for dead code using Clippy (built-in)
 cargo clippy --workspace -- -D dead_code
 
 # Check for unused dependencies
-cargo dead-deps
+cargo machete
+
+# Check for security vulnerabilities
+cargo audit
 ```
 
 ### Tools
 - **Clippy** (built-in): Detects unused code, imports, variables, unreachable code
 - **cargo-machete**: Detects unused dependencies in Cargo.toml files
+- **cargo-audit**: Scans for known security vulnerabilities in dependencies
 
 ### Configuration
 - **Cargo aliases**: `.cargo/config.toml` in rust directory - Contains dead-code detection commands
