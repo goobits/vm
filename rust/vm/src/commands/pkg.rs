@@ -221,7 +221,7 @@ fn prompt_start_server() -> VmResult<bool> {
     Ok(confirmed)
 }
 
-/// Start server in background if needed
+/// Start server in background if needed using ServiceManager
 async fn start_server_if_needed(global_config: &GlobalConfig) -> VmResult<()> {
     if check_server_running(global_config).await {
         return Ok(());
@@ -230,32 +230,24 @@ async fn start_server_if_needed(global_config: &GlobalConfig) -> VmResult<()> {
     if prompt_start_server()? {
         vm_println!("🚀 Starting package registry server...");
 
-        let data_dir = std::env::current_dir()?.join(".vm-packages");
-        let port = global_config.services.package_registry.port;
+        let service_manager = get_service_manager();
 
-        // Start server in background using existing function
-        std::thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            if let Err(e) = rt.block_on(vm_package_server::server::run_server_background(
-                "0.0.0.0".to_string(),
-                port,
-                data_dir,
-            )) {
-                eprintln!("❌ Failed to start package registry: {}", e);
-            }
-        });
+        // Create a modified config with package_registry enabled
+        let mut enabled_config = global_config.clone();
+        enabled_config.services.package_registry.enabled = true;
 
-        // Give server time to start
-        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+        // Register a synthetic "pkg-cli" VM to keep the service alive
+        // This ensures the server persists beyond the CLI command lifetime
+        service_manager
+            .register_vm_services("pkg-cli", &enabled_config)
+            .await
+            .map_err(|e| {
+                VmError::from(anyhow::anyhow!("Failed to start package registry: {}", e))
+            })?;
 
-        // Verify it started
-        if check_server_running(global_config).await {
-            vm_success!("Package registry started successfully");
-        } else {
-            return Err(VmError::from(anyhow::anyhow!(
-                "Failed to start package registry server"
-            )));
-        }
+        vm_success!("Package registry started successfully");
+        vm_println!("💡 Service will remain running for package operations");
+        vm_println!("   To stop: unregister with 'vm pkg stop' or destroy VMs using it");
     } else {
         return Err(VmError::from(anyhow::anyhow!(
             "Package registry server is required but not running"
