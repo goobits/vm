@@ -539,7 +539,7 @@ fn test_help_system_workflow() -> Result<()> {
     let output = fixture.run_vm_command(&["config", "set", "--help"])?;
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout)?;
-    assert!(stdout.contains("Set"));
+    assert!(stdout.contains("Change"));
 
     // Step 3: Test preset help
     let output = fixture.run_vm_command(&["config", "preset", "--help"])?;
