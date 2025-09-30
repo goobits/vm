@@ -3207,7 +3207,7 @@ dependencies = [
  "serde_yaml_ng",
  "sysinfo",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.16",
  "vm-messages",
  "vm-platform",
  "which",
