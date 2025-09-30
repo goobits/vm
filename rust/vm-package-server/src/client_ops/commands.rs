@@ -222,8 +222,8 @@ pub fn add_python_package_local(package_name: &str) -> Result<()> {
     // Build the package
     let package_files = build_python_package()?;
 
-    // Get data directory (default to ./data)
-    let data_dir = std::path::PathBuf::from("./data");
+    // Get data directory (search upward for project root)
+    let data_dir = vm_core::project::get_package_data_dir()?;
 
     // Add each built package to local storage
     for package_file in package_files {
@@ -241,8 +241,8 @@ pub fn add_npm_package_local(package_name: &str) -> Result<()> {
     // Build the package and get metadata (reuse existing build logic)
     let (tarball_file, metadata) = build_npm_package()?;
 
-    // Get data directory (default to ./data)
-    let data_dir = std::path::PathBuf::from("./data");
+    // Get data directory (search upward for project root)
+    let data_dir = vm_core::project::get_package_data_dir()?;
 
     // Add to local storage
     crate::local_storage::add_npm_package_local(&tarball_file, &metadata, &data_dir)?;
@@ -261,8 +261,8 @@ pub fn add_cargo_package_local(package_name: &str) -> Result<()> {
     // Build the package (reuse existing build logic)
     let crate_file = build_cargo_package()?;
 
-    // Get data directory (default to ./data)
-    let data_dir = std::path::PathBuf::from("./data");
+    // Get data directory (search upward for project root)
+    let data_dir = vm_core::project::get_package_data_dir()?;
 
     // Add to local storage
     crate::local_storage::add_cargo_package_local(&crate_file, &data_dir)?;
@@ -331,13 +331,13 @@ pub fn add_cargo_package(client: &PackageServerClient, package_name: &str) -> Re
 }
 
 fn remove_package_local(force: bool) -> Result<()> {
-    let data_dir = std::path::PathBuf::from("./data");
+    let data_dir = vm_core::project::get_package_data_dir()?;
 
     if force {
         println!("🔍 Listing available packages from local storage...");
 
         // List all packages from local storage
-        let packages = crate::local_storage::list_local_packages()?;
+        let packages = crate::local_storage::list_local_packages(&data_dir)?;
 
         let mut all_packages = Vec::new();
         for (package_type, package_list) in &packages {
@@ -605,7 +605,8 @@ pub fn list_packages(server_url: &str) -> Result<()> {
         info!("Server not running, reading packages from local storage");
         println!("ℹ️  Server not running, listing packages from local storage");
         println!();
-        crate::local_storage::list_local_packages()?
+        let data_dir = vm_core::project::get_package_data_dir()?;
+        crate::local_storage::list_local_packages(&data_dir)?
     };
 
     info!("Listing all packages");

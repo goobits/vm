@@ -44,6 +44,7 @@ once_cell = { workspace = true }
 notify = { workspace = true }
 futures-util = { workspace = true }
 dirs = { workspace = true }
+vm-core = { path = "../vm-core" }
 
 [dev-dependencies]
 tempfile = { workspace = true }

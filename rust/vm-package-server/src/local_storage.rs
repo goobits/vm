@@ -6,24 +6,24 @@ use std::path::Path;
 use tracing::{debug, info};
 
 /// List all packages from local storage without requiring server
-pub fn list_local_packages() -> Result<HashMap<String, Vec<String>>> {
+pub fn list_local_packages(data_dir: &Path) -> Result<HashMap<String, Vec<String>>> {
     let mut packages = HashMap::new();
 
     // List Python packages
-    packages.insert("pypi".to_string(), list_pypi_packages()?);
+    packages.insert("pypi".to_string(), list_pypi_packages(data_dir)?);
 
     // List NPM packages
-    packages.insert("npm".to_string(), list_npm_packages()?);
+    packages.insert("npm".to_string(), list_npm_packages(data_dir)?);
 
     // List Cargo crates
-    packages.insert("cargo".to_string(), list_cargo_crates()?);
+    packages.insert("cargo".to_string(), list_cargo_crates(data_dir)?);
 
     Ok(packages)
 }
 
 /// List Python packages from local storage
-fn list_pypi_packages() -> Result<Vec<String>> {
-    let pypi_dir = Path::new("pypi/packages");
+fn list_pypi_packages(data_dir: &Path) -> Result<Vec<String>> {
+    let pypi_dir = data_dir.join("pypi").join("packages");
     let mut packages = HashSet::new();
 
     if !pypi_dir.exists() {
@@ -50,8 +50,8 @@ fn list_pypi_packages() -> Result<Vec<String>> {
 }
 
 /// List NPM packages from local storage
-fn list_npm_packages() -> Result<Vec<String>> {
-    let npm_metadata_dir = Path::new("npm/metadata");
+fn list_npm_packages(data_dir: &Path) -> Result<Vec<String>> {
+    let npm_metadata_dir = data_dir.join("npm").join("metadata");
     let mut packages = Vec::new();
 
     if !npm_metadata_dir.exists() {
@@ -73,8 +73,8 @@ fn list_npm_packages() -> Result<Vec<String>> {
 }
 
 /// List Cargo crates from local storage
-fn list_cargo_crates() -> Result<Vec<String>> {
-    let cargo_index_dir = Path::new("cargo/index");
+fn list_cargo_crates(data_dir: &Path) -> Result<Vec<String>> {
+    let cargo_index_dir = data_dir.join("cargo").join("index");
     let mut crates = HashSet::new();
 
     if !cargo_index_dir.exists() {
@@ -83,7 +83,7 @@ fn list_cargo_crates() -> Result<Vec<String>> {
     }
 
     // Recursively walk the index directory structure
-    list_cargo_crates_recursive(cargo_index_dir, &mut crates)?;
+    list_cargo_crates_recursive(&cargo_index_dir, &mut crates)?;
 
     let mut sorted: Vec<String> = crates.into_iter().collect();
     sorted.sort();

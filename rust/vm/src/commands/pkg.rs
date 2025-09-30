@@ -250,7 +250,7 @@ async fn start_server_if_needed(global_config: &GlobalConfig, yes: bool) -> VmRe
     if yes || prompt_start_server()? {
         vm_println!("🚀 Starting package registry server...");
 
-        let data_dir = std::env::current_dir()?.join(".vm-packages");
+        let data_dir = vm_core::project::get_package_data_dir()?;
         let port = global_config.services.package_registry.port;
 
         // Get path to current vm binary

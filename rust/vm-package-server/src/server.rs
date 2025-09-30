@@ -102,6 +102,7 @@ async fn run_server_internal(
     let app = Router::new()
         .route("/", get(index_handler))
         .route("/status", get(status_handler))
+        .route("/api/status", get(status_handler))
         .route("/setup.sh", get(setup_script_handler))
         .route("/health", get(health_handler))
         .route("/api/packages", get(list_packages_handler))
@@ -228,22 +229,8 @@ async fn health_handler() -> impl IntoResponse {
 }
 
 async fn list_packages_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    // Change to the data directory so local_storage functions work
-    let original_dir = std::env::current_dir().ok();
-    if let Err(e) = std::env::set_current_dir(&state.data_dir) {
-        error!("Failed to change to data directory: {}", e);
-        let error_response = r#"{"error": "Failed to access data directory"}"#.to_string();
-        let mut headers = HeaderMap::new();
-        headers.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
-        return (StatusCode::INTERNAL_SERVER_ERROR, headers, error_response);
-    }
-
-    let result = crate::local_storage::list_local_packages();
-
-    // Restore original directory
-    if let Some(orig) = original_dir {
-        let _ = std::env::set_current_dir(orig);
-    }
+    // Pass data directory directly to avoid thread-unsafe directory changes
+    let result = crate::local_storage::list_local_packages(&state.data_dir);
 
     match result {
         Ok(packages) => {

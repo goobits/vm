@@ -435,7 +435,7 @@ impl ServiceManager {
     async fn start_package_registry(&self, port: u16) -> Result<()> {
         use vm_package_server;
 
-        let data_dir = std::env::current_dir()?.join(".vm-packages");
+        let data_dir = vm_core::project::get_package_data_dir()?;
 
         // Create shutdown channel
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();

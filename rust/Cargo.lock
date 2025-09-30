@@ -3324,6 +3324,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "vm-core",
  "which",
 ]
 
