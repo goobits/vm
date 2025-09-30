@@ -123,3 +123,4 @@ error-handling-summary.md
 # Package server data directories
 data/
 */data/
+.vm-packages/
