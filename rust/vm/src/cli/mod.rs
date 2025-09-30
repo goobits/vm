@@ -10,12 +10,8 @@ use clap::{Parser, Subcommand};
 #[command(name = "vm")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(author = "Goobits VM Contributors")]
-#[command(about = "A modern, fast, and portable VM management tool", long_about = None)]
-#[command(before_help = format!("\
-vm v{} - Modern VM Management Tool
-By Goobits VM Contributors
-
-", env!("CARGO_PKG_VERSION")))]
+#[command(about = "Smart development environments for modern projects")]
+#[command(before_help = format!("vm v{}\n", env!("CARGO_PKG_VERSION")))]
 pub struct Args {
     #[command(subcommand)]
     pub command: Command,
@@ -35,7 +31,7 @@ pub struct Args {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum ConfigSubcommand {
-    /// Set configuration value
+    /// Change a configuration value
     Set {
         /// Configuration field path (e.g., "vm.memory" or "services.docker.enabled")
         field: String,
@@ -45,7 +41,7 @@ pub enum ConfigSubcommand {
         #[arg(long)]
         global: bool,
     },
-    /// Get configuration values
+    /// View configuration values
     Get {
         /// Configuration field path (omit to show all)
         field: Option<String>,
@@ -53,7 +49,7 @@ pub enum ConfigSubcommand {
         #[arg(long)]
         global: bool,
     },
-    /// Remove configuration field
+    /// Remove a configuration value
     Unset {
         /// Configuration field path to remove
         field: String,
@@ -61,7 +57,7 @@ pub enum ConfigSubcommand {
         #[arg(long)]
         global: bool,
     },
-    /// Apply configuration presets
+    /// Add preset configurations
     Preset {
         /// Preset names (comma-separated for multiple, e.g., "nodejs,docker")
         names: Option<String>,
@@ -75,13 +71,13 @@ pub enum ConfigSubcommand {
         #[arg(long)]
         show: Option<String>,
     },
-    /// Manage port configuration and resolve conflicts
+    /// Fix port conflicts
     Ports {
         /// Fix port conflicts automatically
         #[arg(long)]
         fix: bool,
     },
-    /// Clear configuration file
+    /// Reset your configuration
     Clear {
         /// Clear global configuration instead of local
         #[arg(long)]
@@ -91,7 +87,7 @@ pub enum ConfigSubcommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum TempSubcommand {
-    /// Create temporary VM with mounts
+    /// Create a temporary environment
     Create {
         /// Directories to mount (e.g., ./src,./config:ro)
         mounts: Vec<String>,
@@ -100,13 +96,13 @@ pub enum TempSubcommand {
         #[arg(long)]
         auto_destroy: bool,
     },
-    /// Connect to temporary VM via SSH
+    /// Connect to your temp environment
     Ssh,
-    /// Show temporary VM status
+    /// Check temp environment status
     Status,
-    /// Destroy temporary VM
+    /// Delete your temp environment
     Destroy,
-    /// Add mount to running temporary VM
+    /// Add a folder to your temp environment
     Mount {
         /// Path to mount (e.g., ./src or ./config:ro)
         path: String,
@@ -114,7 +110,7 @@ pub enum TempSubcommand {
         #[arg(long)]
         yes: bool,
     },
-    /// Remove mount from temporary VM
+    /// Remove a folder from your temp environment
     Unmount {
         /// Path to unmount (omit for --all)
         path: Option<String>,
@@ -125,42 +121,42 @@ pub enum TempSubcommand {
         #[arg(long)]
         yes: bool,
     },
-    /// List current mounts
+    /// See mounted folders
     Mounts,
-    /// List all temporary VMs
+    /// See all temp environments
     List,
-    /// Stop temporary VM
+    /// Stop your temp environment
     Stop,
-    /// Start temporary VM
+    /// Start your temp environment
     Start,
-    /// Restart temporary VM
+    /// Restart your temp environment
     Restart,
 }
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum PkgSubcommand {
-    /// Show registry status and package counts
+    /// Check registry status
     Status,
-    /// Add package from current directory
+    /// Publish a package
     Add {
         /// Specify package type(s) to publish (python,npm,cargo)
         #[arg(long, short = 't')]
         r#type: Option<String>,
     },
-    /// Remove package from registry
+    /// Remove a package
     Remove {
         /// Skip confirmation prompts
         #[arg(long, short = 'f')]
         force: bool,
     },
-    /// List all packages in registry
+    /// See all packages
     List,
-    /// Configuration management
+    /// Manage registry settings
     Config {
         #[command(subcommand)]
         action: PkgConfigAction,
     },
-    /// Generate shell configuration for package managers
+    /// Get shell configuration
     Use {
         /// Shell type (bash, zsh, fish)
         #[arg(long)]
@@ -173,14 +169,14 @@ pub enum PkgSubcommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum PkgConfigAction {
-    /// Show all configuration values
+    /// View all settings
     Show,
-    /// Get a specific configuration value
+    /// Get a specific setting
     Get {
         /// Configuration key
         key: String,
     },
-    /// Set a configuration value
+    /// Change a setting
     Set {
         /// Configuration key
         key: String,
@@ -191,9 +187,9 @@ pub enum PkgConfigAction {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum AuthSubcommand {
-    /// Show auth proxy status and secret counts
+    /// Check auth proxy status
     Status,
-    /// Add a secret
+    /// Store a secret
     Add {
         /// Secret name
         name: String,
@@ -206,13 +202,13 @@ pub enum AuthSubcommand {
         #[arg(long)]
         description: Option<String>,
     },
-    /// List all secrets
+    /// See all secrets
     List {
         /// Show secret values (masked)
         #[arg(long)]
         show_values: bool,
     },
-    /// Remove a secret
+    /// Delete a secret
     Remove {
         /// Secret name
         name: String,
@@ -220,30 +216,30 @@ pub enum AuthSubcommand {
         #[arg(long, short = 'f')]
         force: bool,
     },
-    /// Interactively add a secret
+    /// Add a secret interactively
     Interactive,
 }
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum PluginSubcommand {
-    /// List installed plugins
+    /// See installed plugins
     List,
-    /// Show plugin information
+    /// Get plugin details
     Info {
         /// Plugin name
         plugin_name: String,
     },
-    /// Install a plugin from a directory
+    /// Add a plugin
     Install {
         /// Path to plugin directory
         source_path: String,
     },
-    /// Remove an installed plugin
+    /// Remove a plugin
     Remove {
         /// Plugin name to remove
         plugin_name: String,
     },
-    /// Create a new plugin template
+    /// Create a new plugin
     New {
         /// Plugin name
         plugin_name: String,
@@ -251,7 +247,7 @@ pub enum PluginSubcommand {
         #[arg(long)]
         r#type: String,
     },
-    /// Validate a plugin's configuration
+    /// Check plugin configuration
     Validate {
         /// Plugin name to validate
         plugin_name: String,
@@ -260,7 +256,7 @@ pub enum PluginSubcommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum Command {
-    /// Initialize a new VM configuration file
+    /// Create a new configuration file
     Init {
         /// Custom VM configuration file path
         #[arg(short, long)]
@@ -274,18 +270,18 @@ pub enum Command {
         #[arg(long)]
         ports: Option<u16>,
     },
-    /// Validate VM configuration
+    /// Check your configuration for errors
     Validate,
-    /// Run comprehensive health checks on VM environment
+    /// Run health checks and diagnostics
     #[command(about = "Check system dependencies, configuration, and service health")]
     Doctor,
-    /// Manage VM configuration settings
+    /// Update configuration settings
     Config {
         #[command(subcommand)]
         command: ConfigSubcommand,
     },
 
-    /// Create and provision a new VM
+    /// Spin up a new development environment
     Create {
         /// Force creation even if VM already exists
         #[arg(long)]
@@ -297,30 +293,30 @@ pub enum Command {
         #[arg(long)]
         verbose: bool,
     },
-    /// Start a VM
+    /// Start your environment
     Start {
         /// Container name, ID, or project name to start
         #[arg()]
         container: Option<String>,
     },
-    /// Stop a VM or force-kill a specific container
+    /// Stop your environment
     Stop {
         /// Container name or ID to stop (if not provided, stops current project VM gracefully)
         container: Option<String>,
     },
-    /// Restart a VM
+    /// Restart your environment
     Restart {
         /// Container name, ID, or project name to restart
         #[arg()]
         container: Option<String>,
     },
-    /// Re-run VM provisioning
+    /// Reconfigure your environment
     Provision {
         /// Container name, ID, or project name to provision
         #[arg()]
         container: Option<String>,
     },
-    /// Destroy a VM and clean up resources
+    /// Delete an environment
     Destroy {
         /// Container name, ID, or project name to destroy
         #[arg()]
@@ -339,7 +335,7 @@ pub enum Command {
         pattern: Option<String>,
     },
 
-    /// List all VMs with status and resource usage
+    /// See all your environments
     List {
         /// Show instances from all providers (already default behavior)
         #[arg(long)]
@@ -351,13 +347,13 @@ pub enum Command {
         #[arg(long)]
         verbose: bool,
     },
-    /// Show VM status and health
+    /// Check environment status
     Status {
         /// Container name, ID, or project name
         #[arg()]
         container: Option<String>,
     },
-    /// Connect to VM via SSH
+    /// Jump into your environment
     Ssh {
         /// Container name, ID, or project name to connect to
         #[arg()]
@@ -366,7 +362,7 @@ pub enum Command {
         #[arg(long)]
         path: Option<PathBuf>,
     },
-    /// Execute commands inside VM
+    /// Run a command in your environment
     Exec {
         /// Container name, ID, or project name
         #[arg()]
@@ -375,38 +371,38 @@ pub enum Command {
         #[arg(required = true, num_args = 1..)]
         command: Vec<String>,
     },
-    /// View VM logs
+    /// View environment logs
     Logs {
         /// Container name, ID, or project name
         #[arg()]
         container: Option<String>,
     },
 
-    /// Manage temporary VMs
+    /// Work with temporary environments
     Temp {
         #[command(subcommand)]
         command: TempSubcommand,
     },
 
-    /// Package registry management
+    /// Manage package registries
     Pkg {
         #[command(subcommand)]
         command: PkgSubcommand,
     },
 
-    /// Auth proxy management
+    /// Manage secrets and credentials
     Auth {
         #[command(subcommand)]
         command: AuthSubcommand,
     },
 
-    /// Plugin management
+    /// Extend with plugins
     Plugin {
         #[command(subcommand)]
         command: PluginSubcommand,
     },
 
-    /// Update vm to the latest version
+    /// Update to the latest version
     Update {
         /// Specific version to install (e.g., v1.2.3)
         #[arg(long)]
@@ -415,7 +411,7 @@ pub enum Command {
         #[arg(long)]
         force: bool,
     },
-    /// Uninstall vm from the system
+    /// Remove from your system
     Uninstall {
         /// Keep configuration files
         #[arg(long)]
