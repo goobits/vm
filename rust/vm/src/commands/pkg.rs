@@ -21,12 +21,12 @@ pub async fn handle_pkg_command(
     global_config: GlobalConfig,
 ) -> VmResult<()> {
     match command {
-        PkgSubcommand::Status => handle_status(&global_config).await,
+        PkgSubcommand::Status { yes } => handle_status(*yes, &global_config).await,
         PkgSubcommand::Add { r#type, yes } => {
             handle_add(r#type.as_deref(), *yes, &global_config).await
         }
-        PkgSubcommand::Remove { force } => handle_remove(*force, &global_config).await,
-        PkgSubcommand::List => handle_list(&global_config).await,
+        PkgSubcommand::Remove { force, yes } => handle_remove(*force, *yes, &global_config).await,
+        PkgSubcommand::List { yes } => handle_list(*yes, &global_config).await,
         PkgSubcommand::Config { action } => handle_config(action, &global_config).await,
         PkgSubcommand::Use { shell, port } => {
             handle_use(shell.as_deref(), *port, &global_config).await
@@ -38,7 +38,15 @@ pub async fn handle_pkg_command(
 }
 
 /// Show package registry status with service manager information
-async fn handle_status(global_config: &GlobalConfig) -> VmResult<()> {
+async fn handle_status(yes: bool, global_config: &GlobalConfig) -> VmResult<()> {
+    let server_url = format!(
+        "http://localhost:{}",
+        global_config.services.package_registry.port
+    );
+
+    // Ensure server is running for complete status information
+    start_server_if_needed(global_config, yes).await?;
+
     let registry = get_service_registry();
     let service_manager = get_service_manager();
 
@@ -60,10 +68,6 @@ async fn handle_status(global_config: &GlobalConfig) -> VmResult<()> {
     }
 
     // Check actual server status for verification
-    let server_url = format!(
-        "http://localhost:{}",
-        global_config.services.package_registry.port
-    );
     if check_server_running_with_url(&server_url).await {
         vm_println!("   Health Check: ✅ Server responding");
     } else {
@@ -94,35 +98,41 @@ async fn handle_add(
 
     vm_println!("📦 Publishing package to local registry...");
 
-    vm_package_server::client_ops::add_package(&server_url, package_type)?;
+    vm_package_server::client_ops::add_package(&server_url, package_type).map_err(VmError::from)?;
 
     vm_success!("Package published successfully");
     Ok(())
 }
 
 /// Remove package from registry
-async fn handle_remove(force: bool, global_config: &GlobalConfig) -> VmResult<()> {
+async fn handle_remove(force: bool, yes: bool, global_config: &GlobalConfig) -> VmResult<()> {
     let server_url = format!(
         "http://localhost:{}",
         global_config.services.package_registry.port
     );
 
+    // Ensure server is running before attempting to remove package
+    start_server_if_needed(global_config, yes).await?;
+
     vm_println!("🗑️  Removing package from registry...");
 
-    vm_package_server::client_ops::remove_package(&server_url, force)?;
+    vm_package_server::client_ops::remove_package(&server_url, force).map_err(VmError::from)?;
 
     vm_success!("Package removed successfully");
     Ok(())
 }
 
 /// List packages in registry
-async fn handle_list(global_config: &GlobalConfig) -> VmResult<()> {
+async fn handle_list(yes: bool, global_config: &GlobalConfig) -> VmResult<()> {
     let server_url = format!(
         "http://localhost:{}",
         global_config.services.package_registry.port
     );
 
-    vm_package_server::client_ops::list_packages(&server_url)?;
+    // Ensure server is running for complete package listing
+    start_server_if_needed(global_config, yes).await?;
+
+    vm_package_server::client_ops::list_packages(&server_url).map_err(VmError::from)?;
 
     Ok(())
 }

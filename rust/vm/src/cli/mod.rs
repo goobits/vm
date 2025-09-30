@@ -137,7 +137,11 @@ pub enum TempSubcommand {
 #[derive(Debug, Clone, Subcommand)]
 pub enum PkgSubcommand {
     /// Check registry status
-    Status,
+    Status {
+        /// Start server automatically without prompting
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
     /// Publish a package
     Add {
         /// Specify package type(s) to publish (python,npm,cargo)
@@ -152,9 +156,16 @@ pub enum PkgSubcommand {
         /// Skip confirmation prompts
         #[arg(long, short = 'f')]
         force: bool,
+        /// Start server automatically without prompting
+        #[arg(long, short = 'y')]
+        yes: bool,
     },
     /// See all packages
-    List,
+    List {
+        /// Start server automatically without prompting
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
     /// Manage registry settings
     Config {
         #[command(subcommand)]
