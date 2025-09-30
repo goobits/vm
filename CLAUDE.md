@@ -250,9 +250,13 @@ cd rust
 
 # Check for dead code using Clippy (built-in)
 cargo clippy --workspace -- -D dead_code
+# Or use the alias:
+cargo dead-code
 
 # Check for unused dependencies
 cargo machete
+# Or use the alias:
+cargo dead-deps
 
 # Check for security vulnerabilities
 cargo audit
@@ -264,7 +268,9 @@ cargo audit
 - **cargo-audit**: Scans for known security vulnerabilities in dependencies
 
 ### Configuration
-- **Cargo aliases**: `.cargo/config.toml` in rust directory - Contains dead-code detection commands
+- **Cargo aliases** (`.cargo/config.toml`):
+  - `cargo dead-code` → `cargo clippy -- -D dead_code`
+  - `cargo dead-deps` → `cargo machete`
 - **Clippy config**: `clippy.toml` - Additional linting rules for code quality
 
 ### Lint Categories
