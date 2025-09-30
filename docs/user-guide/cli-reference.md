@@ -5,6 +5,7 @@
 - [Temporary VMs](#temporary-vms)
 - [Configuration](#configuration)
 - [Presets](#presets)
+- [Plugins](#plugins)
 - [Testing](#testing)
 - [Options & Environment](#options--environment)
 
@@ -130,9 +131,52 @@ vm config preset list            # List available presets
 vm config preset --show django   # Show preset details
 ```
 
-**Available presets:** base, django, docker, kubernetes, nodejs, python, rails, react, tart-linux, tart-macos, tart-ubuntu
+**Available presets:** base, django, docker, kubernetes, nodejs, python, rails, react, rust, nextjs, vibe, tart-linux, tart-macos, tart-ubuntu
 
 **See:** [Presets Guide](./presets.md) for detailed preset information
+
+---
+
+## Plugins
+
+### plugin list
+```bash
+vm plugin list                   # Show all installed plugins
+```
+
+### plugin info
+```bash
+vm plugin info nodejs            # Show detailed plugin information
+vm plugin info django            # View plugin metadata and location
+```
+
+### plugin install
+```bash
+vm plugin install ./my-plugin    # Install plugin from directory
+vm plugin install /path/to/plugin
+```
+
+### plugin remove
+```bash
+vm plugin remove nodejs          # Uninstall a plugin
+vm plugin remove custom-preset   # Remove custom plugin
+```
+
+### plugin new
+```bash
+vm plugin new my-preset --type preset   # Create new preset plugin template
+vm plugin new my-service --type service # Create new service plugin template
+```
+
+### plugin validate
+```bash
+vm plugin validate my-preset     # Validate plugin configuration
+vm plugin validate --help        # Show validation options
+```
+
+**Plugin location:** `~/.vm/plugins/`
+
+**See:** [Plugin Guide](./plugins.md) for creating and managing plugins
 
 ---
 

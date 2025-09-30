@@ -142,34 +142,54 @@ The system is exposed through macros in the `vm-common` crate.
 ## 🎯 Framework Presets
 
 ### Adding New Framework Support
-```bash
-# 1. Create preset configuration
-# configs/presets/your-framework.yaml
-preset:
-  name: "Your Framework"
-  description: "Development environment for Your Framework"
 
-# Add framework-specific configuration
+#### Option 1: Create a Plugin (Recommended)
+
+```bash
+# 1. Create plugin template
+vm plugin new your-framework --type preset
+
+# 2. Edit plugin metadata
+# ~/.vm/plugins/presets/your-framework/plugin.yaml
+name: your-framework
+version: 1.0.0
+description: Development environment for Your Framework
+author: Your Name
+plugin_type: preset
+
+# 3. Configure preset content
+# ~/.vm/plugins/presets/your-framework/preset.yaml
 npm_packages:
   - your-framework-cli
 
-ports:
-  dev: 3000
-
 services:
-  postgresql:
-    enabled: true
+  - postgresql
 
-# 2. Add detection logic in Rust
-# Edit rust/vm-detector/src/detectors/
-# Create your_framework.rs with detection logic
+environment:
+  FRAMEWORK_ENV: development
 
-# 3. Add tests
-# Edit rust/vm-detector/src/tests/
+# 4. Test the plugin
+vm plugin validate your-framework
+vm config preset your-framework
+vm create
+
+# 5. Share your plugin
+# Package and share via git repository or tarball
+```
+
+#### Option 2: Add Detection Logic (For Core Framework Support)
+
+```bash
+# 1. Add detection logic in Rust
+# Edit rust/vm-config/src/detector/
+# Add detection patterns for your framework
+
+# 2. Add tests
+# Edit rust/vm-config/src/detector/tests/
 # Add test for your framework detection
 
-# 4. Register detector in mod.rs
-# Add your detector to the detection pipeline
+# 3. Create plugin for the preset
+# Follow Option 1 to create the actual preset
 
 # 4. Update documentation
 # Edit docs/user-guide/presets.md

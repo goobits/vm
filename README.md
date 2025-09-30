@@ -274,6 +274,17 @@ vm config preset --show <name> # Show preset details
 vm config ports --fix        # Manage port configuration and resolve conflicts
 ```
 
+**Plugin Management** — Extend VM with custom presets and services:
+
+```bash
+vm plugin list               # List installed plugins
+vm plugin info <name>        # Show plugin details
+vm plugin install <path>     # Install plugin from directory
+vm plugin remove <name>      # Remove installed plugin
+vm plugin new <name> --type <preset|service>  # Create plugin template
+vm plugin validate <name>    # Validate plugin configuration
+```
+
 **Advanced Operations** — Power user commands for complex workflows:
 
 ```bash

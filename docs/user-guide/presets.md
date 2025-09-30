@@ -69,6 +69,18 @@ Rust development environment
 - Development tools
 - Common crates
 
+### nextjs
+Next.js applications
+- Node.js & npm packages
+- Next.js optimizations
+- React development tools
+- Ports: 3000
+
+### vibe
+Vibe web framework
+- Crystal language support
+- Vibe-specific tooling
+
 ### tart-linux
 Linux VMs on Apple Silicon (Tart)
 - Optimized for ARM64
@@ -131,7 +143,57 @@ services:
 
 ## Creating Custom Presets
 
-Add new presets in `configs/presets/`:
+### Using the Plugin System (Recommended)
+
+Create a custom preset plugin:
+
+```bash
+# Create plugin template
+vm plugin new my-preset --type preset
+
+# This creates:
+# ~/.vm/plugins/presets/my-preset/
+#   ├── plugin.yaml    # Plugin metadata
+#   ├── preset.yaml    # Preset configuration
+#   └── README.md      # Documentation
+```
+
+Edit the generated files:
+
+**plugin.yaml** (metadata):
+```yaml
+name: my-preset
+version: 1.0.0
+description: Custom development environment
+author: Your Name
+plugin_type: preset
+```
+
+**preset.yaml** (configuration):
+```yaml
+npm_packages:
+  - your-package
+
+pip_packages:
+  - your-python-package
+
+services:
+  - postgresql
+  - redis
+
+environment:
+  CUSTOM_VAR: value
+```
+
+Then use it:
+```bash
+vm config preset my-preset
+vm create
+```
+
+### Legacy Method (File-based)
+
+For backward compatibility, you can still add presets in `configs/presets/`:
 ```yaml
 # configs/presets/custom.yaml
 preset:
@@ -149,4 +211,6 @@ ports:
   - 9000
 ```
 
-For preset creation details, check the existing presets in the `configs/presets/` directory for examples.
+**Note:** Plugin-based presets are preferred as they provide better organization, versioning, and validation.
+
+For more details, see the [Plugin Guide](./plugins.md).
