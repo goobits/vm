@@ -94,6 +94,7 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
     let _enter = span.enter();
 
     vm_progress!("Building Rust binaries...");
+    println!("   This may take a few minutes on first build...");
 
     // Use platform-specific target directory to avoid conflicts in shared filesystems
     let target_dir = project_root.join(format!("target-{}", platform));
@@ -101,6 +102,9 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
     let status = Command::new("cargo")
         .args(["build", "--release", "--bin", "vm"])
         .env("CARGO_TARGET_DIR", &target_dir)
+        .env("CARGO_TERM_PROGRESS_WHEN", "always") // Force progress display
+        .env("CARGO_TERM_PROGRESS_WIDTH", "80") // Set reasonable width
+        .env("CARGO_TERM_COLOR", "always") // Enable colors
         .current_dir(project_root)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
