@@ -12,40 +12,27 @@ Private package registry server with upstream fallback for PyPI, npm, and Cargo 
 ## 🚀 Quick Start
 
 ```bash
-# Install globally first (recommended)
+# Install and start
 ./install.sh                    # Install to system PATH
-
-# Then use the global command
 pkg-server start                # Start server and configure package managers
 
-# Or use local development binary directly
-pkg-server start --port 3080
-
-# With Docker
-docker build -t goobits-pkg-server -f docker/server/Dockerfile .
-docker run -d -p 3080:3080 -v $(pwd)/data:/home/appuser/data goobits-pkg-server start --port 3080
-
+# Or with Docker
+pkg-server start --docker       # One command for containerized deployment
 ```
+
+For detailed instructions, see [docs/quickstart.md](docs/quickstart.md)
 
 ## 📚 CLI Commands
 
+See [docs/cli-reference.md](docs/cli-reference.md) for complete command documentation.
+
+**Quick Reference:**
 ```bash
-# Server management
-pkg-server start                # Start server and configure package managers
-pkg-server start --port 9000    # Custom port
-pkg-server start --docker       # Run in Docker container
-pkg-server start --no-config    # Don't auto-configure package managers
-pkg-server stop                  # Restore original package manager settings
-
-# Package operations
-pkg-server add                   # Auto-detect and publish package(s) from current directory
-pkg-server add --type python,npm # Publish specific package types only
-pkg-server add --server http://localhost:3080  # Use different server URL
-pkg-server remove               # Interactive package removal
-pkg-server list                  # List all packages
-pkg-server status                # Show server status and package counts
-
-# Client setup (automatically available at /setup.sh when server runs)
+pkg-server start [--docker] [--port 3080]    # Start server
+pkg-server stop                              # Stop and restore settings
+pkg-server add                               # Publish packages
+pkg-server list                              # List packages
+pkg-server status                            # Server status
 ```
 
 ## ⚙️ Client Configuration

@@ -176,7 +176,7 @@ cargo update
 
 ## Cross-Platform Compilation
 
-The project supports multiple target platforms for distribution. Cross-compilation targets are stored in separate directories to avoid conflicts.
+The project supports multiple target platforms for distribution.
 
 ### Supported Targets
 
@@ -211,16 +211,7 @@ CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
   cargo build --workspace --release --target aarch64-unknown-linux-gnu
 ```
 
-### Target Directories
-
-Cross-compilation builds are stored in separate directories:
-- `rust/target/` - Default target (native architecture)
-- `rust/target-linux-aarch64/` - Linux ARM64 builds (custom target dir)
-- `rust/target-macos-aarch64/` - macOS ARM64 builds (custom target dir)
-
-These directories are excluded from version control (`.gitignore`) and managed by CI/CD pipelines.
-
-**Note**: The custom target directories are created during release builds to keep cross-platform artifacts separate.
+Cross-compilation artifacts are stored in `rust/target/<triple>/` directories and excluded from version control.
 
 ## Troubleshooting
 
@@ -281,14 +272,3 @@ The dead-code detection checks for:
 2. **For false positives** - Add `#[allow(dead_code)]` to specific items
 3. **For unused dependencies** - Run `cargo machete --fix` to auto-remove
 4. **For test/example code** - These are often false positives and can be ignored
-
-
-## Test Structure
-
-The Rust test suite uses dynamic fixture generation rather than static test files:
-- Tests create temporary directories and files as needed
-- Each crate manages its own test fixtures independently
-- The `vm-config` crate includes a `ProjectTestFixture` struct for test setup
-- Integration tests use `CrossCrateTestFixture` for cross-crate testing
-
-Example configuration files for users are available in the `examples/` directory.

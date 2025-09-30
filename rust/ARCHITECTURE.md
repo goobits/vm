@@ -1,8 +1,8 @@
-# VM Tool Architecture
+# Goobits VM Architecture
 
 ## Overview
 
-The VM Tool is built using a **layered architecture** designed around the principles of separation of concerns, dependency injection, and circular dependency elimination. The architecture promotes modularity, testability, and maintainability by organizing functionality into distinct crates with clear responsibilities and well-defined interfaces.
+Goobits VM is built using a **layered architecture** designed around the principles of separation of concerns, dependency injection, and circular dependency elimination. The architecture promotes modularity, testability, and maintainability by organizing functionality into distinct crates with clear responsibilities and well-defined interfaces.
 
 ### Key Architectural Goals
 
@@ -215,7 +215,7 @@ graph TD
 
 ## Error Handling Philosophy
 
-The VM Tool employs a **unified error handling strategy** centered around the `VmError` enum defined in `vm-core`. This approach ensures consistent error reporting and handling across all components.
+Goobits VM employs a **unified error handling strategy** centered around the `VmError` enum defined in `vm-core`. This approach ensures consistent error reporting and handling across all components.
 
 ### Core Principles
 
