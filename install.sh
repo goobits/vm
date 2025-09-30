@@ -1,7 +1,6 @@
 #!/bin/bash
 #
 # VM Infrastructure Installation Script
-# Version: 3.0.0
 #
 # Supports: macOS, Ubuntu/Debian, Fedora/RHEL, Arch Linux
 # Security: Enterprise-grade with verification and comprehensive error handling
@@ -19,7 +18,14 @@ IFS=$'\n\t'       # Secure Internal Field Separator
 # Configuration Constants
 # ============================================================================
 
-readonly SCRIPT_VERSION="3.0.0"
+# Read version from project Cargo.toml if available
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_DIR/rust/Cargo.toml" ]]; then
+    SCRIPT_VERSION=$(grep '^version = ' "$SCRIPT_DIR/rust/Cargo.toml" | head -1 | sed 's/version = "\(.*\)"/\1/')
+    readonly SCRIPT_VERSION
+else
+    readonly SCRIPT_VERSION="unknown"
+fi
 readonly SCRIPT_NAME="$(basename "$0")"
 readonly LOG_PREFIX="🔧 VM Installer"
 readonly TIMEOUT_SECONDS=30
@@ -388,9 +394,14 @@ install_from_release() {
         --output "$release_info" \
         "$api_url"; then
 
-        handle_error $ERR_NETWORK_TIMEOUT \
-            "Failed to fetch release information" \
-            "Check if version '$INSTALL_VERSION' exists at ${REPO_URL}/releases"
+        # Simple, clean error for missing releases
+        echo ""
+        echo -e "${RED}❌ No pre-built binary available${NC}"
+        echo ""
+        echo -e "${BLUE}Run this instead:${NC}"
+        echo -e "  ${GREEN}./install.sh --build-from-source${NC}"
+        echo ""
+        exit $ERR_NETWORK_TIMEOUT
     fi
 
     # Extract download URL for our platform
