@@ -11,8 +11,8 @@ use clap::{Parser, Subcommand};
 #[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(author = "Goobits VM Contributors")]
 #[command(about = "Smart development environments for modern projects")]
-#[command(before_help = format!("\nvm v{}\n", env!("CARGO_PKG_VERSION")))]
-#[command(after_help = "\n")]
+#[command(before_help = format!(" \nvm v{}", env!("CARGO_PKG_VERSION")))]
+#[command(after_help = " \n")]
 pub struct Args {
     #[command(subcommand)]
     pub command: Command,
