@@ -143,6 +143,9 @@ pub enum PkgSubcommand {
         /// Specify package type(s) to publish (python,npm,cargo)
         #[arg(long, short = 't')]
         r#type: Option<String>,
+        /// Start server automatically without prompting
+        #[arg(long, short = 'y')]
+        yes: bool,
     },
     /// Remove a package
     Remove {
@@ -165,6 +168,19 @@ pub enum PkgSubcommand {
         /// Package server port
         #[arg(long, default_value = "3080")]
         port: u16,
+    },
+    /// Start package server (internal use - for background process)
+    #[command(hide = true)]
+    Serve {
+        /// Host to bind to
+        #[arg(long, default_value = "0.0.0.0")]
+        host: String,
+        /// Port to bind to
+        #[arg(long, default_value = "3080")]
+        port: u16,
+        /// Data directory for package storage
+        #[arg(long)]
+        data: std::path::PathBuf,
     },
 }
 

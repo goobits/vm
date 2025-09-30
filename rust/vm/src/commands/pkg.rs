@@ -8,6 +8,7 @@ use crate::cli::{PkgConfigAction, PkgSubcommand};
 use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
 use crate::service_registry::get_service_registry;
+use anyhow::Context;
 use dialoguer::Confirm;
 use vm_config::GlobalConfig;
 use vm_core::{vm_error, vm_println, vm_success};
@@ -21,12 +22,17 @@ pub async fn handle_pkg_command(
 ) -> VmResult<()> {
     match command {
         PkgSubcommand::Status => handle_status(&global_config).await,
-        PkgSubcommand::Add { r#type } => handle_add(r#type.as_deref(), &global_config).await,
+        PkgSubcommand::Add { r#type, yes } => {
+            handle_add(r#type.as_deref(), *yes, &global_config).await
+        }
         PkgSubcommand::Remove { force } => handle_remove(*force, &global_config).await,
         PkgSubcommand::List => handle_list(&global_config).await,
         PkgSubcommand::Config { action } => handle_config(action, &global_config).await,
         PkgSubcommand::Use { shell, port } => {
             handle_use(shell.as_deref(), *port, &global_config).await
+        }
+        PkgSubcommand::Serve { host, port, data } => {
+            handle_serve(host, *port, data, &global_config).await
         }
     }
 }
@@ -73,14 +79,18 @@ async fn handle_status(global_config: &GlobalConfig) -> VmResult<()> {
 }
 
 /// Add package from current directory
-async fn handle_add(package_type: Option<&str>, global_config: &GlobalConfig) -> VmResult<()> {
+async fn handle_add(
+    package_type: Option<&str>,
+    yes: bool,
+    global_config: &GlobalConfig,
+) -> VmResult<()> {
     let server_url = format!(
         "http://localhost:{}",
         global_config.services.package_registry.port
     );
 
     // Ensure server is running before attempting to add package
-    start_server_if_needed(global_config).await?;
+    start_server_if_needed(global_config, yes).await?;
 
     vm_println!("📦 Publishing package to local registry...");
 
@@ -221,38 +231,120 @@ fn prompt_start_server() -> VmResult<bool> {
     Ok(confirmed)
 }
 
-/// Start server in background if needed using ServiceManager
-async fn start_server_if_needed(global_config: &GlobalConfig) -> VmResult<()> {
+/// Start server in background if needed as a detached process
+async fn start_server_if_needed(global_config: &GlobalConfig, yes: bool) -> VmResult<()> {
     if check_server_running(global_config).await {
         return Ok(());
     }
 
-    if prompt_start_server()? {
+    if yes || prompt_start_server()? {
         vm_println!("🚀 Starting package registry server...");
 
-        let service_manager = get_service_manager();
+        let data_dir = std::env::current_dir()?.join(".vm-packages");
+        let port = global_config.services.package_registry.port;
 
-        // Create a modified config with package_registry enabled
-        let mut enabled_config = global_config.clone();
-        enabled_config.services.package_registry.enabled = true;
+        // Get path to current vm binary
+        let vm_bin = std::env::current_exe().context("Failed to get current executable path")?;
 
-        // Register a synthetic "pkg-cli" VM to keep the service alive
-        // This ensures the server persists beyond the CLI command lifetime
-        service_manager
-            .register_vm_services("pkg-cli", &enabled_config)
-            .await
-            .map_err(|e| {
-                VmError::from(anyhow::anyhow!("Failed to start package registry: {}", e))
-            })?;
+        // Spawn server as a detached background process using nohup
+        // This ensures it persists after the CLI exits
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            use std::process::Command;
 
-        vm_success!("Package registry started successfully");
-        vm_println!("💡 Service will remain running for package operations");
-        vm_println!("   To stop: unregister with 'vm pkg stop' or destroy VMs using it");
+            let log_file = data_dir.join("server.log");
+            std::fs::create_dir_all(&data_dir)?;
+
+            // Use nohup to detach the process from the terminal
+            let child = Command::new("nohup")
+                .arg(vm_bin)
+                .arg("pkg")
+                .arg("serve")
+                .arg("--host")
+                .arg("0.0.0.0")
+                .arg("--port")
+                .arg(port.to_string())
+                .arg("--data")
+                .arg(&data_dir)
+                .stdout(std::fs::File::create(&log_file)?)
+                .stderr(std::fs::File::create(data_dir.join("server.err.log"))?)
+                .stdin(std::process::Stdio::null())
+                .process_group(0) // Create new process group
+                .spawn()
+                .context("Failed to spawn package server")?;
+
+            vm_println!("📝 Server logs: {}", log_file.display());
+            drop(child); // Drop handle to detach
+        }
+
+        #[cfg(windows)]
+        {
+            use std::process::Command;
+
+            let log_file = data_dir.join("server.log");
+            std::fs::create_dir_all(&data_dir)?;
+
+            // Windows: use START /B for background execution
+            Command::new("cmd")
+                .args(["/C", "START", "/B"])
+                .arg(vm_bin)
+                .arg("pkg")
+                .arg("serve")
+                .arg("--host")
+                .arg("0.0.0.0")
+                .arg("--port")
+                .arg(port.to_string())
+                .arg("--data")
+                .arg(&data_dir)
+                .stdout(std::fs::File::create(&log_file)?)
+                .stderr(std::fs::File::create(data_dir.join("server.err.log"))?)
+                .stdin(std::process::Stdio::null())
+                .spawn()
+                .context("Failed to spawn package server")?;
+
+            vm_println!("📝 Server logs: {}", log_file.display());
+        }
+
+        // Give server time to start
+        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+
+        // Verify it started
+        if check_server_running(global_config).await {
+            vm_success!("Package registry started successfully on port {}", port);
+            vm_println!("💡 Server is running as a detached background process");
+            vm_println!("   Access at: http://localhost:{}", port);
+        } else {
+            return Err(VmError::from(anyhow::anyhow!(
+                "Server process started but health check failed. Check logs at {}",
+                data_dir.join("server.log").display()
+            )));
+        }
     } else {
         return Err(VmError::from(anyhow::anyhow!(
             "Package registry server is required but not running"
         )));
     }
+
+    Ok(())
+}
+
+/// Handle serve command - run the package server (internal use)
+async fn handle_serve(
+    host: &str,
+    port: u16,
+    data: &std::path::Path,
+    _global_config: &GlobalConfig,
+) -> VmResult<()> {
+    vm_println!("🚀 Starting package registry server...");
+    vm_println!("   Host: {}", host);
+    vm_println!("   Port: {}", port);
+    vm_println!("   Data: {}", data.display());
+
+    // Run the server (blocks until shutdown)
+    vm_package_server::server::run_server_background(host.to_string(), port, data.to_path_buf())
+        .await
+        .context("Failed to run package server")?;
 
     Ok(())
 }
