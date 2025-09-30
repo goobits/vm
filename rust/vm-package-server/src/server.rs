@@ -104,6 +104,7 @@ async fn run_server_internal(
         .route("/status", get(status_handler))
         .route("/setup.sh", get(setup_script_handler))
         .route("/health", get(health_handler))
+        .route("/api/packages", get(list_packages_handler))
         .route("/shutdown", post(shutdown_handler))
         .route("/npm/{package}", put(npm::publish_package))
         .route("/npm/{package}/-/{filename}", get(npm::download_tarball))
@@ -224,6 +225,24 @@ async fn health_handler() -> impl IntoResponse {
     headers.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
 
     (StatusCode::OK, headers, response)
+}
+
+async fn list_packages_handler(State(_state): State<Arc<AppState>>) -> impl IntoResponse {
+    match crate::local_storage::list_local_packages() {
+        Ok(packages) => {
+            let json = serde_json::to_string(&packages).unwrap_or_else(|_| "{}".to_string());
+            let mut headers = HeaderMap::new();
+            headers.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+            (StatusCode::OK, headers, json)
+        }
+        Err(e) => {
+            error!("Failed to list packages: {}", e);
+            let error_response = format!(r#"{{"error": "{}"}}"#, e);
+            let mut headers = HeaderMap::new();
+            headers.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+            (StatusCode::INTERNAL_SERVER_ERROR, headers, error_response)
+        }
+    }
 }
 
 async fn shutdown_handler() -> impl IntoResponse {
