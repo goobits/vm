@@ -1,6 +1,12 @@
 [build]
 target-dir = "../.build/target"
+# Use sccache for distributed compilation caching
+rustc-wrapper = "sccache"
 
 [alias]
 dead-code = "clippy -- -D dead_code"
 dead-deps = "machete"
+
+# Use mold linker for faster parallel linking
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
