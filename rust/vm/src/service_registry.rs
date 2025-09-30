@@ -103,11 +103,24 @@ impl ServiceRegistry {
 
     /// Load services from plugins
     fn load_plugin_services(&mut self) -> Result<()> {
-        let discovery = vm_plugin::PluginDiscovery::new()?;
+        let plugins = vm_plugin::discover_plugins()?;
+        let service_plugins = vm_plugin::get_service_plugins(&plugins);
 
-        for (plugin_name, plugin_service) in discovery.get_all_services() {
+        for plugin in service_plugins {
+            // Load service content
+            let content = match vm_plugin::load_service_content(plugin) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!(
+                        "Warning: Failed to load service content from plugin {}: {}",
+                        plugin.info.name, e
+                    );
+                    continue;
+                }
+            };
+
             // Parse port from first port mapping (format: "host:container" or just "port")
-            let port = if let Some(port_mapping) = plugin_service.ports.first() {
+            let port = if let Some(port_mapping) = content.ports.first() {
                 let port_str = port_mapping.split(':').next().unwrap_or(port_mapping);
                 port_str.parse::<u16>().unwrap_or(8000)
             } else {
@@ -116,23 +129,25 @@ impl ServiceRegistry {
 
             // Create service definition from plugin service
             let service_def = ServiceDefinition {
-                name: plugin_service.name.clone(),
-                display_name: plugin_service
+                name: plugin.info.name.clone(),
+                display_name: plugin
+                    .info
                     .description
                     .clone()
-                    .unwrap_or_else(|| plugin_service.name.clone()),
+                    .unwrap_or_else(|| plugin.info.name.clone()),
                 port,
-                health_endpoint: "/".to_string(), // Default health endpoint
-                description: plugin_service
+                health_endpoint: content.health_check.unwrap_or_else(|| "/".to_string()), // Use health_check or default to "/"
+                description: plugin
+                    .info
                     .description
                     .clone()
-                    .unwrap_or_else(|| format!("Plugin service from {}", plugin_name)),
+                    .unwrap_or_else(|| format!("Service from {} plugin", plugin.info.name)),
                 supports_graceful_shutdown: true,
             };
 
             // Add to registry (plugin services don't override built-in ones)
             self.services
-                .entry(plugin_service.name.clone())
+                .entry(plugin.info.name.clone())
                 .or_insert(service_def);
         }
 

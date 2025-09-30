@@ -241,6 +241,9 @@ pub enum PluginSubcommand {
     New {
         /// Plugin name
         plugin_name: String,
+        /// Plugin type (preset or service)
+        #[arg(long)]
+        r#type: String,
     },
 }
 

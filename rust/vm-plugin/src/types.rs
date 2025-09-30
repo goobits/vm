@@ -1,52 +1,62 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::path::PathBuf;
 
-/// Plugin manifest file (plugin.yaml)
+/// Plugin metadata (stored in plugin.yaml)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PluginManifest {
+pub struct PluginInfo {
     pub name: String,
     pub version: String,
     pub description: Option<String>,
     pub author: Option<String>,
-
-    #[serde(default)]
-    pub presets: Vec<PluginPreset>,
-
-    #[serde(default)]
-    pub services: Vec<PluginService>,
+    pub plugin_type: PluginType,
 }
 
-/// Plugin preset definition
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PluginPreset {
-    pub name: String,
-    pub description: Option<String>,
-    pub base_image: String,
+/// Plugin type discriminator
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PluginType {
+    Preset,
+    Service,
+}
 
+/// Complete plugin with metadata and content file path
+#[derive(Debug, Clone)]
+pub struct Plugin {
+    pub info: PluginInfo,
+    pub content_file: PathBuf,
+}
+
+/// Preset content (stored in preset.yaml)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PresetContent {
     #[serde(default)]
     pub packages: Vec<String>,
+
+    #[serde(default)]
+    pub npm_packages: Vec<String>,
+
+    #[serde(default)]
+    pub pip_packages: Vec<String>,
+
+    #[serde(default)]
+    pub cargo_packages: Vec<String>,
 
     #[serde(default)]
     pub services: Vec<String>,
 
     #[serde(default)]
-    pub env: HashMap<String, String>,
+    pub environment: std::collections::HashMap<String, String>,
 
     #[serde(default)]
-    pub ports: Vec<String>,
-
-    #[serde(default)]
-    pub volumes: Vec<String>,
+    pub aliases: std::collections::HashMap<String, String>,
 
     #[serde(default)]
     pub provision: Vec<String>,
 }
 
-/// Plugin service definition
+/// Service content (stored in service.yaml)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PluginService {
-    pub name: String,
-    pub description: Option<String>,
+pub struct ServiceContent {
     pub image: String,
 
     #[serde(default)]
@@ -56,13 +66,16 @@ pub struct PluginService {
     pub volumes: Vec<String>,
 
     #[serde(default)]
-    pub env: HashMap<String, String>,
+    pub environment: std::collections::HashMap<String, String>,
 
     #[serde(default)]
     pub command: Option<Vec<String>>,
 
     #[serde(default)]
     pub depends_on: Vec<String>,
+
+    #[serde(default)]
+    pub health_check: Option<String>,
 }
 
 #[cfg(test)]
@@ -70,82 +83,91 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_deserialize_minimal_manifest() {
+    fn test_deserialize_plugin_info_preset() {
         let yaml = r#"
-name: test-plugin
+name: rust-advanced
 version: 1.0.0
+description: Advanced Rust development environment
+author: Example Author
+plugin_type: preset
 "#;
-        let manifest: PluginManifest = serde_yaml_ng::from_str(yaml).unwrap();
-        assert_eq!(manifest.name, "test-plugin");
-        assert_eq!(manifest.version, "1.0.0");
-        assert!(manifest.presets.is_empty());
-        assert!(manifest.services.is_empty());
+        let info: PluginInfo = serde_yaml_ng::from_str(yaml).unwrap();
+        assert_eq!(info.name, "rust-advanced");
+        assert_eq!(info.version, "1.0.0");
+        assert_eq!(info.plugin_type, PluginType::Preset);
     }
 
     #[test]
-    fn test_deserialize_full_manifest() {
+    fn test_deserialize_plugin_info_service() {
         let yaml = r#"
-name: test-plugin
-version: 1.0.0
-description: A test plugin
-author: Test Author
-presets:
-  - name: test-preset
-    description: Test preset
-    base_image: ubuntu:22.04
-    packages:
-      - curl
-      - git
-    services:
-      - postgres
-    env:
-      FOO: bar
-    ports:
-      - "8080:8080"
-    volumes:
-      - "./data:/data"
-    provision:
-      - echo "Hello"
-services:
-  - name: test-service
-    description: Test service
-    image: postgres:15
-    ports:
-      - "5432:5432"
-    volumes:
-      - "pgdata:/var/lib/postgresql/data"
-    env:
-      POSTGRES_PASSWORD: secret
-    depends_on:
-      - redis
+name: redis-sentinel
+version: 2.0.0
+plugin_type: service
 "#;
-        let manifest: PluginManifest = serde_yaml_ng::from_str(yaml).unwrap();
-        assert_eq!(manifest.name, "test-plugin");
-        assert_eq!(manifest.version, "1.0.0");
-        assert_eq!(manifest.description, Some("A test plugin".to_string()));
-        assert_eq!(manifest.author, Some("Test Author".to_string()));
-        assert_eq!(manifest.presets.len(), 1);
-        assert_eq!(manifest.services.len(), 1);
+        let info: PluginInfo = serde_yaml_ng::from_str(yaml).unwrap();
+        assert_eq!(info.name, "redis-sentinel");
+        assert_eq!(info.plugin_type, PluginType::Service);
+    }
 
-        let preset = &manifest.presets[0];
-        assert_eq!(preset.name, "test-preset");
-        assert_eq!(preset.base_image, "ubuntu:22.04");
-        assert_eq!(preset.packages.len(), 2);
-        assert_eq!(preset.services.len(), 1);
-        assert_eq!(preset.env.get("FOO"), Some(&"bar".to_string()));
-        assert_eq!(preset.ports.len(), 1);
-        assert_eq!(preset.volumes.len(), 1);
-        assert_eq!(preset.provision.len(), 1);
-
-        let service = &manifest.services[0];
-        assert_eq!(service.name, "test-service");
-        assert_eq!(service.image, "postgres:15");
-        assert_eq!(service.ports.len(), 1);
-        assert_eq!(service.volumes.len(), 1);
+    #[test]
+    fn test_deserialize_preset_content() {
+        let yaml = r#"
+packages:
+  - curl
+  - git
+npm_packages:
+  - typescript
+services:
+  - postgres
+environment:
+  RUST_LOG: debug
+provision:
+  - echo "Setup complete"
+"#;
+        let content: PresetContent = serde_yaml_ng::from_str(yaml).unwrap();
+        assert_eq!(content.packages.len(), 2);
+        assert_eq!(content.npm_packages.len(), 1);
+        assert_eq!(content.services.len(), 1);
         assert_eq!(
-            service.env.get("POSTGRES_PASSWORD"),
+            content.environment.get("RUST_LOG"),
+            Some(&"debug".to_string())
+        );
+        assert_eq!(content.provision.len(), 1);
+    }
+
+    #[test]
+    fn test_deserialize_service_content() {
+        let yaml = r#"
+image: redis:7-alpine
+ports:
+  - "6379:6379"
+volumes:
+  - "redis_data:/data"
+environment:
+  REDIS_PASSWORD: secret
+depends_on:
+  - postgres
+"#;
+        let content: ServiceContent = serde_yaml_ng::from_str(yaml).unwrap();
+        assert_eq!(content.image, "redis:7-alpine");
+        assert_eq!(content.ports.len(), 1);
+        assert_eq!(content.volumes.len(), 1);
+        assert_eq!(
+            content.environment.get("REDIS_PASSWORD"),
             Some(&"secret".to_string())
         );
-        assert_eq!(service.depends_on.len(), 1);
+        assert_eq!(content.depends_on.len(), 1);
+    }
+
+    #[test]
+    fn test_plugin_type_serialization() {
+        let preset = PluginType::Preset;
+        let service = PluginType::Service;
+
+        let preset_yaml = serde_yaml_ng::to_string(&preset).unwrap();
+        let service_yaml = serde_yaml_ng::to_string(&service).unwrap();
+
+        assert!(preset_yaml.contains("preset"));
+        assert!(service_yaml.contains("service"));
     }
 }

@@ -80,26 +80,45 @@ impl PresetDetector {
 
     /// Load a preset from plugins
     fn load_plugin_preset(&self, name: &str) -> Result<Option<VmConfig>> {
-        let discovery = match vm_plugin::PluginDiscovery::new() {
-            Ok(d) => d,
+        let plugins = match vm_plugin::discover_plugins() {
+            Ok(p) => p,
             Err(_) => return Ok(None), // No plugins available
         };
 
-        if let Some((_, plugin_preset)) = discovery.get_preset(name) {
-            // Convert plugin preset to VmConfig
-            // Note: Plugin presets provide basic configuration that gets merged
-            // with other config sources during the normal merge process
+        // Find preset plugin by name
+        let preset_plugin = plugins
+            .iter()
+            .find(|p| p.info.plugin_type == vm_plugin::PluginType::Preset && p.info.name == name);
 
-            // Convert HashMap to IndexMap for environment
-            let environment: indexmap::IndexMap<String, String> = plugin_preset
-                .env
+        if let Some(plugin) = preset_plugin {
+            // Load preset content
+            let content = match vm_plugin::load_preset_content(plugin) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!(
+                        "Warning: Failed to load preset content from plugin {}: {}",
+                        name, e
+                    );
+                    return Ok(None);
+                }
+            };
+
+            // Convert PresetContent to VmConfig
+            let environment: indexmap::IndexMap<String, String> = content
+                .environment
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+
+            let aliases: indexmap::IndexMap<String, String> = content
+                .aliases
                 .iter()
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect();
 
             // Convert services list to ServiceConfig map
             let mut services = indexmap::IndexMap::new();
-            for service_name in &plugin_preset.services {
+            for service_name in &content.services {
                 use crate::config::ServiceConfig;
                 services.insert(
                     service_name.clone(),
@@ -110,38 +129,16 @@ impl PresetDetector {
                 );
             }
 
-            let mut config = VmConfig {
-                apt_packages: plugin_preset.packages.clone(),
+            let config = VmConfig {
+                apt_packages: content.packages,
+                npm_packages: content.npm_packages,
+                pip_packages: content.pip_packages,
+                cargo_packages: content.cargo_packages,
                 environment,
+                aliases,
                 services,
                 ..Default::default()
             };
-
-            // Store base_image, ports, volumes, provision in extra_config for now
-            // These can be used by provider-specific handling if needed
-            use serde_json::json;
-            if !plugin_preset.base_image.is_empty() {
-                config.extra_config.insert(
-                    "plugin_base_image".to_string(),
-                    json!(plugin_preset.base_image),
-                );
-            }
-            if !plugin_preset.ports.is_empty() {
-                config
-                    .extra_config
-                    .insert("plugin_ports".to_string(), json!(plugin_preset.ports));
-            }
-            if !plugin_preset.volumes.is_empty() {
-                config
-                    .extra_config
-                    .insert("plugin_volumes".to_string(), json!(plugin_preset.volumes));
-            }
-            if !plugin_preset.provision.is_empty() {
-                config.extra_config.insert(
-                    "plugin_provision".to_string(),
-                    json!(plugin_preset.provision),
-                );
-            }
 
             return Ok(Some(config));
         }
@@ -195,18 +192,17 @@ impl PresetDetector {
 
     /// Get list of presets from plugins
     fn get_plugin_presets(&self) -> Result<Vec<String>> {
-        let discovery = match vm_plugin::PluginDiscovery::new() {
-            Ok(d) => d,
+        let plugins = match vm_plugin::discover_plugins() {
+            Ok(p) => p,
             Err(_) => return Ok(Vec::new()), // No plugins available
         };
 
-        let plugin_presets = discovery
-            .get_all_presets()
+        let preset_names = vm_plugin::get_preset_plugins(&plugins)
             .into_iter()
-            .map(|(_, preset)| preset.name.clone())
+            .map(|p| p.info.name.clone())
             .collect();
 
-        Ok(plugin_presets)
+        Ok(preset_names)
     }
 }
 
