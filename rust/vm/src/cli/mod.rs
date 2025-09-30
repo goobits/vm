@@ -8,8 +8,14 @@ use clap::{Parser, Subcommand};
 
 #[derive(Debug, Clone, Parser)]
 #[command(name = "vm")]
-#[command(about = "A modern, fast, and portable VM management tool")]
-#[command(version)]
+#[command(version = env!("CARGO_PKG_VERSION"))]
+#[command(author = "Goobits VM Contributors")]
+#[command(about = "A modern, fast, and portable VM management tool", long_about = None)]
+#[command(before_help = format!("\
+vm v{} - Modern VM Management Tool
+By Goobits VM Contributors
+
+", env!("CARGO_PKG_VERSION")))]
 pub struct Args {
     #[command(subcommand)]
     pub command: Command,
