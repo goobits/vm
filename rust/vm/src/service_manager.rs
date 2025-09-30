@@ -199,40 +199,6 @@ impl ServiceManager {
         Ok(())
     }
 
-    /// Ensure a service is running (for commands that need specific services)
-    #[allow(dead_code)]
-    pub async fn ensure_service_running(&self, service_name: &str) -> Result<bool> {
-        let is_running = {
-            let state_guard = self.state.lock().unwrap();
-            state_guard
-                .get(service_name)
-                .map(|s| s.is_running)
-                .unwrap_or(false)
-        };
-
-        if !is_running {
-            debug!(
-                "Service '{}' not running, checking actual status",
-                service_name
-            );
-            // TODO: Fix this when GlobalConfig is available
-            // Check if service is actually running but not tracked
-            // if self.check_service_health(service_name, global_config).await {
-            //     // Update state to reflect reality
-            //     {
-            //         let mut state_guard = self.state.lock().unwrap();
-            //         if let Some(service_state) = state_guard.get_mut(service_name) {
-            //             service_state.is_running = true;
-            //         }
-            //     }
-            //     self.save_state()?;
-            //     return Ok(true);
-            // }
-        }
-
-        Ok(is_running)
-    }
-
     /// Get service status information
     pub fn get_service_status(&self, service_name: &str) -> Option<ServiceState> {
         let state_guard = self.state.lock().unwrap();
