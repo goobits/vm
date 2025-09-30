@@ -3169,10 +3169,6 @@ dependencies = [
 [[package]]
 name = "vm-cli"
 version = "2.0.3"
-dependencies = [
- "vm-core",
- "vm-messages",
-]
 
 [[package]]
 name = "vm-config"
@@ -3316,11 +3312,9 @@ name = "vm-plugin"
 version = "2.0.3"
 dependencies = [
  "anyhow",
- "glob",
  "serde",
  "serde_yaml_ng",
  "tempfile",
- "vm-core",
  "vm-platform",
 ]
 

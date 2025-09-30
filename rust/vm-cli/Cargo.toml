@@ -4,5 +4,3 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-vm-messages = { path = "../vm-messages" }
-vm-core = { path = "../vm-core" }

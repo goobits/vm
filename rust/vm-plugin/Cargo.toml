@@ -12,10 +12,8 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow = { workspace = true }
-glob = { workspace = true }
 serde = { workspace = true }
 serde_yaml_ng = { workspace = true }
-vm-core = { path = "../vm-core" }
 vm-platform = { path = "../vm-platform" }
 
 [dev-dependencies]
