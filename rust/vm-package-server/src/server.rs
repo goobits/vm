@@ -227,8 +227,25 @@ async fn health_handler() -> impl IntoResponse {
     (StatusCode::OK, headers, response)
 }
 
-async fn list_packages_handler(State(_state): State<Arc<AppState>>) -> impl IntoResponse {
-    match crate::local_storage::list_local_packages() {
+async fn list_packages_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    // Change to the data directory so local_storage functions work
+    let original_dir = std::env::current_dir().ok();
+    if let Err(e) = std::env::set_current_dir(&state.data_dir) {
+        error!("Failed to change to data directory: {}", e);
+        let error_response = r#"{"error": "Failed to access data directory"}"#.to_string();
+        let mut headers = HeaderMap::new();
+        headers.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+        return (StatusCode::INTERNAL_SERVER_ERROR, headers, error_response);
+    }
+
+    let result = crate::local_storage::list_local_packages();
+
+    // Restore original directory
+    if let Some(orig) = original_dir {
+        let _ = std::env::set_current_dir(orig);
+    }
+
+    match result {
         Ok(packages) => {
             let json = serde_json::to_string(&packages).unwrap_or_else(|_| "{}".to_string());
             let mut headers = HeaderMap::new();

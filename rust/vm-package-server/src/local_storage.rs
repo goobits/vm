@@ -23,7 +23,7 @@ pub fn list_local_packages() -> Result<HashMap<String, Vec<String>>> {
 
 /// List Python packages from local storage
 fn list_pypi_packages() -> Result<Vec<String>> {
-    let pypi_dir = Path::new("data/pypi/packages");
+    let pypi_dir = Path::new("pypi/packages");
     let mut packages = HashSet::new();
 
     if !pypi_dir.exists() {
@@ -51,7 +51,7 @@ fn list_pypi_packages() -> Result<Vec<String>> {
 
 /// List NPM packages from local storage
 fn list_npm_packages() -> Result<Vec<String>> {
-    let npm_metadata_dir = Path::new("data/npm/metadata");
+    let npm_metadata_dir = Path::new("npm/metadata");
     let mut packages = Vec::new();
 
     if !npm_metadata_dir.exists() {
@@ -74,7 +74,7 @@ fn list_npm_packages() -> Result<Vec<String>> {
 
 /// List Cargo crates from local storage
 fn list_cargo_crates() -> Result<Vec<String>> {
-    let cargo_index_dir = Path::new("data/cargo/index");
+    let cargo_index_dir = Path::new("cargo/index");
     let mut crates = HashSet::new();
 
     if !cargo_index_dir.exists() {
