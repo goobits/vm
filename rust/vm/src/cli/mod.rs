@@ -245,6 +245,11 @@ pub enum PluginSubcommand {
         #[arg(long)]
         r#type: String,
     },
+    /// Validate a plugin's configuration
+    Validate {
+        /// Plugin name to validate
+        plugin_name: String,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]

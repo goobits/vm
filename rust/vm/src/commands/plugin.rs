@@ -1,7 +1,10 @@
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::PathBuf;
-use vm_plugin::{discover_plugins, get_preset_plugins, get_service_plugins, PluginType};
+use vm_plugin::{
+    discover_plugins, get_preset_plugins, get_service_plugins, validate_plugin_with_context,
+    PluginType,
+};
 
 pub fn handle_plugin_list() -> Result<()> {
     let plugins = discover_plugins()?;
@@ -156,6 +159,40 @@ pub fn handle_plugin_install(source_path: &str) -> Result<()> {
         );
     }
 
+    // Create temporary plugin object for validation
+    let temp_plugin = vm_plugin::Plugin {
+        info: info.clone(),
+        content_file: source.join(content_file),
+    };
+
+    // Validate plugin before installation
+    println!("Validating plugin...");
+    let validation_result = vm_plugin::validate_plugin(&temp_plugin)?;
+
+    if !validation_result.is_valid {
+        println!("✗ Plugin validation failed:");
+        println!();
+        for error in &validation_result.errors {
+            println!("  ✗ [{}] {}", error.field, error.message);
+            if let Some(suggestion) = &error.fix_suggestion {
+                println!("    → {}", suggestion);
+            }
+        }
+        println!();
+        anyhow::bail!(
+            "Cannot install plugin: validation failed with {} errors",
+            validation_result.errors.len()
+        );
+    }
+
+    if !validation_result.warnings.is_empty() {
+        println!("⚠ Warnings:");
+        for warning in &validation_result.warnings {
+            println!("  {}", warning);
+        }
+        println!();
+    }
+
     // Get plugins directory
     let plugins_base = vm_platform::platform::vm_state_dir()
         .map_err(|e| anyhow::anyhow!("Could not determine VM state directory: {}", e))?
@@ -221,6 +258,64 @@ pub fn handle_plugin_remove(plugin_name: &str) -> Result<()> {
     } else {
         anyhow::bail!("Plugin '{}' is not installed", plugin_name);
     }
+}
+
+pub fn handle_plugin_validate(plugin_name: &str) -> Result<()> {
+    let plugins = discover_plugins()?;
+
+    let plugin = plugins
+        .iter()
+        .find(|p| p.info.name == plugin_name)
+        .ok_or_else(|| anyhow::anyhow!("Plugin '{}' not found", plugin_name))?;
+
+    println!("Validating plugin: {}", plugin.info.name);
+    println!();
+
+    let result = validate_plugin_with_context(plugin)?;
+
+    if result.is_valid {
+        println!("✓ Validation passed!");
+        println!();
+
+        if !result.warnings.is_empty() {
+            println!("Warnings:");
+            for warning in &result.warnings {
+                println!("  ⚠ {}", warning);
+            }
+            println!();
+        }
+
+        println!("Plugin '{}' is valid and ready to use.", plugin.info.name);
+    } else {
+        println!("✗ Validation failed!");
+        println!();
+
+        if !result.errors.is_empty() {
+            println!("Errors:");
+            for error in &result.errors {
+                println!("  ✗ [{}] {}", error.field, error.message);
+                if let Some(suggestion) = &error.fix_suggestion {
+                    println!("    → {}", suggestion);
+                }
+            }
+            println!();
+        }
+
+        if !result.warnings.is_empty() {
+            println!("Warnings:");
+            for warning in &result.warnings {
+                println!("  ⚠ {}", warning);
+            }
+            println!();
+        }
+
+        anyhow::bail!(
+            "Plugin validation failed with {} errors",
+            result.errors.len()
+        );
+    }
+
+    Ok(())
 }
 
 // Helper function to recursively copy directories

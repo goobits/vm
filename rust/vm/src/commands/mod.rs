@@ -342,5 +342,8 @@ fn handle_plugin_command(command: &PluginSubcommand) -> VmResult<()> {
             plugin_name,
             r#type,
         } => plugin_new::handle_plugin_new(plugin_name, r#type).map_err(VmError::from),
+        PluginSubcommand::Validate { plugin_name } => {
+            plugin::handle_plugin_validate(plugin_name).map_err(VmError::from)
+        }
     }
 }
