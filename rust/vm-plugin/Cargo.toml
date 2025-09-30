@@ -1,10 +1,14 @@
 [package]
 name = "vm-plugin"
-version = "0.1.0"
-edition = "2021"
-authors = ["VM Team"]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
 description = "Plugin system for VM tool"
-license = "MIT"
+
+[lib]
+name = "vm_plugin"
+path = "src/lib.rs"
 
 [dependencies]
 anyhow = { workspace = true }
