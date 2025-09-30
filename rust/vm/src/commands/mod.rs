@@ -3,7 +3,7 @@
 use crate::error::{VmError, VmResult};
 use tracing::debug;
 // Import the CLI types
-use crate::cli::{Args, Command};
+use crate::cli::{Args, Command, PluginSubcommand};
 use vm_config::{init_config_file, AppConfig};
 use vm_core::{vm_error, vm_println};
 use vm_provider::get_provider;
@@ -13,6 +13,8 @@ pub mod auth;
 pub mod config;
 pub mod doctor;
 pub mod pkg;
+pub mod plugin;
+pub mod plugin_new;
 pub mod temp;
 pub mod uninstall;
 pub mod update;
@@ -74,6 +76,10 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
                 }
             };
             auth::handle_auth_command(command, global_config).await
+        }
+        Command::Plugin { command } => {
+            debug!("Calling plugin operations");
+            handle_plugin_command(command)
         }
         _ => {
             // Provider-based commands
@@ -318,4 +324,22 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
     };
 
     result
+}
+
+fn handle_plugin_command(command: &PluginSubcommand) -> VmResult<()> {
+    match command {
+        PluginSubcommand::List => plugin::handle_plugin_list().map_err(VmError::from),
+        PluginSubcommand::Info { plugin_name } => {
+            plugin::handle_plugin_info(plugin_name).map_err(VmError::from)
+        }
+        PluginSubcommand::Install { source_path } => {
+            plugin::handle_plugin_install(source_path).map_err(VmError::from)
+        }
+        PluginSubcommand::Remove { plugin_name } => {
+            plugin::handle_plugin_remove(plugin_name).map_err(VmError::from)
+        }
+        PluginSubcommand::New { plugin_name } => {
+            plugin_new::handle_plugin_new(plugin_name).map_err(VmError::from)
+        }
+    }
 }

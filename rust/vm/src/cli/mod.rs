@@ -219,6 +219,32 @@ pub enum AuthSubcommand {
 }
 
 #[derive(Debug, Clone, Subcommand)]
+pub enum PluginSubcommand {
+    /// List installed plugins
+    List,
+    /// Show plugin information
+    Info {
+        /// Plugin name
+        plugin_name: String,
+    },
+    /// Install a plugin from a directory
+    Install {
+        /// Path to plugin directory
+        source_path: String,
+    },
+    /// Remove an installed plugin
+    Remove {
+        /// Plugin name to remove
+        plugin_name: String,
+    },
+    /// Create a new plugin template
+    New {
+        /// Plugin name
+        plugin_name: String,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
 pub enum Command {
     /// Initialize a new VM configuration file
     Init {
@@ -358,6 +384,12 @@ pub enum Command {
     Auth {
         #[command(subcommand)]
         command: AuthSubcommand,
+    },
+
+    /// Plugin management
+    Plugin {
+        #[command(subcommand)]
+        command: PluginSubcommand,
     },
 
     /// Update vm to the latest version

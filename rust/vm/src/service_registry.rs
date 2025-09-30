@@ -91,7 +91,52 @@ impl ServiceRegistry {
             },
         );
 
-        Self { services }
+        let mut registry = Self { services };
+
+        // Load plugin services (non-fatal if plugins unavailable)
+        if let Err(e) = registry.load_plugin_services() {
+            eprintln!("Warning: Failed to load plugin services: {}", e);
+        }
+
+        registry
+    }
+
+    /// Load services from plugins
+    fn load_plugin_services(&mut self) -> Result<()> {
+        let discovery = vm_plugin::PluginDiscovery::new()?;
+
+        for (plugin_name, plugin_service) in discovery.get_all_services() {
+            // Parse port from first port mapping (format: "host:container" or just "port")
+            let port = if let Some(port_mapping) = plugin_service.ports.first() {
+                let port_str = port_mapping.split(':').next().unwrap_or(port_mapping);
+                port_str.parse::<u16>().unwrap_or(8000)
+            } else {
+                8000 // Default port if none specified
+            };
+
+            // Create service definition from plugin service
+            let service_def = ServiceDefinition {
+                name: plugin_service.name.clone(),
+                display_name: plugin_service
+                    .description
+                    .clone()
+                    .unwrap_or_else(|| plugin_service.name.clone()),
+                port,
+                health_endpoint: "/".to_string(), // Default health endpoint
+                description: plugin_service
+                    .description
+                    .clone()
+                    .unwrap_or_else(|| format!("Plugin service from {}", plugin_name)),
+                supports_graceful_shutdown: true,
+            };
+
+            // Add to registry (plugin services don't override built-in ones)
+            self.services
+                .entry(plugin_service.name.clone())
+                .or_insert(service_def);
+        }
+
+        Ok(())
     }
 
     /// Get service definition by name

@@ -54,6 +54,11 @@ impl PresetDetector {
             return Ok(preset_file.config);
         }
 
+        // Try plugin presets second
+        if let Some(config) = self.load_plugin_preset(name)? {
+            return Ok(config);
+        }
+
         // Fallback to file system (for custom presets)
         let preset_path = self.presets_dir.join(format!("{}.yaml", name));
         if !preset_path.exists() {
@@ -73,6 +78,77 @@ impl PresetDetector {
         Ok(preset_file.config)
     }
 
+    /// Load a preset from plugins
+    fn load_plugin_preset(&self, name: &str) -> Result<Option<VmConfig>> {
+        let discovery = match vm_plugin::PluginDiscovery::new() {
+            Ok(d) => d,
+            Err(_) => return Ok(None), // No plugins available
+        };
+
+        if let Some((_, plugin_preset)) = discovery.get_preset(name) {
+            // Convert plugin preset to VmConfig
+            // Note: Plugin presets provide basic configuration that gets merged
+            // with other config sources during the normal merge process
+
+            // Convert HashMap to IndexMap for environment
+            let environment: indexmap::IndexMap<String, String> = plugin_preset
+                .env
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+
+            // Convert services list to ServiceConfig map
+            let mut services = indexmap::IndexMap::new();
+            for service_name in &plugin_preset.services {
+                use crate::config::ServiceConfig;
+                services.insert(
+                    service_name.clone(),
+                    ServiceConfig {
+                        enabled: true,
+                        ..Default::default()
+                    },
+                );
+            }
+
+            let mut config = VmConfig {
+                apt_packages: plugin_preset.packages.clone(),
+                environment,
+                services,
+                ..Default::default()
+            };
+
+            // Store base_image, ports, volumes, provision in extra_config for now
+            // These can be used by provider-specific handling if needed
+            use serde_json::json;
+            if !plugin_preset.base_image.is_empty() {
+                config.extra_config.insert(
+                    "plugin_base_image".to_string(),
+                    json!(plugin_preset.base_image),
+                );
+            }
+            if !plugin_preset.ports.is_empty() {
+                config
+                    .extra_config
+                    .insert("plugin_ports".to_string(), json!(plugin_preset.ports));
+            }
+            if !plugin_preset.volumes.is_empty() {
+                config
+                    .extra_config
+                    .insert("plugin_volumes".to_string(), json!(plugin_preset.volumes));
+            }
+            if !plugin_preset.provision.is_empty() {
+                config.extra_config.insert(
+                    "plugin_provision".to_string(),
+                    json!(plugin_preset.provision),
+                );
+            }
+
+            return Ok(Some(config));
+        }
+
+        Ok(None)
+    }
+
     /// Get list of available presets
     pub fn list_presets(&self) -> Result<Vec<String>> {
         let mut presets = Vec::new();
@@ -80,6 +156,15 @@ impl PresetDetector {
         // Add embedded presets
         for name in crate::embedded_presets::get_preset_names() {
             presets.push(name.to_string());
+        }
+
+        // Add plugin presets
+        if let Ok(plugin_presets) = self.get_plugin_presets() {
+            for name in plugin_presets {
+                if !presets.contains(&name) {
+                    presets.push(name);
+                }
+            }
         }
 
         // Add file system presets (if presets dir exists)
@@ -106,6 +191,22 @@ impl PresetDetector {
 
         presets.sort();
         Ok(presets)
+    }
+
+    /// Get list of presets from plugins
+    fn get_plugin_presets(&self) -> Result<Vec<String>> {
+        let discovery = match vm_plugin::PluginDiscovery::new() {
+            Ok(d) => d,
+            Err(_) => return Ok(Vec::new()), // No plugins available
+        };
+
+        let plugin_presets = discovery
+            .get_all_presets()
+            .into_iter()
+            .map(|(_, preset)| preset.name.clone())
+            .collect();
+
+        Ok(plugin_presets)
     }
 }
 

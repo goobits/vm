@@ -1,0 +1,18 @@
+[package]
+name = "vm-plugin"
+version = "0.1.0"
+edition = "2021"
+authors = ["VM Team"]
+description = "Plugin system for VM tool"
+license = "MIT"
+
+[dependencies]
+anyhow = { workspace = true }
+glob = { workspace = true }
+serde = { workspace = true }
+serde_yaml_ng = { workspace = true }
+vm-core = { path = "../vm-core" }
+vm-platform = { path = "../vm-platform" }
+
+[dev-dependencies]
+tempfile = { workspace = true }

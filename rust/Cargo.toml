@@ -4,6 +4,7 @@ members = [
     "vm-config",
     "vm-package-manager",
     "vm-platform",
+    "vm-plugin",
     "vm-provider",
     "vm-temp",
     "vm",

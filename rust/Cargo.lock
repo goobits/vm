@@ -3162,6 +3162,8 @@ dependencies = [
  "vm-docker-registry",
  "vm-messages",
  "vm-package-server",
+ "vm-platform",
+ "vm-plugin",
  "vm-provider",
  "vm-temp",
 ]
@@ -3216,6 +3218,7 @@ dependencies = [
  "vm-cli",
  "vm-core",
  "vm-messages",
+ "vm-plugin",
  "which",
 ]
 
@@ -3332,6 +3335,19 @@ dependencies = [
  "dirs",
  "sysinfo",
  "tempfile",
+]
+
+[[package]]
+name = "vm-plugin"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "glob",
+ "serde",
+ "serde_yaml_ng",
+ "tempfile",
+ "vm-core",
+ "vm-platform",
 ]
 
 [[package]]
