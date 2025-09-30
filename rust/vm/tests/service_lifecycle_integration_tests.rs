@@ -149,7 +149,8 @@ fn test_vm_pkg_status_shows_lifecycle_info() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
 
     let fixture = CliTestFixture::new()?;
-    let output = fixture.run_vm_command(&["pkg", "status"])?;
+    // Use --yes flag to auto-start server without prompting
+    let output = fixture.run_vm_command(&["pkg", "status", "--yes"])?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
