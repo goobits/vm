@@ -47,7 +47,8 @@ WORKDIR /home/${PROJECT_USER}
 SHELL ["/bin/bash", "-c"]
 
 # --- Language Runtimes & Package Managers ---
-RUN curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh" | bash && \
+RUN --mount=type=cache,target=/home/${PROJECT_USER}/.nvm/.cache \
+    curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh" | bash && \
     export NVM_DIR="$HOME/.nvm" && \
     [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" && \
     nvm install ${NODE_VERSION} && \
@@ -56,7 +57,8 @@ RUN curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/instal
     corepack enable && \
     corepack prepare pnpm@${PNPM_VERSION} --activate
 
-RUN if [ -n "${CARGO_PACKAGES}" ]; then \
+RUN --mount=type=cache,target=/home/${PROJECT_USER}/.rustup \
+    if [ -n "${CARGO_PACKAGES}" ]; then \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_VERSION} --no-modify-path; \
 fi
 
@@ -76,7 +78,8 @@ fi
 USER ${PROJECT_USER}
 
 # NPM Package Installation
-RUN if [ -n "${NPM_PACKAGES}" ]; then \
+RUN --mount=type=cache,target=/home/${PROJECT_USER}/.npm \
+    if [ -n "${NPM_PACKAGES}" ]; then \
     for package in ${NPM_PACKAGES}; do \
         echo "Installing NPM package: $package"; \
         . "$NVM_DIR/nvm.sh" && npm install -g "$package" 2>/dev/null && \
@@ -86,7 +89,8 @@ RUN if [ -n "${NPM_PACKAGES}" ]; then \
 fi
 
 # Python Package Installation
-RUN if [ -n "${PIP_PACKAGES}" ]; then \
+RUN --mount=type=cache,target=/home/${PROJECT_USER}/.cache/pip \
+    if [ -n "${PIP_PACKAGES}" ]; then \
     for package in ${PIP_PACKAGES}; do \
         echo "Installing Python package: $package"; \
         if pip3 install --user --break-system-packages "$package" 2>/dev/null; then \
@@ -100,7 +104,9 @@ RUN if [ -n "${PIP_PACKAGES}" ]; then \
 fi
 
 # Cargo Package Installation
-RUN if [ -n "${CARGO_PACKAGES}" ]; then \
+RUN --mount=type=cache,target=/home/${PROJECT_USER}/.cargo/registry \
+    --mount=type=cache,target=/home/${PROJECT_USER}/.cargo/git \
+    if [ -n "${CARGO_PACKAGES}" ]; then \
     for package in ${CARGO_PACKAGES}; do \
         echo "Installing Cargo package: $package"; \
         if . "$HOME/.cargo/env" && cargo install "$package" 2>/dev/null; then \
