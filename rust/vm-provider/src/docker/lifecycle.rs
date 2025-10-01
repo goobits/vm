@@ -868,6 +868,24 @@ impl<'a> LifecycleOperations<'a> {
         stream_command("docker", &["start", &target_container])
     }
 
+    /// Start container with context-aware docker-compose regeneration
+    #[must_use = "container start results should be handled"]
+    pub fn start_container_with_context(
+        &self,
+        _container: Option<&str>,
+        context: &ProviderContext,
+    ) -> Result<()> {
+        // Regenerate docker-compose.yml with latest global config
+        let build_ops = BuildOperations::new(self.config, self.temp_dir);
+        let build_context = build_ops.prepare_build_context()?;
+
+        let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
+        compose_ops.write_docker_compose(&build_context, context)?;
+
+        // Use compose to start (handles both stopped containers and fresh starts)
+        compose_ops.start_with_compose(context)
+    }
+
     #[must_use = "container stop results should be handled"]
     pub fn stop_container(&self, container: Option<&str>) -> Result<()> {
         let target_container = self.resolve_target_container(container)?;
@@ -1083,6 +1101,27 @@ impl<'a> LifecycleOperations<'a> {
     pub fn restart_container(&self, container: Option<&str>) -> Result<()> {
         self.stop_container(container)?;
         self.start_container(container)
+    }
+
+    /// Restart container with context-aware docker-compose regeneration
+    #[must_use = "container restart results should be handled"]
+    pub fn restart_container_with_context(
+        &self,
+        container: Option<&str>,
+        context: &ProviderContext,
+    ) -> Result<()> {
+        // Regenerate docker-compose.yml with latest global config
+        let build_ops = BuildOperations::new(self.config, self.temp_dir);
+        let build_context = build_ops.prepare_build_context()?;
+
+        let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
+        compose_ops.write_docker_compose(&build_context, context)?;
+
+        // Stop the container first
+        self.stop_container(container)?;
+
+        // Use compose to start with updated configuration
+        compose_ops.start_with_compose(context)
     }
 
     #[must_use = "existing container provisioning results should be handled"]
@@ -2226,5 +2265,126 @@ mod tests {
         assert!(config.pip_packages.contains(&"black".to_string()));
         assert!(!config.pip_packages.contains(&"ruff".to_string()));
         assert!(!config.pip_packages.contains(&"claudeflow".to_string()));
+    }
+
+    #[test]
+    fn test_start_container_with_context_regenerates_compose() {
+        use tempfile::TempDir;
+        use vm_config::GlobalConfig;
+
+        // Create temporary directories
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path().to_path_buf();
+        let project_dir = temp_dir.path().to_path_buf();
+
+        // Create VM config with project name
+        let mut vm_config = VmConfig::default();
+        vm_config.project = Some(vm_config::config::ProjectConfig {
+            name: Some("test-project".to_string()),
+            ..Default::default()
+        });
+
+        // Create lifecycle operations
+        let lifecycle = LifecycleOperations::new(&vm_config, &temp_path, &project_dir);
+
+        // First: Create compose file WITHOUT registry
+        let context_no_registry = ProviderContext::with_verbose(false);
+        let build_ops = BuildOperations::new(&vm_config, &temp_path);
+        let build_context = build_ops.prepare_build_context().unwrap();
+        let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir);
+        compose_ops
+            .write_docker_compose(&build_context, &context_no_registry)
+            .unwrap();
+
+        let compose_path = temp_path.join("docker-compose.yml");
+        let initial_content = std::fs::read_to_string(&compose_path).unwrap();
+
+        // Verify no registry vars initially
+        assert!(
+            !initial_content.contains("NPM_CONFIG_REGISTRY="),
+            "Should NOT have registry vars initially"
+        );
+
+        // Now call start_container_with_context WITH registry enabled
+        let mut global_config = GlobalConfig::default();
+        global_config.services.package_registry.enabled = true;
+        global_config.services.package_registry.port = 3080;
+        let context_with_registry = ProviderContext::with_verbose(false).with_config(global_config);
+
+        // This will fail at the docker start stage (no Docker in test env), but should regenerate compose first
+        let _result = lifecycle.start_container_with_context(None, &context_with_registry);
+
+        // Read the compose file again - it should be regenerated with registry vars
+        let updated_content = std::fs::read_to_string(&compose_path).unwrap();
+
+        // Verify registry vars ARE present after calling start_container_with_context
+        let host = vm_platform::platform::get_host_gateway();
+        assert!(
+            updated_content.contains(&format!("NPM_CONFIG_REGISTRY=http://{}:3080/npm/", host)),
+            "Compose should be regenerated with registry vars by start_container_with_context"
+        );
+        assert!(
+            updated_content.contains("VM_CARGO_REGISTRY_HOST="),
+            "Compose should contain cargo registry host"
+        );
+
+        // Verify file actually changed
+        assert_ne!(
+            initial_content, updated_content,
+            "start_container_with_context should regenerate compose file with new config"
+        );
+    }
+
+    #[test]
+    fn test_restart_container_with_context_regenerates_compose() {
+        use tempfile::TempDir;
+        use vm_config::GlobalConfig;
+
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path().to_path_buf();
+        let project_dir = temp_dir.path().to_path_buf();
+
+        let mut vm_config = VmConfig::default();
+        vm_config.project = Some(vm_config::config::ProjectConfig {
+            name: Some("test-project".to_string()),
+            ..Default::default()
+        });
+
+        let lifecycle = LifecycleOperations::new(&vm_config, &temp_path, &project_dir);
+
+        // Create initial compose without registry
+        let context_no_registry = ProviderContext::with_verbose(false);
+        let build_ops = BuildOperations::new(&vm_config, &temp_path);
+        let build_context = build_ops.prepare_build_context().unwrap();
+        let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir);
+        compose_ops
+            .write_docker_compose(&build_context, &context_no_registry)
+            .unwrap();
+
+        let compose_path = temp_path.join("docker-compose.yml");
+        let initial_content = std::fs::read_to_string(&compose_path).unwrap();
+
+        // Enable registry and call restart_container_with_context
+        let mut global_config = GlobalConfig::default();
+        global_config.services.package_registry.enabled = true;
+        global_config.services.package_registry.port = 3090;
+        let context_with_registry = ProviderContext::with_verbose(false).with_config(global_config);
+
+        // Will fail at docker stop/start, but should regenerate compose first
+        let _result = lifecycle.restart_container_with_context(None, &context_with_registry);
+
+        // Verify compose was regenerated
+        let updated_content = std::fs::read_to_string(&compose_path).unwrap();
+        let host = vm_platform::platform::get_host_gateway();
+
+        assert!(
+            updated_content.contains(&format!("NPM_CONFIG_REGISTRY=http://{}:3090/npm/", host)),
+            "Compose should be regenerated by restart_container_with_context"
+        );
+
+        assert_ne!(
+            initial_content, updated_content,
+            "restart_container_with_context should regenerate compose"
+        );
     }
 }

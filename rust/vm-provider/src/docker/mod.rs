@@ -236,6 +236,11 @@ impl Provider for DockerProvider {
         lifecycle.start_container(container)
     }
 
+    fn start_with_context(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
+        let lifecycle = self.lifecycle_ops();
+        lifecycle.start_container_with_context(container, context)
+    }
+
     fn stop(&self, container: Option<&str>) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
         lifecycle.stop_container(container)
@@ -299,6 +304,15 @@ impl Provider for DockerProvider {
     fn restart(&self, container: Option<&str>) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
         lifecycle.restart_container(container)
+    }
+
+    fn restart_with_context(
+        &self,
+        container: Option<&str>,
+        context: &ProviderContext,
+    ) -> Result<()> {
+        let lifecycle = self.lifecycle_ops();
+        lifecycle.restart_container_with_context(container, context)
     }
 
     fn provision(&self, container: Option<&str>) -> Result<()> {

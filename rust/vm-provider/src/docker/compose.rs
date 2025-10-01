@@ -344,7 +344,6 @@ impl<'a> ComposeOperations<'a> {
         Ok(content)
     }
 
-    #[allow(dead_code)]
     pub fn start_with_compose(&self, context: &ProviderContext) -> Result<()> {
         let compose_path = self.temp_dir.join("docker-compose.yml");
         if !compose_path.exists() {
@@ -602,6 +601,147 @@ mod tests {
         assert_eq!(
             host, "host.docker.internal",
             "macOS/Windows should use host.docker.internal"
+        );
+    }
+
+    #[test]
+    fn test_start_with_compose_regenerates_with_new_config() {
+        use tempfile::TempDir;
+        use vm_config::GlobalConfig;
+
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path().to_path_buf();
+        let project_dir = temp_dir.path().to_path_buf();
+
+        // Create a basic VM config
+        let mut vm_config = VmConfig::default();
+        vm_config.project = Some(vm_config::config::ProjectConfig {
+            name: Some("test-project".to_string()),
+            ..Default::default()
+        });
+
+        // First call: Write compose file WITHOUT registry config
+        let context_without_registry = ProviderContext::with_verbose(false);
+        let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir);
+
+        // Prepare build context and write initial compose
+        let build_ops = BuildOperations::new(&vm_config, &temp_path);
+        let build_context = build_ops.prepare_build_context().unwrap();
+        let compose_path = compose_ops
+            .write_docker_compose(&build_context, &context_without_registry)
+            .unwrap();
+
+        // Read the initial compose file
+        let initial_content = std::fs::read_to_string(&compose_path).unwrap();
+
+        // Verify NO registry env vars in initial compose
+        assert!(
+            !initial_content.contains("NPM_CONFIG_REGISTRY="),
+            "Initial compose should NOT contain NPM_CONFIG_REGISTRY"
+        );
+        assert!(
+            !initial_content.contains("VM_CARGO_REGISTRY_HOST="),
+            "Initial compose should NOT contain VM_CARGO_REGISTRY_HOST"
+        );
+
+        // Second call: Write compose file WITH registry config
+        let mut global_config = GlobalConfig::default();
+        global_config.services.package_registry.enabled = true;
+        global_config.services.package_registry.port = 3080;
+
+        let context_with_registry = ProviderContext::with_verbose(false).with_config(global_config);
+
+        // Regenerate compose with registry enabled
+        compose_ops
+            .write_docker_compose(&build_context, &context_with_registry)
+            .unwrap();
+
+        // Read the updated compose file
+        let updated_content = std::fs::read_to_string(&compose_path).unwrap();
+
+        // Verify registry env vars ARE present after regeneration
+        let host = vm_platform::platform::get_host_gateway();
+        assert!(
+            updated_content.contains(&format!("NPM_CONFIG_REGISTRY=http://{}:3080/npm/", host)),
+            "Updated compose should contain NPM_CONFIG_REGISTRY with correct host and port"
+        );
+        assert!(
+            updated_content.contains(&format!("VM_CARGO_REGISTRY_HOST={}", host)),
+            "Updated compose should contain VM_CARGO_REGISTRY_HOST"
+        );
+        assert!(
+            updated_content.contains("VM_CARGO_REGISTRY_PORT=3080"),
+            "Updated compose should contain VM_CARGO_REGISTRY_PORT"
+        );
+        assert!(
+            updated_content.contains(&format!("PIP_INDEX_URL=http://{}:3080/pypi/simple/", host)),
+            "Updated compose should contain PIP_INDEX_URL"
+        );
+
+        // Verify that the file was actually regenerated (contents changed)
+        assert_ne!(
+            initial_content, updated_content,
+            "Compose file should be regenerated with different content"
+        );
+    }
+
+    #[test]
+    fn test_start_with_compose_can_disable_registry() {
+        use tempfile::TempDir;
+        use vm_config::GlobalConfig;
+
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path().to_path_buf();
+        let project_dir = temp_dir.path().to_path_buf();
+
+        let mut vm_config = VmConfig::default();
+        vm_config.project = Some(vm_config::config::ProjectConfig {
+            name: Some("test-project".to_string()),
+            ..Default::default()
+        });
+
+        // First: Enable registry
+        let mut global_config = GlobalConfig::default();
+        global_config.services.package_registry.enabled = true;
+        global_config.services.package_registry.port = 3080;
+
+        let context_with_registry =
+            ProviderContext::with_verbose(false).with_config(global_config.clone());
+
+        let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir);
+        let build_ops = BuildOperations::new(&vm_config, &temp_path);
+        let build_context = build_ops.prepare_build_context().unwrap();
+        let compose_path = compose_ops
+            .write_docker_compose(&build_context, &context_with_registry)
+            .unwrap();
+
+        let initial_content = std::fs::read_to_string(&compose_path).unwrap();
+        assert!(
+            initial_content.contains("NPM_CONFIG_REGISTRY="),
+            "Should contain registry vars when enabled"
+        );
+
+        // Second: Disable registry
+        let mut global_config_disabled = GlobalConfig::default();
+        global_config_disabled.services.package_registry.enabled = false;
+
+        let context_disabled =
+            ProviderContext::with_verbose(false).with_config(global_config_disabled);
+
+        compose_ops
+            .write_docker_compose(&build_context, &context_disabled)
+            .unwrap();
+
+        let updated_content = std::fs::read_to_string(&compose_path).unwrap();
+
+        // Verify registry vars are REMOVED after disabling
+        assert!(
+            !updated_content.contains("NPM_CONFIG_REGISTRY="),
+            "Should NOT contain registry vars when disabled"
+        );
+        assert!(
+            !updated_content.contains("VM_CARGO_REGISTRY_HOST="),
+            "Should NOT contain registry vars when disabled"
         );
     }
 }

@@ -224,7 +224,8 @@ pub async fn handle_start(
 
     println!("🚀 Starting '{}'...", vm_name);
 
-    match provider.start(container) {
+    let context = ProviderContext::with_verbose(false).with_config(global_config.clone());
+    match provider.start_with_context(container, &context) {
         Ok(()) => {
             println!("✅ Started successfully\n");
 
@@ -367,8 +368,9 @@ pub async fn handle_restart(
 
     println!("🔄 Restarting '{}'...", vm_name);
 
-    // Use provider.restart() for the actual VM restart, then handle services
-    match provider.restart(container) {
+    // Use provider.restart_with_context() for the actual VM restart, then handle services
+    let context = ProviderContext::with_verbose(false).with_config(global_config.clone());
+    match provider.restart_with_context(container, &context) {
         Ok(()) => {
             // After successful restart, register services
             let vm_instance_name = format!("{}-dev", vm_name);

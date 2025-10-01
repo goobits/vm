@@ -141,6 +141,26 @@ pub trait Provider {
     /// Restart a VM (stop then start).
     fn restart(&self, container: Option<&str>) -> Result<()>;
 
+    /// Start a VM with context (allows global config updates).
+    /// This regenerates configuration files before starting.
+    fn start_with_context(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
+        // Default: fall back to regular start, ignore context
+        let _ = context;
+        self.start(container)
+    }
+
+    /// Restart a VM with context (allows global config updates).
+    /// This regenerates configuration files before restarting.
+    fn restart_with_context(
+        &self,
+        container: Option<&str>,
+        context: &ProviderContext,
+    ) -> Result<()> {
+        // Default: fall back to regular restart, ignore context
+        let _ = context;
+        self.restart(container)
+    }
+
     /// Re-run provisioning on existing VM.
     fn provision(&self, container: Option<&str>) -> Result<()>;
 
