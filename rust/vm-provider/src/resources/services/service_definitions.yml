@@ -43,6 +43,9 @@ service_definitions:
       - postgresql
       - postgresql-contrib
     service_version_command: "ls /etc/postgresql/ | head -1"
+    service_pre_install_commands:
+      - "chown -R postgres:postgres /var/lib/postgresql || true"
+      - "chmod 700 /var/lib/postgresql || true"
     service_versioned_config_lines:
       - path: "/etc/postgresql/VERSION/main/postgresql.conf"
         regexp: "^#?port ="

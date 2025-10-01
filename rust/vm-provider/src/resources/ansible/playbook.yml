@@ -588,6 +588,7 @@
           current_service_def: "{{ service_definitions[service_item.key] | default({}) }}"
           service_packages: "{{ current_service_def.service_packages | default([]) }}"
           service_dependencies: "{{ current_service_def.service_dependencies | default([]) }}"
+          service_pre_install_commands: "{{ current_service_def.service_pre_install_commands | default([]) }}"
           service_gpg_key_url: "{{ current_service_def.service_gpg_key_url | default('') }}"
           service_repository: "{{ current_service_def.service_repository | default('') }}"
           service_config_lines: "{{ current_service_def.service_config_lines | default([]) }}"
