@@ -137,7 +137,6 @@ RUN echo '' >> /home/${PROJECT_USER}/.zshrc && \
     echo 'fi' >> /home/${PROJECT_USER}/.zshrc
 
 # --- Finalization ---
-RUN mkdir -p /workspace && chown ${PROJECT_UID}:${PROJECT_GID} /workspace
 USER ${PROJECT_USER}
 WORKDIR /workspace
 CMD ["tail", "-f", "/dev/null"]
