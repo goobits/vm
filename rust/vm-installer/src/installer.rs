@@ -25,6 +25,7 @@ pub fn install(clean: bool) -> Result<()> {
 
     let source_binary = build_workspace(&project_root)?;
     create_symlink(&source_binary, &bin_dir)?;
+    install_plugins(&project_root)?;
     platform::ensure_path(&bin_dir)?;
 
     Ok(())
@@ -190,6 +191,114 @@ fn create_symlink(source_binary: &Path, bin_dir: &Path) -> Result<()> {
         link_name.display(),
         source_binary.display()
     );
+    Ok(())
+}
+
+fn install_plugins(project_root: &Path) -> Result<()> {
+    let span = info_span!("install_plugins", operation = "install_plugins");
+    let _enter = span.enter();
+
+    vm_progress!("Installing preset plugins...");
+
+    // Get the plugins directory from the repo (go up from rust/ to root)
+    let plugins_dir = project_root
+        .parent()
+        .ok_or_else(|| {
+            vm_core::error::VmError::Internal("Could not find project root".to_string())
+        })?
+        .join("plugins");
+
+    if !plugins_dir.exists() {
+        vm_warning!("Plugins directory not found at {}", plugins_dir.display());
+        return Ok(());
+    }
+
+    // Get user's preset plugins directory
+    let user_plugins_dir = user_paths::home_dir()?.join(".vm/plugins/presets");
+    fs::create_dir_all(&user_plugins_dir).map_err(|e| {
+        vm_core::error::VmError::Internal(format!("Failed to create plugins directory: {}", e))
+    })?;
+
+    // Install each plugin from repo
+    let entries = fs::read_dir(&plugins_dir).map_err(|e| {
+        vm_core::error::VmError::Internal(format!("Failed to read plugins directory: {}", e))
+    })?;
+
+    let mut installed_count = 0;
+    for entry in entries {
+        let entry = entry.map_err(|e| {
+            vm_core::error::VmError::Internal(format!("Failed to read directory entry: {}", e))
+        })?;
+
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+
+        let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
+        // Skip non-plugin directories
+        if !dir_name.ends_with("-dev") {
+            continue;
+        }
+
+        // Extract plugin name (remove -dev suffix)
+        let plugin_name = dir_name.trim_end_matches("-dev");
+        let dest_dir = user_plugins_dir.join(plugin_name);
+
+        // Copy plugin directory
+        copy_dir_recursive(&path, &dest_dir)?;
+        installed_count += 1;
+    }
+
+    if installed_count > 0 {
+        vm_success!("Installed {} preset plugins", installed_count);
+    } else {
+        vm_warning!("No plugins found to install");
+    }
+
+    Ok(())
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    if !dst.exists() {
+        fs::create_dir_all(dst).map_err(|e| {
+            vm_core::error::VmError::Internal(format!(
+                "Failed to create directory {}: {}",
+                dst.display(),
+                e
+            ))
+        })?;
+    }
+
+    for entry in fs::read_dir(src).map_err(|e| {
+        vm_core::error::VmError::Internal(format!(
+            "Failed to read directory {}: {}",
+            src.display(),
+            e
+        ))
+    })? {
+        let entry = entry.map_err(|e| {
+            vm_core::error::VmError::Internal(format!("Failed to read entry: {}", e))
+        })?;
+        let path = entry.path();
+        let file_name = entry.file_name();
+        let dest_path = dst.join(&file_name);
+
+        if path.is_dir() {
+            copy_dir_recursive(&path, &dest_path)?;
+        } else {
+            fs::copy(&path, &dest_path).map_err(|e| {
+                vm_core::error::VmError::Internal(format!(
+                    "Failed to copy {} to {}: {}",
+                    path.display(),
+                    dest_path.display(),
+                    e
+                ))
+            })?;
+        }
+    }
+
     Ok(())
 }
 
