@@ -40,15 +40,22 @@ pub async fn handle_create(
     // Check if this is a multi-instance provider and handle accordingly
     if provider.supports_multi_instance() && instance.is_some() {
         let instance_name = instance.as_deref().unwrap();
-        println!(
-            "🚀 Creating instance '{}' for project '{}'...",
-            instance_name, vm_name
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.vm_creating_instance,
+                instance = instance_name,
+                name = vm_name
+            )
         );
 
         if force {
             debug!("Force flag set - will destroy existing instance if present");
             // Try to destroy specific instance first
-            println!("🔄 Force recreating instance '{}'...", instance_name);
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.vm_force_recreating_instance, name = instance_name)
+            );
             if let Err(e) = provider.destroy(Some(instance_name)) {
                 warn!(
                     "Failed to destroy existing instance '{}' during force create: {}",
@@ -60,7 +67,14 @@ pub async fn handle_create(
     } else {
         // Standard single-instance creation
         if let Some(instance_name) = &instance {
-            println!("ℹ️  Instance name '{}' specified but provider '{}' doesn't support multi-instance. Using default behavior.", instance_name, provider.name());
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.vm_instance_multiinstance_warning,
+                    instance = instance_name,
+                    provider = provider.name()
+                )
+            );
         }
 
         if force {
@@ -68,18 +82,18 @@ pub async fn handle_create(
             // Check if VM exists and destroy it first
             if provider.status(None).is_ok() {
                 warn!("VM exists, destroying due to --force flag");
-                println!("🔄 Force recreating '{}'...", vm_name);
+                vm_println!("{}", msg!(MESSAGES.vm_force_recreating, name = vm_name));
                 provider.destroy(None).map_err(VmError::from)?;
             }
         }
     }
 
-    println!("🚀 Creating '{}'...\n", vm_name);
-    println!("  ✓ Building Docker image");
-    println!("  ✓ Setting up volumes");
-    println!("  ✓ Configuring network");
-    println!("  ✓ Starting container");
-    println!("  ✓ Running initial provisioning");
+    vm_println!("{}", msg!(MESSAGES.vm_creating, name = vm_name));
+    vm_println!("{}", MESSAGES.vm_building_image);
+    vm_println!("{}", MESSAGES.vm_setting_up_volumes);
+    vm_println!("{}", MESSAGES.vm_configuring_network);
+    vm_println!("{}", MESSAGES.vm_starting_container);
+    vm_println!("{}", MESSAGES.vm_running_provisioning);
 
     // Create provider context with verbose flag and global config
     let context = ProviderContext::with_verbose(verbose).with_config(global_config.clone());
@@ -97,15 +111,24 @@ pub async fn handle_create(
 
     match create_result {
         Ok(()) => {
-            println!("\n✅ Created successfully\n");
+            vm_println!("{}", MESSAGES.vm_created_success);
 
             let container_name = if let Some(instance_name) = &instance {
                 format!("{}-{}", vm_name, instance_name)
             } else {
                 format!("{}-dev", vm_name)
             };
-            println!("  Status:     🟢 Running");
-            println!("  Container:  {}", container_name);
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.vm_create_status_label,
+                    status = MESSAGES.vm_status_running
+                )
+            );
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.vm_create_container_label, name = container_name)
+            );
 
             // Show resources if available
             if let Some(cpus) = config.vm.as_ref().and_then(|vm| vm.cpus) {
@@ -116,7 +139,14 @@ pub async fn handle_create(
                         Some(mb) => format!("{}MB", mb),
                         None => format!("{:?}", memory),
                     };
-                    println!("  Resources:  {} CPUs, {}", cpus, mem_str);
+                    vm_println!(
+                        "{}",
+                        msg!(
+                            MESSAGES.vm_create_resources_label,
+                            cpus = cpus.to_string(),
+                            memory = mem_str
+                        )
+                    );
                 }
             }
 
@@ -129,13 +159,26 @@ pub async fn handle_create(
                 .collect();
 
             if !services.is_empty() {
-                println!("  Services:   {}", services.join(", "));
+                vm_println!(
+                    "{}",
+                    msg!(
+                        MESSAGES.vm_create_services_label,
+                        services = services.join(", ")
+                    )
+                );
             }
 
             // Show port range
             if let Some(range) = &config.ports.range {
                 if range.len() == 2 {
-                    println!("  Ports:      {}-{}", range[0], range[1]);
+                    vm_println!(
+                        "{}",
+                        msg!(
+                            MESSAGES.vm_create_ports_label,
+                            start = range[0].to_string(),
+                            end = range[1].to_string()
+                        )
+                    );
                 }
             }
 
@@ -146,19 +189,19 @@ pub async fn handle_create(
                 format!("{}-dev", vm_name)
             };
 
-            println!("\n🔧 Configuring services...");
+            vm_println!("{}", MESSAGES.vm_configuring_services);
             register_vm_services_helper(&vm_instance_name, &global_config).await?;
 
-            println!("\n💡 Connect with: vm ssh");
+            vm_println!("{}", MESSAGES.vm_connect_hint);
             Ok(())
         }
         Err(e) => {
-            println!("\n❌ Failed to create '{}'", vm_name);
-            println!("   Error: {}", e);
-            println!("\n💡 Try:");
-            println!("   • Check Docker status: docker ps");
-            println!("   • View Docker logs: docker logs");
-            println!("   • Retry with force: vm create --force");
+            vm_println!("{}", msg!(MESSAGES.vm_create_failed, name = vm_name));
+            vm_println!("{}", msg!(MESSAGES.vm_create_error, error = e.to_string()));
+            vm_println!("{}", MESSAGES.vm_create_try_hint);
+            vm_println!("{}", MESSAGES.vm_create_check_docker);
+            vm_println!("{}", MESSAGES.vm_create_view_logs);
+            vm_println!("{}", MESSAGES.vm_create_retry_force);
             Err(VmError::from(e))
         }
     }
