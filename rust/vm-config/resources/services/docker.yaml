@@ -1,0 +1,5 @@
+---
+# Docker service configuration for vm init
+services:
+  docker:
+    enabled: false

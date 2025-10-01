@@ -1,0 +1,7 @@
+---
+# Redis service configuration for vm init
+services:
+  redis:
+    enabled: false
+    version: latest
+    port: 6379

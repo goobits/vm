@@ -161,20 +161,37 @@ pub fn execute(
 
     // Apply service configurations
     for service in services_to_configure {
-        // Load service config
+        // Try to load service config from file, or use embedded defaults
         let service_path =
             crate::paths::resolve_tool_path(format!("configs/services/{}.yaml", service));
-        if !service_path.exists() {
-            vm_error!("Unknown service: {}", service);
-            vm_error!("Available services: postgresql, redis, mongodb, docker");
-            return Err(VmError::Config(
-                "Service configuration not found".to_string(),
-            ));
-        }
 
-        let service_config = VmConfig::from_file(&service_path).map_err(|e| {
-            VmError::Config(format!("Failed to load service config: {}: {}", service, e))
-        })?;
+        let service_config = if service_path.exists() {
+            VmConfig::from_file(&service_path).map_err(|e| {
+                VmError::Config(format!("Failed to load service config: {}: {}", service, e))
+            })?
+        } else {
+            // Use embedded default configurations
+            let default_config = match service.as_str() {
+                "postgresql" => include_str!("../../../resources/services/postgresql.yaml"),
+                "redis" => include_str!("../../../resources/services/redis.yaml"),
+                "mongodb" => include_str!("../../../resources/services/mongodb.yaml"),
+                "docker" => include_str!("../../../resources/services/docker.yaml"),
+                _ => {
+                    vm_error!("Unknown service: {}", service);
+                    vm_error!("Available services: postgresql, redis, mongodb, docker");
+                    return Err(VmError::Config(
+                        "Service configuration not found".to_string(),
+                    ));
+                }
+            };
+
+            serde_yaml::from_str(default_config).map_err(|e| {
+                VmError::Config(format!(
+                    "Failed to parse embedded service config for {}: {}",
+                    service, e
+                ))
+            })?
+        };
 
         // Extract only the specific service we want to enable from the service config
         if let Some(specific_service_config) = service_config.services.get(&service) {
