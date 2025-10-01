@@ -217,8 +217,17 @@ pub fn add_cargo_package_local(crate_file: &Path, data_dir: &Path) -> Result<()>
     // Extract crate name from filename (e.g., "hello-world-1.0.0.crate" -> "hello-world")
     let filename_str = filename.to_string_lossy();
     if let Some(crate_name) = crate::utils::extract_cargo_crate_name(&filename_str) {
-        // Create index entry (simplified - just create the file)
-        let index_file = index_dir.join(&crate_name);
+        // Calculate proper index path using Cargo's index structure (e.g., "co/de/codeflow")
+        let index_path_str = crate::cargo::index_path(&crate_name)
+            .map_err(|e| anyhow::anyhow!("Failed to calculate index path: {}", e))?;
+        let index_file = index_dir.join(&index_path_str);
+
+        // Create parent directories if needed
+        if let Some(parent) = index_file.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        // Create or append to index file
         if !index_file.exists() {
             fs::write(&index_file, format!("{{\"name\":\"{}\"}}\n", crate_name))?;
         }

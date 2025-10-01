@@ -230,6 +230,40 @@ async fn check_server_running_with_url(base_url: &str) -> bool {
     }
 }
 
+/// Get the version of the running server
+async fn get_server_version(base_url: &str) -> VmResult<String> {
+    let status_url = format!("{}/api/status", base_url);
+    let response = reqwest::get(&status_url)
+        .await
+        .map_err(|e| VmError::general(e, "Failed to get server status"))?;
+
+    if !response.status().is_success() {
+        return Err(VmError::from(anyhow::anyhow!(
+            "Server returned error status"
+        )));
+    }
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| VmError::general(e, "Failed to parse server status"))?;
+
+    let version = json["version"]
+        .as_str()
+        .ok_or_else(|| VmError::from(anyhow::anyhow!("Version not found in response")))?
+        .to_string();
+
+    Ok(version)
+}
+
+/// Gracefully shutdown the server
+async fn shutdown_server(base_url: &str) -> VmResult<()> {
+    let shutdown_url = format!("{}/shutdown", base_url);
+    let client = reqwest::Client::new();
+    let _ = client.post(&shutdown_url).send().await;
+    Ok(())
+}
+
 /// Prompt user to start the server
 fn prompt_start_server() -> VmResult<bool> {
     let confirmed = Confirm::new()
@@ -243,8 +277,39 @@ fn prompt_start_server() -> VmResult<bool> {
 
 /// Start server in background if needed as a detached process
 async fn start_server_if_needed(global_config: &GlobalConfig, yes: bool) -> VmResult<()> {
+    let server_url = format!(
+        "http://localhost:{}",
+        global_config.services.package_registry.port
+    );
+
+    // Check if server is running
     if check_server_running(global_config).await {
-        return Ok(());
+        // Server is running, check if version matches
+        if let Ok(server_version) = get_server_version(&server_url).await {
+            let cli_version = env!("CARGO_PKG_VERSION");
+            if server_version != cli_version {
+                vm_println!(
+                    "⚠️  Package server version mismatch: server={}, cli={}",
+                    server_version,
+                    cli_version
+                );
+                vm_println!("🔄 Restarting package server with new version...");
+
+                // Attempt graceful shutdown
+                let _ = shutdown_server(&server_url).await;
+
+                // Wait a moment for shutdown
+                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+
+                // Fall through to start new server
+            } else {
+                // Version matches, server is good to use
+                return Ok(());
+            }
+        } else {
+            // Couldn't get version, assume server is good (backward compatibility)
+            return Ok(());
+        }
     }
 
     if yes || prompt_start_server()? {
