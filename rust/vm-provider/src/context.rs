@@ -4,12 +4,14 @@
 //! methods, allowing for runtime configuration without breaking the API.
 
 use std::env;
+use vm_config::GlobalConfig;
 
 /// Runtime context for provider operations
 #[derive(Debug, Clone, Default)]
 pub struct ProviderContext {
     /// Show detailed/verbose output
     pub verbose: bool,
+    pub global_config: Option<GlobalConfig>,
 }
 
 impl ProviderContext {
@@ -20,7 +22,16 @@ impl ProviderContext {
 
     /// Create a context with verbose output enabled
     pub fn with_verbose(verbose: bool) -> Self {
-        Self { verbose }
+        Self {
+            verbose,
+            ..Default::default()
+        }
+    }
+
+    /// Set the global config for the context
+    pub fn with_config(mut self, global_config: GlobalConfig) -> Self {
+        self.global_config = Some(global_config);
+        self
     }
 
     /// Check if verbose mode is enabled (CLI flag or environment variable)

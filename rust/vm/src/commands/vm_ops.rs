@@ -79,8 +79,8 @@ pub async fn handle_create(
     println!("  ✓ Starting container");
     println!("  ✓ Running initial provisioning");
 
-    // Create provider context with verbose flag
-    let context = ProviderContext::with_verbose(verbose);
+    // Create provider context with verbose flag and global config
+    let context = ProviderContext::with_verbose(verbose).with_config(global_config.clone());
 
     // Call the appropriate create method based on whether instance is specified
     let create_result = if let Some(instance_name) = &instance {

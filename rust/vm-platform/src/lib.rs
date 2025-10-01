@@ -72,6 +72,15 @@ pub mod platform {
     pub fn total_memory_gb() -> Result<u64> {
         current().total_memory_gb()
     }
+
+    /// Get Docker host gateway address for container-to-host communication
+    pub fn get_host_gateway() -> &'static str {
+        if cfg!(target_os = "linux") {
+            "172.17.0.1"
+        } else {
+            "host.docker.internal"
+        }
+    }
 }
 
 #[cfg(test)]

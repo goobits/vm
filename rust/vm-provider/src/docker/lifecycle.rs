@@ -309,7 +309,7 @@ impl<'a> LifecycleOperations<'a> {
 
         // Step 3: Generate docker-compose.yml with build context and modified config
         let compose_ops = ComposeOperations::new(&modified_config, self.temp_dir, self.project_dir);
-        let compose_path = compose_ops.write_docker_compose(&build_context)?;
+        let compose_path = compose_ops.write_docker_compose(&build_context, context)?;
 
         // Step 3: Gather build arguments for packages
         let build_args = build_ops.gather_build_args();
@@ -408,8 +408,11 @@ impl<'a> LifecycleOperations<'a> {
 
         // Step 3: Generate docker-compose.yml with custom instance name
         let compose_ops = ComposeOperations::new(&modified_config, self.temp_dir, self.project_dir);
-        let compose_path =
-            compose_ops.write_docker_compose_with_instance(&build_context, instance_name)?;
+        let compose_path = compose_ops.write_docker_compose_with_instance(
+            &build_context,
+            instance_name,
+            context,
+        )?;
 
         // Step 3: Gather build arguments for packages
         let build_args = build_ops.gather_build_args();

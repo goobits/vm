@@ -118,6 +118,24 @@ RUN mkdir -p /app/shared/ansible /app/shared/services /app/shared/templates /app
 COPY shared /app/shared
 RUN chown -R ${PROJECT_UID}:${PROJECT_GID} /app
 
+# --- Cargo Registry Configuration ---
+USER ${PROJECT_USER}
+RUN echo '' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '# --- VM CARGO REGISTRY CONFIGURATION ---' >> /home/${PROJECT_USER}/.zshrc && \
+    echo 'if [ -n "$VM_CARGO_REGISTRY_HOST" ] && [ -n "$VM_CARGO_REGISTRY_PORT" ]; then' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '    mkdir -p ~/.cargo' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '    cat > ~/.cargo/config.toml << EOF' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '[source.crates-io]' >> /home/${PROJECT_USER}/.zshrc && \
+    echo 'replace-with = "vm-registry"' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '[source.vm-registry]' >> /home/${PROJECT_USER}/.zshrc && \
+    echo "registry = \"sparse+http://\${VM_CARGO_REGISTRY_HOST}:\${VM_CARGO_REGISTRY_PORT}/cargo/\"" >> /home/${PROJECT_USER}/.zshrc && \
+    echo '' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '[net]' >> /home/${PROJECT_USER}/.zshrc && \
+    echo 'retry = 2' >> /home/${PROJECT_USER}/.zshrc && \
+    echo 'EOF' >> /home/${PROJECT_USER}/.zshrc && \
+    echo 'fi' >> /home/${PROJECT_USER}/.zshrc
+
 # --- Finalization ---
 RUN mkdir -p /workspace && chown ${PROJECT_UID}:${PROJECT_GID} /workspace
 USER ${PROJECT_USER}
