@@ -907,6 +907,15 @@ impl<'a> LifecycleOperations<'a> {
     #[must_use = "container destruction results should be handled"]
     pub fn destroy_container(&self, container: Option<&str>) -> Result<()> {
         let target_container = self.resolve_target_container(container)?;
+
+        // Check if container exists before attempting destruction
+        if !DockerOps::container_exists(&target_container).unwrap_or(false) {
+            return Err(VmError::Internal(format!(
+                "Container '{}' does not exist",
+                target_container
+            )));
+        }
+
         let result = stream_command("docker", &["rm", "-f", &target_container]);
 
         // Only cleanup audio if it was enabled in the configuration
