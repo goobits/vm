@@ -171,16 +171,19 @@ fn flatten_config_to_shell(prefix: &str, config: &VmConfig, exports: &mut Vec<St
         add_export(exports, "os", os);
     }
 
-    // Handle new ports structure
-    for (port_name, &port_value) in &config.ports.manual_ports {
-        let port_key = format!("ports_{}", port_name.replace('-', "_"));
-        add_export_num(exports, &port_key, &port_value.to_string());
-    }
-
+    // Handle port range
     if let Some(range) = &config.ports.range {
         if range.len() == 2 {
             add_export_num(exports, "port_range_start", &range[0].to_string());
             add_export_num(exports, "port_range_end", &range[1].to_string());
+        }
+    }
+
+    // Export service ports
+    for (service_name, service_config) in &config.services {
+        if let Some(port) = service_config.port {
+            let port_key = format!("service_port_{}", service_name.replace('-', "_"));
+            add_export_num(exports, &port_key, &port.to_string());
         }
     }
 

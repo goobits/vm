@@ -634,12 +634,43 @@ pub async fn handle_destroy(
         force
     );
 
+    // Determine the instance name for service cleanup
+    let vm_instance_name = if let Some(container_name) = container {
+        container_name.to_string()
+    } else {
+        container_name.clone()
+    };
+
+    // Check if container exists before showing confirmation
+    let container_exists = std::process::Command::new("docker")
+        .args(["inspect", &container_name])
+        .output()
+        .ok()
+        .map(|output| output.status.success())
+        .unwrap_or(false);
+
+    if !container_exists {
+        println!("✅ Container already removed, cleaning up remaining resources...\n");
+        println!("  ✓ Cleaning images");
+
+        // Clean up images even if container doesn't exist
+        let _ = std::process::Command::new("docker")
+            .args(["image", "rm", "-f", &format!("{}-image", vm_name)])
+            .output();
+
+        println!("\n🔧 Cleaning up services...");
+        unregister_vm_services_helper(&vm_instance_name).await?;
+
+        println!("\n✅ Cleanup complete");
+        return Ok(());
+    }
+
     let should_destroy = if force {
         debug!("Force flag set - skipping confirmation prompt");
         println!("🗑️ Destroying '{}' (forced)\n", vm_name);
         true
     } else {
-        // Check status first to show current state
+        // Check status to show current state
         let is_running = provider.status(None).is_ok();
 
         println!("🗑️ Destroy VM '{}'?\n", vm_name);
@@ -677,13 +708,6 @@ pub async fn handle_destroy(
 
         match provider.destroy(container) {
             Ok(()) => {
-                // Unregister VM services after successful destruction
-                let vm_instance_name = if let Some(container_name) = container {
-                    container_name.to_string()
-                } else {
-                    container_name.clone()
-                };
-
                 println!("  ✓ Container destroyed");
                 println!("\n🔧 Cleaning up services...");
                 unregister_vm_services_helper(&vm_instance_name).await?;

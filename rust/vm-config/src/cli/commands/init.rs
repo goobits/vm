@@ -215,6 +215,9 @@ pub fn execute(
         config.ports.range = Some(vec![port_start, port_start + 9]);
     }
 
+    // Allocate ports to enabled services
+    config.ensure_service_ports();
+
     // Convert config to Value and write with consistent formatting
     let config_yaml = serde_yaml::to_string(&config).map_err(|e| {
         VmError::Serialization(format!("Failed to serialize configuration to YAML: {}", e))
@@ -246,9 +249,23 @@ pub fn execute(
     vm_println!();
     vm_println!("✓ Initializing project: {}", sanitized_name);
     vm_println!("✓ Port range allocated: {}", port_display);
-    if let Some(ref services_str) = services {
-        vm_println!("✓ Services configured: {}", services_str);
+
+    // Display services with their assigned ports
+    if !config.services.is_empty() {
+        let enabled_services: Vec<_> = config.services.iter().filter(|(_, s)| s.enabled).collect();
+
+        if !enabled_services.is_empty() {
+            vm_println!("✓ Services configured:");
+            for (name, service) in enabled_services {
+                if let Some(port) = service.port {
+                    vm_println!("    • {} (port {})", name, port);
+                } else {
+                    vm_println!("    • {}", name);
+                }
+            }
+        }
     }
+
     vm_println!("✓ Configuration created: vm.yaml");
     vm_println!();
     vm_println!("{}", MESSAGES.init_success);

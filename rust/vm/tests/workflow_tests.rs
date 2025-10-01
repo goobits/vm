@@ -1,4 +1,5 @@
 use anyhow::Result;
+use serde_yaml_ng as serde_yaml;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -230,17 +231,35 @@ fn test_nested_configuration_workflow() -> Result<()> {
     let output = fixture.run_vm_command(&["config", "set", "services.redis.enabled", "true"])?;
     assert!(output.status.success());
 
-    // Step 2: Verify nested structure was created
+    // Step 2: Verify nested structure was created by parsing the YAML output
     let output = fixture.run_vm_command(&["config", "get"])?;
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout)?;
 
-    assert!(stdout.contains("services:"));
-    assert!(stdout.contains("postgresql:"));
-    assert!(stdout.contains("version: 15"));
-    assert!(stdout.contains("port: 5432"));
-    assert!(stdout.contains("redis:"));
-    assert!(stdout.contains("enabled: true"));
+    // Extract YAML content (skip header lines and footer hints)
+    let yaml_content: String = stdout
+        .lines()
+        .skip_while(|line| {
+            line.trim().is_empty() || line.starts_with("📋") || line.starts_with("💡")
+        })
+        .take_while(|line| !line.starts_with("💡"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // Parse the YAML output to check values programmatically (more robust than string matching)
+    let config_value: serde_yaml::Value = serde_yaml::from_str(&yaml_content)?;
+
+    // Verify postgresql service was configured correctly
+    let postgresql = &config_value["services"]["postgresql"];
+    assert_eq!(
+        postgresql["version"],
+        serde_yaml::Value::String("15".to_string())
+    );
+    assert_eq!(postgresql["port"], serde_yaml::Value::Number(5432.into()));
+
+    // Verify redis service was enabled
+    let redis = &config_value["services"]["redis"];
+    assert_eq!(redis["enabled"], serde_yaml::Value::Bool(true));
 
     // Step 3: Get specific nested values
     let output = fixture.run_vm_command(&["config", "get", "services.postgresql.version"])?;
@@ -252,11 +271,36 @@ fn test_nested_configuration_workflow() -> Result<()> {
     let output = fixture.run_vm_command(&["config", "unset", "services.postgresql.port"])?;
     assert!(output.status.success());
 
-    // Step 5: Verify unset worked
+    // Step 5: Verify unset worked by parsing YAML
     let output = fixture.run_vm_command(&["config", "get"])?;
     let stdout = String::from_utf8(output.stdout)?;
-    assert!(!stdout.contains("port: 5432"));
-    assert!(stdout.contains("version: 15")); // Other values should remain
+
+    // Extract YAML content
+    let yaml_content: String = stdout
+        .lines()
+        .skip_while(|line| {
+            line.trim().is_empty() || line.starts_with("📋") || line.starts_with("💡")
+        })
+        .take_while(|line| !line.starts_with("💡"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let config_value: serde_yaml::Value = serde_yaml::from_str(&yaml_content)?;
+
+    // Port should be removed
+    let postgresql = &config_value["services"]["postgresql"];
+    assert!(
+        postgresql["port"].is_null()
+            || !postgresql
+                .as_mapping()
+                .unwrap()
+                .contains_key(serde_yaml::Value::String("port".to_string()))
+    );
+    // Version should remain
+    assert_eq!(
+        postgresql["version"],
+        serde_yaml::Value::String("15".to_string())
+    );
 
     Ok(())
 }
@@ -343,10 +387,11 @@ vm:
 services:
   postgresql:
     enabled: true  # Add new service
+    port: 3000
 npm_packages:
   - prettier      # Replace packages
 ports:
-  web: 3000      # Add new section
+  _range: [3000, 3010]  # Add port range
 "#,
     )?;
 
@@ -373,8 +418,8 @@ ports:
     // npm_packages should be from override (arrays replace)
     assert!(config_content.contains("prettier"));
 
-    // Ports should be added
-    assert!(config_content.contains("web: 3000"));
+    // Ports range should be added
+    assert!(config_content.contains("_range:"));
 
     Ok(())
 }

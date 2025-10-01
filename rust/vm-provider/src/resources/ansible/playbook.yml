@@ -321,26 +321,32 @@
       - name: Allow configured ports from localhost
         ufw:
             rule: allow
-            port: '{{ item.value }}'
+            port: "{{ service_item.value.port }}"
             proto: tcp
             from_ip: 127.0.0.1
-            comment: 'Allow {{ item.key }} port'
-        with_dict: '{{ project_config.ports | default({}) }}'
+            comment: "Allow {{ service_item.key }} port"
+        loop: "{{ project_config.services | dict2items }}"
+        loop_control:
+            loop_var: service_item
         when:
-            - ports_configured
             - not is_docker_container
+            - service_item.value.port is defined
+            - service_item.value.port is not none
 
       - name: Allow configured ports from Vagrant host
         ufw:
             rule: allow
-            port: '{{ item.value }}'
+            port: "{{ service_item.value.port }}"
             proto: tcp
             from_ip: 10.0.2.2
-            comment: 'Allow {{ item.key }} port from Vagrant host'
-        with_dict: '{{ project_config.ports | default({}) }}'
+            comment: "Allow {{ service_item.key }} port from Vagrant host"
+        loop: "{{ project_config.services | dict2items }}"
+        loop_control:
+            loop_var: service_item
         when:
-            - ports_configured
             - not is_docker_container
+            - service_item.value.port is defined
+            - service_item.value.port is not none
 
       # Install Node.js/npm if npm_packages is defined OR claude_sync/gemini_sync enabled
       - name: Download NVM installer
@@ -609,6 +615,35 @@
           - service_item.value.enabled | default(false)
           - service_item.key in service_definitions
           - service_item.key != 'docker'  # Docker handled separately due to user group requirements
+          - not (is_docker_container and service_item.key in ['postgresql', 'redis', 'mongodb'])  # These run as separate containers in Docker
+
+      # Install database client tools for services that run as separate containers in Docker
+      - name: Install PostgreSQL client tools for Docker
+        apt:
+          name:
+            - postgresql-client
+          state: present
+        when:
+          - is_docker_container
+          - project_config.services.postgresql.enabled | default(false)
+
+      - name: Install Redis client tools for Docker
+        apt:
+          name:
+            - redis-tools
+          state: present
+        when:
+          - is_docker_container
+          - project_config.services.redis.enabled | default(false)
+
+      - name: Install MongoDB client tools for Docker
+        apt:
+          name:
+            - mongodb-clients
+          state: present
+        when:
+          - is_docker_container
+          - project_config.services.mongodb.enabled | default(false)
 
       # Handle Docker service separately (requires user group management)
       - name: Install Docker
@@ -735,7 +770,7 @@
         lineinfile:
             path: '{{ project_path }}/{{ project_config.project.env_template_path | dirname }}/.env'
             regexp: '^DATABASE_URL='
-            line: "DATABASE_URL=postgresql://{{ project_config.services.postgresql.user | default('postgres') }}:{{ project_config.services.postgresql.password | default('postgres') }}@localhost:{{ project_config.ports.postgresql | default(project_config.services.postgresql.port | default(5432)) }}/{{ project_config.services.postgresql.database }}"
+            line: "DATABASE_URL=postgresql://{{ project_config.services.postgresql.user | default('postgres') }}:{{ project_config.services.postgresql.password | default('postgres') }}@localhost:{{ project_config.services.postgresql.port | default(5432) }}/{{ project_config.services.postgresql.database }}"
         when:
             - env_template_configured
             - env_template.stat.exists
@@ -745,7 +780,7 @@
         lineinfile:
             path: '{{ project_path }}/{{ project_config.project.env_template_path | dirname }}/.env'
             regexp: '^REDIS_URL='
-            line: 'REDIS_URL=redis://localhost:{{ project_config.ports.redis | default(project_config.services.redis.port | default(6379)) }}'
+            line: 'REDIS_URL=redis://localhost:{{ project_config.services.redis.port | default(6379) }}'
         when:
             - env_template_configured
             - env_template.stat.exists

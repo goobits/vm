@@ -4,7 +4,6 @@ services:
   postgresql:
     enabled: false
     version: 15
-    port: 5432
     user: postgres
     password: postgres
     database: "{{ project.name }}_dev"

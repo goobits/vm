@@ -305,13 +305,14 @@ npm_packages:
 services:
   postgresql:
     enabled: true
+    port: 3000
 vm:
   memory: 4096  # Should override preset1
   cpus: 4
 npm_packages:
   - prettier
 ports:
-  web: 3000
+  _range: [3000, 3010]
 "#,
         )?;
 
@@ -335,8 +336,8 @@ ports:
         // CPUs should be from preset2
         assert!(config_content.contains("cpus: 4"));
 
-        // Ports should be from preset2
-        assert!(config_content.contains("web: 3000"));
+        // Port range should be from preset2
+        assert!(config_content.contains("_range:"));
 
         // NPM packages should be from preset2 (arrays replace)
         assert!(config_content.contains("prettier"));
@@ -416,6 +417,7 @@ services:
 
         // Test setting deeply nested values
         fixture.run_vm_command(&["config", "set", "services.postgresql.version", "15"])?;
+        fixture.run_vm_command(&["config", "set", "services.postgresql.enabled", "true"])?;
         fixture.run_vm_command(&["config", "set", "services.postgresql.port", "5432"])?;
         fixture.run_vm_command(&["config", "set", "services.redis.enabled", "true"])?;
 
@@ -425,7 +427,7 @@ services:
 
         assert!(stdout.contains("services:"));
         assert!(stdout.contains("postgresql:"));
-        assert!(stdout.contains("version: 15"));
+        assert!(stdout.contains("version:") && stdout.contains("15"));
         assert!(stdout.contains("port: 5432"));
         assert!(stdout.contains("redis:"));
         assert!(stdout.contains("enabled: true"));

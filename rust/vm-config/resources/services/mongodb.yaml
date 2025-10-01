@@ -4,4 +4,3 @@ services:
   mongodb:
     enabled: false
     version: 6
-    port: 27017

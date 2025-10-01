@@ -194,16 +194,6 @@ impl ConfigValidator {
 
     /// Validate port mappings
     fn validate_ports(&self) -> Result<()> {
-        // Validate manual ports
-        for (name, &port) in &self.config.ports.manual_ports {
-            if port == 0 {
-                vm_error!("Invalid port {} for {}: port 0 is reserved", port, name);
-                return Err(vm_core::error::VmError::Config(
-                    "Invalid port: port 0 is reserved".to_string(),
-                ));
-            }
-        }
-
         // Validate _range if present
         if let Some(range) = &self.config.ports.range {
             if range.len() != 2 {
@@ -337,14 +327,14 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_port() {
+    fn test_invalid_port_range() {
         let mut config = VmConfig::default();
         config.provider = Some("docker".to_string());
         config.project = Some(crate::config::ProjectConfig {
             name: Some("test".to_string()),
             ..Default::default()
         });
-        config.ports.manual_ports.insert("web".to_string(), 0); // Port 0 is invalid
+        config.ports.range = Some(vec![0, 10]); // Port 0 is invalid
 
         let validator = ConfigValidator::new(config, std::path::PathBuf::from("test.yaml"));
         assert!(validator.validate().is_err());

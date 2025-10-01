@@ -46,6 +46,65 @@ fn get_port_placeholder_regex() -> &'static Regex {
     })
 }
 
+/// Read config file, or prompt to initialize if missing (for write operations).
+///
+/// # Arguments
+/// * `path` - Path to vm.yaml config file
+/// * `allow_init` - If true, prompts to initialize when file missing. If false, returns error.
+///
+/// # Returns
+/// The loaded VmConfig, or error if file missing and init declined/not allowed.
+fn read_config_or_init(path: &std::path::Path, allow_init: bool) -> Result<VmConfig> {
+    if path.exists() {
+        return VmConfig::from_file(&path.to_path_buf());
+    }
+
+    // Read-only operations don't prompt
+    if !allow_init {
+        return Err(VmError::Config(format!(
+            "No configuration found: {}",
+            path.display()
+        )));
+    }
+
+    // Check if we're in an interactive terminal
+    use std::io::IsTerminal;
+    let is_interactive = std::io::stdin().is_terminal();
+
+    if is_interactive {
+        // Prompt user in interactive terminals
+        use std::io::{self, Write};
+        vm_println!("⚠️  No configuration found: {}", path.display());
+        vm_println!();
+        print!("Initialize new project? (Y/n): ");
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .map_err(|e| VmError::Config(format!("Failed to read input: {}", e)))?;
+
+        let should_init = matches!(input.trim().to_lowercase().as_str(), "" | "y" | "yes");
+
+        if !should_init {
+            return Err(VmError::Config(
+                "Configuration required. Run 'vm init' to create one.".to_string(),
+            ));
+        }
+
+        vm_println!();
+        vm_println!("✨ Initializing project...");
+    }
+
+    // Run init using the public API (silently in non-interactive mode for backward compatibility)
+    crate::cli::init_config_file(Some(path.to_path_buf()), None, None)?;
+
+    vm_println!();
+
+    // Load the newly created config
+    VmConfig::from_file(&path.to_path_buf())
+}
+
 /// Configuration operations for VM configuration management.
 ///
 /// Provides high-level operations for reading, writing, and manipulating
@@ -128,6 +187,11 @@ impl ConfigOps {
             find_or_create_local_config()?
         };
 
+        // Auto-initialize if needed (only for local configs)
+        if !global {
+            let _ = read_config_or_init(&config_path, true)?;
+        }
+
         let mut yaml_value = if config_path.exists() {
             let content = fs::read_to_string(&config_path)?;
             serde_yaml::from_str(&content)?
@@ -136,10 +200,31 @@ impl ConfigOps {
         };
 
         // Parse the value - try as YAML first, then as string
+        // For numbers that should be strings (like version), they'll be quoted in the written YAML
         let parsed_value: Value =
             serde_yaml::from_str(value).unwrap_or_else(|_| Value::String(value.to_string()));
 
         set_nested_field(&mut yaml_value, field, parsed_value)?;
+
+        // If we modified a service's enabled status, trigger port allocation
+        // Only do this if a port range is configured to avoid unnecessary cycles
+        let should_allocate_ports = field.starts_with("services.") && field.ends_with(".enabled");
+
+        if should_allocate_ports {
+            // Check if there's a port range configured before doing the expensive round-trip
+            let has_port_range = yaml_value
+                .get("ports")
+                .and_then(|p| p.get("_range"))
+                .and_then(|r| r.as_sequence())
+                .is_some_and(|seq| seq.len() == 2);
+
+            if has_port_range {
+                // Deserialize, allocate ports, and serialize back
+                let mut config: VmConfig = serde_yaml::from_value(yaml_value.clone())?;
+                config.ensure_service_ports();
+                yaml_value = serde_yaml::to_value(&config)?;
+            }
+        }
 
         if dry_run {
             vm_println!(
@@ -258,7 +343,10 @@ impl ConfigOps {
             find_local_config()?
         };
 
-        if !config_path.exists() {
+        // Auto-initialize if needed (only for local configs)
+        if !global {
+            let _ = read_config_or_init(&config_path, true)?;
+        } else if !config_path.exists() {
             vm_error!("Configuration file not found: {}", config_path.display());
             return Err(vm_core::error::VmError::Config(format!(
                 "Configuration file not found at '{}'. Use 'vm init' to create a configuration",
@@ -384,12 +472,16 @@ impl ConfigOps {
             find_or_create_local_config()?
         };
 
-        // Load existing config or create empty
-        let base_config = if config_path.exists() {
-            let content = fs::read_to_string(&config_path)?;
-            serde_yaml::from_str(&content)?
+        // Auto-initialize if needed (only for local configs)
+        let base_config = if global {
+            if config_path.exists() {
+                let content = fs::read_to_string(&config_path)?;
+                serde_yaml::from_str(&content)?
+            } else {
+                VmConfig::default()
+            }
         } else {
-            VmConfig::default()
+            read_config_or_init(&config_path, true)?
         };
 
         // Parse comma-separated presets and merge them - avoid Vec allocation

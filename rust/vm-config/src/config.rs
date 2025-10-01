@@ -7,6 +7,88 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_yaml_ng as serde_yaml;
 use vm_core::error::Result;
 
+// Helper function to deserialize version field that accepts both strings and numbers
+fn deserialize_option_string_or_number<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::{Error, Visitor};
+    use std::fmt;
+
+    struct StringOrNumberVisitor;
+
+    impl<'de> Visitor<'de> for StringOrNumberVisitor {
+        type Value = Option<String>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a string, number, or null")
+        }
+
+        fn visit_none<E>(self) -> std::result::Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_some<D>(self, deserializer: D) -> std::result::Result<Self::Value, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            deserializer.deserialize_any(InnerVisitor)
+        }
+
+        fn visit_unit<E>(self) -> std::result::Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            Ok(None)
+        }
+    }
+
+    struct InnerVisitor;
+
+    impl<'de> Visitor<'de> for InnerVisitor {
+        type Value = Option<String>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a string or number")
+        }
+
+        fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            Ok(Some(value.to_string()))
+        }
+
+        fn visit_i64<E>(self, value: i64) -> std::result::Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            Ok(Some(value.to_string()))
+        }
+
+        fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            Ok(Some(value.to_string()))
+        }
+
+        fn visit_f64<E>(self, value: f64) -> std::result::Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            Ok(Some(value.to_string()))
+        }
+    }
+
+    deserializer.deserialize_option(StringOrNumberVisitor)
+}
+
 /// Main VM configuration structure.
 ///
 /// This is the central configuration structure that defines all aspects of a VM setup,
@@ -128,62 +210,34 @@ pub struct VmConfig {
     pub extra_config: IndexMap<String, serde_json::Value>,
 }
 
-/// Port configuration with support for both ranges and individual ports.
+/// Port configuration with range-based allocation.
 ///
-/// Supports the new `_range` syntax for bulk port allocation and individual
-/// port mapping for services that need specific ports.
+/// Manages a port range allocated to a VM instance. Individual service ports
+/// are stored in `services.<service-name>.port` and are auto-assigned from this range.
 ///
 /// # Examples
 /// ```yaml
 /// ports:
 ///   _range: [3000, 3020]  # Reserve ports 3000-3020 for this VM
-///   postgresql: 5432      # PostgreSQL on specific port outside range
-///   redis: 6379          # Redis on specific port outside range
+///
+/// services:
+///   postgresql:
+///     port: 3000  # Auto-assigned from range
+///   redis:
+///     port: 3001  # Auto-assigned from range
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PortsConfig {
     /// Port range allocated to this VM instance. Services will auto-assign from this range.
     #[serde(rename = "_range", skip_serializing_if = "Option::is_none")]
     pub range: Option<Vec<u16>>,
-
-    /// Manual port assignments that override auto-assignment or specify ports outside the range.
-    #[serde(flatten)]
-    pub manual_ports: IndexMap<String, u16>,
 }
 
 impl PortsConfig {
-    /// Get the port for a service, either from manual assignment or auto-assigned from range.
-    ///
-    /// # Arguments
-    /// * `service_name` - Name of the service
-    /// * `service_index` - Index for auto-assignment within the range (0-based)
-    ///
-    /// # Returns
-    /// The port number if available, None if no range and no manual assignment
-    pub fn get_service_port(&self, service_name: &str, service_index: usize) -> Option<u16> {
-        // 1. Manual override takes precedence
-        if let Some(&port) = self.manual_ports.get(service_name) {
-            return Some(port);
-        }
-
-        // 2. Auto-assign from range
-        if let Some(range) = &self.range {
-            if range.len() == 2 {
-                let (start, end) = (range[0], range[1]);
-                let assigned = start + service_index as u16;
-                if assigned <= end {
-                    return Some(assigned);
-                }
-            }
-        }
-
-        None
-    }
-
     /// Get all ports that should be exposed to the host.
     ///
     /// # Returns
-    /// Vector of port mapping strings in docker-compose format (e.g., "3000-3020:3000-3020", "5432:5432")
+    /// Vector of port mapping strings in docker-compose format (e.g., "3000-3020:3000-3020")
     pub fn get_all_exposed_ports(&self) -> Vec<String> {
         let mut ports = Vec::new();
 
@@ -195,28 +249,29 @@ impl PortsConfig {
             }
         }
 
-        // Add manual ports that are outside the range
-        for (_name, &port) in &self.manual_ports {
-            let should_add_port = match &self.range {
-                Some(range) if range.len() == 2 => {
-                    let (range_start, range_end) = (range[0], range[1]);
-                    // Only add manual ports that are outside the range
-                    port < range_start || port > range_end
-                }
-                _ => true, // No range defined, add all manual ports
-            };
-
-            if should_add_port {
-                ports.push(format!("{}:{}", port, port));
-            }
-        }
-
         ports
     }
 
     /// Check if the configuration has any ports to expose.
     pub fn has_ports(&self) -> bool {
-        self.range.is_some() || !self.manual_ports.is_empty()
+        self.range.is_some()
+    }
+
+    /// Check if a port is within the configured range.
+    ///
+    /// # Arguments
+    /// * `port` - Port number to check
+    ///
+    /// # Returns
+    /// `true` if the port is within the range, `false` otherwise
+    pub fn is_port_in_range(&self, port: u16) -> bool {
+        if let Some(range) = &self.range {
+            if range.len() == 2 {
+                let (start, end) = (range[0], range[1]);
+                return port >= start && port <= end;
+            }
+        }
+        false
     }
 }
 
@@ -471,7 +526,11 @@ pub struct ServiceConfig {
     #[serde(default)]
     pub enabled: bool,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_option_string_or_number"
+    )]
     pub version: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -902,5 +961,130 @@ impl VmConfig {
         }
 
         errors
+    }
+
+    /// Ensure all enabled services have ports assigned from the configured range.
+    ///
+    /// This method automatically assigns ports to enabled services that don't already
+    /// have ports assigned. Services are allocated ports in a priority order, and
+    /// disabled services have their ports removed.
+    ///
+    /// # Priority Order
+    /// Services are assigned ports in this order:
+    /// 1. postgresql
+    /// 2. redis
+    /// 3. mysql
+    /// 4. mongodb
+    /// 5. Other services (alphabetically)
+    ///
+    /// # Behavior
+    /// - Only modifies enabled services without ports
+    /// - Preserves existing port assignments
+    /// - Removes ports from disabled services
+    /// - Skips services that don't need ports (e.g., docker)
+    ///
+    /// # Examples
+    /// ```rust,no_run
+    /// use vm_config::config::VmConfig;
+    ///
+    /// let mut config = VmConfig::default();
+    /// config.ports.range = Some(vec![3000, 3010]);
+    /// config.ensure_service_ports();
+    /// ```
+    pub fn ensure_service_ports(&mut self) {
+        // Define priority order for port allocation
+        const PRIORITY_SERVICES: &[&str] = &["postgresql", "redis", "mysql", "mongodb"];
+        const SERVICES_WITHOUT_PORTS: &[&str] = &["docker"];
+
+        // Get the port range
+        let range = match &self.ports.range {
+            Some(r) if r.len() == 2 => r,
+            _ => return, // No valid range configured
+        };
+
+        let (range_start, range_end) = (range[0], range[1]);
+
+        // Collect all currently assigned ports to avoid conflicts
+        let mut used_ports: std::collections::HashSet<u16> =
+            self.services.values().filter_map(|s| s.port).collect();
+
+        // Helper function to get the next available port from range (starting from the end)
+        // This leaves the lower ports free for developer use
+        let mut current_port = range_end;
+        let mut get_next_port = || -> Option<u16> {
+            while current_port >= range_start {
+                let port = current_port;
+                if current_port == range_start {
+                    current_port = 0; // Will break the loop on next iteration
+                } else {
+                    current_port -= 1;
+                }
+                if !used_ports.contains(&port) {
+                    used_ports.insert(port);
+                    return Some(port);
+                }
+                if current_port == 0 {
+                    break;
+                }
+            }
+            None
+        };
+
+        // Build ordered list of services to process
+        let mut services_to_process = Vec::new();
+
+        // First add priority services that are enabled and need ports
+        for &priority_service in PRIORITY_SERVICES {
+            if let Some(service) = self.services.get(priority_service) {
+                if service.enabled && service.port.is_none() {
+                    services_to_process.push(priority_service.to_string());
+                }
+            }
+        }
+
+        // Then add other enabled services (alphabetically) that need ports
+        let mut other_services: Vec<String> = self
+            .services
+            .iter()
+            .filter(|(name, service)| {
+                service.enabled
+                    && service.port.is_none()
+                    && !PRIORITY_SERVICES.contains(&name.as_str())
+                    && !SERVICES_WITHOUT_PORTS.contains(&name.as_str())
+            })
+            .map(|(name, _)| name.clone())
+            .collect();
+        other_services.sort();
+        services_to_process.extend(other_services);
+
+        // Assign ports to services
+        for service_name in services_to_process {
+            if let Some(port) = get_next_port() {
+                if let Some(service) = self.services.get_mut(&service_name) {
+                    service.port = Some(port);
+                }
+            }
+        }
+
+        // Clean up ports from disabled services
+        // Only remove ports that are within the auto-assigned range
+        let disabled_services: Vec<String> = self
+            .services
+            .iter()
+            .filter(|(_, service)| {
+                !service.enabled
+                    && service.port.is_some()
+                    && service
+                        .port
+                        .is_some_and(|p| p >= range_start && p <= range_end)
+            })
+            .map(|(name, _)| name.clone())
+            .collect();
+
+        for service_name in disabled_services {
+            if let Some(service) = self.services.get_mut(&service_name) {
+                service.port = None;
+            }
+        }
     }
 }

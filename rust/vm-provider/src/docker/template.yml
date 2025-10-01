@@ -29,17 +29,32 @@ services:
       {% if host_mounts %}{% for mount in host_mounts %}- {{ mount.0 }}:{{ mount.1 }}:ro
       {% endfor %}{% endif %}
       # Container is now self-contained - no VM tool mount needed
-    {% if config.ports._range or (config.ports and config.ports | length > 0) -%}
+    {% if config.ports._range -%}
     ports:
-      {% if config.ports._range -%}
-      # Application port range
-      - "{{ config.ports._range[0] }}-{{ config.ports._range[1] }}:{{ config.ports._range[0] }}-{{ config.ports._range[1] }}"
-      {%- endif %}
-      {% if config.ports and config.ports | length > 0 -%}
-      # Manual port assignments
-      {% for name, port in config.ports %}{% if name != "_range" %}- "{{ port }}:{{ port }}"  # {{ name }}
-      {% endif %}{% endfor %}
-      {%- endif %}
+      # Application port range (excluding ports used by service containers)
+      {% set range_start = config.ports._range[0] %}
+      {% set range_end = config.ports._range[1] %}
+      {% set service_ports = [] %}
+      {% if config.services.postgresql.enabled | default(value=false) and config.services.postgresql.port %}
+        {% set_global service_ports = service_ports | concat(with=[config.services.postgresql.port]) %}
+      {% endif %}
+      {% if config.services.redis.enabled | default(value=false) and config.services.redis.port %}
+        {% set_global service_ports = service_ports | concat(with=[config.services.redis.port]) %}
+      {% endif %}
+      {% if config.services.mongodb.enabled | default(value=false) and config.services.mongodb.port %}
+        {% set_global service_ports = service_ports | concat(with=[config.services.mongodb.port]) %}
+      {% endif %}
+      {% if service_ports | length == 0 %}
+      # No service ports to exclude, expose full range
+      - "{{ range_start }}-{{ range_end }}:{{ range_start }}-{{ range_end }}"
+      {% else %}
+      # Expose port range excluding service ports: {{ service_ports }}
+      {% for port in range(start=range_start, end=range_end + 1) %}
+        {% if port not in service_ports %}
+      - "{{ port }}:{{ port }}"
+        {% endif %}
+      {% endfor %}
+      {% endif %}
     {%- endif %}
     environment:
       {% if is_macos %}
