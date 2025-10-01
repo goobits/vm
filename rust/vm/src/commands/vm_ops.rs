@@ -11,8 +11,10 @@ use tracing::{debug, info, info_span, warn};
 // Internal imports
 use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
+use vm_cli::msg;
 use vm_config::{config::VmConfig, GlobalConfig};
-use vm_core::vm_error;
+use vm_core::{vm_error, vm_println};
+use vm_messages::messages::MESSAGES;
 use vm_provider::{InstanceInfo, Provider, ProviderContext, VmStatusReport};
 
 /// Handle VM creation
@@ -650,45 +652,50 @@ pub async fn handle_destroy(
         .unwrap_or(false);
 
     if !container_exists {
-        println!("✅ Container already removed, cleaning up remaining resources...\n");
-        println!("  ✓ Cleaning images");
+        vm_println!("{}", MESSAGES.vm_container_removed);
+        vm_println!("{}", MESSAGES.vm_cleaning_images);
 
         // Clean up images even if container doesn't exist
         let _ = std::process::Command::new("docker")
             .args(["image", "rm", "-f", &format!("{}-image", vm_name)])
             .output();
 
-        println!("\n🔧 Cleaning up services...");
+        vm_println!("{}", MESSAGES.vm_cleaning_services);
         unregister_vm_services_helper(&vm_instance_name).await?;
 
-        println!("\n✅ Cleanup complete");
+        vm_println!("{}", MESSAGES.vm_cleanup_complete);
         return Ok(());
     }
 
     let should_destroy = if force {
         debug!("Force flag set - skipping confirmation prompt");
-        println!("🗑️ Destroying '{}' (forced)\n", vm_name);
+        vm_println!("{}", msg!(MESSAGES.vm_destroying_forced, name = vm_name));
         true
     } else {
         // Check status to show current state
         let is_running = provider.status(None).is_ok();
 
-        println!("🗑️ Destroy VM '{}'?\n", vm_name);
-        println!(
-            "  Status:     {}",
-            if is_running {
-                "🟢 Running"
-            } else {
-                "🔴 Stopped"
-            }
+        vm_println!("{}", msg!(MESSAGES.vm_destroying, name = vm_name));
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.vm_destroy_status_label,
+                status = if is_running {
+                    MESSAGES.vm_status_running
+                } else {
+                    MESSAGES.vm_status_stopped
+                }
+            )
         );
-        println!("  Container:  {}", container_name);
-        println!("\n⚠️  This will permanently delete:");
-        println!("  • Container and all data");
-        println!("  • Docker image and build cache");
-        println!();
-        print!("Confirm destruction? (y/N): ");
-        use std::io::{self, Write};
+        vm_println!(
+            "{}",
+            msg!(MESSAGES.vm_destroy_container_label, name = container_name)
+        );
+        vm_println!("{}", MESSAGES.vm_destroy_warning);
+        vm_println!("{}", MESSAGES.vm_destroy_item_container);
+        vm_println!("{}", MESSAGES.vm_destroy_item_images);
+        vm_println!("");
+        print!("{}", MESSAGES.vm_destroy_confirm);
         io::stdout()
             .flush()
             .map_err(|e| VmError::general(e, "Failed to flush stdout"))?;
@@ -702,27 +709,27 @@ pub async fn handle_destroy(
 
     if should_destroy {
         debug!("Destroy confirmation: response='yes', proceeding with destruction");
-        println!("\n  ✓ Stopping container");
-        println!("  ✓ Removing container");
-        println!("  ✓ Cleaning images");
+        vm_println!("\n{}", MESSAGES.vm_stopping_container);
+        vm_println!("{}", MESSAGES.vm_removing_container);
+        vm_println!("{}", MESSAGES.vm_cleaning_images);
 
         match provider.destroy(container) {
             Ok(()) => {
-                println!("  ✓ Container destroyed");
-                println!("\n🔧 Cleaning up services...");
+                vm_println!("{}", MESSAGES.vm_container_destroyed);
+                vm_println!("{}", MESSAGES.vm_cleaning_services);
                 unregister_vm_services_helper(&vm_instance_name).await?;
 
-                println!("\n✅ VM destroyed");
+                vm_println!("{}", MESSAGES.vm_destroyed_success);
                 Ok(())
             }
             Err(e) => {
-                println!("\n❌ Destruction failed: {}", e);
+                vm_println!("\n❌ Destruction failed: {}", e);
                 Err(VmError::from(e))
             }
         }
     } else {
         debug!("Destroy confirmation: response='no', cancelling destruction");
-        println!("\n❌ Destruction cancelled");
+        vm_println!("\n{}", MESSAGES.vm_destroy_cancelled);
         vm_error!("VM destruction cancelled by user");
         Err(VmError::general(
             std::io::Error::new(
@@ -1383,10 +1390,13 @@ async fn register_vm_services_helper(vm_name: &str, global_config: &GlobalConfig
 async fn unregister_vm_services_helper(vm_name: &str) -> VmResult<()> {
     if let Err(e) = get_service_manager().unregister_vm_services(vm_name).await {
         warn!("Failed to unregister VM services: {}", e);
-        println!("  Status:     ⚠️  Service cleanup failed: {}", e);
+        vm_println!(
+            "{}",
+            msg!(MESSAGES.vm_service_cleanup_failed, error = e.to_string())
+        );
         // Don't fail the operation if service cleanup fails
     } else {
-        println!("  Status:     ✅ Services cleaned up successfully");
+        vm_println!("{}", MESSAGES.vm_services_cleaned);
     }
     Ok(())
 }
