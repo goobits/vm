@@ -262,22 +262,30 @@ pub async fn handle_start(
             .is_some();
 
         if is_running {
-            println!("✅ VM '{}' is already running", vm_name);
-            println!("\n💡 Connect with: vm ssh");
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.vm_start_already_running, name = vm_name)
+            );
             return Ok(());
         }
     }
 
-    println!("🚀 Starting '{}'...", vm_name);
+    vm_println!("{}", msg!(MESSAGES.vm_start_header, name = vm_name));
 
     let context = ProviderContext::with_verbose(false).with_config(global_config.clone());
     match provider.start_with_context(container, &context) {
         Ok(()) => {
-            println!("✅ Started successfully\n");
+            vm_println!("{}", MESSAGES.vm_start_success);
 
             // Show VM details
-            println!("  Status:     🟢 Running");
-            println!("  Container:  {}", container_name);
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.vm_start_info_block,
+                    status = MESSAGES.common_status_running,
+                    container = container_name
+                )
+            );
 
             // Show resources if available
             if let Some(cpus) = config.vm.as_ref().and_then(|vm| vm.cpus) {
@@ -288,7 +296,14 @@ pub async fn handle_start(
                         Some(mb) => format!("{}MB", mb),
                         None => format!("{:?}", memory),
                     };
-                    println!("  Resources:  {} CPUs, {}", cpus, mem_str);
+                    vm_println!(
+                        "{}",
+                        msg!(
+                            MESSAGES.common_resources_label,
+                            cpus = cpus.to_string(),
+                            memory = mem_str
+                        )
+                    );
                 }
             }
 
@@ -301,26 +316,35 @@ pub async fn handle_start(
                 .collect();
 
             if !services.is_empty() {
-                println!("  Services:   {}", services.join(", "));
+                vm_println!(
+                    "{}",
+                    msg!(
+                        MESSAGES.common_services_label,
+                        services = services.join(", ")
+                    )
+                );
             }
 
             // Register VM services and auto-start them
             let vm_instance_name = format!("{}-dev", vm_name);
 
-            println!("\n🔧 Configuring services...");
+            vm_println!("{}", MESSAGES.common_configuring_services);
             register_vm_services_helper(&vm_instance_name, &global_config).await?;
 
-            println!("\n💡 Connect with: vm ssh");
+            vm_println!("{}", MESSAGES.common_connect_hint);
 
             Ok(())
         }
         Err(e) => {
-            println!("❌ Failed to start '{}'", vm_name);
-            println!("   Error: {}", e);
-            println!("\n💡 Try:");
-            println!("   • Check Docker status: docker ps");
-            println!("   • View logs: docker logs {}", container_name);
-            println!("   • Recreate VM: vm create --force");
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.vm_start_troubleshooting,
+                    name = vm_name,
+                    error = e.to_string(),
+                    container = container_name
+                )
+            );
             Err(VmError::from(e))
         }
     }

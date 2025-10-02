@@ -76,6 +76,15 @@ pub struct Messages {
     pub vm_destroy_progress: &'static str,
     pub vm_destroy_success: &'static str,
 
+    // ============================================================================
+    // VM Start Messages (alphabetically sorted)
+    // ============================================================================
+    pub vm_start_already_running: &'static str,
+    pub vm_start_header: &'static str,
+    pub vm_start_info_block: &'static str,
+    pub vm_start_success: &'static str,
+    pub vm_start_troubleshooting: &'static str,
+
     // Config
     pub config_set_success: &'static str,
     pub config_apply_changes_hint: &'static str,
@@ -303,6 +312,15 @@ pub const MESSAGES: Messages = Messages {
     vm_destroy_info_block: "  Status:     {status}\n  Container:  {container}\n\n⚠️  This will permanently delete:\n  • Container and all data\n  • Docker image and build cache\n",
     vm_destroy_progress: "\n  ✓ Stopping container\n  ✓ Removing container\n  ✓ Cleaning images",
     vm_destroy_success: "\n✅ VM destroyed",
+
+    // ============================================================================
+    // VM Start Messages
+    // ============================================================================
+    vm_start_already_running: "✅ VM '{name}' is already running\n\n💡 Connect with: vm ssh",
+    vm_start_header: "🚀 Starting '{name}'...",
+    vm_start_info_block: "  Status:     {status}\n  Container:  {container}",
+    vm_start_success: "✅ Started successfully\n",
+    vm_start_troubleshooting: "❌ Failed to start '{name}'\n   Error: {error}\n\n💡 Try:\n   • Check Docker status: docker ps\n   • View logs: docker logs {container}\n   • Recreate VM: vm create --force",
 
     // Config
     config_set_success: "✅ Set {field} = {value} in {path}",
