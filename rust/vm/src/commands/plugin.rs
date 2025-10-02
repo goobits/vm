@@ -1,6 +1,9 @@
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::PathBuf;
+use vm_cli::msg;
+use vm_core::vm_println;
+use vm_messages::messages::MESSAGES;
 use vm_plugin::{
     discover_plugins, get_preset_plugins, get_service_plugins, validate_plugin_with_context,
     PluginType,
@@ -10,47 +13,66 @@ pub fn handle_plugin_list() -> Result<()> {
     let plugins = discover_plugins()?;
 
     if plugins.is_empty() {
-        println!("No plugins installed.");
-        println!();
-        println!("To install a plugin:");
-        println!("  vm plugin install <path-to-plugin>");
-        println!();
-        println!("To create a new plugin:");
-        println!("  vm plugin new <plugin-name> --type <preset|service>");
+        vm_println!("{}", MESSAGES.plugin_list_empty);
         return Ok(());
     }
 
-    println!("Installed plugins:");
-    println!();
+    vm_println!("{}", MESSAGES.plugin_list_header);
 
     let preset_plugins = get_preset_plugins(&plugins);
     let service_plugins = get_service_plugins(&plugins);
 
     if !preset_plugins.is_empty() {
-        println!("Presets:");
+        vm_println!("{}", MESSAGES.plugin_list_presets_header);
         for plugin in preset_plugins {
-            println!("  {} (v{})", plugin.info.name, plugin.info.version);
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.plugin_list_item,
+                    name = &plugin.info.name,
+                    version = &plugin.info.version
+                )
+            );
             if let Some(desc) = &plugin.info.description {
-                println!("    {}", desc);
+                vm_println!(
+                    "{}",
+                    msg!(MESSAGES.plugin_list_item_with_desc, description = desc)
+                );
             }
             if let Some(author) = &plugin.info.author {
-                println!("    Author: {}", author);
+                vm_println!(
+                    "{}",
+                    msg!(MESSAGES.plugin_list_item_with_author, author = author)
+                );
             }
-            println!();
+            vm_println!();
         }
     }
 
     if !service_plugins.is_empty() {
-        println!("Services:");
+        vm_println!("{}", MESSAGES.plugin_list_services_header);
         for plugin in service_plugins {
-            println!("  {} (v{})", plugin.info.name, plugin.info.version);
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.plugin_list_item,
+                    name = &plugin.info.name,
+                    version = &plugin.info.version
+                )
+            );
             if let Some(desc) = &plugin.info.description {
-                println!("    {}", desc);
+                vm_println!(
+                    "{}",
+                    msg!(MESSAGES.plugin_list_item_with_desc, description = desc)
+                );
             }
             if let Some(author) = &plugin.info.author {
-                println!("    Author: {}", author);
+                vm_println!(
+                    "{}",
+                    msg!(MESSAGES.plugin_list_item_with_author, author = author)
+                );
             }
-            println!();
+            vm_println!();
         }
     }
 
@@ -84,8 +106,7 @@ pub fn handle_plugin_info(plugin_name: &str) -> Result<()> {
     match plugin.info.plugin_type {
         PluginType::Preset => {
             if let Ok(content) = vm_plugin::load_preset_content(plugin) {
-                println!();
-                println!("Preset Details:");
+                vm_println!("{}", MESSAGES.plugin_info_preset_details_header);
                 if !content.packages.is_empty() {
                     println!("  Packages: {}", content.packages.join(", "));
                 }
@@ -105,8 +126,7 @@ pub fn handle_plugin_info(plugin_name: &str) -> Result<()> {
         }
         PluginType::Service => {
             if let Ok(content) = vm_plugin::load_service_content(plugin) {
-                println!();
-                println!("Service Details:");
+                vm_println!("{}", MESSAGES.plugin_info_service_details_header);
                 println!("  Image: {}", content.image);
                 if !content.ports.is_empty() {
                     println!("  Ports: {}", content.ports.join(", "));
@@ -166,12 +186,11 @@ pub fn handle_plugin_install(source_path: &str) -> Result<()> {
     };
 
     // Validate plugin before installation
-    println!("Validating plugin...");
+    vm_println!("{}", MESSAGES.plugin_install_validating);
     let validation_result = vm_plugin::validate_plugin(&temp_plugin)?;
 
     if !validation_result.is_valid {
-        println!("✗ Plugin validation failed:");
-        println!();
+        vm_println!("{}", MESSAGES.plugin_install_validation_failed);
         for error in &validation_result.errors {
             println!("  ✗ [{}] {}", error.field, error.message);
             if let Some(suggestion) = &error.fix_suggestion {
@@ -225,14 +244,19 @@ pub fn handle_plugin_install(source_path: &str) -> Result<()> {
     // Copy plugin directory
     copy_dir_all(&source, &target).context("Failed to copy plugin files")?;
 
-    println!(
-        "✓ Installed {} plugin: {} (v{})",
-        match info.plugin_type {
-            PluginType::Preset => "preset",
-            PluginType::Service => "service",
-        },
-        info.name,
-        info.version
+    let plugin_type_str = match info.plugin_type {
+        PluginType::Preset => "preset",
+        PluginType::Service => "service",
+    };
+
+    vm_println!(
+        "{}",
+        msg!(
+            MESSAGES.plugin_install_success,
+            r#type = plugin_type_str,
+            name = &info.name,
+            version = &info.version
+        )
     );
 
     Ok(())
@@ -249,11 +273,17 @@ pub fn handle_plugin_remove(plugin_name: &str) -> Result<()> {
 
     if preset_path.exists() {
         fs::remove_dir_all(&preset_path).context("Failed to remove plugin directory")?;
-        println!("✓ Removed preset plugin: {}", plugin_name);
+        vm_println!(
+            "{}",
+            msg!(MESSAGES.plugin_remove_success_preset, name = plugin_name)
+        );
         Ok(())
     } else if service_path.exists() {
         fs::remove_dir_all(&service_path).context("Failed to remove plugin directory")?;
-        println!("✓ Removed service plugin: {}", plugin_name);
+        vm_println!(
+            "{}",
+            msg!(MESSAGES.plugin_remove_success_service, name = plugin_name)
+        );
         Ok(())
     } else {
         anyhow::bail!("Plugin '{}' is not installed", plugin_name);
@@ -268,30 +298,33 @@ pub fn handle_plugin_validate(plugin_name: &str) -> Result<()> {
         .find(|p| p.info.name == plugin_name)
         .ok_or_else(|| anyhow::anyhow!("Plugin '{}' not found", plugin_name))?;
 
-    println!("Validating plugin: {}", plugin.info.name);
-    println!();
+    vm_println!(
+        "{}",
+        msg!(MESSAGES.plugin_validate_header, name = &plugin.info.name)
+    );
 
     let result = validate_plugin_with_context(plugin)?;
 
     if result.is_valid {
-        println!("✓ Validation passed!");
-        println!();
+        vm_println!("{}", MESSAGES.plugin_validate_passed);
 
         if !result.warnings.is_empty() {
-            println!("Warnings:");
+            vm_println!("{}", MESSAGES.plugin_validate_warnings_header);
             for warning in &result.warnings {
                 println!("  ⚠ {}", warning);
             }
             println!();
         }
 
-        println!("Plugin '{}' is valid and ready to use.", plugin.info.name);
+        vm_println!(
+            "{}",
+            msg!(MESSAGES.plugin_validate_ready, name = &plugin.info.name)
+        );
     } else {
-        println!("✗ Validation failed!");
-        println!();
+        vm_println!("{}", MESSAGES.plugin_validate_failed);
 
         if !result.errors.is_empty() {
-            println!("Errors:");
+            vm_println!("{}", MESSAGES.plugin_validate_errors_header);
             for error in &result.errors {
                 println!("  ✗ [{}] {}", error.field, error.message);
                 if let Some(suggestion) = &error.fix_suggestion {
@@ -302,7 +335,7 @@ pub fn handle_plugin_validate(plugin_name: &str) -> Result<()> {
         }
 
         if !result.warnings.is_empty() {
-            println!("Warnings:");
+            vm_println!("{}", MESSAGES.plugin_validate_warnings_header);
             for warning in &result.warnings {
                 println!("  ⚠ {}", warning);
             }

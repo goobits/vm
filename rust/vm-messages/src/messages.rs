@@ -172,6 +172,32 @@ pub struct Messages {
     pub vm_destroy_cross_failed: &'static str,
     pub vm_destroy_cross_complete: &'static str,
 
+    // ============================================================================
+    // Plugin Messages
+    // ============================================================================
+    pub plugin_list_empty: &'static str,
+    pub plugin_list_header: &'static str,
+    pub plugin_list_presets_header: &'static str,
+    pub plugin_list_services_header: &'static str,
+    pub plugin_list_item: &'static str,
+    pub plugin_list_item_with_desc: &'static str,
+    pub plugin_list_item_with_author: &'static str,
+    pub plugin_info_preset_details_header: &'static str,
+    pub plugin_info_service_details_header: &'static str,
+    pub plugin_install_validating: &'static str,
+    pub plugin_install_validation_failed: &'static str,
+    pub plugin_install_validation_error: &'static str,
+    pub plugin_install_warnings: &'static str,
+    pub plugin_install_success: &'static str,
+    pub plugin_remove_success_preset: &'static str,
+    pub plugin_remove_success_service: &'static str,
+    pub plugin_validate_header: &'static str,
+    pub plugin_validate_passed: &'static str,
+    pub plugin_validate_warnings_header: &'static str,
+    pub plugin_validate_ready: &'static str,
+    pub plugin_validate_failed: &'static str,
+    pub plugin_validate_errors_header: &'static str,
+
     // Config
     pub config_set_success: &'static str,
     pub config_apply_changes_hint: &'static str,
@@ -495,6 +521,32 @@ pub const MESSAGES: Messages = Messages {
     vm_destroy_cross_success_item: "  ✅ Successfully destroyed {name}",
     vm_destroy_cross_failed: "  ❌ Failed to destroy {name}: {error}",
     vm_destroy_cross_complete: "\nDestroy operation completed:\n  Success: {success}\n  Errors: {errors}",
+
+    // ============================================================================
+    // Plugin Messages
+    // ============================================================================
+    plugin_list_empty: "No plugins installed.\n\nTo install a plugin:\n  vm plugin install <path-to-plugin>\n\nTo create a new plugin:\n  vm plugin new <plugin-name> --type <preset|service>",
+    plugin_list_header: "Installed plugins:\n",
+    plugin_list_presets_header: "Presets:",
+    plugin_list_services_header: "Services:",
+    plugin_list_item: "  {name} (v{version})",
+    plugin_list_item_with_desc: "    {description}",
+    plugin_list_item_with_author: "    Author: {author}",
+    plugin_info_preset_details_header: "\nPreset Details:",
+    plugin_info_service_details_header: "\nService Details:",
+    plugin_install_validating: "Validating plugin...",
+    plugin_install_validation_failed: "✗ Plugin validation failed:\n",
+    plugin_install_validation_error: "  ✗ [{field}] {message}\n    → {suggestion}",
+    plugin_install_warnings: "⚠ Warnings:\n  {warnings}\n",
+    plugin_install_success: "✓ Installed {type} plugin: {name} (v{version})",
+    plugin_remove_success_preset: "✓ Removed preset plugin: {name}",
+    plugin_remove_success_service: "✓ Removed service plugin: {name}",
+    plugin_validate_header: "Validating plugin: {name}\n",
+    plugin_validate_passed: "✓ Validation passed!\n",
+    plugin_validate_warnings_header: "Warnings:",
+    plugin_validate_ready: "Plugin '{name}' is valid and ready to use.",
+    plugin_validate_failed: "✗ Validation failed!\n",
+    plugin_validate_errors_header: "Errors:",
 
     // Config
     config_set_success: "✅ Set {field} = {value} in {path}",
