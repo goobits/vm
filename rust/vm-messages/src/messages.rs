@@ -291,6 +291,26 @@ pub struct Messages {
     pub vm_pkg_server_started_info: &'static str,
     pub vm_pkg_serve_starting: &'static str,
 
+    // VM Uninstall Messages
+    pub vm_uninstall_header: &'static str,
+    pub vm_uninstall_will_remove: &'static str,
+    pub vm_uninstall_binary: &'static str,
+    pub vm_uninstall_config_files: &'static str,
+    pub vm_uninstall_config_file_item: &'static str,
+    pub vm_uninstall_path_entries: &'static str,
+    pub vm_uninstall_path_entry_item: &'static str,
+    pub vm_uninstall_cancelled: &'static str,
+    pub vm_uninstall_progress: &'static str,
+    pub vm_uninstall_removing_file: &'static str,
+    pub vm_uninstall_cleaned_path: &'static str,
+    pub vm_uninstall_complete_instructions: &'static str,
+    pub vm_uninstall_remove_cargo: &'static str,
+    pub vm_uninstall_remove_sudo: &'static str,
+    pub vm_uninstall_remove_no_sudo_hint: &'static str,
+    pub vm_uninstall_remove_no_sudo: &'static str,
+    pub vm_uninstall_remove_generic: &'static str,
+    pub vm_uninstall_thank_you: &'static str,
+
     // ============================================================================
     // Auth Proxy Messages
     // ============================================================================
@@ -750,6 +770,26 @@ pub const MESSAGES: Messages = Messages {
     vm_pkg_server_logs: "📝 Server logs: {log_path}",
     vm_pkg_server_started_info: "💡 Server is running as a detached background process\n   Access at: http://localhost:{port}",
     vm_pkg_serve_starting: "🚀 Starting package registry server...\n   Host: {host}\n   Port: {port}\n   Data: {data}",
+
+    // VM Uninstall Messages
+    vm_uninstall_header: "VM Uninstall\n============",
+    vm_uninstall_will_remove: "\nThis will remove:",
+    vm_uninstall_binary: "  • VM binary: {path}",
+    vm_uninstall_config_files: "  • Configuration files:",
+    vm_uninstall_config_file_item: "    - {path}",
+    vm_uninstall_path_entries: "  • PATH entries in:",
+    vm_uninstall_path_entry_item: "    - {path}",
+    vm_uninstall_cancelled: "Uninstall cancelled.",
+    vm_uninstall_progress: "\nUninstalling...",
+    vm_uninstall_removing_file: "  Removing {path}",
+    vm_uninstall_cleaned_path: "  Cleaned PATH from {path}",
+    vm_uninstall_complete_instructions: "\nTo complete the uninstall, run:\n",
+    vm_uninstall_remove_cargo: "  cargo uninstall vm",
+    vm_uninstall_remove_sudo: "  sudo rm {path}",
+    vm_uninstall_remove_no_sudo_hint: "\nOr without sudo if you have write permissions:",
+    vm_uninstall_remove_no_sudo: "  rm {path}",
+    vm_uninstall_remove_generic: "  rm {path}",
+    vm_uninstall_thank_you: "\nThank you for using VM!",
 
     // ============================================================================
     // Auth Proxy Messages

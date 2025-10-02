@@ -1,7 +1,9 @@
 use crate::error::VmError;
 use std::io::{self, Write};
 use std::path::PathBuf;
+use vm_cli::msg;
 use vm_core::{vm_println, vm_success, vm_warning};
+use vm_messages::messages::MESSAGES;
 
 pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
     // Get current executable path
@@ -9,11 +11,15 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
         VmError::general(e, "Failed to determine current executable path".to_string())
     })?;
 
-    vm_println!("VM Uninstall");
-    vm_println!("============");
-    vm_println!();
-    vm_println!("This will remove:");
-    vm_println!("  • VM binary: {}", current_exe.display());
+    vm_println!("{}", MESSAGES.vm_uninstall_header);
+    vm_println!("{}", MESSAGES.vm_uninstall_will_remove);
+    vm_println!(
+        "{}",
+        msg!(
+            MESSAGES.vm_uninstall_binary,
+            path = current_exe.display().to_string()
+        )
+    );
 
     // Find config files to remove
     let mut config_files = Vec::new();
@@ -33,18 +39,30 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
     }
 
     if !keep_config && !config_files.is_empty() {
-        vm_println!("  • Configuration files:");
+        vm_println!("{}", MESSAGES.vm_uninstall_config_files);
         for file in &config_files {
-            vm_println!("    - {}", file.display());
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.vm_uninstall_config_file_item,
+                    path = file.display().to_string()
+                )
+            );
         }
     }
 
     // Find shell config entries
     let shell_configs = find_shell_configs(&home);
     if !shell_configs.is_empty() {
-        vm_println!("  • PATH entries in:");
+        vm_println!("{}", MESSAGES.vm_uninstall_path_entries);
         for config in &shell_configs {
-            vm_println!("    - {}", config.display());
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.vm_uninstall_path_entry_item,
+                    path = config.display().to_string()
+                )
+            );
         }
     }
 
@@ -60,18 +78,23 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
         io::stdin().read_line(&mut response).unwrap();
 
         if !response.trim().eq_ignore_ascii_case("y") {
-            vm_println!("Uninstall cancelled.");
+            vm_println!("{}", MESSAGES.vm_uninstall_cancelled);
             return Ok(());
         }
     }
 
-    vm_println!();
-    vm_println!("Uninstalling...");
+    vm_println!("{}", MESSAGES.vm_uninstall_progress);
 
     // Remove configuration files if requested
     if !keep_config {
         for path in &config_files {
-            vm_println!("  Removing {}", path.display());
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.vm_uninstall_removing_file,
+                    path = path.display().to_string()
+                )
+            );
             if path.is_dir() {
                 if let Err(e) = std::fs::remove_dir_all(path) {
                     vm_warning!("Failed to remove {}: {}", path.display(), e);
@@ -87,35 +110,55 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
         if let Err(e) = clean_shell_config(config_file) {
             vm_warning!("Failed to clean {}: {}", config_file.display(), e);
         } else {
-            vm_println!("  Cleaned PATH from {}", config_file.display());
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.vm_uninstall_cleaned_path,
+                    path = config_file.display().to_string()
+                )
+            );
         }
     }
 
     // Instructions for final removal
     vm_println!();
     vm_success!("VM has been uninstalled!");
-    vm_println!();
-    vm_println!("To complete the uninstall, run:");
-    vm_println!();
+    vm_println!("{}", MESSAGES.vm_uninstall_complete_instructions);
 
     // Provide the correct removal command based on location
     if current_exe.to_string_lossy().contains("cargo") {
         // Installed via cargo
-        vm_println!("  cargo uninstall vm");
+        vm_println!("{}", MESSAGES.vm_uninstall_remove_cargo);
     } else if current_exe.parent().and_then(|p| p.file_name()) == Some(std::ffi::OsStr::new("bin"))
     {
         // Installed in a bin directory
-        vm_println!("  sudo rm {}", current_exe.display());
-        vm_println!();
-        vm_println!("Or without sudo if you have write permissions:");
-        vm_println!("  rm {}", current_exe.display());
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.vm_uninstall_remove_sudo,
+                path = current_exe.display().to_string()
+            )
+        );
+        vm_println!("{}", MESSAGES.vm_uninstall_remove_no_sudo_hint);
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.vm_uninstall_remove_no_sudo,
+                path = current_exe.display().to_string()
+            )
+        );
     } else {
         // Generic removal
-        vm_println!("  rm {}", current_exe.display());
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.vm_uninstall_remove_generic,
+                path = current_exe.display().to_string()
+            )
+        );
     }
 
-    vm_println!();
-    vm_println!("Thank you for using VM!");
+    vm_println!("{}", MESSAGES.vm_uninstall_thank_you);
 
     Ok(())
 }
