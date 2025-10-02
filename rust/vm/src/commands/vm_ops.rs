@@ -546,11 +546,8 @@ pub fn handle_list_enhanced(
     }
 
     // Rich dashboard table (always displayed)
-    println!(
-        "{:<20} {:<10} {:<12} {:<20} {:<10} {:<15}",
-        "INSTANCE", "PROVIDER", "STATUS", "ID", "UPTIME", "PROJECT"
-    );
-    println!("{}", "─".repeat(97));
+    vm_println!("{}", MESSAGES.vm_list_table_header);
+    vm_println!("{}", MESSAGES.vm_list_table_separator);
 
     // Sort instances by provider then name for consistent output
     let mut sorted_instances = all_instances;
@@ -870,22 +867,32 @@ fn handle_cross_provider_destroy(
     };
 
     if filtered_instances.is_empty() {
-        println!("No instances found to destroy");
+        vm_println!("{}", MESSAGES.vm_destroy_cross_no_instances);
         return Ok(());
     }
 
     // Show what will be destroyed
-    println!("Instances to destroy:");
+    vm_println!("{}", MESSAGES.vm_destroy_cross_list_header);
     for instance in &filtered_instances {
-        println!("  {} ({})", instance.name, instance.provider);
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.vm_destroy_cross_list_item,
+                name = &instance.name,
+                provider = &instance.provider
+            )
+        );
     }
 
     let should_destroy = if force {
         true
     } else {
         print!(
-            "\nAre you sure you want to destroy {} instance(s)? (y/N): ",
-            filtered_instances.len()
+            "{}",
+            msg!(
+                MESSAGES.vm_destroy_cross_confirm_prompt,
+                count = filtered_instances.len().to_string()
+            )
         );
         io::stdout().flush()?;
         let mut input = String::new();
@@ -894,7 +901,7 @@ fn handle_cross_provider_destroy(
     };
 
     if !should_destroy {
-        println!("Destroy operation cancelled");
+        vm_println!("{}", MESSAGES.vm_destroy_cross_cancelled);
         return Ok(());
     }
 
@@ -903,26 +910,49 @@ fn handle_cross_provider_destroy(
     let mut error_count = 0;
 
     for instance in filtered_instances {
-        println!("Destroying {} ({})...", instance.name, instance.provider);
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.vm_destroy_cross_progress,
+                name = &instance.name,
+                provider = &instance.provider
+            )
+        );
 
         let result = destroy_single_instance(&instance);
         match result {
             Ok(()) => {
-                println!("  ✅ Successfully destroyed {}", instance.name);
+                vm_println!(
+                    "{}",
+                    msg!(
+                        MESSAGES.vm_destroy_cross_success_item,
+                        name = &instance.name
+                    )
+                );
                 success_count += 1;
             }
             Err(e) => {
-                println!("  ❌ Failed to destroy {}: {}", instance.name, e);
+                vm_println!(
+                    "{}",
+                    msg!(
+                        MESSAGES.vm_destroy_cross_failed,
+                        name = &instance.name,
+                        error = e.to_string()
+                    )
+                );
                 error_count += 1;
             }
         }
     }
 
-    println!("\nDestroy operation completed:");
-    println!("  Success: {}", success_count);
-    if error_count > 0 {
-        println!("  Errors: {}", error_count);
-    }
+    vm_println!(
+        "{}",
+        msg!(
+            MESSAGES.vm_destroy_cross_complete,
+            success = success_count.to_string(),
+            errors = error_count.to_string()
+        )
+    );
 
     Ok(())
 }
@@ -975,12 +1005,11 @@ fn handle_ssh_start_prompt(
 ) -> VmResult<Option<VmResult<()>>> {
     // Check if we're in an interactive terminal
     if !io::stdin().is_terminal() {
-        println!("\n💡 Start the VM with: vm start");
-        println!("💡 Then reconnect with: vm ssh");
+        vm_println!("{}", MESSAGES.vm_ssh_start_hint);
         return Ok(None);
     }
 
-    print!("\nWould you like to start it now? (y/N): ");
+    print!("{}", MESSAGES.vm_ssh_start_prompt);
     io::stdout()
         .flush()
         .map_err(|e| VmError::general(e, "Failed to flush stdout"))?;
@@ -991,36 +1020,34 @@ fn handle_ssh_start_prompt(
         .map_err(|e| VmError::general(e, "Failed to read user input"))?;
 
     if !matches!(input.trim().to_lowercase().as_str(), "y" | "yes") {
-        println!("\n❌ SSH connection aborted");
-        println!("💡 Start the VM manually with: vm start");
+        vm_println!("{}", MESSAGES.vm_ssh_start_aborted);
         return Ok(None);
     }
 
     // Start the VM
-    println!("\n🚀 Starting '{}'...", vm_name);
+    vm_println!("{}", msg!(MESSAGES.vm_ssh_starting, name = vm_name));
 
     if let Err(e) = provider.start(container) {
-        println!("❌ Failed to start '{}': {}", vm_name, e);
-        println!("\n💡 Try:");
-        println!("   • Check Docker status: docker ps");
-        println!("   • View logs: docker logs {}-dev", vm_name);
-        println!("   • Recreate VM: vm create --force");
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.vm_ssh_start_failed,
+                name = vm_name,
+                error = e.to_string()
+            )
+        );
         return Ok(None);
     }
 
-    println!("✅ Started successfully");
-
-    // Now retry the SSH connection
-    println!("\n🔗 Reconnecting to '{}'...", vm_name);
+    vm_println!("{}", msg!(MESSAGES.vm_ssh_reconnecting, name = vm_name));
 
     let retry_result = provider.ssh(container, relative_path);
     match &retry_result {
         Ok(()) => {
-            println!("\n👋 Disconnected from '{}'", vm_name);
-            println!("💡 Reconnect with: vm ssh");
+            vm_println!("{}", msg!(MESSAGES.vm_ssh_disconnected, name = vm_name));
         }
         Err(e) => {
-            println!("\n❌ SSH connection failed: {}", e);
+            vm_println!("\n❌ SSH connection failed: {}", e);
         }
     }
 
@@ -1063,26 +1090,25 @@ pub fn handle_ssh(
         .and_then(|t| t.shell.as_deref())
         .unwrap_or("zsh");
 
-    println!("🔗 Connecting to '{}'...", vm_name);
+    vm_println!("{}", msg!(MESSAGES.vm_ssh_connecting, name = vm_name));
 
     let result = provider.ssh(container, &relative_path);
 
     // Show message when SSH session ends
     match &result {
         Ok(()) => {
-            println!("\n👋 Disconnected from '{}'", vm_name);
-            println!("💡 Reconnect with: vm ssh");
+            vm_println!("{}", msg!(MESSAGES.vm_ssh_disconnected, name = vm_name));
         }
         Err(e) => {
             let error_str = e.to_string();
 
             // Check if VM doesn't exist first
             if error_str.contains("No such container") || error_str.contains("No such object") {
-                println!("\n🔍 VM '{}' doesn't exist", vm_name);
+                vm_println!("{}", msg!(MESSAGES.vm_ssh_vm_not_found, name = vm_name));
 
                 // Offer to create the VM
                 if io::stdin().is_terminal() {
-                    print!("\nWould you like to create it now? (y/N): ");
+                    print!("{}", MESSAGES.vm_ssh_create_prompt);
                     io::stdout().flush()?;
 
                     let mut input = String::new();
@@ -1090,39 +1116,38 @@ pub fn handle_ssh(
 
                     if matches!(input.trim().to_lowercase().as_str(), "y" | "yes") {
                         // Actually create the VM
-                        println!("\n🚀 Creating '{}'...\n", vm_name);
-                        println!("  ✓ Building Docker image");
-                        println!("  ✓ Setting up volumes");
-                        println!("  ✓ Configuring network");
-                        println!("  ✓ Starting container");
-                        println!("  ✓ Running initial provisioning");
+                        vm_println!("{}", msg!(MESSAGES.vm_ssh_creating, name = vm_name));
 
                         #[allow(clippy::excessive_nesting)]
                         match provider.create() {
                             Ok(()) => {
-                                println!("\n✅ Created successfully");
-                                println!("\n🔗 Connecting to '{}'...", vm_name);
+                                vm_println!(
+                                    "{}",
+                                    msg!(MESSAGES.vm_ssh_create_success, name = vm_name)
+                                );
 
                                 // Now try SSH again
                                 return Ok(provider.ssh(container, &relative_path)?);
                             }
                             Err(create_err) => {
-                                println!("\n❌ Failed to create '{}'", vm_name);
-                                println!("   Error: {}", create_err);
-                                println!("\n💡 Try:");
-                                println!("   • Check Docker: docker ps");
-                                println!("   • View logs: docker logs");
-                                println!("   • Manual create: vm create");
+                                vm_println!(
+                                    "{}",
+                                    msg!(
+                                        MESSAGES.vm_ssh_create_failed,
+                                        name = vm_name,
+                                        error = create_err.to_string()
+                                    )
+                                );
                                 return Err(create_err.into());
                             }
                         }
                     } else {
-                        println!("\n💡 Create with: vm create");
-                        println!("💡 List existing VMs: vm list");
+                        vm_println!("\n💡 Create with: vm create");
+                        vm_println!("💡 List existing VMs: vm list");
                     }
                 } else {
-                    println!("\n💡 Create with: vm create");
-                    println!("💡 List existing VMs: vm list");
+                    vm_println!("\n💡 Create with: vm create");
+                    vm_println!("💡 List existing VMs: vm list");
                 }
                 // Return a clean error that won't be misinterpreted by the main error handler
                 return Err(VmError::vm_operation(
@@ -1139,7 +1164,7 @@ pub fn handle_ssh(
                     && error_str.contains("exited with code 1")
                     && !error_str.contains("No such"))
             {
-                println!("\n⚠️  VM '{}' is not running", vm_name);
+                vm_println!("{}", msg!(MESSAGES.vm_ssh_not_running, name = vm_name));
 
                 // Handle interactive prompt
                 if let Some(retry_result) = handle_ssh_start_prompt(
@@ -1156,12 +1181,10 @@ pub fn handle_ssh(
             } else if error_str.contains("connection lost")
                 || error_str.contains("connection failed")
             {
-                println!("\n⚠️  Lost connection to VM");
-                println!("💡 Check if VM is running: vm status");
+                vm_println!("{}", MESSAGES.vm_ssh_connection_lost);
             } else {
                 // For other errors, show the actual error but clean up the message
-                println!("\n⚠️  Session ended unexpectedly");
-                println!("💡 Check VM status: vm status");
+                vm_println!("{}", MESSAGES.vm_ssh_session_ended);
             }
         }
     }
@@ -1387,32 +1410,28 @@ pub fn handle_exec(
         .unwrap_or("vm-project");
 
     let cmd_display = command.join(" ");
-    println!("🏃 Running in '{}': {}", vm_name, cmd_display);
-    println!("──────────────────────────────────────────");
+    vm_println!(
+        "{}",
+        msg!(
+            MESSAGES.vm_exec_header,
+            name = vm_name,
+            command = &cmd_display
+        )
+    );
 
     let result = provider.exec(container, &command);
 
     match &result {
         Ok(()) => {
-            println!("──────────────────────────────────────────");
-            println!("✅ Command completed successfully (exit code 0)");
-            println!("\n💡 Run another: vm exec <command>");
+            vm_println!("{}", MESSAGES.vm_exec_separator);
+            vm_println!("{}", MESSAGES.vm_exec_success);
         }
         Err(e) => {
-            println!("──────────────────────────────────────────");
-
-            // Try to extract exit code from error message if available
-            let error_str = e.to_string();
-            if error_str.contains("exit code") || error_str.contains("exit status") {
-                println!("❌ Command failed: {}", e);
-            } else if error_str.contains("exited with code 1") {
-                println!("❌ Command failed (exit code 1)");
-            } else {
-                println!("❌ Command failed");
-                println!("   Error: {}", e);
-            }
-
-            println!("\n💡 Debug with: vm ssh");
+            vm_println!("{}", MESSAGES.vm_exec_separator);
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.vm_exec_troubleshooting, error = e.to_string())
+            );
         }
     }
 
@@ -1434,14 +1453,16 @@ pub fn handle_logs(
         .map(|s| s.as_str())
         .unwrap_or("vm-project");
 
-    println!("📜 Logs for '{}' (last 50 lines)", vm_name);
-    println!("──────────────────────────────────────────");
+    let container_name = format!("{}-dev", vm_name);
+
+    vm_println!("{}", msg!(MESSAGES.vm_logs_header, name = vm_name));
 
     let result = provider.logs(container);
 
-    println!("──────────────────────────────────────────");
-    println!("💡 Follow live: docker logs -f {}-dev", vm_name);
-    println!("💡 Full logs: docker logs {}-dev", vm_name);
+    vm_println!(
+        "{}",
+        msg!(MESSAGES.vm_logs_footer, container = &container_name)
+    );
 
     result.map_err(VmError::from)
 }
@@ -1453,10 +1474,16 @@ async fn register_vm_services_helper(vm_name: &str, global_config: &GlobalConfig
         .await
     {
         warn!("Failed to register VM services: {}", e);
-        println!("  Status:     ⚠️  Service configuration failed: {}", e);
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.common_services_config_failed,
+                error = e.to_string()
+            )
+        );
         // Don't fail the operation if service registration fails
     } else {
-        println!("  Status:     ✅ Services configured successfully");
+        vm_println!("{}", MESSAGES.common_services_config_success);
     }
     Ok(())
 }

@@ -20,6 +20,8 @@ pub struct Messages {
     pub common_resources_label: &'static str,
     pub common_services_cleaned: &'static str,
     pub common_services_cleanup_failed: &'static str,
+    pub common_services_config_failed: &'static str,
+    pub common_services_config_success: &'static str,
     pub common_services_label: &'static str,
     pub common_status_running: &'static str,
     pub common_status_stopped: &'static str,
@@ -115,11 +117,18 @@ pub struct Messages {
     // ============================================================================
     // VM Exec Messages
     // ============================================================================
+    pub vm_exec_header: &'static str,
+    pub vm_exec_separator: &'static str,
+    pub vm_exec_success: &'static str,
+    pub vm_exec_failed: &'static str,
     pub vm_exec_troubleshooting: &'static str,
 
     // ============================================================================
     // VM Logs Messages
     // ============================================================================
+    pub vm_logs_header: &'static str,
+    pub vm_logs_separator: &'static str,
+    pub vm_logs_footer: &'static str,
     pub vm_logs_troubleshooting: &'static str,
 
     // ============================================================================
@@ -127,6 +136,41 @@ pub struct Messages {
     // ============================================================================
     pub vm_list_empty: &'static str,
     pub vm_list_empty_provider: &'static str,
+    pub vm_list_table_header: &'static str,
+    pub vm_list_table_separator: &'static str,
+
+    // ============================================================================
+    // VM SSH Messages
+    // ============================================================================
+    pub vm_ssh_connecting: &'static str,
+    pub vm_ssh_disconnected: &'static str,
+    pub vm_ssh_vm_not_found: &'static str,
+    pub vm_ssh_create_prompt: &'static str,
+    pub vm_ssh_creating: &'static str,
+    pub vm_ssh_create_success: &'static str,
+    pub vm_ssh_create_failed: &'static str,
+    pub vm_ssh_not_running: &'static str,
+    pub vm_ssh_connection_lost: &'static str,
+    pub vm_ssh_session_ended: &'static str,
+    pub vm_ssh_start_hint: &'static str,
+    pub vm_ssh_start_prompt: &'static str,
+    pub vm_ssh_start_aborted: &'static str,
+    pub vm_ssh_starting: &'static str,
+    pub vm_ssh_start_failed: &'static str,
+    pub vm_ssh_reconnecting: &'static str,
+
+    // ============================================================================
+    // VM Destroy Enhanced (Cross-Provider) Messages
+    // ============================================================================
+    pub vm_destroy_cross_no_instances: &'static str,
+    pub vm_destroy_cross_list_header: &'static str,
+    pub vm_destroy_cross_list_item: &'static str,
+    pub vm_destroy_cross_confirm_prompt: &'static str,
+    pub vm_destroy_cross_cancelled: &'static str,
+    pub vm_destroy_cross_progress: &'static str,
+    pub vm_destroy_cross_success_item: &'static str,
+    pub vm_destroy_cross_failed: &'static str,
+    pub vm_destroy_cross_complete: &'static str,
 
     // Config
     pub config_set_success: &'static str,
@@ -300,6 +344,8 @@ pub const MESSAGES: Messages = Messages {
     common_resources_label: "  Resources:  {cpus} CPUs, {memory}",
     common_services_cleaned: "  ✓ Services cleaned up successfully",
     common_services_cleanup_failed: "  ⚠️  Service cleanup failed: {error}",
+    common_services_config_failed: "  Status:     ⚠️  Service configuration failed: {error}",
+    common_services_config_success: "  Status:     ✅ Services configured successfully",
     common_services_label: "  Services:   {services}",
     common_status_running: "🟢 Running",
     common_status_stopped: "🔴 Stopped",
@@ -395,11 +441,18 @@ pub const MESSAGES: Messages = Messages {
     // ============================================================================
     // VM Exec Messages
     // ============================================================================
-    vm_exec_troubleshooting: "❌ Failed to execute command\n   Error: {error}",
+    vm_exec_header: "🏃 Running in '{name}': {command}\n──────────────────────────────────────────",
+    vm_exec_separator: "──────────────────────────────────────────",
+    vm_exec_success: "✅ Command completed successfully (exit code 0)\n\n💡 Run another: vm exec <command>",
+    vm_exec_failed: "❌ Command failed\n   Error: {error}",
+    vm_exec_troubleshooting: "❌ Command failed\n   Error: {error}\n\n💡 Debug with: vm ssh",
 
     // ============================================================================
     // VM Logs Messages
     // ============================================================================
+    vm_logs_header: "📜 Logs for '{name}' (last 50 lines)\n──────────────────────────────────────────",
+    vm_logs_separator: "──────────────────────────────────────────",
+    vm_logs_footer: "──────────────────────────────────────────\n💡 Follow live: docker logs -f {container}\n💡 Full logs: docker logs {container}",
     vm_logs_troubleshooting: "❌ Failed to retrieve logs\n   Error: {error}",
 
     // ============================================================================
@@ -407,6 +460,41 @@ pub const MESSAGES: Messages = Messages {
     // ============================================================================
     vm_list_empty: "No VMs found",
     vm_list_empty_provider: "No VMs found for provider '{provider}'",
+    vm_list_table_header: "INSTANCE             PROVIDER   STATUS       ID                   UPTIME     PROJECT        ",
+    vm_list_table_separator: "─────────────────────────────────────────────────────────────────────────────────────────────────────",
+
+    // ============================================================================
+    // VM SSH Messages
+    // ============================================================================
+    vm_ssh_connecting: "🔗 Connecting to '{name}'...",
+    vm_ssh_disconnected: "\n👋 Disconnected from '{name}'\n💡 Reconnect with: vm ssh",
+    vm_ssh_vm_not_found: "\n🔍 VM '{name}' doesn't exist",
+    vm_ssh_create_prompt: "\nWould you like to create it now? (y/N): ",
+    vm_ssh_creating: "\n🚀 Creating '{name}'...\n\n  ✓ Building Docker image\n  ✓ Setting up volumes\n  ✓ Configuring network\n  ✓ Starting container\n  ✓ Running initial provisioning",
+    vm_ssh_create_success: "\n✅ Created successfully\n\n🔗 Connecting to '{name}'...",
+    vm_ssh_create_failed: "\n❌ Failed to create '{name}'\n   Error: {error}\n\n💡 Try:\n   • Check Docker: docker ps\n   • View logs: docker logs\n   • Manual create: vm create",
+    vm_ssh_not_running: "\n⚠️  VM '{name}' is not running",
+    vm_ssh_connection_lost: "\n⚠️  Lost connection to VM\n💡 Check if VM is running: vm status",
+    vm_ssh_session_ended: "\n⚠️  Session ended unexpectedly\n💡 Check VM status: vm status",
+    vm_ssh_start_hint: "\n💡 Start the VM with: vm start\n💡 Then reconnect with: vm ssh",
+    vm_ssh_start_prompt: "\nWould you like to start it now? (y/N): ",
+    vm_ssh_start_aborted: "\n❌ SSH connection aborted\n💡 Start the VM manually with: vm start",
+    vm_ssh_starting: "\n🚀 Starting '{name}'...",
+    vm_ssh_start_failed: "\n❌ Failed to start '{name}': {error}\n\n💡 Try:\n   • Check Docker status: docker ps\n   • View logs: docker logs {name}-dev\n   • Recreate VM: vm create --force",
+    vm_ssh_reconnecting: "✅ Started successfully\n\n🔗 Reconnecting to '{name}'...",
+
+    // ============================================================================
+    // VM Destroy Enhanced (Cross-Provider) Messages
+    // ============================================================================
+    vm_destroy_cross_no_instances: "No instances found to destroy",
+    vm_destroy_cross_list_header: "Instances to destroy:",
+    vm_destroy_cross_list_item: "  {name} ({provider})",
+    vm_destroy_cross_confirm_prompt: "\nAre you sure you want to destroy {count} instance(s)? (y/N): ",
+    vm_destroy_cross_cancelled: "Destroy operation cancelled",
+    vm_destroy_cross_progress: "Destroying {name} ({provider})...",
+    vm_destroy_cross_success_item: "  ✅ Successfully destroyed {name}",
+    vm_destroy_cross_failed: "  ❌ Failed to destroy {name}: {error}",
+    vm_destroy_cross_complete: "\nDestroy operation completed:\n  Success: {success}\n  Errors: {errors}",
 
     // Config
     config_set_success: "✅ Set {field} = {value} in {path}",
