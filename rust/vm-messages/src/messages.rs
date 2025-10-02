@@ -319,6 +319,43 @@ pub struct Messages {
     pub vm_auth_interactive_success: &'static str,
 
     // ============================================================================
+    // VM Update Messages
+    // ============================================================================
+    pub vm_update_current_version: &'static str,
+    pub vm_update_target_version: &'static str,
+    pub vm_update_via_cargo: &'static str,
+    pub vm_update_cargo_success: &'static str,
+    pub vm_update_cargo_failed: &'static str,
+    pub vm_update_downloading_github: &'static str,
+    pub vm_update_fetching_release: &'static str,
+    pub vm_update_release_fetch_failed: &'static str,
+    pub vm_update_check_version_hint: &'static str,
+    pub vm_update_platform_not_found: &'static str,
+    pub vm_update_downloading_binary: &'static str,
+    pub vm_update_download_failed: &'static str,
+    pub vm_update_extracting: &'static str,
+    pub vm_update_extract_failed: &'static str,
+    pub vm_update_binary_not_found: &'static str,
+    pub vm_update_backing_up: &'static str,
+    pub vm_update_installing: &'static str,
+    pub vm_update_success: &'static str,
+    pub vm_update_new_version: &'static str,
+
+    // ============================================================================
+    // VM Dry Run Messages
+    // ============================================================================
+    pub vm_dry_run_header: &'static str,
+    pub vm_dry_run_command: &'static str,
+    pub vm_dry_run_config: &'static str,
+    pub vm_dry_run_complete: &'static str,
+
+    // ============================================================================
+    // Common Validation Messages
+    // ============================================================================
+    pub common_validation_failed: &'static str,
+    pub common_validation_hint: &'static str,
+
+    // ============================================================================
     // Installer Messages
     // ============================================================================
     pub installer_build_time_hint: &'static str,
@@ -862,6 +899,43 @@ pub const MESSAGES: Messages = Messages {
     vm_auth_secret_removed: "Secret removed successfully",
     vm_auth_interactive_header: "🔐 Interactive Secret Management\nThis will guide you through adding a new secret securely.",
     vm_auth_interactive_success: "Secret '{name}' added successfully",
+
+    // ============================================================================
+    // VM Update Messages
+    // ============================================================================
+    vm_update_current_version: "Current version: v{version}",
+    vm_update_target_version: "Target version: {version}",
+    vm_update_via_cargo: "Updating via cargo...",
+    vm_update_cargo_success: "Successfully updated vm via cargo",
+    vm_update_cargo_failed: "Failed to update: {error}",
+    vm_update_downloading_github: "Downloading latest binary from GitHub releases...",
+    vm_update_fetching_release: "Fetching release information...",
+    vm_update_release_fetch_failed: "Failed to fetch release information",
+    vm_update_check_version_hint: "Check if version '{version}' exists at {repo_url}/releases",
+    vm_update_platform_not_found: "Could not find download URL for platform: {platform}",
+    vm_update_downloading_binary: "Downloading vm binary...",
+    vm_update_download_failed: "Failed to download binary",
+    vm_update_extracting: "Extracting binary...",
+    vm_update_extract_failed: "Failed to extract archive",
+    vm_update_binary_not_found: "Binary not found in archive",
+    vm_update_backing_up: "Backing up current binary...",
+    vm_update_installing: "Installing new binary...",
+    vm_update_success: "Successfully updated vm to {version}",
+    vm_update_new_version: "New version: {version}",
+
+    // ============================================================================
+    // VM Dry Run Messages
+    // ============================================================================
+    vm_dry_run_header: "🔍 DRY RUN MODE - showing what would be executed:",
+    vm_dry_run_command: "   Command: {command}",
+    vm_dry_run_config: "   Config: {config}",
+    vm_dry_run_complete: "🚫 Dry run complete - no commands were executed",
+
+    // ============================================================================
+    // Common Validation Messages
+    // ============================================================================
+    common_validation_failed: "Configuration validation failed:",
+    common_validation_hint: "\n💡 Fix the configuration errors above or run 'vm doctor' for more details",
 
     // ============================================================================
     // Installer Messages

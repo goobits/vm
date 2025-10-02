@@ -4,6 +4,7 @@ use crate::error::{VmError, VmResult};
 use tracing::debug;
 // Import the CLI types
 use crate::cli::{Args, Command, PluginSubcommand};
+use vm_cli::msg;
 use vm_config::{init_config_file, AppConfig};
 use vm_core::{vm_error, vm_println};
 use vm_messages::messages::MESSAGES;
@@ -97,12 +98,24 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
         | Command::Restart { .. }
         | Command::Destroy { .. }
         | Command::Provision { .. } => {
-            vm_println!("🔍 DRY RUN MODE - showing what would be executed:");
-            vm_println!("   Command: {:?}", args.command);
+            vm_println!("{}", MESSAGES.vm_dry_run_header);
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.vm_dry_run_command,
+                    command = format!("{:?}", args.command)
+                )
+            );
             if let Some(config) = &args.config {
-                vm_println!("   Config: {}", config.display());
+                vm_println!(
+                    "{}",
+                    msg!(
+                        MESSAGES.vm_dry_run_config,
+                        config = config.display().to_string()
+                    )
+                );
             }
-            vm_println!("🚫 Dry run complete - no commands were executed");
+            vm_println!("{}", MESSAGES.vm_dry_run_complete);
             Ok(())
         }
         _ => {
@@ -182,11 +195,11 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
     // Validate configuration before proceeding
     let validation_errors = config.validate();
     if !validation_errors.is_empty() {
-        vm_error!("Configuration validation failed:");
+        vm_error!("{}", MESSAGES.common_validation_failed);
         for error in &validation_errors {
             vm_println!("  ❌ {}", error);
         }
-        vm_println!("\n💡 Fix the configuration errors above or run 'vm doctor' for more details");
+        vm_println!("{}", MESSAGES.common_validation_hint);
         return Err(VmError::validation(
             format!(
                 "Configuration has {} validation error(s)",
