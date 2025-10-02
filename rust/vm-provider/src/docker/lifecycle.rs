@@ -28,12 +28,14 @@ use crate::{
     security::SecurityValidator,
     ResourceUsage, ServiceStatus, TempProvider, TempVmState, VmStatusReport,
 };
+use vm_cli::msg;
 use vm_config::config::VmConfig;
 use vm_core::command_stream::{
     stream_command, stream_command_with_progress, ProgressParser as CoreProgressParser,
 };
 use vm_core::vm_error_with_details;
-use vm_core::{vm_dbg, vm_error, vm_error_hint, vm_success, vm_warning};
+use vm_core::{vm_dbg, vm_error, vm_error_hint, vm_println, vm_success, vm_warning};
+use vm_messages::messages::MESSAGES;
 
 // Constants for container lifecycle operations
 const DEFAULT_PROJECT_NAME: &str = "vm-project";
@@ -470,16 +472,17 @@ impl<'a> LifecycleOperations<'a> {
 
         // Check if we're in an interactive terminal
         if io::stdin().is_terminal() {
-            println!("\nWhat would you like to do?");
-            if is_running {
-                println!("  1. Keep using the existing running container");
+            let option1 = if is_running {
+                MESSAGES.docker_container_exists_running
             } else {
-                println!("  1. Start the existing container");
-            }
-            println!("  2. Recreate the container (destroy and rebuild)");
-            println!("  3. Cancel operation");
+                MESSAGES.docker_container_exists_stopped
+            };
 
-            print!("\nChoice [1-3]: ");
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.docker_container_exists_prompt, option1 = option1)
+            );
+            print!("{}", MESSAGES.docker_container_choice_prompt);
             io::stdout().flush()?;
 
             let mut input = String::new();
@@ -491,12 +494,12 @@ impl<'a> LifecycleOperations<'a> {
                         vm_success!("Using existing running container.");
                         Ok(())
                     } else {
-                        println!("\n▶️  Starting existing container...");
+                        vm_println!("{}", MESSAGES.docker_container_starting);
                         self.start_container(None)
                     }
                 }
                 "2" => {
-                    println!("\n🔄 Recreating container...");
+                    vm_println!("{}", MESSAGES.docker_container_recreating);
                     self.destroy_container(None)?;
                     // Continue with creation below
                     self.create_container()
@@ -536,16 +539,17 @@ impl<'a> LifecycleOperations<'a> {
 
         // Check if we're in an interactive terminal
         if io::stdin().is_terminal() {
-            println!("\nWhat would you like to do?");
-            if is_running {
-                println!("  1. Keep using the existing running container");
+            let option1 = if is_running {
+                MESSAGES.docker_container_exists_running
             } else {
-                println!("  1. Start the existing container");
-            }
-            println!("  2. Recreate the container (destroy and rebuild)");
-            println!("  3. Cancel operation");
+                MESSAGES.docker_container_exists_stopped
+            };
 
-            print!("\nChoice [1-3]: ");
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.docker_container_exists_prompt, option1 = option1)
+            );
+            print!("{}", MESSAGES.docker_container_choice_prompt);
             io::stdout().flush()?;
 
             let mut input = String::new();
@@ -557,12 +561,12 @@ impl<'a> LifecycleOperations<'a> {
                         vm_success!("Using existing running container.");
                         Ok(())
                     } else {
-                        println!("\n▶️  Starting existing container...");
+                        vm_println!("{}", MESSAGES.docker_container_starting);
                         self.start_container(Some(&container_name))
                     }
                 }
                 "2" => {
-                    println!("\n🔄 Recreating container...");
+                    vm_println!("{}", MESSAGES.docker_container_recreating);
                     self.destroy_container(Some(&container_name))?;
                     // Continue with creation below
                     self.create_container_with_instance(instance_name)
@@ -975,11 +979,15 @@ impl<'a> LifecycleOperations<'a> {
 
         // Only show connection details if container is running and it's interactive
         if is_running && io::stdin().is_terminal() && io::stdout().is_terminal() {
-            println!();
-            println!("  User:  {}", project_user);
-            println!("  Path:  {}", target_dir);
-            println!("  Shell: {}", shell);
-            println!("\n💡 Exit with: exit or Ctrl-D\n");
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.docker_ssh_info,
+                    user = project_user,
+                    path = target_dir.as_ref(),
+                    shell = shell
+                )
+            );
         }
 
         // First check if container exists to provide better error messages

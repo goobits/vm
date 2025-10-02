@@ -234,6 +234,17 @@ pub struct Messages {
     pub config_apply_preset_hint: &'static str,
 
     // ============================================================================
+    // Docker Lifecycle Messages
+    // ============================================================================
+    pub docker_container_exists_prompt: &'static str,
+    pub docker_container_exists_running: &'static str,
+    pub docker_container_exists_stopped: &'static str,
+    pub docker_container_choice_prompt: &'static str,
+    pub docker_container_starting: &'static str,
+    pub docker_container_recreating: &'static str,
+    pub docker_ssh_info: &'static str,
+
+    // ============================================================================
     // Progress/Provisioning Messages
     // ============================================================================
     pub progress_creating_vm: &'static str,
@@ -611,6 +622,17 @@ pub const MESSAGES: Messages = Messages {
     config_restart_hint: "\n💡 Restart VM to apply changes: vm restart",
     config_applied_presets: "\n  Applied presets:",
     config_apply_preset_hint: "💡 Apply this preset: vm config preset {name}",
+
+    // ============================================================================
+    // Docker Lifecycle Messages
+    // ============================================================================
+    docker_container_exists_prompt: "\nWhat would you like to do?\n  1. {option1}\n  2. Recreate the container (destroy and rebuild)\n  3. Cancel operation",
+    docker_container_exists_running: "Keep using the existing running container",
+    docker_container_exists_stopped: "Start the existing container",
+    docker_container_choice_prompt: "\nChoice [1-3]: ",
+    docker_container_starting: "\n▶️  Starting existing container...",
+    docker_container_recreating: "\n🔄 Recreating container...",
+    docker_ssh_info: "\n  User:  {user}\n  Path:  {path}\n  Shell: {shell}\n\n💡 Exit with: exit or Ctrl-D\n",
 
     // ============================================================================
     // Progress/Provisioning Messages
