@@ -1,0 +1,40 @@
+{
+  "threshold": 10,
+  "reporters": ["html", "console", "json"],
+  "ignore": [
+    "**/target/**",
+    "**/node_modules/**",
+    "**/.git/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/*.lock",
+    "**/*.min.js",
+    "**/*.d.ts"
+  ],
+  "format": [
+    "rust",
+    "toml",
+    "javascript",
+    "typescript",
+    "markdown",
+    "yaml",
+    "json"
+  ],
+  "minLines": 5,
+  "minTokens": 50,
+  "maxSize": "100kb",
+  "output": "./.build/jscpd-report",
+  "formatsExts": {
+    "rust": ["rs"],
+    "toml": ["toml"],
+    "javascript": ["js", "mjs"],
+    "typescript": ["ts"],
+    "markdown": ["md"],
+    "yaml": ["yml", "yaml"],
+    "json": ["json"]
+  },
+  "blame": false,
+  "silent": false,
+  "absolute": false,
+  "gitignore": true
+}
