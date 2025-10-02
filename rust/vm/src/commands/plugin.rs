@@ -255,12 +255,25 @@ pub fn handle_plugin_install(source_path: &str) -> Result<()> {
     if !validation_result.is_valid {
         vm_println!("{}", MESSAGES.plugin_install_validation_failed);
         for error in &validation_result.errors {
-            println!("  ✗ [{}] {}", error.field, error.message);
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.plugin_install_validation_error,
+                    field = &error.field,
+                    message = &error.message
+                )
+            );
             if let Some(suggestion) = &error.fix_suggestion {
-                println!("    → {}", suggestion);
+                vm_println!(
+                    "{}",
+                    msg!(
+                        MESSAGES.plugin_install_validation_error_with_suggestion,
+                        suggestion = suggestion
+                    )
+                );
             }
         }
-        println!();
+        vm_println!();
         anyhow::bail!(
             "Cannot install plugin: validation failed with {} errors",
             validation_result.errors.len()
@@ -268,11 +281,14 @@ pub fn handle_plugin_install(source_path: &str) -> Result<()> {
     }
 
     if !validation_result.warnings.is_empty() {
-        println!("⚠ Warnings:");
+        vm_println!("{}", MESSAGES.plugin_install_warnings_header);
         for warning in &validation_result.warnings {
-            println!("  {}", warning);
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.plugin_install_warning_item, warning = warning)
+            );
         }
-        println!();
+        vm_println!();
     }
 
     // Get plugins directory
@@ -374,9 +390,12 @@ pub fn handle_plugin_validate(plugin_name: &str) -> Result<()> {
         if !result.warnings.is_empty() {
             vm_println!("{}", MESSAGES.plugin_validate_warnings_header);
             for warning in &result.warnings {
-                println!("  ⚠ {}", warning);
+                vm_println!(
+                    "{}",
+                    msg!(MESSAGES.plugin_validate_warning_item, warning = warning)
+                );
             }
-            println!();
+            vm_println!();
         }
 
         vm_println!(
@@ -389,20 +408,36 @@ pub fn handle_plugin_validate(plugin_name: &str) -> Result<()> {
         if !result.errors.is_empty() {
             vm_println!("{}", MESSAGES.plugin_validate_errors_header);
             for error in &result.errors {
-                println!("  ✗ [{}] {}", error.field, error.message);
+                vm_println!(
+                    "{}",
+                    msg!(
+                        MESSAGES.plugin_validate_error_item,
+                        field = &error.field,
+                        message = &error.message
+                    )
+                );
                 if let Some(suggestion) = &error.fix_suggestion {
-                    println!("    → {}", suggestion);
+                    vm_println!(
+                        "{}",
+                        msg!(
+                            MESSAGES.plugin_validate_error_suggestion,
+                            suggestion = suggestion
+                        )
+                    );
                 }
             }
-            println!();
+            vm_println!();
         }
 
         if !result.warnings.is_empty() {
             vm_println!("{}", MESSAGES.plugin_validate_warnings_header);
             for warning in &result.warnings {
-                println!("  ⚠ {}", warning);
+                vm_println!(
+                    "{}",
+                    msg!(MESSAGES.plugin_validate_warning_item, warning = warning)
+                );
             }
-            println!();
+            vm_println!();
         }
 
         anyhow::bail!(
