@@ -148,15 +148,6 @@ impl<'a> VagrantInstanceManager<'a> {
                 machine
             ));
 
-            // Add port forwarding if configured
-            if let Some(_ports) = &self.config.ports.manual_ports.get("ssh") {
-                let ssh_port = 2200 + (machine.len() as u16); // Simple port calculation
-                content.push_str(&format!(
-                    "    {}.vm.network \"forwarded_port\", guest: 22, host: {}\n",
-                    machine, ssh_port
-                ));
-            }
-
             content.push_str("  end\n\n");
         }
 

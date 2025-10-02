@@ -694,7 +694,7 @@
 
       - name: Restore database from backup
         shell: |
-            gunzip -c "{{ (backup_files.files | sort(attribute='mtime') | last).path }}" | sudo -u postgres psql -p {{ project_config.ports.postgresql | default(5432) }} -d "{{ project_config.services.postgresql.database }}"
+            gunzip -c "{{ (backup_files.files | sort(attribute='mtime') | last).path }}" | sudo -u postgres psql -p {{ project_config.services.postgresql.port | default(5432) }} -d "{{ project_config.services.postgresql.database }}"
         when:
           - project_config.services.postgresql.enabled | default(false)
           - backup_files is defined
