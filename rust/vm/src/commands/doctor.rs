@@ -7,43 +7,45 @@
 use crate::error::{VmError, VmResult};
 // use std::path::PathBuf; // Currently unused
 use std::process::Command;
+use vm_cli::msg;
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::{vm_error, vm_println, vm_success};
+use vm_messages::messages::MESSAGES;
 
 /// Handle the doctor command - perform comprehensive health checks
 pub async fn handle_doctor_command(global_config: GlobalConfig) -> VmResult<()> {
-    vm_println!("🩺 VM Environment Health Check");
-    vm_println!("==============================\n");
+    vm_println!("{}", MESSAGES.vm_doctor_header);
+    vm_println!();
 
     let mut all_checks_passed = true;
 
     // 1. Configuration validation
-    vm_println!("📋 Configuration Validation:");
+    vm_println!("{}", MESSAGES.vm_doctor_config_section);
     if !check_configuration().await {
         all_checks_passed = false;
     }
     vm_println!();
 
     // 2. System dependencies
-    vm_println!("🔧 System Dependencies:");
+    vm_println!("{}", MESSAGES.vm_doctor_deps_section);
     if !check_system_dependencies().await {
         all_checks_passed = false;
     }
     vm_println!();
 
     // 3. Background services
-    vm_println!("🔄 Background Services:");
+    vm_println!("{}", MESSAGES.vm_doctor_services_section);
     if !check_background_services(&global_config).await {
         all_checks_passed = false;
     }
     vm_println!();
 
     // Final summary
-    vm_println!("==============================");
+    vm_println!("{}", MESSAGES.vm_doctor_summary_separator);
     if all_checks_passed {
-        vm_success!("All checks passed! Your VM environment is healthy.");
+        vm_success!("{}", MESSAGES.vm_doctor_all_passed);
     } else {
-        vm_error!("Some checks failed. Please review the issues above.");
+        vm_error!("{}", MESSAGES.vm_doctor_some_failed);
         return Err(VmError::validation(
             "Health check failed - see diagnostic output above",
             None::<String>,
@@ -60,14 +62,14 @@ async fn check_configuration() -> bool {
     // Try to load configuration
     match VmConfig::load(None) {
         Ok(config) => {
-            vm_success!("Configuration loaded successfully");
+            vm_success!("{}", MESSAGES.vm_doctor_config_loaded);
 
             // Run validation
             let validation_errors = config.validate();
             if validation_errors.is_empty() {
-                vm_success!("Configuration validation passed");
+                vm_success!("{}", MESSAGES.vm_doctor_config_valid);
             } else {
-                vm_error!("Configuration validation failed:");
+                vm_error!("{}", MESSAGES.vm_doctor_config_invalid);
                 for error in validation_errors {
                     vm_println!("   ❌ {}", error);
                 }
@@ -76,19 +78,22 @@ async fn check_configuration() -> bool {
 
             // Check if configuration is complete
             if config.is_partial() {
-                vm_error!("Configuration is incomplete (missing provider or project name)");
+                vm_error!("{}", MESSAGES.vm_doctor_config_incomplete);
                 config_ok = false;
             } else {
-                vm_success!("Configuration is complete");
+                vm_success!("{}", MESSAGES.vm_doctor_config_complete);
             }
         }
         Err(e) => {
             let error_str = e.to_string();
             if error_str.contains("No vm.yaml found") {
-                vm_error!("No vm.yaml configuration file found");
-                vm_println!("   💡 Run 'vm init' to create a configuration file");
+                vm_error!("{}", MESSAGES.vm_doctor_config_not_found);
+                vm_println!("{}", MESSAGES.vm_doctor_config_not_found_hint);
             } else {
-                vm_error!("Failed to load configuration: {}", e);
+                vm_error!(
+                    "{}",
+                    msg!(MESSAGES.vm_doctor_config_load_failed, error = e.to_string())
+                );
             }
             config_ok = false;
         }
@@ -103,14 +108,20 @@ async fn check_system_dependencies() -> bool {
 
     // Check for Docker
     match check_command_exists("docker") {
-        Ok(true) => vm_success!("Docker command found"),
+        Ok(true) => vm_success!("{}", MESSAGES.vm_doctor_docker_found),
         Ok(false) => {
-            vm_error!("Docker command not found in PATH");
-            vm_println!("   💡 Install Docker: https://docs.docker.com/get-docker/");
+            vm_error!("{}", MESSAGES.vm_doctor_docker_not_found);
+            vm_println!("{}", MESSAGES.vm_doctor_docker_not_found_hint);
             deps_ok = false;
         }
         Err(e) => {
-            vm_error!("Failed to check Docker: {}", e);
+            vm_error!(
+                "{}",
+                msg!(
+                    MESSAGES.vm_doctor_docker_check_failed,
+                    error = e.to_string()
+                )
+            );
             deps_ok = false;
         }
     }
@@ -118,14 +129,20 @@ async fn check_system_dependencies() -> bool {
     // Check Docker daemon status (if Docker exists)
     if check_command_exists("docker").unwrap_or(false) {
         match check_docker_daemon() {
-            Ok(true) => vm_success!("Docker daemon is running"),
+            Ok(true) => vm_success!("{}", MESSAGES.vm_doctor_docker_daemon_running),
             Ok(false) => {
-                vm_error!("Docker daemon is not running");
-                vm_println!("   💡 Start Docker daemon or Docker Desktop");
+                vm_error!("{}", MESSAGES.vm_doctor_docker_daemon_not_running);
+                vm_println!("{}", MESSAGES.vm_doctor_docker_daemon_not_running_hint);
                 deps_ok = false;
             }
             Err(e) => {
-                vm_error!("Failed to check Docker daemon: {}", e);
+                vm_error!(
+                    "{}",
+                    msg!(
+                        MESSAGES.vm_doctor_docker_daemon_check_failed,
+                        error = e.to_string()
+                    )
+                );
                 deps_ok = false;
             }
         }
@@ -133,14 +150,17 @@ async fn check_system_dependencies() -> bool {
 
     // Check for git (commonly needed)
     match check_command_exists("git") {
-        Ok(true) => vm_success!("Git command found"),
+        Ok(true) => vm_success!("{}", MESSAGES.vm_doctor_git_found),
         Ok(false) => {
-            vm_error!("Git command not found in PATH");
-            vm_println!("   💡 Install Git for version control support");
+            vm_error!("{}", MESSAGES.vm_doctor_git_not_found);
+            vm_println!("{}", MESSAGES.vm_doctor_git_not_found_hint);
             deps_ok = false;
         }
         Err(e) => {
-            vm_error!("Failed to check Git: {}", e);
+            vm_error!(
+                "{}",
+                msg!(MESSAGES.vm_doctor_git_check_failed, error = e.to_string())
+            );
             deps_ok = false;
         }
     }
@@ -158,14 +178,17 @@ async fn check_background_services(global_config: &GlobalConfig) -> bool {
         global_config.services.auth_proxy.port
     );
     match check_service_health(&auth_url).await {
-        Ok(true) => vm_success!("Auth proxy service is healthy"),
+        Ok(true) => vm_success!("{}", MESSAGES.vm_doctor_auth_healthy),
         Ok(false) => {
-            vm_error!("Auth proxy service is not responding");
-            vm_println!("   💡 Start with: vm auth start");
+            vm_error!("{}", MESSAGES.vm_doctor_auth_not_responding);
+            vm_println!("{}", MESSAGES.vm_doctor_auth_not_responding_hint);
             services_ok = false;
         }
         Err(e) => {
-            vm_error!("Failed to check auth proxy: {}", e);
+            vm_error!(
+                "{}",
+                msg!(MESSAGES.vm_doctor_auth_check_failed, error = e.to_string())
+            );
             services_ok = false;
         }
     }
@@ -176,14 +199,17 @@ async fn check_background_services(global_config: &GlobalConfig) -> bool {
         global_config.services.package_registry.port
     );
     match check_service_health(&pkg_url).await {
-        Ok(true) => vm_success!("Package server service is healthy"),
+        Ok(true) => vm_success!("{}", MESSAGES.vm_doctor_pkg_healthy),
         Ok(false) => {
-            vm_error!("Package server service is not responding");
-            vm_println!("   💡 Start with: vm pkg start");
+            vm_error!("{}", MESSAGES.vm_doctor_pkg_not_responding);
+            vm_println!("{}", MESSAGES.vm_doctor_pkg_not_responding_hint);
             services_ok = false;
         }
         Err(e) => {
-            vm_error!("Failed to check package server: {}", e);
+            vm_error!(
+                "{}",
+                msg!(MESSAGES.vm_doctor_pkg_check_failed, error = e.to_string())
+            );
             services_ok = false;
         }
     }
@@ -194,27 +220,31 @@ async fn check_background_services(global_config: &GlobalConfig) -> bool {
         global_config.services.docker_registry.port
     );
     match check_service_health(&docker_url).await {
-        Ok(true) => vm_success!("Docker registry service is healthy"),
+        Ok(true) => vm_success!("{}", MESSAGES.vm_doctor_registry_healthy),
         Ok(false) => {
             // Only warn if there are active VMs that would benefit from the registry
             if has_active_vms().await {
-                vm_error!("Docker registry service is not responding (needed for active VMs)");
-                vm_println!("   💡 Registry helps cache Docker images for faster VM operations");
+                vm_error!("{}", MESSAGES.vm_doctor_registry_not_responding_active);
+                vm_println!("{}", MESSAGES.vm_doctor_registry_not_responding_hint);
                 services_ok = false;
             } else {
                 // Silent check - registry not needed without active VMs
-                vm_println!(
-                    "   ℹ️  Docker registry service not running (not needed without active VMs)"
-                );
+                vm_println!("{}", MESSAGES.vm_doctor_registry_not_running_info);
             }
         }
         Err(e) => {
             // Only treat as error if there are active VMs
             if has_active_vms().await {
-                vm_error!("Failed to check Docker registry: {}", e);
+                vm_error!(
+                    "{}",
+                    msg!(
+                        MESSAGES.vm_doctor_registry_check_failed_active,
+                        error = e.to_string()
+                    )
+                );
                 services_ok = false;
             } else {
-                vm_println!("   ℹ️  Docker registry check skipped (not needed without active VMs)");
+                vm_println!("{}", MESSAGES.vm_doctor_registry_check_skipped);
             }
         }
     }

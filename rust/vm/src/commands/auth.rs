@@ -8,8 +8,10 @@ use crate::cli::AuthSubcommand;
 use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
 use crate::service_registry::get_service_registry;
+use vm_cli::msg;
 use vm_config::GlobalConfig;
 use vm_core::{vm_println, vm_success};
+use vm_messages::messages::MESSAGES;
 
 use vm_auth_proxy::{self, check_server_running, start_server_if_needed};
 
@@ -46,12 +48,24 @@ async fn handle_status(global_config: &GlobalConfig) -> VmResult<()> {
     let registry = get_service_registry();
     let service_manager = get_service_manager();
 
-    vm_println!("📊 Auth Proxy Status");
+    vm_println!("{}", MESSAGES.vm_auth_status_header);
 
     // Get service status from service manager
     if let Some(service_state) = service_manager.get_service_status("auth_proxy") {
-        vm_println!("   Reference Count: {} VMs", service_state.reference_count);
-        vm_println!("   Registered VMs:  {:?}", service_state.registered_vms);
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.vm_auth_reference_count,
+                count = service_state.reference_count.to_string()
+            )
+        );
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.vm_auth_registered_vms,
+                vms = format!("{:?}", service_state.registered_vms)
+            )
+        );
 
         let status_line = registry.format_service_status(
             "auth_proxy",
@@ -60,7 +74,7 @@ async fn handle_status(global_config: &GlobalConfig) -> VmResult<()> {
         );
         vm_println!("{}", status_line);
     } else {
-        vm_println!("   Status: 🔴 Not managed by service manager");
+        vm_println!("{}", MESSAGES.vm_auth_not_managed);
     }
 
     // Check actual server status for verification
@@ -68,17 +82,15 @@ async fn handle_status(global_config: &GlobalConfig) -> VmResult<()> {
         "http://127.0.0.1:{}",
         global_config.services.auth_proxy.port
     );
-    vm_println!("   Server URL: {}", server_url);
+    vm_println!("{}", msg!(MESSAGES.vm_auth_server_url, url = &server_url));
 
     if check_server_running(global_config.services.auth_proxy.port).await {
-        vm_println!("   Health Check: ✅ Server responding");
+        vm_println!("{}", MESSAGES.vm_auth_health_ok);
     } else {
-        vm_println!("   Health Check: ❌ Server not responding");
+        vm_println!("{}", MESSAGES.vm_auth_health_failed);
     }
 
-    vm_println!("\n💡 Service is automatically managed by VM lifecycle");
-    vm_println!("   • Auto-starts when VM with auth_proxy: true is created");
-    vm_println!("   • Auto-stops when last VM using it is destroyed");
+    vm_println!("{}", MESSAGES.vm_auth_auto_managed_info);
 
     Ok(())
 }
@@ -101,13 +113,13 @@ async fn handle_add(
         .await
         .map_err(VmError::from)?;
 
-    vm_println!("🔐 Adding secret '{}'...", name);
+    vm_println!("{}", msg!(MESSAGES.vm_auth_adding_secret, name = name));
 
     vm_auth_proxy::add_secret(&server_url, name, value, scope, description)
         .await
         .map_err(VmError::from)?;
 
-    vm_success!("Secret added successfully");
+    vm_success!("{}", MESSAGES.vm_auth_secret_added);
     Ok(())
 }
 
@@ -142,13 +154,13 @@ async fn handle_remove(name: &str, force: bool, global_config: &GlobalConfig) ->
         .await
         .map_err(VmError::from)?;
 
-    vm_println!("🗑️  Removing secret '{}'...", name);
+    vm_println!("{}", msg!(MESSAGES.vm_auth_removing_secret, name = name));
 
     vm_auth_proxy::remove_secret(&server_url, name, force)
         .await
         .map_err(VmError::from)?;
 
-    vm_success!("Secret removed successfully");
+    vm_success!("{}", MESSAGES.vm_auth_secret_removed);
     Ok(())
 }
 
@@ -164,8 +176,7 @@ async fn handle_interactive(global_config: &GlobalConfig) -> VmResult<()> {
         .await
         .map_err(VmError::from)?;
 
-    vm_println!("🔐 Interactive Secret Management");
-    vm_println!("This will guide you through adding a new secret securely.");
+    vm_println!("{}", MESSAGES.vm_auth_interactive_header);
 
     use dialoguer::{Input, Password, Select};
 
@@ -229,6 +240,9 @@ async fn handle_interactive(global_config: &GlobalConfig) -> VmResult<()> {
     .await
     .map_err(VmError::from)?;
 
-    vm_success!("Secret '{}' added successfully", name);
+    vm_success!(
+        "{}",
+        msg!(MESSAGES.vm_auth_interactive_success, name = &name)
+    );
     Ok(())
 }
