@@ -23,6 +23,12 @@ pub struct ComposeOperations<'a> {
     pub project_dir: &'a PathBuf,
 }
 
+/// Context for building host package information
+struct HostPackageContext {
+    host_mounts: Vec<(String, String)>,
+    host_env_vars: Vec<(String, String)>,
+}
+
 impl<'a> ComposeOperations<'a> {
     pub fn new(config: &'a VmConfig, temp_dir: &'a PathBuf, project_dir: &'a PathBuf) -> Self {
         Self {
@@ -32,19 +38,11 @@ impl<'a> ComposeOperations<'a> {
         }
     }
 
-    pub fn render_docker_compose(
-        &self,
-        build_context_dir: &Path,
-        context: &ProviderContext,
-    ) -> Result<String> {
-        // Use shared template engine instead of creating new instance
-        let tera = super::get_compose_tera();
-
-        let project_dir_str = BuildOperations::path_to_string(self.project_dir)?;
-        let build_context_str = BuildOperations::path_to_string(build_context_dir)?;
-
-        let user_config = UserConfig::from_vm_config(self.config);
-
+    /// Build host package context from config and provider context
+    ///
+    /// This consolidates all package detection, volume mounting, and environment
+    /// variable setup logic that was duplicated across render functions.
+    fn build_host_package_context(&self, context: &ProviderContext) -> Result<HostPackageContext> {
         // Detect host package locations for mounting (only if package linking is enabled)
         let mut host_info = super::host_packages::HostPackageInfo::new();
 
@@ -91,7 +89,10 @@ impl<'a> ComposeOperations<'a> {
         }
 
         // Get volume mounts and environment variables
-        let host_mounts = get_volume_mounts(&host_info);
+        let host_mounts = get_volume_mounts(&host_info)
+            .into_iter()
+            .map(|(path, container_path)| (path.to_string_lossy().to_string(), container_path))
+            .collect();
         let mut host_env_vars = get_package_env_vars(&host_info);
 
         // Add package registry environment variables from global config
@@ -123,6 +124,28 @@ impl<'a> ComposeOperations<'a> {
             }
         }
 
+        Ok(HostPackageContext {
+            host_mounts,
+            host_env_vars,
+        })
+    }
+
+    pub fn render_docker_compose(
+        &self,
+        build_context_dir: &Path,
+        context: &ProviderContext,
+    ) -> Result<String> {
+        // Use shared template engine instead of creating new instance
+        let tera = super::get_compose_tera();
+
+        let project_dir_str = BuildOperations::path_to_string(self.project_dir)?;
+        let build_context_str = BuildOperations::path_to_string(build_context_dir)?;
+
+        let user_config = UserConfig::from_vm_config(self.config);
+
+        // Build host package context (consolidated package detection and env setup)
+        let pkg_context = self.build_host_package_context(context)?;
+
         let project_name = self
             .config
             .project
@@ -139,8 +162,8 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("project_gid", &user_config.gid.to_string());
         tera_context.insert("project_user", &user_config.username);
         tera_context.insert("is_macos", &cfg!(target_os = "macos"));
-        tera_context.insert("host_mounts", &host_mounts);
-        tera_context.insert("host_env_vars", &host_env_vars);
+        tera_context.insert("host_mounts", &pkg_context.host_mounts);
+        tera_context.insert("host_env_vars", &pkg_context.host_env_vars);
         // No local package mounts or environment variables needed
         let local_pipx_mounts: Vec<(String, String)> = Vec::new();
         let local_env_vars: Vec<(String, String)> = Vec::new();
@@ -200,83 +223,8 @@ impl<'a> ComposeOperations<'a> {
 
         let user_config = UserConfig::from_vm_config(self.config);
 
-        // Detect host package locations for mounting (only if package linking is enabled)
-        let mut host_info = super::host_packages::HostPackageInfo::new();
-
-        // Check pip packages only if pip linking is enabled
-        if self.config.package_linking.as_ref().is_some_and(|p| p.pip)
-            && !self.config.pip_packages.is_empty()
-        {
-            let pip_info = detect_packages(&self.config.pip_packages, PackageManager::Pip);
-            host_info.pip_site_packages = pip_info.pip_site_packages;
-            host_info.pipx_base_dir = pip_info.pipx_base_dir;
-
-            // Include all detected pip packages for host mounting
-            host_info
-                .detected_packages
-                .extend(pip_info.detected_packages);
-        }
-
-        // Check npm packages only if npm linking is enabled
-        if self.config.package_linking.as_ref().is_some_and(|p| p.npm)
-            && !self.config.npm_packages.is_empty()
-        {
-            let npm_info = detect_packages(&self.config.npm_packages, PackageManager::Npm);
-            host_info.npm_global_dir = npm_info.npm_global_dir;
-            host_info.npm_local_dir = npm_info.npm_local_dir;
-            host_info
-                .detected_packages
-                .extend(npm_info.detected_packages);
-        }
-
-        // Check cargo packages only if cargo linking is enabled
-        if self
-            .config
-            .package_linking
-            .as_ref()
-            .is_some_and(|p| p.cargo)
-            && !self.config.cargo_packages.is_empty()
-        {
-            let cargo_info = detect_packages(&self.config.cargo_packages, PackageManager::Cargo);
-            host_info.cargo_registry = cargo_info.cargo_registry;
-            host_info.cargo_bin = cargo_info.cargo_bin;
-            host_info
-                .detected_packages
-                .extend(cargo_info.detected_packages);
-        }
-
-        // Get volume mounts and environment variables
-        let host_mounts = get_volume_mounts(&host_info);
-        let mut host_env_vars = get_package_env_vars(&host_info);
-
-        // Add package registry environment variables from global config
-        if let Some(global_cfg) = context.global_config.as_ref() {
-            if global_cfg.services.package_registry.enabled {
-                let host = vm_platform::platform::get_host_gateway();
-                let port = global_cfg.services.package_registry.port;
-
-                host_env_vars.extend([
-                    // NPM
-                    (
-                        "NPM_CONFIG_REGISTRY".to_string(),
-                        format!("http://{}:{}/npm/", host, port),
-                    ),
-                    // Pip with fallback
-                    (
-                        "PIP_INDEX_URL".to_string(),
-                        format!("http://{}:{}/pypi/simple/", host, port),
-                    ),
-                    (
-                        "PIP_EXTRA_INDEX_URL".to_string(),
-                        "https://pypi.org/simple/".to_string(),
-                    ),
-                    ("PIP_TRUSTED_HOST".to_string(), host.to_string()),
-                    // Cargo (will be used by shell init script)
-                    ("VM_CARGO_REGISTRY_HOST".to_string(), host.to_string()),
-                    ("VM_CARGO_REGISTRY_PORT".to_string(), port.to_string()),
-                ]);
-            }
-        }
+        // Build host package context (consolidated package detection and env setup)
+        let pkg_context = self.build_host_package_context(context)?;
 
         let project_name = self
             .config
@@ -312,8 +260,8 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("project_gid", &user_config.gid.to_string());
         tera_context.insert("project_user", &user_config.username);
         tera_context.insert("is_macos", &cfg!(target_os = "macos"));
-        tera_context.insert("host_mounts", &host_mounts);
-        tera_context.insert("host_env_vars", &host_env_vars);
+        tera_context.insert("host_mounts", &pkg_context.host_mounts);
+        tera_context.insert("host_env_vars", &pkg_context.host_env_vars);
         // No local package mounts or environment variables needed
         let local_pipx_mounts: Vec<(String, String)> = Vec::new();
         let local_env_vars: Vec<(String, String)> = Vec::new();
