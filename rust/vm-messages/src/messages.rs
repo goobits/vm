@@ -198,6 +198,19 @@ pub struct Messages {
     pub plugin_validate_failed: &'static str,
     pub plugin_validate_errors_header: &'static str,
 
+    // ============================================================================
+    // Config Validation Messages
+    // ============================================================================
+    pub config_validate_header: &'static str,
+    pub config_validate_valid: &'static str,
+    pub config_validate_create_hint: &'static str,
+    pub config_validate_invalid: &'static str,
+    pub config_validate_fix_hint: &'static str,
+    pub config_ports_header: &'static str,
+    pub config_ports_resolved: &'static str,
+    pub config_ports_updated: &'static str,
+    pub config_ports_restart_hint: &'static str,
+
     // Config
     pub config_set_success: &'static str,
     pub config_apply_changes_hint: &'static str,
@@ -547,6 +560,19 @@ pub const MESSAGES: Messages = Messages {
     plugin_validate_ready: "Plugin '{name}' is valid and ready to use.",
     plugin_validate_failed: "✗ Validation failed!\n",
     plugin_validate_errors_header: "Errors:",
+
+    // ============================================================================
+    // Config Validation Messages
+    // ============================================================================
+    config_validate_header: "🔍 Validating configuration...",
+    config_validate_valid: "\n✅ Configuration is valid\n",
+    config_validate_create_hint: "\n💡 Ready to create: vm create",
+    config_validate_invalid: "\n❌ Configuration has errors\n",
+    config_validate_fix_hint: "\n💡 Fix errors and try again",
+    config_ports_header: "📡 Current port configuration:\n   Project: {project}\n   Port range: {range}",
+    config_ports_resolved: "\n✅ Port conflicts resolved\n\n  Old range:  {old}\n  New range:  {new}\n\n  ✓ Updated vm.yaml\n  ✓ Registered in port registry",
+    config_ports_updated: "   📡 New port range: {range}",
+    config_ports_restart_hint: "\n💡 Restart VM to apply: vm restart",
 
     // Config
     config_set_success: "✅ Set {field} = {value} in {path}",

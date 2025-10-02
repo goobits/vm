@@ -7,15 +7,17 @@ use tracing::debug;
 use crate::cli::ConfigSubcommand;
 use crate::error::{VmError, VmResult};
 use serde_yaml_ng as serde_yaml;
+use vm_cli::msg;
 use vm_config::ports::{PortRange, PortRegistry};
 use vm_config::{config::VmConfig, AppConfig, ConfigOps, GlobalConfig};
 use vm_core::{vm_println, vm_success, vm_warning};
+use vm_messages::messages::MESSAGES;
 
 /// Handle configuration validation command
 pub fn handle_validate(config_file: Option<PathBuf>) -> VmResult<()> {
     debug!("Validating configuration: config_file={:?}", config_file);
 
-    println!("🔍 Validating configuration...");
+    vm_println!("{}", MESSAGES.config_validate_header);
 
     // The `load` function performs validation internally. If it succeeds,
     // the configuration is valid.
@@ -27,7 +29,7 @@ pub fn handle_validate(config_file: Option<PathBuf>) -> VmResult<()> {
                 config.project.as_ref().and_then(|p| p.name.as_ref())
             );
 
-            println!("\n✅ Configuration is valid\n");
+            vm_println!("{}", MESSAGES.config_validate_valid);
 
             // Display configuration details
             if let Some(project) = &config.project {
@@ -63,13 +65,13 @@ pub fn handle_validate(config_file: Option<PathBuf>) -> VmResult<()> {
                 }
             }
 
-            println!("\n💡 Ready to create: vm create");
+            vm_println!("{}", MESSAGES.config_validate_create_hint);
             Ok(())
         }
         Err(e) => {
             debug!("Configuration validation failed: {}", e);
 
-            println!("\n❌ Configuration has errors\n");
+            vm_println!("{}", MESSAGES.config_validate_invalid);
 
             // Parse and display errors in a structured way
             let error_str = format!("{:#}", e);
@@ -80,7 +82,7 @@ pub fn handle_validate(config_file: Option<PathBuf>) -> VmResult<()> {
                 println!("  × {}", line.trim());
             }
 
-            println!("\n💡 Fix errors and try again");
+            vm_println!("{}", MESSAGES.config_validate_fix_hint);
 
             // Return the error to exit with a non-zero status code
             Err(VmError::from(e))
@@ -220,9 +222,14 @@ pub fn handle_ports_command(fix: bool) -> VmResult<()> {
         })
         .context("No port range found in configuration")?;
 
-    vm_println!("📡 Current port configuration:");
-    vm_println!("   Project: {}", project_name);
-    vm_println!("   Port range: {}", current_port_range);
+    vm_println!(
+        "{}",
+        msg!(
+            MESSAGES.config_ports_header,
+            project = project_name,
+            range = &current_port_range
+        )
+    );
 
     if !fix {
         // For basic ports command, just show the configuration
@@ -268,7 +275,10 @@ pub fn handle_ports_command(fix: bool) -> VmResult<()> {
         .suggest_next_range(range_size, 3000)
         .context("No available port ranges found")?;
 
-    vm_println!("   📡 New port range: {}", new_range_str);
+    vm_println!(
+        "{}",
+        msg!(MESSAGES.config_ports_updated, range = &new_range_str)
+    );
 
     // Update vm.yaml with new port range
     update_vm_config_ports(&new_range_str)?;
@@ -284,12 +294,15 @@ pub fn handle_ports_command(fix: bool) -> VmResult<()> {
         .register(project_name, &new_range, &current_dir.to_string_lossy())
         .context("Failed to register new port range")?;
 
-    println!("\n✅ Port conflicts resolved\n");
-    println!("  Old range:  {}", current_port_range);
-    println!("  New range:  {}", new_range_str);
-    println!("\n  ✓ Updated vm.yaml");
-    println!("  ✓ Registered in port registry");
-    println!("\n💡 Restart VM to apply: vm restart");
+    vm_println!(
+        "{}",
+        msg!(
+            MESSAGES.config_ports_resolved,
+            old = &current_port_range,
+            new = &new_range_str
+        )
+    );
+    vm_println!("{}", MESSAGES.config_ports_restart_hint);
 
     Ok(())
 }
