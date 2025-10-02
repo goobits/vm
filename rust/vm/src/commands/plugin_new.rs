@@ -1,6 +1,9 @@
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::PathBuf;
+use vm_cli::msg;
+use vm_core::vm_println;
+use vm_messages::messages::MESSAGES;
 
 pub fn handle_plugin_new(plugin_name: &str, plugin_type: &str) -> Result<()> {
     // Validate plugin name
@@ -56,27 +59,36 @@ pub fn handle_plugin_new(plugin_name: &str, plugin_type: &str) -> Result<()> {
     fs::write(plugin_dir.join("README.md"), readme_content)
         .context("Failed to create README.md")?;
 
-    println!(
-        "✓ Created {} plugin template: {}",
-        plugin_type_lower, plugin_name
+    let type_cap = match plugin_type_lower.as_str() {
+        "preset" => "Preset",
+        "service" => "Service",
+        _ => "Plugin",
+    };
+
+    vm_println!(
+        "{}",
+        msg!(
+            MESSAGES.plugin_new_success,
+            r#type = &plugin_type_lower,
+            name = plugin_name
+        )
     );
-    println!();
-    println!("Next steps:");
-    println!("  1. cd {}", plugin_name);
-    println!("  2. Edit plugin.yaml to update metadata");
-    println!(
-        "  3. Edit {}.yaml to define your {}",
-        plugin_type_lower, plugin_type_lower
+    vm_println!(
+        "{}",
+        msg!(
+            MESSAGES.plugin_new_next_steps,
+            name = plugin_name,
+            r#type = &plugin_type_lower
+        )
     );
-    println!("  4. Test your plugin: vm plugin install .");
-    println!();
-    println!("Files created:");
-    println!("  - plugin.yaml: Plugin metadata");
-    println!(
-        "  - {}.yaml: {} configuration",
-        plugin_type_lower, plugin_type_lower
+    vm_println!(
+        "{}",
+        msg!(
+            MESSAGES.plugin_new_files_created,
+            r#type = &plugin_type_lower,
+            type_cap = type_cap
+        )
     );
-    println!("  - README.md: Plugin documentation");
 
     Ok(())
 }

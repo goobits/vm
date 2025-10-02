@@ -6,6 +6,7 @@ use tracing::debug;
 use crate::cli::{Args, Command, PluginSubcommand};
 use vm_config::{init_config_file, AppConfig};
 use vm_core::{vm_error, vm_println};
+use vm_messages::messages::MESSAGES;
 use vm_provider::get_provider;
 
 // Individual command modules
@@ -130,11 +131,8 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
                             let error_str = e.to_string();
                             #[allow(clippy::excessive_nesting)]
                             if error_str.contains("No vm.yaml found") {
-                                println!("❌ No vm.yaml configuration file found\n");
-                                println!("💡 You need a configuration file to run VMs. Try:");
-                                println!("   • Initialize config: vm init");
-                                println!("   • Change to project directory: cd <project>");
-                                println!("   • List existing VMs: vm list --all-providers");
+                                vm_println!("{}", MESSAGES.config_not_found);
+                                vm_println!("{}", MESSAGES.config_not_found_hint);
                                 return Err(VmError::config(
                                     std::io::Error::new(
                                         std::io::ErrorKind::NotFound,
@@ -155,11 +153,8 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
                     let error_str = e.to_string();
                     #[allow(clippy::excessive_nesting)]
                     if error_str.contains("No vm.yaml found") {
-                        println!("❌ No vm.yaml configuration file found\n");
-                        println!("💡 You need a configuration file to run VMs. Try:");
-                        println!("   • Initialize config: vm init");
-                        println!("   • Change to project directory: cd <project>");
-                        println!("   • List existing VMs: vm list --all-providers");
+                        vm_println!("{}", MESSAGES.config_not_found);
+                        vm_println!("{}", MESSAGES.config_not_found_hint);
                         return Err(VmError::config(
                             std::io::Error::new(
                                 std::io::ErrorKind::NotFound,

@@ -197,6 +197,9 @@ pub struct Messages {
     pub plugin_validate_ready: &'static str,
     pub plugin_validate_failed: &'static str,
     pub plugin_validate_errors_header: &'static str,
+    pub plugin_new_success: &'static str,
+    pub plugin_new_next_steps: &'static str,
+    pub plugin_new_files_created: &'static str,
 
     // ============================================================================
     // Config Validation Messages
@@ -210,6 +213,12 @@ pub struct Messages {
     pub config_ports_resolved: &'static str,
     pub config_ports_updated: &'static str,
     pub config_ports_restart_hint: &'static str,
+
+    // ============================================================================
+    // Config Error Messages
+    // ============================================================================
+    pub config_not_found: &'static str,
+    pub config_not_found_hint: &'static str,
 
     // Config
     pub config_set_success: &'static str,
@@ -560,6 +569,9 @@ pub const MESSAGES: Messages = Messages {
     plugin_validate_ready: "Plugin '{name}' is valid and ready to use.",
     plugin_validate_failed: "✗ Validation failed!\n",
     plugin_validate_errors_header: "Errors:",
+    plugin_new_success: "✓ Created {type} plugin template: {name}\n",
+    plugin_new_next_steps: "Next steps:\n  1. cd {name}\n  2. Edit plugin.yaml to update metadata\n  3. Edit {type}.yaml to define your {type}\n  4. Test your plugin: vm plugin install .\n",
+    plugin_new_files_created: "Files created:\n  - plugin.yaml: Plugin metadata\n  - {type}.yaml: {type_cap} configuration\n  - README.md: Plugin documentation",
 
     // ============================================================================
     // Config Validation Messages
@@ -573,6 +585,12 @@ pub const MESSAGES: Messages = Messages {
     config_ports_resolved: "\n✅ Port conflicts resolved\n\n  Old range:  {old}\n  New range:  {new}\n\n  ✓ Updated vm.yaml\n  ✓ Registered in port registry",
     config_ports_updated: "   📡 New port range: {range}",
     config_ports_restart_hint: "\n💡 Restart VM to apply: vm restart",
+
+    // ============================================================================
+    // Config Error Messages
+    // ============================================================================
+    config_not_found: "❌ No vm.yaml configuration file found\n",
+    config_not_found_hint: "💡 You need a configuration file to run VMs. Try:\n   • Initialize config: vm init\n   • Change to project directory: cd <project>\n   • List existing VMs: vm list --all-providers",
 
     // Config
     config_set_success: "✅ Set {field} = {value} in {path}",
