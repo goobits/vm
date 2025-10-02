@@ -265,6 +265,32 @@ pub struct Messages {
     pub pkg_manager_linked: &'static str,
     pub pkg_manager_not_linked: &'static str,
 
+    // VM Package Registry Messages
+    pub vm_pkg_registry_status_header: &'static str,
+    pub vm_pkg_registry_reference_count: &'static str,
+    pub vm_pkg_registry_registered_vms: &'static str,
+    pub vm_pkg_registry_not_managed: &'static str,
+    pub vm_pkg_registry_health_ok: &'static str,
+    pub vm_pkg_registry_health_failed: &'static str,
+    pub vm_pkg_registry_auto_managed_info: &'static str,
+    pub vm_pkg_publishing: &'static str,
+    pub vm_pkg_removing: &'static str,
+    pub vm_pkg_config_header: &'static str,
+    pub vm_pkg_config_port: &'static str,
+    pub vm_pkg_config_host: &'static str,
+    pub vm_pkg_config_fallback: &'static str,
+    pub vm_pkg_config_changes_hint: &'static str,
+    pub vm_pkg_config_setting: &'static str,
+    pub vm_pkg_use_bash_config: &'static str,
+    pub vm_pkg_use_fish_config: &'static str,
+    pub vm_pkg_use_unsupported: &'static str,
+    pub vm_pkg_version_mismatch: &'static str,
+    pub vm_pkg_restarting: &'static str,
+    pub vm_pkg_server_starting: &'static str,
+    pub vm_pkg_server_logs: &'static str,
+    pub vm_pkg_server_started_info: &'static str,
+    pub vm_pkg_serve_starting: &'static str,
+
     // ============================================================================
     // Auth Proxy Messages
     // ============================================================================
@@ -698,6 +724,32 @@ pub const MESSAGES: Messages = Messages {
     // ============================================================================
     pkg_manager_linked: "🔗 Package '{package}' is linked for {type}",
     pkg_manager_not_linked: "📦 Package '{package}' is not linked (would install from registry)",
+
+    // VM Package Registry Messages
+    vm_pkg_registry_status_header: "📊 Package Registry Status",
+    vm_pkg_registry_reference_count: "   Reference Count: {count} VMs",
+    vm_pkg_registry_registered_vms: "   Registered VMs:  {vms}",
+    vm_pkg_registry_not_managed: "   Status: 🔴 Not managed by service manager",
+    vm_pkg_registry_health_ok: "   Health Check: ✅ Server responding",
+    vm_pkg_registry_health_failed: "   Health Check: ❌ Server not responding",
+    vm_pkg_registry_auto_managed_info: "\n💡 Service is automatically managed by VM lifecycle\n   • Auto-starts when VM with package_registry: true is created\n   • Auto-stops when last VM using it is destroyed",
+    vm_pkg_publishing: "📦 Publishing package to local registry...",
+    vm_pkg_removing: "🗑️  Removing package from registry...",
+    vm_pkg_config_header: "Package Registry Configuration:",
+    vm_pkg_config_port: "  Port: {port}",
+    vm_pkg_config_host: "  Host: {host}",
+    vm_pkg_config_fallback: "  Fallback: {fallback}",
+    vm_pkg_config_changes_hint: "💡 Configuration changes will take effect on next server start",
+    vm_pkg_config_setting: "Setting {key} = {value}",
+    vm_pkg_use_bash_config: "# Package registry configuration for {shell}\nexport NPM_CONFIG_REGISTRY=http://localhost:{port}/npm/\nexport PIP_INDEX_URL=http://localhost:{port}/pypi/simple/\nexport PIP_TRUSTED_HOST=localhost\n\n# To apply: eval \"$(vm pkg use)\"",
+    vm_pkg_use_fish_config: "# Package registry configuration for fish\nset -x NPM_CONFIG_REGISTRY http://localhost:{port}/npm/\nset -x PIP_INDEX_URL http://localhost:{port}/pypi/simple/\nset -x PIP_TRUSTED_HOST localhost",
+    vm_pkg_use_unsupported: "Unsupported shell: {shell}\nSupported shells: bash, zsh, fish",
+    vm_pkg_version_mismatch: "⚠️  Package server version mismatch: server={server_version}, cli={cli_version}",
+    vm_pkg_restarting: "🔄 Restarting package server with new version...",
+    vm_pkg_server_starting: "🚀 Starting package registry server...",
+    vm_pkg_server_logs: "📝 Server logs: {log_path}",
+    vm_pkg_server_started_info: "💡 Server is running as a detached background process\n   Access at: http://localhost:{port}",
+    vm_pkg_serve_starting: "🚀 Starting package registry server...\n   Host: {host}\n   Port: {port}\n   Data: {data}",
 
     // ============================================================================
     // Auth Proxy Messages

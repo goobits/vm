@@ -10,8 +10,10 @@ use crate::service_manager::get_service_manager;
 use crate::service_registry::get_service_registry;
 use anyhow::Context;
 use dialoguer::Confirm;
+use vm_cli::msg;
 use vm_config::GlobalConfig;
 use vm_core::{vm_error, vm_println, vm_success};
+use vm_messages::messages::MESSAGES;
 
 use vm_package_server;
 
@@ -50,12 +52,24 @@ async fn handle_status(yes: bool, global_config: &GlobalConfig) -> VmResult<()> 
     let registry = get_service_registry();
     let service_manager = get_service_manager();
 
-    vm_println!("📊 Package Registry Status");
+    vm_println!("{}", MESSAGES.vm_pkg_registry_status_header);
 
     // Get service status from service manager
     if let Some(service_state) = service_manager.get_service_status("package_registry") {
-        vm_println!("   Reference Count: {} VMs", service_state.reference_count);
-        vm_println!("   Registered VMs:  {:?}", service_state.registered_vms);
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.vm_pkg_registry_reference_count,
+                count = service_state.reference_count.to_string()
+            )
+        );
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.vm_pkg_registry_registered_vms,
+                vms = format!("{:?}", service_state.registered_vms)
+            )
+        );
 
         let status_line = registry.format_service_status(
             "package_registry",
@@ -64,19 +78,17 @@ async fn handle_status(yes: bool, global_config: &GlobalConfig) -> VmResult<()> 
         );
         vm_println!("{}", status_line);
     } else {
-        vm_println!("   Status: 🔴 Not managed by service manager");
+        vm_println!("{}", MESSAGES.vm_pkg_registry_not_managed);
     }
 
     // Check actual server status for verification
     if check_server_running_with_url(&server_url).await {
-        vm_println!("   Health Check: ✅ Server responding");
+        vm_println!("{}", MESSAGES.vm_pkg_registry_health_ok);
     } else {
-        vm_println!("   Health Check: ❌ Server not responding");
+        vm_println!("{}", MESSAGES.vm_pkg_registry_health_failed);
     }
 
-    vm_println!("\n💡 Service is automatically managed by VM lifecycle");
-    vm_println!("   • Auto-starts when VM with package_registry: true is created");
-    vm_println!("   • Auto-stops when last VM using it is destroyed");
+    vm_println!("{}", MESSAGES.vm_pkg_registry_auto_managed_info);
 
     // Show additional package registry info
     vm_package_server::show_status(&server_url).map_err(VmError::from)
@@ -96,7 +108,7 @@ async fn handle_add(
     // Ensure server is running before attempting to add package
     start_server_if_needed(global_config, yes).await?;
 
-    vm_println!("📦 Publishing package to local registry...");
+    vm_println!("{}", MESSAGES.vm_pkg_publishing);
 
     vm_package_server::client_ops::add_package(&server_url, package_type).map_err(VmError::from)?;
 
@@ -114,7 +126,7 @@ async fn handle_remove(force: bool, yes: bool, global_config: &GlobalConfig) -> 
     // Ensure server is running before attempting to remove package
     start_server_if_needed(global_config, yes).await?;
 
-    vm_println!("🗑️  Removing package from registry...");
+    vm_println!("{}", MESSAGES.vm_pkg_removing);
 
     vm_package_server::client_ops::remove_package(&server_url, force).map_err(VmError::from)?;
 
@@ -142,10 +154,16 @@ async fn handle_config(action: &PkgConfigAction, global_config: &GlobalConfig) -
     let port = global_config.services.package_registry.port;
     match action {
         PkgConfigAction::Show => {
-            vm_println!("Package Registry Configuration:");
-            vm_println!("  Port: {}", port);
-            vm_println!("  Host: 0.0.0.0");
-            vm_println!("  Fallback: enabled");
+            vm_println!("{}", MESSAGES.vm_pkg_config_header);
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.vm_pkg_config_port, port = port.to_string())
+            );
+            vm_println!("{}", msg!(MESSAGES.vm_pkg_config_host, host = "0.0.0.0"));
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.vm_pkg_config_fallback, fallback = "enabled")
+            );
             Ok(())
         }
         PkgConfigAction::Get { key } => {
@@ -158,8 +176,11 @@ async fn handle_config(action: &PkgConfigAction, global_config: &GlobalConfig) -
             Ok(())
         }
         PkgConfigAction::Set { key, value } => {
-            vm_println!("Setting {} = {}", key, value);
-            vm_println!("💡 Configuration changes will take effect on next server start");
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.vm_pkg_config_setting, key = key, value = value)
+            );
+            vm_println!("{}", MESSAGES.vm_pkg_config_changes_hint);
             Ok(())
         }
     }
@@ -178,34 +199,29 @@ async fn handle_use(shell: Option<&str>, port: u16, global_config: &GlobalConfig
 
     match shell_type {
         "bash" | "zsh" => {
-            vm_println!("# Package registry configuration for {}", shell_type);
             vm_println!(
-                "export NPM_CONFIG_REGISTRY=http://localhost:{}/npm/",
-                actual_port
+                "{}",
+                msg!(
+                    MESSAGES.vm_pkg_use_bash_config,
+                    shell = shell_type,
+                    port = actual_port.to_string()
+                )
             );
-            vm_println!(
-                "export PIP_INDEX_URL=http://localhost:{}/pypi/simple/",
-                actual_port
-            );
-            vm_println!("export PIP_TRUSTED_HOST=localhost");
-            vm_println!("");
-            vm_println!("# To apply: eval \"$(vm pkg use)\"");
         }
         "fish" => {
-            vm_println!("# Package registry configuration for fish");
             vm_println!(
-                "set -x NPM_CONFIG_REGISTRY http://localhost:{}/npm/",
-                actual_port
+                "{}",
+                msg!(
+                    MESSAGES.vm_pkg_use_fish_config,
+                    port = actual_port.to_string()
+                )
             );
-            vm_println!(
-                "set -x PIP_INDEX_URL http://localhost:{}/pypi/simple/",
-                actual_port
-            );
-            vm_println!("set -x PIP_TRUSTED_HOST localhost");
         }
         _ => {
-            vm_error!("Unsupported shell: {}", shell_type);
-            vm_println!("Supported shells: bash, zsh, fish");
+            vm_error!(
+                "{}",
+                msg!(MESSAGES.vm_pkg_use_unsupported, shell = shell_type)
+            );
         }
     }
 
@@ -289,11 +305,14 @@ async fn start_server_if_needed(global_config: &GlobalConfig, yes: bool) -> VmRe
             let cli_version = env!("CARGO_PKG_VERSION");
             if server_version != cli_version {
                 vm_println!(
-                    "⚠️  Package server version mismatch: server={}, cli={}",
-                    server_version,
-                    cli_version
+                    "{}",
+                    msg!(
+                        MESSAGES.vm_pkg_version_mismatch,
+                        server_version = &server_version,
+                        cli_version = cli_version
+                    )
                 );
-                vm_println!("🔄 Restarting package server with new version...");
+                vm_println!("{}", MESSAGES.vm_pkg_restarting);
 
                 // Attempt graceful shutdown
                 let _ = shutdown_server(&server_url).await;
@@ -313,7 +332,7 @@ async fn start_server_if_needed(global_config: &GlobalConfig, yes: bool) -> VmRe
     }
 
     if yes || prompt_start_server()? {
-        vm_println!("🚀 Starting package registry server...");
+        vm_println!("{}", MESSAGES.vm_pkg_server_starting);
 
         let data_dir = vm_core::project::get_package_data_dir()?;
         let port = global_config.services.package_registry.port;
@@ -349,7 +368,13 @@ async fn start_server_if_needed(global_config: &GlobalConfig, yes: bool) -> VmRe
                 .spawn()
                 .context("Failed to spawn package server")?;
 
-            vm_println!("📝 Server logs: {}", log_file.display());
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.vm_pkg_server_logs,
+                    log_path = log_file.display().to_string()
+                )
+            );
             drop(child); // Drop handle to detach
         }
 
@@ -378,7 +403,13 @@ async fn start_server_if_needed(global_config: &GlobalConfig, yes: bool) -> VmRe
                 .spawn()
                 .context("Failed to spawn package server")?;
 
-            vm_println!("📝 Server logs: {}", log_file.display());
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.vm_pkg_server_logs,
+                    log_path = log_file.display().to_string()
+                )
+            );
         }
 
         // Give server time to start
@@ -387,8 +418,10 @@ async fn start_server_if_needed(global_config: &GlobalConfig, yes: bool) -> VmRe
         // Verify it started
         if check_server_running(global_config).await {
             vm_success!("Package registry started successfully on port {}", port);
-            vm_println!("💡 Server is running as a detached background process");
-            vm_println!("   Access at: http://localhost:{}", port);
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.vm_pkg_server_started_info, port = port.to_string())
+            );
         } else {
             return Err(VmError::from(anyhow::anyhow!(
                 "Server process started but health check failed. Check logs at {}",
@@ -411,10 +444,15 @@ async fn handle_serve(
     data: &std::path::Path,
     _global_config: &GlobalConfig,
 ) -> VmResult<()> {
-    vm_println!("🚀 Starting package registry server...");
-    vm_println!("   Host: {}", host);
-    vm_println!("   Port: {}", port);
-    vm_println!("   Data: {}", data.display());
+    vm_println!(
+        "{}",
+        msg!(
+            MESSAGES.vm_pkg_serve_starting,
+            host = host,
+            port = port.to_string(),
+            data = data.display().to_string()
+        )
+    );
 
     // Run the server (blocks until shutdown)
     vm_package_server::server::run_server_background(host.to_string(), port, data.to_path_buf())
