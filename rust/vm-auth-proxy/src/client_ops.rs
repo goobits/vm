@@ -12,6 +12,25 @@ use vm_cli::msg;
 use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
 
+/// Parse a scope string into a SecretScope enum
+fn parse_secret_scope(scope: Option<&str>) -> Result<SecretScope> {
+    match scope {
+        Some("global") | None => Ok(SecretScope::Global),
+        Some(s) if s.starts_with("project:") => {
+            let project_name = s.strip_prefix("project:").unwrap();
+            Ok(SecretScope::Project(project_name.to_string()))
+        }
+        Some(s) if s.starts_with("instance:") => {
+            let instance_name = s.strip_prefix("instance:").unwrap();
+            Ok(SecretScope::Instance(instance_name.to_string()))
+        }
+        Some(s) => Err(anyhow!(
+            "Invalid scope '{}'. Use 'global', 'project:NAME', or 'instance:NAME'",
+            s
+        )),
+    }
+}
+
 /// Add a secret to the auth proxy
 pub async fn add_secret(
     server_url: &str,
@@ -21,23 +40,7 @@ pub async fn add_secret(
     description: Option<&str>,
 ) -> Result<()> {
     // Parse scope
-    let secret_scope = match scope {
-        Some("global") | None => SecretScope::Global,
-        Some(s) if s.starts_with("project:") => {
-            let project_name = s.strip_prefix("project:").unwrap();
-            SecretScope::Project(project_name.to_string())
-        }
-        Some(s) if s.starts_with("instance:") => {
-            let instance_name = s.strip_prefix("instance:").unwrap();
-            SecretScope::Instance(instance_name.to_string())
-        }
-        Some(s) => {
-            return Err(anyhow!(
-                "Invalid scope '{}'. Use 'global', 'project:NAME', or 'instance:NAME'",
-                s
-            ))
-        }
-    };
+    let secret_scope = parse_secret_scope(scope)?;
 
     let request = SecretRequest {
         value: value.to_string(),
@@ -418,26 +421,10 @@ mod tests {
         description: Option<&str>,
         auth_token: &str,
     ) -> Result<()> {
-        use crate::types::{SecretRequest, SecretScope};
+        use crate::types::SecretRequest;
 
         // Parse scope
-        let secret_scope = match scope {
-            Some("global") | None => SecretScope::Global,
-            Some(s) if s.starts_with("project:") => {
-                let project_name = s.strip_prefix("project:").unwrap();
-                SecretScope::Project(project_name.to_string())
-            }
-            Some(s) if s.starts_with("instance:") => {
-                let instance_name = s.strip_prefix("instance:").unwrap();
-                SecretScope::Instance(instance_name.to_string())
-            }
-            Some(s) => {
-                return Err(anyhow!(
-                    "Invalid scope '{}'. Use 'global', 'project:NAME', or 'instance:NAME'",
-                    s
-                ))
-            }
-        };
+        let secret_scope = parse_secret_scope(scope)?;
 
         let request = SecretRequest {
             value: value.to_string(),
