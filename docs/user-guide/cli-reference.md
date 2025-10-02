@@ -114,8 +114,9 @@ vm validate --config custom.yaml # Check specific file
 ```bash
 vm config set vm.memory 4096     # Set configuration value
 vm config get                    # Get configuration values
+vm config clear                  # Clear specific configuration field
 vm config preset nodejs,docker   # Apply configuration presets
-vm config preset list            # List all available presets
+vm config preset --list          # List all available presets
 vm config preset --show nodejs   # Show specific preset details
 ```
 
@@ -127,7 +128,7 @@ vm config preset --show nodejs   # Show specific preset details
 ```bash
 vm config preset nodejs          # Apply nodejs preset
 vm config preset django,docker   # Apply multiple presets
-vm config preset list            # List available presets
+vm config preset --list          # List available presets
 vm config preset --show django   # Show preset details
 ```
 

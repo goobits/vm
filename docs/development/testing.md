@@ -1,20 +1,20 @@
 # Test Suite Documentation
 
-The VM tool test suite is implemented entirely in Rust with 165+ unit tests and integration tests across 37 files.
+The VM tool test suite is implemented entirely in Rust with 165+ unit tests and integration tests across multiple workspace crates.
 
 ## Current Test Structure
 
 ```
 rust/
-├── vm-detector/         # Framework detection (55 tests across 12 test files)
-├── vm-config/          # Configuration operations (18 tests)
-├── vm-temp/            # Mount validation & filesystem integration (8 tests)
-├── vm-provider/        # Security validation & path protection (22 tests)
-├── vm-ports/           # Port registry and range management (13 tests)
-├── vm-package-manager/             # Package management operations (10 tests)
-├── vm-installer/       # Installation management (11 tests)
-├── vm-common/          # Common utilities (10 tests)
-└── vm/                 # CLI and workflows (21 tests)
+├── vm-config/          # Configuration operations & framework detection (includes detector/)
+├── vm-temp/            # Mount validation & filesystem integration
+├── vm-provider/        # Security validation & path protection
+├── vm-package-manager/ # Package management operations
+├── vm-installer/       # Installation management
+├── vm-core/            # Common utilities and error handling
+├── vm-platform/        # Platform detection and OS-specific operations
+├── vm-cli/             # CLI formatting and output
+└── vm/                 # CLI workflows and integration tests
 ```
 
 ## Test Categories
@@ -23,7 +23,7 @@ rust/
 
 **Purpose**: Test individual components and functions in isolation.
 
-- **Framework Detection**: Tests in `vm-detector` for:
+- **Framework Detection**: Tests in `vm-config/src/detector/tests/` for:
   - React, Vue, Angular, Next.js detection
   - Python (Django, Flask) detection
   - Node.js, Rust, Go detection
@@ -67,11 +67,11 @@ cd rust && cargo test --workspace
 cargo test --workspace -- --nocapture
 
 # Run specific component tests
-cargo test -p vm-detector    # Framework detection
-cargo test -p vm-config      # Configuration operations
+cargo test -p vm-config      # Configuration operations & framework detection
 cargo test -p vm-temp        # Mount validation
 cargo test -p vm-provider    # Security & path validation
-cargo test -p vm-ports       # Port management
+cargo test -p vm-core        # Common utilities
+cargo test -p vm-platform    # Platform detection
 
 # Run integration tests only
 cargo test --test integration_tests
@@ -157,16 +157,17 @@ For example configurations, see the `examples/` directory at the project root.
 
 All testing functionality has been migrated from shell scripts to Rust:
 
-| Component | Test Type | Location | Test Count |
-|-----------|-----------|----------|------------|
-| Framework detection | Unit tests | `rust/vm-config/src/detector/tests/*.rs` | 12 test files |
-| Configuration | Unit & Integration | `rust/vm-config/src/` & `tests/` | 18 tests |
-| VM workflows | Integration tests | `rust/vm/tests/` | 21 tests |
-| Provider security | Unit tests | `rust/vm-provider/src/` | 22 tests |
-| Platform detection | Unit tests | `rust/vm-platform/src/` | Various tests |
-| Package management | Integration tests | `rust/vm-package-manager/tests/` | 10 tests |
-| Installer | Unit tests | `rust/vm-installer/src/` | 11 tests |
-| Temp operations | Integration tests | `rust/vm-temp/tests/` | 8 tests |
+| Component | Test Type | Location | Notes |
+|-----------|-----------|----------|-------|
+| Framework detection | Unit tests | `rust/vm-config/src/detector/tests/*.rs` | 12 test files covering all frameworks |
+| Configuration | Unit & Integration | `rust/vm-config/src/` & `tests/` | Config loading, validation, presets |
+| VM workflows | Integration tests | `rust/vm/tests/` | Full lifecycle testing |
+| Provider security | Unit tests | `rust/vm-provider/src/` | Security validation, path protection |
+| Platform detection | Unit tests | `rust/vm-platform/src/` | OS-specific operations |
+| Package management | Integration tests | `rust/vm-package-manager/tests/` | Package operations |
+| Core utilities | Unit tests | `rust/vm-core/src/` | Error handling, common functions |
+| CLI formatting | Unit tests | `rust/vm-cli/src/` | Output formatting |
+| Temp operations | Integration tests | `rust/vm-temp/tests/` | Mount validation |
 
 ### Benefits of Rust Migration
 

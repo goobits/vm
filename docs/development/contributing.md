@@ -58,7 +58,7 @@ yamllint configs/*.yaml examples/**/*.yaml
 
 All user-facing messages (e.g., status updates, errors, hints) MUST use the centralized `vm-messages` system to ensure consistency. Do not use `println!` or `eprintln!` directly for user output in application code.
 
-The system is exposed through macros in the `vm-common` crate.
+The system is exposed through macros in the `vm-core` crate.
 
 **How to Use:**
 
@@ -72,8 +72,8 @@ The system is exposed through macros in the `vm-common` crate.
 
 2. **Use the Macros:** Use the `vm_println!`, `vm_error!`, or `vm_suggest!` macros in your code. Use the `msg!` macro for variable substitution.
    ```rust
-   use vm_common::output_macros::{vm_println, msg};
-   use vm_common::messages::MESSAGES;
+   use vm_core::output_macros::{vm_println, msg};
+   use vm_core::messages::MESSAGES;
 
    // Simple message
    vm_println!("{}", MESSAGES.some_static_message);
@@ -100,10 +100,10 @@ The system is exposed through macros in the `vm-common` crate.
 └── rust/                           # Rust workspace (main codebase)
     ├── Cargo.toml                  # Workspace configuration
     ├── vm/                         # Main CLI application
-    ├── vm-common/                  # Shared utilities
+    ├── vm-core/                    # Foundation utilities & error handling
     ├── vm-config/                  # Configuration handling
     ├── vm-messages/                # Centralized user-facing messages
-    ├── vm-package-manager/                     # Package management
+    ├── vm-package-manager/         # Package management
     ├── vm-platform/                # Platform detection
     ├── vm-provider/                # Provider implementations
     ├── vm-temp/                    # Temporary VM functionality
@@ -256,7 +256,7 @@ The project is fully implemented in Rust with the following packages:
 ```bash
 # Core packages
 vm/              # Main CLI application
-vm-common/       # Shared utilities and error handling
+vm-core/         # Foundation utilities and error handling
 vm-config/       # Configuration processing and validation
 vm-messages/     # Centralized user-facing messages
 vm-provider/     # Provider implementations (Docker, Vagrant, Tart)
@@ -334,7 +334,7 @@ less install.sh  # Installation script
 less rust/vm/src/main.rs
 less rust/vm-config/src/lib.rs
 less rust/vm-provider/src/lib.rs
-less rust/vm-common/src/lib.rs
+less rust/vm-core/src/lib.rs
 
 # Review workspace structure
 less rust/Cargo.toml

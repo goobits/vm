@@ -86,9 +86,9 @@ vm logs          # View service logs
 Suitable for testing, code reviews, or experiments:
 
 ```bash
-vm temp ./feature-branch     # Mount specific directories
-vm temp ssh                  # Enter temp environment
-vm temp destroy              # Clean up when done
+vm temp create ./feature-branch  # Mount specific directories
+vm temp ssh                      # Enter temp environment
+vm temp destroy                  # Clean up when done
 ```
 
 ## 🆘 Need Help?
