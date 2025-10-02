@@ -612,27 +612,27 @@ pub const MESSAGES: Messages = Messages {
     // Error Messages
     // ============================================================================
     error_command_failed: "❌ Command failed: {command}",
-    error_debug_info: "Debug info: {details}",
-    error_generic: "Error: {error}",
-    error_unexpected: "❌ Unexpected error occurred",
+    error_debug_info: "🔍 Debug info: {details}",
+    error_generic: "❌ Error: {error}",
+    error_unexpected: "❌ Unexpected error occurred\n\n💡 Try: vm doctor",
     error_with_context: "{error}",
 
     // ============================================================================
     // Generic Messages (keeping for backwards compatibility)
     // ============================================================================
-    failed: "❌ Failed",
-    press_ctrl_c_to_stop: "Press Ctrl+C to stop...",
-    success: "✅ Success",
-    warning_generic: "Warning: {warning}",
+    failed: "❌ Failed!",
+    press_ctrl_c_to_stop: "⏹️  Press Ctrl+C to stop...",
+    success: "✅ Success!",
+    warning_generic: "⚠️  Warning: {warning}",
 
     // ============================================================================
     // VM General
     // ============================================================================
-    vm_ambiguous: "\nMultiple VMs found with similar names:",
+    vm_ambiguous: "\n⚠️  Multiple VMs found with similar names:",
     vm_is_running: "✅ VM '{name}' is running",
-    vm_is_stopped: "❌ VM '{name}' is stopped",
-    vm_not_found: "No running VM found with that name.",
-    vm_using: "Using: {name}",
+    vm_is_stopped: "🔴 VM '{name}' is stopped",
+    vm_not_found: "🔍 No running VM found with that name.",
+    vm_using: "📍 Using: {name}",
 
     // ============================================================================
     // VM Create Messages
@@ -828,7 +828,7 @@ pub const MESSAGES: Messages = Messages {
     config_set_success: "✅ Set {field} = {value} in {path}",
     config_apply_changes_hint: "💡 Apply changes: vm restart",
     config_available_presets: "📦 Available presets:",
-    config_no_changes: "   (no changes were made to the file)",
+    config_no_changes: "   ℹ️  (no changes were made to the file)",
     config_current_configuration: "📋 Current configuration\n",
     config_modify_hint: "💡 Modify with: vm config set <field> <value>",
     config_unset_success: "✅ Unset {field} in {path}",
@@ -845,41 +845,41 @@ pub const MESSAGES: Messages = Messages {
     vm_doctor_deps_section: "🔧 System Dependencies:",
     vm_doctor_services_section: "🔄 Background Services:",
     vm_doctor_summary_separator: "==============================",
-    vm_doctor_all_passed: "All checks passed! Your VM environment is healthy.",
-    vm_doctor_some_failed: "Some checks failed. Please review the issues above.",
-    vm_doctor_config_loaded: "Configuration loaded successfully",
-    vm_doctor_config_valid: "Configuration validation passed",
-    vm_doctor_config_invalid: "Configuration validation failed:",
-    vm_doctor_config_incomplete: "Configuration is incomplete (missing provider or project name)",
-    vm_doctor_config_complete: "Configuration is complete",
-    vm_doctor_config_not_found: "No vm.yaml configuration file found",
+    vm_doctor_all_passed: "✅ All checks passed! Your VM environment is healthy.",
+    vm_doctor_some_failed: "⚠️  Some checks failed. Please review the issues above.",
+    vm_doctor_config_loaded: "✅ Configuration loaded successfully",
+    vm_doctor_config_valid: "✅ Configuration validation passed",
+    vm_doctor_config_invalid: "❌ Configuration validation failed:",
+    vm_doctor_config_incomplete: "⚠️  Configuration is incomplete (missing provider or project name)",
+    vm_doctor_config_complete: "✅ Configuration is complete",
+    vm_doctor_config_not_found: "❌ No vm.yaml configuration file found",
     vm_doctor_config_not_found_hint: "   💡 Run 'vm init' to create a configuration file",
-    vm_doctor_config_load_failed: "Failed to load configuration: {error}",
-    vm_doctor_docker_found: "Docker command found",
-    vm_doctor_docker_not_found: "Docker command not found in PATH",
+    vm_doctor_config_load_failed: "❌ Failed to load configuration: {error}",
+    vm_doctor_docker_found: "✅ Docker command found",
+    vm_doctor_docker_not_found: "❌ Docker command not found in PATH",
     vm_doctor_docker_not_found_hint: "   💡 Install Docker: https://docs.docker.com/get-docker/",
-    vm_doctor_docker_check_failed: "Failed to check Docker: {error}",
-    vm_doctor_docker_daemon_running: "Docker daemon is running",
-    vm_doctor_docker_daemon_not_running: "Docker daemon is not running",
+    vm_doctor_docker_check_failed: "❌ Failed to check Docker: {error}",
+    vm_doctor_docker_daemon_running: "✅ Docker daemon is running",
+    vm_doctor_docker_daemon_not_running: "❌ Docker daemon is not running",
     vm_doctor_docker_daemon_not_running_hint: "   💡 Start Docker daemon or Docker Desktop",
-    vm_doctor_docker_daemon_check_failed: "Failed to check Docker daemon: {error}",
-    vm_doctor_git_found: "Git command found",
-    vm_doctor_git_not_found: "Git command not found in PATH",
+    vm_doctor_docker_daemon_check_failed: "❌ Failed to check Docker daemon: {error}",
+    vm_doctor_git_found: "✅ Git command found",
+    vm_doctor_git_not_found: "❌ Git command not found in PATH",
     vm_doctor_git_not_found_hint: "   💡 Install Git for version control support",
-    vm_doctor_git_check_failed: "Failed to check Git: {error}",
-    vm_doctor_auth_healthy: "Auth proxy service is healthy",
-    vm_doctor_auth_not_responding: "Auth proxy service is not responding",
+    vm_doctor_git_check_failed: "❌ Failed to check Git: {error}",
+    vm_doctor_auth_healthy: "✅ Auth proxy service is healthy",
+    vm_doctor_auth_not_responding: "❌ Auth proxy service is not responding",
     vm_doctor_auth_not_responding_hint: "   💡 Start with: vm auth start",
-    vm_doctor_auth_check_failed: "Failed to check auth proxy: {error}",
-    vm_doctor_pkg_healthy: "Package server service is healthy",
-    vm_doctor_pkg_not_responding: "Package server service is not responding",
+    vm_doctor_auth_check_failed: "❌ Failed to check auth proxy: {error}",
+    vm_doctor_pkg_healthy: "✅ Package server service is healthy",
+    vm_doctor_pkg_not_responding: "❌ Package server service is not responding",
     vm_doctor_pkg_not_responding_hint: "   💡 Start with: vm pkg start",
-    vm_doctor_pkg_check_failed: "Failed to check package server: {error}",
-    vm_doctor_registry_healthy: "Docker registry service is healthy",
-    vm_doctor_registry_not_responding_active: "Docker registry service is not responding (needed for active VMs)",
+    vm_doctor_pkg_check_failed: "❌ Failed to check package server: {error}",
+    vm_doctor_registry_healthy: "✅ Docker registry service is healthy",
+    vm_doctor_registry_not_responding_active: "❌ Docker registry service is not responding (needed for active VMs)",
     vm_doctor_registry_not_responding_hint: "   💡 Registry helps cache Docker images for faster VM operations",
     vm_doctor_registry_not_running_info: "   ℹ️  Docker registry service not running (not needed without active VMs)",
-    vm_doctor_registry_check_failed_active: "Failed to check Docker registry: {error}",
+    vm_doctor_registry_check_failed_active: "❌ Failed to check Docker registry: {error}",
     vm_doctor_registry_check_skipped: "   ℹ️  Docker registry check skipped (not needed without active VMs)",
 
     // ============================================================================
@@ -934,7 +934,7 @@ pub const MESSAGES: Messages = Messages {
     // ============================================================================
     // Common Validation Messages
     // ============================================================================
-    common_validation_failed: "Configuration validation failed:",
+    common_validation_failed: "❌ Configuration validation failed:",
     common_validation_hint: "\n💡 Fix the configuration errors above or run 'vm doctor' for more details",
 
     // ============================================================================
@@ -964,10 +964,10 @@ pub const MESSAGES: Messages = Messages {
     vm_pkg_config_host: "  Host: {host}",
     vm_pkg_config_fallback: "  Fallback: {fallback}",
     vm_pkg_config_changes_hint: "💡 Configuration changes will take effect on next server start",
-    vm_pkg_config_setting: "Setting {key} = {value}",
+    vm_pkg_config_setting: "⚙️  Setting {key} = {value}",
     vm_pkg_use_bash_config: "# Package registry configuration for {shell}\nexport NPM_CONFIG_REGISTRY=http://localhost:{port}/npm/\nexport PIP_INDEX_URL=http://localhost:{port}/pypi/simple/\nexport PIP_TRUSTED_HOST=localhost\n\n# To apply: eval \"$(vm pkg use)\"",
     vm_pkg_use_fish_config: "# Package registry configuration for fish\nset -x NPM_CONFIG_REGISTRY http://localhost:{port}/npm/\nset -x PIP_INDEX_URL http://localhost:{port}/pypi/simple/\nset -x PIP_TRUSTED_HOST localhost",
-    vm_pkg_use_unsupported: "Unsupported shell: {shell}\nSupported shells: bash, zsh, fish",
+    vm_pkg_use_unsupported: "❌ Unsupported shell: {shell}\n💡 Supported shells: bash, zsh, fish",
     vm_pkg_version_mismatch: "⚠️  Package server version mismatch: server={server_version}, cli={cli_version}",
     vm_pkg_restarting: "🔄 Restarting package server with new version...",
     vm_pkg_server_starting: "🚀 Starting package registry server...",
@@ -1098,20 +1098,20 @@ pub const MESSAGES: Messages = Messages {
     temp_vm_confirm_remove_mount: "Remove mount {source} from temp VM? (y/N): ",
 
     // Docker
-    docker_is_running: "Docker is running.",
-    docker_not_running: "Docker is not running. Please start it and try again.",
-    docker_build_failed: "Docker build failed",
-    docker_build_success: "Docker build successful",
+    docker_is_running: "✅ Docker is running.",
+    docker_not_running: "❌ Docker is not running. Please start it and try again.",
+    docker_build_failed: "❌ Docker build failed",
+    docker_build_success: "✅ Docker build successful",
 
     // Installer & Dependencies
     installer_checking_dependencies: "🔍 Checking dependencies...",
-    installer_installing: "Installing VM Infrastructure...",
-    installer_complete: "The 'vm' command is now available in new terminal sessions.",
-    installer_help_hint: "For more information, run: vm --help",
+    installer_installing: "📦 Installing VM Infrastructure...",
+    installer_complete: "✅ The 'vm' command is now available in new terminal sessions.",
+    installer_help_hint: "💡 For more information, run: vm --help",
     installer_path_already_configured: "✅ {path} is already in your PATH.",
     installer_path_not_configured: "⚠️ {path} is not in your PATH",
-    installer_add_to_path_hint: "To add {path} to your PATH, add this line to your {profile}:",
-    installer_manual_path_hint: "Or run: vm-package-manager link",
+    installer_add_to_path_hint: "💡 To add {path} to your PATH, add this line to your {profile}:",
+    installer_manual_path_hint: "💡 Or run: vm-package-manager link",
 
     // Package Management
     pkg_linking: "🔗 Package '{name}' is linked for {package_type}",
@@ -1126,24 +1126,24 @@ pub const MESSAGES: Messages = Messages {
     pkg_creating_wrappers: "  -> Creating wrapper scripts in {path}",
     pkg_wrapper_created: "    - Created wrapper: {name}",
     pkg_restart_shell: "  -> Please restart your shell to use them",
-    pkg_no_linked_packages: "No linked packages found",
+    pkg_no_linked_packages: "📦 No linked packages found",
     pkg_linked_packages_header: "🔗 Linked packages:",
 
     // Provider Operations
     provider_tart_vm_exists: "⚠️  Tart VM '{name}' already exists.",
-    provider_tart_recreate_hint: "To recreate, first run: vm destroy",
+    provider_tart_recreate_hint: "💡 To recreate, first run: vm destroy",
     provider_tart_created_success: "\n✅ Tart VM created successfully!",
     provider_tart_connect_hint: "💡 Use 'vm ssh' to connect to the VM",
     provider_tart_vm_created: "✅ Created Tart VM '{name}' from image '{image}'",
-    provider_tart_vm_recreate_hint: "To recreate, first run: vm destroy {name}",
+    provider_tart_vm_recreate_hint: "💡 To recreate, first run: vm destroy {name}",
     provider_tart_vm_connect_hint: "💡 Use 'vm ssh {name}' to connect to the VM instance",
-    provider_logs_unavailable: "The VM might not be running or logs may not be available yet.",
-    provider_logs_expected_location: "Expected location: ~/.tart/vms/{name}/app.log",
-    provider_logs_showing: "Showing Tart VM logs from: {path}",
-    provider_vm_not_found: "VM '{name}' not found",
-    provider_provisioning_unsupported: "Provisioning not supported for Tart VMs",
+    provider_logs_unavailable: "⚠️  The VM might not be running or logs may not be available yet.",
+    provider_logs_expected_location: "💡 Expected location: ~/.tart/vms/{name}/app.log",
+    provider_logs_showing: "📜 Showing Tart VM logs from: {path}",
+    provider_vm_not_found: "❌ VM '{name}' not found",
+    provider_provisioning_unsupported: "⚠️  Provisioning not supported for Tart VMs",
     provider_provisioning_explanation:
-        "Tart VMs use pre-built images and don't support dynamic provisioning",
+        "ℹ️  Tart VMs use pre-built images and don't support dynamic provisioning",
 
     // Audio
     audio_installing_pulseaudio: "🎧 Installing PulseAudio via Homebrew...",
@@ -1151,8 +1151,8 @@ pub const MESSAGES: Messages = Messages {
     audio_starting_services: "🎧 Starting audio services...",
 
     // Ports
-    ports_no_ranges: "No port ranges registered yet",
-    ports_registered_ranges: "Registered port ranges:",
+    ports_no_ranges: "📡 No port ranges registered yet",
+    ports_registered_ranges: "📡 Registered port ranges:",
     ports_range_entry: "  {project}: {range} → {path}",
 
     // Progress Reporter
@@ -1165,7 +1165,7 @@ pub const MESSAGES: Messages = Messages {
     progress_error_hint: "     💡 {hint}",
 
     // Status Formatter
-    status_report_header: "VM Status Report",
+    status_report_header: "📊 VM Status Report",
     status_report_separator: "================",
     status_report_name: "Name: {name}",
     status_report_status: "Status: {status}",
