@@ -1,6 +1,9 @@
 // External crates
 use clap::{Parser, Subcommand};
+use vm_cli::msg;
 use vm_core::error::Result;
+use vm_core::vm_println;
+use vm_messages::messages::MESSAGES;
 
 // Internal imports
 use crate::installer::PackageInstaller;
@@ -113,11 +116,18 @@ pub fn execute(args: Args) -> Result<()> {
         } => {
             let installer = PackageInstaller::new(user);
             if installer.is_linked(&package, package_type)? {
-                println!("🔗 Package '{}' is linked for {}", package, package_type);
+                vm_println!(
+                    "{}",
+                    msg!(
+                        MESSAGES.pkg_manager_linked,
+                        package = &package,
+                        r#type = format!("{:?}", package_type)
+                    )
+                );
             } else {
-                println!(
-                    "📦 Package '{}' is not linked (would install from registry)",
-                    package
+                vm_println!(
+                    "{}",
+                    msg!(MESSAGES.pkg_manager_not_linked, package = &package)
                 );
             }
         }

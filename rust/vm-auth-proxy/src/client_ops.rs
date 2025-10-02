@@ -8,6 +8,9 @@ use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
 use reqwest::Client;
 use std::collections::HashMap;
 use tracing::{debug, warn};
+use vm_cli::msg;
+use vm_core::vm_println;
+use vm_messages::messages::MESSAGES;
 
 /// Add a secret to the auth proxy
 pub async fn add_secret(
@@ -55,7 +58,7 @@ pub async fn add_secret(
         .context("Failed to send request to auth proxy")?;
 
     if response.status().is_success() {
-        println!("✅ Secret '{}' added successfully", name.bright_green());
+        vm_println!("{}", msg!(MESSAGES.auth_secret_added, name = name));
     } else {
         let status = response.status();
         let error_text = response.text().await.unwrap_or_default();
@@ -91,20 +94,24 @@ pub async fn list_secrets(server_url: &str, show_values: bool) -> Result<()> {
     let list: SecretListResponse = response.json().await.context("Failed to parse response")?;
 
     if list.secrets.is_empty() {
-        println!("📭 No secrets stored");
-        println!("\n💡 Add secrets with: vm auth add <name> <value>");
+        vm_println!("{}", MESSAGES.auth_secrets_empty);
         return Ok(());
     }
 
-    println!("🔐 Stored Secrets ({})", list.total);
-    println!();
+    vm_println!(
+        "{}",
+        msg!(
+            MESSAGES.auth_secrets_list_header,
+            count = list.total.to_string()
+        )
+    );
 
     for secret in &list.secrets {
         print_secret_summary(secret, show_values, server_url, &auth_token).await?;
     }
 
     if !show_values {
-        println!("\n💡 Show values with: vm auth list --show-values");
+        vm_println!("{}", MESSAGES.auth_secrets_show_values_hint);
     }
 
     Ok(())
@@ -120,7 +127,7 @@ pub async fn remove_secret(server_url: &str, name: &str, force: bool) -> Result<
             .interact()?;
 
         if !confirm {
-            println!("❌ Cancelled");
+            vm_println!("{}", MESSAGES.auth_remove_cancelled);
             return Ok(());
         }
     }
@@ -137,7 +144,7 @@ pub async fn remove_secret(server_url: &str, name: &str, force: bool) -> Result<
         .context("Failed to send request to auth proxy")?;
 
     if response.status().is_success() {
-        println!("✅ Secret '{}' removed successfully", name.bright_green());
+        vm_println!("{}", msg!(MESSAGES.auth_secret_removed, name = name));
     } else {
         let status = response.status();
         let error_text = response.text().await.unwrap_or_default();
@@ -347,7 +354,7 @@ pub async fn start_server_if_needed(port: u16) -> Result<()> {
         .interact()?;
 
     if confirm {
-        println!("🚀 Starting auth proxy server...");
+        vm_println!("{}", MESSAGES.auth_server_starting);
 
         let data_dir = get_auth_data_dir()?;
 
@@ -356,7 +363,7 @@ pub async fn start_server_if_needed(port: u16) -> Result<()> {
 
         // Verify it started
         if check_server_running(port).await {
-            println!("✅ Auth proxy server started successfully");
+            vm_println!("{}", MESSAGES.auth_server_started);
         } else {
             return Err(anyhow!("Failed to start auth proxy server"));
         }

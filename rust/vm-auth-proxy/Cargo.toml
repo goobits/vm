@@ -12,6 +12,9 @@ path = "src/lib.rs"
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+vm-cli = { path = "../vm-cli" }
+vm-core = { path = "../vm-core" }
+vm-messages = { path = "../vm-messages" }
 
 # HTTP Server
 axum = { workspace = true }

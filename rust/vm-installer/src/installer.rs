@@ -7,7 +7,8 @@ use std::process::{Command, Stdio};
 // External crates
 use tracing::info_span;
 use vm_core::error::Result;
-use vm_core::{user_paths, vm_progress, vm_success, vm_warning};
+use vm_core::{user_paths, vm_println, vm_progress, vm_success, vm_warning};
+use vm_messages::messages::MESSAGES;
 
 // Internal imports
 use crate::platform;
@@ -95,7 +96,7 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
     let _enter = span.enter();
 
     vm_progress!("Building Rust binaries...");
-    println!("   This may take a few minutes on first build...");
+    vm_println!("{}", MESSAGES.installer_build_time_hint);
 
     // Check for sccache availability
     let has_sccache = Command::new("sccache")
@@ -107,7 +108,7 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
         .unwrap_or(false);
 
     if has_sccache {
-        println!("   Using sccache for faster builds");
+        vm_println!("{}", MESSAGES.installer_sccache_enabled);
     } else {
         vm_warning!("sccache not found - builds will be slower. Install: cargo install sccache");
     }

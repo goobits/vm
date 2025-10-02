@@ -3164,6 +3164,9 @@ dependencies = [
  "tokio",
  "tower-http",
  "tracing",
+ "vm-cli",
+ "vm-core",
+ "vm-messages",
 ]
 
 [[package]]

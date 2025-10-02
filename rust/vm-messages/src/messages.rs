@@ -254,6 +254,30 @@ pub struct Messages {
     pub config_apply_preset_hint: &'static str,
 
     // ============================================================================
+    // Installer Messages
+    // ============================================================================
+    pub installer_build_time_hint: &'static str,
+    pub installer_sccache_enabled: &'static str,
+
+    // ============================================================================
+    // Package Manager Messages
+    // ============================================================================
+    pub pkg_manager_linked: &'static str,
+    pub pkg_manager_not_linked: &'static str,
+
+    // ============================================================================
+    // Auth Proxy Messages
+    // ============================================================================
+    pub auth_secret_added: &'static str,
+    pub auth_secrets_empty: &'static str,
+    pub auth_secrets_list_header: &'static str,
+    pub auth_secrets_show_values_hint: &'static str,
+    pub auth_secret_removed: &'static str,
+    pub auth_remove_cancelled: &'static str,
+    pub auth_server_starting: &'static str,
+    pub auth_server_started: &'static str,
+
+    // ============================================================================
     // Docker Lifecycle Messages
     // ============================================================================
     pub docker_container_exists_prompt: &'static str,
@@ -662,6 +686,30 @@ pub const MESSAGES: Messages = Messages {
     config_restart_hint: "\n💡 Restart VM to apply changes: vm restart",
     config_applied_presets: "\n  Applied presets:",
     config_apply_preset_hint: "💡 Apply this preset: vm config preset {name}",
+
+    // ============================================================================
+    // Installer Messages
+    // ============================================================================
+    installer_build_time_hint: "   This may take a few minutes on first build...",
+    installer_sccache_enabled: "   Using sccache for faster builds",
+
+    // ============================================================================
+    // Package Manager Messages
+    // ============================================================================
+    pkg_manager_linked: "🔗 Package '{package}' is linked for {type}",
+    pkg_manager_not_linked: "📦 Package '{package}' is not linked (would install from registry)",
+
+    // ============================================================================
+    // Auth Proxy Messages
+    // ============================================================================
+    auth_secret_added: "✅ Secret '{name}' added successfully",
+    auth_secrets_empty: "📭 No secrets stored\n\n💡 Add secrets with: vm auth add <name> <value>",
+    auth_secrets_list_header: "🔐 Stored Secrets ({count})\n",
+    auth_secrets_show_values_hint: "\n💡 Show values with: vm auth list --show-values",
+    auth_secret_removed: "✅ Secret '{name}' removed successfully",
+    auth_remove_cancelled: "❌ Cancelled",
+    auth_server_starting: "🚀 Starting auth proxy server...",
+    auth_server_started: "✅ Auth proxy server started successfully",
 
     // ============================================================================
     // Docker Lifecycle Messages
