@@ -7,6 +7,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.5] - 2025-10-02
+
+### Changed
+- Refactored vm-auth-proxy to extract `parse_secret_scope()` helper function for better code reuse
+- Eliminated cross-platform code duplication in vm-platform with `SharedPlatformOps` trait
+- Consolidated duplicate package context logic in vm-provider's compose.rs module
+
+### Removed
+- Obsolete proposal documents (PROPOSAL_COLOCATED_PORTS.md, PROPOSAL_CONFIG_PORTS.md, etc.)
+- Legacy port configuration references
+
+### Technical Improvements
+- Reduced codebase duplication from 4.31% to 3.61% (132 duplicate lines eliminated)
+- Created shared platform operations trait with 11 default implementations
+- Improved maintainability through better code organization and helper extraction
+- All 62 tests passing across vm-provider, vm-platform, and vm-auth-proxy
+
+## [2.0.4] - 2025-09-30
+
+### Added
+- Build automation and code quality tooling
+- Comprehensive vm-messages migration infrastructure
+
+### Changed
+- Migrated update.rs and mod.rs to centralized vm-messages system
+- Migrated doctor.rs and auth.rs to vm-messages for consistent user-facing text
+- Complete config.rs migration to vm-messages system
+- Migrated uninstall.rs, pkg.rs, and plugin modules to vm-messages
+- Migrated vm-provider docker/lifecycle.rs and progress.rs to vm-messages
+- Complete vm_ops.rs migration to vm-messages system for i18n readiness
+
+### Fixed
+- Ensure supervisord is running before executing supervisorctl commands
+- Container existence check before destroy operation to prevent errors
+- BuildKit cache mount ownership for proper permission handling
+- PostgreSQL service provisioning reliability improvements
+
+### Performance
+- Optimized Dockerfile with batch installs and reduced layers
+- Added BuildKit cache mounts for faster Docker image builds
+
+## [2.0.3] - 2025-09-26
+
+### Added
+- Co-located service ports with intelligent auto-allocation
+- Service lifecycle cleanup success messages
+- Auto-install preset plugins during VM installation for immediate availability
+- Auto-configure package registry for all VMs during provisioning
+- Smart sccache detection in installer for improved Rust build performance
+
+### Changed
+- Consolidated messages with multi-line strings and improved naming conventions
+- Migrated all handle_* command functions to vm-messages system
+- Embed service configs in vm init to prevent missing file errors
+
+### Fixed
+- Docker fixes for service port allocation and conflict resolution
+- Correct Cargo package index path structure
+- Add auto-restart capability to critical services
+- Remove workspace directory creation from Dockerfile to prevent permission issues
+
+### Removed
+- Unused workspace dependencies identified by cargo-machete
+
+## [2.0.2] - 2025-09-24
+
+### Added
+- Automatic service lifecycle management
+- Enhanced plugin system capabilities
+
+### Changed
+- Centralized version management to workspace Cargo.toml
+- Aligned vm-plugin with workspace standards for consistency
+
+### Removed
+- Legacy code cleanup across multiple modules
+
+## [2.0.1] - 2025-09-23
+
+### Added
+- Initial vm-messages system foundation for centralized message management
+- Message templates for better internationalization (i18n) support
+
+### Changed
+- Major refactoring to introduce message centralization pattern
+- Improved code organization across packages
+
 ## [2.0.0] - 2024-09-28
 
 ### ✨ Major Release: Unified VM Platform
