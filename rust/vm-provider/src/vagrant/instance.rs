@@ -4,7 +4,8 @@
 //! enabling multi-machine support through Vagrant's native multi-machine capabilities.
 
 use crate::common::instance::{
-    create_vagrant_instance_info, fuzzy_match_instances, InstanceInfo, InstanceResolver,
+    create_vagrant_instance_info, extract_project_name, fuzzy_match_instances, InstanceInfo,
+    InstanceResolver,
 };
 use std::path::PathBuf;
 use vm_config::config::VmConfig;
@@ -26,11 +27,7 @@ impl<'a> VagrantInstanceManager<'a> {
 
     /// Get the project name from config
     fn project_name(&self) -> &str {
-        self.config
-            .project
-            .as_ref()
-            .and_then(|p| p.name.as_deref())
-            .unwrap_or("vm-project")
+        extract_project_name(self.config)
     }
 
     /// Parse `vagrant status` for current project
@@ -41,13 +38,17 @@ impl<'a> VagrantInstanceManager<'a> {
             .env("VAGRANT_CWD", &vagrant_cwd)
             .args(["status"])
             .output()
-            .with_context(|| {
-                "Failed to execute 'vagrant status'. Ensure Vagrant is installed and accessible"
+            .map_err(|e| {
+                VmError::Internal(format!(
+                    "Failed to execute 'vagrant status'. Ensure Vagrant is installed and accessible: {}",
+                    e
+                ))
             })?;
 
         if !output.status.success() {
             return Err(VmError::Internal(
                 "Vagrant status command failed. Check that Vagrant is properly installed and configured"
+                    .to_string(),
             ));
         }
 
@@ -107,18 +108,20 @@ impl<'a> VagrantInstanceManager<'a> {
         // Create basic multi-machine Vagrantfile template
         let vagrantfile_content = self.generate_multi_machine_vagrantfile(machines)?;
 
-        std::fs::create_dir_all(&vagrant_dir).with_context(|| {
-            format!(
-                "Failed to create Vagrant directory at {}",
-                vagrant_dir.display()
-            )
+        std::fs::create_dir_all(&vagrant_dir).map_err(|e| {
+            VmError::Internal(format!(
+                "Failed to create Vagrant directory at {}: {}",
+                vagrant_dir.display(),
+                e
+            ))
         })?;
 
-        std::fs::write(&vagrantfile_path, vagrantfile_content).with_context(|| {
-            format!(
-                "Failed to write Vagrantfile to {}",
-                vagrantfile_path.display()
-            )
+        std::fs::write(&vagrantfile_path, vagrantfile_content).map_err(|e| {
+            VmError::Internal(format!(
+                "Failed to write Vagrantfile to {}: {}",
+                vagrantfile_path.display(),
+                e
+            ))
         })?;
 
         Ok(())
@@ -189,20 +192,14 @@ impl<'a> VagrantInstanceManager<'a> {
         Ok(())
     }
 
-    /// Resolve machine names within current Vagrantfile
-    #[allow(dead_code)]
-    pub fn find_defined_machine(&self, partial: &str) -> Result<String> {
-        let instances = self.parse_vagrant_status()?;
-
-        // First try exact match
-        for instance in &instances {
-            if instance.name == partial {
-                return Ok(instance.name.clone());
-            }
-        }
-
-        // Then try fuzzy matching
-        fuzzy_match_instances(partial, &instances)
+    /// Get metadata for a Vagrant machine (created_at, uptime)
+    /// Returns (None, None) as Vagrant doesn't easily expose this info
+    fn get_machine_metadata(&self, _machine_name: &str) -> (Option<String>, Option<String>) {
+        // Vagrant doesn't provide easy access to creation time or uptime
+        // via `vagrant status`. Would need to parse VirtualBox/VMware
+        // provider-specific commands which isn't portable.
+        // Return None for both to avoid complexity.
+        (None, None)
     }
 }
 

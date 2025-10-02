@@ -5,6 +5,7 @@
 //! resolution and information handling.
 
 use vm_cli::msg;
+use vm_config::config::VmConfig;
 use vm_core::error::{Result, VmError};
 use vm_core::vm_error;
 use vm_messages::messages::MESSAGES;
@@ -101,6 +102,15 @@ pub fn fuzzy_match_instances(partial: &str, instances: &[InstanceInfo]) -> Resul
             Ok(matches[0].clone())
         }
     }
+}
+
+/// Extract project name from config with fallback to default
+pub fn extract_project_name(config: &VmConfig) -> &str {
+    config
+        .project
+        .as_ref()
+        .and_then(|p| p.name.as_deref())
+        .unwrap_or("vm-project")
 }
 
 /// Helper to create InstanceInfo for Docker containers

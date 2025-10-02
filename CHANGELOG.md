@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Vagrant provider: Thread-unsafe `env::set_var()` replaced with per-command environment variables
+- Tart provider: Compilation errors with missing imports and trait methods
+- Vagrant provider: Compilation errors with duplicate imports and missing trait methods
+- Error handling in Vagrant/Tart instance managers to avoid anyhow trait dependency issues
+
+### Changed
+- Tart provider: Deduplicated VM creation logic (130 lines reduced, 62% less duplication)
+- Extracted `extract_project_name()` helper to common module for reuse across providers
+- Vagrant/Tart: Implemented `create_with_context()` trait methods for Provider interface
+
+### Removed
+- Tart provider: Dead code `create_instance()` method (36 lines)
+
+### Technical Improvements
+- Vagrant/Tart providers now compile with `--all-features` flag
+- All 48 vm-provider unit tests passing
+- Net reduction of 146 lines across provider implementations
+- Thread-safe command execution in Vagrant provider using duct with isolated environments
+
 ## [2.0.5] - 2025-10-02
 
 ### Changed

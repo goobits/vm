@@ -4,7 +4,8 @@
 //! enabling multi-instance support through native Tart commands.
 
 use crate::common::instance::{
-    create_tart_instance_info, fuzzy_match_instances, InstanceInfo, InstanceResolver,
+    create_tart_instance_info, extract_project_name, fuzzy_match_instances, InstanceInfo,
+    InstanceResolver,
 };
 use vm_config::config::VmConfig;
 use vm_core::error::{Result, VmError};
@@ -21,11 +22,7 @@ impl<'a> TartInstanceManager<'a> {
 
     /// Get the project name from config
     fn project_name(&self) -> &str {
-        self.config
-            .project
-            .as_ref()
-            .and_then(|p| p.name.as_deref())
-            .unwrap_or("vm-project")
+        extract_project_name(self.config)
     }
 
     /// Parse `tart list` output into InstanceInfo
@@ -33,13 +30,17 @@ impl<'a> TartInstanceManager<'a> {
         let output = std::process::Command::new("tart")
             .args(["list"])
             .output()
-            .with_context(|| {
-                "Failed to execute 'tart list'. Ensure Tart is installed and accessible"
+            .map_err(|e| {
+                VmError::Internal(format!(
+                    "Failed to execute 'tart list'. Ensure Tart is installed and accessible: {}",
+                    e
+                ))
             })?;
 
         if !output.status.success() {
             return Err(VmError::Internal(
-                "Tart list command failed. Check that Tart is properly installed and configured",
+                "Tart list command failed. Check that Tart is properly installed and configured"
+                    .to_string(),
             ));
         }
 
@@ -74,44 +75,6 @@ impl<'a> TartInstanceManager<'a> {
         Ok(instances)
     }
 
-    /// Create a new instance with unique name
-    #[allow(dead_code)]
-    pub fn create_instance(&self, instance_name: &str, base_image: &str) -> Result<()> {
-        let vm_name = self.project_instance_name(instance_name);
-
-        // Check if VM already exists
-        let instances = self.parse_tart_list()?;
-        if instances.iter().any(|i| i.name == vm_name) {
-            return Err(VmError::Internal(
-                "Tart VM '{}' already exists. Use 'vm destroy {}' to remove it first",
-                vm_name,
-                instance_name,
-            ));
-        }
-
-        // Clone the base image with the new instance name
-        let output = std::process::Command::new("tart")
-            .args(["clone", base_image, &vm_name])
-            .output()
-            .with_context(|| {
-                format!(
-                    "Failed to clone Tart image '{}' to '{}'. Check that the base image exists",
-                    base_image, vm_name
-                )
-            })?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(VmError::Internal(
-                "Tart clone failed: {}. Check that base image '{}' exists and is accessible",
-                stderr.trim(),
-                base_image,
-            ));
-        }
-
-        Ok(())
-    }
-
     /// Generate project-specific instance name: {project-name}-{instance}
     fn project_instance_name(&self, instance: &str) -> String {
         format!("{}-{}", self.project_name(), instance)
@@ -121,6 +84,16 @@ impl<'a> TartInstanceManager<'a> {
     pub fn find_matching_vm(&self, partial: &str) -> Result<String> {
         let instances = self.parse_tart_list()?;
         fuzzy_match_instances(partial, &instances)
+    }
+
+    /// Get metadata for a Tart VM (created_at, uptime)
+    /// Returns (None, None) as Tart doesn't easily expose this info
+    fn get_vm_metadata(&self, _vm_name: &str) -> (Option<String>, Option<String>) {
+        // Tart's `list` command doesn't include creation time or uptime
+        // Could potentially parse ~/.tart/vms/{name} directory metadata,
+        // but that's fragile and undocumented.
+        // Return None for both to keep implementation simple.
+        (None, None)
     }
 }
 

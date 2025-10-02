@@ -1,5 +1,6 @@
 use crate::{
     common::instance::{InstanceInfo, InstanceResolver},
+    context::ProviderContext,
     progress::ProgressReporter,
     security::SecurityValidator,
     Provider, VmError,
@@ -8,10 +9,15 @@ use std::env;
 use std::path::Path;
 use vm_config::config::VmConfig;
 use vm_core::command_stream::{is_tool_installed, stream_command};
-use vm_core::error::{Result, VmError};
+use vm_core::error::Result;
 use vm_core::{vm_println, vm_success, vm_warning};
 
 use super::instance::VagrantInstanceManager;
+
+// Constants for Vagrant provider
+const DEFAULT_MACHINE_NAME: &str = "default";
+const DEFAULT_WORKSPACE_PATH: &str = "/workspace";
+const ENV_PREFIX_VM: &str = "VM_";
 
 /// Safely escape a string for shell execution by wrapping in single quotes
 /// and escaping any existing single quotes
@@ -53,12 +59,21 @@ impl VagrantProvider {
         let sanitized_config = self.create_sanitized_config();
         let config_json = serde_json::to_string_pretty(&sanitized_config)?;
 
-        // Set environment variables
-        env::set_var("VAGRANT_CWD", vagrant_cwd);
-        env::set_var("VM_PROJECT_DIR", &self.project_dir);
-        env::set_var("VM_CONFIG_JSON", config_json);
+        // Thread-safe: Set environment variables per-command, not globally
+        // Use duct to stream output with custom environment
+        use std::io::{BufRead, BufReader};
+        let reader = duct::cmd("vagrant", args)
+            .env("VAGRANT_CWD", vagrant_cwd)
+            .env("VM_PROJECT_DIR", &self.project_dir)
+            .env("VM_CONFIG_JSON", config_json)
+            .stderr_to_stdout()
+            .reader()?;
 
-        stream_command("vagrant", args)
+        let lines = BufReader::new(reader).lines();
+        for line in lines {
+            println!("{}", line?);
+        }
+        Ok(())
     }
 
     /// Create a sanitized version of the config that excludes sensitive environment variables
@@ -68,7 +83,15 @@ impl VagrantProvider {
         // Remove potentially sensitive environment variables to prevent exposure
         // Only expose essential non-sensitive environment for Vagrant provisioning
         if !sanitized.environment.is_empty() {
-            let safe_env_prefixes = ["VM_", "VAGRANT_", "LANG", "LC_", "PATH", "HOME", "USER"];
+            let safe_env_prefixes = [
+                ENV_PREFIX_VM,
+                "VAGRANT_",
+                "LANG",
+                "LC_",
+                "PATH",
+                "HOME",
+                "USER",
+            ];
 
             sanitized.environment.retain(|key, _| {
                 // Keep environment variables that are clearly safe
@@ -93,7 +116,7 @@ impl VagrantProvider {
                 let manager = self.instance_manager();
                 manager.resolve_instance_name(instance)
             }
-            None => Ok("default".to_string()), // Vagrant's default machine name
+            None => Ok(DEFAULT_MACHINE_NAME.to_string()), // Vagrant's default machine name
         }
     }
 
@@ -124,7 +147,7 @@ impl Provider for VagrantProvider {
         ProgressReporter::task(&main_phase, "Checking existing VM status...");
         let status_output = std::process::Command::new("vagrant")
             .env("VAGRANT_CWD", self.project_dir.join("providers/vagrant"))
-            .args(["status", "default"])
+            .args(["status", DEFAULT_MACHINE_NAME])
             .output();
 
         if let Ok(output) = status_output {
@@ -144,17 +167,9 @@ impl Provider for VagrantProvider {
 
         // Start VM with full provisioning
         ProgressReporter::task(&main_phase, "Starting Vagrant VM with provisioning...");
-        let vagrant_cwd = self.project_dir.join("providers/vagrant");
 
-        // Create sanitized config without sensitive environment variables
-        let sanitized_config = self.create_sanitized_config();
-        let config_json = serde_json::to_string_pretty(&sanitized_config)?;
-
-        env::set_var("VAGRANT_CWD", &vagrant_cwd);
-        env::set_var("VM_PROJECT_DIR", &self.project_dir);
-        env::set_var("VM_CONFIG_JSON", config_json);
-
-        let result = stream_command("vagrant", &["up"]);
+        // Use run_vagrant_command which handles environment variables thread-safely
+        let result = self.run_vagrant_command(&["up"]);
 
         if result.is_err() {
             ProgressReporter::task(&main_phase, "VM creation failed.");
@@ -212,16 +227,9 @@ impl Provider for VagrantProvider {
                 instance_name
             ),
         );
-        let vagrant_cwd = self.project_dir.join("providers/vagrant");
 
-        // Create sanitized config without sensitive environment variables
-        let sanitized_config = self.create_sanitized_config();
-        let config_json = serde_json::to_string_pretty(&sanitized_config)?;
-
-        env::set_var("VAGRANT_CWD", &vagrant_cwd);
-        env::set_var("VM_CONFIG_JSON", &config_json);
-
-        let up_result = stream_command("vagrant", &["up", instance_name, "--provision"]);
+        // Use run_vagrant_command which handles environment variables thread-safely
+        let up_result = self.run_vagrant_command(&["up", instance_name, "--provision"]);
         if up_result.is_err() {
             ProgressReporter::task(&main_phase, "VM instance creation failed.");
             ProgressReporter::finish_phase(&main_phase, "Creation failed.");
@@ -242,6 +250,22 @@ impl Provider for VagrantProvider {
         Ok(())
     }
 
+    fn create_with_context(&self, _context: &ProviderContext) -> Result<()> {
+        // Vagrant doesn't support dynamic context-based configuration yet
+        // Fall back to regular create() for now
+        // TODO: Implement Vagrantfile regeneration based on context
+        self.create()
+    }
+
+    fn create_instance_with_context(
+        &self,
+        instance_name: &str,
+        _context: &ProviderContext,
+    ) -> Result<()> {
+        // Fall back to regular create_instance for now
+        self.create_instance(instance_name)
+    }
+
     fn start(&self, container: Option<&str>) -> Result<()> {
         self.run_vagrant_command_with_machine(&["up"], container)
     }
@@ -256,16 +280,18 @@ impl Provider for VagrantProvider {
 
     fn ssh(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {
         let vagrant_cwd = self.project_dir.join("providers/vagrant");
-        env::set_var("VAGRANT_CWD", &vagrant_cwd);
-
         let machine_name = self.resolve_machine_name(container)?;
 
         if relative_path.as_os_str().is_empty() || relative_path == Path::new(".") {
             // Simple SSH without path change
-            if machine_name == "default" {
-                duct::cmd("vagrant", &["ssh"]).run()?;
+            if machine_name == DEFAULT_MACHINE_NAME {
+                duct::cmd("vagrant", &["ssh"])
+                    .env("VAGRANT_CWD", &vagrant_cwd)
+                    .run()?;
             } else {
-                duct::cmd("vagrant", &["ssh", &machine_name]).run()?;
+                duct::cmd("vagrant", &["ssh", &machine_name])
+                    .env("VAGRANT_CWD", &vagrant_cwd)
+                    .run()?;
             }
         } else {
             // SSH with directory change
@@ -274,12 +300,13 @@ impl Provider for VagrantProvider {
                 .project
                 .as_ref()
                 .and_then(|p| p.workspace_path.as_deref())
-                .unwrap_or("/workspace");
+                .unwrap_or(DEFAULT_WORKSPACE_PATH);
 
             // Validate and calculate target directory (prevent path traversal)
             let target_path =
-                SecurityValidator::validate_relative_path(relative_path, workspace_path)
-                    .context("Invalid path for SSH operation")?;
+                SecurityValidator::validate_relative_path(relative_path, workspace_path).map_err(
+                    |e| VmError::Internal(format!("Invalid path for SSH operation: {}", e)),
+                )?;
             let target_dir = target_path.to_string_lossy();
 
             // Get shell from config (terminal.shell or default to bash)
@@ -294,11 +321,12 @@ impl Provider for VagrantProvider {
             // This prevents injection even if target_dir or shell contain special characters
             let safe_cmd = "cd \"$1\" && exec \"$2\"".to_string();
 
-            if machine_name == "default" {
+            if machine_name == DEFAULT_MACHINE_NAME {
                 duct::cmd(
                     "vagrant",
                     &["ssh", "-c", &safe_cmd, "--", &target_dir, shell],
                 )
+                .env("VAGRANT_CWD", &vagrant_cwd)
                 .run()?;
             } else {
                 duct::cmd(
@@ -313,6 +341,7 @@ impl Provider for VagrantProvider {
                         shell,
                     ],
                 )
+                .env("VAGRANT_CWD", &vagrant_cwd)
                 .run()?;
             }
         }
@@ -325,7 +354,7 @@ impl Provider for VagrantProvider {
         let safe_cmd = escaped_args.join(" ");
         let machine_name = self.resolve_machine_name(container)?;
 
-        if machine_name == "default" {
+        if machine_name == DEFAULT_MACHINE_NAME {
             self.run_vagrant_command(&["ssh", "-c", &safe_cmd])
         } else {
             self.run_vagrant_command(&["ssh", &machine_name, "-c", &safe_cmd])
@@ -336,7 +365,7 @@ impl Provider for VagrantProvider {
         vm_println!("Showing service logs - Press Ctrl+C to stop...");
         let machine_name = self.resolve_machine_name(container)?;
 
-        if machine_name == "default" {
+        if machine_name == DEFAULT_MACHINE_NAME {
             self.run_vagrant_command(&[
                 "ssh",
                 "-c",
@@ -381,8 +410,9 @@ impl Provider for VagrantProvider {
     }
 
     fn kill(&self, container: Option<&str>) -> Result<()> {
-        // Force destroy the VM
-        self.run_vagrant_command_with_machine(&["destroy", "-f"], container)
+        // Note: Vagrant has no force-kill distinct from destroy.
+        // This delegates to destroy with -f flag which forces the operation.
+        self.destroy(container)
     }
 
     fn get_sync_directory(&self) -> String {
@@ -391,7 +421,7 @@ impl Provider for VagrantProvider {
             .project
             .as_ref()
             .and_then(|p| p.workspace_path.as_deref())
-            .unwrap_or("/workspace")
+            .unwrap_or(DEFAULT_WORKSPACE_PATH)
             .to_string()
     }
 
