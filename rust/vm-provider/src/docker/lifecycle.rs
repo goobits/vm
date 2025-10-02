@@ -764,10 +764,10 @@ impl<'a> LifecycleOperations<'a> {
             VmError::Internal(format!("Ansible provisioning failed for container '{}'. Check container logs for detailed error information: {}", self.container_name(), e))
         })?;
 
-        // Start services silently
+        // Start supervisord if not running, then reload services
         DockerOps::exec_in_container(
             &self.container_name(),
-            &["bash", "-c", "supervisorctl reread && supervisorctl update"],
+            &["bash", "-c", "pgrep supervisord > /dev/null || supervisord -c /etc/supervisor/supervisord.conf; supervisorctl reread && supervisorctl update"],
         )
         .ok();
 
@@ -852,10 +852,10 @@ impl<'a> LifecycleOperations<'a> {
             VmError::Internal(format!("Ansible provisioning failed for container '{}'. Check container logs for detailed error information: {}", container_name, e))
         })?;
 
-        // Start services silently
+        // Start supervisord if not running, then reload services
         DockerOps::exec_in_container(
             &container_name,
-            &["bash", "-c", "supervisorctl reread && supervisorctl update"],
+            &["bash", "-c", "pgrep supervisord > /dev/null || supervisord -c /etc/supervisor/supervisord.conf; supervisorctl reread && supervisorctl update"],
         )
         .ok();
 
