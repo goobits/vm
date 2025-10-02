@@ -3,6 +3,7 @@
 //! macOS is Unix-like but has some specific differences in directory locations
 //! and system information gathering.
 
+use crate::providers::shared::SharedPlatformOps;
 use crate::providers::shells::{BashShell, FishShell, ZshShell};
 use crate::traits::{PlatformProvider, ProcessProvider, ShellProvider};
 use anyhow::{Context, Result};
@@ -13,6 +14,9 @@ use std::process::Command;
 /// macOS platform provider
 pub struct MacOSPlatform;
 
+// Use shared implementations
+impl SharedPlatformOps for MacOSPlatform {}
+
 impl PlatformProvider for MacOSPlatform {
     fn name(&self) -> &'static str {
         "macos"
@@ -21,15 +25,11 @@ impl PlatformProvider for MacOSPlatform {
     // === Path Operations ===
 
     fn user_config_dir(&self) -> Result<PathBuf> {
-        Ok(dirs::config_dir()
-            .context("Could not determine user config directory")?
-            .join("vm"))
+        self.default_user_config_dir()
     }
 
     fn user_data_dir(&self) -> Result<PathBuf> {
-        Ok(dirs::data_dir()
-            .context("Could not determine user data directory")?
-            .join("vm"))
+        self.default_user_data_dir()
     }
 
     fn user_bin_dir(&self) -> Result<PathBuf> {
@@ -43,19 +43,19 @@ impl PlatformProvider for MacOSPlatform {
     }
 
     fn home_dir(&self) -> Result<PathBuf> {
-        dirs::home_dir().context("Could not determine home directory")
+        self.default_home_dir()
     }
 
     fn vm_state_dir(&self) -> Result<PathBuf> {
-        Ok(self.home_dir()?.join(".vm"))
+        self.default_vm_state_dir()
     }
 
     fn global_config_path(&self) -> Result<PathBuf> {
-        Ok(self.user_config_dir()?.join("global.yaml"))
+        self.default_global_config_path()
     }
 
     fn port_registry_path(&self) -> Result<PathBuf> {
-        Ok(self.vm_state_dir()?.join("port-registry.json"))
+        self.default_port_registry_path()
     }
 
     // === Shell Operations ===
@@ -99,16 +99,11 @@ impl PlatformProvider for MacOSPlatform {
     // === Package Manager Paths ===
 
     fn cargo_home(&self) -> Result<PathBuf> {
-        // Check CARGO_HOME environment variable first
-        if let Ok(cargo_home) = env::var("CARGO_HOME") {
-            Ok(PathBuf::from(cargo_home))
-        } else {
-            Ok(self.home_dir()?.join(".cargo"))
-        }
+        self.default_cargo_home()
     }
 
     fn cargo_bin_dir(&self) -> Result<PathBuf> {
-        Ok(self.cargo_home()?.join("bin"))
+        self.default_cargo_bin_dir()
     }
 
     fn npm_global_dir(&self) -> Result<Option<PathBuf>> {
@@ -214,17 +209,15 @@ impl PlatformProvider for MacOSPlatform {
     // === Process Operations ===
 
     fn path_separator(&self) -> char {
-        ':'
+        self.default_path_separator()
     }
 
     fn split_path_env(&self, path: &str) -> Vec<PathBuf> {
-        env::split_paths(path).collect()
+        self.default_split_path_env(path)
     }
 
     fn join_path_env(&self, paths: &[PathBuf]) -> String {
-        env::join_paths(paths)
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_default()
+        self.default_join_path_env(paths)
     }
 }
 

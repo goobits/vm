@@ -1,5 +1,8 @@
 //! Platform-specific provider implementations.
 
+// Shared implementations
+pub mod shared;
+
 #[cfg(unix)]
 pub mod unix;
 
