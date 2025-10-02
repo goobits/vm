@@ -157,6 +157,33 @@ fn my_test() -> Result<()> {
 
 ## Build Commands
 
+### Using Make (Recommended)
+
+```bash
+# Show all available targets
+make help
+
+# Build with automatic version bump (+0.0.1)
+make build
+
+# Build without version bump
+make build-no-bump
+
+# Bump version without building
+make bump-version
+
+# Run all tests
+make test
+
+# Code quality checks
+make fmt             # Format code
+make clippy          # Run linter
+make check           # Run fmt + clippy + test
+make check-duplicates # Check for code duplication
+```
+
+### Using Cargo Directly
+
 ```bash
 # Check compilation without building
 cargo check --workspace
@@ -173,6 +200,28 @@ cargo clean
 # Update dependencies
 cargo update
 ```
+
+### Version Management
+
+The project uses automatic version bumping:
+
+- **Version location**: `rust/Cargo.toml` line 25 (workspace version)
+- **Auto-bump**: Running `make build` automatically increments the patch version (+0.0.1)
+- **Manual bump**: Run `make bump-version` to bump without building
+- **Version propagation**: All workspace crates inherit the version via `version.workspace = true`
+- **Runtime access**: Use `env!("CARGO_PKG_VERSION")` in Rust code to access the current version
+
+```bash
+# Current version: 2.0.6
+make build          # → Bumps to 2.0.7 and builds
+make bump-version   # → Bumps to 2.0.8 (no build)
+```
+
+The version bump script (`scripts/bump-version.sh`):
+- Parses the current version from `rust/Cargo.toml`
+- Increments the patch number (x.y.z → x.y.z+1)
+- Updates `Cargo.toml` and regenerates `Cargo.lock`
+- Creates backups and validates changes
 
 ## Cross-Platform Compilation
 
