@@ -43,7 +43,7 @@ pub async fn handle_create(
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.vm_creating_instance,
+                MESSAGES.vm_create_header_instance,
                 instance = instance_name,
                 name = vm_name
             )
@@ -54,7 +54,10 @@ pub async fn handle_create(
             // Try to destroy specific instance first
             vm_println!(
                 "{}",
-                msg!(MESSAGES.vm_force_recreating_instance, name = instance_name)
+                msg!(
+                    MESSAGES.vm_create_force_recreating_instance,
+                    name = instance_name
+                )
             );
             if let Err(e) = provider.destroy(Some(instance_name)) {
                 warn!(
@@ -70,7 +73,7 @@ pub async fn handle_create(
             vm_println!(
                 "{}",
                 msg!(
-                    MESSAGES.vm_instance_multiinstance_warning,
+                    MESSAGES.vm_create_multiinstance_warning,
                     instance = instance_name,
                     provider = provider.name()
                 )
@@ -82,18 +85,17 @@ pub async fn handle_create(
             // Check if VM exists and destroy it first
             if provider.status(None).is_ok() {
                 warn!("VM exists, destroying due to --force flag");
-                vm_println!("{}", msg!(MESSAGES.vm_force_recreating, name = vm_name));
+                vm_println!(
+                    "{}",
+                    msg!(MESSAGES.vm_create_force_recreating, name = vm_name)
+                );
                 provider.destroy(None).map_err(VmError::from)?;
             }
         }
     }
 
-    vm_println!("{}", msg!(MESSAGES.vm_creating, name = vm_name));
-    vm_println!("{}", MESSAGES.vm_building_image);
-    vm_println!("{}", MESSAGES.vm_setting_up_volumes);
-    vm_println!("{}", MESSAGES.vm_configuring_network);
-    vm_println!("{}", MESSAGES.vm_starting_container);
-    vm_println!("{}", MESSAGES.vm_running_provisioning);
+    vm_println!("{}", msg!(MESSAGES.vm_create_header, name = vm_name));
+    vm_println!("{}", MESSAGES.vm_create_progress);
 
     // Create provider context with verbose flag and global config
     let context = ProviderContext::with_verbose(verbose).with_config(global_config.clone());
@@ -111,7 +113,7 @@ pub async fn handle_create(
 
     match create_result {
         Ok(()) => {
-            vm_println!("{}", MESSAGES.vm_created_success);
+            vm_println!("{}", MESSAGES.vm_create_success);
 
             let container_name = if let Some(instance_name) = &instance {
                 format!("{}-{}", vm_name, instance_name)
@@ -121,13 +123,10 @@ pub async fn handle_create(
             vm_println!(
                 "{}",
                 msg!(
-                    MESSAGES.vm_create_status_label,
-                    status = MESSAGES.vm_status_running
+                    MESSAGES.vm_create_info_block,
+                    status = MESSAGES.common_status_running,
+                    container = container_name
                 )
-            );
-            vm_println!(
-                "{}",
-                msg!(MESSAGES.vm_create_container_label, name = container_name)
             );
 
             // Show resources if available
@@ -142,7 +141,7 @@ pub async fn handle_create(
                     vm_println!(
                         "{}",
                         msg!(
-                            MESSAGES.vm_create_resources_label,
+                            MESSAGES.common_resources_label,
                             cpus = cpus.to_string(),
                             memory = mem_str
                         )
@@ -162,7 +161,7 @@ pub async fn handle_create(
                 vm_println!(
                     "{}",
                     msg!(
-                        MESSAGES.vm_create_services_label,
+                        MESSAGES.common_services_label,
                         services = services.join(", ")
                     )
                 );
@@ -174,7 +173,7 @@ pub async fn handle_create(
                     vm_println!(
                         "{}",
                         msg!(
-                            MESSAGES.vm_create_ports_label,
+                            MESSAGES.common_ports_label,
                             start = range[0].to_string(),
                             end = range[1].to_string()
                         )
@@ -189,19 +188,21 @@ pub async fn handle_create(
                 format!("{}-dev", vm_name)
             };
 
-            vm_println!("{}", MESSAGES.vm_configuring_services);
+            vm_println!("{}", MESSAGES.common_configuring_services);
             register_vm_services_helper(&vm_instance_name, &global_config).await?;
 
-            vm_println!("{}", MESSAGES.vm_connect_hint);
+            vm_println!("{}", MESSAGES.common_connect_hint);
             Ok(())
         }
         Err(e) => {
-            vm_println!("{}", msg!(MESSAGES.vm_create_failed, name = vm_name));
-            vm_println!("{}", msg!(MESSAGES.vm_create_error, error = e.to_string()));
-            vm_println!("{}", MESSAGES.vm_create_try_hint);
-            vm_println!("{}", MESSAGES.vm_create_check_docker);
-            vm_println!("{}", MESSAGES.vm_create_view_logs);
-            vm_println!("{}", MESSAGES.vm_create_retry_force);
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.vm_create_troubleshooting,
+                    name = vm_name,
+                    error = e.to_string()
+                )
+            );
             Err(VmError::from(e))
         }
     }
@@ -695,50 +696,41 @@ pub async fn handle_destroy(
         .unwrap_or(false);
 
     if !container_exists {
-        vm_println!("{}", MESSAGES.vm_container_removed);
-        vm_println!("{}", MESSAGES.vm_cleaning_images);
+        vm_println!("{}", MESSAGES.vm_destroy_cleanup_already_removed);
 
         // Clean up images even if container doesn't exist
         let _ = std::process::Command::new("docker")
             .args(["image", "rm", "-f", &format!("{}-image", vm_name)])
             .output();
 
-        vm_println!("{}", MESSAGES.vm_cleaning_services);
         unregister_vm_services_helper(&vm_instance_name).await?;
 
-        vm_println!("{}", MESSAGES.vm_cleanup_complete);
+        vm_println!("{}", MESSAGES.common_cleanup_complete);
         return Ok(());
     }
 
     let should_destroy = if force {
         debug!("Force flag set - skipping confirmation prompt");
-        vm_println!("{}", msg!(MESSAGES.vm_destroying_forced, name = vm_name));
+        vm_println!("{}", msg!(MESSAGES.vm_destroy_force, name = vm_name));
         true
     } else {
         // Check status to show current state
         let is_running = provider.status(None).is_ok();
 
-        vm_println!("{}", msg!(MESSAGES.vm_destroying, name = vm_name));
+        vm_println!("{}", msg!(MESSAGES.vm_destroy_confirm, name = vm_name));
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.vm_destroy_status_label,
+                MESSAGES.vm_destroy_info_block,
                 status = if is_running {
-                    MESSAGES.vm_status_running
+                    MESSAGES.common_status_running
                 } else {
-                    MESSAGES.vm_status_stopped
-                }
+                    MESSAGES.common_status_stopped
+                },
+                container = container_name
             )
         );
-        vm_println!(
-            "{}",
-            msg!(MESSAGES.vm_destroy_container_label, name = container_name)
-        );
-        vm_println!("{}", MESSAGES.vm_destroy_warning);
-        vm_println!("{}", MESSAGES.vm_destroy_item_container);
-        vm_println!("{}", MESSAGES.vm_destroy_item_images);
-        vm_println!("");
-        print!("{}", MESSAGES.vm_destroy_confirm);
+        print!("{}", MESSAGES.vm_destroy_confirm_prompt);
         io::stdout()
             .flush()
             .map_err(|e| VmError::general(e, "Failed to flush stdout"))?;
@@ -752,17 +744,14 @@ pub async fn handle_destroy(
 
     if should_destroy {
         debug!("Destroy confirmation: response='yes', proceeding with destruction");
-        vm_println!("\n{}", MESSAGES.vm_stopping_container);
-        vm_println!("{}", MESSAGES.vm_removing_container);
-        vm_println!("{}", MESSAGES.vm_cleaning_images);
+        vm_println!("{}", MESSAGES.vm_destroy_progress);
 
         match provider.destroy(container) {
             Ok(()) => {
-                vm_println!("{}", MESSAGES.vm_container_destroyed);
-                vm_println!("{}", MESSAGES.vm_cleaning_services);
+                vm_println!("{}", MESSAGES.common_configuring_services);
                 unregister_vm_services_helper(&vm_instance_name).await?;
 
-                vm_println!("{}", MESSAGES.vm_destroyed_success);
+                vm_println!("{}", MESSAGES.vm_destroy_success);
                 Ok(())
             }
             Err(e) => {
@@ -772,7 +761,7 @@ pub async fn handle_destroy(
         }
     } else {
         debug!("Destroy confirmation: response='no', cancelling destruction");
-        vm_println!("\n{}", MESSAGES.vm_destroy_cancelled);
+        vm_println!("{}", MESSAGES.vm_destroy_cancelled);
         vm_error!("VM destruction cancelled by user");
         Err(VmError::general(
             std::io::Error::new(
@@ -1435,11 +1424,14 @@ async fn unregister_vm_services_helper(vm_name: &str) -> VmResult<()> {
         warn!("Failed to unregister VM services: {}", e);
         vm_println!(
             "{}",
-            msg!(MESSAGES.vm_service_cleanup_failed, error = e.to_string())
+            msg!(
+                MESSAGES.common_services_cleanup_failed,
+                error = e.to_string()
+            )
         );
         // Don't fail the operation if service cleanup fails
     } else {
-        vm_println!("{}", MESSAGES.vm_services_cleaned);
+        vm_println!("{}", MESSAGES.common_services_cleaned);
     }
     Ok(())
 }

@@ -1,76 +1,80 @@
 //! Central registry for all user-facing message templates.
 //!
-//! This file contains the `MESSAGES` constant, a comprehensive struct
-//! that holds all static message strings used throughout the application.
+//! Naming Convention:
+//! - `common_*` - Shared/reusable messages across commands
+//! - `{command}_{component}` - Command-specific messages (e.g., vm_create_*, vm_destroy_*)
+//!
+//! Multi-line messages use `\n` for better readability and fewer vm_println! calls.
 //!
 //! Templates use `{variable}` syntax for runtime values, which are
 //! substituted by the `MessageBuilder`.
 
 pub struct Messages {
-    // Generic
-    pub success: &'static str,
-    pub failed: &'static str,
-    pub error_generic: &'static str,
-    pub warning_generic: &'static str,
-    pub press_ctrl_c_to_stop: &'static str,
+    // ============================================================================
+    // Common Messages (alphabetically sorted, shared across commands)
+    // ============================================================================
+    pub common_cleanup_complete: &'static str,
+    pub common_configuring_services: &'static str,
+    pub common_connect_hint: &'static str,
+    pub common_ports_label: &'static str,
+    pub common_resources_label: &'static str,
+    pub common_services_cleaned: &'static str,
+    pub common_services_cleanup_failed: &'static str,
+    pub common_services_label: &'static str,
+    pub common_status_running: &'static str,
+    pub common_status_stopped: &'static str,
 
-    // Error Handling
+    // ============================================================================
+    // Error Messages (alphabetically sorted)
+    // ============================================================================
     pub error_command_failed: &'static str,
-    pub error_with_context: &'static str,
-    pub error_unexpected: &'static str,
     pub error_debug_info: &'static str,
+    pub error_generic: &'static str,
+    pub error_unexpected: &'static str,
+    pub error_with_context: &'static str,
 
-    // VM Operations
+    // ============================================================================
+    // Generic Messages (keeping for backwards compatibility)
+    // ============================================================================
+    pub failed: &'static str,
+    pub press_ctrl_c_to_stop: &'static str,
+    pub success: &'static str,
+    pub warning_generic: &'static str,
+
+    // ============================================================================
+    // VM General (shared across vm commands, alphabetically sorted)
+    // ============================================================================
+    pub vm_ambiguous: &'static str,
     pub vm_is_running: &'static str,
     pub vm_is_stopped: &'static str,
     pub vm_not_found: &'static str,
-    pub vm_ambiguous: &'static str,
     pub vm_using: &'static str,
-    pub vm_destroying: &'static str,
-    pub vm_destroying_forced: &'static str,
-    pub vm_destroy_confirm: &'static str,
-    pub vm_destroy_warning: &'static str,
-    pub vm_destroy_item_container: &'static str,
-    pub vm_destroy_item_images: &'static str,
-    pub vm_destroyed_success: &'static str,
-    pub vm_destroy_cancelled: &'static str,
-    pub vm_container_removed: &'static str,
-    pub vm_cleaning_images: &'static str,
-    pub vm_cleaning_services: &'static str,
-    pub vm_services_cleaned: &'static str,
-    pub vm_service_cleanup_failed: &'static str,
-    pub vm_cleanup_complete: &'static str,
-    pub vm_container_destroyed: &'static str,
-    pub vm_stopping_container: &'static str,
-    pub vm_removing_container: &'static str,
-    pub vm_destroy_status_label: &'static str,
-    pub vm_destroy_container_label: &'static str,
-    pub vm_status_running: &'static str,
-    pub vm_status_stopped: &'static str,
-    pub vm_creating_instance: &'static str,
-    pub vm_creating: &'static str,
-    pub vm_force_recreating_instance: &'static str,
-    pub vm_force_recreating: &'static str,
-    pub vm_instance_multiinstance_warning: &'static str,
-    pub vm_building_image: &'static str,
-    pub vm_setting_up_volumes: &'static str,
-    pub vm_configuring_network: &'static str,
-    pub vm_starting_container: &'static str,
-    pub vm_running_provisioning: &'static str,
-    pub vm_created_success: &'static str,
-    pub vm_create_status_label: &'static str,
-    pub vm_create_container_label: &'static str,
-    pub vm_create_resources_label: &'static str,
-    pub vm_create_services_label: &'static str,
+
+    // ============================================================================
+    // VM Create Messages (alphabetically sorted)
+    // ============================================================================
+    pub vm_create_force_recreating: &'static str,
+    pub vm_create_force_recreating_instance: &'static str,
+    pub vm_create_header: &'static str,
+    pub vm_create_header_instance: &'static str,
+    pub vm_create_info_block: &'static str,
+    pub vm_create_multiinstance_warning: &'static str,
     pub vm_create_ports_label: &'static str,
-    pub vm_configuring_services: &'static str,
-    pub vm_connect_hint: &'static str,
-    pub vm_create_failed: &'static str,
-    pub vm_create_error: &'static str,
-    pub vm_create_try_hint: &'static str,
-    pub vm_create_check_docker: &'static str,
-    pub vm_create_view_logs: &'static str,
-    pub vm_create_retry_force: &'static str,
+    pub vm_create_progress: &'static str,
+    pub vm_create_success: &'static str,
+    pub vm_create_troubleshooting: &'static str,
+
+    // ============================================================================
+    // VM Destroy Messages (alphabetically sorted)
+    // ============================================================================
+    pub vm_destroy_cancelled: &'static str,
+    pub vm_destroy_cleanup_already_removed: &'static str,
+    pub vm_destroy_confirm: &'static str,
+    pub vm_destroy_confirm_prompt: &'static str,
+    pub vm_destroy_force: &'static str,
+    pub vm_destroy_info_block: &'static str,
+    pub vm_destroy_progress: &'static str,
+    pub vm_destroy_success: &'static str,
 
     // Config
     pub config_set_success: &'static str,
@@ -234,70 +238,71 @@ pub struct Messages {
 }
 
 pub const MESSAGES: Messages = Messages {
-    // Generic
-    success: "✅ Success",
-    failed: "❌ Failed",
-    error_generic: "Error: {error}",
-    warning_generic: "Warning: {warning}",
-    press_ctrl_c_to_stop: "Press Ctrl+C to stop...",
+    // ============================================================================
+    // Common Messages
+    // ============================================================================
+    common_cleanup_complete: "\n✅ Cleanup complete",
+    common_configuring_services: "\n🔧 Configuring services...",
+    common_connect_hint: "\n💡 Connect with: vm ssh",
+    common_ports_label: "  Ports:      {start}-{end}",
+    common_resources_label: "  Resources:  {cpus} CPUs, {memory}",
+    common_services_cleaned: "  ✓ Services cleaned up successfully",
+    common_services_cleanup_failed: "  ⚠️  Service cleanup failed: {error}",
+    common_services_label: "  Services:   {services}",
+    common_status_running: "🟢 Running",
+    common_status_stopped: "🔴 Stopped",
 
-    // Error Handling
+    // ============================================================================
+    // Error Messages
+    // ============================================================================
     error_command_failed: "❌ Command failed: {command}",
-    error_with_context: "{error}",
-    error_unexpected: "❌ Unexpected error occurred",
     error_debug_info: "Debug info: {details}",
+    error_generic: "Error: {error}",
+    error_unexpected: "❌ Unexpected error occurred",
+    error_with_context: "{error}",
 
-    // VM Operations
+    // ============================================================================
+    // Generic Messages (keeping for backwards compatibility)
+    // ============================================================================
+    failed: "❌ Failed",
+    press_ctrl_c_to_stop: "Press Ctrl+C to stop...",
+    success: "✅ Success",
+    warning_generic: "Warning: {warning}",
+
+    // ============================================================================
+    // VM General
+    // ============================================================================
+    vm_ambiguous: "\nMultiple VMs found with similar names:",
     vm_is_running: "✅ VM '{name}' is running",
     vm_is_stopped: "❌ VM '{name}' is stopped",
     vm_not_found: "No running VM found with that name.",
-    vm_ambiguous: "\nMultiple VMs found with similar names:",
     vm_using: "Using: {name}",
-    vm_destroying: "🗑️ Destroy VM '{name}'?\n",
-    vm_destroying_forced: "🗑️ Destroying '{name}' (forced)\n",
-    vm_destroy_confirm: "Confirm destruction? (y/N): ",
-    vm_destroy_warning: "\n⚠️  This will permanently delete:",
-    vm_destroy_item_container: "  • Container and all data",
-    vm_destroy_item_images: "  • Docker image and build cache",
-    vm_destroyed_success: "\n✅ VM destroyed",
-    vm_destroy_cancelled: "Destruction cancelled",
-    vm_container_removed: "✅ Container already removed, cleaning up remaining resources...\n",
-    vm_cleaning_images: "  ✓ Cleaning images",
-    vm_cleaning_services: "\n🔧 Cleaning up services...",
-    vm_services_cleaned: "  ✓ Services cleaned up successfully",
-    vm_service_cleanup_failed: "  ⚠️  Service cleanup failed: {error}",
-    vm_cleanup_complete: "\n✅ Cleanup complete",
-    vm_container_destroyed: "  ✓ Container destroyed",
-    vm_stopping_container: "  ✓ Stopping container",
-    vm_removing_container: "  ✓ Removing container",
-    vm_destroy_status_label: "  Status:     {status}",
-    vm_destroy_container_label: "  Container:  {name}",
-    vm_status_running: "🟢 Running",
-    vm_status_stopped: "🔴 Stopped",
-    vm_creating_instance: "🚀 Creating instance '{instance}' for project '{name}'...",
-    vm_creating: "🚀 Creating '{name}'...\n",
-    vm_force_recreating_instance: "🔄 Force recreating instance '{name}'...",
-    vm_force_recreating: "🔄 Force recreating '{name}'...",
-    vm_instance_multiinstance_warning: "ℹ️  Instance name '{instance}' specified but provider '{provider}' doesn't support multi-instance. Using default behavior.",
-    vm_building_image: "  ✓ Building Docker image",
-    vm_setting_up_volumes: "  ✓ Setting up volumes",
-    vm_configuring_network: "  ✓ Configuring network",
-    vm_starting_container: "  ✓ Starting container",
-    vm_running_provisioning: "  ✓ Running initial provisioning",
-    vm_created_success: "\n✅ Created successfully\n",
-    vm_create_status_label: "  Status:     {status}",
-    vm_create_container_label: "  Container:  {name}",
-    vm_create_resources_label: "  Resources:  {cpus} CPUs, {memory}",
-    vm_create_services_label: "  Services:   {services}",
+
+    // ============================================================================
+    // VM Create Messages
+    // ============================================================================
+    vm_create_force_recreating: "🔄 Force recreating '{name}'...",
+    vm_create_force_recreating_instance: "🔄 Force recreating instance '{name}'...",
+    vm_create_header: "🚀 Creating '{name}'...\n",
+    vm_create_header_instance: "🚀 Creating instance '{instance}' for project '{name}'...",
+    vm_create_info_block: "  Status:     {status}\n  Container:  {container}",
+    vm_create_multiinstance_warning: "ℹ️  Instance name '{instance}' specified but provider '{provider}' doesn't support multi-instance. Using default behavior.",
     vm_create_ports_label: "  Ports:      {start}-{end}",
-    vm_configuring_services: "\n🔧 Configuring services...",
-    vm_connect_hint: "\n💡 Connect with: vm ssh",
-    vm_create_failed: "\n❌ Failed to create '{name}'",
-    vm_create_error: "   Error: {error}",
-    vm_create_try_hint: "\n💡 Try:",
-    vm_create_check_docker: "   • Check Docker status: docker ps",
-    vm_create_view_logs: "   • View Docker logs: docker logs",
-    vm_create_retry_force: "   • Retry with force: vm create --force",
+    vm_create_progress: "  ✓ Building Docker image\n  ✓ Setting up volumes\n  ✓ Configuring network\n  ✓ Starting container\n  ✓ Running initial provisioning",
+    vm_create_success: "\n✅ Created successfully\n",
+    vm_create_troubleshooting: "\n❌ Failed to create '{name}'\n   Error: {error}\n\n💡 Try:\n   • Check Docker status: docker ps\n   • View Docker logs: docker logs\n   • Retry with force: vm create --force",
+
+    // ============================================================================
+    // VM Destroy Messages
+    // ============================================================================
+    vm_destroy_cancelled: "\n❌ Destruction cancelled",
+    vm_destroy_cleanup_already_removed: "✅ Container already removed, cleaning up remaining resources...\n\n  ✓ Cleaning images\n\n🔧 Cleaning up services...",
+    vm_destroy_confirm: "🗑️ Destroy VM '{name}'?\n",
+    vm_destroy_confirm_prompt: "Confirm destruction? (y/N): ",
+    vm_destroy_force: "🗑️ Destroying '{name}' (forced)\n",
+    vm_destroy_info_block: "  Status:     {status}\n  Container:  {container}\n\n⚠️  This will permanently delete:\n  • Container and all data\n  • Docker image and build cache\n",
+    vm_destroy_progress: "\n  ✓ Stopping container\n  ✓ Removing container\n  ✓ Cleaning images",
+    vm_destroy_success: "\n✅ VM destroyed",
 
     // Config
     config_set_success: "✅ Set {field} = {value} in {path}",
