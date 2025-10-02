@@ -85,6 +85,43 @@ pub struct Messages {
     pub vm_start_success: &'static str,
     pub vm_start_troubleshooting: &'static str,
 
+    // ============================================================================
+    // VM Stop Messages (alphabetically sorted)
+    // ============================================================================
+    pub vm_stop_force_header: &'static str,
+    pub vm_stop_force_success: &'static str,
+    pub vm_stop_force_troubleshooting: &'static str,
+    pub vm_stop_header: &'static str,
+    pub vm_stop_restart_hint: &'static str,
+    pub vm_stop_success: &'static str,
+    pub vm_stop_troubleshooting: &'static str,
+
+    // ============================================================================
+    // VM Restart Messages
+    // ============================================================================
+    pub vm_restart_header: &'static str,
+    pub vm_restart_success: &'static str,
+    pub vm_restart_troubleshooting: &'static str,
+
+    // ============================================================================
+    // VM Provision Messages
+    // ============================================================================
+    pub vm_provision_header: &'static str,
+    pub vm_provision_hint: &'static str,
+    pub vm_provision_progress: &'static str,
+    pub vm_provision_success: &'static str,
+    pub vm_provision_troubleshooting: &'static str,
+
+    // ============================================================================
+    // VM Exec Messages
+    // ============================================================================
+    pub vm_exec_troubleshooting: &'static str,
+
+    // ============================================================================
+    // VM Logs Messages
+    // ============================================================================
+    pub vm_logs_troubleshooting: &'static str,
+
     // Config
     pub config_set_success: &'static str,
     pub config_apply_changes_hint: &'static str,
@@ -321,6 +358,43 @@ pub const MESSAGES: Messages = Messages {
     vm_start_info_block: "  Status:     {status}\n  Container:  {container}",
     vm_start_success: "✅ Started successfully\n",
     vm_start_troubleshooting: "❌ Failed to start '{name}'\n   Error: {error}\n\n💡 Try:\n   • Check Docker status: docker ps\n   • View logs: docker logs {container}\n   • Recreate VM: vm create --force",
+
+    // ============================================================================
+    // VM Stop Messages
+    // ============================================================================
+    vm_stop_force_header: "⚠️  Force stopping container '{name}'...",
+    vm_stop_force_success: "✅ Container stopped\n\n🔧 Cleaning up services...",
+    vm_stop_force_troubleshooting: "❌ Failed to stop container\n   Error: {error}",
+    vm_stop_header: "🛑 Stopping '{name}'...",
+    vm_stop_restart_hint: "\n💡 Restart with: vm start",
+    vm_stop_success: "✅ Stopped successfully\n\n🔧 Cleaning up services...",
+    vm_stop_troubleshooting: "❌ Failed to stop '{name}'\n   Error: {error}",
+
+    // ============================================================================
+    // VM Restart Messages
+    // ============================================================================
+    vm_restart_header: "🔄 Restarting '{name}'...",
+    vm_restart_success: "✅ Restarted successfully",
+    vm_restart_troubleshooting: "\n❌ Failed to restart '{name}'\n   Error: {error}",
+
+    // ============================================================================
+    // VM Provision Messages
+    // ============================================================================
+    vm_provision_header: "🔧 Re-provisioning '{name}'\n",
+    vm_provision_hint: "\n💡 Changes applied to running container",
+    vm_provision_progress: "  ✓ Updating packages\n  ✓ Installing dependencies\n  ✓ Configuring services\n  ✓ Restarting services",
+    vm_provision_success: "\n✅ Provisioning complete",
+    vm_provision_troubleshooting: "\n❌ Provisioning failed\n   Error: {error}\n\n💡 Check logs: vm logs",
+
+    // ============================================================================
+    // VM Exec Messages
+    // ============================================================================
+    vm_exec_troubleshooting: "❌ Failed to execute command\n   Error: {error}",
+
+    // ============================================================================
+    // VM Logs Messages
+    // ============================================================================
+    vm_logs_troubleshooting: "❌ Failed to retrieve logs\n   Error: {error}",
 
     // Config
     config_set_success: "✅ Set {field} = {value} in {path}",

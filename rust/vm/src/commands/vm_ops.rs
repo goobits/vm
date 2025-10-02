@@ -371,23 +371,28 @@ pub async fn handle_stop(
                 .map(|s| s.as_str())
                 .unwrap_or("vm-project");
 
-            println!("🛑 Stopping '{}'...", vm_name);
+            vm_println!("{}", msg!(MESSAGES.vm_stop_header, name = vm_name));
 
             match provider.stop(None) {
                 Ok(()) => {
                     // Unregister VM services after successful stop
                     let vm_instance_name = format!("{}-dev", vm_name);
 
-                    println!("✅ Stopped successfully");
-                    println!("\n🔧 Cleaning up services...");
+                    vm_println!("{}", MESSAGES.vm_stop_success);
                     unregister_vm_services_helper(&vm_instance_name).await?;
 
-                    println!("\n💡 Restart with: vm start");
+                    vm_println!("{}", MESSAGES.vm_stop_restart_hint);
                     Ok(())
                 }
                 Err(e) => {
-                    println!("❌ Failed to stop '{}'", vm_name);
-                    println!("   Error: {}", e);
+                    vm_println!(
+                        "{}",
+                        msg!(
+                            MESSAGES.vm_stop_troubleshooting,
+                            name = vm_name,
+                            error = e.to_string()
+                        )
+                    );
                     Err(VmError::from(e))
                 }
             }
@@ -398,19 +403,26 @@ pub async fn handle_stop(
             let _enter = span.enter();
             warn!("Force killing container: {}", container_name);
 
-            println!("⚠️  Force stopping container '{}'...", container_name);
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.vm_stop_force_header, name = container_name)
+            );
 
             match provider.kill(Some(container_name)) {
                 Ok(()) => {
                     // For force kill, still unregister services for cleanup
-                    println!("✅ Container stopped");
-                    println!("\n🔧 Cleaning up services...");
+                    vm_println!("{}", MESSAGES.vm_stop_force_success);
                     unregister_vm_services_helper(container_name).await?;
                     Ok(())
                 }
                 Err(e) => {
-                    println!("❌ Failed to stop container");
-                    println!("   Error: {}", e);
+                    vm_println!(
+                        "{}",
+                        msg!(
+                            MESSAGES.vm_stop_force_troubleshooting,
+                            error = e.to_string()
+                        )
+                    );
                     Err(VmError::from(e))
                 }
             }
@@ -436,7 +448,7 @@ pub async fn handle_restart(
         .map(|s| s.as_str())
         .unwrap_or("vm-project");
 
-    println!("🔄 Restarting '{}'...", vm_name);
+    vm_println!("{}", msg!(MESSAGES.vm_restart_header, name = vm_name));
 
     // Use provider.restart_with_context() for the actual VM restart, then handle services
     let context = ProviderContext::with_verbose(false).with_config(global_config.clone());
@@ -444,17 +456,23 @@ pub async fn handle_restart(
         Ok(()) => {
             // After successful restart, register services
             let vm_instance_name = format!("{}-dev", vm_name);
-            println!("\n🔧 Configuring services...");
+            vm_println!("{}", MESSAGES.common_configuring_services);
             register_vm_services_helper(&vm_instance_name, &global_config).await?;
         }
         Err(e) => {
-            println!("\n❌ Failed to restart '{}'", vm_name);
-            println!("   Error: {}", e);
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.vm_restart_troubleshooting,
+                    name = vm_name,
+                    error = e.to_string()
+                )
+            );
             return Err(VmError::from(e));
         }
     }
 
-    println!("✅ Restarted successfully");
+    vm_println!("{}", MESSAGES.vm_restart_success);
     Ok(())
 }
 
@@ -475,22 +493,20 @@ pub fn handle_provision(
         .map(|s| s.as_str())
         .unwrap_or("vm-project");
 
-    println!("🔧 Re-provisioning '{}'\n", vm_name);
-    println!("  ✓ Updating packages");
-    println!("  ✓ Installing dependencies");
-    println!("  ✓ Configuring services");
-    println!("  ✓ Restarting services");
+    vm_println!("{}", msg!(MESSAGES.vm_provision_header, name = vm_name));
+    vm_println!("{}", MESSAGES.vm_provision_progress);
 
     match provider.provision(container) {
         Ok(()) => {
-            println!("\n✅ Provisioning complete");
-            println!("\n💡 Changes applied to running container");
+            vm_println!("{}", MESSAGES.vm_provision_success);
+            vm_println!("{}", MESSAGES.vm_provision_hint);
             Ok(())
         }
         Err(e) => {
-            println!("\n❌ Provisioning failed");
-            println!("   Error: {}", e);
-            println!("\n💡 Check logs: vm logs");
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.vm_provision_troubleshooting, error = e.to_string())
+            );
             Err(VmError::from(e))
         }
     }
