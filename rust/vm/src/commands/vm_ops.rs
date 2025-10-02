@@ -535,9 +535,12 @@ pub fn handle_list_enhanced(
 
     if all_instances.is_empty() {
         if let Some(provider_name) = provider_filter {
-            println!("No VMs found for provider '{}'", provider_name);
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.vm_list_empty_provider, provider = provider_name)
+            );
         } else {
-            println!("No VMs found");
+            vm_println!("{}", MESSAGES.vm_list_empty);
         }
         return Ok(());
     }

@@ -122,6 +122,12 @@ pub struct Messages {
     // ============================================================================
     pub vm_logs_troubleshooting: &'static str,
 
+    // ============================================================================
+    // VM List Messages
+    // ============================================================================
+    pub vm_list_empty: &'static str,
+    pub vm_list_empty_provider: &'static str,
+
     // Config
     pub config_set_success: &'static str,
     pub config_apply_changes_hint: &'static str,
@@ -395,6 +401,12 @@ pub const MESSAGES: Messages = Messages {
     // VM Logs Messages
     // ============================================================================
     vm_logs_troubleshooting: "❌ Failed to retrieve logs\n   Error: {error}",
+
+    // ============================================================================
+    // VM List Messages
+    // ============================================================================
+    vm_list_empty: "No VMs found",
+    vm_list_empty_provider: "No VMs found for provider '{provider}'",
 
     // Config
     config_set_success: "✅ Set {field} = {value} in {path}",
