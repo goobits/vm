@@ -87,20 +87,41 @@ pub fn handle_plugin_info(plugin_name: &str) -> Result<()> {
         .find(|p| p.info.name == plugin_name)
         .ok_or_else(|| anyhow::anyhow!("Plugin '{}' not found", plugin_name))?;
 
-    println!("Plugin: {}", plugin.info.name);
-    println!("Version: {}", plugin.info.version);
-    println!("Type: {:?}", plugin.info.plugin_type);
+    vm_println!(
+        "{}",
+        msg!(MESSAGES.plugin_info_name, name = &plugin.info.name)
+    );
+    vm_println!(
+        "{}",
+        msg!(MESSAGES.plugin_info_version, version = &plugin.info.version)
+    );
+    vm_println!(
+        "{}",
+        msg!(
+            MESSAGES.plugin_info_type,
+            plugin_type = format!("{:?}", plugin.info.plugin_type)
+        )
+    );
 
     if let Some(desc) = &plugin.info.description {
-        println!("Description: {}", desc);
+        vm_println!(
+            "{}",
+            msg!(MESSAGES.plugin_info_description, description = desc)
+        );
     }
 
     if let Some(author) = &plugin.info.author {
-        println!("Author: {}", author);
+        vm_println!("{}", msg!(MESSAGES.plugin_info_author, author = author));
     }
 
-    println!();
-    println!("Content file: {}", plugin.content_file.display());
+    vm_println!();
+    vm_println!(
+        "{}",
+        msg!(
+            MESSAGES.plugin_info_content_file,
+            file = plugin.content_file.display().to_string()
+        )
+    );
 
     // Load and display content details
     match plugin.info.plugin_type {
@@ -108,31 +129,73 @@ pub fn handle_plugin_info(plugin_name: &str) -> Result<()> {
             if let Ok(content) = vm_plugin::load_preset_content(plugin) {
                 vm_println!("{}", MESSAGES.plugin_info_preset_details_header);
                 if !content.packages.is_empty() {
-                    println!("  Packages: {}", content.packages.join(", "));
+                    vm_println!(
+                        "{}",
+                        msg!(
+                            MESSAGES.plugin_info_packages,
+                            packages = content.packages.join(", ")
+                        )
+                    );
                 }
                 if !content.npm_packages.is_empty() {
-                    println!("  NPM Packages: {}", content.npm_packages.join(", "));
+                    vm_println!(
+                        "{}",
+                        msg!(
+                            MESSAGES.plugin_info_npm_packages,
+                            packages = content.npm_packages.join(", ")
+                        )
+                    );
                 }
                 if !content.pip_packages.is_empty() {
-                    println!("  Pip Packages: {}", content.pip_packages.join(", "));
+                    vm_println!(
+                        "{}",
+                        msg!(
+                            MESSAGES.plugin_info_pip_packages,
+                            packages = content.pip_packages.join(", ")
+                        )
+                    );
                 }
                 if !content.cargo_packages.is_empty() {
-                    println!("  Cargo Packages: {}", content.cargo_packages.join(", "));
+                    vm_println!(
+                        "{}",
+                        msg!(
+                            MESSAGES.plugin_info_cargo_packages,
+                            packages = content.cargo_packages.join(", ")
+                        )
+                    );
                 }
                 if !content.services.is_empty() {
-                    println!("  Services: {}", content.services.join(", "));
+                    vm_println!(
+                        "{}",
+                        msg!(
+                            MESSAGES.plugin_info_services,
+                            services = content.services.join(", ")
+                        )
+                    );
                 }
             }
         }
         PluginType::Service => {
             if let Ok(content) = vm_plugin::load_service_content(plugin) {
                 vm_println!("{}", MESSAGES.plugin_info_service_details_header);
-                println!("  Image: {}", content.image);
+                vm_println!(
+                    "{}",
+                    msg!(MESSAGES.plugin_info_image, image = &content.image)
+                );
                 if !content.ports.is_empty() {
-                    println!("  Ports: {}", content.ports.join(", "));
+                    vm_println!(
+                        "{}",
+                        msg!(MESSAGES.plugin_info_ports, ports = content.ports.join(", "))
+                    );
                 }
                 if !content.volumes.is_empty() {
-                    println!("  Volumes: {}", content.volumes.join(", "));
+                    vm_println!(
+                        "{}",
+                        msg!(
+                            MESSAGES.plugin_info_volumes,
+                            volumes = content.volumes.join(", ")
+                        )
+                    );
                 }
             }
         }
