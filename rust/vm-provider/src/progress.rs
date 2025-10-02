@@ -173,7 +173,7 @@ impl AnsibleProgressParser {
 
         // Clear screen and redraw
         print!("\x1B[2J\x1B[1;1H"); // Clear screen and move to top
-        println!("Creating VM...");
+        vm_println!("{}", MESSAGES.progress_creating_vm);
 
         let tasks = self.tasks.lock().unwrap();
         for task in tasks.iter() {
@@ -268,7 +268,7 @@ impl ProgressParser for AnsibleProgressParser {
             drop(tasks);
 
             // Show error in full
-            println!("\n❌ Error: {}", line);
+            vm_println!("{}", msg!(MESSAGES.progress_ansible_error, error = line));
             self.update_display();
         }
         // Track package installations
@@ -303,7 +303,7 @@ impl ProgressParser for AnsibleProgressParser {
             }
             drop(tasks);
             self.update_display();
-            println!("\n✅ Provisioning complete");
+            vm_println!("{}", MESSAGES.progress_provisioning_complete);
         }
     }
 }

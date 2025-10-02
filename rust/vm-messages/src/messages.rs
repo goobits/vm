@@ -233,6 +233,13 @@ pub struct Messages {
     pub config_applied_presets: &'static str,
     pub config_apply_preset_hint: &'static str,
 
+    // ============================================================================
+    // Progress/Provisioning Messages
+    // ============================================================================
+    pub progress_creating_vm: &'static str,
+    pub progress_provisioning_complete: &'static str,
+    pub progress_ansible_error: &'static str,
+
     // Init
     pub init_welcome: &'static str,
     pub init_already_exists: &'static str,
@@ -604,6 +611,13 @@ pub const MESSAGES: Messages = Messages {
     config_restart_hint: "\n💡 Restart VM to apply changes: vm restart",
     config_applied_presets: "\n  Applied presets:",
     config_apply_preset_hint: "💡 Apply this preset: vm config preset {name}",
+
+    // ============================================================================
+    // Progress/Provisioning Messages
+    // ============================================================================
+    progress_creating_vm: "Creating VM...",
+    progress_provisioning_complete: "\n✅ Provisioning complete",
+    progress_ansible_error: "\n❌ Error: {error}",
 
     // Init
     init_welcome: "🚀 VM Development Environment",
