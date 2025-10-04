@@ -193,6 +193,7 @@ impl DockerOps {
     /// # Arguments
     /// * `container_name` - Name of the container
     /// * `command_args` - Command and arguments to execute
+    #[allow(dead_code)] // Utility function for debugging and manual operations
     pub fn exec_in_container(container_name: &str, command_args: &[&str]) -> Result<()> {
         let mut cmd = DockerCommand::new().subcommand("exec").arg(container_name);
 

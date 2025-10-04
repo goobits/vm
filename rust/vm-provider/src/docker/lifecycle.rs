@@ -768,12 +768,11 @@ impl<'a> LifecycleOperations<'a> {
             VmError::Internal(format!("Ansible provisioning failed for container '{}'. Check container logs for detailed error information: {}", self.container_name(), e))
         })?;
 
-        // Start supervisord if not running, then reload services
-        DockerOps::exec_in_container(
-            &self.container_name(),
-            &["bash", "-c", "pgrep supervisord > /dev/null || supervisord -c /etc/supervisor/supervisord.conf; supervisorctl reread && supervisorctl update"],
-        )
-        .ok();
+        // Note: No need to manually restart supervisord here - Ansible handles supervisor
+        // lifecycle via handlers (playbook.yml:176-183) and service-specific reloads
+        // (manage-service.yml:104-116). Attempting to restart here causes permission errors
+        // because docker exec runs as the container's default user (developer), while
+        // supervisord was started as root by Ansible.
 
         Ok(())
     }
@@ -856,12 +855,11 @@ impl<'a> LifecycleOperations<'a> {
             VmError::Internal(format!("Ansible provisioning failed for container '{}'. Check container logs for detailed error information: {}", container_name, e))
         })?;
 
-        // Start supervisord if not running, then reload services
-        DockerOps::exec_in_container(
-            &container_name,
-            &["bash", "-c", "pgrep supervisord > /dev/null || supervisord -c /etc/supervisor/supervisord.conf; supervisorctl reread && supervisorctl update"],
-        )
-        .ok();
+        // Note: No need to manually restart supervisord here - Ansible handles supervisor
+        // lifecycle via handlers (playbook.yml:176-183) and service-specific reloads
+        // (manage-service.yml:104-116). Attempting to restart here causes permission errors
+        // because docker exec runs as the container's default user (developer), while
+        // supervisord was started as root by Ansible.
 
         Ok(())
     }
