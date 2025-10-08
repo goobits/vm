@@ -24,8 +24,8 @@ impl CliTestFixture {
             let _ = fs::remove_file(temp_vm_yaml);
         }
 
-        // Get the path to the vm binary
-        let binary_path = PathBuf::from("/workspace/.build/target/debug/vm");
+        // Get the path to the vm binary using the env var provided by Cargo
+        let binary_path = PathBuf::from(env!("CARGO_BIN_EXE_vm"));
 
         Ok(Self {
             _temp_dir: temp_dir,

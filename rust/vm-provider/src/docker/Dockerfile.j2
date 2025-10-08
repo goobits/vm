@@ -129,6 +129,25 @@ RUN echo '' >> /home/${PROJECT_USER}/.zshrc && \
     echo 'EOF' >> /home/${PROJECT_USER}/.zshrc && \
     echo 'fi' >> /home/${PROJECT_USER}/.zshrc
 
+# --- Git Worktree Auto-Repair Configuration ---
+# Create shared initialization script that runs for ALL shells (interactive, non-interactive, bash, zsh, sh)
+RUN mkdir -p /etc/profile.d && \
+    cat > /etc/profile.d/vm-worktree-repair.sh << 'EOF'
+#!/bin/sh
+# VM Git Worktree Auto-Repair
+# Automatically repairs worktree paths when switching between host and container
+if [ -d "/workspace/.git" ] || [ -f "/workspace/.git" ]; then
+    # Run in background, suppress all output, ignore errors
+    (cd /workspace 2>/dev/null && git worktree repair 2>/dev/null || true) &
+fi
+EOF
+
+# Make executable and source from all shell configs
+RUN chmod +x /etc/profile.d/vm-worktree-repair.sh && \
+    echo '. /etc/profile.d/vm-worktree-repair.sh' >> /etc/bash.bashrc && \
+    echo '. /etc/profile.d/vm-worktree-repair.sh' >> /home/${PROJECT_USER}/.bashrc && \
+    echo '. /etc/profile.d/vm-worktree-repair.sh' >> /home/${PROJECT_USER}/.zshrc
+
 # --- Finalization ---
 USER ${PROJECT_USER}
 WORKDIR /workspace

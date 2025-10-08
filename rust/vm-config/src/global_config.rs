@@ -30,6 +30,10 @@ pub struct GlobalConfig {
     #[serde(default, skip_serializing_if = "GlobalFeatures::is_default")]
     pub features: GlobalFeatures,
 
+    /// Git worktree settings
+    #[serde(default, skip_serializing_if = "WorktreesGlobalSettings::is_default")]
+    pub worktrees: WorktreesGlobalSettings,
+
     /// Extra configuration for extensions
     #[serde(flatten)]
     pub extra: IndexMap<String, serde_json::Value>,
@@ -246,6 +250,25 @@ impl GlobalFeatures {
             && self.auto_port_allocation
             && !self.telemetry
             && self.update_notifications
+    }
+}
+
+/// Global settings for git worktrees
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WorktreesGlobalSettings {
+    /// Enable worktrees for all projects by default
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Default base path for worktree directories
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_path: Option<String>,
+}
+
+impl WorktreesGlobalSettings {
+    /// Check if settings are at defaults
+    pub fn is_default(&self) -> bool {
+        !self.enabled && self.base_path.is_none()
     }
 }
 

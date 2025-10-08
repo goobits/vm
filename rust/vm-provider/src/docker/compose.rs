@@ -3,6 +3,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 // External crates
+use log;
+use shellexpand;
 use tera::Context as TeraContext;
 use vm_core::error::{Result, VmError};
 
@@ -171,12 +173,83 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("local_pipx_mounts", &local_pipx_mounts);
         tera_context.insert("local_env_vars", &local_env_vars);
 
+        // Git worktrees volume
+        if let Some(worktrees_path) = self.get_worktrees_host_path(context) {
+            tera_context.insert(
+                "worktrees_path",
+                &worktrees_path.to_string_lossy().to_string(),
+            );
+        }
+
         let content = tera
             .render("docker-compose.yml", &tera_context)
             .map_err(|e| {
                 VmError::Internal(format!("Failed to render docker-compose template: {}", e))
             })?;
         Ok(content)
+    }
+
+    /// Determines the host path for the git worktrees volume if enabled.
+    ///
+    /// This function checks both project and global configurations to see if the
+    /// worktrees feature is enabled. If it is, it constructs the project-specific
+    /// worktree path (e.g., `~/.vm/worktrees/project-{name}/`) and ensures
+    /// the directory exists.
+    ///
+    /// The configuration precedence is:
+    /// 1. Project-specific `vm.yaml` settings (`worktrees` section)
+    /// 2. Global `~/.vm/config.yaml` settings (`worktrees` section)
+    ///
+    /// # Arguments
+    /// * `context` - The provider context containing global configuration.
+    ///
+    /// # Returns
+    /// An `Option<PathBuf>` containing the absolute path to the host worktrees
+    /// directory if the feature is enabled, otherwise `None`.
+    pub fn get_worktrees_host_path(&self, context: &ProviderContext) -> Option<PathBuf> {
+        // 1. Check if the feature is enabled (project config overrides global config)
+        let enabled = self
+            .config
+            .worktrees
+            .as_ref()
+            .map(|w| w.enabled)
+            .or_else(|| context.global_config.as_ref().map(|g| g.worktrees.enabled))
+            .unwrap_or(false);
+
+        if !enabled {
+            return None;
+        }
+
+        // 2. Determine the base path for worktrees
+        //    - Project `base_path` > Global `base_path` > Default `~/.vm/worktrees`
+        let base_path_str = self
+            .config
+            .worktrees
+            .as_ref()
+            .and_then(|w| w.base_path.as_deref())
+            .or_else(|| {
+                context
+                    .global_config
+                    .as_ref()
+                    .and_then(|g| g.worktrees.base_path.as_deref())
+            })
+            .unwrap_or("~/.vm/worktrees");
+
+        let base_path = PathBuf::from(shellexpand::tilde(base_path_str).to_string());
+
+        // 3. Get project name for isolated directory
+        let project_name = self
+            .config
+            .project
+            .as_ref()
+            .and_then(|p| p.name.as_deref())
+            .unwrap_or("unknown-project");
+
+        let worktrees_dir = base_path.join(format!("project-{}", project_name));
+
+        // Directory will be created by lifecycle operations before Docker starts
+        log::debug!("Worktree directory will be: {}", worktrees_dir.display());
+        Some(worktrees_dir)
     }
 
     pub fn write_docker_compose(
@@ -268,6 +341,14 @@ impl<'a> ComposeOperations<'a> {
 
         tera_context.insert("local_pipx_mounts", &local_pipx_mounts);
         tera_context.insert("local_env_vars", &local_env_vars);
+
+        // Git worktrees volume
+        if let Some(worktrees_path) = self.get_worktrees_host_path(context) {
+            tera_context.insert(
+                "worktrees_path",
+                &worktrees_path.to_string_lossy().to_string(),
+            );
+        }
 
         let content = tera
             .render("docker-compose.yml", &tera_context)
@@ -369,7 +450,17 @@ impl<'a> ComposeOperations<'a> {
 mod tests {
     use super::*;
     use tempfile::TempDir;
-    use vm_config::{config::VmConfig, GlobalConfig};
+    use vm_config::{
+        config::{ProjectConfig, VmConfig, WorktreesConfig},
+        global_config::{GlobalConfig, WorktreesGlobalSettings},
+    };
+
+    fn setup_test_env() -> (TempDir, PathBuf, PathBuf) {
+        let temp_dir = TempDir::new().unwrap();
+        let project_dir = temp_dir.path().to_path_buf();
+        let temp_path = temp_dir.path().to_path_buf();
+        (temp_dir, project_dir, temp_path)
+    }
 
     #[test]
     fn test_package_registry_env_vars_injection() {
@@ -691,5 +782,185 @@ mod tests {
             !updated_content.contains("VM_CARGO_REGISTRY_HOST="),
             "Should NOT contain registry vars when disabled"
         );
+    }
+
+    #[test]
+    fn test_worktrees_disabled_by_default() {
+        let (_temp_dir, project_dir, temp_path) = setup_test_env();
+        let config = VmConfig::default();
+        let context = ProviderContext::default();
+        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir);
+
+        let rendered = compose_ops
+            .render_docker_compose(&project_dir, &context)
+            .unwrap();
+        assert!(!rendered.contains("/worktrees:rw"));
+    }
+
+    #[test]
+    fn test_worktrees_enabled_globally() {
+        let (_temp_dir, project_dir, temp_path) = setup_test_env();
+        let config = VmConfig {
+            project: Some(ProjectConfig {
+                name: Some("test-project".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut global_config = GlobalConfig::default();
+        global_config.worktrees.enabled = true;
+        let context = ProviderContext::default().with_config(global_config);
+        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir);
+
+        let rendered = compose_ops
+            .render_docker_compose(&project_dir, &context)
+            .unwrap();
+        assert!(rendered.contains("/worktrees:rw"));
+        assert!(rendered.contains("project-test-project"));
+    }
+
+    #[test]
+    fn test_worktrees_enabled_per_project() {
+        let (_temp_dir, project_dir, temp_path) = setup_test_env();
+        let config = VmConfig {
+            project: Some(ProjectConfig {
+                name: Some("test-project".into()),
+                ..Default::default()
+            }),
+            worktrees: Some(WorktreesConfig {
+                enabled: true,
+                base_path: None,
+            }),
+            ..Default::default()
+        };
+        let context = ProviderContext::default();
+        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir);
+
+        let rendered = compose_ops
+            .render_docker_compose(&project_dir, &context)
+            .unwrap();
+        assert!(rendered.contains("/worktrees:rw"));
+        assert!(rendered.contains("project-test-project"));
+    }
+
+    #[test]
+    fn test_worktrees_project_overrides_global_disabled() {
+        let (_temp_dir, project_dir, temp_path) = setup_test_env();
+        let config = VmConfig {
+            project: Some(ProjectConfig {
+                name: Some("test-project".into()),
+                ..Default::default()
+            }),
+            worktrees: Some(WorktreesConfig {
+                enabled: true,
+                base_path: None,
+            }),
+            ..Default::default()
+        };
+        let mut global_config = GlobalConfig::default();
+        global_config.worktrees.enabled = false;
+        let context = ProviderContext::default().with_config(global_config);
+        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir);
+
+        let rendered = compose_ops
+            .render_docker_compose(&project_dir, &context)
+            .unwrap();
+        assert!(rendered.contains("/worktrees:rw"));
+    }
+
+    #[test]
+    fn test_worktrees_custom_base_path_from_project() {
+        let (temp_dir, project_dir, temp_path) = setup_test_env();
+        let custom_path = temp_dir.path().join("custom_worktrees");
+
+        let config = VmConfig {
+            project: Some(ProjectConfig {
+                name: Some("test-project".into()),
+                ..Default::default()
+            }),
+            worktrees: Some(WorktreesConfig {
+                enabled: true,
+                base_path: Some(custom_path.to_string_lossy().to_string()),
+            }),
+            ..Default::default()
+        };
+        let context = ProviderContext::default();
+        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir);
+
+        let rendered = compose_ops
+            .render_docker_compose(&project_dir, &context)
+            .unwrap();
+
+        let expected_path = custom_path.join("project-test-project");
+        let expected_mount = format!("{}:/worktrees:rw", expected_path.to_string_lossy());
+        assert!(rendered.contains(&expected_mount));
+    }
+
+    #[test]
+    fn test_worktrees_custom_base_path_from_global() {
+        let (temp_dir, project_dir, temp_path) = setup_test_env();
+        let global_path = temp_dir.path().join("global_worktrees");
+
+        let config = VmConfig {
+            project: Some(ProjectConfig {
+                name: Some("test-project".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let global_config = GlobalConfig {
+            worktrees: WorktreesGlobalSettings {
+                enabled: true,
+                base_path: Some(global_path.to_string_lossy().to_string()),
+            },
+            ..Default::default()
+        };
+        let context = ProviderContext::default().with_config(global_config);
+        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir);
+
+        let rendered = compose_ops
+            .render_docker_compose(&project_dir, &context)
+            .unwrap();
+
+        let expected_path = global_path.join("project-test-project");
+        let expected_mount = format!("{}:/worktrees:rw", expected_path.to_string_lossy());
+        assert!(rendered.contains(&expected_mount));
+    }
+
+    #[test]
+    fn test_worktrees_project_base_path_overrides_global() {
+        let (temp_dir, project_dir, temp_path) = setup_test_env();
+        let project_path = temp_dir.path().join("project_worktrees");
+        let global_path = temp_dir.path().join("global_worktrees");
+
+        let config = VmConfig {
+            project: Some(ProjectConfig {
+                name: Some("test-project".into()),
+                ..Default::default()
+            }),
+            worktrees: Some(WorktreesConfig {
+                enabled: true,
+                base_path: Some(project_path.to_string_lossy().to_string()),
+            }),
+            ..Default::default()
+        };
+        let global_config = GlobalConfig {
+            worktrees: WorktreesGlobalSettings {
+                enabled: true,
+                base_path: Some(global_path.to_string_lossy().to_string()),
+            },
+            ..Default::default()
+        };
+        let context = ProviderContext::default().with_config(global_config);
+        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir);
+
+        let rendered = compose_ops
+            .render_docker_compose(&project_dir, &context)
+            .unwrap();
+
+        let expected_path = project_path.join("project-test-project");
+        let expected_mount = format!("{}:/worktrees:rw", expected_path.to_string_lossy());
+        assert!(rendered.contains(&expected_mount));
+        assert!(!rendered.contains(global_path.to_string_lossy().as_ref()));
     }
 }
