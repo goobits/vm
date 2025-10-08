@@ -71,6 +71,8 @@ once_cell = "1.21"
 notify = { version = "8.2", features = ["crossbeam-channel"] }
 futures-util = "0.3"
 nix = { version = "0.29", features = ["user"] }
+log = "0.4"
+shellexpand = "1.1"
 
 
 [profile.release]

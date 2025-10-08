@@ -205,7 +205,11 @@ pub struct VmConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub security: Option<SecurityConfig>,
 
-    // 12. Extra/Custom
+    // 12. Git Worktrees
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub worktrees: Option<WorktreesConfig>,
+
+    // 13. Extra/Custom
     #[serde(flatten)]
     pub extra_config: IndexMap<String, serde_json::Value>,
 }
@@ -729,6 +733,23 @@ fn default_true() -> bool {
 /// #   no_new_privileges: true    # Prevent privilege escalation
 /// #   user_namespaces: true      # Enable UID remapping
 /// ```
+/// Git worktree configuration settings.
+///
+/// Enables and configures support for git worktrees, allowing users to work on
+/// multiple branches simultaneously in isolated directories.
+///
+/// # Fields
+/// - `enabled`: Enable or disable git worktree support
+/// - `base_path`: Custom base path for storing worktree directories
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WorktreesConfig {
+    #[serde(default)]
+    pub enabled: bool,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_path: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SecurityConfig {
     #[serde(default)]

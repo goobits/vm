@@ -129,6 +129,13 @@ RUN echo '' >> /home/${PROJECT_USER}/.zshrc && \
     echo 'EOF' >> /home/${PROJECT_USER}/.zshrc && \
     echo 'fi' >> /home/${PROJECT_USER}/.zshrc
 
+# --- Git Worktree Auto-Repair Configuration ---
+RUN echo '' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '# Auto-repair git worktree paths on shell startup' >> /home/${PROJECT_USER}/.zshrc && \
+    echo 'if [ -d /workspace/.git ] || [ -f /workspace/.git ]; then' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '    (cd /workspace 2>/dev/null && git worktree repair 2>/dev/null || true) &' >> /home/${PROJECT_USER}/.zshrc && \
+    echo 'fi' >> /home/${PROJECT_USER}/.zshrc
+
 # --- Finalization ---
 USER ${PROJECT_USER}
 WORKDIR /workspace

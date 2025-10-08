@@ -21,6 +21,10 @@ services:
     {%- endif %}
     volumes:
       - {{ project_dir }}:/workspace:rw
+      {% if worktrees_path %}
+      # Git worktrees directory (project-scoped)
+      - {{ worktrees_path }}:/worktrees:rw
+      {% endif %}
       {% if is_macos %}
       # macOS specific volume for audio
       - /tmp/pulseaudio.socket:/tmp/pulseaudio.socket
