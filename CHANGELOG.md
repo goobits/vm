@@ -7,23 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2025-10-08
+
+### Added
+- **Git Worktrees Support**: First-class support for git worktrees allowing developers to work on multiple branches simultaneously
+  - Project-scoped worktrees directory (`~/.vm/worktrees/project-{name}/`)
+  - Automatic path repair for seamless host/container workflow using `git worktree repair`
+  - Universal shell support (bash, zsh, sh, interactive, non-interactive, docker exec, VS Code, CI/CD)
+  - Opt-in configuration via global (`~/.vm/config.yaml`) or per-project (`vm.yaml`) settings
+  - Custom base path support with tilde expansion
+  - Platform detection with WSL2 support (Linux, macOS, WSL2 supported; Windows native blocked with clear error)
+- Automatic version bumping with `make build` command
+- Comprehensive git worktrees proposal documentation
+
 ### Fixed
-- Vagrant provider: Thread-unsafe `env::set_var()` replaced with per-command environment variables
-- Tart provider: Compilation errors with missing imports and trait methods
-- Vagrant provider: Compilation errors with duplicate imports and missing trait methods
-- Error handling in Vagrant/Tart instance managers to avoid anyhow trait dependency issues
+- Git worktrees: Shell hook now runs in ALL shell contexts (previously only interactive zsh)
+- Git worktrees: Directory creation timing fixed to prevent Docker mount failures
+- Git worktrees: Added Windows platform detection with WSL2 validation
+- Supervisor: Removed redundant restart causing permission errors
+- Clippy warnings: Fixed `field_reassign_with_default` in test code (8 instances)
 
 ### Changed
+- Git worktrees: `get_worktrees_host_path()` visibility changed to `pub` for lifecycle access
+- Git worktrees: Applied modern Rust idioms (`is_some_and` instead of `map_or`)
+- Vagrant provider: Thread-unsafe `env::set_var()` replaced with per-command environment variables
 - Tart provider: Deduplicated VM creation logic (130 lines reduced, 62% less duplication)
 - Extracted `extract_project_name()` helper to common module for reuse across providers
 - Vagrant/Tart: Implemented `create_with_context()` trait methods for Provider interface
 
 ### Removed
 - Tart provider: Dead code `create_instance()` method (36 lines)
+- Obsolete error improvement proposal document
+
+### Documentation
+- Fixed crate references and command syntax across documentation
+- Added comprehensive documentation cleanup proposal
+- Added git worktrees usage guide and troubleshooting
 
 ### Technical Improvements
+- 7 new git worktrees tests (all passing)
+- 490 total tests passing (100% pass rate)
+- Zero regressions detected
+- Auto-formatted code per project standards
 - Vagrant/Tart providers now compile with `--all-features` flag
-- All 48 vm-provider unit tests passing
 - Net reduction of 146 lines across provider implementations
 - Thread-safe command execution in Vagrant provider using duct with isolated environments
 
