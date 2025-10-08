@@ -15,9 +15,6 @@ pkg-server start [OPTIONS]
 | `--host` | `0.0.0.0` | Bind address for the server |
 | `--port` | `3080` | Port number |
 | `--data` | `./data` | Storage directory for packages |
-| `--docker` | `false` | Run in Docker container |
-| `--no-config` | `false` | Skip package manager configuration |
-| `--foreground` | `false` | Run server in foreground (local mode only) |
 
 ### Environment Variables
 

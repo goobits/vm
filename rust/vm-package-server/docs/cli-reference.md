@@ -12,15 +12,11 @@ pkg-server [COMMAND] [OPTIONS]
 
 | Command | Description | Quick Example |
 |---------|-------------|---------------|
-| `start` | Start the server (with optional Docker) | `pkg-server start` |
-| `stop` | Restore package managers to original settings | `pkg-server stop` |
+| `start` | Start the server | `pkg-server start` |
 | `status` | Show server status and stats | `pkg-server status` |
 | `add` | Publish package from current directory | `pkg-server add` |
 | `remove` | Delete package from server | `pkg-server remove` |
 | `list` | List all packages on server | `pkg-server list` |
-| `config` | Manage server configuration | `pkg-server config` |
-| `use` | Output shell functions for transparent usage | `eval "$(pkg-server use)"` |
-| `exec` | Run command with local server (one-off) | `pkg-server exec npm install` |
 
 ---
 
@@ -39,44 +35,18 @@ pkg-server start [OPTIONS]
 | `--host` | | `0.0.0.0` | Host/IP to bind server to |
 | `--port` | `-p` | `3080` | Port to run server on |
 | `--data` | | `./data` | Directory for package storage |
-| `--docker` | `-d` | `false` | Run server in Docker container |
-| `--no-config` | | `false` | Don't configure local package managers |
-| `--foreground` | `-f` | `false` | Run server in foreground (local mode only) |
 
 ### **Examples**
 ```bash
-# Start with defaults (direct run)
+# Start with defaults
 pkg-server start
 
 # Start on custom port
 pkg-server start --port 9000
 
-# Start with Docker (auto-builds image if needed)
-pkg-server start --docker
-
-# Start in Docker with custom settings
-pkg-server start --docker --port 3080 --data /var/lib/packages
-
-# Start without configuring local package managers
-pkg-server start --no-config
+# Start with a specific data directory
+pkg-server start --data /var/lib/packages
 ```
-
----
-
-## 🛑 **stop** - Stop Server & Restore Settings
-
-Stop the server and restore package managers to original configuration.
-
-### **Usage**
-```bash
-pkg-server stop
-```
-
-### **What it does:**
-- Restores original pip configuration
-- Restores original npm registry
-- Restores original cargo configuration
-- Removes backup files
 
 ---
 
@@ -199,66 +169,6 @@ pkg-server status [OPTIONS]
 
 ---
 
-## ⚙️ **config** - Manage Configuration
-
-Manage server configuration settings.
-
-### **Usage**
-```bash
-pkg-server config [SUBCOMMAND]
-```
-
-### **Description**
-Provides configuration management capabilities for the server.
-
----
-
-## 🔧 **use** - Shell Integration
-
-Output shell functions for transparent server usage.
-
-### **Usage**
-```bash
-eval "$(pkg-server use)"
-```
-
-### **Description**
-Outputs shell functions that wrap pip, npm, and cargo commands to automatically use the local server. Add to your `.bashrc` or `.zshrc` for persistent configuration.
-
-### **Example**
-```bash
-# Add to shell profile
-echo 'eval "$(pkg-server use)"' >> ~/.bashrc
-
-# Or use temporarily in current session
-eval "$(pkg-server use)"
-```
-
----
-
-## 🏃 **exec** - Run Single Command
-
-Execute a single command with the local server configured.
-
-### **Usage**
-```bash
-pkg-server exec [COMMAND]
-```
-
-### **Examples**
-```bash
-# Run npm install via local server
-pkg-server exec npm install express
-
-# Run pip install via local server
-pkg-server exec pip install requests
-
-# Run cargo build via local server
-pkg-server exec cargo build
-```
-
----
-
 ## 🌐 **HTTP Endpoints**
 
 The server also provides these HTTP endpoints:
@@ -273,38 +183,6 @@ The server also provides these HTTP endpoints:
 ```bash
 # Configure any machine with one command
 curl http://SERVER_IP:3080/setup.sh | bash
-```
-
----
-
-## 🐳 **Docker Integration**
-
-The `--docker` flag on the `start` command provides automatic Docker management:
-
-### **What it Does:**
-1. Checks if Docker is installed
-2. Builds image if not exists
-3. Stops old containers
-4. Starts new container
-5. Mounts data directory
-6. Shows helpful commands
-
-### **Container Naming:**
-Containers are named: `goobits-pkg-server-{PORT}`
-
-### **Docker Commands After Start:**
-```bash
-# View logs
-docker logs -f goobits-pkg-server-3080
-
-# Stop container
-docker stop goobits-pkg-server-3080
-
-# Restart container
-docker restart goobits-pkg-server-3080
-
-# Remove container
-docker rm goobits-pkg-server-3080
 ```
 
 ---

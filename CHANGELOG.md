@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.6] - 2025-10-08
+
+### Added
+- Git worktrees support for multi-branch development
+- Improved provider error handling
+
+### Fixed
+- Docker provider volume mounting edge cases
+- Supervisor restart permission errors
+
 ### Fixed
 - Vagrant provider: Thread-unsafe `env::set_var()` replaced with per-command environment variables
 - Tart provider: Compilation errors with missing imports and trait methods

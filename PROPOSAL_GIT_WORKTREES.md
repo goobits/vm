@@ -1,9 +1,9 @@
 # Proposal: Git Worktrees Support
 
-**Status**: Draft
+**Status**: Implemented (v2.0.6)
 **Author**: VM Tool Development Team
-**Date**: 2025-01-XX
-**Target Version**: 2.1.0
+**Date**: 2025-10-08 (Implemented)
+**Implemented In**: 2.0.6
 
 ---
 

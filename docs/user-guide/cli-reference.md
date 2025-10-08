@@ -132,7 +132,7 @@ vm config preset --list          # List available presets
 vm config preset --show django   # Show preset details
 ```
 
-**Available presets:** base, django, docker, kubernetes, nodejs, python, rails, react, rust, nextjs, vibe, tart-linux, tart-macos, tart-ubuntu
+**Available presets:** base, django, docker, kubernetes, nodejs, python, rails, react, rust, next, vibe, tart-linux, tart-macos, tart-ubuntu
 
 **See:** [Presets Guide](./presets.md) for detailed preset information
 
@@ -256,7 +256,9 @@ vm --config prod.yaml create
 # Debugging
 LOG_LEVEL=DEBUG vm create 2>debug.log
 vm exec "cat /etc/os-release"
-docker inspect $(vm status --raw)
+# Use vm status output directly
+vm status
+docker inspect my-project-dev
 ```
 
 ---

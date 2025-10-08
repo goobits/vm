@@ -39,7 +39,7 @@ See [rust/ARCHITECTURE.md](../../rust/ARCHITECTURE.md) for comprehensive crate d
 | `vm` | Application | Main CLI binary |
 | `vm-core` | Foundation | Shared utilities, error handling |
 | `vm-messages` | Foundation | User-facing message templates |
-| `vm-cli` | Application | CLI output formatting |
+| `vm-cli` | Application | Message template variable substitution via `msg!` macro and `MessageBuilder` |
 | `vm-config` | Configuration | Config parsing, validation, detection |
 | `vm-provider` | Provider | VM provider abstraction (Docker/Vagrant/Tart) |
 | `vm-temp` | Provider | Temporary VM management |

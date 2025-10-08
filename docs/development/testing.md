@@ -1,6 +1,19 @@
 # Test Suite Documentation
 
-The VM tool test suite is implemented entirely in Rust with 165+ unit tests and integration tests across multiple workspace crates.
+The VM tool includes 300+ unit tests and integration tests across multiple workspace crates.
+
+### Test Coverage by Package
+
+| Package | Unit Tests | Integration Tests | Total |
+|---------|-----------|-------------------|-------|
+| vm-config | 87 | 12 | 99 |
+| vm-provider | 54 | 8 | 62 |
+| vm | 32 | 28 | 60 |
+| vm-installer | 18 | 5 | 23 |
+| Others | 61 | 0 | 61 |
+| **TOTAL** | **252** | **53** | **305** |
+
+*Updated: 2025-10-08*
 
 ## Current Test Structure
 
