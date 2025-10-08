@@ -270,6 +270,60 @@ impl<'a> LifecycleOperations<'a> {
         self.handle_potential_issues();
         self.check_docker_build_requirements();
 
+        // Create worktrees directory if enabled (must exist before Docker mounts it)
+        if self.config.worktrees.as_ref().is_some_and(|w| w.enabled)
+            || context
+                .global_config
+                .as_ref()
+                .is_some_and(|g| g.worktrees.enabled)
+        {
+            let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
+            if let Some(worktrees_path) = compose_ops.get_worktrees_host_path(context) {
+                std::fs::create_dir_all(&worktrees_path).map_err(|e| {
+                    VmError::Filesystem(format!(
+                        "Failed to create worktrees directory at {}: {}. \
+                         Check permissions for ~/.vm/worktrees/",
+                        worktrees_path.display(),
+                        e
+                    ))
+                })?;
+
+                vm_success!("✓ Worktrees directory: {}", worktrees_path.display());
+            }
+        }
+
+        // Check platform support for worktrees (Windows native not supported)
+        #[cfg(target_os = "windows")]
+        {
+            if self.config.worktrees.as_ref().is_some_and(|w| w.enabled)
+                || context
+                    .global_config
+                    .as_ref()
+                    .is_some_and(|g| g.worktrees.enabled)
+            {
+                // Check if running in WSL
+                let is_wsl = std::path::Path::new("/proc/version").exists()
+                    && std::fs::read_to_string("/proc/version")
+                        .ok()
+                        .map_or(false, |v| v.to_lowercase().contains("microsoft"));
+
+                if !is_wsl {
+                    return Err(VmError::Config(
+                        "Git worktrees require WSL2 on Windows.\n\
+                         Native Windows paths (C:\\) cannot be translated to Linux container paths.\n\
+                         \n\
+                         Solutions:\n\
+                         1. Install WSL2: https://aka.ms/wsl2 (recommended)\n\
+                         2. Disable worktrees: vm config set worktrees.enabled false\n\
+                         \n\
+                         Note: Windows native support planned for future release (Git 2.48+).".into()
+                    ));
+                }
+
+                vm_success!("✓ WSL2 detected - worktrees will work correctly");
+            }
+        }
+
         // Check if container already exists
         let container_name = self.container_name();
         let container_exists = DockerOps::container_exists(&container_name)
@@ -368,6 +422,60 @@ impl<'a> LifecycleOperations<'a> {
         self.check_daemon_is_running()?;
         self.handle_potential_issues();
         self.check_docker_build_requirements();
+
+        // Create worktrees directory if enabled (must exist before Docker mounts it)
+        if self.config.worktrees.as_ref().is_some_and(|w| w.enabled)
+            || context
+                .global_config
+                .as_ref()
+                .is_some_and(|g| g.worktrees.enabled)
+        {
+            let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
+            if let Some(worktrees_path) = compose_ops.get_worktrees_host_path(context) {
+                std::fs::create_dir_all(&worktrees_path).map_err(|e| {
+                    VmError::Filesystem(format!(
+                        "Failed to create worktrees directory at {}: {}. \
+                         Check permissions for ~/.vm/worktrees/",
+                        worktrees_path.display(),
+                        e
+                    ))
+                })?;
+
+                vm_success!("✓ Worktrees directory: {}", worktrees_path.display());
+            }
+        }
+
+        // Check platform support for worktrees (Windows native not supported)
+        #[cfg(target_os = "windows")]
+        {
+            if self.config.worktrees.as_ref().is_some_and(|w| w.enabled)
+                || context
+                    .global_config
+                    .as_ref()
+                    .is_some_and(|g| g.worktrees.enabled)
+            {
+                // Check if running in WSL
+                let is_wsl = std::path::Path::new("/proc/version").exists()
+                    && std::fs::read_to_string("/proc/version")
+                        .ok()
+                        .map_or(false, |v| v.to_lowercase().contains("microsoft"));
+
+                if !is_wsl {
+                    return Err(VmError::Config(
+                        "Git worktrees require WSL2 on Windows.\n\
+                         Native Windows paths (C:\\) cannot be translated to Linux container paths.\n\
+                         \n\
+                         Solutions:\n\
+                         1. Install WSL2: https://aka.ms/wsl2 (recommended)\n\
+                         2. Disable worktrees: vm config set worktrees.enabled false\n\
+                         \n\
+                         Note: Windows native support planned for future release (Git 2.48+).".into()
+                    ));
+                }
+
+                vm_success!("✓ WSL2 detected - worktrees will work correctly");
+            }
+        }
 
         // Check if container already exists (with custom instance name)
         let container_name = self.container_name_with_instance(instance_name);

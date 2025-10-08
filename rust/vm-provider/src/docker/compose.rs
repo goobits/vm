@@ -206,19 +206,14 @@ impl<'a> ComposeOperations<'a> {
     /// # Returns
     /// An `Option<PathBuf>` containing the absolute path to the host worktrees
     /// directory if the feature is enabled, otherwise `None`.
-    fn get_worktrees_host_path(&self, context: &ProviderContext) -> Option<PathBuf> {
+    pub fn get_worktrees_host_path(&self, context: &ProviderContext) -> Option<PathBuf> {
         // 1. Check if the feature is enabled (project config overrides global config)
         let enabled = self
             .config
             .worktrees
             .as_ref()
             .map(|w| w.enabled)
-            .or_else(|| {
-                context
-                    .global_config
-                    .as_ref()
-                    .map(|g| g.worktrees.enabled)
-            })
+            .or_else(|| context.global_config.as_ref().map(|g| g.worktrees.enabled))
             .unwrap_or(false);
 
         if !enabled {
@@ -252,17 +247,8 @@ impl<'a> ComposeOperations<'a> {
 
         let worktrees_dir = base_path.join(format!("project-{}", project_name));
 
-        // 4. Create the directory if it doesn't exist
-        if let Err(e) = fs::create_dir_all(&worktrees_dir) {
-            log::warn!(
-                "Failed to create worktrees directory at '{}': {}. Worktree volume will not be mounted.",
-                worktrees_dir.display(),
-                e
-            );
-            return None;
-        }
-
-        log::debug!("Worktree directory set to: {}", worktrees_dir.display());
+        // Directory will be created by lifecycle operations before Docker starts
+        log::debug!("Worktree directory will be: {}", worktrees_dir.display());
         Some(worktrees_dir)
     }
 
@@ -814,11 +800,13 @@ mod tests {
     #[test]
     fn test_worktrees_enabled_globally() {
         let (_temp_dir, project_dir, temp_path) = setup_test_env();
-        let mut config = VmConfig::default();
-        config.project = Some(ProjectConfig {
-            name: Some("test-project".into()),
+        let config = VmConfig {
+            project: Some(ProjectConfig {
+                name: Some("test-project".into()),
+                ..Default::default()
+            }),
             ..Default::default()
-        });
+        };
         let mut global_config = GlobalConfig::default();
         global_config.worktrees.enabled = true;
         let context = ProviderContext::default().with_config(global_config);
@@ -834,15 +822,17 @@ mod tests {
     #[test]
     fn test_worktrees_enabled_per_project() {
         let (_temp_dir, project_dir, temp_path) = setup_test_env();
-        let mut config = VmConfig::default();
-        config.project = Some(ProjectConfig {
-            name: Some("test-project".into()),
+        let config = VmConfig {
+            project: Some(ProjectConfig {
+                name: Some("test-project".into()),
+                ..Default::default()
+            }),
+            worktrees: Some(WorktreesConfig {
+                enabled: true,
+                base_path: None,
+            }),
             ..Default::default()
-        });
-        config.worktrees = Some(WorktreesConfig {
-            enabled: true,
-            base_path: None,
-        });
+        };
         let context = ProviderContext::default();
         let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir);
 
@@ -856,15 +846,17 @@ mod tests {
     #[test]
     fn test_worktrees_project_overrides_global_disabled() {
         let (_temp_dir, project_dir, temp_path) = setup_test_env();
-        let mut config = VmConfig::default();
-        config.project = Some(ProjectConfig {
-            name: Some("test-project".into()),
+        let config = VmConfig {
+            project: Some(ProjectConfig {
+                name: Some("test-project".into()),
+                ..Default::default()
+            }),
+            worktrees: Some(WorktreesConfig {
+                enabled: true,
+                base_path: None,
+            }),
             ..Default::default()
-        });
-        config.worktrees = Some(WorktreesConfig {
-            enabled: true,
-            base_path: None,
-        });
+        };
         let mut global_config = GlobalConfig::default();
         global_config.worktrees.enabled = false;
         let context = ProviderContext::default().with_config(global_config);
@@ -881,15 +873,17 @@ mod tests {
         let (temp_dir, project_dir, temp_path) = setup_test_env();
         let custom_path = temp_dir.path().join("custom_worktrees");
 
-        let mut config = VmConfig::default();
-        config.project = Some(ProjectConfig {
-            name: Some("test-project".into()),
+        let config = VmConfig {
+            project: Some(ProjectConfig {
+                name: Some("test-project".into()),
+                ..Default::default()
+            }),
+            worktrees: Some(WorktreesConfig {
+                enabled: true,
+                base_path: Some(custom_path.to_string_lossy().to_string()),
+            }),
             ..Default::default()
-        });
-        config.worktrees = Some(WorktreesConfig {
-            enabled: true,
-            base_path: Some(custom_path.to_string_lossy().to_string()),
-        });
+        };
         let context = ProviderContext::default();
         let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir);
 
@@ -907,15 +901,19 @@ mod tests {
         let (temp_dir, project_dir, temp_path) = setup_test_env();
         let global_path = temp_dir.path().join("global_worktrees");
 
-        let mut config = VmConfig::default();
-        config.project = Some(ProjectConfig {
-            name: Some("test-project".into()),
+        let config = VmConfig {
+            project: Some(ProjectConfig {
+                name: Some("test-project".into()),
+                ..Default::default()
+            }),
             ..Default::default()
-        });
-        let mut global_config = GlobalConfig::default();
-        global_config.worktrees = WorktreesGlobalSettings {
-            enabled: true,
-            base_path: Some(global_path.to_string_lossy().to_string()),
+        };
+        let global_config = GlobalConfig {
+            worktrees: WorktreesGlobalSettings {
+                enabled: true,
+                base_path: Some(global_path.to_string_lossy().to_string()),
+            },
+            ..Default::default()
         };
         let context = ProviderContext::default().with_config(global_config);
         let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir);
@@ -935,19 +933,23 @@ mod tests {
         let project_path = temp_dir.path().join("project_worktrees");
         let global_path = temp_dir.path().join("global_worktrees");
 
-        let mut config = VmConfig::default();
-        config.project = Some(ProjectConfig {
-            name: Some("test-project".into()),
+        let config = VmConfig {
+            project: Some(ProjectConfig {
+                name: Some("test-project".into()),
+                ..Default::default()
+            }),
+            worktrees: Some(WorktreesConfig {
+                enabled: true,
+                base_path: Some(project_path.to_string_lossy().to_string()),
+            }),
             ..Default::default()
-        });
-        config.worktrees = Some(WorktreesConfig {
-            enabled: true,
-            base_path: Some(project_path.to_string_lossy().to_string()),
-        });
-        let mut global_config = GlobalConfig::default();
-        global_config.worktrees = WorktreesGlobalSettings {
-            enabled: true,
-            base_path: Some(global_path.to_string_lossy().to_string()),
+        };
+        let global_config = GlobalConfig {
+            worktrees: WorktreesGlobalSettings {
+                enabled: true,
+                base_path: Some(global_path.to_string_lossy().to_string()),
+            },
+            ..Default::default()
         };
         let context = ProviderContext::default().with_config(global_config);
         let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir);
