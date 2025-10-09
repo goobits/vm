@@ -225,6 +225,7 @@ fn execute_config_command(cmd: ConfigCmd) -> Result<()> {
         }
         ConfigCmd::Dump { file } => ConfigOpsGroup::execute_dump(file),
         ConfigCmd::Export { file } => ConfigOpsGroup::execute_export(file),
+        ConfigCmd::Migrate => ConfigOpsGroup::execute_migrate(),
     }
 }
 

@@ -29,6 +29,9 @@ pub enum VmError {
     #[error("Serialization error: {0}")]
     Serialization(String),
 
+    #[error("Migration error: {0}")]
+    Migration(String),
+
     #[error("Other error: {0}")]
     Other(#[from] anyhow::Error),
 }

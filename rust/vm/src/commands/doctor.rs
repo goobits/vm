@@ -5,11 +5,11 @@
 //! configuration validation, and background service status.
 
 use crate::error::{VmError, VmResult};
-// use std::path::PathBuf; // Currently unused
+use std::path::PathBuf;
 use std::process::Command;
 use vm_cli::msg;
 use vm_config::{config::VmConfig, GlobalConfig};
-use vm_core::{vm_error, vm_println, vm_success};
+use vm_core::{user_paths, vm_error, vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 
 /// Handle the doctor command - perform comprehensive health checks
@@ -22,6 +22,9 @@ pub async fn handle_doctor_command(global_config: GlobalConfig) -> VmResult<()> 
     // 1. Configuration validation
     vm_println!("{}", MESSAGES.vm_doctor_config_section);
     if !check_configuration().await {
+        all_checks_passed = false;
+    }
+    if !check_legacy_config_paths() {
         all_checks_passed = false;
     }
     vm_println!();
@@ -301,4 +304,63 @@ async fn has_active_vms() -> bool {
         }
         _ => false, // If we can't check, assume no active VMs
     }
+}
+
+/// Checks for legacy configuration file paths.
+fn check_legacy_config_paths() -> bool {
+    let mut legacy_paths_found: Vec<PathBuf> = Vec::new();
+
+    // These paths must be constructed manually to avoid the fallback logic
+    // in the user_paths functions, which is what we're trying to detect.
+    let paths_to_check = [
+        (
+            user_paths::user_config_dir()
+                .ok()
+                .map(|p| p.join("global.yaml")),
+            user_paths::vm_state_dir()
+                .ok()
+                .map(|p| p.join("config.yaml")),
+        ),
+        (
+            user_paths::vm_state_dir()
+                .ok()
+                .map(|p| p.join("port-registry.json")),
+            user_paths::vm_state_dir().ok().map(|p| p.join("ports.json")),
+        ),
+        (
+            user_paths::vm_state_dir()
+                .ok()
+                .map(|p| p.join("service_state.json")),
+            user_paths::vm_state_dir()
+                .ok()
+                .map(|p| p.join("services.json")),
+        ),
+        (
+            user_paths::vm_state_dir()
+                .ok()
+                .map(|p| p.join("temp-vm.state")),
+            user_paths::vm_state_dir()
+                .ok()
+                .map(|p| p.join("temp-vms.json")),
+        ),
+    ];
+
+    for (old_path_opt, new_path_opt) in &paths_to_check {
+        if let (Some(old_path), Some(new_path)) = (old_path_opt, new_path_opt) {
+            if old_path.exists() && !new_path.exists() {
+                legacy_paths_found.push(old_path.clone());
+            }
+        }
+    }
+
+    if legacy_paths_found.is_empty() {
+        vm_success!("Using modern config paths");
+        return true;
+    }
+
+    vm_error!("Old configuration files detected. Run 'vm config migrate' to update.");
+    for path in legacy_paths_found {
+        vm_println!("  - Legacy file needs migration: {}", path.display());
+    }
+    false
 }

@@ -3308,11 +3308,14 @@ version = "2.1.0"
 name = "vm-config"
 version = "2.1.0"
 dependencies = [
+ "assert_cmd",
+ "chrono",
  "clap",
  "fs2",
  "glob",
  "indexmap",
  "nix",
+ "predicates",
  "regex",
  "serde",
  "serde_json",
@@ -3321,6 +3324,7 @@ dependencies = [
  "tracing",
  "vm-cli",
  "vm-core",
+ "vm-logging",
  "vm-messages",
  "vm-plugin",
  "which",

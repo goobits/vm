@@ -11,3 +11,7 @@ pub fn execute_get(field: Option<String>, global: bool) -> Result<()> {
 pub fn execute_unset(field: String, global: bool) -> Result<()> {
     crate::config_ops::ConfigOps::unset(&field, global)
 }
+
+pub fn execute_migrate() -> Result<()> {
+    crate::config_ops::ConfigOps::migrate()
+}

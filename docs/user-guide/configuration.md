@@ -599,9 +599,15 @@ vm create
 ### Database Persistence
 
 ```yaml
-# Note: This is a deprecated top-level field but still supported.
-# The modern approach is to configure persistence per-service.
+# DEPRECATED: Will be removed in v3.0.0 (Q2 2026)
+# Use per-service persistence configuration instead.
 persist_databases: true  # Store data in .vm/data/
+
+# Modern approach (use this instead):
+services:
+  postgresql:
+    enabled: true
+    persist: true  # Per-service control
 ```
 - Survives VM rebuilds
 - Add `.vm/` to `.gitignore`

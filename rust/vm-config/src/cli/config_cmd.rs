@@ -57,4 +57,7 @@ pub enum ConfigCmd {
         #[arg(short, long)]
         file: Option<PathBuf>,
     },
+
+    /// Migrate legacy configuration files to their new locations
+    Migrate,
 }

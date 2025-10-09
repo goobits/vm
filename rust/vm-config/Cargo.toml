@@ -28,7 +28,9 @@ vm-core = { path = "../vm-core" }
 vm-messages = { path = "../vm-messages" }
 vm-cli = { path = "../vm-cli" }
 vm-plugin = { path = "../vm-plugin" }
+vm-logging = { path = "../vm-logging" }
 which = { workspace = true }
+chrono = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 nix = { workspace = true }
@@ -40,3 +42,5 @@ test-helpers = []
 
 [dev-dependencies]
 tempfile = { workspace = true }
+assert_cmd = "2.0"
+predicates = "3.0"
