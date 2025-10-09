@@ -6,10 +6,10 @@ use std::sync::OnceLock;
 use regex::Regex;
 use serde_yaml::Value;
 use serde_yaml_ng as serde_yaml;
+use tracing::{error, info, warn};
 use vm_core::error::{Result, VmError};
 
 // Internal crate imports
-use vm_core::{vm_error, vm_println, vm_warning};
 use vm_messages::messages::MESSAGES;
 
 // Local module imports
@@ -68,15 +68,15 @@ pub fn execute(
 
     // Check if vm.yaml already exists
     if target_path.exists() {
-        vm_println!("{}", MESSAGES.init_welcome);
-        vm_println!();
-        vm_println!("{}", MESSAGES.init_already_exists);
-        vm_println!("   📁 {}", target_path.display());
-        vm_println!();
-        vm_println!("{}", MESSAGES.init_options_hint);
-        vm_println!("   rm vm.yaml && vm init           # Start fresh");
-        vm_println!("   vm init --file other.yaml      # Create elsewhere");
-        vm_println!("   vm create                       # Use existing config");
+        info!("{}", MESSAGES.init_welcome);
+        info!("");
+        info!("{}", MESSAGES.init_already_exists);
+        info!("   📁 {}", target_path.display());
+        info!("");
+        info!("{}", MESSAGES.init_options_hint);
+        info!("   rm vm.yaml && vm init           # Start fresh");
+        info!("   vm init --file other.yaml      # Create elsewhere");
+        info!("   vm create                       # Use existing config");
         std::process::exit(1);
     }
 
@@ -96,12 +96,12 @@ pub fn execute(
 
     // If the sanitized name is different, inform the user
     if sanitized_name != dir_name {
-        vm_println!(
+        info!(
             "📝 Note: Directory name '{}' contains invalid characters for project names.",
             dir_name
         );
-        vm_println!("   Using sanitized name: '{}'", sanitized_name);
-        vm_println!();
+        info!("   Using sanitized name: '{}'", sanitized_name);
+        info!("");
     }
 
     // Load embedded defaults
@@ -128,20 +128,20 @@ pub fn execute(
 
                 // Register this range
                 let mut registry = PortRegistry::load().unwrap_or_else(|_| {
-                    vm_warning!("Failed to load port registry, using default");
+                    warn!("Failed to load port registry, using default");
                     PortRegistry::default()
                 });
                 if let Err(e) =
                     registry.register(sanitized_name, &range, &current_dir.to_string_lossy())
                 {
-                    vm_warning!("Failed to register port range: {}", e);
+                    warn!("Failed to register port range: {}", e);
                 }
             }
         } else {
-            vm_warning!("Could not find available port range");
+            warn!("Could not find available port range");
         }
     } else {
-        vm_warning!("Failed to load port registry");
+        warn!("Failed to load port registry");
     }
 
     // Smart service detection and configuration
@@ -177,8 +177,8 @@ pub fn execute(
                 "mongodb" => include_str!("../../../resources/services/mongodb.yaml"),
                 "docker" => include_str!("../../../resources/services/docker.yaml"),
                 _ => {
-                    vm_error!("Unknown service: {}", service);
-                    vm_error!("Available services: postgresql, redis, mongodb, docker");
+                    error!("Unknown service: {}", service);
+                    error!("Available services: postgresql, redis, mongodb, docker");
                     return Err(VmError::Config(
                         "Service configuration not found".to_string(),
                     ));
@@ -245,35 +245,35 @@ pub fn execute(
     };
 
     // Clean success output
-    vm_println!("{}", MESSAGES.init_welcome);
-    vm_println!();
-    vm_println!("✓ Initializing project: {}", sanitized_name);
-    vm_println!("✓ Port range allocated: {}", port_display);
+    info!("{}", MESSAGES.init_welcome);
+    info!("");
+    info!("✓ Initializing project: {}", sanitized_name);
+    info!("✓ Port range allocated: {}", port_display);
 
     // Display services with their assigned ports
     if !config.services.is_empty() {
         let enabled_services: Vec<_> = config.services.iter().filter(|(_, s)| s.enabled).collect();
 
         if !enabled_services.is_empty() {
-            vm_println!("✓ Services configured:");
+            info!("✓ Services configured:");
             for (name, service) in enabled_services {
                 if let Some(port) = service.port {
-                    vm_println!("    • {} (port {})", name, port);
+                    info!("    • {} (port {})", name, port);
                 } else {
-                    vm_println!("    • {}", name);
+                    info!("    • {}", name);
                 }
             }
         }
     }
 
-    vm_println!("✓ Configuration created: vm.yaml");
-    vm_println!();
-    vm_println!("{}", MESSAGES.init_success);
-    vm_println!("{}", MESSAGES.init_next_steps);
-    vm_println!("   vm create    # Launch your development environment");
-    vm_println!("   vm --help    # View all available commands");
-    vm_println!();
-    vm_println!("📁 {}", target_path.display());
+    info!("✓ Configuration created: vm.yaml");
+    info!("");
+    info!("{}", MESSAGES.init_success);
+    info!("{}", MESSAGES.init_next_steps);
+    info!("   vm create    # Launch your development environment");
+    info!("   vm --help    # View all available commands");
+    info!("");
+    info!("📁 {}", target_path.display());
 
     Ok(())
 }
@@ -289,9 +289,9 @@ fn detect_and_recommend_services(project_dir: &std::path::Path) -> Result<Vec<St
 
         // Show what was detected
         let detected_list: Vec<String> = detected.iter().cloned().collect();
-        println!("🔍 Detected: {}", detected_list.join(", "));
+        info!("🔍 Detected: {}", detected_list.join(", "));
         if !services.is_empty() {
-            println!("✓ Services: {}", services.join(", "));
+            info!("✓ Services: {}", services.join(", "));
         }
 
         Ok(services)

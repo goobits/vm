@@ -11,7 +11,7 @@ use uuid::Uuid;
 // External crates
 use clap::Parser;
 use tracing::{info, info_span};
-use tracing_subscriber::fmt;
+use tracing_subscriber::{prelude::*, EnvFilter};
 
 // Internal imports
 // use vm_core::messages::{messages::MESSAGES, msg}; // Currently unused
@@ -36,10 +36,33 @@ fn get_request_id() -> &'static str {
 
 #[tokio::main]
 async fn main() {
-    // Initialize tracing system first, but only if not in test mode
-    // Tests expect clean stdout output, so we disable logging for test runs
+    // Initialize tracing system.
+    // In test mode, we skip initialization to keep test output clean.
     if std::env::var("VM_TEST_MODE").is_err() {
-        if let Err(e) = fmt().with_env_filter("warn").try_init() {
+        let env_filter = EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| EnvFilter::new("warn"));
+
+        let use_json = std::env::var("VM_JSON_LOGS")
+            .map(|val| val == "1" || val.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+
+        let subscriber = tracing_subscriber::fmt::layer()
+            .with_target(false)
+            .with_ansi(!use_json);
+
+        let result = if use_json {
+            tracing_subscriber::registry()
+                .with(env_filter)
+                .with(subscriber.json())
+                .try_init()
+        } else {
+            tracing_subscriber::registry()
+                .with(env_filter)
+                .with(subscriber.pretty())
+                .try_init()
+        };
+
+        if let Err(e) = result {
             vm_warning!("Failed to initialize tracing: {}", e);
         }
     }

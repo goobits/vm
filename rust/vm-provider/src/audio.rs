@@ -1,9 +1,12 @@
 #[cfg(target_os = "macos")]
-use std::process::{Command, Stdio};
-#[cfg(target_os = "macos")]
-use vm_core::error::{Result, VmError};
-#[cfg(target_os = "macos")]
-use vm_core::vm_error;
+use {
+    std::process::{Command, Stdio},
+    tracing::info,
+    vm_core::{
+        error::{Result, VmError},
+        vm_error,
+    },
+};
 
 #[cfg(target_os = "macos")]
 /// Manages PulseAudio server on macOS for container audio.
@@ -14,7 +17,7 @@ impl MacOSAudioManager {
     /// Ensures PulseAudio is installed and running.
     pub fn setup() -> Result<()> {
         if !is_pulseaudio_installed()? {
-            println!("🎧 Installing PulseAudio via Homebrew...");
+            info!("🎧 Installing PulseAudio via Homebrew...");
             install_pulseaudio()?;
         }
         start_pulseaudio_daemon()
@@ -22,7 +25,7 @@ impl MacOSAudioManager {
 
     /// Stops the PulseAudio daemon.
     pub fn cleanup() -> Result<()> {
-        println!("⏹️ Stopping audio services...");
+        info!("⏹️ Stopping audio services...");
         Command::new("pulseaudio")
             .arg("-k")
             .status()
@@ -63,7 +66,7 @@ fn install_pulseaudio() -> Result<()> {
 
 #[cfg(target_os = "macos")]
 fn start_pulseaudio_daemon() -> Result<()> {
-    println!("🎧 Starting audio services...");
+    info!("🎧 Starting audio services...");
     let status = Command::new("pulseaudio")
         .args([
             "--load=module-native-protocol-unix",

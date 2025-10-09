@@ -3,8 +3,8 @@ use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
+use tracing::{error, info};
 use vm_core::error::Result;
-use vm_core::vm_error;
 
 #[derive(Parser)]
 #[command(name = "version-sync")]
@@ -45,7 +45,7 @@ impl VersionSync {
                 return Ok(current);
             }
             if !current.pop() {
-                vm_error!("Could not find project root (no package.json found)");
+                error!("Could not find project root (no package.json found)");
                 return Err(vm_core::error::VmError::Internal(
                     "Could not find project root".to_string(),
                 ));
@@ -156,8 +156,10 @@ impl VersionSync {
     }
 
     fn check(&self) -> Result<bool> {
-        println!("📦 Package version: {}", self.package_version);
-        println!("\n🔍 Checking version synchronization...\n");
+        info!("📦 Package version: {}", self.package_version);
+        info!("");
+        info!("🔍 Checking version synchronization...");
+        info!("");
 
         let mut all_synced = true;
 
@@ -168,10 +170,10 @@ impl VersionSync {
 
             match self.check_file_version(&file_path)? {
                 FileVersionStatus::Synced => {
-                    println!("✅ {} ({})", relative_path.display(), self.package_version);
+                    info!("✅ {} ({})", relative_path.display(), self.package_version);
                 }
                 FileVersionStatus::OutOfSync(current) => {
-                    println!(
+                    info!(
                         "❌ {} ({} → should be {})",
                         relative_path.display(),
                         current,
@@ -180,26 +182,30 @@ impl VersionSync {
                     all_synced = false;
                 }
                 FileVersionStatus::Missing => {
-                    println!("⚠️  {} (missing)", relative_path.display());
+                    info!("⚠️  {} (missing)", relative_path.display());
                 }
                 FileVersionStatus::NoVersion => {
-                    println!("⚠️  {} (no version found)", relative_path.display());
+                    info!("⚠️  {} (no version found)", relative_path.display());
                 }
             }
         }
 
         if all_synced {
-            println!("\n✅ All versions are in sync!");
+            info!("");
+            info!("✅ All versions are in sync!");
         } else {
-            println!("\n❌ Some versions are out of sync. Run 'sync' to fix.");
+            info!("");
+            info!("❌ Some versions are out of sync. Run 'sync' to fix.");
         }
 
         Ok(all_synced)
     }
 
     fn sync(&self) -> Result<()> {
-        println!("📦 Package version: {}", self.package_version);
-        println!("\n🔄 Synchronizing versions...\n");
+        info!("📦 Package version: {}", self.package_version);
+        info!("");
+        info!("🔄 Synchronizing versions...");
+        info!("");
 
         let mut updated_count = 0;
 
@@ -211,7 +217,7 @@ impl VersionSync {
             match self.check_file_version(&file_path)? {
                 FileVersionStatus::OutOfSync(current) => {
                     if self.update_file_version(&file_path)? {
-                        println!(
+                        info!(
                             "✅ Updated {}: {} → {}",
                             relative_path.display(),
                             current,
@@ -221,26 +227,28 @@ impl VersionSync {
                     }
                 }
                 FileVersionStatus::Synced => {
-                    println!(
+                    info!(
                         "✅ {} already up to date ({})",
                         relative_path.display(),
                         self.package_version
                     );
                 }
                 FileVersionStatus::Missing => {
-                    println!("⚠️  {} (missing)", relative_path.display());
+                    info!("⚠️  {} (missing)", relative_path.display());
                 }
                 FileVersionStatus::NoVersion => {
-                    println!("⚠️  {} (no version found)", relative_path.display());
+                    info!("⚠️  {} (no version found)", relative_path.display());
                 }
             }
         }
 
         if updated_count == 0 {
-            println!("\n✅ All versions were already in sync!");
+            info!("");
+            info!("✅ All versions were already in sync!");
         } else {
-            println!(
-                "\n✅ Updated {} files to version {}",
+            info!("");
+            info!(
+                "✅ Updated {} files to version {}",
                 updated_count, self.package_version
             );
         }
@@ -263,7 +271,7 @@ fn main() {
     let version_sync = match VersionSync::new() {
         Ok(vs) => vs,
         Err(e) => {
-            vm_error!("Version sync initialization failed: {}", e);
+            error!("Version sync initialization failed: {}", e);
             process::exit(1);
         }
     };
@@ -278,13 +286,13 @@ fn main() {
                 }
             }
             Err(e) => {
-                vm_error!("Version check failed: {}", e);
+                error!("Version check failed: {}", e);
                 process::exit(1);
             }
         },
         Command::Sync => {
             if let Err(e) = version_sync.sync() {
-                vm_error!("Version sync failed: {}", e);
+                error!("Version sync failed: {}", e);
                 process::exit(1);
             }
         }

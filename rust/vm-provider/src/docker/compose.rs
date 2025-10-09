@@ -3,8 +3,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 // External crates
-use log;
 use shellexpand;
+use tracing;
 use tera::Context as TeraContext;
 use vm_core::error::{Result, VmError};
 
@@ -248,7 +248,7 @@ impl<'a> ComposeOperations<'a> {
         let worktrees_dir = base_path.join(format!("project-{}", project_name));
 
         // Directory will be created by lifecycle operations before Docker starts
-        log::debug!("Worktree directory will be: {}", worktrees_dir.display());
+        tracing::debug!("Worktree directory will be: {}", worktrees_dir.display());
         Some(worktrees_dir)
     }
 

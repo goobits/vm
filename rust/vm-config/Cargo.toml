@@ -15,6 +15,7 @@ name = "vm-config"
 path = "src/main.rs"
 
 [dependencies]
+tracing = { workspace = true }
 clap = { workspace = true }
 fs2 = { workspace = true }
 glob = { workspace = true }

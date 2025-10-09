@@ -20,8 +20,8 @@ vm-platform = { path = "../vm-platform" }
 chrono = { workspace = true }
 is-terminal = { workspace = true }
 rayon = { workspace = true }
-log = { workspace = true }
 shellexpand = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

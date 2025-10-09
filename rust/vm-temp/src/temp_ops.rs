@@ -3,9 +3,9 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 
 // External crates
+use tracing::{error, info};
 use vm_cli::msg;
 use vm_core::error::{Result, VmError};
-use vm_core::{vm_error, vm_print, vm_println};
 use vm_messages::messages::MESSAGES;
 
 // Internal imports
@@ -91,7 +91,7 @@ impl TempVmOps {
         // Save state
         state_manager.save_state(&temp_state)?;
 
-        vm_println!(
+        info!(
             "{}",
             msg!(
                 MESSAGES.temp_vm_created_with_mounts,
@@ -101,13 +101,13 @@ impl TempVmOps {
 
         if auto_destroy {
             // SSH then destroy
-            vm_println!("{}", MESSAGES.temp_vm_connecting);
+            info!("{}", MESSAGES.temp_vm_connecting);
             provider.ssh(None, &PathBuf::from("."))?;
-            vm_println!("{}", MESSAGES.temp_vm_auto_destroying);
+            info!("{}", MESSAGES.temp_vm_auto_destroying);
             provider.destroy(None)?;
             state_manager.delete_state()?;
         } else {
-            vm_println!("{}", MESSAGES.temp_vm_usage_hint);
+            info!("{}", MESSAGES.temp_vm_usage_hint);
         }
 
         Ok(())
@@ -141,37 +141,37 @@ impl TempVmOps {
         })?;
 
         if !state_manager.state_exists() {
-            vm_println!("{}", MESSAGES.temp_vm_no_vm_found);
-            vm_println!("{}", MESSAGES.temp_vm_create_hint);
+            info!("{}", MESSAGES.temp_vm_no_vm_found);
+            info!("{}", MESSAGES.temp_vm_create_hint);
             return Ok(());
         }
 
         let state = state_manager.load_state()?;
 
-        vm_println!("{}", MESSAGES.temp_vm_status);
-        vm_println!(
+        info!("{}", MESSAGES.temp_vm_status);
+        info!(
             "{}",
             msg!(
                 MESSAGES.temp_vm_container_info,
                 name = &state.container_name
             )
         );
-        vm_println!(
+        info!(
             "{}",
             msg!(MESSAGES.temp_vm_provider_info, provider = &state.provider)
         );
-        vm_println!(
+        info!(
             "   Created: {}",
             state.created_at.format("%Y-%m-%d %H:%M:%S UTC")
         );
-        vm_println!(
+        info!(
             "{}",
             msg!(
                 MESSAGES.temp_vm_project_info,
                 path = state.project_dir.display().to_string()
             )
         );
-        vm_println!(
+        info!(
             "{}",
             msg!(
                 MESSAGES.temp_vm_mounts_info,
@@ -180,7 +180,7 @@ impl TempVmOps {
         );
 
         if state.is_auto_destroy() {
-            vm_println!("{}", MESSAGES.temp_vm_auto_destroy_enabled);
+            info!("{}", MESSAGES.temp_vm_auto_destroy_enabled);
         }
 
         // Check provider status
@@ -205,13 +205,13 @@ impl TempVmOps {
             )));
         }
 
-        vm_println!("{}", MESSAGES.temp_vm_destroying);
+        info!("{}", MESSAGES.temp_vm_destroying);
         provider.destroy(None)?;
 
         state_manager.delete_state()?;
 
-        vm_println!("{}", MESSAGES.temp_vm_destroyed);
-        vm_println!("{}", MESSAGES.temp_vm_create_hint);
+        info!("{}", MESSAGES.temp_vm_destroyed);
+        info!("{}", MESSAGES.temp_vm_create_hint);
         Ok(())
     }
 
@@ -257,7 +257,7 @@ impl TempVmOps {
                 source = source.display().to_string()
             );
             if !Self::confirm_prompt(&confirmation_msg) {
-                vm_error!("Mount operation cancelled");
+                error!("Mount operation cancelled");
                 return Ok(());
             }
         }
@@ -280,7 +280,7 @@ impl TempVmOps {
         // Save updated state
         state_manager.save_state(&state)?;
 
-        vm_println!(
+        info!(
             "🔗 Mount added: {} ({})",
             source.display(),
             permissions_display
@@ -288,12 +288,12 @@ impl TempVmOps {
 
         // Apply mount changes using TempProvider
         if let Some(temp_provider) = provider.as_temp_provider() {
-            vm_println!("{}", MESSAGES.temp_vm_updating_container);
+            info!("{}", MESSAGES.temp_vm_updating_container);
             temp_provider.update_mounts(&state).map_err(|e| {
                 VmError::Provider(format!("Failed to update container mounts: {}", e))
             })?;
-            vm_println!("{}", MESSAGES.temp_vm_mount_applied);
-            vm_println!(
+            info!("{}", MESSAGES.temp_vm_mount_applied);
+            info!(
                 "{}",
                 msg!(
                     MESSAGES.temp_vm_mount_source,
@@ -301,7 +301,7 @@ impl TempVmOps {
                 )
             );
             if let Some(target_path) = &target_clone {
-                vm_println!(
+                info!(
                     "{}",
                     msg!(
                         MESSAGES.temp_vm_mount_target,
@@ -309,11 +309,11 @@ impl TempVmOps {
                     )
                 );
             }
-            vm_println!(
+            info!(
                 "{}",
                 msg!(MESSAGES.temp_vm_mount_access, access = permissions_display)
             );
-            vm_println!("{}", MESSAGES.temp_vm_view_mounts_hint);
+            info!("{}", MESSAGES.temp_vm_view_mounts_hint);
         } else {
             return Err(VmError::Internal(
                 "Provider does not support mount updates".to_string(),
@@ -351,7 +351,7 @@ impl TempVmOps {
                     count = state.mount_count().to_string()
                 );
                 if !Self::confirm_prompt(&confirmation_msg) {
-                    vm_error!("Unmount operation cancelled");
+                    error!("Unmount operation cancelled");
                     return Ok(());
                 }
             }
@@ -364,7 +364,7 @@ impl TempVmOps {
                 VmError::Internal(format!("Failed to save updated temp VM state: {}", e))
             })?;
 
-            vm_println!(
+            info!(
                 "{}",
                 msg!(
                     MESSAGES.temp_vm_mounts_removed,
@@ -374,18 +374,18 @@ impl TempVmOps {
 
             // Apply mount changes using TempProvider
             if let Some(temp_provider) = provider.as_temp_provider() {
-                vm_println!("{}", MESSAGES.temp_vm_updating_container);
+                info!("{}", MESSAGES.temp_vm_updating_container);
                 temp_provider.update_mounts(&state).map_err(|e| {
                     VmError::Provider(format!("Failed to update container mounts: {}", e))
                 })?;
-                vm_println!(
+                info!(
                     "{}",
                     msg!(
                         MESSAGES.temp_vm_all_mounts_removed,
                         count = mount_count.to_string()
                     )
                 );
-                vm_println!("{}", MESSAGES.temp_vm_add_mounts_hint);
+                info!("{}", MESSAGES.temp_vm_add_mounts_hint);
             }
         } else if let Some(path_str) = path {
             let source_path = PathBuf::from(path_str);
@@ -403,7 +403,7 @@ impl TempVmOps {
                     source = source_path.display().to_string()
                 );
                 if !Self::confirm_prompt(&confirmation_msg) {
-                    vm_error!("Unmount operation cancelled");
+                    error!("Unmount operation cancelled");
                     return Ok(());
                 }
             }
@@ -417,7 +417,7 @@ impl TempVmOps {
                 VmError::Internal(format!("Failed to save updated temp VM state: {}", e))
             })?;
 
-            vm_println!(
+            info!(
                 "{}",
                 msg!(
                     MESSAGES.temp_vm_mount_removed_detail,
@@ -428,19 +428,19 @@ impl TempVmOps {
 
             // Apply mount changes using TempProvider
             if let Some(temp_provider) = provider.as_temp_provider() {
-                vm_println!("{}", MESSAGES.temp_vm_updating_container);
+                info!("{}", MESSAGES.temp_vm_updating_container);
                 temp_provider.update_mounts(&state).map_err(|e| {
                     VmError::Provider(format!("Failed to update container mounts: {}", e))
                 })?;
-                vm_println!("{}", MESSAGES.temp_vm_mount_removed);
-                vm_println!("  Path: {}", source_path.display());
-                vm_println!("{}", MESSAGES.temp_vm_view_remaining_hint);
+                info!("{}", MESSAGES.temp_vm_mount_removed);
+                info!("  Path: {}", source_path.display());
+                info!("{}", MESSAGES.temp_vm_view_remaining_hint);
             }
         } else {
-            vm_println!("{}", MESSAGES.temp_vm_unmount_required);
-            vm_println!("{}", MESSAGES.temp_vm_unmount_options);
-            vm_println!("{}", MESSAGES.temp_vm_unmount_specific);
-            vm_println!("{}", MESSAGES.temp_vm_unmount_all);
+            info!("{}", MESSAGES.temp_vm_unmount_required);
+            info!("{}", MESSAGES.temp_vm_unmount_options);
+            info!("{}", MESSAGES.temp_vm_unmount_specific);
+            info!("{}", MESSAGES.temp_vm_unmount_all);
             return Err(VmError::Internal(
                 "Must specify --path or --all".to_string(),
             ));
@@ -459,20 +459,20 @@ impl TempVmOps {
         })?;
 
         if !state_manager.state_exists() {
-            vm_println!("{}", MESSAGES.temp_vm_no_vm_found);
-            vm_println!("{}", MESSAGES.temp_vm_create_hint);
+            info!("{}", MESSAGES.temp_vm_no_vm_found);
+            info!("{}", MESSAGES.temp_vm_create_hint);
             return Ok(());
         }
 
         let state = state_manager.load_state()?;
 
         if state.mount_count() == 0 {
-            vm_println!("{}", MESSAGES.temp_vm_no_mounts);
-            vm_println!("{}", MESSAGES.temp_vm_add_mount_hint);
+            info!("{}", MESSAGES.temp_vm_no_mounts);
+            info!("{}", MESSAGES.temp_vm_add_mount_hint);
             return Ok(());
         }
 
-        vm_println!(
+        info!(
             "{}",
             msg!(
                 MESSAGES.temp_vm_current_mounts,
@@ -480,7 +480,7 @@ impl TempVmOps {
             )
         );
         for mount in state.get_mounts() {
-            vm_println!(
+            info!(
                 "{}",
                 msg!(
                     MESSAGES.temp_vm_mount_display_item,
@@ -494,7 +494,7 @@ impl TempVmOps {
         // Show mount summary by permission
         let ro_count = state.mount_count_by_permission(MountPermission::ReadOnly);
         let rw_count = state.mount_count_by_permission(MountPermission::ReadWrite);
-        vm_println!(
+        info!(
             "{}",
             msg!(
                 MESSAGES.temp_vm_mount_summary,
@@ -521,8 +521,8 @@ impl TempVmOps {
                 .load_state()
                 .map_err(|e| VmError::Internal(format!("Failed to load temp VM state: {}", e)))?;
 
-            vm_println!("{}", MESSAGES.temp_vm_list_header);
-            vm_println!(
+            info!("{}", MESSAGES.temp_vm_list_header);
+            info!(
                 "{}",
                 msg!(
                     MESSAGES.temp_vm_list_item,
@@ -530,21 +530,21 @@ impl TempVmOps {
                     provider = &state.provider
                 )
             );
-            vm_println!(
+            info!(
                 "{}",
                 msg!(
                     MESSAGES.temp_vm_list_created_date,
                     date = state.created_at.format("%Y-%m-%d %H:%M:%S").to_string()
                 )
             );
-            vm_println!(
+            info!(
                 "{}",
                 msg!(
                     MESSAGES.temp_vm_list_project,
                     path = state.project_dir.display().to_string()
                 )
             );
-            vm_println!(
+            info!(
                 "{}",
                 msg!(
                     MESSAGES.temp_vm_list_mounts,
@@ -552,8 +552,8 @@ impl TempVmOps {
                 )
             );
         } else {
-            vm_println!("{}", MESSAGES.temp_vm_list_empty);
-            vm_println!("{}", MESSAGES.temp_vm_list_create_hint);
+            info!("{}", MESSAGES.temp_vm_list_empty);
+            info!("{}", MESSAGES.temp_vm_list_create_hint);
         }
 
         Ok(())
@@ -574,17 +574,17 @@ impl TempVmOps {
             ));
         }
 
-        vm_println!("{}", MESSAGES.temp_vm_stopping);
+        info!("{}", MESSAGES.temp_vm_stopping);
 
         match provider.stop(None) {
             Ok(()) => {
-                vm_println!("{}", MESSAGES.temp_vm_stopped_success);
-                vm_println!("{}", MESSAGES.temp_vm_restart_hint);
+                info!("{}", MESSAGES.temp_vm_stopped_success);
+                info!("{}", MESSAGES.temp_vm_restart_hint);
                 Ok(())
             }
             Err(e) => {
-                vm_println!("{}", MESSAGES.temp_vm_failed_to_stop);
-                vm_println!("   Error: {}", e);
+                error!("{}", MESSAGES.temp_vm_failed_to_stop);
+                error!("   Error: {}", e);
                 Err(e)
             }
         }
@@ -607,15 +607,15 @@ impl TempVmOps {
 
         let state = state_manager.load_state()?;
 
-        vm_println!("{}", MESSAGES.temp_vm_starting);
+        info!("{}", MESSAGES.temp_vm_starting);
 
         match provider.start(None) {
             Ok(()) => {
-                vm_println!("{}", MESSAGES.temp_vm_started_success);
+                info!("{}", MESSAGES.temp_vm_started_success);
 
                 // Show mount info if any
                 if state.mount_count() > 0 {
-                    vm_println!(
+                    info!(
                         "{}",
                         msg!(
                             MESSAGES.temp_vm_mounts_configured,
@@ -624,13 +624,13 @@ impl TempVmOps {
                     );
                 }
 
-                vm_println!("{}", MESSAGES.temp_vm_connect_hint);
+                info!("{}", MESSAGES.temp_vm_connect_hint);
                 Ok(())
             }
             Err(e) => {
-                vm_println!("{}", MESSAGES.temp_vm_failed_to_start);
-                vm_println!("   {}", msg!(MESSAGES.error_generic, error = e.to_string()));
-                vm_println!("\n💡 Try: vm temp destroy && vm temp create <directory>");
+                error!("{}", MESSAGES.temp_vm_failed_to_start);
+                error!("   {}", msg!(MESSAGES.error_generic, error = e.to_string()));
+                info!("\n💡 Try: vm temp destroy && vm temp create <directory>");
                 Err(e)
             }
         }
@@ -653,17 +653,17 @@ impl TempVmOps {
 
         let state = state_manager.load_state()?;
 
-        vm_println!("{}", MESSAGES.temp_vm_restarting);
-        vm_println!("{}", MESSAGES.temp_vm_stopping_step);
-        vm_println!("{}", MESSAGES.temp_vm_starting_step);
+        info!("{}", MESSAGES.temp_vm_restarting);
+        info!("{}", MESSAGES.temp_vm_stopping_step);
+        info!("{}", MESSAGES.temp_vm_starting_step);
 
         match provider.restart(None) {
             Ok(()) => {
-                vm_println!("{}", MESSAGES.temp_vm_services_ready);
-                vm_println!("{}", MESSAGES.temp_vm_restarted_success);
+                info!("{}", MESSAGES.temp_vm_services_ready);
+                info!("{}", MESSAGES.temp_vm_restarted_success);
 
                 if state.mount_count() > 0 {
-                    vm_println!(
+                    info!(
                         "{}",
                         msg!(
                             MESSAGES.temp_vm_mounts_active,
@@ -672,12 +672,12 @@ impl TempVmOps {
                     );
                 }
 
-                vm_println!("{}", MESSAGES.temp_vm_connect_hint);
+                info!("{}", MESSAGES.temp_vm_connect_hint);
                 Ok(())
             }
             Err(e) => {
-                vm_println!("{}", MESSAGES.temp_vm_failed_to_restart);
-                vm_println!("   Error: {}", e);
+                error!("{}", MESSAGES.temp_vm_failed_to_restart);
+                error!("   Error: {}", e);
                 Err(e)
             }
         }
@@ -687,7 +687,7 @@ impl TempVmOps {
 
     /// Simple confirmation prompt
     fn confirm_prompt(message: &str) -> bool {
-        vm_print!("{}", message);
+        print!("{}", message);
         // If stdout flush fails, continue anyway - the prompt might still work
         let _ = io::stdout().flush();
 

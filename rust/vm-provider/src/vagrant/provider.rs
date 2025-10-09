@@ -6,7 +6,7 @@ use crate::{
     Mount, MountPermission, Provider, ResourceUsage, ServiceStatus, TempProvider, TempVmState,
     VmError, VmStatusReport,
 };
-use log::{info, warn};
+use tracing::{info, warn};
 use std::env;
 use std::path::Path;
 use vm_config::config::{GlobalConfig, MemoryLimit, VmConfig, VmSettings};
@@ -73,7 +73,7 @@ impl VagrantProvider {
 
         let lines = BufReader::new(reader).lines();
         for line in lines {
-            println!("{}", line?);
+            info!("{}", line?);
         }
         Ok(())
     }
@@ -698,7 +698,7 @@ impl Provider for VagrantProvider {
 
     fn status(&self, container: Option<&str>) -> Result<()> {
         let report = self.get_status_report(container)?;
-        println!("{:#?}", report);
+        info!("{:#?}", report);
         Ok(())
     }
 

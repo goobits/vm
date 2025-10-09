@@ -27,8 +27,8 @@
 //! automatically determine the most appropriate VM configuration preset.
 
 use std::path::PathBuf;
+use tracing::{error, info};
 use vm_core::error::Result;
-use vm_core::vm_error;
 
 use crate::cli::formatting::output_config;
 use crate::cli::OutputFormat;
@@ -45,14 +45,14 @@ pub fn execute(
 
     if list {
         let presets = detector.list_presets()?;
-        println!("Available presets:");
+        info!("Available presets:");
         for preset in presets {
-            println!("  - {}", preset);
+            info!("  - {}", preset);
         }
     } else if detect_only {
         match detector.detect() {
-            Some(preset) => println!("{}", preset),
-            None => println!("base"),
+            Some(preset) => info!("{}", preset),
+            None => info!("base"),
         }
     } else {
         match detector.detect() {
@@ -61,7 +61,7 @@ pub fn execute(
                 output_config(&preset, &OutputFormat::Yaml)?;
             }
             None => {
-                vm_error!("No preset detected for project");
+                error!("No preset detected for project");
                 std::process::exit(1);
             }
         }
