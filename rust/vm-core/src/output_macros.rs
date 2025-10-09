@@ -125,7 +125,7 @@ macro_rules! vm_dbg {
     () => {
         #[cfg(debug_assertions)]
         {
-            eprintln!("[{}:{}]", file!(), line!());
+            tracing::debug!("[{}:{}]", file!(), line!());
         }
     };
     ($val:expr $(,)?) => {{
@@ -133,7 +133,7 @@ macro_rules! vm_dbg {
         {
             match $val {
                 tmp => {
-                    eprintln!("[{}:{}] {} = {:#?}",
+                    tracing::debug!("[{}:{}] {} = {:#?}",
                         file!(), line!(), stringify!($val), &tmp);
                     tmp
                 }

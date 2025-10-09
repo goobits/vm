@@ -41,17 +41,9 @@ impl CliTestFixture {
             .current_dir(&self.test_dir)
             .env("HOME", self.test_dir.parent().unwrap()) // Mock HOME for global config
             .env("VM_TOOL_DIR", &self.test_dir) // Point preset system to test directory
-            .env("RUST_LOG", "info") // Ensure info-level logs are captured
+            .env("VM_TEST_MODE", "1") // Disable request span in test mode
             .output()?;
         Ok(output)
-    }
-
-    /// Get combined output (stdout + stderr) as a string
-    /// This is useful because tracing output goes to stdout, not stderr
-    fn get_output(&self, output: &std::process::Output) -> String {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        format!("{}{}", stdout, stderr)
     }
 
     /// Get the contents of a file as a string
@@ -107,16 +99,9 @@ mod cli_integration_tests {
             String::from_utf8_lossy(&output.stderr)
         );
 
-        let combined_output = fixture.get_output(&output);
-        assert!(
-            combined_output.contains("vm.memory"),
-            "Expected vm.memory in output"
-        );
-        assert!(combined_output.contains("4096"), "Expected 4096 in output");
-        assert!(
-            combined_output.contains("vm.yaml"),
-            "Expected vm.yaml in output"
-        );
+        let stdout = String::from_utf8(output.stdout)?;
+        assert!(stdout.contains("✅ Set vm.memory = 4096"));
+        assert!(stdout.contains("vm.yaml"));
 
         // Verify file was created
         assert!(fixture.file_exists("vm.yaml"));
@@ -125,16 +110,16 @@ mod cli_integration_tests {
         let output = fixture.run_vm_command(&["config", "get", "vm.memory"])?;
         assert!(output.status.success());
 
-        let stderr = fixture.get_output(&output);
-        assert!(stderr.contains("4096"));
+        let stdout = String::from_utf8(output.stdout)?;
+        assert_eq!(stdout.trim(), "4096");
 
         // Test getting all config
         let output = fixture.run_vm_command(&["config", "get"])?;
         assert!(output.status.success());
 
-        let stderr = fixture.get_output(&output);
-        assert!(stderr.contains("vm:"));
-        assert!(stderr.contains("memory: 4096"));
+        let stdout = String::from_utf8(output.stdout)?;
+        assert!(stdout.contains("vm:"));
+        assert!(stdout.contains("memory: 4096"));
 
         Ok(())
     }
@@ -151,9 +136,8 @@ mod cli_integration_tests {
             String::from_utf8_lossy(&output.stderr)
         );
 
-        let stderr = fixture.get_output(&output);
-        assert!(stderr.contains("provider"));
-        assert!(stderr.contains("tart"));
+        let stdout = String::from_utf8(output.stdout)?;
+        assert!(stdout.contains("✅ Set provider = tart"));
 
         // Verify global config file was created
         assert!(fixture.global_config_path().exists());
@@ -162,8 +146,8 @@ mod cli_integration_tests {
         let output = fixture.run_vm_command(&["config", "get", "--global", "provider"])?;
         assert!(output.status.success());
 
-        let stderr = fixture.get_output(&output);
-        assert!(stderr.contains("tart"));
+        let stdout = String::from_utf8(output.stdout)?;
+        assert_eq!(stdout.trim(), "tart");
 
         // Test setting another global value
         let output = fixture.run_vm_command(&["config", "set", "--global", "vm.cpus", "8"])?;
@@ -173,10 +157,10 @@ mod cli_integration_tests {
         let output = fixture.run_vm_command(&["config", "get", "--global"])?;
         assert!(output.status.success());
 
-        let stderr = fixture.get_output(&output);
-        assert!(stderr.contains("provider: tart"));
-        assert!(stderr.contains("vm:"));
-        assert!(stderr.contains("cpus: 8"));
+        let stdout = String::from_utf8(output.stdout)?;
+        assert!(stdout.contains("provider: tart"));
+        assert!(stdout.contains("vm:"));
+        assert!(stdout.contains("cpus: 8"));
 
         Ok(())
     }
@@ -192,22 +176,21 @@ mod cli_integration_tests {
 
         // Verify values exist
         let output = fixture.run_vm_command(&["config", "get", "vm.memory"])?;
-        assert!(fixture.get_output(&output).contains("4096"));
+        assert_eq!(String::from_utf8(output.stdout)?.trim(), "4096");
 
         // Unset a value
         let output = fixture.run_vm_command(&["config", "unset", "vm.memory"])?;
         assert!(output.status.success());
 
-        let stderr = fixture.get_output(&output);
-        assert!(stderr.contains("Unset") || stderr.contains("unset"));
-        assert!(stderr.contains("vm.memory"));
+        let stdout = String::from_utf8(output.stdout)?;
+        assert!(stdout.contains("✅ Unset vm.memory"));
 
         // Verify value is gone but others remain
         let output = fixture.run_vm_command(&["config", "get"])?;
-        let stderr = fixture.get_output(&output);
-        assert!(!stderr.contains("memory:"));
-        assert!(stderr.contains("cpus: 4"));
-        assert!(stderr.contains("provider: docker"));
+        let stdout = String::from_utf8(output.stdout)?;
+        assert!(!stdout.contains("memory"));
+        assert!(stdout.contains("cpus: 4"));
+        assert!(stdout.contains("provider: docker"));
 
         Ok(())
     }
@@ -236,19 +219,22 @@ npm_packages:
         let output = fixture.run_vm_command(&["config", "preset", "--list"])?;
         assert!(output.status.success());
 
-        let stderr = fixture.get_output(&output);
-        assert!(stderr.contains("preset") || stderr.contains("Preset"));
-        assert!(stderr.contains("test-preset"));
+        let stdout = String::from_utf8(output.stdout)?;
+        let stderr = String::from_utf8(output.stderr)?;
+        eprintln!("STDOUT: {}", stdout);
+        eprintln!("STDERR: {}", stderr);
+        assert!(stdout.contains("Available presets:"));
+        assert!(stdout.contains("test-preset"));
 
         // Test showing preset details
         let output = fixture.run_vm_command(&["config", "preset", "--show", "test-preset"])?;
         assert!(output.status.success());
 
-        let stderr = fixture.get_output(&output);
-        assert!(stderr.contains("test-preset"));
-        assert!(stderr.contains("redis:"));
-        assert!(stderr.contains("enabled: true"));
-        assert!(stderr.contains("memory: 2048"));
+        let stdout = String::from_utf8(output.stdout)?;
+        assert!(stdout.contains("Preset 'test-preset' configuration:"));
+        assert!(stdout.contains("redis:"));
+        assert!(stdout.contains("enabled: true"));
+        assert!(stdout.contains("memory: 2048"));
 
         Ok(())
     }
@@ -278,9 +264,8 @@ npm_packages:
         let output = fixture.run_vm_command(&["config", "preset", "test-preset"])?;
         assert!(output.status.success());
 
-        let stderr = fixture.get_output(&output);
-        assert!(stderr.contains("test-preset"));
-        assert!(stderr.contains("local") || stderr.contains("Applied"));
+        let stdout = String::from_utf8(output.stdout)?;
+        assert!(stdout.contains("✅ Applied preset 'test-preset' to local"));
 
         // Verify the preset was applied
         assert!(fixture.file_exists("vm.yaml"));
@@ -335,9 +320,8 @@ ports:
         let output = fixture.run_vm_command(&["config", "preset", "preset1,preset2"])?;
         assert!(output.status.success());
 
-        let stderr = fixture.get_output(&output);
-        assert!(stderr.contains("preset1") || stderr.contains("preset2"));
-        assert!(stderr.contains("local") || stderr.contains("Applied"));
+        let stdout = String::from_utf8(output.stdout)?;
+        assert!(stdout.contains("✅ Applied preset 'preset1,preset2' to local"));
 
         // Verify both presets were merged correctly
         let config_content = fixture.read_file("vm.yaml")?;
@@ -383,9 +367,8 @@ services:
         let output = fixture.run_vm_command(&["config", "preset", "--global", "global-preset"])?;
         assert!(output.status.success());
 
-        let stderr = fixture.get_output(&output);
-        assert!(stderr.contains("global-preset"));
-        assert!(stderr.contains("global") || stderr.contains("Applied"));
+        let stdout = String::from_utf8(output.stdout)?;
+        assert!(stdout.contains("✅ Applied preset 'global-preset' to global"));
 
         // Verify global config was created
         assert!(fixture.global_config_path().exists());
@@ -394,11 +377,11 @@ services:
         let output = fixture.run_vm_command(&["config", "get", "--global"])?;
         assert!(output.status.success());
 
-        let stderr = fixture.get_output(&output);
-        assert!(stderr.contains("provider: tart"));
-        assert!(stderr.contains("memory: 8192"));
-        assert!(stderr.contains("cpus: 4"));
-        assert!(stderr.contains("docker:"));
+        let stdout = String::from_utf8(output.stdout)?;
+        assert!(stdout.contains("provider: tart"));
+        assert!(stdout.contains("memory: 8192"));
+        assert!(stdout.contains("cpus: 4"));
+        assert!(stdout.contains("docker:"));
 
         Ok(())
     }
@@ -411,8 +394,8 @@ services:
         let output = fixture.run_vm_command(&["config", "get", "vm.memory"])?;
         assert!(!output.status.success());
 
-        let stderr = fixture.get_output(&output);
-        assert!(stderr.contains("No vm.yaml") || stderr.contains("not found"));
+        let stderr = String::from_utf8(output.stderr)?;
+        assert!(stderr.contains("Field 'memory' not found") || stderr.contains("No vm.yaml found"));
 
         // Test unsetting from non-existent config
         let output = fixture.run_vm_command(&["config", "unset", "vm.memory"])?;
@@ -422,7 +405,7 @@ services:
         let output = fixture.run_vm_command(&["config", "preset", "nonexistent"])?;
         assert!(!output.status.success());
 
-        let stderr = fixture.get_output(&output);
+        let stderr = String::from_utf8(output.stderr)?;
         assert!(stderr.contains("not found"));
 
         Ok(())
@@ -440,20 +423,20 @@ services:
 
         // Verify the nested structure
         let output = fixture.run_vm_command(&["config", "get"])?;
-        let stderr = fixture.get_output(&output);
+        let stdout = String::from_utf8(output.stdout)?;
 
-        assert!(stderr.contains("services:"));
-        assert!(stderr.contains("postgresql:"));
-        assert!(stderr.contains("version:") && stderr.contains("15"));
-        assert!(stderr.contains("port: 5432"));
-        assert!(stderr.contains("redis:"));
-        assert!(stderr.contains("enabled: true"));
+        assert!(stdout.contains("services:"));
+        assert!(stdout.contains("postgresql:"));
+        assert!(stdout.contains("version:") && stdout.contains("15"));
+        assert!(stdout.contains("port: 5432"));
+        assert!(stdout.contains("redis:"));
+        assert!(stdout.contains("enabled: true"));
 
         // Test getting specific nested value
         let output = fixture.run_vm_command(&["config", "get", "services.postgresql.version"])?;
         assert!(output.status.success());
-        let stderr = fixture.get_output(&output);
-        assert!(stderr.contains("15"));
+        let stdout = String::from_utf8(output.stdout)?;
+        assert_eq!(stdout.trim(), "15");
 
         Ok(())
     }

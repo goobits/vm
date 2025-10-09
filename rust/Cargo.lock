@@ -3263,6 +3263,7 @@ dependencies = [
  "vm-config",
  "vm-core",
  "vm-docker-registry",
+ "vm-logging",
  "vm-messages",
  "vm-package-server",
  "vm-platform",
@@ -3374,6 +3375,14 @@ dependencies = [
  "vm-core",
  "vm-messages",
  "vm-platform",
+]
+
+[[package]]
+name = "vm-logging"
+version = "0.1.0"
+dependencies = [
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
