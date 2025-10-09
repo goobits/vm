@@ -393,7 +393,7 @@ pub enum Command {
     /// Run a command in your environment
     Exec {
         /// Container name, ID, or project name
-        #[arg()]
+        #[arg(long)]
         container: Option<String>,
         /// Command to execute inside VM
         #[arg(required = true, num_args = 1..)]
@@ -451,4 +451,167 @@ pub enum Command {
     /// Get workspace directory
     #[command(hide = true)]
     GetSyncDirectory,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Args, AuthSubcommand, Command, PkgSubcommand, PluginSubcommand, TempSubcommand};
+    use clap::Parser;
+
+    #[test]
+    fn test_init_command_parsing() {
+        let args = Args::parse_from([
+            "vm",
+            "init",
+            "--file",
+            "/tmp/vm.yaml",
+            "--services",
+            "docker,redis",
+        ]);
+        match args.command {
+            Command::Init { file, services, .. } => {
+                assert_eq!(file, Some(std::path::PathBuf::from("/tmp/vm.yaml")));
+                assert_eq!(services, Some("docker,redis".to_string()));
+            }
+            _ => panic!("Expected Command::Init"),
+        }
+    }
+
+    #[test]
+    fn test_create_command_parsing() {
+        let args = Args::parse_from([
+            "vm",
+            "create",
+            "--force",
+            "--instance",
+            "test-vm",
+            "--verbose",
+        ]);
+        match args.command {
+            Command::Create {
+                force,
+                instance,
+                verbose,
+            } => {
+                assert!(force);
+                assert_eq!(instance, Some("test-vm".to_string()));
+                assert!(verbose);
+            }
+            _ => panic!("Expected Command::Create"),
+        }
+    }
+
+    #[test]
+    fn test_start_command_parsing() {
+        let args = Args::parse_from(["vm", "start", "my-container"]);
+        match args.command {
+            Command::Start { container } => {
+                assert_eq!(container, Some("my-container".to_string()));
+            }
+            _ => panic!("Expected Command::Start"),
+        }
+    }
+
+    #[test]
+    fn test_temp_create_command_parsing() {
+        let args = Args::parse_from([
+            "vm",
+            "temp",
+            "create",
+            "--auto-destroy",
+            "./src",
+            "./config:ro",
+        ]);
+        match args.command {
+            Command::Temp { command } => match command {
+                TempSubcommand::Create {
+                    mounts,
+                    auto_destroy,
+                } => {
+                    assert!(auto_destroy);
+                    assert_eq!(mounts, vec!["./src", "./config:ro"]);
+                }
+                _ => panic!("Expected TempSubcommand::Create"),
+            },
+            _ => panic!("Expected Command::Temp"),
+        }
+    }
+
+    #[test]
+    fn test_pkg_add_command_parsing() {
+        let args = Args::parse_from(["vm", "pkg", "add", "--type", "python", "-y"]);
+        match args.command {
+            Command::Pkg { command } => match command {
+                PkgSubcommand::Add { r#type, yes } => {
+                    assert_eq!(r#type, Some("python".to_string()));
+                    assert!(yes);
+                }
+                _ => panic!("Expected PkgSubcommand::Add"),
+            },
+            _ => panic!("Expected Command::Pkg"),
+        }
+    }
+
+    #[test]
+    fn test_auth_list_command_parsing() {
+        let args = Args::parse_from(["vm", "auth", "list", "--show-values"]);
+        match args.command {
+            Command::Auth { command } => match command {
+                AuthSubcommand::List { show_values } => {
+                    assert!(show_values);
+                }
+                _ => panic!("Expected AuthSubcommand::List"),
+            },
+            _ => panic!("Expected Command::Auth"),
+        }
+    }
+
+    #[test]
+    fn test_plugin_install_command_parsing() {
+        let args = Args::parse_from(["vm", "plugin", "install", "/path/to/plugin"]);
+        match args.command {
+            Command::Plugin { command } => match command {
+                PluginSubcommand::Install { source_path } => {
+                    assert_eq!(source_path, "/path/to/plugin");
+                }
+                _ => panic!("Expected PluginSubcommand::Install"),
+            },
+            _ => panic!("Expected Command::Plugin"),
+        }
+    }
+
+    #[test]
+    fn test_exec_command_parsing() {
+        let args = Args::parse_from([
+            "vm",
+            "exec",
+            "--container",
+            "my-vm",
+            "--",
+            "ls",
+            "-la",
+            "/root",
+        ]);
+        match args.command {
+            Command::Exec { container, command } => {
+                assert_eq!(container, Some("my-vm".to_string()));
+                assert_eq!(command, vec!["ls", "-la", "/root"]);
+            }
+            _ => panic!("Expected Command::Exec"),
+        }
+    }
+
+    #[test]
+    fn test_global_flags_parsing() {
+        let args = Args::parse_from(["vm", "--config", "/custom/config.yaml", "--debug", "status"]);
+        assert_eq!(
+            args.config,
+            Some(std::path::PathBuf::from("/custom/config.yaml"))
+        );
+        assert!(args.debug);
+        match args.command {
+            Command::Status { .. } => { /* Correct command */ }
+            _ => panic!("Expected Command::Status"),
+        }
+    }
 }

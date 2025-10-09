@@ -6,6 +6,9 @@ use std::sync::Mutex;
 use std::time::Duration;
 use tempfile::TempDir;
 
+mod common;
+use common::binary_path;
+
 // Global mutex to ensure tests run sequentially to avoid Docker container conflicts
 static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
@@ -30,8 +33,8 @@ impl VmOpsTestFixture {
         let uuid_str = uuid::Uuid::new_v4().to_string();
         let project_name = format!("vm-test-{}", &uuid_str[..8]);
 
-        // Get the path to the vm binary
-        let binary_path = PathBuf::from("/workspace/.build/target/debug/vm");
+        // Get the path to the vm binary using the helper
+        let binary_path = binary_path()?;
 
         Ok(Self {
             _temp_dir: temp_dir,
@@ -168,16 +171,6 @@ fn test_vm_create_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
 
-    // Skip test if binary doesn't exist
-    if !fixture.binary_path.exists() {
-        println!(
-            "Skipping test - vm binary not found at {:?}",
-            fixture.binary_path
-        );
-        return Ok(());
-    }
-
-    // Skip test if Docker is not available
     if !fixture.is_docker_available() {
         println!("Skipping test - Docker not available for integration testing");
         return Ok(());
@@ -211,8 +204,8 @@ fn test_vm_create_with_force() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
 
-    if !fixture.binary_path.exists() || !fixture.is_docker_available() {
-        println!("Skipping test - vm binary or Docker not available");
+    if !fixture.is_docker_available() {
+        println!("Skipping test - Docker not available");
         return Ok(());
     }
 
@@ -241,8 +234,8 @@ fn test_vm_start_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
 
-    if !fixture.binary_path.exists() || !fixture.is_docker_available() {
-        println!("Skipping test - vm binary or Docker not available");
+    if !fixture.is_docker_available() {
+        println!("Skipping test - Docker not available");
         return Ok(());
     }
 
@@ -277,8 +270,8 @@ fn test_vm_stop_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
 
-    if !fixture.binary_path.exists() || !fixture.is_docker_available() {
-        println!("Skipping test - vm binary or Docker not available");
+    if !fixture.is_docker_available() {
+        println!("Skipping test - Docker not available");
         return Ok(());
     }
 
@@ -346,8 +339,8 @@ fn test_vm_restart_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
 
-    if !fixture.binary_path.exists() || !fixture.is_docker_available() {
-        println!("Skipping test - vm binary or Docker not available");
+    if !fixture.is_docker_available() {
+        println!("Skipping test - Docker not available");
         return Ok(());
     }
 
@@ -383,8 +376,8 @@ fn test_vm_status_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
 
-    if !fixture.binary_path.exists() || !fixture.is_docker_available() {
-        println!("Skipping test - vm binary or Docker not available");
+    if !fixture.is_docker_available() {
+        println!("Skipping test - Docker not available");
         return Ok(());
     }
 
@@ -423,8 +416,8 @@ fn test_vm_list_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
 
-    if !fixture.binary_path.exists() || !fixture.is_docker_available() {
-        println!("Skipping test - vm binary or Docker not available");
+    if !fixture.is_docker_available() {
+        println!("Skipping test - Docker not available");
         return Ok(());
     }
 
@@ -523,8 +516,8 @@ fn test_vm_provision_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
 
-    if !fixture.binary_path.exists() || !fixture.is_docker_available() {
-        println!("Skipping test - vm binary or Docker not available");
+    if !fixture.is_docker_available() {
+        println!("Skipping test - Docker not available");
         return Ok(());
     }
 
@@ -554,8 +547,8 @@ fn test_vm_exec_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
 
-    if !fixture.binary_path.exists() || !fixture.is_docker_available() {
-        println!("Skipping test - vm binary or Docker not available");
+    if !fixture.is_docker_available() {
+        println!("Skipping test - Docker not available");
         return Ok(());
     }
 
@@ -589,8 +582,8 @@ fn test_vm_logs_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
 
-    if !fixture.binary_path.exists() || !fixture.is_docker_available() {
-        println!("Skipping test - vm binary or Docker not available");
+    if !fixture.is_docker_available() {
+        println!("Skipping test - Docker not available");
         return Ok(());
     }
 
@@ -623,8 +616,8 @@ fn test_vm_destroy_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
 
-    if !fixture.binary_path.exists() || !fixture.is_docker_available() {
-        println!("Skipping test - vm binary or Docker not available");
+    if !fixture.is_docker_available() {
+        println!("Skipping test - Docker not available");
         return Ok(());
     }
 
@@ -669,8 +662,8 @@ fn test_vm_ssh_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
 
-    if !fixture.binary_path.exists() || !fixture.is_docker_available() {
-        println!("Skipping test - vm binary or Docker not available");
+    if !fixture.is_docker_available() {
+        println!("Skipping test - Docker not available");
         return Ok(());
     }
 
@@ -699,8 +692,8 @@ fn test_vm_lifecycle_integration() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
 
-    if !fixture.binary_path.exists() || !fixture.is_docker_available() {
-        println!("Skipping test - vm binary or Docker not available");
+    if !fixture.is_docker_available() {
+        println!("Skipping test - Docker not available");
         return Ok(());
     }
 

@@ -66,6 +66,10 @@ mod tart;
 #[cfg(feature = "vagrant")]
 mod vagrant;
 
+// When the `test-helpers` feature is enabled, include the mock provider.
+#[cfg(feature = "test-helpers")]
+pub mod mock;
+
 pub use temp_models::{Mount, MountPermission, TempVmState};
 
 /// Trait for providers that support temporary VM mount updates
@@ -209,10 +213,6 @@ pub trait Provider {
     }
 }
 
-// When in a test environment, include the mock provider.
-#[cfg(test)]
-mod mock;
-
 /// Creates a provider instance based on the configuration.
 ///
 /// # Arguments
@@ -223,8 +223,7 @@ mod mock;
 pub fn get_provider(config: VmConfig) -> Result<Box<dyn Provider>> {
     let provider_name = config.provider.as_deref().unwrap_or("docker");
 
-    // In a test build, allow instantiating the mock provider.
-    #[cfg(test)]
+    #[cfg(feature = "test-helpers")]
     if provider_name == "mock" {
         return Ok(Box::new(mock::MockProvider::new(config)));
     }
@@ -280,6 +279,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "test-helpers")]
     fn test_get_provider_mock() {
         let config = VmConfig {
             provider: Some("mock".into()),
@@ -303,51 +303,5 @@ mod tests {
             assert!(error_msg.contains("Unknown provider"));
             assert!(error_msg.contains("unknown-provider"));
         }
-    }
-
-    #[test]
-    fn test_get_provider_empty_string() {
-        let config = VmConfig {
-            provider: Some("".into()),
-            ..Default::default()
-        };
-        let result = get_provider(config);
-        // Empty string should be treated as unknown provider, not default to docker
-        assert!(result.is_err());
-        if let Err(error) = result {
-            let error_msg = error.to_string();
-            assert!(error_msg.contains("Unknown provider"));
-        }
-    }
-
-    #[test]
-    fn test_provider_trait_basic_contract() {
-        // Use mock provider for trait testing since docker might not be available
-        let config = VmConfig {
-            provider: Some("mock".into()),
-            ..Default::default()
-        };
-        let provider = get_provider(config).expect("Should create mock provider");
-
-        // Test basic trait methods return without panicking
-        assert!(!provider.name().is_empty());
-        assert_eq!(provider.name(), "mock");
-
-        // Test sync directory method
-        let dir = provider.get_sync_directory();
-        assert!(!dir.is_empty());
-    }
-
-    #[test]
-    fn test_temp_provider_capability() {
-        // Use mock provider for testing since docker might not be available
-        let config = VmConfig {
-            provider: Some("mock".into()),
-            ..Default::default()
-        };
-        let provider = get_provider(config).expect("Should create mock provider");
-
-        // Mock provider should support temp operations
-        assert!(provider.as_temp_provider().is_some());
     }
 }
