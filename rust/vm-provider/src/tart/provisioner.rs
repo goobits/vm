@@ -1,8 +1,8 @@
-use vm_core::error::{Result, VmError};
 use duct::cmd;
+use log::{info, warn};
 use std::path::Path;
 use vm_config::config::VmConfig;
-use log::{info, warn};
+use vm_core::error::{Result, VmError};
 
 pub struct TartProvisioner {
     instance_name: String,
@@ -57,7 +57,9 @@ impl TartProvisioner {
             thread::sleep(Duration::from_secs(2));
         }
 
-        Err(VmError::Provider("SSH not ready after 60 seconds".to_string()))
+        Err(VmError::Provider(
+            "SSH not ready after 60 seconds".to_string(),
+        ))
     }
 
     fn provision_framework_dependencies(&self, config: &VmConfig) -> Result<()> {
@@ -103,7 +105,8 @@ impl TartProvisioner {
         info!("Installing Node.js dependencies");
         let node_version = config.runtime_version.as_deref().unwrap_or("20");
 
-        let install_script = format!(r#"
+        let install_script = format!(
+            r#"
             if ! command -v nvm &> /dev/null; then
                 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
                 export NVM_DIR="$HOME/.nvm"
@@ -116,7 +119,9 @@ impl TartProvisioner {
             if [ -f {}/package.json ]; then
                 cd {} && npm install
             fi
-        "#, node_version, node_version, self.project_dir, self.project_dir);
+        "#,
+            node_version, node_version, self.project_dir, self.project_dir
+        );
 
         self.ssh_exec(&install_script)?;
         Ok(())
@@ -129,7 +134,8 @@ impl TartProvisioner {
         info!("Installing Python dependencies");
         let python_version = config.runtime_version.as_deref().unwrap_or("3.11");
 
-        let install_script = format!(r#"
+        let install_script = format!(
+            r#"
             if ! command -v pyenv &> /dev/null; then
                 curl https://pyenv.run | bash
                 export PATH="$HOME/.pyenv/bin:$PATH"
@@ -142,7 +148,9 @@ impl TartProvisioner {
             if [ -f {}/requirements.txt ]; then
                 cd {} && pip install -r requirements.txt
             fi
-        "#, python_version, python_version, self.project_dir, self.project_dir);
+        "#,
+            python_version, python_version, self.project_dir, self.project_dir
+        );
 
         self.ssh_exec(&install_script)?;
         Ok(())
@@ -169,7 +177,10 @@ impl TartProvisioner {
     fn provision_databases(&self, config: &VmConfig) -> Result<()> {
         let services = config.services.as_ref();
 
-        if services.map(|s| s.postgres.unwrap_or(false)).unwrap_or(false) {
+        if services
+            .map(|s| s.postgres.unwrap_or(false))
+            .unwrap_or(false)
+        {
             self.install_postgresql()?;
         }
 
@@ -177,7 +188,10 @@ impl TartProvisioner {
             self.install_redis()?;
         }
 
-        if services.map(|s| s.mongodb.unwrap_or(false)).unwrap_or(false) {
+        if services
+            .map(|s| s.mongodb.unwrap_or(false))
+            .unwrap_or(false)
+        {
             self.install_mongodb()?;
         }
 
@@ -186,44 +200,53 @@ impl TartProvisioner {
 
     fn install_postgresql(&self) -> Result<()> {
         info!("Installing PostgreSQL");
-        self.ssh_exec(r#"
+        self.ssh_exec(
+            r#"
             sudo apt-get update
             sudo apt-get install -y postgresql postgresql-contrib
             sudo systemctl enable postgresql
             sudo systemctl start postgresql
-        "#)?;
+        "#,
+        )?;
         Ok(())
     }
 
     fn install_redis(&self) -> Result<()> {
         info!("Installing Redis");
-        self.ssh_exec(r#"
+        self.ssh_exec(
+            r#"
             sudo apt-get update
             sudo apt-get install -y redis-server
             sudo systemctl enable redis-server
             sudo systemctl start redis-server
-        "#)?;
+        "#,
+        )?;
         Ok(())
     }
 
     fn install_mongodb(&self) -> Result<()> {
         info!("Installing MongoDB");
-        self.ssh_exec(r#"
+        self.ssh_exec(
+            r#"
             sudo apt-get update
             sudo apt-get install -y mongodb
             sudo systemctl enable mongodb
             sudo systemctl start mongodb
-        "#)?;
+        "#,
+        )?;
         Ok(())
     }
 
     fn run_custom_provision_scripts(&self, _config: &VmConfig) -> Result<()> {
         let script_path = format!("{}/provision.sh", self.project_dir);
-        let check_script = format!(r#"
+        let check_script = format!(
+            r#"
             if [ -f {} ]; then
                 echo "found"
             fi
-        "#, script_path);
+        "#,
+            script_path
+        );
 
         let output = self.ssh_exec(&check_script)?;
 
@@ -246,9 +269,17 @@ impl TartProvisioner {
     }
 
     fn ssh_exec(&self, command: &str) -> Result<String> {
-        let output = cmd!("tart", "ssh", &self.instance_name, "--", "bash", "-c", command)
-            .read()
-            .map_err(|e| VmError::Provider(format!("SSH command failed: {}", e)))?;
+        let output = cmd!(
+            "tart",
+            "ssh",
+            &self.instance_name,
+            "--",
+            "bash",
+            "-c",
+            command
+        )
+        .read()
+        .map_err(|e| VmError::Provider(format!("SSH command failed: {}", e)))?;
 
         Ok(output)
     }

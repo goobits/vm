@@ -161,7 +161,6 @@ pub fn init_config_file(
     commands::init::execute(file_path, services, ports)
 }
 
-
 /// Execute a CLI command with the provided arguments.
 ///
 /// This is the main command dispatcher that routes CLI arguments to their
@@ -213,7 +212,11 @@ pub fn execute(args: Args) -> Result<()> {
 
 fn execute_config_command(cmd: ConfigCmd) -> Result<()> {
     match cmd {
-        ConfigCmd::Set { field, value, global } => ConfigOpsGroup::execute_set(field, value, global),
+        ConfigCmd::Set {
+            field,
+            value,
+            global,
+        } => ConfigOpsGroup::execute_set(field, value, global),
         ConfigCmd::Get { field, global } => ConfigOpsGroup::execute_get(field, global),
         ConfigCmd::Unset { field, global } => ConfigOpsGroup::execute_unset(field, global),
         ConfigCmd::Validate { file, verbose } => {
@@ -227,62 +230,104 @@ fn execute_config_command(cmd: ConfigCmd) -> Result<()> {
 
 fn execute_project_command(cmd: ProjectCmd) -> Result<()> {
     match cmd {
-        ProjectCmd::Init { file, services, ports } => ProjectOpsGroup::execute_init(file, services, ports),
-        ProjectCmd::Preset { dir, presets_dir, detect_only, list } => {
-            ProjectOpsGroup::execute_preset(dir, presets_dir, detect_only, list)
-        }
-        ProjectCmd::Process { defaults, config, project_dir, presets_dir, format } => {
-            ProjectOpsGroup::execute_process(defaults, config, project_dir, presets_dir, format)
-        }
+        ProjectCmd::Init {
+            file,
+            services,
+            ports,
+        } => ProjectOpsGroup::execute_init(file, services, ports),
+        ProjectCmd::Preset {
+            dir,
+            presets_dir,
+            detect_only,
+            list,
+        } => ProjectOpsGroup::execute_preset(dir, presets_dir, detect_only, list),
+        ProjectCmd::Process {
+            defaults,
+            config,
+            project_dir,
+            presets_dir,
+            format,
+        } => ProjectOpsGroup::execute_process(defaults, config, project_dir, presets_dir, format),
     }
 }
 
 fn execute_file_command(cmd: FileCmd) -> Result<()> {
     match cmd {
-        FileCmd::Merge { base, overlay, format } => FileOpsGroup::execute_merge(base, overlay, format),
+        FileCmd::Merge {
+            base,
+            overlay,
+            format,
+        } => FileOpsGroup::execute_merge(base, overlay, format),
         FileCmd::Convert { input, format } => FileOpsGroup::execute_convert(input, format),
-        FileCmd::Modify { file, field, value, stdout } => {
-            FileOpsGroup::execute_modify(file, field, value, stdout)
-        }
+        FileCmd::Modify {
+            file,
+            field,
+            value,
+            stdout,
+        } => FileOpsGroup::execute_modify(file, field, value, stdout),
         FileCmd::CheckFile { file } => FileOpsGroup::execute_check_file(file),
-        FileCmd::MergeEvalAll { files, format } => FileOpsGroup::execute_merge_eval_all(files, format),
+        FileCmd::MergeEvalAll { files, format } => {
+            FileOpsGroup::execute_merge_eval_all(files, format)
+        }
     }
 }
 
 fn execute_query_command(cmd: QueryCmd) -> Result<()> {
     match cmd {
-        QueryCmd::Query { config, field, raw, default } => {
-            QueryOpsGroup::execute_query(config, field, raw, default)
-        }
-        QueryCmd::Filter { file, expression, output_format } => {
-            QueryOpsGroup::execute_filter(file, expression, output_format)
-        }
+        QueryCmd::Query {
+            config,
+            field,
+            raw,
+            default,
+        } => QueryOpsGroup::execute_query(config, field, raw, default),
+        QueryCmd::Filter {
+            file,
+            expression,
+            output_format,
+        } => QueryOpsGroup::execute_filter(file, expression, output_format),
         QueryCmd::Count { file, path } => QueryOpsGroup::execute_count(file, path),
-        QueryCmd::SelectWhere { file, path, field, value, format } => {
-            QueryOpsGroup::execute_select_where(file, path, field, value, format)
-        }
-        QueryCmd::HasField { file, field, subfield } => {
-            QueryOpsGroup::execute_has_field(file, field, subfield)
-        }
-        QueryCmd::Transform { file, expression, format } => {
-            FileOpsGroup::execute_transform(file, expression, format)
-        }
+        QueryCmd::SelectWhere {
+            file,
+            path,
+            field,
+            value,
+            format,
+        } => QueryOpsGroup::execute_select_where(file, path, field, value, format),
+        QueryCmd::HasField {
+            file,
+            field,
+            subfield,
+        } => QueryOpsGroup::execute_has_field(file, field, subfield),
+        QueryCmd::Transform {
+            file,
+            expression,
+            format,
+        } => FileOpsGroup::execute_transform(file, expression, format),
     }
 }
 
 fn execute_array_command(cmd: ArrayCmd) -> Result<()> {
     match cmd {
-        ArrayCmd::ArrayAdd { file, path, item } => FileOpsGroup::execute_array_add(file, path, item),
+        ArrayCmd::ArrayAdd { file, path, item } => {
+            FileOpsGroup::execute_array_add(file, path, item)
+        }
         ArrayCmd::ArrayRemove { file, path, filter } => {
             FileOpsGroup::execute_array_remove(file, path, filter)
         }
         ArrayCmd::ArrayLength { file, path } => QueryOpsGroup::execute_array_length(file, path),
-        ArrayCmd::AddToArray { file, path, object, stdout } => {
-            FileOpsGroup::execute_add_to_array(file, path, object, stdout)
-        }
-        ArrayCmd::Delete { file, path, field, value, format } => {
-            FileOpsGroup::execute_delete(file, path, field, value, format)
-        }
+        ArrayCmd::AddToArray {
+            file,
+            path,
+            object,
+            stdout,
+        } => FileOpsGroup::execute_add_to_array(file, path, object, stdout),
+        ArrayCmd::Delete {
+            file,
+            path,
+            field,
+            value,
+            format,
+        } => FileOpsGroup::execute_delete(file, path, field, value, format),
     }
 }
 
@@ -291,7 +336,10 @@ fn execute_ports_command(cmd: PortsCmd) -> Result<()> {
     use vm_core::{vm_error, vm_success, vm_warning};
 
     match cmd {
-        PortsCmd::Check { range, project_name } => {
+        PortsCmd::Check {
+            range,
+            project_name,
+        } => {
             let port_range = PortRange::parse(&range)?;
             let registry = PortRegistry::load()?;
 
@@ -303,7 +351,11 @@ fn execute_ports_command(cmd: PortsCmd) -> Result<()> {
                 std::process::exit(0);
             }
         }
-        PortsCmd::Register { range, project, path } => {
+        PortsCmd::Register {
+            range,
+            project,
+            path,
+        } => {
             let port_range = PortRange::parse(&range)?;
             let mut registry = PortRegistry::load()?;
 

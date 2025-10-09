@@ -35,6 +35,9 @@ pub use config_ops::{load_global_config, ConfigOps};
 // Re-export global config for use by other crates
 pub use global_config::GlobalConfig;
 
+// Re-export CLI utilities
+pub use cli::init_config_file;
+
 use std::path::PathBuf;
 use vm_core::error::Result;
 use vm_core::error::VmError;

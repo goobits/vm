@@ -1,3 +1,4 @@
+use super::{instance::TartInstanceManager, provisioner::TartProvisioner};
 use crate::{
     common::instance::{extract_project_name, InstanceInfo, InstanceResolver},
     context::ProviderContext,
@@ -12,7 +13,6 @@ use vm_cli::msg;
 use vm_config::config::VmConfig;
 use vm_core::command_stream::{is_tool_installed, stream_command};
 use vm_core::error::Result;
-use super::{instance::TartInstanceManager, provisioner::TartProvisioner};
 use vm_core::{vm_error, vm_println};
 use vm_messages::messages::MESSAGES;
 
@@ -41,9 +41,9 @@ impl TartProvider {
     fn is_instance_running(&self, instance_name: &str) -> Result<bool> {
         let output = cmd!("tart", "list", "--json").read()?;
         let vms: Vec<serde_json::Value> = serde_json::from_str(&output)?;
-        Ok(vms.into_iter().any(|vm| {
-            vm["name"] == instance_name && vm["state"] == "running"
-        }))
+        Ok(vms
+            .into_iter()
+            .any(|vm| vm["name"] == instance_name && vm["state"] == "running"))
     }
 
     fn collect_metrics(&self, instance: &str) -> Result<CollectedMetrics> {
@@ -116,9 +116,15 @@ impl TartProvider {
         if let Some(memory) = config.vm.as_ref().and_then(|v| v.memory.as_ref()) {
             if let Some(memory_mb) = memory.to_mb() {
                 info!("Setting memory to {}MB", memory_mb);
-                cmd!("tart", "set", instance, "--memory", format!("{}", memory_mb))
-                    .run()
-                    .map_err(|e| VmError::Provider(format!("Failed to set memory: {}", e)))?;
+                cmd!(
+                    "tart",
+                    "set",
+                    instance,
+                    "--memory",
+                    format!("{}", memory_mb)
+                )
+                .run()
+                .map_err(|e| VmError::Provider(format!("Failed to set memory: {}", e)))?;
             }
         }
 
@@ -450,7 +456,11 @@ impl Provider for TartProvider {
         self.start(Some(&instance_name))
     }
 
-    fn restart_with_context(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
+    fn restart_with_context(
+        &self,
+        container: Option<&str>,
+        context: &ProviderContext,
+    ) -> Result<()> {
         let instance_name = self.resolve_instance_name(container)?;
 
         if let Some(global_config) = &context.global_config {
@@ -470,10 +480,7 @@ impl Provider for TartProvider {
     fn provision(&self, container: Option<&str>) -> Result<()> {
         let instance_name = self.resolve_instance_name(container)?;
 
-        let provisioner = TartProvisioner::new(
-            instance_name.clone(),
-            self.get_sync_directory(),
-        );
+        let provisioner = TartProvisioner::new(instance_name.clone(), self.get_sync_directory());
 
         provisioner.provision(&self.config)?;
 

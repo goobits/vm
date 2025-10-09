@@ -3,7 +3,9 @@ use serde_yaml_ng as serde_yaml;
 
 // Internal imports
 use crate::config::VmConfig;
-use crate::config_ops::io::{find_or_create_local_config, get_or_create_global_config_path, read_config_or_init};
+use crate::config_ops::io::{
+    find_or_create_local_config, get_or_create_global_config_path, read_config_or_init,
+};
 use crate::config_ops::port_placeholders::load_preset_with_placeholders;
 use crate::merge::ConfigMerger;
 use crate::paths;
@@ -75,10 +77,10 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
             }
         });
 
-        let preset_config =
-            load_preset_with_placeholders(&detector, preset_name, &port_range_str).map_err(
-                |e| VmError::Config(format!("Failed to load preset: {}: {}", preset_name, e)),
-            )?;
+        let preset_config = load_preset_with_placeholders(&detector, preset_name, &port_range_str)
+            .map_err(|e| {
+                VmError::Config(format!("Failed to load preset: {}: {}", preset_name, e))
+            })?;
 
         merged_config = ConfigMerger::new(merged_config).merge(preset_config)?;
     }
