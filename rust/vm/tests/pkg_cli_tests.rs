@@ -34,10 +34,19 @@ impl PkgTestFixture {
         cmd.arg("pkg")
             .args(args)
             .current_dir(&self.test_dir)
-            .env("VM_TOOL_DIR", self.test_dir.join(".vm"));
+            .env("VM_TOOL_DIR", self.test_dir.join(".vm"))
+            .env("RUST_LOG", "info"); // Ensure info-level logs are captured
 
         let output = cmd.output()?;
         Ok(output)
+    }
+
+    /// Get combined output (stdout + stderr) as a string
+    /// This is useful because tracing output goes to stdout, not stderr
+    fn get_output(&self, output: &std::process::Output) -> String {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        format!("{}{}", stdout, stderr)
     }
 
     /// Check if the package registry server is running
@@ -114,10 +123,10 @@ fn test_pkg_config_show_command() -> Result<()> {
     let output = fixture.run_pkg_command(&["config", "show"])?;
 
     assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined_output = fixture.get_output(&output);
 
     // Should show configuration information
-    assert!(stdout.contains("Package Registry Configuration"));
+    assert!(combined_output.contains("Package Registry Configuration"));
 
     Ok(())
 }
@@ -129,13 +138,13 @@ fn test_pkg_use_bash_command() -> Result<()> {
     let output = fixture.run_pkg_command(&["use", "--shell", "bash"])?;
 
     assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined_output = fixture.get_output(&output);
 
     // Should generate bash configuration
-    assert!(stdout.contains("# Package registry configuration for bash"));
-    assert!(stdout.contains("export NPM_CONFIG_REGISTRY="));
-    assert!(stdout.contains("export PIP_INDEX_URL="));
-    assert!(stdout.contains("export PIP_TRUSTED_HOST="));
+    assert!(combined_output.contains("# Package registry configuration for bash"));
+    assert!(combined_output.contains("export NPM_CONFIG_REGISTRY="));
+    assert!(combined_output.contains("export PIP_INDEX_URL="));
+    assert!(combined_output.contains("export PIP_TRUSTED_HOST="));
 
     Ok(())
 }
@@ -147,13 +156,13 @@ fn test_pkg_use_zsh_command() -> Result<()> {
     let output = fixture.run_pkg_command(&["use", "--shell", "zsh"])?;
 
     assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined_output = fixture.get_output(&output);
 
     // Should generate zsh configuration
-    assert!(stdout.contains("# Package registry configuration for zsh"));
-    assert!(stdout.contains("export NPM_CONFIG_REGISTRY="));
-    assert!(stdout.contains("export PIP_INDEX_URL="));
-    assert!(stdout.contains("export PIP_TRUSTED_HOST="));
+    assert!(combined_output.contains("# Package registry configuration for zsh"));
+    assert!(combined_output.contains("export NPM_CONFIG_REGISTRY="));
+    assert!(combined_output.contains("export PIP_INDEX_URL="));
+    assert!(combined_output.contains("export PIP_TRUSTED_HOST="));
 
     Ok(())
 }
@@ -165,10 +174,10 @@ fn test_pkg_use_custom_port() -> Result<()> {
     let output = fixture.run_pkg_command(&["use", "--shell", "bash", "--port", "4080"])?;
 
     assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined_output = fixture.get_output(&output);
 
     // Should use the custom port
-    assert!(stdout.contains("http://localhost:4080"));
+    assert!(combined_output.contains("http://localhost:4080"));
 
     Ok(())
 }
@@ -246,17 +255,16 @@ fn test_pkg_list_command() -> Result<()> {
     let output = fixture.run_pkg_command(&["list"])?;
 
     // Should either succeed or fail with a runtime error (expected given current implementation)
-    let _stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined_output = fixture.get_output(&output);
 
     // The command may fail due to tokio runtime issues, which is expected for now
     if !output.status.success() {
         // Should have some error indication
         assert!(
-            stderr.contains("panicked")
-                || stderr.contains("runtime")
-                || stderr.contains("error")
-                || stderr.contains("Failed")
+            combined_output.contains("panicked")
+                || combined_output.contains("runtime")
+                || combined_output.contains("error")
+                || combined_output.contains("Failed")
         );
     }
 
@@ -290,10 +298,12 @@ fn test_pkg_config_commands() -> Result<()> {
 
         // All config commands should succeed or provide helpful error messages
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
+            let combined_output = fixture.get_output(&output);
             // Should provide helpful error messages
             assert!(
-                stderr.contains("help") || stderr.contains("error") || stderr.contains("not found")
+                combined_output.contains("help")
+                    || combined_output.contains("error")
+                    || combined_output.contains("not found")
             );
         }
     }
