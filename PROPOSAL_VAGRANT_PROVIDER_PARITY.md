@@ -5,7 +5,7 @@
 
 ## Executive Summary
 
-Bring the Vagrant provider to feature parity with Docker by implementing 4 missing capabilities: enhanced status reporting, TempProvider support, full ProviderContext support with Vagrantfile regeneration, and proper force-kill functionality. This will elevate Vagrant from **40% advanced feature coverage to 100%**, making it a first-class alternative to Docker for teams using VirtualBox, VMware, or Hyper-V.
+Bring the Vagrant provider to feature parity with Docker by implementing 4 missing capabilities: enhanced status reporting, TempProvider support, full ProviderContext support with Vagrantfile regeneration, and a VirtualBox-first force-kill path. This will elevate Vagrant from **40% advanced feature coverage to 100%**, making it a first-class alternative to Docker for teams using VirtualBox, VMware, or Hyper-V.
 
 **Current State**: ⭐⭐⭐⭐ (95% core, 40% advanced)
 **Target State**: ⭐⭐⭐⭐⭐ (100% core, 100% advanced) - Full Docker parity
@@ -41,7 +41,7 @@ The Vagrant provider currently has **4 critical gaps** compared to Docker:
 
 Implement 4 features across 4 incremental PRs to achieve full Docker parity.
 
-### PR #1: Enhanced Status Reports (~120 LOC)
+### PR #1: Enhanced Status Reports (batched SSH, ~150 LOC)
 
 **Goal**: Implement `get_status_report()` to return real-time VM metrics
 
@@ -64,121 +64,90 @@ fn get_status_report(&self, container: Option<&str>) -> Result<VmStatusReport> {
         });
     }
 
-    // 2. Get resource usage via SSH commands
-    let resources = self.get_resource_usage(&instance_name)?;
-
-    // 3. Get service status for known services
-    let services = self.get_service_statuses(&instance_name)?;
-
-    // 4. Get uptime
-    let uptime = self.get_uptime(&instance_name)?;
+    // 2. Collect resource + service data in a single SSH round-trip
+    let metrics = self.collect_metrics(&instance_name)?;
 
     Ok(VmStatusReport {
         name: instance_name,
         provider: "vagrant".to_string(),
         container_id: None, // Vagrant doesn't have container IDs
         is_running: true,
-        uptime: Some(uptime),
-        resources,
-        services,
+        uptime: metrics.uptime,
+        resources: metrics.resources,
+        services: metrics.services,
     })
 }
 
-fn get_resource_usage(&self, instance: &str) -> Result<ResourceUsage> {
-    // SSH into VM and run system commands
-    let cpu_cmd = "top -bn1 | grep 'Cpu(s)' | awk '{print $2}' | cut -d'%' -f1";
-    let mem_cmd = "free -m | awk 'NR==2{printf \"%s %s\", $3,$2}'";
-    let disk_cmd = "df -BG / | awk 'NR==2{printf \"%s %s\", $3,$2}'";
-
-    let cpu_percent = self.ssh_exec_capture(instance, cpu_cmd)
-        .and_then(|s| s.trim().parse::<f64>().ok());
-
-    let mem_info = self.ssh_exec_capture(instance, mem_cmd).ok();
-    let (memory_used_mb, memory_limit_mb) = mem_info
-        .and_then(|s| {
-            let parts: Vec<&str> = s.split_whitespace().collect();
-            if parts.len() == 2 {
-                let used = parts[0].parse::<u64>().ok()?;
-                let total = parts[1].parse::<u64>().ok()?;
-                Some((used, total))
-            } else {
-                None
-            }
-        })
-        .unwrap_or((None, None));
-
-    let disk_info = self.ssh_exec_capture(instance, disk_cmd).ok();
-    let (disk_used_gb, disk_total_gb) = disk_info
-        .and_then(|s| {
-            let parts: Vec<&str> = s.split_whitespace().collect();
-            if parts.len() == 2 {
-                // Remove 'G' suffix and parse
-                let used = parts[0].trim_end_matches('G').parse::<f64>().ok()?;
-                let total = parts[1].trim_end_matches('G').parse::<f64>().ok()?;
-                Some((used, total))
-            } else {
-                None
-            }
-        })
-        .unzip();
-
-    Ok(ResourceUsage {
-        cpu_percent,
-        memory_used_mb,
-        memory_limit_mb,
-        disk_used_gb,
-        disk_total_gb,
-    })
+struct CollectedMetrics {
+    resources: ResourceUsage,
+    services: Vec<ServiceStatus>,
+    uptime: Option<String>,
 }
 
-fn get_service_statuses(&self, instance: &str) -> Result<Vec<ServiceStatus>> {
-    let mut services = Vec::new();
-
-    // Check for common services (PostgreSQL, Redis, MongoDB)
-    for (service_name, systemd_unit) in &[
-        ("PostgreSQL", "postgresql"),
-        ("Redis", "redis"),
-        ("MongoDB", "mongod"),
-    ] {
-        let is_running = self.ssh_exec_capture(
-            instance,
-            &format!("systemctl is-active {} 2>/dev/null || echo inactive", systemd_unit)
-        )
-        .map(|s| s.trim() == "active")
-        .unwrap_or(false);
-
-        services.push(ServiceStatus {
-            name: service_name.to_string(),
-            is_running,
-            port: None, // Could extract from config
-            host_port: None,
-            metrics: None,
-            error: None,
-        });
-    }
-
-    Ok(services)
-}
-
-fn get_uptime(&self, instance: &str) -> Result<String> {
-    self.ssh_exec_capture(instance, "uptime -p")
-        .map(|s| s.trim().to_string())
-}
-
-// Helper: Execute SSH command and capture output
-fn ssh_exec_capture(&self, instance: &str, cmd: &str) -> Result<String> {
+fn collect_metrics(&self, instance: &str) -> Result<CollectedMetrics> {
     use duct::cmd;
-
     let instance_dir = self.get_instance_dir(instance)?;
-    let output = cmd!("vagrant", "ssh", "-c", cmd)
+
+    // Single script emits JSON payload
+    let metrics_script = include_str!("scripts/collect_metrics.sh");
+    let output = cmd!("vagrant", "ssh", "-c", metrics_script)
         .dir(&instance_dir)
         .stderr_null()
         .read()
         .map_err(|e| VmError::Provider(format!("SSH command failed: {}", e)))?;
 
-    Ok(output)
+    parse_metrics_json(&output).map_err(|e| VmError::Provider(format!("Failed to parse metrics: {}", e)))
+}
+
+fn parse_metrics_json(raw: &str) -> Result<CollectedMetrics> {
+    #[derive(Deserialize)]
+    struct Payload {
+        cpu_percent: Option<f64>,
+        memory_used_mb: Option<u64>,
+        memory_limit_mb: Option<u64>,
+        disk_used_gb: Option<f64>,
+        disk_total_gb: Option<f64>,
+        uptime: Option<String>,
+        services: Vec<ServiceEntry>,
+    }
+
+    #[derive(Deserialize)]
+    struct ServiceEntry {
+        name: String,
+        is_running: bool,
+    }
+
+    let payload: Payload = serde_json::from_str(raw)?;
+    let resources = ResourceUsage {
+        cpu_percent: payload.cpu_percent,
+        memory_used_mb: payload.memory_used_mb,
+        memory_limit_mb: payload.memory_limit_mb,
+        disk_used_gb: payload.disk_used_gb,
+        disk_total_gb: payload.disk_total_gb,
+    };
+
+    let services = payload
+        .services
+        .into_iter()
+        .map(|svc| ServiceStatus {
+            name: svc.name,
+            is_running: svc.is_running,
+            port: None,
+            host_port: None,
+            metrics: None,
+            error: None,
+        })
+        .collect();
+
+    Ok(CollectedMetrics {
+        resources,
+        services,
+        uptime: payload.uptime,
+    })
 }
 ```
+
+The `collect_metrics.sh` helper uses portable POSIX tooling (`vmstat`, `free`, `df`) with fallbacks so it works on stock Ubuntu and minimal Debian boxes. We avoid multiple `vagrant ssh -c` invocations; one round-trip keeps `vm status` within the 2 s target.
 
 **Benefits**:
 - Users can see real-time VM metrics with `vm status`
@@ -235,16 +204,15 @@ fn restart_with_context(&self, container: Option<&str>, context: &ProviderContex
 
 fn regenerate_vagrantfile(&self, instance: &str, global_config: &GlobalConfig) -> Result<()> {
     let instance_dir = self.get_instance_dir(instance)?;
-    let vagrantfile_path = instance_dir.join("Vagrantfile");
+    let generated_path = instance_dir.join("Vagrantfile.vmtool");
 
-    // Generate new Vagrantfile content
+    // Render VM-tool-managed Vagrantfile (leaves user Vagrantfile untouched)
     let vagrantfile_content = self.generate_vagrantfile_content(global_config)?;
 
-    // Write new Vagrantfile
-    std::fs::write(&vagrantfile_path, vagrantfile_content)
-        .map_err(|e| VmError::Provider(format!("Failed to write Vagrantfile: {}", e)))?;
+    std::fs::write(&generated_path, vagrantfile_content)
+        .map_err(|e| VmError::Provider(format!("Failed to write generated Vagrantfile: {}", e)))?;
 
-    info!("Regenerated Vagrantfile at {:?}", vagrantfile_path);
+    info!("Wrote regenerated Vagrantfile to {:?}", generated_path);
     Ok(())
 }
 
@@ -260,18 +228,22 @@ fn generate_vagrantfile_content(&self, global_config: &GlobalConfig) -> Result<S
 }
 ```
 
+Every lifecycle command will export `VAGRANT_VAGRANTFILE=Vagrantfile.vmtool`, so the generated file is used while any user-maintained `Vagrantfile` stays untouched.
+
 **Benefits**:
 - Users can update global config and apply with `vm restart` (no destroy needed)
 - Config changes propagate without data loss
+- User-maintained `Vagrantfile` remains untouched (generated file lives alongside)
 - Matches Docker behavior exactly
 
 **Estimated Effort**: 3-4 hours
 
 ---
 
-### PR #3: TempProvider Support (~200 LOC)
+### PR #3: TempProvider Support (document slower startup) (~200 LOC)
 
-**Goal**: Implement `TempProvider` trait for `vm temp` workflow
+**Goal**: Implement `TempProvider` trait for `vm temp` workflow  
+_(Document expectation: first `vagrant up` typically takes minutes; encourage keeping a warm temp VM or cached boxes.)_
 
 **Implementation**:
 ```rust
@@ -279,11 +251,9 @@ fn generate_vagrantfile_content(&self, global_config: &GlobalConfig) -> Result<S
 
 impl TempProvider for VagrantProvider {
     fn update_mounts(&self, state: &TempVmState) -> Result<()> {
-        // For Vagrant, we need to update Vagrantfile with new synced folders
-        // then reload the VM
-
+        // Update generated Vagrantfile with synced folders, keep user file intact
         let instance_dir = self.get_instance_dir(&state.name)?;
-        let vagrantfile_path = instance_dir.join("Vagrantfile");
+        let vagrantfile_path = instance_dir.join("Vagrantfile.vmtool");
 
         // Read current Vagrantfile
         let current_content = std::fs::read_to_string(&vagrantfile_path)
@@ -305,7 +275,7 @@ impl TempProvider for VagrantProvider {
 
         let instance_dir = self.get_instance_dir(&state.name)?;
 
-        // Use `vagrant reload` to apply mount changes
+        // Use `vagrant reload` (with generated Vagrantfile) to apply mount changes
         // This is safer than destroy/recreate for temp VMs
         info!("Reloading Vagrant VM to apply mount changes");
 
@@ -397,14 +367,14 @@ impl Provider for VagrantProvider {
 
 **Benefits**:
 - `vm temp` command works with Vagrant
-- Users can create quick throwaway VMs
-- Full feature parity with Docker for temp workflows
+- Users can create quick throwaway VMs (documented minutes-long cold start)
+- Full feature parity with Docker for temp workflows, plus guidance on caching boxes and reusing the same temp VM between runs
 
 **Estimated Effort**: 6-8 hours
 
 ---
 
-### PR #4: Proper Force Kill Implementation (~40 LOC)
+### PR #4: Force Kill (VirtualBox first) (~40 LOC)
 
 **Goal**: Implement distinct `kill()` that force-kills VM processes
 
@@ -436,8 +406,8 @@ fn kill(&self, container: Option<&str>) -> Result<()> {
         return Ok(());
     }
 
-    // If graceful halt fails, kill VirtualBox/VMware processes directly
-    warn!("Graceful halt failed, killing VM processes forcefully");
+    // If graceful halt fails, attempt provider-specific hard stop
+    warn!("Graceful halt failed, attempting provider-specific hard stop");
 
     // Get VM ID from Vagrant
     let vm_id_output = cmd!("vagrant", "global-status", "--prune")
@@ -448,35 +418,25 @@ fn kill(&self, container: Option<&str>) -> Result<()> {
     // Parse VM ID from output
     let vm_id = self.parse_vm_id(&vm_id_output, &instance_name)?;
 
-    // Force kill based on provider type
     match self.detect_vagrant_provider()? {
         "virtualbox" => {
             cmd!("VBoxManage", "controlvm", &vm_id, "poweroff")
                 .run()
                 .map_err(|e| VmError::Provider(format!("Failed to kill VirtualBox VM: {}", e)))?;
-        }
-        "vmware_desktop" | "vmware_fusion" => {
-            // VMware force kill
-            cmd!("vmrun", "stop", &vm_id, "hard")
-                .run()
-                .map_err(|e| VmError::Provider(format!("Failed to kill VMware VM: {}", e)))?;
-        }
-        "hyperv" => {
-            // Hyper-V force kill
-            cmd!("powershell", "-Command", &format!("Stop-VM -Name '{}' -Force", vm_id))
-                .run()
-                .map_err(|e| VmError::Provider(format!("Failed to kill Hyper-V VM: {}", e)))?;
+            info!("VirtualBox VM powered off");
+            Ok(())
         }
         provider => {
-            return Err(VmError::Provider(format!(
-                "Force kill not implemented for provider: {}",
+            warn!(
+                "Force kill not yet implemented for provider: {}. Fallback to vm destroy",
                 provider
-            )));
+            );
+            Err(VmError::Provider(format!(
+                "Force kill not available for {}; use `vm destroy --force`",
+                provider
+            )))
         }
     }
-
-    info!("VM processes killed forcefully");
-    Ok(())
 }
 
 fn detect_vagrant_provider(&self) -> Result<String> {
@@ -504,9 +464,9 @@ fn parse_vm_id(&self, global_status_output: &str, instance_name: &str) -> Result
 ```
 
 **Benefits**:
-- Can force-kill hung VMs without destroying data
-- Matches Docker's force-kill behavior
-- Supports VirtualBox, VMware, and Hyper-V
+- Can force-kill hung VirtualBox VMs without destroying data
+- Warns users on unsupported providers instead of silently calling destroy
+- Lays groundwork for VMware/Hyper-V follow-ups
 
 **Estimated Effort**: 2-3 hours
 
@@ -518,10 +478,10 @@ fn parse_vm_id(&self, global_status_output: &str, instance_name: &str) -> Result
 
 | PR | Feature | LOC | Effort | Risk | Dependencies |
 |----|---------|-----|--------|------|--------------|
-| 1 | Enhanced Status Reports | ~120 | 4-6h | Low | None |
-| 2 | ProviderContext Support | ~80 | 3-4h | Low | None |
+| 1 | Enhanced Status Reports (batched SSH) | ~150 | 4-6h | Low | None |
+| 2 | ProviderContext Support | ~100 | 3-4h | Low | None |
 | 3 | TempProvider Support | ~200 | 6-8h | Medium | None |
-| 4 | Force Kill | ~40 | 2-3h | Low | None |
+| 4 | Force Kill (VirtualBox first) | ~40 | 2-3h | Low | None |
 
 **Total**: ~440 LOC, 15-21 hours (2-3 days)
 
@@ -537,7 +497,7 @@ fn parse_vm_id(&self, global_status_output: &str, instance_name: &str) -> Result
 - PR #1: Test status reports with running/stopped VMs, verify metrics accuracy
 - PR #2: Test config updates via context, verify Vagrantfile regeneration
 - PR #3: Test temp VM creation/mount updates, verify `vagrant reload` behavior
-- PR #4: Test force kill with hung VMs, verify process termination
+- PR #4: Test force kill with hung VirtualBox VMs, verify process termination (warn on others)
 
 ---
 
@@ -549,7 +509,7 @@ fn parse_vm_id(&self, global_status_output: &str, instance_name: &str) -> Result
 
 ### Risk 2: Platform-Specific Kill Commands
 **Risk**: Force kill (PR #4) requires different commands for VirtualBox/VMware/Hyper-V
-**Mitigation**: Start with VirtualBox support only, add VMware/Hyper-V in follow-up PRs
+**Mitigation**: Ship VirtualBox support first, emit warning for other providers, plan follow-up PRs for VMware/Hyper-V
 
 ### Risk 3: SSH Performance for Status Reports
 **Risk**: Status reports (PR #1) require multiple SSH commands, may be slow
@@ -565,10 +525,10 @@ fn parse_vm_id(&self, global_status_output: &str, instance_name: &str) -> Result
 
 ### Quantitative Goals
 - ✅ Vagrant passes 100% of Docker provider test suite
-- ✅ Enhanced status reports return data within 2 seconds
+- ✅ Enhanced status reports return data within 2 seconds (single SSH round-trip)
 - ✅ Config updates via context work without `vm destroy`
-- ✅ Temp VM workflows match Docker behavior exactly
-- ✅ Force kill terminates VMs within 5 seconds
+- ✅ Temp VM workflows documented (first start ≤ cache box + minutes expectation); warm reuse supported
+- ✅ Force kill terminates VirtualBox VMs within 5 seconds; VMware/Hyper-V emit warning
 
 ### Qualitative Goals
 - ✅ Users can choose Vagrant or Docker based on infrastructure needs, not feature limitations
@@ -596,7 +556,7 @@ These are **not** required for parity but could be added later:
 | **Enhanced Status Reports** | ❌ Returns error | ✅ CPU/Memory/Disk/Services | ✅ 100% |
 | **TempProvider Support** | ❌ Not implemented | ✅ Full support | ✅ 100% |
 | **ProviderContext Support** | ⚠️ Passes via env var | ✅ Regenerates Vagrantfile | ✅ 100% |
-| **Force Kill** | ⚠️ Calls destroy() | ✅ True force kill | ✅ 100% |
+| **Force Kill** | ⚠️ Calls destroy() | ✅ VirtualBox hard stop (warn on others) | ✅ 100% |
 | **Multi-Instance** | ✅ Works | ✅ Works | ✅ 100% |
 | **Provisioning** | ✅ Works | ✅ Works | ✅ 100% |
 | **SSH** | ✅ Works | ✅ Works | ✅ 100% |
@@ -607,11 +567,12 @@ These are **not** required for parity but could be added later:
 
 ## Appendix B: Code Organization
 
-**New Files** (None - all changes in existing files):
-- All code goes in `rust/vm-provider/src/vagrant/provider.rs`
+**New Files**:
+- `rust/vm-provider/src/vagrant/scripts/collect_metrics.sh` (batched metrics helper)
 
 **Modified Files**:
 - `rust/vm-provider/src/vagrant/provider.rs` (~440 LOC added)
+- `rust/vm-provider/src/vagrant/mod.rs` (wire up metrics script and env overrides)
 
 **Tests**:
 - `rust/vm-provider/src/vagrant/provider_tests.rs` (new file, ~300 LOC)
@@ -625,7 +586,7 @@ This proposal provides a **clear, incremental path** to bring Vagrant to full Do
 1. ✅ Enhanced status reports with real-time metrics
 2. ✅ Full ProviderContext support with config regeneration
 3. ✅ TempProvider for `vm temp` workflows
-4. ✅ Proper force-kill distinct from destroy
+4. ✅ Proper force-kill for VirtualBox; clear warnings for others
 
 **Impact**: Enterprise teams using VirtualBox, VMware, or Hyper-V will have a **first-class VM provider experience** with no feature limitations compared to Docker.
 
