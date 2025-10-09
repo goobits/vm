@@ -1,13 +1,10 @@
 #![cfg(all(test, target_os = "macos"))]
 
 use std::path::Path;
+use uuid::Uuid;
 use vm_config::config::{ProjectConfig, VmConfig};
 use vm_core::error::Result;
-use vm_provider::{
-    tart::provider::TartProvider,
-    Provider,
-};
-use uuid::Uuid;
+use vm_provider::{tart::provider::TartProvider, Provider};
 
 struct TestFixture {
     vm_name: String,
@@ -57,7 +54,9 @@ fn test_tart_ssh_path_integration() -> Result<()> {
     fixture.provider.exec(None, &mkdir_cmd)?;
 
     // Execute `pwd` in the new directory
-    let output = fixture.provider.exec_in_path(None, &test_dir_path, &["pwd"])?;
+    let output = fixture
+        .provider
+        .exec_in_path(None, &test_dir_path, &["pwd"])?;
 
     // Verify
     assert_eq!(output.trim(), test_dir_path.to_str().unwrap());

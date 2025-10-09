@@ -11,6 +11,9 @@ use vm_core::{
     vm_success,
 };
 
+#[cfg(target_os = "macos")]
+use vm_core::vm_warning;
+
 impl<'a> LifecycleOperations<'a> {
     #[must_use = "container start results should be handled"]
     pub fn start_container(&self, container: Option<&str>) -> Result<()> {

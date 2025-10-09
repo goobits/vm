@@ -6,9 +6,9 @@ use crate::{
     Mount, MountPermission, Provider, ResourceUsage, ServiceStatus, TempProvider, TempVmState,
     VmError, VmStatusReport,
 };
+use log::{info, warn};
 use std::env;
 use std::path::Path;
-use log::{info, warn};
 use vm_config::config::{GlobalConfig, MemoryLimit, VmConfig, VmSettings};
 use vm_core::command_stream::{is_tool_installed, stream_command};
 use vm_core::error::Result;
@@ -213,10 +213,7 @@ impl VagrantProvider {
                 machine_name, machine_name
             ));
 
-            let box_name = vm_settings
-                .box_name
-                .as_deref()
-                .unwrap_or("ubuntu/focal64");
+            let box_name = vm_settings.box_name.as_deref().unwrap_or("ubuntu/focal64");
             content.push_str(&format!("    {}.vm.box = \"{}\"\n", machine_name, box_name));
 
             content.push_str(&format!(
@@ -402,7 +399,9 @@ impl VagrantProvider {
                 .rposition(|l| l.trim().starts_with("config.vm.synced_folder"))
             {
                 lines.splice(insert_pos + 1..insert_pos + 1, new_mount_lines);
-            } else if let Some(insert_pos) = lines.iter().position(|l| l.contains("Vagrant.configure")) {
+            } else if let Some(insert_pos) =
+                lines.iter().position(|l| l.contains("Vagrant.configure"))
+            {
                 lines.splice(insert_pos + 1..insert_pos + 1, new_mount_lines);
             } else {
                 return Err(VmError::Provider(
@@ -813,7 +812,9 @@ impl Provider for VagrantProvider {
             "virtualbox" => {
                 duct::cmd("VBoxManage", &["controlvm", &vm_id, "poweroff"])
                     .run()
-                    .map_err(|e| VmError::Provider(format!("Failed to kill VirtualBox VM: {}", e)))?;
+                    .map_err(|e| {
+                        VmError::Provider(format!("Failed to kill VirtualBox VM: {}", e))
+                    })?;
             }
             "vmware_desktop" | "vmware_fusion" => {
                 duct::cmd("vmrun", &["stop", &vm_id, "hard"])

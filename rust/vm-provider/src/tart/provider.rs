@@ -208,16 +208,15 @@ impl Provider for TartProvider {
         let sync_dir = self.get_sync_directory();
 
         // Resolve full path in VM
-        let target_path =
-            if relative_path == Path::new("") || relative_path == Path::new(".") {
-                sync_dir.clone()
-            } else {
-                format!(
-                    "{}/{}",
-                    sync_dir.trim_end_matches('/'),
-                    relative_path.display()
-                )
-            };
+        let target_path = if relative_path == Path::new("") || relative_path == Path::new(".") {
+            sync_dir.clone()
+        } else {
+            format!(
+                "{}/{}",
+                sync_dir.trim_end_matches('/'),
+                relative_path.display()
+            )
+        };
 
         info!("Opening SSH session in directory: {}", target_path);
 
