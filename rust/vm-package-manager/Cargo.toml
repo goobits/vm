@@ -7,7 +7,6 @@ license.workspace = true
 description = "Unified package manager for VM Tool - handles cargo, npm, and pip/pipx packages"
 
 [dependencies]
-tracing = { workspace = true }
 clap = { workspace = true }
 serde_json = { workspace = true }
 vm-config = { path = "../vm-config" }

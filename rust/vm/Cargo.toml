@@ -14,7 +14,6 @@ serde_yaml_ng = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 reqwest = { workspace = true }
 dialoguer = { workspace = true }
@@ -37,9 +36,7 @@ default = []
 structured-output = []
 
 [package.metadata.cargo-machete]
-ignored = [
-    "serde_json"  # Used transitively via serde_yaml::from_str
-]
+ignored = []
 
 [dev-dependencies]
 assert_cmd = "2.0"
