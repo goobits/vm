@@ -32,9 +32,6 @@ pub use paths::{get_current_gid, get_current_uid, get_tool_dir, resolve_tool_pat
 // Re-export config operations for use by main vm binary
 pub use config_ops::{load_global_config, ConfigOps};
 
-// Re-export CLI functions for direct use
-pub use cli::init_config_file;
-
 // Re-export global config for use by other crates
 pub use global_config::GlobalConfig;
 
