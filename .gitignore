@@ -18,7 +18,7 @@ test-*/
 # docker-compose.yml (now in .config/docker/)
 
 # Built binaries (should not be committed)
-vm
+/vm
 vm.exe
 
 # Environment files
