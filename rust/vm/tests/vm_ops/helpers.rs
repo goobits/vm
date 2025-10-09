@@ -54,10 +54,10 @@ impl VmOpsTestFixture {
         Ok(output)
     }
 
-    /// Create a minimal vm.yaml configuration for testing
-    pub fn create_test_config(&self) -> Result<()> {
+    /// Create a vm.yaml file for a specific provider
+    pub fn create_config_for_provider(&self, provider: &str) -> Result<()> {
         let config_content = format!(
-            r#"provider: docker
+            r#"provider: {}
 project:
   name: {}
 vm:
@@ -70,11 +70,16 @@ services:
     ports:
       - "8080:80"
 "#,
-            self.project_name
+            provider, self.project_name
         );
 
         fs::write(self.test_dir.join("vm.yaml"), config_content)?;
         Ok(())
+    }
+
+    /// Create a minimal vm.yaml configuration for testing (defaults to Docker)
+    pub fn create_test_config(&self) -> Result<()> {
+        self.create_config_for_provider("docker")
     }
 
     /// Create a Dockerfile for testing provision operations
@@ -98,6 +103,18 @@ CMD ["sh", "-c", "echo 'VM Test Container Running' && sleep 3600"]
     pub fn is_docker_available(&self) -> bool {
         Command::new("docker")
             .args(["info"])
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+
+    /// Check if Tart is available and working
+    pub fn is_tart_available(&self) -> bool {
+        if !cfg!(target_os = "macos") {
+            return false;
+        }
+        Command::new("tart")
+            .args(["--version"])
             .output()
             .map(|output| output.status.success())
             .unwrap_or(false)
