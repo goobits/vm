@@ -486,9 +486,9 @@ impl Provider for TartProvider {
 
 ---
 
-### PR #3: Enhanced Status Reports (~140 LOC)
+### PR #3: Enhanced Status Reports (batched SSH, ~200 LOC)
 
-**Goal**: Implement `get_status_report()` for real-time metrics
+**Goal**: Implement `get_status_report()` for real-time metrics using a single SSH round-trip
 
 **Implementation**:
 ```rust
@@ -497,130 +497,96 @@ impl Provider for TartProvider {
 fn get_status_report(&self, container: Option<&str>) -> Result<VmStatusReport> {
     let instance_name = self.resolve_instance_name(container)?;
 
-    // Check if VM is running
-    let is_running = self.is_instance_running(&instance_name)?;
-
-    if !is_running {
+    if !self.is_instance_running(&instance_name)? {
         return Ok(VmStatusReport {
             name: instance_name.clone(),
-            provider: "tart".to_string(),
+            provider: "tart".into(),
             is_running: false,
             ..Default::default()
         });
     }
 
-    // Get resource usage via SSH
-    let resources = self.get_resource_usage(&instance_name)?;
-
-    // Get service status
-    let services = self.get_service_statuses(&instance_name)?;
-
-    // Get uptime
-    let uptime = self.get_uptime(&instance_name)?;
+    let metrics = self.collect_metrics(&instance_name)?;
 
     Ok(VmStatusReport {
         name: instance_name,
-        provider: "tart".to_string(),
+        provider: "tart".into(),
         container_id: None,
         is_running: true,
-        uptime: Some(uptime),
-        resources,
-        services,
+        uptime: metrics.uptime,
+        resources: metrics.resources,
+        services: metrics.services,
     })
 }
 
-fn get_resource_usage(&self, instance: &str) -> Result<ResourceUsage> {
-    // Similar to Vagrant implementation
-    let cpu_cmd = "top -l 1 | grep 'CPU usage' | awk '{print $3}' | cut -d'%' -f1";
-    let mem_cmd = "vm_stat | perl -ne '/page size of (\\d+)/ and $size=$1; /Pages active.*?(\\d+)/ and printf(\"%.0f\",($1+0)*$size/1048576); /Pages free.*?(\\d+)/ and printf(\" %.0f\",$1*$size/1048576);'";
-    let disk_cmd = "df -h / | awk 'NR==2{print $3, $2}'";
-
-    let cpu_percent = self.ssh_exec_capture(instance, cpu_cmd)
-        .and_then(|s| s.trim().parse::<f64>().ok());
-
-    let mem_info = self.ssh_exec_capture(instance, mem_cmd).ok();
-    let (memory_used_mb, memory_limit_mb) = mem_info
-        .and_then(|s| {
-            let parts: Vec<&str> = s.split_whitespace().collect();
-            if parts.len() >= 2 {
-                Some((
-                    parts[0].parse::<u64>().ok(),
-                    parts[1].parse::<u64>().ok(),
-                ))
-            } else {
-                None
-            }
-        })
-        .unwrap_or((None, None));
-
-    let disk_info = self.ssh_exec_capture(instance, disk_cmd).ok();
-    let (disk_used_gb, disk_total_gb) = disk_info
-        .and_then(|s| {
-            let parts: Vec<&str> = s.split_whitespace().collect();
-            if parts.len() >= 2 {
-                Some((
-                    parts[0].trim_end_matches('G').parse::<f64>().ok(),
-                    parts[1].trim_end_matches('G').parse::<f64>().ok(),
-                ))
-            } else {
-                None
-            }
-        })
-        .unzip();
-
-    Ok(ResourceUsage {
-        cpu_percent,
-        memory_used_mb,
-        memory_limit_mb,
-        disk_used_gb,
-        disk_total_gb,
-    })
+struct CollectedMetrics {
+    resources: ResourceUsage,
+    services: Vec<ServiceStatus>,
+    uptime: Option<String>,
 }
 
-fn get_service_statuses(&self, instance: &str) -> Result<Vec<ServiceStatus>> {
-    let mut services = Vec::new();
+fn collect_metrics(&self, instance: &str) -> Result<CollectedMetrics> {
+    use duct::cmd;
 
-    for (service_name, systemd_unit) in &[
-        ("PostgreSQL", "postgresql"),
-        ("Redis", "redis-server"),
-        ("MongoDB", "mongodb"),
-    ] {
-        let is_running = self.ssh_exec_capture(
-            instance,
-            &format!("systemctl is-active {} 2>/dev/null || echo inactive", systemd_unit)
-        )
-        .map(|s| s.trim() == "active")
-        .unwrap_or(false);
+    let metrics_script = include_str!("scripts/collect_metrics.sh");
+    let output = cmd!("tart", "ssh", instance, "--", "sh", "-c", metrics_script)
+        .stderr_capture()
+        .read()
+        .map_err(|e| VmError::Provider(format!("SSH command failed: {}", e)))?;
 
-        services.push(ServiceStatus {
-            name: service_name.to_string(),
-            is_running,
+    parse_metrics_json(&output).map_err(|e| VmError::Provider(format!("Failed to parse metrics: {}", e)))
+}
+
+fn parse_metrics_json(raw: &str) -> Result<CollectedMetrics> {
+    #[derive(Deserialize)]
+    struct Payload {
+        cpu_percent: Option<f64>,
+        memory_used_mb: Option<u64>,
+        memory_limit_mb: Option<u64>,
+        disk_used_gb: Option<f64>,
+        disk_total_gb: Option<f64>,
+        uptime: Option<String>,
+        services: Vec<ServiceEntry>,
+    }
+
+    #[derive(Deserialize)]
+    struct ServiceEntry {
+        name: String,
+        is_running: bool,
+    }
+
+    let payload: Payload = serde_json::from_str(raw)?;
+
+    let resources = ResourceUsage {
+        cpu_percent: payload.cpu_percent,
+        memory_used_mb: payload.memory_used_mb,
+        memory_limit_mb: payload.memory_limit_mb,
+        disk_used_gb: payload.disk_used_gb,
+        disk_total_gb: payload.disk_total_gb,
+    };
+
+    let services = payload
+        .services
+        .into_iter()
+        .map(|svc| ServiceStatus {
+            name: svc.name,
+            is_running: svc.is_running,
             port: None,
             host_port: None,
             metrics: None,
             error: None,
-        });
-    }
+        })
+        .collect();
 
-    Ok(services)
-}
-
-fn get_uptime(&self, instance: &str) -> Result<String> {
-    self.ssh_exec_capture(instance, "uptime | awk '{print $3, $4}'")
-        .map(|s| s.trim().to_string())
-}
-
-fn ssh_exec_capture(&self, instance: &str, cmd: &str) -> Result<String> {
-    use duct::cmd;
-
-    let output = cmd!("tart", "ssh", instance, "--", "sh", "-c", cmd)
-        .stderr_null()
-        .read()
-        .map_err(|e| VmError::Provider(format!("SSH command failed: {}", e)))?;
-
-    Ok(output)
+    Ok(CollectedMetrics {
+        resources,
+        services,
+        uptime: payload.uptime,
+    })
 }
 ```
+
+The companion `collect_metrics.sh` script runs inside the Linux guest and emits JSON for CPU, memory, disk, uptime, and systemd service status in one SSH call. This keeps `vm status` fast (< 3s) and avoids macOS-specific tooling that would fail inside the VM.
 
 **Benefits**:
 - Real-time CPU, memory, disk metrics
@@ -823,54 +789,26 @@ fn kill(&self, container: Option<&str>) -> Result<()> {
 
     warn!("Force killing Tart VM: {}", instance_name);
 
-    // Try graceful stop first
-    let stop_result = self.stop(Some(&instance_name));
-
-    if stop_result.is_ok() {
+    if let Err(e) = self.stop(Some(&instance_name)) {
+        warn!("Graceful stop failed: {}", e);
+    } else {
         info!("VM stopped gracefully");
         return Ok(());
     }
 
-    // If graceful stop fails, kill the VM process directly
-    warn!("Graceful stop failed, killing VM process forcefully");
+    cmd!("tart", "stop", "--force", &instance_name)
+        .run()
+        .map_err(|e| VmError::Provider(format!("Failed to force stop VM: {}", e)))?;
 
-    // Find the Tart VM process
-    let ps_output = cmd!(
-        "ps",
-        "aux"
-    )
-    .pipe(cmd!("grep", format!("tart.*{}", instance_name)))
-    .pipe(cmd!("grep", "-v", "grep"))
-    .read()
-    .unwrap_or_default();
-
-    if ps_output.is_empty() {
-        warn!("No running process found for VM: {}", instance_name);
-        return Ok(());
-    }
-
-    // Extract PID (second column)
-    for line in ps_output.lines() {
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() > 1 {
-            if let Ok(pid) = parts[1].parse::<i32>() {
-                info!("Killing Tart VM process: PID {}", pid);
-                cmd!("kill", "-9", pid.to_string())
-                    .run()
-                    .map_err(|e| VmError::Provider(format!("Failed to kill process: {}", e)))?;
-            }
-        }
-    }
-
-    info!("VM process killed forcefully");
+    info!("Tart VM force-stopped via CLI");
     Ok(())
 }
 ```
 
 **Benefits**:
-- Can force-kill hung VMs
+- Can force-kill hung VMs using supported Tart CLI
 - Distinct from regular stop operation
-- Matches Docker force-kill behavior
+- Matches Docker force-kill behavior without process-scanning hacks
 
 **Estimated Effort**: 2-3 hours
 
@@ -884,7 +822,7 @@ fn kill(&self, container: Option<&str>) -> Result<()> {
 |----|---------|-----|--------|------|----------|--------------|
 | 1 | **Fix SSH Path** | ~30 | 1-2h | Low | 🔴 Critical | None |
 | 2 | **Provisioning** | ~250 | 8-10h | High | 🔴 Critical | PR #1 (SSH) |
-| 3 | **Enhanced Status** | ~140 | 4-5h | Low | 🟡 High | None |
+| 3 | **Enhanced Status** | ~200 | 4-5h | Low | 🟡 High | None |
 | 4 | **ProviderContext** | ~100 | 3-4h | Low | 🟡 High | None |
 | 5 | **TempProvider** | ~180 | 5-6h | Medium | 🟡 High | None |
 | 6 | **Force Kill** | ~50 | 2-3h | Low | 🟢 Medium | None |
@@ -937,8 +875,8 @@ fn kill(&self, container: Option<&str>) -> Result<()> {
 **Mitigation**: Start with simple shell scripts, add frameworks incrementally (Node.js first, then Python, etc.)
 
 ### Risk 2: SSH Performance for Status
-**Risk**: PR #3 requires multiple SSH commands, may be slow
-**Mitigation**: Batch commands into single SSH session, cache results
+**Risk**: PR #3 requires multiple metrics; naive approach would be slow
+**Mitigation**: Batch collection via `collect_metrics.sh`, consider light caching if needed
 
 ### Risk 3: Mount Updates Require Restart
 **Risk**: PR #5 mount updates require VM restart (downtime)
@@ -960,7 +898,7 @@ fn kill(&self, container: Option<&str>) -> Result<()> {
 - ✅ Tart passes 100% of Docker provider test suite (macOS only)
 - ✅ Provisioning installs Node.js/Python/Ruby successfully
 - ✅ SSH lands in correct directory 100% of the time
-- ✅ Enhanced status reports return data within 3 seconds
+- ✅ Enhanced status reports return data within 3 seconds (single SSH round-trip)
 - ✅ Config updates work without destroy/recreate
 
 ### Qualitative Goals
@@ -992,7 +930,7 @@ fn kill(&self, container: Option<&str>) -> Result<()> {
 | **Enhanced Status Reports** | ❌ Returns error | ✅ CPU/Memory/Disk/Services | ✅ 100% |
 | **ProviderContext Support** | ❌ Ignores context | ✅ Applies config changes | ✅ 100% |
 | **TempProvider Support** | ❌ Not implemented | ✅ Full support | ✅ 100% |
-| **Force Kill** | ⚠️ Calls stop() | ✅ True force kill | ✅ 100% |
+| **Force Kill** | ⚠️ Calls stop() | ✅ CLI force stop | ✅ 100% |
 | **Multi-Instance** | ✅ Works | ✅ Works | ✅ 100% |
 | **Logs** | ⚠️ File-based | ⚠️ File-based | ⚠️ Acceptable |
 | **Overall Rating** | ⭐⭐⭐ (30% advanced) | ⭐⭐⭐⭐⭐ (100% advanced) | ✅ Full Parity |
@@ -1003,6 +941,7 @@ fn kill(&self, container: Option<&str>) -> Result<()> {
 
 **New Files**:
 - `rust/vm-provider/src/tart/provisioner.rs` (~250 LOC)
+- `rust/vm-provider/src/tart/scripts/collect_metrics.sh` (batched metrics helper)
 
 **Modified Files**:
 - `rust/vm-provider/src/tart/provider.rs` (~500 LOC added)
