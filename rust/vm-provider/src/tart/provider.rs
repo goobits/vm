@@ -2,22 +2,29 @@ use crate::{
     common::instance::{extract_project_name, InstanceInfo, InstanceResolver},
     context::ProviderContext,
     progress::ProgressReporter,
-    Provider, VmError,
+    Provider, ResourceUsage, ServiceStatus, TempProvider, TempVmState, VmError, VmStatusReport,
 };
-use log::info;
+use duct::cmd;
+use log::{info, warn};
+use serde::Deserialize;
 use std::path::Path;
 use vm_cli::msg;
 use vm_config::config::VmConfig;
 use vm_core::command_stream::{is_tool_installed, stream_command};
 use vm_core::error::Result;
+use super::{instance::TartInstanceManager, provisioner::TartProvisioner};
 use vm_core::{vm_error, vm_println};
 use vm_messages::messages::MESSAGES;
-
-use super::instance::TartInstanceManager;
 
 // Constants for Tart provider
 const DEFAULT_TART_IMAGE: &str = "ghcr.io/cirruslabs/ubuntu:latest";
 const TART_VM_LOG_PATH: &str = ".tart/vms";
+
+struct CollectedMetrics {
+    resources: ResourceUsage,
+    services: Vec<ServiceStatus>,
+    uptime: Option<String>,
+}
 
 pub struct TartProvider {
     config: VmConfig,
@@ -29,6 +36,93 @@ impl TartProvider {
             return Err(VmError::Dependency("Tart".into()));
         }
         Ok(Self { config })
+    }
+
+    fn is_instance_running(&self, instance_name: &str) -> Result<bool> {
+        let output = cmd!("tart", "list", "--json").read()?;
+        let vms: Vec<serde_json::Value> = serde_json::from_str(&output)?;
+        Ok(vms.into_iter().any(|vm| {
+            vm["name"] == instance_name && vm["state"] == "running"
+        }))
+    }
+
+    fn collect_metrics(&self, instance: &str) -> Result<CollectedMetrics> {
+        let metrics_script = include_str!("scripts/collect_metrics.sh");
+        let output = cmd!("tart", "ssh", instance, "--", "sh", "-c", metrics_script)
+            .stderr_capture()
+            .read()
+            .map_err(|e| VmError::Provider(format!("SSH command failed: {}", e)))?;
+
+        self.parse_metrics_json(&output)
+    }
+
+    fn parse_metrics_json(&self, raw: &str) -> Result<CollectedMetrics> {
+        #[derive(Deserialize)]
+        struct Payload {
+            cpu_percent: Option<f64>,
+            memory_used_mb: Option<u64>,
+            memory_limit_mb: Option<u64>,
+            disk_used_gb: Option<f64>,
+            disk_total_gb: Option<f64>,
+            uptime: Option<String>,
+            services: Vec<ServiceEntry>,
+        }
+
+        #[derive(Deserialize)]
+        struct ServiceEntry {
+            name: String,
+            is_running: bool,
+        }
+
+        let payload: Payload = serde_json::from_str(raw)
+            .map_err(|e| VmError::Provider(format!("Failed to parse metrics JSON: {}", e)))?;
+
+        let resources = ResourceUsage {
+            cpu_percent: payload.cpu_percent,
+            memory_used_mb: payload.memory_used_mb,
+            memory_limit_mb: payload.memory_limit_mb,
+            disk_used_gb: payload.disk_used_gb,
+            disk_total_gb: payload.disk_total_gb,
+        };
+
+        let services = payload
+            .services
+            .into_iter()
+            .map(|svc| ServiceStatus {
+                name: svc.name,
+                is_running: svc.is_running,
+                port: None,
+                host_port: None,
+                metrics: None,
+                error: None,
+            })
+            .collect();
+
+        Ok(CollectedMetrics {
+            resources,
+            services,
+            uptime: payload.uptime,
+        })
+    }
+
+    fn apply_runtime_config(&self, instance: &str, config: &VmConfig) -> Result<()> {
+        if let Some(cpus) = config.vm.as_ref().and_then(|v| v.cpus) {
+            info!("Setting CPU count to {}", cpus);
+            cmd!("tart", "set", instance, "--cpu", cpus.to_string())
+                .run()
+                .map_err(|e| VmError::Provider(format!("Failed to set CPU: {}", e)))?;
+        }
+
+        if let Some(memory) = config.vm.as_ref().and_then(|v| v.memory.as_ref()) {
+            if let Some(memory_mb) = memory.to_mb() {
+                info!("Setting memory to {}MB", memory_mb);
+                cmd!("tart", "set", instance, "--memory", format!("{}", memory_mb))
+                    .run()
+                    .map_err(|e| VmError::Provider(format!("Failed to set memory: {}", e)))?;
+            }
+        }
+
+        Ok(())
     }
 
     fn vm_name(&self) -> String {
@@ -52,7 +146,12 @@ impl TartProvider {
     }
 
     /// Internal VM creation logic shared by create() and create_instance()
-    fn create_vm_internal(&self, vm_name: &str, instance_label: Option<&str>) -> Result<()> {
+    fn create_vm_internal(
+        &self,
+        vm_name: &str,
+        instance_label: Option<&str>,
+        config: &VmConfig,
+    ) -> Result<()> {
         let progress = ProgressReporter::new();
         let phase_msg = match instance_label {
             Some(label) => format!("Creating Tart VM instance '{}'", label),
@@ -77,8 +176,7 @@ impl TartProvider {
         ProgressReporter::task(&main_phase, "VM not found, proceeding with creation.");
 
         // Get image from config
-        let image = self
-            .config
+        let image = config
             .tart
             .as_ref()
             .and_then(|t| t.image.as_deref())
@@ -95,7 +193,7 @@ impl TartProvider {
         ProgressReporter::task(&main_phase, "Image cloned successfully.");
 
         // Configure VM with memory/CPU settings if specified
-        if let Some(vm_config) = &self.config.vm {
+        if let Some(vm_config) = &config.vm {
             if let Some(memory) = &vm_config.memory {
                 match memory.to_mb() {
                     Some(mb) => {
@@ -123,7 +221,7 @@ impl TartProvider {
         }
 
         // Set disk size if specified
-        if let Some(tart_config) = &self.config.tart {
+        if let Some(tart_config) = &config.tart {
             if let Some(disk_size) = tart_config.disk_size {
                 ProgressReporter::task(
                     &main_phase,
@@ -145,8 +243,22 @@ impl TartProvider {
             ProgressReporter::finish_phase(&main_phase, "Creation failed.");
             return start_result;
         }
-
         ProgressReporter::task(&main_phase, "VM started successfully.");
+
+        // Run initial provisioning using the effective config
+        ProgressReporter::task(&main_phase, "Running initial provisioning...");
+        let provisioner = TartProvisioner::new(vm_name.to_string(), self.get_sync_directory());
+        if let Err(e) = provisioner.provision(config) {
+            warn!(
+                "Initial provisioning failed: {}. The VM is created but may not be fully configured.",
+                e
+            );
+            // This is treated as a hard failure for create, as an un-provisioned VM is not useful.
+            ProgressReporter::finish_phase(&main_phase, "Provisioning failed.");
+            return Err(e);
+        }
+        ProgressReporter::task(&main_phase, "Initial provisioning complete.");
+
         ProgressReporter::finish_phase(&main_phase, "Environment ready.");
 
         vm_println!("{}", MESSAGES.provider_tart_created_success);
@@ -161,27 +273,27 @@ impl Provider for TartProvider {
     }
 
     fn create(&self) -> Result<()> {
-        self.create_vm_internal(&self.vm_name(), None)
+        self.create_vm_internal(&self.vm_name(), None, &self.config)
     }
 
     fn create_instance(&self, instance_name: &str) -> Result<()> {
         let vm_name = format!("{}-{}", self.vm_name(), instance_name);
-        self.create_vm_internal(&vm_name, Some(instance_name))
+        self.create_vm_internal(&vm_name, Some(instance_name), &self.config)
     }
 
-    fn create_with_context(&self, _context: &ProviderContext) -> Result<()> {
-        // Tart doesn't need context-based config regeneration
-        // Fall back to regular create() for now
-        self.create()
+    fn create_with_context(&self, context: &ProviderContext) -> Result<()> {
+        let effective_config = context.global_config.as_ref().unwrap_or(&self.config);
+        self.create_vm_internal(&self.vm_name(), None, effective_config)
     }
 
     fn create_instance_with_context(
         &self,
         instance_name: &str,
-        _context: &ProviderContext,
+        context: &ProviderContext,
     ) -> Result<()> {
-        // Fall back to regular create_instance for now
-        self.create_instance(instance_name)
+        let effective_config = context.global_config.as_ref().unwrap_or(&self.config);
+        let vm_name = format!("{}-{}", self.vm_name(), instance_name);
+        self.create_vm_internal(&vm_name, Some(instance_name), effective_config)
     }
 
     fn start(&self, container: Option<&str>) -> Result<()> {
@@ -303,16 +415,70 @@ impl Provider for TartProvider {
         }
     }
 
+    fn get_status_report(&self, container: Option<&str>) -> Result<VmStatusReport> {
+        let instance_name = self.resolve_instance_name(container)?;
+
+        if !self.is_instance_running(&instance_name)? {
+            return Ok(VmStatusReport {
+                name: instance_name.clone(),
+                provider: "tart".into(),
+                is_running: false,
+                ..Default::default()
+            });
+        }
+
+        let metrics = self.collect_metrics(&instance_name)?;
+
+        Ok(VmStatusReport {
+            name: instance_name,
+            provider: "tart".into(),
+            container_id: None,
+            is_running: true,
+            uptime: metrics.uptime,
+            resources: metrics.resources,
+            services: metrics.services,
+        })
+    }
+
+    fn start_with_context(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
+        let instance_name = self.resolve_instance_name(container)?;
+
+        if let Some(global_config) = &context.global_config {
+            info!("Applying config updates to Tart VM");
+            self.apply_runtime_config(&instance_name, global_config)?;
+        }
+
+        self.start(Some(&instance_name))
+    }
+
+    fn restart_with_context(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
+        let instance_name = self.resolve_instance_name(container)?;
+
+        if let Some(global_config) = &context.global_config {
+            info!("Applying config updates to Tart VM");
+            self.apply_runtime_config(&instance_name, global_config)?;
+        }
+
+        self.restart(Some(&instance_name))
+    }
+
     fn restart(&self, container: Option<&str>) -> Result<()> {
         // Stop then start the VM
         self.stop(container)?;
         self.start(container)
     }
 
-    fn provision(&self, _container: Option<&str>) -> Result<()> {
-        // Provisioning not supported for Tart
-        vm_println!("{}", MESSAGES.provider_provisioning_unsupported);
-        vm_println!("{}", MESSAGES.provider_provisioning_explanation);
+    fn provision(&self, container: Option<&str>) -> Result<()> {
+        let instance_name = self.resolve_instance_name(container)?;
+
+        let provisioner = TartProvisioner::new(
+            instance_name.clone(),
+            self.get_sync_directory(),
+        );
+
+        provisioner.provision(&self.config)?;
+
+        vm_println!("{}", MESSAGES.provision_success);
         Ok(())
     }
 
@@ -322,9 +488,20 @@ impl Provider for TartProvider {
     }
 
     fn kill(&self, container: Option<&str>) -> Result<()> {
-        // Note: Tart has no force-kill distinct from stop.
-        // This delegates to stop which terminates the VM.
-        self.stop(container)
+        let instance_name = self.resolve_instance_name(container)?;
+        warn!("Force killing Tart VM: {}", &instance_name);
+
+        // Use the force flag directly for a kill operation.
+        cmd!("tart", "stop", &instance_name, "--force")
+            .run()
+            .map_err(|e| VmError::Provider(format!("Failed to force stop VM: {}", e)))?;
+
+        info!("Tart VM force-stopped successfully via CLI");
+        Ok(())
+    }
+
+    fn as_temp_provider(&self) -> Option<&dyn TempProvider> {
+        Some(self)
     }
 
     fn get_sync_directory(&self) -> String {
@@ -376,5 +553,50 @@ impl Provider for TartProvider {
         .map_err(|e| VmError::Provider(format!("Exec in path failed: {}", e)))?;
 
         Ok(output)
+    }
+}
+
+impl TempProvider for TartProvider {
+    fn update_mounts(&self, state: &TempVmState) -> Result<()> {
+        info!("Updating mounts for Tart VM: {}", state.name);
+        self.stop(Some(&state.name))?;
+        self.recreate_with_mounts(state)?;
+        Ok(())
+    }
+
+    fn recreate_with_mounts(&self, state: &TempVmState) -> Result<()> {
+        for mount in &state.mounts {
+            let mount_arg = format!(
+                "{}:{}",
+                mount.host_path.display(),
+                mount.guest_path.display()
+            );
+
+            info!("Adding mount: {}", mount_arg);
+
+            cmd!("tart", "set", &state.name, "--dir", &mount_arg)
+                .run()
+                .map_err(|e| VmError::Provider(format!("Failed to add mount: {}", e)))?;
+        }
+
+        self.start(Some(&state.name))?;
+        Ok(())
+    }
+
+    fn check_container_health(&self, container_name: &str) -> Result<bool> {
+        if !self.is_instance_running(container_name)? {
+            return Ok(false);
+        }
+
+        let ssh_test = cmd!("tart", "ssh", container_name, "--", "echo", "healthy")
+            .stderr_null()
+            .stdout_null()
+            .run();
+
+        Ok(ssh_test.is_ok())
+    }
+
+    fn is_container_running(&self, container_name: &str) -> Result<bool> {
+        self.is_instance_running(container_name)
     }
 }
