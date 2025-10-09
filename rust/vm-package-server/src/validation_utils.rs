@@ -311,6 +311,140 @@ impl DockerValidator {
     }
 }
 
+/// Validates a filename to prevent path traversal attacks and other security issues.
+///
+/// This function checks if a filename contains potentially dangerous characters
+/// or patterns that could be used for path traversal attacks. It validates filenames
+/// against various security threats including path traversal, null bytes, and
+/// unreasonable length.
+///
+/// # Arguments
+///
+/// * `filename` - The filename to validate
+///
+/// # Returns
+///
+/// * `Ok(())` if the filename is safe
+/// * `Err(AppError::BadRequest)` if the filename contains dangerous patterns
+///
+/// # Errors
+///
+/// Returns an error if the filename:
+/// - Contains `..` (parent directory references)
+/// - Starts with `/` (absolute paths on Unix)
+/// - Starts with `\` (absolute paths on Windows)
+/// - Contains null bytes (`\0`)
+/// - Is empty or too long (>255 characters)
+/// - Contains control characters
+/// - Is a reserved Windows filename
+///
+/// # Examples
+///
+/// ```
+/// # use vm_package_server::{validate_filename, AppError};
+/// assert!(validate_filename("safe_file.txt").is_ok());
+/// assert!(validate_filename("../etc/passwd").is_err());
+/// assert!(validate_filename("/absolute/path").is_err());
+/// assert!(validate_filename("file\0name").is_err());
+/// ```
+pub fn validate_filename(filename: &str) -> Result<(), AppError> {
+    // Check for empty filename
+    if filename.is_empty() {
+        tracing::warn!("Empty filename provided");
+        return Err(AppError::BadRequest("Filename cannot be empty".to_string()));
+    }
+
+    // Check length limit (255 chars for most filesystems)
+    const MAX_FILENAME_LENGTH: usize = 255;
+    if filename.len() > MAX_FILENAME_LENGTH {
+        tracing::warn!(filename = %filename, length = %filename.len(),
+                      "Filename too long");
+        return Err(AppError::BadRequest(format!(
+            "Filename too long: {} characters (max: {})",
+            filename.len(),
+            MAX_FILENAME_LENGTH
+        )));
+    }
+
+    // Check for null bytes
+    if filename.contains('\0') {
+        tracing::warn!(filename = %filename, "Null byte detected in filename");
+        return Err(AppError::BadRequest(
+            "Filename contains null byte".to_string(),
+        ));
+    }
+
+    // Check for control characters (except tab and newline which shouldn't be in filenames anyway)
+    if filename.chars().any(|c| c.is_control()) {
+        tracing::warn!(filename = %filename, "Control character detected in filename");
+        return Err(AppError::BadRequest(
+            "Filename contains control characters".to_string(),
+        ));
+    }
+
+    // Check for path traversal patterns
+    if filename.contains("..") {
+        tracing::warn!(filename = %filename, "Path traversal attempt detected (..)");
+        return Err(AppError::BadRequest(
+            "Filename contains parent directory reference (..)".to_string(),
+        ));
+    }
+
+    // Check for absolute paths
+    if filename.starts_with('/') {
+        tracing::warn!(filename = %filename, "Absolute Unix path detected");
+        return Err(AppError::BadRequest(
+            "Filename cannot be an absolute path (starts with /)".to_string(),
+        ));
+    }
+
+    if filename.starts_with('\\') {
+        tracing::warn!(filename = %filename, "Absolute Windows path detected");
+        return Err(AppError::BadRequest(
+            "Filename cannot be an absolute path (starts with \\)".to_string(),
+        ));
+    }
+
+    // Check for Windows drive letter patterns
+    if filename.len() >= 2 && filename.chars().nth(1) == Some(':') {
+        if let Some(first_char) = filename.chars().next() {
+            if first_char.is_ascii_alphabetic() {
+                tracing::warn!(filename = %filename, "Windows drive letter detected");
+                return Err(AppError::BadRequest(
+                    "Filename cannot contain drive letter".to_string(),
+                ));
+            }
+        }
+    }
+
+    // Check for reserved Windows filenames
+    const RESERVED_WINDOWS_NAMES: &[&str] = &[
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ];
+
+    // Extract base filename without extension for reserved name check
+    let base_name = if let Some(dot_pos) = filename.rfind('.') {
+        &filename[..dot_pos]
+    } else {
+        filename
+    };
+
+    if RESERVED_WINDOWS_NAMES
+        .iter()
+        .any(|&reserved| base_name.eq_ignore_ascii_case(reserved))
+    {
+        tracing::warn!(filename = %filename, base_name = %base_name,
+                      "Reserved Windows filename detected");
+        return Err(AppError::BadRequest(format!(
+            "Filename '{}' is reserved on Windows systems",
+            base_name
+        )));
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
