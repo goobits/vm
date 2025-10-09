@@ -8,7 +8,7 @@ pip_packages:
   - pykube-ng
 
 npm_packages:
-  - kubernetes-yaml-completion
+  # kubectl provides its own shell completion
 
 aliases:
   k: "kubectl"

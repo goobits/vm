@@ -23,16 +23,10 @@ pkg-server start
 pkg-server start --port 9000
 ```
 
-### Option 2: Docker (One Flag!)
+### Option 2: Docker
 ```bash
-# Add --docker flag for containerized deployment
-pkg-server start --docker
-
-# That's it! It automatically:
-# ✅ Builds the image if needed
-# ✅ Starts the container
-# ✅ Mounts your data directory
-# ✅ Configures your package managers
+# Start the server listening on all interfaces
+pkg-server start --host 0.0.0.0 --port 8080
 ```
 
 ## Client Setup
@@ -149,7 +143,6 @@ cargo add serde --registry local
 
 ```bash
 pkg-server start          # Start server
-pkg-server stop           # Stop and restore original settings
 pkg-server add            # Publish packages
 pkg-server list           # List all packages
 pkg-server remove         # Remove packages interactively
@@ -166,8 +159,7 @@ rm ~/.pip/pip.conf
 npm config delete registry
 rm ~/.cargo/config.toml
 
-# Or use the stop command
-pkg-server stop
+# To automate this, a custom script would be required.
 ```
 
 ## Benefits

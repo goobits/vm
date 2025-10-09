@@ -556,11 +556,52 @@ vm:
 
 ## 🔄 Advanced Features
 
+### Git Worktrees (New in 2.0.6)
+
+Enable Git worktree support for multi-branch development:
+
+**Global Configuration** (`~/.vm/config.yaml`):
+```yaml
+worktrees:
+  enabled: true
+  base_path: ~/worktrees  # Optional: custom worktree location
+```
+
+**Project Configuration** (`vm.yaml`):
+```yaml
+worktrees:
+  enabled: true  # Override global setting per-project
+```
+
+**Features**:
+- Automatic detection of worktree repositories
+- Proper volume mounting for worktree directories
+- Support for relative worktree paths (Git 2.48+)
+
+**Use Cases**:
+- Developing multiple branches simultaneously
+- Testing feature branches in isolation
+- CI/CD workflows with parallel branch testing
+
+**Example Workflow**:
+```bash
+# Create worktree
+git worktree add ../feature-branch
+
+# Navigate and create VM
+cd ../feature-branch
+vm config worktrees enable
+vm create
+
+# Each worktree gets isolated VM environment
+```
+
 ### Database Persistence
 
 ```yaml
-project:
-  persist_databases: true  # Store data in .vm/data/
+# Note: This is a deprecated top-level field but still supported.
+# The modern approach is to configure persistence per-service.
+persist_databases: true  # Store data in .vm/data/
 ```
 - Survives VM rebuilds
 - Add `.vm/` to `.gitignore`

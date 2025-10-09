@@ -80,11 +80,11 @@ docker volume prune
 
 ### Container Won't Start
 ```bash
-# Check container logs
-docker logs $(vm status --container-id)
+# Check container logs. Get container name from `vm status`.
+docker logs <container_name>
 
 # Check for port conflicts
-docker port $(vm status --container-id)
+docker port <container_name>
 
 # Restart with fresh container
 vm destroy && vm create
@@ -244,8 +244,9 @@ vm exec "cat /etc/redis/redis.conf | grep bind"
 ### Database Data Lost
 ```bash
 # Enable database persistence in vm.yaml
-project:
-  persist_databases: true
+# Note: This is a deprecated top-level field but still supported.
+# The modern approach is to configure persistence per-service.
+persist_databases: true
 
 # Recreate VM with persistence
 vm destroy && vm create
@@ -302,8 +303,8 @@ vm exec "echo 'nameserver 8.8.8.8' >> /etc/resolv.conf"
 vm exec "mount | grep workspace"
 df -h  # Check for mount issues
 
-# Restart file sync (Docker)
-docker restart $(vm status --container-id)
+# Restart file sync (Docker). Get container name from `vm status`.
+docker restart <container_name>
 
 # Restart file sync (Vagrant)
 vagrant reload
@@ -373,8 +374,8 @@ vm destroy && vm create
 # Get detailed VM information
 vm status --verbose
 
-# Access VM directly
-docker exec -it $(vm status --container-id) /bin/bash  # Docker
+# Access VM directly. Get container name from `vm status`.
+docker exec -it <container_name> /bin/bash  # Docker
 vagrant ssh  # Vagrant
 
 # Check running processes

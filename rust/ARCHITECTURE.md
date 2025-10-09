@@ -95,15 +95,14 @@ Goobits VM is built using a **layered architecture** designed around the princip
 **Key Exports**: Main binary, command handlers, service orchestration
 
 #### vm-cli
-**Role**: CLI-specific utilities and command line interface components.
+**Role**: Message template variable substitution and CLI output formatting.
 
 **Responsibilities**:
-- Command line argument parsing
-- CLI-specific utilities and helpers
-- Terminal interaction management
-- User input validation
+- Variable substitution in `vm-messages` templates via the `msg!` macro.
+- Building complex, formatted messages with `MessageBuilder`.
+- Handling terminal output, colors, and styling.
 
-**Key Exports**: CLI utilities, argument parsing, terminal helpers
+**Key Exports**: `msg!` macro, `MessageBuilder` struct
 
 ### Service Layer
 

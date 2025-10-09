@@ -92,7 +92,6 @@ The system is exposed through macros in the `vm-core` crate.
 ├── README.md                       # User documentation
 ├── configs/                        # Configuration files
 │   └── defaults.yaml               # Default configuration
-├── fixtures/                       # Test configuration files
 ├── docs/                           # Documentation
 │   ├── getting-started/            # Installation & quick start
 │   ├── user-guide/                 # User documentation

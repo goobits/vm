@@ -16,8 +16,7 @@ Private package registry server with upstream fallback for PyPI, npm, and Cargo 
 ./install.sh                    # Install to system PATH
 pkg-server start                # Start server and configure package managers
 
-# Or with Docker
-pkg-server start --docker       # One command for containerized deployment
+# For containerized deployment, see the Docker Deployment section below.
 ```
 
 For detailed instructions, see [docs/quickstart.md](docs/quickstart.md)
@@ -28,8 +27,7 @@ See [docs/cli-reference.md](docs/cli-reference.md) for complete command document
 
 **Quick Reference:**
 ```bash
-pkg-server start [--docker] [--port 3080]    # Start server
-pkg-server stop                              # Stop and restore settings
+pkg-server start [--port 3080]    # Start server
 pkg-server add                               # Publish packages
 pkg-server list                              # List packages
 pkg-server status                            # Server status
@@ -94,8 +92,7 @@ cargo publish --registry local
 pkg-server start \
   --host 0.0.0.0 \              # Bind address (default: 0.0.0.0)
   --port 3080 \                 # Port number (default: 3080)
-  --data /var/packages \        # Storage directory (default: ./data)
-  --no-config                   # Skip package manager configuration
+  --data /var/packages          # Storage directory (default: ./data)
 
 # Environment variables
 RUST_LOG=debug pkg-server start  # Enable debug logging

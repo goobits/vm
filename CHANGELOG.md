@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Platform detection with WSL2 support (Linux, macOS, WSL2 supported; Windows native blocked with clear error)
 - Automatic version bumping with `make build` command
 - Comprehensive git worktrees proposal documentation
+- Improved provider error handling
 
 ### Fixed
 - Git worktrees: Shell hook now runs in ALL shell contexts (previously only interactive zsh)
@@ -40,9 +41,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Obsolete error improvement proposal document
 
 ### Documentation
-- Fixed crate references and command syntax across documentation
-- Added comprehensive documentation cleanup proposal
-- Added git worktrees usage guide and troubleshooting
+- **Complete documentation cleanup (Phases 1-3)**: Comprehensive overhaul of all project documentation
+  - Phase 1 (Critical): Fixed invalid CLI commands, corrected configuration examples, overhauled all plugin READMEs
+  - Phase 2 (Major): Added Git worktrees documentation, synchronized CHANGELOG, standardized preset naming
+  - Phase 3 (Standardization): Created plugin README template, refactored all 10 plugin READMEs with consistent structure
+- Created standard `PLUGIN_README_TEMPLATE.md` for consistent plugin documentation
+- Updated all plugin READMEs with: detailed package descriptions, enabled services, configuration examples, use cases, troubleshooting
+- Fixed invalid CLI examples in user guides (removed non-existent flags like `--raw`, `--container-id`)
+- Corrected vm-package-server documentation (removed 130+ lines of non-existent commands)
+- Added comprehensive Git worktrees usage guide and troubleshooting
+- Updated test coverage statistics in testing.md (305 total tests)
 
 ### Technical Improvements
 - 7 new git worktrees tests (all passing)

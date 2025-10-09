@@ -155,6 +155,34 @@ fn my_test() -> Result<()> {
 }
 ```
 
+## Git Worktrees Feature
+
+The Git worktree feature allows developers to work on multiple branches of the same repository simultaneously, with each worktree getting its own isolated VM environment.
+
+### Implementation Details
+- **Detection**: The `vm-config` crate detects if the current project directory is inside a Git worktree by searching for a `.git` file (for worktrees) instead of a `.git` directory (for main repositories).
+- **Volume Mounting**: The provider implementation (e.g., Docker) correctly identifies the root of the main repository and the specific worktree path. It then mounts both the main repository root and the worktree-specific directory as separate volumes, ensuring all necessary files are available in the VM.
+- **Configuration**: The feature is enabled via the `worktrees.enabled` flag in either the global `~/.vm/config.yaml` or the project-specific `vm.yaml`.
+
+### Configuration
+**Global (`~/.vm/config.yaml`):**
+```yaml
+worktrees:
+  enabled: true
+  base_path: ~/worktrees # Optional: All worktrees created here
+```
+
+**Project (`vm.yaml`):**
+```yaml
+worktrees:
+  enabled: true # Overrides global setting
+```
+
+### Testing Strategy
+- Integration tests in `vm/tests/workflow_tests.rs` cover worktree scenarios.
+- Tests create a temporary Git repository, add a worktree, and then run `vm create` from within the worktree directory.
+- Assertions verify that the VM is created successfully and that the volume mounts are correctly configured for the worktree structure.
+
 ## Build Commands
 
 ### Using Make (Recommended)
@@ -205,7 +233,7 @@ cargo update
 
 The project uses automatic version bumping:
 
-- **Version location**: `rust/Cargo.toml` line 25 (workspace version)
+- **Version location**: `rust/Cargo.toml` workspace version field (search for `workspace.package.version`)
 - **Auto-bump**: Running `make build` automatically increments the patch version (+0.0.1)
 - **Manual bump**: Run `make bump-version` to bump without building
 - **Version propagation**: All workspace crates inherit the version via `version.workspace = true`

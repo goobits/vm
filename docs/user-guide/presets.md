@@ -69,12 +69,6 @@ Rust development environment
 - Development tools
 - Common crates
 
-### nextjs
-Next.js applications
-- Node.js & npm packages
-- Next.js optimizations
-- React development tools
-- Ports: 3000
 
 ### vibe
 Vibe web framework
@@ -95,6 +89,21 @@ macOS VMs on Apple Silicon (Tart)
 Ubuntu VMs on Apple Silicon (Tart)
 - Ubuntu-optimized settings
 - ARM64 Ubuntu configuration
+
+## Preset Naming Convention
+
+**Plugin Directory Name** ≠ **Preset Name**
+
+- Directory: `plugins/nextjs-dev/` → Preset: `next`
+- Directory: `plugins/nodejs-dev/` → Preset: `nodejs`
+- Directory: `plugins/k8s-dev/` → Preset: `kubernetes`
+
+The `-dev` suffix is automatically removed during installation.
+
+**To list all available presets**:
+```bash
+vm config preset --list
+```
 
 ## Usage
 
