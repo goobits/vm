@@ -1,233 +1,8 @@
+use super::helpers::{VmOpsTestFixture, TEST_MUTEX};
 use anyhow::Result;
 use std::fs;
-use std::path::PathBuf;
 use std::process::Command;
-use std::sync::Mutex;
 use std::time::Duration;
-use tempfile::TempDir;
-
-mod common;
-use common::binary_path;
-
-// Global mutex to ensure tests run sequentially to avoid Docker container conflicts
-static TEST_MUTEX: Mutex<()> = Mutex::new(());
-
-/// Test fixture for VM operations integration testing
-///
-/// This fixture creates isolated temporary directories and ensures all VM operations
-/// are executed in completely isolated environments that don't affect the project filesystem.
-struct VmOpsTestFixture {
-    _temp_dir: TempDir,
-    test_dir: PathBuf,
-    binary_path: PathBuf,
-    project_name: String,
-}
-
-impl VmOpsTestFixture {
-    fn new() -> Result<Self> {
-        let temp_dir = TempDir::new()?;
-        let test_dir = temp_dir.path().join("test_project");
-        fs::create_dir_all(&test_dir)?;
-
-        // Generate unique project name to avoid Docker container conflicts
-        let uuid_str = uuid::Uuid::new_v4().to_string();
-        let project_name = format!("vm-test-{}", &uuid_str[..8]);
-
-        // Get the path to the vm binary using the helper
-        let binary_path = binary_path()?;
-
-        Ok(Self {
-            _temp_dir: temp_dir,
-            test_dir,
-            binary_path,
-            project_name,
-        })
-    }
-
-    /// Run vm command with given arguments in the isolated test directory
-    fn run_vm_command(&self, args: &[&str]) -> Result<std::process::Output> {
-        let output = Command::new(&self.binary_path)
-            .args(args)
-            .current_dir(&self.test_dir)
-            .env("HOME", self.test_dir.parent().unwrap())
-            .env("VM_TOOL_DIR", &self.test_dir)
-            .env("VM_TEST_MODE", "1") // Disable structured logging for tests
-            .output()?;
-        Ok(output)
-    }
-
-    /// Create a minimal vm.yaml configuration for testing
-    fn create_test_config(&self) -> Result<()> {
-        let config_content = format!(
-            r#"provider: docker
-project:
-  name: {}
-vm:
-  memory: 512
-  cpus: 1
-services:
-  test:
-    enabled: true
-    image: alpine:latest
-    ports:
-      - "8080:80"
-"#,
-            self.project_name
-        );
-
-        fs::write(self.test_dir.join("vm.yaml"), config_content)?;
-        Ok(())
-    }
-
-    /// Create a Dockerfile for testing provision operations
-    fn create_test_dockerfile(&self) -> Result<()> {
-        let dockerfile_content = r#"FROM alpine:latest
-RUN apk add --no-cache curl
-WORKDIR /app
-COPY . .
-EXPOSE 80
-CMD ["sh", "-c", "echo 'VM Test Container Running' && sleep 3600"]
-"#;
-
-        fs::write(self.test_dir.join("Dockerfile"), dockerfile_content)?;
-
-        // Create a simple test file
-        fs::write(self.test_dir.join("test.txt"), "VM integration test file")?;
-        Ok(())
-    }
-
-    /// Check if Docker is available and working
-    fn is_docker_available(&self) -> bool {
-        Command::new("docker")
-            .args(["info"])
-            .output()
-            .map(|output| output.status.success())
-            .unwrap_or(false)
-    }
-
-    /// Clean up any existing test containers
-    fn cleanup_test_containers(&self) -> Result<()> {
-        // Force remove any existing test containers
-        let _ = Command::new("docker")
-            .args(["rm", "-f", &self.project_name])
-            .output();
-
-        // Also clean up any dangling containers with our test prefix
-        let _ = Command::new("docker")
-            .args([
-                "container",
-                "prune",
-                "-f",
-                "--filter",
-                &format!("label=project={}", self.project_name),
-            ])
-            .output();
-
-        Ok(())
-    }
-
-    /// Wait for container to be in expected state
-    fn wait_for_container_state(&self, expected_state: &str, timeout_secs: u64) -> bool {
-        let start = std::time::Instant::now();
-        while start.elapsed() < Duration::from_secs(timeout_secs) {
-            if self.check_container_state(expected_state) {
-                return true;
-            }
-            std::thread::sleep(Duration::from_millis(500));
-        }
-        false
-    }
-
-    /// Check if container is in expected state
-    fn check_container_state(&self, expected_state: &str) -> bool {
-        let output = Command::new("docker")
-            .args([
-                "inspect",
-                "--format",
-                "{{.State.Status}}",
-                &self.project_name,
-            ])
-            .output();
-
-        if let Ok(output) = output {
-            if output.status.success() {
-                let state = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                return state == expected_state;
-            }
-        }
-        false
-    }
-}
-
-impl Drop for VmOpsTestFixture {
-    fn drop(&mut self) {
-        // Clean up test containers when fixture is dropped
-        let _ = self.cleanup_test_containers();
-    }
-}
-
-#[test]
-fn test_vm_create_command() -> Result<()> {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let fixture = VmOpsTestFixture::new()?;
-
-    if !fixture.is_docker_available() {
-        println!("Skipping test - Docker not available for integration testing");
-        return Ok(());
-    }
-
-    fixture.cleanup_test_containers()?;
-    fixture.create_test_config()?;
-    fixture.create_test_dockerfile()?;
-
-    // Test VM creation
-    let output = fixture.run_vm_command(&["create"])?;
-    assert!(
-        output.status.success(),
-        "VM create failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    // Verify container was created
-    let check_output = Command::new("docker")
-        .args(["inspect", &fixture.project_name])
-        .output()?;
-    assert!(check_output.status.success(), "Container was not created");
-
-    // Clean up
-    fixture.cleanup_test_containers()?;
-    Ok(())
-}
-
-#[test]
-fn test_vm_create_with_force() -> Result<()> {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let fixture = VmOpsTestFixture::new()?;
-
-    if !fixture.is_docker_available() {
-        println!("Skipping test - Docker not available");
-        return Ok(());
-    }
-
-    fixture.cleanup_test_containers()?;
-    fixture.create_test_config()?;
-    fixture.create_test_dockerfile()?;
-
-    // Create VM first time
-    let output = fixture.run_vm_command(&["create"])?;
-    assert!(output.status.success());
-
-    // Create again with force flag - should succeed
-    let output = fixture.run_vm_command(&["create", "--force"])?;
-    assert!(
-        output.status.success(),
-        "VM create --force failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    fixture.cleanup_test_containers()?;
-    Ok(())
-}
 
 #[test]
 fn test_vm_start_command() -> Result<()> {
@@ -612,52 +387,6 @@ fn test_vm_logs_command() -> Result<()> {
 }
 
 #[test]
-fn test_vm_destroy_command() -> Result<()> {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let fixture = VmOpsTestFixture::new()?;
-
-    if !fixture.is_docker_available() {
-        println!("Skipping test - Docker not available");
-        return Ok(());
-    }
-
-    fixture.cleanup_test_containers()?;
-    fixture.create_test_config()?;
-    fixture.create_test_dockerfile()?;
-
-    // Create VM
-    fixture.run_vm_command(&["create"])?;
-
-    // Verify container exists
-    let check_output = Command::new("docker")
-        .args(["inspect", &fixture.project_name])
-        .output()?;
-    assert!(
-        check_output.status.success(),
-        "Container should exist before destroy"
-    );
-
-    // Test destroy command with force flag (to avoid confirmation prompt)
-    let output = fixture.run_vm_command(&["destroy", "--force"])?;
-    assert!(
-        output.status.success(),
-        "VM destroy failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    // Verify container no longer exists
-    let check_output = Command::new("docker")
-        .args(["inspect", &fixture.project_name])
-        .output()?;
-    assert!(
-        !check_output.status.success(),
-        "Container should not exist after destroy"
-    );
-
-    Ok(())
-}
-
-#[test]
 fn test_vm_ssh_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
@@ -853,7 +582,7 @@ vm:
     assert!(
         env_vars.contains(&expected_pip_trusted),
         "PIP_TRUSTED_HOST should be set to {}",
-        expected_host
+        expected_pip_trusted
     );
 
     // Verify VM_CARGO_REGISTRY_HOST
@@ -861,7 +590,7 @@ vm:
     assert!(
         env_vars.contains(&expected_cargo_host),
         "VM_CARGO_REGISTRY_HOST should be set to {}",
-        expected_host
+        expected_cargo_host
     );
 
     // Verify VM_CARGO_REGISTRY_PORT
