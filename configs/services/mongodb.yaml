@@ -5,7 +5,6 @@ project:
   name: test-mongodb
   hostname: dev.vm.local
   workspace_path: /workspace
-  env_template_path: null
   backup_pattern: '*backup*.sql.gz'
 vm:
   box: bento/ubuntu-24.04

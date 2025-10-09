@@ -31,7 +31,7 @@ build-no-bump:
 
 # Test
 test:
-	cargo test --workspace
+	cd rust && cargo test --workspace
 
 # Code quality
 clippy:
@@ -59,5 +59,5 @@ quality-gates: fmt clippy deny test
 	@echo ""
 	@echo "✅ All quality gates passed!"
 
-# Legacy check target
+# Run formatting, linting, and tests
 check: fmt-fix clippy test

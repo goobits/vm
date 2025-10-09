@@ -8,7 +8,7 @@
 # Usage:
 #   ./install.sh                    # Install vm tool from pre-compiled binary
 #   ./install.sh --version v1.2.3   # Install specific version
-#   ./install.sh --build-from-source  # Build from source (legacy mode)
+#   ./install.sh --build-from-source  # Build from source
 #
 
 set -euo pipefail  # Exit on error, undefined vars, pipe failures
@@ -958,7 +958,7 @@ main() {
         # Install from pre-compiled binary
         install_from_release
     else
-        # Build from source (legacy mode)
+        # Build from source
         log_info "Building from source..."
 
         # Install Rust if needed

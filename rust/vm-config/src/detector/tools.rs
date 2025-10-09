@@ -117,7 +117,7 @@ impl ToolDetector {
         if Self::has_command("mysql") {
             databases.push("mysql".to_string());
         }
-        if Self::has_command("mongosh") || Self::has_command("mongo") {
+        if Self::has_command("mongosh") {
             databases.push("mongodb".to_string());
         }
         if Self::has_command("redis-cli") {

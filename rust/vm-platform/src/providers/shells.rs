@@ -131,13 +131,6 @@ impl ShellProvider for PowerShell {
                         .join("Microsoft.PowerShell_profile.ps1")
                 })
             })
-            .or_else(|| {
-                // Legacy WindowsPowerShell location
-                dirs::document_dir().map(|docs| {
-                    docs.join("WindowsPowerShell")
-                        .join("Microsoft.PowerShell_profile.ps1")
-                })
-            })
     }
 
     fn path_export_syntax(&self, path: &std::path::Path) -> String {
