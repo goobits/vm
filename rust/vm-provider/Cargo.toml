@@ -25,6 +25,7 @@ shellexpand = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+uuid = { version = "1.8.0", features = ["v4"] }
 
 [features]
 default = ["docker"]
