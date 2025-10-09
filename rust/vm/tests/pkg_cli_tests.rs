@@ -19,7 +19,7 @@ impl PkgTestFixture {
         fs::create_dir_all(&test_dir)?;
 
         // Get the path to the vm binary
-        let binary_path = PathBuf::from("/workspace/.build/target/debug/vm");
+        let binary_path = PathBuf::from(env!("CARGO_BIN_EXE_vm"));
 
         Ok(Self {
             _temp_dir: temp_dir,

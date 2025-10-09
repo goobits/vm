@@ -11,11 +11,11 @@ use uuid::Uuid;
 // External crates
 use clap::Parser;
 use tracing::{info, info_span};
-use tracing_subscriber::fmt;
+use tracing::Instrument;
 
 // Internal imports
-// use vm_core::messages::{messages::MESSAGES, msg}; // Currently unused
-use vm_core::{vm_error, vm_warning};
+use vm_core::vm_error;
+use vm_logging::init_subscriber;
 
 // Local modules
 mod cli;
@@ -34,34 +34,31 @@ fn get_request_id() -> &'static str {
     REQUEST_ID.get_or_init(|| Uuid::new_v4().to_string())
 }
 
-#[tokio::main]
-async fn main() {
-    // Initialize tracing system first, but only if not in test mode
-    // Tests expect clean stdout output, so we disable logging for test runs
-    if std::env::var("VM_TEST_MODE").is_err() {
-        if let Err(e) = fmt().with_env_filter("warn").try_init() {
-            vm_warning!("Failed to initialize tracing: {}", e);
-        }
-    }
-
-    let args = Args::parse();
-
-    // Set up request-level span that will be inherited by all logs
-    let span = info_span!("request",
-        request_id = %get_request_id(),
-        command = ?args.command,
-        debug = args.debug
-    );
-    let _enter = span.enter();
-
+/// Executes the given command and handles top-level errors.
+async fn run_command(args: Args) {
     if args.debug {
         info!("Starting vm command");
     }
 
-    // Execute the command and handle any top-level errors
     if let Err(e) = execute_command(args).await {
-        // Use the Display trait for user-friendly error messages
         vm_error!("{}", e);
         std::process::exit(1);
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    init_subscriber();
+    let args = Args::parse();
+
+    if std::env::var("VM_TEST_MODE").is_err() {
+        let span = info_span!("request",
+            request_id = %get_request_id(),
+            command = ?args.command,
+            debug = args.debug
+        );
+        run_command(args).instrument(span).await;
+    } else {
+        run_command(args).await;
     }
 }

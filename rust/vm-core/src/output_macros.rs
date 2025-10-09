@@ -31,17 +31,17 @@ macro_rules! vm_print {
 #[macro_export]
 macro_rules! vm_println {
     () => {
-        println!();
+        tracing::info!("");
     };
     ($($arg:tt)*) => {
-        println!("{}", format!($($arg)*));
+        tracing::info!("{}", format!($($arg)*));
     }
 }
 
 #[macro_export]
 macro_rules! vm_error {
     ($($arg:tt)*) => {
-        eprintln!("{}", format!($($arg)*));
+        tracing::error!("{}", format!($($arg)*));
     }
 }
 
@@ -84,16 +84,16 @@ macro_rules! vm_suggest {
 #[macro_export]
 macro_rules! vm_error_hint {
     ($($arg:tt)*) => {
-        eprintln!("💡 {}", format!($($arg)*));
+        tracing::info!("💡 {}", format!($($arg)*));
     };
 }
 
 #[macro_export]
 macro_rules! vm_error_with_details {
     ($main:expr, $details:expr) => {
-        eprintln!("❌ {}", $main);
+        tracing::error!("❌ {}", $main);
         for detail in $details {
-            eprintln!("   └─ {}", detail);
+            tracing::error!("   └─ {}", detail);
         }
     };
 }
@@ -101,28 +101,28 @@ macro_rules! vm_error_with_details {
 #[macro_export]
 macro_rules! vm_success {
     ($($arg:tt)*) => {
-        eprintln!("✓ {}", format!($($arg)*));
+        tracing::info!("✓ {}", format!($($arg)*));
     };
 }
 
 #[macro_export]
 macro_rules! vm_info {
     ($($arg:tt)*) => {
-        eprintln!("ℹ {}", format!($($arg)*));
+        tracing::info!("ℹ {}", format!($($arg)*));
     };
 }
 
 #[macro_export]
 macro_rules! vm_warning {
     ($($arg:tt)*) => {
-        eprintln!("⚠ {}", format!($($arg)*));
+        tracing::warn!("⚠ {}", format!($($arg)*));
     };
 }
 
 #[macro_export]
 macro_rules! vm_progress {
     ($($arg:tt)*) => {
-        eprintln!("▶ {}", format!($($arg)*));
+        tracing::info!("▶ {}", format!($($arg)*));
     };
 }
 
@@ -131,7 +131,7 @@ macro_rules! vm_dbg {
     () => {
         #[cfg(debug_assertions)]
         {
-            eprintln!("[{}:{}]", file!(), line!());
+            tracing::debug!("[{}:{}]", file!(), line!());
         }
     };
     ($val:expr $(,)?) => {{
@@ -139,7 +139,7 @@ macro_rules! vm_dbg {
         {
             match $val {
                 tmp => {
-                    eprintln!("[{}:{}] {} = {:#?}",
+                    tracing::debug!("[{}:{}] {} = {:#?}",
                         file!(), line!(), stringify!($val), &tmp);
                     tmp
                 }
