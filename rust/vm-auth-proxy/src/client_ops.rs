@@ -7,7 +7,7 @@ use colored::Colorize;
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
 use reqwest::Client;
 use std::collections::HashMap;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 use vm_cli::msg;
 use vm_messages::messages::MESSAGES;
 
@@ -384,6 +384,7 @@ mod tests {
     use std::time::Duration;
     use tempfile::TempDir;
     use tokio::task;
+    use tracing::error;
 
     fn find_available_port() -> anyhow::Result<u16> {
         let listener = TcpListener::bind("127.0.0.1:0")?;

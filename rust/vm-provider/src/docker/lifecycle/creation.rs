@@ -347,8 +347,7 @@ impl<'a> LifecycleOperations<'a> {
         let status = if is_running { "running" } else { "stopped" };
         warn!(
             "Container '{}' already exists (status: {}).",
-            container_name,
-            status
+            container_name, status
         );
 
         // Check if we're in an interactive terminal
@@ -414,8 +413,7 @@ impl<'a> LifecycleOperations<'a> {
         let status = if is_running { "running" } else { "stopped" };
         warn!(
             "Container '{}' already exists (status: {}).",
-            container_name,
-            status
+            container_name, status
         );
 
         // Check if we're in an interactive terminal

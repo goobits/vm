@@ -55,9 +55,7 @@ pub use self::{
         MAX_PACKAGE_FILE_SIZE, MAX_PACKAGE_NAME_LENGTH, MAX_PATH_DEPTH, MAX_REQUEST_BODY_SIZE,
         MAX_UPLOAD_SIZE, MAX_VERSION_LENGTH, MEMORY_THRESHOLD,
     },
-    manifests::{
-        validate_cargo_upload_structure, validate_package_name, validate_version,
-    },
+    manifests::{validate_cargo_upload_structure, validate_package_name, validate_version},
     paths::validate_safe_path,
     result::ValidationResult,
     shell::escape_shell_arg,

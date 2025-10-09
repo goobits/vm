@@ -255,8 +255,7 @@ pub fn handle_ports_command(fix: bool) -> VmResult<()> {
     for conflict in &conflicts {
         info!(
             "   ⚠️  Port {} is in use by: {}",
-            conflict.port,
-            conflict.container
+            conflict.port, conflict.container
         );
     }
 

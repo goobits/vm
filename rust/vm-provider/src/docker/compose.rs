@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 
 // External crates
 use shellexpand;
-use tracing;
 use tera::Context as TeraContext;
+use tracing;
 use vm_core::error::{Result, VmError};
 
 // Internal imports

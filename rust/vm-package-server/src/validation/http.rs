@@ -115,78 +115,6 @@ pub fn validate_base64_size(
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::validation::limits::{
-        MAX_BASE64_DECODED_SIZE, MAX_BASE64_ENCODED_SIZE, MAX_MULTIPART_FIELDS, MAX_UPLOAD_SIZE,
-    };
-
-    #[test]
-    fn test_validate_hostname() {
-        assert!(validate_hostname("example.com").is_ok());
-        assert!(validate_hostname("sub.example.com").is_ok());
-        assert!(validate_hostname("localhost").is_ok());
-
-        assert!(validate_hostname("").is_err());
-        assert!(validate_hostname("-invalid.com").is_err());
-        assert!(validate_hostname("invalid-.com").is_err());
-        assert!(validate_hostname(".invalid.com").is_err());
-        assert!(validate_hostname("invalid.com.").is_err());
-    }
-
-    #[test]
-    fn test_validate_base64_size() {
-        // Valid base64 data within limits
-        let small_base64 = "SGVsbG8gV29ybGQ="; // "Hello World"
-        assert!(validate_base64_size(small_base64, None, None).is_ok());
-
-        // Test with custom limits
-        assert!(validate_base64_size(small_base64, Some(100), Some(50)).is_ok());
-
-        // Test encoded size limit
-        let large_encoded = "a".repeat(MAX_BASE64_ENCODED_SIZE + 1);
-        assert!(validate_base64_size(&large_encoded, None, None).is_err());
-
-        // Test estimated decoded size limit (create string that will decode to more than the limit)
-        // Base64 encodes 3 bytes as 4 characters, so we need 4/3 * limit + padding to exceed it
-        let size_that_decodes_too_large =
-            "a".repeat(((MAX_BASE64_DECODED_SIZE * 4) / 3) + 100);
-        assert!(validate_base64_size(&size_that_decodes_too_large, None, None).is_err());
-    }
-
-    #[test]
-    fn test_validate_base64_characters() {
-        // Valid base64
-        assert!(validate_base64_characters("SGVsbG8gV29ybGQ=").is_ok());
-        assert!(validate_base64_characters("YWJjZGVmZw==").is_ok());
-
-        // Invalid characters
-        assert!(validate_base64_characters("Hello World!").is_err());
-        assert!(validate_base64_characters("abc@def").is_err());
-        assert!(validate_base64_characters("abc def").is_err());
-
-        // Empty string
-        assert!(validate_base64_characters("").is_err());
-    }
-
-    #[test]
-    fn test_validate_multipart_limits() {
-        // Valid limits
-        assert!(validate_multipart_limits(5, 1024 * 1024, None).is_ok());
-
-        // Too many fields
-        assert!(validate_multipart_limits(MAX_MULTIPART_FIELDS + 1, 1024, None).is_err());
-
-        // Total size too large
-        assert!(validate_multipart_limits(5, MAX_UPLOAD_SIZE + 1, None).is_err());
-
-        // Custom field limit
-        assert!(validate_multipart_limits(3, 1024, Some(2)).is_err());
-        assert!(validate_multipart_limits(2, 1024, Some(2)).is_ok());
-    }
-}
-
 /// Validate that base64 data contains only valid characters.
 ///
 /// This function ensures base64 data contains only valid base64 characters
@@ -253,4 +181,75 @@ pub fn validate_multipart_limits(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::validation::limits::{
+        MAX_BASE64_DECODED_SIZE, MAX_BASE64_ENCODED_SIZE, MAX_MULTIPART_FIELDS, MAX_UPLOAD_SIZE,
+    };
+
+    #[test]
+    fn test_validate_hostname() {
+        assert!(validate_hostname("example.com").is_ok());
+        assert!(validate_hostname("sub.example.com").is_ok());
+        assert!(validate_hostname("localhost").is_ok());
+
+        assert!(validate_hostname("").is_err());
+        assert!(validate_hostname("-invalid.com").is_err());
+        assert!(validate_hostname("invalid-.com").is_err());
+        assert!(validate_hostname(".invalid.com").is_err());
+        assert!(validate_hostname("invalid.com.").is_err());
+    }
+
+    #[test]
+    fn test_validate_base64_size() {
+        // Valid base64 data within limits
+        let small_base64 = "SGVsbG8gV29ybGQ="; // "Hello World"
+        assert!(validate_base64_size(small_base64, None, None).is_ok());
+
+        // Test with custom limits
+        assert!(validate_base64_size(small_base64, Some(100), Some(50)).is_ok());
+
+        // Test encoded size limit
+        let large_encoded = "a".repeat(MAX_BASE64_ENCODED_SIZE + 1);
+        assert!(validate_base64_size(&large_encoded, None, None).is_err());
+
+        // Test estimated decoded size limit (create string that will decode to more than the limit)
+        // Base64 encodes 3 bytes as 4 characters, so we need 4/3 * limit + padding to exceed it
+        let size_that_decodes_too_large = "a".repeat(((MAX_BASE64_DECODED_SIZE * 4) / 3) + 100);
+        assert!(validate_base64_size(&size_that_decodes_too_large, None, None).is_err());
+    }
+
+    #[test]
+    fn test_validate_base64_characters() {
+        // Valid base64
+        assert!(validate_base64_characters("SGVsbG8gV29ybGQ=").is_ok());
+        assert!(validate_base64_characters("YWJjZGVmZw==").is_ok());
+
+        // Invalid characters
+        assert!(validate_base64_characters("Hello World!").is_err());
+        assert!(validate_base64_characters("abc@def").is_err());
+        assert!(validate_base64_characters("abc def").is_err());
+
+        // Empty string
+        assert!(validate_base64_characters("").is_err());
+    }
+
+    #[test]
+    fn test_validate_multipart_limits() {
+        // Valid limits
+        assert!(validate_multipart_limits(5, 1024 * 1024, None).is_ok());
+
+        // Too many fields
+        assert!(validate_multipart_limits(MAX_MULTIPART_FIELDS + 1, 1024, None).is_err());
+
+        // Total size too large
+        assert!(validate_multipart_limits(5, MAX_UPLOAD_SIZE + 1, None).is_err());
+
+        // Custom field limit
+        assert!(validate_multipart_limits(3, 1024, Some(2)).is_err());
+        assert!(validate_multipart_limits(2, 1024, Some(2)).is_ok());
+    }
 }

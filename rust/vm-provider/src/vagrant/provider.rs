@@ -6,9 +6,9 @@ use crate::{
     Mount, MountPermission, Provider, ResourceUsage, ServiceStatus, TempProvider, TempVmState,
     VmError, VmStatusReport,
 };
-use tracing::{info, warn};
 use std::env;
 use std::path::Path;
+use tracing::{info, warn};
 use vm_config::config::{GlobalConfig, MemoryLimit, VmConfig, VmSettings};
 use vm_core::command_stream::{is_tool_installed, stream_command};
 use vm_core::error::Result;

@@ -39,8 +39,8 @@ async fn main() {
     // Initialize tracing system.
     // In test mode, we skip initialization to keep test output clean.
     if std::env::var("VM_TEST_MODE").is_err() {
-        let env_filter = EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| EnvFilter::new("warn"));
+        let env_filter =
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn"));
 
         let use_json = std::env::var("VM_JSON_LOGS")
             .map(|val| val == "1" || val.eq_ignore_ascii_case("true"))
