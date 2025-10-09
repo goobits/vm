@@ -25,8 +25,7 @@ impl PackageServerClient {
         success_message: &str,
     ) -> Result<()> {
         if response.status().is_success() {
-            info!(item_name = %item_name, "{} successful", operation_name);
-            println!("✅ {}: {}", success_message, item_name);
+            info!(item_name = %item_name, "✅ {}: {}", success_message, item_name);
             Ok(())
         } else {
             let error_text = response
@@ -47,11 +46,7 @@ impl PackageServerClient {
         success_message: &str,
     ) -> Result<()> {
         if response.status().is_success() {
-            info!(package_name = %package_name, version = %version, "{} successful", operation_name);
-            println!(
-                "✅ {} '{}' version {}",
-                success_message, package_name, version
-            );
+            info!(package_name = %package_name, version = %version, "✅ {} '{}' version {}", success_message, package_name, version);
             Ok(())
         } else {
             let error_text = response
@@ -72,14 +67,9 @@ impl PackageServerClient {
     ) -> Result<()> {
         if response.status().is_success() {
             if force {
-                info!(crate_name = %crate_name, version = %version, "Cargo crate version force deleted successfully");
-                println!(
-                    "✅ Force deleted Cargo crate '{}' version {}",
-                    crate_name, version
-                );
+                info!(crate_name = %crate_name, version = %version, "✅ Force deleted Cargo crate '{}' version {}", crate_name, version);
             } else {
-                info!(crate_name = %crate_name, version = %version, "Cargo crate version yanked successfully");
-                println!("✅ Yanked Cargo crate '{}' version {}", crate_name, version);
+                info!(crate_name = %crate_name, version = %version, "✅ Yanked Cargo crate '{}' version {}", crate_name, version);
             }
             Ok(())
         } else {
@@ -163,8 +153,7 @@ impl PackageServerClient {
         let response = request.send().context("Failed to upload package")?;
 
         if response.status().is_success() {
-            info!(file_name = %file_name, "PyPI package uploaded successfully");
-            println!("✅ Successfully uploaded {}", file_name);
+            info!(file_name = %file_name, "✅ Successfully uploaded {}", file_name);
             Ok(())
         } else {
             let error_text = response
@@ -196,8 +185,7 @@ impl PackageServerClient {
         let response = request.send().context("Failed to upload NPM package")?;
 
         if response.status().is_success() {
-            info!(package_name = %package_name, "NPM package published successfully");
-            println!("✅ Successfully published NPM package: {}", package_name);
+            info!(package_name = %package_name, "✅ Successfully published NPM package: {}", package_name);
             Ok(())
         } else {
             let error_text = response
@@ -278,8 +266,7 @@ impl PackageServerClient {
             .context("Failed to upload crate")?;
 
         if response.status().is_success() {
-            info!(file_name = %file_name, "Cargo crate published successfully");
-            println!("✅ Successfully published Cargo crate: {}", file_name);
+            info!(file_name = %file_name, "✅ Successfully published Cargo crate: {}", file_name);
             Ok(())
         } else {
             let error_text = response

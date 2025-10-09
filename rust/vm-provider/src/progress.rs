@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tracing::info;
 use vm_cli::msg;
 use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
@@ -213,7 +214,7 @@ impl AnsibleProgressParser {
 impl ProgressParser for AnsibleProgressParser {
     fn parse_line(&mut self, line: &str) {
         if self.show_output {
-            println!("{}", line); // In verbose mode, show everything
+            info!("{}", line); // In verbose mode, show everything
             return;
         }
 

@@ -3,6 +3,7 @@ use is_terminal::IsTerminal;
 use std::borrow::Cow;
 use std::fs;
 use std::io::{self, Write};
+use tracing::{error, info, warn};
 
 use super::LifecycleOperations;
 use crate::{
@@ -15,7 +16,7 @@ use vm_config::config::VmConfig;
 use vm_core::{
     command_stream::stream_command,
     error::{Result, VmError},
-    vm_dbg, vm_error, vm_println, vm_success, vm_warning,
+    vm_dbg,
 };
 use vm_messages::messages::MESSAGES;
 
@@ -49,7 +50,7 @@ impl<'a> LifecycleOperations<'a> {
                     ))
                 })?;
 
-                vm_success!("✓ Worktrees directory: {}", worktrees_path.display());
+                info!("✓ Worktrees directory: {}", worktrees_path.display());
             }
         }
 
@@ -82,14 +83,14 @@ impl<'a> LifecycleOperations<'a> {
                     ));
                 }
 
-                vm_success!("✓ WSL2 detected - worktrees will work correctly");
+                info!("✓ WSL2 detected - worktrees will work correctly");
             }
         }
 
         // Check if container already exists
         let container_name = self.container_name();
         let container_exists = DockerOps::container_exists(&container_name)
-            .map_err(|e| vm_warning!("Failed to check existing containers (continuing): {}", e))
+            .map_err(|e| warn!("Failed to check existing containers (continuing): {}", e))
             .unwrap_or(false);
 
         if container_exists {
@@ -101,7 +102,7 @@ impl<'a> LifecycleOperations<'a> {
             if audio_service.enabled {
                 #[cfg(target_os = "macos")]
                 if let Err(e) = MacOSAudioManager::setup() {
-                    vm_warning!("Audio setup failed: {}", e);
+                    warn!("Audio setup failed: {}", e);
                 }
                 #[cfg(not(target_os = "macos"))]
                 MacOSAudioManager::setup();
@@ -207,7 +208,7 @@ impl<'a> LifecycleOperations<'a> {
                     ))
                 })?;
 
-                vm_success!("✓ Worktrees directory: {}", worktrees_path.display());
+                info!("✓ Worktrees directory: {}", worktrees_path.display());
             }
         }
 
@@ -240,14 +241,14 @@ impl<'a> LifecycleOperations<'a> {
                     ));
                 }
 
-                vm_success!("✓ WSL2 detected - worktrees will work correctly");
+                info!("✓ WSL2 detected - worktrees will work correctly");
             }
         }
 
         // Check if container already exists (with custom instance name)
         let container_name = self.container_name_with_instance(instance_name);
         let container_exists = DockerOps::container_exists(&container_name)
-            .map_err(|e| vm_warning!("Failed to check existing containers (continuing): {}", e))
+            .map_err(|e| warn!("Failed to check existing containers (continuing): {}", e))
             .unwrap_or(false);
 
         if container_exists {
@@ -259,7 +260,7 @@ impl<'a> LifecycleOperations<'a> {
             if audio_service.enabled {
                 #[cfg(target_os = "macos")]
                 if let Err(e) = MacOSAudioManager::setup() {
-                    vm_warning!("Audio setup failed: {}", e);
+                    warn!("Audio setup failed: {}", e);
                 }
                 #[cfg(not(target_os = "macos"))]
                 MacOSAudioManager::setup();
@@ -340,14 +341,13 @@ impl<'a> LifecycleOperations<'a> {
 
         // Check if it's running
         let is_running = DockerOps::is_container_running(&container_name)
-            .map_err(|e| vm_warning!("Failed to check running containers (continuing): {}", e))
+            .map_err(|e| warn!("Failed to check running containers (continuing): {}", e))
             .unwrap_or(false);
 
         let status = if is_running { "running" } else { "stopped" };
-        vm_warning!(
+        warn!(
             "Container '{}' already exists (status: {}).",
-            container_name,
-            status
+            container_name, status
         );
 
         // Check if we're in an interactive terminal
@@ -358,7 +358,7 @@ impl<'a> LifecycleOperations<'a> {
                 MESSAGES.docker_container_exists_stopped
             };
 
-            vm_println!(
+            info!(
                 "{}",
                 msg!(MESSAGES.docker_container_exists_prompt, option1 = option1)
             );
@@ -371,21 +371,21 @@ impl<'a> LifecycleOperations<'a> {
             match input.trim() {
                 "1" => {
                     if is_running {
-                        vm_success!("Using existing running container.");
+                        info!("Using existing running container.");
                         Ok(())
                     } else {
-                        vm_println!("{}", MESSAGES.docker_container_starting);
+                        info!("{}", MESSAGES.docker_container_starting);
                         self.start_container(None)
                     }
                 }
                 "2" => {
-                    vm_println!("{}", MESSAGES.docker_container_recreating);
+                    info!("{}", MESSAGES.docker_container_recreating);
                     self.destroy_container(None)?;
                     // Continue with creation below
                     self.create_container()
                 }
                 _ => {
-                    vm_error!("Operation cancelled.");
+                    error!("Operation cancelled.");
                     Ok(())
                 }
             }
@@ -407,14 +407,13 @@ impl<'a> LifecycleOperations<'a> {
 
         // Check if it's running
         let is_running = DockerOps::is_container_running(&container_name)
-            .map_err(|e| vm_warning!("Failed to check running containers (continuing): {}", e))
+            .map_err(|e| warn!("Failed to check running containers (continuing): {}", e))
             .unwrap_or(false);
 
         let status = if is_running { "running" } else { "stopped" };
-        vm_warning!(
+        warn!(
             "Container '{}' already exists (status: {}).",
-            container_name,
-            status
+            container_name, status
         );
 
         // Check if we're in an interactive terminal
@@ -425,7 +424,7 @@ impl<'a> LifecycleOperations<'a> {
                 MESSAGES.docker_container_exists_stopped
             };
 
-            vm_println!(
+            info!(
                 "{}",
                 msg!(MESSAGES.docker_container_exists_prompt, option1 = option1)
             );
@@ -438,21 +437,21 @@ impl<'a> LifecycleOperations<'a> {
             match input.trim() {
                 "1" => {
                     if is_running {
-                        vm_success!("Using existing running container.");
+                        info!("Using existing running container.");
                         Ok(())
                     } else {
-                        vm_println!("{}", MESSAGES.docker_container_starting);
+                        info!("{}", MESSAGES.docker_container_starting);
                         self.start_container(Some(&container_name))
                     }
                 }
                 "2" => {
-                    vm_println!("{}", MESSAGES.docker_container_recreating);
+                    info!("{}", MESSAGES.docker_container_recreating);
                     self.destroy_container(Some(&container_name))?;
                     // Continue with creation below
                     self.create_container_with_instance(instance_name)
                 }
                 _ => {
-                    vm_error!("Operation cancelled.");
+                    error!("Operation cancelled.");
                     Ok(())
                 }
             }

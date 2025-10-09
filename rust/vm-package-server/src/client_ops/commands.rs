@@ -20,9 +20,8 @@ pub fn add_package(server_url: &str, type_filter: Option<&str>) -> Result<()> {
     // Check if server is running, if not use local storage
     let use_local = !client.is_server_running();
     if use_local {
-        info!("Server not running, adding packages to local storage");
-        println!("ℹ️  Server not running, adding packages to local storage");
-        println!();
+        info!("ℹ️  Server not running, adding packages to local storage");
+        info!("");
     }
 
     // Detect all package types
@@ -58,21 +57,20 @@ pub fn add_package(server_url: &str, type_filter: Option<&str>) -> Result<()> {
     // Display what we're going to build
     if packages_to_build.len() == 1 {
         let pkg = &packages_to_build[0];
-        info!(package_type = ?pkg.package_type, package_name = %pkg.name, "Adding package to server");
-        println!("📦 {} package detected: {}", pkg.package_type, pkg.name);
+        info!(package_type = ?pkg.package_type, package_name = %pkg.name, "📦 {} package detected: {}", pkg.package_type, pkg.name);
     } else {
-        println!("📦 Multiple packages detected:");
+        info!("📦 Multiple packages detected:");
         for pkg in &packages_to_build {
-            println!("  • {} ({})", pkg.name, pkg.package_type);
+            info!("  • {} ({})", pkg.name, pkg.package_type);
         }
-        println!();
+        info!("");
     }
 
     // Build and upload each package
     let mut results = Vec::new();
     for (i, package_info) in packages_to_build.iter().enumerate() {
         if packages_to_build.len() > 1 {
-            println!(
+            info!(
                 "[{}/{}] Building {} package: {}",
                 i + 1,
                 packages_to_build.len(),
@@ -95,14 +93,14 @@ pub fn add_package(server_url: &str, type_filter: Option<&str>) -> Result<()> {
             Ok(_) => {
                 results.push((package_info.clone(), true));
                 if packages_to_build.len() > 1 {
-                    println!("  ✅ {} successfully published", package_info.name);
+                    info!("  ✅ {} successfully published", package_info.name);
                 }
             }
             Err(e) => {
                 results.push((package_info.clone(), false));
                 error!(package_name = %package_info.name, error = %e, "Failed to publish package");
                 if packages_to_build.len() > 1 {
-                    println!("  ❌ {} failed to publish: {}", package_info.name, e);
+                    error!("  ❌ {} failed to publish: {}", package_info.name, e);
                 } else {
                     return Err(e);
                 }
@@ -112,28 +110,28 @@ pub fn add_package(server_url: &str, type_filter: Option<&str>) -> Result<()> {
 
     // Summary for multiple packages
     if packages_to_build.len() > 1 {
-        println!();
-        println!("📋 Publishing Summary:");
+        info!("");
+        info!("📋 Publishing Summary:");
         let successful = results.iter().filter(|(_, success)| *success).count();
         let failed = results.len() - successful;
 
         for (package_info, success) in &results {
             let status = if *success { "✅" } else { "❌" };
-            println!(
+            info!(
                 "  {} {} ({})",
                 status, package_info.name, package_info.package_type
             );
         }
 
-        println!();
+        info!("");
         if failed > 0 {
-            println!(
+            error!(
                 "❌ {} packages failed, {} packages succeeded",
                 failed, successful
             );
             anyhow::bail!("Some packages failed to publish");
         } else {
-            println!("✨ All {} packages published successfully!", successful);
+            info!("✨ All {} packages published successfully!", successful);
         }
     }
 
@@ -191,11 +189,11 @@ fn select_package_types_interactive(detected_types: &[PackageType]) -> Result<Ve
         .map(|t| format!("{} package", t))
         .collect();
 
-    println!("🔍 Multiple package types detected in current directory:");
+    info!("🔍 Multiple package types detected in current directory:");
     for (i, package_type) in detected_types.iter().enumerate() {
-        println!("  {}. {} package", i + 1, package_type);
+        info!("  {}. {} package", i + 1, package_type);
     }
-    println!();
+    info!("");
 
     let selections = MultiSelect::with_theme(&ColorfulTheme::default())
         .with_prompt("Select which package types to publish (Space to select, Enter to confirm)")
@@ -216,8 +214,7 @@ fn select_package_types_interactive(detected_types: &[PackageType]) -> Result<Ve
 }
 
 pub fn add_python_package_local(package_name: &str) -> Result<()> {
-    info!(package_name = %package_name, "Building Python package for local storage");
-    println!("🔨 Building Python package...");
+    info!(package_name = %package_name, "🔨 Building Python package for local storage");
 
     // Build the package
     let package_files = build_python_package()?;
@@ -230,13 +227,12 @@ pub fn add_python_package_local(package_name: &str) -> Result<()> {
         crate::local_storage::add_pypi_package_local(&package_file, &data_dir)?;
     }
 
-    println!("✅ {} successfully added to local storage", package_name);
+    info!("✅ {} successfully added to local storage", package_name);
     Ok(())
 }
 
 pub fn add_npm_package_local(package_name: &str) -> Result<()> {
-    info!(package_name = %package_name, "Building NPM package for local storage");
-    println!("🔨 Building NPM package...");
+    info!(package_name = %package_name, "🔨 Building NPM package for local storage");
 
     // Build the package and get metadata (reuse existing build logic)
     let (tarball_file, metadata) = build_npm_package()?;
@@ -250,13 +246,12 @@ pub fn add_npm_package_local(package_name: &str) -> Result<()> {
     // Clean up the tarball file
     let _ = std::fs::remove_file(&tarball_file);
 
-    println!("✅ {} successfully added to local storage", package_name);
+    info!("✅ {} successfully added to local storage", package_name);
     Ok(())
 }
 
 pub fn add_cargo_package_local(package_name: &str) -> Result<()> {
-    info!(package_name = %package_name, "Building Cargo package for local storage");
-    println!("🔨 Building Cargo package...");
+    info!(package_name = %package_name, "🔨 Building Cargo package for local storage");
 
     // Build the package (reuse existing build logic)
     let crate_file = build_cargo_package()?;
@@ -267,19 +262,17 @@ pub fn add_cargo_package_local(package_name: &str) -> Result<()> {
     // Add to local storage
     crate::local_storage::add_cargo_package_local(&crate_file, &data_dir)?;
 
-    println!("✅ {} successfully added to local storage", package_name);
+    info!("✅ {} successfully added to local storage", package_name);
     Ok(())
 }
 
 pub fn add_python_package(client: &PackageServerClient, package_name: &str) -> Result<()> {
-    info!(package_name = %package_name, "Building Python package");
-    println!("🔨 Building Python package...");
+    info!(package_name = %package_name, "🔨 Building Python package...");
 
     // Build the package using the common builder
     let package_files = PythonBuilder.build()?;
 
-    info!("Uploading Python package to server");
-    println!("📤 Uploading to package server...");
+    info!("📤 Uploading to package server...");
 
     // Upload all built files
     for path in package_files {
@@ -288,19 +281,17 @@ pub fn add_python_package(client: &PackageServerClient, package_name: &str) -> R
     }
 
     info!(package_name = %package_name, "Python package uploaded successfully");
-    println!("📋 Install with: pip install {}", package_name);
+    info!("📋 Install with: pip install {}", package_name);
     Ok(())
 }
 
 pub fn add_npm_package(client: &PackageServerClient, package_name: &str) -> Result<()> {
-    info!(package_name = %package_name, "Building NPM package");
-    println!("🔨 Building NPM package...");
+    info!(package_name = %package_name, "🔨 Building NPM package...");
 
     // Build the package using the common builder
     let (tarball_path, metadata) = NpmBuilder.build()?;
 
-    info!("Publishing NPM package to server");
-    println!("📤 Publishing to package server...");
+    info!("📤 Publishing to package server...");
 
     // Read tarball data for upload
     let tarball_data = fs::read(&tarball_path)?;
@@ -310,23 +301,21 @@ pub fn add_npm_package(client: &PackageServerClient, package_name: &str) -> Resu
     let _ = fs::remove_file(&tarball_path);
 
     info!(package_name = %package_name, "NPM package published successfully");
-    println!("📋 Install with: npm install {}", package_name);
+    info!("📋 Install with: npm install {}", package_name);
     Ok(())
 }
 
 pub fn add_cargo_package(client: &PackageServerClient, package_name: &str) -> Result<()> {
-    info!(package_name = %package_name, "Building Cargo package");
-    println!("🔨 Building Cargo package...");
+    info!(package_name = %package_name, "🔨 Building Cargo package...");
 
     // Build the package using the common builder
     let crate_file = CargoBuilder.build()?;
 
-    info!("Publishing Cargo crate to server");
-    println!("📤 Publishing to package server...");
+    info!("📤 Publishing to package server...");
     client.upload_cargo_crate(&crate_file)?;
 
     info!(package_name = %package_name, "Cargo crate published successfully");
-    println!("📋 Install with: cargo add {}", package_name);
+    info!("📋 Install with: cargo add {}", package_name);
     Ok(())
 }
 
@@ -334,7 +323,7 @@ fn remove_package_local(force: bool) -> Result<()> {
     let data_dir = vm_core::project::get_package_data_dir()?;
 
     if force {
-        println!("🔍 Listing available packages from local storage...");
+        info!("🔍 Listing available packages from local storage...");
 
         // List all packages from local storage
         let packages = crate::local_storage::list_local_packages(&data_dir)?;
@@ -347,15 +336,15 @@ fn remove_package_local(force: bool) -> Result<()> {
         }
 
         if all_packages.is_empty() {
-            println!("📦 No packages found in local storage");
+            info!("📦 No packages found in local storage");
             return Ok(());
         }
 
-        println!("📦 Available packages:");
+        info!("📦 Available packages:");
         for (i, (pkg_type, pkg_name)) in all_packages.iter().enumerate() {
-            println!("  {}. {} ({})", i + 1, pkg_name, pkg_type);
+            info!("  {}. {} ({})", i + 1, pkg_name, pkg_type);
         }
-        println!();
+        info!("");
 
         print!("Enter package numbers to delete (comma-separated) or 'all': ");
         io::stdout().flush()?;
@@ -379,7 +368,7 @@ fn remove_package_local(force: bool) -> Result<()> {
         };
 
         if packages_to_delete.is_empty() {
-            println!("❌ No valid packages selected");
+            info!("❌ No valid packages selected");
             return Ok(());
         }
 
@@ -387,30 +376,30 @@ fn remove_package_local(force: bool) -> Result<()> {
             match pkg_type.as_str() {
                 "pypi" => {
                     match crate::local_storage::remove_pypi_package_local(&pkg_name, &data_dir) {
-                        Ok(_) => println!("✅ Removed Python package: {}", pkg_name),
+                        Ok(_) => info!("✅ Removed Python package: {}", pkg_name),
                         Err(e) => {
-                            println!("❌ Failed to remove Python package {}: {}", pkg_name, e)
+                            error!("❌ Failed to remove Python package {}: {}", pkg_name, e)
                         }
                     }
                 }
                 "npm" => {
                     match crate::local_storage::remove_npm_package_local(&pkg_name, &data_dir) {
-                        Ok(_) => println!("✅ Removed NPM package: {}", pkg_name),
-                        Err(e) => println!("❌ Failed to remove NPM package {}: {}", pkg_name, e),
+                        Ok(_) => info!("✅ Removed NPM package: {}", pkg_name),
+                        Err(e) => error!("❌ Failed to remove NPM package {}: {}", pkg_name, e),
                     }
                 }
                 "cargo" => {
                     match crate::local_storage::remove_cargo_package_local(&pkg_name, &data_dir) {
-                        Ok(_) => println!("✅ Removed Cargo crate: {}", pkg_name),
-                        Err(e) => println!("❌ Failed to remove Cargo crate {}: {}", pkg_name, e),
+                        Ok(_) => info!("✅ Removed Cargo crate: {}", pkg_name),
+                        Err(e) => error!("❌ Failed to remove Cargo crate {}: {}", pkg_name, e),
                     }
                 }
-                _ => println!("❌ Unknown package type: {}", pkg_type),
+                _ => error!("❌ Unknown package type: {}", pkg_type),
             }
         }
     } else {
         // Interactive mode for local packages
-        println!("🔍 Scanning current directory for packages to remove...");
+        info!("🔍 Scanning current directory for packages to remove...");
 
         let detected_types = detect_package_types()?;
         if detected_types.is_empty() {
@@ -424,8 +413,8 @@ fn remove_package_local(force: bool) -> Result<()> {
             let package_name = get_package_name(&package_type)?;
 
             match package_type.remove_package_local(&package_name, &data_dir) {
-                Ok(_) => println!("✅ Removed {} package: {}", package_type, package_name),
-                Err(e) => println!(
+                Ok(_) => info!("✅ Removed {} package: {}", package_type, package_name),
+                Err(e) => error!(
                     "❌ Failed to remove {} package {}: {}",
                     package_type, package_name, e
                 ),
@@ -443,38 +432,37 @@ pub fn remove_package(server_url: &str, force: bool) -> Result<()> {
     // Check if server is running, if not use local storage
     let use_local = !client.is_server_running();
     if use_local {
-        info!("Server not running, removing packages from local storage");
-        println!("ℹ️  Server not running, removing packages from local storage");
-        println!();
+        info!("ℹ️  Server not running, removing packages from local storage");
+        info!("");
         return remove_package_local(force);
     }
 
     // If force mode is enabled, we need to list packages and let user specify which to delete
     if force {
-        println!("🔍 Listing available packages...");
+        info!("🔍 Listing available packages...");
 
         // List all packages
         let packages = client.get_all_packages()?;
 
-        println!("Available packages:");
+        info!("Available packages:");
         if let Some(cargo_packages) = packages.get("cargo").and_then(|p| p.as_array()) {
             for package in cargo_packages {
-                println!("  cargo: {}", package.as_str().unwrap_or("unknown"));
+                info!("  cargo: {}", package.as_str().unwrap_or("unknown"));
             }
         }
         if let Some(pypi_packages) = packages.get("pypi").and_then(|p| p.as_array()) {
             for package in pypi_packages {
-                println!("  pypi: {}", package.as_str().unwrap_or("unknown"));
+                info!("  pypi: {}", package.as_str().unwrap_or("unknown"));
             }
         }
         if let Some(npm_packages) = packages.get("npm").and_then(|p| p.as_array()) {
             for package in npm_packages {
-                println!("  npm: {}", package.as_str().unwrap_or("unknown"));
+                info!("  npm: {}", package.as_str().unwrap_or("unknown"));
             }
         }
 
-        println!("❌ Force mode requires specifying package details directly.");
-        println!("Use the interactive mode (without --force) to select packages to remove.");
+        info!("❌ Force mode requires specifying package details directly.");
+        info!("Use the interactive mode (without --force) to select packages to remove.");
         return Ok(());
     }
 
@@ -496,14 +484,14 @@ pub fn remove_package(server_url: &str, force: bool) -> Result<()> {
 
     // Fetch versions
     info!(package_name = %package_name, "Fetching package versions");
-    println!("📋 Fetching versions for {}...", package_name);
+    info!("📋 Fetching versions for {}...", package_name);
 
     let versions = package_type.get_versions(&client, &package_name)?;
 
     if versions.is_empty() {
         warn!(package_name = %package_name, "No versions found for package");
-        println!("❌ No versions found for package '{}'", package_name);
-        println!("   The package may not exist or the server may not have any versions.");
+        info!("❌ No versions found for package '{}'", package_name);
+        info!("   The package may not exist or the server may not have any versions.");
         return Ok(());
     }
 
@@ -575,7 +563,7 @@ pub fn remove_package(server_url: &str, force: bool) -> Result<()> {
         .interact()?
     {
         info!("Package deletion cancelled by user");
-        println!("❌ Operation cancelled");
+        info!("❌ Operation cancelled");
         return Ok(());
     }
 
@@ -588,8 +576,7 @@ pub fn remove_package(server_url: &str, force: bool) -> Result<()> {
         package_type.delete_package(&client, &package_name)?;
     }
 
-    info!("Package deletion completed successfully");
-    println!("✨ Operation completed successfully!");
+    info!("✨ Operation completed successfully!");
     Ok(())
 }
 
@@ -602,51 +589,49 @@ pub fn list_packages(server_url: &str) -> Result<()> {
         info!(server_url = %server_url, "Fetching packages from server");
         client.list_all_packages()?
     } else {
-        info!("Server not running, reading packages from local storage");
-        println!("ℹ️  Server not running, listing packages from local storage");
-        println!();
+        info!("ℹ️  Server not running, listing packages from local storage");
+        info!("");
         let data_dir = vm_core::project::get_package_data_dir()?;
         crate::local_storage::list_local_packages(&data_dir)?
     };
 
-    info!("Listing all packages");
-    println!("📦 Packages:");
-    println!();
+    info!("📦 Packages:");
+    info!("");
 
     if let Some(pypi_packages) = packages.get("pypi") {
-        println!("🐍 Python packages:");
+        info!("🐍 Python packages:");
         if pypi_packages.is_empty() {
-            println!("  None");
+            info!("  None");
         } else {
             for pkg in pypi_packages {
-                println!("  • {}", pkg);
+                info!("  • {}", pkg);
             }
         }
-        println!();
+        info!("");
     }
 
     if let Some(npm_packages) = packages.get("npm") {
-        println!("📦 NPM packages:");
+        info!("📦 NPM packages:");
         if npm_packages.is_empty() {
-            println!("  None");
+            info!("  None");
         } else {
             for pkg in npm_packages {
-                println!("  • {}", pkg);
+                info!("  • {}", pkg);
             }
         }
-        println!();
+        info!("");
     }
 
     if let Some(cargo_packages) = packages.get("cargo") {
-        println!("🦀 Cargo crates:");
+        info!("🦀 Cargo crates:");
         if cargo_packages.is_empty() {
-            println!("  None");
+            info!("  None");
         } else {
             for pkg in cargo_packages {
-                println!("  • {}", pkg);
+                info!("  • {}", pkg);
             }
         }
-        println!();
+        info!("");
     }
 
     Ok(())
@@ -658,17 +643,16 @@ pub fn show_status(server_url: &str) -> Result<()> {
 
     if !client.is_server_running() {
         warn!(server_url = %server_url, "Package server is not running");
-        println!("❌ Package server is not running at {}", server_url);
-        println!("   Hint: Enable this service in vm.yaml for automatic startup (services.package_registry.enabled: true)");
+        info!("❌ Package server is not running at {}", server_url);
+        info!("   Hint: Enable this service in vm.yaml for automatic startup (services.package_registry.enabled: true)");
         return Ok(());
     }
 
-    info!(server_url = %server_url, "Package server is running");
-    println!("✅ Package server is running at {}", server_url);
+    info!(server_url = %server_url, "✅ Package server is running at {}", server_url);
 
     if let Ok(status) = client.get_server_status() {
         debug!(status = ?status, "Retrieved server status");
-        println!("📊 Server status: {}", status);
+        info!("📊 Server status: {}", status);
     }
 
     // Also show package counts
@@ -678,12 +662,12 @@ pub fn show_status(server_url: &str) -> Result<()> {
         let cargo_count = packages.get("cargo").map(|p| p.len()).unwrap_or(0);
         let total = pypi_count + npm_count + cargo_count;
 
-        println!();
-        println!("📈 Package counts:");
-        println!("  Python: {}", pypi_count);
-        println!("  NPM:    {}", npm_count);
-        println!("  Cargo:  {}", cargo_count);
-        println!("  Total:  {}", total);
+        info!("");
+        info!("📈 Package counts:");
+        info!("  Python: {}", pypi_count);
+        info!("  NPM:    {}", npm_count);
+        info!("  Cargo:  {}", cargo_count);
+        info!("  Total:  {}", total);
     }
 
     Ok(())

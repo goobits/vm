@@ -6,14 +6,13 @@ use crate::{
     Provider, ResourceUsage, ServiceStatus, TempProvider, TempVmState, VmError, VmStatusReport,
 };
 use duct::cmd;
-use log::{info, warn};
 use serde::Deserialize;
 use std::path::Path;
+use tracing::{error, info, warn};
 use vm_cli::msg;
 use vm_config::config::VmConfig;
 use vm_core::command_stream::{is_tool_installed, stream_command};
 use vm_core::error::Result;
-use vm_core::{vm_error, vm_println};
 use vm_messages::messages::MESSAGES;
 
 // Constants for Tart provider
@@ -173,8 +172,8 @@ impl TartProvider {
             let list_str = String::from_utf8_lossy(&output.stdout);
             if list_str.contains(vm_name) {
                 ProgressReporter::task(&main_phase, "VM already exists.");
-                vm_println!("{}", msg!(MESSAGES.provider_tart_vm_exists, name = vm_name));
-                vm_println!("{}", MESSAGES.provider_tart_recreate_hint);
+                info!("{}", msg!(MESSAGES.provider_tart_vm_exists, name = vm_name));
+                info!("{}", MESSAGES.provider_tart_recreate_hint);
                 ProgressReporter::finish_phase(&main_phase, "Skipped creation.");
                 return Ok(());
             }
@@ -267,8 +266,8 @@ impl TartProvider {
 
         ProgressReporter::finish_phase(&main_phase, "Environment ready.");
 
-        vm_println!("{}", MESSAGES.provider_tart_created_success);
-        vm_println!("{}", MESSAGES.provider_tart_connect_hint);
+        info!("{}", MESSAGES.provider_tart_created_success);
+        info!("{}", MESSAGES.provider_tart_connect_hint);
         Ok(())
     }
 }
@@ -373,17 +372,17 @@ impl Provider for TartProvider {
         // Check if log file exists before attempting to tail
         if !Path::new(&log_path).exists() {
             let error_msg = format!("Log file not found at: {}", log_path);
-            vm_error!("{}", error_msg);
-            vm_println!("{}", MESSAGES.provider_logs_unavailable);
-            vm_println!(
+            error!("{}", error_msg);
+            info!("{}", MESSAGES.provider_logs_unavailable);
+            info!(
                 "{}",
                 msg!(MESSAGES.provider_logs_expected_location, name = vm_name)
             );
             return Err(VmError::Internal(error_msg));
         }
 
-        vm_println!("{}", msg!(MESSAGES.provider_logs_showing, path = &log_path));
-        vm_println!("{}", MESSAGES.press_ctrl_c_to_stop);
+        info!("{}", msg!(MESSAGES.provider_logs_showing, path = &log_path));
+        info!("{}", MESSAGES.press_ctrl_c_to_stop);
 
         // Use tail -f to follow the log file
         stream_command("tail", &["-f", &log_path])
@@ -406,11 +405,11 @@ impl Provider for TartProvider {
                 let list_output = String::from_utf8_lossy(&output.stdout);
                 for line in list_output.lines() {
                     if line.contains(&vm_name) {
-                        vm_println!("{}", line);
+                        info!("{}", line);
                         return Ok(());
                     }
                 }
-                vm_println!("{}", msg!(MESSAGES.provider_vm_not_found, name = vm_name));
+                info!("{}", msg!(MESSAGES.provider_vm_not_found, name = vm_name));
                 Ok(())
             }
             None => {
@@ -484,7 +483,7 @@ impl Provider for TartProvider {
 
         provisioner.provision(&self.config)?;
 
-        vm_println!("{}", MESSAGES.provision_success);
+        info!("{}", MESSAGES.provision_success);
         Ok(())
     }
 

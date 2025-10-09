@@ -5,6 +5,7 @@ use std::io::{BufRead, BufReader};
 // External crates
 use crate::error::Result;
 use duct::cmd;
+use tracing::info;
 use which::which;
 
 /// Trait for progress parsers (defined here to avoid circular dependencies)
@@ -20,7 +21,7 @@ pub fn stream_command<A: AsRef<OsStr>>(command: &str, args: &[A]) -> Result<()> 
     let reader = cmd(command, args).stderr_to_stdout().reader()?;
     let lines = BufReader::new(reader).lines();
     for line in lines {
-        println!("{}", line?);
+        info!("{}", line?);
     }
     Ok(())
 }
@@ -39,7 +40,7 @@ pub fn stream_command_with_progress<A: AsRef<OsStr>>(
         if let Some(ref mut p) = parser {
             p.parse_line(&line);
         } else {
-            println!("{}", line);
+            info!("{}", line);
         }
     }
 

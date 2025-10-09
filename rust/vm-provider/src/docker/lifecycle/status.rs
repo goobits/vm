@@ -1,6 +1,7 @@
 //! Container status reporting and listing
 use super::LifecycleOperations;
 use crate::{docker::command::DockerCommand, ResourceUsage, ServiceStatus, VmStatusReport};
+use tracing::info;
 use vm_core::error::{Result, VmError};
 
 impl<'a> LifecycleOperations<'a> {
@@ -55,8 +56,8 @@ impl<'a> LifecycleOperations<'a> {
             }
         }
 
-        println!("vm list");
-        println!("-------");
+        info!("vm list");
+        info!("-------");
 
         let mut total_cpu = 0.0;
         let mut total_memory_mb = 0u64;
@@ -105,7 +106,7 @@ impl<'a> LifecycleOperations<'a> {
                     display_name
                 };
 
-                println!(
+                info!(
                     "{} {:<20} {:>7} {:>8} {:<13} [{}]",
                     icon, display_name, cpu_display, mem_display, ports_display, duration
                 );
@@ -120,7 +121,7 @@ impl<'a> LifecycleOperations<'a> {
                 format!("{}MB", total_memory_mb)
             };
 
-            println!(
+            info!(
                 "\nTotal: {:.1}% CPU, {} RAM",
                 total_cpu, total_memory_display
             );

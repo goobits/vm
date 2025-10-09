@@ -7,9 +7,8 @@ use colored::Colorize;
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
 use reqwest::Client;
 use std::collections::HashMap;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 use vm_cli::msg;
-use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
 
 /// Parse a scope string into a SecretScope enum
@@ -61,7 +60,7 @@ pub async fn add_secret(
         .context("Failed to send request to auth proxy")?;
 
     if response.status().is_success() {
-        vm_println!("{}", msg!(MESSAGES.auth_secret_added, name = name));
+        info!("{}", msg!(MESSAGES.auth_secret_added, name = name));
     } else {
         let status = response.status();
         let error_text = response.text().await.unwrap_or_default();
@@ -97,11 +96,11 @@ pub async fn list_secrets(server_url: &str, show_values: bool) -> Result<()> {
     let list: SecretListResponse = response.json().await.context("Failed to parse response")?;
 
     if list.secrets.is_empty() {
-        vm_println!("{}", MESSAGES.auth_secrets_empty);
+        info!("{}", MESSAGES.auth_secrets_empty);
         return Ok(());
     }
 
-    vm_println!(
+    info!(
         "{}",
         msg!(
             MESSAGES.auth_secrets_list_header,
@@ -114,7 +113,7 @@ pub async fn list_secrets(server_url: &str, show_values: bool) -> Result<()> {
     }
 
     if !show_values {
-        vm_println!("{}", MESSAGES.auth_secrets_show_values_hint);
+        info!("{}", MESSAGES.auth_secrets_show_values_hint);
     }
 
     Ok(())
@@ -130,7 +129,7 @@ pub async fn remove_secret(server_url: &str, name: &str, force: bool) -> Result<
             .interact()?;
 
         if !confirm {
-            vm_println!("{}", MESSAGES.auth_remove_cancelled);
+            info!("{}", MESSAGES.auth_remove_cancelled);
             return Ok(());
         }
     }
@@ -147,7 +146,7 @@ pub async fn remove_secret(server_url: &str, name: &str, force: bool) -> Result<
         .context("Failed to send request to auth proxy")?;
 
     if response.status().is_success() {
-        vm_println!("{}", msg!(MESSAGES.auth_secret_removed, name = name));
+        info!("{}", msg!(MESSAGES.auth_secret_removed, name = name));
     } else {
         let status = response.status();
         let error_text = response.text().await.unwrap_or_default();
@@ -281,7 +280,7 @@ async fn print_secret_summary(
         SecretScope::Instance(i) => format!("Instance: {}", i).bright_magenta(),
     };
 
-    print!(
+    let mut summary = format!(
         "  {} {} {}",
         "•".bright_green(),
         secret.name.bright_white(),
@@ -297,20 +296,20 @@ async fn print_secret_summary(
                 } else {
                     value
                 };
-                print!(" = {}", masked_value.bright_cyan());
+                summary.push_str(&format!(" = {}", masked_value.bright_cyan()));
             }
             Err(e) => {
                 warn!("Failed to fetch value for {}: {}", secret.name, e);
-                print!(" = {}", "<error>".bright_red());
+                summary.push_str(&format!(" = {}", "<error>".bright_red()));
             }
         }
     }
 
     if let Some(desc) = &secret.description {
-        print!(" - {}", desc.dimmed());
+        summary.push_str(&format!(" - {}", desc.dimmed()));
     }
 
-    println!();
+    info!("{}", summary);
     Ok(())
 }
 
@@ -357,7 +356,7 @@ pub async fn start_server_if_needed(port: u16) -> Result<()> {
         .interact()?;
 
     if confirm {
-        vm_println!("{}", MESSAGES.auth_server_starting);
+        info!("{}", MESSAGES.auth_server_starting);
 
         let data_dir = get_auth_data_dir()?;
 
@@ -366,7 +365,7 @@ pub async fn start_server_if_needed(port: u16) -> Result<()> {
 
         // Verify it started
         if check_server_running(port).await {
-            vm_println!("{}", MESSAGES.auth_server_started);
+            info!("{}", MESSAGES.auth_server_started);
         } else {
             return Err(anyhow!("Failed to start auth proxy server"));
         }
@@ -385,6 +384,7 @@ mod tests {
     use std::time::Duration;
     use tempfile::TempDir;
     use tokio::task;
+    use tracing::error;
 
     fn find_available_port() -> anyhow::Result<u16> {
         let listener = TcpListener::bind("127.0.0.1:0")?;
@@ -498,14 +498,14 @@ mod tests {
         )
         .await;
         if let Err(e) = &result {
-            eprintln!("add_secret failed: {}", e);
+            error!("add_secret failed: {}", e);
         }
         assert!(result.is_ok());
 
         // List secrets
         let result = list_secrets_with_token(&server_url, &auth_token).await;
         if let Err(e) = &result {
-            eprintln!("list_secrets failed: {}", e);
+            error!("list_secrets failed: {}", e);
         }
         assert!(result.is_ok());
     }

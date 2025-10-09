@@ -52,18 +52,15 @@ async fn run_server_internal(
     data_dir: PathBuf,
     shutdown_receiver: Option<tokio::sync::oneshot::Receiver<()>>,
 ) -> Result<()> {
-    info!("Starting Goobits Package Server");
-    println!("🚀 Starting Goobits Package Server...");
+    info!("🚀 Starting Goobits Package Server...");
 
     if let Err(e) = validation::validate_hostname(&host) {
-        error!(host = %host, error = %e, "Invalid host parameter");
-        eprintln!("❌ Invalid host parameter: {}", e);
+        error!(host = %host, error = %e, "❌ Invalid host parameter: {}", e);
         std::process::exit(1);
     }
 
     if let Err(e) = validation::validate_docker_port(port) {
-        error!(port = %port, error = %e, "Invalid port parameter");
-        eprintln!("❌ Invalid port parameter: {}", e);
+        error!(port = %port, error = %e, "❌ Invalid port parameter: {}", e);
         std::process::exit(1);
     }
 
@@ -74,17 +71,15 @@ async fn run_server_internal(
             match std::env::current_dir() {
                 Ok(current) => current.join(&data_dir),
                 Err(e) => {
-                    error!(error = %e, "Failed to get current directory");
-                    eprintln!("❌ Failed to get current directory: {}", e);
+                    error!(error = %e, "❌ Failed to get current directory: {}", e);
                     std::process::exit(1);
                 }
             }
         }
     };
 
-    info!(data_dir = %abs_data_dir.display(), "Using data directory");
+    info!(data_dir = %abs_data_dir.display(), "📂 Using data directory: {}", abs_data_dir.display());
     info!(host = %host, port = %port, "Starting server");
-    println!("📂 Using data directory: {}", abs_data_dir.display());
 
     // Create required components for AppState
     let upstream_config = UpstreamConfig::default();
@@ -144,20 +139,18 @@ async fn run_server_internal(
         anyhow::anyhow!("Failed to bind to {}:{}: {}", host, port, e)
     })?;
 
-    println!("✅ Server is running on http://{}:{}", host, port);
-    println!();
-    println!("🌐 Server is accessible at:");
-    println!("   Local:      http://localhost:{}", port);
-    println!("   Network:    http://<your-ip>:{}", port);
-    println!();
-    println!("🔧 Configure other machines:");
-    println!("   curl http://<your-ip>:{}/setup.sh | bash", port);
-    println!();
-    println!("📋 Quick commands:");
-    println!("   Status:     curl http://localhost:{}/status", port);
-    println!("   Health:     curl http://localhost:{}/health", port);
-    println!("   Setup:      curl http://localhost:{}/setup.sh", port);
-
+    info!("✅ Server is running on http://{}:{}", host, port);
+    info!("🌐 Server is accessible at:");
+    info!("   Local:      http://localhost:{}", port);
+    info!("   Network:    http://<your-ip>:{}", port);
+    info!("");
+    info!("🔧 Configure other machines:");
+    info!("   curl http://<your-ip>:{}/setup.sh | bash", port);
+    info!("");
+    info!("📋 Quick commands:");
+    info!("   Status:     curl http://localhost:{}/status", port);
+    info!("   Health:     curl http://localhost:{}/health", port);
+    info!("   Setup:      curl http://localhost:{}/setup.sh", port);
     info!("Server listening on {}", addr);
 
     match shutdown_receiver {

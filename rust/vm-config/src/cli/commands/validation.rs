@@ -2,8 +2,8 @@
 use std::path::{Path, PathBuf};
 
 // External crates
+use tracing::{error, info};
 use vm_core::error::{Result, VmError};
-use vm_core::{vm_error, vm_println, vm_success};
 
 // Internal imports
 use crate::cli::formatting::find_vm_config_file;
@@ -12,13 +12,13 @@ use crate::{config::VmConfig, paths};
 pub fn execute_validate(file: Option<PathBuf>, verbose: bool) {
     match load_and_merge_config(file) {
         Ok(_) => {
-            vm_success!("Configuration is valid");
+            info!("✅ Configuration is valid");
             if verbose {
-                vm_println!("Successfully loaded, merged, and validated the configuration.");
+                info!("Successfully loaded, merged, and validated the configuration.");
             }
         }
         Err(e) => {
-            vm_error!("Configuration validation failed: {:#}", e);
+            error!("❌ Configuration validation failed: {:#}", e);
             std::process::exit(1);
         }
     }
@@ -29,11 +29,11 @@ pub fn execute_check_file(file: PathBuf) -> Result<()> {
     use crate::yaml::YamlOperations;
     match YamlOperations::validate_file(&file) {
         Ok(_) => {
-            vm_success!("File is valid YAML");
+            info!("✅ File is valid YAML");
             std::process::exit(0);
         }
         Err(e) => {
-            vm_error!("File validation failed: {}", e);
+            error!("❌ File validation failed: {}", e);
             std::process::exit(1);
         }
     }
