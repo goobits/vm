@@ -39,3 +39,7 @@ structured-output = []
 ignored = [
     "serde_json"  # Used transitively via serde_yaml::from_str
 ]
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.0"
