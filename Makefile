@@ -1,4 +1,4 @@
-.PHONY: help build build-no-bump test clippy fmt check-duplicates check bump-version
+.PHONY: help build build-no-bump test clippy fmt fmt-fix check-duplicates check bump-version quality-gates deny
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -14,7 +14,9 @@ help:
 	@echo "  make test             - Run all tests"
 	@echo "  make clippy           - Run clippy linter"
 	@echo "  make fmt              - Format all code"
+	@echo "  make deny             - Check dependencies (licenses, bans, advisories)"
 	@echo "  make check            - Run fmt + clippy + test"
+	@echo "  make quality-gates    - Run all quality checks (fmt + clippy + deny + test)"
 	@echo "  make check-duplicates - Check for code duplication"
 	@echo ""
 
@@ -33,10 +35,16 @@ test:
 
 # Code quality
 clippy:
-	cargo clippy --workspace
+	cd rust && cargo clippy --workspace --all-targets -- -D warnings
 
 fmt:
-	cargo fmt --all
+	cd rust && cargo fmt --all --check
+
+fmt-fix:
+	cd rust && cargo fmt --all
+
+deny:
+	cd rust && cargo deny check
 
 # Analysis
 check-duplicates:
@@ -46,5 +54,10 @@ check-duplicates:
 bump-version:
 	@./scripts/bump-version.sh
 
-# Common combo
-check: fmt clippy test
+# Quality gates - run all checks before committing
+quality-gates: fmt clippy deny test
+	@echo ""
+	@echo "✅ All quality gates passed!"
+
+# Legacy check target
+check: fmt-fix clippy test

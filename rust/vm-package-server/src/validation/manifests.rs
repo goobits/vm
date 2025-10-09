@@ -287,12 +287,7 @@ mod tests {
         assert!(validate_cargo_upload_structure(payload_size, metadata_size, crate_size).is_ok());
 
         // Payload too large
-        assert!(validate_cargo_upload_structure(
-            MAX_REQUEST_BODY_SIZE + 1,
-            1024,
-            1024
-        )
-        .is_err());
+        assert!(validate_cargo_upload_structure(MAX_REQUEST_BODY_SIZE + 1, 1024, 1024).is_err());
 
         // Metadata too large
         assert!(
