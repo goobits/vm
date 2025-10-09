@@ -6,7 +6,9 @@ use vm_core::command_stream::{stream_command_with_progress, ProgressParser as Co
 use vm_core::error::{Result, VmError};
 use vm_core::vm_error;
 
-use super::{ANSIBLE_PLAYBOOK_PATH, CONTAINER_READINESS_MAX_ATTEMPTS, CONTAINER_READINESS_SLEEP_SECONDS};
+use super::{
+    ANSIBLE_PLAYBOOK_PATH, CONTAINER_READINESS_MAX_ATTEMPTS, CONTAINER_READINESS_SLEEP_SECONDS,
+};
 
 impl<'a> LifecycleOperations<'a> {
     /// Re-provision existing container (public API)
@@ -98,11 +100,6 @@ impl<'a> LifecycleOperations<'a> {
         })?;
 
         Ok(())
-    }
-
-    /// Provision with instance name
-    pub(super) fn provision_container_with_instance(&self, instance_name: &str) -> Result<()> {
-        self.provision_container_with_instance_and_context(instance_name, &ProviderContext::default())
     }
 
     /// Provision container with custom instance name and context

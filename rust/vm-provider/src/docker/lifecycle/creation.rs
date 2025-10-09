@@ -1,14 +1,14 @@
 //! Container creation and setup
+use is_terminal::IsTerminal;
 use std::borrow::Cow;
 use std::fs;
 use std::io::{self, Write};
-use is_terminal::IsTerminal;
 
 use super::LifecycleOperations;
 use crate::{
     audio::MacOSAudioManager,
     context::ProviderContext,
-    docker::{build::BuildOperations, compose::ComposeOperations, DockerOps, ComposeCommand},
+    docker::{build::BuildOperations, compose::ComposeOperations, ComposeCommand, DockerOps},
 };
 use vm_cli::msg;
 use vm_config::config::VmConfig;
@@ -38,8 +38,7 @@ impl<'a> LifecycleOperations<'a> {
                 .as_ref()
                 .is_some_and(|g| g.worktrees.enabled)
         {
-            let compose_ops =
-                ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
+            let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
             if let Some(worktrees_path) = compose_ops.get_worktrees_host_path(context) {
                 std::fs::create_dir_all(&worktrees_path).map_err(|e| {
                     VmError::Filesystem(format!(
@@ -127,8 +126,7 @@ impl<'a> LifecycleOperations<'a> {
         let build_context = build_ops.prepare_build_context()?;
 
         // Step 3: Generate docker-compose.yml with build context and modified config
-        let compose_ops =
-            ComposeOperations::new(&modified_config, self.temp_dir, self.project_dir);
+        let compose_ops = ComposeOperations::new(&modified_config, self.temp_dir, self.project_dir);
         let compose_path = compose_ops.write_docker_compose(&build_context, context)?;
 
         // Step 3: Gather build arguments for packages
@@ -198,8 +196,7 @@ impl<'a> LifecycleOperations<'a> {
                 .as_ref()
                 .is_some_and(|g| g.worktrees.enabled)
         {
-            let compose_ops =
-                ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
+            let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
             if let Some(worktrees_path) = compose_ops.get_worktrees_host_path(context) {
                 std::fs::create_dir_all(&worktrees_path).map_err(|e| {
                     VmError::Filesystem(format!(
@@ -287,8 +284,7 @@ impl<'a> LifecycleOperations<'a> {
         let build_context = build_ops.prepare_build_context()?;
 
         // Step 3: Generate docker-compose.yml with custom instance name
-        let compose_ops =
-            ComposeOperations::new(&modified_config, self.temp_dir, self.project_dir);
+        let compose_ops = ComposeOperations::new(&modified_config, self.temp_dir, self.project_dir);
         let compose_path = compose_ops.write_docker_compose_with_instance(
             &build_context,
             instance_name,

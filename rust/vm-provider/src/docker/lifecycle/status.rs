@@ -1,8 +1,6 @@
 //! Container status reporting and listing
 use super::LifecycleOperations;
-use crate::{
-    docker::command::DockerCommand, ResourceUsage, ServiceStatus, VmStatusReport,
-};
+use crate::{docker::command::DockerCommand, ResourceUsage, ServiceStatus, VmStatusReport};
 use vm_core::error::{Result, VmError};
 
 impl<'a> LifecycleOperations<'a> {
@@ -529,7 +527,9 @@ impl<'a> LifecycleOperations<'a> {
             let service_name = self.identify_service_by_port(port);
             let host_port = self.get_host_port(container_name, port);
             let service_status = match service_name.as_str() {
-                "postgresql" => super::health::check_postgres_status(container_name, port, host_port),
+                "postgresql" => {
+                    super::health::check_postgres_status(container_name, port, host_port)
+                }
                 "redis" => super::health::check_redis_status(container_name, port, host_port),
                 "mongodb" => super::health::check_mongodb_status(container_name, port, host_port),
                 _ => ServiceStatus {

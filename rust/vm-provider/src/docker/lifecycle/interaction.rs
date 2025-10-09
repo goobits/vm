@@ -33,8 +33,7 @@ impl<'a> LifecycleOperations<'a> {
             .and_then(|t| t.shell.as_deref())
             .unwrap_or(DEFAULT_SHELL);
 
-        let target_path =
-            SecurityValidator::validate_relative_path(relative_path, workspace_path)?;
+        let target_path = SecurityValidator::validate_relative_path(relative_path, workspace_path)?;
         let target_dir = target_path.to_string_lossy();
 
         let tty_flag = if io::stdin().is_terminal() && io::stdout().is_terminal() {

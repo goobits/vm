@@ -10,13 +10,13 @@ pub mod packages;
 pub mod provisioning;
 pub mod status;
 
-use crate::{
-    progress::ProgressReporter,
-    TempProvider, TempVmState,
-};
+use crate::{progress::ProgressReporter, TempProvider, TempVmState};
 use std::fs;
 use vm_config::config::VmConfig;
-use vm_core::{command_stream::stream_command, error::{Result, VmError}};
+use vm_core::{
+    command_stream::stream_command,
+    error::{Result, VmError},
+};
 
 use super::{compose::ComposeOperations, ComposeCommand};
 
