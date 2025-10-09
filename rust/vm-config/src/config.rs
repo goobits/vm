@@ -233,7 +233,9 @@ impl PortsConfig {
         }
         ports
     }
-    pub fn has_ports(&self) -> bool { self.range.is_some() }
+    pub fn has_ports(&self) -> bool {
+        self.range.is_some()
+    }
     pub fn is_port_in_range(&self, port: u16) -> bool {
         if let Some(range) = &self.range {
             if range.len() == 2 {
@@ -317,17 +319,26 @@ impl<'de> Deserialize<'de> for MemoryLimit {
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("a positive integer (MB) or \"unlimited\"")
             }
-            fn visit_u32<E>(self, value: u32) -> std::result::Result<Self::Value, E> where E: de::Error {
+            fn visit_u32<E>(self, value: u32) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
                 Ok(MemoryLimit::Limited(value))
             }
-            fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E> where E: de::Error {
+            fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
                 if value <= u32::MAX as u64 {
                     Ok(MemoryLimit::Limited(value as u32))
                 } else {
                     Err(E::custom("memory limit too large (max: 4294967295 MB)"))
                 }
             }
-            fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E> where E: de::Error {
+            fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
                 match value {
                     "unlimited" => Ok(MemoryLimit::Unlimited),
                     _ => Err(E::custom("expected \"unlimited\" for string memory value")),
@@ -345,7 +356,9 @@ impl MemoryLimit {
             MemoryLimit::Unlimited => None,
         }
     }
-    pub fn is_unlimited(&self) -> bool { matches!(self, MemoryLimit::Unlimited) }
+    pub fn is_unlimited(&self) -> bool {
+        matches!(self, MemoryLimit::Unlimited)
+    }
     pub fn to_docker_format(&self) -> Option<String> {
         match self {
             MemoryLimit::Limited(mb) => Some(format!("{}m", mb)),
@@ -374,7 +387,11 @@ pub struct VersionsConfig {
 pub struct ServiceConfig {
     #[serde(default)]
     pub enabled: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_option_string_or_number")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_option_string_or_number"
+    )]
     pub version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub port: Option<u16>,
@@ -447,8 +464,12 @@ pub struct PackageLinkingConfig {
     pub cargo: bool,
 }
 
-fn is_false(b: &bool) -> bool { !b }
-fn default_true() -> bool { true }
+fn is_false(b: &bool) -> bool {
+    !b
+}
+fn default_true() -> bool {
+    true
+}
 
 /// Git worktree configuration settings.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -503,9 +524,10 @@ impl VmConfig {
         let mut errors = Vec::new();
 
         if let Some(provider) = &self.provider {
-            let mut valid_providers = vec!["docker", "vagrant", "tart"];
             #[cfg(feature = "test-helpers")]
-            valid_providers.push("mock");
+            let valid_providers = ["docker", "vagrant", "tart", "mock"];
+            #[cfg(not(feature = "test-helpers"))]
+            let valid_providers = ["docker", "vagrant", "tart"];
 
             if !valid_providers.contains(&provider.as_str()) {
                 errors.push(format!(
@@ -536,13 +558,11 @@ impl VmConfig {
         }
 
         for (service_name, service) in &self.services {
-            if service.enabled {
-                if service.port.is_none() && service_name != "docker" {
-                    errors.push(format!(
-                        "Service '{}' is enabled but has no port specified",
-                        service_name
-                    ));
-                }
+            if service.enabled && service.port.is_none() && service_name != "docker" {
+                errors.push(format!(
+                    "Service '{}' is enabled but has no port specified",
+                    service_name
+                ));
             }
         }
         errors
@@ -618,7 +638,9 @@ impl VmConfig {
             .filter(|(_, service)| {
                 !service.enabled
                     && service.port.is_some()
-                    && service.port.is_some_and(|p| p >= range_start && p <= range_end)
+                    && service
+                        .port
+                        .is_some_and(|p| p >= range_start && p <= range_end)
             })
             .map(|(name, _)| name.clone())
             .collect();

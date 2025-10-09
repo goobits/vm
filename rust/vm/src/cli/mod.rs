@@ -455,12 +455,19 @@ pub enum Command {
 
 #[cfg(test)]
 mod tests {
-    use super::{Args, Command, PkgSubcommand, TempSubcommand, AuthSubcommand, PluginSubcommand};
+    use super::{Args, AuthSubcommand, Command, PkgSubcommand, PluginSubcommand, TempSubcommand};
     use clap::Parser;
 
     #[test]
     fn test_init_command_parsing() {
-        let args = Args::parse_from(["vm", "init", "--file", "/tmp/vm.yaml", "--services", "docker,redis"]);
+        let args = Args::parse_from([
+            "vm",
+            "init",
+            "--file",
+            "/tmp/vm.yaml",
+            "--services",
+            "docker,redis",
+        ]);
         match args.command {
             Command::Init { file, services, .. } => {
                 assert_eq!(file, Some(std::path::PathBuf::from("/tmp/vm.yaml")));
@@ -472,7 +479,14 @@ mod tests {
 
     #[test]
     fn test_create_command_parsing() {
-        let args = Args::parse_from(["vm", "create", "--force", "--instance", "test-vm", "--verbose"]);
+        let args = Args::parse_from([
+            "vm",
+            "create",
+            "--force",
+            "--instance",
+            "test-vm",
+            "--verbose",
+        ]);
         match args.command {
             Command::Create {
                 force,
@@ -500,7 +514,14 @@ mod tests {
 
     #[test]
     fn test_temp_create_command_parsing() {
-        let args = Args::parse_from(["vm", "temp", "create", "--auto-destroy", "./src", "./config:ro"]);
+        let args = Args::parse_from([
+            "vm",
+            "temp",
+            "create",
+            "--auto-destroy",
+            "./src",
+            "./config:ro",
+        ]);
         match args.command {
             Command::Temp { command } => match command {
                 TempSubcommand::Create {
@@ -561,7 +582,16 @@ mod tests {
 
     #[test]
     fn test_exec_command_parsing() {
-        let args = Args::parse_from(["vm", "exec", "--container", "my-vm", "--", "ls", "-la", "/root"]);
+        let args = Args::parse_from([
+            "vm",
+            "exec",
+            "--container",
+            "my-vm",
+            "--",
+            "ls",
+            "-la",
+            "/root",
+        ]);
         match args.command {
             Command::Exec { container, command } => {
                 assert_eq!(container, Some("my-vm".to_string()));
@@ -574,7 +604,10 @@ mod tests {
     #[test]
     fn test_global_flags_parsing() {
         let args = Args::parse_from(["vm", "--config", "/custom/config.yaml", "--debug", "status"]);
-        assert_eq!(args.config, Some(std::path::PathBuf::from("/custom/config.yaml")));
+        assert_eq!(
+            args.config,
+            Some(std::path::PathBuf::from("/custom/config.yaml"))
+        );
         assert!(args.debug);
         match args.command {
             Command::Status { .. } => { /* Correct command */ }

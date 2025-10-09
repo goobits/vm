@@ -11,12 +11,24 @@ impl Provider for MockProvider {
         "mock"
     }
 
-    fn create(&self) -> Result<()> { Ok(()) }
-    fn create_with_context(&self, _context: &crate::context::ProviderContext) -> Result<()> { Ok(()) }
-    fn start(&self, _container: Option<&str>) -> Result<()> { Ok(()) }
-    fn stop(&self, _container: Option<&str>) -> Result<()> { Ok(()) }
-    fn destroy(&self, _container: Option<&str>) -> Result<()> { Ok(()) }
-    fn ssh(&self, _container: Option<&str>, _relative_path: &Path) -> Result<()> { Ok(()) }
+    fn create(&self) -> Result<()> {
+        Ok(())
+    }
+    fn create_with_context(&self, _context: &crate::context::ProviderContext) -> Result<()> {
+        Ok(())
+    }
+    fn start(&self, _container: Option<&str>) -> Result<()> {
+        Ok(())
+    }
+    fn stop(&self, _container: Option<&str>) -> Result<()> {
+        Ok(())
+    }
+    fn destroy(&self, _container: Option<&str>) -> Result<()> {
+        Ok(())
+    }
+    fn ssh(&self, _container: Option<&str>, _relative_path: &Path) -> Result<()> {
+        Ok(())
+    }
 
     fn exec(&self, _container: Option<&str>, cmd: &[String]) -> Result<()> {
         println!("Mock exec successful: {}", cmd.join(" "));
@@ -35,8 +47,12 @@ impl Provider for MockProvider {
         Ok(())
     }
 
-    fn restart(&self, _container: Option<&str>) -> Result<()> { Ok(()) }
-    fn provision(&self, _container: Option<&str>) -> Result<()> { Ok(()) }
+    fn restart(&self, _container: Option<&str>) -> Result<()> {
+        Ok(())
+    }
+    fn provision(&self, _container: Option<&str>) -> Result<()> {
+        Ok(())
+    }
 
     fn list(&self) -> Result<()> {
         println!("{:<20} {:<10} {:<18}", "NAME", "STATUS", "IP ADDRESS");
@@ -45,16 +61,30 @@ impl Provider for MockProvider {
         Ok(())
     }
 
-    fn kill(&self, _container: Option<&str>) -> Result<()> { Ok(()) }
-    fn get_sync_directory(&self) -> String { "/tmp/mock_sync".to_string() }
-    fn as_temp_provider(&self) -> Option<&dyn TempProvider> { Some(self) }
+    fn kill(&self, _container: Option<&str>) -> Result<()> {
+        Ok(())
+    }
+    fn get_sync_directory(&self) -> String {
+        "/tmp/mock_sync".to_string()
+    }
+    fn as_temp_provider(&self) -> Option<&dyn TempProvider> {
+        Some(self)
+    }
 }
 
 impl TempProvider for MockProvider {
-    fn update_mounts(&self, _state: &crate::TempVmState) -> Result<()> { Ok(()) }
-    fn recreate_with_mounts(&self, _state: &crate::TempVmState) -> Result<()> { Ok(()) }
-    fn check_container_health(&self, _container_name: &str) -> Result<bool> { Ok(true) }
-    fn is_container_running(&self, _container_name: &str) -> Result<bool> { Ok(true) }
+    fn update_mounts(&self, _state: &crate::TempVmState) -> Result<()> {
+        Ok(())
+    }
+    fn recreate_with_mounts(&self, _state: &crate::TempVmState) -> Result<()> {
+        Ok(())
+    }
+    fn check_container_health(&self, _container_name: &str) -> Result<bool> {
+        Ok(true)
+    }
+    fn is_container_running(&self, _container_name: &str) -> Result<bool> {
+        Ok(true)
+    }
 }
 
 impl MockProvider {

@@ -120,16 +120,30 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
         }
         Command::Ssh { container, .. } => {
             let app_config = AppConfig::load(args.config.clone())?;
-            let project_name = app_config.vm.project.and_then(|p| p.name).unwrap_or_default();
+            let project_name = app_config
+                .vm
+                .project
+                .and_then(|p| p.name)
+                .unwrap_or_default();
             let target = container.as_deref().unwrap_or(&project_name);
             vm_println!("Dry run: Would connect to {}", target);
             Ok(())
         }
-        Command::Exec { container, command, .. } => {
+        Command::Exec {
+            container, command, ..
+        } => {
             let app_config = AppConfig::load(args.config.clone())?;
-            let project_name = app_config.vm.project.and_then(|p| p.name).unwrap_or_default();
+            let project_name = app_config
+                .vm
+                .project
+                .and_then(|p| p.name)
+                .unwrap_or_default();
             let target = container.as_deref().unwrap_or(&project_name);
-            vm_println!("Dry run: Would execute command `{}` on {}", command.join(" "), target);
+            vm_println!(
+                "Dry run: Would execute command `{}` on {}",
+                command.join(" "),
+                target
+            );
             Ok(())
         }
         _ => {
