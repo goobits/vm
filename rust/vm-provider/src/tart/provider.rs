@@ -4,6 +4,7 @@ use crate::{
     progress::ProgressReporter,
     Provider, VmError,
 };
+use log::info;
 use std::path::Path;
 use vm_cli::msg;
 use vm_config::config::VmConfig;
@@ -198,9 +199,43 @@ impl Provider for TartProvider {
         stream_command("tart", &["delete", &vm_name])
     }
 
-    fn ssh(&self, container: Option<&str>, _relative_path: &Path) -> Result<()> {
-        let vm_name = self.vm_name_with_instance(container)?;
-        duct::cmd("tart", &["ssh", &vm_name]).run()?;
+    fn ssh(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {
+        use duct::cmd;
+
+        let instance_name = self.resolve_instance_name(container)?;
+
+        // Get the sync directory (project root in VM)
+        let sync_dir = self.get_sync_directory();
+
+        // Resolve full path in VM
+        let target_path =
+            if relative_path == Path::new("") || relative_path == Path::new(".") {
+                sync_dir.clone()
+            } else {
+                format!(
+                    "{}/{}",
+                    sync_dir.trim_end_matches('/'),
+                    relative_path.display()
+                )
+            };
+
+        info!("Opening SSH session in directory: {}", target_path);
+
+        // Use `tart ssh` with explicit cd command
+        let ssh_command = format!("cd '{}' && exec $SHELL -l", target_path);
+
+        cmd!(
+            "tart",
+            "ssh",
+            &instance_name,
+            "--",
+            "sh",
+            "-c",
+            &ssh_command
+        )
+        .run()
+        .map_err(|e| VmError::Provider(format!("SSH failed: {}", e)))?;
+
         Ok(())
     }
 
@@ -314,5 +349,32 @@ impl Provider for TartProvider {
     fn list_instances(&self) -> Result<Vec<InstanceInfo>> {
         let manager = self.instance_manager();
         manager.list_instances()
+    }
+
+    #[cfg(test)]
+    pub fn exec_in_path(
+        &self,
+        container: Option<&str>,
+        path: &std::path::Path,
+        cmd: &[&str],
+    ) -> Result<String> {
+        use duct::cmd;
+        let instance_name = self.resolve_instance_name(container)?;
+        let command_str = cmd.join(" ");
+        let ssh_command = format!("cd '{}' && {}", path.display(), command_str);
+
+        let output = cmd!(
+            "tart",
+            "ssh",
+            &instance_name,
+            "--",
+            "sh",
+            "-c",
+            &ssh_command
+        )
+        .read()
+        .map_err(|e| VmError::Provider(format!("Exec in path failed: {}", e)))?;
+
+        Ok(output)
     }
 }

@@ -3384,6 +3384,7 @@ dependencies = [
  "shellexpand",
  "tempfile",
  "tera",
+ "uuid",
  "vm-cli",
  "vm-config",
  "vm-core",

@@ -62,7 +62,7 @@ pub mod preflight;
 #[cfg(feature = "docker")]
 mod docker;
 #[cfg(feature = "tart")]
-mod tart;
+pub mod tart;
 #[cfg(feature = "vagrant")]
 mod vagrant;
 
