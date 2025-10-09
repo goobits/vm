@@ -11,7 +11,7 @@
 
 pub mod cli;
 pub mod config;
-mod config_ops;
+pub mod config_ops;
 pub mod detector;
 mod embedded_presets;
 pub mod global_config;
