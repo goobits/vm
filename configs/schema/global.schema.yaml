@@ -71,6 +71,23 @@ properties:
         description: "Enable update notifications"
     additionalProperties: false
 
+  worktrees:
+    type: object
+    description: "Global git worktrees configuration"
+    properties:
+      enabled:
+        type: boolean
+        default: false
+        description: "Enable git worktrees support globally"
+      base_path:
+        type: string
+        description: "Global base directory for all worktrees (supports tilde expansion). Defaults to ~/.vm/worktrees/"
+        examples:
+          - ~/worktrees
+          - ~/dev/worktrees
+          - /mnt/worktrees
+    additionalProperties: false
+
 additionalProperties: true
 
 definitions:

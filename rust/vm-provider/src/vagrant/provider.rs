@@ -42,7 +42,7 @@ pub struct VagrantProvider {
 impl VagrantProvider {
     pub fn new(config: VmConfig) -> Result<Self> {
         if !is_tool_installed("vagrant") {
-            return Err(VmError::Dependency("Vagrant".into()).into());
+            return Err(VmError::Dependency("Vagrant".into()));
         }
         let project_dir = env::current_dir()?;
         Ok(Self {
@@ -250,7 +250,7 @@ impl Provider for VagrantProvider {
         Ok(())
     }
 
-    fn create_with_context(&self, context: &ProviderContext) -> Result<()> {
+    fn create_with_context(&self, _context: &ProviderContext) -> Result<()> {
         // ProviderContext support implemented:
         // - Global config is already passed through VM_CONFIG_JSON environment variable
         //   in run_vagrant_command(), so Vagrantfile has access to it

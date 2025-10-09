@@ -467,6 +467,21 @@ properties:
         type: boolean
         default: false
         description: Enable automatic detection and mounting of cargo path-based packages
+  worktrees:
+    type: object
+    description: Git worktrees support configuration for multi-branch development workflows
+    properties:
+      enabled:
+        type: boolean
+        default: false
+        description: Enable git worktrees support with automatic path repair and volume mounting
+      base_path:
+        type: string
+        description: Custom base directory for worktrees (supports tilde expansion). Defaults to ~/.vm/worktrees/project-{name}/
+        examples:
+          - ~/worktrees
+          - ~/dev/worktrees
+          - /mnt/worktrees
 required:
   - project
 additionalProperties: false

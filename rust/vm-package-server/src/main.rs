@@ -6,7 +6,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-use tracing_subscriber;
 use vm_package_server::{
     add_package, list_packages, remove_package, run_server, run_server_background, show_status,
 };

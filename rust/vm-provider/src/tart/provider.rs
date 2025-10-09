@@ -25,7 +25,7 @@ pub struct TartProvider {
 impl TartProvider {
     pub fn new(config: VmConfig) -> Result<Self> {
         if !is_tool_installed("tart") {
-            return Err(VmError::Dependency("Tart".into()).into());
+            return Err(VmError::Dependency("Tart".into()));
         }
         Ok(Self { config })
     }
