@@ -606,14 +606,32 @@ project:
 
 ### Database Backups
 
-Drop `.sql.gz` files matching your pattern in the project:
+Database data is ephemeral by default and lost when VMs are destroyed. Use the `backup_pattern` feature to automatically restore database dumps:
 
 ```yaml
 project:
-  backup_pattern: "*backup*.sql.gz"
+  backup_pattern: "*backup*.sql.gz"  # Glob pattern for backup files
 ```
 
-They'll auto-restore on provision!
+**How it works:**
+
+1. **Create backups** (inside VM):
+   ```bash
+   vm ssh
+   pg_dump myapp_dev | gzip > /workspace/backup-$(date +%F).sql.gz
+   exit
+   ```
+
+2. **Backups persist** in your project directory (survives `vm destroy`)
+
+3. **Auto-restore on provision** - when you run `vm create`, all matching files are automatically restored to PostgreSQL/MySQL
+
+**Pattern examples:**
+- `"*backup*.sql.gz"` - Any file with "backup" in the name
+- `"db-*.sql.gz"` - Files starting with "db-"
+- `"seed-data.sql.gz"` - Specific file for team sharing
+
+**Supported databases:** PostgreSQL, MySQL (`.sql` or `.sql.gz` files)
 
 ## 📚 Additional Resources
 
