@@ -61,8 +61,7 @@ pub fn handle_init(
         resources.total_memory_mb / 1024
     );
 
-    let project_name =
-        detect_project_name().unwrap_or_else(|_| "my-project".to_string());
+    let project_name = detect_project_name().unwrap_or_else(|_| "my-project".to_string());
 
     let config = VmConfig {
         provider: Some("docker".to_string()),

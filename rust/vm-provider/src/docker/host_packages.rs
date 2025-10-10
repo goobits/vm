@@ -37,6 +37,12 @@ pub struct HostPackageInfo {
     pub detected_packages: HashMap<String, PackageLocation>,
 }
 
+impl Default for HostPackageInfo {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HostPackageInfo {
     pub fn new() -> Self {
         Self {

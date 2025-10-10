@@ -4,6 +4,12 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+description = "Project-aware development environment tool"
+repository = "https://github.com/goobits/vm"
+homepage = "https://github.com/goobits/vm"
+keywords = ["development", "docker", "vm", "devenv"]
+categories = ["development-tools"]
+publish = true  # Override workspace publish = false
 
 [dependencies]
 anyhow = { workspace = true }
