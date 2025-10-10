@@ -3397,6 +3397,7 @@ dependencies = [
  "regex",
  "serde_json",
  "tempfile",
+ "tracing",
  "vm-cli",
  "vm-config",
  "vm-core",
