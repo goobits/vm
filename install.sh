@@ -650,6 +650,28 @@ install_rust_secure() {
 }
 
 # ============================================================================
+# Prerequisite Checks (Docker)
+# ============================================================================
+
+check_docker_is_running() {
+    log_info "Checking for Docker..."
+
+    if ! command_exists docker; then
+        handle_error $ERR_DEPENDENCY_MISSING \
+            "Docker is not installed" \
+            "Docker is required to create and manage development environments. Please install it from https://docs.docker.com/get-docker/ and try again."
+    fi
+
+    if ! timeout 10 docker ps &>/dev/null; then
+        handle_error $ERR_DEPENDENCY_MISSING \
+            "Docker is not running" \
+            "The Docker daemon is not responding. Please start the Docker service and run this script again."
+    fi
+
+    log_success "Docker is installed and running"
+}
+
+# ============================================================================
 # Build Tools Detection (for source builds)
 # ============================================================================
 
@@ -1055,7 +1077,11 @@ main() {
     detect_shell_config
     echo ""
 
-    # Step 2: Install based on mode
+    # Step 2: Prerequisite checks
+    check_docker_is_running
+    echo ""
+
+    # Step 3: Install based on mode
     if [[ "$INSTALL_MODE" == "binary" ]]; then
         # Install from pre-compiled binary
         install_from_release
