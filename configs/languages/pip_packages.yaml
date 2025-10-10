@@ -60,7 +60,6 @@ terminal:
   theme: dracula
 claude_sync: true
 gemini_sync: true
-persist_databases: false
 pip_packages:
   - black
   - pytest

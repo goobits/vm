@@ -216,7 +216,6 @@ fn flatten_config_to_shell(prefix: &str, config: &VmConfig, exports: &mut Vec<St
     // Handle boolean flags
     add_export_bool(exports, "claude_sync", config.claude_sync);
     add_export_bool(exports, "gemini_sync", config.gemini_sync);
-    add_export_bool(exports, "persist_databases", config.persist_databases);
 
     // For complex nested structures (project, vm, services, etc.),
     // we'd need to implement similar flattening logic, but the current implementation

@@ -243,16 +243,18 @@ vm exec "cat /etc/redis/redis.conf | grep bind"
 
 ### Database Data Lost
 ```bash
-# Enable database persistence in vm.yaml
-# Note: This is a deprecated top-level field but still supported.
-# The modern approach is to configure persistence per-service.
-persist_databases: true
+# Database data is ephemeral by default and lost on VM destruction
+# Use database backups for data recovery
 
-# Recreate VM with persistence
+# Check if backup files exist
+ls -la *backup*.sql.gz
+
+# Configure auto-restore in vm.yaml
+project:
+  backup_pattern: "*backup*.sql.gz"
+
+# Recreate VM (backups auto-restore)
 vm destroy && vm create
-
-# Check if data directory exists
-ls -la .vm/data/
 ```
 
 ## 🌐 Network Issues

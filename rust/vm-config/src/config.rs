@@ -165,9 +165,6 @@ pub struct VmConfig {
     #[serde(default, skip_serializing_if = "is_false")]
     pub gemini_sync: bool,
 
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub persist_databases: bool,
-
     // 11. Security
     #[serde(skip_serializing_if = "Option::is_none")]
     pub security: Option<SecurityConfig>,

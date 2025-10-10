@@ -596,22 +596,6 @@ vm create
 # Each worktree gets isolated VM environment
 ```
 
-### Database Persistence
-
-```yaml
-# DEPRECATED: Will be removed in v3.0.0 (Q2 2026)
-# Use per-service persistence configuration instead.
-persist_databases: true  # Store data in .vm/data/
-
-# Modern approach (use this instead):
-services:
-  postgresql:
-    enabled: true
-    persist: true  # Per-service control
-```
-- Survives VM rebuilds
-- Add `.vm/` to `.gitignore`
-
 ### Environment Templates
 
 ```yaml

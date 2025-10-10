@@ -18,11 +18,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Force kill implementation using `tart stop --force` for hung VMs
   - SSH path handling fix to correctly navigate to specified directories
 
-### Deprecated
-- `persist_databases` top-level field (use per-service `persist` instead)
-  - Removal date: v3.0.0
-  - Migration: See docs/user-guide/configuration.md
-
 ### Fixed
 - Missing `init_config_file` export in vm-config library causing compilation errors
 

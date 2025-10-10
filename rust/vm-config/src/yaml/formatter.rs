@@ -40,7 +40,6 @@ const FIELD_ORDER: &[&str] = &[
     // 10. Feature Flags & Integrations
     "claude_sync",
     "gemini_sync",
-    "persist_databases",
     // 11. Security
     "security",
 ];

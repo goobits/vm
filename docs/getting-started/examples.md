@@ -308,7 +308,6 @@ provider: docker
 project:
   name: data-heavy
   hostname: dev.data-heavy.local
-  persist_databases: true  # Survive VM rebuilds
   backup_pattern: "*backup*.sql.gz"  # Auto-restore backups
 vm:
   memory: 8192

@@ -447,10 +447,6 @@ properties:
     type: boolean
     default: true
     description: Enable Gemini AI data synchronization to ~/.gemini/vms/{project_name}
-  persist_databases:
-    type: boolean
-    default: false
-    description: Enable persistent database storage in .vm/data/ directory
   package_linking:
     type: object
     description: Package linking detection configuration
