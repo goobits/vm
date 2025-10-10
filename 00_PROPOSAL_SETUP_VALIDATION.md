@@ -41,7 +41,8 @@ source $HOME/.cargo/env
 **If Docker is missing:**
 - macOS: Install Docker Desktop
 - Linux: Follow Docker installation guide for your distro
-- Verify with `docker run hello-world`
+  - **Note:** On Linux, you may need to run Docker commands with `sudo` OR add your user to the `docker` group: `sudo usermod -aG docker $USER` (requires logout/login)
+- Verify with `docker run hello-world` (or `sudo docker run hello-world` on Linux)
 
 ---
 
@@ -133,6 +134,8 @@ cargo test --workspace --lib 2>&1 | grep "test result:"
 ```
 
 **Expected:** All tests should pass. Current count: ~380+ tests.
+
+**Note:** PyPI package server tests require Python 3 + setuptools. These tests will automatically skip if Python is not available. This is normal and not an error.
 
 ### 4.2 Run Integration Tests
 

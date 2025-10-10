@@ -14,6 +14,15 @@ use std::process::Command;
 mod common;
 use common::create_test_setup;
 
+/// Check if Python 3 is available on the system
+fn is_python_available() -> bool {
+    Command::new("python3")
+        .arg("--version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
 async fn create_test_server() -> (TestServer, common::TestSetup) {
     let setup = create_test_setup()
         .await
@@ -98,6 +107,12 @@ async fn test_npm_package_lifecycle() -> Result<()> {
 /// Tests PyPI package add and remove lifecycle
 #[tokio::test]
 async fn test_pypi_package_lifecycle() -> Result<()> {
+    // Skip test if Python 3 is not available
+    if !is_python_available() {
+        eprintln!("Skipping PyPI test: Python 3 not found. Install Python 3 + setuptools to run PyPI tests.");
+        return Ok(());
+    }
+
     let (_server, setup) = create_test_server().await;
     let state = setup.app_state;
 
