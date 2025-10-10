@@ -33,9 +33,16 @@ services:
       {% if host_mounts %}{% for mount in host_mounts %}- {{ mount.0 }}:{{ mount.1 }}:ro
       {% endfor %}{% endif %}
       # Container is now self-contained - no VM tool mount needed
-    {% if config.ports._range -%}
+    {% if config.ports.mappings or config.ports._range -%}
     ports:
+      # Explicit port mappings from vm.yaml
+      {% if config.ports.mappings -%}
+      {% for mapping in config.ports.mappings -%}
+      - "{{ mapping.host }}:{{ mapping.guest }}{% if mapping.protocol | lower == 'udp' %}/udp{% endif %}"
+      {% endfor -%}
+      {%- endif %}
       # Application port range (excluding ports used by service containers)
+      {% if config.ports._range -%}
       {% set range_start = config.ports._range[0] %}
       {% set range_end = config.ports._range[1] %}
       {% set service_ports = [] %}
@@ -59,6 +66,7 @@ services:
         {% endif %}
       {% endfor %}
       {% endif %}
+      {%- endif %}
     {%- endif %}
     environment:
       {% if is_macos %}

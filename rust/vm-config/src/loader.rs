@@ -15,6 +15,7 @@ use crate::config::VmConfig;
 /// 1. **Current Directory:** Looks for `vm.yaml` in the current working directory.
 /// 2. **Parent Directories:** Walks up the directory tree from the current directory, looking for `vm.yaml`.
 /// 3. **Global Configuration:** As a final fallback, checks for the global config at `~/.vm/config.yaml`.
+#[derive(Default)]
 pub struct ConfigLoader;
 
 impl ConfigLoader {

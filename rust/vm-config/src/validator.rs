@@ -59,6 +59,12 @@ pub struct ConfigValidator {
     system: System,
 }
 
+impl Default for ConfigValidator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ConfigValidator {
     /// Creates a new `ConfigValidator`.
     pub fn new() -> Self {
@@ -107,6 +113,7 @@ impl ConfigValidator {
             if let Some(memory_limit) = &vm_settings.memory {
                 if let Some(requested_mb) = memory_limit.to_mb() {
                     let total_mb = self.system.total_memory() / 1024 / 1024;
+                    #[allow(clippy::excessive_nesting)]
                     if requested_mb as u64 > total_mb {
                         report.add_error(format!(
                             "Requested {}MB RAM but only {}MB is available. Please reduce 'vm.memory' in your vm.yaml.",
@@ -121,7 +128,9 @@ impl ConfigValidator {
 
     /// Validates the port mappings.
     fn validate_ports(&self, config: &VmConfig, report: &mut ValidationReport) -> Result<()> {
-        let binding_ip = config.vm.as_ref()
+        let binding_ip = config
+            .vm
+            .as_ref()
             .and_then(|vm| vm.port_binding.as_deref())
             .unwrap_or("127.0.0.1");
 

@@ -12,17 +12,17 @@
 pub mod cli;
 pub mod config;
 pub mod config_ops;
-pub mod loader;
-pub mod validator;
 pub mod detector;
 mod embedded_presets;
 pub mod global_config;
+pub mod loader;
 pub mod merge;
 mod paths; // Internal only
 pub mod ports;
 mod preset; // Internal only
 pub mod resources; // VM resource suggestions
 pub mod validate;
+pub mod validator;
 pub mod yaml; // YAML operations module
 
 #[cfg(test)]

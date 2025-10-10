@@ -67,8 +67,8 @@ async fn check_configuration() -> bool {
         Ok(config) => {
             vm_success!("{}", MESSAGES.vm_doctor_config_loaded);
 
-            // Run validation
-            let validation_errors = config.validate();
+            // Run validation, do not skip port availability check for doctor
+            let validation_errors = config.validate(false);
             if validation_errors.is_empty() {
                 vm_success!("{}", MESSAGES.vm_doctor_config_valid);
             } else {

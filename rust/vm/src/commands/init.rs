@@ -26,10 +26,10 @@ fn detect_host_resources() -> HostResources {
     let total_memory_mb = sys.total_memory() / 1024 / 1024;
 
     // Use 50% of available CPUs, with a minimum of 1 and a maximum of 4.
-    let recommended_cpus = (total_cpus as u32 / 2).max(1).min(4);
+    let recommended_cpus = (total_cpus as u32 / 2).clamp(1, 4);
 
     // Use 50% of available memory, with a minimum of 2GB and a maximum of 8GB.
-    let recommended_memory_mb = (total_memory_mb as u32 / 2).max(2048).min(8192);
+    let recommended_memory_mb = (total_memory_mb as u32 / 2).clamp(2048, 8192);
 
     HostResources {
         total_cpus,
@@ -71,8 +71,8 @@ pub fn handle_init(
     // The logic to handle them will be added here once the basic generation is working.
     // For now, we focus on the resource detection part.
 
-    let yaml_content = serde_yaml_ng::to_string(&config)
-        .context("Failed to serialize default config to YAML")?;
+    let yaml_content =
+        serde_yaml_ng::to_string(&config).context("Failed to serialize default config to YAML")?;
 
     fs::write(&target_file, yaml_content)
         .with_context(|| format!("Failed to write vm.yaml to {}", target_file.display()))?;

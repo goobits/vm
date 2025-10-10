@@ -9,9 +9,7 @@ use crate::error::{VmError, VmResult};
 use serde_yaml_ng as serde_yaml;
 use vm_cli::msg;
 use vm_config::ports::{PortRange, PortRegistry};
-use vm_config::{
-    config::VmConfig, validator::ConfigValidator, AppConfig, ConfigOps, GlobalConfig,
-};
+use vm_config::{config::VmConfig, validator::ConfigValidator, AppConfig, ConfigOps, GlobalConfig};
 use vm_core::{vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 

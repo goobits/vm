@@ -158,6 +158,7 @@ pub fn get_presets_dir() -> PathBuf {
 
 /// Get the schema file path
 /// Returns VM_TOOL_DIR/configs/schema/vm.schema.yaml
+#[allow(dead_code)]
 pub fn get_schema_path() -> PathBuf {
     let tool_dir = get_tool_dir();
     tool_dir

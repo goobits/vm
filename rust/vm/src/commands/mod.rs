@@ -129,11 +129,7 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
                 .unwrap_or_default();
             let target = container.as_deref().unwrap_or(&project_name);
             if let Some(cmd) = command {
-                vm_println!(
-                    "Dry run: Would execute command `{}` on {}",
-                    cmd,
-                    target
-                );
+                vm_println!("Dry run: Would execute command `{}` on {}", cmd, target);
             } else {
                 vm_println!("Dry run: Would connect to {}", target);
             }
@@ -231,7 +227,10 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
     );
 
     // Validate configuration before proceeding
-    let validation_errors = config.validate();
+    // We skip the port availability check for all commands except `create`
+    // to avoid errors when a container is already running.
+    let skip_port_check = !matches!(args.command, Command::Create { .. });
+    let validation_errors = config.validate(skip_port_check);
     if !validation_errors.is_empty() {
         vm_error!("{}", MESSAGES.common_validation_failed);
         for error in &validation_errors {

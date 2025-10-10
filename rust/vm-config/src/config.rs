@@ -7,6 +7,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_yaml_ng as serde_yaml;
 use vm_core::error::Result;
 
+// Internal crate imports
+use crate::ports::PortMapping;
+
 // Helper function to deserialize version field that accepts both strings and numbers
 fn deserialize_option_string_or_number<'de, D>(
     deserializer: D,
@@ -220,16 +223,25 @@ pub struct VmStatusReportConfig {
     pub services: Vec<(String, String)>,
 }
 
-/// Port configuration with range-based allocation.
+/// Port configuration with range-based allocation and explicit mappings.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PortsConfig {
     #[serde(rename = "_range", skip_serializing_if = "Option::is_none")]
     pub range: Option<Vec<u16>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mappings: Vec<PortMapping>,
 }
 
 impl PortsConfig {
     pub fn get_all_exposed_ports(&self) -> Vec<String> {
         let mut ports = Vec::new();
+
+        // Add explicit mappings
+        for mapping in &self.mappings {
+            ports.push(format!("{}:{}", mapping.host, mapping.guest));
+        }
+
+        // Add range mapping
         if let Some(range) = &self.range {
             if range.len() == 2 {
                 let (start, end) = (range[0], range[1]);
@@ -238,9 +250,11 @@ impl PortsConfig {
         }
         ports
     }
+
     pub fn has_ports(&self) -> bool {
-        self.range.is_some()
+        self.range.is_some() || !self.mappings.is_empty()
     }
+
     pub fn is_port_in_range(&self, port: u16) -> bool {
         if let Some(range) = &self.range {
             if range.len() == 2 {
@@ -525,8 +539,20 @@ impl VmConfig {
         self.provider.is_none() || self.project.as_ref().map_or(true, |p| p.name.is_none())
     }
 
-    pub fn validate(&self) -> Vec<String> {
+    pub fn validate(&self, skip_port_availability_check: bool) -> Vec<String> {
         let mut errors = Vec::new();
+
+        // Run the more comprehensive validation from the validate module.
+        // This is a bit awkward as ConfigValidator returns a Result, not a Vec<String>.
+        // We'll convert the error into a string for consistency with the rest of this method.
+        let validator = crate::validate::ConfigValidator::new(
+            self.clone(),
+            std::path::PathBuf::new(),
+            skip_port_availability_check,
+        );
+        if let Err(e) = validator.validate() {
+            errors.push(e.to_string());
+        }
 
         if let Some(provider) = &self.provider {
             #[cfg(feature = "test-helpers")]
