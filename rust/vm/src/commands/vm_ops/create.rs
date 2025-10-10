@@ -3,7 +3,7 @@
 //! This module handles VM creation with support for force recreation,
 //! multi-instance providers, and service registration.
 
-use tracing::{debug, info, info_span, warn};
+use tracing::{debug, info_span, warn};
 
 use crate::error::{VmError, VmResult};
 use vm_cli::msg;
@@ -25,7 +25,7 @@ pub async fn handle_create(
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "create");
     let _enter = span.enter();
-    info!("Starting VM creation");
+    debug!("Starting VM creation");
 
     // Validate config before proceeding
     vm_println!("Validating configuration...");

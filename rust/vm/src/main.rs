@@ -15,7 +15,7 @@ use tracing::{info, info_span};
 
 // Internal imports
 use vm_core::vm_error;
-use vm_logging::init_subscriber;
+use vm_logging::init_subscriber_with_config;
 
 // Local modules
 mod cli;
@@ -36,7 +36,7 @@ fn get_request_id() -> &'static str {
 
 /// Executes the given command and handles top-level errors.
 async fn run_command(args: Args) {
-    if args.debug {
+    if args.verbose {
         info!("Starting vm command");
     }
 
@@ -48,14 +48,20 @@ async fn run_command(args: Args) {
 
 #[tokio::main]
 async fn main() {
-    init_subscriber();
+    // Auto-detect CI environment
+    if std::env::var("CI").is_ok() {
+        // Disable colors and interactive elements
+        std::env::set_var("NO_COLOR", "1");
+    }
+
     let args = Args::parse();
+    init_subscriber_with_config(args.verbose);
 
     if std::env::var("VM_TEST_MODE").is_err() {
         let span = info_span!("request",
             request_id = %get_request_id(),
             command = ?args.command,
-            debug = args.debug
+            verbose = args.verbose
         );
         run_command(args).instrument(span).await;
     } else {

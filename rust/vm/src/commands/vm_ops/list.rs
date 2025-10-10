@@ -3,9 +3,10 @@
 //! This module provides functionality for listing VMs across all providers
 //! with filtering and display options.
 
-use tracing::{debug, info, info_span};
+use tracing::{debug, info_span};
 
 use crate::error::VmResult;
+use vm_core::vm_println;
 use vm_cli::msg;
 use vm_messages::messages::MESSAGES;
 use vm_provider::{InstanceInfo, Provider};
@@ -33,26 +34,26 @@ pub fn handle_list_enhanced(
 
     if all_instances.is_empty() {
         if let Some(provider_name) = provider_filter {
-            info!(
+            vm_println!(
                 "{}",
                 msg!(MESSAGES.vm_list_empty_provider, provider = provider_name)
             );
         } else {
-            info!("{}", MESSAGES.vm_list_empty);
+            vm_println!("{}", MESSAGES.vm_list_empty);
         }
         return Ok(());
     }
 
     // Rich dashboard table (always displayed)
-    info!("{}", MESSAGES.vm_list_table_header);
-    info!("{}", MESSAGES.vm_list_table_separator);
+    vm_println!("{}", MESSAGES.vm_list_table_header);
+    vm_println!("{}", MESSAGES.vm_list_table_separator);
 
     // Sort instances by provider then name for consistent output
     let mut sorted_instances = all_instances;
     sorted_instances.sort_by(|a, b| a.provider.cmp(&b.provider).then(a.name.cmp(&b.name)));
 
     for instance in sorted_instances {
-        info!(
+        vm_println!(
             "{:<20} {:<10} {:<12} {:<20} {:<10} {:<15}",
             truncate_string(&instance.name, 20),
             instance.provider,

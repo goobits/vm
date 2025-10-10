@@ -3,9 +3,10 @@
 //! This module provides comprehensive status reporting for VMs with
 //! resource usage, service health, and state information.
 
-use tracing::{debug, info};
+use tracing::debug;
 
 use crate::error::VmResult;
+use vm_core::vm_println;
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_provider::{Provider, VmStatusReport};
 
@@ -48,7 +49,7 @@ pub fn handle_status(
 /// Display the compact status dashboard
 fn display_status_dashboard(report: &VmStatusReport) {
     // Header with VM name
-    info!("🖥️  {} ({})", report.name, report.provider);
+    vm_println!("🖥️  {} ({})", report.name, report.provider);
 
     // Status line with uptime
     let status_icon = if report.is_running { "🟢" } else { "🔴" };
@@ -59,15 +60,15 @@ fn display_status_dashboard(report: &VmStatusReport) {
     };
 
     if let Some(uptime) = &report.uptime {
-        info!("   {} {} • Uptime: {}", status_icon, status_text, uptime);
+        vm_println!("   {} {} • Uptime: {}", status_icon, status_text, uptime);
     } else {
-        info!("   {} {}", status_icon, status_text);
+        vm_println!("   {} {}", status_icon, status_text);
     }
 
     // Container ID (shortened)
     if let Some(id) = &report.container_id {
         let short_id = if id.len() > 12 { &id[..12] } else { id };
-        info!("   📦 {}", short_id);
+        vm_println!("   📦 {}", short_id);
     }
 
     // Resource usage (if available)
@@ -82,18 +83,18 @@ fn display_status_dashboard(report: &VmStatusReport) {
 
     // Connection hint
     if report.is_running {
-        info!("\n💡 Connect: vm ssh");
+        vm_println!("\n💡 Connect: vm ssh");
     } else {
-        info!("\n💡 Start: vm start");
+        vm_println!("\n💡 Start: vm start");
     }
 }
 
 /// Display basic stopped status for providers without enhanced status support
 fn display_basic_stopped_status(vm_name: &str, provider_name: &str) {
-    info!("🖥️  {} ({})", vm_name, provider_name);
-    info!("   🔴 Stopped");
-    info!("   📦 Container not found");
-    info!("\n💡 Start: vm start");
+    vm_println!("🖥️  {} ({})", vm_name, provider_name);
+    vm_println!("   🔴 Stopped");
+    vm_println!("   📦 Container not found");
+    vm_println!("\n💡 Start: vm start");
 }
 
 /// Check if resource data is available and meaningful
@@ -105,7 +106,7 @@ fn has_resource_data(resources: &vm_provider::ResourceUsage) -> bool {
 
 /// Display resource usage information
 fn display_resource_usage(resources: &vm_provider::ResourceUsage) {
-    info!("");
+    vm_println!("");
 
     // CPU usage
     if let Some(cpu) = resources.cpu_percent {
@@ -116,7 +117,7 @@ fn display_resource_usage(resources: &vm_provider::ResourceUsage) {
         } else {
             "💚"
         };
-        info!("   {} CPU:    {:.1}%", cpu_icon, cpu);
+        vm_println!("   {} CPU:    {:.1}%", cpu_icon, cpu);
     }
 
     // Memory usage
@@ -140,7 +141,7 @@ fn display_resource_usage(resources: &vm_provider::ResourceUsage) {
             let used_display = format_memory_mb(used);
             format!("   💚 Memory: {}", used_display)
         };
-        info!("{}", memory_text);
+        vm_println!("{}", memory_text);
     }
 
     // Disk usage
@@ -161,13 +162,13 @@ fn display_resource_usage(resources: &vm_provider::ResourceUsage) {
         } else {
             format!("   💚 Disk:   {:.1}GB", used)
         };
-        info!("{}", disk_text);
+        vm_println!("{}", disk_text);
     }
 }
 
 /// Display service health information
 fn display_service_health(services: &[vm_provider::ServiceStatus]) {
-    info!("");
+    vm_println!("");
 
     for service in services {
         let health_icon = if service.is_running { "🟢" } else { "🔴" };
@@ -193,7 +194,7 @@ fn display_service_health(services: &[vm_provider::ServiceStatus]) {
             format!("   {} {}{}", health_icon, service.name, port_info)
         };
 
-        info!("{}", service_line);
+        vm_println!("{}", service_line);
     }
 }
 

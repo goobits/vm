@@ -1,40 +1,54 @@
 pub use anyhow::bail;
+use std::fmt::{self, Display, Formatter};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum VmError {
-    #[error("Configuration error: {0}")]
     Config(String),
-
-    #[error("Provider error: {0}")]
     Provider(String),
-
-    #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
-
-    #[error("Command failed: {0}")]
     Command(String),
-
-    #[error("Dependency not found: {0}")]
     Dependency(String),
-
-    #[error("Network error: {0}")]
     Network(String),
-
-    #[error("Internal error: {0}")]
     Internal(String),
-
-    #[error("Filesystem error: {0}")]
     Filesystem(String),
-
-    #[error("Serialization error: {0}")]
     Serialization(String),
-
-    #[error("Migration error: {0}")]
     Migration(String),
-
-    #[error("Other error: {0}")]
+    DockerNotRunning,
+    DockerPermission,
     Other(#[from] anyhow::Error),
+}
+
+impl Display for VmError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            VmError::Config(s) => write!(f, "Configuration error: {}", s),
+            VmError::Provider(s) => write!(f, "Provider error: {}", s),
+            VmError::Io(e) => write!(f, "I/O error: {}", e),
+            VmError::Command(s) => write!(f, "Command failed: {}", s),
+            VmError::Dependency(s) => write!(f, "Dependency not found: {}", s),
+            VmError::Network(s) => write!(f, "Network error: {}", s),
+            VmError::Internal(s) => write!(f, "Internal error: {}", s),
+            VmError::Filesystem(s) => write!(f, "Filesystem error: {}", s),
+            VmError::Serialization(s) => write!(f, "Serialization error: {}", s),
+            VmError::Migration(s) => write!(f, "Migration error: {}", s),
+            VmError::DockerNotRunning => {
+                write!(f, "Docker daemon is not running\n\n")?;
+                write!(f, "Fix:\n")?;
+                write!(f, "  • Start Docker Desktop, or\n")?;
+                write!(f, "  • Run: sudo systemctl start docker\n")?;
+                write!(f, "  • Verify: docker ps")
+            }
+            VmError::DockerPermission => {
+                write!(f, "Permission denied accessing Docker\n\n")?;
+                write!(f, "Fix:\n")?;
+                write!(f, "  • Add user to docker group: sudo usermod -aG docker $USER\n")?;
+                write!(f, "  • Log out and back in\n")?;
+                write!(f, "  • Or use: sudo vm create")
+            }
+            VmError::Other(e) => write!(f, "Other error: {}", e),
+        }
+    }
 }
 
 impl From<serde_yaml_ng::Error> for VmError {

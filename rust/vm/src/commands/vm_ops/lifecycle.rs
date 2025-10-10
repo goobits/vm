@@ -3,7 +3,7 @@
 //! This module provides commands for managing VM lifecycle including
 //! start, stop, restart, and provisioning operations.
 
-use tracing::{info, info_span, warn};
+use tracing::{debug, info_span, warn};
 
 use crate::error::{VmError, VmResult};
 use vm_cli::msg;
@@ -23,7 +23,7 @@ pub async fn handle_start(
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "start");
     let _enter = span.enter();
-    info!("Starting VM");
+    debug!("Starting VM");
 
     // Get VM name from config
     let vm_name = config
@@ -168,7 +168,7 @@ pub async fn handle_stop(
             // Graceful stop of current project VM
             let span = info_span!("vm_operation", operation = "stop");
             let _enter = span.enter();
-            info!("Stopping VM");
+            debug!("Stopping VM");
 
             let vm_name = config
                 .project
@@ -245,7 +245,7 @@ pub async fn handle_restart(
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "restart");
     let _enter = span.enter();
-    info!("Restarting VM");
+    debug!("Restarting VM");
 
     let vm_name = config
         .project
@@ -290,7 +290,7 @@ pub fn handle_provision(
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "provision");
     let _enter = span.enter();
-    info!("Re-running VM provisioning");
+    debug!("Re-running VM provisioning");
 
     let vm_name = config
         .project

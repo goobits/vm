@@ -2,7 +2,7 @@
 
 use anyhow::Context;
 use std::path::PathBuf;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 use crate::cli::ConfigSubcommand;
 use crate::error::{VmError, VmResult};
@@ -187,7 +187,7 @@ pub fn handle_ports_command(fix: bool) -> VmResult<()> {
         })
         .context("No port range found in configuration")?;
 
-    info!(
+    vm_println!(
         "{}",
         msg!(
             MESSAGES.config_ports_header,
@@ -206,28 +206,28 @@ pub fn handle_ports_command(fix: bool) -> VmResult<()> {
         PortRange::parse(&current_port_range).context("Failed to parse current port range")?;
 
     // Only check for conflicts when --fix is specified
-    info!("");
-    info!("{}", MESSAGES.config_ports_checking);
+    vm_println!("");
+    vm_println!("{}", MESSAGES.config_ports_checking);
 
     // Check for conflicts with running Docker containers
     let conflicts = check_docker_port_conflicts(&current_range)?;
 
     if conflicts.is_empty() {
-        info!("✅ No port conflicts detected!");
+        vm_success!("✅ No port conflicts detected!");
         return Ok(());
     }
 
     warn!("Port conflicts detected:");
     for conflict in &conflicts {
-        info!(
+        vm_println!(
             "   ⚠️  Port {} is in use by: {}",
             conflict.port, conflict.container
         );
     }
 
     // Fix conflicts by finding a new port range
-    info!("");
-    info!("{}", MESSAGES.config_ports_fixing);
+    vm_println!("");
+    vm_println!("{}", MESSAGES.config_ports_fixing);
 
     let registry = PortRegistry::load().context("Failed to load port registry")?;
 
@@ -239,7 +239,7 @@ pub fn handle_ports_command(fix: bool) -> VmResult<()> {
         .suggest_next_range(range_size, 3000)
         .context("No available port ranges found")?;
 
-    info!(
+    vm_println!(
         "{}",
         msg!(MESSAGES.config_ports_updated, range = &new_range_str)
     );
@@ -258,7 +258,7 @@ pub fn handle_ports_command(fix: bool) -> VmResult<()> {
         .register(project_name, &new_range, &current_dir.to_string_lossy())
         .context("Failed to register new port range")?;
 
-    info!(
+    vm_println!(
         "{}",
         msg!(
             MESSAGES.config_ports_resolved,
@@ -266,7 +266,7 @@ pub fn handle_ports_command(fix: bool) -> VmResult<()> {
             new = &new_range_str
         )
     );
-    info!("{}", MESSAGES.config_ports_restart_hint);
+    vm_println!("{}", MESSAGES.config_ports_restart_hint);
 
     Ok(())
 }

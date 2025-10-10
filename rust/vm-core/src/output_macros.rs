@@ -25,17 +25,17 @@ macro_rules! simple_msg_format {
 #[macro_export]
 macro_rules! vm_println {
     () => {
-        tracing::info!("");
+        println!("");
     };
     ($($arg:tt)*) => {
-        tracing::info!("{}", format!($($arg)*));
+        println!("{}", format!($($arg)*));
     }
 }
 
 #[macro_export]
 macro_rules! vm_error {
     ($($arg:tt)*) => {
-        tracing::error!("{}", format!($($arg)*));
+        eprintln!("{}", format!($($arg)*));
     }
 }
 
@@ -95,7 +95,7 @@ macro_rules! vm_error_with_details {
 #[macro_export]
 macro_rules! vm_success {
     ($($arg:tt)*) => {
-        tracing::info!("✓ {}", format!($($arg)*));
+        println!("✓ {}", format!($($arg)*));
     };
 }
 

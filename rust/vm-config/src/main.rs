@@ -3,7 +3,8 @@ use vm_config::cli::Args;
 use vm_core::error::Result;
 
 fn main() -> Result<()> {
-    vm_logging::init_subscriber();
+    // We don't have a --verbose flag here, so we default to false
+    vm_logging::init_subscriber_with_config(false);
     let args = Args::parse();
     vm_config::cli::execute(args)
 }

@@ -19,10 +19,11 @@ fn main() {
     }
 }
 
-use vm_logging::init_subscriber;
+use vm_logging::init_subscriber_with_config;
 
 fn run() -> Result<()> {
-    init_subscriber();
+    // We don't have a --verbose flag here, so we default to false
+    init_subscriber_with_config(false);
     let args = Args::parse();
 
     vm_println!("{}", MESSAGES.installer_installing);

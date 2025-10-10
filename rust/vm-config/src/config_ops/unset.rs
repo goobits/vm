@@ -10,7 +10,7 @@ use crate::config_ops::io::{find_local_config, get_global_config_path, read_conf
 use crate::yaml::core::CoreOperations;
 use vm_cli::msg;
 use vm_core::error::Result;
-use vm_core::{vm_error, vm_println};
+use vm_core::{vm_error, vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 
 /// Unset (remove) a configuration field
@@ -38,7 +38,7 @@ pub fn unset(field: &str, global: bool) -> Result<()> {
 
     CoreOperations::write_yaml_file(&config_path, &yaml_value)?;
 
-    vm_println!(
+    vm_success!(
         "{}",
         msg!(
             MESSAGES.config_unset_success,
