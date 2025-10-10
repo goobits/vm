@@ -13,7 +13,7 @@ use crate::config_ops::io::{
 use crate::yaml::core::CoreOperations;
 use vm_cli::msg;
 use vm_core::error::Result;
-use vm_core::{vm_error, vm_println};
+use vm_core::{vm_error, vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 
 /// Set a configuration value using dot notation.
@@ -66,7 +66,7 @@ pub fn set(field: &str, value: &str, global: bool, dry_run: bool) -> Result<()> 
         vm_println!("{}", MESSAGES.config_no_changes);
     } else {
         CoreOperations::write_yaml_file(&config_path, &yaml_value)?;
-        vm_println!(
+        vm_success!(
             "{}",
             msg!(
                 MESSAGES.config_set_success,

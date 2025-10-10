@@ -13,7 +13,7 @@ use crate::preset::PresetDetector;
 use crate::yaml::core::CoreOperations;
 use vm_cli::msg;
 use vm_core::error::{Result, VmError};
-use vm_core::vm_println;
+use vm_core::{vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 
 /// Apply preset(s) to configuration
@@ -90,7 +90,7 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
     CoreOperations::write_yaml_file(&config_path, &config_value)?;
 
     let scope = if global { "global" } else { "local" };
-    vm_println!(
+    vm_success!(
         "{}",
         msg!(
             MESSAGES.config_preset_applied,
