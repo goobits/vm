@@ -9,89 +9,57 @@ use crate::error::{VmError, VmResult};
 use serde_yaml_ng as serde_yaml;
 use vm_cli::msg;
 use vm_config::ports::{PortRange, PortRegistry};
-use vm_config::{config::VmConfig, AppConfig, ConfigOps, GlobalConfig};
+use vm_config::{
+    config::VmConfig, validator::ConfigValidator, AppConfig, ConfigOps, GlobalConfig,
+};
+use vm_core::{vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 
-/// Handle configuration validation command
-pub fn handle_validate(config_file: Option<PathBuf>) -> VmResult<()> {
-    debug!("Validating configuration: config_file={:?}", config_file);
+/// Handle the `vm config validate` command.
+fn handle_validate_command() -> VmResult<()> {
+    let config = VmConfig::load(None)?;
+    let validator = ConfigValidator::new();
+    let report = validator
+        .validate(&config)
+        .map_err(|e| VmError::validation(e.to_string(), None::<String>))?;
 
-    info!("{}", MESSAGES.config_validate_header);
-
-    // The `load` function performs validation internally. If it succeeds,
-    // the configuration is valid.
-    match VmConfig::load(config_file) {
-        Ok(config) => {
-            debug!(
-                "Configuration validation successful: provider={:?}, project_name={:?}",
-                config.provider,
-                config.project.as_ref().and_then(|p| p.name.as_ref())
-            );
-
-            info!("{}", MESSAGES.config_validate_valid);
-
-            // Display configuration details
-            if let Some(project) = &config.project {
-                if let Some(name) = &project.name {
-                    info!("  Project:    {}", name);
-                }
-            }
-
-            if let Some(provider) = &config.provider {
-                info!("  Provider:   {}", provider);
-            }
-
-            // Count and display services
-            let enabled_services: Vec<String> = config
-                .services
-                .iter()
-                .filter(|(_, svc)| svc.enabled)
-                .map(|(name, _)| name.clone())
-                .collect();
-
-            if !enabled_services.is_empty() {
-                info!(
-                    "  Services:   {} configured ({})",
-                    enabled_services.len(),
-                    enabled_services.join(", ")
-                );
-            }
-
-            // Display port range
-            if let Some(range) = &config.ports.range {
-                if range.len() == 2 {
-                    info!("  Ports:      {}-{} (no conflicts)", range[0], range[1]);
-                }
-            }
-
-            info!("{}", MESSAGES.config_validate_create_hint);
-            Ok(())
-        }
-        Err(e) => {
-            debug!("Configuration validation failed: {}", e);
-
-            info!("{}", MESSAGES.config_validate_invalid);
-
-            // Parse and display errors in a structured way
-            let error_str = format!("{:#}", e);
-            for line in error_str.lines() {
-                if line.trim().starts_with("caused by:") || line.trim().starts_with("Caused by:") {
-                    continue;
-                }
-                info!("  × {}", line.trim());
-            }
-
-            info!("{}", MESSAGES.config_validate_fix_hint);
-
-            // Return the error to exit with a non-zero status code
-            Err(VmError::from(e))
-        }
+    if report.has_errors() {
+        vm_println!("Configuration validation failed:");
+        vm_println!("{}", report);
+        // Return a generic error to ensure non-zero exit code
+        return Err(VmError::validation(
+            "Validation found errors.".to_string(),
+            None::<String>,
+        ));
     }
+
+    vm_println!("{}", report); // Print warnings and info
+    vm_success!("Configuration is valid.");
+    Ok(())
+}
+
+/// Handle the `vm config show` command.
+fn handle_show_command() -> VmResult<()> {
+    let config = VmConfig::load(None)?;
+
+    if let Some(source) = &config.source_path {
+        vm_println!("Config source: {}", source.display());
+    } else {
+        vm_println!("Config source: (Not found, using defaults)");
+    }
+
+    let yaml_output = serde_yaml::to_string(&config)
+        .map_err(|e| VmError::config(e, "Failed to serialize configuration to YAML"))?;
+
+    vm_println!("\n---\n{}", yaml_output);
+    Ok(())
 }
 
 /// Handle configuration management commands
 pub fn handle_config_command(command: &ConfigSubcommand, dry_run: bool) -> VmResult<()> {
     match command {
+        ConfigSubcommand::Validate => handle_validate_command(),
+        ConfigSubcommand::Show => handle_show_command(),
         ConfigSubcommand::Set {
             field,
             value,

@@ -32,6 +32,10 @@ pub struct Args {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum ConfigSubcommand {
+    /// Validate the current configuration
+    Validate,
+    /// Show the loaded configuration and its source
+    Show,
     /// Change a configuration value
     Set {
         /// Configuration field path (e.g., "vm.memory" or "services.docker.enabled")
@@ -298,8 +302,6 @@ pub enum Command {
         #[arg(long)]
         ports: Option<u16>,
     },
-    /// Check your configuration for errors
-    Validate,
     /// Run health checks and diagnostics
     #[command(about = "Check system dependencies, configuration, and service health")]
     Doctor,

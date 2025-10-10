@@ -177,6 +177,11 @@ pub struct VmConfig {
     #[serde(flatten)]
     pub extra_config: IndexMap<String, serde_json::Value>,
 
+    // 14. Internal-only fields
+    /// Path to the config file that was loaded (for debugging)
+    #[serde(skip)]
+    pub source_path: Option<PathBuf>,
+
     // 14. Mock provider config (for testing only)
     #[cfg(feature = "test-helpers")]
     #[serde(skip_serializing_if = "Option::is_none")]

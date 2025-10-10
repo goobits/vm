@@ -7,8 +7,8 @@ use tracing::{debug, info, info_span, warn};
 
 use crate::error::{VmError, VmResult};
 use vm_cli::msg;
-use vm_config::{config::VmConfig, GlobalConfig};
-use vm_core::vm_println;
+use vm_config::{config::VmConfig, validator::ConfigValidator, GlobalConfig};
+use vm_core::{vm_error, vm_println};
 use vm_messages::messages::MESSAGES;
 use vm_provider::{Provider, ProviderContext};
 
@@ -26,6 +26,32 @@ pub async fn handle_create(
     let span = info_span!("vm_operation", operation = "create");
     let _enter = span.enter();
     info!("Starting VM creation");
+
+    // Validate config before proceeding
+    vm_println!("Validating configuration...");
+    let validator = ConfigValidator::new();
+    match validator.validate(&config) {
+        Ok(report) => {
+            if report.has_errors() {
+                vm_error!("Configuration validation failed:");
+                vm_println!("{}", report);
+                return Err(VmError::validation(
+                    "Configuration is invalid, aborting creation.".to_string(),
+                    None::<String>,
+                ));
+            }
+            if !report.warnings.is_empty() || !report.info.is_empty() {
+                vm_println!("{}", report);
+            }
+            vm_println!("✓ Configuration is valid.");
+        }
+        Err(e) => {
+            return Err(VmError::validation(
+                format!("An unexpected error occurred during validation: {}", e),
+                None::<String>,
+            ));
+        }
+    }
 
     let vm_name = config
         .project
