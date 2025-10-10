@@ -17,6 +17,7 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 reqwest = { workspace = true }
 dialoguer = { workspace = true }
+sysinfo = { workspace = true, features = ["serde"] }
 vm-core = { path = "../vm-core" }
 vm-logging = { path = "../vm-logging" }
 vm-messages = { path = "../vm-messages" }

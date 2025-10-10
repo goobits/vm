@@ -5,7 +5,7 @@ use tracing::debug;
 // Import the CLI types
 use crate::cli::{Args, Command, PluginSubcommand};
 use vm_cli::msg;
-use vm_config::{init_config_file, AppConfig};
+use vm_config::AppConfig;
 use vm_core::{vm_error, vm_println};
 use vm_messages::messages::MESSAGES;
 use vm_provider::get_provider;
@@ -14,6 +14,7 @@ use vm_provider::get_provider;
 pub mod auth;
 pub mod config;
 pub mod doctor;
+pub mod init;
 pub mod pkg;
 pub mod plugin;
 pub mod plugin_new;
@@ -32,7 +33,6 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
 
     // Handle commands that don't need a provider first
     match &args.command {
-        Command::Validate => config::handle_validate(args.config),
         Command::Doctor => {
             let app_config = AppConfig::load(args.config.clone())?;
             doctor::handle_doctor_command(app_config.global).await
@@ -42,8 +42,8 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             services,
             ports,
         } => {
-            debug!("Calling init_config_file directly");
-            init_config_file(file.clone(), services.clone(), *ports).map_err(VmError::from)
+            debug!("Handling init command");
+            init::handle_init(file.clone(), services.clone(), *ports).map_err(VmError::from)
         }
         Command::Config { command } => {
             debug!("Calling ConfigOps methods directly");
