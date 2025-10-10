@@ -24,6 +24,26 @@ Create development environments that automatically configure themselves based on
 
 **Zero-Config Presets** — Language runtimes, databases, and development tools install automatically based on your project structure.
 
+## Prerequisites
+
+Before you begin, make sure you have the following tools installed.
+
+### 1. Rust Toolchain
+
+The VM CLI is built with Rust, so you'll need the Rust toolchain (including `cargo`, the Rust package manager). If you don't have it, the official `rustup` installer is the best way to get started.
+
+- **Installation:** [https://rustup.rs](https://rustup.rs)
+- **Why?** `cargo` is used to install the `vm` binary from its source package.
+
+### 2. Docker
+
+VM uses Docker as its default "provider" to create lightweight, isolated development environments. Make sure the Docker daemon is running before using `vm` commands.
+
+- **Installation:** [https://docs.docker.com/get-docker/](https://docs.docker.com/get-docker/)
+- **Why?** Docker manages the lifecycle of your development containers.
+
+---
+
 ## 🚀 Quick Start
 
 Get up and running in three commands:
