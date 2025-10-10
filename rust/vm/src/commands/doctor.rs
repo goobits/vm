@@ -325,7 +325,9 @@ fn check_legacy_config_paths() -> bool {
             user_paths::vm_state_dir()
                 .ok()
                 .map(|p| p.join("port-registry.json")),
-            user_paths::vm_state_dir().ok().map(|p| p.join("ports.json")),
+            user_paths::vm_state_dir()
+                .ok()
+                .map(|p| p.join("ports.json")),
         ),
         (
             user_paths::vm_state_dir()

@@ -43,7 +43,11 @@ fn test_vm_lifecycle_provider_parity() -> Result<()> {
         let output = fixture.run_vm_command(&["status"])?;
         assert!(output.status.success(), "vm status failed for {}", provider);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(stdout.contains("running"), "vm status should show running for {}", provider);
+        assert!(
+            stdout.contains("running"),
+            "vm status should show running for {}",
+            provider
+        );
 
         // Test `vm stop`
         let output = fixture.run_vm_command(&["stop"])?;
@@ -51,7 +55,11 @@ fn test_vm_lifecycle_provider_parity() -> Result<()> {
 
         // Test `vm destroy`
         let output = fixture.run_vm_command(&["destroy", "--force"])?;
-        assert!(output.status.success(), "vm destroy failed for {}", provider);
+        assert!(
+            output.status.success(),
+            "vm destroy failed for {}",
+            provider
+        );
     }
 
     Ok(())

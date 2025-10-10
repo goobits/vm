@@ -16,12 +16,18 @@ fn test_vm_multi_instance_lifecycle() -> Result<()> {
 
     // Create and start the first VM
     fixture1.create_test_config()?;
-    assert!(fixture1.run_vm_command(&["create", "--force"])?.status.success());
+    assert!(fixture1
+        .run_vm_command(&["create", "--force"])?
+        .status
+        .success());
     assert!(fixture1.run_vm_command(&["start"])?.status.success());
 
     // Create and start the second VM
     fixture2.create_test_config()?;
-    assert!(fixture2.run_vm_command(&["create", "--force"])?.status.success());
+    assert!(fixture2
+        .run_vm_command(&["create", "--force"])?
+        .status
+        .success());
     assert!(fixture2.run_vm_command(&["start"])?.status.success());
 
     // Verify both VMs are listed as running
@@ -40,14 +46,26 @@ fn test_vm_multi_instance_lifecycle() -> Result<()> {
     assert!(fixture1.run_vm_command(&["stop"])?.status.success());
 
     let status1_output = fixture1.run_vm_command(&["status"])?;
-    assert!(String::from_utf8_lossy(&status1_output.stdout).contains("stopped"), "Instance 1 should be stopped");
+    assert!(
+        String::from_utf8_lossy(&status1_output.stdout).contains("stopped"),
+        "Instance 1 should be stopped"
+    );
 
     let status2_output = fixture2.run_vm_command(&["status"])?;
-    assert!(String::from_utf8_lossy(&status2_output.stdout).contains("running"), "Instance 2 should still be running");
+    assert!(
+        String::from_utf8_lossy(&status2_output.stdout).contains("running"),
+        "Instance 2 should still be running"
+    );
 
     // Clean up both VMs
-    assert!(fixture1.run_vm_command(&["destroy", "--force"])?.status.success());
-    assert!(fixture2.run_vm_command(&["destroy", "--force"])?.status.success());
+    assert!(fixture1
+        .run_vm_command(&["destroy", "--force"])?
+        .status
+        .success());
+    assert!(fixture2
+        .run_vm_command(&["destroy", "--force"])?
+        .status
+        .success());
 
     Ok(())
 }

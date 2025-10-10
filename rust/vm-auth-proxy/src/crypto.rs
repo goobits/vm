@@ -1,13 +1,12 @@
 //! Cryptographic operations for secret encryption and decryption
 
 use aes_gcm::{
-    aead::{Aead, AeadCore, KeyInit, OsRng},
+    aead::{rand_core::RngCore, Aead, AeadCore, KeyInit, OsRng},
     Aes256Gcm, Nonce,
 };
 use anyhow::{anyhow, Context, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use pbkdf2::pbkdf2_hmac;
-use rand::RngCore;
 use sha2::Sha256;
 
 /// Number of PBKDF2 iterations for key derivation

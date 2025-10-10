@@ -9,6 +9,7 @@ description = "Unified package manager for VM Tool - handles cargo, npm, and pip
 [dependencies]
 clap = { workspace = true }
 serde_json = { workspace = true }
+tracing = { workspace = true }
 vm-config = { path = "../vm-config" }
 vm-messages = { path = "../vm-messages" }
 vm-core = { path = "../vm-core" }

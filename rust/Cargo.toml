@@ -57,7 +57,7 @@ axum = { version = "0.8", features = ["multipart", "ws"] }
 tokio = { version = "1.47", features = ["net", "rt-multi-thread", "macros", "fs", "process"] }
 aes-gcm = "0.10"
 pbkdf2 = "0.12"
-rand = "0.8"
+rand = "0.9"
 sha1 = "0.10"
 sha2 = "0.10"
 tracing = "0.1"

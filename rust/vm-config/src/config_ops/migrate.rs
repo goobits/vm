@@ -71,10 +71,7 @@ fn find_pending_migrations() -> Result<Vec<PendingMigration>> {
         let new_path = (path_info.new_path_fn)()?;
 
         if old_path.exists() && !new_path.exists() {
-            pending.push(PendingMigration {
-                old_path,
-                new_path,
-            });
+            pending.push(PendingMigration { old_path, new_path });
         }
     }
     Ok(pending)

@@ -121,16 +121,13 @@ impl ShellProvider for PowerShell {
 
     fn profile_path(&self) -> Option<PathBuf> {
         // Try $PROFILE environment variable first
-        env::var("PROFILE")
-            .ok()
-            .map(PathBuf::from)
-            .or_else(|| {
-                // Fallback to standard PowerShell profile location
-                dirs::document_dir().map(|docs| {
-                    docs.join("PowerShell")
-                        .join("Microsoft.PowerShell_profile.ps1")
-                })
+        env::var("PROFILE").ok().map(PathBuf::from).or_else(|| {
+            // Fallback to standard PowerShell profile location
+            dirs::document_dir().map(|docs| {
+                docs.join("PowerShell")
+                    .join("Microsoft.PowerShell_profile.ps1")
             })
+        })
     }
 
     fn path_export_syntax(&self, path: &std::path::Path) -> String {
