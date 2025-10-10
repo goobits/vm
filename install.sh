@@ -650,6 +650,91 @@ install_rust_secure() {
 }
 
 # ============================================================================
+# Build Tools Detection (for source builds)
+# ============================================================================
+
+check_build_tools() {
+    log_info "Checking for build tools..."
+
+    # Check for C compiler/linker (required for Rust linking)
+    local has_cc=false
+    local cc_command=""
+
+    if command_exists gcc; then
+        has_cc=true
+        cc_command="gcc"
+    elif command_exists clang; then
+        has_cc=true
+        cc_command="clang"
+    elif command_exists cc; then
+        has_cc=true
+        cc_command="cc"
+    fi
+
+    if [[ "$has_cc" == "true" ]]; then
+        log_success "C compiler found: $cc_command"
+        return 0
+    fi
+
+    # No C compiler found - show platform-specific instructions
+    log_error "C compiler/linker not found (required for building from source)"
+    echo ""
+    echo -e "${YELLOW}═══════════════════════════════════════════${NC}"
+    echo -e "${YELLOW}⚠️  Missing Build Tools${NC}"
+    echo -e "${YELLOW}═══════════════════════════════════════════${NC}"
+    echo ""
+    echo -e "${BLUE}Rust requires a C linker for the final compilation step.${NC}"
+    echo ""
+    echo -e "${BLUE}Install build tools for your platform:${NC}"
+    echo ""
+
+    case "$OS_TYPE" in
+        macos)
+            echo -e "  ${GREEN}xcode-select --install${NC}"
+            echo ""
+            echo -e "  (This installs Apple's command-line developer tools)"
+            ;;
+        ubuntu|debian)
+            echo -e "  ${GREEN}sudo apt-get update${NC}"
+            echo -e "  ${GREEN}sudo apt-get install -y build-essential${NC}"
+            echo ""
+            echo -e "  (This installs gcc, g++, make, and other essential tools)"
+            ;;
+        fedora|rhel|centos|rocky|almalinux)
+            if command_exists dnf; then
+                echo -e "  ${GREEN}sudo dnf install -y gcc gcc-c++ make${NC}"
+            else
+                echo -e "  ${GREEN}sudo yum install -y gcc gcc-c++ make${NC}"
+            fi
+            echo ""
+            echo -e "  (This installs the C/C++ compiler and build tools)"
+            ;;
+        arch|manjaro|endeavouros)
+            echo -e "  ${GREEN}sudo pacman -S base-devel${NC}"
+            echo ""
+            echo -e "  (This installs essential build tools)"
+            ;;
+        alpine)
+            echo -e "  ${GREEN}sudo apk add build-base${NC}"
+            echo ""
+            echo -e "  (This installs essential build tools)"
+            ;;
+        *)
+            echo -e "  ${YELLOW}Install gcc or clang using your package manager${NC}"
+            echo ""
+            ;;
+    esac
+
+    echo -e "${YELLOW}After installing, run this script again.${NC}"
+    echo -e "${YELLOW}═══════════════════════════════════════════${NC}"
+    echo ""
+
+    handle_error $ERR_DEPENDENCY_MISSING \
+        "Build tools not installed" \
+        "Install build tools (see above) then retry"
+}
+
+# ============================================================================
 # Path Configuration
 # ============================================================================
 
@@ -982,6 +1067,10 @@ main() {
         install_rust_secure || handle_error $ERR_INSTALL_FAILED \
             "Rust installation failed" \
             "Try installing Rust manually from https://rustup.rs"
+        echo ""
+
+        # Check for build tools (gcc/clang)
+        check_build_tools
         echo ""
 
         # Install VM tool from source
