@@ -1,494 +1,285 @@
-# Proposal: Quick Start Developer Onboarding Test
+# Proposal 16: Improve Quick Start Experience
 
-**Status:** 🧪 Onboarding Test - Path 2
-**Priority:** P0
-**Complexity:** Low (Testing Only)
-**Estimated Effort:** 15-30 minutes
-**Test Type:** Fast Path - Prerequisites Met
+**Priority:** P1
+**Complexity:** Medium
+**Estimated Time:** 4-6 hours
 
 ---
 
-## Purpose
+## Problem
 
-This proposal tests the **experienced developer onboarding experience** for developers who have:
-- ✅ Rust toolchain already installed
-- ✅ Docker already installed and running
-- ✅ Comfortable with CLI tools
-- ✅ Want to get productive quickly
-- 🎯 **Goal: Zero to productive in under 15 minutes**
+Jules' test review (see `ONBOARDING_REVIEW.md`) scored **1/10** with complete failure to create a VM.
 
-**Goal:** Measure the "quick start" experience and validate that experienced developers can onboard in minimal time without reading extensive documentation.
-
----
-
-## Test Persona
-
-**Name:** Jordan (Senior Backend Engineer)
-**Background:**
-- 5+ years software development experience
-- Already uses Docker daily
-- Has Rust installed for other projects
-- Wants to quickly test VM tool for team adoption
-- Values speed and efficiency
-
-**Pain Points to Test:**
-- Can I get started in < 15 minutes?
-- Do I need to read extensive docs?
-- Does the tool respect my existing setup?
-- Can I use advanced features immediately?
+**Critical Issues:**
+1. Default resource allocation too high (8GB RAM, 4 CPUs)
+2. `vm create` fails without `vm init` first
+3. No detection of Docker permission issues
+4. Rate limiting errors from Docker Hub not handled
 
 ---
 
-## Test Environment
+## Specific Implementation Tasks
 
-**Starting State:**
-```bash
-# Prerequisites MUST be installed
-cargo --version     # Should return: cargo 1.x.x
-docker --version    # Should return: Docker version 20.x+
-docker ps           # Should succeed (daemon running)
-which vm            # Should return: not found
+### Task 1: Add Sensible Resource Defaults
+**File:** `rust/vm-config/src/lib.rs`
+
+**Current (BROKEN):**
+```rust
+// Hardcoded defaults that don't fit most systems
+const DEFAULT_MEMORY: u64 = 8192;  // 8GB - too much!
+const DEFAULT_CPUS: u32 = 4;       // 4 cores - too many!
 ```
 
-**Test Machine Requirements:**
-- Ubuntu 22.04 / macOS 13+ / Windows 10+ with WSL2
-- Rust toolchain 1.70+
-- Docker 20.10+
-- Internet connection
-- At least 2GB free disk space
+**Fix:**
+```rust
+pub fn detect_resource_defaults() -> ResourceConfig {
+    let sys = System::new_all();
 
-**If prerequisites missing, this test is invalid** - use Proposal 15 instead.
+    let total_memory = sys.total_memory() / 1024;  // KB to MB
+    let total_cpus = sys.cpus().len() as u32;
+
+    // Use 50% of system resources, with minimums
+    ResourceConfig {
+        memory: std::cmp::max(2048, total_memory / 2),  // Min 2GB, max 50%
+        cpus: std::cmp::max(2, total_cpus / 2),          // Min 2, max 50%
+    }
+}
+```
+
+**Acceptance:**
+```bash
+# On 16GB machine with 8 cores:
+vm create  # Should allocate 8GB RAM, 4 CPUs (50%)
+
+# On 4GB machine with 2 cores:
+vm create  # Should allocate 2GB RAM, 2 CPUs (minimum)
+```
 
 ---
 
-## Test Procedure
+### Task 2: Auto-Generate Config on First `vm create`
+**File:** `rust/vm/src/commands/create.rs`
 
-### Phase 1: Lightning Install (2-3 minutes)
+**Current:** Fails if no `vm.yaml` exists
 
-**Objective:** Can an experienced dev install in under 3 minutes?
+**Fix:**
+```rust
+pub fn run(args: CreateArgs) -> Result<()> {
+    let config_path = Path::new("vm.yaml");
 
-1. **Navigate to project**
-   - [ ] Go to project repository
-   - [ ] Scan README for installation command (don't read everything)
+    let config = if config_path.exists() {
+        // Load existing config
+        VmConfig::load_from_file(config_path)?
+    } else {
+        // Auto-generate if missing
+        println!("📝 No vm.yaml found, generating default config...");
 
-2. **Install from Cargo**
-   ```bash
-   time cargo install vm
-   ```
-   - **Record:**
-     - Start time: [timestamp]
-     - End time: [timestamp]
-     - Total seconds: _____ (Target: < 180s)
-     - Compilation successful: (Yes/No): _____
+        let default_config = VmConfig {
+            provider: Some("docker".to_string()),
+            project: Some(ProjectConfig {
+                name: detect_project_name()?,
+            }),
+            resources: Some(detect_resource_defaults()),
+            framework: detect_framework().ok(),
+            ..Default::default()
+        };
 
-3. **Quick verification**
-   ```bash
-   vm --version
-   vm --help | head -20
-   ```
-   - **Record:**
-     - Version: _____
-     - Help output clear enough to proceed: (Yes/No): _____
+        // Write it for next time
+        default_config.write_to_file(config_path)?;
+        println!("✓ Generated vm.yaml");
 
-**Phase 1 Score:** ⬜ PASS (< 3 min) | ⬜ ACCEPTABLE (3-5 min) | ⬜ FAIL (> 5 min)
+        default_config
+    };
 
-### Phase 2: Real-World Quick Start (5-10 minutes)
+    // Continue with VM creation
+    create_vm(&config, &args)?;
+    Ok(())
+}
+```
 
-**Objective:** Can you use the tool with a real project immediately?
+**Acceptance:**
+```bash
+# Without vm.yaml
+cd /tmp/test-project
+echo '{"name":"test"}' > package.json
+vm create  # Should auto-generate config and succeed
+ls vm.yaml # Should exist now
+```
 
-4. **Choose your own project type** (pick ONE that matches your experience)
+---
 
-   **Option A: Node.js/React Project**
-   ```bash
-   git clone https://github.com/vercel/next.js
-   cd next.js/examples/blog-starter
-   vm create
-   ```
+### Task 3: Handle Docker Rate Limiting
+**File:** `rust/vm-provider/src/docker/mod.rs`
 
-   **Option B: Python/Django Project**
-   ```bash
-   mkdir ~/test-django && cd ~/test-django
-   pip freeze > requirements.txt  # Use your current env
-   echo "Django>=4.2" > requirements.txt
-   vm create
-   ```
+**Current:** Fails with cryptic error on rate limit
 
-   **Option C: Rust Project**
-   ```bash
-   cargo new test-rust-app
-   cd test-rust-app
-   vm create
-   ```
+**Fix:**
+```rust
+pub fn pull_image(image: &str) -> Result<()> {
+    let output = Command::new("docker")
+        .args(&["pull", image])
+        .output()?;
 
-   **Option D: Existing Work Project** (if allowed)
-   ```bash
-   cd ~/work/your-actual-project
-   vm create
-   ```
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
 
-5. **Track the experience**
-   - **Record:**
-     - Project type chosen: _____
-     - Command executed: _____
-     - Start time: [timestamp]
-     - Did it auto-detect framework? (Yes/No): _____
-     - Time to VM ready: _____ seconds (Target: < 120s)
-     - Success: (Yes/No): _____
-     - Errors: _____
+        // Detect rate limiting
+        if stderr.contains("toomanyrequests") || stderr.contains("rate limit") {
+            return Err(VmError::DockerRateLimit(format!(
+                "Docker Hub rate limit reached\n\n\
+                Fixes:\n\
+                  • Wait 6 hours and try again\n\
+                  • Login to Docker Hub: docker login\n\
+                  • Use a different base image in vm.yaml"
+            )));
+        }
 
-6. **Test immediate productivity**
-   ```bash
-   vm ssh
-   # Inside VM - verify your project works
-   # For Node: npm install && npm run dev
-   # For Python: pip install -r requirements.txt
-   # For Rust: cargo build
-   ```
-   - **Record:**
-     - Project files accessible: (Yes/No): _____
-     - Can run project commands: (Yes/No): _____
-     - Dependencies installed correctly: (Yes/No): _____
+        return Err(VmError::DockerPullFailed(stderr.to_string()));
+    }
 
-**Phase 2 Score:** ⬜ PASS (< 10 min) | ⬜ ACCEPTABLE (10-15 min) | ⬜ FAIL (> 15 min)
+    Ok(())
+}
+```
 
-### Phase 3: Advanced Features (5-10 minutes)
+**Acceptance:**
+```bash
+# Simulate rate limit (use proxy or wait for natural limit)
+vm create
+# Should show: "Docker Hub rate limit reached\n\nFixes:\n  • Wait 6 hours..."
+```
 
-**Objective:** Can you discover and use advanced features without reading docs?
+---
 
-7. **Multi-instance workflow** (test without reading docs first)
-   ```bash
-   vm create --instance dev
-   vm create --instance staging
-   vm list
-   vm ssh dev
-   exit
-   vm ssh staging
-   exit
-   ```
-   - **Record:**
-     - Figured out multi-instance syntax: (Yes/No): _____
-     - Both instances created: (Yes/No): _____
-     - Can switch between instances: (Yes/No): _____
-     - Time to figure out: _____ minutes
+### Task 4: Add `--force` Flag to Skip Validations
+**File:** `rust/vm/src/commands/create.rs`
 
-8. **Test temp VM feature**
-   ```bash
-   cd ~/test-project
-   vm temp create ./src ./tests
-   vm temp ssh
-   # Verify mounts
-   ls
-   exit
-   vm temp destroy
-   ```
-   - **Record:**
-     - Discovered temp feature: (How: _____):
-     - Feature worked as expected: (Yes/No): _____
-     - Use case clear: (Yes/No): _____
+**Add Flag:**
+```rust
+#[derive(Parser)]
+pub struct CreateArgs {
+    /// Skip resource validation and use defaults
+    #[arg(long)]
+    pub force: bool,
 
-9. **Test configuration**
-   ```bash
-   vm init
-   cat vm.yaml
-   # Edit ports or resources
-   vim vm.yaml  # or code vm.yaml
-   vm validate
-   ```
-   - **Record:**
-     - Config file intuitive: (Yes/No): _____
-     - Validation helpful: (Yes/No): _____
-     - Could customize without docs: (Yes/No): _____
+    // ... rest
+}
+```
 
-**Phase 3 Score:** ⬜ PASS (all features discoverable) | ⬜ PARTIAL | ⬜ FAIL (needed docs)
+**Use Flag:**
+```rust
+pub fn run(args: CreateArgs) -> Result<()> {
+    // Load/generate config
+    let mut config = load_or_generate_config()?;
 
-### Phase 4: Cleanup & Edge Cases (2-5 minutes)
+    // If force, override with minimal resources
+    if args.force {
+        println!("⚡ Force mode: using minimal resources");
+        config.resources = Some(ResourceConfig {
+            memory: 2048,
+            cpus: 2,
+        });
+    }
 
-**Objective:** Test the full lifecycle and edge cases
+    // Validate unless force
+    if !args.force {
+        validate_config(&config)?;
+    }
 
-10. **Test destroy operations**
-    ```bash
-    vm destroy dev --force
-    vm destroy staging
-    vm destroy  # Should prompt or fail with helpful message
-    vm list     # Should show empty or remaining VMs
-    ```
-    - **Record:**
-      - Destroy commands clear: (Yes/No): _____
-      - Safety prompts appropriate: (Yes/No): _____
-      - Cleanup successful: (Yes/No): _____
+    create_vm(&config, &args)?;
+    Ok(())
+}
+```
 
-11. **Test error handling** (intentional failures)
-    ```bash
-    vm ssh nonexistent-vm    # Should fail gracefully
-    vm destroy --all         # Should work or prompt
-    docker ps -a | grep vm   # Should show clean state
-    ```
-    - **Record:**
-      - Error messages helpful: (Yes/No): _____
-      - Suggested fixes provided: (Yes/No): _____
-      - Clean error recovery: (Yes/No): _____
+**Acceptance:**
+```bash
+# On low-resource machine
+vm create --force  # Should use minimal 2GB/2CPU and succeed
+```
 
-**Phase 4 Score:** ⬜ PASS (clean lifecycle) | ⬜ ACCEPTABLE | ⬜ FAIL
+---
+
+### Task 5: Improve First-Run Experience Messages
+**File:** `rust/vm/src/commands/create.rs`
+
+**Add Helpful First-Run Messages:**
+```rust
+pub fn run(args: CreateArgs) -> Result<()> {
+    // Check if this is first VM for this project
+    let is_first_vm = !Path::new(".vm").exists();
+
+    if is_first_vm {
+        println!("👋 Creating your first VM for this project\n");
+        println!("💡 Tip: Run 'vm init' first to customize resources");
+        println!("⏱️  This may take 2-3 minutes...\n");
+    }
+
+    // ... rest of creation
+
+    if is_first_vm {
+        println!("\n🎉 Success! Your VM is ready");
+        println!("📝 Next steps:");
+        println!("  • ssh into VM:  vm ssh");
+        println!("  • Run commands: vm exec 'npm install'");
+        println!("  • View status:  vm status");
+    }
+
+    Ok(())
+}
+```
+
+**Acceptance:**
+```bash
+vm create  # First time
+# Should show welcome message, tips, next steps
+```
+
+---
+
+## Testing
+
+```bash
+# Test 1: Auto-config generation
+cd /tmp/fresh-project
+echo '{"name":"test"}' > package.json
+vm create  # Should auto-generate vm.yaml and succeed
+cat vm.yaml  # Should have provider and project
+
+# Test 2: Resource detection
+vm create  # Should use 50% of system resources
+vm status  # Should show allocated CPUs/memory
+
+# Test 3: Force mode
+vm create --force  # Should use minimal resources
+
+# Test 4: Rate limit handling
+# (Simulate by blocking Docker Hub or waiting for natural limit)
+vm create  # Should show helpful rate limit message
+
+# Test 5: First-run messages
+rm -rf .vm vm.yaml
+vm create  # Should show welcome, tips, next steps
+```
 
 ---
 
 ## Success Criteria
 
-### Hard Requirements (Must Pass)
-- [ ] ✅ Installation completes in < 5 minutes
-- [ ] ✅ First VM creation in < 3 minutes
-- [ ] ✅ SSH works immediately
-- [ ] ✅ Auto-detection works for chosen framework
-- [ ] ✅ Total time to productivity < 15 minutes
-
-### Soft Requirements (Should Pass)
-- [ ] No documentation needed for basic usage
-- [ ] Advanced features discoverable via `--help`
-- [ ] Error messages provide clear next steps
-- [ ] Configuration is intuitive
-- [ ] Cleanup is straightforward
-
-### Nice to Have
-- [ ] Installation < 2 minutes
-- [ ] Multi-instance workflow obvious
-- [ ] Temp VMs discoverable without docs
-- [ ] Zero friction from start to finish
+- [ ] `vm create` works without requiring `vm init` first
+- [ ] Auto-detects sensible resource limits (50% of system)
+- [ ] `--force` flag uses minimal resources for low-spec machines
+- [ ] Docker rate limit shows actionable error message
+- [ ] First-run experience includes helpful tips
+- [ ] Can create VM on 4GB/2-core machine
+- [ ] Reduces onboarding time from 15+ min to < 5 min
 
 ---
 
-## Data Collection
-
-### Speed Test Results
-
-| Metric | Target | Actual | Status |
-|--------|--------|--------|--------|
-| Installation Time | < 3 min | _____ | ⬜ |
-| First VM Creation | < 2 min | _____ | ⬜ |
-| Time to SSH | < 30 sec | _____ | ⬜ |
-| Total Onboarding | < 15 min | _____ | ⬜ |
-| Advanced Features | < 10 min | _____ | ⬜ |
-
-### Friction Log
-
-For EACH moment of confusion or delay, record:
-
-```
-[HH:MM] - Stuck on: [what you were trying to do]
-Attempted: [what you tried]
-Resolution: [how you solved it]
-Time lost: [seconds]
-Should have been: [what would have been clearer]
-```
-
-### Feature Discovery
-
-How did you discover each feature?
-
-| Feature | Discovery Method | Time to Find |
-|---------|------------------|--------------|
-| Basic create | ⬜ README ⬜ `--help` ⬜ Guessed | _____ |
-| Multi-instance | ⬜ README ⬜ `--help` ⬜ Guessed | _____ |
-| Temp VMs | ⬜ README ⬜ `--help` ⬜ Guessed | _____ |
-| Config file | ⬜ README ⬜ `--help` ⬜ Guessed | _____ |
-| Port mapping | ⬜ README ⬜ `--help` ⬜ Guessed | _____ |
-
----
-
-## Developer Experience Survey
-
-### Rate 1-5 (5 = Excellent)
-
-| Aspect | Score | Comments |
-|--------|-------|----------|
-| Installation Speed | _____ | |
-| Time to First Success | _____ | |
-| Command Discoverability | _____ | |
-| Error Message Quality | _____ | |
-| Auto-Detection Accuracy | _____ | |
-| Advanced Feature UX | _____ | |
-| Overall Developer Experience | _____ | |
-
-### Quick Questions
-
-1. **Did you need to read documentation?** (Yes/No/Partially)
-   - Which parts: _____
-
-2. **Compared to similar tools (Docker Compose, Vagrant, etc.), this was:**
-   - ⬜ Much faster
-   - ⬜ Somewhat faster
-   - ⬜ About the same
-   - ⬜ Slower
-
-3. **Would you adopt this for your team?** (Yes/No/Maybe)
-   - Why: _____
-
-4. **Biggest time-saver:**
-
-5. **Biggest friction point:**
-
-6. **Most surprising feature:**
-
-7. **Missing feature you expected:**
-
----
-
-## Developer Scoring
-
-### Overall Score: _____ / 10
-
-**10 = World-class:** Fastest onboarding ever, zero friction, delightful
-**8-9 = Excellent:** Very smooth, minimal docs needed, would recommend
-**6-7 = Good:** Works well, some rough edges, would use
-**4-5 = Acceptable:** Gets job done, needs polish, might use
-**1-3 = Poor:** Too slow, too confusing, wouldn't use
-
-### Recommendation
-
-Would you recommend this tool to your team?
-
-- ⬜ **Strong Yes** - Already planning to share
-- ⬜ **Yes** - Would recommend with caveats
-- ⬜ **Maybe** - Needs work before recommending
-- ⬜ **No** - Not ready for team adoption
-
-**Reason:**
-
----
-
-## Competitive Comparison
-
-If you've used similar tools, compare:
-
-| Tool | Setup Time | Ease of Use | Auto-Config | Overall |
-|------|------------|-------------|-------------|---------|
-| Docker Compose | _____ | _____ | _____ | _____ |
-| Vagrant | _____ | _____ | _____ | _____ |
-| DevContainer | _____ | _____ | _____ | _____ |
-| **VM Tool** | _____ | _____ | _____ | _____ |
-
-**This tool's killer feature:**
-
-**This tool's biggest gap:**
-
----
-
-## Deliverables
-
-Submit:
-
-1. **Completed test report** (this document)
-2. **Friction log** (every moment of delay)
-3. **Terminal history** (command log)
-4. **Timing breakdown** (for each phase)
-
-### Report Format
-
-```markdown
-## Quick Start Developer Test
-
-**Tester:** [Name]
-**Date:** [YYYY-MM-DD]
-**OS:** [System]
-**Experience:** [Years in development]
-**Total Time:** [MM:SS]
-**Score:** [X/10]
-**Recommendation:** [Strong Yes / Yes / Maybe / No]
-
-### TL;DR
-[One paragraph: Would you use this? Why/why not?]
-
-### Speed Results
-- Installation: [MM:SS] (Target: 03:00)
-- First VM: [MM:SS] (Target: 02:00)
-- Total: [MM:SS] (Target: 15:00)
-
-### Top 3 Wins
-1.
-2.
-3.
-
-### Top 3 Friction Points
-1.
-2.
-3.
-
-### One-Sentence Verdict
-[How would you describe this tool to a colleague?]
-```
-
----
-
-## Test Scenarios by Stack
-
-### Frontend Developers
-- Test with: Next.js, React, Vue, Angular
-- Focus on: Port forwarding, hot reload, npm integration
-
-### Backend Developers
-- Test with: Django, Flask, Rails, Express
-- Focus on: Database services, API ports, environment variables
-
-### DevOps Engineers
-- Test with: Multi-service apps, Docker Compose projects
-- Focus on: Multi-instance, configuration, resource limits
-
-### Full-Stack Developers
-- Test with: Monorepo or full-stack app
-- Focus on: Multi-framework detection, service orchestration
-
-**Choose the scenario matching your expertise for most authentic test results.**
-
----
-
-## Success Metrics
-
-**This test PASSES if:**
-- ✅ Total time < 15 minutes
-- ✅ Zero documentation required for basics
-- ✅ Score ≥ 8/10
-- ✅ Tester would recommend to team
-
-**This test is ACCEPTABLE if:**
-- ⚠️ Total time 15-20 minutes
-- ⚠️ Minimal documentation needed
-- ⚠️ Score 6-7/10
-- ⚠️ Tester would consider using
-
-**This test FAILS if:**
-- ❌ Total time > 20 minutes
-- ❌ Extensive documentation required
-- ❌ Score < 6/10
-- ❌ Tester would not recommend
-
----
-
-## Notes for Fast-Track Testing
-
-**Key Differences from Beginner Test:**
-- Focus on speed, not exploration
-- Assume CLI competence
-- Test advanced features immediately
-- Compare to existing tools in your workflow
-
-**Time Limits:**
-- Stop if installation takes > 5 minutes (FAIL)
-- Stop if first VM takes > 5 minutes (FAIL)
-- Stop if total exceeds 30 minutes (FAIL)
-
-**This is a SPEED TEST** - work as fast as you normally would, don't overthink.
-
----
-
-## Related Tests
-
-This is **Path 2** of 3 onboarding tests:
-
-- 🔄 **Proposal 15:** Complete Beginner (no prerequisites)
-- ✅ **Proposal 16:** Quick Start Developer (this test)
-- 🔄 **Proposal 17:** CI/CD Automated (scripted setup)
-
-**Compare all three to identify:**
-- Which path is fastest (should be this one)
-- Where experienced devs still hit friction
-- Whether auto-detection works across skill levels
-- If advanced features are discoverable
+## Priority Order
+
+1. **Auto-generate config** (removes `vm init` requirement)
+2. **Resource detection** (fixes allocation errors)
+3. **First-run messages** (improves UX)
+4. **Rate limit handling** (better errors)
+5. **Force flag** (escape hatch for edge cases)
+
+Estimated total time: **4-6 hours**
