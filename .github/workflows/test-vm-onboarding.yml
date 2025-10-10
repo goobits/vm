@@ -1,0 +1,62 @@
+name: VM Tool Onboarding Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [test-vm-onboarding]
+
+jobs:
+  test-vm-onboarding:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install VM tool
+        run: |
+          set -e
+          echo "Installing VM tool..."
+          cargo install vm
+          vm --version
+        timeout-minutes: 10
+
+      - name: Create test project
+        run: |
+          mkdir -p test-project
+          cd test-project
+          echo '{"name": "ci-test", "version": "1.0.0"}' > package.json
+          echo "console.log('Hello from CI');" > index.js
+
+      - name: Create VM (non-interactive)
+        run: |
+          cd test-project
+          vm create --force --non-interactive
+        timeout-minutes: 5
+        env:
+          VM_NO_PROMPT: "true"
+
+      - name: Verify VM status
+        run: |
+          vm list
+          vm status
+
+      - name: Execute command in VM
+        run: |
+          vm exec "node --version"
+          vm exec "npm --version"
+          vm exec "cat package.json"
+
+      - name: Test SSH (non-interactive)
+        run: |
+          vm ssh --command "echo 'SSH works in CI'"
+          vm ssh --command "ls -la"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          vm destroy --force --all
+          docker ps -a  # Verify cleanup
