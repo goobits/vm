@@ -1,0 +1,30 @@
+# Stage 1: Build environment with VM tool
+FROM rust:1.70 AS builder
+
+# Install VM tool
+RUN cargo install vm
+
+# Verify installation
+RUN vm --version
+
+# Stage 2: Runtime environment
+FROM ubuntu:22.04
+
+# Copy VM binary from builder
+COPY --from=builder /usr/local/cargo/bin/vm /usr/local/bin/vm
+
+# Install Docker CLI (to manage nested containers)
+RUN apt-get update && \
+    apt-get install -y docker.io && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create test project
+WORKDIR /app
+RUN echo '{"name": "docker-ci-test", "version": "1.0.0"}' > package.json
+
+# Test that VM can be invoked
+RUN vm --version
+RUN vm --help
+
+# Entry point for CI tests
+CMD ["vm", "create", "--force"]
