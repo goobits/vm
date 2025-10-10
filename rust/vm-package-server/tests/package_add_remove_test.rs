@@ -14,10 +14,22 @@ use std::process::Command;
 mod common;
 use common::create_test_setup;
 
-/// Check if Python 3 is available on the system
+/// Check if Python 3 and setuptools are available on the system
 fn is_python_available() -> bool {
-    Command::new("python3")
+    // Check if python3 binary exists
+    let python_exists = Command::new("python3")
         .arg("--version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false);
+
+    if !python_exists {
+        return false;
+    }
+
+    // Check if setuptools is installed
+    Command::new("python3")
+        .args(["-c", "import setuptools"])
         .output()
         .map(|output| output.status.success())
         .unwrap_or(false)
