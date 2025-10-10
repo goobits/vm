@@ -26,6 +26,30 @@ Validate that a new developer can successfully:
 
 ---
 
+## Prerequisites
+
+**CRITICAL**: Before running any tests, ensure these system dependencies are installed:
+
+### Ubuntu/Debian:
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential curl git
+```
+
+### Fedora/RHEL:
+```bash
+sudo dnf install -y gcc gcc-c++ make curl git
+```
+
+### macOS:
+```bash
+xcode-select --install  # Installs clang and build tools
+```
+
+**Why**: Rust requires a C linker (`ld`) for the final linking stage of compilation. Without `build-essential` (or equivalent), cargo build will fail at step 359/360 with a generic error.
+
+---
+
 ## Test Scenarios
 
 ### 1. 🚀 **Fresh Installation Test** (30 min)
@@ -40,6 +64,8 @@ Validate that a new developer can successfully:
 
 **Steps**:
 ```bash
+# 0. FIRST: Install system dependencies (see Prerequisites above)
+
 # 1. Clone repo
 git clone <repo-url>
 cd vm
