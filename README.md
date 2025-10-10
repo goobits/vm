@@ -46,6 +46,8 @@ VM uses Docker as its default "provider" to create lightweight, isolated develop
 
 ## 🚀 Quick Start
 
+**Note**: The `install.sh` script is currently broken due to a checksum mismatch. A fix is in progress.
+
 Get up and running in three commands:
 
 ```bash
@@ -318,6 +320,23 @@ vm --config custom.yaml ssh [container] # Use specific config
 vm update [--version v1.2.3]    # Update to latest or specific version
 vm uninstall [--keep-config]    # Uninstall vm from the system
 vm doctor                        # Run comprehensive health checks
+```
+
+**Auth Proxy** — Centralized secrets management:
+```bash
+vm auth status                   # Service status
+vm auth add <name> <value>       # Store a secret
+vm auth list                     # List stored secrets
+vm auth remove <name>            # Remove a secret
+```
+
+**Package Registry** — Private package registry for npm, pip, and cargo:
+```bash
+vm pkg status                    # Server status
+vm pkg add [--type <type>]       # Publish package from current directory
+vm pkg list                      # List all packages
+vm pkg remove <name>             # Remove a package
+vm pkg use --shell <shell>       # Generate shell configuration
 ```
 
 ---
