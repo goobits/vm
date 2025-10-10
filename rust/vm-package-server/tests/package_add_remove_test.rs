@@ -23,6 +23,15 @@ fn is_python_available() -> bool {
         .unwrap_or(false)
 }
 
+/// Check if NPM is available on the system
+fn is_npm_available() -> bool {
+    Command::new("npm")
+        .arg("--version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
 async fn create_test_server() -> (TestServer, common::TestSetup) {
     let setup = create_test_setup()
         .await
@@ -38,6 +47,12 @@ async fn create_test_server() -> (TestServer, common::TestSetup) {
 /// Tests NPM package add and remove lifecycle
 #[tokio::test]
 async fn test_npm_package_lifecycle() -> Result<()> {
+    // Skip test if NPM is not available
+    if !is_npm_available() {
+        eprintln!("Skipping NPM test: npm not found. Install Node.js/npm to run NPM tests.");
+        return Ok(());
+    }
+
     let (_server, setup) = create_test_server().await;
     let state = setup.app_state;
 

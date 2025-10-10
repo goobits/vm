@@ -135,7 +135,11 @@ cargo test --workspace --lib 2>&1 | grep "test result:"
 
 **Expected:** All tests should pass. Current count: ~380+ tests.
 
-**Note:** PyPI package server tests require Python 3 + setuptools. These tests will automatically skip if Python is not available. This is normal and not an error.
+**Note:** Some package server tests require external tools:
+- PyPI tests require Python 3 + setuptools
+- NPM tests require Node.js/npm
+
+These tests will automatically skip if the tools are not available. This is normal and not an error.
 
 ### 4.2 Run Integration Tests
 
