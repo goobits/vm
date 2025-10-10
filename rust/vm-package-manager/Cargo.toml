@@ -29,3 +29,6 @@ tempfile = { workspace = true }
 [[bin]]
 name = "vm-package-manager"
 path = "src/main.rs"
+
+[package.metadata.cargo-machete]
+ignored = ["tracing"]  # Required by vm_* macros from vm-core (vm_println!, vm_error!, etc)

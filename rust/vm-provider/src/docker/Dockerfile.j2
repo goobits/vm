@@ -131,6 +131,7 @@ RUN echo '' >> /home/${PROJECT_USER}/.zshrc && \
 
 # --- Git Worktree Auto-Repair Configuration ---
 # Create shared initialization script that runs for ALL shells (interactive, non-interactive, bash, zsh, sh)
+USER root
 RUN mkdir -p /etc/profile.d && \
     cat > /etc/profile.d/vm-worktree-repair.sh << 'EOF'
 #!/bin/sh
