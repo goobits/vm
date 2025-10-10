@@ -874,7 +874,8 @@ install_vm_tool() {
     fi
 
     # Run the Rust installer
-    log_info "Running Rust installer..."
+    echo "📦 Installing VM tool from source..."
+    echo "⏱️  This may take 2-3 minutes..."
 
     # Capture output to both log and temp file for error reporting
     local installer_output
@@ -885,6 +886,13 @@ install_vm_tool() {
         --package vm-installer \
         --manifest-path "$manifest_path" \
         -- "${INSTALLER_ARGS[@]+"${INSTALLER_ARGS[@]}"}" 2>&1 | tee -a "$LOG_FILE" "$installer_output"; then
+
+        echo "❌ Installation failed"
+        echo ""
+        echo "Common fixes:"
+        echo "  • Ensure Rust is up to date: rustup update"
+        echo "  • Check internet connection"
+        echo "  • Try: cargo install vm --locked"
 
         # Extract last meaningful error from output
         local error_detail
@@ -902,7 +910,7 @@ install_vm_tool() {
     rm -f "$installer_output"
     trap - EXIT
 
-    log_success "VM tool installed successfully"
+    echo "✅ VM tool installed successfully"
     return 0
 }
 

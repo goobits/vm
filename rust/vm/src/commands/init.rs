@@ -5,7 +5,10 @@ use std::path::PathBuf;
 // External crate imports
 use anyhow::{Context, Result};
 use sysinfo::System;
-use vm_config::config::{MemoryLimit, VmConfig, VmSettings};
+use vm_config::{
+    config::{MemoryLimit, ProjectConfig, VmConfig, VmSettings},
+    detector::detect_project_name,
+};
 use vm_core::{vm_println, vm_success};
 
 /// Represents the detected host system resources.
@@ -58,7 +61,15 @@ pub fn handle_init(
         resources.total_memory_mb / 1024
     );
 
+    let project_name =
+        detect_project_name().unwrap_or_else(|_| "my-project".to_string());
+
     let config = VmConfig {
+        provider: Some("docker".to_string()),
+        project: Some(ProjectConfig {
+            name: Some(project_name),
+            ..Default::default()
+        }),
         vm: Some(VmSettings {
             cpus: Some(resources.recommended_cpus),
             memory: Some(resources.recommended_memory.clone()),

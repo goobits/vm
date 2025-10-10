@@ -18,6 +18,15 @@ pub enum VmError {
     #[error("Dependency not found: {0}")]
     Dependency(String),
 
+    #[error("Docker not installed. {0}")]
+    DockerNotInstalled(String),
+
+    #[error("Docker daemon is not running. {0}")]
+    DockerNotRunning(String),
+
+    #[error("Docker permission denied. {0}")]
+    DockerPermission(String),
+
     #[error("Network error: {0}")]
     Network(String),
 

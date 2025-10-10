@@ -60,7 +60,7 @@ pub mod audio;
 pub mod preflight;
 
 #[cfg(feature = "docker")]
-mod docker;
+pub mod docker;
 #[cfg(feature = "tart")]
 pub mod tart;
 #[cfg(feature = "vagrant")]

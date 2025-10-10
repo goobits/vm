@@ -34,8 +34,8 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
     // Handle commands that don't need a provider first
     match &args.command {
         Command::Doctor => {
-            let app_config = AppConfig::load(args.config.clone())?;
-            doctor::handle_doctor_command(app_config.global).await
+            debug!("Handling doctor command");
+            doctor::run().map_err(VmError::from)
         }
         Command::Init {
             file,

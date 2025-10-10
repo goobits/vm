@@ -280,5 +280,24 @@ pub fn format_detected_types(detected_types: HashSet<String>) -> String {
 // --- Helper Functions ---
 // (Now using shared utilities from vm_core)
 
+/// Attempts to detect the project name based on the current directory.
+///
+/// It takes the last component of the current working directory's path
+/// and returns it as a string. This serves as a sensible default for
+/// the project name.
+///
+/// # Returns
+/// A `Result` containing the detected project name or an error if
+/// the current directory cannot be determined or processed.
+pub fn detect_project_name() -> anyhow::Result<String> {
+    let current_dir = std::env::current_dir()?;
+    let project_name = current_dir
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("my-project")
+        .to_string();
+    Ok(project_name)
+}
+
 #[cfg(test)]
 mod tests;

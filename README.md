@@ -49,8 +49,10 @@ VM uses Docker as its default "provider" to create lightweight, isolated develop
 Get up and running in three commands:
 
 ```bash
-# Install from Cargo (recommended)
-cargo install vm
+# Clone the repository and run the install script
+git clone https://github.com/goobits/vm.git
+cd vm
+./install.sh
 
 # Create your environment — it detects your project automatically
 vm create
@@ -64,12 +66,6 @@ vm ssh
 vm create --instance dev     # Creates myproject-dev
 vm create --instance prod    # Creates myproject-prod
 vm ssh myproject-dev         # Connect to specific instance
-```
-
-**From source:**
-```bash
-git clone <repository-url>
-cd vm && ./install.sh
 ```
 
 ```yaml

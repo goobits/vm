@@ -14,6 +14,7 @@ pub use lifecycle::LifecycleOperations;
 // Standard library
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::OnceLock;
 
 // External crates
@@ -24,6 +25,31 @@ use vm_core::error::{Result, VmError};
 use crate::{context::ProviderContext, preflight, Provider, TempProvider, VmStatusReport};
 use vm_config::config::VmConfig;
 use vm_core::command_stream::is_tool_installed;
+
+pub fn validate_docker_environment() -> Result<()> {
+    // Check 1: Docker installed
+    if !Command::new("docker").arg("--version").status()?.success() {
+        return Err(VmError::DockerNotInstalled(
+            "Install from: https://docs.docker.com/get-docker/".to_string(),
+        ));
+    }
+
+    // Check 2: Docker daemon running
+    let output = Command::new("docker").arg("ps").output()?;
+    if !output.status.success() {
+        if String::from_utf8_lossy(&output.stderr).contains("permission denied") {
+            return Err(VmError::DockerPermission(
+                "Fix: sudo usermod -aG docker $USER && newgrp docker".to_string(),
+            ));
+        } else {
+            return Err(VmError::DockerNotRunning(
+                "Start Docker Desktop or run: sudo systemctl start docker".to_string(),
+            ));
+        }
+    }
+
+    Ok(())
+}
 
 /// Container user and permission configuration
 #[derive(Debug, Clone)]
@@ -210,6 +236,7 @@ impl Provider for DockerProvider {
     }
 
     fn create_with_context(&self, context: &ProviderContext) -> Result<()> {
+        validate_docker_environment()?;
         preflight::check_system_resources()?;
 
         let lifecycle = self.lifecycle_ops();
@@ -225,6 +252,7 @@ impl Provider for DockerProvider {
         instance_name: &str,
         context: &ProviderContext,
     ) -> Result<()> {
+        validate_docker_environment()?;
         preflight::check_system_resources()?;
 
         let lifecycle = self.lifecycle_ops();

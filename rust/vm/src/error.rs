@@ -404,6 +404,18 @@ impl From<vm_core::error::VmError> for VmError {
                 source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, msg.clone())),
                 context: format!("Migration error: {}", msg),
             },
+            vm_core::error::VmError::DockerNotInstalled(msg) => VmError::General {
+                source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, msg.clone())),
+                context: format!("Docker not installed: {}", msg),
+            },
+            vm_core::error::VmError::DockerNotRunning(msg) => VmError::General {
+                source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, msg.clone())),
+                context: format!("Docker not running: {}", msg),
+            },
+            vm_core::error::VmError::DockerPermission(msg) => VmError::General {
+                source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, msg.clone())),
+                context: format!("Docker permission error: {}", msg),
+            },
             vm_core::error::VmError::Io(err) => VmError::from(err),
             vm_core::error::VmError::Other(err) => VmError::from(err),
         }
