@@ -768,15 +768,32 @@ install_vm_tool() {
 
     # Run the Rust installer
     log_info "Running Rust installer..."
+
+    # Capture output to both log and temp file for error reporting
+    local installer_output
+    installer_output=$(mktemp)
+    trap "rm -f '$installer_output'" EXIT
+
     if ! timeout "$CARGO_TIMEOUT_SECONDS" cargo run \
         --package vm-installer \
         --manifest-path "$manifest_path" \
-        -- "${INSTALLER_ARGS[@]+"${INSTALLER_ARGS[@]}"}" 2>&1 | tee -a "$LOG_FILE"; then
+        -- "${INSTALLER_ARGS[@]+"${INSTALLER_ARGS[@]}"}" 2>&1 | tee -a "$LOG_FILE" "$installer_output"; then
+
+        # Extract last meaningful error from output
+        local error_detail
+        error_detail=$(grep -E "^(Error|error:|❌)" "$installer_output" | tail -5 | tr '\n' ' ' || echo "")
+
+        if [[ -z "$error_detail" ]]; then
+            error_detail="Build completed but installer failed during setup"
+        fi
 
         handle_error $ERR_INSTALL_FAILED \
-            "VM installer failed" \
-            "Check the installation log at $LOG_FILE"
+            "VM installer failed: $error_detail" \
+            "Check the full log at $LOG_FILE or run: cd rust && cargo run --package vm-installer"
     fi
+
+    rm -f "$installer_output"
+    trap - EXIT
 
     log_success "VM tool installed successfully"
     return 0
