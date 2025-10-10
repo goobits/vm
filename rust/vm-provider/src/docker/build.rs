@@ -1,6 +1,7 @@
 // Standard library
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 // External crates
 use tera::Context as TeraContext;
@@ -21,6 +22,31 @@ impl<'a> BuildOperations<'a> {
         Self { config, temp_dir }
     }
 
+    pub fn pull_image(&self, image: &str) -> Result<()> {
+        let output = Command::new("docker").args(["pull", image]).output()?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+
+            // Detect rate limiting
+            if stderr.contains("toomanyrequests") || stderr.contains("rate limit") {
+                return Err(VmError::Internal(format!(
+                    "Docker Hub rate limit reached\n\n\
+                    Fixes:\n\
+                      • Wait 6 hours and try again\n\
+                      • Login to Docker Hub: docker login"
+                )));
+            }
+
+            return Err(VmError::Internal(format!(
+                "Docker pull failed for image '{}': {}",
+                image, stderr
+            )));
+        }
+
+        Ok(())
+    }
+
     /// Safely convert a path to string with descriptive error message
     pub fn path_to_string(path: &Path) -> Result<&str> {
         path.to_str().ok_or_else(|| {
@@ -33,6 +59,14 @@ impl<'a> BuildOperations<'a> {
 
     /// Prepare build context with embedded resources and generated Dockerfile
     pub fn prepare_build_context(&self) -> Result<PathBuf> {
+        let image_to_pull = self
+            .config
+            .vm
+            .as_ref()
+            .and_then(|vm| vm.box_name.as_deref())
+            .unwrap_or("ubuntu:24.04");
+        self.pull_image(image_to_pull)?;
+
         // Create temporary build context directory
         let build_context = self.temp_dir.join("build_context");
         if build_context.exists() {
@@ -77,6 +111,10 @@ impl<'a> BuildOperations<'a> {
     /// Gather all package lists and format as build arguments
     pub fn gather_build_args(&self) -> Vec<String> {
         let mut args = Vec::new();
+
+        if let Some(image) = self.config.vm.as_ref().and_then(|vm| vm.box_name.as_deref()) {
+            args.push(format!("--build-arg=base_image={}", image));
+        }
 
         // Add version build args
         if let Some(versions) = &self.config.versions {

@@ -1,4 +1,19 @@
 use serde::{Deserialize, Serialize};
+use sysinfo::System;
+
+pub fn detect_resource_defaults() -> ResourceSuggestion {
+    let sys = System::new_all();
+
+    let total_memory = sys.total_memory() / 1024; // KB to MB
+    let total_cpus = sys.cpus().len() as u32;
+
+    // Use 50% of system resources, with minimums
+    ResourceSuggestion {
+        memory: std::cmp::max(2048, total_memory as u32 / 2), // Min 2GB, max 50%
+        cpus: std::cmp::max(2, total_cpus / 2),              // Min 2, max 50%
+        disk_size: None,
+    }
+}
 
 /// VM resource allocation suggestion based on project type.
 ///

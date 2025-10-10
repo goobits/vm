@@ -4,8 +4,14 @@ use crate::error::{VmError, VmResult};
 use tracing::debug;
 // Import the CLI types
 use crate::cli::{Args, Command, PluginSubcommand};
+use std::path::Path;
 use vm_cli::msg;
-use vm_config::AppConfig;
+use vm_config::{
+    config::{ProjectConfig, VmConfig},
+    detector::detect_project_name,
+    resources::detect_resource_defaults,
+    AppConfig,
+};
 use vm_core::{vm_error, vm_println};
 use vm_messages::messages::MESSAGES;
 use vm_provider::get_provider;
@@ -165,57 +171,45 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
     // Load configuration
     debug!("Loading configuration: config_file={:?}", args.config);
 
-    let app_config = {
-        // For List command, try lenient loading first to avoid validation errors
-        if matches!(args.command, Command::List { .. }) {
-            match config::load_app_config_lenient(args.config.clone()) {
-                Ok(config) => config,
-                Err(_) => {
-                    // If lenient loading fails, fall back to strict loading
-                    match AppConfig::load(args.config) {
-                        Ok(config) => config,
-                        Err(e) => {
-                            let error_str = e.to_string();
-                            #[allow(clippy::excessive_nesting)]
-                            if error_str.contains("No vm.yaml found") {
-                                vm_println!("{}", MESSAGES.config_not_found);
-                                vm_println!("{}", MESSAGES.config_not_found_hint);
-                                return Err(VmError::config(
-                                    std::io::Error::new(
-                                        std::io::ErrorKind::NotFound,
-                                        "Configuration required",
-                                    ),
-                                    "No vm.yaml configuration file found",
-                                ));
-                            }
-                            return Err(VmError::from(e));
-                        }
-                    }
-                }
-            }
-        } else {
-            match AppConfig::load(args.config) {
-                Ok(config) => config,
-                Err(e) => {
-                    let error_str = e.to_string();
-                    #[allow(clippy::excessive_nesting)]
-                    if error_str.contains("No vm.yaml found") {
-                        vm_println!("{}", MESSAGES.config_not_found);
-                        vm_println!("{}", MESSAGES.config_not_found_hint);
-                        return Err(VmError::config(
-                            std::io::Error::new(
-                                std::io::ErrorKind::NotFound,
-                                "Configuration required",
-                            ),
-                            "No vm.yaml configuration file found",
-                        ));
-                    }
+    let app_config = match AppConfig::load(args.config.clone()) {
+        Ok(config) => config,
+        Err(e) => {
+            let error_str = e.to_string();
+            if error_str.contains("No vm.yaml found") {
+                if matches!(args.command, Command::Create { .. }) {
+                    vm_println!("📝 No vm.yaml found, generating a default configuration...");
+
+                    let resources = detect_resource_defaults();
+                    let default_vm_config = VmConfig {
+                        provider: Some("docker".to_string()),
+                        project: Some(ProjectConfig {
+                            name: Some(detect_project_name()?),
+                            ..Default::default()
+                        }),
+                        vm: Some(vm_config::config::VmSettings {
+                            memory: Some(vm_config::config::MemoryLimit::Limited(resources.memory)),
+                            cpus: Some(resources.cpus),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    };
+
+                    let config_path = Path::new("vm.yaml");
+                    default_vm_config.write_to_file(config_path)?;
+                    vm_println!("✓ Generated vm.yaml");
+
+                    // Reload the AppConfig
+                    AppConfig::load(args.config)?
+                } else {
+                    vm_println!("{}", MESSAGES.config_not_found);
+                    vm_println!("{}", MESSAGES.config_not_found_hint);
                     return Err(VmError::from(e));
                 }
+            } else {
+                return Err(VmError::from(e));
             }
         }
     };
-
     // Extract VM config and global config
     let config = app_config.vm;
     let global_config = app_config.global;
