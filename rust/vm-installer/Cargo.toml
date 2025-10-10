@@ -13,6 +13,7 @@ serde_json = { workspace = true }
 vm-messages = { path = "../vm-messages" }
 vm-cli = { path = "../vm-cli" }
 vm-core = { path = "../vm-core" }
+vm-logging = { path = "../vm-logging" }
 vm-platform = { path = "../vm-platform" }
 
 [dev-dependencies]

@@ -19,7 +19,10 @@ fn main() {
     }
 }
 
+use vm_logging::init_subscriber;
+
 fn run() -> Result<()> {
+    init_subscriber();
     let args = Args::parse();
 
     vm_println!("{}", MESSAGES.installer_installing);

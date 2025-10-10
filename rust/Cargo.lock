@@ -3371,6 +3371,7 @@ dependencies = [
  "tracing",
  "vm-cli",
  "vm-core",
+ "vm-logging",
  "vm-messages",
  "vm-platform",
 ]
