@@ -391,6 +391,9 @@ pub enum Command {
         /// Directory path to start shell in
         #[arg(long)]
         path: Option<PathBuf>,
+        /// Command to execute (if not provided, opens interactive shell)
+        #[arg(short = 'e', long = "command")]
+        command: Option<String>,
     },
     /// Run a command in your environment
     Exec {

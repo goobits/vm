@@ -118,7 +118,9 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
             vm_println!("{}", MESSAGES.vm_dry_run_complete);
             Ok(())
         }
-        Command::Ssh { container, .. } => {
+        Command::Ssh {
+            container, command, ..
+        } => {
             let app_config = AppConfig::load(args.config.clone())?;
             let project_name = app_config
                 .vm
@@ -126,7 +128,15 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
                 .and_then(|p| p.name)
                 .unwrap_or_default();
             let target = container.as_deref().unwrap_or(&project_name);
-            vm_println!("Dry run: Would connect to {}", target);
+            if let Some(cmd) = command {
+                vm_println!(
+                    "Dry run: Would execute command `{}` on {}",
+                    cmd,
+                    target
+                );
+            } else {
+                vm_println!("Dry run: Would connect to {}", target);
+            }
             Ok(())
         }
         Command::Exec {
@@ -332,9 +342,17 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             )
             .await
         }
-        Command::Ssh { container, path } => {
-            vm_ops::handle_ssh(provider, container.as_deref(), path, config)
-        }
+        Command::Ssh {
+            container,
+            path,
+            command,
+        } => vm_ops::handle_ssh(
+            provider,
+            container.as_deref(),
+            path,
+            command.map(|c| vec!["/bin/bash".to_string(), "-c".to_string(), c]),
+            config,
+        ),
         Command::Status { container } => vm_ops::handle_status(
             provider,
             container.as_deref(),
