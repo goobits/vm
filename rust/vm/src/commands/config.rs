@@ -9,7 +9,7 @@ use crate::error::{VmError, VmResult};
 use serde_yaml_ng as serde_yaml;
 use vm_cli::msg;
 use vm_config::ports::{PortRange, PortRegistry};
-use vm_config::{config::VmConfig, validator::ConfigValidator, AppConfig, ConfigOps, GlobalConfig};
+use vm_config::{config::VmConfig, validator::ConfigValidator, ConfigOps};
 use vm_core::{vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 
@@ -81,24 +81,6 @@ pub fn handle_config_command(command: &ConfigSubcommand, dry_run: bool) -> VmRes
         ConfigSubcommand::Ports { fix } => handle_ports_command(*fix),
         ConfigSubcommand::Clear { global } => Ok(ConfigOps::clear(*global)?),
     }
-}
-
-/// Load app configuration with lenient validation for commands that don't require full project setup
-pub fn load_app_config_lenient(file: Option<PathBuf>) -> VmResult<AppConfig> {
-    // Load global config (always use defaults if not found)
-    let global_config = GlobalConfig::load().unwrap_or_default();
-
-    // Load VM config leniently
-    let vm_config = load_config_lenient(file.clone())?;
-
-    // Apply backward compatibility using the same logic as AppConfig::load
-    let mut runtime_global = global_config.clone();
-    AppConfig::handle_deprecated_fields_raw(file, &mut runtime_global)?;
-
-    Ok(AppConfig {
-        global: runtime_global,
-        vm: vm_config,
-    })
 }
 
 /// Load configuration with lenient validation for commands that don't require full project setup

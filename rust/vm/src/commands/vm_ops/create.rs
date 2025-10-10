@@ -3,6 +3,7 @@
 //! This module handles VM creation with support for force recreation,
 //! multi-instance providers, and service registration.
 
+use std::path::Path;
 use tracing::{debug, info_span, warn};
 
 use crate::error::{VmError, VmResult};
@@ -17,7 +18,7 @@ use super::helpers::register_vm_services_helper;
 /// Handle VM creation
 pub async fn handle_create(
     provider: Box<dyn Provider>,
-    config: VmConfig,
+    mut config: VmConfig,
     global_config: GlobalConfig,
     force: bool,
     instance: Option<String>,
@@ -27,38 +28,52 @@ pub async fn handle_create(
     let _enter = span.enter();
     debug!("Starting VM creation");
 
-    // Validate config before proceeding
-    vm_println!("Validating configuration...");
-    let validator = ConfigValidator::new();
-    match validator.validate(&config) {
-        Ok(report) => {
-            if report.has_errors() {
-                vm_error!("Configuration validation failed:");
-                vm_println!("{}", report);
+    if force {
+        vm_println!("⚡ Force mode: using minimal resources and skipping validation");
+        let mut vm_settings = config.vm.take().unwrap_or_default();
+        vm_settings.memory = Some(vm_config::config::MemoryLimit::Limited(2048));
+        vm_settings.cpus = Some(2);
+        config.vm = Some(vm_settings);
+    } else {
+        // Validate config before proceeding
+        vm_println!("Validating configuration...");
+        let validator = ConfigValidator::new();
+        match validator.validate(&config) {
+            Ok(report) => {
+                if report.has_errors() {
+                    vm_error!("Configuration validation failed:");
+                    vm_println!("{}", report);
+                    return Err(VmError::validation(
+                        "Configuration is invalid, aborting creation.".to_string(),
+                        None::<String>,
+                    ));
+                }
+                if !report.warnings.is_empty() || !report.info.is_empty() {
+                    vm_println!("{}", report);
+                }
+                vm_println!("✓ Configuration is valid.");
+            }
+            Err(e) => {
                 return Err(VmError::validation(
-                    "Configuration is invalid, aborting creation.".to_string(),
+                    format!("An unexpected error occurred during validation: {}", e),
                     None::<String>,
                 ));
             }
-            if !report.warnings.is_empty() || !report.info.is_empty() {
-                vm_println!("{}", report);
-            }
-            vm_println!("✓ Configuration is valid.");
-        }
-        Err(e) => {
-            return Err(VmError::validation(
-                format!("An unexpected error occurred during validation: {}", e),
-                None::<String>,
-            ));
         }
     }
-
     let vm_name = config
         .project
         .as_ref()
         .and_then(|p| p.name.as_ref())
         .map(|s| s.as_str())
         .unwrap_or("vm-project");
+
+    let is_first_vm = !Path::new(".vm").exists();
+    if is_first_vm {
+        vm_println!("👋 Creating your first VM for this project\n");
+        vm_println!("💡 Tip: Run 'vm init' first to customize resources");
+        vm_println!("⏱️  This may take 2-3 minutes...\n");
+    }
 
     // Check if this is a multi-instance provider and handle accordingly
     if provider.supports_multi_instance() && instance.is_some() {
@@ -214,7 +229,15 @@ pub async fn handle_create(
             vm_println!("{}", MESSAGES.common_configuring_services);
             register_vm_services_helper(&vm_instance_name, &global_config).await?;
 
-            vm_println!("{}", MESSAGES.common_connect_hint);
+            if is_first_vm {
+                vm_println!("\n🎉 Success! Your VM is ready");
+                vm_println!("📝 Next steps:");
+                vm_println!("  • ssh into VM:  vm ssh");
+                vm_println!("  • Run commands: vm exec 'npm install'");
+                vm_println!("  • View status:  vm status");
+            } else {
+                vm_println!("{}", MESSAGES.common_connect_hint);
+            }
             Ok(())
         }
         Err(e) => {

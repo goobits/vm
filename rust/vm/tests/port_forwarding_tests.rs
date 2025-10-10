@@ -5,8 +5,7 @@ use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::{tempdir, TempDir};
-
-const TEST_PROJECT_NAME: &str = "test-port-forwarding";
+use uuid::Uuid;
 
 /// A test fixture that creates a temporary project directory and ensures
 /// the VM is destroyed when the fixture goes out of scope.
@@ -52,6 +51,20 @@ impl TestFixture {
     /// Runs the cleanup command without asserting its success. This is critical
     /// for the Drop implementation to prevent panics during cleanup.
     fn run_cleanup_command(&self) {
+        let container_name = format!("test-port-forwarding-{}", Uuid::new_v4());
+        let _ = Command::new("sudo")
+            .args(["docker", "rm", "-f", &container_name])
+            .output();
+        let _ = Command::new("sudo")
+            .args([
+                "docker",
+                "compose",
+                "-f",
+                self.path().join("docker-compose.yml").to_str().unwrap(),
+                "down",
+                "--volumes",
+            ])
+            .output();
         if let Ok(mut cmd) = Command::cargo_bin("vm") {
             cmd.current_dir(self.path());
             cmd.args(["destroy", "--force"]);
@@ -72,6 +85,7 @@ impl Drop for TestFixture {
 
 #[test]
 fn test_port_forwarding_single_port() -> Result<()> {
+    let project_name = format!("test-port-forwarding-{}", Uuid::new_v4());
     let fixture = TestFixture::new()?;
     let vm_yaml_path = fixture.path().join("vm.yaml");
 
@@ -89,7 +103,7 @@ ports:
     - host: 3456
       guest: 3000
 "#,
-        TEST_PROJECT_NAME
+        project_name
     );
     fs::write(&vm_yaml_path, config)?;
 
@@ -97,7 +111,7 @@ ports:
     fixture.run_vm_command(&["create"])?;
 
     // Verify port mapping exists
-    let container_name = format!("{}-dev", TEST_PROJECT_NAME);
+    let container_name = format!("{}-dev", project_name);
     let output = Command::new("docker")
         .args(["port", &container_name, "3000"])
         .output()?;
@@ -114,6 +128,7 @@ ports:
 
 #[test]
 fn test_port_forwarding_multiple_ports() -> Result<()> {
+    let project_name = format!("test-port-forwarding-{}", Uuid::new_v4());
     let fixture = TestFixture::new()?;
     let vm_yaml_path = fixture.path().join("vm.yaml");
 
@@ -134,14 +149,14 @@ ports:
       guest: 3002
       protocol: udp
 "#,
-        TEST_PROJECT_NAME
+        project_name
     );
     fs::write(&vm_yaml_path, config)?;
 
     // Create and start VM
     fixture.run_vm_command(&["create"])?;
 
-    let container_name = format!("{}-dev", TEST_PROJECT_NAME);
+    let container_name = format!("{}-dev", project_name);
 
     // Verify first port mapping
     let output1 = Command::new("docker")
@@ -170,6 +185,7 @@ ports:
 
 #[test]
 fn test_port_conflict_detection() -> Result<()> {
+    let project_name = format!("test-port-forwarding-{}", Uuid::new_v4());
     let fixture = TestFixture::new()?;
     let vm_yaml_path = fixture.path().join("vm.yaml");
 
@@ -192,7 +208,7 @@ ports:
     - host: 3333
       guest: 3000
 "#,
-        TEST_PROJECT_NAME
+        project_name
     );
     fs::write(&vm_yaml_path, config)?;
 

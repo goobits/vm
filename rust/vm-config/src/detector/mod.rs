@@ -34,8 +34,10 @@
 
 use serde_json::Value;
 use std::collections::HashSet;
+use std::env;
 use std::fs;
 use std::path::Path;
+use vm_core::error::{Result, VmError};
 use vm_core::file_system::{has_any_dir, has_any_file, has_file, has_file_containing};
 
 pub mod os;
@@ -289,15 +291,27 @@ pub fn format_detected_types(detected_types: HashSet<String>) -> String {
 /// # Returns
 /// A `Result` containing the detected project name or an error if
 /// the current directory cannot be determined or processed.
-pub fn detect_project_name() -> anyhow::Result<String> {
-    let current_dir = std::env::current_dir()?;
+pub fn detect_project_name() -> Result<String> {
+    let current_dir = env::current_dir().map_err(VmError::Io)?;
+
     let project_name = current_dir
         .file_name()
         .and_then(|s| s.to_str())
-        .unwrap_or("my-project")
-        .to_string();
+        .map(|s| s.to_string())
+        .ok_or_else(|| {
+            VmError::Internal("Could not determine project name from current directory".to_string())
+        })?;
+
     Ok(project_name)
 }
 
+pub fn detect_framework() -> Option<String> {
+    let detected_types = detect_project_type(Path::new("."));
+    if detected_types.is_empty() {
+        None
+    } else {
+        Some(format_detected_types(detected_types))
+    }
+}
 #[cfg(test)]
 mod tests;

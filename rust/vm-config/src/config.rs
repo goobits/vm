@@ -1,5 +1,6 @@
 // Standard library imports
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 // External crate imports
 use indexmap::IndexMap;
@@ -521,6 +522,12 @@ pub struct SecurityConfig {
 impl VmConfig {
     pub fn load(file: Option<PathBuf>) -> Result<Self> {
         crate::cli::load_and_merge_config(file)
+    }
+
+    pub fn write_to_file(&self, path: &Path) -> Result<()> {
+        let yaml = serde_yaml::to_string(self)?;
+        fs::write(path, yaml)?;
+        Ok(())
     }
 
     pub fn from_file(path: &PathBuf) -> Result<Self> {
