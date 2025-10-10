@@ -81,8 +81,14 @@ pub fn handle_ssh(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     path: Option<PathBuf>,
+    command: Option<Vec<String>>,
     config: VmConfig,
 ) -> VmResult<()> {
+    if let Some(cmd) = command {
+        // If a command is provided, delegate to the exec handler
+        return handle_exec(provider, container, cmd, config);
+    }
+
     let relative_path = path.unwrap_or_else(|| PathBuf::from("."));
     let workspace_path = config
         .project

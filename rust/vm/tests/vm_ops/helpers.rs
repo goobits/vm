@@ -67,8 +67,7 @@ services:
   test:
     enabled: true
     image: alpine:latest
-    ports:
-      - "8080:80"
+    port: 8080
 "#,
             provider, self.project_name
         );
