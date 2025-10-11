@@ -135,22 +135,20 @@ The existing provider interface already supports all needed operations:
 - `provider.start()` - Start container
 - Docker-specific: `docker inspect` for mount inspection
 
-## Implementation Phases
+## Implementation Tasks
 
-### Phase 1: Core Functionality (v1.0)
+### Core Functionality
 - [ ] Add `--refresh-mounts` flag to CLI
 - [ ] Implement `get_container_mounts()` using `docker inspect`
 - [ ] Implement `worktrees_match()` comparison logic
 - [ ] Wire up restart logic in `handle_ssh()`
 - [ ] Add unit tests
-
-### Phase 2: Polish (v1.1)
 - [ ] Add progress indicators during refresh
 - [ ] Optimize comparison logic (cache previous state)
 - [ ] Handle edge cases (container not running, etc.)
 - [ ] Add integration tests
 
-### Phase 3: Auto-Detection (v2.0 - Optional)
+### Future Enhancements (Optional)
 - [ ] Make `--refresh-mounts` the default behavior
 - [ ] Add `--no-refresh` flag to skip detection
 - [ ] Cache last-known worktree state to minimize checks
@@ -233,25 +231,19 @@ fn test_ssh_refresh_mounts() {
 - ✅ Zero data loss during refresh
 - ✅ Clear user feedback during refresh process
 
-## Timeline
+## Design Decisions
 
-- **Week 1**: Phase 1 implementation
-- **Week 2**: Testing and bug fixes
-- **Week 3**: Documentation and polish
+1. **Should `--refresh-mounts` be the default behavior?**
+   - Start with explicit flag, make default after validation
 
-## Open Questions
+2. **How to handle containers that are stopped?**
+   - Skip stop step, just update compose and start
 
-1. Should `--refresh-mounts` be the default behavior?
-   - **Recommendation**: No for v1, yes for v2 after validation
+3. **Should we cache worktree state to avoid repeated checks?**
+   - Add caching as optimization after core functionality works
 
-2. How to handle containers that are stopped?
-   - **Recommendation**: Skip stop step, just update compose and start
-
-3. Should we cache worktree state to avoid repeated checks?
-   - **Recommendation**: Yes for v2, not needed for v1
-
-4. What about non-Docker providers (Tart, Vagrant)?
-   - **Recommendation**: Docker-only for v1, extend in future if needed
+4. **What about non-Docker providers (Tart, Vagrant)?**
+   - Start with Docker-only, extend to other providers if needed
 
 ## References
 

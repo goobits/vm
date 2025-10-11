@@ -174,13 +174,14 @@ vm config set services.postgresql.enabled true
 # Or edit ~/.vm/config.yaml directly
 ```
 
-## Migration Path
+## Implementation Approach
 
-**Phase 1:** Implement Postgres only (most common use case)
-**Phase 2:** Add Redis
-**Phase 3:** Add MongoDB
+Services can be implemented incrementally and independently:
+- Start with PostgreSQL (most common use case)
+- Add Redis
+- Add MongoDB
 
-Each phase is independent - services can be added incrementally.
+Each service follows the same pattern and can be developed in parallel.
 
 ## Alternative Considered
 
@@ -199,6 +200,37 @@ Each phase is independent - services can be added incrementally.
 3. Should we support multiple versions simultaneously? (Proposal: No, one version per service)
 4. How to backup shared databases? (Proposal: Document pg_dump to `~/.vm/data/backups/`)
 
+## Implementation Tasks
+
+### PostgreSQL
+- [ ] Add PostgreSQL configuration to `GlobalServices`
+- [ ] Implement `start_postgres()` in ServiceManager
+- [ ] Add health check implementation
+- [ ] Add database auto-provisioning per project
+- [ ] Inject `DATABASE_URL` environment variable
+- [ ] Add container cleanup on stop
+
+### Redis
+- [ ] Add Redis configuration to `GlobalServices`
+- [ ] Implement `start_redis()` in ServiceManager
+- [ ] Add health check implementation
+- [ ] Inject `REDIS_URL` environment variable
+- [ ] Add container cleanup on stop
+
+### MongoDB
+- [ ] Add MongoDB configuration to `GlobalServices`
+- [ ] Implement `start_mongodb()` in ServiceManager
+- [ ] Add health check implementation
+- [ ] Inject `MONGODB_URL` environment variable
+- [ ] Add container cleanup on stop
+
+### Testing & Documentation
+- [ ] Add unit tests for service lifecycle
+- [ ] Add integration tests for VM connectivity
+- [ ] Document shared services in user guide
+- [ ] Update README with shared database features
+- [ ] Add developer notes to CLAUDE.md
+
 ## Success Criteria
 
 - [ ] User can enable shared Postgres via `vm config set services.postgresql.enabled true`
@@ -207,13 +239,6 @@ Each phase is independent - services can be added incrementally.
 - [ ] Data persists across `vm destroy && vm create`
 - [ ] Service auto-stops when last VM is destroyed
 - [ ] Health checks verify service is running
-
-## Implementation Timeline
-
-- **Week 1:** Add Postgres configuration and start/stop methods
-- **Week 2:** Add database auto-provisioning per project
-- **Week 3:** Add Redis and MongoDB using same pattern
-- **Week 4:** Documentation and testing
 
 ## Documentation Needed
 
