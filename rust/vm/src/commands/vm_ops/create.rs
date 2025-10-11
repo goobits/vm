@@ -52,12 +52,12 @@ fn auto_adjust_resources(config: &mut VmConfig) -> VmResult<()> {
         if let Some(requested_mb) = memory_limit.to_mb() {
             let requested_gb = (requested_mb as u64) / 1024;
 
-            // Leave 2GB for host OS, use 50% of remaining, minimum 2GB
-            let available_memory = system_memory_gb.saturating_sub(2);
-            let safe_memory_gb = (available_memory / 2).max(2).min(available_memory);
+            // Leave 2GB for host OS, use up to 75% of remaining
+            let max_safe_memory = system_memory_gb.saturating_sub(2);
 
-            if requested_gb > safe_memory_gb {
-                let safe_memory_mb = (safe_memory_gb * 1024) as u32;
+            // Only adjust if request exceeds available memory (minus headroom)
+            if requested_gb > max_safe_memory {
+                let safe_memory_mb = (max_safe_memory * 1024) as u32;
 
                 vm_println!(
                     "⚠️  Requested {}GB RAM but only {}GB total available.",
@@ -65,8 +65,8 @@ fn auto_adjust_resources(config: &mut VmConfig) -> VmResult<()> {
                     system_memory_gb
                 );
                 vm_println!(
-                    "   Auto-adjusting to {}GB RAM for this system (leaving headroom for host).",
-                    safe_memory_gb
+                    "   Auto-adjusting to {}GB RAM for this system (leaving 2GB for host).",
+                    max_safe_memory
                 );
 
                 vm_settings.memory = Some(MemoryLimit::Limited(safe_memory_mb));
