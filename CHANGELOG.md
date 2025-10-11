@@ -7,19 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2025-10-11
+
 ### Added
+- **Shared Database Services**: Host-level database instances accessible to all VMs
+  - PostgreSQL, Redis, and MongoDB services managed by ServiceManager
+  - Automatic reference counting (start when first VM needs it, stop when last VM destroyed)
+  - Data persistence across VM lifecycles in `~/.vm/data/`
+  - Environment variable injection (`DATABASE_URL`, `REDIS_URL`, `MONGODB_URL`)
+  - Opt-in configuration via global `~/.vm/config.yaml`
+  - Comprehensive integration tests for service lifecycle
+  - See [Shared Services User Guide](docs/user-guide/shared-services.md)
+
 - **Automatic Worktree Remounting**: SSH automatically detects new Git worktrees and offers to refresh container mounts
   - Interactive prompts when new worktrees are detected (auto-accepts "yes" on empty input)
   - Safety checks prevent remounting when multiple SSH sessions are active
   - Session tracking via `~/.vm/state/{project}.json` for active SSH connection counting
   - Provider interface extended with `get_container_mounts()` for current mount inspection
   - Helper function `detect_worktrees()` scans git metadata for worktree paths
+  - Integration tests in `vm/tests/ssh_refresh.rs`
+
+- **Developer Onboarding Improvements**
+  - Enhanced quick start documentation
+  - Improved error messages and troubleshooting guides
+  - Better development workflow documentation
+
+### Changed
+- **Dependency Updates**: Pinned all workspace dependencies to specific patch versions for reproducible builds
+  - Updated 28 dependencies including serde (1.0.228), clap (4.5.11), anyhow (1.0.82), tokio (1.47)
+  - Full list in commit 1fbf036
+
+- **Code Modernization**
+  - Applied clippy's `uninlined_format_args` suggestions across codebase
+  - Use inline format args: `format!("{key}")` instead of `format!("{}", key)`
+
+### Fixed
+- **Worktree Tests**: Updated tests for new dynamic detection approach
+- **Documentation**: Synchronized all documentation with worktree remounting feature
+
+### Documentation
+- Enhanced shared services guide with troubleshooting and per-project isolation
+- Updated CLAUDE.md with ServiceManager architecture details
+- Updated README with shared database services feature
+- Synchronized documentation with automatic worktree remounting feature
 
 ### Technical Improvements
 - Added `VmState` struct for tracking active SSH sessions per project
 - Enhanced `handle_ssh()` with worktree detection and mount comparison logic
 - Implemented `worktrees_match()` helper for efficient mount verification
+- Extended `GlobalConfig` with PostgreSQL, Redis, and MongoDB settings
+- Added service lifecycle management to `ServiceManager` (start, stop, health checks)
 - All worktree-related tests passing (7/7)
+- Service lifecycle integration tests expanded and passing
 
 ## [2.1.1]
 
