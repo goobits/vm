@@ -3,9 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 // External crates
-use shellexpand;
 use tera::Context as TeraContext;
-use tracing;
 use vm_core::error::{Result, VmError};
 
 // Internal imports
@@ -16,7 +14,7 @@ use super::host_packages::{
 use super::{ComposeCommand, DockerOps, UserConfig};
 use crate::ProviderContext;
 use crate::TempVmState;
-use vm_config::config::VmConfig;
+use vm_config::{config::VmConfig, detect_worktrees};
 use vm_core::command_stream::stream_command;
 
 pub struct ComposeOperations<'a> {
@@ -174,11 +172,18 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("local_env_vars", &local_env_vars);
 
         // Git worktrees volume
-        if let Some(worktrees_path) = self.get_worktrees_host_path(context) {
-            tera_context.insert(
-                "worktrees_path",
-                &worktrees_path.to_string_lossy().to_string(),
-            );
+        if let Ok(worktrees) = detect_worktrees() {
+            if !worktrees.is_empty() {
+                let worktree_mounts: Vec<_> = worktrees
+                    .iter()
+                    .map(|path| {
+                        let path = Path::new(path);
+                        let name = path.file_name().unwrap().to_str().unwrap();
+                        (path.to_str().unwrap(), name)
+                    })
+                    .collect();
+                tera_context.insert("worktrees", &worktree_mounts);
+            }
         }
 
         let content = tera
@@ -187,69 +192,6 @@ impl<'a> ComposeOperations<'a> {
                 VmError::Internal(format!("Failed to render docker-compose template: {}", e))
             })?;
         Ok(content)
-    }
-
-    /// Determines the host path for the git worktrees volume if enabled.
-    ///
-    /// This function checks both project and global configurations to see if the
-    /// worktrees feature is enabled. If it is, it constructs the project-specific
-    /// worktree path (e.g., `~/.vm/worktrees/project-{name}/`) and ensures
-    /// the directory exists.
-    ///
-    /// The configuration precedence is:
-    /// 1. Project-specific `vm.yaml` settings (`worktrees` section)
-    /// 2. Global `~/.vm/config.yaml` settings (`worktrees` section)
-    ///
-    /// # Arguments
-    /// * `context` - The provider context containing global configuration.
-    ///
-    /// # Returns
-    /// An `Option<PathBuf>` containing the absolute path to the host worktrees
-    /// directory if the feature is enabled, otherwise `None`.
-    pub fn get_worktrees_host_path(&self, context: &ProviderContext) -> Option<PathBuf> {
-        // 1. Check if the feature is enabled (project config overrides global config)
-        let enabled = self
-            .config
-            .worktrees
-            .as_ref()
-            .map(|w| w.enabled)
-            .or_else(|| context.global_config.as_ref().map(|g| g.worktrees.enabled))
-            .unwrap_or(false);
-
-        if !enabled {
-            return None;
-        }
-
-        // 2. Determine the base path for worktrees
-        //    - Project `base_path` > Global `base_path` > Default `~/.vm/worktrees`
-        let base_path_str = self
-            .config
-            .worktrees
-            .as_ref()
-            .and_then(|w| w.base_path.as_deref())
-            .or_else(|| {
-                context
-                    .global_config
-                    .as_ref()
-                    .and_then(|g| g.worktrees.base_path.as_deref())
-            })
-            .unwrap_or("~/.vm/worktrees");
-
-        let base_path = PathBuf::from(shellexpand::tilde(base_path_str).to_string());
-
-        // 3. Get project name for isolated directory
-        let project_name = self
-            .config
-            .project
-            .as_ref()
-            .and_then(|p| p.name.as_deref())
-            .unwrap_or("unknown-project");
-
-        let worktrees_dir = base_path.join(format!("project-{}", project_name));
-
-        // Directory will be created by lifecycle operations before Docker starts
-        tracing::debug!("Worktree directory will be: {}", worktrees_dir.display());
-        Some(worktrees_dir)
     }
 
     pub fn write_docker_compose(
@@ -343,11 +285,18 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("local_env_vars", &local_env_vars);
 
         // Git worktrees volume
-        if let Some(worktrees_path) = self.get_worktrees_host_path(context) {
-            tera_context.insert(
-                "worktrees_path",
-                &worktrees_path.to_string_lossy().to_string(),
-            );
+        if let Ok(worktrees) = detect_worktrees() {
+            if !worktrees.is_empty() {
+                let worktree_mounts: Vec<_> = worktrees
+                    .iter()
+                    .map(|path| {
+                        let path = Path::new(path);
+                        let name = path.file_name().unwrap().to_str().unwrap();
+                        (path.to_str().unwrap(), name)
+                    })
+                    .collect();
+                tera_context.insert("worktrees", &worktree_mounts);
+            }
         }
 
         let content = tera

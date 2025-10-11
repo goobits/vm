@@ -8,7 +8,6 @@ use crate::{
 use vm_core::{
     command_stream::stream_command,
     error::{Result, VmError},
-    vm_success,
 };
 
 #[cfg(target_os = "macos")]
@@ -28,29 +27,6 @@ impl<'a> LifecycleOperations<'a> {
         _container: Option<&str>,
         context: &ProviderContext,
     ) -> Result<()> {
-        // Create worktrees directory if enabled (must exist before Docker mounts it)
-        if self.config.worktrees.as_ref().is_some_and(|w| w.enabled)
-            || context
-                .global_config
-                .as_ref()
-                .is_some_and(|g| g.worktrees.enabled)
-        {
-            let compose_ops_temp =
-                ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
-            if let Some(worktrees_path) = compose_ops_temp.get_worktrees_host_path(context) {
-                std::fs::create_dir_all(&worktrees_path).map_err(|e| {
-                    VmError::Filesystem(format!(
-                        "Failed to create worktrees directory at {}: {}. \
-                         Check permissions for ~/.vm/worktrees/",
-                        worktrees_path.display(),
-                        e
-                    ))
-                })?;
-
-                vm_success!("✓ Worktrees directory: {}", worktrees_path.display());
-            }
-        }
-
         // Regenerate docker-compose.yml with latest global config
         let build_ops = BuildOperations::new(self.config, self.temp_dir);
         let build_context = build_ops.prepare_build_context()?;
@@ -122,29 +98,6 @@ impl<'a> LifecycleOperations<'a> {
         container: Option<&str>,
         context: &ProviderContext,
     ) -> Result<()> {
-        // Create worktrees directory if enabled (must exist before Docker mounts it)
-        if self.config.worktrees.as_ref().is_some_and(|w| w.enabled)
-            || context
-                .global_config
-                .as_ref()
-                .is_some_and(|g| g.worktrees.enabled)
-        {
-            let compose_ops_temp =
-                ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
-            if let Some(worktrees_path) = compose_ops_temp.get_worktrees_host_path(context) {
-                std::fs::create_dir_all(&worktrees_path).map_err(|e| {
-                    VmError::Filesystem(format!(
-                        "Failed to create worktrees directory at {}: {}. \
-                         Check permissions for ~/.vm/worktrees/",
-                        worktrees_path.display(),
-                        e
-                    ))
-                })?;
-
-                vm_success!("✓ Worktrees directory: {}", worktrees_path.display());
-            }
-        }
-
         // Regenerate docker-compose.yml with latest global config
         let build_ops = BuildOperations::new(self.config, self.temp_dir);
         let build_context = build_ops.prepare_build_context()?;

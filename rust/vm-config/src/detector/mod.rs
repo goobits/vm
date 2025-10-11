@@ -313,5 +313,35 @@ pub fn detect_framework() -> Option<String> {
         Some(format_detected_types(detected_types))
     }
 }
+
+/// Detects git worktrees for the current project.
+pub fn detect_worktrees() -> Result<Vec<String>> {
+    let workspace_root = Path::new(".");
+    let git_dir = workspace_root.join(".git");
+    let worktrees_dir = git_dir.join("worktrees");
+
+    if !worktrees_dir.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let mut worktree_paths = Vec::new();
+    for entry in fs::read_dir(worktrees_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            let gitdir_path = path.join("gitdir");
+            if gitdir_path.is_file() {
+                let gitdir_content = fs::read_to_string(gitdir_path)?;
+                let worktree_path = std::path::PathBuf::from(gitdir_content.trim());
+                if let Some(parent_path) = worktree_path.parent() {
+                    let absolute_path = workspace_root.join(parent_path).canonicalize()?;
+                    worktree_paths.push(absolute_path.to_string_lossy().into_owned());
+                }
+            }
+        }
+    }
+
+    Ok(worktree_paths)
+}
 #[cfg(test)]
 mod tests;

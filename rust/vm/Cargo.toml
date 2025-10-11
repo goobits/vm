@@ -14,6 +14,7 @@ publish = true  # Override workspace publish = false
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
+dirs = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml_ng = { workspace = true }

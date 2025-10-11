@@ -394,6 +394,14 @@ pub enum Command {
         /// Command to execute (if not provided, opens interactive shell)
         #[arg(short = 'e', long = "command")]
         command: Option<String>,
+
+        /// Force refresh mounts (disconnects other sessions)
+        #[arg(long)]
+        force_refresh: bool,
+
+        /// Skip automatic mount refresh detection
+        #[arg(long)]
+        no_refresh: bool,
     },
     /// Run a command in your environment
     Exec {
