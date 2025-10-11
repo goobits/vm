@@ -101,7 +101,7 @@ fn handle_ssh_start_prompt(
         .read_line(&mut input)
         .map_err(|e| VmError::general(e, "Failed to read user input"))?;
 
-    if !matches!(input.trim().to_lowercase().as_str(), "y" | "yes") {
+    if !matches!(input.trim().to_lowercase().as_str(), "y" | "yes" | "") {
         vm_println!("{}", MESSAGES.vm_ssh_start_aborted);
         return Ok(None);
     }

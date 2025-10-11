@@ -735,7 +735,7 @@ pub const MESSAGES: Messages = Messages {
     vm_ssh_connection_lost: "\n⚠️  Lost connection to VM\n💡 Check if VM is running: vm status",
     vm_ssh_session_ended: "\n⚠️  Session ended unexpectedly\n💡 Check VM status: vm status",
     vm_ssh_start_hint: "\n💡 Start the VM with: vm start\n💡 Then reconnect with: vm ssh",
-    vm_ssh_start_prompt: "\nWould you like to start it now? (y/N): ",
+    vm_ssh_start_prompt: "\nWould you like to start it now? (Y/n): ",
     vm_ssh_start_aborted: "\n❌ SSH connection aborted\n💡 Start the VM manually with: vm start",
     vm_ssh_starting: "\n🚀 Starting '{name}'...",
     vm_ssh_start_failed: "\n❌ Failed to start '{name}': {error}\n\n💡 Try:\n   • Check Docker status: docker ps\n   • View logs: docker logs {name}-dev\n   • Recreate VM: vm create --force",
