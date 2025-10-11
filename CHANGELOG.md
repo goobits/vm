@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Automatic Worktree Remounting**: SSH automatically detects new Git worktrees and offers to refresh container mounts
+  - Interactive prompts when new worktrees are detected (auto-accepts "yes" on empty input)
+  - Safety checks prevent remounting when multiple SSH sessions are active
+  - Session tracking via `~/.vm/state/{project}.json` for active SSH connection counting
+  - Provider interface extended with `get_container_mounts()` for current mount inspection
+  - Helper function `detect_worktrees()` scans git metadata for worktree paths
+
+### Technical Improvements
+- Added `VmState` struct for tracking active SSH sessions per project
+- Enhanced `handle_ssh()` with worktree detection and mount comparison logic
+- Implemented `worktrees_match()` helper for efficient mount verification
+- All worktree-related tests passing (7/7)
+
 ## [2.1.1]
 
 ### Added

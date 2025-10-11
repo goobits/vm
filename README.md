@@ -20,7 +20,7 @@ Create development environments that automatically configure themselves based on
 
 **Intelligent File Sync** — Edit code locally with your favorite tools while execution happens in the VM. Changes appear immediately without manual copying.
 
-**Git Worktree Support** — Automatic detection and proper volume mounting for Git worktrees, enabling multi-branch development workflows.
+**Git Worktree Support** — Automatic detection and remounting of new Git worktrees when connecting via SSH, enabling seamless multi-branch development workflows.
 
 **Zero-Config Presets** — Language runtimes, databases, and development tools install automatically based on your project structure.
 
@@ -111,7 +111,7 @@ vm create              # Create and configure a new environment
 vm start               # Start an existing environment
 vm stop                # Stop an environment (preserves all data)
 vm destroy             # Delete an environment completely
-vm ssh                 # Jump into your environment
+vm ssh                 # Jump into your environment (auto-detects new worktrees)
 vm exec "npm install"  # Execute a command inside your environment
 ```
 

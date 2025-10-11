@@ -157,6 +157,8 @@ The Git worktree feature allows developers to work on multiple branches of the s
 ### Implementation Details
 - **Detection**: The `vm-config` crate detects if the current project directory is inside a Git worktree by searching for a `.git` file (for worktrees) instead of a `.git` directory (for main repositories).
 - **Volume Mounting**: The provider implementation (e.g., Docker) correctly identifies the root of the main repository and the specific worktree path. It then mounts both the main repository root and the worktree-specific directory as separate volumes, ensuring all necessary files are available in the VM.
+- **Automatic Remounting**: When you `vm ssh`, the system automatically detects new worktrees created after VM creation and prompts to refresh mounts. This ensures new worktrees are accessible without manual VM recreation.
+- **Session Safety**: SSH session tracking prevents disruptive remounts when multiple sessions are active. Use `--force-refresh` to override (disconnects others) or `--no-refresh` to skip detection.
 - **Configuration**: The feature is enabled via the `worktrees.enabled` flag in either the global `~/.vm/config.yaml` or the project-specific `vm.yaml`.
 
 ### Configuration
@@ -174,8 +176,9 @@ worktrees:
 ```
 
 ### Testing Strategy
-- Integration tests in `vm/tests/workflow_tests.rs` cover worktree scenarios.
-- Tests create a temporary Git repository, add a worktree, and then run `vm create` from within the worktree directory.
+- Integration tests in `vm/tests/workflow_tests.rs` cover worktree creation scenarios.
+- Integration tests in `vm/tests/ssh_refresh.rs` cover automatic worktree remounting.
+- Tests create a temporary Git repository, add worktrees, and verify SSH detects and offers to refresh mounts.
 - Assertions verify that the VM is created successfully and that the volume mounts are correctly configured for the worktree structure.
 
 ## ServiceManager Architecture
