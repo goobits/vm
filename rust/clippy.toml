@@ -27,3 +27,6 @@ excessive-nesting-threshold = 5
 
 # Avoid false positives in test code
 avoid-breaking-exported-api = false
+
+[lints.clippy]
+uninlined_format_args = "allow"
