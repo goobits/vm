@@ -237,7 +237,7 @@ fn validate_metadata(plugin: &Plugin, result: &mut ValidationResult) -> Result<(
                 "content_file",
                 format!("Content file not found: {:?}", plugin.content_file),
             )
-            .with_suggestion(format!("Create {} in the plugin directory", expected_file)),
+            .with_suggestion(format!("Create {expected_file} in the plugin directory")),
         );
     }
 
@@ -252,7 +252,7 @@ fn validate_preset_content(plugin: &Plugin, result: &mut ValidationResult) -> Re
             result.add_error(
                 ValidationError::new(
                     "preset_content",
-                    format!("Failed to parse preset.yaml: {}", e),
+                    format!("Failed to parse preset.yaml: {e}"),
                 )
                 .with_suggestion("Check YAML syntax and structure"),
             );
@@ -275,7 +275,7 @@ fn validate_service_content(plugin: &Plugin, result: &mut ValidationResult) -> R
             result.add_error(
                 ValidationError::new(
                     "service_content",
-                    format!("Failed to parse service.yaml: {}", e),
+                    format!("Failed to parse service.yaml: {e}"),
                 )
                 .with_suggestion("Check YAML syntax and structure"),
             );
@@ -298,8 +298,7 @@ fn validate_preset_packages(content: &PresetContent, result: &mut ValidationResu
     for package in &content.packages {
         if !seen.insert(package) {
             result.add_warning(format!(
-                "Duplicate apt package '{}' in packages list",
-                package
+                "Duplicate apt package '{package}' in packages list"
             ));
         }
         validate_package_name(package, "packages", result);
@@ -310,8 +309,7 @@ fn validate_preset_packages(content: &PresetContent, result: &mut ValidationResu
     for package in &content.npm_packages {
         if !seen.insert(package) {
             result.add_warning(format!(
-                "Duplicate npm package '{}' in npm_packages list",
-                package
+                "Duplicate npm package '{package}' in npm_packages list"
             ));
         }
         validate_package_name(package, "npm_packages", result);
@@ -322,8 +320,7 @@ fn validate_preset_packages(content: &PresetContent, result: &mut ValidationResu
     for package in &content.pip_packages {
         if !seen.insert(package) {
             result.add_warning(format!(
-                "Duplicate pip package '{}' in pip_packages list",
-                package
+                "Duplicate pip package '{package}' in pip_packages list"
             ));
         }
         validate_package_name(package, "pip_packages", result);
@@ -334,8 +331,7 @@ fn validate_preset_packages(content: &PresetContent, result: &mut ValidationResu
     for package in &content.cargo_packages {
         if !seen.insert(package) {
             result.add_warning(format!(
-                "Duplicate cargo package '{}' in cargo_packages list",
-                package
+                "Duplicate cargo package '{package}' in cargo_packages list"
             ));
         }
         validate_package_name(package, "cargo_packages", result);
@@ -355,7 +351,7 @@ fn validate_preset_environment(content: &PresetContent, result: &mut ValidationR
             result.add_error(
                 ValidationError::new(
                     "environment",
-                    format!("Invalid environment variable name: '{}'", key),
+                    format!("Invalid environment variable name: '{key}'"),
                 )
                 .with_suggestion("Use only alphanumeric characters and underscores"),
             );
@@ -367,8 +363,7 @@ fn validate_preset_environment(content: &PresetContent, result: &mut ValidationR
             || value.to_lowercase().contains("token")
         {
             result.add_warning(format!(
-                "Environment variable '{}' may contain sensitive data. Consider using a placeholder.",
-                key
+                "Environment variable '{key}' may contain sensitive data. Consider using a placeholder."
             ));
         }
     }
@@ -379,8 +374,7 @@ fn validate_preset_provision(content: &PresetContent, result: &mut ValidationRes
     for (i, script) in content.provision.iter().enumerate() {
         if script.trim().is_empty() {
             result.add_warning(format!(
-                "Empty provision script at index {}. Consider removing it.",
-                i
+                "Empty provision script at index {i}. Consider removing it."
             ));
         }
 
@@ -389,10 +383,7 @@ fn validate_preset_provision(content: &PresetContent, result: &mut ValidationRes
             result.add_error(
                 ValidationError::new(
                     "provision",
-                    format!(
-                        "Potentially destructive command in provision script: {}",
-                        script
-                    ),
+                    format!("Potentially destructive command in provision script: {script}"),
                 )
                 .with_suggestion("Remove dangerous commands from provision scripts"),
             );
@@ -440,7 +431,7 @@ fn validate_service_volumes(content: &ServiceContent, result: &mut ValidationRes
         // Check volume format (source:target or named_volume:target)
         if !volume.contains(':') {
             result.add_error(
-                ValidationError::new("volumes", format!("Invalid volume format: '{}'", volume))
+                ValidationError::new("volumes", format!("Invalid volume format: '{volume}'"))
                     .with_suggestion("Use format 'source:target' or 'volume_name:target'"),
             );
         }
@@ -460,7 +451,7 @@ fn validate_service_environment(content: &ServiceContent, result: &mut Validatio
             result.add_error(
                 ValidationError::new(
                     "environment",
-                    format!("Invalid environment variable name: '{}'", key),
+                    format!("Invalid environment variable name: '{key}'"),
                 )
                 .with_suggestion("Use only alphanumeric characters and underscores"),
             );
@@ -472,8 +463,7 @@ fn validate_service_environment(content: &ServiceContent, result: &mut Validatio
             || value.to_lowercase().contains("token")
         {
             result.add_warning(format!(
-                "Environment variable '{}' may contain sensitive data. Consider using a placeholder.",
-                key
+                "Environment variable '{key}' may contain sensitive data. Consider using a placeholder."
             ));
         }
     }
@@ -519,7 +509,7 @@ fn validate_port_mapping(port: &str, result: &mut ValidationResult) {
         }
         _ => {
             result.add_error(
-                ValidationError::new("ports", format!("Invalid port mapping format: '{}'", port))
+                ValidationError::new("ports", format!("Invalid port mapping format: '{port}'"))
                     .with_suggestion("Use format 'port' or 'host_port:container_port'"),
             );
         }
@@ -535,7 +525,7 @@ fn validate_package_name(name: &str, field: &str, result: &mut ValidationResult)
         );
     } else if name.contains(' ') {
         result.add_error(
-            ValidationError::new(field, format!("Package name '{}' contains spaces", name))
+            ValidationError::new(field, format!("Package name '{name}' contains spaces"))
                 .with_suggestion("Package names should not contain spaces"),
         );
     }

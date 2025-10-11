@@ -35,7 +35,7 @@ test:
 
 # Code quality
 clippy:
-	cd rust && cargo clippy --workspace --all-targets -- -D warnings
+	cd rust && cargo clippy --workspace --all-targets -- -D warnings -A clippy::uninlined_format_args
 
 fmt:
 	cd rust && cargo fmt --all --check

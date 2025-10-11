@@ -21,7 +21,7 @@ impl MessageBuilder {
     pub fn build(self) -> String {
         let mut result = self.template.to_string();
         for (key, value) in self.vars {
-            result = result.replace(&format!("{{{}}}", key), &value);
+            result = result.replace(&format!("{{{key}}}"), &value);
         }
         result
     }
