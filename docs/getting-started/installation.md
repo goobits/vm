@@ -1,95 +1,35 @@
 # 💻 Installation Guide
 
-Development environment setup. Choose between Docker (lightweight containers, default) or Vagrant (full VM isolation) based on your needs.
+Development environment setup.
 
-## 🏃 Quick Start
+## 🏃 Installation
 
-**Note**: The installation script is currently broken due to a checksum mismatch when building from source, and pre-compiled binaries may not be available for all platforms. The `cargo install vm` command will also fail as the crate is not published on `crates.io`. A fix for the script is in progress.
+**Note**: Pre-compiled binaries are not yet available for all platforms, and the project is not published on `crates.io`. The only official installation method is to build from source.
 
-### Option 1: Binary Installation (Recommended)
+### Build from Source (Recommended)
 
-```bash
-# Download and install the latest pre-compiled binary
-curl -sSL https://raw.githubusercontent.com/goobits/vm/main/install.sh | bash
-
-# Or install a specific version
-curl -sSL https://raw.githubusercontent.com/goobits/vm/main/install.sh | bash -s -- --version v1.2.3
-
-# Start using immediately
-vm create  # Works with default configuration
-vm ssh     # Enter the Ubuntu environment
-```
-
-**Installation Script Options:**
-- `--version VERSION` - Install specific version (e.g., v1.2.3)
-- `--build-from-source` - Build from source instead of downloading binary
-- `--help` - Show all available options
-
-### Option 2: Cargo Install
+This is the most reliable way to install the `vm` tool.
 
 ```bash
-# Install from crates.io (requires Rust toolchain)
-cargo install vm
-
-# Start using immediately
-vm create  # Works with default configuration
-vm ssh     # Enter the Ubuntu environment
-```
-
-### Option 3: From Source
-
-```bash
-# 1. Clone repository and install globally
+# 1. Clone the repository
 git clone https://github.com/goobits/vm.git
 cd vm
-./install.sh
 
-# 2. Start using immediately
-vm create  # Works with default configuration
-vm ssh     # Enter the Ubuntu environment
-```
-
-Create a vm.yaml file (or use `vm init`):
-```yaml
-project:
-  name: my-project
-  hostname: dev.my-project.local
-ports:
-  frontend: 3000
-  backend: 3001
-# Default provider is Docker - add "provider": "vagrant" for full VM isolation
-```
-
-### Option 4: Build from Source (Development)
-
-```bash
-# Clone and build from source (requires Rust toolchain)
-git clone https://github.com/goobits/vm.git
-cd vm
+# 2. Run the build-from-source installer
 ./install.sh --build-from-source
-```
 
-### Option 5: Per-Project Installation
+# 3. Follow the on-screen instructions to update your shell's PATH
+#    (e.g., run `source ~/.bashrc` or restart your terminal)
 
-```bash
-# 1. Clone to your project directory
-git clone https://github.com/goobits/vm.git vm
-cd vm
-
-# 2. Use directly without global installation
-./vm create
+# 4. Start using the tool
+vm --version
 ```
 
 ## 📋 Prerequisites
 
-### For Binary Installation (Recommended)
-- **No prerequisites!** The installer downloads a pre-compiled binary
-
-### For Cargo Installation
-- **Rust** (get from [rustup.rs](https://rustup.rs/))
-
 ### For Building from Source
-- **Rust** (get from [rustup.rs](https://rustup.rs/))
+- **Rust Toolchain**: Required to compile the project. Get it from [rustup.rs](https://rustup.rs/).
+- **C Compiler**: The Rust compiler needs a C linker (like `gcc` or `clang`). This is usually pre-installed on macOS and Linux. If not, install your platform's build tools (e.g., `build-essential` on Ubuntu, or Xcode Command Line Tools on macOS).
 
 ### For Docker Provider (Default)
 - **Docker Desktop** (macOS/Windows) or **Docker Engine** (Linux)

@@ -23,11 +23,11 @@ help:
 # Build (with automatic version bump)
 build:
 	@./scripts/bump-version.sh
-	cargo build --workspace
+	cd rust && cargo build --workspace
 
 # Build without version bump
 build-no-bump:
-	cargo build --workspace
+	cd rust && cargo build --workspace
 
 # Test
 test:

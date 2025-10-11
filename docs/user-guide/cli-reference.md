@@ -1,340 +1,316 @@
 # 🛠️ VM CLI Reference
 
+This document provides a complete reference for all `vm` commands.
+
 ## 📚 Table of Contents
+- [Global Options](#global-options)
 - [Core Commands](#core-commands)
-- [Temporary VMs](#temporary-vms)
-- [Configuration](#configuration)
-- [Presets](#presets)
-- [Plugins](#plugins)
-- [Testing](#testing)
-- [Options & Environment](#options--environment)
-- [Auth Proxy](#auth-proxy)
-- [Package Registry](#package-registry)
+- [Configuration (`vm config`)](#configuration-vm-config)
+- [Temporary VMs (`vm temp`)](#temporary-vms-vm-temp)
+- [Plugins (`vm plugin`)](#plugins-vm-plugin)
+- [Secrets Management (`vm auth`)](#secrets-management-vm-auth)
+- [Package Registry (`vm pkg`)](#package-registry-vm-pkg)
+- [System Management](#system-management)
+
+---
+
+## Global Options
+These flags can be used with any command.
+```bash
+-c, --config <file>    # Path to a custom VM configuration file
+    --dry-run          # Show what would be executed without running
+-v, --verbose          # Enable verbose output
+-h, --help             # Print help
+-V, --version          # Print version
+```
 
 ---
 
 ## Core Commands
 
-### create
+### `vm create`
+Create and provision a new VM.
 ```bash
-vm create                        # Auto-detect project type
-vm --config prod.yaml create     # Custom config
-vm config preset django          # Apply preset to configuration
+vm create [--force]
 ```
 
-### ssh
+### `vm start`
+Start a stopped VM.
 ```bash
-vm ssh                           # Enter VM
-vm ssh /workspace/src            # Enter VM in specific directory
-vm exec ls -la                   # Run command (use exec instead)
-vm exec npm test                 # Run tests (use exec instead)
+vm start
 ```
 
-### start / stop / restart
+### `vm stop`
+Stop a running VM.
 ```bash
-vm start                         # Start existing VM
-vm stop                          # Stop (keep data)
-vm restart                       # Restart VM
+vm stop
 ```
 
-### destroy
+### `vm restart`
+Restart a VM.
 ```bash
-vm destroy                       # Remove VM completely
+vm restart
 ```
 
-### status / list
+### `vm provision`
+Re-run the provisioning process on an existing VM.
 ```bash
-vm status                        # Show VM status and health
-vm list                          # List all VMs with status and resource usage
+vm provision
 ```
 
-### logs
+### `vm destroy`
+Destroy a VM and all its associated resources.
 ```bash
-vm logs                          # View VM logs
+vm destroy
 ```
 
-### exec
+### `vm status`
+Show the status and health of a VM.
 ```bash
-vm exec "npm test"               # Execute commands inside VM
-vm exec "python manage.py migrate"
-vm exec "rake db:migrate"
-```
-
-### provision
-```bash
-vm provision                     # Re-run VM provisioning
-```
-
----
-
-## Temporary VMs
-
-### temp create
-```bash
-vm temp create ./src ./tests            # Create temporary VM with mounts
-vm temp create /absolute/path ./relative
-vm temp create ./configs:ro             # Read-only mount
-```
-
-### temp commands
-```bash
-vm temp ssh                      # Connect to temporary VM via SSH
-vm temp status                   # Show temporary VM status
-vm temp destroy                  # Destroy temporary VM
-```
-
-### temp mounts
-```bash
-vm temp mount ./new-feature      # Add mount to running temporary VM
-vm temp unmount ./old-code       # Remove mount from temporary VM
-vm temp mounts                   # List current mounts
-```
-
-### temp lifecycle
-```bash
-vm temp start                    # Start temporary VM
-vm temp stop                     # Stop temporary VM
-vm temp restart                  # Restart temporary VM
-vm temp list                     # List all temporary VMs
-```
-
----
-
-## Configuration
-
-### init / validate
-```bash
-vm init                          # Initialize a new VM configuration file
-vm init --services postgresql,redis # With services
-vm config preset django          # Apply preset after init
-
-vm validate                      # Validate VM configuration
-vm validate --config custom.yaml # Check specific file
-```
-
-### config
-```bash
-vm config set vm.memory 4096     # Set configuration value
-vm config get                    # Get configuration values
-vm config clear                  # Clear specific configuration field
-vm config preset nodejs,docker   # Apply configuration presets
-vm config preset --list          # List all available presets
-vm config preset --show nodejs   # Show specific preset details
-```
-
----
-
-## Presets
-
-### preset commands
-```bash
-vm config preset nodejs          # Apply nodejs preset
-vm config preset django,docker   # Apply multiple presets
-vm config preset --list          # List available presets
-vm config preset --show django   # Show preset details
-```
-
-**Available presets:** base, django, docker, kubernetes, nodejs, python, rails, react, rust, next, vibe, tart-linux, tart-macos, tart-ubuntu
-
-**See:** [Presets Guide](./presets.md) for detailed preset information
-
----
-
-## Plugins
-
-### plugin list
-```bash
-vm plugin list                   # Show all installed plugins
-```
-
-### plugin info
-```bash
-vm plugin info nodejs            # Show detailed plugin information
-vm plugin info django            # View plugin metadata and location
-```
-
-### plugin install
-```bash
-vm plugin install ./my-plugin    # Install plugin from directory
-vm plugin install /path/to/plugin
-```
-
-### plugin remove
-```bash
-vm plugin remove nodejs          # Uninstall a plugin
-vm plugin remove custom-preset   # Remove custom plugin
-```
-
-### plugin new
-```bash
-vm plugin new my-preset --type preset   # Create new preset plugin template
-vm plugin new my-service --type service # Create new service plugin template
-```
-
-### plugin validate
-```bash
-vm plugin validate my-preset     # Validate plugin configuration
-vm plugin validate --help        # Show validation options
-```
-
-**Plugin location:** `~/.vm/plugins/`
-
-**See:** [Plugin Guide](./plugins.md) for creating and managing plugins
-
----
-
-## Testing
-
-### Running Tests
-```bash
-# Run all Rust tests
-cd rust && cargo test --workspace
-
-# Run tests with output
-cd rust && cargo test --workspace -- --nocapture
-
-# Run specific package tests
-cd rust && cargo test --package vm-config
-```
-
----
-
-## Options & Environment
-
-### Global Flags
-```bash
-vm --config <file> <command>    # Use specific config
-vm --dry-run create              # Show what would run
-vm config preset <name>         # Apply preset to configuration
-```
-
-### Environment Variables
-```bash
-LOG_LEVEL=DEBUG vm create        # Debug output
-VM_DEBUG=true vm create          # Bash debug mode
-VM_PROVIDER=docker vm create     # Force provider
-VM_CONFIG=custom.yaml vm ssh     # Default config
-VM_MEMORY=8192 vm create         # Memory (MB)
-VM_CPUS=4 vm create              # CPU count
-```
-
-### Config Priority
-1. `--config` flag
-2. `$VM_CONFIG` env
-3. `./vm.yaml`
-4. `./.vm/config.yaml`
-5. `~/.vm/default.yaml`
-
-### Exit Codes
-- `0` - Success
-- `1` - General error
-- `2` - Config error
-- `3` - Provider unavailable
-- `4` - VM exists
-- `5` - VM not found
-- `10` - Port conflict
-
----
-
-## Quick Examples
-
-```bash
-# Development workflow
-vm create && vm ssh              # Start working
-vm stop                          # End of day
-vm start && vm ssh               # Resume
-vm destroy                       # Cleanup
-
-# Quick experiment
-vm temp create ./src             # Test environment
-vm temp ssh                      # Enter environment
-vm temp destroy                  # Cleanup
-
-# Multiple environments
-vm --config dev.yaml create
-vm --config staging.yaml create
-vm --config prod.yaml create
-
-# Debugging
-LOG_LEVEL=DEBUG vm create 2>debug.log
-vm exec "cat /etc/os-release"
-# Use vm status output directly
 vm status
-docker inspect my-project-dev
 ```
 
----
-
-## Config Examples
-
-```yaml
-# Minimal (vm.yaml)
-os: ubuntu
-
-# With services
-os: ubuntu
-services:
-  postgresql:
-    enabled: true
-  redis:
-    enabled: true
-
-# Full control
-provider: docker
-os: ubuntu
-vm:
-  memory: 4096
-  cpus: 2
-ports:
-  web: 8000
-  db: 5432
-mounts:
-  - ./src:/workspace/src
-  - ./tests:/workspace/tests:ro
-```
-
----
-
-## Auth Proxy
-
-**Centralized secrets management** — Store and manage credentials securely across VMs.
-
+### `vm ssh`
+Connect to a VM via SSH.
 ```bash
-# Service status
-vm auth status
+vm ssh
+```
 
-# Store a secret
+### `vm exec`
+Execute a command inside a VM.
+```bash
+vm exec <command>
+```
+
+### `vm logs`
+View the logs for a VM.
+```bash
+vm logs
+```
+
+### `vm list`
+List all available VMs.
+```bash
+vm list
+```
+
+---
+
+## Configuration (`vm config`)
+Manage `vm.yaml` configuration.
+
+### `vm init`
+Initialize a new `vm.yaml` configuration file.
+```bash
+vm init
+```
+
+### `vm config validate`
+Validate the current configuration.
+```bash
+vm config validate
+```
+
+### `vm config show`
+Show the loaded configuration and its source.
+```bash
+vm config show
+```
+
+### `vm config set`
+Set a configuration value.
+```bash
+vm config set <key> <value>
+```
+
+### `vm config get`
+Get a configuration value.
+```bash
+vm config get [key]
+```
+
+### `vm config unset`
+Remove a configuration field.
+```bash
+vm config unset <key>
+```
+
+### `vm config preset`
+Apply a configuration preset.
+```bash
+vm config preset <name>
+```
+
+### `vm config ports`
+Manage port configuration and resolve conflicts.
+```bash
+vm config ports --fix
+```
+
+### `vm config clear`
+Reset your configuration.
+```bash
+vm config clear
+```
+
+---
+
+## Temporary VMs (`vm temp`)
+Work with ephemeral environments.
+
+### `vm temp create`
+Create a temporary VM with mounted folders.
+```bash
+vm temp create <folders...>
+```
+
+### `vm temp ssh`
+Connect to the temporary VM.
+```bash
+vm temp ssh
+```
+
+### `vm temp status`
+Show the temporary VM's status.
+```bash
+vm temp status
+```
+
+### `vm temp destroy`
+Destroy the temporary VM.
+```bash
+vm temp destroy
+```
+
+### `vm temp mount`
+Add a mount to a running temporary VM.
+```bash
+vm temp mount <path>
+```
+
+### `vm temp unmount`
+Remove a mount from a temporary VM.
+```bash
+vm temp unmount <path>
+```
+
+### `vm temp mounts`
+List the current mounts.
+```bash
+vm temp mounts
+```
+
+### `vm temp list`
+List all temporary VMs.
+```bash
+vm temp list
+```
+
+---
+
+## Plugins (`vm plugin`)
+Extend `vm` with custom functionality.
+
+### `vm plugin list`
+List installed plugins.
+```bash
+vm plugin list
+```
+
+### `vm plugin info`
+Show plugin details.
+```bash
+vm plugin info <name>
+```
+
+### `vm plugin install`
+Install a plugin from a directory.
+```bash
+vm plugin install <path>
+```
+
+### `vm plugin remove`
+Remove an installed plugin.
+```bash
+vm plugin remove <name>
+```
+
+### `vm plugin new`
+Create a new plugin template.
+```bash
+vm plugin new <name>
+```
+
+### `vm plugin validate`
+Validate a plugin's configuration.
+```bash
+vm plugin validate <name>
+```
+
+---
+
+## Secrets Management (`vm auth`)
+Manage secrets and credentials.
+
+### `vm auth add`
+Store a secret.
+```bash
 vm auth add <name> <value>
+```
 
-# List stored secrets
+### `vm auth list`
+List stored secrets.
+```bash
 vm auth list
+```
 
-# Remove a secret
+### `vm auth remove`
+Remove a secret.
+```bash
 vm auth remove <name>
 ```
 
 ---
 
-## Package Registry
+## Package Registry (`vm pkg`)
+Manage private package registries.
 
-**Private package registry** — Host your own packages for npm, pip, and cargo with automatic upstream fallback.
-
+### `vm pkg add`
+Publish a package from the current directory.
 ```bash
-# Server status
-vm pkg status
+vm pkg add [--type <type>]
+```
 
-# Publish a package from the current directory
-vm pkg add
-
-# Specify package type
-vm pkg add --type python
-
-# List all packages
+### `vm pkg list`
+List all packages in the registry.
+```bash
 vm pkg list
+```
 
-# Remove a package
+### `vm pkg remove`
+Remove a package from the registry.
+```bash
 vm pkg remove <name>
+```
 
-# Generate shell configuration for package managers
-vm pkg use --shell bash
+---
+
+## System Management
+
+### `vm doctor`
+Run comprehensive health checks.
+```bash
+vm doctor
+```
+
+### `vm update`
+Update `vm` to the latest or a specific version.
+```bash
+vm update [--version <version>]
+```
+
+### `vm uninstall`
+Uninstall `vm` from your system.
+```bash
+vm uninstall
 ```

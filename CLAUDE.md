@@ -2,19 +2,14 @@
 
 ## Installation
 
-### From Cargo (Recommended)
+### From Source (Recommended)
 ```bash
-cargo install vm
-```
-
-### From Source
-```bash
-git clone <repository-url>
+git clone https://github.com/goobits/vm.git
 cd vm
-./install.sh
+./install.sh --build-from-source
 ```
 
-The `install.sh` script builds the binary and sets up symlinks automatically.
+The `install.sh` script with the `--build-from-source` flag is the official way to build and install the `vm` tool for development.
 
 ## Running Tests
 

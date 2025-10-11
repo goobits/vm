@@ -46,7 +46,7 @@ VM uses Docker as its default "provider" to create lightweight, isolated develop
 
 ## 🚀 Quick Start
 
-**Note**: The `install.sh` script is currently broken due to a checksum mismatch. A fix is in progress.
+**Note**: Pre-compiled binaries are not yet available. The recommended installation method is to build from source.
 
 Get up and running in three commands:
 
@@ -54,7 +54,7 @@ Get up and running in three commands:
 # Clone the repository and run the install script
 git clone https://github.com/goobits/vm.git
 cd vm
-./install.sh
+./install.sh --build-from-source
 
 # Create your environment — it detects your project automatically
 vm create
@@ -102,241 +102,133 @@ project:
 
 ## 🎮 Commands
 
-**Core Workflow** — The essential commands you'll use daily:
-
+### Core Workflow
+The essential commands you'll use daily:
 ```bash
-vm create                        # Create and configure VM
-vm create --instance dev         # Create named instance
-vm ssh [container]               # Enter VM (by name, ID, or project)
-vm stop [container]              # Stop VM (preserves all data)
-vm destroy [container]           # Delete VM completely
+vm create              # Create and configure a new environment
+vm start               # Start an existing environment
+vm stop                # Stop an environment (preserves all data)
+vm destroy             # Delete an environment completely
+vm ssh                 # Jump into your environment
+vm exec "npm install"  # Execute a command inside your environment
 ```
 
-**Multi-Instance Management** — Handle multiple environments effortlessly:
-
+### Environment Management
+Commands for managing and monitoring your environments:
 ```bash
-vm list                          # List all VMs with status and resource usage
-vm list --provider docker        # Filter by provider
-vm destroy --all                 # Destroy all instances
-vm destroy --pattern "*-dev"     # Pattern-based destruction
+vm list                # List all environments with their status
+vm status              # Show the status and health of an environment
+vm logs                # View the logs for an environment
+vm provision           # Re-run the provisioning process
+vm restart             # Restart an environment
 ```
 
-**Temporary Environments** — Perfect for quick experiments:
-
+### Configuration (`vm config`)
+Manage your `vm.yaml` configuration from the command line:
 ```bash
-vm temp create ./src ./tests     # Instant VM with folder mounts
-vm temp ssh                      # Enter temp VM
-vm temp destroy                  # Clean up when done
+vm init                # Create a new vm.yaml configuration file
+vm config validate     # Validate the current configuration
+vm config show         # Show the loaded configuration
+vm config set <k> <v>  # Set a configuration value
+vm config preset django  # Apply the Django preset to your config
 ```
 
-**Daily Operations** — Monitor and control your environments:
-
+### Temporary Environments (`vm temp`)
+Spin up isolated environments in seconds for testing or debugging:
 ```bash
-vm status [container]            # Show VM status and health
-vm logs [container]              # View VM logs
-vm exec [container] "cmd"        # Execute commands inside VM
-vm restart [container]           # Restart VM
-vm provision [container]         # Re-run provisioning
+vm temp create ./src   # Create a temporary environment with ./src mounted
+vm temp ssh            # SSH into the temporary environment
+vm temp destroy        # Clean up the temporary environment
+vm temp list           # List all active temporary environments
 ```
 
-## 🧪 Temporary VMs
-
-**Instant Development Environments** — Spin up isolated environments in seconds for testing ideas or debugging:
-
+### Secrets Management (`vm auth`)
+Store and manage credentials securely across all your environments:
 ```bash
-vm temp create ./src ./tests ./docs:ro
-vm temp ssh              # Enter and start coding immediately
-vm temp destroy          # Clean up when finished
+vm auth add openai sk-xxx  # Store an API key
+vm auth list               # List all stored secrets
+vm auth remove openai      # Remove a secret
 ```
 
-**Dynamic Mount Management** — Add and remove folders without recreating the VM:
-
+### Package Registry (`vm pkg`)
+Host your own private packages for `npm`, `pip`, and `cargo`:
 ```bash
-vm temp mount ./new-feature     # Add directories while working
-vm temp unmount ./old-code      # Remove specific mount
-vm temp unmount --all           # Remove all mounts
-vm temp mounts                  # List current mounts
+vm pkg add             # Publish a package from the current directory
+vm pkg list            # List all packages in the registry
+vm pkg remove my-pkg   # Remove a package from the registry
 ```
-
-## 🔐 Auth Proxy
-
-**Centralized secrets management** — Store and manage credentials securely across VMs:
-
-```bash
-# Auth proxy for secrets management
-vm auth status                   # Service status
-vm auth add openai sk-xxx        # Store API key
-vm auth list                     # List stored secrets
-vm auth remove <name>            # Remove a secret
-vm auth interactive              # Interactively add secrets
-```
-
-## 📦 Package Registry
-
-**Private package registry for npm, pip, and cargo** — Host your own packages with automatic upstream fallback:
-
-```bash
-# Package management
-vm pkg status                    # Server status and package counts
-vm pkg add                       # Auto-detect and publish from current directory
-vm pkg add --type python         # Specific package type
-vm pkg list                      # List all packages
-vm pkg remove                    # Interactive removal
-vm pkg use --shell bash          # Generate shell configuration for package managers
-```
-
-**Installation:**
-```bash
-./install.sh                    # Install VM CLI with package management
-```
-
-**Features:**
-- **Multi-registry support** — PyPI, npm, and Cargo in one server
-- **Upstream fallback** — Serves local packages first, fetches from official registries when needed
-- **Zero dependencies** — Single binary, no database required
-- **Integrated workflow** — Package management built into VM tool
-
-## ⚙️ Configuration
-
-**Most projects need zero configuration**, but when you do need customization, it's straightforward:
-
-```yaml
-# Minimal configuration
-os: ubuntu
-project:
-  name: my-project
-
-# Port mapping for web development
-ports:
-  frontend: 3000
-  backend: 3001
-
-# Resource allocation
-provider: docker
-vm:
-  memory: 4096
-  cpus: 2
-
-# Database services
-services:
-  postgresql:
-    enabled: true
-    version: "15"
-```
-
-**Preset Management** — Apply pre-configured stacks instantly:
-
-```bash
-vm config preset django          # Apply Django preset to config
-vm config preset --list          # List available presets
-vm config preset --show nodejs   # Show specific preset details
-```
-
-## 🔧 Debugging & Support
-
-**When things go wrong** — Get detailed information and quick fixes:
-
-```bash
-LOG_LEVEL=DEBUG vm create    # Detailed output for troubleshooting
-vm logs                      # View service logs
-```
-
-**Need help?**
-- **Issues**: Report problems at the project repository
-- **Quick fixes**: Run `vm destroy && vm create` to resolve most issues
-- **Stuck containers**: Use `vm list` to see all instances, then `vm destroy <name>` to clean up
 
 ---
-
 ## 📖 Complete Command Reference
 
-**VM Lifecycle** — Core commands for managing virtual machines:
-
+### Core Commands
 ```bash
-vm create [--instance name] [--force]  # Create and provision a new VM
-vm start [container]                   # Start a VM
-vm stop [container]                    # Stop a VM or force-kill specific container
-vm restart [container]                 # Restart a VM
-vm provision [container]               # Re-run VM provisioning
-vm destroy [container] [--force] [--all] [--pattern "*"]  # Destroy VMs
-vm status [container]                  # Show VM status and health
-vm ssh [container] [--path dir]        # Connect to VM via SSH
+vm create                # Create and provision a new VM
+vm start                 # Start a stopped VM
+vm stop                  # Stop a running VM
+vm restart               # Restart a VM
+vm provision             # Re-run VM provisioning
+vm destroy               # Destroy a VM
+vm status                # Show VM status and health
+vm ssh                   # Connect to a VM via SSH
+vm exec <command>        # Execute a command inside a VM
+vm logs                  # View VM logs
+vm list                  # List all VMs
 ```
 
-**Temporary VMs** — Ephemeral environments for quick testing:
-
+### Configuration (`vm config`)
 ```bash
-vm temp create <folders>     # Create temporary VM with mounts
-vm temp ssh                  # Connect to temporary VM via SSH
-vm temp status               # Show temporary VM status
-vm temp destroy              # Destroy temporary VM
-vm temp mount <path>         # Add mount to running temporary VM
-vm temp unmount <path>       # Remove mount from temporary VM
-vm temp unmount --all        # Remove all mounts
-vm temp mounts               # List current mounts
-vm temp list                 # List all temporary VMs
-vm temp stop                 # Stop temporary VM
-vm temp start                # Start temporary VM
-vm temp restart              # Restart temporary VM
+vm init                  # Initialize a new vm.yaml configuration file
+vm config validate       # Validate the VM configuration
+vm config show           # Show the loaded configuration
+vm config get [field]    # Get a configuration value
+vm config set <f> <v>    # Set a configuration value
+vm config unset <field>  # Remove a configuration field
+vm config preset <name>  # Apply a configuration preset
+vm config ports --fix    # Manage port configuration
 ```
 
-**Configuration Management** — Customize and control VM settings:
-
+### Temporary VMs (`vm temp`)
 ```bash
-vm init                      # Initialize a new VM configuration file
-vm validate                  # Validate VM configuration
-vm config get [field]        # Get configuration values
-vm config set <field> <value> # Set configuration value
-vm config unset <field>      # Remove configuration field
-vm config preset <names>     # Apply configuration presets
-vm config preset list        # List available presets
-vm config preset --show <name> # Show preset details
-vm config ports --fix        # Manage port configuration and resolve conflicts
+vm temp create <folders> # Create a temporary VM with mounted folders
+vm temp ssh              # Connect to the temporary VM
+vm temp status           # Show temporary VM status
+vm temp destroy          # Destroy the temporary VM
+vm temp mount <path>     # Add a mount to a running temporary VM
+vm temp unmount <path>   # Remove a mount from a temporary VM
+vm temp mounts           # List current mounts
+vm temp list             # List all temporary VMs
 ```
 
-**Plugin Management** — Extend VM with custom presets and services:
-
+### Plugins (`vm plugin`)
 ```bash
-vm plugin list               # List installed plugins
-vm plugin info <name>        # Show plugin details
-vm plugin install <path>     # Install plugin from directory
-vm plugin remove <name>      # Remove installed plugin
-vm plugin new <name> --type <preset|service>  # Create plugin template
-vm plugin validate <name>    # Validate plugin configuration
+vm plugin list           # List installed plugins
+vm plugin info <name>    # Show plugin details
+vm plugin install <path> # Install a plugin from a directory
+vm plugin remove <name>  # Remove an installed plugin
+vm plugin new <name>     # Create a new plugin template
+vm plugin validate <name> # Validate a plugin's configuration
 ```
 
-**Advanced Operations** — Power user commands for complex workflows:
-
+### Secrets Management (`vm auth`)
 ```bash
-vm list [--provider name] [--verbose]    # List all VMs with status and resource usage
-vm exec [container] <command>            # Execute commands inside VM
-vm logs [container]                      # View VM logs
-vm --config custom.yaml ssh [container] # Use specific config
+vm auth add <name> <value> # Store a secret
+vm auth list               # List stored secrets
+vm auth remove <name>      # Remove a secret
 ```
 
-**System Management** — Update and maintain the VM tool itself:
-
+### Package Registry (`vm pkg`)
 ```bash
-vm update [--version v1.2.3]    # Update to latest or specific version
-vm uninstall [--keep-config]    # Uninstall vm from the system
-vm doctor                        # Run comprehensive health checks
+vm pkg add [--type <t>]  # Publish a package from the current directory
+vm pkg list              # List all packages in the registry
+vm pkg remove <name>     # Remove a package from the registry
 ```
 
-**Auth Proxy** — Centralized secrets management:
+### System Management
 ```bash
-vm auth status                   # Service status
-vm auth add <name> <value>       # Store a secret
-vm auth list                     # List stored secrets
-vm auth remove <name>            # Remove a secret
-```
-
-**Package Registry** — Private package registry for npm, pip, and cargo:
-```bash
-vm pkg status                    # Server status
-vm pkg add [--type <type>]       # Publish package from current directory
-vm pkg list                      # List all packages
-vm pkg remove <name>             # Remove a package
-vm pkg use --shell <shell>       # Generate shell configuration
+vm doctor                # Run comprehensive health checks
+vm update                # Update to the latest or a specific version
+vm uninstall             # Uninstall vm from the system
 ```
 
 ---
