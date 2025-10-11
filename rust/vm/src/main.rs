@@ -23,6 +23,7 @@ mod commands;
 mod error;
 mod service_manager;
 mod service_registry;
+mod state;
 
 use cli::Args;
 use commands::execute_command;

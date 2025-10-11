@@ -25,7 +25,6 @@ use futures::future;
 use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
-use shellexpand;
 
 use vm_config::GlobalConfig;
 use vm_core::{vm_println, vm_success, vm_warning};

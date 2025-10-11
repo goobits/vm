@@ -39,6 +39,7 @@ pub use global_config::GlobalConfig;
 
 // Re-export CLI utilities
 pub use cli::init_config_file;
+pub use detector::detect_worktrees;
 
 use std::path::PathBuf;
 use vm_core::error::Result;

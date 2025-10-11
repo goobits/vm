@@ -139,6 +139,12 @@ pub trait Provider {
     /// Get the logs of the VM.
     fn logs(&self, container: Option<&str>) -> Result<()>;
 
+    /// Get a list of host paths mounted into the container.
+    fn get_container_mounts(&self, _container_name: &str) -> Result<Vec<String>> {
+        // Default implementation returns an empty vec for providers that don't support it
+        Ok(Vec::new())
+    }
+
     /// Get the status of the VM.
     fn status(&self, container: Option<&str>) -> Result<()>;
 

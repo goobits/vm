@@ -339,12 +339,16 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             container,
             path,
             command,
+            force_refresh,
+            no_refresh,
         } => vm_ops::handle_ssh(
             provider,
             container.as_deref(),
             path,
             command.map(|c| vec!["/bin/bash".to_string(), "-c".to_string(), c]),
             config,
+            force_refresh,
+            no_refresh,
         ),
         Command::Status { container } => vm_ops::handle_status(
             provider,

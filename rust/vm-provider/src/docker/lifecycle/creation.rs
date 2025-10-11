@@ -32,28 +32,6 @@ impl<'a> LifecycleOperations<'a> {
         self.handle_potential_issues();
         self.check_docker_build_requirements();
 
-        // Create worktrees directory if enabled (must exist before Docker mounts it)
-        if self.config.worktrees.as_ref().is_some_and(|w| w.enabled)
-            || context
-                .global_config
-                .as_ref()
-                .is_some_and(|g| g.worktrees.enabled)
-        {
-            let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
-            if let Some(worktrees_path) = compose_ops.get_worktrees_host_path(context) {
-                std::fs::create_dir_all(&worktrees_path).map_err(|e| {
-                    VmError::Filesystem(format!(
-                        "Failed to create worktrees directory at {}: {}. \
-                         Check permissions for ~/.vm/worktrees/",
-                        worktrees_path.display(),
-                        e
-                    ))
-                })?;
-
-                info!("✓ Worktrees directory: {}", worktrees_path.display());
-            }
-        }
-
         // Check platform support for worktrees (Windows native not supported)
         #[cfg(target_os = "windows")]
         {
@@ -189,28 +167,6 @@ impl<'a> LifecycleOperations<'a> {
         self.check_daemon_is_running()?;
         self.handle_potential_issues();
         self.check_docker_build_requirements();
-
-        // Create worktrees directory if enabled (must exist before Docker mounts it)
-        if self.config.worktrees.as_ref().is_some_and(|w| w.enabled)
-            || context
-                .global_config
-                .as_ref()
-                .is_some_and(|g| g.worktrees.enabled)
-        {
-            let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
-            if let Some(worktrees_path) = compose_ops.get_worktrees_host_path(context) {
-                std::fs::create_dir_all(&worktrees_path).map_err(|e| {
-                    VmError::Filesystem(format!(
-                        "Failed to create worktrees directory at {}: {}. \
-                         Check permissions for ~/.vm/worktrees/",
-                        worktrees_path.display(),
-                        e
-                    ))
-                })?;
-
-                info!("✓ Worktrees directory: {}", worktrees_path.display());
-            }
-        }
 
         // Check platform support for worktrees (Windows native not supported)
         #[cfg(target_os = "windows")]

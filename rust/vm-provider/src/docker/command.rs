@@ -5,9 +5,16 @@
 //! code duplication across Docker operations by providing common patterns
 //! for executing Docker subcommands.
 
+use serde::Deserialize;
 use std::process::{Command, Output};
 use vm_core::error::{Result, VmError};
 use vm_core::{vm_dbg, vm_error};
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct Mount {
+    source: String,
+}
 
 /// Builder for Docker commands with fluent interface and consistent error handling.
 ///
@@ -283,6 +290,21 @@ impl DockerOps {
             .arg("ready")
             .execute()
             .is_ok()
+    }
+
+    /// Get a list of host paths mounted into the container.
+    pub fn get_container_mounts(container_name: &str) -> Result<Vec<String>> {
+        let output = DockerCommand::new()
+            .subcommand("inspect")
+            .arg("--format")
+            .arg("{{json .Mounts}}")
+            .arg(container_name)
+            .execute_with_output()?;
+
+        let mounts: Vec<Mount> = serde_json::from_str(&output)
+            .map_err(|e| VmError::Internal(format!("Failed to parse Docker mounts: {}", e)))?;
+
+        Ok(mounts.into_iter().map(|m| m.source).collect())
     }
 }
 

@@ -211,7 +211,10 @@ fn test_pkg_start_command_no_longer_exists() -> Result<()> {
 }
 
 fn is_docker_running() -> bool {
-    Command::new("docker").arg("info").output().map_or(false, |o| o.status.success())
+    Command::new("docker")
+        .arg("info")
+        .output()
+        .is_ok_and(|o| o.status.success())
 }
 
 #[test]
@@ -231,14 +234,18 @@ fn test_shared_postgres_lifecycle_integration() -> Result<()> {
 
     // 1. Enable shared postgresql globally
     let output = Command::new(&vm_binary)
-        .args(&["config", "set", "services.postgresql.enabled", "true"])
+        .args(["config", "set", "services.postgresql.enabled", "true"])
         .env("HOME", home_dir)
         .output()?;
-    assert!(output.status.success(), "Failed to enable postgresql service. Stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "Failed to enable postgresql service. Stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     // 2. Create a VM. This should start the postgres service.
     let output = Command::new(&vm_binary)
-        .args(&["create"])
+        .args(["create"])
         .current_dir(&project_dir)
         .env("HOME", home_dir)
         .env("VM_NO_PROMPT", "true") // for `vm init`
@@ -246,31 +253,53 @@ fn test_shared_postgres_lifecycle_integration() -> Result<()> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(output.status.success(), "vm create failed. stdout: {}, stderr: {}", stdout, stderr);
+    assert!(
+        output.status.success(),
+        "vm create failed. stdout: {}, stderr: {}",
+        stdout,
+        stderr
+    );
     assert!(stdout.contains("Starting PostgreSQL"));
 
     // 3. Verify the postgres container is running
-    let ps_output = Command::new("docker").args(&["ps", "--filter", "name=vm-postgres-global"]).output()?;
+    let ps_output = Command::new("docker")
+        .args(["ps", "--filter", "name=vm-postgres-global"])
+        .output()?;
     let ps_stdout = String::from_utf8_lossy(&ps_output.stdout);
-    assert!(ps_stdout.contains("vm-postgres-global"), "Postgres container not found after vm create. Output: {}", ps_stdout);
+    assert!(
+        ps_stdout.contains("vm-postgres-global"),
+        "Postgres container not found after vm create. Output: {}",
+        ps_stdout
+    );
 
     // 4. Destroy the VM. This should stop the postgres service.
     let output = Command::new(&vm_binary)
-        .args(&["destroy", "--yes"])
+        .args(["destroy", "--yes"])
         .current_dir(&project_dir)
         .env("HOME", home_dir)
         .output()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(output.status.success(), "vm destroy failed. stdout: {}, stderr: {}", stdout, stderr);
+    assert!(
+        output.status.success(),
+        "vm destroy failed. stdout: {}, stderr: {}",
+        stdout,
+        stderr
+    );
     assert!(stdout.contains("Stopping PostgreSQL"));
 
     // 5. Verify the postgres container is stopped and removed.
     std::thread::sleep(std::time::Duration::from_millis(500));
-    let ps_output_after = Command::new("docker").args(&["ps", "-a", "--filter", "name=vm-postgres-global"]).output()?;
+    let ps_output_after = Command::new("docker")
+        .args(["ps", "-a", "--filter", "name=vm-postgres-global"])
+        .output()?;
     let ps_stdout_after = String::from_utf8_lossy(&ps_output_after.stdout);
-    assert!(!ps_stdout_after.contains("vm-postgres-global"), "Postgres container was not removed after vm destroy. Output: {}", ps_stdout_after);
+    assert!(
+        !ps_stdout_after.contains("vm-postgres-global"),
+        "Postgres container was not removed after vm destroy. Output: {}",
+        ps_stdout_after
+    );
 
     Ok(())
 }
@@ -292,14 +321,18 @@ fn test_shared_redis_lifecycle_integration() -> Result<()> {
 
     // 1. Enable shared redis globally
     let output = Command::new(&vm_binary)
-        .args(&["config", "set", "services.redis.enabled", "true"])
+        .args(["config", "set", "services.redis.enabled", "true"])
         .env("HOME", home_dir)
         .output()?;
-    assert!(output.status.success(), "Failed to enable redis service. Stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "Failed to enable redis service. Stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     // 2. Create a VM. This should start the redis service.
     let output = Command::new(&vm_binary)
-        .args(&["create"])
+        .args(["create"])
         .current_dir(&project_dir)
         .env("HOME", home_dir)
         .env("VM_NO_PROMPT", "true")
@@ -307,17 +340,28 @@ fn test_shared_redis_lifecycle_integration() -> Result<()> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(output.status.success(), "vm create failed for redis. stdout: {}, stderr: {}", stdout, stderr);
+    assert!(
+        output.status.success(),
+        "vm create failed for redis. stdout: {}, stderr: {}",
+        stdout,
+        stderr
+    );
     assert!(stdout.contains("Starting Redis"));
 
     // 3. Verify the redis container is running
-    let ps_output = Command::new("docker").args(&["ps", "--filter", "name=vm-redis-global"]).output()?;
+    let ps_output = Command::new("docker")
+        .args(["ps", "--filter", "name=vm-redis-global"])
+        .output()?;
     let ps_stdout = String::from_utf8_lossy(&ps_output.stdout);
-    assert!(ps_stdout.contains("vm-redis-global"), "Redis container not found. Output: {}", ps_stdout);
+    assert!(
+        ps_stdout.contains("vm-redis-global"),
+        "Redis container not found. Output: {}",
+        ps_stdout
+    );
 
     // 4. Destroy the VM. This should stop the redis service.
     let output = Command::new(&vm_binary)
-        .args(&["destroy", "--yes"])
+        .args(["destroy", "--yes"])
         .current_dir(&project_dir)
         .env("HOME", home_dir)
         .output()?;
@@ -327,9 +371,15 @@ fn test_shared_redis_lifecycle_integration() -> Result<()> {
 
     // 5. Verify the redis container is stopped and removed.
     std::thread::sleep(std::time::Duration::from_millis(500));
-    let ps_output_after = Command::new("docker").args(&["ps", "-a", "--filter", "name=vm-redis-global"]).output()?;
+    let ps_output_after = Command::new("docker")
+        .args(["ps", "-a", "--filter", "name=vm-redis-global"])
+        .output()?;
     let ps_stdout_after = String::from_utf8_lossy(&ps_output_after.stdout);
-    assert!(!ps_stdout_after.contains("vm-redis-global"), "Redis container not removed. Output: {}", ps_stdout_after);
+    assert!(
+        !ps_stdout_after.contains("vm-redis-global"),
+        "Redis container not removed. Output: {}",
+        ps_stdout_after
+    );
 
     Ok(())
 }

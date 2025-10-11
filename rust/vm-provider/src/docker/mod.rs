@@ -368,6 +368,11 @@ impl Provider for DockerProvider {
         lifecycle.get_sync_directory()
     }
 
+    fn get_container_mounts(&self, container_name: &str) -> Result<Vec<String>> {
+        let target_container = self.resolve_instance_name(Some(container_name))?;
+        DockerOps::get_container_mounts(&target_container)
+    }
+
     fn as_temp_provider(&self) -> Option<&dyn TempProvider> {
         Some(self)
     }
