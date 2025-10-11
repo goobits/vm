@@ -10,18 +10,14 @@ use anyhow::Context;
 pub fn portable_readlink(path: &Path) -> Result<PathBuf> {
     let canonical_path = path
         .canonicalize()
-        .with_context(|| format!("Failed to get canonical path for {:?}", path))?;
+        .with_context(|| format!("Failed to get canonical path for {path:?}"))?;
     Ok(canonical_path)
 }
 
 /// A cross-platform equivalent of `realpath --relative-to`.
 pub fn portable_relative_path(base: &Path, target: &Path) -> Result<PathBuf> {
     let relative_path = pathdiff::diff_paths(target, base).ok_or_else(|| {
-        anyhow::anyhow!(
-            "Failed to calculate relative path from {:?} to {:?}",
-            base,
-            target
-        )
+        anyhow::anyhow!("Failed to calculate relative path from {base:?} to {target:?}")
     })?;
     Ok(relative_path)
 }
@@ -86,6 +82,6 @@ impl std::fmt::Display for Platform {
             Arch::Arm64 => "arm64",
             Arch::Unsupported => "unsupported_arch",
         };
-        write!(f, "{}_{}", os_str, arch_str)
+        write!(f, "{os_str}_{arch_str}")
     }
 }

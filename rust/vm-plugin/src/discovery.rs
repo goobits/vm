@@ -32,10 +32,7 @@ pub fn discover_plugins_in_directory(plugins_dir: &Path) -> Result<Vec<Plugin>> 
                 match load_plugin(&path, PluginType::Preset) {
                     Ok(plugin) => plugins.push(plugin),
                     Err(e) => {
-                        eprintln!(
-                            "Warning: Failed to load preset plugin from {:?}: {}",
-                            path, e
-                        );
+                        eprintln!("Warning: Failed to load preset plugin from {path:?}: {e}");
                     }
                 }
             }
@@ -53,10 +50,7 @@ pub fn discover_plugins_in_directory(plugins_dir: &Path) -> Result<Vec<Plugin>> 
                 match load_plugin(&path, PluginType::Service) {
                     Ok(plugin) => plugins.push(plugin),
                     Err(e) => {
-                        eprintln!(
-                            "Warning: Failed to load service plugin from {:?}: {}",
-                            path, e
-                        );
+                        eprintln!("Warning: Failed to load service plugin from {path:?}: {e}");
                     }
                 }
             }
@@ -71,14 +65,14 @@ fn load_plugin(plugin_dir: &Path, expected_type: PluginType) -> Result<Plugin> {
     let info_path = plugin_dir.join("plugin.yaml");
 
     if !info_path.exists() {
-        anyhow::bail!("Plugin metadata not found: {:?}", info_path);
+        anyhow::bail!("Plugin metadata not found: {info_path:?}");
     }
 
     let info_content = fs::read_to_string(&info_path)
-        .with_context(|| format!("Failed to read plugin metadata: {:?}", info_path))?;
+        .with_context(|| format!("Failed to read plugin metadata: {info_path:?}"))?;
 
     let info: PluginInfo = serde_yaml_ng::from_str(&info_content)
-        .with_context(|| format!("Failed to parse plugin metadata: {:?}", info_path))?;
+        .with_context(|| format!("Failed to parse plugin metadata: {info_path:?}"))?;
 
     // Validate plugin type matches expected type
     if info.plugin_type != expected_type {
@@ -97,7 +91,7 @@ fn load_plugin(plugin_dir: &Path, expected_type: PluginType) -> Result<Plugin> {
     };
 
     if !content_file.exists() {
-        anyhow::bail!("Plugin content file not found: {:?}", content_file);
+        anyhow::bail!("Plugin content file not found: {content_file:?}");
     }
 
     Ok(Plugin { info, content_file })
