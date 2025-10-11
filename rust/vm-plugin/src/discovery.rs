@@ -149,13 +149,12 @@ mod tests {
         fs::create_dir_all(&plugin_dir)?;
 
         let info = format!(
-            r#"name: {}
+            r#"name: {name}
 version: 1.0.0
 description: Test preset plugin
 author: Test Author
 plugin_type: preset
-"#,
-            name
+"#
         );
         fs::write(plugin_dir.join("plugin.yaml"), info)?;
 
@@ -179,12 +178,11 @@ provision:
         fs::create_dir_all(&plugin_dir)?;
 
         let info = format!(
-            r#"name: {}
+            r#"name: {name}
 version: 2.0.0
 description: Test service plugin
 plugin_type: service
-"#,
-            name
+"#
         );
         fs::write(plugin_dir.join("plugin.yaml"), info)?;
 

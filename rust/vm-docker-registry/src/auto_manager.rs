@@ -340,7 +340,7 @@ impl AutoManager {
 
         let response = reqwest::get(&url)
             .await
-            .map_err(|e| anyhow!("Failed to query registry catalog: {}", e))?;
+            .map_err(|e| anyhow!("Failed to query registry catalog: {e}"))?;
 
         if !response.status().is_success() {
             return Err(anyhow!(
@@ -357,7 +357,7 @@ impl AutoManager {
         let catalog: CatalogResponse = response
             .json()
             .await
-            .map_err(|e| anyhow!("Failed to parse catalog response: {}", e))?;
+            .map_err(|e| anyhow!("Failed to parse catalog response: {e}"))?;
 
         Ok(catalog.repositories)
     }
@@ -372,7 +372,7 @@ impl AutoManager {
 
         let response = reqwest::get(&url)
             .await
-            .map_err(|e| anyhow!("Failed to query repository tags: {}", e))?;
+            .map_err(|e| anyhow!("Failed to query repository tags: {e}"))?;
 
         if !response.status().is_success() {
             return Err(anyhow!(
@@ -389,7 +389,7 @@ impl AutoManager {
         let tags_response: TagsResponse = response
             .json()
             .await
-            .map_err(|e| anyhow!("Failed to parse tags response: {}", e))?;
+            .map_err(|e| anyhow!("Failed to parse tags response: {e}"))?;
 
         Ok(tags_response.tags.unwrap_or_default())
     }
@@ -416,7 +416,7 @@ impl AutoManager {
             )
             .send()
             .await
-            .map_err(|e| anyhow!("Failed to query image manifest: {}", e))?;
+            .map_err(|e| anyhow!("Failed to query image manifest: {e}"))?;
 
         if !response.status().is_success() {
             return Err(anyhow!(
@@ -428,11 +428,11 @@ impl AutoManager {
         let manifest_text = response
             .text()
             .await
-            .map_err(|e| anyhow!("Failed to read manifest response: {}", e))?;
+            .map_err(|e| anyhow!("Failed to read manifest response: {e}"))?;
 
         // Parse manifest to get creation date
         let manifest: serde_json::Value = serde_json::from_str(&manifest_text)
-            .map_err(|e| anyhow!("Failed to parse manifest JSON: {}", e))?;
+            .map_err(|e| anyhow!("Failed to parse manifest JSON: {e}"))?;
 
         // Extract creation date from history (simplified approach)
         let created = if let Some(history) = manifest
@@ -485,7 +485,7 @@ impl AutoManager {
             )
             .send()
             .await
-            .map_err(|e| anyhow!("Failed to get manifest digest: {}", e))?;
+            .map_err(|e| anyhow!("Failed to get manifest digest: {e}"))?;
 
         let digest = response
             .headers()
@@ -505,7 +505,7 @@ impl AutoManager {
             .delete(&delete_url)
             .send()
             .await
-            .map_err(|e| anyhow!("Failed to delete manifest: {}", e))?;
+            .map_err(|e| anyhow!("Failed to delete manifest: {e}"))?;
 
         if !delete_response.status().is_success() {
             return Err(anyhow!(

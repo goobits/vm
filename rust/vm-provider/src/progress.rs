@@ -191,7 +191,7 @@ impl AnsibleProgressParser {
             // Show subtasks for running task
             if task.status == TaskStatus::Running && !task.subtasks.is_empty() {
                 for subtask in &task.subtasks {
-                    println!("      {}", subtask);
+                    println!("      {subtask}");
                 }
             }
         }
@@ -280,7 +280,7 @@ impl ProgressParser for AnsibleProgressParser {
                     // Extract package info if possible
                     #[allow(clippy::excessive_nesting)]
                     if let Some(pkg_info) = line.split_whitespace().nth(1) {
-                        last_task.subtasks.push(format!("Installing {}", pkg_info));
+                        last_task.subtasks.push(format!("Installing {pkg_info}"));
                         // Keep only last 3 subtasks
                         if last_task.subtasks.len() > 3 {
                             last_task.subtasks.remove(0);
@@ -486,7 +486,7 @@ impl StatusFormatter {
 
 /// Prompt user for confirmation with a yes/no question
 pub fn confirm_prompt(message: &str) -> bool {
-    print!("{}", message);
+    print!("{message}");
     let _ = io::stdout().flush();
 
     let mut input = String::new();

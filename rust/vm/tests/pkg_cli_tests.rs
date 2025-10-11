@@ -47,7 +47,7 @@ impl PkgTestFixture {
     fn get_output(&self, output: &std::process::Output) -> String {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        format!("{}{}", stdout, stderr)
+        format!("{stdout}{stderr}")
     }
 
     /// Check if the package registry server is running

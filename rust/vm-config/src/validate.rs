@@ -12,8 +12,7 @@ fn validate_gpu_type(gpu_type: &Option<String>) -> Result<()> {
     if let Some(gpu_type) = gpu_type {
         if !matches!(gpu_type.as_str(), "nvidia" | "amd" | "intel" | "auto") {
             return Err(vm_core::error::VmError::Config(format!(
-                "Invalid GPU type: {}",
-                gpu_type
+                "Invalid GPU type: {gpu_type}"
             )));
         }
     }
@@ -22,14 +21,13 @@ fn validate_gpu_type(gpu_type: &Option<String>) -> Result<()> {
 
 /// Checks if a given host port is available to bind to.
 fn check_port_available(port: u16, binding: &str) -> Result<()> {
-    let addr = format!("{}:{}", binding, port);
+    let addr = format!("{binding}:{port}");
     match TcpListener::bind(&addr) {
         Ok(_) => Ok(()), // Listener is implicitly closed when it goes out of scope
         Err(e) => {
             if e.kind() == std::io::ErrorKind::AddrInUse {
                 return Err(VmError::Config(format!(
-                    "Port {} is already in use on host",
-                    port
+                    "Port {port} is already in use on host"
                 )));
             }
             Err(e.into())
@@ -96,8 +94,7 @@ impl ConfigValidator {
             match provider.as_str() {
                 "docker" | "vagrant" | "tart" => Ok(()),
                 _ => Err(vm_core::error::VmError::Config(format!(
-                    "Invalid provider: {}",
-                    provider
+                    "Invalid provider: {provider}"
                 ))),
             }
         } else {
@@ -109,7 +106,7 @@ impl ConfigValidator {
         if let Some(project) = &self.config.project {
             if let Some(name) = &project.name {
                 let name_regex = Regex::new(r"^[a-zA-Z0-9\-_]+$")
-                    .map_err(|e| VmError::Config(format!("Invalid regex pattern: {}", e)))?;
+                    .map_err(|e| VmError::Config(format!("Invalid regex pattern: {e}")))?;
                 if !name_regex.is_match(name) {
                     vm_error!(
                         "Invalid project name: {}. Must contain only alphanumeric characters, dashes, and underscores",
@@ -123,7 +120,7 @@ impl ConfigValidator {
 
             if let Some(hostname) = &project.hostname {
                 let hostname_regex = Regex::new(r"^[a-zA-Z0-9\-\.]+$")
-                    .map_err(|e| VmError::Config(format!("Invalid regex pattern: {}", e)))?;
+                    .map_err(|e| VmError::Config(format!("Invalid regex pattern: {e}")))?;
                 if !hostname_regex.is_match(hostname) {
                     vm_error!("Invalid hostname: {}. Must be a valid hostname", hostname);
                     return Err(vm_core::error::VmError::Config(

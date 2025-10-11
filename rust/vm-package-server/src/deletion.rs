@@ -76,7 +76,7 @@ pub async fn remove_files_matching_pattern(
         if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
             // Check if filename matches pattern: package_name-version-*
             // or package_name-version.ext
-            let version_prefix = format!("{}-{}", package_name, version);
+            let version_prefix = format!("{package_name}-{version}");
             if filename.starts_with(&version_prefix) {
                 // Check if it has the right extension (if specified)
                 let should_delete = if extensions.is_empty() {
@@ -146,7 +146,7 @@ pub async fn update_json_remove_version(metadata_path: &Path, version: &str) -> 
     }
 
     if !version_exists {
-        anyhow::bail!("Version {} not found in package metadata", version);
+        anyhow::bail!("Version {version} not found in package metadata");
     }
 
     // Remove the version from versions object
@@ -217,7 +217,7 @@ pub async fn update_index_yank_version(index_path: &Path, version: &str) -> Resu
     }
 
     if !found {
-        anyhow::bail!("Version {} not found in crate index", version);
+        anyhow::bail!("Version {version} not found in crate index");
     }
 
     // Write back the updated index
@@ -256,7 +256,7 @@ pub async fn remove_version_from_index(index_path: &Path, version: &str) -> Resu
     }
 
     if !found {
-        anyhow::bail!("Version {} not found in crate index", version);
+        anyhow::bail!("Version {version} not found in crate index");
     }
 
     if updated_lines.is_empty() {

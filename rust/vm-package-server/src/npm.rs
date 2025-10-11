@@ -93,7 +93,7 @@ pub async fn get_package_versions(
     let metadata_path = state
         .data_dir
         .join("npm/metadata")
-        .join(format!("{}.json", package_name));
+        .join(format!("{package_name}.json"));
     let mut versions = Vec::new();
 
     let result = storage::read_file_string(&metadata_path).await;
@@ -154,7 +154,7 @@ pub async fn get_recent_packages(
         let metadata_path = state
             .data_dir
             .join("npm/metadata")
-            .join(format!("{}.json", package_name));
+            .join(format!("{package_name}.json"));
         if let Ok(content) = storage::read_file_string(&metadata_path).await {
             if let Ok(metadata) = serde_json::from_str::<Value>(&content) {
                 if let Some(latest) = metadata["dist-tags"]["latest"].as_str() {
@@ -207,7 +207,7 @@ pub async fn package_metadata(
     let metadata_path = state
         .data_dir
         .join("npm/metadata")
-        .join(format!("{}.json", package));
+        .join(format!("{package}.json"));
 
     info!(package = %package, "Fetching npm package metadata");
 
@@ -247,8 +247,7 @@ pub async fn package_metadata(
             debug!(package = %package, "Package not found on upstream NPM either");
             // Return 404 as per npm registry behavior
             Err(AppError::NotFound(format!(
-                "Package not found: {}",
-                package
+                "Package not found: {package}"
             )))
         }
     }
@@ -386,8 +385,7 @@ pub async fn publish_package(
         .ok_or_else(|| {
             warn!(package = %package, "npm publish payload _attachments field is not an object");
             AppError::BadRequest(format!(
-                "Package '{}': '_attachments' field is not an object",
-                package
+                "Package '{package}': '_attachments' field is not an object"
             ))
         })?
         .clone();
@@ -406,21 +404,21 @@ pub async fn publish_package(
             validation::validate_base64_size(data_b64, None, None).map_err(|e| {
                 warn!(package = %package, filename = %filename, error = %e,
                       "Base64 size validation failed");
-                AppError::UploadError(format!("Base64 data size validation failed: {}", e))
+                AppError::UploadError(format!("Base64 data size validation failed: {e}"))
             })?;
 
             // Validate base64 character format
             validation::validate_base64_characters(data_b64).map_err(|e| {
                 warn!(package = %package, filename = %filename, error = %e,
                       "Base64 character validation failed");
-                AppError::UploadError(format!("Invalid base64 format: {}", e))
+                AppError::UploadError(format!("Invalid base64 format: {e}"))
             })?;
 
             // Decode base64 tarball with comprehensive error handling
             let tarball_data = general_purpose::STANDARD.decode(data_b64).map_err(|e| {
                 warn!(package = %package, filename = %filename, error = %e,
                       "Failed to decode base64 data");
-                AppError::UploadError(format!("Invalid base64 encoding: {}", e))
+                AppError::UploadError(format!("Invalid base64 encoding: {e}"))
             })?;
 
             // Use centralized validation for decoded tarball size
@@ -452,7 +450,7 @@ pub async fn publish_package(
             let metadata_path = state
                 .data_dir
                 .join("npm/metadata")
-                .join(format!("{}.json", package));
+                .join(format!("{package}.json"));
             let metadata_str = serde_json::to_string_pretty(&payload)?;
             storage::save_file(metadata_path, metadata_str.as_bytes()).await?;
 
@@ -541,7 +539,7 @@ mod tests {
         tarball_content: &[u8],
     ) -> Value {
         let encoded_tarball = general_purpose::STANDARD.encode(tarball_content);
-        let filename = format!("{}-{}.tgz", package_name, version);
+        let filename = format!("{package_name}-{version}.tgz");
 
         json!({
             "_id": package_name,
@@ -585,7 +583,7 @@ mod tests {
         let payload = create_npm_publish_payload(package_name, version, tarball_content);
 
         let response = server
-            .put(&format!("/npm/{}", package_name))
+            .put(&format!("/npm/{package_name}"))
             .json(&payload)
             .await;
 
@@ -595,7 +593,7 @@ mod tests {
         let tarball_path = state
             .data_dir
             .join("npm/tarballs")
-            .join(format!("{}-{}.tgz", package_name, version));
+            .join(format!("{package_name}-{version}.tgz"));
         assert!(tarball_path.exists());
         let saved_content = std::fs::read(tarball_path).unwrap();
         assert_eq!(saved_content, tarball_content);
@@ -604,7 +602,7 @@ mod tests {
         let metadata_path = state
             .data_dir
             .join("npm/metadata")
-            .join(format!("{}.json", package_name));
+            .join(format!("{package_name}.json"));
         assert!(metadata_path.exists());
         let metadata_content = std::fs::read_to_string(metadata_path).unwrap();
         let metadata: Value = serde_json::from_str(&metadata_content).unwrap();
@@ -659,7 +657,7 @@ mod tests {
         let metadata_path = state
             .data_dir
             .join("npm/metadata")
-            .join(format!("{}.json", package_name));
+            .join(format!("{package_name}.json"));
         std::fs::write(
             metadata_path,
             serde_json::to_string_pretty(&metadata).unwrap(),
@@ -671,7 +669,7 @@ mod tests {
             .with_state(state);
 
         let server = TestServer::new(app).unwrap();
-        let response = server.get(&format!("/npm/{}", package_name)).await;
+        let response = server.get(&format!("/npm/{package_name}")).await;
 
         assert_eq!(response.status_code(), StatusCode::OK);
         let body: Value = response.json();
@@ -703,7 +701,7 @@ mod tests {
         let metadata_path = state
             .data_dir
             .join("npm/metadata")
-            .join(format!("{}.json", package_name));
+            .join(format!("{package_name}.json"));
         std::fs::write(
             metadata_path,
             serde_json::to_string_pretty(&metadata).unwrap(),
@@ -716,7 +714,7 @@ mod tests {
 
         let server = TestServer::new(app).unwrap();
         let response = server
-            .get(&format!("/npm/{}", package_name))
+            .get(&format!("/npm/{package_name}"))
             .add_header("host", "example.com:3000")
             .await;
 

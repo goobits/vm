@@ -34,7 +34,7 @@ pub fn read_config_or_init(path: &Path, allow_init: bool) -> Result<VmConfig> {
         let mut input = String::new();
         io::stdin()
             .read_line(&mut input)
-            .map_err(|e| VmError::Config(format!("Failed to read input: {}", e)))?;
+            .map_err(|e| VmError::Config(format!("Failed to read input: {e}")))?;
 
         let should_init = matches!(input.trim().to_lowercase().as_str(), "" | "y" | "yes");
 

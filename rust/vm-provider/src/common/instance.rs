@@ -47,8 +47,7 @@ pub trait InstanceResolver {
 pub fn fuzzy_match_instances(partial: &str, instances: &[InstanceInfo]) -> Result<String> {
     if instances.is_empty() {
         return Err(VmError::Internal(format!(
-            "No instances found matching '{}'. Use 'vm list' to see available instances",
-            partial
+            "No instances found matching '{partial}'. Use 'vm list' to see available instances"
         )));
     }
 
@@ -65,7 +64,7 @@ pub fn fuzzy_match_instances(partial: &str, instances: &[InstanceInfo]) -> Resul
     }
 
     // Second, try project name resolution (partial -> project-dev pattern)
-    let candidate_name = format!("{}-dev", partial);
+    let candidate_name = format!("{partial}-dev");
     for instance in instances {
         if instance.name == candidate_name {
             return Ok(instance.name.clone());
@@ -82,14 +81,13 @@ pub fn fuzzy_match_instances(partial: &str, instances: &[InstanceInfo]) -> Resul
 
     match matches.len() {
         0 => Err(VmError::Internal(format!(
-            "No instance found matching '{}'. Use 'vm list' to see available instances",
-            partial
+            "No instance found matching '{partial}'. Use 'vm list' to see available instances"
         ))),
         1 => Ok(matches[0].clone()),
         _ => {
             // Multiple matches - prefer exact project name match
             for name in &matches {
-                if name == &format!("{}-dev", partial) {
+                if name == &format!("{partial}-dev") {
                     return Ok(name.clone());
                 }
             }
@@ -176,7 +174,7 @@ pub fn create_vagrant_instance_info(
 ) -> InstanceInfo {
     InstanceInfo {
         name: name.to_string(),
-        id: format!("{}:{}", project_name, name), // Combine project and machine name
+        id: format!("{project_name}:{name}"), // Combine project and machine name
         status: status.to_string(),
         provider: "vagrant".to_string(),
         project: Some(project_name.to_string()),

@@ -26,24 +26,21 @@ impl TempVmOps {
     ) -> Result<()> {
         let state_manager = StateManager::new().map_err(|e| {
             VmError::Internal(format!(
-                "Failed to initialize temporary VM state manager. Check filesystem permissions: {}",
-                e
+                "Failed to initialize temporary VM state manager. Check filesystem permissions: {e}"
             ))
         })?;
 
         // Parse mount strings using MountParser
         let parsed_mounts = MountParser::parse_mount_strings(&mounts).map_err(|e| {
             VmError::Config(format!(
-                "Failed to parse mount path specifications. Check mount string format: {}",
-                e
+                "Failed to parse mount path specifications. Check mount string format: {e}"
             ))
         })?;
 
         // Get current project directory
         let project_dir = std::env::current_dir().map_err(|e| {
             VmError::Filesystem(format!(
-                "Failed to get current working directory. Check directory permissions: {}",
-                e
+                "Failed to get current working directory. Check directory permissions: {e}"
             ))
         })?;
 
@@ -64,16 +61,14 @@ impl TempVmOps {
                     .add_mount_with_target(source, target_path, permissions)
                     .map_err(|e| {
                         VmError::Config(format!(
-                            "Failed to add mount '{}' with custom target '{}': {}",
-                            source_display, target_display, e
+                            "Failed to add mount '{source_display}' with custom target '{target_display}': {e}"
                         ))
                     })?;
             } else {
                 let source_display = source.display().to_string();
                 temp_state.add_mount(source, permissions).map_err(|e| {
                     VmError::Config(format!(
-                        "Failed to add mount for path '{}': {}",
-                        source_display, e
+                        "Failed to add mount for path '{source_display}': {e}"
                     ))
                 })?;
             }
@@ -117,8 +112,7 @@ impl TempVmOps {
     pub fn ssh(provider: Box<dyn Provider>) -> Result<()> {
         let state_manager = StateManager::new().map_err(|e| {
             VmError::Internal(format!(
-                "Failed to initialize state manager for SSH connection: {}",
-                e
+                "Failed to initialize state manager for SSH connection: {e}"
             ))
         })?;
 
@@ -135,8 +129,7 @@ impl TempVmOps {
     pub fn status(provider: Box<dyn Provider>) -> Result<()> {
         let state_manager = StateManager::new().map_err(|e| {
             VmError::Internal(format!(
-                "Failed to initialize state manager for status check: {}",
-                e
+                "Failed to initialize state manager for status check: {e}"
             ))
         })?;
 
@@ -191,8 +184,7 @@ impl TempVmOps {
     pub fn destroy(provider: Box<dyn Provider>) -> Result<()> {
         let state_manager = StateManager::new().map_err(|e| {
             VmError::Internal(format!(
-                "Failed to initialize state manager for VM destruction: {}",
-                e
+                "Failed to initialize state manager for VM destruction: {e}"
             ))
         })?;
 
@@ -219,8 +211,7 @@ impl TempVmOps {
     pub fn mount(path: String, yes: bool, provider: Box<dyn Provider>) -> Result<()> {
         let state_manager = StateManager::new().map_err(|e| {
             VmError::Internal(format!(
-                "Failed to initialize state manager for mount operation: {}",
-                e
+                "Failed to initialize state manager for mount operation: {e}"
             ))
         })?;
 
@@ -234,8 +225,7 @@ impl TempVmOps {
         let (source, target, permissions) =
             MountParser::parse_mount_string(&path).map_err(|e| {
                 VmError::Config(format!(
-                    "Failed to parse mount string '{}'. Check mount path format: {}",
-                    path, e
+                    "Failed to parse mount string '{path}'. Check mount path format: {e}"
                 ))
             })?;
 
@@ -269,12 +259,12 @@ impl TempVmOps {
             state
                 .add_mount_with_target(source.clone(), target_path, permissions)
                 .map_err(|e| {
-                    VmError::Config(format!("Failed to add mount with custom target: {}", e))
+                    VmError::Config(format!("Failed to add mount with custom target: {e}"))
                 })?;
         } else {
             state
                 .add_mount(source.clone(), permissions)
-                .map_err(|e| VmError::Config(format!("Failed to add mount: {}", e)))?;
+                .map_err(|e| VmError::Config(format!("Failed to add mount: {e}")))?;
         }
 
         // Save updated state
@@ -290,7 +280,7 @@ impl TempVmOps {
         if let Some(temp_provider) = provider.as_temp_provider() {
             info!("{}", MESSAGES.temp_vm_updating_container);
             temp_provider.update_mounts(&state).map_err(|e| {
-                VmError::Provider(format!("Failed to update container mounts: {}", e))
+                VmError::Provider(format!("Failed to update container mounts: {e}"))
             })?;
             info!("{}", MESSAGES.temp_vm_mount_applied);
             info!(
@@ -332,8 +322,7 @@ impl TempVmOps {
     ) -> Result<()> {
         let state_manager = StateManager::new().map_err(|e| {
             VmError::Internal(format!(
-                "Failed to initialize state manager for SSH connection: {}",
-                e
+                "Failed to initialize state manager for SSH connection: {e}"
             ))
         })?;
 
@@ -361,7 +350,7 @@ impl TempVmOps {
 
             // Save updated state
             state_manager.save_state(&state).map_err(|e| {
-                VmError::Internal(format!("Failed to save updated temp VM state: {}", e))
+                VmError::Internal(format!("Failed to save updated temp VM state: {e}"))
             })?;
 
             info!(
@@ -376,7 +365,7 @@ impl TempVmOps {
             if let Some(temp_provider) = provider.as_temp_provider() {
                 info!("{}", MESSAGES.temp_vm_updating_container);
                 temp_provider.update_mounts(&state).map_err(|e| {
-                    VmError::Provider(format!("Failed to update container mounts: {}", e))
+                    VmError::Provider(format!("Failed to update container mounts: {e}"))
                 })?;
                 info!(
                     "{}",
@@ -410,11 +399,11 @@ impl TempVmOps {
 
             let removed_mount = state
                 .remove_mount(&source_path)
-                .map_err(|e| VmError::Config(format!("Failed to remove mount: {}", e)))?;
+                .map_err(|e| VmError::Config(format!("Failed to remove mount: {e}")))?;
 
             // Save updated state
             state_manager.save_state(&state).map_err(|e| {
-                VmError::Internal(format!("Failed to save updated temp VM state: {}", e))
+                VmError::Internal(format!("Failed to save updated temp VM state: {e}"))
             })?;
 
             info!(
@@ -430,7 +419,7 @@ impl TempVmOps {
             if let Some(temp_provider) = provider.as_temp_provider() {
                 info!("{}", MESSAGES.temp_vm_updating_container);
                 temp_provider.update_mounts(&state).map_err(|e| {
-                    VmError::Provider(format!("Failed to update container mounts: {}", e))
+                    VmError::Provider(format!("Failed to update container mounts: {e}"))
                 })?;
                 info!("{}", MESSAGES.temp_vm_mount_removed);
                 info!("  Path: {}", source_path.display());
@@ -453,8 +442,7 @@ impl TempVmOps {
     pub fn mounts() -> Result<()> {
         let state_manager = StateManager::new().map_err(|e| {
             VmError::Internal(format!(
-                "Failed to initialize state manager for SSH connection: {}",
-                e
+                "Failed to initialize state manager for SSH connection: {e}"
             ))
         })?;
 
@@ -510,8 +498,7 @@ impl TempVmOps {
     pub fn list() -> Result<()> {
         let state_manager = StateManager::new().map_err(|e| {
             VmError::Internal(format!(
-                "Failed to initialize state manager for SSH connection: {}",
-                e
+                "Failed to initialize state manager for SSH connection: {e}"
             ))
         })?;
 
@@ -519,7 +506,7 @@ impl TempVmOps {
         if state_manager.state_exists() {
             let state = state_manager
                 .load_state()
-                .map_err(|e| VmError::Internal(format!("Failed to load temp VM state: {}", e)))?;
+                .map_err(|e| VmError::Internal(format!("Failed to load temp VM state: {e}")))?;
 
             info!("{}", MESSAGES.temp_vm_list_header);
             info!(
@@ -563,8 +550,7 @@ impl TempVmOps {
     pub fn stop(provider: Box<dyn Provider>) -> Result<()> {
         let state_manager = StateManager::new().map_err(|e| {
             VmError::Internal(format!(
-                "Failed to initialize state manager for SSH connection: {}",
-                e
+                "Failed to initialize state manager for SSH connection: {e}"
             ))
         })?;
 
@@ -594,8 +580,7 @@ impl TempVmOps {
     pub fn start(provider: Box<dyn Provider>) -> Result<()> {
         let state_manager = StateManager::new().map_err(|e| {
             VmError::Internal(format!(
-                "Failed to initialize state manager for SSH connection: {}",
-                e
+                "Failed to initialize state manager for SSH connection: {e}"
             ))
         })?;
 
@@ -640,8 +625,7 @@ impl TempVmOps {
     pub fn restart(provider: Box<dyn Provider>) -> Result<()> {
         let state_manager = StateManager::new().map_err(|e| {
             VmError::Internal(format!(
-                "Failed to initialize state manager for SSH connection: {}",
-                e
+                "Failed to initialize state manager for SSH connection: {e}"
             ))
         })?;
 
@@ -687,7 +671,7 @@ impl TempVmOps {
 
     /// Simple confirmation prompt
     fn confirm_prompt(message: &str) -> bool {
-        print!("{}", message);
+        print!("{message}");
         // If stdout flush fails, continue anyway - the prompt might still work
         let _ = io::stdout().flush();
 

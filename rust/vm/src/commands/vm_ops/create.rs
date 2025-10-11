@@ -128,7 +128,7 @@ pub async fn handle_create(
             }
             Err(e) => {
                 return Err(VmError::validation(
-                    format!("An unexpected error occurred during validation: {}", e),
+                    format!("An unexpected error occurred during validation: {e}"),
                     None::<String>,
                 ));
             }
@@ -227,9 +227,9 @@ pub async fn handle_create(
             vm_println!("{}", MESSAGES.vm_create_success);
 
             let container_name = if let Some(instance_name) = &instance {
-                format!("{}-{}", vm_name, instance_name)
+                format!("{vm_name}-{instance_name}")
             } else {
-                format!("{}-dev", vm_name)
+                format!("{vm_name}-dev")
             };
             vm_println!(
                 "{}",
@@ -246,8 +246,8 @@ pub async fn handle_create(
                     // Format memory display
                     let mem_str = match memory.to_mb() {
                         Some(mb) if mb >= 1024 => format!("{}GB", mb / 1024),
-                        Some(mb) => format!("{}MB", mb),
-                        None => format!("{:?}", memory),
+                        Some(mb) => format!("{mb}MB"),
+                        None => format!("{memory:?}"),
                     };
                     vm_println!(
                         "{}",
@@ -294,9 +294,9 @@ pub async fn handle_create(
 
             // Register VM services (VM is already created and started by provider.create())
             let vm_instance_name = if let Some(instance_name) = &instance {
-                format!("{}-{}", vm_name, instance_name)
+                format!("{vm_name}-{instance_name}")
             } else {
-                format!("{}-dev", vm_name)
+                format!("{vm_name}-dev")
             };
 
             vm_println!("{}", MESSAGES.common_configuring_services);

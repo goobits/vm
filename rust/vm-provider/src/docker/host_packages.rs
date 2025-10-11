@@ -324,20 +324,20 @@ pub fn get_volume_mounts(info: &HostPackageInfo) -> Vec<(PathBuf, String)> {
             }
             // For pipx, mount the specific package directory.
             PackageLocation::HostPipx(path) => {
-                let container_path = format!("/host/pipx/{}", package_name);
+                let container_path = format!("/host/pipx/{package_name}");
                 try_add_mount(
                     path,
                     &container_path,
-                    &format!("pipx package ({})", package_name),
+                    &format!("pipx package ({package_name})"),
                 );
             }
             // For npm, mount the specific package directory.
             PackageLocation::HostNpm(path) => {
-                let container_path = format!("/host/npm/{}", package_name);
+                let container_path = format!("/host/npm/{package_name}");
                 try_add_mount(
                     path,
                     &container_path,
-                    &format!("npm package ({})", package_name),
+                    &format!("npm package ({package_name})"),
                 );
             }
             // For cargo, we mount the ~/.cargo/bin directory. Do it only once.

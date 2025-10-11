@@ -16,7 +16,7 @@ mod tests {
         };
 
         let yaml = serde_yaml::to_string(&config).unwrap();
-        println!("Numeric memory YAML:\n{}", yaml);
+        println!("Numeric memory YAML:\n{yaml}");
 
         assert!(yaml.contains("memory: 8192"));
     }
@@ -34,7 +34,7 @@ mod tests {
         };
 
         let yaml = serde_yaml::to_string(&config).unwrap();
-        println!("Unlimited memory YAML:\n{}", yaml);
+        println!("Unlimited memory YAML:\n{yaml}");
 
         assert!(yaml.contains("memory: unlimited"));
     }

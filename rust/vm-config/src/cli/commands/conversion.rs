@@ -35,6 +35,6 @@ use crate::config::VmConfig;
 
 pub fn execute(input: PathBuf, format: OutputFormat) -> Result<()> {
     let config = VmConfig::from_file(&input)
-        .map_err(|e| VmError::Config(format!("Failed to load config: {:?}: {}", input, e)))?;
+        .map_err(|e| VmError::Config(format!("Failed to load config: {input:?}: {e}")))?;
     output_config(&config, &format)
 }

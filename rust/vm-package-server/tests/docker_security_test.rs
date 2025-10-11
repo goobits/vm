@@ -31,11 +31,10 @@ mod docker_security_tests {
         ];
 
         for name in malicious_names {
-            println!("Testing malicious container name: {}", name);
+            println!("Testing malicious container name: {name}");
             assert!(
                 sanitize_docker_name(name).is_err(),
-                "Container name '{}' should be rejected but was allowed",
-                name
+                "Container name '{name}' should be rejected but was allowed"
             );
         }
     }
@@ -66,11 +65,10 @@ mod docker_security_tests {
         ];
 
         for image in malicious_images {
-            println!("Testing malicious image name: {}", image);
+            println!("Testing malicious image name: {image}");
             assert!(
                 validate_docker_image_name(image).is_err(),
-                "Image name '{}' should be rejected but was allowed",
-                image
+                "Image name '{image}' should be rejected but was allowed"
             );
         }
 
@@ -99,11 +97,10 @@ mod docker_security_tests {
         ];
 
         for path in malicious_paths {
-            println!("Testing malicious volume path: {}", path);
+            println!("Testing malicious volume path: {path}");
             assert!(
                 validate_docker_volume_path(path).is_err(),
-                "Volume path '{}' should be rejected but was allowed",
-                path
+                "Volume path '{path}' should be rejected but was allowed"
             );
         }
 

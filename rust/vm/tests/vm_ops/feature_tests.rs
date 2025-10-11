@@ -85,19 +85,17 @@ vm:
     };
 
     // Verify NPM_CONFIG_REGISTRY
-    let expected_npm_registry = format!("NPM_CONFIG_REGISTRY=http://{}:3080/npm/", expected_host);
+    let expected_npm_registry = format!("NPM_CONFIG_REGISTRY=http://{expected_host}:3080/npm/");
     assert!(
         env_vars.contains(&expected_npm_registry),
-        "NPM_CONFIG_REGISTRY should be set to {}",
-        expected_npm_registry
+        "NPM_CONFIG_REGISTRY should be set to {expected_npm_registry}"
     );
 
     // Verify PIP_INDEX_URL
-    let expected_pip_index = format!("PIP_INDEX_URL=http://{}:3080/pypi/simple/", expected_host);
+    let expected_pip_index = format!("PIP_INDEX_URL=http://{expected_host}:3080/pypi/simple/");
     assert!(
         env_vars.contains(&expected_pip_index),
-        "PIP_INDEX_URL should be set to {}",
-        expected_pip_index
+        "PIP_INDEX_URL should be set to {expected_pip_index}"
     );
 
     // Verify PIP_EXTRA_INDEX_URL
@@ -107,19 +105,17 @@ vm:
     );
 
     // Verify PIP_TRUSTED_HOST
-    let expected_pip_trusted = format!("PIP_TRUSTED_HOST={}", expected_host);
+    let expected_pip_trusted = format!("PIP_TRUSTED_HOST={expected_host}");
     assert!(
         env_vars.contains(&expected_pip_trusted),
-        "PIP_TRUSTED_HOST should be set to {}",
-        expected_pip_trusted
+        "PIP_TRUSTED_HOST should be set to {expected_pip_trusted}"
     );
 
     // Verify VM_CARGO_REGISTRY_HOST
-    let expected_cargo_host = format!("VM_CARGO_REGISTRY_HOST={}", expected_host);
+    let expected_cargo_host = format!("VM_CARGO_REGISTRY_HOST={expected_host}");
     assert!(
         env_vars.contains(&expected_cargo_host),
-        "VM_CARGO_REGISTRY_HOST should be set to {}",
-        expected_cargo_host
+        "VM_CARGO_REGISTRY_HOST should be set to {expected_cargo_host}"
     );
 
     // Verify VM_CARGO_REGISTRY_PORT
@@ -167,11 +163,10 @@ vm:
         );
 
         // The Dockerfile script creates the URL with /cargo/ path
-        let expected_registry_url = format!("sparse+http://{}:3080/cargo/", expected_host);
+        let expected_registry_url = format!("sparse+http://{expected_host}:3080/cargo/");
         assert!(
             cargo_config_content.contains(&expected_registry_url),
-            "Cargo config should contain registry URL: {}",
-            expected_registry_url
+            "Cargo config should contain registry URL: {expected_registry_url}"
         );
 
         println!("✅ Cargo configuration verified successfully");

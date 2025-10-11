@@ -185,7 +185,7 @@ pub fn add_npm_package_local(tarball_file: &Path, metadata: &Value, data_dir: &P
     let package_name = metadata["name"]
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("Package name not found in metadata"))?;
-    let metadata_file = metadata_dir.join(format!("{}.json", package_name));
+    let metadata_file = metadata_dir.join(format!("{package_name}.json"));
     fs::write(&metadata_file, serde_json::to_string_pretty(metadata)?)?;
 
     info!(
@@ -219,7 +219,7 @@ pub fn add_cargo_package_local(crate_file: &Path, data_dir: &Path) -> Result<()>
     if let Some(crate_name) = crate::utils::extract_cargo_crate_name(&filename_str) {
         // Calculate proper index path using Cargo's index structure (e.g., "co/de/codeflow")
         let index_path_str = crate::cargo::index_path(&crate_name)
-            .map_err(|e| anyhow::anyhow!("Failed to calculate index path: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to calculate index path: {e}"))?;
         let index_file = index_dir.join(&index_path_str);
 
         // Create parent directories if needed
@@ -229,7 +229,7 @@ pub fn add_cargo_package_local(crate_file: &Path, data_dir: &Path) -> Result<()>
 
         // Create or append to index file
         if !index_file.exists() {
-            fs::write(&index_file, format!("{{\"name\":\"{}\"}}\n", crate_name))?;
+            fs::write(&index_file, format!("{{\"name\":\"{crate_name}\"}}\n"))?;
         }
 
         info!(
@@ -271,7 +271,7 @@ pub fn remove_pypi_package_local(package_name: &str, data_dir: &Path) -> Result<
     }
 
     if removed_count == 0 {
-        anyhow::bail!("Package '{}' not found in local storage", package_name);
+        anyhow::bail!("Package '{package_name}' not found in local storage");
     }
 
     Ok(())
@@ -284,7 +284,7 @@ pub fn remove_npm_package_local(package_name: &str, data_dir: &Path) -> Result<(
     let metadata_dir = npm_dir.join("metadata");
 
     // Remove metadata file
-    let metadata_file = metadata_dir.join(format!("{}.json", package_name));
+    let metadata_file = metadata_dir.join(format!("{package_name}.json"));
     if metadata_file.exists() {
         fs::remove_file(&metadata_file)?;
         info!(
@@ -303,7 +303,7 @@ pub fn remove_npm_package_local(package_name: &str, data_dir: &Path) -> Result<(
             let filename_str = filename.to_string_lossy();
 
             // NPM tarballs are typically named like "package-name-version.tgz"
-            if filename_str.starts_with(&format!("{}-", package_name))
+            if filename_str.starts_with(&format!("{package_name}-"))
                 && filename_str.ends_with(".tgz")
             {
                 fs::remove_file(entry.path())?;
@@ -317,7 +317,7 @@ pub fn remove_npm_package_local(package_name: &str, data_dir: &Path) -> Result<(
         }
 
         if removed_count == 0 && !metadata_file.exists() {
-            anyhow::bail!("Package '{}' not found in local storage", package_name);
+            anyhow::bail!("Package '{package_name}' not found in local storage");
         }
     }
 
@@ -363,7 +363,7 @@ pub fn remove_cargo_package_local(crate_name: &str, data_dir: &Path) -> Result<(
         }
 
         if removed_count == 0 && !index_file.exists() {
-            anyhow::bail!("Crate '{}' not found in local storage", crate_name);
+            anyhow::bail!("Crate '{crate_name}' not found in local storage");
         }
     }
 

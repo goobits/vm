@@ -175,7 +175,7 @@ impl<'a> LifecycleOperations<'a> {
         let output = std::process::Command::new("docker")
             .args(["ps", "-a", "--format", "{{.Names}}\t{{.ID}}"])
             .output()
-            .map_err(|e| VmError::Internal(format!("Failed to list containers for name resolution. Docker may not be running or accessible: {}", e)))?;
+            .map_err(|e| VmError::Internal(format!("Failed to list containers for name resolution. Docker may not be running or accessible: {e}")))?;
 
         if !output.status.success() {
             return Err(VmError::Internal(
@@ -205,7 +205,7 @@ impl<'a> LifecycleOperations<'a> {
         }
 
         // Second, try project name resolution (partial_name -> partial_name-dev)
-        let candidate_name = format!("{}-dev", partial_name);
+        let candidate_name = format!("{partial_name}-dev");
         for line in containers_output.lines() {
             let parts: Vec<&str> = line.split('\t').collect();
             if !parts.is_empty() {
@@ -230,14 +230,13 @@ impl<'a> LifecycleOperations<'a> {
 
         match matches.len() {
             0 => Err(VmError::Internal(format!(
-                "No container found matching '{}'. Use 'vm list' to see available containers",
-                partial_name
+                "No container found matching '{partial_name}'. Use 'vm list' to see available containers"
             ))),
             1 => Ok(matches[0].clone()),
             _ => {
                 // Multiple matches - prefer exact project name match
                 for name in &matches {
-                    if name == &format!("{}-dev", partial_name) {
+                    if name == &format!("{partial_name}-dev") {
                         return Ok(name.clone());
                     }
                 }

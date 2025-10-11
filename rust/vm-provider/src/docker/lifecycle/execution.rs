@@ -49,8 +49,7 @@ impl<'a> LifecycleOperations<'a> {
             .run()
             .map_err(|e| {
                 VmError::Internal(format!(
-                    "Failed to stop container '{}': {}",
-                    target_container, e
+                    "Failed to stop container '{target_container}': {e}"
                 ))
             })?;
         Ok(())
@@ -63,8 +62,7 @@ impl<'a> LifecycleOperations<'a> {
         // Check if container exists before attempting destruction
         if !DockerOps::container_exists(&target_container).unwrap_or(false) {
             return Err(VmError::Internal(format!(
-                "Container '{}' does not exist",
-                target_container
+                "Container '{target_container}' does not exist"
             )));
         }
 

@@ -51,7 +51,7 @@ impl SimpleTestFixture {
             .expect("VM_TOOL_DIR environment variable not set - test fixture setup failed");
         let presets_dir = PathBuf::from(tool_dir).join("configs").join("presets");
         fs::create_dir_all(&presets_dir)?;
-        let preset_path = presets_dir.join(format!("{}.yaml", name));
+        let preset_path = presets_dir.join(format!("{name}.yaml"));
         fs::write(&preset_path, content)?;
         Ok(())
     }
@@ -284,8 +284,7 @@ vm:
         let err_msg = result.unwrap_err().to_string();
         assert!(
             err_msg.contains("Failed to load preset") || err_msg.contains("not found"),
-            "Expected error message about failed preset loading, got: {}",
-            err_msg
+            "Expected error message about failed preset loading, got: {err_msg}"
         );
 
         Ok(())

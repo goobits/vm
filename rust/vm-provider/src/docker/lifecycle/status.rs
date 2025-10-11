@@ -20,7 +20,7 @@ impl<'a> LifecycleOperations<'a> {
             .arg("--format")
             .arg("{{.Names}}\t{{.Status}}\t{{.Ports}}\t{{.CreatedAt}}")
             .execute_raw()
-            .map_err(|e| VmError::Internal(format!("Failed to get container information from Docker. Ensure Docker is running and accessible: {}", e)))?;
+            .map_err(|e| VmError::Internal(format!("Failed to get container information from Docker. Ensure Docker is running and accessible: {e}")))?;
 
         if !ps_output.status.success() {
             return Err(VmError::Internal(
@@ -36,7 +36,7 @@ impl<'a> LifecycleOperations<'a> {
             .arg("--format")
             .arg("{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}")
             .execute_raw()
-            .map_err(|e| VmError::Internal(format!("Failed to get container resource statistics from Docker. Some containers may not be running: {}", e)))?;
+            .map_err(|e| VmError::Internal(format!("Failed to get container resource statistics from Docker. Some containers may not be running: {e}")))?;
 
         let stats_data = if stats_output.status.success() {
             String::from_utf8_lossy(&stats_output.stdout)
@@ -118,7 +118,7 @@ impl<'a> LifecycleOperations<'a> {
             let total_memory_display = if total_memory_mb >= 1024 {
                 format!("{:.1}GB", total_memory_mb as f64 / 1024.0)
             } else {
-                format!("{}MB", total_memory_mb)
+                format!("{total_memory_mb}MB")
             };
 
             info!(
@@ -202,7 +202,7 @@ impl<'a> LifecycleOperations<'a> {
             .or_else(|| trimmed.strip_suffix("GB"))
         {
             if let Ok(gb_num) = gb_val.parse::<f64>() {
-                return format!("{:.1}GB", gb_num);
+                return format!("{gb_num:.1}GB");
             }
         }
 
@@ -241,15 +241,15 @@ impl<'a> LifecycleOperations<'a> {
 
         if duration.contains("day") {
             if let Some(days) = duration.split_whitespace().next() {
-                return format!("{}d", days);
+                return format!("{days}d");
             }
         } else if duration.contains("hour") {
             if let Some(hours) = duration.split_whitespace().next() {
-                return format!("{}h", hours);
+                return format!("{hours}h");
             }
         } else if duration.contains("minute") {
             if let Some(minutes) = duration.split_whitespace().next() {
-                return format!("{}m", minutes);
+                return format!("{minutes}m");
             }
         } else if duration.contains("second") {
             return "now".to_string();
@@ -259,7 +259,7 @@ impl<'a> LifecycleOperations<'a> {
         if let Some(first_word) = duration.split_whitespace().next() {
             if let Some(unit_word) = duration.split_whitespace().nth(1) {
                 if let Some(unit_char) = unit_word.chars().next() {
-                    return format!("{}{}", first_word, unit_char);
+                    return format!("{first_word}{unit_char}");
                 }
             }
         }
@@ -315,17 +315,16 @@ impl<'a> LifecycleOperations<'a> {
         let inspect_output = std::process::Command::new("docker")
             .args(["inspect", &container_name])
             .output()
-            .map_err(|e| VmError::Internal(format!("Failed to inspect container: {}", e)))?;
+            .map_err(|e| VmError::Internal(format!("Failed to inspect container: {e}")))?;
 
         if !inspect_output.status.success() {
             return Err(VmError::Internal(format!(
-                "Container '{}' not found",
-                container_name
+                "Container '{container_name}' not found"
             )));
         }
 
         let inspect_data: serde_json::Value = serde_json::from_slice(&inspect_output.stdout)
-            .map_err(|e| VmError::Internal(format!("Failed to parse container info: {}", e)))?;
+            .map_err(|e| VmError::Internal(format!("Failed to parse container info: {e}")))?;
 
         let container_info = &inspect_data[0];
         let state = &container_info["State"];
@@ -411,7 +410,7 @@ impl<'a> LifecycleOperations<'a> {
                 container_name,
             ])
             .output()
-            .map_err(|e| VmError::Internal(format!("Failed to get container stats: {}", e)))?;
+            .map_err(|e| VmError::Internal(format!("Failed to get container stats: {e}")))?;
 
         if !stats_output.status.success() {
             return Ok(ResourceUsage::default());
@@ -558,7 +557,7 @@ impl<'a> LifecycleOperations<'a> {
             8080 => "http".to_string(),
             3000 => "node".to_string(),
             8000 => "python".to_string(),
-            _ => format!("service-{}", port),
+            _ => format!("service-{port}"),
         }
     }
 

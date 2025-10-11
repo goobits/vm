@@ -14,7 +14,7 @@ impl FieldOperations {
 
         // Parse new value as YAML
         let parsed_value: Value = serde_yaml::from_str(new_value).map_err(|e| {
-            VmError::Serialization(format!("Failed to parse new value: {}: {}", new_value, e))
+            VmError::Serialization(format!("Failed to parse new value: {new_value}: {e}"))
         })?;
 
         // Set the field
@@ -22,7 +22,7 @@ impl FieldOperations {
 
         if stdout {
             let yaml = serde_yaml::to_string(&value)?;
-            print!("{}", yaml);
+            print!("{yaml}");
         } else {
             CoreOperations::write_yaml_file(file, &value)?;
         }

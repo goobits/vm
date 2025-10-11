@@ -110,33 +110,33 @@ impl fmt::Display for VmError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             VmError::Config { context, .. } => {
-                write!(f, "Configuration error: {}", context)
+                write!(f, "Configuration error: {context}")
             }
             VmError::Provider {
                 provider_type,
                 context,
                 ..
             } => {
-                write!(f, "Provider error ({}): {}", provider_type, context)
+                write!(f, "Provider error ({provider_type}): {context}")
             }
             VmError::Auth { context, .. } => {
-                write!(f, "Authentication error: {}", context)
+                write!(f, "Authentication error: {context}")
             }
             VmError::Package {
                 package_name,
                 context,
                 ..
             } => match package_name {
-                Some(name) => write!(f, "Package error for '{}': {}", name, context),
-                None => write!(f, "Package error: {}", context),
+                Some(name) => write!(f, "Package error for '{name}': {context}"),
+                None => write!(f, "Package error: {context}"),
             },
             VmError::Registry {
                 registry_url,
                 context,
                 ..
             } => match registry_url {
-                Some(url) => write!(f, "Registry error for '{}': {}", url, context),
-                None => write!(f, "Registry error: {}", context),
+                Some(url) => write!(f, "Registry error for '{url}': {context}"),
+                None => write!(f, "Registry error: {context}"),
             },
             VmError::VmOperation {
                 vm_name, operation, ..
@@ -169,15 +169,15 @@ impl fmt::Display for VmError {
             VmError::Network {
                 endpoint, context, ..
             } => match endpoint {
-                Some(url) => write!(f, "Network error connecting to '{}': {}", url, context),
-                None => write!(f, "Network error: {}", context),
+                Some(url) => write!(f, "Network error connecting to '{url}': {context}"),
+                None => write!(f, "Network error: {context}"),
             },
             VmError::Validation { message, field } => match field {
-                Some(field_name) => write!(f, "Validation error for '{}': {}", field_name, message),
-                None => write!(f, "Validation error: {}", message),
+                Some(field_name) => write!(f, "Validation error for '{field_name}': {message}"),
+                None => write!(f, "Validation error: {message}"),
             },
             VmError::General { context, .. } => {
-                write!(f, "Error: {}", context)
+                write!(f, "Error: {context}")
             }
         }
     }
@@ -380,7 +380,7 @@ impl From<vm_core::error::VmError> for VmError {
             },
             vm_core::error::VmError::Dependency(msg) => VmError::General {
                 source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, msg.clone())),
-                context: format!("Dependency error: {}", msg),
+                context: format!("Dependency error: {msg}"),
             },
             vm_core::error::VmError::Network(msg) => VmError::Network {
                 source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, msg.clone())),
@@ -389,7 +389,7 @@ impl From<vm_core::error::VmError> for VmError {
             },
             vm_core::error::VmError::Internal(msg) => VmError::General {
                 source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, msg.clone())),
-                context: format!("Internal error: {}", msg),
+                context: format!("Internal error: {msg}"),
             },
             vm_core::error::VmError::Filesystem(msg) => VmError::FileSystem {
                 source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, msg.clone())),
@@ -398,23 +398,23 @@ impl From<vm_core::error::VmError> for VmError {
             },
             vm_core::error::VmError::Serialization(msg) => VmError::General {
                 source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, msg.clone())),
-                context: format!("Serialization error: {}", msg),
+                context: format!("Serialization error: {msg}"),
             },
             vm_core::error::VmError::Migration(msg) => VmError::General {
                 source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, msg.clone())),
-                context: format!("Migration error: {}", msg),
+                context: format!("Migration error: {msg}"),
             },
             vm_core::error::VmError::DockerNotInstalled(msg) => VmError::General {
                 source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, msg.clone())),
-                context: format!("Docker not installed: {}", msg),
+                context: format!("Docker not installed: {msg}"),
             },
             vm_core::error::VmError::DockerNotRunning(msg) => VmError::General {
                 source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, msg.clone())),
-                context: format!("Docker not running: {}", msg),
+                context: format!("Docker not running: {msg}"),
             },
             vm_core::error::VmError::DockerPermission(msg) => VmError::General {
                 source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, msg.clone())),
-                context: format!("Docker permission error: {}", msg),
+                context: format!("Docker permission error: {msg}"),
             },
             vm_core::error::VmError::Io(err) => VmError::from(err),
             vm_core::error::VmError::Other(err) => VmError::from(err),

@@ -107,7 +107,7 @@ impl DockerConfigManager {
     /// Load existing daemon.json configuration
     async fn load_existing_config(&self) -> Result<DaemonConfig> {
         let content = fs::read_to_string(&self.daemon_json_path)
-            .map_err(|e| anyhow!("Failed to read daemon.json: {}", e))?;
+            .map_err(|e| anyhow!("Failed to read daemon.json: {e}"))?;
 
         if content.trim().is_empty() {
             return Ok(DaemonConfig {
@@ -118,7 +118,7 @@ impl DockerConfigManager {
 
         // Parse existing config - handle partial configs gracefully
         let config: serde_json::Value = serde_json::from_str(&content)
-            .map_err(|e| anyhow!("Failed to parse daemon.json: {}", e))?;
+            .map_err(|e| anyhow!("Failed to parse daemon.json: {e}"))?;
 
         let registry_mirrors = config
             .get("registry-mirrors")
@@ -151,14 +151,14 @@ impl DockerConfigManager {
         // Ensure parent directory exists
         if let Some(parent) = self.daemon_json_path.parent() {
             fs::create_dir_all(parent)
-                .map_err(|e| anyhow!("Failed to create Docker config directory: {}", e))?;
+                .map_err(|e| anyhow!("Failed to create Docker config directory: {e}"))?;
         }
 
         let json = serde_json::to_string_pretty(config)
-            .map_err(|e| anyhow!("Failed to serialize daemon config: {}", e))?;
+            .map_err(|e| anyhow!("Failed to serialize daemon config: {e}"))?;
 
         fs::write(&self.daemon_json_path, json)
-            .map_err(|e| anyhow!("Failed to write daemon.json: {}", e))?;
+            .map_err(|e| anyhow!("Failed to write daemon.json: {e}"))?;
 
         debug!(
             "Docker daemon configuration written to {:?}",
@@ -170,7 +170,7 @@ impl DockerConfigManager {
     /// Create backup of existing daemon.json
     async fn create_backup(&self) -> Result<()> {
         fs::copy(&self.daemon_json_path, &self.backup_path)
-            .map_err(|e| anyhow!("Failed to create backup of daemon.json: {}", e))?;
+            .map_err(|e| anyhow!("Failed to create backup of daemon.json: {e}"))?;
 
         debug!("Created backup of daemon.json at {:?}", self.backup_path);
         Ok(())
@@ -183,11 +183,11 @@ impl DockerConfigManager {
         }
 
         fs::copy(&self.backup_path, &self.daemon_json_path)
-            .map_err(|e| anyhow!("Failed to restore daemon.json backup: {}", e))?;
+            .map_err(|e| anyhow!("Failed to restore daemon.json backup: {e}"))?;
 
         // Remove backup file
         fs::remove_file(&self.backup_path)
-            .map_err(|e| anyhow!("Failed to remove backup file: {}", e))?;
+            .map_err(|e| anyhow!("Failed to remove backup file: {e}"))?;
 
         debug!("Restored daemon.json from backup");
         Ok(())

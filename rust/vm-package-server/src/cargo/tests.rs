@@ -95,7 +95,7 @@ mod cargo_tests {
         let crate_path = state
             .data_dir
             .join("cargo/crates")
-            .join(format!("{}-{}.crate", crate_name, version));
+            .join(format!("{crate_name}-{version}.crate"));
         assert!(crate_path.exists());
         let saved_content = std::fs::read(crate_path).unwrap();
         assert_eq!(saved_content, crate_content);
@@ -236,7 +236,7 @@ mod cargo_tests {
             .with_state(state);
 
         let server = TestServer::new(app).unwrap();
-        let response = server.get(&format!("/cargo/index/{}", crate_name)).await;
+        let response = server.get(&format!("/cargo/index/{crate_name}")).await;
 
         assert_eq!(response.status_code(), StatusCode::OK);
         let body = response.text();
@@ -253,7 +253,7 @@ mod cargo_tests {
         let content = b"test crate content";
         let crate_name = "test-crate";
         let version = "1.0.0";
-        let filename = format!("{}-{}.crate", crate_name, version);
+        let filename = format!("{crate_name}-{version}.crate");
         let crate_path = state.data_dir.join("cargo/crates").join(&filename);
         std::fs::write(&crate_path, content).unwrap();
 
@@ -267,8 +267,7 @@ mod cargo_tests {
         let server = TestServer::new(app).unwrap();
         let response = server
             .get(&format!(
-                "/cargo/api/v1/crates/{}/{}/download",
-                crate_name, version
+                "/cargo/api/v1/crates/{crate_name}/{version}/download"
             ))
             .await;
 

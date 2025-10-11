@@ -96,15 +96,13 @@ mod validation_security_tests {
 
         if upload_size <= min_size {
             panic!(
-                "MAX_UPLOAD_SIZE ({}) must be greater than {} bytes (1MB)",
-                upload_size, min_size
+                "MAX_UPLOAD_SIZE ({upload_size}) must be greater than {min_size} bytes (1MB)"
             );
         }
 
         if upload_size >= max_size {
             panic!(
-                "MAX_UPLOAD_SIZE ({}) must be less than {} bytes (1GB)",
-                upload_size, max_size
+                "MAX_UPLOAD_SIZE ({upload_size}) must be less than {max_size} bytes (1GB)"
             );
         }
 
@@ -115,28 +113,25 @@ mod validation_security_tests {
 
         if encoded_size < upload_size_usize {
             panic!(
-                "MAX_BASE64_ENCODED_SIZE ({}) must be >= MAX_UPLOAD_SIZE ({})",
-                encoded_size, upload_size_usize
+                "MAX_BASE64_ENCODED_SIZE ({encoded_size}) must be >= MAX_UPLOAD_SIZE ({upload_size_usize})"
             );
         }
 
         if decoded_size > upload_size_usize {
             panic!(
-                "MAX_BASE64_DECODED_SIZE ({}) must be <= MAX_UPLOAD_SIZE ({})",
-                decoded_size, upload_size_usize
+                "MAX_BASE64_DECODED_SIZE ({decoded_size}) must be <= MAX_UPLOAD_SIZE ({upload_size_usize})"
             );
         }
 
         // Check path depth limits
         let path_depth = validation::MAX_PATH_DEPTH;
         if path_depth == 0 {
-            panic!("MAX_PATH_DEPTH must be greater than 0, got {}", path_depth);
+            panic!("MAX_PATH_DEPTH must be greater than 0, got {path_depth}");
         }
 
         if path_depth >= 100 {
             panic!(
-                "MAX_PATH_DEPTH ({}) must be less than 100 for reasonable limits",
-                path_depth
+                "MAX_PATH_DEPTH ({path_depth}) must be less than 100 for reasonable limits"
             );
         }
     }

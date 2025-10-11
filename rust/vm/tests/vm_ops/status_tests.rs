@@ -97,8 +97,7 @@ fn test_vm_list_command() -> Result<()> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains(&fixture.project_name),
-        "VM list output should contain the project name: {}",
-        stdout
+        "VM list output should contain the project name: {stdout}"
     );
 
     // Create a non-vm-managed container (without labels) to test filtering
@@ -129,8 +128,7 @@ fn test_vm_list_command() -> Result<()> {
     );
     assert!(
         !stdout.contains(&non_vm_container),
-        "VM list should NOT show non-VM-managed container: {}",
-        stdout
+        "VM list should NOT show non-VM-managed container: {stdout}"
     );
 
     // Clean up the non-vm container

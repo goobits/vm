@@ -27,7 +27,7 @@ impl TransformOperations {
         match format {
             TransformFormat::Lines => {
                 for result in results {
-                    println!("{}", result);
+                    println!("{result}");
                 }
             }
             TransformFormat::Space => {
@@ -38,11 +38,11 @@ impl TransformOperations {
             }
             TransformFormat::Json => {
                 let json = serde_json::to_string(&results)?;
-                println!("{}", json);
+                println!("{json}");
             }
             TransformFormat::Yaml => {
                 let yaml = serde_yaml::to_string(&results)?;
-                print!("{}", yaml);
+                print!("{yaml}");
             }
         }
 
@@ -70,15 +70,15 @@ impl TransformOperations {
         match format {
             OutputFormat::Yaml => {
                 let yaml = serde_yaml::to_string(&result)?;
-                print!("{}", yaml);
+                print!("{yaml}");
             }
             OutputFormat::Json => {
                 let json = serde_json::to_string(&result)?;
-                println!("{}", json);
+                println!("{json}");
             }
             OutputFormat::JsonPretty => {
                 let json = serde_json::to_string_pretty(&result)?;
-                println!("{}", json);
+                println!("{json}");
             }
         }
 
@@ -162,7 +162,7 @@ impl TransformOperations {
             Value::Number(n) => n.to_string(),
             Value::Bool(b) => b.to_string(),
             Value::Null => "null".to_string(),
-            _ => format!("{:?}", value),
+            _ => format!("{value:?}"),
         }
     }
 }

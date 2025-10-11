@@ -113,7 +113,7 @@ struct FieldVisitor<'a>(&'a mut HashMap<String, String>);
 impl Visit for FieldVisitor<'_> {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
         self.0
-            .insert(field.name().to_string(), format!("{:?}", value));
+            .insert(field.name().to_string(), format!("{value:?}"));
     }
 }
 

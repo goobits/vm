@@ -28,8 +28,7 @@ impl<'a> LifecycleOperations<'a> {
             .to_owned();
         if status != "running" {
             return Err(VmError::Internal(format!(
-                "Container {} is not running. Start it first with 'vm start'",
-                target_container
+                "Container {target_container} is not running. Start it first with 'vm start'"
             )));
         }
 
@@ -168,7 +167,7 @@ impl<'a> LifecycleOperations<'a> {
             parser,
         )
         .map_err(|e| {
-            VmError::Internal(format!("Ansible provisioning failed for container '{}'. Check container logs for detailed error information: {}", container_name, e))
+            VmError::Internal(format!("Ansible provisioning failed for container '{container_name}'. Check container logs for detailed error information: {e}"))
         })?;
         Ok(())
     }

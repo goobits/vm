@@ -159,8 +159,7 @@ pub fn post_process_yaml(yaml: &str) -> String {
                     // Get the indentation from the original _range: line
                     let indent = &line[..line.len() - trimmed.len()];
                     result.push_str(&format!(
-                        "{}_range: [{}, {}]\n",
-                        indent, first_val, second_val
+                        "{indent}_range: [{first_val}, {second_val}]\n"
                     ));
                     i += 3; // Skip the next two lines
                     continue;
@@ -227,7 +226,7 @@ mod tests {
             let keys: Vec<_> = map.keys().filter_map(|k| k.as_str()).collect();
             assert_eq!(keys, vec!["version", "provider", "vm"]);
         } else {
-            panic!("Expected Mapping, but got: {:?}", result);
+            panic!("Expected Mapping, but got: {result:?}");
         }
     }
 
@@ -246,7 +245,7 @@ mod tests {
             assert!(map.contains_key("custom_field"));
             assert!(map.contains_key("version"));
         } else {
-            panic!("Expected Mapping, but got: {:?}", result);
+            panic!("Expected Mapping, but got: {result:?}");
         }
     }
 

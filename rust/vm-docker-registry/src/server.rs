@@ -62,7 +62,7 @@ pub async fn stop_registry() -> Result<()> {
 
 /// Check if the Docker registry is running
 pub async fn check_registry_running(port: u16) -> bool {
-    let url = format!("http://127.0.0.1:{}/health", port);
+    let url = format!("http://127.0.0.1:{port}/health");
     match reqwest::get(&url).await {
         Ok(response) => response.status().is_success(),
         Err(_) => false,
@@ -111,7 +111,7 @@ fn ensure_docker_available() -> Result<()> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow!("Docker daemon is not running: {}", stderr));
+        return Err(anyhow!("Docker daemon is not running: {stderr}"));
     }
 
     debug!("Docker is available and running");
@@ -145,7 +145,7 @@ async fn start_containers_with_retry(data_dir: &Path) -> Result<()> {
     }
 
     Err(last_error
-        .unwrap_or_else(|| anyhow!("Failed to start containers after {} attempts", max_retries)))
+        .unwrap_or_else(|| anyhow!("Failed to start containers after {max_retries} attempts")))
 }
 
 /// Start the registry containers using docker-compose
@@ -178,7 +178,7 @@ fn start_containers(data_dir: &Path) -> Result<()> {
 
     if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
-        return Err(anyhow!("Failed to start containers: {}", stdout));
+        return Err(anyhow!("Failed to start containers: {stdout}"));
     }
 
     debug!("Registry containers started successfully");
@@ -223,8 +223,7 @@ async fn wait_for_registry_ready(port: u16, timeout_seconds: u64) -> Result<()> 
     }
 
     Err(anyhow!(
-        "Registry failed to become ready within {} seconds",
-        timeout_seconds
+        "Registry failed to become ready within {timeout_seconds} seconds"
     ))
 }
 
@@ -235,7 +234,7 @@ fn get_container_status(container_name: &str) -> Result<ContainerStatus> {
             "ps",
             "-a",
             "--filter",
-            &format!("name={}", container_name),
+            &format!("name={container_name}"),
             "--format",
             "{{.ID}}\\t{{.Image}}\\t{{.Status}}\\t{{.CreatedAt}}",
         ])
@@ -279,8 +278,7 @@ fn get_container_status(container_name: &str) -> Result<ContainerStatus> {
         })
     } else {
         Err(anyhow!(
-            "Failed to parse container status for {}",
-            container_name
+            "Failed to parse container status for {container_name}"
         ))
     }
 }
@@ -344,7 +342,7 @@ pub async fn garbage_collect(force: bool) -> Result<crate::types::GcResult> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        errors.push(format!("Garbage collection failed: {}", stderr));
+        errors.push(format!("Garbage collection failed: {stderr}"));
     }
 
     let duration = start_time.elapsed().as_secs();

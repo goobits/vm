@@ -83,8 +83,7 @@ fn test_vm_ssh_command_execution() -> Result<()> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("Hello from SSH"),
-        "SSH command output not found in stdout: {}",
-        stdout
+        "SSH command output not found in stdout: {stdout}"
     );
 
     fixture.cleanup_test_containers()?;

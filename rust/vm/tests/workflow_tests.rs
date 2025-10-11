@@ -93,12 +93,11 @@ impl WorkflowTestFixture {
     fn create_preset(&self, name: &str, content: &str) -> Result<()> {
         let presets_dir = self.test_dir.join("configs").join("presets");
         fs::create_dir_all(&presets_dir)?;
-        let preset_path = presets_dir.join(format!("{}.yaml", name));
+        let preset_path = presets_dir.join(format!("{name}.yaml"));
 
         // Add preset metadata header to the content
         let full_content = format!(
-            "---\npreset:\n  name: {}\n  description: \"Test preset for {}\"\n\n{}",
-            name, name, content
+            "---\npreset:\n  name: {name}\n  description: \"Test preset for {name}\"\n\n{content}"
         );
 
         fs::write(preset_path, full_content)?;

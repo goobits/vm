@@ -36,7 +36,7 @@ pub fn parse_crate_upload(body: axum::body::Bytes) -> AppResult<(CrateMetadata, 
             payload_size = payload_size,
             "Cargo payload size validation failed"
         );
-        AppError::UploadError(format!("Payload too large: {}", e))
+        AppError::UploadError(format!("Payload too large: {e}"))
     })?;
 
     // Parse: 4-byte metadata length + JSON metadata + 4-byte crate length + .crate file
@@ -70,7 +70,7 @@ pub fn parse_crate_upload(body: axum::body::Bytes) -> AppResult<(CrateMetadata, 
     let metadata_bytes = &data[4..4 + metadata_len];
     let metadata: Value = serde_json::from_slice(metadata_bytes).map_err(|e| {
         warn!(error = %e, "Failed to parse Cargo metadata JSON");
-        AppError::UploadError(format!("Invalid metadata JSON: {}", e))
+        AppError::UploadError(format!("Invalid metadata JSON: {e}"))
     })?;
 
     let crate_name = metadata["name"].as_str().ok_or_else(|| {
@@ -85,11 +85,11 @@ pub fn parse_crate_upload(body: axum::body::Bytes) -> AppResult<(CrateMetadata, 
     // Validate crate name and version early
     validation::validate_package_name(crate_name, "cargo").map_err(|e| {
         warn!(crate_name = %crate_name, error = %e, "Invalid crate name in upload");
-        AppError::BadRequest(format!("Invalid crate name: {}", e))
+        AppError::BadRequest(format!("Invalid crate name: {e}"))
     })?;
     validation::validate_version(version).map_err(|e| {
         warn!(version = %version, error = %e, "Invalid version in upload");
-        AppError::BadRequest(format!("Invalid version: {}", e))
+        AppError::BadRequest(format!("Invalid version: {e}"))
     })?;
 
     // Extract .crate file length
@@ -131,7 +131,7 @@ pub fn parse_crate_upload(body: axum::body::Bytes) -> AppResult<(CrateMetadata, 
     validation::validate_cargo_upload_structure(payload_size, metadata_len, crate_len).map_err(
         |e| {
             warn!(error = %e, "Cargo upload structure validation failed");
-            AppError::UploadError(format!("Invalid upload structure: {}", e))
+            AppError::UploadError(format!("Invalid upload structure: {e}"))
         },
     )?;
 

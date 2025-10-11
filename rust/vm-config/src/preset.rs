@@ -54,13 +54,13 @@ impl PresetDetector {
         // Try embedded presets second (system presets: base, tart-*)
         if let Some(content) = crate::embedded_presets::get_preset_content(name) {
             let preset_file: PresetFile = serde_yaml::from_str(content).map_err(|e| {
-                VmError::Serialization(format!("Failed to parse embedded preset '{}': {}", name, e))
+                VmError::Serialization(format!("Failed to parse embedded preset '{name}': {e}"))
             })?;
             return Ok(preset_file.config);
         }
 
         // Fallback to file system (for custom presets)
-        let preset_path = self.presets_dir.join(format!("{}.yaml", name));
+        let preset_path = self.presets_dir.join(format!("{name}.yaml"));
         if !preset_path.exists() {
             vm_error!(
                 "Preset '{}' not found (not embedded and no file at {:?})",
@@ -72,7 +72,7 @@ impl PresetDetector {
 
         let content = std::fs::read_to_string(&preset_path)?;
         let preset_file: PresetFile = serde_yaml::from_str(&content).map_err(|e| {
-            VmError::Serialization(format!("Failed to parse preset '{}': {}", name, e))
+            VmError::Serialization(format!("Failed to parse preset '{name}': {e}"))
         })?;
 
         Ok(preset_file.config)
@@ -96,8 +96,7 @@ impl PresetDetector {
                 Ok(c) => c,
                 Err(e) => {
                     eprintln!(
-                        "Warning: Failed to load preset content from plugin {}: {}",
-                        name, e
+                        "Warning: Failed to load preset content from plugin {name}: {e}"
                     );
                     return Ok(None);
                 }
@@ -172,7 +171,7 @@ impl PresetDetector {
                 .to_string_lossy()
                 .to_string();
             for path in glob(&pattern)
-                .map_err(|e| VmError::Filesystem(format!("Glob pattern error: {}", e)))?
+                .map_err(|e| VmError::Filesystem(format!("Glob pattern error: {e}")))?
                 .flatten()
             {
                 let Some(stem) = path.file_stem() else {

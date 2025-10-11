@@ -116,7 +116,7 @@ fn test_port_forwarding_single_port() -> Result<()> {
 version: 1
 provider: docker
 project:
-  name: {}
+  name: {project_name}
 vm:
   cpus: 1
   memory: 1024
@@ -124,8 +124,7 @@ ports:
   mappings:
     - host: 3456
       guest: 3000
-"#,
-        project_name
+"#
     );
     fs::write(&vm_yaml_path, config)?;
 
@@ -133,7 +132,7 @@ ports:
     fixture.run_vm_command(&["create"])?;
 
     // Verify port mapping exists
-    let container_name = format!("{}-dev", project_name);
+    let container_name = format!("{project_name}-dev");
     let output = Command::new("docker")
         .args(["port", &container_name, "3000"])
         .output()?;
@@ -141,8 +140,7 @@ ports:
     let port_info = String::from_utf8(output.stdout)?;
     assert!(
         port_info.contains("0.0.0.0:3456"),
-        "Port 3456 should be mapped to guest 3000. Got: {}",
-        port_info
+        "Port 3456 should be mapped to guest 3000. Got: {port_info}"
     );
 
     Ok(())
@@ -161,7 +159,7 @@ fn test_port_forwarding_multiple_ports() -> Result<()> {
 version: 1
 provider: docker
 project:
-  name: {}
+  name: {project_name}
 vm:
   cpus: 1
   memory: 1024
@@ -172,15 +170,14 @@ ports:
     - host: 3458
       guest: 3002
       protocol: udp
-"#,
-        project_name
+"#
     );
     fs::write(&vm_yaml_path, config)?;
 
     // Create and start VM
     fixture.run_vm_command(&["create"])?;
 
-    let container_name = format!("{}-dev", project_name);
+    let container_name = format!("{project_name}-dev");
 
     // Verify first port mapping
     let output1 = Command::new("docker")
@@ -189,8 +186,7 @@ ports:
     let port_info1 = String::from_utf8(output1.stdout)?;
     assert!(
         port_info1.contains("0.0.0.0:3457"),
-        "Port 3457 should be mapped to guest 3001. Got: {}",
-        port_info1
+        "Port 3457 should be mapped to guest 3001. Got: {port_info1}"
     );
 
     // Verify second port mapping (UDP)
@@ -200,8 +196,7 @@ ports:
     let port_info2 = String::from_utf8(output2.stdout)?;
     assert!(
         port_info2.contains("0.0.0.0:3458"),
-        "Port 3458/udp should be mapped to guest 3002. Got: {}",
-        port_info2
+        "Port 3458/udp should be mapped to guest 3002. Got: {port_info2}"
     );
 
     Ok(())
@@ -223,7 +218,7 @@ fn test_port_conflict_detection() -> Result<()> {
 version: 1
 provider: docker
 project:
-  name: {}
+  name: {project_name}
 vm:
   cpus: 1
   memory: 1024
@@ -231,8 +226,7 @@ ports:
   mappings:
     - host: 3333
       guest: 3000
-"#,
-        project_name
+"#
     );
     fs::write(&vm_yaml_path, config)?;
 

@@ -105,12 +105,12 @@ impl<'a> ComposeOperations<'a> {
                     // NPM
                     (
                         "NPM_CONFIG_REGISTRY".to_string(),
-                        format!("http://{}:{}/npm/", host, port),
+                        format!("http://{host}:{port}/npm/"),
                     ),
                     // Pip with fallback
                     (
                         "PIP_INDEX_URL".to_string(),
-                        format!("http://{}:{}/pypi/simple/", host, port),
+                        format!("http://{host}:{port}/pypi/simple/"),
                     ),
                     (
                         "PIP_EXTRA_INDEX_URL".to_string(),
@@ -139,8 +139,7 @@ impl<'a> ComposeOperations<'a> {
                 host_env_vars.push((
                     "DATABASE_URL".to_string(),
                     format!(
-                        "postgresql://{}:{}@{}:{}/{}",
-                        user, password, host, port, db_name
+                        "postgresql://{user}:{password}@{host}:{port}/{db_name}"
                     ),
                 ));
             }
@@ -152,7 +151,7 @@ impl<'a> ComposeOperations<'a> {
 
                 host_env_vars.push((
                     "REDIS_URL".to_string(),
-                    format!("redis://{}:{}", host, port),
+                    format!("redis://{host}:{port}"),
                 ));
             }
 
@@ -163,7 +162,7 @@ impl<'a> ComposeOperations<'a> {
 
                 host_env_vars.push((
                     "MONGODB_URL".to_string(),
-                    format!("mongodb://{}:{}", host, port),
+                    format!("mongodb://{host}:{port}"),
                 ));
             }
         }
@@ -233,7 +232,7 @@ impl<'a> ComposeOperations<'a> {
         let content = tera
             .render("docker-compose.yml", &tera_context)
             .map_err(|e| {
-                VmError::Internal(format!("Failed to render docker-compose template: {}", e))
+                VmError::Internal(format!("Failed to render docker-compose template: {e}"))
             })?;
         Ok(content)
     }
@@ -296,13 +295,13 @@ impl<'a> ComposeOperations<'a> {
         let mut custom_config = self.config.clone();
         if let Some(ref mut project) = custom_config.project {
             if let Some(ref project_name) = project.name {
-                project.name = Some(format!("{}-{}", project_name, instance_name));
+                project.name = Some(format!("{project_name}-{instance_name}"));
             } else {
-                project.name = Some(format!("vm-project-{}", instance_name));
+                project.name = Some(format!("vm-project-{instance_name}"));
             }
         } else {
             custom_config.project = Some(vm_config::config::ProjectConfig {
-                name: Some(format!("vm-project-{}", instance_name)),
+                name: Some(format!("vm-project-{instance_name}")),
                 ..Default::default()
             });
         }
@@ -311,7 +310,7 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("config", &custom_config);
         tera_context.insert(
             "project_name",
-            &format!("{}-{}", project_name, instance_name),
+            &format!("{project_name}-{instance_name}"),
         );
         tera_context.insert("project_dir", &project_dir_str);
         tera_context.insert("build_context_dir", &build_context_str);
@@ -346,7 +345,7 @@ impl<'a> ComposeOperations<'a> {
         let content = tera
             .render("docker-compose.yml", &tera_context)
             .map_err(|e| {
-                VmError::Internal(format!("Failed to render docker-compose template: {}", e))
+                VmError::Internal(format!("Failed to render docker-compose template: {e}"))
             })?;
         Ok(content)
     }
@@ -361,7 +360,7 @@ impl<'a> ComposeOperations<'a> {
         context.insert("mounts", &state.mounts);
 
         let content = tera.render("docker-compose.yml", &context).map_err(|e| {
-            VmError::Internal(format!("Failed to render docker-compose template: {}", e))
+            VmError::Internal(format!("Failed to render docker-compose template: {e}"))
         })?;
         Ok(content)
     }
@@ -381,7 +380,7 @@ impl<'a> ComposeOperations<'a> {
             .project
             .as_ref()
             .and_then(|p| p.name.as_ref())
-            .map(|s| format!("{}-dev", s))
+            .map(|s| format!("{s}-dev"))
             .unwrap_or_else(|| "vm-project-dev".to_string());
 
         let container_exists = DockerOps::container_exists(&container_name).unwrap_or(false);
@@ -397,8 +396,7 @@ impl<'a> ComposeOperations<'a> {
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         stream_command("docker", &args_refs).map_err(|e| {
             VmError::Internal(format!(
-                "Failed to start container using docker-compose: {}",
-                e
+                "Failed to start container using docker-compose: {e}"
             ))
         })
     }
@@ -411,8 +409,7 @@ impl<'a> ComposeOperations<'a> {
             let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
             stream_command("docker", &args_refs).map_err(|e| {
                 VmError::Internal(format!(
-                    "Failed to stop container using docker-compose: {}",
-                    e
+                    "Failed to stop container using docker-compose: {e}"
                 ))
             })
         } else {
@@ -435,7 +432,7 @@ impl<'a> ComposeOperations<'a> {
         let args = ComposeCommand::build_args(&compose_path, "down", &["--volumes"])?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         stream_command("docker", &args_refs)
-            .map_err(|e| VmError::Internal(format!("Failed to destroy container: {}", e)))
+            .map_err(|e| VmError::Internal(format!("Failed to destroy container: {e}")))
     }
 }
 
@@ -502,11 +499,11 @@ mod tests {
         let host = vm_platform::platform::get_host_gateway();
 
         assert!(
-            content.contains(&format!("NPM_CONFIG_REGISTRY=http://{}:3080/npm/", host)),
+            content.contains(&format!("NPM_CONFIG_REGISTRY=http://{host}:3080/npm/")),
             "Should contain NPM_CONFIG_REGISTRY"
         );
         assert!(
-            content.contains(&format!("PIP_INDEX_URL=http://{}:3080/pypi/simple/", host)),
+            content.contains(&format!("PIP_INDEX_URL=http://{host}:3080/pypi/simple/")),
             "Should contain PIP_INDEX_URL"
         );
         assert!(
@@ -514,11 +511,11 @@ mod tests {
             "Should contain PIP_EXTRA_INDEX_URL for fallback"
         );
         assert!(
-            content.contains(&format!("PIP_TRUSTED_HOST={}", host)),
+            content.contains(&format!("PIP_TRUSTED_HOST={host}")),
             "Should contain PIP_TRUSTED_HOST"
         );
         assert!(
-            content.contains(&format!("VM_CARGO_REGISTRY_HOST={}", host)),
+            content.contains(&format!("VM_CARGO_REGISTRY_HOST={host}")),
             "Should contain VM_CARGO_REGISTRY_HOST"
         );
         assert!(
@@ -709,11 +706,11 @@ mod tests {
         // Verify registry env vars ARE present after regeneration
         let host = vm_platform::platform::get_host_gateway();
         assert!(
-            updated_content.contains(&format!("NPM_CONFIG_REGISTRY=http://{}:3080/npm/", host)),
+            updated_content.contains(&format!("NPM_CONFIG_REGISTRY=http://{host}:3080/npm/")),
             "Updated compose should contain NPM_CONFIG_REGISTRY with correct host and port"
         );
         assert!(
-            updated_content.contains(&format!("VM_CARGO_REGISTRY_HOST={}", host)),
+            updated_content.contains(&format!("VM_CARGO_REGISTRY_HOST={host}")),
             "Updated compose should contain VM_CARGO_REGISTRY_HOST"
         );
         assert!(
@@ -721,7 +718,7 @@ mod tests {
             "Updated compose should contain VM_CARGO_REGISTRY_PORT"
         );
         assert!(
-            updated_content.contains(&format!("PIP_INDEX_URL=http://{}:3080/pypi/simple/", host)),
+            updated_content.contains(&format!("PIP_INDEX_URL=http://{host}:3080/pypi/simple/")),
             "Updated compose should contain PIP_INDEX_URL"
         );
 

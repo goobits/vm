@@ -14,12 +14,12 @@ impl ArrayOperations {
         let content = CoreOperations::read_file_or_stdin(file)?;
 
         let mut value: Value = serde_yaml::from_str(&content).map_err(|e| {
-            VmError::Serialization(format!("Invalid YAML in file: {:?}: {}", file, e))
+            VmError::Serialization(format!("Invalid YAML in file: {file:?}: {e}"))
         })?;
 
         // Parse the item as YAML
         let new_item: Value = serde_yaml::from_str(item)
-            .map_err(|e| VmError::Serialization(format!("Invalid YAML item: {}: {}", item, e)))?;
+            .map_err(|e| VmError::Serialization(format!("Invalid YAML item: {item}: {e}")))?;
 
         // Navigate to the path and add the item
         let path_parts: Vec<&str> = path.split('.').collect();
@@ -34,7 +34,7 @@ impl ArrayOperations {
         let content = CoreOperations::read_file_or_stdin(file)?;
 
         let mut value: Value = serde_yaml::from_str(&content).map_err(|e| {
-            VmError::Serialization(format!("Invalid YAML in file: {:?}: {}", file, e))
+            VmError::Serialization(format!("Invalid YAML in file: {file:?}: {e}"))
         })?;
 
         // Navigate to the path and remove matching items
@@ -74,15 +74,14 @@ impl ArrayOperations {
         // Parse the JSON object and convert to YAML
         let json_value: serde_json::Value = serde_json::from_str(object_json).map_err(|e| {
             VmError::Serialization(format!(
-                "Failed to parse JSON object: {}: {}",
-                object_json, e
+                "Failed to parse JSON object: {object_json}: {e}"
             ))
         })?;
 
         // Convert via string to avoid type compatibility issues
         let yaml_string = serde_yaml::to_string(&json_value)?;
         let yaml_value: Value = serde_yaml::from_str(&yaml_string).map_err(|e| {
-            VmError::Serialization(format!("Failed to convert JSON to YAML: {}", e))
+            VmError::Serialization(format!("Failed to convert JSON to YAML: {e}"))
         })?;
 
         // Navigate to the path and add the object
@@ -91,7 +90,7 @@ impl ArrayOperations {
 
         if stdout {
             let yaml = serde_yaml::to_string(&value)?;
-            print!("{}", yaml);
+            print!("{yaml}");
         } else {
             CoreOperations::write_yaml_file(file, &value)?;
         }
@@ -145,15 +144,15 @@ impl ArrayOperations {
         match format {
             OutputFormat::Yaml => {
                 let yaml = serde_yaml::to_string(&value)?;
-                print!("{}", yaml);
+                print!("{yaml}");
             }
             OutputFormat::Json => {
                 let json = serde_json::to_string(&value)?;
-                println!("{}", json);
+                println!("{json}");
             }
             OutputFormat::JsonPretty => {
                 let json = serde_json::to_string_pretty(&value)?;
-                println!("{}", json);
+                println!("{json}");
             }
         }
 
@@ -326,12 +325,11 @@ impl ArrayOperations {
                     let key = Value::String(part.to_string());
                     current = map
                         .get_mut(&key)
-                        .ok_or_else(|| VmError::Config(format!("Field '{}' not found", part)))?;
+                        .ok_or_else(|| VmError::Config(format!("Field '{part}' not found")))?;
                 }
                 _ => {
                     return Err(VmError::Config(format!(
-                        "Cannot access field '{}' on non-object",
-                        part
+                        "Cannot access field '{part}' on non-object"
                     )))
                 }
             }

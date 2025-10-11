@@ -55,11 +55,11 @@ impl VersionSync {
 
     fn read_package_version(root: &Path) -> Result<String> {
         let package_json = fs::read_to_string(root.join("package.json")).map_err(|e| {
-            vm_core::error::VmError::Internal(format!("Failed to read package.json: {}", e))
+            vm_core::error::VmError::Internal(format!("Failed to read package.json: {e}"))
         })?;
 
         let json: serde_json::Value = serde_json::from_str(&package_json).map_err(|e| {
-            vm_core::error::VmError::Internal(format!("Failed to parse package.json: {}", e))
+            vm_core::error::VmError::Internal(format!("Failed to parse package.json: {e}"))
         })?;
 
         json.get("version")

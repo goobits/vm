@@ -47,11 +47,10 @@ impl LinksTestFixture {
         // Create a basic package.json
         let package_json = format!(
             r#"{{
-            "name": "{}",
+            "name": "{package_name}",
             "version": "1.0.0",
             "main": "index.js"
-        }}"#,
-            package_name
+        }}"#
         );
         fs::write(package_dir.join("package.json"), package_json)?;
         fs::write(package_dir.join("index.js"), "console.log('test');")?;
@@ -71,11 +70,10 @@ impl LinksTestFixture {
         // Create a basic package.json
         let package_json = format!(
             r#"{{
-            "name": "{}",
+            "name": "{package_name}",
             "version": "1.0.0",
             "main": "index.js"
-        }}"#,
-            package_name
+        }}"#
         );
         fs::write(package_dir.join("package.json"), package_json)?;
         fs::write(package_dir.join("index.js"), "console.log('test');")?;
@@ -122,15 +120,14 @@ setup(
         // Create Cargo.toml
         let cargo_toml = format!(
             r#"[package]
-name = "{}"
+name = "{package_name}"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "{}"
+name = "{package_name}"
 path = "src/main.rs"
-"#,
-            package_name, package_name
+"#
         );
         fs::write(package_dir.join("Cargo.toml"), cargo_toml)?;
         fs::write(
@@ -293,7 +290,7 @@ fn test_package_name_validation() -> Result<()> {
     ];
 
     for name in valid_names {
-        fixture.create_npm_link(name, &format!("test-{}", name))?;
+        fixture.create_npm_link(name, &format!("test-{name}"))?;
         let link_path = fixture.npm_global_dir.join(name);
         assert!(link_path.exists());
     }

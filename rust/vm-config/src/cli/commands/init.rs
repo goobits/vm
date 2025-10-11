@@ -107,16 +107,16 @@ pub fn execute(
     // Load embedded defaults
     const EMBEDDED_DEFAULTS: &str = include_str!("../../../../../configs/defaults.yaml");
     let mut config: VmConfig = serde_yaml::from_str(EMBEDDED_DEFAULTS)
-        .map_err(|e| VmError::Serialization(format!("Failed to parse embedded defaults: {}", e)))?;
+        .map_err(|e| VmError::Serialization(format!("Failed to parse embedded defaults: {e}")))?;
 
     // Customize config for this directory
     if let Some(ref mut project) = config.project {
         project.name = Some(sanitized_name.to_string());
-        project.hostname = Some(format!("dev.{}.local", sanitized_name));
+        project.hostname = Some(format!("dev.{sanitized_name}.local"));
     }
 
     if let Some(ref mut terminal) = config.terminal {
-        terminal.username = Some(format!("{}-dev", sanitized_name));
+        terminal.username = Some(format!("{sanitized_name}-dev"));
     }
 
     // Use vm-ports library to suggest and register an available port range
@@ -163,11 +163,11 @@ pub fn execute(
     for service in services_to_configure {
         // Try to load service config from file, or use embedded defaults
         let service_path =
-            crate::paths::resolve_tool_path(format!("configs/services/{}.yaml", service));
+            crate::paths::resolve_tool_path(format!("configs/services/{service}.yaml"));
 
         let service_config = if service_path.exists() {
             VmConfig::from_file(&service_path).map_err(|e| {
-                VmError::Config(format!("Failed to load service config: {}: {}", service, e))
+                VmError::Config(format!("Failed to load service config: {service}: {e}"))
             })?
         } else {
             // Use embedded default configurations
@@ -187,8 +187,7 @@ pub fn execute(
 
             serde_yaml::from_str(default_config).map_err(|e| {
                 VmError::Config(format!(
-                    "Failed to parse embedded service config for {}: {}",
-                    service, e
+                    "Failed to parse embedded service config for {service}: {e}"
                 ))
             })?
         };
@@ -206,8 +205,7 @@ pub fn execute(
     if let Some(port_start) = ports {
         if port_start < 1024 {
             return Err(VmError::Config(format!(
-                "Invalid port number: {} (must be >= 1024)",
-                port_start
+                "Invalid port number: {port_start} (must be >= 1024)"
             )));
         }
 
@@ -220,10 +218,10 @@ pub fn execute(
 
     // Convert config to Value and write with consistent formatting
     let config_yaml = serde_yaml::to_string(&config).map_err(|e| {
-        VmError::Serialization(format!("Failed to serialize configuration to YAML: {}", e))
+        VmError::Serialization(format!("Failed to serialize configuration to YAML: {e}"))
     })?;
     let config_value: Value = serde_yaml::from_str(&config_yaml).map_err(|e| {
-        VmError::Serialization(format!("Failed to convert config to YAML Value: {}", e))
+        VmError::Serialization(format!("Failed to convert config to YAML Value: {e}"))
     })?;
 
     // Write using the centralized function for consistent formatting

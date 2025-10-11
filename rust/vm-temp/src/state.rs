@@ -34,12 +34,12 @@ impl From<StateError> for VmError {
                 VmError::Config(format!("State file not found at {}", path.display()))
             }
             StateError::InvalidFormat(e) => {
-                VmError::Serialization(format!("Invalid state file format: {}", e))
+                VmError::Serialization(format!("Invalid state file format: {e}"))
             }
             StateError::Io(e) => VmError::Io(e),
             StateError::Vm(e) => e,
             StateError::ValidationFailed { reason } => {
-                VmError::Config(format!("State validation failed: {}", reason))
+                VmError::Config(format!("State validation failed: {reason}"))
             }
         }
     }
@@ -103,7 +103,7 @@ impl StateManager {
     /// A `Result` containing the default state directory path or an error if the home directory cannot be found.
     pub fn default_state_dir() -> Result<PathBuf> {
         vm_platform::platform::vm_state_dir()
-            .map_err(|e| VmError::Internal(format!("Failed to get VM state directory: {}", e)))
+            .map_err(|e| VmError::Internal(format!("Failed to get VM state directory: {e}")))
     }
 
     /// Get the state file path
@@ -178,8 +178,7 @@ impl StateManager {
         // Serialize state to YAML
         let yaml_content = serde_yaml::to_string(state).map_err(|e| {
             StateError::Vm(VmError::Serialization(format!(
-                "Failed to serialize state to YAML: {}",
-                e
+                "Failed to serialize state to YAML: {e}"
             )))
         })?;
 

@@ -79,8 +79,7 @@ impl<'a> LifecycleOperations<'a> {
         if !container_exists {
             // Return error without printing raw Docker messages
             return Err(VmError::Internal(format!(
-                "No such container: {}",
-                container_name
+                "No such container: {container_name}"
             )));
         }
 
@@ -97,8 +96,7 @@ impl<'a> LifecycleOperations<'a> {
         if !container_running {
             // Return error that will trigger the start prompt
             return Err(VmError::Internal(format!(
-                "Container {} is not running",
-                container_name
+                "Container {container_name} is not running"
             )));
         }
 
@@ -109,14 +107,14 @@ impl<'a> LifecycleOperations<'a> {
                 "exec",
                 tty_flag,
                 "-e",
-                &format!("VM_TARGET_DIR={}", target_dir),
+                &format!("VM_TARGET_DIR={target_dir}"),
                 &container_name,
                 "sudo",
                 "-u",
                 project_user,
                 "sh",
                 "-c",
-                &format!("cd \"$VM_TARGET_DIR\" && exec {}", shell),
+                &format!("cd \"$VM_TARGET_DIR\" && exec {shell}"),
             ],
         )
         .run();
@@ -190,6 +188,6 @@ impl<'a> LifecycleOperations<'a> {
         // Use --tail to show last 50 lines and add timestamps
         let target_container = self.resolve_target_container(container)?;
         stream_command("docker", &["logs", "--tail", "50", "-t", &target_container])
-            .map_err(|e| VmError::Internal(format!("Failed to show logs: {}", e)))
+            .map_err(|e| VmError::Internal(format!("Failed to show logs: {e}")))
     }
 }

@@ -57,8 +57,7 @@ fn main() {
     for (bytes, expected) in test_cases {
         let formatted = format_size(bytes);
         println!(
-            "  {} bytes -> {} (expected: {})",
-            bytes, formatted, expected
+            "  {bytes} bytes -> {formatted} (expected: {expected})"
         );
         assert_eq!(formatted, expected);
     }
@@ -73,7 +72,7 @@ fn main() {
             "  ✓ {}MB upload accepted (within limits)",
             small_upload / (1024 * 1024)
         ),
-        Err(msg) => println!("  ✗ Small upload rejected unexpectedly: {}", msg),
+        Err(msg) => println!("  ✗ Small upload rejected unexpectedly: {msg}"),
     }
 
     // Test rejected upload
@@ -81,7 +80,7 @@ fn main() {
     match check_upload_size(large_upload, max_size) {
         Ok(()) => println!("  ✗ Large upload accepted unexpectedly"),
         Err(msg) => {
-            println!("  ✓ Large upload rejected: {}", msg);
+            println!("  ✓ Large upload rejected: {msg}");
         }
     }
 
@@ -170,8 +169,7 @@ mod tests {
         let package_file_size = validation::MAX_PACKAGE_FILE_SIZE as usize;
         if request_body_size <= package_file_size {
             panic!(
-                "MAX_REQUEST_BODY_SIZE ({}) must be greater than MAX_PACKAGE_FILE_SIZE ({})",
-                request_body_size, package_file_size
+                "MAX_REQUEST_BODY_SIZE ({request_body_size}) must be greater than MAX_PACKAGE_FILE_SIZE ({package_file_size})"
             );
         }
 
@@ -180,8 +178,7 @@ mod tests {
         let decoded_size = validation::MAX_BASE64_DECODED_SIZE;
         if encoded_size <= decoded_size {
             panic!(
-                "MAX_BASE64_ENCODED_SIZE ({}) must be greater than MAX_BASE64_DECODED_SIZE ({})",
-                encoded_size, decoded_size
+                "MAX_BASE64_ENCODED_SIZE ({encoded_size}) must be greater than MAX_BASE64_DECODED_SIZE ({decoded_size})"
             );
         }
 
@@ -190,8 +187,7 @@ mod tests {
         let package_size = validation::MAX_PACKAGE_FILE_SIZE;
         if upload_size < package_size {
             panic!(
-                "MAX_UPLOAD_SIZE ({}) must be >= MAX_PACKAGE_FILE_SIZE ({})",
-                upload_size, package_size
+                "MAX_UPLOAD_SIZE ({upload_size}) must be >= MAX_PACKAGE_FILE_SIZE ({package_size})"
             );
         }
 
@@ -199,16 +195,14 @@ mod tests {
         let multipart_fields = validation::MAX_MULTIPART_FIELDS;
         if multipart_fields == 0 {
             panic!(
-                "MAX_MULTIPART_FIELDS must be greater than 0, got {}",
-                multipart_fields
+                "MAX_MULTIPART_FIELDS must be greater than 0, got {multipart_fields}"
             );
         }
 
         let metadata_size = validation::MAX_METADATA_SIZE;
         if metadata_size == 0 {
             panic!(
-                "MAX_METADATA_SIZE must be greater than 0, got {}",
-                metadata_size
+                "MAX_METADATA_SIZE must be greater than 0, got {metadata_size}"
             );
         }
     }

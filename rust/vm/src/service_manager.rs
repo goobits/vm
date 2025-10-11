@@ -253,7 +253,7 @@ impl ServiceManager {
                 self.start_mongodb(global_config).await?;
             }
             _ => {
-                return Err(anyhow::anyhow!("Unknown service: {}", service_name));
+                return Err(anyhow::anyhow!("Unknown service: {service_name}"));
             }
         }
 
@@ -279,8 +279,7 @@ impl ServiceManager {
         }
 
         Err(anyhow::anyhow!(
-            "Service '{}' failed to start properly",
-            service_name
+            "Service '{service_name}' failed to start properly"
         ))
     }
 
@@ -314,7 +313,7 @@ impl ServiceManager {
                 self.stop_mongodb().await?;
             }
             _ => {
-                return Err(anyhow::anyhow!("Unknown service: {}", service_name));
+                return Err(anyhow::anyhow!("Unknown service: {service_name}"));
             }
         }
 
@@ -348,12 +347,12 @@ impl ServiceManager {
     async fn check_service_health(&self, service_name: &str, global_config: &GlobalConfig) -> bool {
         let port = self.get_service_port(service_name, global_config);
         let endpoint = match service_name {
-            "auth_proxy" => format!("http://localhost:{}/health", port),
-            "docker_registry" => format!("http://localhost:{}/v2/", port),
-            "package_registry" => format!("http://localhost:{}/health", port),
+            "auth_proxy" => format!("http://localhost:{port}/health"),
+            "docker_registry" => format!("http://localhost:{port}/v2/"),
+            "package_registry" => format!("http://localhost:{port}/health"),
             "postgresql" | "redis" | "mongodb" => {
                 // For database services, a TCP connection is a reliable health check
-                return tokio::net::TcpStream::connect(format!("127.0.0.1:{}", port))
+                return tokio::net::TcpStream::connect(format!("127.0.0.1:{port}"))
                     .await
                     .is_ok();
             }
@@ -454,7 +453,7 @@ impl ServiceManager {
         tokio::time::sleep(Duration::from_secs(2)).await;
 
         // Configure the Docker daemon with the correct registry URL
-        let registry_url = format!("http://127.0.0.1:{}", port);
+        let registry_url = format!("http://127.0.0.1:{port}");
         if let Err(e) = configure_docker_daemon(&registry_url).await {
             warn!("Failed to auto-configure Docker daemon: {}", e);
         }
@@ -550,7 +549,7 @@ impl ServiceManager {
             .arg("-p")
             .arg(format!("{}:5432", settings.port))
             .arg("-v")
-            .arg(format!("{}:/var/lib/postgresql/data", data_dir))
+            .arg(format!("{data_dir}:/var/lib/postgresql/data"))
             .arg("-e")
             .arg("POSTGRES_PASSWORD=postgres") // Simple default for local dev
             .arg(format!("postgres:{}", settings.version));
@@ -600,7 +599,7 @@ impl ServiceManager {
             .arg("-p")
             .arg(format!("{}:6379", settings.port))
             .arg("-v")
-            .arg(format!("{}:/data", data_dir))
+            .arg(format!("{data_dir}:/data"))
             .arg(format!("redis:{}", settings.version));
 
         let status = cmd.status().await?;
@@ -646,7 +645,7 @@ impl ServiceManager {
             .arg("-p")
             .arg(format!("{}:27017", settings.port))
             .arg("-v")
-            .arg(format!("{}:/data/db", data_dir))
+            .arg(format!("{data_dir}:/data/db"))
             .arg(format!("mongo:{}", settings.version));
 
         let status = cmd.status().await?;

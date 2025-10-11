@@ -40,7 +40,7 @@ impl ProgressBarManager {
 pub fn ensure_tool_available(tool_name: &str) -> Result<()> {
     if which(tool_name).is_err() {
         error!("{} is not installed or not in PATH", tool_name);
-        anyhow::bail!("{} is not installed or not in PATH", tool_name);
+        anyhow::bail!("{tool_name} is not installed or not in PATH");
     }
     Ok(())
 }
@@ -77,7 +77,7 @@ pub trait PackageBuilder {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             error!(tool = %self.tool_name(), stderr = %stderr, "Build command failed");
-            anyhow::bail!("Build failed: {}", stderr);
+            anyhow::bail!("Build failed: {stderr}");
         }
 
         self.process_build_output()

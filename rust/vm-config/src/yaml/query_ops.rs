@@ -20,7 +20,7 @@ impl QueryOperations {
         let content = CoreOperations::read_file_or_stdin(file)?;
 
         let value: Value = serde_yaml::from_str(&content).map_err(|e| {
-            VmError::Serialization(format!("Invalid YAML in file: {:?}: {}", file, e))
+            VmError::Serialization(format!("Invalid YAML in file: {file:?}: {e}"))
         })?;
 
         // Apply the filter expression
@@ -30,15 +30,15 @@ impl QueryOperations {
         match output_format {
             OutputFormat::Yaml => {
                 let yaml = serde_yaml::to_string(&result)?;
-                print!("{}", yaml);
+                print!("{yaml}");
             }
             OutputFormat::Json => {
                 let json = serde_json::to_string(&result)?;
-                println!("{}", json);
+                println!("{json}");
             }
             OutputFormat::JsonPretty => {
                 let json = serde_json::to_string_pretty(&result)?;
-                println!("{}", json);
+                println!("{json}");
             }
         }
 
@@ -95,15 +95,15 @@ impl QueryOperations {
         match format {
             OutputFormat::Yaml => {
                 let yaml = serde_yaml::to_string(&results)?;
-                print!("{}", yaml);
+                print!("{yaml}");
             }
             OutputFormat::Json => {
                 let json = serde_json::to_string(&results)?;
-                println!("{}", json);
+                println!("{json}");
             }
             OutputFormat::JsonPretty => {
                 let json = serde_json::to_string_pretty(&results)?;
-                println!("{}", json);
+                println!("{json}");
             }
         }
 

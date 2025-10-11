@@ -31,7 +31,7 @@ impl VmState {
     fn get_state_path(project_name: &str) -> Result<PathBuf> {
         let home_dir = dirs::home_dir()
             .ok_or_else(|| VmError::Internal("Could not get home directory".to_string()))?;
-        Ok(home_dir.join(format!(".vm/state/{}.json", project_name)))
+        Ok(home_dir.join(format!(".vm/state/{project_name}.json")))
     }
 
     pub fn increment_ssh_sessions(&mut self) {

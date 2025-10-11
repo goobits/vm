@@ -24,8 +24,7 @@ fn parse_secret_scope(scope: Option<&str>) -> Result<SecretScope> {
             Ok(SecretScope::Instance(instance_name.to_string()))
         }
         Some(s) => Err(anyhow!(
-            "Invalid scope '{}'. Use 'global', 'project:NAME', or 'instance:NAME'",
-            s
+            "Invalid scope '{s}'. Use 'global', 'project:NAME', or 'instance:NAME'"
         )),
     }
 }
@@ -49,11 +48,11 @@ pub async fn add_secret(
 
     let auth_token = get_auth_token().await?;
     let client = Client::new();
-    let url = format!("{}/secrets/{}", server_url, name);
+    let url = format!("{server_url}/secrets/{name}");
 
     let response = client
         .post(&url)
-        .header("Authorization", format!("Bearer {}", auth_token))
+        .header("Authorization", format!("Bearer {auth_token}"))
         .json(&request)
         .send()
         .await
@@ -64,7 +63,7 @@ pub async fn add_secret(
     } else {
         let status = response.status();
         let error_text = response.text().await.unwrap_or_default();
-        return Err(anyhow!("Failed to add secret: {} - {}", status, error_text));
+        return Err(anyhow!("Failed to add secret: {status} - {error_text}"));
     }
 
     Ok(())
@@ -74,11 +73,11 @@ pub async fn add_secret(
 pub async fn list_secrets(server_url: &str, show_values: bool) -> Result<()> {
     let auth_token = get_auth_token().await?;
     let client = Client::new();
-    let url = format!("{}/secrets", server_url);
+    let url = format!("{server_url}/secrets");
 
     let response = client
         .get(&url)
-        .header("Authorization", format!("Bearer {}", auth_token))
+        .header("Authorization", format!("Bearer {auth_token}"))
         .send()
         .await
         .context("Failed to send request to auth proxy")?;
@@ -87,9 +86,7 @@ pub async fn list_secrets(server_url: &str, show_values: bool) -> Result<()> {
         let status = response.status();
         let error_text = response.text().await.unwrap_or_default();
         return Err(anyhow!(
-            "Failed to list secrets: {} - {}",
-            status,
-            error_text
+            "Failed to list secrets: {status} - {error_text}"
         ));
     }
 
@@ -136,11 +133,11 @@ pub async fn remove_secret(server_url: &str, name: &str, force: bool) -> Result<
 
     let auth_token = get_auth_token().await?;
     let client = Client::new();
-    let url = format!("{}/secrets/{}", server_url, name);
+    let url = format!("{server_url}/secrets/{name}");
 
     let response = client
         .delete(&url)
-        .header("Authorization", format!("Bearer {}", auth_token))
+        .header("Authorization", format!("Bearer {auth_token}"))
         .send()
         .await
         .context("Failed to send request to auth proxy")?;
@@ -151,9 +148,7 @@ pub async fn remove_secret(server_url: &str, name: &str, force: bool) -> Result<
         let status = response.status();
         let error_text = response.text().await.unwrap_or_default();
         return Err(anyhow!(
-            "Failed to remove secret: {} - {}",
-            status,
-            error_text
+            "Failed to remove secret: {status} - {error_text}"
         ));
     }
 
@@ -168,15 +163,15 @@ pub async fn get_secret_for_vm(
 ) -> Result<HashMap<String, String>> {
     let auth_token = get_auth_token().await?;
     let client = Client::new();
-    let mut url = format!("{}/env/{}", server_url, vm_name);
+    let mut url = format!("{server_url}/env/{vm_name}");
 
     if let Some(project) = project_name {
-        url.push_str(&format!("?project={}", project));
+        url.push_str(&format!("?project={project}"));
     }
 
     let response = client
         .get(&url)
-        .header("Authorization", format!("Bearer {}", auth_token))
+        .header("Authorization", format!("Bearer {auth_token}"))
         .send()
         .await
         .context("Failed to send request to auth proxy")?;
@@ -185,9 +180,7 @@ pub async fn get_secret_for_vm(
         let status = response.status();
         let error_text = response.text().await.unwrap_or_default();
         return Err(anyhow!(
-            "Failed to get environment variables: {} - {}",
-            status,
-            error_text
+            "Failed to get environment variables: {status} - {error_text}"
         ));
     }
 
@@ -199,7 +192,7 @@ pub async fn get_secret_for_vm(
 
 /// Check if the auth proxy server is running
 pub async fn check_server_running(port: u16) -> bool {
-    let url = format!("http://127.0.0.1:{}/health", port);
+    let url = format!("http://127.0.0.1:{port}/health");
     match reqwest::get(&url).await {
         Ok(response) => response.status().is_success(),
         Err(_) => false,
@@ -234,13 +227,13 @@ pub async fn add_secret_interactive(server_url: &str) -> Result<()> {
             let project: String = Input::with_theme(&theme)
                 .with_prompt("Project name")
                 .interact_text()?;
-            Some(format!("project:{}", project))
+            Some(format!("project:{project}"))
         }
         2 => {
             let instance: String = Input::with_theme(&theme)
                 .with_prompt("Instance name")
                 .interact_text()?;
-            Some(format!("instance:{}", instance))
+            Some(format!("instance:{instance}"))
         }
         _ => None,
     };
@@ -276,8 +269,8 @@ async fn print_secret_summary(
 ) -> Result<()> {
     let scope_display = match &secret.scope {
         SecretScope::Global => "Global".bright_blue(),
-        SecretScope::Project(p) => format!("Project: {}", p).bright_yellow(),
-        SecretScope::Instance(i) => format!("Instance: {}", i).bright_magenta(),
+        SecretScope::Project(p) => format!("Project: {p}").bright_yellow(),
+        SecretScope::Instance(i) => format!("Instance: {i}").bright_magenta(),
     };
 
     let mut summary = format!(
@@ -316,11 +309,11 @@ async fn print_secret_summary(
 /// Get a specific secret value
 async fn get_secret_value(server_url: &str, name: &str, auth_token: &str) -> Result<String> {
     let client = Client::new();
-    let url = format!("{}/secrets/{}", server_url, name);
+    let url = format!("{server_url}/secrets/{name}");
 
     let response = client
         .get(&url)
-        .header("Authorization", format!("Bearer {}", auth_token))
+        .header("Authorization", format!("Bearer {auth_token}"))
         .send()
         .await
         .context("Failed to send request")?;
@@ -433,11 +426,11 @@ mod tests {
         };
 
         let client = Client::new();
-        let url = format!("{}/secrets/{}", server_url, name);
+        let url = format!("{server_url}/secrets/{name}");
 
         let response = client
             .post(&url)
-            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("Authorization", format!("Bearer {auth_token}"))
             .json(&request)
             .send()
             .await
@@ -448,18 +441,18 @@ mod tests {
         } else {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            Err(anyhow!("Failed to add secret: {} - {}", status, body))
+            Err(anyhow!("Failed to add secret: {status} - {body}"))
         }
     }
 
     /// Helper function for tests that lists secrets with provided auth token
     async fn list_secrets_with_token(server_url: &str, auth_token: &str) -> Result<()> {
         let client = Client::new();
-        let url = format!("{}/secrets", server_url);
+        let url = format!("{server_url}/secrets");
 
         let response = client
             .get(&url)
-            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("Authorization", format!("Bearer {auth_token}"))
             .send()
             .await
             .context("Failed to send request")?;
@@ -469,7 +462,7 @@ mod tests {
         } else {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            Err(anyhow!("Failed to list secrets: {} - {}", status, body))
+            Err(anyhow!("Failed to list secrets: {status} - {body}"))
         }
     }
 
@@ -485,7 +478,7 @@ mod tests {
     #[tokio::test]
     async fn test_add_and_list_secrets() {
         let (port, _temp_dir, auth_token) = start_test_server().await;
-        let server_url = format!("http://127.0.0.1:{}", port);
+        let server_url = format!("http://127.0.0.1:{port}");
 
         // Add a secret
         let result = add_secret_with_token(

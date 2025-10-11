@@ -142,7 +142,7 @@ pub async fn wait_for_server_start(port: u16) -> bool {
         if let Ok(Ok(resp)) = timeout(
             REQUEST_TIMEOUT,
             client
-                .get(format!("http://localhost:{}/api/status", port))
+                .get(format!("http://localhost:{port}/api/status"))
                 .send(),
         )
         .await
@@ -194,11 +194,10 @@ pub fn execute_cli_command(
 pub fn create_test_package_json(dir: &Path, name: &str, version: &str) -> Result<()> {
     let package_json = format!(
         r#"{{
-    "name": "{}",
-    "version": "{}",
+    "name": "{name}",
+    "version": "{version}",
     "description": "Test package for E2E testing"
-}}"#,
-        name, version
+}}"#
     );
     fs::write(dir.join("package.json"), package_json)?;
     Ok(())
@@ -227,14 +226,13 @@ pub mod assertions {
     /// Asserts that a command completed successfully with helpful error message
     pub fn assert_command_success(output: &std::process::Output, command_name: &str) {
         if !output.status.success() {
-            eprintln!("{} command failed:", command_name);
+            eprintln!("{command_name} command failed:");
             eprintln!("stdout: {}", String::from_utf8_lossy(&output.stdout));
             eprintln!("stderr: {}", String::from_utf8_lossy(&output.stderr));
         }
         assert!(
             output.status.success(),
-            "{} command should succeed",
-            command_name
+            "{command_name} command should succeed"
         );
     }
 
@@ -243,10 +241,7 @@ pub mod assertions {
         let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(
             stdout.contains(expected),
-            "{} output should contain '{}', got: {}",
-            context,
-            expected,
-            stdout
+            "{context} output should contain '{expected}', got: {stdout}"
         );
     }
 }
@@ -261,13 +256,12 @@ pub mod test_data {
     pub fn create_test_cargo_toml(dir: &Path, name: &str, version: &str) -> Result<()> {
         let cargo_toml = format!(
             r#"[package]
-name = "{}"
-version = "{}"
+name = "{name}"
+version = "{version}"
 edition = "2021"
 
 [dependencies]
-"#,
-            name, version
+"#
         );
         fs::write(dir.join("Cargo.toml"), cargo_toml)?;
 
@@ -284,18 +278,17 @@ edition = "2021"
             r#"from setuptools import setup
 
 setup(
-    name="{}",
-    version="{}",
+    name="{name}",
+    version="{version}",
     description="Test package",
-    py_modules=["{}"],
+    py_modules=["{name}"],
 )
-"#,
-            name, version, name
+"#
         );
         fs::write(dir.join("setup.py"), setup_py)?;
 
         // Create a simple Python module
-        fs::write(dir.join(format!("{}.py", name)), "# Test module\n")?;
+        fs::write(dir.join(format!("{name}.py")), "# Test module\n")?;
 
         Ok(())
     }

@@ -167,7 +167,7 @@ pub async fn home(State(state): State<Arc<AppState>>) -> AppResult<Html<String>>
 
     Ok(Html(template.render().map_err(|e| {
         error!("Template render error: {}", e);
-        AppError::Anyhow(anyhow::anyhow!("Template render error: {}", e))
+        AppError::Anyhow(anyhow::anyhow!("Template render error: {e}"))
     })?))
 }
 
@@ -188,7 +188,7 @@ pub async fn list_packages(
 
     Ok(Html(template.render().map_err(|e| {
         error!("Template render error: {}", e);
-        AppError::Anyhow(anyhow::anyhow!("Template render error: {}", e))
+        AppError::Anyhow(anyhow::anyhow!("Template render error: {e}"))
     })?))
 }
 
@@ -220,7 +220,7 @@ pub async fn pypi_package_detail(
 
     Ok(Html(template.render().map_err(|e| {
         error!("Template render error: {}", e);
-        AppError::Anyhow(anyhow::anyhow!("Template render error: {}", e))
+        AppError::Anyhow(anyhow::anyhow!("Template render error: {e}"))
     })?))
 }
 
@@ -247,7 +247,7 @@ pub async fn npm_package_detail(
 
     Ok(Html(template.render().map_err(|e| {
         error!("Template render error: {}", e);
-        AppError::Anyhow(anyhow::anyhow!("Template render error: {}", e))
+        AppError::Anyhow(anyhow::anyhow!("Template render error: {e}"))
     })?))
 }
 
@@ -273,7 +273,7 @@ pub async fn cargo_package_detail(
 
     Ok(Html(template.render().map_err(|e| {
         error!("Template render error: {}", e);
-        AppError::Anyhow(anyhow::anyhow!("Template render error: {}", e))
+        AppError::Anyhow(anyhow::anyhow!("Template render error: {e}"))
     })?))
 }
 
@@ -283,7 +283,7 @@ pub async fn upload_page() -> AppResult<Html<String>> {
 
     Ok(Html(template.render().map_err(|e| {
         error!("Template render error: {}", e);
-        AppError::Anyhow(anyhow::anyhow!("Template render error: {}", e))
+        AppError::Anyhow(anyhow::anyhow!("Template render error: {e}"))
     })?))
 }
 

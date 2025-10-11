@@ -276,7 +276,7 @@ mod tests {
         // documents_dir() might not be available in test environment
         match documents_dir() {
             Ok(_) => {}
-            Err(e) => println!("documents_dir() failed: {}", e),
+            Err(e) => println!("documents_dir() failed: {e}"),
         }
     }
 }

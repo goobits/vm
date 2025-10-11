@@ -19,7 +19,7 @@ impl CoreOperations {
             Ok(buffer)
         } else {
             fs::read_to_string(file)
-                .map_err(|e| VmError::Filesystem(format!("Failed to read file: {:?}: {}", file, e)))
+                .map_err(|e| VmError::Filesystem(format!("Failed to read file: {file:?}: {e}")))
         }
     }
 
@@ -28,7 +28,7 @@ impl CoreOperations {
         let content = Self::read_file_or_stdin(file)?;
 
         let _: Value = serde_yaml::from_str(&content).map_err(|e| {
-            VmError::Serialization(format!("Invalid YAML in file: {:?}: {}", file, e))
+            VmError::Serialization(format!("Invalid YAML in file: {file:?}: {e}"))
         })?;
 
         Ok(())
@@ -38,7 +38,7 @@ impl CoreOperations {
     pub fn load_yaml_file(file: &PathBuf) -> Result<Value> {
         let content = Self::read_file_or_stdin(file)?;
         serde_yaml::from_str(&content)
-            .map_err(|e| VmError::Serialization(format!("Invalid YAML in file: {:?}: {}", file, e)))
+            .map_err(|e| VmError::Serialization(format!("Invalid YAML in file: {file:?}: {e}")))
     }
 
     /// Write Value to YAML file with consistent formatting
@@ -54,7 +54,7 @@ impl CoreOperations {
 
         // Write to file
         fs::write(file, formatted_yaml)
-            .map_err(|e| VmError::Filesystem(format!("Failed to write file: {:?}: {}", file, e)))
+            .map_err(|e| VmError::Filesystem(format!("Failed to write file: {file:?}: {e}")))
     }
 
     /// Get nested field from YAML value using dot notation
@@ -68,12 +68,11 @@ impl CoreOperations {
                     let key = Value::String(part.to_string());
                     current = map
                         .get(&key)
-                        .ok_or_else(|| VmError::Config(format!("Field '{}' not found", part)))?;
+                        .ok_or_else(|| VmError::Config(format!("Field '{part}' not found")))?;
                 }
                 _ => {
                     return Err(VmError::Config(format!(
-                        "Cannot access field '{}' on non-object",
-                        part
+                        "Cannot access field '{part}' on non-object"
                     )))
                 }
             }

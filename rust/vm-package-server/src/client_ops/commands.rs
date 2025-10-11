@@ -157,8 +157,7 @@ fn filter_types_from_string(
             "cargo" | "rust" | "rs" => PackageType::Cargo,
             _ => {
                 anyhow::bail!(
-                    "Unknown package type '{}'. Supported: python, npm, cargo",
-                    requested
+                    "Unknown package type '{requested}'. Supported: python, npm, cargo"
                 );
             }
         };
@@ -169,8 +168,7 @@ fn filter_types_from_string(
             }
         } else {
             anyhow::bail!(
-                "Package type '{}' not found in current directory",
-                requested
+                "Package type '{requested}' not found in current directory"
             );
         }
     }
@@ -186,7 +184,7 @@ fn filter_types_from_string(
 fn select_package_types_interactive(detected_types: &[PackageType]) -> Result<Vec<PackageType>> {
     let options: Vec<String> = detected_types
         .iter()
-        .map(|t| format!("{} package", t))
+        .map(|t| format!("{t} package"))
         .collect();
 
     info!("🔍 Multiple package types detected in current directory:");

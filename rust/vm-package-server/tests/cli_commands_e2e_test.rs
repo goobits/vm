@@ -62,7 +62,7 @@ async fn test_cli_add_command() -> Result<()> {
             &[
                 "add",
                 "--server",
-                &format!("http://localhost:{}", port),
+                &format!("http://localhost:{port}"),
                 "--type",
                 "npm",
             ],
@@ -98,7 +98,7 @@ async fn test_cli_remove_command() -> Result<()> {
             &[
                 "remove",
                 "--server",
-                &format!("http://localhost:{}", port),
+                &format!("http://localhost:{port}"),
                 "--force",
             ],
             None,
@@ -127,7 +127,7 @@ async fn test_cli_list_command() -> Result<()> {
     if server_started {
         // Test list command
         let output = execute_cli_command(
-            &["list", "--server", &format!("http://localhost:{}", port)],
+            &["list", "--server", &format!("http://localhost:{port}")],
             None,
         )?;
 
@@ -161,7 +161,7 @@ async fn test_cli_status_command() -> Result<()> {
     if server_started {
         // Test status command
         let output = execute_cli_command(
-            &["status", "--server", &format!("http://localhost:{}", port)],
+            &["status", "--server", &format!("http://localhost:{port}")],
             None,
         )?;
 

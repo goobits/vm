@@ -67,7 +67,7 @@ fn test_concurrent_state_operations() -> Result<()> {
 
     for i in 0..num_threads {
         let state_manager: Arc<StateManager> = Arc::clone(&state_manager);
-        let mount_source = fixture.mount_source.join(format!("thread_{}", i));
+        let mount_source = fixture.mount_source.join(format!("thread_{i}"));
         fs::create_dir_all(&mount_source)?;
 
         let handle = thread::spawn(move || -> Result<()> {
@@ -105,16 +105,14 @@ fn test_concurrent_state_operations() -> Result<()> {
     // At least some mounts should be present (reveals race condition if < num_threads)
     let actual_mounts = final_state.mount_count();
     println!(
-        "Race condition test: {}/{} threads succeeded",
-        actual_mounts, num_threads
+        "Race condition test: {actual_mounts}/{num_threads} threads succeeded"
     );
 
     // This test is designed to potentially fail to reveal race conditions
     // If it fails consistently, we have a real concurrency bug to fix
     if actual_mounts < num_threads {
         println!(
-            "⚠️  Race condition detected: only {}/{} mounts saved",
-            actual_mounts, num_threads
+            "⚠️  Race condition detected: only {actual_mounts}/{num_threads} mounts saved"
         );
         println!("This indicates atomic operations need improvement in StateManager");
     }
@@ -124,8 +122,7 @@ fn test_concurrent_state_operations() -> Result<()> {
     let _: TempVmState = serde_yaml::from_str(&state_content)?;
 
     println!(
-        "✅ Concurrent operations test passed - {} mounts added atomically",
-        num_threads
+        "✅ Concurrent operations test passed - {num_threads} mounts added atomically"
     );
     Ok(())
 }
@@ -407,8 +404,8 @@ fn test_mount_filesystem_integration() -> Result<()> {
     fs::create_dir_all(&files_dir)?;
     for i in 0..5 {
         fs::write(
-            files_dir.join(format!("file_{}.txt", i)),
-            format!("content {}", i),
+            files_dir.join(format!("file_{i}.txt")),
+            format!("content {i}"),
         )?;
     }
 

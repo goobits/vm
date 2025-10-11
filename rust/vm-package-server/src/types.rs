@@ -145,7 +145,7 @@ impl FromStr for Registry {
             "pypi" => Ok(Registry::Pypi),
             "cargo" => Ok(Registry::Cargo),
             _ => Err(ValidationError::InvalidFormat {
-                reason: format!("Unknown registry type: {}", s),
+                reason: format!("Unknown registry type: {s}"),
             }),
         }
     }

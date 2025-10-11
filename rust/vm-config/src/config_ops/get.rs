@@ -66,7 +66,7 @@ fn get_nested_field<'a>(value: &'a Value, field: &str) -> Result<&'a Value> {
             Value::Mapping(map) => {
                 let key = Value::String(part.into());
                 current = map.get(&key).ok_or_else(|| {
-                    vm_core::error::VmError::Config(format!("Field '{}' not found", part))
+                    vm_core::error::VmError::Config(format!("Field '{part}' not found"))
                 })?;
             }
             _ => {

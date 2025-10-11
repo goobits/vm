@@ -14,15 +14,15 @@ pub async fn save_crate_file(
 ) -> AppResult<PathBuf> {
     // Validate inputs for security
     validation::validate_package_name(crate_name, "cargo")
-        .map_err(|e| AppError::BadRequest(format!("Invalid crate name '{}': {}", crate_name, e)))?;
+        .map_err(|e| AppError::BadRequest(format!("Invalid crate name '{crate_name}': {e}")))?;
     validation::validate_version(version)
-        .map_err(|e| AppError::BadRequest(format!("Invalid version '{}': {}", version, e)))?;
+        .map_err(|e| AppError::BadRequest(format!("Invalid version '{version}': {e}")))?;
 
-    let filename = format!("{}-{}.crate", crate_name, version);
+    let filename = format!("{crate_name}-{version}.crate");
 
     // Validate the constructed filename path
     validation::validate_safe_path(&filename).map_err(|e| {
-        AppError::BadRequest(format!("Generated unsafe filename '{}': {}", filename, e))
+        AppError::BadRequest(format!("Generated unsafe filename '{filename}': {e}"))
     })?;
 
     let crate_path = data_dir.join("cargo/crates").join(&filename);

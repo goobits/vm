@@ -175,7 +175,7 @@ fn format_status(status: &str) -> String {
     } else if lower_status.contains("paused") {
         "⏸️  Paused".to_string()
     } else {
-        format!("❓ {}", status)
+        format!("❓ {status}")
     }
 }
 

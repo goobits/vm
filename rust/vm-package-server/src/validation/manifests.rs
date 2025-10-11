@@ -62,7 +62,7 @@ pub fn validate_package_name(name: &str, ecosystem: &str) -> ValidationResult<St
         "pypi" => validate_pypi_package_name(name),
         "cargo" => validate_cargo_package_name(name),
         _ => Err(ValidationError::InvalidFormat {
-            reason: format!("Unknown ecosystem: {}", ecosystem),
+            reason: format!("Unknown ecosystem: {ecosystem}"),
         }),
     }
 }
@@ -234,8 +234,7 @@ pub fn validate_cargo_upload_structure(
     if payload_size < expected_min_size {
         return Err(ValidationError::InvalidFormat {
             reason: format!(
-                "Payload size {} is smaller than expected minimum {}",
-                payload_size, expected_min_size
+                "Payload size {payload_size} is smaller than expected minimum {expected_min_size}"
             ),
         });
     }

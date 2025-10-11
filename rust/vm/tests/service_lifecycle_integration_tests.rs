@@ -255,9 +255,7 @@ fn test_shared_postgres_lifecycle_integration() -> Result<()> {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         output.status.success(),
-        "vm create failed. stdout: {}, stderr: {}",
-        stdout,
-        stderr
+        "vm create failed. stdout: {stdout}, stderr: {stderr}"
     );
     assert!(stdout.contains("Starting PostgreSQL"));
 
@@ -268,8 +266,7 @@ fn test_shared_postgres_lifecycle_integration() -> Result<()> {
     let ps_stdout = String::from_utf8_lossy(&ps_output.stdout);
     assert!(
         ps_stdout.contains("vm-postgres-global"),
-        "Postgres container not found after vm create. Output: {}",
-        ps_stdout
+        "Postgres container not found after vm create. Output: {ps_stdout}"
     );
 
     // 4. Destroy the VM. This should stop the postgres service.
@@ -283,9 +280,7 @@ fn test_shared_postgres_lifecycle_integration() -> Result<()> {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         output.status.success(),
-        "vm destroy failed. stdout: {}, stderr: {}",
-        stdout,
-        stderr
+        "vm destroy failed. stdout: {stdout}, stderr: {stderr}"
     );
     assert!(stdout.contains("Stopping PostgreSQL"));
 
@@ -297,8 +292,7 @@ fn test_shared_postgres_lifecycle_integration() -> Result<()> {
     let ps_stdout_after = String::from_utf8_lossy(&ps_output_after.stdout);
     assert!(
         !ps_stdout_after.contains("vm-postgres-global"),
-        "Postgres container was not removed after vm destroy. Output: {}",
-        ps_stdout_after
+        "Postgres container was not removed after vm destroy. Output: {ps_stdout_after}"
     );
 
     Ok(())
@@ -342,9 +336,7 @@ fn test_shared_redis_lifecycle_integration() -> Result<()> {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         output.status.success(),
-        "vm create failed for redis. stdout: {}, stderr: {}",
-        stdout,
-        stderr
+        "vm create failed for redis. stdout: {stdout}, stderr: {stderr}"
     );
     assert!(stdout.contains("Starting Redis"));
 
@@ -355,8 +347,7 @@ fn test_shared_redis_lifecycle_integration() -> Result<()> {
     let ps_stdout = String::from_utf8_lossy(&ps_output.stdout);
     assert!(
         ps_stdout.contains("vm-redis-global"),
-        "Redis container not found. Output: {}",
-        ps_stdout
+        "Redis container not found. Output: {ps_stdout}"
     );
 
     // 4. Destroy the VM. This should stop the redis service.
@@ -377,8 +368,7 @@ fn test_shared_redis_lifecycle_integration() -> Result<()> {
     let ps_stdout_after = String::from_utf8_lossy(&ps_output_after.stdout);
     assert!(
         !ps_stdout_after.contains("vm-redis-global"),
-        "Redis container not removed. Output: {}",
-        ps_stdout_after
+        "Redis container not removed. Output: {ps_stdout_after}"
     );
 
     Ok(())

@@ -95,7 +95,7 @@ impl ServiceRegistry {
 
         // Load plugin services (non-fatal if plugins unavailable)
         if let Err(e) = registry.load_plugin_services() {
-            eprintln!("Warning: Failed to load plugin services: {}", e);
+            eprintln!("Warning: Failed to load plugin services: {e}");
         }
 
         registry
@@ -198,8 +198,7 @@ impl ServiceRegistry {
         for service_name in &enabled_services {
             if !self.is_service_defined(service_name) {
                 return Err(anyhow::anyhow!(
-                    "Unknown service '{}' enabled in configuration",
-                    service_name
+                    "Unknown service '{service_name}' enabled in configuration"
                 ));
             }
         }

@@ -154,13 +154,13 @@ pub mod test_utils {
         let boundary = "----formdata-axum-test";
         let mut body = Vec::new();
 
-        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+        body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
         body.extend_from_slice(b"Content-Disposition: form-data; name=\"content\"; filename=\"");
         body.extend_from_slice(filename.as_bytes());
         body.extend_from_slice(b"\"\r\n");
         body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
         body.extend_from_slice(content);
-        body.extend_from_slice(format!("\r\n--{}--\r\n", boundary).as_bytes());
+        body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
 
         body
     }
@@ -277,8 +277,7 @@ mod security_tests {
             for addr in &valid_ipv4_addresses {
                 assert!(
                     test_validate_server_address(addr),
-                    "Valid IPv4 address '{}' should pass validation",
-                    addr
+                    "Valid IPv4 address '{addr}' should pass validation"
                 );
             }
         }
@@ -299,8 +298,7 @@ mod security_tests {
             for addr in &valid_ipv6_addresses {
                 assert!(
                     test_validate_server_address(addr),
-                    "Valid IPv6 address '{}' should pass validation",
-                    addr
+                    "Valid IPv6 address '{addr}' should pass validation"
                 );
             }
         }
@@ -321,8 +319,7 @@ mod security_tests {
             for hostname in &valid_hostnames {
                 assert!(
                     test_validate_server_address(hostname),
-                    "Valid hostname '{}' should pass validation",
-                    hostname
+                    "Valid hostname '{hostname}' should pass validation"
                 );
             }
         }
@@ -343,8 +340,7 @@ mod security_tests {
             for addr in &invalid_ips {
                 assert!(
                     !test_validate_server_address(addr),
-                    "Invalid IP address '{}' should be rejected",
-                    addr
+                    "Invalid IP address '{addr}' should be rejected"
                 );
             }
         }
@@ -367,8 +363,7 @@ mod security_tests {
             for attack in &injection_attacks {
                 assert!(
                     !test_validate_server_address(attack),
-                    "Injection attack '{}' should be blocked",
-                    attack
+                    "Injection attack '{attack}' should be blocked"
                 );
             }
         }
@@ -395,8 +390,7 @@ mod security_tests {
             for hostname in &invalid_hostnames {
                 assert!(
                     !test_validate_server_address(hostname),
-                    "Invalid hostname '{}' should be rejected",
-                    hostname
+                    "Invalid hostname '{hostname}' should be rejected"
                 );
             }
         }
@@ -436,8 +430,7 @@ mod security_tests {
             for attack in &null_byte_attacks {
                 assert!(
                     !test_validate_server_address(attack),
-                    "Null byte injection should be blocked: {:?}",
-                    attack
+                    "Null byte injection should be blocked: {attack:?}"
                 );
             }
         }
@@ -508,7 +501,7 @@ mod security_tests {
                     "Error message should include the file path"
                 );
             } else {
-                panic!("Expected NotFound error, got: {:?}", result);
+                panic!("Expected NotFound error, got: {result:?}");
             }
         }
 
@@ -529,7 +522,7 @@ mod security_tests {
                     "Error message should mention file not found"
                 );
             } else {
-                panic!("Expected NotFound error, got: {:?}", result);
+                panic!("Expected NotFound error, got: {result:?}");
             }
         }
 
@@ -627,7 +620,7 @@ mod security_tests {
             if let Err(AppError::Utf8(_)) = result {
                 // Expected UTF-8 error
             } else {
-                panic!("Expected UTF-8 error, got: {:?}", result);
+                panic!("Expected UTF-8 error, got: {result:?}");
             }
         }
 

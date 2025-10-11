@@ -208,7 +208,7 @@ impl ResourceAdvisor {
         ];
 
         if let Some(disk) = suggestion.disk_size {
-            parts.push(format!("disk_size={}", disk));
+            parts.push(format!("disk_size={disk}"));
         }
 
         parts.join(" ")
@@ -307,13 +307,11 @@ mod tests {
             let suggestion = ResourceAdvisor::suggest_vm_resources(framework);
             assert!(
                 suggestion.memory >= 2048,
-                "Framework {} should have at least 2GB memory",
-                framework
+                "Framework {framework} should have at least 2GB memory"
             );
             assert!(
                 suggestion.cpus >= 2,
-                "Framework {} should have at least 2 CPUs",
-                framework
+                "Framework {framework} should have at least 2 CPUs"
             );
         }
     }

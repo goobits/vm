@@ -79,7 +79,7 @@ impl SecurityValidator {
         let workspace_with_slash = if workspace_str.ends_with('/') {
             workspace_str.to_string()
         } else {
-            format!("{}/", workspace_str)
+            format!("{workspace_str}/")
         };
 
         // Check if target is within workspace (or is exactly the workspace)
@@ -165,7 +165,7 @@ impl SecurityValidator {
 
         // Double-check that we haven't escaped the base directory
         let canonical_base = base_dir.canonicalize().map_err(|e| {
-            VmError::Internal(format!("Failed to canonicalize base directory: {}", e))
+            VmError::Internal(format!("Failed to canonicalize base directory: {e}"))
         })?;
 
         // Since destination might not exist, we check the parent

@@ -32,7 +32,7 @@ impl PackageServerClient {
                 .text()
                 .unwrap_or_else(|_| "Unknown error".to_string());
             error!(item_name = %item_name, error = %error_text, "{} failed", operation_name);
-            anyhow::bail!("{} failed: {}", operation_name, error_text);
+            anyhow::bail!("{operation_name} failed: {error_text}");
         }
     }
 
@@ -53,7 +53,7 @@ impl PackageServerClient {
                 .text()
                 .unwrap_or_else(|_| "Unknown error".to_string());
             error!(package_name = %package_name, version = %version, error = %error_text, "{} failed", operation_name);
-            anyhow::bail!("{} failed: {}", operation_name, error_text);
+            anyhow::bail!("{operation_name} failed: {error_text}");
         }
     }
 
@@ -77,7 +77,7 @@ impl PackageServerClient {
                 .text()
                 .unwrap_or_else(|_| "Unknown error".to_string());
             error!(crate_name = %crate_name, version = %version, force = %force, error = %error_text, "Cargo crate version operation failed");
-            anyhow::bail!("Operation failed: {}", error_text);
+            anyhow::bail!("Operation failed: {error_text}");
         }
     }
 }
@@ -147,7 +147,7 @@ impl PackageServerClient {
 
         // Add auth header if token is available
         if let Some(token) = &self.auth_token {
-            request = request.header("Authorization", format!("Bearer {}", token));
+            request = request.header("Authorization", format!("Bearer {token}"));
         }
 
         let response = request.send().context("Failed to upload package")?;
@@ -160,7 +160,7 @@ impl PackageServerClient {
                 .text()
                 .unwrap_or_else(|_| "Unknown error".to_string());
             error!(file_name = %file_name, error = %error_text, "PyPI package upload failed");
-            anyhow::bail!("Upload failed: {}", error_text);
+            anyhow::bail!("Upload failed: {error_text}");
         }
     }
 
@@ -179,7 +179,7 @@ impl PackageServerClient {
 
         // Add auth header if token is available
         if let Some(token) = &self.auth_token {
-            request = request.header("Authorization", format!("Bearer {}", token));
+            request = request.header("Authorization", format!("Bearer {token}"));
         }
 
         let response = request.send().context("Failed to upload NPM package")?;
@@ -192,7 +192,7 @@ impl PackageServerClient {
                 .text()
                 .unwrap_or_else(|_| "Unknown error".to_string());
             error!(package_name = %package_name, error = %error_text, "NPM package publish failed");
-            anyhow::bail!("NPM publish failed: {}", error_text);
+            anyhow::bail!("NPM publish failed: {error_text}");
         }
     }
 
@@ -257,7 +257,7 @@ impl PackageServerClient {
 
         // Add auth header if token is available
         if let Some(token) = &self.auth_token {
-            request = request.header("Authorization", format!("Bearer {}", token));
+            request = request.header("Authorization", format!("Bearer {token}"));
         }
 
         let response = request
@@ -273,7 +273,7 @@ impl PackageServerClient {
                 .text()
                 .unwrap_or_else(|_| "Unknown error".to_string());
             error!(file_name = %file_name, error = %error_text, "Cargo crate publish failed");
-            anyhow::bail!("Cargo publish failed: {}", error_text);
+            anyhow::bail!("Cargo publish failed: {error_text}");
         }
     }
 

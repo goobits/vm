@@ -36,7 +36,7 @@ impl<'a> LifecycleOperations<'a> {
 
         if pipx_list_output.status.success() {
             let pipx_json = serde_json::from_slice::<Value>(&pipx_list_output.stdout)
-                .map_err(|e| VmError::Internal(format!("Failed to parse pipx package listing output as JSON. pipx may have returned invalid output: {}", e)))?;
+                .map_err(|e| VmError::Internal(format!("Failed to parse pipx package listing output as JSON. pipx may have returned invalid output: {e}")))?;
             Ok(Some(pipx_json))
         } else {
             Ok(None)

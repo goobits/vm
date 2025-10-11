@@ -214,8 +214,7 @@ impl PortRegistry {
             if !parent.exists() {
                 fs::create_dir_all(parent).map_err(|e| {
                     VmError::Filesystem(format!(
-                        "Failed to create registry directory: {:?}: {}",
-                        parent, e
+                        "Failed to create registry directory: {parent:?}: {e}"
                     ))
                 })?;
             }
@@ -250,14 +249,12 @@ impl PortRegistry {
                     attempts += 1;
                     if lock_start.elapsed() > LOCK_TIMEOUT {
                         return Err(vm_core::error::VmError::Internal(format!(
-                            "Timeout waiting for exclusive lock on registry file after {} attempts: {}",
-                            attempts, e
+                            "Timeout waiting for exclusive lock on registry file after {attempts} attempts: {e}"
                         )));
                     }
                     if attempts >= MAX_RETRIES {
                         return Err(vm_core::error::VmError::Internal(format!(
-                            "Maximum retry attempts ({}) exceeded for lock acquisition: {}",
-                            MAX_RETRIES, e
+                            "Maximum retry attempts ({MAX_RETRIES}) exceeded for lock acquisition: {e}"
                         )));
                     }
                     std::thread::sleep(RETRY_DELAY);
@@ -277,20 +274,20 @@ impl PortRegistry {
                 HashMap::new()
             } else {
                 serde_json::from_str(&content).map_err(|e| {
-                    VmError::Serialization(format!("Failed to parse registry JSON: {}", e))
+                    VmError::Serialization(format!("Failed to parse registry JSON: {e}"))
                 })?
             };
 
         // Apply the update
         update_fn(&mut entries)
-            .map_err(|e| VmError::Internal(format!("Update function failed: {}", e)))?;
+            .map_err(|e| VmError::Internal(format!("Update function failed: {e}")))?;
 
         // Write back to file
         let json_content = if entries.is_empty() {
             String::from("{}")
         } else {
             serde_json::to_string_pretty(&entries).map_err(|e| {
-                VmError::Serialization(format!("Failed to serialize registry to JSON: {}", e))
+                VmError::Serialization(format!("Failed to serialize registry to JSON: {e}"))
             })?
         };
 
@@ -300,15 +297,14 @@ impl PortRegistry {
         let thread_id = std::thread::current().id();
         let temp_path = self
             .registry_path
-            .with_extension(format!("json.tmp.{:?}", thread_id));
+            .with_extension(format!("json.tmp.{thread_id:?}"));
         fs::write(&temp_path, &json_content).map_err(|e| {
             VmError::Filesystem(format!(
-                "Failed to write temporary file: {:?}: {}",
-                temp_path, e
+                "Failed to write temporary file: {temp_path:?}: {e}"
             ))
         })?;
         fs::rename(&temp_path, &self.registry_path).map_err(|e| {
-            VmError::Filesystem(format!("Failed to atomically rename temporary file: {}", e))
+            VmError::Filesystem(format!("Failed to atomically rename temporary file: {e}"))
         })?;
 
         // Update our local state
@@ -413,7 +409,7 @@ mod tests {
                 // Small delay to increase concurrency and test lock contention
                 std::thread::sleep(std::time::Duration::from_millis(1));
 
-                registry.register(&format!("project_{}", i), &range, &format!("/path_{}", i))
+                registry.register(&format!("project_{i}"), &range, &format!("/path_{i}"))
             });
             handles.push(handle);
         }
@@ -429,18 +425,17 @@ mod tests {
         let failed_registrations = results.iter().filter(|r| r.is_err()).count();
 
         println!(
-            "Concurrent access test results with locking: {} succeeded, {} failed",
-            successful_registrations, failed_registrations
+            "Concurrent access test results with locking: {successful_registrations} succeeded, {failed_registrations} failed"
         );
 
         // Print detailed error information for debugging
         for (i, result) in results.iter().enumerate() {
             if let Err(e) = result {
-                println!("Thread {} failed with error: {}", i, e);
+                println!("Thread {i} failed with error: {e}");
                 println!("Error chain:");
                 let mut current = e.source();
                 while let Some(err) = current {
-                    println!("  Caused by: {}", err);
+                    println!("  Caused by: {err}");
                     current = err.source();
                 }
             }
@@ -455,9 +450,9 @@ mod tests {
         let actual_count = final_entries.len();
 
         println!("Final analysis with proper file locking:");
-        println!("  File operations succeeded: {}", successful_registrations);
-        println!("  File operations failed: {}", failed_registrations);
-        println!("  Final registry entries: {}", actual_count);
+        println!("  File operations succeeded: {successful_registrations}");
+        println!("  File operations failed: {failed_registrations}");
+        println!("  Final registry entries: {actual_count}");
 
         // Debug: print all actual entries
         println!("Actual entries in registry:");
@@ -472,8 +467,7 @@ mod tests {
         if successful_registrations == num_threads && actual_count >= num_threads - 2 {
             // Perfect or near-perfect scenario - all operations succeeded with minimal data loss
             println!(
-                "✅ Excellent result: {}/{} operations succeeded, {}/{} entries preserved",
-                successful_registrations, num_threads, actual_count, num_threads
+                "✅ Excellent result: {successful_registrations}/{num_threads} operations succeeded, {actual_count}/{num_threads} entries preserved"
             );
             if actual_count < num_threads {
                 println!("   Minor entry loss is acceptable in concurrent scenarios");
@@ -481,16 +475,14 @@ mod tests {
         } else if successful_registrations >= num_threads - 2 && actual_count >= num_threads - 3 {
             // Acceptable scenario - minor data loss but much better than without locking
             println!(
-                "✅ Good result: {}/{} operations succeeded, {}/{} entries preserved",
-                successful_registrations, num_threads, actual_count, num_threads
+                "✅ Good result: {successful_registrations}/{num_threads} operations succeeded, {actual_count}/{num_threads} entries preserved"
             );
             println!("   This is a significant improvement over the unlocked version");
             println!("   (Original unlocked version typically lost 30-50% of entries)");
         } else {
             // Unacceptable scenario - significant data loss suggesting locking isn't working well
             panic!(
-                "❌ Poor result: Only {}/{} operations succeeded, only {}/{} entries preserved. File locking may not be working correctly.",
-                successful_registrations, num_threads, actual_count, num_threads
+                "❌ Poor result: Only {successful_registrations}/{num_threads} operations succeeded, only {actual_count}/{num_threads} entries preserved. File locking may not be working correctly."
             );
         }
 
@@ -507,8 +499,7 @@ mod tests {
             // Verify the entry format is correct
             assert!(
                 project_name.starts_with("project_"),
-                "Invalid project name format: {}",
-                project_name
+                "Invalid project name format: {project_name}"
             );
             assert!(
                 entry.path.starts_with("/path_"),
@@ -521,17 +512,15 @@ mod tests {
             if let Some(project_id) = project_name.strip_prefix("project_") {
                 if let Ok(id) = project_id.parse::<u16>() {
                     let expected_range = format!("{}-{}", 3000 + id * 10, 3000 + id * 10 + 9);
-                    let expected_path = format!("/path_{}", id);
+                    let expected_path = format!("/path_{id}");
 
                     assert_eq!(
                         entry.range, expected_range,
-                        "Range mismatch for project {}",
-                        project_name
+                        "Range mismatch for project {project_name}"
                     );
                     assert_eq!(
                         entry.path, expected_path,
-                        "Path mismatch for project {}",
-                        project_name
+                        "Path mismatch for project {project_name}"
                     );
                 }
             }
@@ -539,8 +528,7 @@ mod tests {
 
         println!("File locking implementation successfully prevented major race conditions");
         println!(
-            "Registry integrity maintained with {} entries preserved",
-            actual_count
+            "Registry integrity maintained with {actual_count} entries preserved"
         );
     }
 }

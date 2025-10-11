@@ -19,7 +19,7 @@ pub fn normalize_pypi_name(name: &str) -> String {
     static PYPI_NAME_REGEX: OnceLock<Regex> = OnceLock::new();
     let re = PYPI_NAME_REGEX.get_or_init(|| {
         Regex::new(r"[-_.]+")
-            .unwrap_or_else(|e| panic!("Failed to compile PyPI name normalization regex: {}", e))
+            .unwrap_or_else(|e| panic!("Failed to compile PyPI name normalization regex: {e}"))
     });
     re.replace_all(&name.to_lowercase(), "-").to_string()
 }
