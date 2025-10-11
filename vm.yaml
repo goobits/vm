@@ -6,9 +6,9 @@ project:
   name: vm
   workspace_path: /workspace
 vm:
-  cpus: 6
+  cpus: 2
   gui: false
-  memory: 8192
+  memory: 4096
   port_binding: 0.0.0.0
   timezone: America/Los_Angeles
   user: developer
