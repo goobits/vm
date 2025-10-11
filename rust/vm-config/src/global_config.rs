@@ -254,10 +254,10 @@ impl GlobalFeatures {
 }
 
 /// Global settings for git worktrees
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorktreesGlobalSettings {
     /// Enable worktrees for all projects by default
-    #[serde(default)]
+    #[serde(default = "default_worktrees_enabled")]
     pub enabled: bool,
 
     /// Default base path for worktree directories
@@ -265,11 +265,24 @@ pub struct WorktreesGlobalSettings {
     pub base_path: Option<String>,
 }
 
+impl Default for WorktreesGlobalSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            base_path: None,
+        }
+    }
+}
+
 impl WorktreesGlobalSettings {
     /// Check if settings are at defaults
     pub fn is_default(&self) -> bool {
-        !self.enabled && self.base_path.is_none()
+        self.enabled && self.base_path.is_none()
     }
+}
+
+fn default_worktrees_enabled() -> bool {
+    true
 }
 
 // Default value functions for serde

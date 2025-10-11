@@ -489,12 +489,25 @@ fn default_true() -> bool {
 }
 
 /// Git worktree configuration settings.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorktreesConfig {
-    #[serde(default)]
+    #[serde(default = "default_worktrees_enabled")]
     pub enabled: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub base_path: Option<String>,
+}
+
+impl Default for WorktreesConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            base_path: None,
+        }
+    }
+}
+
+fn default_worktrees_enabled() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
