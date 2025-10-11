@@ -11,11 +11,11 @@ use uuid::Uuid;
 // External crates
 use clap::Parser;
 use tracing::Instrument;
-use tracing::{info, info_span};
+use tracing::info_span;
 
 // Internal imports
 use vm_core::vm_error;
-use vm_logging::init_subscriber_with_config;
+use vm_logging::init_subscriber;
 
 // Local modules
 mod cli;
@@ -37,10 +37,6 @@ fn get_request_id() -> &'static str {
 
 /// Executes the given command and handles top-level errors.
 async fn run_command(args: Args) {
-    if args.verbose {
-        info!("Starting vm command");
-    }
-
     if let Err(e) = execute_command(args).await {
         vm_error!("{}", e);
         std::process::exit(1);
@@ -56,13 +52,14 @@ async fn main() {
     }
 
     let args = Args::parse();
-    init_subscriber_with_config(args.verbose);
+    // The guard must be kept in scope for the lifetime of the application
+    // to ensure that all buffered logs are flushed to the file.
+    let _guard = init_subscriber();
 
     if std::env::var("VM_TEST_MODE").is_err() {
         let span = info_span!("request",
             request_id = %get_request_id(),
-            command = ?args.command,
-            verbose = args.verbose
+            command = ?args.command
         );
         run_command(args).instrument(span).await;
     } else {

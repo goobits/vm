@@ -24,10 +24,6 @@ pub struct Args {
     /// Show what would be executed without running
     #[arg(long, global = true)]
     pub dry_run: bool,
-
-    /// Enable verbose output
-    #[arg(short = 'v', long, global = true)]
-    pub verbose: bool,
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -620,14 +616,12 @@ mod tests {
             "vm",
             "--config",
             "/custom/config.yaml",
-            "--verbose",
             "status",
         ]);
         assert_eq!(
             args.config,
             Some(std::path::PathBuf::from("/custom/config.yaml"))
         );
-        assert!(args.verbose);
         match args.command {
             Command::Status { .. } => { /* Correct command */ }
             _ => panic!("Expected Command::Status"),

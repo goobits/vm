@@ -2,6 +2,7 @@ use clap::Parser;
 use vm_core::error::Result;
 use vm_core::{vm_error, vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
+use vm_logging::init_subscriber;
 
 mod cli;
 mod dependencies;
@@ -19,11 +20,10 @@ fn main() {
     }
 }
 
-use vm_logging::init_subscriber_with_config;
-
 fn run() -> Result<()> {
-    // We don't have a --verbose flag here, so we default to false
-    init_subscriber_with_config(false);
+    // The guard must be kept in scope for the lifetime of the application
+    // to ensure that all buffered logs are flushed to the file.
+    let _guard = init_subscriber();
     let args = Args::parse();
 
     vm_println!("{}", MESSAGES.installer_installing);
