@@ -25,6 +25,7 @@ use futures::future;
 use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
+use shellexpand;
 
 use vm_config::GlobalConfig;
 use vm_core::{vm_println, vm_success, vm_warning};
@@ -94,6 +95,15 @@ impl ServiceManager {
         }
         if global_config.services.package_registry.enabled {
             services_to_start.push("package_registry");
+        }
+        if global_config.services.postgresql.enabled {
+            services_to_start.push("postgresql");
+        }
+        if global_config.services.redis.enabled {
+            services_to_start.push("redis");
+        }
+        if global_config.services.mongodb.enabled {
+            services_to_start.push("mongodb");
         }
 
         // Update reference counts and track which services need starting
@@ -231,6 +241,18 @@ impl ServiceManager {
                 vm_println!("🚀 Starting package registry on port {}...", port);
                 self.start_package_registry(port).await?;
             }
+            "postgresql" => {
+                vm_println!("🚀 Starting PostgreSQL on port {}...", port);
+                self.start_postgres(global_config).await?;
+            }
+            "redis" => {
+                vm_println!("🚀 Starting Redis on port {}...", port);
+                self.start_redis(global_config).await?;
+            }
+            "mongodb" => {
+                vm_println!("🚀 Starting MongoDB on port {}...", port);
+                self.start_mongodb(global_config).await?;
+            }
             _ => {
                 return Err(anyhow::anyhow!("Unknown service: {}", service_name));
             }
@@ -280,6 +302,18 @@ impl ServiceManager {
                 vm_println!("🛑 Stopping package registry...");
                 self.stop_package_registry().await?;
             }
+            "postgresql" => {
+                vm_println!("🛑 Stopping PostgreSQL...");
+                self.stop_postgres().await?;
+            }
+            "redis" => {
+                vm_println!("🛑 Stopping Redis...");
+                self.stop_redis().await?;
+            }
+            "mongodb" => {
+                vm_println!("🛑 Stopping MongoDB...");
+                self.stop_mongodb().await?;
+            }
             _ => {
                 return Err(anyhow::anyhow!("Unknown service: {}", service_name));
             }
@@ -304,6 +338,9 @@ impl ServiceManager {
             "auth_proxy" => global_config.services.auth_proxy.port,
             "docker_registry" => global_config.services.docker_registry.port,
             "package_registry" => global_config.services.package_registry.port,
+            "postgresql" => global_config.services.postgresql.port,
+            "redis" => global_config.services.redis.port,
+            "mongodb" => global_config.services.mongodb.port,
             _ => 0,
         }
     }
@@ -315,10 +352,16 @@ impl ServiceManager {
             "auth_proxy" => format!("http://localhost:{}/health", port),
             "docker_registry" => format!("http://localhost:{}/v2/", port),
             "package_registry" => format!("http://localhost:{}/health", port),
+            "postgresql" | "redis" | "mongodb" => {
+                // For database services, a TCP connection is a reliable health check
+                return tokio::net::TcpStream::connect(format!("127.0.0.1:{}", port))
+                    .await
+                    .is_ok();
+            }
             _ => return false,
         };
 
-        // Use reqwest to check health
+        // Use reqwest to check health for HTTP-based services
         match reqwest::get(&endpoint).await {
             Ok(response) => response.status().is_success(),
             Err(_) => false,
@@ -486,6 +529,149 @@ impl ServiceManager {
             }
         } else {
             warn!("No shutdown handle found for package registry - it may not be running or was started externally");
+        }
+
+        Ok(())
+    }
+
+    /// Start PostgreSQL service
+    async fn start_postgres(&self, global_config: &GlobalConfig) -> Result<()> {
+        let settings = &global_config.services.postgresql;
+        let container_name = "vm-postgres-global";
+
+        // Expand tilde in data_dir
+        let data_dir = shellexpand::tilde(&settings.data_dir).to_string();
+        tokio::fs::create_dir_all(&data_dir).await?;
+
+        let mut cmd = tokio::process::Command::new("docker");
+        cmd.arg("run")
+            .arg("-d")
+            .arg("--name")
+            .arg(container_name)
+            .arg("-p")
+            .arg(format!("{}:5432", settings.port))
+            .arg("-v")
+            .arg(format!("{}:/var/lib/postgresql/data", data_dir))
+            .arg("-e")
+            .arg("POSTGRES_PASSWORD=postgres") // Simple default for local dev
+            .arg(format!("postgres:{}", settings.version));
+
+        let status = cmd.status().await?;
+        if !status.success() {
+            return Err(anyhow::anyhow!("Failed to start PostgreSQL container"));
+        }
+
+        Ok(())
+    }
+
+    /// Stop PostgreSQL service
+    async fn stop_postgres(&self) -> Result<()> {
+        let container_name = "vm-postgres-global";
+
+        // Stop the container
+        let mut stop_cmd = tokio::process::Command::new("docker");
+        stop_cmd.arg("stop").arg(container_name);
+        if !stop_cmd.status().await?.success() {
+            warn!("Failed to stop PostgreSQL container, it may not have been running.");
+        }
+
+        // Remove the container
+        let mut rm_cmd = tokio::process::Command::new("docker");
+        rm_cmd.arg("rm").arg(container_name);
+        if !rm_cmd.status().await?.success() {
+            warn!("Failed to remove PostgreSQL container.");
+        }
+
+        Ok(())
+    }
+
+    /// Start Redis service
+    async fn start_redis(&self, global_config: &GlobalConfig) -> Result<()> {
+        let settings = &global_config.services.redis;
+        let container_name = "vm-redis-global";
+
+        let data_dir = shellexpand::tilde(&settings.data_dir).to_string();
+        tokio::fs::create_dir_all(&data_dir).await?;
+
+        let mut cmd = tokio::process::Command::new("docker");
+        cmd.arg("run")
+            .arg("-d")
+            .arg("--name")
+            .arg(container_name)
+            .arg("-p")
+            .arg(format!("{}:6379", settings.port))
+            .arg("-v")
+            .arg(format!("{}:/data", data_dir))
+            .arg(format!("redis:{}", settings.version));
+
+        let status = cmd.status().await?;
+        if !status.success() {
+            return Err(anyhow::anyhow!("Failed to start Redis container"));
+        }
+
+        Ok(())
+    }
+
+    /// Stop Redis service
+    async fn stop_redis(&self) -> Result<()> {
+        let container_name = "vm-redis-global";
+
+        let mut stop_cmd = tokio::process::Command::new("docker");
+        stop_cmd.arg("stop").arg(container_name);
+        if !stop_cmd.status().await?.success() {
+            warn!("Failed to stop Redis container, it may not have been running.");
+        }
+
+        let mut rm_cmd = tokio::process::Command::new("docker");
+        rm_cmd.arg("rm").arg(container_name);
+        if !rm_cmd.status().await?.success() {
+            warn!("Failed to remove Redis container.");
+        }
+
+        Ok(())
+    }
+
+    /// Start MongoDB service
+    async fn start_mongodb(&self, global_config: &GlobalConfig) -> Result<()> {
+        let settings = &global_config.services.mongodb;
+        let container_name = "vm-mongodb-global";
+
+        let data_dir = shellexpand::tilde(&settings.data_dir).to_string();
+        tokio::fs::create_dir_all(&data_dir).await?;
+
+        let mut cmd = tokio::process::Command::new("docker");
+        cmd.arg("run")
+            .arg("-d")
+            .arg("--name")
+            .arg(container_name)
+            .arg("-p")
+            .arg(format!("{}:27017", settings.port))
+            .arg("-v")
+            .arg(format!("{}:/data/db", data_dir))
+            .arg(format!("mongo:{}", settings.version));
+
+        let status = cmd.status().await?;
+        if !status.success() {
+            return Err(anyhow::anyhow!("Failed to start MongoDB container"));
+        }
+
+        Ok(())
+    }
+
+    /// Stop MongoDB service
+    async fn stop_mongodb(&self) -> Result<()> {
+        let container_name = "vm-mongodb-global";
+
+        let mut stop_cmd = tokio::process::Command::new("docker");
+        stop_cmd.arg("stop").arg(container_name);
+        if !stop_cmd.status().await?.success() {
+            warn!("Failed to stop MongoDB container, it may not have been running.");
+        }
+
+        let mut rm_cmd = tokio::process::Command::new("docker");
+        rm_cmd.arg("rm").arg(container_name);
+        if !rm_cmd.status().await?.success() {
+            warn!("Failed to remove MongoDB container.");
         }
 
         Ok(())

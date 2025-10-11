@@ -53,6 +53,18 @@ pub struct GlobalServices {
     /// Package registry configuration
     #[serde(default, skip_serializing_if = "PackageRegistrySettings::is_default")]
     pub package_registry: PackageRegistrySettings,
+
+    /// PostgreSQL service configuration
+    #[serde(default, skip_serializing_if = "PostgresSettings::is_default")]
+    pub postgresql: PostgresSettings,
+
+    /// Redis service configuration
+    #[serde(default, skip_serializing_if = "RedisSettings::is_default")]
+    pub redis: RedisSettings,
+
+    /// MongoDB service configuration
+    #[serde(default, skip_serializing_if = "MongoDBSettings::is_default")]
+    pub mongodb: MongoDBSettings,
 }
 
 impl GlobalServices {
@@ -61,6 +73,123 @@ impl GlobalServices {
         self.docker_registry.is_default()
             && self.auth_proxy.is_default()
             && self.package_registry.is_default()
+            && self.postgresql.is_default()
+            && self.redis.is_default()
+            && self.mongodb.is_default()
+    }
+}
+
+/// PostgreSQL service settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PostgresSettings {
+    /// Whether the PostgreSQL service is enabled
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Port for the PostgreSQL service (default: 5432)
+    #[serde(default = "default_postgres_port")]
+    pub port: u16,
+
+    /// Docker image version for PostgreSQL
+    #[serde(default = "default_postgres_version")]
+    pub version: String,
+
+    /// Directory to store PostgreSQL data
+    #[serde(default = "default_postgres_data_dir")]
+    pub data_dir: String,
+}
+
+impl Default for PostgresSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: default_postgres_port(),
+            version: default_postgres_version(),
+            data_dir: default_postgres_data_dir(),
+        }
+    }
+}
+
+impl PostgresSettings {
+    /// Check if settings are at defaults
+    pub fn is_default(&self) -> bool {
+        !self.enabled
+    }
+}
+
+/// Redis service settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RedisSettings {
+    /// Whether the Redis service is enabled
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Port for the Redis service (default: 6379)
+    #[serde(default = "default_redis_port")]
+    pub port: u16,
+
+    /// Docker image version for Redis
+    #[serde(default = "default_redis_version")]
+    pub version: String,
+
+    /// Directory to store Redis data
+    #[serde(default = "default_redis_data_dir")]
+    pub data_dir: String,
+}
+
+impl Default for RedisSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: default_redis_port(),
+            version: default_redis_version(),
+            data_dir: default_redis_data_dir(),
+        }
+    }
+}
+
+impl RedisSettings {
+    /// Check if settings are at defaults
+    pub fn is_default(&self) -> bool {
+        !self.enabled
+    }
+}
+
+/// MongoDB service settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MongoDBSettings {
+    /// Whether the MongoDB service is enabled
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Port for the MongoDB service (default: 27017)
+    #[serde(default = "default_mongodb_port")]
+    pub port: u16,
+
+    /// Docker image version for MongoDB
+    #[serde(default = "default_mongodb_version")]
+    pub version: String,
+
+    /// Directory to store MongoDB data
+    #[serde(default = "default_mongodb_data_dir")]
+    pub data_dir: String,
+}
+
+impl Default for MongoDBSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: default_mongodb_port(),
+            version: default_mongodb_version(),
+            data_dir: default_mongodb_data_dir(),
+        }
+    }
+}
+
+impl MongoDBSettings {
+    /// Check if settings are at defaults
+    pub fn is_default(&self) -> bool {
+        !self.enabled
     }
 }
 
@@ -296,6 +425,42 @@ fn default_auth_proxy_port() -> u16 {
 
 fn default_package_registry_port() -> u16 {
     3080
+}
+
+fn default_postgres_port() -> u16 {
+    5432
+}
+
+fn default_postgres_version() -> String {
+    "16".to_string()
+}
+
+fn default_postgres_data_dir() -> String {
+    "~/.vm/data/postgres".to_string()
+}
+
+fn default_redis_port() -> u16 {
+    6379
+}
+
+fn default_redis_version() -> String {
+    "7".to_string()
+}
+
+fn default_redis_data_dir() -> String {
+    "~/.vm/data/redis".to_string()
+}
+
+fn default_mongodb_port() -> u16 {
+    27017
+}
+
+fn default_mongodb_version() -> String {
+    "7".to_string()
+}
+
+fn default_mongodb_data_dir() -> String {
+    "~/.vm/data/mongodb".to_string()
 }
 
 fn default_cache_size() -> u64 {

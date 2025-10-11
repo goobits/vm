@@ -124,6 +124,50 @@ impl<'a> ComposeOperations<'a> {
                     ("VM_CARGO_REGISTRY_PORT".to_string(), port.to_string()),
                 ]);
             }
+
+            // Add PostgreSQL environment variables from global config
+            if global_cfg.services.postgresql.enabled {
+                let host = vm_platform::platform::get_host_gateway();
+                let port = global_cfg.services.postgresql.port;
+                let user = "postgres";
+                let password = "postgres"; // Matches the default password in service_manager.rs
+                let db_name = self
+                    .config
+                    .project
+                    .as_ref()
+                    .and_then(|p| p.name.as_deref())
+                    .unwrap_or("vm_project");
+
+                host_env_vars.push((
+                    "DATABASE_URL".to_string(),
+                    format!(
+                        "postgresql://{}:{}@{}:{}/{}",
+                        user, password, host, port, db_name
+                    ),
+                ));
+            }
+
+            // Add Redis environment variables from global config
+            if global_cfg.services.redis.enabled {
+                let host = vm_platform::platform::get_host_gateway();
+                let port = global_cfg.services.redis.port;
+
+                host_env_vars.push((
+                    "REDIS_URL".to_string(),
+                    format!("redis://{}:{}", host, port),
+                ));
+            }
+
+            // Add MongoDB environment variables from global config
+            if global_cfg.services.mongodb.enabled {
+                let host = vm_platform::platform::get_host_gateway();
+                let port = global_cfg.services.mongodb.port;
+
+                host_env_vars.push((
+                    "MONGODB_URL".to_string(),
+                    format!("mongodb://{}:{}", host, port),
+                ));
+            }
         }
 
         Ok(HostPackageContext {
