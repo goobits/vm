@@ -178,6 +178,38 @@ worktrees:
 - Tests create a temporary Git repository, add a worktree, and then run `vm create` from within the worktree directory.
 - Assertions verify that the VM is created successfully and that the volume mounts are correctly configured for the worktree structure.
 
+## ServiceManager Architecture
+
+The `ServiceManager` (`rust/vm/src/service_manager.rs`) is responsible for managing the lifecycle of shared, global services like the Docker registry, auth proxy, and shared databases.
+
+### Key Concepts
+
+1.  **Reference Counting**: The manager tracks how many VMs are using each service. A service is started when the first VM needs it and stopped when the last VM using it is destroyed.
+2.  **State Persistence**: The state of all services (e.g., reference count, running status, port) is saved to `~/.vm/state/services.json`. This ensures that the state is preserved across CLI commands and system reboots.
+3.  **Automatic Lifecycle**: `vm create` calls `register_vm_services`, and `vm destroy` calls `unregister_vm_services` to automatically manage the reference counts.
+
+### Adding a New Service (Step-by-Step)
+
+To add a new shared service (e.g., a new database), follow these steps:
+
+1.  **Update `global_config.rs`**:
+    *   In `rust/vm-config/src/global_config.rs`, add a new `YourServiceSettings` struct with `enabled`, `port`, `version`, etc.
+    *   Add the new settings struct to the `GlobalServices` struct.
+    *   Update the `is_default` method in `GlobalServices` to include your new service.
+    *   Add default value functions for your service's settings (e.g., `default_your_service_port`).
+
+2.  **Update `service_manager.rs`**:
+    *   In `register_vm_services`, add a check for `global_config.services.your_service.enabled`.
+    *   Add cases for `"your_service"` in the `match` statements within `start_service`, `stop_service`, `get_service_port`, and `check_service_health`.
+    *   Implement `start_your_service` and `stop_your_service` methods. For Docker-based services, these methods will typically use `tokio::process::Command` to run `docker` commands.
+
+3.  **Update `compose.rs` (for environment variables)**:
+    *   In `rust/vm-provider/src/docker/compose.rs`, modify the `build_host_package_context` function.
+    *   Add a new `if` block to check if your service is enabled in the global config.
+    *   If it is, add the necessary environment variables (e.g., `DATABASE_URL`) to the `host_env_vars` vector.
+
+By following this pattern, you can easily extend the `ServiceManager` to support new shared services.
+
 ## Build Commands
 
 ### Using Make (Recommended)
