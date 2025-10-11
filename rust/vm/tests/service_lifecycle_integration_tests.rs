@@ -4,6 +4,7 @@
 //! at the CLI level, testing the actual user-facing behavior.
 
 use anyhow::Result;
+use assert_cmd::prelude::*; // For CommandCargoExt
 use std::process::Command;
 use std::sync::Mutex;
 use tempfile::TempDir;
@@ -22,7 +23,7 @@ impl CliTestFixture {
         let temp_dir = TempDir::new()?;
 
         // Get the path to the vm binary
-        let vm_binary = std::path::PathBuf::from(env!("CARGO_BIN_EXE_vm"));
+        let vm_binary = Command::cargo_bin("vm")?.get_program().into();
 
         Ok(Self {
             _temp_dir: temp_dir,

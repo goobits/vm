@@ -81,7 +81,7 @@ fn test_migration_command_user_cancels() {
         .write_stdin("n\n") // Deny the prompt
         .assert()
         .success()
-        .stderr(predicate::str::contains("Migration cancelled by user."));
+        .stdout(predicate::str::contains("Migration cancelled by user."));
 
     // Verify old files still exist
     let old_config_dir = temp_home.path().join(".config").join("vm");

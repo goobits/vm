@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.1]
+
 ### Added
 - **Tart Provider Feature Parity**: Achieved 100% Docker parity for macOS-native VMs
   - SSH-based provisioning with framework detection (Node.js, Python, Ruby, Rust, Go)
