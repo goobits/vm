@@ -51,9 +51,6 @@ You can also run each check individually:
 # Check code formatting
 make fmt
 
-# Fix code formatting
-make fmt-fix
-
 # Run clippy linter (warnings treated as errors)
 make clippy
 
@@ -109,7 +106,9 @@ vm/
 │   ├── vm-provider/   # Provider abstraction (Docker, Tart, Vagrant)
 │   ├── vm-core/       # Shared core utilities
 │   ├── vm-cli/        # CLI helpers and formatting
-│   └── ...            # Other workspace crates
+│   ├── vm-messages/   # Centralized user-facing messages
+│   ├── vm-logging/    # Logging setup and configuration
+│   └── ...            # Other workspace crates (15 total)
 ├── Makefile           # Build and quality gate commands
 └── CONTRIBUTING.md    # This file
 ```
@@ -141,6 +140,160 @@ including create, start, stop, and SSH operations.
 4. Commit your changes with clear messages
 5. Push to your fork and create a pull request
 6. Address any review feedback
+
+## User-Facing Messages
+
+All user-facing messages (e.g., status updates, errors, hints) MUST use the centralized `vm-messages` system to ensure consistency. Do not use `println!` or `eprintln!` directly for user output in application code.
+
+The system is exposed through macros in the `vm-core` crate.
+
+**How to Use:**
+
+1. **Add a Template:** If a suitable message doesn't exist, add a new template to `rust/vm-messages/src/messages.rs`.
+   ```rust
+   // in MESSAGES struct
+   pub my_new_message: &'static str,
+   // in MESSAGES constant
+   my_new_message: "✅ My new message for {item} is complete.",
+   ```
+
+2. **Use the Macros:** Use the `vm_println!`, `vm_error!`, or `vm_suggest!` macros in your code. Use the `msg!` macro for variable substitution.
+   ```rust
+   use vm_core::output_macros::{vm_println, msg};
+   use vm_core::messages::MESSAGES;
+
+   // Simple message
+   vm_println!("{}", MESSAGES.some_static_message);
+
+   // With variables
+   vm_println!("{}", msg!(MESSAGES.my_new_message, item = "widgets"));
+   // Output: ✅ My new message for widgets is complete.
+   ```
+
+## Types of Contributions
+
+### 🐛 Bug Fixes
+1. Check existing issues first
+2. Create a failing test that reproduces the bug
+3. Fix the issue
+4. Ensure all tests pass
+5. Submit PR with clear description
+
+### ✨ New Features
+1. Discuss the feature in an issue first
+2. Write tests for the new functionality
+3. Implement the feature
+4. Update documentation
+5. Ensure backward compatibility
+
+### 📖 Documentation
+1. Check for outdated information
+2. Add examples and use cases
+3. Improve clarity and organization
+4. Test documentation steps manually
+
+### 🧪 Testing
+1. Add tests for untested functionality
+2. Improve test coverage
+3. Add edge case testing
+4. Performance testing
+
+## Framework Presets
+
+### Adding New Framework Support
+
+#### Option 1: Create a Plugin (Recommended)
+
+```bash
+# 1. Create plugin template
+vm plugin new your-framework --type preset
+
+# 2. Edit plugin metadata
+# ~/.vm/plugins/presets/your-framework/plugin.yaml
+name: your-framework
+version: 1.0.0
+description: Development environment for Your Framework
+author: Your Name
+plugin_type: preset
+
+# 3. Configure preset content
+# ~/.vm/plugins/presets/your-framework/preset.yaml
+npm_packages:
+  - your-framework-cli
+
+services:
+  - postgresql
+
+environment:
+  FRAMEWORK_ENV: development
+
+# 4. Test the plugin
+vm plugin validate your-framework
+vm config preset your-framework
+vm create
+
+# 5. Share your plugin
+# Package and share via git repository or tarball
+```
+
+## Provider Development
+
+### Current Provider Architecture
+Providers are implemented in Rust in the `rust/vm-provider/` package.
+
+### Provider Trait
+All providers must implement the Provider trait defined in Rust:
+```rust
+// Lifecycle methods
+fn is_available(&self) -> Result<bool>;
+fn create(&self, config: &Config) -> Result<()>;
+fn start(&self, name: &str) -> Result<()>;
+fn stop(&self, name: &str) -> Result<()>;
+fn destroy(&self, name: &str) -> Result<()>;
+
+// Access methods
+fn ssh(&self, name: &str, path: Option<&str>) -> Result<()>;
+fn exec(&self, name: &str, command: &[String]) -> Result<()>;
+
+// Info methods
+fn status(&self, name: &str) -> Result<ProviderStatus>;
+fn logs(&self, name: &str) -> Result<String>;
+fn list(&self) -> Result<Vec<String>>;
+```
+
+## Code Review Checklist
+
+### Before Submitting PR
+- [ ] All tests pass locally
+- [ ] New functionality has tests
+- [ ] Documentation is updated
+- [ ] No breaking changes (or clearly documented)
+- [ ] Code follows existing patterns
+- [ ] Shell scripts pass basic validation
+- [ ] Configuration examples work
+
+### For Reviewers
+- [ ] Code is well-structured and readable
+- [ ] Tests adequately cover new functionality
+- [ ] Documentation is accurate and helpful
+- [ ] Performance impact is acceptable
+- [ ] Security implications considered
+- [ ] Backward compatibility maintained
+
+## Release Process
+
+### Version Numbering
+- **Major (x.0.0)**: Breaking changes
+- **Minor (1.x.0)**: New features, backward compatible
+- **Patch (1.1.x)**: Bug fixes, backward compatible
+
+### Release Steps
+1. Update CHANGELOG.md with new version
+2. Test release candidate thoroughly
+3. Update version in package.json (if applicable)
+4. Tag release: `git tag v1.x.x`
+5. Update documentation with new features
+6. Announce release
 
 ## Getting Help
 

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use assert_cmd::prelude::*; // For CommandCargoExt
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -24,8 +25,8 @@ impl CliTestFixture {
             let _ = fs::remove_file(temp_vm_yaml);
         }
 
-        // Get the path to the vm binary using the env var provided by Cargo
-        let binary_path = PathBuf::from(env!("CARGO_BIN_EXE_vm"));
+        // Get the path to the vm binary using assert_cmd helper
+        let binary_path = Command::cargo_bin("vm")?.get_program().into();
 
         Ok(Self {
             _temp_dir: temp_dir,

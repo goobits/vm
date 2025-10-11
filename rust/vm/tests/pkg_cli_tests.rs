@@ -1,4 +1,5 @@
 use anyhow::Result;
+use assert_cmd::prelude::*; // For CommandCargoExt
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -19,7 +20,7 @@ impl PkgTestFixture {
         fs::create_dir_all(&test_dir)?;
 
         // Get the path to the vm binary
-        let binary_path = PathBuf::from(env!("CARGO_BIN_EXE_vm"));
+        let binary_path = Command::cargo_bin("vm")?.get_program().into();
 
         Ok(Self {
             _temp_dir: temp_dir,
