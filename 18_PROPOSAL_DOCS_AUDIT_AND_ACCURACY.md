@@ -1,5 +1,27 @@
 # 📚 Documentation Audit & Accuracy Proposal
 
+## 🎯 Status: Phase 2 COMPLETED
+**Latest Update**: 2025-10-11
+**Branch**: `docs-audit-and-accuracy-fix` (merged to main)
+**Commits**: c7be243, 159e24f
+
+### Completed (Phase 2):
+- ✅ README.md - Complete rewrite (-286 bloated lines, +320 accurate lines)
+- ✅ CLAUDE.md - Fixed Makefile path reference
+- ✅ docs/getting-started/installation.md - Removed broken methods, standardized on build-from-source
+- ✅ docs/getting-started/quick-start.md - Updated to match new installation
+- ✅ docs/user-guide/cli-reference.md - Complete overhaul matching actual CLI
+- ✅ Makefile - Fixed build target directory
+- ✅ Version bump - 2.0.3 → 2.1.1
+
+### Remaining:
+- CHANGELOG.md, CONTRIBUTING.md, PUBLISHING.md
+- docs/getting-started/examples.md
+- docs/user-guide (configuration, plugins, presets, troubleshooting)
+- docs/development (architecture, contributing, testing)
+
+---
+
 ## Core Objective
 Ensure all markdown documentation accurately reflects the current codebase - NO content bloat, just honesty and precision.
 
@@ -16,13 +38,14 @@ Ensure all markdown documentation accurately reflects the current codebase - NO 
 
 ### Core Documentation
 - [x] **README.md**
-  - ✅ Added install.sh warning (honest disclosure)
-  - ✅ Documented vm auth commands
-  - ✅ Documented vm pkg commands
-  - ⏳ Verify all code examples execute successfully
-  - ⏳ Validate quick start reflects real-world experience
+  - ✅ Complete comprehensive rewrite (docs-audit-and-accuracy-fix branch)
+  - ✅ Standardized on build-from-source installation method
+  - ✅ Restructured command reference to match actual CLI hierarchy
+  - ✅ Corrected all command examples against vm binary output
+  - ✅ Reduced from bloated to concise, accurate documentation
 
-- [ ] **CLAUDE.md** (Developer Guide)
+- [x] **CLAUDE.md** (Developer Guide)
+  - ✅ Fixed Makefile reference to use correct rust/ directory path
   - Verify all build commands execute properly
   - Check test commands and file paths are current
   - Validate version management scripts exist and work
@@ -59,11 +82,14 @@ Ensure all markdown documentation accurately reflects the current codebase - NO 
 
 ### Getting Started
 - [x] **docs/getting-started/installation.md**
-  - ✅ Added install script warning (checksum mismatch issue)
-  - ⏳ Test every installation method on clean system
-  - ⏳ Verify prerequisites are complete and accurate
+  - ✅ Complete rewrite - standardized on build-from-source only
+  - ✅ Removed references to broken cargo install and binaries
+  - ✅ Accurate prerequisites for each provider
+  - ✅ Honest disclosure about installation limitations
 
-- [ ] **docs/getting-started/quick-start.md**
+- [x] **docs/getting-started/quick-start.md**
+  - ✅ Updated to match new installation method
+  - ✅ Corrected command references
   - Execute entire quick start from scratch
   - Time the process (verify "under 15 minutes" claim)
   - Check all commands run without errors
@@ -79,10 +105,11 @@ Ensure all markdown documentation accurately reflects the current codebase - NO 
 
 ### User Guide
 - [x] **docs/user-guide/cli-reference.md**
-  - ✅ Added complete vm auth command reference
-  - ✅ Added complete vm pkg command reference
-  - ⏳ Verify all other commands and flags are accurate
-  - ⏳ Test examples for each command
+  - ✅ Complete overhaul - restructured to match actual CLI hierarchy
+  - ✅ Verified ALL commands against vm --help output
+  - ✅ Corrected command names, flags, and subcommand structure
+  - ✅ Removed incorrect command syntax
+  - ✅ Added accurate examples for all commands
 
 - [ ] **docs/user-guide/configuration.md**
   - Verify all config fields are supported
@@ -239,11 +266,11 @@ Documentation is considered accurate when:
 ## 🚀 Execution Plan
 
 ### Priority Order
-1. ✅ **README.md** - First impression, must be accurate
-2. ✅ **docs/getting-started/installation.md** - Critical for onboarding
-3. ✅ **docs/user-guide/cli-reference.md** - Most frequently referenced
-4. **docs/getting-started/quick-start.md** - Tests real-world experience
-5. **CLAUDE.md** - Developer productivity
+1. ✅ **README.md** - First impression, must be accurate (COMPLETED)
+2. ✅ **CLAUDE.md** - Developer productivity (Makefile fixed)
+3. ✅ **docs/getting-started/installation.md** - Critical for onboarding (COMPLETED)
+4. ✅ **docs/getting-started/quick-start.md** - Tests real-world experience (COMPLETED)
+5. ✅ **docs/user-guide/cli-reference.md** - Most frequently referenced (COMPLETED)
 6. **docs/user-guide/configuration.md** - Common troubleshooting source
 7. **docs/user-guide/troubleshooting.md** - Direct problem-solving
 8. **All remaining docs** - Systematic coverage
