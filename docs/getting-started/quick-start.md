@@ -5,9 +5,10 @@ Setup guide for getting your development environment running.
 ## 🎯 Minimal Setup
 
 ```bash
-# 1. Install the tool
-cargo install vm
-# OR from source: git clone https://github.com/goobits/vm.git && cd vm && ./install.sh
+# 1. Clone the repository and build from source
+git clone https://github.com/goobits/vm.git
+cd vm
+./install.sh --build-from-source
 
 # 2. Create environment (auto-detects your project)
 vm create

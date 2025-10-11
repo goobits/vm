@@ -3222,7 +3222,7 @@ checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 
 [[package]]
 name = "version-sync"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "clap",
  "regex",
@@ -3239,7 +3239,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vm"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -3272,7 +3272,7 @@ dependencies = [
 
 [[package]]
 name = "vm-auth-proxy"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -3298,11 +3298,11 @@ dependencies = [
 
 [[package]]
 name = "vm-cli"
-version = "2.1.0"
+version = "2.1.1"
 
 [[package]]
 name = "vm-config"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -3331,7 +3331,7 @@ dependencies = [
 
 [[package]]
 name = "vm-core"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "anyhow",
  "dirs 6.0.0",
@@ -3350,7 +3350,7 @@ dependencies = [
 
 [[package]]
 name = "vm-docker-registry"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3368,7 +3368,7 @@ dependencies = [
 
 [[package]]
 name = "vm-installer"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "clap",
  "serde_json",
@@ -3391,11 +3391,11 @@ dependencies = [
 
 [[package]]
 name = "vm-messages"
-version = "2.1.0"
+version = "2.1.1"
 
 [[package]]
 name = "vm-package-manager"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "clap",
  "rayon",
@@ -3413,7 +3413,7 @@ dependencies = [
 
 [[package]]
 name = "vm-package-server"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "anyhow",
  "askama",
@@ -3448,7 +3448,7 @@ dependencies = [
 
 [[package]]
 name = "vm-platform"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "anyhow",
  "dirs 6.0.0",
@@ -3458,7 +3458,7 @@ dependencies = [
 
 [[package]]
 name = "vm-plugin"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "anyhow",
  "serde",
@@ -3469,7 +3469,7 @@ dependencies = [
 
 [[package]]
 name = "vm-provider"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "chrono",
  "duct",
@@ -3493,7 +3493,7 @@ dependencies = [
 
 [[package]]
 name = "vm-temp"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "clap",
  "fs2",
