@@ -101,9 +101,9 @@ where
         }
 
         self.filters.iter().all(|filter| {
-            all_fields.get(&filter.key).map_or(false, |value| {
-                filter.value == "*" || value.contains(&filter.value)
-            })
+            all_fields
+                .get(&filter.key)
+                .is_some_and(|value| filter.value == "*" || value.contains(&filter.value))
         })
     }
 }
@@ -123,8 +123,7 @@ pub fn init_subscriber() -> Option<WorkerGuard> {
     let log_output = env::var("LOG_OUTPUT").unwrap_or_else(|_| "console".to_string());
     let log_format = env::var("LOG_FORMAT").unwrap_or_else(|_| "human".to_string());
     let log_tags = env::var("LOG_TAGS").unwrap_or_else(|_| String::new());
-    let log_file_path =
-        env::var("LOG_FILE_PATH").unwrap_or_else(|_| "/tmp/vm.log".to_string());
+    let log_file_path = env::var("LOG_FILE_PATH").unwrap_or_else(|_| "/tmp/vm.log".to_string());
 
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new(&log_level))

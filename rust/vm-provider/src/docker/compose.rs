@@ -636,8 +636,23 @@ mod tests {
         );
     }
 
+    /// Check if Docker daemon is available for testing
+    fn is_docker_available() -> bool {
+        std::process::Command::new("docker")
+            .arg("info")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+
     #[test]
     fn test_start_with_compose_regenerates_with_new_config() {
+        if !is_docker_available() {
+            eprintln!("⚠️  Skipping test: Docker daemon not available");
+            eprintln!("   To run this test, ensure Docker is running");
+            return;
+        }
+
         use tempfile::TempDir;
         use vm_config::GlobalConfig;
 
@@ -719,6 +734,12 @@ mod tests {
 
     #[test]
     fn test_start_with_compose_can_disable_registry() {
+        if !is_docker_available() {
+            eprintln!("⚠️  Skipping test: Docker daemon not available");
+            eprintln!("   To run this test, ensure Docker is running");
+            return;
+        }
+
         use tempfile::TempDir;
         use vm_config::GlobalConfig;
 

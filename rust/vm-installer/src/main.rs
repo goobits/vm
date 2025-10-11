@@ -1,8 +1,8 @@
 use clap::Parser;
 use vm_core::error::Result;
 use vm_core::{vm_error, vm_println, vm_success};
-use vm_messages::messages::MESSAGES;
 use vm_logging::init_subscriber;
+use vm_messages::messages::MESSAGES;
 
 mod cli;
 mod dependencies;

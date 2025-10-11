@@ -612,12 +612,7 @@ mod tests {
 
     #[test]
     fn test_global_flags_parsing() {
-        let args = Args::parse_from([
-            "vm",
-            "--config",
-            "/custom/config.yaml",
-            "status",
-        ]);
+        let args = Args::parse_from(["vm", "--config", "/custom/config.yaml", "status"]);
         assert_eq!(
             args.config,
             Some(std::path::PathBuf::from("/custom/config.yaml"))

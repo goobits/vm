@@ -7,6 +7,26 @@ use std::process::Command;
 use tempfile::{tempdir, TempDir};
 use uuid::Uuid;
 
+/// Check if Docker daemon is available
+fn is_docker_available() -> bool {
+    Command::new("docker")
+        .arg("info")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+/// Skip test if Docker is not available
+macro_rules! require_docker {
+    () => {
+        if !is_docker_available() {
+            eprintln!("⚠️  Skipping test: Docker daemon not available");
+            eprintln!("   To run this test, ensure Docker is running");
+            return Ok(());
+        }
+    };
+}
+
 /// A test fixture that creates a temporary project directory and ensures
 /// the VM is destroyed when the fixture goes out of scope.
 struct TestFixture {
@@ -85,6 +105,8 @@ impl Drop for TestFixture {
 
 #[test]
 fn test_port_forwarding_single_port() -> Result<()> {
+    require_docker!();
+
     let project_name = format!("test-port-forwarding-{}", Uuid::new_v4());
     let fixture = TestFixture::new()?;
     let vm_yaml_path = fixture.path().join("vm.yaml");
@@ -128,6 +150,8 @@ ports:
 
 #[test]
 fn test_port_forwarding_multiple_ports() -> Result<()> {
+    require_docker!();
+
     let project_name = format!("test-port-forwarding-{}", Uuid::new_v4());
     let fixture = TestFixture::new()?;
     let vm_yaml_path = fixture.path().join("vm.yaml");

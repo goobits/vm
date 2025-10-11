@@ -10,8 +10,8 @@ use uuid::Uuid;
 
 // External crates
 use clap::Parser;
-use tracing::Instrument;
 use tracing::info_span;
+use tracing::Instrument;
 
 // Internal imports
 use vm_core::vm_error;
