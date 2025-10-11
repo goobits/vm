@@ -15,13 +15,12 @@ Ensure all markdown documentation accurately reflects the current codebase - NO 
 ## 📋 Root Directory Documentation
 
 ### Core Documentation
-- [ ] **README.md**
-  - Verify installation commands work
-  - Check feature claims match actual implementation
-  - Validate all code examples execute successfully
-  - Ensure quick start reflects real-world experience
-  - Remove any marketing fluff or unimplemented features
-  - Check CLI commands and flags are accurate
+- [x] **README.md**
+  - ✅ Added install.sh warning (honest disclosure)
+  - ✅ Documented vm auth commands
+  - ✅ Documented vm pkg commands
+  - ⏳ Verify all code examples execute successfully
+  - ⏳ Validate quick start reflects real-world experience
 
 - [ ] **CLAUDE.md** (Developer Guide)
   - Verify all build commands execute properly
@@ -51,23 +50,18 @@ Ensure all markdown documentation accurately reflects the current codebase - NO 
   - Ensure distribution targets are accurate
 
 ### Active Proposals
-- [ ] **16_PROPOSAL_QUICK_START_DEVELOPER_ONBOARDING.md**
-  - Verify tasks haven't been completed already
-  - Check if file paths and line numbers are accurate
-  - Validate code snippets compile
-  - Determine if proposal should be moved to archive or deleted
+- [x] **16_PROPOSAL_QUICK_START_DEVELOPER_ONBOARDING.md**
+  - ✅ Proposal completed and removed (merged to main)
 
 ---
 
 ## 📁 docs/ Directory Documentation
 
 ### Getting Started
-- [ ] **docs/getting-started/installation.md**
-  - Test every installation method on clean system
-  - Verify prerequisites are complete and accurate
-  - Check Docker installation steps
-  - Validate cargo install command works
-  - Ensure troubleshooting section covers real issues
+- [x] **docs/getting-started/installation.md**
+  - ✅ Added install script warning (checksum mismatch issue)
+  - ⏳ Test every installation method on clean system
+  - ⏳ Verify prerequisites are complete and accurate
 
 - [ ] **docs/getting-started/quick-start.md**
   - Execute entire quick start from scratch
@@ -84,13 +78,11 @@ Ensure all markdown documentation accurately reflects the current codebase - NO 
   - Remove any broken/outdated examples
 
 ### User Guide
-- [ ] **docs/user-guide/cli-reference.md**
-  - Verify every command exists in codebase
-  - Check all flags and options are accurate
-  - Validate command descriptions match behavior
-  - Test examples for each command
-  - Ensure help text matches actual CLI output
-  - Cross-check with `vm --help` output
+- [x] **docs/user-guide/cli-reference.md**
+  - ✅ Added complete vm auth command reference
+  - ✅ Added complete vm pkg command reference
+  - ⏳ Verify all other commands and flags are accurate
+  - ⏳ Test examples for each command
 
 - [ ] **docs/user-guide/configuration.md**
   - Verify all config fields are supported
@@ -247,20 +239,14 @@ Documentation is considered accurate when:
 ## 🚀 Execution Plan
 
 ### Priority Order
-1. **README.md** - First impression, must be accurate
-2. **docs/getting-started/installation.md** - Critical for onboarding
-3. **docs/getting-started/quick-start.md** - Tests real-world experience
-4. **docs/user-guide/cli-reference.md** - Most frequently referenced
+1. ✅ **README.md** - First impression, must be accurate
+2. ✅ **docs/getting-started/installation.md** - Critical for onboarding
+3. ✅ **docs/user-guide/cli-reference.md** - Most frequently referenced
+4. **docs/getting-started/quick-start.md** - Tests real-world experience
 5. **CLAUDE.md** - Developer productivity
 6. **docs/user-guide/configuration.md** - Common troubleshooting source
 7. **docs/user-guide/troubleshooting.md** - Direct problem-solving
 8. **All remaining docs** - Systematic coverage
-
-### Timeline Estimate
-- Discovery: 2-3 hours
-- Verification: 4-6 hours
-- Remediation: 3-4 hours
-- **Total: 9-13 hours**
 
 ---
 
