@@ -6,15 +6,7 @@ use std::process::Command;
 fn test_vm_status_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
-
-    if !fixture.is_docker_available() {
-        println!("Skipping test - Docker not available");
-        return Ok(());
-    }
-
-    fixture.cleanup_test_containers()?;
-    fixture.create_test_config()?;
-    fixture.create_test_dockerfile()?;
+    fixture.setup_test_environment()?;
 
     // Test status when VM doesn't exist
     let _output = fixture.run_vm_command(&["status"])?;
@@ -46,15 +38,7 @@ fn test_vm_status_command() -> Result<()> {
 fn test_vm_list_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
-
-    if !fixture.is_docker_available() {
-        println!("Skipping test - Docker not available");
-        return Ok(());
-    }
-
-    fixture.cleanup_test_containers()?;
-    fixture.create_test_config()?;
-    fixture.create_test_dockerfile()?;
+    fixture.setup_test_environment()?;
 
     // Test list when no VMs exist
     let output = fixture.run_vm_command(&["list"])?;

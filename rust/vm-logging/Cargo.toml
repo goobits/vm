@@ -6,5 +6,4 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }

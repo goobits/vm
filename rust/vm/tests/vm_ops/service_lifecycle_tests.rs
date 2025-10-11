@@ -7,15 +7,7 @@ use std::time::Duration;
 fn test_vm_start_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
-
-    if !fixture.is_docker_available() {
-        println!("Skipping test - Docker not available");
-        return Ok(());
-    }
-
-    fixture.cleanup_test_containers()?;
-    fixture.create_test_config()?;
-    fixture.create_test_dockerfile()?;
+    fixture.setup_test_environment()?;
 
     // Create VM first
     let output = fixture.run_vm_command(&["create"])?;
@@ -43,15 +35,7 @@ fn test_vm_start_command() -> Result<()> {
 fn test_vm_stop_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
-
-    if !fixture.is_docker_available() {
-        println!("Skipping test - Docker not available");
-        return Ok(());
-    }
-
-    fixture.cleanup_test_containers()?;
-    fixture.create_test_config()?;
-    fixture.create_test_dockerfile()?;
+    fixture.setup_test_environment()?;
 
     // Create and start VM
     fixture.run_vm_command(&["create"])?;
@@ -112,15 +96,7 @@ fn test_vm_stop_command() -> Result<()> {
 fn test_vm_restart_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
-
-    if !fixture.is_docker_available() {
-        println!("Skipping test - Docker not available");
-        return Ok(());
-    }
-
-    fixture.cleanup_test_containers()?;
-    fixture.create_test_config()?;
-    fixture.create_test_dockerfile()?;
+    fixture.setup_test_environment()?;
 
     // Create and start VM
     fixture.run_vm_command(&["create"])?;
@@ -149,15 +125,7 @@ fn test_vm_restart_command() -> Result<()> {
 fn test_vm_provision_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
-
-    if !fixture.is_docker_available() {
-        println!("Skipping test - Docker not available");
-        return Ok(());
-    }
-
-    fixture.cleanup_test_containers()?;
-    fixture.create_test_config()?;
-    fixture.create_test_dockerfile()?;
+    fixture.setup_test_environment()?;
 
     // Create and start VM first
     fixture.run_vm_command(&["create"])?;

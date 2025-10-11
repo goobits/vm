@@ -171,6 +171,19 @@ CMD ["sh", "-c", "echo 'VM Test Container Running' && sleep 3600"]
         }
         false
     }
+
+    /// Set up a test environment by creating config and Dockerfile
+    pub fn setup_test_environment(&self) -> Result<()> {
+        if !self.is_docker_available() {
+            println!("Skipping test - Docker not available");
+            return Ok(());
+        }
+
+        self.cleanup_test_containers()?;
+        self.create_test_config()?;
+        self.create_test_dockerfile()?;
+        Ok(())
+    }
 }
 
 impl Drop for VmOpsTestFixture {
