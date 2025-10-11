@@ -2,7 +2,9 @@
 target-dir = "../.build/target"
 
 [alias]
+# Check for dead code using Clippy
 dead-code = "clippy -- -D dead_code"
+# Check for unused dependencies using cargo-machete
 dead-deps = "machete"
 
 # Use mold linker for faster parallel linking

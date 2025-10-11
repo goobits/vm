@@ -306,60 +306,9 @@ rustc --version
 
 ## Dead Code Detection
 
-### Installation
-```bash
-# Install required tools (one-time setup)
-cargo install cargo-machete cargo-audit
+Run dead code detection with:
+- `cargo dead-code` - Check code with Clippy
+- `cargo dead-deps` - Check unused dependencies
 
-# cargo-audit: Security vulnerability scanning
-# cargo-machete: Unused dependency detection
-```
-
-### Running Checks
-```bash
-source $HOME/.cargo/env
-cd rust
-
-# Check for dead code using Clippy (built-in)
-cargo clippy --workspace -- -D dead_code
-# Or use the alias:
-cargo dead-code
-
-# Check for unused dependencies
-cargo machete
-# Or use the alias:
-cargo dead-deps
-
-# Check for security vulnerabilities
-cargo audit
-```
-
-### Tools
-- **Clippy** (built-in): Detects unused code, imports, variables, unreachable code
-- **cargo-machete**: Detects unused dependencies in Cargo.toml files
-- **cargo-audit**: Scans for known security vulnerabilities in dependencies
-
-### Configuration
-- **Cargo aliases** (`.cargo/config.toml`):
-  - `cargo dead-code` → `cargo clippy -- -D dead_code`
-  - `cargo dead-deps` → `cargo machete`
-- **Clippy config**: `clippy.toml` - Additional linting rules for code quality
-
-### Lint Categories
-The dead-code detection checks for:
-- `dead_code` - Unused functions, structs, enums, methods
-- `unused_imports` - Import statements that aren't used
-- `unused_variables` - Variables that are never read
-- `unused_mut` - Mutable variables that don't need to be mutable
-- `unreachable_code` - Code that can never be executed
-- `unreachable_patterns` - Match patterns that can never be reached
-- `clippy::redundant_clone` - Unnecessary cloning operations
-- `clippy::unnecessary_wraps` - Functions that always return Ok/Some
-- `clippy::unused_self` - Methods that don't use self
-- `clippy::unused_async` - Async functions that don't need to be async
-
-### Fixing Dead Code
-1. **Review findings carefully** - Some code may be intentionally kept for future use
-2. **For false positives** - Add `#[allow(dead_code)]` to specific items
-3. **For unused dependencies** - Run `cargo machete --fix` to auto-remove
-4. **For test/example code** - These are often false positives and can be ignored
+Tools: Clippy (built-in) + cargo-machete (dependencies)
+Config: .cargo/config.toml
