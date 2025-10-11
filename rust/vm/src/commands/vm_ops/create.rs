@@ -8,12 +8,82 @@ use tracing::{debug, info_span, warn};
 
 use crate::error::{VmError, VmResult};
 use vm_cli::msg;
-use vm_config::{config::VmConfig, validator::ConfigValidator, GlobalConfig};
-use vm_core::{vm_error, vm_println};
+use vm_config::{config::MemoryLimit, config::VmConfig, validator::ConfigValidator, GlobalConfig};
+use vm_core::{get_cpu_core_count, get_total_memory_gb, vm_error, vm_println};
 use vm_messages::messages::MESSAGES;
 use vm_provider::{Provider, ProviderContext};
 
 use super::helpers::register_vm_services_helper;
+
+/// Auto-adjust resource allocation based on system availability
+fn auto_adjust_resources(config: &mut VmConfig) -> VmResult<()> {
+    // Get system resources (fallback to reasonable defaults if detection fails)
+    let system_cpus = get_cpu_core_count().unwrap_or(2);
+    let system_memory_gb = get_total_memory_gb().unwrap_or(4);
+
+    let vm_settings = config.vm.as_mut();
+    if vm_settings.is_none() {
+        return Ok(()); // No vm settings to adjust
+    }
+
+    let vm_settings = vm_settings.unwrap();
+    let mut adjusted = false;
+
+    // Check and adjust CPU allocation
+    if let Some(requested_cpus) = vm_settings.cpus {
+        if requested_cpus > system_cpus {
+            // Use 50% of available CPUs, minimum 2, maximum available
+            let safe_cpus = (system_cpus / 2).max(2).min(system_cpus);
+
+            vm_println!(
+                "⚠️  Requested {} CPUs but system only has {}.",
+                requested_cpus,
+                system_cpus
+            );
+            vm_println!("   Auto-adjusting to {} CPUs for this system.", safe_cpus);
+
+            vm_settings.cpus = Some(safe_cpus);
+            adjusted = true;
+        }
+    }
+
+    // Check and adjust memory allocation
+    if let Some(memory_limit) = &vm_settings.memory {
+        if let Some(requested_mb) = memory_limit.to_mb() {
+            let requested_gb = (requested_mb as u64) / 1024;
+
+            // Leave 2GB for host OS, use 50% of remaining, minimum 2GB
+            let available_memory = system_memory_gb.saturating_sub(2);
+            let safe_memory_gb = (available_memory / 2).max(2).min(available_memory);
+
+            if requested_gb > safe_memory_gb {
+                let safe_memory_mb = (safe_memory_gb * 1024) as u32;
+
+                vm_println!(
+                    "⚠️  Requested {}GB RAM but only {}GB total available.",
+                    requested_gb,
+                    system_memory_gb
+                );
+                vm_println!(
+                    "   Auto-adjusting to {}GB RAM for this system (leaving headroom for host).",
+                    safe_memory_gb
+                );
+
+                vm_settings.memory = Some(MemoryLimit::Limited(safe_memory_mb));
+                adjusted = true;
+            }
+        }
+    }
+
+    if adjusted {
+        vm_println!("");
+        vm_println!("💡 Tip: These auto-adjusted values are temporary for this VM creation.");
+        vm_println!("   Your vm.yaml remains unchanged and will work on more powerful machines.");
+        vm_println!("");
+    }
+
+    Ok(())
+}
 
 /// Handle VM creation
 pub async fn handle_create(
@@ -35,6 +105,9 @@ pub async fn handle_create(
         vm_settings.cpus = Some(2);
         config.vm = Some(vm_settings);
     } else {
+        // Auto-adjust resources if needed (before validation)
+        auto_adjust_resources(&mut config)?;
+
         // Validate config before proceeding
         vm_println!("Validating configuration...");
         let validator = ConfigValidator::new();

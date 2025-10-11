@@ -33,7 +33,7 @@ pub fn check_system_resources() -> Result<()> {
 }
 
 #[cfg(target_os = "linux")]
-fn get_total_memory_gb() -> Result<u64> {
+pub fn get_total_memory_gb() -> Result<u64> {
     let meminfo = std::fs::read_to_string("/proc/meminfo")
         .context("Failed to read /proc/meminfo for memory detection")?;
     for line in meminfo.lines() {
@@ -54,7 +54,7 @@ fn get_total_memory_gb() -> Result<u64> {
 }
 
 #[cfg(target_os = "linux")]
-fn get_cpu_core_count() -> Result<u32> {
+pub fn get_cpu_core_count() -> Result<u32> {
     let cpuinfo = std::fs::read_to_string("/proc/cpuinfo")
         .context("Failed to read /proc/cpuinfo for CPU detection")?;
     let core_count = cpuinfo
@@ -65,7 +65,7 @@ fn get_cpu_core_count() -> Result<u32> {
 }
 
 #[cfg(target_os = "macos")]
-fn get_total_memory_gb() -> Result<u64> {
+pub fn get_total_memory_gb() -> Result<u64> {
     let output = std::process::Command::new("sysctl")
         .args(["-n", "hw.memsize"])
         .output()?;
@@ -84,7 +84,7 @@ fn get_total_memory_gb() -> Result<u64> {
 }
 
 #[cfg(target_os = "macos")]
-fn get_cpu_core_count() -> Result<u32> {
+pub fn get_cpu_core_count() -> Result<u32> {
     let output = std::process::Command::new("sysctl")
         .args(["-n", "hw.physicalcpu"])
         .output()?;
@@ -103,14 +103,14 @@ fn get_cpu_core_count() -> Result<u32> {
 }
 
 #[cfg(target_os = "windows")]
-fn get_total_memory_gb() -> Result<u64> {
+pub fn get_total_memory_gb() -> Result<u64> {
     let mut sys = sysinfo::System::new_all();
     sys.refresh_memory();
     Ok(sys.total_memory() / 1024 / 1024 / 1024) // Convert bytes to GB
 }
 
 #[cfg(target_os = "windows")]
-fn get_cpu_core_count() -> Result<u32> {
+pub fn get_cpu_core_count() -> Result<u32> {
     let mut sys = sysinfo::System::new_all();
     sys.refresh_cpu();
     Ok(sys.physical_core_count().unwrap_or(1) as u32)

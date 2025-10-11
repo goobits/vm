@@ -7,3 +7,6 @@ pub mod project;
 pub mod system_check;
 pub mod temp_dir;
 pub mod user_paths;
+
+// Re-export system resource detection functions for convenience
+pub use system_check::{check_system_resources, get_cpu_core_count, get_total_memory_gb};
