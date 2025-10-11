@@ -8,6 +8,8 @@
 - [Plugins](#plugins)
 - [Testing](#testing)
 - [Options & Environment](#options--environment)
+- [Auth Proxy](#auth-proxy)
+- [Package Registry](#package-registry)
 
 ---
 
@@ -289,4 +291,50 @@ ports:
 mounts:
   - ./src:/workspace/src
   - ./tests:/workspace/tests:ro
+```
+
+---
+
+## Auth Proxy
+
+**Centralized secrets management** — Store and manage credentials securely across VMs.
+
+```bash
+# Service status
+vm auth status
+
+# Store a secret
+vm auth add <name> <value>
+
+# List stored secrets
+vm auth list
+
+# Remove a secret
+vm auth remove <name>
+```
+
+---
+
+## Package Registry
+
+**Private package registry** — Host your own packages for npm, pip, and cargo with automatic upstream fallback.
+
+```bash
+# Server status
+vm pkg status
+
+# Publish a package from the current directory
+vm pkg add
+
+# Specify package type
+vm pkg add --type python
+
+# List all packages
+vm pkg list
+
+# Remove a package
+vm pkg remove <name>
+
+# Generate shell configuration for package managers
+vm pkg use --shell bash
 ```

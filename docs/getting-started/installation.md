@@ -4,6 +4,8 @@ Development environment setup. Choose between Docker (lightweight containers, de
 
 ## 🏃 Quick Start
 
+**Note**: The installation script is currently broken due to a checksum mismatch when building from source, and pre-compiled binaries may not be available for all platforms. The `cargo install vm` command will also fail as the crate is not published on `crates.io`. A fix for the script is in progress.
+
 ### Option 1: Binary Installation (Recommended)
 
 ```bash
