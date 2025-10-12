@@ -249,6 +249,50 @@ pub enum AuthSubcommand {
 }
 
 #[derive(Debug, Clone, Subcommand)]
+pub enum DbSubcommand {
+    /// Backup a database
+    Backup {
+        /// The name of the database to backup
+        db_name: String,
+        /// Optional backup name
+        name: Option<String>,
+    },
+    /// Restore a database from a backup
+    Restore {
+        /// Backup name to restore
+        name: String,
+        /// Target database name
+        db_name: String,
+    },
+    /// List all databases and backups
+    List,
+    /// Export a database to a SQL file
+    Export {
+        /// Database name to export
+        name: String,
+        /// File path to export to
+        file: PathBuf,
+    },
+    /// Import a database from a SQL file
+    Import {
+        /// File path to import from
+        file: PathBuf,
+        /// Target database name
+        db_name: String,
+    },
+    /// Show disk usage per database
+    Size,
+    /// Drop and recreate a database
+    Reset {
+        /// Database name to reset
+        name: String,
+        /// Force reset without confirmation
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
 pub enum PluginSubcommand {
     /// See installed plugins
     List,
@@ -431,6 +475,12 @@ pub enum Command {
     Auth {
         #[command(subcommand)]
         command: AuthSubcommand,
+    },
+
+    /// Manage databases
+    Db {
+        #[command(subcommand)]
+        command: DbSubcommand,
     },
 
     /// Extend with plugins

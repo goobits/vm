@@ -47,8 +47,14 @@ pub(super) async fn register_vm_services_helper(
 }
 
 /// Helper function to unregister VM services
-pub(super) async fn unregister_vm_services_helper(vm_name: &str) -> VmResult<()> {
-    if let Err(e) = get_service_manager().unregister_vm_services(vm_name).await {
+pub(super) async fn unregister_vm_services_helper(
+    vm_name: &str,
+    global_config: &GlobalConfig,
+) -> VmResult<()> {
+    if let Err(e) = get_service_manager()
+        .unregister_vm_services(vm_name, global_config)
+        .await
+    {
         warn!("Failed to unregister VM services: {}", e);
         vm_println!(
             "{}",

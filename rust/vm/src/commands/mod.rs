@@ -19,6 +19,7 @@ use vm_provider::get_provider;
 // Individual command modules
 pub mod auth;
 pub mod config;
+pub mod db;
 pub mod doctor;
 pub mod init;
 pub mod pkg;
@@ -88,6 +89,10 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         Command::Plugin { command } => {
             debug!("Calling plugin operations");
             handle_plugin_command(command)
+        }
+        Command::Db { command } => {
+            debug!("Calling db operations");
+            db::handle_db(command.clone()).await
         }
         _ => {
             // Provider-based commands

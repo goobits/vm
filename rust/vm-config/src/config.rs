@@ -432,6 +432,13 @@ pub struct ServiceConfig {
     pub share_microphone: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_mb: Option<u32>,
+
+    // Per-project backup settings
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub backup_on_destroy: bool,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed_file: Option<PathBuf>,
 }
 
 /// Terminal and shell customization settings.

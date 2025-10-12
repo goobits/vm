@@ -161,7 +161,7 @@ pub async fn handle_stop(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     config: VmConfig,
-    _global_config: GlobalConfig,
+    global_config: GlobalConfig,
 ) -> VmResult<()> {
     match container {
         None => {
@@ -185,7 +185,7 @@ pub async fn handle_stop(
                     let vm_instance_name = format!("{}-dev", vm_name);
 
                     vm_println!("{}", MESSAGES.vm_stop_success);
-                    unregister_vm_services_helper(&vm_instance_name).await?;
+                    unregister_vm_services_helper(&vm_instance_name, &global_config).await?;
 
                     vm_println!("{}", MESSAGES.vm_stop_restart_hint);
                     Ok(())
@@ -218,7 +218,7 @@ pub async fn handle_stop(
                 Ok(()) => {
                     // For force kill, still unregister services for cleanup
                     vm_println!("{}", MESSAGES.vm_stop_force_success);
-                    unregister_vm_services_helper(container_name).await?;
+                    unregister_vm_services_helper(container_name, &global_config).await?;
                     Ok(())
                 }
                 Err(e) => {
