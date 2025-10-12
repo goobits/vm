@@ -315,7 +315,10 @@ pub fn handle_ssh(
         Ok(mounts) => mounts,
         Err(e) => {
             let error_str = e.to_string();
-            if error_str.contains("No such object") || error_str.contains("is not running") {
+            if error_str.contains("No such object")
+                || error_str.contains("is not running")
+                || error_str.contains("No container found matching")
+            {
                 // Container doesn't exist or isn't running. Assume no mounts and proceed with refresh logic.
                 Vec::new()
             } else {

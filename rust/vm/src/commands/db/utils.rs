@@ -1,13 +1,13 @@
 //! DB utility functions
 
-use crate::service_manager::get_service_manager;
 use crate::error::{VmError, VmResult};
+use crate::service_manager::get_service_manager;
 
 pub async fn execute_psql_command(command: &str) -> VmResult<String> {
     let service_manager = get_service_manager();
     let pg_state = service_manager.get_service_status("postgresql");
 
-    if !pg_state.map_or(false, |s| s.is_running) {
+    if !pg_state.is_some_and(|s| s.is_running) {
         return Err(VmError::general(
             std::io::Error::new(
                 std::io::ErrorKind::Other,

@@ -1,11 +1,13 @@
 //! DB backup and restore logic
-use std::path::{Path, PathBuf};
-use chrono::Local;
 use crate::error::{VmError, VmResult};
+use chrono::Local;
+use std::path::{Path, PathBuf};
 
 /// Get the base directory for backups
 fn get_backup_dir() -> VmResult<PathBuf> {
-    let backup_dir = vm_core::user_paths::home_dir()?.join("backups").join("postgres");
+    let backup_dir = vm_core::user_paths::home_dir()?
+        .join("backups")
+        .join("postgres");
     std::fs::create_dir_all(&backup_dir)
         .map_err(|e| VmError::filesystem(e, backup_dir.to_string_lossy(), "create_dir_all"))?;
     Ok(backup_dir)
@@ -14,9 +16,7 @@ fn get_backup_dir() -> VmResult<PathBuf> {
 /// Execute a command in the postgres docker container
 async fn execute_docker_command(args: &[&str], input: Option<Vec<u8>>) -> VmResult<Vec<u8>> {
     let mut cmd = tokio::process::Command::new("docker");
-    cmd.arg("exec")
-        .arg("-i")
-        .arg("vm-postgres-global");
+    cmd.arg("exec").arg("-i").arg("vm-postgres-global");
     cmd.args(args);
 
     if input.is_some() {
@@ -25,17 +25,23 @@ async fn execute_docker_command(args: &[&str], input: Option<Vec<u8>>) -> VmResu
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
 
-    let mut child = cmd.spawn()
+    let mut child = cmd
+        .spawn()
         .map_err(|e| VmError::general(e, "Failed to spawn docker command"))?;
 
     if let (Some(input_data), Some(mut stdin)) = (input, child.stdin.take()) {
         use tokio::io::AsyncWriteExt;
         if let Err(e) = stdin.write_all(&input_data).await {
-            return Err(VmError::general(e, "Failed to write to docker command stdin"));
+            return Err(VmError::general(
+                e,
+                "Failed to write to docker command stdin",
+            ));
         }
     }
 
-    let output = child.wait_with_output().await
+    let output = child
+        .wait_with_output()
+        .await
         .map_err(|e| VmError::general(e, "Failed to wait for docker command"))?;
 
     if output.status.success() {
@@ -63,13 +69,7 @@ pub async fn backup_db(
 
     let output = execute_docker_command(
         &[
-            "pg_dump",
-            "-U",
-            "postgres",
-            "-d",
-            db_name,
-            "-F",
-            "c", // Custom format, compressed
+            "pg_dump", "-U", "postgres", "-d", db_name, "-F", "c", // Custom format, compressed
         ],
         None,
     )
@@ -147,14 +147,7 @@ pub async fn restore_db(backup_name: &str, db_name: &str) -> VmResult<()> {
 /// Export a database to a SQL file
 pub async fn export_db(db_name: &str, file: &Path) -> VmResult<()> {
     let output = execute_docker_command(
-        &[
-            "pg_dump",
-            "-U",
-            "postgres",
-            "-d",
-            db_name,
-            "--clean",
-        ],
+        &["pg_dump", "-U", "postgres", "-d", db_name, "--clean"],
         None,
     )
     .await?;
@@ -180,11 +173,7 @@ pub async fn import_db(db_name: &str, file: &Path) -> VmResult<()> {
         .await
         .map_err(|e| VmError::filesystem(e, file.to_string_lossy(), "read"))?;
 
-    execute_docker_command(
-        &["psql", "-U", "postgres", "-d", db_name],
-        Some(sql_data),
-    )
-    .await?;
+    execute_docker_command(&["psql", "-U", "postgres", "-d", db_name], Some(sql_data)).await?;
 
     vm_core::vm_success!("Database '{}' imported from {:?}", db_name, file);
     Ok(())
@@ -193,12 +182,19 @@ pub async fn import_db(db_name: &str, file: &Path) -> VmResult<()> {
 /// Reset a database
 pub async fn reset_db(db_name: &str, force: bool) -> VmResult<()> {
     if !force {
-        vm_core::vm_println!("⚠️  This will permanently delete all data in the '{}' database.", db_name);
+        vm_core::vm_println!(
+            "⚠️  This will permanently delete all data in the '{}' database.",
+            db_name
+        );
         print!("Are you sure you want to continue? (y/N) ");
         use std::io::{self, Write};
-        io::stdout().flush().map_err(|e| VmError::general(e, "Failed to flush stdout"))?;
+        io::stdout()
+            .flush()
+            .map_err(|e| VmError::general(e, "Failed to flush stdout"))?;
         let mut response = String::new();
-        io::stdin().read_line(&mut response).map_err(|e| VmError::general(e, "Failed to read user input"))?;
+        io::stdin()
+            .read_line(&mut response)
+            .map_err(|e| VmError::general(e, "Failed to read user input"))?;
         if response.trim().to_lowercase() != "y" {
             vm_core::vm_println!("Database reset cancelled.");
             return Ok(());
@@ -206,13 +202,25 @@ pub async fn reset_db(db_name: &str, force: bool) -> VmResult<()> {
     }
 
     execute_docker_command(
-        &["psql", "-U", "postgres", "-c", &format!("DROP DATABASE IF EXISTS \"{}\";", db_name)],
+        &[
+            "psql",
+            "-U",
+            "postgres",
+            "-c",
+            &format!("DROP DATABASE IF EXISTS \"{}\";", db_name),
+        ],
         None,
     )
     .await?;
 
     execute_docker_command(
-        &["psql", "-U", "postgres", "-c", &format!("CREATE DATABASE \"{}\";", db_name)],
+        &[
+            "psql",
+            "-U",
+            "postgres",
+            "-c",
+            &format!("CREATE DATABASE \"{}\";", db_name),
+        ],
         None,
     )
     .await?;
@@ -229,10 +237,19 @@ async fn clean_old_backups(db_name: &str, retention_count: u32) -> VmResult<()> 
         .map_err(|e| VmError::filesystem(e, backup_dir.to_string_lossy(), "read_dir"))?;
 
     let mut entries_with_meta: Vec<(tokio::fs::DirEntry, std::time::SystemTime)> = Vec::new();
-    while let Some(entry) = read_dir.next_entry().await.map_err(|e| VmError::general(e, "Failed to read backup directory entries"))? {
-        let metadata = entry.metadata().await.map_err(|e| VmError::general(e, "Failed to get metadata"))?;
+    while let Some(entry) = read_dir
+        .next_entry()
+        .await
+        .map_err(|e| VmError::general(e, "Failed to read backup directory entries"))?
+    {
+        let metadata = entry
+            .metadata()
+            .await
+            .map_err(|e| VmError::general(e, "Failed to get metadata"))?;
         if metadata.is_file() {
-            let created = metadata.created().map_err(|e| VmError::general(e, "Failed to get creation time"))?;
+            let created = metadata
+                .created()
+                .map_err(|e| VmError::general(e, "Failed to get creation time"))?;
             entries_with_meta.push((entry, created));
         }
     }
@@ -257,7 +274,9 @@ async fn clean_old_backups(db_name: &str, retention_count: u32) -> VmResult<()> 
             vm_core::vm_println!("Deleting old backup: {:?}", backup_to_delete.path());
             tokio::fs::remove_file(backup_to_delete.path())
                 .await
-                .map_err(|e| VmError::filesystem(e, backup_to_delete.path().to_string_lossy(), "remove_file"))?;
+                .map_err(|e| {
+                    VmError::filesystem(e, backup_to_delete.path().to_string_lossy(), "remove_file")
+                })?;
         }
     }
 

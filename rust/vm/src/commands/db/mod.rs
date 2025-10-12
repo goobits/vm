@@ -4,9 +4,9 @@ pub mod backup;
 pub mod utils;
 
 use crate::cli::DbSubcommand;
+use crate::error::VmResult;
 use vm_config::GlobalConfig;
 use vm_core::vm_println;
-use crate::error::VmResult;
 
 pub async fn handle_db(command: DbSubcommand) -> VmResult<()> {
     let global_config = GlobalConfig::load()?;
@@ -24,9 +24,10 @@ pub async fn handle_db(command: DbSubcommand) -> VmResult<()> {
             backup::restore_db(&name, &db_name).await?;
         }
         DbSubcommand::List => {
-            let result =
-                utils::execute_psql_command("SELECT datname FROM pg_database WHERE datistemplate = false;")
-                    .await?;
+            let result = utils::execute_psql_command(
+                "SELECT datname FROM pg_database WHERE datistemplate = false;",
+            )
+            .await?;
             vm_println!("Databases:");
             for line in result.lines() {
                 let db_name = line.trim();

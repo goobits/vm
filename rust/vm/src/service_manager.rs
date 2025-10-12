@@ -188,6 +188,7 @@ impl ServiceManager {
         info!("Unregistering services for VM: {}", vm_name);
 
         let mut services_to_stop = Vec::new();
+        let mut pg_backup_db_name = None;
 
         // Update reference counts and identify services to stop
         {
@@ -214,35 +215,36 @@ impl ServiceManager {
 
                         // If reference count reaches zero, perform cleanup and mark for stopping
                         if service_state.reference_count == 0 && service_state.is_running {
-                            // Auto-backup for PostgreSQL
+                            // Mark PostgreSQL for auto-backup
                             if service_name == "postgresql"
                                 && global_config.services.postgresql.auto_backup
                             {
-                                let db_name = format!("{}_dev", vm_name.replace('-', "_"));
-                                vm_println!(
-                                    "💾 Auto-backing up database '{}' before stopping PostgreSQL...",
-                                    db_name
-                                );
-                                if let Err(e) = crate::commands::db::backup::backup_db(
-                                    &db_name,
-                                    None,
-                                    global_config.services.postgresql.backup_retention,
-                                )
-                                .await
-                                {
-                                    warn!("Auto-backup failed for database '{}': {}", db_name, e);
-                                    vm_warning!(
-                                        "Auto-backup failed for database '{}': {}",
-                                        db_name,
-                                        e
-                                    );
-                                }
+                                pg_backup_db_name =
+                                    Some(format!("{}_dev", vm_name.replace('-', "_")));
                             }
 
                             services_to_stop.push(service_name.clone());
                         }
                     }
                 }
+            }
+        }
+
+        // Perform PostgreSQL backup outside the lock
+        if let Some(db_name) = pg_backup_db_name {
+            vm_println!(
+                "💾 Auto-backing up database '{}' before stopping PostgreSQL...",
+                db_name
+            );
+            if let Err(e) = crate::commands::db::backup::backup_db(
+                &db_name,
+                None,
+                global_config.services.postgresql.backup_retention,
+            )
+            .await
+            {
+                warn!("Auto-backup failed for database '{}': {}", db_name, e);
+                vm_warning!("Auto-backup failed for database '{}': {}", db_name, e);
             }
         }
 

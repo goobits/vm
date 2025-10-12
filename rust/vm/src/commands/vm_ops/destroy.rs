@@ -7,8 +7,8 @@ use std::io::{self, Write};
 
 use tracing::{debug, info_span};
 
-use crate::error::{VmError, VmResult};
 use crate::commands::db::utils::execute_psql_command;
+use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
 use vm_cli::msg;
 use vm_config::{config::VmConfig, GlobalConfig};
@@ -145,7 +145,11 @@ pub async fn handle_destroy(
                             .database
                             .as_deref()
                             .unwrap_or(&default_db_name);
-                        vm_println!("💾 Backing up database '{}' as per project setting...", db_name);
+                        vm_println!(
+                            "💾 Backing up database '{}' as per project setting...",
+                            db_name
+                        );
+                        #[allow(clippy::excessive_nesting)]
                         if let Err(e) = crate::commands::db::backup::backup_db(
                             db_name,
                             None,
