@@ -1,8 +1,6 @@
 # Code Quality Improvements
 
-**Priority:** Week 3-4
 **Status:** Open
-**Effort:** 3-5 days
 
 ---
 
@@ -135,15 +133,6 @@ anyhow.workspace = true
 - [ ] `test-utils` crate created and used in 5+ test files
 - [ ] CI enforces clippy with `-D warnings`
 - [ ] All tests pass: `cargo test --workspace`
-
----
-
-## Estimated Timeline
-
-- **BUG-004 + IMPROVE-001:** 3-4 days (create test-utils, refactor tests)
-- **BUG-007:** 1 day (automated fixes)
-
-**Total:** 4-5 days
 
 ---
 

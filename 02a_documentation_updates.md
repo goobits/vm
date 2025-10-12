@@ -1,8 +1,6 @@
 # Documentation Updates
 
-**Priority:** Ongoing (Quick Wins)
 **Status:** Open
-**Effort:** 2-3 days
 
 ---
 
@@ -206,17 +204,6 @@ vm/tests/
 - [ ] CONTRIBUTING.md has code quality guidelines
 - [ ] All main docs have badges
 - [ ] SECURITY.md exists with reporting process
-
----
-
-## Estimated Timeline
-
-- **DOC-001:** 2-3 hours
-- **DOC-002:** 4-6 hours
-- **IMPROVE-002:** 1-2 days
-- **Additional tasks:** 4-6 hours
-
-**Total:** 2-3 days
 
 ---
 

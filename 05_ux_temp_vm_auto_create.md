@@ -1,8 +1,6 @@
 # Proposal: Auto-Create Temp VM on SSH/Mount Commands
 
 **Status:** Draft
-**Priority:** Medium (UX Enhancement)
-**Effort:** 2-3 hours
 **Impact:** Improved user experience for temporary VM workflow
 
 ---
@@ -314,7 +312,7 @@ Update the public API exports to include the new signature with `VmConfig` param
 
 ## Implementation Checklist
 
-### Phase 1: Core Auto-Create for SSH (1 hour)
+### Core Auto-Create for SSH
 - [ ] Add `prompt_for_temp_vm_creation()` helper function
 - [ ] Update `TempVmOps::ssh()` to accept `VmConfig` parameter
 - [ ] Add auto-create logic to `ssh()` method
@@ -322,20 +320,20 @@ Update the public API exports to include the new signature with `VmConfig` param
 - [ ] Test interactive prompt (Y/n/Enter default)
 - [ ] Test non-interactive mode (script/CI)
 
-### Phase 2: Auto-Create for Mount (30 minutes)
+### Auto-Create for Mount
 - [ ] Update `TempVmOps::mount()` to accept `VmConfig` parameter
 - [ ] Add auto-create logic to `mount()` method
 - [ ] Update `handle_temp_command()` to pass config to mount
 - [ ] Test mount with non-existent VM
 - [ ] Verify mount is applied after creation
 
-### Phase 3: Improve Error Messages (30 minutes)
+### Improve Error Messages
 - [ ] Update `start()`, `stop()`, `restart()`, `unmount()` error messages
 - [ ] Add helpful hints pointing to auto-create commands
 - [ ] Make errors use `VmError::NotFound` instead of `Internal`
 - [ ] Test all error paths
 
-### Phase 4: Documentation (30 minutes)
+### Documentation
 - [ ] Update `vm temp --help` with auto-create behavior
 - [ ] Add examples to user guide
 - [ ] Update CHANGELOG.md
@@ -457,9 +455,9 @@ vm temp create-and-mount .
 
 ---
 
-## Future Enhancements
+## Future Enhancements (Optional)
 
-### Phase 5 (Optional): Smart Mount Detection
+### Smart Mount Detection
 
 When creating from SSH, auto-detect common directories:
 ```bash
@@ -469,7 +467,7 @@ No temporary VM found.
 Would you like to create one with mount /Users/miko/my-project? [Y/n]:
 ```
 
-### Phase 6 (Optional): Remember Last Configuration
+### Remember Last Configuration
 
 ```bash
 $ vm temp ssh
@@ -478,7 +476,7 @@ No temporary VM found.
 Last temp VM had 3 mounts. Recreate with same configuration? [Y/n]:
 ```
 
-### Phase 7 (Optional): Add `--auto` Flag
+### Add `--auto` Flag
 
 For users who always want auto-create:
 ```bash
@@ -503,18 +501,6 @@ temp_vm:
 - [ ] All tests pass
 - [ ] Documentation updated
 - [ ] User feedback is positive (fewer "how do I" questions)
-
----
-
-## Estimated Timeline
-
-- **Phase 1 (SSH auto-create):** 1 hour
-- **Phase 2 (Mount auto-create):** 30 minutes
-- **Phase 3 (Error improvements):** 30 minutes
-- **Phase 4 (Documentation):** 30 minutes
-- **Testing:** 30 minutes
-
-**Total:** 2.5-3 hours
 
 ---
 

@@ -1,8 +1,6 @@
 # Testing Infrastructure Improvements
 
-**Priority:** Week 3-4
 **Status:** Open
-**Effort:** 1-2 weeks
 
 ---
 
@@ -189,19 +187,6 @@
 - [ ] vm-plugin: 80%+ coverage
 - [ ] vm-docker-registry: 75%+ coverage
 - [ ] CI runs on Linux, macOS, Windows
-
----
-
-## Estimated Timeline
-
-- **BUG-005:** 2 days
-- **BUG-006:** 1 day
-- **TEST-001:** 2-3 days
-- **TEST-002:** 1-2 days
-- **TEST-003:** 1-2 days
-- **TEST-004:** 2 days
-
-**Total:** 9-12 days
 
 ---
 

@@ -2,9 +2,7 @@
 
 **Severity:** High
 **Impact:** VM creation hangs when PostgreSQL service is enabled
-**Priority:** Week 1-2 (MUST FIX)
 **Status:** Open
-**Effort:** 4-6 hours
 
 ---
 
@@ -176,17 +174,15 @@ for attempt in 1..=max_attempts {
 
 ## Recommended Fix
 
-**Use Solution 1** (quick fix) immediately, then refactor to Solution 3 in a follow-up:
+**Quick Fix:** Implement Solution 1 immediately to resolve the hang:
+- Change line 327: `for attempt in 1..=10 {`
+- Change line 328: `sleep(Duration::from_millis(2000)).await;`
+- Update debug message on line 334 to show "10" instead of "5"
 
-1. **Phase 1 (Immediate - 15 minutes):**
-   - Change line 327: `for attempt in 1..=10 {`
-   - Change line 328: `sleep(Duration::from_millis(2000)).await;`
-   - Update debug message on line 334 to show "10" instead of "5"
-
-2. **Phase 2 (Follow-up - 1 hour):**
-   - Implement Solution 3 for service-specific timeouts
-   - Add comprehensive logging with `info!` level messages
-   - Add user-facing progress messages: "Waiting for PostgreSQL to initialize... (attempt X/10)"
+**Optional Enhancement:** Refactor to Solution 3 for service-specific timeouts:
+- Implement service-specific timeout configuration
+- Add comprehensive logging with `info!` level messages
+- Add user-facing progress messages: "Waiting for PostgreSQL to initialize... (attempt X/10)"
 
 ---
 
@@ -347,18 +343,6 @@ After implementing the fix:
 - [ ] Clear error messages if service startup fails
 - [ ] DATABASE_URL correctly available in created VMs
 - [ ] Documentation updated with troubleshooting section
-
----
-
-## Estimated Timeline
-
-- **Investigation:** ✅ Complete (4 hours)
-- **Solution 1 Implementation:** 30 minutes
-- **Testing:** 1 hour
-- **Documentation:** 30 minutes
-- **Solution 3 Refactor (optional):** 2 hours
-
-**Total:** 4-6 hours for complete fix and testing
 
 ---
 

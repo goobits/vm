@@ -1,8 +1,6 @@
 # Critical Bug Fixes
 
-**Priority:** Week 1-2 (MUST FIX)
 **Status:** Open
-**Effort:** 1-2 weeks
 
 ---
 
@@ -104,20 +102,3 @@
 - [ ] CI includes security checks
 - [ ] Documentation updated
 
----
-
-## Estimated Timeline
-
-- **BUG-001:** 1-2 days
-- **BUG-002:** 2-3 days
-- **BUG-003:** 1-2 days
-
-**Total:** 1 week
-
----
-
-## Next Steps
-
-After completing these critical fixes, proceed to:
-- `02_code_quality.md` - Address technical debt
-- `05_documentation_updates.md` - Update user docs (quick wins)
