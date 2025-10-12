@@ -208,6 +208,16 @@ pub async fn handle_create(
     vm_println!("{}", msg!(MESSAGES.vm_create_header, name = vm_name));
     vm_println!("{}", MESSAGES.vm_create_progress);
 
+    // Register VM services BEFORE creating container so docker-compose can inject env vars
+    let vm_instance_name = if let Some(instance_name) = &instance {
+        format!("{}-{}", vm_name, instance_name)
+    } else {
+        format!("{}-dev", vm_name)
+    };
+
+    vm_println!("{}", MESSAGES.common_configuring_services);
+    register_vm_services_helper(&vm_instance_name, &config, &global_config).await?;
+
     // Create provider context with verbose flag and global config
     let context = ProviderContext::with_verbose(verbose).with_config(global_config.clone());
 
@@ -292,16 +302,7 @@ pub async fn handle_create(
                 }
             }
 
-            // Register VM services (VM is already created and started by provider.create())
-            let vm_instance_name = if let Some(instance_name) = &instance {
-                format!("{}-{}", vm_name, instance_name)
-            } else {
-                format!("{}-dev", vm_name)
-            };
-
-            vm_println!("{}", MESSAGES.common_configuring_services);
-            register_vm_services_helper(&vm_instance_name, &global_config).await?;
-
+            // Services were already registered before container creation
             if is_first_vm {
                 vm_println!("\n🎉 Success! Your VM is ready");
                 vm_println!("📝 Next steps:");

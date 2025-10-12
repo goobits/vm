@@ -8,7 +8,7 @@ use tracing::{debug, warn};
 use crate::error::VmResult;
 use crate::service_manager::get_service_manager;
 use vm_cli::msg;
-use vm_config::GlobalConfig;
+use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
 use vm_provider::Provider;
@@ -24,10 +24,11 @@ pub fn handle_get_sync_directory(provider: Box<dyn Provider>) {
 /// Helper function to register VM services
 pub(super) async fn register_vm_services_helper(
     vm_name: &str,
+    vm_config: &VmConfig,
     global_config: &GlobalConfig,
 ) -> VmResult<()> {
     if let Err(e) = get_service_manager()
-        .register_vm_services(vm_name, global_config)
+        .register_vm_services(vm_name, vm_config, global_config)
         .await
     {
         warn!("Failed to register VM services: {}", e);

@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
 
-use vm_config::GlobalConfig;
+use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::{vm_println, vm_success, vm_warning};
 
 /// Represents the current state of a managed service
@@ -75,33 +75,62 @@ impl ServiceManager {
         Ok(manager)
     }
 
-    /// Register services for a VM based on global configuration
+    /// Register services for a VM based on vm.yaml and global configuration
+    ///
+    /// Services are enabled if EITHER:
+    /// - The VM's vm.yaml requests them (vm_config.services)
+    /// - The global config enables them for all VMs (global_config.services)
+    ///
+    /// vm.yaml takes precedence for service-specific settings (port, version, etc.)
     pub async fn register_vm_services(
         &self,
         vm_name: &str,
+        vm_config: &VmConfig,
         global_config: &GlobalConfig,
     ) -> Result<()> {
         info!("Registering services for VM: {}", vm_name);
 
         let mut services_to_start = Vec::new();
 
-        // Check which services are enabled in global config
-        if global_config.services.auth_proxy.enabled {
+        // Helper to check if a service is enabled in vm.yaml OR global config
+        let is_service_enabled = |service_name: &str| -> bool {
+            // Check vm.yaml first (takes precedence)
+            if vm_config
+                .services
+                .get(service_name)
+                .is_some_and(|s| s.enabled)
+            {
+                return true;
+            }
+            // Fall back to global config
+            match service_name {
+                "postgresql" => global_config.services.postgresql.enabled,
+                "redis" => global_config.services.redis.enabled,
+                "mongodb" => global_config.services.mongodb.enabled,
+                "auth_proxy" => global_config.services.auth_proxy.enabled,
+                "docker_registry" => global_config.services.docker_registry.enabled,
+                "package_registry" => global_config.services.package_registry.enabled,
+                _ => false,
+            }
+        };
+
+        // Check which services should be started (vm.yaml OR global config)
+        if is_service_enabled("auth_proxy") {
             services_to_start.push("auth_proxy");
         }
-        if global_config.services.docker_registry.enabled {
+        if is_service_enabled("docker_registry") {
             services_to_start.push("docker_registry");
         }
-        if global_config.services.package_registry.enabled {
+        if is_service_enabled("package_registry") {
             services_to_start.push("package_registry");
         }
-        if global_config.services.postgresql.enabled {
+        if is_service_enabled("postgresql") {
             services_to_start.push("postgresql");
         }
-        if global_config.services.redis.enabled {
+        if is_service_enabled("redis") {
             services_to_start.push("redis");
         }
-        if global_config.services.mongodb.enabled {
+        if is_service_enabled("mongodb") {
             services_to_start.push("mongodb");
         }
 

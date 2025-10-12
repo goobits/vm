@@ -135,7 +135,7 @@ pub async fn handle_start(
             let vm_instance_name = format!("{}-dev", vm_name);
 
             vm_println!("{}", MESSAGES.common_configuring_services);
-            register_vm_services_helper(&vm_instance_name, &global_config).await?;
+            register_vm_services_helper(&vm_instance_name, &config, &global_config).await?;
 
             vm_println!("{}", MESSAGES.common_connect_hint);
 
@@ -263,7 +263,7 @@ pub async fn handle_restart(
             // After successful restart, register services
             let vm_instance_name = format!("{}-dev", vm_name);
             vm_println!("{}", MESSAGES.common_configuring_services);
-            register_vm_services_helper(&vm_instance_name, &global_config).await?;
+            register_vm_services_helper(&vm_instance_name, &config, &global_config).await?;
         }
         Err(e) => {
             vm_println!(
