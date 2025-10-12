@@ -1,5 +1,9 @@
 # 🚀 Goobits VM
 
+![Build Status](https://img.shields.io/github/actions/workflow/status/goobits/vm/ci.yml?branch=main&style=for-the-badge)
+![License](https://img.shields.io/github/license/goobits/vm?style=for-the-badge)
+![Crates.io](https://img.shields.io/crates/v/vm-cli?style=for-the-badge)
+
 Create development environments that automatically configure themselves based on your project type. Zero configuration required for most projects.
 
 ## 📚 Documentation
@@ -28,21 +32,55 @@ Create development environments that automatically configure themselves based on
 
 ## Prerequisites
 
-Before you begin, make sure you have the following tools installed.
+### Required
+- **Docker** (with proper permissions)
+  - Linux: Add user to docker group
+    ```bash
+    sudo usermod -aG docker $USER
+    newgrp docker
+    # Note: You may need to log out/in for changes to take effect
+    ```
+  - macOS: Install Docker Desktop
+  - Windows: Install Docker Desktop with WSL2
+- **Rust toolchain** (1.70 or later)
+  ```bash
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  ```
+- **Git**
 
-### 1. Rust Toolchain
+### Verify Installation
+```bash
+docker --version
+docker ps  # Should not error
+cargo --version
+```
 
-The VM CLI is built with Rust, so you'll need the Rust toolchain (including `cargo`, the Rust package manager). If you don't have it, the official `rustup` installer is the best way to get started.
+### Troubleshooting Docker
 
-- **Installation:** [https://rustup.rs](https://rustup.rs)
-- **Why?** `cargo` is used to install the `vm` binary from its source package.
+**"Permission Denied" Error on Linux**
 
-### 2. Docker
+If you see an error like `permission denied while trying to connect to the Docker daemon socket`, it means your user account is not in the `docker` group.
 
-VM uses Docker as its default "provider" to create lightweight, isolated development environments. Make sure the Docker daemon is running before using `vm` commands.
+**Solution:**
+1.  Add your user to the `docker` group:
+    ```bash
+    sudo usermod -aG docker $USER
+    ```
+2.  Apply the new group membership. You can either log out and log back in, or run the following command to start a new shell session with the correct permissions:
+    ```bash
+    newgrp docker
+    ```
 
-- **Installation:** [https://docs.docker.com/get-docker/](https://docs.docker.com/get-docker/)
-- **Why?** Docker manages the lifecycle of your development containers.
+**Docker Daemon Not Running**
+
+If you get an error like `Cannot connect to the Docker daemon. Is the docker daemon running on this host?`, it means the Docker service isn't active.
+
+**Solution:**
+- **Linux (systemd):**
+  ```bash
+  sudo systemctl start docker
+  ```
+- **macOS/Windows:** Make sure Docker Desktop is running.
 
 ---
 
@@ -236,6 +274,17 @@ vm auth remove <name>      # Remove a secret
 vm pkg add [--type <t>]  # Publish a package from the current directory
 vm pkg list              # List all packages in the registry
 vm pkg remove <name>     # Remove a package from the registry
+```
+
+### Database Management (`vm db`)
+```bash
+vm db list               # List all managed databases
+vm db backup <db_name>   # Create a backup of a database
+vm db restore <db_name>  # Restore a database from the latest backup
+vm db size <db_name>     # Show the size of a database
+vm db export <db_name>   # Export a database to a file
+vm db import <db_name>   # Import a database from a file
+vm db reset <db_name>    # Reset a database to its initial state
 ```
 
 ### System Management
