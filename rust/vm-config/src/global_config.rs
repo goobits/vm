@@ -493,12 +493,16 @@ fn default_true() -> bool {
 
 impl GlobalConfig {
     /// Load global configuration from the standard location
+    ///
+    /// If the config file doesn't exist, creates it with default values automatically.
     pub fn load() -> vm_core::error::Result<Self> {
         let config_path = vm_core::user_paths::global_config_path()?;
 
         if !config_path.exists() {
-            // Return defaults if no global config exists
-            return Ok(Self::default());
+            // Create default config file automatically
+            let default_config = Self::default();
+            default_config.save_to_path(&config_path)?;
+            return Ok(default_config);
         }
 
         Self::load_from_path(&config_path)
