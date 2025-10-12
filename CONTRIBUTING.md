@@ -61,6 +61,17 @@ make deny
 make test
 ```
 
+### Additional Quality Checks
+
+In addition to the checks run by `make quality-gates`, we use several other tools to ensure code quality:
+
+- **Code Duplication**: `jscpd`
+- **Security Auditing**: `cargo-audit`
+- **Code Complexity**: `rust-code-analysis-cli`
+- **Test Coverage**: `cargo-tarpaulin`
+
+For instructions on how to install and run these tools, please see the [Development Tools](CLAUDE.md#development-tools) section in our developer guide.
+
 ### Pre-Commit Checklist
 
 Before committing your changes:
@@ -279,6 +290,22 @@ fn list(&self) -> Result<Vec<String>>;
 - [ ] Performance impact is acceptable
 - [ ] Security implications considered
 - [ ] Backward compatibility maintained
+
+## Code Review Process
+
+1.  **Submission**: Once your pull request is submitted, a team member will be assigned to review it.
+2.  **Automated Checks**: Our CI pipeline will automatically run all quality gates (`fmt`, `clippy`, `test`, etc.). Please ensure these pass.
+3.  **First Review**: The reviewer will check for:
+    -   Architectural and design soundness.
+    -   Correctness and adherence to best practices.
+    -   Code clarity and maintainability.
+    -   Adequate test coverage.
+    -   Documentation updates.
+4.  **Feedback**: The reviewer may leave comments or request changes. Please address the feedback and push new commits to your branch. The pull request will update automatically.
+5.  **Approval**: Once all feedback has been addressed and the reviewer is satisfied, they will approve the pull request.
+6.  **Merge**: A maintainer will merge the pull request into the `main` branch.
+
+We aim to provide an initial review within 2-3 business days. Thank you for your patience and contributions!
 
 ## Release Process
 

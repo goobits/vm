@@ -92,14 +92,27 @@ cargo test
 - **Integration Tests**: In `tests/` directories, test cross-crate functionality
 - **Doc Tests**: Examples in doc comments, verify API usage
 
-### Key Test Files
-- `vm-config/tests/config_ops_tests.rs` - Configuration operations (uses TEST_MUTEX)
-- `vm/tests/workflow_tests.rs` - CLI end-to-end workflows (uses TEST_MUTEX)
-- `vm/tests/temp_workflow_tests.rs` - Temp VM lifecycle testing
-- `vm/tests/vm_operations_integration_tests.rs` - **VM operations integration tests (NEW)**
-- `vm/tests/config_cli_tests.rs` - CLI configuration command testing
-- `rust/tests/integration_tests.rs` - Cross-crate integration scenarios
-- `vm-config/src/detector/tests/` - Framework detection tests
+### Test Directory Structure (`vm/tests/`)
+
+The integration tests for the `vm` crate are organized by feature into the following directories:
+
+```
+vm/tests/
+├── cli/
+│   ├── config_commands.rs      # Config CLI tests
+│   └── pkg_commands.rs         # Package CLI tests
+├── common/
+│   └── mod.rs                  # Shared test helpers
+├── networking/
+│   ├── port_forwarding.rs      # Port forwarding tests
+│   └── ssh_refresh.rs          # SSH worktree refresh tests
+├── services/
+│   └── shared_services.rs      # Multi-VM service sharing
+├── vm_ops/
+│   ├── create_destroy_tests.rs # Core vm create/destroy lifecycle tests
+│   └── ...                     # Other vm ops tests (lifecycle, features, etc.)
+└── *.rs                        # Standalone or legacy test files
+```
 
 ### VM Operations Integration Tests (NEW)
 
@@ -239,6 +252,53 @@ make clippy          # Run linter
 make check           # Run fmt + clippy + test
 make check-duplicates # Check for code duplication
 ```
+
+## Development Tools
+
+### Code Quality Analysis
+
+Install additional quality checking tools:
+
+```bash
+# Code duplication detection
+npm install -g jscpd
+
+# Rust code complexity analysis
+cargo install rust-code-analysis-cli
+
+# Security scanning
+cargo install cargo-deny cargo-audit
+
+# Test coverage
+cargo install cargo-tarpaulin
+```
+
+### Running Quality Checks
+
+```bash
+# Check for code duplication
+jscpd rust/ --threshold 2
+
+# Check for security vulnerabilities
+cd rust && cargo deny check
+cd rust && cargo audit
+
+# Check code complexity
+rust-code-analysis-cli --metrics -p rust/
+
+# Generate test coverage
+cd rust && cargo tarpaulin --workspace --out Html
+```
+
+### Pre-commit Hooks
+
+The project uses pre-commit hooks for:
+- Rust formatting (`cargo fmt`)
+- Clippy linting
+- Quick tests for affected packages
+- Commit message validation
+
+See `.git/hooks/pre-commit` for details.
 
 ### Using Cargo Directly
 
