@@ -197,3 +197,183 @@ vm:
     println!("✅ Package registry integration test completed successfully");
     Ok(())
 }
+
+/// Integration Test: Database Environment Variables Feature
+///
+/// This test validates that when a VM is created with database services enabled in global config,
+/// the container receives the correct DATABASE_URL, REDIS_URL, and MONGODB_URL environment variables.
+#[test]
+fn test_database_environment_variables_feature() -> Result<()> {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let fixture = VmOpsTestFixture::new()?;
+
+    // Skip test if Docker is not available
+    if !fixture.is_docker_available() {
+        println!("⚠️  Skipping test_database_environment_variables_feature - Docker not available");
+        return Ok(());
+    }
+
+    // Step 1: Create global config with all database services enabled
+    let vm_config_dir = fixture.test_dir.parent().unwrap().join(".vm");
+    fs::create_dir_all(&vm_config_dir)?;
+
+    let global_config_content = r#"services:
+  postgresql:
+    enabled: true
+    port: 5432
+    version: "16"
+  redis:
+    enabled: true
+    port: 6379
+    version: "7"
+  mongodb:
+    enabled: true
+    port: 27017
+    version: "7"
+"#;
+    fs::write(vm_config_dir.join("config.yaml"), global_config_content)?;
+
+    // Step 2: Create basic vm.yaml
+    let vm_yaml_content = format!(
+        r#"provider: docker
+project:
+  name: {}
+vm:
+  memory: 1024
+  cpus: 1
+"#,
+        fixture.project_name
+    );
+    fs::write(fixture.test_dir.join("vm.yaml"), vm_yaml_content)?;
+
+    // Step 3: Create the VM (this should start database services and inject env vars)
+    println!("Creating VM with database services enabled...");
+    let output = fixture.run_vm_command(&["create"])?;
+    if !output.status.success() {
+        eprintln!(
+            "Create failed stdout: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        eprintln!(
+            "Create failed stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    assert!(output.status.success(), "VM creation should succeed");
+
+    // Wait for container to be fully ready
+    std::thread::sleep(Duration::from_secs(5));
+
+    let container_name = format!("{}-dev", fixture.project_name);
+
+    // Step 4: Verify database services are running
+    println!("Verifying database services are running...");
+
+    let postgres_check = Command::new("docker")
+        .args(["ps", "--filter", "name=vm-postgres-global"])
+        .output()?;
+    assert!(
+        String::from_utf8_lossy(&postgres_check.stdout).contains("vm-postgres-global"),
+        "PostgreSQL container should be running"
+    );
+
+    let redis_check = Command::new("docker")
+        .args(["ps", "--filter", "name=vm-redis-global"])
+        .output()?;
+    assert!(
+        String::from_utf8_lossy(&redis_check.stdout).contains("vm-redis-global"),
+        "Redis container should be running"
+    );
+
+    let mongodb_check = Command::new("docker")
+        .args(["ps", "--filter", "name=vm-mongodb-global"])
+        .output()?;
+    assert!(
+        String::from_utf8_lossy(&mongodb_check.stdout).contains("vm-mongodb-global"),
+        "MongoDB container should be running"
+    );
+
+    // Step 5: Verify environment variables are set in the VM container
+    println!("Verifying database environment variables in container...");
+    let env_output = Command::new("docker")
+        .args(["exec", &container_name, "printenv"])
+        .output()?;
+
+    assert!(
+        env_output.status.success(),
+        "Failed to get container environment variables"
+    );
+
+    let env_vars = String::from_utf8_lossy(&env_output.stdout);
+
+    // Determine expected host based on platform
+    let expected_host = if cfg!(target_os = "linux") {
+        "172.17.0.1"
+    } else {
+        "host.docker.internal"
+    };
+
+    // Verify DATABASE_URL (PostgreSQL)
+    let expected_database_url = format!(
+        "DATABASE_URL=postgresql://postgres:postgres@{}:5432/{}",
+        expected_host, fixture.project_name
+    );
+    assert!(
+        env_vars.contains(&expected_database_url),
+        "DATABASE_URL should be set to '{}'\nActual env vars:\n{}",
+        expected_database_url,
+        env_vars
+    );
+    println!("✅ DATABASE_URL verified: {}", expected_database_url);
+
+    // Verify REDIS_URL
+    let expected_redis_url = format!("REDIS_URL=redis://{}:6379", expected_host);
+    assert!(
+        env_vars.contains(&expected_redis_url),
+        "REDIS_URL should be set to '{}'\nActual env vars:\n{}",
+        expected_redis_url,
+        env_vars
+    );
+    println!("✅ REDIS_URL verified: {}", expected_redis_url);
+
+    // Verify MONGODB_URL
+    let expected_mongodb_url = format!("MONGODB_URL=mongodb://{}:27017", expected_host);
+    assert!(
+        env_vars.contains(&expected_mongodb_url),
+        "MONGODB_URL should be set to '{}'\nActual env vars:\n{}",
+        expected_mongodb_url,
+        env_vars
+    );
+    println!("✅ MONGODB_URL verified: {}", expected_mongodb_url);
+
+    // Step 6: Cleanup - Destroy the VM
+    println!("Cleaning up test VM and database services...");
+    let destroy_output = fixture.run_vm_command(&["destroy", "--force"])?;
+    assert!(
+        destroy_output.status.success(),
+        "VM destruction should succeed"
+    );
+
+    // Verify VM container is removed
+    let check_output = Command::new("docker")
+        .args(["inspect", &container_name])
+        .output()?;
+    assert!(
+        !check_output.status.success(),
+        "VM container should not exist after destroy"
+    );
+
+    // Verify database containers are stopped (they should be auto-stopped by service manager)
+    std::thread::sleep(Duration::from_secs(2));
+
+    let postgres_after = Command::new("docker")
+        .args(["ps", "-a", "--filter", "name=vm-postgres-global"])
+        .output()?;
+    assert!(
+        !String::from_utf8_lossy(&postgres_after.stdout).contains("vm-postgres-global"),
+        "PostgreSQL container should be removed after VM destroy"
+    );
+
+    println!("✅ Database environment variables integration test completed successfully");
+    Ok(())
+}
