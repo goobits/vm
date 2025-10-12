@@ -325,5 +325,22 @@ pub async fn handle_create(
             );
             Err(VmError::from(e))
         }
+    }?;
+
+    // Seed database if configured
+    if let Some(service_config) = config.services.get("postgresql") {
+        if let Some(seed_file) = &service_config.seed_file {
+            let default_db_name = format!("{}_dev", vm_name.replace('-', "_"));
+            let db_name = service_config
+                .database
+                .as_deref()
+                .unwrap_or(&default_db_name);
+            vm_println!("🌱 Seeding database '{}' from {:?}...", db_name, seed_file);
+            if let Err(e) = crate::commands::db::backup::import_db(db_name, seed_file).await {
+                vm_println!("Database seeding failed: {}", e);
+            }
+        }
     }
+
+    Ok(())
 }

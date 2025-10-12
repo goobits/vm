@@ -8,6 +8,8 @@ use std::io::{self, Write};
 use tracing::{debug, info_span};
 
 use crate::error::{VmError, VmResult};
+use crate::commands::db::utils::execute_psql_command;
+use crate::service_manager::get_service_manager;
 use vm_cli::msg;
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::{vm_error, vm_println};
@@ -22,7 +24,7 @@ pub async fn handle_destroy(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     config: VmConfig,
-    _global_config: GlobalConfig,
+    global_config: GlobalConfig,
     force: bool,
 ) -> VmResult<()> {
     // Get VM name from config for confirmation prompt
@@ -65,7 +67,7 @@ pub async fn handle_destroy(
             .args(["image", "rm", "-f", &format!("{}-image", vm_name)])
             .output();
 
-        unregister_vm_services_helper(&vm_instance_name).await?;
+        unregister_vm_services_helper(&vm_instance_name, &global_config).await?;
 
         vm_println!("{}", MESSAGES.common_cleanup_complete);
         return Ok(());
@@ -78,6 +80,32 @@ pub async fn handle_destroy(
     } else {
         // Check status to show current state
         let is_running = provider.status(None).is_ok();
+
+        let service_manager = get_service_manager();
+        if let Some(pg_state) = service_manager.get_service_status("postgresql") {
+            if pg_state.is_running && pg_state.reference_count == 1 {
+                let db_name = format!("{}_dev", vm_name.replace('-', "_"));
+                let db_size = match execute_psql_command(&format!(
+                    "SELECT pg_size_pretty(pg_database_size('{}'))",
+                    db_name
+                ))
+                .await
+                {
+                    Ok(size) => size.trim().to_string(),
+                    Err(_) => "N/A".to_string(),
+                };
+
+                vm_println!("⚠️  Destroying VM '{}'", vm_name);
+                vm_println!();
+                vm_println!("📊 Database: Your PostgreSQL data will persist");
+                vm_println!("   Location: ~/.vm/data/postgres");
+                vm_println!("   Database: {} ({})", db_name, db_size);
+                vm_println!();
+                vm_println!("💡 Tip: Create a backup first");
+                vm_println!("   vm db backup {}", db_name);
+                vm_println!();
+            }
+        }
 
         vm_println!("{}", msg!(MESSAGES.vm_destroy_confirm, name = vm_name));
         vm_println!(
@@ -110,8 +138,28 @@ pub async fn handle_destroy(
 
         match provider.destroy(container) {
             Ok(()) => {
+                if let Some(service_config) = config.services.get("postgresql") {
+                    if service_config.backup_on_destroy {
+                        let default_db_name = format!("{}_dev", vm_name.replace('-', "_"));
+                        let db_name = service_config
+                            .database
+                            .as_deref()
+                            .unwrap_or(&default_db_name);
+                        vm_println!("💾 Backing up database '{}' as per project setting...", db_name);
+                        if let Err(e) = crate::commands::db::backup::backup_db(
+                            db_name,
+                            None,
+                            global_config.services.postgresql.backup_retention,
+                        )
+                        .await
+                        {
+                            vm_println!("Backup failed: {}", e);
+                        }
+                    }
+                }
+
                 vm_println!("{}", MESSAGES.common_configuring_services);
-                unregister_vm_services_helper(&vm_instance_name).await?;
+                unregister_vm_services_helper(&vm_instance_name, &global_config).await?;
 
                 vm_println!("{}", MESSAGES.vm_destroy_success);
                 Ok(())

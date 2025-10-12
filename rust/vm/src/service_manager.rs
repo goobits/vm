@@ -180,7 +180,11 @@ impl ServiceManager {
     }
 
     /// Unregister services for a VM
-    pub async fn unregister_vm_services(&self, vm_name: &str) -> Result<()> {
+    pub async fn unregister_vm_services(
+        &self,
+        vm_name: &str,
+        global_config: &GlobalConfig,
+    ) -> Result<()> {
         info!("Unregistering services for VM: {}", vm_name);
 
         let mut services_to_stop = Vec::new();
@@ -208,8 +212,33 @@ impl ServiceManager {
                             vm_name, service_name, service_state.reference_count
                         );
 
-                        // If reference count reaches zero, mark for stopping
+                        // If reference count reaches zero, perform cleanup and mark for stopping
                         if service_state.reference_count == 0 && service_state.is_running {
+                            // Auto-backup for PostgreSQL
+                            if service_name == "postgresql"
+                                && global_config.services.postgresql.auto_backup
+                            {
+                                let db_name = format!("{}_dev", vm_name.replace('-', "_"));
+                                vm_println!(
+                                    "💾 Auto-backing up database '{}' before stopping PostgreSQL...",
+                                    db_name
+                                );
+                                if let Err(e) = crate::commands::db::backup::backup_db(
+                                    &db_name,
+                                    None,
+                                    global_config.services.postgresql.backup_retention,
+                                )
+                                .await
+                                {
+                                    warn!("Auto-backup failed for database '{}': {}", db_name, e);
+                                    vm_warning!(
+                                        "Auto-backup failed for database '{}': {}",
+                                        db_name,
+                                        e
+                                    );
+                                }
+                            }
+
                             services_to_stop.push(service_name.clone());
                         }
                     }
