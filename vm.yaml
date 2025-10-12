@@ -1,41 +1,13 @@
-version: 1.2.1
 provider: docker
-os: auto
 project:
-  hostname: dev.vm.local
-  name: vm
-  workspace_path: /workspace
+  name: app
 vm:
-  cpus: 6
-  gui: false
-  memory: 8192
-  port_binding: 0.0.0.0
-  timezone: America/Los_Angeles
-  user: developer
-versions:
-  node: '22'
-  python: '3.11'
-ports:
-  _range: [3120, 3129]
-apt_packages:
-  - tree
-  - ripgrep
-  - unzip
-  - htop
-npm_packages:
-  - '@anthropic-ai/claude-code'
-  - '@google/gemini-cli'
-pip_packages:
-  - claudeflow
-terminal:
-  emoji: 🚀
-  show_git_branch: true
-  show_timestamp: false
-  theme: dracula
-  username: vm-dev
-aliases:
-  claudeyolo: claude --dangerously-skip-permissions
-  geminiyolo: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini
-# Services are now configured globally in ~/.vm/config.yaml
-# See: vm config get services
-# Configure with: vm config set services.package_registry.enabled true
+  cpus: 2
+  memory: 3979
+  user: test-user
+ports: {}
+services:
+  postgresql:
+    enabled: true
+  redis:
+    enabled: true

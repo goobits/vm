@@ -244,6 +244,12 @@ fn test_shared_postgres_lifecycle_integration() -> Result<()> {
     );
 
     // 2. Create a VM. This should start the postgres service.
+    Command::new(&vm_binary)
+        .args(["init"])
+        .current_dir(&project_dir)
+        .env("HOME", home_dir)
+        .output()?;
+
     let output = Command::new(&vm_binary)
         .args(["create"])
         .current_dir(&project_dir)
@@ -331,6 +337,11 @@ fn test_shared_redis_lifecycle_integration() -> Result<()> {
     );
 
     // 2. Create a VM. This should start the redis service.
+    Command::new(&vm_binary)
+        .args(["init"])
+        .current_dir(&project_dir)
+        .env("HOME", home_dir)
+        .output()?;
     let output = Command::new(&vm_binary)
         .args(["create"])
         .current_dir(&project_dir)

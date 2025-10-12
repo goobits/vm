@@ -81,9 +81,26 @@ impl ConfigValidator {
         self.validate_cpu(config, &mut report)?;
         self.validate_memory(config, &mut report)?;
         self.validate_ports(config, &mut report)?;
+        self.validate_user(config, &mut report)?;
         // self.validate_disk_space(&mut report)?; // Placeholder for future implementation
 
         Ok(report)
+    }
+
+    /// Validates that the user is configured.
+    fn validate_user(&self, config: &VmConfig, report: &mut ValidationReport) -> Result<()> {
+        if let Some(vm_settings) = &config.vm {
+            if vm_settings.user.as_deref().unwrap_or("").is_empty() {
+                report.add_error(
+                    "The 'vm.user' field in your vm.yaml is missing or empty. Please specify a username.".to_string(),
+                );
+            }
+        } else {
+            report.add_error(
+                "The 'vm' section is missing in your vm.yaml. Please specify a username under 'vm.user'.".to_string(),
+            );
+        }
+        Ok(())
     }
 
     /// Validates the CPU configuration.

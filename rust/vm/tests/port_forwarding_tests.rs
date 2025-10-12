@@ -120,6 +120,7 @@ project:
 vm:
   cpus: 1
   memory: 1024
+  user: test-user
 ports:
   mappings:
     - host: 3456
@@ -165,6 +166,7 @@ project:
 vm:
   cpus: 1
   memory: 1024
+  user: test-user
 ports:
   mappings:
     - host: 3457
@@ -227,6 +229,7 @@ project:
 vm:
   cpus: 1
   memory: 1024
+  user: test-user
 ports:
   mappings:
     - host: 3333

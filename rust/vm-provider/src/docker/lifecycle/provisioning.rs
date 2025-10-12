@@ -96,7 +96,10 @@ impl<'a> LifecycleOperations<'a> {
             parser,
         )
         .map_err(|e| {
-            VmError::Internal(format!("Ansible provisioning failed for container '{}'. Check container logs for detailed error information: {}", self.container_name(), e))
+            VmError::Internal(format!(
+                "Ansible provisioning failed. The playbook exited with an error. To see the full output, run `vm create --verbose`. Error: {}",
+                e
+            ))
         })?;
 
         Ok(())
@@ -168,7 +171,10 @@ impl<'a> LifecycleOperations<'a> {
             parser,
         )
         .map_err(|e| {
-            VmError::Internal(format!("Ansible provisioning failed for container '{}'. Check container logs for detailed error information: {}", container_name, e))
+            VmError::Internal(format!(
+                "Ansible provisioning failed. The playbook exited with an error. To see the full output, run `vm create --verbose`. Error: {}",
+                e
+            ))
         })?;
         Ok(())
     }
