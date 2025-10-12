@@ -7,6 +7,103 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2025-10-12
+
+### Added
+- **Database Management Commands**: Comprehensive PostgreSQL database lifecycle management
+  - **New `vm db` command suite**:
+    - `vm db backup <db_name> [--name <backup_name>]` - Create compressed database dumps
+    - `vm db restore <backup_name> <db_name>` - Restore from backup
+    - `vm db export <db_name> <file>` - Export to plain SQL file
+    - `vm db import <db_name> <file>` - Import from SQL file
+    - `vm db list` - List all databases
+    - `vm db size` - Show database disk usage
+    - `vm db reset <db_name> [--force]` - Drop and recreate database
+  - **Automated backup management**:
+    - Auto-backup on `vm destroy` when destroying last VM using PostgreSQL
+    - Configurable backup retention (default: keep 7 most recent)
+    - Automatic cleanup of old backups
+    - Database seeding from SQL file on `vm create`
+  - **Enhanced destroy UX**:
+    - Warns when destroying last VM that uses PostgreSQL
+    - Shows database name, location, and size information
+    - Suggests creating backup before destruction
+  - **Configuration options**:
+    - Global: `services.postgresql.auto_backup` and `backup_retention`
+    - Project: `services.postgresql.backup_on_destroy` and `seed_file`
+  - Backups stored in `~/.vm/backups/postgres/` with timestamp naming
+
+- **Structured Logging System**: Comprehensive logging infrastructure with multiple output formats
+  - JSON output for machine parsing and log aggregation systems
+  - Pretty-printed output with color coding for human readability
+  - Configurable via `RUST_LOG` environment variable
+  - Integration with tracing ecosystem for performance monitoring
+  - New `vm-logging` crate for centralized logging configuration
+
+- **Automatic Resource Auto-Adjustment**: Smart resource allocation for VM creation
+  - Analyzes available host resources (CPU, memory, disk)
+  - Automatically adjusts VM configuration to prevent resource conflicts
+  - Provides recommendations for optimal VM performance
+  - Reduces failed VM creation due to insufficient resources
+  - Less conservative memory auto-adjustment for better utilization
+
+- **Global Configuration Auto-Creation**: Improved first-run experience
+  - Automatically creates `~/.vm/config.yaml` if it doesn't exist
+  - Eliminates manual configuration file creation step
+  - Pre-populates with sensible defaults
+  - Enhances onboarding experience for new users
+
+- **Enhanced Service Integration**: vm.yaml services now integrate with ServiceManager
+  - Project-specific service configurations respected by global ServiceManager
+  - Seamless coordination between project and global service settings
+  - Improved service lifecycle management
+
+- **Port Forwarding Tests**: New integration tests for port mapping functionality
+  - Tests for single and multiple port mappings
+  - Port conflict detection validation
+  - UDP and TCP protocol support verification
+
+### Changed
+- **SSH Start Prompt**: Default answer changed to "yes" for better UX
+  - Pressing Enter now accepts the default (start VM)
+  - Reduces friction in common workflow
+  - Users can still explicitly decline with "n" or "no"
+
+- **Onboarding Experience**: Multiple improvements for new users
+  - Better error messages and troubleshooting guidance
+  - Enhanced quick start documentation
+  - Improved development workflow documentation
+
+### Fixed
+- **Docker Test Skipping**: Tests gracefully skip when Docker is unavailable
+  - Prevents test failures in environments without Docker
+  - CI/CD friendly with clear skip messages
+  - Improved test reliability across different environments
+
+### Removed
+- **Platform Module**: Removed obsolete platform module code
+  - Cleaned up unused abstractions
+  - Simplified codebase architecture
+
+### Documentation
+- Added project audit report and bug tracking documentation
+- Consolidated testing documentation, kept only action plan
+- Removed completed database persistence planning document
+- Split bug reports into focused proposals
+- Reordered proposals by priority and dependencies
+
+### Technical Improvements
+- **Database environment variables integration test**: Comprehensive test coverage
+  - Verifies DATABASE_URL, REDIS_URL, MONGODB_URL injection
+  - Tests correct host addressing (172.17.0.1 on Linux, host.docker.internal on macOS/Windows)
+  - Validates service auto-start/stop behavior
+  - Prevents regression of missing environment variables issue
+- Added port forwarding integration tests with TestFixture pattern
+- Enhanced test coverage for service configuration
+- Improved code organization and maintainability
+- All tests passing with improved reliability
+- New crate: `vm-logging` for structured logging support
+
 ## [2.2.0] - 2025-10-11
 
 ### Added
