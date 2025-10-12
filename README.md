@@ -50,14 +50,26 @@ VM uses Docker as its default "provider" to create lightweight, isolated develop
 
 **Note**: Pre-compiled binaries are not yet available. The recommended installation method is to build from source.
 
-Get up and running in three commands:
+Get up and running in a few simple steps:
 
+**1. Install `vm` from Source**
 ```bash
 # Clone the repository and run the install script
 git clone https://github.com/goobits/vm.git
 cd vm
 ./install.sh --build-from-source
+```
 
+**2. Initialize Your Project**
+Navigate to your project's directory and run `vm init` to generate a `vm.yaml` file. The tool will auto-detect your project type and suggest a configuration.
+```bash
+cd /path/to/your-project
+vm init
+```
+
+**3. Create and Connect to Your Environment**
+Once you're ready, create the environment and SSH into it.
+```bash
 # Create your environment — it detects your project automatically
 vm create
 

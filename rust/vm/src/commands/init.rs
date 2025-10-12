@@ -1,4 +1,5 @@
 // Standard library imports
+use std::env;
 use std::fs;
 use std::path::PathBuf;
 
@@ -62,6 +63,7 @@ pub fn handle_init(
     );
 
     let project_name = detect_project_name().unwrap_or_else(|_| "my-project".to_string());
+    let username = env::var("USER").unwrap_or_else(|_| "developer".to_string());
 
     let config = VmConfig {
         provider: Some("docker".to_string()),
@@ -72,6 +74,7 @@ pub fn handle_init(
         vm: Some(VmSettings {
             cpus: Some(resources.recommended_cpus),
             memory: Some(resources.recommended_memory.clone()),
+            user: Some(username),
             ..Default::default()
         }),
         ..Default::default()
