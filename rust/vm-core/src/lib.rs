@@ -2,7 +2,6 @@ pub mod command_stream;
 pub mod error;
 pub mod file_system;
 pub mod output_macros;
-pub mod platform;
 pub mod project;
 pub mod system_check;
 pub mod temp_dir;

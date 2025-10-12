@@ -1,4 +1,4 @@
-#![cfg(all(test, target_os = "macos"))]
+#![cfg(all(test, target_os = "macos", feature = "tart"))]
 
 use std::path::Path;
 use uuid::Uuid;
