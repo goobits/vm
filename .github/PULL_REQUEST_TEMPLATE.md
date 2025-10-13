@@ -19,7 +19,7 @@ Please delete options that are not relevant.
 - [ ] My code follows the style guidelines of this project, enforced by `cargo fmt`.
 - [ ] I have performed a self-review of my own code.
 - [ ] I have commented my code, particularly in hard-to-understand areas.
-- [ ] I have made corresponding changes to the documentation (`README.md`, `CLAUDE.md`, etc.).
+- [ ] I have made corresponding changes to the documentation (`README.md`, `docs/DEVELOPMENT.md`, etc.).
 - [ ] My changes generate no new warnings from `cargo clippy`.
 - [ ] I have added tests that prove my fix is effective or that my feature works.
 - [ ] New and existing unit tests pass locally with my changes.

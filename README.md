@@ -9,7 +9,8 @@ Create development environments that automatically configure themselves based on
 
 ## 📚 Documentation
 
-- **[CLAUDE.md](CLAUDE.md)** - Development notes and testing guide
+- **[Development Guide](docs/DEVELOPMENT.md)** - Development notes and testing guide
+- **[Testing Guide](docs/TESTING.md)** - Comprehensive testing documentation
 
 ## ✨ Key Features
 
@@ -307,7 +308,7 @@ The project uses a staged testing strategy to ensure both speed and thoroughness
 - **Integration Tests**: Slower, more comprehensive tests that may require Docker. Use `make test-integration`.
 - **Full Suite**: Run all tests with `make test`.
 
-For a detailed guide on running, debugging, and writing tests, please see the **[CLAUDE.md](CLAUDE.md)** development guide.
+For a detailed guide on running, debugging, and writing tests, please see the **[Development Guide](docs/DEVELOPMENT.md)** and **[Testing Guide](docs/TESTING.md)**.
 
 ### Rust Crate Overview
 
@@ -333,4 +334,4 @@ The VM tool is built from multiple focused Rust crates:
 **For detailed architecture documentation**, see:
 - [rust/ARCHITECTURE.md](rust/ARCHITECTURE.md) - Comprehensive crate architecture
 - [docs/development/architecture.md](docs/development/architecture.md) - High-level overview
-- [CLAUDE.md](CLAUDE.md) - Development and testing guide
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) - Development and testing guide

@@ -144,7 +144,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 - Enhanced shared services guide with troubleshooting and per-project isolation
-- Updated CLAUDE.md with ServiceManager architecture details
+- Updated Development Guide (docs/DEVELOPMENT.md) with ServiceManager architecture details
 - Updated README with shared database services feature
 - Synchronized documentation with automatic worktree remounting feature
 

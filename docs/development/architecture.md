@@ -97,7 +97,7 @@ cargo test --workspace
 cargo test --package vm-config
 ```
 
-See [CLAUDE.md](../../CLAUDE.md) for detailed testing instructions.
+See [docs/DEVELOPMENT.md](../DEVELOPMENT.md) and [docs/TESTING.md](../TESTING.md) for detailed testing instructions.
 
 ## Documentation Structure
 
@@ -110,7 +110,7 @@ docs/
 
 ## Related Documentation
 
-- [CLAUDE.md](../../CLAUDE.md) - Development notes and testing
+- [docs/DEVELOPMENT.md](../DEVELOPMENT.md) - Development notes and testing
+- [docs/TESTING.md](../TESTING.md) - Comprehensive testing documentation
 - [rust/ARCHITECTURE.md](../../rust/ARCHITECTURE.md) - Detailed Rust crate architecture
 - [docs/development/contributing.md](contributing.md) - Contribution guidelines
-- [docs/development/testing.md](testing.md) - Testing strategy
