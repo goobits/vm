@@ -1,8 +1,10 @@
 name: Code Coverage
 
+# Note: Auto-run on push disabled to reduce email spam.
+# Tests are run locally via pre-push hook instead.
+# To manually trigger: Actions tab → Code Coverage → Run workflow
 on:
-  push:
-    branches: [ main ]
+  workflow_dispatch:  # Manual trigger only
   pull_request:
     branches: [ main ]
 
