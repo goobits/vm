@@ -14,9 +14,9 @@ help:
 	@echo "  make test             - Run all tests"
 	@echo "  make clippy           - Run clippy linter"
 	@echo "  make fmt              - Format all code"
-	@echo "  make deny             - Check dependencies (licenses, bans, advisories)"
+	@echo "  make audit            - Check dependencies for security vulnerabilities"
 	@echo "  make check            - Run fmt + clippy + test"
-	@echo "  make quality-gates    - Run all quality checks (fmt + clippy + deny + test)"
+	@echo "  make quality-gates    - Run all quality checks (fmt + clippy + audit + test)"
 	@echo "  make check-duplicates - Check for code duplication"
 	@echo ""
 
@@ -43,8 +43,8 @@ fmt:
 fmt-fix:
 	cd rust && cargo fmt --all
 
-deny:
-	cd rust && cargo deny check
+audit:
+	cd rust && cargo audit
 
 # Analysis
 check-duplicates:
@@ -55,7 +55,7 @@ bump-version:
 	@./scripts/bump-version.sh
 
 # Quality gates - run all checks before committing
-quality-gates: fmt clippy deny test
+quality-gates: fmt clippy audit test
 	@echo ""
 	@echo "✅ All quality gates passed!"
 
