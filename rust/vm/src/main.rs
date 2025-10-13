@@ -24,6 +24,7 @@ mod error;
 mod service_manager;
 mod service_registry;
 mod state;
+mod utils;
 
 use cli::Args;
 use commands::execute_command;

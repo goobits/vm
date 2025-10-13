@@ -174,6 +174,8 @@ fn display_service_health(services: &[vm_provider::ServiceStatus]) {
             _ => String::new(),
         };
 
+        let password = get_password_for_service(&service.name);
+
         let service_line = if let Some(metrics) = &service.metrics {
             format!(
                 "   {} {}{} • {}",
@@ -189,7 +191,23 @@ fn display_service_health(services: &[vm_provider::ServiceStatus]) {
         };
 
         vm_println!("{}", service_line);
+        if let Some(password) = password {
+            vm_println!("     └── 🔑 {}", password);
+        }
     }
+}
+
+/// Get the password for a service from the secrets store.
+fn get_password_for_service(service_name: &str) -> Option<String> {
+    if let Ok(secrets_dir) = vm_core::user_paths::secrets_dir() {
+        let secret_file = secrets_dir.join(format!("{}.env", service_name));
+        if secret_file.exists() {
+            if let Ok(password) = std::fs::read_to_string(secret_file) {
+                return Some(password.trim().to_string());
+            }
+        }
+    }
+    None
 }
 
 /// Format memory size in MB to human-readable format

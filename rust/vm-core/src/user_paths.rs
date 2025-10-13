@@ -50,6 +50,14 @@ pub fn vm_state_dir() -> Result<PathBuf> {
     Ok(vm_platform::platform::vm_state_dir()?)
 }
 
+/// Get the VM tool's secrets directory.
+///
+/// Returns: `~/.vm/secrets`
+#[must_use = "secrets directory path should be used"]
+pub fn secrets_dir() -> Result<PathBuf> {
+    Ok(vm_state_dir()?.join("secrets"))
+}
+
 /// Get the user's cache directory for the VM tool.
 ///
 /// Returns:

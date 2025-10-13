@@ -34,9 +34,62 @@ pub struct GlobalConfig {
     #[serde(default, skip_serializing_if = "WorktreesGlobalSettings::is_default")]
     pub worktrees: WorktreesGlobalSettings,
 
+    /// Backup settings
+    #[serde(default, skip_serializing_if = "BackupSettings::is_default")]
+    pub backups: BackupSettings,
+
     /// Extra configuration for extensions
     #[serde(flatten)]
     pub extra: IndexMap<String, serde_json::Value>,
+}
+
+/// Global backup settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackupSettings {
+    /// Whether backups are enabled globally
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Directory to store backups
+    #[serde(default = "default_backup_path")]
+    pub path: String,
+
+    /// Number of backups to keep per service
+    #[serde(default = "default_keep_count")]
+    pub keep_count: u32,
+
+    /// Whether to only back up databases by default
+    #[serde(default = "default_true")]
+    pub databases_only: bool,
+}
+
+fn default_backup_path() -> String {
+    "~/.vm/backups".to_string()
+}
+
+fn default_keep_count() -> u32 {
+    5
+}
+
+impl Default for BackupSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            path: default_backup_path(),
+            keep_count: default_keep_count(),
+            databases_only: true,
+        }
+    }
+}
+
+impl BackupSettings {
+    /// Check if settings are at defaults
+    pub fn is_default(&self) -> bool {
+        self.enabled
+            && self.path == default_backup_path()
+            && self.keep_count == default_keep_count()
+            && self.databases_only
+    }
 }
 
 /// Global services that serve all VMs on the system
@@ -65,6 +118,10 @@ pub struct GlobalServices {
     /// MongoDB service configuration
     #[serde(default, skip_serializing_if = "MongoDBSettings::is_default")]
     pub mongodb: MongoDBSettings,
+
+    /// MySQL service configuration
+    #[serde(default, skip_serializing_if = "MySqlSettings::is_default")]
+    pub mysql: MySqlSettings,
 }
 
 impl GlobalServices {
@@ -76,6 +133,7 @@ impl GlobalServices {
             && self.postgresql.is_default()
             && self.redis.is_default()
             && self.mongodb.is_default()
+            && self.mysql.is_default()
     }
 }
 
@@ -201,6 +259,44 @@ impl Default for MongoDBSettings {
 }
 
 impl MongoDBSettings {
+    /// Check if settings are at defaults
+    pub fn is_default(&self) -> bool {
+        !self.enabled
+    }
+}
+
+/// MySQL service settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MySqlSettings {
+    /// Whether the MySQL service is enabled
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Port for the MySQL service (default: 3306)
+    #[serde(default = "default_mysql_port")]
+    pub port: u16,
+
+    /// Docker image version for MySQL
+    #[serde(default = "default_mysql_version")]
+    pub version: String,
+
+    /// Directory to store MySQL data
+    #[serde(default = "default_mysql_data_dir")]
+    pub data_dir: String,
+}
+
+impl Default for MySqlSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: default_mysql_port(),
+            version: default_mysql_version(),
+            data_dir: default_mysql_data_dir(),
+        }
+    }
+}
+
+impl MySqlSettings {
     /// Check if settings are at defaults
     pub fn is_default(&self) -> bool {
         !self.enabled
@@ -475,6 +571,18 @@ fn default_mongodb_version() -> String {
 
 fn default_mongodb_data_dir() -> String {
     "~/.vm/data/mongodb".to_string()
+}
+
+fn default_mysql_port() -> u16 {
+    3306
+}
+
+fn default_mysql_version() -> String {
+    "8".to_string()
+}
+
+fn default_mysql_data_dir() -> String {
+    "~/.vm/data/mysql".to_string()
 }
 
 fn default_cache_size() -> u64 {

@@ -324,6 +324,7 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
         Command::Destroy {
             container,
             force,
+            no_backup,
             all,
             provider: provider_filter,
             pattern,
@@ -334,6 +335,7 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
                 config,
                 global_config.clone(),
                 &force,
+                &no_backup,
                 &all,
                 provider_filter.as_deref(),
                 pattern.as_deref(),

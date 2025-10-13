@@ -20,8 +20,10 @@ vm:
   box: ubuntu/jammy64
   memory: 8192
   cpus: 6
+  swap: 2048
+  swappiness: 60
   user: developer
-  port_binding: 0.0.0.0
+  port_binding: 127.0.0.1
   gui: false
   timezone: America/Los_Angeles
 

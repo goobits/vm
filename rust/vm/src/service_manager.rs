@@ -29,6 +29,27 @@ use tracing::{debug, info, warn};
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::{vm_println, vm_success, vm_warning};
 
+/// Get a password from the secrets store, or generate a new one if it doesn't exist.
+async fn get_or_generate_password(service_name: &str) -> Result<String> {
+    let secrets_dir = vm_core::user_paths::secrets_dir()?;
+    tokio::fs::create_dir_all(&secrets_dir).await?;
+    let secret_file = secrets_dir.join(format!("{}.env", service_name));
+
+    if secret_file.exists() {
+        let password = tokio::fs::read_to_string(secret_file).await?;
+        Ok(password.trim().to_string())
+    } else {
+        let password = crate::utils::generate_random_password(16);
+        tokio::fs::write(&secret_file, &password).await?;
+        vm_println!(
+            "💡 Generated new password for {} and saved to {:?}",
+            service_name,
+            secret_file
+        );
+        Ok(password)
+    }
+}
+
 /// Represents the current state of a managed service
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ServiceState {
@@ -107,6 +128,7 @@ impl ServiceManager {
                 "postgresql" => global_config.services.postgresql.enabled,
                 "redis" => global_config.services.redis.enabled,
                 "mongodb" => global_config.services.mongodb.enabled,
+                "mysql" => global_config.services.mysql.enabled,
                 "auth_proxy" => global_config.services.auth_proxy.enabled,
                 "docker_registry" => global_config.services.docker_registry.enabled,
                 "package_registry" => global_config.services.package_registry.enabled,
@@ -132,6 +154,9 @@ impl ServiceManager {
         }
         if is_service_enabled("mongodb") {
             services_to_start.push("mongodb");
+        }
+        if is_service_enabled("mysql") {
+            services_to_start.push("mysql");
         }
 
         // Update reference counts and track which services need starting
@@ -312,6 +337,10 @@ impl ServiceManager {
                 vm_println!("🚀 Starting MongoDB on port {}...", port);
                 self.start_mongodb(global_config).await?;
             }
+            "mysql" => {
+                vm_println!("🚀 Starting MySQL on port {}...", port);
+                self.start_mysql(global_config).await?;
+            }
             _ => {
                 return Err(anyhow::anyhow!("Unknown service: {service_name}"));
             }
@@ -372,6 +401,10 @@ impl ServiceManager {
                 vm_println!("🛑 Stopping MongoDB...");
                 self.stop_mongodb().await?;
             }
+            "mysql" => {
+                vm_println!("🛑 Stopping MySQL...");
+                self.stop_mysql().await?;
+            }
             _ => {
                 return Err(anyhow::anyhow!("Unknown service: {service_name}"));
             }
@@ -399,6 +432,7 @@ impl ServiceManager {
             "postgresql" => global_config.services.postgresql.port,
             "redis" => global_config.services.redis.port,
             "mongodb" => global_config.services.mongodb.port,
+            "mysql" => global_config.services.mysql.port,
             _ => 0,
         }
     }
@@ -410,7 +444,7 @@ impl ServiceManager {
             "auth_proxy" => format!("http://localhost:{port}/health"),
             "docker_registry" => format!("http://localhost:{port}/v2/"),
             "package_registry" => format!("http://localhost:{port}/health"),
-            "postgresql" | "redis" | "mongodb" => {
+            "postgresql" | "redis" | "mongodb" | "mysql" => {
                 // For database services, a TCP connection is a reliable health check
                 return tokio::net::TcpStream::connect(format!("127.0.0.1:{port}"))
                     .await
@@ -601,6 +635,8 @@ impl ServiceManager {
         let data_dir = shellexpand::tilde(&settings.data_dir).to_string();
         tokio::fs::create_dir_all(&data_dir).await?;
 
+        let password = get_or_generate_password("postgresql").await?;
+
         let mut cmd = tokio::process::Command::new("docker");
         cmd.arg("run")
             .arg("-d")
@@ -611,7 +647,7 @@ impl ServiceManager {
             .arg("-v")
             .arg(format!("{data_dir}:/var/lib/postgresql/data"))
             .arg("-e")
-            .arg("POSTGRES_PASSWORD=postgres") // Simple default for local dev
+            .arg(format!("POSTGRES_PASSWORD={}", password))
             .arg(format!("postgres:{}", settings.version));
 
         let status = cmd.status().await?;
@@ -651,6 +687,8 @@ impl ServiceManager {
         let data_dir = shellexpand::tilde(&settings.data_dir).to_string();
         tokio::fs::create_dir_all(&data_dir).await?;
 
+        let password = get_or_generate_password("redis").await?;
+
         let mut cmd = tokio::process::Command::new("docker");
         cmd.arg("run")
             .arg("-d")
@@ -660,7 +698,9 @@ impl ServiceManager {
             .arg(format!("{}:6379", settings.port))
             .arg("-v")
             .arg(format!("{data_dir}:/data"))
-            .arg(format!("redis:{}", settings.version));
+            .arg(format!("redis:{}", settings.version))
+            .arg("--requirepass")
+            .arg(password);
 
         let status = cmd.status().await?;
         if !status.success() {
@@ -697,6 +737,8 @@ impl ServiceManager {
         let data_dir = shellexpand::tilde(&settings.data_dir).to_string();
         tokio::fs::create_dir_all(&data_dir).await?;
 
+        let password = get_or_generate_password("mongodb").await?;
+
         let mut cmd = tokio::process::Command::new("docker");
         cmd.arg("run")
             .arg("-d")
@@ -706,6 +748,10 @@ impl ServiceManager {
             .arg(format!("{}:27017", settings.port))
             .arg("-v")
             .arg(format!("{data_dir}:/data/db"))
+            .arg("-e")
+            .arg("MONGO_INITDB_ROOT_USERNAME=root")
+            .arg("-e")
+            .arg(format!("MONGO_INITDB_ROOT_PASSWORD={}", password))
             .arg(format!("mongo:{}", settings.version));
 
         let status = cmd.status().await?;
@@ -730,6 +776,56 @@ impl ServiceManager {
         rm_cmd.arg("rm").arg(container_name);
         if !rm_cmd.status().await?.success() {
             warn!("Failed to remove MongoDB container.");
+        }
+
+        Ok(())
+    }
+
+    /// Start MySQL service
+    async fn start_mysql(&self, global_config: &GlobalConfig) -> Result<()> {
+        let settings = &global_config.services.mysql;
+        let container_name = "vm-mysql-global";
+
+        let data_dir = shellexpand::tilde(&settings.data_dir).to_string();
+        tokio::fs::create_dir_all(&data_dir).await?;
+
+        let password = get_or_generate_password("mysql").await?;
+
+        let mut cmd = tokio::process::Command::new("docker");
+        cmd.arg("run")
+            .arg("-d")
+            .arg("--name")
+            .arg(container_name)
+            .arg("-p")
+            .arg(format!("{}:3306", settings.port))
+            .arg("-v")
+            .arg(format!("{data_dir}:/var/lib/mysql"))
+            .arg("-e")
+            .arg(format!("MYSQL_ROOT_PASSWORD={}", password))
+            .arg(format!("mysql:{}", settings.version));
+
+        let status = cmd.status().await?;
+        if !status.success() {
+            return Err(anyhow::anyhow!("Failed to start MySQL container"));
+        }
+
+        Ok(())
+    }
+
+    /// Stop MySQL service
+    async fn stop_mysql(&self) -> Result<()> {
+        let container_name = "vm-mysql-global";
+
+        let mut stop_cmd = tokio::process::Command::new("docker");
+        stop_cmd.arg("stop").arg(container_name);
+        if !stop_cmd.status().await?.success() {
+            warn!("Failed to stop MySQL container, it may not have been running.");
+        }
+
+        let mut rm_cmd = tokio::process::Command::new("docker");
+        rm_cmd.arg("rm").arg(container_name);
+        if !rm_cmd.status().await?.success() {
+            warn!("Failed to remove MySQL container.");
         }
 
         Ok(())

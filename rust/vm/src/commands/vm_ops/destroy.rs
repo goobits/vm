@@ -26,6 +26,7 @@ pub async fn handle_destroy(
     config: VmConfig,
     global_config: GlobalConfig,
     force: bool,
+    no_backup: bool,
 ) -> VmResult<()> {
     // Get VM name from config for confirmation prompt
     let vm_name = config
@@ -137,26 +138,30 @@ pub async fn handle_destroy(
 
         match provider.destroy(container) {
             Ok(()) => {
-                if let Some(service_config) = config.services.get("postgresql") {
-                    if service_config.backup_on_destroy {
-                        let default_db_name = format!("{}_dev", vm_name.replace('-', "_"));
-                        let db_name = service_config
-                            .database
-                            .as_deref()
-                            .unwrap_or(&default_db_name);
-                        vm_println!(
-                            "💾 Backing up database '{}' as per project setting...",
-                            db_name
-                        );
-                        #[allow(clippy::excessive_nesting)]
-                        if let Err(e) = crate::commands::db::backup::backup_db(
-                            db_name,
-                            None,
-                            global_config.services.postgresql.backup_retention,
-                        )
-                        .await
-                        {
-                            vm_println!("Backup failed: {}", e);
+                // Backup database services if configured
+                if !no_backup {
+                    for (service_name, service_config) in &config.services {
+                        if service_config.backup_on_destroy == Some(true) {
+                            let default_db_name = format!("{}_dev", vm_name.replace('-', "_"));
+                            let db_name = service_config
+                                .database
+                                .as_deref()
+                                .unwrap_or(&default_db_name);
+                            vm_println!(
+                                "💾 Backing up database for service '{}' (db: {}) as per project setting...",
+                                service_name,
+                                db_name
+                            );
+
+                            if let Err(e) = crate::commands::db::backup::backup_db(
+                                db_name,
+                                None,
+                                global_config.backups.keep_count,
+                            )
+                            .await
+                            {
+                                vm_println!("Backup for service '{}' failed: {}", service_name, e);
+                            }
                         }
                     }
                 }
@@ -194,6 +199,7 @@ pub async fn handle_destroy_enhanced(
     config: VmConfig,
     global_config: GlobalConfig,
     force: &bool,
+    no_backup: &bool,
     all: &bool,
     provider_filter: Option<&str>,
     pattern: Option<&str>,
@@ -207,7 +213,7 @@ pub async fn handle_destroy_enhanced(
     }
 
     // Single instance destroy (existing behavior)
-    handle_destroy(provider, container, config, global_config, *force).await
+    handle_destroy(provider, container, config, global_config, *force, *no_backup).await
 }
 
 /// Handle destroying instances across providers

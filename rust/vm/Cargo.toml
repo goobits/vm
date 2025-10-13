@@ -40,6 +40,7 @@ vm-auth-proxy = { path = "../vm-auth-proxy" }
 vm-docker-registry = { path = "../vm-docker-registry" }
 futures = "0.3.31"
 chrono = "0.4.42"
+rand = { workspace = true }
 
 [features]
 default = []
