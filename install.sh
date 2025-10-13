@@ -865,9 +865,9 @@ install_vm_tool() {
 
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    local manifest_path="$script_dir/rust/Cargo.toml"
+    local rust_dir="$script_dir/rust"
 
-    if [[ ! -f "$manifest_path" ]]; then
+    if [[ ! -d "$rust_dir" ]]; then
         handle_error $ERR_INSTALL_FAILED \
             "Rust workspace not found" \
             "Ensure you're running the script from the project directory"
@@ -882,11 +882,23 @@ install_vm_tool() {
     installer_output=$(mktemp)
     trap "rm -f '$installer_output'" EXIT
 
+    # Store current directory and change to rust directory
+    # This aligns the script with the manual workaround
+    local current_dir
+    current_dir=$(pwd)
+    cd "$rust_dir" || handle_error $ERR_INSTALL_FAILED "Could not change to rust directory"
+
+    local cargo_failed=false
     if ! timeout "$CARGO_TIMEOUT_SECONDS" cargo run \
         --package vm-installer \
-        --manifest-path "$manifest_path" \
         -- "${INSTALLER_ARGS[@]+"${INSTALLER_ARGS[@]}"}" 2>&1 | tee -a "$LOG_FILE" "$installer_output"; then
+        cargo_failed=true
+    fi
 
+    # Change back to original directory
+    cd "$current_dir" || log_warning "Could not change back to original directory"
+
+    if [[ "$cargo_failed" == "true" ]]; then
         echo "❌ Installation failed"
         echo ""
         echo "Common fixes:"
