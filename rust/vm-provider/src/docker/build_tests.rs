@@ -20,7 +20,13 @@ fn test_gather_build_args_host_integration() {
     let build_ops = BuildOperations::new(&config, &temp_path);
     let args = build_ops.gather_build_args();
 
-    assert!(args.iter().any(|arg| arg == "--build-arg=GIT_USER_NAME=Test User"));
-    assert!(args.iter().any(|arg| arg == "--build-arg=GIT_USER_EMAIL=test@example.com"));
-    assert!(args.iter().any(|arg| arg == "--build-arg=TZ=America/New_York"));
+    assert!(args
+        .iter()
+        .any(|arg| arg == "--build-arg=GIT_USER_NAME=Test User"));
+    assert!(args
+        .iter()
+        .any(|arg| arg == "--build-arg=GIT_USER_EMAIL=test@example.com"));
+    assert!(args
+        .iter()
+        .any(|arg| arg == "--build-arg=TZ=America/New_York"));
 }

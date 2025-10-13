@@ -61,6 +61,7 @@ impl EncryptionKey {
     }
 
     /// Decrypt a ciphertext value
+    #[allow(deprecated)]
     pub fn decrypt(&self, encrypted: &str) -> Result<String> {
         // Decode from base64
         let combined = STANDARD
@@ -73,12 +74,12 @@ impl EncryptionKey {
 
         // Split nonce and ciphertext
         let (nonce_bytes, ciphertext) = combined.split_at(NONCE_LENGTH);
-        let nonce = Nonce::from_slice(nonce_bytes);
+        let nonce = Nonce::clone_from_slice(nonce_bytes);
 
         // Decrypt
         let plaintext = self
             .cipher
-            .decrypt(nonce, ciphertext)
+            .decrypt(&nonce, ciphertext)
             .map_err(|e| anyhow!("Decryption failed: {e}"))?;
 
         String::from_utf8(plaintext).context("Decrypted data is not valid UTF-8")

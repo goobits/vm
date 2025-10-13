@@ -70,7 +70,12 @@ pub fn detect_timezone() -> String {
     }
 
     // 2. Use timedatectl on systemd systems
-    if let Ok(output) = Command::new("timedatectl").arg("show").arg("--property=Timezone").arg("--value").output() {
+    if let Ok(output) = Command::new("timedatectl")
+        .arg("show")
+        .arg("--property=Timezone")
+        .arg("--value")
+        .output()
+    {
         if output.status.success() {
             let timezone = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !timezone.is_empty() {

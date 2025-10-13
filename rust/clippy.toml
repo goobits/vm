@@ -28,9 +28,8 @@ excessive-nesting-threshold = 5
 # Avoid false positives in test code
 avoid-breaking-exported-api = false
 
-# Deny list
-deny = [
-  "clippy::uninlined_format_args",
-  "clippy::redundant_clone",
-  "clippy::unnecessary_wraps"
-]
+# Note: Lint deny list is configured via cargo clippy command flags
+# See .github/workflows/ci.yml and pre-commit hook for:
+#   -D clippy::uninlined_format_args
+#   -D clippy::redundant_clone
+#   -D clippy::unnecessary_wraps

@@ -56,7 +56,7 @@ impl<'a> LifecycleOperations<'a> {
         let is_running = status_check.is_ok_and(|output| output.trim() == "true");
 
         // Only show connection details if container is running and it's interactive
-        if is_running && is(Stream::Stdin) && is(Stream::Stdout) {
+        if is_running && std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
             vm_println!(
                 "{}",
                 msg!(

@@ -163,7 +163,12 @@ impl<'a> BuildOperations<'a> {
         args.push(format!("--build-arg=PROJECT_USER={}", user_config.username));
 
         // Add timezone build arg
-        if let Some(timezone) = self.config.vm.as_ref().and_then(|vm| vm.timezone.as_deref()) {
+        if let Some(timezone) = self
+            .config
+            .vm
+            .as_ref()
+            .and_then(|vm| vm.timezone.as_deref())
+        {
             args.push(format!("--build-arg=TZ={}", timezone));
         }
 
@@ -185,7 +190,10 @@ impl<'a> BuildOperations<'a> {
                 args.push(format!("--build-arg=GIT_CORE_EDITOR={}", editor));
             }
             if let Some(content) = &git_config.core_excludesfile_content {
-                args.push(format!("--build-arg=GIT_CORE_EXCLUDESFILE_CONTENT={}", content));
+                args.push(format!(
+                    "--build-arg=GIT_CORE_EXCLUDESFILE_CONTENT={}",
+                    content
+                ));
             }
         }
 

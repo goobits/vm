@@ -4,7 +4,6 @@
 //! from the host system.
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use vm_core::error::Result;
 
 /// Represents the Git configuration extracted from the host.
