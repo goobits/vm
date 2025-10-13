@@ -118,6 +118,7 @@ provider: docker
 project:
   name: {}
 vm:
+  user: test-user
   cpus: 1
   memory: 1024
 ports:
@@ -163,6 +164,7 @@ provider: docker
 project:
   name: {}
 vm:
+  user: test-user
   cpus: 1
   memory: 1024
 ports:
@@ -225,6 +227,7 @@ provider: docker
 project:
   name: {}
 vm:
+  user: test-user
   cpus: 1
   memory: 1024
 ports:

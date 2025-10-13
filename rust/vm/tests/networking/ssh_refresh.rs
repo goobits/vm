@@ -60,6 +60,8 @@ fn test_ssh_refresh_mounts() -> Result<(), Box<dyn std::error::Error>> {
 project:
   name: ssh-refresh-test
 provider: docker
+vm:
+  user: test-user
 "#;
     fs::write(repo_path.join("vm.yaml"), vm_yaml)?;
 
