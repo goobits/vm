@@ -369,6 +369,7 @@
         user:
             name: '{{ project_user }}'
             shell: /usr/bin/zsh
+        ignore_errors: yes
 
       - name: Generate .zshrc from template
         template:
