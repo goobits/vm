@@ -42,7 +42,9 @@ fn test_install_symlink_creation() {
     let fixture = TestFixture::new();
 
     // Create a fake binary that the installer would "build"
-    let release_dir = fixture.project_root.join("rust/target-test-os-arch/release");
+    let release_dir = fixture
+        .project_root
+        .join("rust/target-test-os-arch/release");
     fs::create_dir_all(&release_dir).unwrap();
     let source_binary_path = release_dir.join(executable_name("vm"));
     fs::write(&source_binary_path, "fake vm binary").unwrap();
@@ -56,5 +58,8 @@ fn test_install_symlink_creation() {
     assert!(result.is_ok(), "install_executable should succeed");
 
     let expected_symlink = user_bin.join(executable_name("vm"));
-    assert!(expected_symlink.exists(), "The symlink should be created in the user's bin directory");
+    assert!(
+        expected_symlink.exists(),
+        "The symlink should be created in the user's bin directory"
+    );
 }

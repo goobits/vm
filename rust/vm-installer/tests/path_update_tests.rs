@@ -62,7 +62,10 @@ fn test_path_update_modifies_profile() {
     assert!(result.is_ok());
 
     let content = fs::read_to_string(&bashrc_path).unwrap();
-    assert_ne!(content, initial_content, "The file content should have changed.");
+    assert_ne!(
+        content, initial_content,
+        "The file content should have changed."
+    );
     assert!(content.contains(&fixture.bin_dir.to_string_lossy().to_string()));
     assert!(content.contains("export PATH"));
 }

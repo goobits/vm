@@ -213,7 +213,15 @@ pub async fn handle_destroy_enhanced(
     }
 
     // Single instance destroy (existing behavior)
-    handle_destroy(provider, container, config, global_config, *force, *no_backup).await
+    handle_destroy(
+        provider,
+        container,
+        config,
+        global_config,
+        *force,
+        *no_backup,
+    )
+    .await
 }
 
 /// Handle destroying instances across providers

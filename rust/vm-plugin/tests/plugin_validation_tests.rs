@@ -1,8 +1,8 @@
 use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
-use vm_plugin::validation;
 use vm_plugin::types::{Plugin, PluginInfo, PluginType};
+use vm_plugin::validation;
 
 fn create_test_plugin(
     plugins_dir: &Path,
@@ -10,16 +10,8 @@ fn create_test_plugin(
     plugin_type: PluginType,
 ) -> anyhow::Result<Plugin> {
     let (type_str, content_file, content) = match plugin_type {
-        PluginType::Preset => (
-            "preset",
-            "preset.yaml",
-            "packages:\n  - git\n",
-        ),
-        PluginType::Service => (
-            "service",
-            "service.yaml",
-            "image: alpine:latest\n",
-        ),
+        PluginType::Preset => ("preset", "preset.yaml", "packages:\n  - git\n"),
+        PluginType::Service => ("service", "service.yaml", "image: alpine:latest\n"),
     };
 
     let plugin_dir = plugins_dir.join(format!("{}s", type_str)).join(name);
@@ -52,7 +44,10 @@ fn test_valid_plugin_validation() -> anyhow::Result<()> {
 
     let result = validation::validate_plugin(&plugin)?;
     assert!(result.is_valid, "Validation should pass for a valid plugin");
-    assert!(result.errors.is_empty(), "There should be no errors for a valid plugin");
+    assert!(
+        result.errors.is_empty(),
+        "There should be no errors for a valid plugin"
+    );
 
     Ok(())
 }
@@ -65,7 +60,10 @@ fn test_invalid_plugin_name_validation() -> anyhow::Result<()> {
     plugin.info.name = "invalid name".to_string(); // Invalid character
 
     let result = validation::validate_plugin(&plugin)?;
-    assert!(!result.is_valid, "Validation should fail for a plugin with an invalid name");
+    assert!(
+        !result.is_valid,
+        "Validation should fail for a plugin with an invalid name"
+    );
     assert!(
         result.errors.iter().any(|e| e.field == "name"),
         "An error for the 'name' field should be reported"

@@ -29,12 +29,7 @@ pub async fn handle_db(command: DbSubcommand) -> VmResult<()> {
 
     match command {
         DbSubcommand::Backup { db_name, name } => {
-            backup::backup_db(
-                &db_name,
-                name.as_deref(),
-                global_config.backups.keep_count,
-            )
-            .await?;
+            backup::backup_db(&db_name, name.as_deref(), global_config.backups.keep_count).await?;
         }
         DbSubcommand::Restore { name, db_name } => {
             backup::restore_db(&name, &db_name).await?;

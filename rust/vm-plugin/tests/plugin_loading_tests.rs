@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
 use vm_plugin::discovery;
-use vm_plugin::types::{PluginType};
+use vm_plugin::types::PluginType;
 
 fn create_preset_plugin(plugins_dir: &Path, name: &str) -> anyhow::Result<()> {
     let plugin_dir = plugins_dir.join("presets").join(name);

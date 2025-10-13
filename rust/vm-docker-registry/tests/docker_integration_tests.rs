@@ -11,14 +11,18 @@ async fn test_docker_registry_lifecycle_integration() {
 
     // Stop the registry first to ensure a clean state
     let stop_result = server::stop_registry().await;
-    assert!(stop_result.is_ok(), "Should be able to stop the registry even if it's not running");
+    assert!(
+        stop_result.is_ok(),
+        "Should be able to stop the registry even if it's not running"
+    );
 
     // Start the registry
     let start_result = server::start_registry().await;
     assert!(start_result.is_ok(), "Failed to start the Docker registry");
 
     // Check if the registry is running
-    let is_running = server::check_registry_running(vm_docker_registry::DEFAULT_REGISTRY_PORT).await;
+    let is_running =
+        server::check_registry_running(vm_docker_registry::DEFAULT_REGISTRY_PORT).await;
     assert!(is_running, "Registry should be running after start");
 
     // Stop the registry
@@ -26,7 +30,8 @@ async fn test_docker_registry_lifecycle_integration() {
     assert!(stop_result.is_ok(), "Failed to stop the Docker registry");
 
     // Check if the registry is stopped
-    let is_running = server::check_registry_running(vm_docker_registry::DEFAULT_REGISTRY_PORT).await;
+    let is_running =
+        server::check_registry_running(vm_docker_registry::DEFAULT_REGISTRY_PORT).await;
     assert!(!is_running, "Registry should be stopped after stop");
 }
 

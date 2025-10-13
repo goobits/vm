@@ -24,7 +24,9 @@ pub fn handle_temp_command(command: &TempSubcommand, config_file: Option<PathBuf
         TempSubcommand::Ssh => TempVmOps::ssh(provider, config),
         TempSubcommand::Status => TempVmOps::status(provider),
         TempSubcommand::Destroy => TempVmOps::destroy(provider),
-        TempSubcommand::Mount { path, yes } => TempVmOps::mount(path.clone(), *yes, provider, config),
+        TempSubcommand::Mount { path, yes } => {
+            TempVmOps::mount(path.clone(), *yes, provider, config)
+        }
         TempSubcommand::Unmount { path, all, yes } => {
             TempVmOps::unmount(path.clone(), *all, *yes, provider)
         }
