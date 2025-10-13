@@ -99,6 +99,7 @@ impl ComposeCommand {
     }
 }
 
+#[derive(Clone)]
 pub struct DockerProvider {
     config: VmConfig,
     _project_dir: PathBuf, // The root of the user's project
@@ -433,6 +434,10 @@ impl Provider for DockerProvider {
         }
 
         Ok(instances)
+    }
+
+    fn clone_box(&self) -> Box<dyn Provider> {
+        Box::new(self.clone())
     }
 }
 

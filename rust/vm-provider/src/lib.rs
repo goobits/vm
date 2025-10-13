@@ -217,6 +217,15 @@ pub trait Provider {
             "Enhanced status not supported by this provider".to_string(),
         ))
     }
+
+    /// Clone the provider into a new Box.
+    fn clone_box(&self) -> Box<dyn Provider>;
+}
+
+impl Clone for Box<dyn Provider> {
+    fn clone(&self) -> Box<dyn Provider> {
+        self.clone_box()
+    }
 }
 
 /// Creates a provider instance based on the configuration.

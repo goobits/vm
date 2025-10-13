@@ -4,7 +4,7 @@ use std::path::Path;
 
 use super::LifecycleOperations;
 use crate::{docker::UserConfig, security::SecurityValidator};
-use is_terminal::IsTerminal;
+use atty::{is, Stream};
 use vm_cli::msg;
 use vm_core::{
     command_stream::stream_command,
@@ -36,7 +36,7 @@ impl<'a> LifecycleOperations<'a> {
         let target_path = SecurityValidator::validate_relative_path(relative_path, workspace_path)?;
         let target_dir = target_path.to_string_lossy();
 
-        let tty_flag = if io::stdin().is_terminal() && io::stdout().is_terminal() {
+        let tty_flag = if is(Stream::Stdin) && is(Stream::Stdout) {
             "-it"
         } else {
             "-i"
@@ -57,7 +57,7 @@ impl<'a> LifecycleOperations<'a> {
         let is_running = status_check.is_ok_and(|output| output.trim() == "true");
 
         // Only show connection details if container is running and it's interactive
-        if is_running && io::stdin().is_terminal() && io::stdout().is_terminal() {
+        if is_running && is(Stream::Stdin) && is(Stream::Stdout) {
             vm_println!(
                 "{}",
                 msg!(
