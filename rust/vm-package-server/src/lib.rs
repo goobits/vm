@@ -80,7 +80,7 @@ pub use validation_utils::validate_filename; // Moved from lib.rs
 /// Test utilities for common test patterns across modules
 #[cfg(test)]
 pub mod test_utils {
-    use super::{AppState, UpstreamClient, UpstreamConfig};
+    use super::{AppState, UpstreamClient};
     use std::sync::Arc;
     use tempfile::TempDir;
 
@@ -93,10 +93,8 @@ pub mod test_utils {
         std::fs::create_dir_all(data_dir.join("npm/tarballs")).unwrap();
         std::fs::create_dir_all(data_dir.join("npm/metadata")).unwrap();
 
-        // Disable upstream in tests to avoid TLS/Keychain prompts
-        let mut upstream_config = UpstreamConfig::default();
-        upstream_config.enabled = false;
-        let upstream_client = Arc::new(UpstreamClient::new(upstream_config).unwrap());
+        // Use disabled client to avoid TLS/Keychain prompts
+        let upstream_client = Arc::new(UpstreamClient::disabled());
         let config = Arc::new(crate::config::Config::default());
 
         let state = Arc::new(AppState {
@@ -116,10 +114,8 @@ pub mod test_utils {
         // Create required directories
         std::fs::create_dir_all(data_dir.join("pypi/packages")).unwrap();
 
-        // Disable upstream in tests to avoid TLS/Keychain prompts
-        let mut upstream_config = UpstreamConfig::default();
-        upstream_config.enabled = false;
-        let upstream_client = Arc::new(UpstreamClient::new(upstream_config).unwrap());
+        // Use disabled client to avoid TLS/Keychain prompts
+        let upstream_client = Arc::new(UpstreamClient::disabled());
         let config = Arc::new(crate::config::Config::default());
 
         let state = Arc::new(AppState {
@@ -140,10 +136,8 @@ pub mod test_utils {
         std::fs::create_dir_all(data_dir.join("cargo/crates")).unwrap();
         std::fs::create_dir_all(data_dir.join("cargo/index")).unwrap();
 
-        // Disable upstream in tests to avoid TLS/Keychain prompts
-        let mut upstream_config = UpstreamConfig::default();
-        upstream_config.enabled = false;
-        let upstream_client = Arc::new(UpstreamClient::new(upstream_config).unwrap());
+        // Use disabled client to avoid TLS/Keychain prompts
+        let upstream_client = Arc::new(UpstreamClient::disabled());
         let config = Arc::new(crate::config::Config::default());
 
         let state = Arc::new(AppState {

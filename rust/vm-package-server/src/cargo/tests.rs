@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod cargo_tests {
     use crate::cargo::{handlers::*, index::*};
-    use crate::{AppState, UpstreamClient, UpstreamConfig};
+    use crate::{AppState, UpstreamClient};
     use axum::http::StatusCode;
     use axum_test::TestServer;
     use serde_json::json;
@@ -19,12 +19,11 @@ mod cargo_tests {
         std::fs::create_dir_all(data_dir.join("cargo/api/v1/crates")).unwrap();
         std::fs::create_dir_all(data_dir.join("cargo/index")).unwrap();
 
-        let upstream_config = UpstreamConfig::default();
         let config = Arc::new(crate::config::Config::default());
         let state = Arc::new(AppState {
             data_dir,
             server_addr: "http://localhost:8080".to_string(),
-            upstream_client: Arc::new(UpstreamClient::new(upstream_config).unwrap()),
+            upstream_client: Arc::new(UpstreamClient::disabled()),
             config,
         });
 

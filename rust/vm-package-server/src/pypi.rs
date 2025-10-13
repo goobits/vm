@@ -534,7 +534,7 @@ pub async fn upload_package(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AppState, UpstreamClient, UpstreamConfig};
+    use crate::{AppState, UpstreamClient};
     use axum::http::StatusCode;
     use axum_test::{
         multipart::{MultipartForm, Part},
@@ -551,12 +551,11 @@ mod tests {
         std::fs::create_dir_all(data_dir.join("pypi/packages")).unwrap();
         std::fs::create_dir_all(data_dir.join("pypi/simple")).unwrap();
 
-        let upstream_config = UpstreamConfig::default();
         let config = Arc::new(crate::config::Config::default());
         let state = Arc::new(AppState {
             data_dir,
             server_addr: "http://127.0.0.1:3080".to_string(),
-            upstream_client: Arc::new(UpstreamClient::new(upstream_config).unwrap()),
+            upstream_client: Arc::new(UpstreamClient::disabled()),
             config,
         });
 

@@ -1,5 +1,4 @@
 //! User interaction with containers (SSH/exec/logs)
-use std::io;
 use std::path::Path;
 
 use super::LifecycleOperations;

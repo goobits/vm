@@ -503,7 +503,7 @@ pub async fn publish_package(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AppState, UpstreamClient, UpstreamConfig};
+    use crate::{AppState, UpstreamClient};
     use axum::http::StatusCode;
     use axum_test::TestServer;
     use base64::engine::general_purpose;
@@ -519,12 +519,11 @@ mod tests {
         std::fs::create_dir_all(data_dir.join("npm/tarballs")).unwrap();
         std::fs::create_dir_all(data_dir.join("npm/metadata")).unwrap();
 
-        let upstream_config = UpstreamConfig::default();
         let config = Arc::new(crate::config::Config::default());
         let state = Arc::new(AppState {
             data_dir,
             server_addr: "http://localhost:8080".to_string(),
-            upstream_client: Arc::new(UpstreamClient::new(upstream_config).unwrap()),
+            upstream_client: Arc::new(UpstreamClient::disabled()),
             config,
         });
 

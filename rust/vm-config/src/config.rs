@@ -563,12 +563,11 @@ impl VmConfig {
 
     pub fn apply_default_backup_settings(&mut self) {
         for (_, service) in self.services.iter_mut() {
-            if service.backup_on_destroy.is_none() {
-                if let Some(service_type) = &service.r#type {
-                    if service_type == "database" {
-                        service.backup_on_destroy = Some(true);
-                    }
-                }
+            let should_backup = service.backup_on_destroy.is_none()
+                && service.r#type.as_deref() == Some("database");
+
+            if should_backup {
+                service.backup_on_destroy = Some(true);
             }
         }
     }

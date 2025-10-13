@@ -132,6 +132,30 @@ impl UpstreamClient {
         Ok(Self { client, config })
     }
 
+    /// Create a disabled upstream client for testing.
+    ///
+    /// This constructor creates a client with `enabled = false` and a minimal
+    /// HTTP client that doesn't initialize TLS. This avoids triggering macOS
+    /// Keychain prompts during tests.
+    ///
+    /// # Returns
+    ///
+    /// A disabled UpstreamClient that will return errors for all requests
+    #[cfg(test)]
+    pub fn disabled() -> Self {
+        let config = UpstreamConfig {
+            enabled: false,
+            ..Default::default()
+        };
+        // Create minimal client without full TLS initialization
+        let client = Client::builder()
+            .timeout(config.timeout)
+            .build()
+            .expect("Failed to create minimal test client");
+
+        Self { client, config }
+    }
+
     /// Fetch PyPI simple index HTML for a package.
     ///
     /// Retrieves the simple API index page for a PyPI package, which contains

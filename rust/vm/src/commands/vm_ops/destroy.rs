@@ -19,6 +19,26 @@ use vm_provider::{InstanceInfo, Provider};
 use super::helpers::unregister_vm_services_helper;
 use super::list::{get_all_instances, get_instances_from_provider};
 
+/// Helper function to backup database services configured with backup_on_destroy
+async fn backup_databases(config: &VmConfig, vm_name: &str, global_config: &GlobalConfig) {
+    use crate::commands::db::backup::backup_db;
+
+    for (service_name, service_config) in &config.services {
+        if service_config.backup_on_destroy != Some(true) {
+            continue;
+        }
+
+        let db_name = format!("{}_{}", vm_name.replace('-', "_"), service_name);
+        vm_println!("📦 Creating backup for database: {}", db_name);
+
+        if let Err(e) = backup_db(&db_name, None, global_config.backups.keep_count).await {
+            vm_println!("⚠️  Warning: Failed to backup {}: {}", db_name, e);
+        } else {
+            vm_println!("✓ Backup created for {}", db_name);
+        }
+    }
+}
+
 /// Handle VM destruction
 pub async fn handle_destroy(
     provider: Box<dyn Provider>,
@@ -140,30 +160,7 @@ pub async fn handle_destroy(
             Ok(()) => {
                 // Backup database services if configured
                 if !no_backup {
-                    for (service_name, service_config) in &config.services {
-                        if service_config.backup_on_destroy == Some(true) {
-                            let default_db_name = format!("{}_dev", vm_name.replace('-', "_"));
-                            let db_name = service_config
-                                .database
-                                .as_deref()
-                                .unwrap_or(&default_db_name);
-                            vm_println!(
-                                "💾 Backing up database for service '{}' (db: {}) as per project setting...",
-                                service_name,
-                                db_name
-                            );
-
-                            if let Err(e) = crate::commands::db::backup::backup_db(
-                                db_name,
-                                None,
-                                global_config.backups.keep_count,
-                            )
-                            .await
-                            {
-                                vm_println!("Backup for service '{}' failed: {}", service_name, e);
-                            }
-                        }
-                    }
+                    backup_databases(&config, vm_name, &global_config).await;
                 }
 
                 vm_println!("{}", MESSAGES.common_configuring_services);
