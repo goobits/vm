@@ -1,4 +1,4 @@
-.PHONY: help build build-no-bump test test-unit test-integration clippy fmt fmt-fix check-duplicates check bump-version quality-gates deny
+.PHONY: help build build-no-bump test test-unit test-integration test-network clippy fmt fmt-fix check-duplicates check bump-version quality-gates deny
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -11,9 +11,10 @@ help:
 	@echo "  make build-no-bump    - Build without version bump"
 	@echo "  make bump-version     - Bump version without building"
 	@echo ""
-	@echo "  make test             - Run all tests (unit + integration)"
+	@echo "  make test             - Run all tests (unit + integration, no network)"
 	@echo "  make test-unit        - Run unit tests"
 	@echo "  make test-integration - Run integration tests"
+	@echo "  make test-network     - Run network tests (requires TLS/Keychain access)"
 	@echo "  make clippy           - Run clippy linter"
 	@echo "  make fmt              - Format all code"
 	@echo "  make audit            - Check dependencies for security vulnerabilities"
@@ -44,6 +45,10 @@ test-integration-conditional:
 ifndef SKIP_INTEGRATION_TESTS
 	$(MAKE) test-integration
 endif
+
+test-network:
+	@echo "⚠️  Network tests require TLS certificates and may prompt for Keychain access"
+	cd rust && cargo test --workspace --features network-tests -- --test-threads=2
 
 # Code quality
 clippy:

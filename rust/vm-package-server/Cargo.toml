@@ -11,6 +11,7 @@ path = "src/lib.rs"
 default = []
 standalone-binary = []
 cargo-tests = []
+network-tests = [] # Enable tests that require network access and TLS certificates
 
 [[bin]]
 name = "pkg-server"
