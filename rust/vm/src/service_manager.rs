@@ -326,14 +326,14 @@ impl ServiceManager {
         }
 
         // Verify service started
-        for attempt in 1..=5 {
-            sleep(Duration::from_millis(1000)).await;
+        for attempt in 1..=10 {
+            sleep(Duration::from_millis(2000)).await;
             if self.check_service_health(service_name, global_config).await {
                 vm_success!("Service '{}' started successfully", service_name);
                 return Ok(());
             }
             debug!(
-                "Service '{}' not ready, attempt {}/5",
+                "Service '{}' not ready, attempt {}/10",
                 service_name, attempt
             );
         }
