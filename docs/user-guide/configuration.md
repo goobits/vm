@@ -161,6 +161,8 @@ vm:
   box: bento/ubuntu-24.04  # Vagrant box (Vagrant only)
   memory: 4096  # RAM in MB
   cpus: 2  # CPU cores
+  swap: 2048 # Swap in MB
+  swappiness: 60 # Swappiness (0-100)
   user: developer  # VM/container user (changed from vagrant)
   port_binding: 127.0.0.1  # or "0.0.0.0" for network access
 
@@ -261,6 +263,17 @@ services:
     enabled: true
 ports:
   mongodb: 27017  # Access via localhost:27017
+```
+
+### MySQL
+
+```yaml
+# vm.yaml - VM-scoped service
+services:
+  mysql:
+    enabled: true
+ports:
+  mysql: 3306  # Access via localhost:3306
 ```
 
 ### Docker-in-Docker
@@ -606,32 +619,32 @@ project:
 
 ### Database Backups
 
-Database data is ephemeral by default and lost when VMs are destroyed. Use the `backup_pattern` feature to automatically restore database dumps:
+**Automatic Backups on Destroy (Default)**
 
+To prevent data loss, database services are now backed up automatically when you run `vm destroy`. This is the new default behavior.
+
+You can disable this per-service in your `vm.yaml`:
 ```yaml
-project:
-  backup_pattern: "*backup*.sql.gz"  # Glob pattern for backup files
+services:
+  postgresql:
+    backup_on_destroy: false # Disable auto-backup for this service
 ```
 
-**How it works:**
+Or disable it for a single destroy command:
+```bash
+vm destroy --no-backup
+```
 
-1. **Create backups** (inside VM):
-   ```bash
-   vm ssh
-   pg_dump myapp_dev | gzip > /workspace/backup-$(date +%F).sql.gz
-   exit
-   ```
+**Global Backup Configuration**
 
-2. **Backups persist** in your project directory (survives `vm destroy`)
-
-3. **Auto-restore on provision** - when you run `vm create`, all matching files are automatically restored to PostgreSQL/MySQL
-
-**Pattern examples:**
-- `"*backup*.sql.gz"` - Any file with "backup" in the name
-- `"db-*.sql.gz"` - Files starting with "db-"
-- `"seed-data.sql.gz"` - Specific file for team sharing
-
-**Supported databases:** PostgreSQL, MySQL (`.sql` or `.sql.gz` files)
+You can configure backup settings globally in `~/.vm/config.yaml`:
+```yaml
+backups:
+  enabled: true              # Global toggle for backups
+  path: ~/.vm/backups        # Where to store backups
+  keep_count: 5              # Number of backups to keep per service
+  databases_only: true       # Only backup services of type 'database'
+```
 
 ## 📚 Additional Resources
 

@@ -434,8 +434,8 @@ pub struct ServiceConfig {
     pub memory_mb: Option<u32>,
 
     // Per-project backup settings
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub backup_on_destroy: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backup_on_destroy: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seed_file: Option<PathBuf>,
@@ -541,7 +541,9 @@ pub struct SecurityConfig {
 
 impl VmConfig {
     pub fn load(file: Option<PathBuf>) -> Result<Self> {
-        crate::cli::load_and_merge_config(file)
+        let mut config = crate::cli::load_and_merge_config(file)?;
+        config.apply_default_backup_settings();
+        Ok(config)
     }
 
     pub fn write_to_file(&self, path: &Path) -> Result<()> {
@@ -557,6 +559,18 @@ impl VmConfig {
 
     pub fn to_json(&self) -> Result<String> {
         Ok(serde_json::to_string_pretty(self)?)
+    }
+
+    pub fn apply_default_backup_settings(&mut self) {
+        for (_, service) in self.services.iter_mut() {
+            if service.backup_on_destroy.is_none() {
+                if let Some(service_type) = &service.r#type {
+                    if service_type == "database" {
+                        service.backup_on_destroy = Some(true);
+                    }
+                }
+            }
+        }
     }
 
     pub fn is_partial(&self) -> bool {

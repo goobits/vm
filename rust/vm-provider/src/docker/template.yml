@@ -123,6 +123,12 @@ services:
     {% elif config.security.cpu_limit %}
     cpus: "{{ config.security.cpu_limit }}"
     {% endif %}
+    {% if config.vm.swappiness is defined %}
+    mem_swappiness: {{ config.vm.swappiness }}
+    {% endif %}
+    {% if config.vm.swap is defined and config.vm.memory is defined and config.vm.memory != "unlimited" %}
+    memswap_limit: {{ config.vm.memory + config.vm.swap }}m
+    {% endif %}
     {% if config.security.pids_limit %}
     pids_limit: {{ config.security.pids_limit }}
     {% endif %}

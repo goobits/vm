@@ -290,6 +290,11 @@ pub enum DbSubcommand {
         #[arg(long)]
         force: bool,
     },
+    /// Show credentials for a database service
+    Credentials {
+        /// The name of the service (e.g., postgresql, redis, mongodb)
+        service: String,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -394,6 +399,9 @@ pub enum Command {
         /// Force destruction without confirmation
         #[arg(long)]
         force: bool,
+        /// Do not create a backup before destroying
+        #[arg(long)]
+        no_backup: bool,
         /// Destroy all instances across all providers
         #[arg(long)]
         all: bool,

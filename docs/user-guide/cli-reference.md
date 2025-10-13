@@ -61,7 +61,7 @@ vm provision
 ### `vm destroy`
 Destroy a VM and all its associated resources.
 ```bash
-vm destroy
+vm destroy [--no-backup] [--force]
 ```
 
 ### `vm status`
@@ -245,6 +245,29 @@ vm plugin new <name>
 Validate a plugin's configuration.
 ```bash
 vm plugin validate <name>
+```
+
+---
+
+## Database (`vm db`)
+Manage databases and backups.
+
+### `vm db backup`
+Create a backup of a database.
+```bash
+vm db backup <db_name>
+```
+
+### `vm db restore`
+Restore a database from a backup.
+```bash
+vm db restore <backup_name> <db_name>
+```
+
+### `vm db credentials`
+Show the generated credentials for a database service.
+```bash
+vm db credentials <service_name>
 ```
 
 ---

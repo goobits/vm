@@ -2,7 +2,6 @@
 use std::fs;
 #[cfg(feature = "integration")]
 use std::path::Path;
-
 #[cfg(feature = "integration")]
 use tempfile::TempDir;
 #[cfg(feature = "integration")]

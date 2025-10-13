@@ -8,17 +8,28 @@ use crate::error::VmResult;
 use vm_config::GlobalConfig;
 use vm_core::vm_println;
 
+async fn show_credentials(service_name: &str) -> VmResult<()> {
+    let secrets_dir = vm_core::user_paths::secrets_dir()?;
+    let secret_file = secrets_dir.join(format!("{}.env", service_name));
+
+    if secret_file.exists() {
+        let password = tokio::fs::read_to_string(secret_file).await?;
+        vm_println!("Password for {}: {}", service_name, password.trim());
+    } else {
+        vm_println!(
+            "No credentials found for service '{}'. Has it been started yet?",
+            service_name
+        );
+    }
+    Ok(())
+}
+
 pub async fn handle_db(command: DbSubcommand) -> VmResult<()> {
     let global_config = GlobalConfig::load()?;
 
     match command {
         DbSubcommand::Backup { db_name, name } => {
-            backup::backup_db(
-                &db_name,
-                name.as_deref(),
-                global_config.services.postgresql.backup_retention,
-            )
-            .await?;
+            backup::backup_db(&db_name, name.as_deref(), global_config.backups.keep_count).await?;
         }
         DbSubcommand::Restore { name, db_name } => {
             backup::restore_db(&name, &db_name).await?;
@@ -57,6 +68,9 @@ pub async fn handle_db(command: DbSubcommand) -> VmResult<()> {
         }
         DbSubcommand::Reset { name, force } => {
             backup::reset_db(&name, force).await?;
+        }
+        DbSubcommand::Credentials { service } => {
+            show_credentials(&service).await?;
         }
     }
     Ok(())

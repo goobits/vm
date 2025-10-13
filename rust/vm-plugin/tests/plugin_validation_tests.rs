@@ -3,10 +3,8 @@ use std::fs;
 #[cfg(feature = "integration")]
 use std::path::Path;
 #[cfg(feature = "integration")]
-use vm_plugin::types::{Plugin, PluginInfo, PluginType};
-
-#[cfg(feature = "integration")]
 use tempfile::TempDir;
+use vm_plugin::types::{Plugin, PluginInfo, PluginType};
 #[cfg(feature = "integration")]
 use vm_plugin::validation;
 
