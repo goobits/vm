@@ -646,6 +646,44 @@ backups:
   databases_only: true       # Only backup services of type 'database'
 ```
 
+### Host System Integration
+
+The VM tool can automatically inherit useful host system configuration to streamline your development workflow.
+
+#### Git Configuration
+
+Automatically copy your host's Git configuration (`user.name`, `user.email`, etc.) to the VM, so you can start making commits right away.
+
+```yaml
+# vm.yaml
+copy_git_config: true  # default
+```
+
+To disable this feature, set `copy_git_config` to `false`:
+
+```yaml
+# vm.yaml
+copy_git_config: false
+```
+
+#### Timezone
+
+Automatically detect and set the VM's timezone to match your host system.
+
+```yaml
+# vm.yaml
+vm:
+  timezone: auto  # default
+```
+
+To override the timezone, specify a valid timezone name:
+
+```yaml
+# vm.yaml
+vm:
+  timezone: "America/New_York"
+```
+
 ## 📚 Additional Resources
 
 - **[Examples Guide](../getting-started/examples.md)** - Real-world configuration examples

@@ -140,6 +140,43 @@ pip_packages:
 }
 
 #[test]
+fn test_host_integration_features() -> Result<()> {
+    let fixture = CrossCrateTestFixture::new()?;
+    fixture.set_working_dir()?;
+
+    // Step 1: Set up mock .gitconfig
+    let gitconfig_content = r#"
+[user]
+    name = Test User
+    email = test@example.com
+[pull]
+    rebase = true
+[init]
+    defaultBranch = main
+"#;
+    fs::write(fixture.test_dir.join(".gitconfig"), gitconfig_content)?;
+
+    // Step 2: Set local config to enable host integrations
+    ConfigOps::set("copy_git_config", "true", false, false)?;
+    ConfigOps::set("vm.timezone", "auto", false, false)?;
+
+    // Step 3: Load the configuration
+    let config = VmConfig::load(None)?;
+
+    // Step 4: Verify git config was detected
+    assert!(config.git_config.is_some());
+    if let Some(git_config) = &config.git_config {
+        assert_eq!(git_config.user_name.as_deref(), Some("Test User"));
+        assert_eq!(git_config.user_email.as_deref(), Some("test@example.com"));
+    }
+
+    // Step 5: Verify timezone was detected
+    assert_ne!(config.vm.as_ref().and_then(|v| v.timezone.as_deref()), Some("auto"));
+
+    Ok(())
+}
+
+#[test]
 fn test_config_ports_integration() -> Result<()> {
     let fixture = CrossCrateTestFixture::new()?;
     fixture.set_working_dir()?;

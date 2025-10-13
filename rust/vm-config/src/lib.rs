@@ -69,7 +69,19 @@ impl AppConfig {
             .map_err(|e| VmError::Config(format!("Failed to load global configuration: {e}")))?;
 
         // Load VM configuration with all merging logic
-        let vm = config::VmConfig::load(config_path.clone())?;
+        let mut vm = config::VmConfig::load(config_path.clone())?;
+
+        // Handle host integrations
+        if vm.copy_git_config {
+            vm.git_config = Some(detector::git::detect_git_config()?);
+        }
+
+        if vm.vm.as_ref().and_then(|v| v.timezone.as_deref()) == Some("auto") {
+            let detected_timezone = detector::os::detect_timezone();
+            if let Some(vm_settings) = vm.vm.as_mut() {
+                vm_settings.timezone = Some(detected_timezone);
+            }
+        }
 
         // Handle backward compatibility: if deprecated fields are in vm.yaml,
         // warn and apply them to the runtime global config (but don't save)

@@ -41,6 +41,7 @@ use vm_core::error::{Result, VmError};
 use vm_core::file_system::{has_any_dir, has_any_file, has_file, has_file_containing};
 
 pub mod os;
+pub mod git;
 pub mod presets;
 pub mod tools;
 
