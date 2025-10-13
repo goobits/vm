@@ -35,3 +35,8 @@ tokio = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+tokio-test = "0.4.4"
+
+[features]
+default = []
+integration = []

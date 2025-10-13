@@ -107,6 +107,7 @@ impl WorkflowTestFixture {
 }
 
 #[test]
+#[cfg(feature = "integration")]
 fn test_basic_config_workflow() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = WorkflowTestFixture::new()?;
@@ -152,6 +153,7 @@ fn test_basic_config_workflow() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "integration")]
 fn test_preset_application_workflow() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = WorkflowTestFixture::new()?;
@@ -212,6 +214,7 @@ npm_packages:
 }
 
 #[test]
+#[cfg(feature = "integration")]
 fn test_nested_configuration_workflow() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = WorkflowTestFixture::new()?;
@@ -306,6 +309,7 @@ fn test_nested_configuration_workflow() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "integration")]
 fn test_global_vs_local_config_workflow() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = WorkflowTestFixture::new()?;
@@ -353,6 +357,7 @@ fn test_global_vs_local_config_workflow() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "integration")]
 fn test_preset_composition_workflow() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = WorkflowTestFixture::new()?;
@@ -425,6 +430,7 @@ ports:
 }
 
 #[test]
+#[cfg(feature = "integration")]
 fn test_configuration_error_recovery() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = WorkflowTestFixture::new()?;
@@ -466,6 +472,7 @@ fn test_configuration_error_recovery() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "integration")]
 fn test_project_type_detection_workflow() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = WorkflowTestFixture::new()?;
@@ -521,6 +528,7 @@ environment:
 }
 
 #[test]
+#[cfg(feature = "integration")]
 fn test_configuration_clear_workflow() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = WorkflowTestFixture::new()?;
@@ -565,6 +573,7 @@ fn test_configuration_clear_workflow() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "integration")]
 fn test_help_system_workflow() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = WorkflowTestFixture::new()?;

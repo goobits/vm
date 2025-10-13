@@ -15,9 +15,36 @@ The `install.sh` script with the `--build-from-source` flag is the official way 
 
 ### Full Test Suite
 ```bash
-source $HOME/.cargo/env
-cd rust
-cargo test --workspace
+# From the root of the repository
+make test
+```
+
+### Staged Testing (Unit vs. Integration)
+
+To improve performance and allow for more targeted testing, the test suite is split into two stages: unit tests and integration tests.
+
+**Unit Tests (Fast, No Dependencies)**
+```bash
+make test-unit
+# Equivalent to: cd rust && cargo test --workspace --lib
+```
+- Runs all unit tests, which are self-contained and do not require external services like Docker.
+- These tests are fast and should be run frequently during development.
+
+**Integration Tests (Slower, Requires Docker)**
+```bash
+make test-integration
+# Equivalent to: cd rust && cargo test --workspace --test '*' --features integration
+```
+- Runs all integration tests, which may require Docker and interact with the filesystem.
+- These tests are slower and are typically run before submitting a change.
+
+**Skipping Integration Tests**
+
+To run all tests *except* for the integration tests, you can use the `SKIP_INTEGRATION_TESTS` environment variable. This is useful for running a quick check of all unit tests and doc tests.
+
+```bash
+SKIP_INTEGRATION_TESTS=1 make test
 ```
 
 ### Individual Package Tests
