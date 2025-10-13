@@ -93,7 +93,9 @@ pub mod test_utils {
         std::fs::create_dir_all(data_dir.join("npm/tarballs")).unwrap();
         std::fs::create_dir_all(data_dir.join("npm/metadata")).unwrap();
 
-        let upstream_config = UpstreamConfig::default();
+        // Disable upstream in tests to avoid TLS/Keychain prompts
+        let mut upstream_config = UpstreamConfig::default();
+        upstream_config.enabled = false;
         let upstream_client = Arc::new(UpstreamClient::new(upstream_config).unwrap());
         let config = Arc::new(crate::config::Config::default());
 
@@ -114,7 +116,9 @@ pub mod test_utils {
         // Create required directories
         std::fs::create_dir_all(data_dir.join("pypi/packages")).unwrap();
 
-        let upstream_config = UpstreamConfig::default();
+        // Disable upstream in tests to avoid TLS/Keychain prompts
+        let mut upstream_config = UpstreamConfig::default();
+        upstream_config.enabled = false;
         let upstream_client = Arc::new(UpstreamClient::new(upstream_config).unwrap());
         let config = Arc::new(crate::config::Config::default());
 
@@ -136,7 +140,9 @@ pub mod test_utils {
         std::fs::create_dir_all(data_dir.join("cargo/crates")).unwrap();
         std::fs::create_dir_all(data_dir.join("cargo/index")).unwrap();
 
-        let upstream_config = UpstreamConfig::default();
+        // Disable upstream in tests to avoid TLS/Keychain prompts
+        let mut upstream_config = UpstreamConfig::default();
+        upstream_config.enabled = false;
         let upstream_client = Arc::new(UpstreamClient::new(upstream_config).unwrap());
         let config = Arc::new(crate::config::Config::default());
 

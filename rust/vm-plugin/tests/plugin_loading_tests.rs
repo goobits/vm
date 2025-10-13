@@ -1,9 +1,16 @@
+#[cfg(feature = "integration")]
 use std::fs;
+#[cfg(feature = "integration")]
 use std::path::Path;
-use tempfile::TempDir;
-use vm_plugin::discovery;
-use vm_plugin::types::{PluginType};
 
+#[cfg(feature = "integration")]
+use tempfile::TempDir;
+#[cfg(feature = "integration")]
+use vm_plugin::discovery;
+#[cfg(feature = "integration")]
+use vm_plugin::types::PluginType;
+
+#[cfg(feature = "integration")]
 fn create_preset_plugin(plugins_dir: &Path, name: &str) -> anyhow::Result<()> {
     let plugin_dir = plugins_dir.join("presets").join(name);
     fs::create_dir_all(&plugin_dir)?;
