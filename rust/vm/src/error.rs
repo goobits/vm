@@ -416,6 +416,10 @@ impl From<vm_core::error::VmError> for VmError {
                 source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, msg.clone())),
                 context: format!("Docker permission error: {msg}"),
             },
+            vm_core::error::VmError::NotFound(msg) => VmError::General {
+                source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, msg.clone())),
+                context: msg,
+            },
             vm_core::error::VmError::Io(err) => VmError::from(err),
             vm_core::error::VmError::Other(err) => VmError::from(err),
         }

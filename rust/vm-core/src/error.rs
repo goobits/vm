@@ -33,6 +33,9 @@ pub enum VmError {
     #[error("Internal error: {0}")]
     Internal(String),
 
+    #[error("Not found: {0}")]
+    NotFound(String),
+
     #[error("Filesystem error: {0}")]
     Filesystem(String),
 
