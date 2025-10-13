@@ -71,20 +71,7 @@ impl TestFixture {
     /// Runs the cleanup command without asserting its success. This is critical
     /// for the Drop implementation to prevent panics during cleanup.
     fn run_cleanup_command(&self) {
-        let container_name = format!("test-port-forwarding-{}", Uuid::new_v4());
-        let _ = Command::new("sudo")
-            .args(["docker", "rm", "-f", &container_name])
-            .output();
-        let _ = Command::new("sudo")
-            .args([
-                "docker",
-                "compose",
-                "-f",
-                self.path().join("docker-compose.yml").to_str().unwrap(),
-                "down",
-                "--volumes",
-            ])
-            .output();
+        // Use `vm destroy` to clean up - it handles all Docker cleanup without sudo
         if let Ok(mut cmd) = Command::cargo_bin("vm") {
             cmd.current_dir(self.path());
             cmd.args(["destroy", "--force"]);
