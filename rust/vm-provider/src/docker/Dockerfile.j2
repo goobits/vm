@@ -18,15 +18,28 @@ ARG PIP_PACKAGES
 ARG PIPX_PACKAGES
 ARG CARGO_PACKAGES
 
+# Build arguments for git config
+ARG GIT_USER_NAME
+ARG GIT_USER_EMAIL
+ARG GIT_PULL_REBASE
+ARG GIT_INIT_DEFAULT_BRANCH
+ARG GIT_CORE_EDITOR
+ARG GIT_CORE_EXCLUDESFILE_CONTENT
+
+ARG TZ=UTC
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US:en
 ENV LC_ALL=en_US.UTF-8
-ENV TZ=UTC
+ENV EDITOR=vim
+ENV VISUAL=vim
+ENV PAGER="less -R"
+ENV TERM=xterm-256color
 
 # --- Base System Setup ---
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    echo "${TZ}" > /etc/timezone && \
     apt-get update && apt-get install -y \
     locales \
     curl wget git git-lfs build-essential \
@@ -48,9 +61,16 @@ RUN groupadd -f -g ${PROJECT_GID} ${PROJECT_USER} && \
     usermod -aG sudo ${PROJECT_USER} && \
     echo "${PROJECT_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-nopasswd-user
 
+# --- Git Configuration ---
 USER ${PROJECT_USER}
 WORKDIR /home/${PROJECT_USER}
 SHELL ["/bin/bash", "-c"]
+RUN if [ -n "${GIT_USER_NAME}" ]; then git config --global user.name "${GIT_USER_NAME}"; fi && \
+    if [ -n "${GIT_USER_EMAIL}" ]; then git config --global user.email "${GIT_USER_EMAIL}"; fi && \
+    if [ -n "${GIT_PULL_REBASE}" ]; then git config --global pull.rebase "${GIT_PULL_REBASE}"; fi && \
+    if [ -n "${GIT_INIT_DEFAULT_BRANCH}" ]; then git config --global init.defaultBranch "${GIT_INIT_DEFAULT_BRANCH}"; fi && \
+    if [ -n "${GIT_CORE_EDITOR}" ]; then git config --global core.editor "${GIT_CORE_EDITOR}"; fi && \
+    if [ -n "${GIT_CORE_EXCLUDESFILE_CONTENT}" ]; then echo "${GIT_CORE_EXCLUDESFILE_CONTENT}" > /home/${PROJECT_USER}/.gitignore_global && git config --global core.excludesfile /home/${PROJECT_USER}/.gitignore_global; fi
 
 # --- Language Runtimes & Package Managers ---
 # Pre-create .nvm directory with correct ownership before cache mount
@@ -153,6 +173,14 @@ RUN chmod +x /etc/profile.d/vm-worktree-repair.sh && \
     echo '. /etc/profile.d/vm-worktree-repair.sh' >> /etc/bash.bashrc && \
     echo '. /etc/profile.d/vm-worktree-repair.sh' >> /home/${PROJECT_USER}/.bashrc && \
     echo '. /etc/profile.d/vm-worktree-repair.sh' >> /home/${PROJECT_USER}/.zshrc
+
+# --- Shell History Configuration ---
+USER ${PROJECT_USER}
+RUN echo '' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '# --- Shell History Settings ---' >> /home/${PROJECT_USER}/.zshrc && \
+    echo 'export HISTSIZE=50000' >> /home/${PROJECT_USER}/.zshrc && \
+    echo 'export SAVEHIST=50000' >> /home/${PROJECT_USER}/.zshrc && \
+    echo 'export HISTFILE=~/.zsh_history' >> /home/${PROJECT_USER}/.zshrc
 
 # --- Finalization ---
 USER ${PROJECT_USER}

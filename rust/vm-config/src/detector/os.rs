@@ -6,7 +6,9 @@
 //! - Provide platform-specific recommendations
 //! - Enable host-aware virtualization optimizations
 
+use std::env;
 use std::fs;
+use std::process::Command;
 use vm_core::error::{Result, VmError};
 
 /// Detects the host operating system and distribution.
@@ -57,6 +59,40 @@ fn detect_linux_distro() -> Result<String> {
     Err(VmError::Config(
         "Could not determine Linux distribution from /etc/os-release".to_string(),
     ))
+}
+
+pub fn detect_timezone() -> String {
+    // 1. Read from TZ environment variable
+    if let Ok(tz) = env::var("TZ") {
+        if !tz.is_empty() {
+            return tz;
+        }
+    }
+
+    // 2. Use timedatectl on systemd systems
+    if let Ok(output) = Command::new("timedatectl").arg("show").arg("--property=Timezone").arg("--value").output() {
+        if output.status.success() {
+            let timezone = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !timezone.is_empty() {
+                return timezone;
+            }
+        }
+    }
+
+    // 3. Read /etc/timezone on Linux host
+    if let Ok(timezone) = fs::read_to_string("/etc/timezone") {
+        return timezone.trim().to_string();
+    }
+
+    // 4. Follow symlink /etc/localtime
+    if let Ok(path) = fs::read_link("/etc/localtime") {
+        if let Some(tz) = path.to_string_lossy().split("zoneinfo/").nth(1) {
+            return tz.to_string();
+        }
+    }
+
+    // 5. Fallback to UTC
+    "UTC".to_string()
 }
 
 #[cfg(test)]

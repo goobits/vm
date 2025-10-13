@@ -34,6 +34,7 @@ vm-plugin = { path = "../vm-plugin" }
 vm-logging = { path = "../vm-logging" }
 which = { workspace = true }
 chrono = { workspace = true }
+git2 = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 nix = { workspace = true }

@@ -162,6 +162,33 @@ impl<'a> BuildOperations<'a> {
         args.push(format!("--build-arg=PROJECT_GID={}", user_config.gid));
         args.push(format!("--build-arg=PROJECT_USER={}", user_config.username));
 
+        // Add timezone build arg
+        if let Some(timezone) = self.config.vm.as_ref().and_then(|vm| vm.timezone.as_deref()) {
+            args.push(format!("--build-arg=TZ={}", timezone));
+        }
+
+        // Add git config build args
+        if let Some(git_config) = &self.config.git_config {
+            if let Some(name) = &git_config.user_name {
+                args.push(format!("--build-arg=GIT_USER_NAME={}", name));
+            }
+            if let Some(email) = &git_config.user_email {
+                args.push(format!("--build-arg=GIT_USER_EMAIL={}", email));
+            }
+            if let Some(rebase) = &git_config.pull_rebase {
+                args.push(format!("--build-arg=GIT_PULL_REBASE={}", rebase));
+            }
+            if let Some(branch) = &git_config.init_default_branch {
+                args.push(format!("--build-arg=GIT_INIT_DEFAULT_BRANCH={}", branch));
+            }
+            if let Some(editor) = &git_config.core_editor {
+                args.push(format!("--build-arg=GIT_CORE_EDITOR={}", editor));
+            }
+            if let Some(content) = &git_config.core_excludesfile_content {
+                args.push(format!("--build-arg=GIT_CORE_EXCLUDESFILE_CONTENT={}", content));
+            }
+        }
+
         args
     }
 

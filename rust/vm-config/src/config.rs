@@ -9,6 +9,7 @@ use serde_yaml_ng as serde_yaml;
 use vm_core::error::Result;
 
 // Internal crate imports
+use crate::detector::git::GitConfig;
 use crate::ports::PortMapping;
 
 // Helper function to deserialize version field that accepts both strings and numbers
@@ -166,6 +167,9 @@ pub struct VmConfig {
     #[serde(default, skip_serializing_if = "is_false")]
     pub gemini_sync: bool,
 
+    #[serde(default = "default_true")]
+    pub copy_git_config: bool,
+
     // 11. Security
     #[serde(skip_serializing_if = "Option::is_none")]
     pub security: Option<SecurityConfig>,
@@ -182,6 +186,10 @@ pub struct VmConfig {
     /// Path to the config file that was loaded (for debugging)
     #[serde(skip)]
     pub source_path: Option<PathBuf>,
+
+    /// Host Git configuration (if detected and enabled)
+    #[serde(skip)]
+    pub git_config: Option<GitConfig>,
 
     // 14. Mock provider config (for testing only)
     #[cfg(feature = "test-helpers")]
