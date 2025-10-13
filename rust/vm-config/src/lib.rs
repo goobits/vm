@@ -28,6 +28,9 @@ pub mod yaml; // YAML operations module
 #[cfg(test)]
 mod test_memory;
 
+#[cfg(test)]
+mod global_config_tests;
+
 // Re-export commonly needed path utilities
 pub use paths::{get_current_gid, get_current_uid, get_tool_dir, resolve_tool_path};
 
