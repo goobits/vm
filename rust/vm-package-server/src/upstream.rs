@@ -100,7 +100,7 @@ impl Default for UpstreamConfig {
 /// # }
 /// ```
 pub struct UpstreamClient {
-    client: Client,
+    client: Option<Client>,
     config: UpstreamConfig,
 }
 
@@ -129,14 +129,17 @@ impl UpstreamClient {
             .build()
             .map_err(|e| AppError::InternalError(format!("Failed to create HTTP client: {e}")))?;
 
-        Ok(Self { client, config })
+        Ok(Self {
+            client: Some(client),
+            config,
+        })
     }
 
     /// Create a disabled upstream client for testing.
     ///
-    /// This constructor creates a client with `enabled = false` and a minimal
-    /// HTTP client that doesn't initialize TLS. This avoids triggering macOS
-    /// Keychain prompts during tests.
+    /// This constructor creates a client with `enabled = false` and NO HTTP client.
+    /// This completely avoids TLS initialization and macOS Keychain prompts.
+    /// Since `enabled = false`, all methods will return errors before trying to use the client.
     ///
     /// # Returns
     ///
@@ -147,13 +150,21 @@ impl UpstreamClient {
             enabled: false,
             ..Default::default()
         };
-        // Create minimal client without full TLS initialization
-        let client = Client::builder()
-            .timeout(config.timeout)
-            .build()
-            .expect("Failed to create minimal test client");
 
-        Self { client, config }
+        // No client creation = no TLS initialization = no Keychain prompt
+        Self {
+            client: None,
+            config,
+        }
+    }
+
+    /// Get the HTTP client, returning an error if not available
+    fn get_client(&self) -> AppResult<&Client> {
+        self.client.as_ref().ok_or_else(|| {
+            AppError::InternalError(
+                "HTTP client not initialized (upstream is disabled)".to_string(),
+            )
+        })
     }
 
     /// Fetch PyPI simple index HTML for a package.
@@ -193,7 +204,7 @@ impl UpstreamClient {
         debug!(url = %url, "Fetching PyPI simple index");
 
         let response = self
-            .client
+            .get_client()?
             .get(&url)
             .header("Accept", "text/html,application/vnd.pypi.simple.v1+html")
             .send()
@@ -227,7 +238,7 @@ impl UpstreamClient {
         let url = format!("{}/packages/{}", self.config.pypi_url, filename);
         debug!(url = %url, "Streaming file from PyPI");
 
-        let response = self.client.get(&url).send().await.map_err(|e| {
+        let response = self.get_client()?.get(&url).send().await.map_err(|e| {
             warn!(error = %e, "Failed to fetch file from PyPI");
             AppError::NotFound(format!("File not found on PyPI: {filename}"))
         })?;
@@ -268,7 +279,7 @@ impl UpstreamClient {
         debug!(url = %url, "Fetching NPM metadata");
 
         let response = self
-            .client
+            .get_client()?
             .get(&url)
             .header("Accept", "application/vnd.npm.install-v1+json")
             .send()
@@ -308,10 +319,15 @@ impl UpstreamClient {
 
         debug!(url = %full_url, "Streaming tarball from NPM");
 
-        let response = self.client.get(&full_url).send().await.map_err(|e| {
-            warn!(error = %e, "Failed to fetch tarball from NPM");
-            AppError::NotFound("Tarball not found on NPM".to_string())
-        })?;
+        let response = self
+            .get_client()?
+            .get(&full_url)
+            .send()
+            .await
+            .map_err(|e| {
+                warn!(error = %e, "Failed to fetch tarball from NPM");
+                AppError::NotFound("Tarball not found on NPM".to_string())
+            })?;
 
         if !response.status().is_success() {
             return Err(AppError::NotFound("Tarball not found on NPM".to_string()));
@@ -332,7 +348,7 @@ impl UpstreamClient {
         let url = format!("{}/{}", self.config.cargo_url, index_path);
         debug!(url = %url, "Fetching Cargo index");
 
-        let response = self.client.get(&url).send().await.map_err(|e| {
+        let response = self.get_client()?.get(&url).send().await.map_err(|e| {
             warn!(error = %e, "Failed to fetch from Cargo index");
             AppError::NotFound(format!("Crate not found on crates.io: {crate_name}"))
         })?;
@@ -366,7 +382,7 @@ impl UpstreamClient {
         let url = format!("https://crates.io/api/v1/crates/{crate_name}/{version}/download");
         debug!(url = %url, "Streaming crate from crates.io");
 
-        let response = self.client.get(&url).send().await.map_err(|e| {
+        let response = self.get_client()?.get(&url).send().await.map_err(|e| {
             warn!(error = %e, "Failed to fetch crate from crates.io");
             AppError::NotFound(format!("Crate not found: {crate_name}-{version}"))
         })?;
