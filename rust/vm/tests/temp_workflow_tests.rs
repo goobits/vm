@@ -97,6 +97,7 @@ fn is_docker_available() -> bool {
 }
 
 #[test]
+#[cfg(feature = "integration")]
 fn test_temp_vm_full_lifecycle() -> Result<()> {
     let fixture = TempWorkflowTestFixture::new()?;
 

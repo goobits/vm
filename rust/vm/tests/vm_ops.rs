@@ -1,3 +1,4 @@
+#[cfg(feature = "integration")]
 #[path = "vm_ops"]
 mod vm_ops {
     // Test modules

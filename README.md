@@ -298,6 +298,16 @@ vm uninstall             # Uninstall vm from the system
 
 ## 🏗️ Architecture & Development
 
+### Testing
+
+The project uses a staged testing strategy to ensure both speed and thoroughness.
+
+- **Unit Tests**: Fast, in-memory tests that run in seconds. Use `make test-unit`.
+- **Integration Tests**: Slower, more comprehensive tests that may require Docker. Use `make test-integration`.
+- **Full Suite**: Run all tests with `make test`.
+
+For a detailed guide on running, debugging, and writing tests, please see the **[CLAUDE.md](CLAUDE.md)** development guide.
+
 ### Rust Crate Overview
 
 The VM tool is built from multiple focused Rust crates:

@@ -44,6 +44,7 @@ chrono = "0.4.42"
 [features]
 default = []
 structured-output = []
+integration = []
 
 [package.metadata.cargo-machete]
 ignored = []
