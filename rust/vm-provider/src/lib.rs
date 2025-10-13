@@ -38,7 +38,7 @@ pub struct ServiceStatus {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct VmStatusReport {
     pub name: String,
     pub provider: String,

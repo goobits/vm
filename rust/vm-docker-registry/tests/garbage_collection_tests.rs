@@ -6,7 +6,7 @@ async fn is_docker_available() -> bool {
         .arg("version")
         .output()
         .await
-        .map_or(false, |output| output.status.success())
+        .is_ok_and(|output| output.status.success())
 }
 
 async fn run_docker_command(args: &[&str]) -> anyhow::Result<()> {

@@ -3,7 +3,7 @@ use std::path::Path;
 use vm_config::config::VmConfig;
 use vm_core::error::Result;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct MockProvider;
 
 impl Provider for MockProvider {
@@ -69,6 +69,10 @@ impl Provider for MockProvider {
     }
     fn as_temp_provider(&self) -> Option<&dyn TempProvider> {
         Some(self)
+    }
+
+    fn clone_box(&self) -> Box<dyn Provider> {
+        Box::new(self.clone())
     }
 }
 

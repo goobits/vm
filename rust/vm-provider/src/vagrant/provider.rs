@@ -9,7 +9,10 @@ use crate::{
 use std::env;
 use std::path::Path;
 use tracing::{info, warn};
-use vm_config::config::{GlobalConfig, MemoryLimit, VmConfig, VmSettings};
+use vm_config::{
+    config::{MemoryLimit, VmConfig},
+    GlobalConfig,
+};
 use vm_core::command_stream::{is_tool_installed, stream_command};
 use vm_core::error::Result;
 use vm_core::{vm_println, vm_success, vm_warning};
@@ -36,6 +39,7 @@ fn shell_escape(arg: &str) -> String {
     }
 }
 
+#[derive(Clone)]
 pub struct VagrantProvider {
     config: VmConfig,
     project_dir: std::path::PathBuf,
@@ -380,14 +384,14 @@ impl VagrantProvider {
         if !mounts.is_empty() {
             let mut new_mount_lines = vec![format!("  {}", start_marker)];
             for mount in mounts {
-                let mount_type = match mount.permission {
+                let mount_type = match mount.permissions {
                     MountPermission::ReadWrite => "",
                     MountPermission::ReadOnly => ", mount_options: [\"ro\"]",
                 };
                 new_mount_lines.push(format!(
                     "  config.vm.synced_folder \"{}\", \"{}\"{}",
-                    mount.host_path.display(),
-                    mount.guest_path.display(),
+                    mount.source.display(),
+                    mount.target.display(),
                     mount_type
                 ));
             }
@@ -868,11 +872,15 @@ impl Provider for VagrantProvider {
     fn as_temp_provider(&self) -> Option<&dyn TempProvider> {
         Some(self)
     }
+
+    fn clone_box(&self) -> Box<dyn Provider> {
+        Box::new(self.clone())
+    }
 }
 
 impl TempProvider for VagrantProvider {
     fn update_mounts(&self, state: &TempVmState) -> Result<()> {
-        let instance_dir = self.get_instance_dir(&state.name)?;
+        let instance_dir = self.get_instance_dir(&state.container_name)?;
         let vagrantfile_path = instance_dir.join("Vagrantfile");
 
         let current_content = std::fs::read_to_string(&vagrantfile_path)
@@ -887,7 +895,7 @@ impl TempProvider for VagrantProvider {
     }
 
     fn recreate_with_mounts(&self, state: &TempVmState) -> Result<()> {
-        let instance_dir = self.get_instance_dir(&state.name)?;
+        let instance_dir = self.get_instance_dir(&state.container_name)?;
         info!("Reloading Vagrant VM to apply mount changes");
         duct::cmd("vagrant", &["reload"])
             .dir(instance_dir)
