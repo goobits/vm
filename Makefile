@@ -61,7 +61,7 @@ fmt-fix:
 	cd rust && cargo fmt --all
 
 audit:
-	cd rust && cargo audit
+	cd rust && cargo deny check advisories
 
 # Analysis
 check-duplicates:

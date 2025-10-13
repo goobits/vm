@@ -709,10 +709,10 @@ impl TempVmOps {
     /// Helper function to prompt for temp VM creation
     /// Returns true if user wants to create, false otherwise
     fn prompt_for_temp_vm_creation(action_context: &str) -> bool {
-        use std::io::{self, Write};
+        use std::io::{self, IsTerminal, Write};
 
         // Check if we're in an interactive terminal
-        if !atty::is(atty::Stream::Stdin) {
+        if !io::stdin().is_terminal() {
             return false;
         }
 

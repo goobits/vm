@@ -1,9 +1,9 @@
 //! User interaction with containers (SSH/exec/logs)
+use std::io::IsTerminal;
 use std::path::Path;
 
 use super::LifecycleOperations;
 use crate::{docker::UserConfig, security::SecurityValidator};
-use atty::{is, Stream};
 use vm_cli::msg;
 use vm_core::{
     command_stream::stream_command,
@@ -35,7 +35,7 @@ impl<'a> LifecycleOperations<'a> {
         let target_path = SecurityValidator::validate_relative_path(relative_path, workspace_path)?;
         let target_dir = target_path.to_string_lossy();
 
-        let tty_flag = if is(Stream::Stdin) && is(Stream::Stdout) {
+        let tty_flag = if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
             "-it"
         } else {
             "-i"

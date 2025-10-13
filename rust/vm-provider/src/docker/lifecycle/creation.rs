@@ -1,7 +1,7 @@
 //! Container creation and setup
-use atty::{is, Stream};
 use std::borrow::Cow;
 use std::fs;
+use std::io::IsTerminal;
 use std::io::{self, Write};
 use tracing::{error, info, warn};
 
@@ -306,7 +306,7 @@ impl<'a> LifecycleOperations<'a> {
         );
 
         // Check if we're in an interactive terminal
-        if is(Stream::Stdin) {
+        if std::io::stdin().is_terminal() {
             let option1 = if is_running {
                 MESSAGES.docker_container_exists_running
             } else {
@@ -371,7 +371,7 @@ impl<'a> LifecycleOperations<'a> {
         );
 
         // Check if we're in an interactive terminal
-        if is(Stream::Stdin) {
+        if std::io::stdin().is_terminal() {
             let option1 = if is_running {
                 MESSAGES.docker_container_exists_running
             } else {

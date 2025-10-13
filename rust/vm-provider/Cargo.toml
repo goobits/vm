@@ -19,7 +19,6 @@ vm-cli = { path = "../vm-cli" }
 vm-messages = { path = "../vm-messages" }
 vm-platform = { path = "../vm-platform" }
 chrono = { workspace = true }
-atty = { workspace = true }
 rayon = { workspace = true }
 shellexpand = { workspace = true }
 
