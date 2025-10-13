@@ -58,7 +58,7 @@ pub fn execute_query(
     default: Option<String>,
 ) -> Result<()> {
     let config = VmConfig::from_file(&config)
-        .map_err(|e| VmError::Config(format!("Failed to load config: {:?}: {}", config, e)))?;
+        .map_err(|e| VmError::Config(format!("Failed to load config: {config:?}: {e}")))?;
 
     let json_value = serde_json::to_value(&config)?;
     let value =
@@ -76,7 +76,7 @@ pub fn execute_query(
                 if let Some(default_val) = default {
                     serde_json::Value::String(default_val)
                 } else {
-                    return Err(VmError::Config(format!("Field not found: {}", field)));
+                    return Err(VmError::Config(format!("Field not found: {field}")));
                 }
             }
         };
@@ -84,10 +84,9 @@ pub fn execute_query(
     if raw && value.is_string() {
         info!(
             "{}",
-            value.as_str().ok_or_else(|| VmError::Config(format!(
-                "Expected string value, got: {:?}",
-                value
-            )))?
+            value
+                .as_str()
+                .ok_or_else(|| VmError::Config(format!("Expected string value, got: {value:?}")))?
         );
     } else {
         info!("{}", serde_json::to_string(&value)?);

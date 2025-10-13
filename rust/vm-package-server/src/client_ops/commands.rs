@@ -156,10 +156,7 @@ fn filter_types_from_string(
             "npm" | "node" | "nodejs" | "javascript" | "js" => PackageType::Npm,
             "cargo" | "rust" | "rs" => PackageType::Cargo,
             _ => {
-                anyhow::bail!(
-                    "Unknown package type '{}'. Supported: python, npm, cargo",
-                    requested
-                );
+                anyhow::bail!("Unknown package type '{requested}'. Supported: python, npm, cargo");
             }
         };
 
@@ -168,10 +165,7 @@ fn filter_types_from_string(
                 selected_types.push(package_type);
             }
         } else {
-            anyhow::bail!(
-                "Package type '{}' not found in current directory",
-                requested
-            );
+            anyhow::bail!("Package type '{requested}' not found in current directory");
         }
     }
 
@@ -186,7 +180,7 @@ fn filter_types_from_string(
 fn select_package_types_interactive(detected_types: &[PackageType]) -> Result<Vec<PackageType>> {
     let options: Vec<String> = detected_types
         .iter()
-        .map(|t| format!("{} package", t))
+        .map(|t| format!("{t} package"))
         .collect();
 
     info!("🔍 Multiple package types detected in current directory:");

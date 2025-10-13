@@ -66,7 +66,7 @@ impl AppConfig {
     pub fn load(config_path: Option<PathBuf>) -> Result<Self> {
         // Load global configuration
         let global = GlobalConfig::load()
-            .map_err(|e| VmError::Config(format!("Failed to load global configuration: {}", e)))?;
+            .map_err(|e| VmError::Config(format!("Failed to load global configuration: {e}")))?;
 
         // Load VM configuration with all merging logic
         let vm = config::VmConfig::load(config_path.clone())?;

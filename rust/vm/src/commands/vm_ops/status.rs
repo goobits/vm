@@ -133,13 +133,10 @@ fn display_resource_usage(resources: &vm_provider::ResourceUsage) {
             };
             let used_display = format_memory_mb(used);
             let limit_display = format_memory_mb(limit);
-            format!(
-                "   {} Memory: {} / {} ({:.0}%)",
-                mem_icon, used_display, limit_display, usage_pct
-            )
+            format!("   {mem_icon} Memory: {used_display} / {limit_display} ({usage_pct:.0}%)")
         } else {
             let used_display = format_memory_mb(used);
-            format!("   💚 Memory: {}", used_display)
+            format!("   💚 Memory: {used_display}")
         };
         vm_println!("{}", memory_text);
     }
@@ -155,12 +152,9 @@ fn display_resource_usage(resources: &vm_provider::ResourceUsage) {
             } else {
                 "💚"
             };
-            format!(
-                "   {} Disk:   {:.1}GB / {:.1}GB ({:.0}%)",
-                disk_icon, used, total, usage_pct
-            )
+            format!("   {disk_icon} Disk:   {used:.1}GB / {total:.1}GB ({usage_pct:.0}%)")
         } else {
-            format!("   💚 Disk:   {:.1}GB", used)
+            format!("   💚 Disk:   {used:.1}GB")
         };
         vm_println!("{}", disk_text);
     }
@@ -174,9 +168,9 @@ fn display_service_health(services: &[vm_provider::ServiceStatus]) {
         let health_icon = if service.is_running { "🟢" } else { "🔴" };
         let port_info = match (service.port, service.host_port) {
             (Some(container_port), Some(host_port)) if container_port != host_port => {
-                format!(" ({}→{})", host_port, container_port)
+                format!(" ({host_port}→{container_port})")
             }
-            (Some(port), _) => format!(" ({})", port),
+            (Some(port), _) => format!(" ({port})"),
             _ => String::new(),
         };
 
@@ -203,6 +197,6 @@ fn format_memory_mb(mb: u64) -> String {
     if mb >= 1024 {
         format!("{:.1}GB", mb as f64 / 1024.0)
     } else {
-        format!("{}MB", mb)
+        format!("{mb}MB")
     }
 }

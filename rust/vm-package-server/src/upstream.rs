@@ -127,7 +127,7 @@ impl UpstreamClient {
             .timeout(config.timeout)
             .user_agent("goobits-pkg-server/0.1.0")
             .build()
-            .map_err(|e| AppError::InternalError(format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| AppError::InternalError(format!("Failed to create HTTP client: {e}")))?;
 
         Ok(Self { client, config })
     }
@@ -176,19 +176,18 @@ impl UpstreamClient {
             .await
             .map_err(|e| {
                 warn!(error = %e, "Failed to fetch from PyPI");
-                AppError::NotFound(format!("Package not found on PyPI: {}", package_name))
+                AppError::NotFound(format!("Package not found on PyPI: {package_name}"))
             })?;
 
         if response.status().is_success() {
             let content = response.text().await.map_err(|e| {
-                AppError::InternalError(format!("Failed to read PyPI response: {}", e))
+                AppError::InternalError(format!("Failed to read PyPI response: {e}"))
             })?;
             info!(package = %package_name, "Successfully fetched from PyPI");
             Ok(content)
         } else {
             Err(AppError::NotFound(format!(
-                "Package not found on PyPI: {}",
-                package_name
+                "Package not found on PyPI: {package_name}"
             )))
         }
     }
@@ -206,13 +205,12 @@ impl UpstreamClient {
 
         let response = self.client.get(&url).send().await.map_err(|e| {
             warn!(error = %e, "Failed to fetch file from PyPI");
-            AppError::NotFound(format!("File not found on PyPI: {}", filename))
+            AppError::NotFound(format!("File not found on PyPI: {filename}"))
         })?;
 
         if !response.status().is_success() {
             return Err(AppError::NotFound(format!(
-                "File not found on PyPI: {}",
-                filename
+                "File not found on PyPI: {filename}"
             )));
         }
 
@@ -253,19 +251,18 @@ impl UpstreamClient {
             .await
             .map_err(|e| {
                 warn!(error = %e, "Failed to fetch from NPM");
-                AppError::NotFound(format!("Package not found on NPM: {}", package_name))
+                AppError::NotFound(format!("Package not found on NPM: {package_name}"))
             })?;
 
         if response.status().is_success() {
             let metadata = response.json().await.map_err(|e| {
-                AppError::InternalError(format!("Failed to parse NPM response: {}", e))
+                AppError::InternalError(format!("Failed to parse NPM response: {e}"))
             })?;
             info!(package = %package_name, "Successfully fetched from NPM");
             Ok(metadata)
         } else {
             Err(AppError::NotFound(format!(
-                "Package not found on NPM: {}",
-                package_name
+                "Package not found on NPM: {package_name}"
             )))
         }
     }
@@ -313,19 +310,18 @@ impl UpstreamClient {
 
         let response = self.client.get(&url).send().await.map_err(|e| {
             warn!(error = %e, "Failed to fetch from Cargo index");
-            AppError::NotFound(format!("Crate not found on crates.io: {}", crate_name))
+            AppError::NotFound(format!("Crate not found on crates.io: {crate_name}"))
         })?;
 
         if response.status().is_success() {
             let content = response.text().await.map_err(|e| {
-                AppError::InternalError(format!("Failed to read Cargo response: {}", e))
+                AppError::InternalError(format!("Failed to read Cargo response: {e}"))
             })?;
             info!(crate_name = %crate_name, "Successfully fetched from crates.io");
             Ok(content)
         } else {
             Err(AppError::NotFound(format!(
-                "Crate not found on crates.io: {}",
-                crate_name
+                "Crate not found on crates.io: {crate_name}"
             )))
         }
     }
@@ -343,26 +339,22 @@ impl UpstreamClient {
         }
 
         // Construct download URL from crates.io
-        let url = format!(
-            "https://crates.io/api/v1/crates/{}/{}/download",
-            crate_name, version
-        );
+        let url = format!("https://crates.io/api/v1/crates/{crate_name}/{version}/download");
         debug!(url = %url, "Streaming crate from crates.io");
 
         let response = self.client.get(&url).send().await.map_err(|e| {
             warn!(error = %e, "Failed to fetch crate from crates.io");
-            AppError::NotFound(format!("Crate not found: {}-{}", crate_name, version))
+            AppError::NotFound(format!("Crate not found: {crate_name}-{version}"))
         })?;
 
         if !response.status().is_success() {
             return Err(AppError::NotFound(format!(
-                "Crate not found: {}-{}",
-                crate_name, version
+                "Crate not found: {crate_name}-{version}"
             )));
         }
 
         // Use centralized validation and streaming logic
-        let crate_filename = format!("{}-{}.crate", crate_name, version);
+        let crate_filename = format!("{crate_name}-{version}.crate");
         FileStreamValidator::validate_and_stream_response(response, "Cargo", &crate_filename).await
     }
 
@@ -404,7 +396,7 @@ impl UpstreamClient {
                                 .path_segments()
                                 .and_then(|mut segments| segments.next_back())
                             {
-                                let new_tarball_url = format!("{}/npm/-/{}", server_addr, filename);
+                                let new_tarball_url = format!("{server_addr}/npm/-/{filename}");
                                 dist.insert("tarball".to_string(), Value::String(new_tarball_url));
                             }
                         }

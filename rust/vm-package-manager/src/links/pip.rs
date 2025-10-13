@@ -53,7 +53,7 @@ fn get_editable_packages_for_command(cmd: &str) -> Result<Vec<(String, String)>>
     }
 
     let output_str = String::from_utf8(output.stdout)
-        .map_err(|e| VmError::Internal(format!("Failed to parse pip command output: {}", e)))?;
+        .map_err(|e| VmError::Internal(format!("Failed to parse pip command output: {e}")))?;
     let json_data: Value = serde_json::from_str(&output_str)?;
 
     let mut packages = Vec::new();

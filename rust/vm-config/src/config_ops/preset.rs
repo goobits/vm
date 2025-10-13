@@ -28,7 +28,7 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
         for preset in presets {
             let description = detector
                 .get_preset_description(&preset)
-                .map(|d| format!(" - {}", d))
+                .map(|d| format!(" - {d}"))
                 .unwrap_or_default();
             vm_println!("  • {}{}", preset, description);
         }
@@ -78,9 +78,7 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
         });
 
         let preset_config = load_preset_with_placeholders(&detector, preset_name, &port_range_str)
-            .map_err(|e| {
-                VmError::Config(format!("Failed to load preset: {}: {}", preset_name, e))
-            })?;
+            .map_err(|e| VmError::Config(format!("Failed to load preset: {preset_name}: {e}")))?;
 
         merged_config = ConfigMerger::new(merged_config).merge(preset_config)?;
     }

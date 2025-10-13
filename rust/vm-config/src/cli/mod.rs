@@ -135,7 +135,7 @@ impl std::str::FromStr for TransformFormat {
             "comma" => Ok(TransformFormat::Comma),
             "json" => Ok(TransformFormat::Json),
             "yaml" => Ok(TransformFormat::Yaml),
-            _ => Err(format!("Unknown transform format: {}", s)),
+            _ => Err(format!("Unknown transform format: {s}")),
         }
     }
 }
@@ -148,7 +148,7 @@ impl std::str::FromStr for OutputFormat {
             "yaml" | "yml" => Ok(OutputFormat::Yaml),
             "json" => Ok(OutputFormat::Json),
             "json-pretty" => Ok(OutputFormat::JsonPretty),
-            _ => Err(format!("Unknown format: {}", s)),
+            _ => Err(format!("Unknown format: {s}")),
         }
     }
 }
@@ -346,7 +346,7 @@ fn execute_ports_command(cmd: PortsCmd) -> Result<()> {
 
             if let Some(conflicts) = registry.check_conflicts(&port_range, project_name.as_deref())
             {
-                println!("{}", conflicts);
+                println!("{conflicts}");
                 std::process::exit(1);
             } else {
                 std::process::exit(0);
@@ -373,7 +373,7 @@ fn execute_ports_command(cmd: PortsCmd) -> Result<()> {
             let size = size.unwrap_or(10);
 
             if let Some(range) = registry.suggest_next_range(size, 3000) {
-                println!("{}", range);
+                println!("{range}");
             } else {
                 vm_error!("No available port range of size {} found", size);
                 std::process::exit(1);

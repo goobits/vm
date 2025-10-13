@@ -93,7 +93,7 @@ pub async fn get_package_versions(
     let metadata_path = state
         .data_dir
         .join("npm/metadata")
-        .join(format!("{}.json", package_name));
+        .join(format!("{package_name}.json"));
     let mut versions = Vec::new();
 
     let result = storage::read_file_string(&metadata_path).await;
@@ -154,7 +154,7 @@ pub async fn get_recent_packages(
         let metadata_path = state
             .data_dir
             .join("npm/metadata")
-            .join(format!("{}.json", package_name));
+            .join(format!("{package_name}.json"));
         if let Ok(content) = storage::read_file_string(&metadata_path).await {
             if let Ok(metadata) = serde_json::from_str::<Value>(&content) {
                 if let Some(latest) = metadata["dist-tags"]["latest"].as_str() {
@@ -207,7 +207,7 @@ pub async fn package_metadata(
     let metadata_path = state
         .data_dir
         .join("npm/metadata")
-        .join(format!("{}.json", package));
+        .join(format!("{package}.json"));
 
     info!(package = %package, "Fetching npm package metadata");
 
@@ -246,10 +246,7 @@ pub async fn package_metadata(
         Err(_) => {
             debug!(package = %package, "Package not found on upstream NPM either");
             // Return 404 as per npm registry behavior
-            Err(AppError::NotFound(format!(
-                "Package not found: {}",
-                package
-            )))
+            Err(AppError::NotFound(format!("Package not found: {package}")))
         }
     }
 }
@@ -386,8 +383,7 @@ pub async fn publish_package(
         .ok_or_else(|| {
             warn!(package = %package, "npm publish payload _attachments field is not an object");
             AppError::BadRequest(format!(
-                "Package '{}': '_attachments' field is not an object",
-                package
+                "Package '{package}': '_attachments' field is not an object"
             ))
         })?
         .clone();
@@ -406,21 +402,21 @@ pub async fn publish_package(
             validation::validate_base64_size(data_b64, None, None).map_err(|e| {
                 warn!(package = %package, filename = %filename, error = %e,
                       "Base64 size validation failed");
-                AppError::UploadError(format!("Base64 data size validation failed: {}", e))
+                AppError::UploadError(format!("Base64 data size validation failed: {e}"))
             })?;
 
             // Validate base64 character format
             validation::validate_base64_characters(data_b64).map_err(|e| {
                 warn!(package = %package, filename = %filename, error = %e,
                       "Base64 character validation failed");
-                AppError::UploadError(format!("Invalid base64 format: {}", e))
+                AppError::UploadError(format!("Invalid base64 format: {e}"))
             })?;
 
             // Decode base64 tarball with comprehensive error handling
             let tarball_data = general_purpose::STANDARD.decode(data_b64).map_err(|e| {
                 warn!(package = %package, filename = %filename, error = %e,
                       "Failed to decode base64 data");
-                AppError::UploadError(format!("Invalid base64 encoding: {}", e))
+                AppError::UploadError(format!("Invalid base64 encoding: {e}"))
             })?;
 
             // Use centralized validation for decoded tarball size
@@ -452,7 +448,7 @@ pub async fn publish_package(
             let metadata_path = state
                 .data_dir
                 .join("npm/metadata")
-                .join(format!("{}.json", package));
+                .join(format!("{package}.json"));
             let metadata_str = serde_json::to_string_pretty(&payload)?;
             storage::save_file(metadata_path, metadata_str.as_bytes()).await?;
 

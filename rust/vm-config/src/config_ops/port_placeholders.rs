@@ -126,7 +126,7 @@ pub(crate) fn load_preset_with_placeholders(
     };
 
     let preset_file: crate::preset::PresetFile = serde_yaml::from_str(&processed_content)
-        .map_err(|e| VmError::Config(format!("Failed to parse preset '{}': {}", preset_name, e)))?;
+        .map_err(|e| VmError::Config(format!("Failed to parse preset '{preset_name}': {e}")))?;
 
     Ok(preset_file.config)
 }

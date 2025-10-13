@@ -158,10 +158,7 @@ pub fn post_process_yaml(yaml: &str) -> String {
                 ) {
                     // Get the indentation from the original _range: line
                     let indent = &line[..line.len() - trimmed.len()];
-                    result.push_str(&format!(
-                        "{}_range: [{}, {}]\n",
-                        indent, first_val, second_val
-                    ));
+                    result.push_str(&format!("{indent}_range: [{first_val}, {second_val}]\n"));
                     i += 3; // Skip the next two lines
                     continue;
                 }

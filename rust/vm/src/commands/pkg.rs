@@ -239,7 +239,7 @@ async fn check_server_running(global_config: &GlobalConfig) -> bool {
 
 /// Check if the package registry server is running at a specific URL
 async fn check_server_running_with_url(base_url: &str) -> bool {
-    let health_url = format!("{}/health", base_url);
+    let health_url = format!("{base_url}/health");
     match reqwest::get(&health_url).await {
         Ok(response) => response.status().is_success(),
         Err(_) => false,
@@ -248,7 +248,7 @@ async fn check_server_running_with_url(base_url: &str) -> bool {
 
 /// Get the version of the running server
 async fn get_server_version(base_url: &str) -> VmResult<String> {
-    let status_url = format!("{}/api/status", base_url);
+    let status_url = format!("{base_url}/api/status");
     let response = reqwest::get(&status_url)
         .await
         .map_err(|e| VmError::general(e, "Failed to get server status"))?;
@@ -274,7 +274,7 @@ async fn get_server_version(base_url: &str) -> VmResult<String> {
 
 /// Gracefully shutdown the server
 async fn shutdown_server(base_url: &str) -> VmResult<()> {
-    let shutdown_url = format!("{}/shutdown", base_url);
+    let shutdown_url = format!("{base_url}/shutdown");
     let client = reqwest::Client::new();
     let _ = client.post(&shutdown_url).send().await;
     Ok(())

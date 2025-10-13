@@ -18,16 +18,17 @@ pub fn execute(
 
     // Load default config
     let default_config = VmConfig::from_file(&defaults)
-        .map_err(|e| VmError::Config(format!("Failed to load defaults: {:?}: {}", defaults, e)))?;
+        .map_err(|e| VmError::Config(format!("Failed to load defaults: {defaults:?}: {e}")))?;
 
     // Load user config if provided
-    let user_config = if let Some(path) = config {
-        Some(VmConfig::from_file(&path).map_err(|e| {
-            VmError::Config(format!("Failed to load user config: {:?}: {}", path, e))
-        })?)
-    } else {
-        None
-    };
+    let user_config =
+        if let Some(path) = config {
+            Some(VmConfig::from_file(&path).map_err(|e| {
+                VmError::Config(format!("Failed to load user config: {path:?}: {e}"))
+            })?)
+        } else {
+            None
+        };
 
     // Detect and load preset if user config is partial
     let preset_config = if user_config.as_ref().map_or(true, |c| c.is_partial()) {

@@ -63,10 +63,7 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
         let api_url = if target_version == "latest" {
             "https://api.github.com/repos/goobits/vm/releases/latest".to_string()
         } else {
-            format!(
-                "https://api.github.com/repos/goobits/vm/releases/tags/{}",
-                target_version
-            )
+            format!("https://api.github.com/repos/goobits/vm/releases/tags/{target_version}")
         };
 
         // Create temporary directory
@@ -96,7 +93,7 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
             );
             return Err(VmError::general(
                 std::io::Error::new(std::io::ErrorKind::NotFound, "Release not found"),
-                format!("Failed to fetch release info for {}", target_version),
+                format!("Failed to fetch release info for {target_version}"),
             ));
         }
 
@@ -104,7 +101,7 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
         let release_json = String::from_utf8_lossy(&release_info.stdout);
 
         // Find the asset URL for our platform
-        let asset_pattern = format!("vm-{}.tar.gz", target);
+        let asset_pattern = format!("vm-{target}.tar.gz");
         let asset_url = find_asset_url(&release_json, &asset_pattern);
 
         if asset_url.is_none() {
@@ -114,7 +111,7 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
             );
             return Err(VmError::general(
                 std::io::Error::new(std::io::ErrorKind::NotFound, "Platform not supported"),
-                format!("No binary available for {}", target),
+                format!("No binary available for {target}"),
             ));
         }
 
@@ -155,7 +152,7 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
         }
 
         // Find the vm binary
-        let binary_name = format!("vm-{}", target);
+        let binary_name = format!("vm-{target}");
         let temp_binary = temp_dir.join(&binary_name);
 
         if !temp_binary.exists() {
@@ -234,7 +231,7 @@ fn detect_target() -> String {
         panic!("Unsupported OS");
     };
 
-    format!("{}-{}", arch, os)
+    format!("{arch}-{os}")
 }
 
 fn find_asset_url(json: &str, pattern: &str) -> Option<String> {

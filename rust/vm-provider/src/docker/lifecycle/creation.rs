@@ -281,8 +281,7 @@ impl<'a> LifecycleOperations<'a> {
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         stream_command("docker", &args_refs).map_err(|e| {
             VmError::Internal(format!(
-                "Failed to start container '{}'. Container may have failed to start properly: {}",
-                container_name, e
+                "Failed to start container '{container_name}'. Container may have failed to start properly: {e}"
             ))
         })?;
 
@@ -348,10 +347,9 @@ impl<'a> LifecycleOperations<'a> {
         } else {
             // Non-interactive mode: fail with informative error
             Err(VmError::Internal(format!(
-                "Container '{}' already exists. In non-interactive mode, please use:\n\
+                "Container '{container_name}' already exists. In non-interactive mode, please use:\n\
                  - 'vm start' to start the existing container\n\
-                 - 'vm destroy' followed by 'vm create' to recreate it",
-                container_name
+                 - 'vm destroy' followed by 'vm create' to recreate it"
             )))
         }
     }
@@ -414,10 +412,9 @@ impl<'a> LifecycleOperations<'a> {
         } else {
             // Non-interactive mode: fail with informative error
             Err(VmError::Internal(format!(
-                "Container '{}' already exists. In non-interactive mode, please use:\n\
-                 - 'vm start {}' to start the existing container\n\
-                 - 'vm destroy {}' followed by 'vm create --instance {}' to recreate it",
-                container_name, container_name, container_name, instance_name
+                "Container '{container_name}' already exists. In non-interactive mode, please use:\n\
+                 - 'vm start {container_name}' to start the existing container\n\
+                 - 'vm destroy {container_name}' followed by 'vm create --instance {instance_name}' to recreate it"
             )))
         }
     }
@@ -470,8 +467,7 @@ impl<'a> LifecycleOperations<'a> {
                 "container_pipx_packages".to_string(),
                 serde_json::to_value(container_pipx_packages).map_err(|e| {
                     VmError::Internal(format!(
-                        "Failed to serialize pipx package list for container configuration: {}",
-                        e
+                        "Failed to serialize pipx package list for container configuration: {e}"
                     ))
                 })?,
             );

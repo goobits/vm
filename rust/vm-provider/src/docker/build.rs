@@ -40,8 +40,7 @@ impl<'a> BuildOperations<'a> {
             }
 
             return Err(VmError::Internal(format!(
-                "Docker pull failed for image '{}': {}",
-                image, stderr
+                "Docker pull failed for image '{image}': {stderr}"
             )));
         }
 
@@ -101,9 +100,9 @@ impl<'a> BuildOperations<'a> {
         context.insert("project_gid", &user_config.gid.to_string());
         context.insert("project_user", &user_config.username);
 
-        let content = tera.render("Dockerfile", &context).map_err(|e| {
-            VmError::Internal(format!("Failed to render Dockerfile template: {}", e))
-        })?;
+        let content = tera
+            .render("Dockerfile", &context)
+            .map_err(|e| VmError::Internal(format!("Failed to render Dockerfile template: {e}")))?;
         fs::write(output_path, content.as_bytes())?;
 
         Ok(())
@@ -119,41 +118,41 @@ impl<'a> BuildOperations<'a> {
             .as_ref()
             .and_then(|vm| vm.box_name.as_deref())
         {
-            args.push(format!("--build-arg=base_image={}", image));
+            args.push(format!("--build-arg=base_image={image}"));
         }
 
         // Add version build args
         if let Some(versions) = &self.config.versions {
             if let Some(node) = &versions.node {
-                args.push(format!("--build-arg=NODE_VERSION={}", node));
+                args.push(format!("--build-arg=NODE_VERSION={node}"));
             }
             if let Some(nvm) = &versions.nvm {
-                args.push(format!("--build-arg=NVM_VERSION={}", nvm));
+                args.push(format!("--build-arg=NVM_VERSION={nvm}"));
             }
             if let Some(pnpm) = &versions.pnpm {
-                args.push(format!("--build-arg=PNPM_VERSION={}", pnpm));
+                args.push(format!("--build-arg=PNPM_VERSION={pnpm}"));
             }
         }
 
         // Add package list build args
         if !self.config.apt_packages.is_empty() {
             let packages = self.config.apt_packages.join(" ");
-            args.push(format!("--build-arg=APT_PACKAGES={}", packages));
+            args.push(format!("--build-arg=APT_PACKAGES={packages}"));
         }
 
         if !self.config.npm_packages.is_empty() {
             let packages = self.config.npm_packages.join(" ");
-            args.push(format!("--build-arg=NPM_PACKAGES={}", packages));
+            args.push(format!("--build-arg=NPM_PACKAGES={packages}"));
         }
 
         if !self.config.pip_packages.is_empty() {
             let packages = self.config.pip_packages.join(" ");
-            args.push(format!("--build-arg=PIP_PACKAGES={}", packages));
+            args.push(format!("--build-arg=PIP_PACKAGES={packages}"));
         }
 
         if !self.config.cargo_packages.is_empty() {
             let packages = self.config.cargo_packages.join(" ");
-            args.push(format!("--build-arg=CARGO_PACKAGES={}", packages));
+            args.push(format!("--build-arg=CARGO_PACKAGES={packages}"));
         }
 
         // Add user/group build args

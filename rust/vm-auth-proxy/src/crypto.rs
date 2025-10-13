@@ -28,14 +28,14 @@ impl EncryptionKey {
     /// Derive encryption key from master password and salt
     pub fn derive_from_password(password: &str, salt: &[u8]) -> Result<Self> {
         if salt.len() != SALT_LENGTH {
-            return Err(anyhow!("Salt must be {} bytes long", SALT_LENGTH));
+            return Err(anyhow!("Salt must be {SALT_LENGTH} bytes long"));
         }
 
         let mut key = [0u8; 32]; // 256 bits for AES-256
         pbkdf2_hmac::<Sha256>(password.as_bytes(), salt, PBKDF2_ITERATIONS, &mut key);
 
-        let cipher = Aes256Gcm::new_from_slice(&key)
-            .map_err(|e| anyhow!("Failed to create cipher: {}", e))?;
+        let cipher =
+            Aes256Gcm::new_from_slice(&key).map_err(|e| anyhow!("Failed to create cipher: {e}"))?;
 
         Ok(Self { cipher })
     }
@@ -49,7 +49,7 @@ impl EncryptionKey {
         let ciphertext = self
             .cipher
             .encrypt(&nonce, plaintext.as_bytes())
-            .map_err(|e| anyhow!("Encryption failed: {}", e))?;
+            .map_err(|e| anyhow!("Encryption failed: {e}"))?;
 
         // Combine nonce and ciphertext
         let mut combined = Vec::with_capacity(NONCE_LENGTH + ciphertext.len());
@@ -79,7 +79,7 @@ impl EncryptionKey {
         let plaintext = self
             .cipher
             .decrypt(nonce, ciphertext)
-            .map_err(|e| anyhow!("Decryption failed: {}", e))?;
+            .map_err(|e| anyhow!("Decryption failed: {e}"))?;
 
         String::from_utf8(plaintext).context("Decrypted data is not valid UTF-8")
     }
@@ -113,7 +113,7 @@ pub fn get_master_password() -> Result<String> {
     let hostname = std::env::var("HOSTNAME").unwrap_or_else(|_| "vm-host".to_string());
 
     // Simple combination - in production use proper keychain
-    Ok(format!("vm-auth-proxy-{}-{}", username, hostname))
+    Ok(format!("vm-auth-proxy-{username}-{hostname}"))
 }
 
 #[cfg(test)]

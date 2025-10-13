@@ -62,10 +62,10 @@ pub async fn run_server_with_shutdown(
         .with_state(state);
 
     // Start server
-    let addr = format!("{}:{}", host, port);
+    let addr = format!("{host}:{port}");
     let listener = TcpListener::bind(&addr)
         .await
-        .with_context(|| format!("Failed to bind to {}", addr))?;
+        .with_context(|| format!("Failed to bind to {addr}"))?;
 
     info!("Auth proxy server listening on {}", addr);
 
@@ -102,7 +102,7 @@ pub async fn run_server_background(host: String, port: u16, data_dir: PathBuf) -
 
 /// Check if the auth proxy server is running
 pub async fn check_server_running(port: u16) -> bool {
-    let url = format!("http://127.0.0.1:{}/health", port);
+    let url = format!("http://127.0.0.1:{port}/health");
     match reqwest::get(&url).await {
         Ok(response) => response.status().is_success(),
         Err(_) => false,
@@ -179,7 +179,7 @@ async fn add_secret(
             let response = SecretResponse {
                 name,
                 success: false,
-                message: Some(format!("Failed to add secret: {}", e)),
+                message: Some(format!("Failed to add secret: {e}")),
             };
             Ok(Json(response))
         }
@@ -242,7 +242,7 @@ async fn remove_secret(
             let response = SecretResponse {
                 name,
                 success: false,
-                message: Some(format!("Failed to remove secret: {}", e)),
+                message: Some(format!("Failed to remove secret: {e}")),
             };
             Ok(Json(response))
         }

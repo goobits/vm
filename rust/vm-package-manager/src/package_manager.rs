@@ -41,7 +41,7 @@ impl PackageManager {
         }
         #[cfg(not(windows))]
         {
-            PathBuf::from(format!("/home/{}", user)).join(".links")
+            PathBuf::from(format!("/home/{user}")).join(".links")
         }
     }
 

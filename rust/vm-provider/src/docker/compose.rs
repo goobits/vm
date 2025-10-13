@@ -105,12 +105,12 @@ impl<'a> ComposeOperations<'a> {
                     // NPM
                     (
                         "NPM_CONFIG_REGISTRY".to_string(),
-                        format!("http://{}:{}/npm/", host, port),
+                        format!("http://{host}:{port}/npm/"),
                     ),
                     // Pip with fallback
                     (
                         "PIP_INDEX_URL".to_string(),
-                        format!("http://{}:{}/pypi/simple/", host, port),
+                        format!("http://{host}:{port}/pypi/simple/"),
                     ),
                     (
                         "PIP_EXTRA_INDEX_URL".to_string(),
@@ -138,10 +138,7 @@ impl<'a> ComposeOperations<'a> {
 
                 host_env_vars.push((
                     "DATABASE_URL".to_string(),
-                    format!(
-                        "postgresql://{}:{}@{}:{}/{}",
-                        user, password, host, port, db_name
-                    ),
+                    format!("postgresql://{user}:{password}@{host}:{port}/{db_name}"),
                 ));
             }
 
@@ -150,10 +147,7 @@ impl<'a> ComposeOperations<'a> {
                 let host = vm_platform::platform::get_host_gateway();
                 let port = global_cfg.services.redis.port;
 
-                host_env_vars.push((
-                    "REDIS_URL".to_string(),
-                    format!("redis://{}:{}", host, port),
-                ));
+                host_env_vars.push(("REDIS_URL".to_string(), format!("redis://{host}:{port}")));
             }
 
             // Add MongoDB environment variables from global config
@@ -163,7 +157,7 @@ impl<'a> ComposeOperations<'a> {
 
                 host_env_vars.push((
                     "MONGODB_URL".to_string(),
-                    format!("mongodb://{}:{}", host, port),
+                    format!("mongodb://{host}:{port}"),
                 ));
             }
         }
@@ -233,7 +227,7 @@ impl<'a> ComposeOperations<'a> {
         let content = tera
             .render("docker-compose.yml", &tera_context)
             .map_err(|e| {
-                VmError::Internal(format!("Failed to render docker-compose template: {}", e))
+                VmError::Internal(format!("Failed to render docker-compose template: {e}"))
             })?;
         Ok(content)
     }
@@ -296,23 +290,20 @@ impl<'a> ComposeOperations<'a> {
         let mut custom_config = self.config.clone();
         if let Some(ref mut project) = custom_config.project {
             if let Some(ref project_name) = project.name {
-                project.name = Some(format!("{}-{}", project_name, instance_name));
+                project.name = Some(format!("{project_name}-{instance_name}"));
             } else {
-                project.name = Some(format!("vm-project-{}", instance_name));
+                project.name = Some(format!("vm-project-{instance_name}"));
             }
         } else {
             custom_config.project = Some(vm_config::config::ProjectConfig {
-                name: Some(format!("vm-project-{}", instance_name)),
+                name: Some(format!("vm-project-{instance_name}")),
                 ..Default::default()
             });
         }
 
         let mut tera_context = TeraContext::new();
         tera_context.insert("config", &custom_config);
-        tera_context.insert(
-            "project_name",
-            &format!("{}-{}", project_name, instance_name),
-        );
+        tera_context.insert("project_name", &format!("{project_name}-{instance_name}"));
         tera_context.insert("project_dir", &project_dir_str);
         tera_context.insert("build_context_dir", &build_context_str);
         tera_context.insert("project_uid", &user_config.uid.to_string());
@@ -346,7 +337,7 @@ impl<'a> ComposeOperations<'a> {
         let content = tera
             .render("docker-compose.yml", &tera_context)
             .map_err(|e| {
-                VmError::Internal(format!("Failed to render docker-compose template: {}", e))
+                VmError::Internal(format!("Failed to render docker-compose template: {e}"))
             })?;
         Ok(content)
     }
@@ -361,7 +352,7 @@ impl<'a> ComposeOperations<'a> {
         context.insert("mounts", &state.mounts);
 
         let content = tera.render("docker-compose.yml", &context).map_err(|e| {
-            VmError::Internal(format!("Failed to render docker-compose template: {}", e))
+            VmError::Internal(format!("Failed to render docker-compose template: {e}"))
         })?;
         Ok(content)
     }
@@ -381,7 +372,7 @@ impl<'a> ComposeOperations<'a> {
             .project
             .as_ref()
             .and_then(|p| p.name.as_ref())
-            .map(|s| format!("{}-dev", s))
+            .map(|s| format!("{s}-dev"))
             .unwrap_or_else(|| "vm-project-dev".to_string());
 
         let container_exists = DockerOps::container_exists(&container_name).unwrap_or(false);
@@ -397,8 +388,7 @@ impl<'a> ComposeOperations<'a> {
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         stream_command("docker", &args_refs).map_err(|e| {
             VmError::Internal(format!(
-                "Failed to start container using docker-compose: {}",
-                e
+                "Failed to start container using docker-compose: {e}"
             ))
         })
     }
@@ -411,8 +401,7 @@ impl<'a> ComposeOperations<'a> {
             let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
             stream_command("docker", &args_refs).map_err(|e| {
                 VmError::Internal(format!(
-                    "Failed to stop container using docker-compose: {}",
-                    e
+                    "Failed to stop container using docker-compose: {e}"
                 ))
             })
         } else {
@@ -435,7 +424,7 @@ impl<'a> ComposeOperations<'a> {
         let args = ComposeCommand::build_args(&compose_path, "down", &["--volumes"])?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         stream_command("docker", &args_refs)
-            .map_err(|e| VmError::Internal(format!("Failed to destroy container: {}", e)))
+            .map_err(|e| VmError::Internal(format!("Failed to destroy container: {e}")))
     }
 }
 

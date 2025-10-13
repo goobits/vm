@@ -30,13 +30,13 @@ impl FileStreamValidator {
         // Check content length header for size validation
         if let Some(content_length) = response.content_length() {
             validate_file_size(content_length, Some(MAX_UPLOAD_SIZE)).map_err(|e| {
-                AppError::BadRequest(format!("{} file too large: {}", registry_type, e))
+                AppError::BadRequest(format!("{registry_type} file too large: {e}"))
             })?;
 
             // For small files, load into memory directly
             if content_length <= MEMORY_THRESHOLD as u64 {
                 let bytes = response.bytes().await.map_err(|e| {
-                    AppError::InternalError(format!("Failed to read {} file: {}", registry_type, e))
+                    AppError::InternalError(format!("Failed to read {registry_type} file: {e}"))
                 })?;
                 info!(
                     filename = %filename,
@@ -51,7 +51,7 @@ impl FileStreamValidator {
         // For large files or unknown size, collect all bytes directly
         // Note: This still loads into memory but adds size validation during the process
         let bytes = response.bytes().await.map_err(|e| {
-            AppError::InternalError(format!("Failed to read {} file: {}", registry_type, e))
+            AppError::InternalError(format!("Failed to read {registry_type} file: {e}"))
         })?;
 
         info!(
@@ -84,7 +84,7 @@ impl FileStreamValidator {
 
         // Validate file size against security limits
         validate_file_size(file_size, Some(MAX_UPLOAD_SIZE))
-            .map_err(|e| AppError::BadRequest(format!("File too large: {}", e)))?;
+            .map_err(|e| AppError::BadRequest(format!("File too large: {e}")))?;
 
         // For small files, read directly into memory
         if file_size <= MEMORY_THRESHOLD as u64 {
@@ -133,7 +133,7 @@ impl FileStreamValidator {
 
         // Validate file size against security limits
         validate_file_size(file_size, Some(MAX_UPLOAD_SIZE))
-            .map_err(|e| AppError::BadRequest(format!("File too large: {}", e)))?;
+            .map_err(|e| AppError::BadRequest(format!("File too large: {e}")))?;
 
         // For small files, read directly into memory
         if file_size <= MEMORY_THRESHOLD as u64 {
@@ -183,7 +183,7 @@ impl FileStreamValidator {
                 registry = %registry_type,
                 "Package file too large"
             );
-            AppError::UploadError(format!("Package file too large: {}", e))
+            AppError::UploadError(format!("Package file too large: {e}"))
         })?;
 
         info!(
@@ -212,8 +212,7 @@ impl FileStreamValidator {
                 "Total upload size exceeds limit"
             );
             return Err(AppError::UploadError(format!(
-                "Total upload size ({} bytes) exceeds maximum allowed ({} bytes)",
-                total_size, MAX_UPLOAD_SIZE
+                "Total upload size ({total_size} bytes) exceeds maximum allowed ({MAX_UPLOAD_SIZE} bytes)"
             )));
         }
 
@@ -247,25 +246,19 @@ impl DockerValidator {
         // Validate hostname parameter
         if let Err(e) = validate_hostname(host) {
             error!(host = %host, error = %e, "Invalid host parameter");
-            return Err(AppError::BadRequest(format!(
-                "Invalid host parameter: {}",
-                e
-            )));
+            return Err(AppError::BadRequest(format!("Invalid host parameter: {e}")));
         }
 
         // Validate Docker port parameter
         if let Err(e) = validate_docker_port(port) {
             error!(port = %port, error = %e, "Invalid port parameter");
-            return Err(AppError::BadRequest(format!(
-                "Invalid port parameter: {}",
-                e
-            )));
+            return Err(AppError::BadRequest(format!("Invalid port parameter: {e}")));
         }
 
         // Validate and get volume path for Docker mounting
         let volume_path = validate_docker_volume_path(data_dir).map_err(|e| {
             error!(path = %data_dir.display(), error = %e, "Invalid Docker volume path");
-            AppError::BadRequest(format!("Invalid Docker volume path: {}", e))
+            AppError::BadRequest(format!("Invalid Docker volume path: {e}"))
         })?;
 
         info!(
@@ -287,7 +280,7 @@ impl DockerValidator {
 
         sanitize_docker_name(name).map_err(|e| {
             error!(container_name = %name, error = %e, "Invalid container name");
-            AppError::BadRequest(format!("Invalid container name: {}", e))
+            AppError::BadRequest(format!("Invalid container name: {e}"))
         })?;
 
         debug!(container_name = %name, "Container name validation successful");
@@ -303,7 +296,7 @@ impl DockerValidator {
 
         validate_docker_image_name(image).map_err(|e| {
             error!(image_name = %image, error = %e, "Invalid Docker image name");
-            AppError::BadRequest(format!("Invalid Docker image name: {}", e))
+            AppError::BadRequest(format!("Invalid Docker image name: {e}"))
         })?;
 
         debug!(image_name = %image, "Docker image name validation successful");
@@ -437,8 +430,7 @@ pub fn validate_filename(filename: &str) -> Result<(), AppError> {
         tracing::warn!(filename = %filename, base_name = %base_name,
                       "Reserved Windows filename detected");
         return Err(AppError::BadRequest(format!(
-            "Filename '{}' is reserved on Windows systems",
-            base_name
+            "Filename '{base_name}' is reserved on Windows systems"
         )));
     }
 

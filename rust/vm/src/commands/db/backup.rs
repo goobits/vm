@@ -62,8 +62,8 @@ pub async fn backup_db(
 ) -> VmResult<()> {
     let timestamp = Local::now().format("%Y%m%d_%H%M%S");
     let backup_file_name = match backup_name {
-        Some(name) => format!("{}_{}.dump", name, timestamp),
-        None => format!("{}_{}.dump", db_name, timestamp),
+        Some(name) => format!("{name}_{timestamp}.dump"),
+        None => format!("{db_name}_{timestamp}.dump"),
     };
     let backup_path = get_backup_dir()?.join(&backup_file_name);
 
@@ -94,7 +94,7 @@ pub async fn restore_db(backup_name: &str, db_name: &str) -> VmResult<()> {
     if !backup_path.exists() {
         return Err(VmError::validation(
             "Backup file not found",
-            Some(format!("Backup file not found at: {:?}", backup_path)),
+            Some(format!("Backup file not found at: {backup_path:?}")),
         ));
     }
 
@@ -109,7 +109,7 @@ pub async fn restore_db(backup_name: &str, db_name: &str) -> VmResult<()> {
             "-U",
             "postgres",
             "-c",
-            &format!("DROP DATABASE IF EXISTS \"{}\";", db_name),
+            &format!("DROP DATABASE IF EXISTS \"{db_name}\";"),
         ],
         None,
     )
@@ -120,7 +120,7 @@ pub async fn restore_db(backup_name: &str, db_name: &str) -> VmResult<()> {
             "-U",
             "postgres",
             "-c",
-            &format!("CREATE DATABASE \"{}\";", db_name),
+            &format!("CREATE DATABASE \"{db_name}\";"),
         ],
         None,
     )
@@ -165,7 +165,7 @@ pub async fn import_db(db_name: &str, file: &Path) -> VmResult<()> {
     if !file.exists() {
         return Err(VmError::validation(
             "Import file not found",
-            Some(format!("Import file not found at: {:?}", file)),
+            Some(format!("Import file not found at: {file:?}")),
         ));
     }
 
@@ -207,7 +207,7 @@ pub async fn reset_db(db_name: &str, force: bool) -> VmResult<()> {
             "-U",
             "postgres",
             "-c",
-            &format!("DROP DATABASE IF EXISTS \"{}\";", db_name),
+            &format!("DROP DATABASE IF EXISTS \"{db_name}\";"),
         ],
         None,
     )
@@ -219,7 +219,7 @@ pub async fn reset_db(db_name: &str, force: bool) -> VmResult<()> {
             "-U",
             "postgres",
             "-c",
-            &format!("CREATE DATABASE \"{}\";", db_name),
+            &format!("CREATE DATABASE \"{db_name}\";"),
         ],
         None,
     )
@@ -265,7 +265,7 @@ async fn clean_old_backups(db_name: &str, retention_count: u32) -> VmResult<()> 
             entry
                 .file_name()
                 .to_string_lossy()
-                .starts_with(&format!("{}_", db_name))
+                .starts_with(&format!("{db_name}_"))
         })
         .collect();
 

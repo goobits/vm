@@ -146,7 +146,7 @@ pub fn execute(args: Args) -> Result<()> {
                     let detections = detect_packages(&package_manager, &packages)?;
 
                     for (package, path) in detections {
-                        println!("{}:{}", package, path);
+                        println!("{package}:{path}");
                     }
                 }
                 LinksSubcommand::Mounts {
@@ -158,12 +158,10 @@ pub fn execute(args: Args) -> Result<()> {
 
                     for (package, path) in detections {
                         println!(
-                            "{}:/home/developer/.links/{}/{}:delegated",
-                            path, package_manager, package
+                            "{path}:/home/developer/.links/{package_manager}/{package}:delegated"
                         );
                         eprintln!(
-                            "📦 Found linked package ({}): {} -> {}",
-                            package_manager, package, path
+                            "📦 Found linked package ({package_manager}): {package} -> {path}"
                         );
                     }
                 }

@@ -243,7 +243,7 @@ impl PortsConfig {
         if let Some(range) = &self.range {
             if range.len() == 2 {
                 let (start, end) = (range[0], range[1]);
-                ports.push(format!("{}-{}:{}-{}", start, end, start, end));
+                ports.push(format!("{start}-{end}:{start}-{end}"));
             }
         }
         ports
@@ -378,7 +378,7 @@ impl MemoryLimit {
     }
     pub fn to_docker_format(&self) -> Option<String> {
         match self {
-            MemoryLimit::Limited(mb) => Some(format!("{}m", mb)),
+            MemoryLimit::Limited(mb) => Some(format!("{mb}m")),
             MemoryLimit::Unlimited => None,
         }
     }
@@ -606,7 +606,7 @@ impl VmConfig {
                     }
                     Some(_) => {} // Valid memory allocation
                     None => {
-                        errors.push(format!("Invalid memory format: {:?}", memory));
+                        errors.push(format!("Invalid memory format: {memory:?}"));
                     }
                 }
             }
@@ -615,8 +615,7 @@ impl VmConfig {
         for (service_name, service) in &self.services {
             if service.enabled && service.port.is_none() && service_name != "docker" {
                 errors.push(format!(
-                    "Service '{}' is enabled but has no port specified",
-                    service_name
+                    "Service '{service_name}' is enabled but has no port specified"
                 ));
             }
         }

@@ -79,14 +79,13 @@ impl DockerCommand {
 
         let status = cmd
             .status()
-            .map_err(|e| VmError::Internal(format!("Failed to execute Docker command: {}", e)))?;
+            .map_err(|e| VmError::Internal(format!("Failed to execute Docker command: {e}")))?;
 
         if status.success() {
             Ok(())
         } else {
             Err(VmError::Internal(format!(
-                "Docker command failed with status: {}",
-                status
+                "Docker command failed with status: {status}"
             )))
         }
     }
@@ -101,7 +100,7 @@ impl DockerCommand {
 
         let output = cmd
             .output()
-            .map_err(|e| VmError::Internal(format!("Failed to execute Docker command: {}", e)))?;
+            .map_err(|e| VmError::Internal(format!("Failed to execute Docker command: {e}")))?;
 
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -125,7 +124,7 @@ impl DockerCommand {
         vm_dbg!("Executing Docker command (raw): {:?}", &cmd);
 
         cmd.output()
-            .map_err(|e| VmError::Internal(format!("Failed to execute Docker command: {}", e)))
+            .map_err(|e| VmError::Internal(format!("Failed to execute Docker command: {e}")))
     }
 
     /// Build the underlying Command object.
@@ -162,8 +161,7 @@ impl DockerOps {
             .execute()
             .map_err(|e| {
                 VmError::Internal(format!(
-                    "Docker daemon is not running or not accessible: {}",
-                    e
+                    "Docker daemon is not running or not accessible: {e}"
                 ))
             })
     }
@@ -302,7 +300,7 @@ impl DockerOps {
             .execute_with_output()?;
 
         let mounts: Vec<Mount> = serde_json::from_str(&output)
-            .map_err(|e| VmError::Internal(format!("Failed to parse Docker mounts: {}", e)))?;
+            .map_err(|e| VmError::Internal(format!("Failed to parse Docker mounts: {e}")))?;
 
         Ok(mounts.into_iter().map(|m| m.source).collect())
     }

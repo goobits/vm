@@ -35,7 +35,7 @@ pub async fn handle_destroy(
         .map(|s| s.as_str())
         .unwrap_or("VM");
 
-    let container_name = format!("{}-dev", vm_name);
+    let container_name = format!("{vm_name}-dev");
 
     debug!(
         "Destroying VM: vm_name='{}', provider='{}', force={}",
@@ -64,7 +64,7 @@ pub async fn handle_destroy(
 
         // Clean up images even if container doesn't exist
         let _ = std::process::Command::new("docker")
-            .args(["image", "rm", "-f", &format!("{}-image", vm_name)])
+            .args(["image", "rm", "-f", &format!("{vm_name}-image")])
             .output();
 
         unregister_vm_services_helper(&vm_instance_name, &global_config).await?;
@@ -86,8 +86,7 @@ pub async fn handle_destroy(
             if pg_state.is_running && pg_state.reference_count == 1 {
                 let db_name = format!("{}_dev", vm_name.replace('-', "_"));
                 let db_size = match execute_psql_command(&format!(
-                    "SELECT pg_size_pretty(pg_database_size('{}'))",
-                    db_name
+                    "SELECT pg_size_pretty(pg_database_size('{db_name}'))"
                 ))
                 .await
                 {

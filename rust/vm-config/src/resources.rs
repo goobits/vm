@@ -208,7 +208,7 @@ impl ResourceAdvisor {
         ];
 
         if let Some(disk) = suggestion.disk_size {
-            parts.push(format!("disk_size={}", disk));
+            parts.push(format!("disk_size={disk}"));
         }
 
         parts.join(" ")

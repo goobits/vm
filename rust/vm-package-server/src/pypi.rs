@@ -268,7 +268,7 @@ pub async fn get_package_versions(
                 if normalize_pypi_name(pkg_name) == normalized_package {
                     // Extract version from filename (package-version-...)
                     let version =
-                        if let Some(version_start) = name.strip_prefix(&format!("{}-", pkg_name)) {
+                        if let Some(version_start) = name.strip_prefix(&format!("{pkg_name}-")) {
                             version_start
                                 .split('-')
                                 .next()
@@ -321,7 +321,7 @@ pub async fn get_recent_packages(
             if let Some(pkg_name) = filename.split('-').next() {
                 let normalized = normalize_pypi_name(pkg_name);
                 let version =
-                    if let Some(version_start) = filename.strip_prefix(&format!("{}-", pkg_name)) {
+                    if let Some(version_start) = filename.strip_prefix(&format!("{pkg_name}-")) {
                         version_start
                             .split('-')
                             .next()
@@ -491,7 +491,7 @@ pub async fn upload_package(
             // Validate total multipart upload size
             validation::validate_multipart_limits(field_count, total_size, None).map_err(|e| {
                 warn!(total_size = %total_size, field_count = %field_count, "Multipart limits exceeded");
-                AppError::UploadError(format!("Multipart upload limits exceeded: {}", e))
+                AppError::UploadError(format!("Multipart upload limits exceeded: {e}"))
             })?;
 
             // Calculate hash once during upload

@@ -63,7 +63,7 @@ fn run_cargo_clean(project_root: &Path) -> Result<()> {
     vm_progress!("Cleaning build artifacts...");
 
     // Clean platform-specific target directory
-    let target_dir = project_root.join(format!("target-{}", platform));
+    let target_dir = project_root.join(format!("target-{platform}"));
 
     let status = Command::new("cargo")
         .arg("clean")
@@ -73,7 +73,7 @@ fn run_cargo_clean(project_root: &Path) -> Result<()> {
         .stderr(Stdio::inherit())
         .status()
         .map_err(|e| {
-            vm_core::error::VmError::Internal(format!("Failed to execute 'cargo clean': {}", e))
+            vm_core::error::VmError::Internal(format!("Failed to execute 'cargo clean': {e}"))
         })?;
 
     if !status.success() {
@@ -114,7 +114,7 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
     }
 
     // Use platform-specific target directory to avoid conflicts in shared filesystems
-    let target_dir = project_root.join(format!("target-{}", platform));
+    let target_dir = project_root.join(format!("target-{platform}"));
 
     let mut cmd = Command::new("cargo");
     cmd.args(["build", "--release", "--bin", "vm"])
@@ -132,7 +132,7 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
     }
 
     let status = cmd.status().map_err(|e| {
-        vm_core::error::VmError::Internal(format!("Failed to execute 'cargo build': {}", e))
+        vm_core::error::VmError::Internal(format!("Failed to execute 'cargo build': {e}"))
     })?;
 
     if !status.success() {
@@ -164,7 +164,7 @@ fn create_symlink(source_binary: &Path, bin_dir: &Path) -> Result<()> {
 
     vm_progress!("Creating global 'vm' command...");
     fs::create_dir_all(bin_dir).map_err(|e| {
-        vm_core::error::VmError::Internal(format!("Failed to create user bin directory: {}", e))
+        vm_core::error::VmError::Internal(format!("Failed to create user bin directory: {e}"))
     })?;
 
     let executable_name = vm_platform::platform::executable_name("vm");
@@ -174,8 +174,7 @@ fn create_symlink(source_binary: &Path, bin_dir: &Path) -> Result<()> {
     if link_name.exists() || link_name.is_symlink() {
         fs::remove_file(&link_name).map_err(|e| {
             vm_core::error::VmError::Internal(format!(
-                "Failed to remove existing 'vm' file/symlink: {}",
-                e
+                "Failed to remove existing 'vm' file/symlink: {e}"
             ))
         })?;
     }
@@ -184,7 +183,7 @@ fn create_symlink(source_binary: &Path, bin_dir: &Path) -> Result<()> {
     vm_platform::current()
         .install_executable(source_binary, bin_dir, "vm")
         .map_err(|e| {
-            vm_core::error::VmError::Internal(format!("Failed to install executable: {}", e))
+            vm_core::error::VmError::Internal(format!("Failed to install executable: {e}"))
         })?;
 
     vm_success!(
@@ -217,18 +216,18 @@ fn install_plugins(project_root: &Path) -> Result<()> {
     // Get user's preset plugins directory
     let user_plugins_dir = user_paths::home_dir()?.join(".vm/plugins/presets");
     fs::create_dir_all(&user_plugins_dir).map_err(|e| {
-        vm_core::error::VmError::Internal(format!("Failed to create plugins directory: {}", e))
+        vm_core::error::VmError::Internal(format!("Failed to create plugins directory: {e}"))
     })?;
 
     // Install each plugin from repo
     let entries = fs::read_dir(&plugins_dir).map_err(|e| {
-        vm_core::error::VmError::Internal(format!("Failed to read plugins directory: {}", e))
+        vm_core::error::VmError::Internal(format!("Failed to read plugins directory: {e}"))
     })?;
 
     let mut installed_count = 0;
     for entry in entries {
         let entry = entry.map_err(|e| {
-            vm_core::error::VmError::Internal(format!("Failed to read directory entry: {}", e))
+            vm_core::error::VmError::Internal(format!("Failed to read directory entry: {e}"))
         })?;
 
         let path = entry.path();
@@ -279,9 +278,8 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
             e
         ))
     })? {
-        let entry = entry.map_err(|e| {
-            vm_core::error::VmError::Internal(format!("Failed to read entry: {}", e))
-        })?;
+        let entry = entry
+            .map_err(|e| vm_core::error::VmError::Internal(format!("Failed to read entry: {e}")))?;
         let path = entry.path();
         let file_name = entry.file_name();
         let dest_path = dst.join(&file_name);

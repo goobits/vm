@@ -23,16 +23,13 @@ pub fn handle_plugin_new(plugin_name: &str, plugin_type: &str) -> Result<()> {
     // Validate and parse plugin type
     let plugin_type_lower = plugin_type.to_lowercase();
     if plugin_type_lower != "preset" && plugin_type_lower != "service" {
-        anyhow::bail!(
-            "Invalid plugin type '{}'. Must be either 'preset' or 'service'",
-            plugin_type
-        );
+        anyhow::bail!("Invalid plugin type '{plugin_type}'. Must be either 'preset' or 'service'");
     }
 
     let plugin_dir = PathBuf::from(plugin_name);
 
     if plugin_dir.exists() {
-        anyhow::bail!("Directory '{}' already exists", plugin_name);
+        anyhow::bail!("Directory '{plugin_name}' already exists");
     }
 
     // Create plugin directory
@@ -95,14 +92,13 @@ pub fn handle_plugin_new(plugin_name: &str, plugin_type: &str) -> Result<()> {
 
 fn generate_metadata_template(plugin_name: &str, plugin_type: &str) -> String {
     format!(
-        r#"# Plugin metadata for {}
-name: {}
+        r#"# Plugin metadata for {plugin_name}
+name: {plugin_name}
 version: 0.1.0
-description: A custom VM {} plugin
+description: A custom VM {plugin_type} plugin
 author: Your Name
-plugin_type: {}
-"#,
-        plugin_name, plugin_name, plugin_type, plugin_type
+plugin_type: {plugin_type}
+"#
     )
 }
 
@@ -191,7 +187,7 @@ health_check: /health
 fn generate_readme_template(plugin_name: &str, plugin_type: &str) -> String {
     if plugin_type == "preset" {
         format!(
-            r#"# {}
+            r#"# {plugin_name}
 
 A custom preset plugin for VM Tool.
 
@@ -202,7 +198,7 @@ This preset provides a development environment with pre-configured packages, ser
 ## Installation
 
 ```bash
-vm plugin install /path/to/{}
+vm plugin install /path/to/{plugin_name}
 ```
 
 ## Usage
@@ -210,14 +206,14 @@ vm plugin install /path/to/{}
 Create a VM using this preset:
 
 ```bash
-vm create my-project --preset {}
+vm create my-project --preset {plugin_name}
 ```
 
 Or add to your `vm.yaml`:
 
 ```yaml
 name: my-project
-preset: {}
+preset: {plugin_name}
 ```
 
 ## What's Included
@@ -252,12 +248,11 @@ Edit `preset.yaml` to customize:
 ## License
 
 MIT
-"#,
-            plugin_name, plugin_name, plugin_name, plugin_name
+"#
         )
     } else {
         format!(
-            r#"# {}
+            r#"# {plugin_name}
 
 A custom service plugin for VM Tool.
 
@@ -268,7 +263,7 @@ This service plugin provides a containerized service that can be used by VM pres
 ## Installation
 
 ```bash
-vm plugin install /path/to/{}
+vm plugin install /path/to/{plugin_name}
 ```
 
 ## Usage
@@ -278,7 +273,7 @@ Reference this service in a preset or `vm.yaml`:
 ```yaml
 name: my-project
 services:
-  - {}
+  - {plugin_name}
 ```
 
 ## Configuration
@@ -308,8 +303,7 @@ The service provides a health check endpoint at `/health` for monitoring.
 ## License
 
 MIT
-"#,
-            plugin_name, plugin_name, plugin_name
+"#
         )
     }
 }

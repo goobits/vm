@@ -21,7 +21,7 @@ use tracing::{debug, info};
 pub fn index_path(name: &str) -> AppResult<String> {
     // Validate the crate name first
     let validated_name = validation::validate_package_name(name, "cargo")
-        .map_err(|e| AppError::BadRequest(format!("Invalid crate name '{}': {}", name, e)))?;
+        .map_err(|e| AppError::BadRequest(format!("Invalid crate name '{name}': {e}")))?;
 
     let name = validated_name.to_lowercase();
 
@@ -32,12 +32,12 @@ pub fn index_path(name: &str) -> AppResult<String> {
                 "Crate name cannot be empty".to_string(),
             ))
         }
-        1 => format!("1/{}", name),
-        2 => format!("2/{}", name),
+        1 => format!("1/{name}"),
+        2 => format!("2/{name}"),
         3 => {
             // Safe: we know name.len() == 3, so [..1] is valid
             let first_char = &name[..1];
-            format!("3/{}/{}", first_char, name)
+            format!("3/{first_char}/{name}")
         }
         _ => {
             // Safe bounds checking for longer names
@@ -49,14 +49,13 @@ pub fn index_path(name: &str) -> AppResult<String> {
             }
             let first_two = &name[..2];
             let next_two = &name[2..4];
-            format!("{}/{}/{}", first_two, next_two, name)
+            format!("{first_two}/{next_two}/{name}")
         }
     };
 
     // Validate the constructed path for safety
-    validation::validate_safe_path(&path).map_err(|e| {
-        AppError::BadRequest(format!("Generated unsafe index path '{}': {}", path, e))
-    })?;
+    validation::validate_safe_path(&path)
+        .map_err(|e| AppError::BadRequest(format!("Generated unsafe index path '{path}': {e}")))?;
 
     Ok(path)
 }
@@ -102,13 +101,12 @@ pub async fn index_file(
     let crate_name = path
         .split('/')
         .next_back()
-        .ok_or_else(|| AppError::BadRequest(format!("Cargo index path format is invalid: '{}' - expected format: 1/a, 2/ab, 3/a/abc, or ab/cd/abcd...", path)))?;
+        .ok_or_else(|| AppError::BadRequest(format!("Cargo index path format is invalid: '{path}' - expected format: 1/a, 2/ab, 3/a/abc, or ab/cd/abcd...")))?;
 
     // Validate the extracted crate name for security
     validation::validate_package_name(crate_name, "cargo").map_err(|e| {
         AppError::BadRequest(format!(
-            "Invalid crate name '{}' extracted from path '{}': {}",
-            crate_name, path, e
+            "Invalid crate name '{crate_name}' extracted from path '{path}': {e}"
         ))
     })?;
 
@@ -169,7 +167,7 @@ pub async fn sparse_index(
     let parts: Vec<&str> = path.split('/').collect();
     let crate_name = parts
         .last()
-        .ok_or_else(|| AppError::BadRequest(format!("Invalid sparse index path: {}", path)))?;
+        .ok_or_else(|| AppError::BadRequest(format!("Invalid sparse index path: {path}")))?;
 
     debug!(crate_name = %crate_name, path = %path, "Sparse index request");
 

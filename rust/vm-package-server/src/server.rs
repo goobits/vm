@@ -85,7 +85,7 @@ async fn run_server_internal(
     let upstream_config = UpstreamConfig::default();
     let upstream_client = Arc::new(UpstreamClient::new(upstream_config)?);
     let config = Arc::new(Config::default());
-    let server_addr = format!("http://{}:{}", host, port);
+    let server_addr = format!("http://{host}:{port}");
 
     let state = AppState {
         data_dir: abs_data_dir,
@@ -129,14 +129,14 @@ async fn run_server_internal(
         )
         .with_state(Arc::new(state));
 
-    let addr: SocketAddr = format!("{}:{}", host, port).parse().map_err(|e| {
+    let addr: SocketAddr = format!("{host}:{port}").parse().map_err(|e| {
         error!(host = %host, port = %port, error = %e, "Invalid socket address");
-        anyhow::anyhow!("Invalid socket address {}:{}: {}", host, port, e)
+        anyhow::anyhow!("Invalid socket address {host}:{port}: {e}")
     })?;
 
     let listener = TcpListener::bind(&addr).await.map_err(|e| {
         error!(addr = %addr, error = %e, "Failed to bind to address");
-        anyhow::anyhow!("Failed to bind to {}:{}: {}", host, port, e)
+        anyhow::anyhow!("Failed to bind to {host}:{port}: {e}")
     })?;
 
     info!("✅ Server is running on http://{}:{}", host, port);
@@ -164,14 +164,14 @@ async fn run_server_internal(
                 .await
                 .map_err(|e| {
                     error!(error = %e, "Server error");
-                    anyhow::anyhow!("Server error: {}", e)
+                    anyhow::anyhow!("Server error: {e}")
                 })?;
         }
         None => {
             // Original behavior - run indefinitely
             axum::serve(listener, app).await.map_err(|e| {
                 error!(error = %e, "Server error");
-                anyhow::anyhow!("Server error: {}", e)
+                anyhow::anyhow!("Server error: {e}")
             })?;
         }
     }
@@ -190,7 +190,7 @@ async fn status_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse
     info.insert("version", env!("CARGO_PKG_VERSION"));
 
     let data_dir_str = state.data_dir.to_string_lossy();
-    let data_dir_info = format!("Using data directory: {}", data_dir_str);
+    let data_dir_info = format!("Using data directory: {data_dir_str}");
 
     let response = format!(
         r#"{{
@@ -234,7 +234,7 @@ async fn list_packages_handler(State(state): State<Arc<AppState>>) -> impl IntoR
         }
         Err(e) => {
             error!("Failed to list packages: {}", e);
-            let error_response = format!(r#"{{"error": "{}"}}"#, e);
+            let error_response = format!(r#"{{"error": "{e}"}}"#);
             let mut headers = HeaderMap::new();
             headers.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
             (StatusCode::INTERNAL_SERVER_ERROR, headers, error_response)
@@ -275,7 +275,7 @@ async fn setup_script_handler(Query(params): Query<SetupQuery>) -> Response {
 }
 
 fn serve_setup_script(registry: &str, port: u16) -> String {
-    let server_url = format!("http://$(hostname -I | cut -d' ' -f1):{}", port);
+    let server_url = format!("http://$(hostname -I | cut -d' ' -f1):{port}");
 
     match registry {
         "npm" => format!(
@@ -284,10 +284,10 @@ fn serve_setup_script(registry: &str, port: u16) -> String {
 # This script configures npm to use your private package registry
 
 echo "🔧 Configuring npm to use Goobits Package Server..."
-echo "📡 Registry URL: {}/npm/"
+echo "📡 Registry URL: {server_url}/npm/"
 
 # Set npm registry
-npm config set registry {}/npm/
+npm config set registry {server_url}/npm/
 
 echo "✅ npm configured successfully!"
 echo ""
@@ -297,8 +297,7 @@ echo "   npm config list     # View configuration"
 echo "   npm config set registry https://registry.npmjs.org/  # Reset to default"
 echo ""
 echo "🚀 You can now install packages from your private registry!"
-"#,
-            server_url, server_url
+"#
         ),
         "pypi" => format!(
             r#"#!/bin/bash
@@ -306,7 +305,7 @@ echo "🚀 You can now install packages from your private registry!"
 # This script configures pip to use your private package registry
 
 echo "🔧 Configuring pip to use Goobits Package Server..."
-echo "📡 Registry URL: {}/pypi/simple/"
+echo "📡 Registry URL: {server_url}/pypi/simple/"
 
 # Create pip config directory
 mkdir -p ~/.config/pip
@@ -315,15 +314,15 @@ mkdir -p ~/.pip
 # Configure pip
 cat > ~/.config/pip/pip.conf << EOF
 [global]
-index-url = {}/pypi/simple/
-trusted-host = $(echo {} | cut -d'/' -f3 | cut -d':' -f1)
+index-url = {server_url}/pypi/simple/
+trusted-host = $(echo {server_url} | cut -d'/' -f3 | cut -d':' -f1)
 EOF
 
 # Also create old-style config for compatibility
 cat > ~/.pip/pip.conf << EOF
 [global]
-index-url = {}/pypi/simple/
-trusted-host = $(echo {} | cut -d'/' -f3 | cut -d':' -f1)
+index-url = {server_url}/pypi/simple/
+trusted-host = $(echo {server_url} | cut -d'/' -f3 | cut -d':' -f1)
 EOF
 
 echo "✅ pip configured successfully!"
@@ -333,8 +332,7 @@ echo "   pip config list     # View configuration"
 echo "   pip install --index-url https://pypi.org/simple/ <package>  # Install from PyPI"
 echo ""
 echo "🚀 You can now install packages from your private registry!"
-"#,
-            server_url, server_url, server_url, server_url, server_url
+"#
         ),
         "cargo" => format!(
             r#"#!/bin/bash
@@ -342,7 +340,7 @@ echo "🚀 You can now install packages from your private registry!"
 # This script configures cargo to use your private package registry
 
 echo "🔧 Configuring cargo to use Goobits Package Server..."
-echo "📡 Registry URL: {}/cargo/"
+echo "📡 Registry URL: {server_url}/cargo/"
 
 # Create cargo config directory
 mkdir -p ~/.cargo
@@ -350,13 +348,13 @@ mkdir -p ~/.cargo
 # Configure cargo
 cat > ~/.cargo/config.toml << EOF
 [registries]
-goobits = {{ index = "{}/cargo/" }}
+goobits = {{ index = "{server_url}/cargo/" }}
 
 [source.crates-io]
 replace-with = "goobits"
 
 [source.goobits]
-registry = "{}/cargo/"
+registry = "{server_url}/cargo/"
 EOF
 
 echo "✅ cargo configured successfully!"
@@ -366,25 +364,23 @@ echo "   cargo search <package>    # Search for packages"
 echo "   cargo install <package>   # Install a package"
 echo ""
 echo "🚀 You can now install packages from your private registry!"
-"#,
-            server_url, server_url, server_url
+"#
         ),
         _ => {
             warn!(registry = %registry, "Unknown registry type requested");
             format!(
                 r#"#!/bin/bash
 # Goobits Package Server - Setup Script
-# Unknown registry type: {}
+# Unknown registry type: {registry}
 
-echo "❌ Unknown registry type: {}"
+echo "❌ Unknown registry type: {registry}"
 echo "📋 Supported registries: npm, pypi, cargo"
 echo ""
 echo "🔧 Usage examples:"
-echo "   curl {}/setup.sh?registry=npm | bash"
-echo "   curl {}/setup.sh?registry=pypi | bash"
-echo "   curl {}/setup.sh?registry=cargo | bash"
-"#,
-                registry, registry, server_url, server_url, server_url
+echo "   curl {server_url}/setup.sh?registry=npm | bash"
+echo "   curl {server_url}/setup.sh?registry=pypi | bash"
+echo "   curl {server_url}/setup.sh?registry=cargo | bash"
+"#
             )
         }
     }

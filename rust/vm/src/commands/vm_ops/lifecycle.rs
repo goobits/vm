@@ -33,7 +33,7 @@ pub async fn handle_start(
         .map(|s| s.as_str())
         .unwrap_or("vm-project");
 
-    let container_name = format!("{}-dev", vm_name);
+    let container_name = format!("{vm_name}-dev");
 
     // Check if container exists and is running
     // We need to check using Docker directly since provider.status() just shows status
@@ -99,8 +99,8 @@ pub async fn handle_start(
                     // Format memory display
                     let mem_str = match memory.to_mb() {
                         Some(mb) if mb >= 1024 => format!("{}GB", mb / 1024),
-                        Some(mb) => format!("{}MB", mb),
-                        None => format!("{:?}", memory),
+                        Some(mb) => format!("{mb}MB"),
+                        None => format!("{memory:?}"),
                     };
                     vm_println!(
                         "{}",
@@ -132,7 +132,7 @@ pub async fn handle_start(
             }
 
             // Register VM services and auto-start them
-            let vm_instance_name = format!("{}-dev", vm_name);
+            let vm_instance_name = format!("{vm_name}-dev");
 
             vm_println!("{}", MESSAGES.common_configuring_services);
             register_vm_services_helper(&vm_instance_name, &config, &global_config).await?;
@@ -182,7 +182,7 @@ pub async fn handle_stop(
             match provider.stop(None) {
                 Ok(()) => {
                     // Unregister VM services after successful stop
-                    let vm_instance_name = format!("{}-dev", vm_name);
+                    let vm_instance_name = format!("{vm_name}-dev");
 
                     vm_println!("{}", MESSAGES.vm_stop_success);
                     unregister_vm_services_helper(&vm_instance_name, &global_config).await?;
@@ -261,7 +261,7 @@ pub async fn handle_restart(
     match provider.restart_with_context(container, &context) {
         Ok(()) => {
             // After successful restart, register services
-            let vm_instance_name = format!("{}-dev", vm_name);
+            let vm_instance_name = format!("{vm_name}-dev");
             vm_println!("{}", MESSAGES.common_configuring_services);
             register_vm_services_helper(&vm_instance_name, &config, &global_config).await?;
         }

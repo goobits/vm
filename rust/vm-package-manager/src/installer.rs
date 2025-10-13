@@ -158,7 +158,7 @@ impl PackageInstaller {
 
         let status = cmd
             .status()
-            .map_err(|e| VmError::Internal(format!("Failed to execute cargo install: {}", e)))?;
+            .map_err(|e| VmError::Internal(format!("Failed to execute cargo install: {e}")))?;
 
         if !status.success() {
             vm_error!("Cargo install failed for linked package: {}", package);
@@ -178,7 +178,7 @@ impl PackageInstaller {
 
         let status = cmd
             .status()
-            .map_err(|e| VmError::Internal(format!("Failed to execute cargo install: {}", e)))?;
+            .map_err(|e| VmError::Internal(format!("Failed to execute cargo install: {e}")))?;
 
         if !status.success() {
             vm_error!("Cargo install failed for package: {}", package);
@@ -208,7 +208,7 @@ impl PackageInstaller {
 
         let status = cmd
             .status()
-            .map_err(|e| VmError::Internal(format!("Failed to execute npm link: {}", e)))?;
+            .map_err(|e| VmError::Internal(format!("Failed to execute npm link: {e}")))?;
 
         if !status.success() {
             vm_error!("NPM link failed for package: {}", package);
@@ -228,7 +228,7 @@ impl PackageInstaller {
 
         let status = cmd
             .status()
-            .map_err(|e| VmError::Internal(format!("Failed to execute npm install: {}", e)))?;
+            .map_err(|e| VmError::Internal(format!("Failed to execute npm install: {e}")))?;
 
         if !status.success() {
             vm_error!("NPM install failed for package: {}", package);
@@ -295,7 +295,7 @@ impl PackageInstaller {
 
         let status = cmd
             .status()
-            .map_err(|e| VmError::Internal(format!("Failed to execute pip install: {}", e)))?;
+            .map_err(|e| VmError::Internal(format!("Failed to execute pip install: {e}")))?;
 
         if !status.success() {
             vm_error!("Pip install failed for package: {}", package);
@@ -314,7 +314,7 @@ impl PackageInstaller {
 
         let status = cmd
             .status()
-            .map_err(|e| VmError::Internal(format!("Failed to execute pip install: {}", e)))?;
+            .map_err(|e| VmError::Internal(format!("Failed to execute pip install: {e}")))?;
 
         if !status.success() {
             vm_error!("Pip editable install failed");
@@ -335,7 +335,7 @@ impl PackageInstaller {
             .arg(package)
             .stderr(Stdio::piped())
             .output()
-            .map_err(|e| VmError::Internal(format!("Failed to execute pipx: {}", e)))?;
+            .map_err(|e| VmError::Internal(format!("Failed to execute pipx: {e}")))?;
 
         if output.status.success() {
             return Ok(true);
@@ -385,8 +385,7 @@ impl PackageInstaller {
                 // Validate script name for security
                 validate_script_name(script_name).map_err(|e| {
                     VmError::Internal(format!(
-                        "Invalid script name from pipx environment '{}': {}",
-                        script_name, e
+                        "Invalid script name from pipx environment '{script_name}': {e}"
                     ))
                 })?;
 

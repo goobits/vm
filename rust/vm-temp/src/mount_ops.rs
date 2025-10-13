@@ -22,7 +22,7 @@ impl MountParser {
                 // source:permissions
                 let source = PathBuf::from(parts[0]);
                 let permissions = parts[1].parse::<MountPermission>()
-                    .map_err(|e| VmError::Config(format!("Invalid permission in mount string '{}': {}", mount_str, e)))?;
+                    .map_err(|e| VmError::Config(format!("Invalid permission in mount string '{mount_str}': {e}")))?;
                 Ok((source, None, permissions))
             }
             3 => {
@@ -30,12 +30,11 @@ impl MountParser {
                 let source = PathBuf::from(parts[0]);
                 let target = PathBuf::from(parts[1]);
                 let permissions = parts[2].parse::<MountPermission>()
-                    .map_err(|e| VmError::Config(format!("Invalid permission in mount string '{}': {}", mount_str, e)))?;
+                    .map_err(|e| VmError::Config(format!("Invalid permission in mount string '{mount_str}': {e}")))?;
                 Ok((source, Some(target), permissions))
             }
             _ => Err(VmError::Config(format!(
-                "Invalid mount string format: {}. Expected 'source', 'source:permissions', or 'source:target:permissions'",
-                mount_str
+                "Invalid mount string format: {mount_str}. Expected 'source', 'source:permissions', or 'source:target:permissions'"
             ))),
         }
     }

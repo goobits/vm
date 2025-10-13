@@ -86,7 +86,7 @@ impl LinkDetector {
                 let Some(name) = file_name.to_str() else {
                     continue;
                 };
-                results.push((mgr, format!("{} (controlled)", name)));
+                results.push((mgr, format!("{name} (controlled)")));
             }
 
             // Get system-wide links (but we need to scan common packages - simplified approach)

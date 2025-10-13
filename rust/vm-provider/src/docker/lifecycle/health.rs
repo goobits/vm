@@ -43,7 +43,7 @@ pub(super) fn check_postgres_status(
             port: Some(port),
             host_port,
             metrics: None,
-            error: Some(format!("Health check failed: {}", e)),
+            error: Some(format!("Health check failed: {e}")),
         },
     }
 }
@@ -94,7 +94,7 @@ pub(super) fn check_redis_status(
             port: Some(port),
             host_port,
             metrics: None,
-            error: Some(format!("Health check failed: {}", e)),
+            error: Some(format!("Health check failed: {e}")),
         },
     }
 }
@@ -144,7 +144,7 @@ pub(super) fn check_mongodb_status(
             port: Some(port),
             host_port,
             metrics: None,
-            error: Some(format!("Health check failed: {}", e)),
+            error: Some(format!("Health check failed: {e}")),
         },
     }
 }

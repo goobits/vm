@@ -42,13 +42,13 @@ impl ValidationReport {
 impl fmt::Display for ValidationReport {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for error in &self.errors {
-            writeln!(f, "❌ {}", error)?;
+            writeln!(f, "❌ {error}")?;
         }
         for warning in &self.warnings {
-            writeln!(f, "⚠️  {}", warning)?;
+            writeln!(f, "⚠️  {warning}")?;
         }
         for info in &self.info {
-            writeln!(f, "ℹ️  {}", info)?;
+            writeln!(f, "ℹ️  {info}")?;
         }
         Ok(())
     }
@@ -110,13 +110,11 @@ impl ConfigValidator {
                 let available_cpus = self.system.cpus().len() as u32;
                 if requested_cpus > available_cpus {
                     report.add_error(format!(
-                        "Requested {} CPUs but only {} are available. Please reduce 'vm.cpus' in your vm.yaml.",
-                        requested_cpus, available_cpus
+                        "Requested {requested_cpus} CPUs but only {available_cpus} are available. Please reduce 'vm.cpus' in your vm.yaml."
                     ));
                 } else if requested_cpus > (available_cpus * 3 / 4) {
                     report.add_warning(format!(
-                        "Assigning {} of {} available CPUs may impact host performance.",
-                        requested_cpus, available_cpus
+                        "Assigning {requested_cpus} of {available_cpus} available CPUs may impact host performance."
                     ));
                 }
             }
@@ -133,8 +131,7 @@ impl ConfigValidator {
                     #[allow(clippy::excessive_nesting)]
                     if requested_mb as u64 > total_mb {
                         report.add_error(format!(
-                            "Requested {}MB RAM but only {}MB is available. Please reduce 'vm.memory' in your vm.yaml.",
-                            requested_mb, total_mb
+                            "Requested {requested_mb}MB RAM but only {total_mb}MB is available. Please reduce 'vm.memory' in your vm.yaml."
                         ));
                     }
                 }
@@ -153,11 +150,10 @@ impl ConfigValidator {
 
         for service in config.services.values() {
             if let Some(port) = service.port {
-                let addr = format!("{}:{}", binding_ip, port);
+                let addr = format!("{binding_ip}:{port}");
                 if TcpListener::bind(&addr).is_err() {
                     report.add_error(format!(
-                        "Port {} is already in use on the host. Please change the port for this service in your vm.yaml or free it.",
-                        port
+                        "Port {port} is already in use on the host. Please change the port for this service in your vm.yaml or free it."
                     ));
                 }
             }

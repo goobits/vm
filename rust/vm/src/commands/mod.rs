@@ -374,7 +374,7 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             );
             Err(VmError::general(
                 std::io::Error::new(std::io::ErrorKind::InvalidInput, "Command not handled"),
-                format!("Command {:?} not handled in match statement", cmd),
+                format!("Command {cmd:?} not handled in match statement"),
             ))
         }
     };

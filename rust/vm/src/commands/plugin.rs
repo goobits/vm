@@ -85,7 +85,7 @@ pub fn handle_plugin_info(plugin_name: &str) -> Result<()> {
     let plugin = plugins
         .iter()
         .find(|p| p.info.name == plugin_name)
-        .ok_or_else(|| anyhow::anyhow!("Plugin '{}' not found", plugin_name))?;
+        .ok_or_else(|| anyhow::anyhow!("Plugin '{plugin_name}' not found"))?;
 
     vm_println!(
         "{}",
@@ -208,17 +208,17 @@ pub fn handle_plugin_install(source_path: &str) -> Result<()> {
     let source = PathBuf::from(source_path);
 
     if !source.exists() {
-        anyhow::bail!("Plugin source path does not exist: {}", source_path);
+        anyhow::bail!("Plugin source path does not exist: {source_path}");
     }
 
     if !source.is_dir() {
-        anyhow::bail!("Plugin source must be a directory: {}", source_path);
+        anyhow::bail!("Plugin source must be a directory: {source_path}");
     }
 
     // Verify plugin.yaml exists
     let metadata_path = source.join("plugin.yaml");
     if !metadata_path.exists() {
-        anyhow::bail!("Invalid plugin: missing plugin.yaml in {}", source_path);
+        anyhow::bail!("Invalid plugin: missing plugin.yaml in {source_path}");
     }
 
     // Parse metadata to get plugin name and type
@@ -235,11 +235,7 @@ pub fn handle_plugin_install(source_path: &str) -> Result<()> {
     };
 
     if !source.join(content_file).exists() {
-        anyhow::bail!(
-            "Invalid plugin: missing {} in {}",
-            content_file,
-            source_path
-        );
+        anyhow::bail!("Invalid plugin: missing {content_file} in {source_path}");
     }
 
     // Create temporary plugin object for validation
@@ -293,7 +289,7 @@ pub fn handle_plugin_install(source_path: &str) -> Result<()> {
 
     // Get plugins directory
     let plugins_base = vm_platform::platform::vm_state_dir()
-        .map_err(|e| anyhow::anyhow!("Could not determine VM state directory: {}", e))?
+        .map_err(|e| anyhow::anyhow!("Could not determine VM state directory: {e}"))?
         .join("plugins");
 
     // Determine target subdirectory based on plugin type
@@ -343,7 +339,7 @@ pub fn handle_plugin_install(source_path: &str) -> Result<()> {
 
 pub fn handle_plugin_remove(plugin_name: &str) -> Result<()> {
     let plugins_base = vm_platform::platform::vm_state_dir()
-        .map_err(|e| anyhow::anyhow!("Could not determine VM state directory: {}", e))?
+        .map_err(|e| anyhow::anyhow!("Could not determine VM state directory: {e}"))?
         .join("plugins");
 
     // Check both presets and services subdirectories
@@ -365,7 +361,7 @@ pub fn handle_plugin_remove(plugin_name: &str) -> Result<()> {
         );
         Ok(())
     } else {
-        anyhow::bail!("Plugin '{}' is not installed", plugin_name);
+        anyhow::bail!("Plugin '{plugin_name}' is not installed");
     }
 }
 
@@ -375,7 +371,7 @@ pub fn handle_plugin_validate(plugin_name: &str) -> Result<()> {
     let plugin = plugins
         .iter()
         .find(|p| p.info.name == plugin_name)
-        .ok_or_else(|| anyhow::anyhow!("Plugin '{}' not found", plugin_name))?;
+        .ok_or_else(|| anyhow::anyhow!("Plugin '{plugin_name}' not found"))?;
 
     vm_println!(
         "{}",

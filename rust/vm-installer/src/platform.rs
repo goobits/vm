@@ -136,8 +136,8 @@ fn add_to_profile(profile_path: &Path, bin_dir: &Path) -> Result<()> {
         )
     };
 
-    writeln!(file, "{}", line_to_add).map_err(|e| {
-        vm_core::error::VmError::Internal(format!("Failed to write to shell profile: {}", e))
+    writeln!(file, "{line_to_add}").map_err(|e| {
+        vm_core::error::VmError::Internal(format!("Failed to write to shell profile: {e}"))
     })
 }
 

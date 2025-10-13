@@ -17,7 +17,7 @@ pub fn detect_cargo_packages(packages: &[String]) -> Result<Vec<(String, String)
     }
 
     let output_str = String::from_utf8(output.stdout)
-        .map_err(|e| VmError::Internal(format!("Failed to parse cargo command output: {}", e)))?;
+        .map_err(|e| VmError::Internal(format!("Failed to parse cargo command output: {e}")))?;
     let installations = parse_cargo_install_list(&output_str)?;
 
     // Check each installation against requested packages in parallel
@@ -47,7 +47,7 @@ fn parse_cargo_install_list(output: &str) -> Result<Vec<(String, String)>> {
     // Regex to match cargo install list format:
     // package_name v1.0.0 (/path/to/source):
     let re = Regex::new(r"^([a-zA-Z0-9_-]+)\s+[^\(]*\(([^)]+)\):$")
-        .map_err(|e| VmError::Internal(format!("Failed to compile regex: {}", e)))?;
+        .map_err(|e| VmError::Internal(format!("Failed to compile regex: {e}")))?;
 
     for line in output.lines() {
         if let Some(captures) = re.captures(line) {

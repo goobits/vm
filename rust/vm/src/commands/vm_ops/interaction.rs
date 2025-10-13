@@ -345,8 +345,7 @@ pub fn handle_ssh(
 
     if force_refresh && active_sessions > 0 {
         print!(
-            "⚠️  Warning: This will disconnect {} active SSH sessions. Continue? (y/N): ",
-            active_sessions
+            "⚠️  Warning: This will disconnect {active_sessions} active SSH sessions. Continue? (y/N): "
         );
         io::stdout().flush()?;
         let mut input = String::new();
@@ -444,7 +443,7 @@ pub fn handle_logs(
         .map(|s| s.as_str())
         .unwrap_or("vm-project");
 
-    let container_name = format!("{}-dev", vm_name);
+    let container_name = format!("{vm_name}-dev");
 
     vm_println!("{}", msg!(MESSAGES.vm_logs_header, name = vm_name));
 

@@ -36,8 +36,7 @@ impl std::str::FromStr for MountPermission {
             "ro" => Ok(MountPermission::ReadOnly),
             "rw" => Ok(MountPermission::ReadWrite),
             _ => Err(VmError::Internal(format!(
-                "Invalid permission '{}'. Use 'ro' or 'rw'",
-                s
+                "Invalid permission '{s}'. Use 'ro' or 'rw'"
             ))),
         }
     }

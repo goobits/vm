@@ -120,12 +120,9 @@ impl DockerProvider {
             .and_then(|p| p.name.as_deref())
             .unwrap_or("vm-project");
 
-        let temp_dir = std::env::temp_dir().join(format!("vm-{}", project_name));
+        let temp_dir = std::env::temp_dir().join(format!("vm-{project_name}"));
         fs::create_dir_all(&temp_dir).map_err(|e| {
-            VmError::Internal(format!(
-                "Failed to create project-specific directory: {}",
-                e
-            ))
+            VmError::Internal(format!("Failed to create project-specific directory: {e}"))
         })?;
 
         Ok(Self {
@@ -308,12 +305,11 @@ impl Provider for DockerProvider {
                 &target_container,
             ])
             .output()
-            .map_err(|e| VmError::Internal(format!("Failed to check container status: {}", e)))?;
+            .map_err(|e| VmError::Internal(format!("Failed to check container status: {e}")))?;
 
         if !output.status.success() {
             return Err(VmError::Internal(format!(
-                "Container '{}' not found",
-                target_container
+                "Container '{target_container}' not found"
             )));
         }
 
@@ -321,8 +317,7 @@ impl Provider for DockerProvider {
 
         if !is_running {
             return Err(VmError::Internal(format!(
-                "Container '{}' is not running",
-                target_container
+                "Container '{target_container}' is not running"
             )));
         }
 
@@ -400,7 +395,7 @@ impl Provider for DockerProvider {
                 "{{.Names}}\t{{.ID}}\t{{.Status}}\t{{.CreatedAt}}\t{{.RunningFor}}\t{{.Label \"com.vm.project\"}}",
             ])
             .output()
-            .map_err(|e| VmError::Internal(format!("Failed to list containers with vm label: {}", e)))?;
+            .map_err(|e| VmError::Internal(format!("Failed to list containers with vm label: {e}")))?;
 
         if !output.status.success() {
             return Err(VmError::Internal(format!(

@@ -8,7 +8,7 @@ use serde_yaml_ng as serde_yaml;
 pub fn execute_dump(file: Option<PathBuf>) -> Result<()> {
     let merged = load_and_merge_config(file)?;
     let yaml = serde_yaml::to_string(&merged)?;
-    print!("{}", yaml);
+    print!("{yaml}");
     Ok(())
 }
 

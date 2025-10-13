@@ -68,7 +68,7 @@ pub async fn get_crate_versions(
                     (entry["vers"].as_str(), entry["cksum"].as_str())
                 {
                     // Get crate file size
-                    let filename = format!("{}-{}.crate", crate_name, version);
+                    let filename = format!("{crate_name}-{version}.crate");
 
                     // Validate the constructed filename for security
                     if let Err(e) = validation::validate_safe_path(&filename) {
@@ -152,16 +152,16 @@ pub async fn download_crate(
 
     // Validate crate name and version for security
     validation::validate_package_name(&crate_name, "cargo")
-        .map_err(|e| AppError::BadRequest(format!("Invalid crate name '{}': {}", crate_name, e)))?;
+        .map_err(|e| AppError::BadRequest(format!("Invalid crate name '{crate_name}': {e}")))?;
     validation::validate_version(&version)
-        .map_err(|e| AppError::BadRequest(format!("Invalid version '{}': {}", version, e)))?;
+        .map_err(|e| AppError::BadRequest(format!("Invalid version '{version}': {e}")))?;
 
     info!(crate_name = %crate_name, version = %version, "Downloading Cargo crate");
-    let filename = format!("{}-{}.crate", crate_name, version);
+    let filename = format!("{crate_name}-{version}.crate");
 
     // Validate the constructed filename for security
     validation::validate_safe_path(&filename).map_err(|e| {
-        AppError::BadRequest(format!("Generated unsafe filename '{}': {}", filename, e))
+        AppError::BadRequest(format!("Generated unsafe filename '{filename}': {e}"))
     })?;
 
     let file_path = state.data_dir.join("cargo/crates").join(&filename);
@@ -246,9 +246,9 @@ pub async fn delete_crate_version(
 ) -> AppResult<Json<SuccessResponse>> {
     // Validate crate name and version for security
     validation::validate_package_name(&crate_name, "cargo")
-        .map_err(|e| AppError::BadRequest(format!("Invalid crate name '{}': {}", crate_name, e)))?;
+        .map_err(|e| AppError::BadRequest(format!("Invalid crate name '{crate_name}': {e}")))?;
     validation::validate_version(&version)
-        .map_err(|e| AppError::BadRequest(format!("Invalid version '{}': {}", version, e)))?;
+        .map_err(|e| AppError::BadRequest(format!("Invalid version '{version}': {e}")))?;
 
     let action = if params.force { "Deleting" } else { "Yanking" };
     info!(crate_name = %crate_name, version = %version, action = action, "Processing Cargo crate");
@@ -261,7 +261,7 @@ pub async fn delete_crate_version(
         let crate_file = state
             .data_dir
             .join("cargo/crates")
-            .join(format!("{}-{}.crate", crate_name, version));
+            .join(format!("{crate_name}-{version}.crate"));
 
         // Remove the specific version from index
         remove_version_from_index(&index_file_path, &version).await?;
@@ -273,17 +273,14 @@ pub async fn delete_crate_version(
         }
 
         Ok(Json(SuccessResponse {
-            message: format!(
-                "Force deleted version {} of crate '{}'",
-                version, crate_name
-            ),
+            message: format!("Force deleted version {version} of crate '{crate_name}'"),
         }))
     } else {
         // Yank: just mark as yanked in index
         update_index_yank_version(&index_file_path, &version).await?;
 
         Ok(Json(SuccessResponse {
-            message: format!("Yanked version {} of crate '{}'", version, crate_name),
+            message: format!("Yanked version {version} of crate '{crate_name}'"),
         }))
     }
 }
@@ -301,7 +298,7 @@ pub async fn delete_all_versions(
 ) -> AppResult<Json<SuccessResponse>> {
     // Validate crate name for security
     validation::validate_package_name(&crate_name, "cargo")
-        .map_err(|e| AppError::BadRequest(format!("Invalid crate name '{}': {}", crate_name, e)))?;
+        .map_err(|e| AppError::BadRequest(format!("Invalid crate name '{crate_name}': {e}")))?;
 
     info!(crate_name = %crate_name, "Deleting all Cargo crate versions");
 
@@ -316,8 +313,7 @@ pub async fn delete_all_versions(
             let path = entry.path();
             if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
                 // Check if filename starts with crate name followed by a hyphen
-                if filename.starts_with(&format!("{}-", crate_name)) && filename.ends_with(".crate")
-                {
+                if filename.starts_with(&format!("{crate_name}-")) && filename.ends_with(".crate") {
                     if let Err(e) = std::fs::remove_file(&path) {
                         warn!(file = %path.display(), error = %e, "Failed to delete crate file");
                     } else {
@@ -335,15 +331,14 @@ pub async fn delete_all_versions(
         if let Err(e) = std::fs::remove_file(&index_path) {
             warn!(file = %index_path.display(), error = %e, "Failed to delete index file");
         } else {
-            deleted_files.push(format!("index/{}", crate_name));
+            deleted_files.push(format!("index/{crate_name}"));
         }
     }
 
     if deleted_files.is_empty() {
         warn!(crate_name = %crate_name, "No files found for crate");
         return Err(AppError::NotFound(format!(
-            "Cargo crate '{}' not found",
-            crate_name
+            "Cargo crate '{crate_name}' not found"
         )));
     }
 

@@ -242,8 +242,7 @@ pub fn get_provider(config: VmConfig) -> Result<Box<dyn Provider>> {
         #[cfg(feature = "tart")]
         "tart" => Ok(Box::new(tart::TartProvider::new(config)?)),
         _ => Err(VmError::Provider(format!(
-            "Unknown provider: {}",
-            provider_name
+            "Unknown provider: {provider_name}"
         ))),
     }
 }
