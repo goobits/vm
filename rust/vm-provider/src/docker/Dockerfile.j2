@@ -34,7 +34,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     ansible \
     supervisor \
     sudo \
-    nano \
+    nano vim \
+    unzip zip tree jq \
+    htop lsof \
+    netcat-openbsd telnet dnsutils iputils-ping \
     zsh zsh-syntax-highlighting \
     tzdata \
     && locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8
