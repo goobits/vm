@@ -32,6 +32,7 @@
 pub mod api;
 pub mod auth;
 pub mod cargo;
+#[cfg(not(test))]
 pub mod client_ops;
 pub mod config;
 pub mod deletion;
@@ -59,6 +60,7 @@ pub mod hash_utils;
 pub mod pypi_utils;
 
 // Re-export key types for convenience
+#[cfg(not(test))]
 pub use client_ops::{add_package, list_packages, remove_package, show_status};
 pub use config::Config;
 pub use error::{ApiErrorResponse, AppError, AppResult, ErrorCode};
