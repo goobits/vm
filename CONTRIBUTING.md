@@ -54,6 +54,15 @@ make fmt
 # Run clippy linter (warnings treated as errors)
 make clippy
 
+Our CI enforces a strict set of lints defined in `rust/clippy.toml`.
+The build will fail if any of these lints are violated. Please run `make clippy`
+locally to check your changes before submitting a pull request.
+
+The current deny list includes:
+- `clippy::uninlined_format_args`
+- `clippy::redundant_clone`
+- `clippy::unnecessary_wraps`
+
 # Check dependencies for security advisories, license compliance, and bans
 make deny
 

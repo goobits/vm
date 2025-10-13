@@ -1,0 +1,19 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 85%
+        threshold: 2%
+      vm-auth-proxy:
+        target: 90%
+        flags: vm-auth-proxy
+      vm-installer:
+        target: 85%
+        flags: vm-installer
+      vm-core:
+        target: 80%
+        flags: vm-core
+    patch:
+      default:
+        target: auto
+        threshold: 2%

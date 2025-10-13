@@ -15,7 +15,7 @@ use std::time::Duration;
 use tempfile::TempDir;
 use tokio::time::timeout;
 use vm_package_server::config::Config;
-use vm_package_server::{AppState, UpstreamClient};
+use vm_package_server::{upstream::UpstreamConfig, AppState, UpstreamClient};
 
 /// Test server configuration
 pub struct TestServerConfig {
@@ -43,7 +43,11 @@ pub async fn create_test_setup() -> Result<TestSetup> {
     // Create required directories for all package ecosystems
     create_package_directories(&data_dir)?;
 
-    let upstream_client = Arc::new(UpstreamClient::disabled());
+    let upstream_config = UpstreamConfig {
+        enabled: false,
+        ..Default::default()
+    };
+    let upstream_client = Arc::new(UpstreamClient::new(upstream_config).unwrap());
     let config = Arc::new(Config::default());
 
     let app_state = Arc::new(AppState {

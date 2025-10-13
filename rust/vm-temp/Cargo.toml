@@ -18,7 +18,6 @@ vm-messages = { path = "../vm-messages" }
 thiserror = { workspace = true }
 clap = { workspace = true }
 vm-config = { path = "../vm-config" }
-atty = { workspace = true }
 fs2 = { workspace = true }
 tempfile = { workspace = true }
 
@@ -28,7 +27,6 @@ structured-output = []
 
 [package.metadata.cargo-machete]
 ignored = [
-    "atty", # Used transitively in terminal operations
     "serde"        # Used transitively via serde_yaml_ng and state serialization
 ]
 

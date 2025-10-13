@@ -27,3 +27,10 @@ excessive-nesting-threshold = 5
 
 # Avoid false positives in test code
 avoid-breaking-exported-api = false
+
+# Deny list
+deny = [
+  "clippy::uninlined_format_args",
+  "clippy::redundant_clone",
+  "clippy::unnecessary_wraps"
+]
