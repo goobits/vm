@@ -72,10 +72,14 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
     if !yes {
         vm_warning!("This action cannot be undone!");
         print!("Are you sure you want to uninstall vm? (y/N): ");
-        io::stdout().flush().unwrap();
+        io::stdout()
+            .flush()
+            .map_err(|e| VmError::general(e, "Failed to flush stdout"))?;
 
         let mut response = String::new();
-        io::stdin().read_line(&mut response).unwrap();
+        io::stdin()
+            .read_line(&mut response)
+            .map_err(|e| VmError::general(e, "Failed to read user input"))?;
 
         if !response.trim().eq_ignore_ascii_case("y") {
             vm_println!("{}", MESSAGES.vm_uninstall_cancelled);

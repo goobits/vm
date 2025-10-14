@@ -176,7 +176,7 @@ impl AnsibleProgressParser {
         print!("\x1B[2J\x1B[1;1H"); // Clear screen and move to top
         vm_println!("{}", MESSAGES.progress_creating_vm);
 
-        let tasks = self.tasks.lock().unwrap();
+        let tasks = self.tasks.lock().expect("Mutex should not be poisoned");
         for task in tasks.iter() {
             let icon = match task.status {
                 TaskStatus::Completed => "  ✓",
@@ -196,7 +196,7 @@ impl AnsibleProgressParser {
             }
         }
 
-        io::stdout().flush().unwrap();
+        let _ = io::stdout().flush();
     }
 
     fn extract_task_name(line: &str) -> Option<String> {
@@ -220,7 +220,7 @@ impl ProgressParser for AnsibleProgressParser {
 
         // Detect new task
         if let Some(task_name) = Self::extract_task_name(line) {
-            let mut tasks = self.tasks.lock().unwrap();
+            let mut tasks = self.tasks.lock().expect("Mutex should not be poisoned");
 
             // Mark previous task as completed
             if let Some(last_task) = tasks.last_mut() {
@@ -236,13 +236,13 @@ impl ProgressParser for AnsibleProgressParser {
                 subtasks: Vec::new(),
             });
 
-            *self.current_task.lock().unwrap() = Some(task_name);
+            *self.current_task.lock().expect("Mutex should not be poisoned") = Some(task_name);
             drop(tasks);
             self.update_display();
         }
         // Detect task completion
         else if line.contains("ok:") || line.contains("changed:") {
-            let mut tasks = self.tasks.lock().unwrap();
+            let mut tasks = self.tasks.lock().expect("Mutex should not be poisoned");
             if let Some(last_task) = tasks.last_mut() {
                 if last_task.status == TaskStatus::Running {
                     last_task.status = TaskStatus::Completed;
@@ -253,7 +253,7 @@ impl ProgressParser for AnsibleProgressParser {
         }
         // Detect skipped task
         else if line.contains("skipping:") {
-            let mut tasks = self.tasks.lock().unwrap();
+            let mut tasks = self.tasks.lock().expect("Mutex should not be poisoned");
             if let Some(last_task) = tasks.last_mut() {
                 last_task.status = TaskStatus::Skipped;
             }
@@ -262,7 +262,7 @@ impl ProgressParser for AnsibleProgressParser {
         }
         // Detect failed task
         else if line.contains("failed:") || line.contains("FAILED") {
-            let mut tasks = self.tasks.lock().unwrap();
+            let mut tasks = self.tasks.lock().expect("Mutex should not be poisoned");
             if let Some(last_task) = tasks.last_mut() {
                 last_task.status = TaskStatus::Failed;
             }
@@ -274,7 +274,7 @@ impl ProgressParser for AnsibleProgressParser {
         }
         // Track package installations
         else if line.contains("Installing") || line.contains("Downloading") {
-            let mut tasks = self.tasks.lock().unwrap();
+            let mut tasks = self.tasks.lock().expect("Mutex should not be poisoned");
             if let Some(last_task) = tasks.last_mut() {
                 if last_task.status == TaskStatus::Running {
                     // Extract package info if possible
@@ -295,7 +295,7 @@ impl ProgressParser for AnsibleProgressParser {
 
     fn finish(&self) {
         if !self.show_output {
-            let mut tasks = self.tasks.lock().unwrap();
+            let mut tasks = self.tasks.lock().expect("Mutex should not be poisoned");
             // Mark any remaining running tasks as completed
             for task in tasks.iter_mut() {
                 if task.status == TaskStatus::Running {

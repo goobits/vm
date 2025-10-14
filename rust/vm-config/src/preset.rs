@@ -233,12 +233,12 @@ mod tests {
 
     #[test]
     fn test_preset_detection() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
         let project_dir = temp_dir.path().to_path_buf();
         let presets_dir = crate::paths::get_presets_dir();
 
         // Create Django indicators
-        fs::write(project_dir.join("manage.py"), "").unwrap();
+        fs::write(project_dir.join("manage.py"), "").expect("should write manage.py");
 
         let detector = PresetDetector::new(project_dir, presets_dir);
         let preset = detector.detect();
@@ -248,7 +248,7 @@ mod tests {
 
     #[test]
     fn test_react_detection() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
         let project_dir = temp_dir.path().to_path_buf();
         let presets_dir = crate::paths::get_presets_dir();
 
@@ -259,7 +259,8 @@ mod tests {
                 "react-dom": "^18.0.0"
             }
         }"#;
-        fs::write(project_dir.join("package.json"), package_json).unwrap();
+        fs::write(project_dir.join("package.json"), package_json)
+            .expect("should write package.json");
 
         let detector = PresetDetector::new(project_dir, presets_dir);
         let preset = detector.detect();

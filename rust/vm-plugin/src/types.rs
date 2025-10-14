@@ -91,7 +91,8 @@ description: Advanced Rust development environment
 author: Example Author
 plugin_type: preset
 "#;
-        let info: PluginInfo = serde_yaml_ng::from_str(yaml).unwrap();
+        let info: PluginInfo =
+            serde_yaml_ng::from_str(yaml).expect("should deserialize preset info");
         assert_eq!(info.name, "rust-advanced");
         assert_eq!(info.version, "1.0.0");
         assert_eq!(info.plugin_type, PluginType::Preset);
@@ -104,7 +105,8 @@ name: redis-sentinel
 version: 2.0.0
 plugin_type: service
 "#;
-        let info: PluginInfo = serde_yaml_ng::from_str(yaml).unwrap();
+        let info: PluginInfo =
+            serde_yaml_ng::from_str(yaml).expect("should deserialize service info");
         assert_eq!(info.name, "redis-sentinel");
         assert_eq!(info.plugin_type, PluginType::Service);
     }
@@ -124,7 +126,8 @@ environment:
 provision:
   - echo "Setup complete"
 "#;
-        let content: PresetContent = serde_yaml_ng::from_str(yaml).unwrap();
+        let content: PresetContent =
+            serde_yaml_ng::from_str(yaml).expect("should deserialize preset content");
         assert_eq!(content.packages.len(), 2);
         assert_eq!(content.npm_packages.len(), 1);
         assert_eq!(content.services.len(), 1);
@@ -148,7 +151,8 @@ environment:
 depends_on:
   - postgres
 "#;
-        let content: ServiceContent = serde_yaml_ng::from_str(yaml).unwrap();
+        let content: ServiceContent =
+            serde_yaml_ng::from_str(yaml).expect("should deserialize service content");
         assert_eq!(content.image, "redis:7-alpine");
         assert_eq!(content.ports.len(), 1);
         assert_eq!(content.volumes.len(), 1);
@@ -164,8 +168,10 @@ depends_on:
         let preset = PluginType::Preset;
         let service = PluginType::Service;
 
-        let preset_yaml = serde_yaml_ng::to_string(&preset).unwrap();
-        let service_yaml = serde_yaml_ng::to_string(&service).unwrap();
+        let preset_yaml =
+            serde_yaml_ng::to_string(&preset).expect("should serialize preset type");
+        let service_yaml =
+            serde_yaml_ng::to_string(&service).expect("should serialize service type");
 
         assert!(preset_yaml.contains("preset"));
         assert!(service_yaml.contains("service"));

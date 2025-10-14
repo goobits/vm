@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
 
+use crate::error::VmError;
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::{vm_println, vm_success, vm_warning};
 
@@ -162,7 +163,12 @@ impl ServiceManager {
         // Update reference counts and track which services need starting
         let mut services_needing_start = Vec::new();
         {
-            let mut state_guard = self.state.lock().unwrap();
+            let mut state_guard = self.state.lock().map_err(|e| {
+                VmError::general(
+                    std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+                    "State mutex was poisoned",
+                )
+            })?;
             for service_name in &services_to_start {
                 let service_state =
                     state_guard
@@ -217,7 +223,12 @@ impl ServiceManager {
 
         // Update reference counts and identify services to stop
         {
-            let mut state_guard = self.state.lock().unwrap();
+            let mut state_guard = self.state.lock().map_err(|e| {
+                VmError::general(
+                    std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+                    "State mutex was poisoned",
+                )
+            })?;
             let service_names: Vec<String> = state_guard.keys().cloned().collect();
 
             for service_name in service_names {
@@ -276,7 +287,7 @@ impl ServiceManager {
         // Stop services with zero references in parallel for faster shutdown
         let stop_futures: Vec<_> = services_to_stop
             .into_iter()
-            .map(|service_name| {
+            .map(|service_name: String| {
                 let self_clone = self.clone();
                 async move {
                     if let Err(e) = self_clone.stop_service(&service_name).await {
@@ -295,15 +306,13 @@ impl ServiceManager {
 
     /// Get service status information
     pub fn get_service_status(&self, service_name: &str) -> Option<ServiceState> {
-        let state_guard = self.state.lock().unwrap();
-        state_guard.get(service_name).cloned()
+        self.state.lock().ok().and_then(|guard| guard.get(service_name).cloned())
     }
 
     /// Get all service statuses
     #[allow(dead_code)]
     pub fn get_all_service_statuses(&self) -> HashMap<String, ServiceState> {
-        let state_guard = self.state.lock().unwrap();
-        state_guard.clone()
+        self.state.lock().map(|guard| guard.clone()).unwrap_or_default()
     }
 
     /// Start a service
@@ -348,7 +357,12 @@ impl ServiceManager {
 
         // Update state
         {
-            let mut state_guard = self.state.lock().unwrap();
+            let mut state_guard = self.state.lock().map_err(|e| {
+                VmError::general(
+                    std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+                    "State mutex was poisoned",
+                )
+            })?;
             if let Some(service_state) = state_guard.get_mut(service_name) {
                 service_state.is_running = true;
             }
@@ -412,7 +426,12 @@ impl ServiceManager {
 
         // Update state
         {
-            let mut state_guard = self.state.lock().unwrap();
+            let mut state_guard = self.state.lock().map_err(|e| {
+                VmError::general(
+                    std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+                    "State mutex was poisoned",
+                )
+            })?;
             if let Some(service_state) = state_guard.get_mut(service_name) {
                 service_state.is_running = false;
                 service_state.pid = None;
@@ -472,7 +491,12 @@ impl ServiceManager {
 
         // Store shutdown handle for later use
         {
-            let mut handles = self.shutdown_handles.lock().unwrap();
+            let mut handles = self.shutdown_handles.lock().map_err(|e| {
+                VmError::general(
+                    std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+                    "Shutdown handles mutex was poisoned",
+                )
+            })?;
             handles.insert("auth_proxy".to_string(), shutdown_tx);
         }
 
@@ -499,7 +523,12 @@ impl ServiceManager {
 
         // Get shutdown handle
         let shutdown_tx = {
-            let mut handles = self.shutdown_handles.lock().unwrap();
+            let mut handles = self.shutdown_handles.lock().map_err(|e| {
+                VmError::general(
+                    std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+                    "Shutdown handles mutex was poisoned",
+                )
+            })?;
             handles.remove("auth_proxy")
         };
 
@@ -577,7 +606,12 @@ impl ServiceManager {
 
         // Store shutdown handle for later use
         {
-            let mut handles = self.shutdown_handles.lock().unwrap();
+            let mut handles = self.shutdown_handles.lock().map_err(|e| {
+                VmError::general(
+                    std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+                    "Shutdown handles mutex was poisoned",
+                )
+            })?;
             handles.insert("package_registry".to_string(), shutdown_tx);
         }
 
@@ -604,7 +638,12 @@ impl ServiceManager {
 
         // Get shutdown handle
         let shutdown_tx = {
-            let mut handles = self.shutdown_handles.lock().unwrap();
+            let mut handles = self.shutdown_handles.lock().map_err(|e| {
+                VmError::general(
+                    std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+                    "Shutdown handles mutex was poisoned",
+                )
+            })?;
             handles.remove("package_registry")
         };
 
@@ -833,7 +872,12 @@ impl ServiceManager {
 
     /// Save service state to disk
     fn save_state(&self) -> Result<()> {
-        let state_guard = self.state.lock().unwrap();
+        let state_guard = self.state.lock().map_err(|e| {
+            VmError::general(
+                std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+                "State mutex was poisoned",
+            )
+        })?;
         let json = serde_json::to_string_pretty(&*state_guard)
             .context("Failed to serialize service state")?;
 
@@ -861,7 +905,12 @@ impl ServiceManager {
             serde_json::from_str(&content).context("Failed to parse service state file")?;
 
         {
-            let mut state_guard = self.state.lock().unwrap();
+            let mut state_guard = self.state.lock().map_err(|e| {
+                VmError::general(
+                    std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+                    "State mutex was poisoned",
+                )
+            })?;
             *state_guard = loaded_state;
         }
 

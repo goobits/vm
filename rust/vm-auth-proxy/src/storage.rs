@@ -219,8 +219,9 @@ mod tests {
 
     #[test]
     fn test_secret_store_creation() {
-        let temp_dir = TempDir::new().unwrap();
-        let store = SecretStore::new(temp_dir.path().to_path_buf()).unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
+        let store = SecretStore::new(temp_dir.path().to_path_buf())
+            .expect("should create secret store");
 
         assert!(temp_dir.path().join(SECRETS_FILE).exists());
         assert!(store.get_auth_token().is_some());
@@ -229,8 +230,9 @@ mod tests {
 
     #[test]
     fn test_add_and_get_secret() {
-        let temp_dir = TempDir::new().unwrap();
-        let mut store = SecretStore::new(temp_dir.path().to_path_buf()).unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
+        let mut store = SecretStore::new(temp_dir.path().to_path_buf())
+            .expect("should create secret store");
 
         // Add a secret
         store
@@ -240,47 +242,58 @@ mod tests {
                 SecretScope::Global,
                 Some("Test secret".to_string()),
             )
-            .unwrap();
+            .expect("should add secret");
 
         // Retrieve it
-        let value = store.get_secret("test_key").unwrap().unwrap();
+        let value = store
+            .get_secret("test_key")
+            .expect("should get secret")
+            .expect("secret should have a value");
         assert_eq!(value, "secret_value");
 
         // Check metadata
-        let metadata = store.get_secret_metadata("test_key").unwrap();
+        let metadata = store
+            .get_secret_metadata("test_key")
+            .expect("should get secret metadata");
         assert_eq!(metadata.scope, SecretScope::Global);
         assert_eq!(metadata.description, Some("Test secret".to_string()));
     }
 
     #[test]
     fn test_remove_secret() {
-        let temp_dir = TempDir::new().unwrap();
-        let mut store = SecretStore::new(temp_dir.path().to_path_buf()).unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
+        let mut store = SecretStore::new(temp_dir.path().to_path_buf())
+            .expect("should create secret store");
 
         // Add and remove a secret
         store
             .add_secret("test_key", "secret_value", SecretScope::Global, None)
-            .unwrap();
+            .expect("should add secret");
         assert_eq!(store.secret_count(), 1);
 
-        let removed = store.remove_secret("test_key").unwrap();
+        let removed = store
+            .remove_secret("test_key")
+            .expect("should remove secret");
         assert!(removed);
         assert_eq!(store.secret_count(), 0);
 
         // Try to remove non-existent secret
-        let removed = store.remove_secret("nonexistent").unwrap();
+        let removed = store
+            .remove_secret("nonexistent")
+            .expect("should handle non-existent secret");
         assert!(!removed);
     }
 
     #[test]
     fn test_env_vars_for_vm() {
-        let temp_dir = TempDir::new().unwrap();
-        let mut store = SecretStore::new(temp_dir.path().to_path_buf()).unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
+        let mut store = SecretStore::new(temp_dir.path().to_path_buf())
+            .expect("should create secret store");
 
         // Add secrets with different scopes
         store
             .add_secret("global_key", "global_value", SecretScope::Global, None)
-            .unwrap();
+            .expect("should add global secret");
         store
             .add_secret(
                 "project_key",
@@ -288,7 +301,7 @@ mod tests {
                 SecretScope::Project("myproject".to_string()),
                 None,
             )
-            .unwrap();
+            .expect("should add project secret");
         store
             .add_secret(
                 "instance_key",
@@ -296,12 +309,12 @@ mod tests {
                 SecretScope::Instance("myvm".to_string()),
                 None,
             )
-            .unwrap();
+            .expect("should add instance secret");
 
         // Get env vars for specific VM
         let env_vars = store
             .get_env_vars_for_vm("myvm", Some("myproject"))
-            .unwrap();
+            .expect("should get env vars");
 
         assert_eq!(
             env_vars.get("GLOBAL_KEY"),
@@ -319,7 +332,7 @@ mod tests {
         // Get env vars for different VM
         let env_vars = store
             .get_env_vars_for_vm("othervvm", Some("myproject"))
-            .unwrap();
+            .expect("should get env vars for other vm");
 
         assert_eq!(
             env_vars.get("GLOBAL_KEY"),
@@ -334,12 +347,13 @@ mod tests {
 
     #[test]
     fn test_persistence() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
         let data_dir = temp_dir.path().to_path_buf();
 
         // Create store and add secret
         {
-            let mut store = SecretStore::new(data_dir.clone()).unwrap();
+            let mut store =
+                SecretStore::new(data_dir.clone()).expect("should create initial store");
             store
                 .add_secret(
                     "persistent_key",
@@ -347,13 +361,16 @@ mod tests {
                     SecretScope::Global,
                     None,
                 )
-                .unwrap();
+                .expect("should add persistent secret");
         }
 
         // Load store again and verify secret persists
         {
-            let store = SecretStore::new(data_dir).unwrap();
-            let value = store.get_secret("persistent_key").unwrap().unwrap();
+            let store = SecretStore::new(data_dir).expect("should load store");
+            let value = store
+                .get_secret("persistent_key")
+                .expect("should get persistent secret")
+                .expect("secret should have a value");
             assert_eq!(value, "persistent_value");
         }
     }

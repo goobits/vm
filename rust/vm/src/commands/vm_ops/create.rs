@@ -21,12 +21,11 @@ fn auto_adjust_resources(config: &mut VmConfig) -> VmResult<()> {
     let system_cpus = get_cpu_core_count().unwrap_or(2);
     let system_memory_gb = get_total_memory_gb().unwrap_or(4);
 
-    let vm_settings = config.vm.as_mut();
-    if vm_settings.is_none() {
+    let vm_settings = if let Some(settings) = config.vm.as_mut() {
+        settings
+    } else {
         return Ok(()); // No vm settings to adjust
-    }
-
-    let vm_settings = vm_settings.unwrap();
+    };
     let mut adjusted = false;
 
     // Check and adjust CPU allocation
@@ -150,7 +149,13 @@ pub async fn handle_create(
 
     // Check if this is a multi-instance provider and handle accordingly
     if provider.supports_multi_instance() && instance.is_some() {
-        let instance_name = instance.as_deref().unwrap();
+        let instance_name = match instance.as_deref() {
+            Some(name) => name,
+            None => return Err(VmError::general(
+                std::io::Error::new(std::io::ErrorKind::NotFound, "Instance name not found"),
+                "Instance option was None, but was expected to be Some",
+            )),
+        };
         vm_println!(
             "{}",
             msg!(

@@ -314,10 +314,10 @@ mod tests {
 
     #[test]
     fn test_react_preset_detection() {
-        let fixture = PresetTestFixture::new().unwrap();
+        let fixture = PresetTestFixture::new().expect("should create test fixture");
         fixture
             .create_file("package.json", r#"{"dependencies": {"react": "^18.0.0"}}"#)
-            .unwrap();
+            .expect("should create package.json");
 
         let preset = detect_preset_for_project(fixture.path());
         assert_eq!(preset, Some("react".to_string()));
@@ -325,8 +325,10 @@ mod tests {
 
     #[test]
     fn test_django_preset_detection() {
-        let fixture = PresetTestFixture::new().unwrap();
-        fixture.create_file("manage.py", "").unwrap();
+        let fixture = PresetTestFixture::new().expect("should create test fixture");
+        fixture
+            .create_file("manage.py", "")
+            .expect("should create manage.py");
 
         let preset = detect_preset_for_project(fixture.path());
         assert_eq!(preset, Some("django".to_string()));
@@ -334,8 +336,8 @@ mod tests {
 
     #[test]
     fn test_kubernetes_preset_detection() {
-        let fixture = PresetTestFixture::new().unwrap();
-        fixture.create_dir("k8s").unwrap();
+        let fixture = PresetTestFixture::new().expect("should create test fixture");
+        fixture.create_dir("k8s").expect("should create k8s dir");
 
         let preset = detect_preset_for_project(fixture.path());
         assert_eq!(preset, Some("kubernetes".to_string()));
@@ -343,11 +345,13 @@ mod tests {
 
     #[test]
     fn test_multi_tech_detection() {
-        let fixture = PresetTestFixture::new().unwrap();
+        let fixture = PresetTestFixture::new().expect("should create test fixture");
         fixture
             .create_file("package.json", r#"{"dependencies": {"react": "^18.0.0"}}"#)
-            .unwrap();
-        fixture.create_file("Dockerfile", "FROM node:18").unwrap();
+            .expect("should create package.json");
+        fixture
+            .create_file("Dockerfile", "FROM node:18")
+            .expect("should create Dockerfile");
 
         assert!(is_multi_tech_project(fixture.path()));
 
@@ -358,7 +362,7 @@ mod tests {
 
     #[test]
     fn test_recommended_preset_fallback() {
-        let fixture = PresetTestFixture::new().unwrap();
+        let fixture = PresetTestFixture::new().expect("should create test fixture");
         // Empty directory should fallback to "base"
 
         let preset = get_recommended_preset(fixture.path());
@@ -367,13 +371,13 @@ mod tests {
 
     #[test]
     fn test_next_priority_over_react() {
-        let fixture = PresetTestFixture::new().unwrap();
+        let fixture = PresetTestFixture::new().expect("should create test fixture");
         fixture
             .create_file(
                 "package.json",
                 r#"{"dependencies": {"next": "^13.0.0", "react": "^18.0.0"}}"#,
             )
-            .unwrap();
+            .expect("should create package.json");
 
         let preset = detect_preset_for_project(fixture.path());
         assert_eq!(preset, Some("next".to_string()));

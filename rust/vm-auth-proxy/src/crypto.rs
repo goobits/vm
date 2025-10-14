@@ -125,11 +125,12 @@ mod tests {
     fn test_encryption_roundtrip() {
         let password = "test-password";
         let salt = generate_salt();
-        let key = EncryptionKey::derive_from_password(password, &salt).unwrap();
+        let key = EncryptionKey::derive_from_password(password, &salt)
+            .expect("should derive key from password");
 
         let plaintext = "my-secret-api-key";
-        let encrypted = key.encrypt(plaintext).unwrap();
-        let decrypted = key.decrypt(&encrypted).unwrap();
+        let encrypted = key.encrypt(plaintext).expect("should encrypt plaintext");
+        let decrypted = key.decrypt(&encrypted).expect("should decrypt ciphertext");
 
         assert_eq!(plaintext, decrypted);
     }
@@ -137,11 +138,13 @@ mod tests {
     #[test]
     fn test_different_keys_fail_decryption() {
         let salt = generate_salt();
-        let key1 = EncryptionKey::derive_from_password("password1", &salt).unwrap();
-        let key2 = EncryptionKey::derive_from_password("password2", &salt).unwrap();
+        let key1 = EncryptionKey::derive_from_password("password1", &salt)
+            .expect("should derive key 1");
+        let key2 = EncryptionKey::derive_from_password("password2", &salt)
+            .expect("should derive key 2");
 
         let plaintext = "secret";
-        let encrypted = key1.encrypt(plaintext).unwrap();
+        let encrypted = key1.encrypt(plaintext).expect("should encrypt with key 1");
 
         // Different key should fail to decrypt
         assert!(key2.decrypt(&encrypted).is_err());

@@ -137,7 +137,7 @@ mod tests {
         // Should successfully detect CPU cores on supported platforms
         assert!(result.is_ok());
 
-        let cpu_cores = result.unwrap();
+        let cpu_cores = result.expect("should get CPU core count");
         // Should return a reasonable number of cores
         assert!(cpu_cores > 0);
         assert!(cpu_cores <= 256); // Sanity check for reasonable upper bound
@@ -151,7 +151,7 @@ mod tests {
         // Should successfully detect memory on supported platforms
         assert!(result.is_ok());
 
-        let memory_gb = result.unwrap();
+        let memory_gb = result.expect("should get total memory in GB");
         // Should return a reasonable amount of memory
         assert!(memory_gb > 0);
         assert!(memory_gb <= 1024); // Sanity check for reasonable upper bound (1TB)
@@ -163,13 +163,13 @@ mod tests {
         // On Windows, both functions should now succeed using sysinfo
         let cpu_result = get_cpu_core_count();
         assert!(cpu_result.is_ok());
-        let cpu_cores = cpu_result.unwrap();
+        let cpu_cores = cpu_result.expect("should get CPU core count on Windows");
         assert!(cpu_cores > 0);
         assert!(cpu_cores <= 256); // Sanity check
 
         let memory_result = get_total_memory_gb();
         assert!(memory_result.is_ok());
-        let memory_gb = memory_result.unwrap();
+        let memory_gb = memory_result.expect("should get total memory in GB on Windows");
         assert!(memory_gb > 0);
         assert!(memory_gb <= 1024); // Sanity check (1TB)
     }
@@ -211,7 +211,7 @@ mod tests {
             let mem_kb: std::result::Result<u64, _> = mem_kb_str.parse();
             assert!(mem_kb.is_ok());
 
-            let mem_kb = mem_kb.unwrap();
+            let mem_kb = mem_kb.expect("should parse memory value");
             let mem_gb = mem_kb / 1024 / 1024;
             assert!(mem_gb > 0);
         }

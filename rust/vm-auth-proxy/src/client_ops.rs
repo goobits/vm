@@ -16,11 +16,15 @@ fn parse_secret_scope(scope: Option<&str>) -> Result<SecretScope> {
     match scope {
         Some("global") | None => Ok(SecretScope::Global),
         Some(s) if s.starts_with("project:") => {
-            let project_name = s.strip_prefix("project:").unwrap();
+            let project_name = s.strip_prefix("project:").ok_or_else(|| {
+                anyhow!("Invalid project scope format, expected 'project:NAME'")
+            })?;
             Ok(SecretScope::Project(project_name.to_string()))
         }
         Some(s) if s.starts_with("instance:") => {
-            let instance_name = s.strip_prefix("instance:").unwrap();
+            let instance_name = s.strip_prefix("instance:").ok_or_else(|| {
+                anyhow!("Invalid instance scope format, expected 'instance:NAME'")
+            })?;
             Ok(SecretScope::Instance(instance_name.to_string()))
         }
         Some(s) => Err(anyhow!(
@@ -383,12 +387,16 @@ mod tests {
     }
 
     async fn start_test_server() -> (u16, tempfile::TempDir, String) {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
         let port = find_available_port().expect("Failed to find available port");
 
         // Create a SecretStore to get the auth token
-        let store = crate::storage::SecretStore::new(temp_dir.path().to_path_buf()).unwrap();
-        let auth_token = store.get_auth_token().unwrap().to_string();
+        let store = crate::storage::SecretStore::new(temp_dir.path().to_path_buf())
+            .expect("should create secret store");
+        let auth_token = store
+            .get_auth_token()
+            .expect("should get auth token")
+            .to_string();
 
         let data_dir = temp_dir.path().to_path_buf();
         task::spawn(async move {

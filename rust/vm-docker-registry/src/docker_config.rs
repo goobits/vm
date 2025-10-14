@@ -323,7 +323,7 @@ mod tests {
     #[tokio::test]
     async fn test_daemon_config_serialization() {
         let config = DaemonConfig::for_registry("http://localhost:5000");
-        let json = serde_json::to_string_pretty(&config).unwrap();
+        let json = serde_json::to_string_pretty(&config).expect("should serialize daemon config");
 
         assert!(json.contains("registry-mirrors"));
         assert!(json.contains("insecure-registries"));
@@ -332,7 +332,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_config_manager_with_temp_file() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
         let daemon_json_path = temp_dir.path().join("daemon.json");
         let backup_path = daemon_json_path.with_extension("json.vm-backup");
 
@@ -343,9 +343,15 @@ mod tests {
 
         // Test writing and reading config
         let config = DaemonConfig::for_registry("http://localhost:5000");
-        manager.write_config(&config).await.unwrap();
+        manager
+            .write_config(&config)
+            .await
+            .expect("should write config");
 
-        let loaded_config = manager.load_existing_config().await.unwrap();
+        let loaded_config = manager
+            .load_existing_config()
+            .await
+            .expect("should load config");
         assert_eq!(
             loaded_config.registry_mirrors,
             vec!["http://localhost:5000"]

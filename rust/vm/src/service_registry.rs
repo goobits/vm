@@ -224,7 +224,7 @@ impl ServiceRegistry {
     ) -> String {
         let icon = self.get_status_icon(is_running);
         let display_name = self.get_service_display_name(name).unwrap_or(name);
-        let port = self.get_service_port(name).unwrap_or(0);
+        let port = self.get_service_port(name).unwrap_or_default();
 
         if is_running {
             format!(
@@ -299,7 +299,9 @@ mod tests {
     #[test]
     fn test_service_urls() {
         let registry = ServiceRegistry::new();
-        let auth_service = registry.get_service("auth_proxy").unwrap();
+        let auth_service = registry
+            .get_service("auth_proxy")
+            .expect("should get auth_proxy service");
 
         assert_eq!(auth_service.health_url(), "http://localhost:3090/health");
         assert_eq!(auth_service.base_url(), "http://localhost:3090");

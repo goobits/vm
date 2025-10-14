@@ -214,10 +214,11 @@ impl<'a> ComposeOperations<'a> {
             if !worktrees.is_empty() {
                 let worktree_mounts: Vec<_> = worktrees
                     .iter()
-                    .map(|path| {
-                        let path = Path::new(path);
-                        let name = path.file_name().unwrap().to_str().unwrap();
-                        (path.to_str().unwrap(), name)
+                    .filter_map(|path_string| {
+                        let path = Path::new(path_string);
+                        path.file_name()
+                            .and_then(|name| name.to_str())
+                            .and_then(|name| path.to_str().map(|path_str| (path_str, name)))
                     })
                     .collect();
                 tera_context.insert("worktrees", &worktree_mounts);
@@ -324,10 +325,11 @@ impl<'a> ComposeOperations<'a> {
             if !worktrees.is_empty() {
                 let worktree_mounts: Vec<_> = worktrees
                     .iter()
-                    .map(|path| {
-                        let path = Path::new(path);
-                        let name = path.file_name().unwrap().to_str().unwrap();
-                        (path.to_str().unwrap(), name)
+                    .filter_map(|path_string| {
+                        let path = Path::new(path_string);
+                        path.file_name()
+                            .and_then(|name| name.to_str())
+                            .and_then(|name| path.to_str().map(|path_str| (path_str, name)))
                     })
                     .collect();
                 tera_context.insert("worktrees", &worktree_mounts);

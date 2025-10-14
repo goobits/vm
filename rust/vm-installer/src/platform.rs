@@ -271,19 +271,19 @@ mod tests {
         env::set_var("SHELL", "/bin/bash");
         let result = get_shell_profile().expect("Should detect bash profile");
         assert!(result.is_some());
-        let bash_path = result.unwrap();
+        let bash_path = result.expect("should have bash path");
         assert_eq!(bash_path, temp_dir.path().join(".bashrc"));
 
         env::set_var("SHELL", "/bin/zsh");
         let result = get_shell_profile().expect("Should detect zsh profile");
         assert!(result.is_some());
-        let zsh_path = result.unwrap();
+        let zsh_path = result.expect("should have zsh path");
         assert_eq!(zsh_path, temp_dir.path().join(".zshrc"));
 
         env::set_var("SHELL", "/usr/bin/fish");
         let result = get_shell_profile().expect("Should detect fish profile");
         assert!(result.is_some());
-        let fish_path = result.unwrap();
+        let fish_path = result.expect("should have fish path");
         assert_eq!(fish_path, temp_dir.path().join(".config/fish/config.fish"));
 
         // Restore original HOME

@@ -74,7 +74,7 @@ where
     S: Subscriber + for<'lookup> tracing_subscriber::registry::LookupSpan<'lookup>,
 {
     fn on_new_span(&self, attrs: &span::Attributes<'_>, id: &span::Id, ctx: Context<'_, S>) {
-        let span = ctx.span(id).unwrap();
+        let span = ctx.span(id).expect("Span should exist for just created ID");
         let mut fields = HashMap::new();
         let mut visitor = FieldVisitor(&mut fields);
         attrs.record(&mut visitor);
@@ -127,8 +127,8 @@ pub fn init_subscriber() -> Option<WorkerGuard> {
 
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new(&log_level))
-        .add_directive("tokio=warn".parse().unwrap())
-        .add_directive("hyper=warn".parse().unwrap());
+        .add_directive("tokio=warn".parse().expect("hardcoded directive should be valid"))
+        .add_directive("hyper=warn".parse().expect("hardcoded directive should be valid"));
 
     let tag_filters = if log_tags.is_empty() {
         Vec::new()

@@ -218,7 +218,8 @@ mod tests {
             Value::String("docker".into()),
         );
 
-        let result = format_yaml_value(&Value::Mapping(input)).unwrap();
+        let result = format_yaml_value(&Value::Mapping(input))
+            .expect("should format and order YAML value");
 
         if let Value::Mapping(map) = result {
             let keys: Vec<_> = map.keys().filter_map(|k| k.as_str()).collect();
@@ -237,7 +238,8 @@ mod tests {
         );
         input.insert(Value::String("version".into()), Value::String("1.0".into()));
 
-        let result = format_yaml_value(&Value::Mapping(input)).unwrap();
+        let result =
+            format_yaml_value(&Value::Mapping(input)).expect("should format with unknown fields");
 
         if let Value::Mapping(map) = result {
             assert!(map.contains_key("custom_field"));
