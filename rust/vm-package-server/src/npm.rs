@@ -512,12 +512,14 @@ mod tests {
     use tempfile::TempDir;
 
     fn create_npm_test_state() -> (Arc<AppState>, TempDir) {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("Failed to create temp dir for test");
         let data_dir = temp_dir.path().to_path_buf();
 
         // Create required directories
-        std::fs::create_dir_all(data_dir.join("npm/tarballs")).unwrap();
-        std::fs::create_dir_all(data_dir.join("npm/metadata")).unwrap();
+        std::fs::create_dir_all(data_dir.join("npm/tarballs"))
+            .expect("Failed to create npm tarballs dir");
+        std::fs::create_dir_all(data_dir.join("npm/metadata"))
+            .expect("Failed to create npm metadata dir");
 
         let config = Arc::new(crate::config::Config::default());
         let state = Arc::new(AppState {

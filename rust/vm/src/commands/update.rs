@@ -104,24 +104,31 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
         let asset_pattern = format!("vm-{target}.tar.gz");
         let asset_url = find_asset_url(&release_json, &asset_pattern);
 
-        if asset_url.is_none() {
-            vm_error!(
-                "{}",
-                msg!(MESSAGES.vm_update_platform_not_found, platform = &target)
-            );
-            return Err(VmError::general(
-                std::io::Error::new(std::io::ErrorKind::NotFound, "Platform not supported"),
-                format!("No binary available for {target}"),
-            ));
-        }
-
-        let asset_url = asset_url.unwrap();
+        let asset_url = match asset_url {
+            Some(url) => url,
+            None => {
+                vm_error!(
+                    "{}",
+                    msg!(MESSAGES.vm_update_platform_not_found, platform = &target)
+                );
+                return Err(VmError::general(
+                    std::io::Error::new(std::io::ErrorKind::NotFound, "Platform not supported"),
+                    format!("No binary available for {target}"),
+                ));
+            }
+        };
         let archive_path = temp_dir.join(&asset_pattern);
 
         // Download the archive
         vm_println!("{}", MESSAGES.vm_update_downloading_binary);
+        let archive_path_str = archive_path.to_str().ok_or_else(|| {
+            VmError::general(
+                std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid path"),
+                "Archive path is not valid UTF-8",
+            )
+        })?;
         let download_output = Command::new("curl")
-            .args(["-sSL", "-o", archive_path.to_str().unwrap(), &asset_url])
+            .args(["-sSL", "-o", archive_path_str, &asset_url])
             .output()?;
 
         if !download_output.status.success() {
@@ -134,12 +141,18 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
 
         // Extract the archive
         vm_println!("{}", MESSAGES.vm_update_extracting);
+        let temp_dir_str = temp_dir.to_str().ok_or_else(|| {
+            VmError::general(
+                std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid path"),
+                "Temp directory path is not valid UTF-8",
+            )
+        })?;
         let extract_output = Command::new("tar")
             .args([
                 "-xzf",
-                archive_path.to_str().unwrap(),
+                archive_path_str,
                 "-C",
-                temp_dir.to_str().unwrap(),
+                temp_dir_str,
             ])
             .output()?;
 

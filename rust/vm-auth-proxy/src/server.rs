@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 /// Shared application state
 #[derive(Clone)]
@@ -110,15 +110,18 @@ pub async fn check_server_running(port: u16) -> bool {
 }
 
 /// Health check endpoint
-async fn health_check(State(state): State<AppState>) -> Json<HealthResponse> {
-    let store = state.store.lock().unwrap();
+async fn health_check(State(state): State<AppState>) -> Result<Json<HealthResponse>, StatusCode> {
+    let store = state.store.lock().map_err(|e| {
+        error!("Mutex lock failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
     let response = HealthResponse {
         status: "healthy".to_string(),
         secret_count: store.secret_count(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         uptime_seconds: state.start_time.elapsed().as_secs(),
     };
-    Json(response)
+    Ok(Json(response))
 }
 
 /// List all secrets (metadata only)
@@ -131,7 +134,10 @@ async fn list_secrets(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    let store = state.store.lock().unwrap();
+    let store = state.store.lock().map_err(|e| {
+        error!("Mutex lock failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
     let secrets: Vec<SecretSummary> = store
         .list_secrets()
         .iter()
@@ -164,7 +170,10 @@ async fn add_secret(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    let mut store = state.store.lock().unwrap();
+    let mut store = state.store.lock().map_err(|e| {
+        error!("Mutex lock failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
     match store.add_secret(&name, &request.value, request.scope, request.description) {
         Ok(()) => {
             let response = SecretResponse {
@@ -197,7 +206,10 @@ async fn get_secret(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    let store = state.store.lock().unwrap();
+    let store = state.store.lock().map_err(|e| {
+        error!("Mutex lock failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
     match store.get_secret(&name) {
         Ok(Some(value)) => Ok(value),
         Ok(None) => Err(StatusCode::NOT_FOUND),
@@ -219,7 +231,10 @@ async fn remove_secret(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    let mut store = state.store.lock().unwrap();
+    let mut store = state.store.lock().map_err(|e| {
+        error!("Mutex lock failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
     match store.remove_secret(&name) {
         Ok(true) => {
             let response = SecretResponse {
@@ -261,7 +276,10 @@ async fn get_environment(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    let store = state.store.lock().unwrap();
+    let store = state.store.lock().map_err(|e| {
+        error!("Mutex lock failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
     match store.get_env_vars_for_vm(&vm_name, params.project.as_deref()) {
         Ok(env_vars) => {
             let response = EnvironmentResponse {
@@ -280,7 +298,10 @@ async fn get_environment(
 
 /// Verify the authentication token from headers
 fn verify_auth_token(state: &AppState, headers: &HeaderMap) -> bool {
-    let store = state.store.lock().unwrap();
+    let store = match state.store.lock() {
+        Ok(guard) => guard,
+        Err(_) => return false,
+    };
 
     // Get expected token
     let expected_token = match store.get_auth_token() {
@@ -314,9 +335,9 @@ mod tests {
     use tempfile::TempDir;
 
     async fn create_test_server() -> (TestServer, String) {
-        let temp_dir = TempDir::new().unwrap();
-        let store = SecretStore::new(temp_dir.path().to_path_buf()).unwrap();
-        let auth_token = store.get_auth_token().unwrap().to_string();
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let store = SecretStore::new(temp_dir.path().to_path_buf()).expect("Failed to create SecretStore");
+        let auth_token = store.get_auth_token().expect("Failed to get auth token").to_string();
 
         let state = AppState {
             store: Arc::new(Mutex::new(store)),
@@ -332,7 +353,7 @@ mod tests {
             .route("/env/{vm_name}", get(get_environment))
             .with_state(state);
 
-        (TestServer::new(app).unwrap(), auth_token)
+        (TestServer::new(app).expect("Failed to create test server"), auth_token)
     }
 
     #[tokio::test]

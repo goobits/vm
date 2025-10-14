@@ -11,13 +11,13 @@ mod cargo_tests {
     use tempfile::TempDir;
 
     fn create_cargo_test_state() -> (Arc<AppState>, TempDir) {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let data_dir = temp_dir.path().to_path_buf();
 
         // Create required directories
-        std::fs::create_dir_all(data_dir.join("cargo/crates")).unwrap();
-        std::fs::create_dir_all(data_dir.join("cargo/api/v1/crates")).unwrap();
-        std::fs::create_dir_all(data_dir.join("cargo/index")).unwrap();
+        std::fs::create_dir_all(data_dir.join("cargo/crates")).expect("Failed to create crates dir");
+        std::fs::create_dir_all(data_dir.join("cargo/api/v1/crates")).expect("Failed to create api dir");
+        std::fs::create_dir_all(data_dir.join("cargo/index")).expect("Failed to create index dir");
 
         let config = Arc::new(crate::config::Config::default());
         let state = Arc::new(AppState {
@@ -45,7 +45,7 @@ mod cargo_tests {
             "license": "MIT"
         });
 
-        let metadata_bytes = serde_json::to_vec(&metadata).unwrap();
+        let metadata_bytes = serde_json::to_vec(&metadata).expect("Failed to serialize metadata");
         let metadata_len = metadata_bytes.len() as u32;
         let crate_len = crate_content.len() as u32;
 
@@ -76,7 +76,7 @@ mod cargo_tests {
             )
             .with_state(state.clone());
 
-        let server = TestServer::new(app).unwrap();
+        let server = TestServer::new(app).expect("Failed to create test server");
 
         let crate_name = "test-crate";
         let version = "1.0.0";
@@ -96,15 +96,15 @@ mod cargo_tests {
             .join("cargo/crates")
             .join(format!("{}-{}.crate", crate_name, version));
         assert!(crate_path.exists());
-        let saved_content = std::fs::read(crate_path).unwrap();
+        let saved_content = std::fs::read(crate_path).expect("Failed to read saved crate file");
         assert_eq!(saved_content, crate_content);
 
         // Verify index file was created
-        let index_path_str = index_path(crate_name).unwrap();
+        let index_path_str = index_path(crate_name).expect("Failed to get index path");
         let index_file_path = state.data_dir.join("cargo/index").join(&index_path_str);
         assert!(index_file_path.exists());
 
-        let index_content = std::fs::read_to_string(index_file_path).unwrap();
+        let index_content = std::fs::read_to_string(index_file_path).expect("Failed to read index file");
         assert!(index_content.contains(crate_name));
         assert!(index_content.contains(version));
         assert!(index_content.contains("\"cksum\":"));
@@ -115,11 +115,11 @@ mod cargo_tests {
         let (state, _temp_dir) = create_cargo_test_state();
 
         let crate_name = "test-crate";
-        let index_path_str = index_path(crate_name).unwrap();
+        let index_path_str = index_path(crate_name).expect("Failed to get index path");
         let index_file_path = state.data_dir.join("cargo/index").join(&index_path_str);
 
         // Create directory and initial index entry
-        std::fs::create_dir_all(index_file_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(index_file_path.parent().expect("Index path should have parent")).expect("Failed to create parent dir");
         let existing_entry = json!({
             "name": crate_name,
             "vers": "0.9.0",
@@ -130,9 +130,9 @@ mod cargo_tests {
         });
         std::fs::write(
             &index_file_path,
-            format!("{}\n", serde_json::to_string(&existing_entry).unwrap()),
+            format!("{}\n", serde_json::to_string(&existing_entry).expect("Failed to serialize existing entry")),
         )
-        .unwrap();
+        .expect("Failed to write existing index entry");
 
         let app = axum::Router::new()
             .route(
@@ -141,7 +141,7 @@ mod cargo_tests {
             )
             .with_state(state.clone());
 
-        let server = TestServer::new(app).unwrap();
+        let server = TestServer::new(app).expect("Failed to create test server");
 
         let version = "1.0.0";
         let crate_content = b"fake crate content";
@@ -155,7 +155,7 @@ mod cargo_tests {
         assert_eq!(response.status_code(), StatusCode::OK);
 
         // Verify index file contains both versions
-        let index_content = std::fs::read_to_string(index_file_path).unwrap();
+        let index_content = std::fs::read_to_string(index_file_path).expect("Failed to read index file");
         let lines: Vec<&str> = index_content.trim().split('\n').collect();
         assert_eq!(lines.len(), 2);
         assert!(lines[0].contains("0.9.0"));
@@ -172,7 +172,7 @@ mod cargo_tests {
             )
             .with_state(state);
 
-        let server = TestServer::new(app).unwrap();
+        let server = TestServer::new(app).expect("Failed to create test server");
 
         // Send malformed payload (too short)
         let payload = vec![1, 2, 3];
@@ -192,7 +192,7 @@ mod cargo_tests {
             .route("/cargo/config.json", axum::routing::get(config))
             .with_state(state);
 
-        let server = TestServer::new(app).unwrap();
+        let server = TestServer::new(app).expect("Failed to create test server");
         let response = server
             .get("/cargo/config.json")
             .add_header("host", "example.com:3000")
@@ -201,7 +201,7 @@ mod cargo_tests {
         assert_eq!(response.status_code(), StatusCode::OK);
         let body: serde_json::Value = response.json();
 
-        let dl_url = body["dl"].as_str().unwrap();
+        let dl_url = body["dl"].as_str().expect("dl should be a string");
         assert!(dl_url.contains("localhost:8080")); // Uses static server_addr now
         assert!(dl_url.contains("{crate}"));
         assert!(dl_url.contains("{version}"));
@@ -221,20 +221,20 @@ mod cargo_tests {
             "yanked": false
         });
 
-        let index_path_str = index_path(crate_name).unwrap();
+        let index_path_str = index_path(crate_name).expect("Failed to get index path");
         let index_file_path = state.data_dir.join("cargo/index").join(&index_path_str);
-        std::fs::create_dir_all(index_file_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(index_file_path.parent().expect("index path should have parent")).expect("Failed to create parent dir");
         std::fs::write(
             &index_file_path,
-            format!("{}\n", serde_json::to_string(&index_entry).unwrap()),
+            format!("{}\n", serde_json::to_string(&index_entry).expect("Failed to serialize index entry")),
         )
-        .unwrap();
+        .expect("Failed to write index file");
 
         let app = axum::Router::new()
             .route("/cargo/index/{crate}", axum::routing::get(index_file))
             .with_state(state);
 
-        let server = TestServer::new(app).unwrap();
+        let server = TestServer::new(app).expect("Failed to create test server");
         let response = server.get(&format!("/cargo/index/{}", crate_name)).await;
 
         assert_eq!(response.status_code(), StatusCode::OK);
@@ -254,7 +254,7 @@ mod cargo_tests {
         let version = "1.0.0";
         let filename = format!("{}-{}.crate", crate_name, version);
         let crate_path = state.data_dir.join("cargo/crates").join(&filename);
-        std::fs::write(&crate_path, content).unwrap();
+        std::fs::write(&crate_path, content).expect("Failed to write test crate file");
 
         let app = axum::Router::new()
             .route(
@@ -263,7 +263,7 @@ mod cargo_tests {
             )
             .with_state(state);
 
-        let server = TestServer::new(app).unwrap();
+        let server = TestServer::new(app).expect("Failed to create test server");
         let response = server
             .get(&format!(
                 "/cargo/api/v1/crates/{}/{}/download",

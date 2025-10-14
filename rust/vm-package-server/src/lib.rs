@@ -88,12 +88,14 @@ pub mod test_utils {
 
     /// Create test state with required directory structure for npm
     pub fn create_npm_test_state() -> (Arc<AppState>, TempDir) {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("Failed to create temp dir for test");
         let data_dir = temp_dir.path().to_path_buf();
 
         // Create required directories
-        std::fs::create_dir_all(data_dir.join("npm/tarballs")).unwrap();
-        std::fs::create_dir_all(data_dir.join("npm/metadata")).unwrap();
+        std::fs::create_dir_all(data_dir.join("npm/tarballs"))
+            .expect("Failed to create npm tarballs dir");
+        std::fs::create_dir_all(data_dir.join("npm/metadata"))
+            .expect("Failed to create npm metadata dir");
 
         // Use disabled client to avoid TLS/Keychain prompts
         let upstream_client = Arc::new(UpstreamClient::disabled());
@@ -110,11 +112,12 @@ pub mod test_utils {
 
     /// Create test state with required directory structure for PyPI
     pub fn create_pypi_test_state() -> (Arc<AppState>, TempDir) {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("Failed to create temp dir for test");
         let data_dir = temp_dir.path().to_path_buf();
 
         // Create required directories
-        std::fs::create_dir_all(data_dir.join("pypi/packages")).unwrap();
+        std::fs::create_dir_all(data_dir.join("pypi/packages"))
+            .expect("Failed to create pypi packages dir");
 
         // Use disabled client to avoid TLS/Keychain prompts
         let upstream_client = Arc::new(UpstreamClient::disabled());
@@ -131,12 +134,12 @@ pub mod test_utils {
 
     /// Create test state with required directory structure for Cargo
     pub fn create_cargo_test_state() -> (Arc<AppState>, TempDir) {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("Failed to create temp dir for test");
         let data_dir = temp_dir.path().to_path_buf();
 
         // Create required directories
-        std::fs::create_dir_all(data_dir.join("cargo/crates")).unwrap();
-        std::fs::create_dir_all(data_dir.join("cargo/index")).unwrap();
+        std::fs::create_dir_all(data_dir.join("cargo/crates")).expect("Failed to create cargo crates dir");
+        std::fs::create_dir_all(data_dir.join("cargo/index")).expect("Failed to create cargo index dir");
 
         // Use disabled client to avoid TLS/Keychain prompts
         let upstream_client = Arc::new(UpstreamClient::disabled());
@@ -491,7 +494,7 @@ mod security_tests {
 
         #[tokio::test]
         async fn test_read_nonexistent_file() {
-            let temp_dir = TempDir::new().unwrap();
+            let temp_dir = TempDir::new().expect("Failed to create temp dir");
             let nonexistent_path = temp_dir.path().join("nonexistent.txt");
 
             let result = storage::read_file(&nonexistent_path).await;
@@ -516,7 +519,7 @@ mod security_tests {
 
         #[tokio::test]
         async fn test_read_file_string_nonexistent() {
-            let temp_dir = TempDir::new().unwrap();
+            let temp_dir = TempDir::new().expect("Failed to create temp dir");
             let nonexistent_path = temp_dir.path().join("nonexistent.txt");
 
             let result = storage::read_file_string(&nonexistent_path).await;
@@ -537,7 +540,7 @@ mod security_tests {
 
         #[tokio::test]
         async fn test_save_file_creates_parent_directories() {
-            let temp_dir = TempDir::new().unwrap();
+            let temp_dir = TempDir::new().expect("Failed to create temp dir");
             let nested_path = temp_dir
                 .path()
                 .join("deeply")
@@ -554,7 +557,7 @@ mod security_tests {
 
             // Verify the file was created and has correct content
             assert!(nested_path.exists(), "File should exist after saving");
-            let saved_content = std::fs::read(&nested_path).unwrap();
+            let saved_content = std::fs::read(&nested_path).expect("Failed to read saved file");
             assert_eq!(
                 saved_content, test_content,
                 "Saved content should match original"
@@ -563,7 +566,7 @@ mod security_tests {
 
         #[tokio::test]
         async fn test_append_to_nonexistent_file() {
-            let temp_dir = TempDir::new().unwrap();
+            let temp_dir = TempDir::new().expect("Failed to create temp dir");
             let new_file_path = temp_dir.path().join("new_file.txt");
 
             let content = b"first line content";
@@ -578,7 +581,7 @@ mod security_tests {
                 new_file_path.exists(),
                 "File should be created when appending"
             );
-            let file_content = std::fs::read_to_string(&new_file_path).unwrap();
+            let file_content = std::fs::read_to_string(&new_file_path).expect("Failed to read file");
             assert!(
                 file_content.contains("first line content"),
                 "File should contain appended content"
@@ -591,18 +594,18 @@ mod security_tests {
 
         #[tokio::test]
         async fn test_append_to_existing_file() {
-            let temp_dir = TempDir::new().unwrap();
+            let temp_dir = TempDir::new().expect("Failed to create temp dir");
             let file_path = temp_dir.path().join("existing_file.txt");
 
             // Create initial file content
-            std::fs::write(&file_path, "initial content").unwrap();
+            std::fs::write(&file_path, "initial content").expect("Failed to write initial file");
 
             let additional_content = b"appended content";
             let result = storage::append_to_file(&file_path, additional_content).await;
             assert!(result.is_ok(), "Appending to existing file should succeed");
 
             // Verify both contents are present
-            let file_content = std::fs::read_to_string(&file_path).unwrap();
+            let file_content = std::fs::read_to_string(&file_path).expect("Failed to read file");
             assert!(
                 file_content.contains("initial content"),
                 "File should retain original content"
@@ -615,7 +618,7 @@ mod security_tests {
 
         #[tokio::test]
         async fn test_append_with_invalid_utf8() {
-            let temp_dir = TempDir::new().unwrap();
+            let temp_dir = TempDir::new().expect("Failed to create temp dir");
             let file_path = temp_dir.path().join("utf8_test.txt");
 
             // Try to append invalid UTF-8 bytes
@@ -635,45 +638,45 @@ mod security_tests {
 
         #[tokio::test]
         async fn test_save_empty_file() {
-            let temp_dir = TempDir::new().unwrap();
+            let temp_dir = TempDir::new().expect("Failed to create temp dir");
             let empty_file_path = temp_dir.path().join("empty.txt");
 
             let result = storage::save_file(&empty_file_path, b"").await;
             assert!(result.is_ok(), "Saving empty file should succeed");
 
             assert!(empty_file_path.exists(), "Empty file should be created");
-            let content = std::fs::read(&empty_file_path).unwrap();
+            let content = std::fs::read(&empty_file_path).expect("Failed to read empty file");
             assert!(content.is_empty(), "File should be empty");
         }
 
         #[tokio::test]
         async fn test_read_empty_file() {
-            let temp_dir = TempDir::new().unwrap();
+            let temp_dir = TempDir::new().expect("Failed to create temp dir");
             let empty_file_path = temp_dir.path().join("empty.txt");
 
             // Create empty file
-            std::fs::write(&empty_file_path, b"").unwrap();
+            std::fs::write(&empty_file_path, b"").expect("Failed to write empty file");
 
             let result = storage::read_file(&empty_file_path).await;
             assert!(result.is_ok(), "Reading empty file should succeed");
 
-            let content = result.unwrap();
+            let content = result.expect("Should be able to read empty file");
             assert!(content.is_empty(), "Empty file should return empty content");
         }
 
         #[tokio::test]
         async fn test_append_maintains_newlines() {
-            let temp_dir = TempDir::new().unwrap();
+            let temp_dir = TempDir::new().expect("Failed to create temp dir");
             let file_path = temp_dir.path().join("newline_test.txt");
 
             // Create initial file without trailing newline
-            std::fs::write(&file_path, "line without newline").unwrap();
+            std::fs::write(&file_path, "line without newline").expect("Failed to write initial file");
 
             // Append content
             let result = storage::append_to_file(&file_path, b"new line").await;
             assert!(result.is_ok(), "Appending should succeed");
 
-            let content = std::fs::read_to_string(&file_path).unwrap();
+            let content = std::fs::read_to_string(&file_path).expect("Failed to read file");
             let lines: Vec<&str> = content.lines().collect();
             assert_eq!(lines.len(), 2, "Should have two lines after append");
             assert_eq!(lines[0], "line without newline");
@@ -682,7 +685,7 @@ mod security_tests {
 
         #[tokio::test]
         async fn test_large_file_handling() {
-            let temp_dir = TempDir::new().unwrap();
+            let temp_dir = TempDir::new().expect("Failed to create temp dir");
             let large_file_path = temp_dir.path().join("large_file.txt");
 
             // Create a moderately large content (1MB)
@@ -694,7 +697,7 @@ mod security_tests {
             let read_result = storage::read_file(&large_file_path).await;
             assert!(read_result.is_ok(), "Reading large file should succeed");
 
-            let read_content = read_result.unwrap();
+            let read_content = read_result.expect("Should be able to read large file");
             assert_eq!(
                 read_content.len(),
                 large_content.len(),
@@ -705,7 +708,7 @@ mod security_tests {
 
         #[tokio::test]
         async fn test_path_security_validation() {
-            let temp_dir = TempDir::new().unwrap();
+            let temp_dir = TempDir::new().expect("Failed to create temp dir");
 
             // Test various problematic paths - these should not cause panics or security issues
             let problematic_paths = [

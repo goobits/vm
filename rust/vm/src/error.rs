@@ -478,7 +478,10 @@ mod tests {
         let io_err = io::Error::new(io::ErrorKind::NotFound, "file not found");
         let vm_err = VmError::config(io_err, "Failed to read config");
 
-        assert!(vm_err.source().is_some());
-        assert_eq!(vm_err.source().unwrap().to_string(), "file not found");
+        if let Some(source) = vm_err.source() {
+            assert_eq!(source.to_string(), "file not found");
+        } else {
+            panic!("source() should not be None");
+        }
     }
 }

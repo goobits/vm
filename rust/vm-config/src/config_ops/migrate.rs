@@ -107,7 +107,13 @@ fn execute_migration(migrations: Vec<PendingMigration>) -> Result<()> {
     println!();
 
     for migration in migrations {
-        let backup_path = backup_dir.join(migration.old_path.file_name().unwrap());
+        let file_name = migration.old_path.file_name().ok_or_else(|| {
+            VmError::Migration(format!(
+                "Could not get file name from path: {}",
+                migration.old_path.display()
+            ))
+        })?;
+        let backup_path = backup_dir.join(file_name);
 
         // Create backup
         fs::copy(&migration.old_path, &backup_path).map_err(|e| {
