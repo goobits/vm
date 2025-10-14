@@ -94,7 +94,7 @@ http {
 }
 "#;
 
-    let mut tera = Tera::new("/dev/null/*").unwrap();
+    let mut tera = Tera::new("/dev/null/*").expect("should create tera instance");
     let mut context = TeraContext::new();
     context.insert("backend_host", &config.host);
     context.insert("backend_port", &config.backend_port);
@@ -220,7 +220,8 @@ mod tests {
     #[test]
     fn test_generate_nginx_config() {
         let config = RegistryConfig::default();
-        let nginx_config = generate_nginx_config(&config).unwrap();
+        let nginx_config =
+            generate_nginx_config(&config).expect("should generate nginx config");
 
         assert!(nginx_config.contains("upstream registry"));
         assert!(nginx_config.contains("upstream dockerhub"));
@@ -231,7 +232,8 @@ mod tests {
     #[test]
     fn test_generate_registry_config() {
         let config = RegistryConfig::default();
-        let registry_config = generate_registry_config(&config).unwrap();
+        let registry_config =
+            generate_registry_config(&config).expect("should generate registry config");
 
         assert!(registry_config.contains("version: 0.1"));
         assert!(registry_config.contains("filesystem:"));
@@ -243,7 +245,8 @@ mod tests {
     fn test_generate_docker_compose_config() {
         let config = RegistryConfig::default();
         let data_dir = "/test/data";
-        let compose_config = generate_docker_compose_config(&config, data_dir).unwrap();
+        let compose_config = generate_docker_compose_config(&config, data_dir)
+            .expect("should generate docker compose config");
 
         assert!(compose_config.contains("version: '3.8'"));
         assert!(compose_config.contains("vm-registry-backend"));
@@ -254,17 +257,18 @@ mod tests {
 
     #[test]
     fn test_write_config_files() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
         let config = RegistryConfig::default();
 
-        write_config_files(&config, temp_dir.path()).unwrap();
+        write_config_files(&config, temp_dir.path()).expect("should write config files");
 
         assert!(temp_dir.path().join("nginx.conf").exists());
         assert!(temp_dir.path().join("registry-config.yml").exists());
         assert!(temp_dir.path().join("docker-compose.yml").exists());
 
         // Verify nginx config content
-        let nginx_content = fs::read_to_string(temp_dir.path().join("nginx.conf")).unwrap();
+        let nginx_content = fs::read_to_string(temp_dir.path().join("nginx.conf"))
+            .expect("should read nginx.conf");
         assert!(nginx_content.contains("upstream registry"));
     }
 }

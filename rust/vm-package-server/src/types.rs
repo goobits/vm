@@ -218,9 +218,18 @@ mod tests {
 
     #[test]
     fn test_registry_parsing() {
-        assert_eq!("npm".parse::<Registry>().unwrap(), Registry::Npm);
-        assert_eq!("PYPI".parse::<Registry>().unwrap(), Registry::Pypi);
-        assert_eq!("Cargo".parse::<Registry>().unwrap(), Registry::Cargo);
+        assert_eq!(
+            "npm".parse::<Registry>().expect("should parse npm"),
+            Registry::Npm
+        );
+        assert_eq!(
+            "PYPI".parse::<Registry>().expect("should parse PYPI"),
+            Registry::Pypi
+        );
+        assert_eq!(
+            "Cargo".parse::<Registry>().expect("should parse Cargo"),
+            Registry::Cargo
+        );
         assert!("invalid".parse::<Registry>().is_err());
     }
 

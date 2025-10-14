@@ -198,7 +198,10 @@ mod tests {
         let relative = Path::new("src/main.rs");
         let result = SecurityValidator::validate_relative_path(relative, workspace);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Path::new("/workspace/src/main.rs"));
+        assert_eq!(
+            result.expect("Validation should succeed for a normal path"),
+            Path::new("/workspace/src/main.rs")
+        );
     }
 
     #[test]
@@ -249,7 +252,10 @@ mod tests {
         let valid = Path::new("documents/file.txt");
         let result = SecurityValidator::validate_relative_path(valid, workspace);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Path::new("/home/user/documents/file.txt"));
+        assert_eq!(
+            result.expect("Validation should succeed for a valid path"),
+            Path::new("/home/user/documents/file.txt")
+        );
     }
 
     #[test]

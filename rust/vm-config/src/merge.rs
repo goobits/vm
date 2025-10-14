@@ -282,11 +282,11 @@ mod tests {
         assert_eq!(base["npm_packages"], json!(["prettier", "jest"]));
         assert!(!base["npm_packages"]
             .as_array()
-            .unwrap()
+            .expect("should be an array")
             .contains(&json!("eslint")));
         assert!(!base["npm_packages"]
             .as_array()
-            .unwrap()
+            .expect("should be an array")
             .contains(&json!("typescript")));
 
         // Objects should merge
@@ -398,11 +398,11 @@ mod tests {
         assert_eq!(defaults["npm_packages"], json!(["my-custom-tools"]));
         assert!(!defaults["npm_packages"]
             .as_array()
-            .unwrap()
+            .expect("should be an array")
             .contains(&json!("basic-tools")));
         assert!(!defaults["npm_packages"]
             .as_array()
-            .unwrap()
+            .expect("should be an array")
             .contains(&json!("react-preset")));
 
         // But other fields should be properly merged

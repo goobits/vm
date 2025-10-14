@@ -225,7 +225,7 @@ mod tests {
     fn test_user_config_dir() {
         let result = user_config_dir();
         assert!(result.is_ok());
-        let path = result.unwrap();
+        let path = result.expect("should get user config dir");
         assert!(path.ends_with("vm"));
     }
 
@@ -233,7 +233,7 @@ mod tests {
     fn test_user_data_dir() {
         let result = user_data_dir();
         assert!(result.is_ok());
-        let path = result.unwrap();
+        let path = result.expect("should get user data dir");
         assert!(path.ends_with("vm"));
     }
 
@@ -241,7 +241,7 @@ mod tests {
     fn test_vm_state_dir() {
         let result = vm_state_dir();
         assert!(result.is_ok());
-        let path = result.unwrap();
+        let path = result.expect("should get vm state dir");
         assert!(path.ends_with(".vm"));
     }
 

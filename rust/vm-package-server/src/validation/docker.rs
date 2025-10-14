@@ -225,10 +225,13 @@ mod tests {
     #[test]
     fn test_sanitize_docker_name() {
         assert_eq!(
-            sanitize_docker_name("my-app-container").unwrap(),
+            sanitize_docker_name("my-app-container").expect("should sanitize valid name"),
             "my-app-container"
         );
-        assert_eq!(sanitize_docker_name("app123").unwrap(), "app123");
+        assert_eq!(
+            sanitize_docker_name("app123").expect("should sanitize valid name with numbers"),
+            "app123"
+        );
 
         assert!(sanitize_docker_name("").is_err());
         assert!(sanitize_docker_name("my app container").is_err());

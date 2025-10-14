@@ -183,12 +183,24 @@ mod tests {
 
     #[test]
     fn test_index_path_algorithm() {
-        assert_eq!(index_path("a").unwrap(), "1/a");
-        assert_eq!(index_path("ab").unwrap(), "2/ab");
-        assert_eq!(index_path("abc").unwrap(), "3/a/abc");
-        assert_eq!(index_path("abcd").unwrap(), "ab/cd/abcd");
-        assert_eq!(index_path("serde").unwrap(), "se/rd/serde");
-        assert_eq!(index_path("SERDE").unwrap(), "se/rd/serde"); // test lowercase conversion
+        assert_eq!(index_path("a").expect("should get path for 'a'"), "1/a");
+        assert_eq!(index_path("ab").expect("should get path for 'ab'"), "2/ab");
+        assert_eq!(
+            index_path("abc").expect("should get path for 'abc'"),
+            "3/a/abc"
+        );
+        assert_eq!(
+            index_path("abcd").expect("should get path for 'abcd'"),
+            "ab/cd/abcd"
+        );
+        assert_eq!(
+            index_path("serde").expect("should get path for 'serde'"),
+            "se/rd/serde"
+        );
+        assert_eq!(
+            index_path("SERDE").expect("should get path for 'SERDE'"),
+            "se/rd/serde"
+        ); // test lowercase conversion
 
         // Test security: invalid characters should be rejected
         assert!(index_path("../malicious").is_err());

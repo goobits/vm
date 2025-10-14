@@ -616,7 +616,7 @@ mod tests {
         // Should run cleanup the first time (no last_cleanup time)
         let result = manager.should_run_cleanup().await;
         assert!(result.is_ok());
-        assert!(result.unwrap());
+        assert!(result.expect("should run cleanup"));
     }
 
     #[tokio::test]

@@ -544,12 +544,14 @@ mod tests {
     use tempfile::TempDir;
 
     fn create_pypi_test_state() -> (Arc<AppState>, TempDir) {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
         let data_dir = temp_dir.path().to_path_buf();
 
         // Create required directories
-        std::fs::create_dir_all(data_dir.join("pypi/packages")).unwrap();
-        std::fs::create_dir_all(data_dir.join("pypi/simple")).unwrap();
+        std::fs::create_dir_all(data_dir.join("pypi/packages"))
+            .expect("should create pypi packages dir");
+        std::fs::create_dir_all(data_dir.join("pypi/simple"))
+            .expect("should create pypi simple dir");
 
         let config = Arc::new(crate::config::Config::default());
         let state = Arc::new(AppState {
@@ -569,7 +571,7 @@ mod tests {
             .route("/pypi/", axum::routing::post(upload_package))
             .with_state(state.clone());
 
-        let server = TestServer::new(app).unwrap();
+        let server = TestServer::new(app).expect("should create test server");
 
         let filename = "test_package-1.0.0-py3-none-any.whl";
         let content = b"fake wheel content";
@@ -586,7 +588,7 @@ mod tests {
         // Verify file was saved
         let saved_path = state.data_dir.join("pypi/packages").join(filename);
         assert!(saved_path.exists());
-        let saved_content = std::fs::read(saved_path).unwrap();
+        let saved_content = std::fs::read(saved_path).expect("should read saved wheel file");
         assert_eq!(saved_content, content);
     }
 
@@ -597,7 +599,7 @@ mod tests {
             .route("/pypi/", axum::routing::post(upload_package))
             .with_state(state.clone());
 
-        let server = TestServer::new(app).unwrap();
+        let server = TestServer::new(app).expect("should create test server");
 
         let filename = "test-package-1.0.0.tar.gz";
         let content = b"fake tar.gz content";
@@ -623,7 +625,7 @@ mod tests {
             .route("/pypi/", axum::routing::post(upload_package))
             .with_state(state);
 
-        let server = TestServer::new(app).unwrap();
+        let server = TestServer::new(app).expect("should create test server");
 
         let filename = "test-package.txt";
         let content = b"invalid file content";
@@ -645,19 +647,19 @@ mod tests {
         // Create a test package file
         let content = b"fake content";
         let package_file = state.data_dir.join("pypi/packages/testpackage-1.0.0.whl");
-        std::fs::write(&package_file, content).unwrap();
+        std::fs::write(&package_file, content).expect("should write test package file");
 
         // Create corresponding .meta file with hash
         use crate::sha256_hash;
         let hash = sha256_hash(content);
         let meta_file = package_file.with_extension("whl.meta");
-        std::fs::write(&meta_file, hash).unwrap();
+        std::fs::write(&meta_file, hash).expect("should write meta file");
 
         let app = axum::Router::new()
             .route("/pypi/simple/", axum::routing::get(simple_index))
             .with_state(state);
 
-        let server = TestServer::new(app).unwrap();
+        let server = TestServer::new(app).expect("should create test server");
         let response = server.get("/pypi/simple/").await;
 
         assert_eq!(response.status_code(), StatusCode::OK);
@@ -672,19 +674,19 @@ mod tests {
         // Create a test package file
         let content = b"fake wheel content";
         let package_file = state.data_dir.join("pypi/packages/testpackage-1.0.0.whl");
-        std::fs::write(&package_file, content).unwrap();
+        std::fs::write(&package_file, content).expect("should write test package file");
 
         // Create corresponding .meta file with hash
         use crate::sha256_hash;
         let hash = sha256_hash(content);
         let meta_file = package_file.with_extension("whl.meta");
-        std::fs::write(&meta_file, hash).unwrap();
+        std::fs::write(&meta_file, hash).expect("should write meta file");
 
         let app = axum::Router::new()
             .route("/pypi/simple/{package}/", axum::routing::get(package_index))
             .with_state(state);
 
-        let server = TestServer::new(app).unwrap();
+        let server = TestServer::new(app).expect("should create test server");
         let response = server.get("/pypi/simple/testpackage/").await;
 
         assert_eq!(response.status_code(), StatusCode::OK);
@@ -701,7 +703,7 @@ mod tests {
         let content = b"test package content";
         let filename = "test-package-1.0.0.whl";
         let package_file = state.data_dir.join("pypi/packages").join(filename);
-        std::fs::write(&package_file, content).unwrap();
+        std::fs::write(&package_file, content).expect("should write test package file");
 
         let app = axum::Router::new()
             .route(
@@ -710,7 +712,7 @@ mod tests {
             )
             .with_state(state);
 
-        let server = TestServer::new(app).unwrap();
+        let server = TestServer::new(app).expect("should create test server");
         let response = server.get(&format!("/pypi/packages/{}", filename)).await;
 
         assert_eq!(response.status_code(), StatusCode::OK);

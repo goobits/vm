@@ -176,7 +176,7 @@ impl AnsibleProgressParser {
         print!("\x1B[2J\x1B[1;1H"); // Clear screen and move to top
         vm_println!("{}", MESSAGES.progress_creating_vm);
 
-        let tasks = self.tasks.lock().unwrap();
+        let tasks = self.tasks.lock().expect("Mutex should not be poisoned");
         for task in tasks.iter() {
             let icon = match task.status {
                 TaskStatus::Completed => "  ✓",

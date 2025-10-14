@@ -574,7 +574,7 @@ mod tests {
             .route("/npm/{package}", axum::routing::put(publish_package))
             .with_state(state.clone());
 
-        let server = TestServer::new(app).unwrap();
+        let server = TestServer::new(app).expect("should create test server");
 
         let package_name = "test-package";
         let version = "1.0.0";
@@ -594,7 +594,7 @@ mod tests {
             .join("npm/tarballs")
             .join(format!("{}-{}.tgz", package_name, version));
         assert!(tarball_path.exists());
-        let saved_content = std::fs::read(tarball_path).unwrap();
+        let saved_content = std::fs::read(tarball_path).expect("should read saved tarball");
         assert_eq!(saved_content, tarball_content);
 
         // Verify metadata was saved
@@ -603,8 +603,10 @@ mod tests {
             .join("npm/metadata")
             .join(format!("{}.json", package_name));
         assert!(metadata_path.exists());
-        let metadata_content = std::fs::read_to_string(metadata_path).unwrap();
-        let metadata: Value = serde_json::from_str(&metadata_content).unwrap();
+        let metadata_content =
+            std::fs::read_to_string(metadata_path).expect("should read saved metadata");
+        let metadata: Value =
+            serde_json::from_str(&metadata_content).expect("should parse metadata");
 
         // Verify _attachments was removed from saved metadata
         assert!(metadata.get("_attachments").is_none());
@@ -620,7 +622,7 @@ mod tests {
             .route("/npm/{package}", axum::routing::put(publish_package))
             .with_state(state);
 
-        let server = TestServer::new(app).unwrap();
+        let server = TestServer::new(app).expect("should create test server");
 
         let payload = json!({
             "name": "test-package",
@@ -659,15 +661,15 @@ mod tests {
             .join(format!("{}.json", package_name));
         std::fs::write(
             metadata_path,
-            serde_json::to_string_pretty(&metadata).unwrap(),
+            serde_json::to_string_pretty(&metadata).expect("should serialize metadata"),
         )
-        .unwrap();
+        .expect("should write metadata file");
 
         let app = axum::Router::new()
             .route("/npm/{package}", axum::routing::get(package_metadata))
             .with_state(state);
 
-        let server = TestServer::new(app).unwrap();
+        let server = TestServer::new(app).expect("should create test server");
         let response = server.get(&format!("/npm/{}", package_name)).await;
 
         assert_eq!(response.status_code(), StatusCode::OK);
@@ -676,7 +678,7 @@ mod tests {
         assert_eq!(body["dist-tags"]["latest"], "1.0.0");
         assert!(body["versions"]["1.0.0"]["dist"]["tarball"]
             .as_str()
-            .unwrap()
+            .expect("tarball URL should be a string")
             .contains("test-package-1.0.0.tgz"));
     }
 
@@ -703,15 +705,15 @@ mod tests {
             .join(format!("{}.json", package_name));
         std::fs::write(
             metadata_path,
-            serde_json::to_string_pretty(&metadata).unwrap(),
+            serde_json::to_string_pretty(&metadata).expect("should serialize metadata"),
         )
-        .unwrap();
+        .expect("should write metadata file");
 
         let app = axum::Router::new()
             .route("/npm/{package}", axum::routing::get(package_metadata))
             .with_state(state);
 
-        let server = TestServer::new(app).unwrap();
+        let server = TestServer::new(app).expect("should create test server");
         let response = server
             .get(&format!("/npm/{}", package_name))
             .add_header("host", "example.com:3000")
@@ -723,7 +725,7 @@ mod tests {
         // Verify the tarball URL uses static server_addr now
         let tarball_url = body["versions"]["1.0.0"]["dist"]["tarball"]
             .as_str()
-            .unwrap();
+            .expect("tarball URL should be a string");
         assert!(tarball_url.contains("localhost:8080"));
     }
 
@@ -735,7 +737,7 @@ mod tests {
         let content = b"test tarball content";
         let filename = "test-package-1.0.0.tgz";
         let tarball_path = state.data_dir.join("npm/tarballs").join(filename);
-        std::fs::write(&tarball_path, content).unwrap();
+        std::fs::write(&tarball_path, content).expect("should write test tarball");
 
         let app = axum::Router::new()
             .route(
@@ -744,7 +746,7 @@ mod tests {
             )
             .with_state(state);
 
-        let server = TestServer::new(app).unwrap();
+        let server = TestServer::new(app).expect("should create test server");
         let response = server
             .get("/npm/test-package/-/test-package-1.0.0.tgz")
             .await;

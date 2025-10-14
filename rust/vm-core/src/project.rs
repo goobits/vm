@@ -36,7 +36,7 @@ mod tests {
 
     #[test]
     fn test_get_package_data_dir() {
-        let data_dir = get_package_data_dir().unwrap();
+        let data_dir = get_package_data_dir().expect("should get package data dir");
 
         // Should return ~/.vm/packages
         assert!(data_dir.ends_with(".vm/packages") || data_dir.ends_with(r".vm\packages"));

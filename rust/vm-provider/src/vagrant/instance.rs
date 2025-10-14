@@ -272,7 +272,7 @@ mod tests {
         let machines = vec!["web", "db"];
         let content = manager
             .generate_multi_machine_vagrantfile(&machines)
-            .unwrap();
+            .expect("Should be able to generate Vagrantfile content");
 
         assert!(content.contains("config.vm.define \"web\""));
         assert!(content.contains("config.vm.define \"db\""));

@@ -26,7 +26,7 @@
 //! // }
 //!
 //! // Sanitize Docker container names
-//! // let container_name = sanitize_docker_name("my-app-container").unwrap();
+//! // let container_name = sanitize_docker_name("my-app-container").expect("should sanitize");
 //! // assert_eq!(container_name, "my-app-container");
 //! ```
 

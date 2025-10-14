@@ -94,19 +94,19 @@ mod tests {
         let original_home = env::var("HOME").ok();
 
         // Create a temporary directory for testing
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
         let test_home = temp_dir.path().to_path_buf();
 
         // Set HOME to our test directory
         env::set_var("HOME", &test_home);
 
         // Test that vm_state_dir() uses the test HOME
-        let state_dir = platform::vm_state_dir().unwrap();
+        let state_dir = platform::vm_state_dir().expect("should get state dir");
         assert!(state_dir.starts_with(&test_home));
         assert!(state_dir.ends_with(".vm"));
 
         // Test that home_dir() returns the test HOME
-        let home = platform::home_dir().unwrap();
+        let home = platform::home_dir().expect("should get home dir");
         assert_eq!(home, test_home);
 
         // Restore original HOME

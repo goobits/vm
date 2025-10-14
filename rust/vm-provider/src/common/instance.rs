@@ -199,7 +199,8 @@ mod tests {
             created_at: None,
         }];
 
-        let result = fuzzy_match_instances("myproject-dev", &instances).unwrap();
+        let result = fuzzy_match_instances("myproject-dev", &instances)
+            .expect("Should find exact match by name");
         assert_eq!(result, "myproject-dev");
     }
 
@@ -215,7 +216,8 @@ mod tests {
             created_at: None,
         }];
 
-        let result = fuzzy_match_instances("abc123", &instances).unwrap();
+        let result =
+            fuzzy_match_instances("abc123", &instances).expect("Should find match by partial ID");
         assert_eq!(result, "myproject-dev");
     }
 
@@ -231,7 +233,8 @@ mod tests {
             created_at: None,
         }];
 
-        let result = fuzzy_match_instances("myproject", &instances).unwrap();
+        let result = fuzzy_match_instances("myproject", &instances)
+            .expect("Should find match by project name");
         assert_eq!(result, "myproject-dev");
     }
 

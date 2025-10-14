@@ -445,15 +445,17 @@ mod tests {
 
     #[tokio::test]
     async fn test_validate_and_read_small_file() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
         let file_path = temp_dir.path().join("test.txt");
         let content = b"Hello, world!";
 
-        fs::write(&file_path, content).await.unwrap();
+        fs::write(&file_path, content)
+            .await
+            .expect("should write to temp file");
 
         let result = FileStreamValidator::validate_and_read_file(&file_path).await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), content);
+        assert_eq!(result.expect("should read small file"), content);
     }
 
     #[tokio::test]
@@ -472,14 +474,14 @@ mod tests {
 
     #[test]
     fn test_validate_docker_params_success() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
         let result = DockerValidator::validate_docker_params("localhost", 3080, temp_dir.path());
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_validate_docker_params_invalid_port() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
         // Port 0 should be invalid for Docker
         let result = DockerValidator::validate_docker_params("localhost", 0, temp_dir.path());
         assert!(result.is_err());
