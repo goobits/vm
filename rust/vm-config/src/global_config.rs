@@ -463,7 +463,7 @@ impl GlobalDefaults {
 }
 
 /// Global feature flags
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalFeatures {
     /// Enable automatic preset detection
     #[serde(default = "default_true")]
@@ -480,6 +480,17 @@ pub struct GlobalFeatures {
     /// Enable update notifications
     #[serde(default = "default_true")]
     pub update_notifications: bool,
+}
+
+impl Default for GlobalFeatures {
+    fn default() -> Self {
+        Self {
+            auto_detect_presets: true,
+            auto_port_allocation: true,
+            telemetry: false,
+            update_notifications: true,
+        }
+    }
 }
 
 impl GlobalFeatures {
