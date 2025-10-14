@@ -625,23 +625,8 @@ mod tests {
         );
     }
 
-    /// Check if Docker daemon is available for testing
-    fn is_docker_available() -> bool {
-        std::process::Command::new("docker")
-            .arg("info")
-            .output()
-            .map(|output| output.status.success())
-            .unwrap_or(false)
-    }
-
     #[test]
     fn test_start_with_compose_regenerates_with_new_config() {
-        if !is_docker_available() {
-            eprintln!("⚠️  Skipping test: Docker daemon not available");
-            eprintln!("   To run this test, ensure Docker is running");
-            return;
-        }
-
         use tempfile::TempDir;
         use vm_config::GlobalConfig;
 
@@ -660,9 +645,10 @@ mod tests {
         let context_without_registry = ProviderContext::with_verbose(false);
         let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir);
 
-        // Prepare build context and write initial compose
-        let build_ops = BuildOperations::new(&vm_config, &temp_path);
-        let build_context = build_ops.prepare_build_context().unwrap();
+        // Create build context manually (without pulling images)
+        let build_context = temp_path.join("build_context");
+        std::fs::create_dir_all(&build_context).unwrap();
+
         let compose_path = compose_ops
             .write_docker_compose(&build_context, &context_without_registry)
             .unwrap();
@@ -723,12 +709,6 @@ mod tests {
 
     #[test]
     fn test_start_with_compose_can_disable_registry() {
-        if !is_docker_available() {
-            eprintln!("⚠️  Skipping test: Docker daemon not available");
-            eprintln!("   To run this test, ensure Docker is running");
-            return;
-        }
-
         use tempfile::TempDir;
         use vm_config::GlobalConfig;
 
@@ -751,8 +731,11 @@ mod tests {
             ProviderContext::with_verbose(false).with_config(global_config.clone());
 
         let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir);
-        let build_ops = BuildOperations::new(&vm_config, &temp_path);
-        let build_context = build_ops.prepare_build_context().unwrap();
+
+        // Create build context manually (without pulling images)
+        let build_context = temp_path.join("build_context");
+        std::fs::create_dir_all(&build_context).unwrap();
+
         let compose_path = compose_ops
             .write_docker_compose(&build_context, &context_with_registry)
             .unwrap();
