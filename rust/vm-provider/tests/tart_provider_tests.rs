@@ -4,10 +4,10 @@ use std::path::Path;
 use uuid::Uuid;
 use vm_config::config::{ProjectConfig, VmConfig};
 use vm_core::error::Result;
-use vm_provider::{tart::provider::TartProvider, Provider};
+use vm_provider::{tart::TartProvider, Provider};
 
 struct TestFixture {
-    vm_name: String,
+    _vm_name: String,
     provider: TartProvider,
 }
 
@@ -23,7 +23,10 @@ impl TestFixture {
             ..Default::default()
         };
         let provider = TartProvider::new(config)?;
-        Ok(Self { vm_name, provider })
+        Ok(Self {
+            _vm_name: vm_name,
+            provider,
+        })
     }
 }
 
@@ -39,7 +42,7 @@ impl Drop for TestFixture {
 fn test_tart_ssh_path_integration() -> Result<()> {
     // Setup
     let fixture = TestFixture::new()?;
-    fixture.provider.create(None)?;
+    fixture.provider.create()?;
 
     let workspace_path = fixture.provider.get_sync_directory();
     let test_dir_name = "test_dir";

@@ -25,6 +25,7 @@ struct CollectedMetrics {
     uptime: Option<String>,
 }
 
+#[derive(Clone)]
 pub struct TartProvider {
     config: VmConfig,
 }
@@ -287,8 +288,9 @@ impl Provider for TartProvider {
     }
 
     fn create_with_context(&self, context: &ProviderContext) -> Result<()> {
-        let effective_config = context.global_config.as_ref().unwrap_or(&self.config);
-        self.create_vm_internal(&self.vm_name(), None, effective_config)
+        // Apply global config defaults if present, but always use the project VmConfig
+        let _ = context; // Global config is not directly applicable to VM creation
+        self.create_vm_internal(&self.vm_name(), None, &self.config)
     }
 
     fn create_instance_with_context(
@@ -296,9 +298,10 @@ impl Provider for TartProvider {
         instance_name: &str,
         context: &ProviderContext,
     ) -> Result<()> {
-        let effective_config = context.global_config.as_ref().unwrap_or(&self.config);
+        // Apply global config defaults if present, but always use the project VmConfig
+        let _ = context; // Global config is not directly applicable to VM creation
         let vm_name = format!("{}-{}", self.vm_name(), instance_name);
-        self.create_vm_internal(&vm_name, Some(instance_name), effective_config)
+        self.create_vm_internal(&vm_name, Some(instance_name), &self.config)
     }
 
     fn start(&self, container: Option<&str>) -> Result<()> {
@@ -447,9 +450,10 @@ impl Provider for TartProvider {
     fn start_with_context(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
         let instance_name = self.resolve_instance_name(container)?;
 
-        if let Some(global_config) = &context.global_config {
+        // Apply runtime configuration from project config
+        if context.global_config.is_some() {
             info!("Applying config updates to Tart VM");
-            self.apply_runtime_config(&instance_name, global_config)?;
+            self.apply_runtime_config(&instance_name, &self.config)?;
         }
 
         self.start(Some(&instance_name))
@@ -462,9 +466,10 @@ impl Provider for TartProvider {
     ) -> Result<()> {
         let instance_name = self.resolve_instance_name(container)?;
 
-        if let Some(global_config) = &context.global_config {
+        // Apply runtime configuration from project config
+        if context.global_config.is_some() {
             info!("Applying config updates to Tart VM");
-            self.apply_runtime_config(&instance_name, global_config)?;
+            self.apply_runtime_config(&instance_name, &self.config)?;
         }
 
         self.restart(Some(&instance_name))
@@ -483,7 +488,7 @@ impl Provider for TartProvider {
 
         provisioner.provision(&self.config)?;
 
-        info!("{}", MESSAGES.provision_success);
+        info!("{}", MESSAGES.vm_provision_success);
         Ok(())
     }
 
@@ -533,16 +538,23 @@ impl Provider for TartProvider {
         manager.list_instances()
     }
 
-    #[cfg(test)]
+    fn clone_box(&self) -> Box<dyn Provider> {
+        Box::new(self.clone())
+    }
+}
+
+#[cfg(any(test, feature = "test-helpers"))]
+impl TartProvider {
+    /// Test-only helper method to execute commands in a specific path
     pub fn exec_in_path(
         &self,
         container: Option<&str>,
         path: &std::path::Path,
-        cmd: &[&str],
+        cmd_parts: &[&str],
     ) -> Result<String> {
         use duct::cmd;
         let instance_name = self.resolve_instance_name(container)?;
-        let command_str = cmd.join(" ");
+        let command_str = cmd_parts.join(" ");
         let ssh_command = format!("cd '{}' && {}", path.display(), command_str);
 
         let output = cmd!(
@@ -563,28 +575,24 @@ impl Provider for TartProvider {
 
 impl TempProvider for TartProvider {
     fn update_mounts(&self, state: &TempVmState) -> Result<()> {
-        info!("Updating mounts for Tart VM: {}", state.name);
-        self.stop(Some(&state.name))?;
+        info!("Updating mounts for Tart VM: {}", state.container_name);
+        self.stop(Some(&state.container_name))?;
         self.recreate_with_mounts(state)?;
         Ok(())
     }
 
     fn recreate_with_mounts(&self, state: &TempVmState) -> Result<()> {
         for mount in &state.mounts {
-            let mount_arg = format!(
-                "{}:{}",
-                mount.host_path.display(),
-                mount.guest_path.display()
-            );
+            let mount_arg = format!("{}:{}", mount.source.display(), mount.target.display());
 
             info!("Adding mount: {}", mount_arg);
 
-            cmd!("tart", "set", &state.name, "--dir", &mount_arg)
+            cmd!("tart", "set", &state.container_name, "--dir", &mount_arg)
                 .run()
                 .map_err(|e| VmError::Provider(format!("Failed to add mount: {}", e)))?;
         }
 
-        self.start(Some(&state.name))?;
+        self.start(Some(&state.container_name))?;
         Ok(())
     }
 

@@ -5,16 +5,18 @@ use vm_config::detector::git::GitConfig;
 #[test]
 fn test_gather_build_args_host_integration() {
     let temp_dir = tempfile::tempdir().unwrap();
-    let mut config = VmConfig::default();
-    config.git_config = Some(GitConfig {
-        user_name: Some("Test User".to_string()),
-        user_email: Some("test@example.com".to_string()),
+    let config = VmConfig {
+        git_config: Some(GitConfig {
+            user_name: Some("Test User".to_string()),
+            user_email: Some("test@example.com".to_string()),
+            ..Default::default()
+        }),
+        vm: Some(VmSettings {
+            timezone: Some("America/New_York".to_string()),
+            ..Default::default()
+        }),
         ..Default::default()
-    });
-    config.vm = Some(VmSettings {
-        timezone: Some("America/New_York".to_string()),
-        ..Default::default()
-    });
+    };
 
     let temp_path = temp_dir.path().to_path_buf();
     let build_ops = BuildOperations::new(&config, &temp_path);

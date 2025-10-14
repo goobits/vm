@@ -13,6 +13,7 @@ fn is_docker_available() -> bool {
 }
 
 #[test]
+#[ignore] // Ignored by default: Creates real Docker containers. Run with `--ignored` to execute.
 fn test_ssh_refresh_mounts() -> Result<(), Box<dyn std::error::Error>> {
     if !is_docker_available() {
         eprintln!("⚠️  Skipping test: Docker daemon not available");
@@ -60,12 +61,17 @@ fn test_ssh_refresh_mounts() -> Result<(), Box<dyn std::error::Error>> {
 project:
   name: ssh-refresh-test
 provider: docker
+vm:
+  user: testuser
 "#;
     fs::write(repo_path.join("vm.yaml"), vm_yaml)?;
 
     // 3. Create VM
-    let mut cmd = Command::cargo_bin("vm")?;
-    cmd.arg("create").current_dir(repo_path).assert().success();
+    Command::cargo_bin("vm")?
+        .arg("create")
+        .current_dir(repo_path)
+        .assert()
+        .success();
 
     // 4. Add NEW worktree
     Command::new("git")
@@ -75,8 +81,7 @@ provider: docker
         .success();
 
     // 5. SSH with refresh
-    let mut cmd = Command::cargo_bin("vm")?;
-    let output = cmd
+    let output = Command::cargo_bin("vm")?
         .arg("ssh")
         .arg("--force-refresh")
         .current_dir(repo_path)
@@ -84,8 +89,7 @@ provider: docker
     assert!(output.status.success());
 
     // 6. Verify new worktree is mounted
-    let mut cmd = Command::cargo_bin("vm")?;
-    let output = cmd
+    let output = Command::cargo_bin("vm")?
         .arg("exec")
         .arg("--")
         .arg("ls")
@@ -96,8 +100,8 @@ provider: docker
     assert!(stdout.contains("feature-branch"));
 
     // Cleanup
-    let mut cmd = Command::cargo_bin("vm")?;
-    cmd.arg("destroy")
+    Command::cargo_bin("vm")?
+        .arg("destroy")
         .arg("--force")
         .current_dir(repo_path)
         .assert()

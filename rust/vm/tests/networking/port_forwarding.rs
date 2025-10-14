@@ -53,10 +53,11 @@ impl TestFixture {
     /// Runs a `vm` command within the temporary project directory and asserts success.
     /// This should be used for the main test logic.
     fn run_vm_command(&self, args: &[&str]) -> Result<()> {
-        let mut cmd = Command::cargo_bin("vm")?;
-        cmd.current_dir(self.path());
-        cmd.args(args);
-        cmd.assert().success();
+        Command::cargo_bin("vm")?
+            .args(args)
+            .current_dir(self.path())
+            .assert()
+            .success();
         Ok(())
     }
 
@@ -91,6 +92,7 @@ impl Drop for TestFixture {
 }
 
 #[test]
+#[ignore] // Ignored by default: Creates real Docker containers. Run with `--ignored` to execute.
 fn test_port_forwarding_single_port() -> Result<()> {
     require_docker!();
 
@@ -107,6 +109,7 @@ project:
 vm:
   cpus: 1
   memory: 1024
+  user: testuser
 ports:
   mappings:
     - host: 3456
@@ -136,6 +139,7 @@ ports:
 }
 
 #[test]
+#[ignore] // Ignored by default: Creates real Docker containers. Run with `--ignored` to execute.
 fn test_port_forwarding_multiple_ports() -> Result<()> {
     require_docker!();
 
@@ -152,6 +156,7 @@ project:
 vm:
   cpus: 1
   memory: 1024
+  user: testuser
 ports:
   mappings:
     - host: 3457
@@ -214,6 +219,7 @@ project:
 vm:
   cpus: 1
   memory: 1024
+  user: testuser
 ports:
   mappings:
     - host: 3333

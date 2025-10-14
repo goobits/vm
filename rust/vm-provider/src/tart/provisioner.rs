@@ -1,6 +1,5 @@
 use duct::cmd;
-use log::{info, warn};
-use std::path::Path;
+use tracing::{info, warn};
 use vm_config::config::VmConfig;
 use vm_core::error::{Result, VmError};
 
@@ -43,7 +42,7 @@ impl TartProvisioner {
 
         info!("Waiting for SSH to be ready...");
 
-        for attempt in 1..=30 {
+        for _attempt in 1..=30 {
             let result = cmd!("tart", "ssh", &self.instance_name, "--", "echo", "ready")
                 .stderr_null()
                 .stdout_null()
@@ -79,10 +78,9 @@ impl TartProvisioner {
         Ok(())
     }
 
-    fn detect_framework(&self, config: &VmConfig) -> Result<String> {
-        if let Some(framework) = &config.framework {
-            return Ok(framework.clone());
-        }
+    fn detect_framework(&self, _config: &VmConfig) -> Result<String> {
+        // Framework detection is now automatic based on project files
+        // VmConfig no longer has a direct framework field
 
         let detection_script = r#"
             if [ -f "package.json" ]; then echo "nodejs"
@@ -103,7 +101,11 @@ impl TartProvisioner {
     /// over a more secure, but complex, installation method.
     fn provision_nodejs(&self, config: &VmConfig) -> Result<()> {
         info!("Installing Node.js dependencies");
-        let node_version = config.runtime_version.as_deref().unwrap_or("20");
+        let node_version = config
+            .versions
+            .as_ref()
+            .and_then(|v| v.node.as_deref())
+            .unwrap_or("20");
 
         let install_script = format!(
             r#"
@@ -132,7 +134,11 @@ impl TartProvisioner {
     /// over a more secure, but complex, installation method.
     fn provision_python(&self, config: &VmConfig) -> Result<()> {
         info!("Installing Python dependencies");
-        let python_version = config.runtime_version.as_deref().unwrap_or("3.11");
+        let python_version = config
+            .versions
+            .as_ref()
+            .and_then(|v| v.python.as_deref())
+            .unwrap_or("3.11");
 
         let install_script = format!(
             r#"
@@ -175,21 +181,32 @@ impl TartProvisioner {
     /// Note: This assumes a Debian-based guest OS (like Ubuntu) because it uses `apt-get`.
     /// This is a reasonable default as the default Tart image is Ubuntu-based.
     fn provision_databases(&self, config: &VmConfig) -> Result<()> {
-        let services = config.services.as_ref();
-
-        if services
-            .map(|s| s.postgres.unwrap_or(false))
+        // Check if postgres service is enabled
+        if config
+            .services
+            .get("postgresql")
+            .or_else(|| config.services.get("postgres"))
+            .map(|s| s.enabled)
             .unwrap_or(false)
         {
             self.install_postgresql()?;
         }
 
-        if services.map(|s| s.redis.unwrap_or(false)).unwrap_or(false) {
+        // Check if redis service is enabled
+        if config
+            .services
+            .get("redis")
+            .map(|s| s.enabled)
+            .unwrap_or(false)
+        {
             self.install_redis()?;
         }
 
-        if services
-            .map(|s| s.mongodb.unwrap_or(false))
+        // Check if mongodb service is enabled
+        if config
+            .services
+            .get("mongodb")
+            .map(|s| s.enabled)
             .unwrap_or(false)
         {
             self.install_mongodb()?;
