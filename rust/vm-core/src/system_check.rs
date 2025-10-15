@@ -1,3 +1,9 @@
+//! Provides functions for checking system resources, such as CPU cores and memory.
+//!
+//! This module is responsible for ensuring that the host system meets the minimum
+//! requirements for running the VM. It provides cross-platform functions for
+//! querying system information.
+
 use crate::error::{Result, VmError};
 use crate::vm_error;
 use anyhow::Context;
@@ -6,6 +12,14 @@ const MIN_CPU_CORES: u32 = 2;
 const MIN_MEMORY_GB: u64 = 4;
 
 /// Checks if the system meets the minimum resource requirements.
+///
+/// This function verifies that the system has a sufficient number of CPU cores and
+/// a minimum amount of memory. If the requirements are not met, it returns an error.
+///
+/// # Returns
+///
+/// A `Result` which is `Ok` if the system meets the requirements, or an `Err` with
+/// a `VmError` if the requirements are not met.
 pub fn check_system_resources() -> Result<()> {
     // Check CPU cores
     let cpu_cores = get_cpu_core_count()?;
@@ -32,6 +46,14 @@ pub fn check_system_resources() -> Result<()> {
     Ok(())
 }
 
+/// Returns the total amount of system memory in gigabytes.
+///
+/// This function is implemented for Linux, macOS, and Windows.
+///
+/// # Returns
+///
+/// A `Result` containing the total memory in GB, or a `VmError` if the
+/// memory could not be determined.
 #[cfg(target_os = "linux")]
 pub fn get_total_memory_gb() -> Result<u64> {
     let meminfo = std::fs::read_to_string("/proc/meminfo")
@@ -54,6 +76,14 @@ pub fn get_total_memory_gb() -> Result<u64> {
 }
 
 #[cfg(target_os = "linux")]
+/// Returns the number of physical CPU cores.
+///
+/// This function is implemented for Linux, macOS, and Windows.
+///
+/// # Returns
+///
+/// A `Result` containing the number of CPU cores, or a `VmError` if the
+/// number of cores could not be determined.
 pub fn get_cpu_core_count() -> Result<u32> {
     let cpuinfo = std::fs::read_to_string("/proc/cpuinfo")
         .context("Failed to read /proc/cpuinfo for CPU detection")?;
@@ -65,6 +95,14 @@ pub fn get_cpu_core_count() -> Result<u32> {
 }
 
 #[cfg(target_os = "macos")]
+/// Returns the total amount of system memory in gigabytes.
+///
+/// This function is implemented for Linux, macOS, and Windows.
+///
+/// # Returns
+///
+/// A `Result` containing the total memory in GB, or a `VmError` if the
+/// memory could not be determined.
 pub fn get_total_memory_gb() -> Result<u64> {
     let output = std::process::Command::new("sysctl")
         .args(["-n", "hw.memsize"])
@@ -84,6 +122,14 @@ pub fn get_total_memory_gb() -> Result<u64> {
 }
 
 #[cfg(target_os = "macos")]
+/// Returns the number of physical CPU cores.
+///
+/// This function is implemented for Linux, macOS, and Windows.
+///
+/// # Returns
+///
+/// A `Result` containing the number of CPU cores, or a `VmError` if the
+/// number of cores could not be determined.
 pub fn get_cpu_core_count() -> Result<u32> {
     let output = std::process::Command::new("sysctl")
         .args(["-n", "hw.physicalcpu"])
@@ -103,6 +149,14 @@ pub fn get_cpu_core_count() -> Result<u32> {
 }
 
 #[cfg(target_os = "windows")]
+/// Returns the total amount of system memory in gigabytes.
+///
+/// This function is implemented for Linux, macOS, and Windows.
+///
+/// # Returns
+///
+/// A `Result` containing the total memory in GB, or a `VmError` if the
+/// memory could not be determined.
 pub fn get_total_memory_gb() -> Result<u64> {
     let mut sys = sysinfo::System::new_all();
     sys.refresh_memory();
@@ -110,6 +164,14 @@ pub fn get_total_memory_gb() -> Result<u64> {
 }
 
 #[cfg(target_os = "windows")]
+/// Returns the number of physical CPU cores.
+///
+/// This function is implemented for Linux, macOS, and Windows.
+///
+/// # Returns
+///
+/// A `Result` containing the number of CPU cores, or a `VmError` if the
+/// number of cores could not be determined.
 pub fn get_cpu_core_count() -> Result<u32> {
     let mut sys = sysinfo::System::new_all();
     sys.refresh_cpu();

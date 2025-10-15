@@ -5,7 +5,17 @@
 //! and formatting. All user-facing output is delegated to the `tracing`
 //! crate to allow for structured logging.
 
-// Simple template formatting macro for vm-core (no external dependencies)
+/// A simple string formatting macro that replaces placeholders with values.
+///
+/// This macro takes a template string and a list of key-value pairs, and replaces
+/// occurrences of `{key}` in the template with the corresponding value.
+///
+/// # Example
+///
+/// ```
+/// let msg = simple_msg_format!("Hello, {name}!", name = "world");
+/// assert_eq!(msg, "Hello, world!");
+/// ```
 #[macro_export]
 macro_rules! simple_msg_format {
     ($template:expr) => {
@@ -22,6 +32,7 @@ macro_rules! simple_msg_format {
     };
 }
 
+/// A macro for printing a formatted line to standard output, with a consistent style.
 #[macro_export]
 macro_rules! vm_println {
     () => {
@@ -32,6 +43,7 @@ macro_rules! vm_println {
     }
 }
 
+/// A macro for printing a formatted error message to standard error.
 #[macro_export]
 macro_rules! vm_error {
     ($($arg:tt)*) => {
@@ -39,6 +51,10 @@ macro_rules! vm_error {
     }
 }
 
+/// A macro for logging the status of a VM operation.
+///
+/// This macro provides a consistent format for logging the start, success, and failure
+/// of long-running operations.
 #[macro_export]
 macro_rules! vm_operation {
     (start $op:ident, name = $name:expr) => {
@@ -62,6 +78,10 @@ macro_rules! vm_operation {
     };
 }
 
+/// A macro for providing suggestions to the user.
+///
+/// This macro is used to give helpful hints to the user when a command fails or
+/// when they might be unsure of what to do next.
 #[macro_export]
 macro_rules! vm_suggest {
     (docker_check) => {
@@ -75,6 +95,7 @@ macro_rules! vm_suggest {
     };
 }
 
+/// A macro for displaying a hint along with an error message.
 #[macro_export]
 macro_rules! vm_error_hint {
     ($($arg:tt)*) => {
@@ -82,6 +103,7 @@ macro_rules! vm_error_hint {
     };
 }
 
+/// A macro for logging an error message with additional details.
 #[macro_export]
 macro_rules! vm_error_with_details {
     ($main:expr, $details:expr) => {
@@ -92,6 +114,7 @@ macro_rules! vm_error_with_details {
     };
 }
 
+/// A macro for logging a success message.
 #[macro_export]
 macro_rules! vm_success {
     ($($arg:tt)*) => {
@@ -99,6 +122,7 @@ macro_rules! vm_success {
     };
 }
 
+/// A macro for logging an informational message.
 #[macro_export]
 macro_rules! vm_info {
     ($($arg:tt)*) => {
@@ -106,6 +130,7 @@ macro_rules! vm_info {
     };
 }
 
+/// A macro for logging a warning message.
 #[macro_export]
 macro_rules! vm_warning {
     ($($arg:tt)*) => {
@@ -113,6 +138,7 @@ macro_rules! vm_warning {
     };
 }
 
+/// A macro for logging a progress message.
 #[macro_export]
 macro_rules! vm_progress {
     ($($arg:tt)*) => {
@@ -120,6 +146,10 @@ macro_rules! vm_progress {
     };
 }
 
+/// A debug macro that is only enabled in debug builds.
+///
+/// This macro is a wrapper around `tracing::debug` that includes the file and line number
+/// where it was called. It is compiled out in release builds.
 #[macro_export]
 macro_rules! vm_dbg {
     () => {

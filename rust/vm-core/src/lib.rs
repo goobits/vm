@@ -1,3 +1,11 @@
+//! # vm-core
+//!
+//! The `vm-core` crate provides the foundational building blocks for the Goobits VM command-line tool.
+//! It offers essential utilities for file system operations, command execution, error handling,
+//! system resource checking, and platform-specific path resolution. This crate is designed to be
+//! a dependency for other components in the VM workspace, offering a consistent and robust
+_//! toolkit for common tasks.
+
 pub mod command_stream;
 pub mod error;
 pub mod file_system;
