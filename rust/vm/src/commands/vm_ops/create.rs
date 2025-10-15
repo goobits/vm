@@ -151,10 +151,12 @@ pub async fn handle_create(
     if provider.supports_multi_instance() && instance.is_some() {
         let instance_name = match instance.as_deref() {
             Some(name) => name,
-            None => return Err(VmError::general(
-                std::io::Error::new(std::io::ErrorKind::NotFound, "Instance name not found"),
-                "Instance option was None, but was expected to be Some",
-            )),
+            None => {
+                return Err(VmError::general(
+                    std::io::Error::new(std::io::ErrorKind::NotFound, "Instance name not found"),
+                    "Instance option was None, but was expected to be Some",
+                ))
+            }
         };
         vm_println!(
             "{}",

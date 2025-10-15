@@ -29,7 +29,7 @@ These flags can be used with any command.
 ## Core Commands
 
 ### `vm create`
-Create and provision a new VM.
+Create and apply a new VM.
 ```bash
 vm create [--force]
 ```
@@ -52,10 +52,10 @@ Restart a VM.
 vm restart
 ```
 
-### `vm provision`
-Re-run the provisioning process on an existing VM.
+### `vm apply`
+Re-run the applying process on an existing VM.
 ```bash
-vm provision
+vm apply
 ```
 
 ### `vm destroy`

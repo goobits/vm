@@ -138,10 +138,10 @@ mod tests {
     #[test]
     fn test_different_keys_fail_decryption() {
         let salt = generate_salt();
-        let key1 = EncryptionKey::derive_from_password("password1", &salt)
-            .expect("should derive key 1");
-        let key2 = EncryptionKey::derive_from_password("password2", &salt)
-            .expect("should derive key 2");
+        let key1 =
+            EncryptionKey::derive_from_password("password1", &salt).expect("should derive key 1");
+        let key2 =
+            EncryptionKey::derive_from_password("password2", &salt).expect("should derive key 2");
 
         let plaintext = "secret";
         let encrypted = key1.encrypt(plaintext).expect("should encrypt with key 1");

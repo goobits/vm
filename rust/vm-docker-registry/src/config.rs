@@ -220,8 +220,7 @@ mod tests {
     #[test]
     fn test_generate_nginx_config() {
         let config = RegistryConfig::default();
-        let nginx_config =
-            generate_nginx_config(&config).expect("should generate nginx config");
+        let nginx_config = generate_nginx_config(&config).expect("should generate nginx config");
 
         assert!(nginx_config.contains("upstream registry"));
         assert!(nginx_config.contains("upstream dockerhub"));
@@ -267,8 +266,8 @@ mod tests {
         assert!(temp_dir.path().join("docker-compose.yml").exists());
 
         // Verify nginx config content
-        let nginx_content = fs::read_to_string(temp_dir.path().join("nginx.conf"))
-            .expect("should read nginx.conf");
+        let nginx_content =
+            fs::read_to_string(temp_dir.path().join("nginx.conf")).expect("should read nginx.conf");
         assert!(nginx_content.contains("upstream registry"));
     }
 }

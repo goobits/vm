@@ -385,9 +385,9 @@ pub enum Command {
         #[arg()]
         container: Option<String>,
     },
-    /// Reconfigure your environment
-    Provision {
-        /// Container name, ID, or project name to provision
+    /// Apply configuration changes to your environment
+    Apply {
+        /// Container name, ID, or project name to apply changes to
         #[arg()]
         container: Option<String>,
     },

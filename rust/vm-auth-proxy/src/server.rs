@@ -336,8 +336,12 @@ mod tests {
 
     async fn create_test_server() -> (TestServer, String) {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
-        let store = SecretStore::new(temp_dir.path().to_path_buf()).expect("Failed to create SecretStore");
-        let auth_token = store.get_auth_token().expect("Failed to get auth token").to_string();
+        let store =
+            SecretStore::new(temp_dir.path().to_path_buf()).expect("Failed to create SecretStore");
+        let auth_token = store
+            .get_auth_token()
+            .expect("Failed to get auth token")
+            .to_string();
 
         let state = AppState {
             store: Arc::new(Mutex::new(store)),
@@ -353,7 +357,10 @@ mod tests {
             .route("/env/{vm_name}", get(get_environment))
             .with_state(state);
 
-        (TestServer::new(app).expect("Failed to create test server"), auth_token)
+        (
+            TestServer::new(app).expect("Failed to create test server"),
+            auth_token,
+        )
     }
 
     #[tokio::test]

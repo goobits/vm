@@ -148,12 +148,7 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
             )
         })?;
         let extract_output = Command::new("tar")
-            .args([
-                "-xzf",
-                archive_path_str,
-                "-C",
-                temp_dir_str,
-            ])
+            .args(["-xzf", archive_path_str, "-C", temp_dir_str])
             .output()?;
 
         if !extract_output.status.success() {

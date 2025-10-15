@@ -207,7 +207,12 @@ async fn status_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse
     info!("{}", data_dir_info);
 
     let mut headers = HeaderMap::new();
-    headers.insert(header::CONTENT_TYPE, "application/json".parse().expect("static header value is valid"));
+    headers.insert(
+        header::CONTENT_TYPE,
+        "application/json"
+            .parse()
+            .expect("static header value is valid"),
+    );
 
     (StatusCode::OK, headers, response)
 }
@@ -216,7 +221,12 @@ async fn health_handler() -> impl IntoResponse {
     let response = r#"{"status": "healthy"}"#;
 
     let mut headers = HeaderMap::new();
-    headers.insert(header::CONTENT_TYPE, "application/json".parse().expect("static header value is valid"));
+    headers.insert(
+        header::CONTENT_TYPE,
+        "application/json"
+            .parse()
+            .expect("static header value is valid"),
+    );
 
     (StatusCode::OK, headers, response)
 }
@@ -229,14 +239,24 @@ async fn list_packages_handler(State(state): State<Arc<AppState>>) -> impl IntoR
         Ok(packages) => {
             let json = serde_json::to_string(&packages).unwrap_or_else(|_| "{}".to_string());
             let mut headers = HeaderMap::new();
-            headers.insert(header::CONTENT_TYPE, "application/json".parse().expect("static header value is valid"));
+            headers.insert(
+                header::CONTENT_TYPE,
+                "application/json"
+                    .parse()
+                    .expect("static header value is valid"),
+            );
             (StatusCode::OK, headers, json)
         }
         Err(e) => {
             error!("Failed to list packages: {}", e);
             let error_response = format!(r#"{{"error": "{e}"}}"#);
             let mut headers = HeaderMap::new();
-            headers.insert(header::CONTENT_TYPE, "application/json".parse().expect("static header value is valid"));
+            headers.insert(
+                header::CONTENT_TYPE,
+                "application/json"
+                    .parse()
+                    .expect("static header value is valid"),
+            );
             (StatusCode::INTERNAL_SERVER_ERROR, headers, error_response)
         }
     }
@@ -247,7 +267,12 @@ async fn shutdown_handler() -> impl IntoResponse {
     let response = r#"{"status": "shutdown_initiated"}"#;
 
     let mut headers = HeaderMap::new();
-    headers.insert(header::CONTENT_TYPE, "application/json".parse().expect("static header value is valid"));
+    headers.insert(
+        header::CONTENT_TYPE,
+        "application/json"
+            .parse()
+            .expect("static header value is valid"),
+    );
 
     (StatusCode::OK, headers, response)
 }
@@ -265,10 +290,15 @@ async fn setup_script_handler(Query(params): Query<SetupQuery>) -> Response {
     let script = serve_setup_script(registry, port);
 
     let mut headers = HeaderMap::new();
-    headers.insert(header::CONTENT_TYPE, "text/plain".parse().expect("static header value is valid"));
+    headers.insert(
+        header::CONTENT_TYPE,
+        "text/plain".parse().expect("static header value is valid"),
+    );
     headers.insert(
         header::CONTENT_DISPOSITION,
-        "attachment; filename=\"setup.sh\"".parse().expect("static header value is valid"),
+        "attachment; filename=\"setup.sh\""
+            .parse()
+            .expect("static header value is valid"),
     );
 
     (StatusCode::OK, headers, script).into_response()

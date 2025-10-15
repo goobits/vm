@@ -218,8 +218,8 @@ mod tests {
             Value::String("docker".into()),
         );
 
-        let result = format_yaml_value(&Value::Mapping(input))
-            .expect("should format and order YAML value");
+        let result =
+            format_yaml_value(&Value::Mapping(input)).expect("should format and order YAML value");
 
         if let Value::Mapping(map) = result {
             let keys: Vec<_> = map.keys().filter_map(|k| k.as_str()).collect();

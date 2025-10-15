@@ -106,13 +106,13 @@ pub struct Messages {
     pub vm_restart_troubleshooting: &'static str,
 
     // ============================================================================
-    // VM Provision Messages
+    // VM Apply Messages
     // ============================================================================
-    pub vm_provision_header: &'static str,
-    pub vm_provision_hint: &'static str,
-    pub vm_provision_progress: &'static str,
-    pub vm_provision_success: &'static str,
-    pub vm_provision_troubleshooting: &'static str,
+    pub vm_apply_header: &'static str,
+    pub vm_apply_hint: &'static str,
+    pub vm_apply_progress: &'static str,
+    pub vm_apply_success: &'static str,
+    pub vm_apply_troubleshooting: &'static str,
 
     // ============================================================================
     // VM Exec Messages
@@ -437,7 +437,7 @@ pub struct Messages {
     pub docker_ssh_info: &'static str,
 
     // ============================================================================
-    // Progress/Provisioning Messages
+    // Progress/Configuration application Messages
     // ============================================================================
     pub progress_creating_vm: &'static str,
     pub progress_provisioning_complete: &'static str,
@@ -688,13 +688,13 @@ pub const MESSAGES: Messages = Messages {
     vm_restart_troubleshooting: "\n❌ Failed to restart '{name}'\n   Error: {error}",
 
     // ============================================================================
-    // VM Provision Messages
+    // VM Apply Messages
     // ============================================================================
-    vm_provision_header: "🔧 Re-provisioning '{name}'\n",
-    vm_provision_hint: "\n💡 Changes applied to running container",
-    vm_provision_progress: "  ✓ Updating packages\n  ✓ Installing dependencies\n  ✓ Configuring services\n  ✓ Restarting services",
-    vm_provision_success: "\n✅ Provisioning complete",
-    vm_provision_troubleshooting: "\n❌ Provisioning failed\n   Error: {error}\n\n💡 Check logs: vm logs",
+    vm_apply_header: "🔧 Applying configuration to '{name}'\n",
+    vm_apply_hint: "\n💡 Changes applied to running container",
+    vm_apply_progress: "  ✓ Updating packages\n  ✓ Installing dependencies\n  ✓ Configuring services\n  ✓ Restarting services",
+    vm_apply_success: "\n✅ Configuration application complete",
+    vm_apply_troubleshooting: "\n❌ Configuration application failed\n   Error: {error}\n\n💡 Check logs: vm logs",
 
     // ============================================================================
     // VM Exec Messages
@@ -1019,10 +1019,10 @@ pub const MESSAGES: Messages = Messages {
     docker_ssh_info: "\n  User:  {user}\n  Path:  {path}\n  Shell: {shell}\n\n💡 Exit with: exit or Ctrl-D\n",
 
     // ============================================================================
-    // Progress/Provisioning Messages
+    // Progress/Configuration application Messages
     // ============================================================================
     progress_creating_vm: "Creating VM...",
-    progress_provisioning_complete: "\n✅ Provisioning complete",
+    progress_provisioning_complete: "\n✅ Configuration application complete",
     progress_ansible_error: "\n❌ Error: {error}",
 
     // Init
@@ -1141,7 +1141,7 @@ pub const MESSAGES: Messages = Messages {
     provider_logs_expected_location: "💡 Expected location: ~/.tart/vms/{name}/app.log",
     provider_logs_showing: "📜 Showing Tart VM logs from: {path}",
     provider_vm_not_found: "❌ VM '{name}' not found",
-    provider_provisioning_unsupported: "⚠️  Provisioning not supported for Tart VMs",
+    provider_provisioning_unsupported: "⚠️  Configuration application not supported for Tart VMs",
     provider_provisioning_explanation:
         "ℹ️  Tart VMs use pre-built images and don't support dynamic provisioning",
 

@@ -108,7 +108,7 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
         | Command::Stop { .. }
         | Command::Restart { .. }
         | Command::Destroy { .. }
-        | Command::Provision { .. } => {
+        | Command::Apply { .. } => {
             vm_println!("{}", MESSAGES.vm_dry_run_header);
             vm_println!(
                 "{}",
@@ -296,8 +296,8 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             )
             .await
         }
-        Command::Provision { container } => {
-            vm_ops::handle_provision(provider, container.as_deref(), config.clone())
+        Command::Apply { container } => {
+            vm_ops::handle_apply(provider, container.as_deref(), config.clone())
         }
         Command::List {
             all_providers,

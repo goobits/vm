@@ -236,7 +236,10 @@ impl ProgressParser for AnsibleProgressParser {
                 subtasks: Vec::new(),
             });
 
-            *self.current_task.lock().expect("Mutex should not be poisoned") = Some(task_name);
+            *self
+                .current_task
+                .lock()
+                .expect("Mutex should not be poisoned") = Some(task_name);
             drop(tasks);
             self.update_display();
         }

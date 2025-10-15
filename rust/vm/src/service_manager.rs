@@ -306,13 +306,19 @@ impl ServiceManager {
 
     /// Get service status information
     pub fn get_service_status(&self, service_name: &str) -> Option<ServiceState> {
-        self.state.lock().ok().and_then(|guard| guard.get(service_name).cloned())
+        self.state
+            .lock()
+            .ok()
+            .and_then(|guard| guard.get(service_name).cloned())
     }
 
     /// Get all service statuses
     #[allow(dead_code)]
     pub fn get_all_service_statuses(&self) -> HashMap<String, ServiceState> {
-        self.state.lock().map(|guard| guard.clone()).unwrap_or_default()
+        self.state
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_default()
     }
 
     /// Start a service

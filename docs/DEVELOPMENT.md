@@ -150,7 +150,7 @@ The `vm/tests/vm_operations_integration_tests.rs` file provides comprehensive te
 - `start` - Starting VMs and verifying running state
 - `stop` - Stopping VMs and verifying stopped state (including force-kill)
 - `restart` - Restarting VMs and state transitions
-- `provision` - Re-running provisioning on existing VMs
+- `apply` - Re-running applying on existing VMs
 - `list` - Listing all VMs
 - `destroy` - Destroying VMs and cleanup verification
 - `ssh` - SSH connection handling

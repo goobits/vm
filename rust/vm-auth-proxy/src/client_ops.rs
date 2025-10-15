@@ -16,9 +16,9 @@ fn parse_secret_scope(scope: Option<&str>) -> Result<SecretScope> {
     match scope {
         Some("global") | None => Ok(SecretScope::Global),
         Some(s) if s.starts_with("project:") => {
-            let project_name = s.strip_prefix("project:").ok_or_else(|| {
-                anyhow!("Invalid project scope format, expected 'project:NAME'")
-            })?;
+            let project_name = s
+                .strip_prefix("project:")
+                .ok_or_else(|| anyhow!("Invalid project scope format, expected 'project:NAME'"))?;
             Ok(SecretScope::Project(project_name.to_string()))
         }
         Some(s) if s.starts_with("instance:") => {

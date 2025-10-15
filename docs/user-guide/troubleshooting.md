@@ -212,7 +212,7 @@ vm exec "systemctl status postgresql"
 vm exec "systemctl status redis"
 
 # Restart services
-vm provision  # Re-run provisioning scripts
+vm apply  # Re-run applying scripts
 ```
 
 ## 🗄️ Database Issues

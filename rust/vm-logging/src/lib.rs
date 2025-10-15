@@ -127,8 +127,16 @@ pub fn init_subscriber() -> Option<WorkerGuard> {
 
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new(&log_level))
-        .add_directive("tokio=warn".parse().expect("hardcoded directive should be valid"))
-        .add_directive("hyper=warn".parse().expect("hardcoded directive should be valid"));
+        .add_directive(
+            "tokio=warn"
+                .parse()
+                .expect("hardcoded directive should be valid"),
+        )
+        .add_directive(
+            "hyper=warn"
+                .parse()
+                .expect("hardcoded directive should be valid"),
+        );
 
     let tag_filters = if log_tags.is_empty() {
         Vec::new()

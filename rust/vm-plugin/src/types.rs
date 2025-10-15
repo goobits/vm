@@ -168,8 +168,7 @@ depends_on:
         let preset = PluginType::Preset;
         let service = PluginType::Service;
 
-        let preset_yaml =
-            serde_yaml_ng::to_string(&preset).expect("should serialize preset type");
+        let preset_yaml = serde_yaml_ng::to_string(&preset).expect("should serialize preset type");
         let service_yaml =
             serde_yaml_ng::to_string(&service).expect("should serialize service type");
 

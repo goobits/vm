@@ -138,8 +138,10 @@ pub mod test_utils {
         let data_dir = temp_dir.path().to_path_buf();
 
         // Create required directories
-        std::fs::create_dir_all(data_dir.join("cargo/crates")).expect("Failed to create cargo crates dir");
-        std::fs::create_dir_all(data_dir.join("cargo/index")).expect("Failed to create cargo index dir");
+        std::fs::create_dir_all(data_dir.join("cargo/crates"))
+            .expect("Failed to create cargo crates dir");
+        std::fs::create_dir_all(data_dir.join("cargo/index"))
+            .expect("Failed to create cargo index dir");
 
         // Use disabled client to avoid TLS/Keychain prompts
         let upstream_client = Arc::new(UpstreamClient::disabled());
@@ -581,7 +583,8 @@ mod security_tests {
                 new_file_path.exists(),
                 "File should be created when appending"
             );
-            let file_content = std::fs::read_to_string(&new_file_path).expect("Failed to read file");
+            let file_content =
+                std::fs::read_to_string(&new_file_path).expect("Failed to read file");
             assert!(
                 file_content.contains("first line content"),
                 "File should contain appended content"
@@ -670,7 +673,8 @@ mod security_tests {
             let file_path = temp_dir.path().join("newline_test.txt");
 
             // Create initial file without trailing newline
-            std::fs::write(&file_path, "line without newline").expect("Failed to write initial file");
+            std::fs::write(&file_path, "line without newline")
+                .expect("Failed to write initial file");
 
             // Append content
             let result = storage::append_to_file(&file_path, b"new line").await;

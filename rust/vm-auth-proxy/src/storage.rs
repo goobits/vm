@@ -220,8 +220,8 @@ mod tests {
     #[test]
     fn test_secret_store_creation() {
         let temp_dir = TempDir::new().expect("should create temp dir");
-        let store = SecretStore::new(temp_dir.path().to_path_buf())
-            .expect("should create secret store");
+        let store =
+            SecretStore::new(temp_dir.path().to_path_buf()).expect("should create secret store");
 
         assert!(temp_dir.path().join(SECRETS_FILE).exists());
         assert!(store.get_auth_token().is_some());
@@ -231,8 +231,8 @@ mod tests {
     #[test]
     fn test_add_and_get_secret() {
         let temp_dir = TempDir::new().expect("should create temp dir");
-        let mut store = SecretStore::new(temp_dir.path().to_path_buf())
-            .expect("should create secret store");
+        let mut store =
+            SecretStore::new(temp_dir.path().to_path_buf()).expect("should create secret store");
 
         // Add a secret
         store
@@ -262,8 +262,8 @@ mod tests {
     #[test]
     fn test_remove_secret() {
         let temp_dir = TempDir::new().expect("should create temp dir");
-        let mut store = SecretStore::new(temp_dir.path().to_path_buf())
-            .expect("should create secret store");
+        let mut store =
+            SecretStore::new(temp_dir.path().to_path_buf()).expect("should create secret store");
 
         // Add and remove a secret
         store
@@ -287,8 +287,8 @@ mod tests {
     #[test]
     fn test_env_vars_for_vm() {
         let temp_dir = TempDir::new().expect("should create temp dir");
-        let mut store = SecretStore::new(temp_dir.path().to_path_buf())
-            .expect("should create secret store");
+        let mut store =
+            SecretStore::new(temp_dir.path().to_path_buf()).expect("should create secret store");
 
         // Add secrets with different scopes
         store

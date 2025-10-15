@@ -282,15 +282,15 @@ pub async fn handle_restart(
     Ok(())
 }
 
-/// Handle VM provisioning
-pub fn handle_provision(
+/// Apply configuration changes to VM
+pub fn handle_apply(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     config: VmConfig,
 ) -> VmResult<()> {
-    let span = info_span!("vm_operation", operation = "provision");
+    let span = info_span!("vm_operation", operation = "apply");
     let _enter = span.enter();
-    debug!("Re-running VM provisioning");
+    debug!("Applying configuration changes to VM");
 
     let vm_name = config
         .project
@@ -299,19 +299,19 @@ pub fn handle_provision(
         .map(|s| s.as_str())
         .unwrap_or("vm-project");
 
-    vm_println!("{}", msg!(MESSAGES.vm_provision_header, name = vm_name));
-    vm_println!("{}", MESSAGES.vm_provision_progress);
+    vm_println!("{}", msg!(MESSAGES.vm_apply_header, name = vm_name));
+    vm_println!("{}", MESSAGES.vm_apply_progress);
 
     match provider.provision(container) {
         Ok(()) => {
-            vm_println!("{}", MESSAGES.vm_provision_success);
-            vm_println!("{}", MESSAGES.vm_provision_hint);
+            vm_println!("{}", MESSAGES.vm_apply_success);
+            vm_println!("{}", MESSAGES.vm_apply_hint);
             Ok(())
         }
         Err(e) => {
             vm_println!(
                 "{}",
-                msg!(MESSAGES.vm_provision_troubleshooting, error = e.to_string())
+                msg!(MESSAGES.vm_apply_troubleshooting, error = e.to_string())
             );
             Err(VmError::from(e))
         }
