@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2025-10-15
+
+### Breaking Changes
+- **Renamed `vm provision` to `vm apply`** for better clarity and industry alignment
+  - The `provision` command has been renamed to `apply` to match conventions from Terraform and Kubernetes
+  - This better reflects the command's purpose: applying configuration changes to running containers
+  - **Migration**: Replace all instances of `vm provision` with `vm apply` in scripts and workflows
+  - All user-facing messages and documentation updated accordingly
+
+### Added
+- **Docker Network Configuration**: Selective container-to-container communication
+  - New `networking.networks: []` configuration in `vm.yaml`
+  - Containers can join one or more Docker networks for inter-container communication
+  - Networks are automatically created during `vm create` if they don't exist
+  - Network name validation (1-64 characters, alphanumeric with `-_` allowed)
+  - **Example use case**: Share a `backend-services` network between multiple projects
+  - Containers on the same network can communicate using container names as hostnames
+  - Updated docker-compose template to support custom network configuration
+
+### Changed
+- **Command naming**: `provision` → `apply` throughout codebase
+  - CLI command updated in vm/src/cli/mod.rs
+  - Handler function renamed from `handle_provision` to `handle_apply`
+  - All messages updated in vm-messages crate
+  - Documentation updated across all markdown files
+
+### Fixed
+- Improved error handling across multiple crates (eliminated `.unwrap()` and `.expect()` calls)
+- Enhanced test infrastructure for Docker availability checks
+
+### Documentation
+- Updated CLI reference with new `vm apply` command
+- Added network configuration examples and troubleshooting guides
+- Removed completed error handling proposal
+
+### Technical Improvements
+- Network validation enforces Docker naming conventions
+- Auto-creation of external Docker networks before container startup
+- Clean separation of network concerns in docker-compose generation
+- All tests passing (273 tests across workspace)
+
 ## [2.3.0] - 2025-10-12
 
 ### Added

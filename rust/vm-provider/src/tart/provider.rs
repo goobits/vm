@@ -488,7 +488,7 @@ impl Provider for TartProvider {
 
         provisioner.provision(&self.config)?;
 
-        info!("{}", MESSAGES.vm_provision_success);
+        info!("{}", MESSAGES.vm_apply_success);
         Ok(())
     }
 

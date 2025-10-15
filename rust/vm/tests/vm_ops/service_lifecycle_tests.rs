@@ -146,7 +146,7 @@ fn test_vm_restart_command() -> Result<()> {
 }
 
 #[test]
-fn test_vm_provision_command() -> Result<()> {
+fn test_vm_apply_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
 
@@ -164,11 +164,11 @@ fn test_vm_provision_command() -> Result<()> {
     fixture.run_vm_command(&["start"])?;
     assert!(fixture.wait_for_container_state("running", 30));
 
-    // Test provision command
-    let output = fixture.run_vm_command(&["provision"])?;
+    // Test apply command
+    let output = fixture.run_vm_command(&["apply"])?;
     assert!(
         output.status.success(),
-        "VM provision failed: {}",
+        "VM apply failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
