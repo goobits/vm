@@ -304,6 +304,48 @@ impl DockerOps {
 
         Ok(mounts.into_iter().map(|m| m.source).collect())
     }
+
+    /// Check if a Docker network exists by name.
+    pub fn network_exists(network_name: &str) -> Result<bool> {
+        let output = DockerCommand::new()
+            .subcommand("network")
+            .arg("ls")
+            .arg("--format")
+            .arg("{{.Name}}")
+            .execute_with_output()?;
+
+        Ok(output.lines().any(|line| line.trim() == network_name))
+    }
+
+    /// Create a Docker network with the specified name.
+    pub fn create_network(network_name: &str) -> Result<()> {
+        vm_dbg!("Creating Docker network: {}", network_name);
+
+        DockerCommand::new()
+            .subcommand("network")
+            .arg("create")
+            .arg(network_name)
+            .execute()
+            .map_err(|e| {
+                VmError::Internal(format!(
+                    "Failed to create Docker network '{}': {}",
+                    network_name, e
+                ))
+            })
+    }
+
+    /// Ensure all specified networks exist, creating them if necessary.
+    pub fn ensure_networks_exist(networks: &[String]) -> Result<()> {
+        for network in networks {
+            if !Self::network_exists(network)? {
+                vm_dbg!("Network '{}' does not exist, creating it...", network);
+                Self::create_network(network)?;
+            } else {
+                vm_dbg!("Network '{}' already exists", network);
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

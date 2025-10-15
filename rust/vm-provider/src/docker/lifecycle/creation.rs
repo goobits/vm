@@ -104,6 +104,14 @@ impl<'a> LifecycleOperations<'a> {
         let build_ops = BuildOperations::new(&modified_config, self.temp_dir);
         let build_context = build_ops.prepare_build_context()?;
 
+        // Step 2.5: Ensure Docker networks exist (create them if needed)
+        if let Some(networking) = &modified_config.networking {
+            if !networking.networks.is_empty() {
+                info!("Ensuring Docker networks exist: {:?}", networking.networks);
+                DockerOps::ensure_networks_exist(&networking.networks)?;
+            }
+        }
+
         // Step 3: Generate docker-compose.yml with build context and modified config
         let compose_ops = ComposeOperations::new(&modified_config, self.temp_dir, self.project_dir);
         let compose_path = compose_ops.write_docker_compose(&build_context, context)?;
@@ -239,6 +247,14 @@ impl<'a> LifecycleOperations<'a> {
         // Step 2: Prepare build context with embedded resources
         let build_ops = BuildOperations::new(&modified_config, self.temp_dir);
         let build_context = build_ops.prepare_build_context()?;
+
+        // Step 2.5: Ensure Docker networks exist (create them if needed)
+        if let Some(networking) = &modified_config.networking {
+            if !networking.networks.is_empty() {
+                info!("Ensuring Docker networks exist: {:?}", networking.networks);
+                DockerOps::ensure_networks_exist(&networking.networks)?;
+            }
+        }
 
         // Step 3: Generate docker-compose.yml with custom instance name
         let compose_ops = ComposeOperations::new(&modified_config, self.temp_dir, self.project_dir);

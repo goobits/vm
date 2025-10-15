@@ -64,6 +64,7 @@ impl ConfigValidator {
         self.validate_ports()?;
         self.validate_services()?;
         self.validate_versions()?;
+        self.validate_networking()?;
         Ok(())
     }
 
@@ -270,6 +271,41 @@ impl ConfigValidator {
             || Regex::new(r"^\d+\.\d+(\.\d+)?$")
                 .map(|regex| regex.is_match(version))
                 .unwrap_or(false)
+    }
+
+    fn validate_networking(&self) -> Result<()> {
+        if let Some(networking) = &self.config.networking {
+            // Docker network names must contain only alphanumeric, hyphens, underscores, and periods
+            // and cannot start with a period or hyphen
+            let network_regex = Regex::new(r"^[a-zA-Z0-9_][a-zA-Z0-9_\-\.]*$")
+                .map_err(|e| VmError::Config(format!("Invalid regex pattern: {e}")))?;
+
+            for network_name in &networking.networks {
+                // Docker network names must be 1-64 characters
+                if network_name.is_empty() || network_name.len() > 64 {
+                    vm_error!(
+                        "Invalid network name '{}': must be 1-64 characters long",
+                        network_name
+                    );
+                    return Err(VmError::Config(format!(
+                        "Invalid network name '{}': must be 1-64 characters long",
+                        network_name
+                    )));
+                }
+
+                if !network_regex.is_match(network_name) {
+                    vm_error!(
+                        "Invalid network name '{}': must start with alphanumeric or underscore, and contain only alphanumeric, hyphens, underscores, and periods",
+                        network_name
+                    );
+                    return Err(VmError::Config(format!(
+                        "Invalid network name '{}': must start with alphanumeric or underscore, and contain only alphanumeric, hyphens, underscores, and periods",
+                        network_name
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 }
 

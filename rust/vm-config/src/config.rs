@@ -130,6 +130,9 @@ pub struct VmConfig {
     #[serde(default)]
     pub ports: PortsConfig,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub networking: Option<NetworkingConfig>,
+
     // 7. Services & Infrastructure
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub services: IndexMap<String, ServiceConfig>,
@@ -545,6 +548,15 @@ pub struct SecurityConfig {
     pub cpu_limit: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pids_limit: Option<u32>,
+}
+
+/// Docker networking configuration for container connectivity.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct NetworkingConfig {
+    /// List of Docker networks this container should join.
+    /// Networks will be created automatically if they don't exist.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub networks: Vec<String>,
 }
 
 impl VmConfig {

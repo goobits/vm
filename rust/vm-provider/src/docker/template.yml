@@ -141,6 +141,12 @@ services:
     command: ["tail", "-f", "/dev/null"]
     tty: true
     stdin_open: true
+    {% if config.networking and config.networking.networks and config.networking.networks | length > 0 -%}
+    networks:
+      {% for network in config.networking.networks -%}
+      - {{ network }}
+      {% endfor -%}
+    {%- endif %}
 
   {% if config.services.postgresql.enabled | default(value=false) %}
   postgres:
@@ -161,3 +167,12 @@ services:
 volumes:
   postgres_data:
 {% endif %}
+
+{% if config.networking and config.networking.networks and config.networking.networks | length > 0 -%}
+networks:
+  {% for network in config.networking.networks -%}
+  {{ network }}:
+    external: true
+    name: {{ network }}
+  {% endfor -%}
+{%- endif %}
