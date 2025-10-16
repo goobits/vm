@@ -156,7 +156,7 @@ mod config_ops_tests {
         let updated_config: VmConfig = serde_yaml::from_str(&updated_content)?;
 
         assert_eq!(updated_config.provider.as_deref(), Some("tart"));
-        assert_eq!(updated_config.vm.as_ref().and_then(|v| v.cpus), None);
+        assert_eq!(updated_config.vm.as_ref().and_then(|v| v.cpus.as_ref()), None);
 
         Ok(())
     }

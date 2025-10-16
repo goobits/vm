@@ -717,9 +717,7 @@ impl VmConfig {
                         errors.push("VM memory allocation cannot be 0".to_string());
                     }
                     Some(_) => {} // Valid memory allocation
-                    None => {
-                        errors.push(format!("Invalid memory format: {memory:?}"));
-                    }
+                    None => {} // Unlimited memory is valid
                 }
             }
         }
