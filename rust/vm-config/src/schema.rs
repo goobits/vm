@@ -21,9 +21,9 @@ pub enum SchemaType {
 }
 
 /// Schema cache for fast lookups
-static VM_SCHEMA_CACHE: Lazy<HashMap<String, SchemaType>> = Lazy::new(|| build_vm_schema_cache());
+static VM_SCHEMA_CACHE: Lazy<HashMap<String, SchemaType>> = Lazy::new(build_vm_schema_cache);
 static GLOBAL_SCHEMA_CACHE: Lazy<HashMap<String, SchemaType>> =
-    Lazy::new(|| build_global_schema_cache());
+    Lazy::new(build_global_schema_cache);
 
 /// Build the VM schema cache from embedded schema
 fn build_vm_schema_cache() -> HashMap<String, SchemaType> {

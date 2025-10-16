@@ -705,6 +705,7 @@ impl VmConfig {
         if let Some(vm) = &self.vm {
             if let Some(cpus) = &vm.cpus {
                 if let Some(count) = cpus.to_count() {
+                    #[allow(clippy::excessive_nesting)]
                     if count == 0 {
                         errors.push("VM CPU count cannot be 0".to_string());
                     }

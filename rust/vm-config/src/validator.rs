@@ -110,6 +110,7 @@ impl ConfigValidator {
                 // Only validate if a specific limit is set (not unlimited)
                 if let Some(requested_cpus) = cpu_limit.to_count() {
                     let available_cpus = self.system.cpus().len() as u32;
+                    #[allow(clippy::excessive_nesting)]
                     if requested_cpus > available_cpus {
                         report.add_error(format!(
                             "Requested {requested_cpus} CPUs but only {available_cpus} are available. Please reduce 'vm.cpus' in your vm.yaml."

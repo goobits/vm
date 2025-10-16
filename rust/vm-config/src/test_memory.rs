@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::config::{MemoryLimit, VmConfig, VmSettings};
+    use crate::config::{CpuLimit, MemoryLimit, VmConfig, VmSettings};
     use serde_yaml_ng as serde_yaml;
 
     #[test]
@@ -8,7 +8,7 @@ mod tests {
         let config = VmConfig {
             vm: Some(VmSettings {
                 memory: Some(MemoryLimit::Limited(8192)),
-                cpus: Some(4),
+                cpus: Some(CpuLimit::Limited(4)),
                 user: Some("developer".to_string()),
                 ..Default::default()
             }),
@@ -26,7 +26,7 @@ mod tests {
         let config = VmConfig {
             vm: Some(VmSettings {
                 memory: Some(MemoryLimit::Unlimited),
-                cpus: Some(4),
+                cpus: Some(CpuLimit::Limited(4)),
                 user: Some("developer".to_string()),
                 ..Default::default()
             }),
