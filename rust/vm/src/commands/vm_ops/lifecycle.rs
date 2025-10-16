@@ -94,19 +94,24 @@ pub async fn handle_start(
             );
 
             // Show resources if available
-            if let Some(cpus) = config.vm.as_ref().and_then(|vm| vm.cpus) {
+            if let Some(cpus) = config.vm.as_ref().and_then(|vm| vm.cpus.as_ref()) {
                 if let Some(memory) = config.vm.as_ref().and_then(|vm| vm.memory.as_ref()) {
+                    // Format CPU display
+                    let cpu_str = match cpus.to_count() {
+                        Some(count) => count.to_string(),
+                        None => "unlimited".to_string(),
+                    };
                     // Format memory display
                     let mem_str = match memory.to_mb() {
                         Some(mb) if mb >= 1024 => format!("{}GB", mb / 1024),
                         Some(mb) => format!("{mb}MB"),
-                        None => format!("{memory:?}"),
+                        None => "unlimited".to_string(),
                     };
                     vm_println!(
                         "{}",
                         msg!(
                             MESSAGES.common_resources_label,
-                            cpus = cpus.to_string(),
+                            cpus = cpu_str,
                             memory = mem_str
                         )
                     );

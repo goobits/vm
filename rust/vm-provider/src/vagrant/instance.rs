@@ -184,8 +184,11 @@ impl<'a> VagrantInstanceManager<'a> {
         content.push_str("  config.vm.provider \"virtualbox\" do |vb|\n");
         content.push_str(&format!("    vb.memory = \"{}\"\n", mb));
 
-        if let Some(cpus) = vm_config.cpus {
-            content.push_str(&format!("    vb.cpus = {}\n", cpus));
+        if let Some(cpus) = &vm_config.cpus {
+            if let Some(count) = cpus.to_count() {
+                content.push_str(&format!("    vb.cpus = {}\n", count));
+            }
+            // Note: VirtualBox doesn't support unlimited CPUs, so we skip if unlimited
         }
 
         content.push_str("  end\n\n");

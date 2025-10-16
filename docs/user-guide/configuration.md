@@ -159,8 +159,8 @@ project:
 
 vm:
   box: bento/ubuntu-24.04  # Vagrant box (Vagrant only)
-  memory: 4096  # RAM in MB
-  cpus: 2  # CPU cores
+  memory: 4096  # RAM in MB (or "unlimited" for no limit)
+  cpus: 2  # CPU cores (or "unlimited" for no limit)
   swap: 2048 # Swap in MB
   swappiness: 60 # Swappiness (0-100)
   user: developer  # VM/container user (changed from vagrant)

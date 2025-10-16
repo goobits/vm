@@ -29,21 +29,24 @@ fn auto_adjust_resources(config: &mut VmConfig) -> VmResult<()> {
     let mut adjusted = false;
 
     // Check and adjust CPU allocation
-    if let Some(requested_cpus) = vm_settings.cpus {
-        if requested_cpus > system_cpus {
-            // Use 50% of available CPUs, minimum 2, maximum available
-            let safe_cpus = (system_cpus / 2).max(2).min(system_cpus);
+    if let Some(cpu_limit) = &vm_settings.cpus {
+        if let Some(requested_cpus) = cpu_limit.to_count() {
+            if requested_cpus > system_cpus {
+                // Use 50% of available CPUs, minimum 2, maximum available
+                let safe_cpus = (system_cpus / 2).max(2).min(system_cpus);
 
-            vm_println!(
-                "⚠️  Requested {} CPUs but system only has {}.",
-                requested_cpus,
-                system_cpus
-            );
-            vm_println!("   Auto-adjusting to {} CPUs for this system.", safe_cpus);
+                vm_println!(
+                    "⚠️  Requested {} CPUs but system only has {}.",
+                    requested_cpus,
+                    system_cpus
+                );
+                vm_println!("   Auto-adjusting to {} CPUs for this system.", safe_cpus);
 
-            vm_settings.cpus = Some(safe_cpus);
-            adjusted = true;
+                vm_settings.cpus = Some(vm_config::config::CpuLimit::Limited(safe_cpus));
+                adjusted = true;
+            }
         }
+        // If unlimited, no adjustment needed
     }
 
     // Check and adjust memory allocation
@@ -101,7 +104,7 @@ pub async fn handle_create(
         vm_println!("⚡ Force mode: using minimal resources and skipping validation");
         let mut vm_settings = config.vm.take().unwrap_or_default();
         vm_settings.memory = Some(vm_config::config::MemoryLimit::Limited(2048));
-        vm_settings.cpus = Some(2);
+        vm_settings.cpus = Some(vm_config::config::CpuLimit::Limited(2));
         config.vm = Some(vm_settings);
     } else {
         // Auto-adjust resources if needed (before validation)
@@ -258,19 +261,24 @@ pub async fn handle_create(
             );
 
             // Show resources if available
-            if let Some(cpus) = config.vm.as_ref().and_then(|vm| vm.cpus) {
+            if let Some(cpus) = config.vm.as_ref().and_then(|vm| vm.cpus.as_ref()) {
                 if let Some(memory) = config.vm.as_ref().and_then(|vm| vm.memory.as_ref()) {
+                    // Format CPU display
+                    let cpu_str = match cpus.to_count() {
+                        Some(count) => count.to_string(),
+                        None => "unlimited".to_string(),
+                    };
                     // Format memory display
                     let mem_str = match memory.to_mb() {
                         Some(mb) if mb >= 1024 => format!("{}GB", mb / 1024),
                         Some(mb) => format!("{mb}MB"),
-                        None => format!("{memory:?}"),
+                        None => "unlimited".to_string(),
                     };
                     vm_println!(
                         "{}",
                         msg!(
                             MESSAGES.common_resources_label,
-                            cpus = cpus.to_string(),
+                            cpus = cpu_str,
                             memory = mem_str
                         )
                     );

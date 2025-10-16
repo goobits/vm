@@ -106,11 +106,13 @@ impl TartProvider {
     }
 
     fn apply_runtime_config(&self, instance: &str, config: &VmConfig) -> Result<()> {
-        if let Some(cpus) = config.vm.as_ref().and_then(|v| v.cpus) {
-            info!("Setting CPU count to {}", cpus);
-            cmd!("tart", "set", instance, "--cpu", cpus.to_string())
-                .run()
-                .map_err(|e| VmError::Provider(format!("Failed to set CPU: {}", e)))?;
+        if let Some(cpus) = config.vm.as_ref().and_then(|v| v.cpus.as_ref()) {
+            if let Some(count) = cpus.to_count() {
+                info!("Setting CPU count to {}", count);
+                cmd!("tart", "set", instance, "--cpu", count.to_string())
+                    .run()
+                    .map_err(|e| VmError::Provider(format!("Failed to set CPU: {}", e)))?;
+            }
         }
 
         if let Some(memory) = config.vm.as_ref().and_then(|v| v.memory.as_ref()) {
@@ -219,10 +221,17 @@ impl TartProvider {
                 }
             }
 
-            if let Some(cpus) = vm_config.cpus {
-                ProgressReporter::task(&main_phase, &format!("Setting CPUs to {}...", cpus));
-                stream_command("tart", &["set", vm_name, "--cpu", &cpus.to_string()])?;
-                ProgressReporter::task(&main_phase, "CPUs configured.");
+            if let Some(cpus) = &vm_config.cpus {
+                match cpus.to_count() {
+                    Some(count) => {
+                        ProgressReporter::task(&main_phase, &format!("Setting CPUs to {}...", count));
+                        stream_command("tart", &["set", vm_name, "--cpu", &count.to_string()])?;
+                        ProgressReporter::task(&main_phase, "CPUs configured.");
+                    }
+                    None => {
+                        ProgressReporter::task(&main_phase, "CPUs set to unlimited (no Tart limit).");
+                    }
+                }
             }
         }
 

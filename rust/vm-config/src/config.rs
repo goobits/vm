@@ -300,7 +300,7 @@ pub struct VmSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory: Option<MemoryLimit>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cpus: Option<u32>,
+    pub cpus: Option<CpuLimit>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub swap: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -392,6 +392,82 @@ impl MemoryLimit {
             MemoryLimit::Limited(mb) => Some(format!("{mb}m")),
             MemoryLimit::Unlimited => None,
         }
+    }
+}
+
+/// CPU limit configuration supporting both specific limits and unlimited access.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CpuLimit {
+    Limited(u32),
+    Unlimited,
+}
+
+impl Serialize for CpuLimit {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            CpuLimit::Limited(count) => serializer.serialize_u32(*count),
+            CpuLimit::Unlimited => serializer.serialize_str("unlimited"),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for CpuLimit {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::{self, Visitor};
+        use std::fmt;
+
+        struct CpuLimitVisitor;
+
+        impl<'de> Visitor<'de> for CpuLimitVisitor {
+            type Value = CpuLimit;
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a positive integer (CPU count) or \"unlimited\"")
+            }
+            fn visit_u32<E>(self, value: u32) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(CpuLimit::Limited(value))
+            }
+            fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                if value <= u32::MAX as u64 {
+                    Ok(CpuLimit::Limited(value as u32))
+                } else {
+                    Err(E::custom("CPU count too large (max: 4294967295)"))
+                }
+            }
+            fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                match value {
+                    "unlimited" => Ok(CpuLimit::Unlimited),
+                    _ => Err(E::custom("expected \"unlimited\" for string CPU value")),
+                }
+            }
+        }
+        deserializer.deserialize_any(CpuLimitVisitor)
+    }
+}
+
+impl CpuLimit {
+    pub fn to_count(&self) -> Option<u32> {
+        match self {
+            CpuLimit::Limited(count) => Some(*count),
+            CpuLimit::Unlimited => None,
+        }
+    }
+    pub fn is_unlimited(&self) -> bool {
+        matches!(self, CpuLimit::Unlimited)
     }
 }
 
@@ -627,9 +703,11 @@ impl VmConfig {
         }
 
         if let Some(vm) = &self.vm {
-            if let Some(cpus) = vm.cpus {
-                if cpus == 0 {
-                    errors.push("VM CPU count cannot be 0".to_string());
+            if let Some(cpus) = &vm.cpus {
+                if let Some(count) = cpus.to_count() {
+                    if count == 0 {
+                        errors.push("VM CPU count cannot be 0".to_string());
+                    }
                 }
             }
             if let Some(memory) = &vm.memory {

@@ -119,7 +119,9 @@ services:
     mem_limit: {{ config.security.memory_limit }}
     {% endif %}
     {% if config.vm.cpus %}
+      {% if config.vm.cpus != "unlimited" %}
     cpus: "{{ config.vm.cpus }}"
+      {% endif %}
     {% elif config.security.cpu_limit %}
     cpus: "{{ config.security.cpu_limit }}"
     {% endif %}

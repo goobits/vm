@@ -106,17 +106,21 @@ impl ConfigValidator {
     /// Validates the CPU configuration.
     fn validate_cpu(&self, config: &VmConfig, report: &mut ValidationReport) -> Result<()> {
         if let Some(vm_settings) = &config.vm {
-            if let Some(requested_cpus) = vm_settings.cpus {
-                let available_cpus = self.system.cpus().len() as u32;
-                if requested_cpus > available_cpus {
-                    report.add_error(format!(
-                        "Requested {requested_cpus} CPUs but only {available_cpus} are available. Please reduce 'vm.cpus' in your vm.yaml."
-                    ));
-                } else if requested_cpus > (available_cpus * 3 / 4) {
-                    report.add_warning(format!(
-                        "Assigning {requested_cpus} of {available_cpus} available CPUs may impact host performance."
-                    ));
+            if let Some(cpu_limit) = &vm_settings.cpus {
+                // Only validate if a specific limit is set (not unlimited)
+                if let Some(requested_cpus) = cpu_limit.to_count() {
+                    let available_cpus = self.system.cpus().len() as u32;
+                    if requested_cpus > available_cpus {
+                        report.add_error(format!(
+                            "Requested {requested_cpus} CPUs but only {available_cpus} are available. Please reduce 'vm.cpus' in your vm.yaml."
+                        ));
+                    } else if requested_cpus > (available_cpus * 3 / 4) {
+                        report.add_warning(format!(
+                            "Assigning {requested_cpus} of {available_cpus} available CPUs may impact host performance."
+                        ));
+                    }
                 }
+                // If unlimited, no validation needed
             }
         }
         Ok(())
