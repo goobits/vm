@@ -88,6 +88,19 @@ View the logs for a VM.
 vm logs
 ```
 
+### `vm copy`
+Copy files to/from a VM.
+```bash
+# Copy file to VM
+vm copy /local/file.txt /remote/path/file.txt
+
+# Copy file from VM (prefix with container name)
+vm copy my-vm:/remote/file.txt /local/file.txt
+
+# Auto-detect container in project directory
+vm copy ./local.txt /workspace/remote.txt
+```
+
 ### `vm list`
 List all available VMs.
 ```bash

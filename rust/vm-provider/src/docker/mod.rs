@@ -295,6 +295,43 @@ impl Provider for DockerProvider {
         lifecycle.show_logs(container)
     }
 
+    fn copy(&self, source: &str, destination: &str, container: Option<&str>) -> Result<()> {
+        let lifecycle = self.lifecycle_ops();
+
+        // Resolve container name if needed
+        let resolved_source = if source.contains(':') && !source.starts_with('/') {
+            // Format: container:/path - resolve the container part
+            let parts: Vec<&str> = source.splitn(2, ':').collect();
+            if parts.len() == 2 {
+                let container_name = lifecycle.resolve_target_container(Some(parts[0]))?;
+                format!("{}:{}", container_name, parts[1])
+            } else {
+                source.to_string()
+            }
+        } else {
+            source.to_string()
+        };
+
+        let resolved_destination = if destination.contains(':') && !destination.starts_with('/') {
+            // Format: container:/path - resolve the container part
+            let parts: Vec<&str> = destination.splitn(2, ':').collect();
+            if parts.len() == 2 {
+                let container_name = lifecycle.resolve_target_container(Some(parts[0]))?;
+                format!("{}:{}", container_name, parts[1])
+            } else {
+                destination.to_string()
+            }
+        } else if !source.contains(':') && !destination.contains(':') {
+            // Neither has container prefix, add one to destination
+            let container_name = lifecycle.resolve_target_container(container)?;
+            format!("{}:{}", container_name, destination)
+        } else {
+            destination.to_string()
+        };
+
+        DockerOps::copy(&resolved_source, &resolved_destination)
+    }
+
     fn status(&self, container: Option<&str>) -> Result<()> {
         // Legacy status method - just check if container exists
         // The enhanced status is handled via get_status_report()

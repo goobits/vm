@@ -3465,6 +3465,7 @@ dependencies = [
  "glob",
  "indexmap",
  "nix",
+ "once_cell",
  "predicates",
  "regex",
  "serde",

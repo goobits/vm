@@ -9,8 +9,9 @@ pub enum ConfigCmd {
     Set {
         /// Field path (e.g., "vm.memory" or "services.docker.enabled")
         field: String,
-        /// Value to set
-        value: String,
+        /// Value(s) to set (multiple values for arrays: networking.networks val1 val2)
+        #[arg(required = true, num_args = 1..)]
+        values: Vec<String>,
         /// Apply to global config (~/.config/vm/global.yaml)
         #[arg(long)]
         global: bool,

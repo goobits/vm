@@ -369,6 +369,10 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
         Command::Logs { container } => {
             vm_ops::handle_logs(provider, container.as_deref(), config.clone())
         }
+        Command::Copy {
+            source,
+            destination,
+        } => vm_ops::handle_copy(provider, &source, &destination, config.clone()),
         cmd => {
             vm_error!(
                 "Command {:?} should have been handled in earlier match statement",

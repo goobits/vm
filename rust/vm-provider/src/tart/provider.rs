@@ -391,6 +391,55 @@ impl Provider for TartProvider {
         stream_command("tail", &["-f", &log_path])
     }
 
+    fn copy(&self, source: &str, destination: &str, container: Option<&str>) -> Result<()> {
+        let vm_name = self.vm_name_with_instance(container)?;
+
+        // Determine if we're copying to or from the VM
+        let (local_path, remote_path, is_upload) = if source.contains(':') {
+            // Downloading from VM
+            let parts: Vec<&str> = source.splitn(2, ':').collect();
+            if parts.len() == 2 {
+                (destination, parts[1], false)
+            } else {
+                return Err(VmError::Provider("Invalid source format".to_string()));
+            }
+        } else if destination.contains(':') {
+            // Uploading to VM
+            let parts: Vec<&str> = destination.splitn(2, ':').collect();
+            if parts.len() == 2 {
+                (source, parts[1], true)
+            } else {
+                return Err(VmError::Provider("Invalid destination format".to_string()));
+            }
+        } else {
+            // Neither has container prefix, assume uploading to VM
+            (source, destination, true)
+        };
+
+        // Use scp-like approach via tart ssh
+        if is_upload {
+            // Upload: local -> VM
+            let copy_cmd = format!("cat > '{}'", remote_path.replace('\'', "'\"'\"'"));
+            let output = cmd!("sh", "-c", format!("cat '{}' | tart ssh {} -- sh -c \"{}\"",
+                local_path.replace('\'', "'\"'\"'"), vm_name, copy_cmd))
+                .run();
+
+            output.map_err(|e| VmError::Provider(format!("Failed to copy file to VM: {}", e)))?;
+        } else {
+            // Download: VM -> local
+            let copy_cmd = format!("cat '{}'", remote_path.replace('\'', "'\"'\"'"));
+            let result = cmd!("tart", "ssh", &vm_name, "--", "sh", "-c", &copy_cmd)
+                .stdout_capture()
+                .run()
+                .map_err(|e| VmError::Provider(format!("Failed to read file from VM: {}", e)))?;
+
+            std::fs::write(local_path, result.stdout)
+                .map_err(|e| VmError::Provider(format!("Failed to write local file: {}", e)))?;
+        }
+
+        Ok(())
+    }
+
     fn status(&self, container: Option<&str>) -> Result<()> {
         match container {
             Some(_) => {

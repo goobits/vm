@@ -30,9 +30,10 @@ use vm_core::error::Result;
 pub struct ConfigOps;
 
 impl ConfigOps {
-    /// Set a configuration value using dot notation.
-    pub fn set(field: &str, value: &str, global: bool, dry_run: bool) -> Result<()> {
-        set::set(field, value, global, dry_run)
+    /// Set a configuration value using dot notation with schema-aware type detection.
+    /// Accepts multiple values for array fields.
+    pub fn set(field: &str, values: &[String], global: bool, dry_run: bool) -> Result<()> {
+        set::set(field, values, global, dry_run)
     }
 
     /// Get a configuration value or display entire configuration.

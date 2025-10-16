@@ -700,6 +700,75 @@ impl Provider for VagrantProvider {
         }
     }
 
+    fn copy(&self, source: &str, destination: &str, container: Option<&str>) -> Result<()> {
+        let machine_name = self.resolve_machine_name(container)?;
+        let vagrant_cwd = self.project_dir.join("providers/vagrant");
+
+        // Determine if we're copying to or from the VM
+        let (local_path, remote_path, is_upload) = if source.contains(':') {
+            // Downloading from VM
+            let parts: Vec<&str> = source.splitn(2, ':').collect();
+            if parts.len() == 2 {
+                (destination, parts[1], false)
+            } else {
+                return Err(VmError::Provider("Invalid source format".to_string()));
+            }
+        } else if destination.contains(':') {
+            // Uploading to VM
+            let parts: Vec<&str> = destination.splitn(2, ':').collect();
+            if parts.len() == 2 {
+                (source, parts[1], true)
+            } else {
+                return Err(VmError::Provider("Invalid destination format".to_string()));
+            }
+        } else {
+            // Neither has container prefix, assume uploading to VM
+            (source, destination, true)
+        };
+
+        // Use rsync via vagrant to copy files
+        // Vagrant has built-in rsync support but we'll use scp-like approach via SSH
+        if is_upload {
+            // Upload: local -> VM
+            let escaped_remote = shell_escape(remote_path);
+            let copy_cmd = format!("cat > {}", escaped_remote);
+
+            let status = if machine_name == DEFAULT_MACHINE_NAME {
+                duct::cmd("sh", &["-c", &format!("cat {} | vagrant ssh -c '{}'", shell_escape(local_path), copy_cmd)])
+                    .env("VAGRANT_CWD", &vagrant_cwd)
+                    .run()
+            } else {
+                duct::cmd("sh", &["-c", &format!("cat {} | vagrant ssh {} -c '{}'", shell_escape(local_path), machine_name, copy_cmd)])
+                    .env("VAGRANT_CWD", &vagrant_cwd)
+                    .run()
+            };
+
+            status.map_err(|e| VmError::Provider(format!("Failed to copy file to VM: {}", e)))?;
+        } else {
+            // Download: VM -> local
+            let escaped_remote = shell_escape(remote_path);
+            let copy_cmd = format!("cat {}", escaped_remote);
+
+            let output = if machine_name == DEFAULT_MACHINE_NAME {
+                duct::cmd("vagrant", &["ssh", "-c", &copy_cmd])
+                    .env("VAGRANT_CWD", &vagrant_cwd)
+                    .stdout_capture()
+                    .run()
+            } else {
+                duct::cmd("vagrant", &["ssh", &machine_name, "-c", &copy_cmd])
+                    .env("VAGRANT_CWD", &vagrant_cwd)
+                    .stdout_capture()
+                    .run()
+            };
+
+            let result = output.map_err(|e| VmError::Provider(format!("Failed to read file from VM: {}", e)))?;
+            std::fs::write(local_path, result.stdout)
+                .map_err(|e| VmError::Provider(format!("Failed to write local file: {}", e)))?;
+        }
+
+        Ok(())
+    }
+
     fn status(&self, container: Option<&str>) -> Result<()> {
         let report = self.get_status_report(container)?;
         info!("{:#?}", report);

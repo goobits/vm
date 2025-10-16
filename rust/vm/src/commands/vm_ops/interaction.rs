@@ -457,6 +457,50 @@ pub fn handle_logs(
     result.map_err(VmError::from)
 }
 
+/// Handle file copy to/from VM
+pub fn handle_copy(
+    provider: Box<dyn Provider>,
+    source: &str,
+    destination: &str,
+    config: VmConfig,
+) -> VmResult<()> {
+    debug!(
+        "Copying files: source='{}', destination='{}', provider='{}'",
+        source,
+        destination,
+        provider.name()
+    );
+
+    let vm_name = config
+        .project
+        .as_ref()
+        .and_then(|p| p.name.as_ref())
+        .map(|s| s.as_str())
+        .unwrap_or("vm-project");
+
+    // Determine direction for user feedback
+    let direction = if source.contains(':') {
+        "from"
+    } else {
+        "to"
+    };
+
+    vm_println!("📦 Copying file {} VM '{}'...", direction, vm_name);
+
+    let result = provider.copy(source, destination, None);
+
+    match &result {
+        Ok(()) => {
+            vm_println!("✓ File copied successfully");
+        }
+        Err(e) => {
+            vm_println!("❌ Copy failed: {}", e);
+        }
+    }
+
+    result.map_err(VmError::from)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

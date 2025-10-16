@@ -1,7 +1,7 @@
 use vm_core::error::Result;
 
-pub fn execute_set(field: String, value: String, global: bool) -> Result<()> {
-    crate::config_ops::ConfigOps::set(&field, &value, global, false)
+pub fn execute_set(field: String, values: Vec<String>, global: bool) -> Result<()> {
+    crate::config_ops::ConfigOps::set(&field, &values, global, false)
 }
 
 pub fn execute_get(field: Option<String>, global: bool) -> Result<()> {

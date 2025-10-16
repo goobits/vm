@@ -60,9 +60,9 @@ pub fn handle_config_command(command: &ConfigSubcommand, dry_run: bool) -> VmRes
         ConfigSubcommand::Show => handle_show_command(),
         ConfigSubcommand::Set {
             field,
-            value,
+            values,
             global,
-        } => Ok(ConfigOps::set(field, value, *global, dry_run)?),
+        } => Ok(ConfigOps::set(field, values, *global, dry_run)?),
         ConfigSubcommand::Get { field, global } => Ok(ConfigOps::get(field.as_deref(), *global)?),
         ConfigSubcommand::Unset { field, global } => Ok(ConfigOps::unset(field, *global)?),
         ConfigSubcommand::Preset {

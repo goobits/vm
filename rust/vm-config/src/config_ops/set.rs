@@ -10,14 +10,15 @@ use crate::config::VmConfig;
 use crate::config_ops::io::{
     find_or_create_local_config, get_or_create_global_config_path, read_config_or_init,
 };
+use crate::schema;
 use crate::yaml::core::CoreOperations;
 use vm_cli::msg;
 use vm_core::error::Result;
 use vm_core::{vm_error, vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 
-/// Set a configuration value using dot notation.
-pub fn set(field: &str, value: &str, global: bool, dry_run: bool) -> Result<()> {
+/// Set a configuration value using dot notation with schema-aware type detection.
+pub fn set(field: &str, values: &[String], global: bool, dry_run: bool) -> Result<()> {
     let config_path = if global {
         get_or_create_global_config_path()?
     } else {
@@ -35,8 +36,8 @@ pub fn set(field: &str, value: &str, global: bool, dry_run: bool) -> Result<()> 
         Value::Mapping(Mapping::new())
     };
 
-    let parsed_value: Value =
-        serde_yaml::from_str(value).unwrap_or_else(|_| Value::String(value.to_string()));
+    // Use schema-aware parsing to handle arrays and other types correctly
+    let parsed_value = schema::parse_value_with_schema(field, values, global)?;
 
     set_nested_field(&mut yaml_value, field, parsed_value)?;
 
@@ -56,11 +57,18 @@ pub fn set(field: &str, value: &str, global: bool, dry_run: bool) -> Result<()> 
         }
     }
 
+    // Format the value for display (show as array if multiple values)
+    let value_display = if values.len() == 1 {
+        values[0].clone()
+    } else {
+        format!("[{}]", values.join(", "))
+    };
+
     if dry_run {
         vm_println!(
             "🔍 DRY RUN - Would set {} = {} in {}",
             field,
-            value,
+            value_display,
             config_path.display()
         );
         vm_println!("{}", MESSAGES.config_no_changes);
@@ -71,7 +79,7 @@ pub fn set(field: &str, value: &str, global: bool, dry_run: bool) -> Result<()> 
             msg!(
                 MESSAGES.config_set_success,
                 field = field,
-                value = value,
+                value = value_display,
                 path = config_path.display().to_string()
             )
         );

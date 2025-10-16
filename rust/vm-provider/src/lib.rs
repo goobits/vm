@@ -139,6 +139,14 @@ pub trait Provider {
     /// Get the logs of the VM.
     fn logs(&self, container: Option<&str>) -> Result<()>;
 
+    /// Copy files to/from the VM.
+    ///
+    /// # Arguments
+    /// * `source` - Source path (local file or container:path)
+    /// * `destination` - Destination path (local file or container:path)
+    /// * `container` - Optional container name for auto-detection
+    fn copy(&self, source: &str, destination: &str, container: Option<&str>) -> Result<()>;
+
     /// Get a list of host paths mounted into the container.
     fn get_container_mounts(&self, _container_name: &str) -> Result<Vec<String>> {
         // Default implementation returns an empty vec for providers that don't support it

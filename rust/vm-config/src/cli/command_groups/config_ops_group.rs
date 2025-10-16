@@ -8,8 +8,8 @@ pub struct ConfigOpsGroup;
 
 impl ConfigOpsGroup {
     /// Execute set command
-    pub fn execute_set(field: String, value: String, global: bool) -> Result<()> {
-        commands::config_ops::execute_set(field, value, global)
+    pub fn execute_set(field: String, values: Vec<String>, global: bool) -> Result<()> {
+        commands::config_ops::execute_set(field, values, global)
     }
 
     /// Execute get command

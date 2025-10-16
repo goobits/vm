@@ -36,8 +36,9 @@ pub enum ConfigSubcommand {
     Set {
         /// Configuration field path (e.g., "vm.memory" or "services.docker.enabled")
         field: String,
-        /// Value to set
-        value: String,
+        /// Value(s) to set (multiple values for arrays: networking.networks val1 val2)
+        #[arg(required = true, num_args = 1..)]
+        values: Vec<String>,
         /// Apply to global configuration (~/.config/vm/global.yaml)
         #[arg(long)]
         global: bool,
@@ -465,6 +466,13 @@ pub enum Command {
         /// Container name, ID, or project name
         #[arg()]
         container: Option<String>,
+    },
+    /// Copy files to/from your environment
+    Copy {
+        /// Source path (local file or <container>:/path)
+        source: String,
+        /// Destination path (local file or <container>:/path)
+        destination: String,
     },
 
     /// Work with temporary environments

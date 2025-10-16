@@ -214,9 +214,9 @@ fn execute_config_command(cmd: ConfigCmd) -> Result<()> {
     match cmd {
         ConfigCmd::Set {
             field,
-            value,
+            values,
             global,
-        } => ConfigOpsGroup::execute_set(field, value, global),
+        } => ConfigOpsGroup::execute_set(field, values, global),
         ConfigCmd::Get { field, global } => ConfigOpsGroup::execute_get(field, global),
         ConfigCmd::Unset { field, global } => ConfigOpsGroup::execute_unset(field, global),
         ConfigCmd::Validate { file, verbose } => {

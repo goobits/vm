@@ -21,6 +21,7 @@ mod paths; // Internal only
 pub mod ports;
 mod preset; // Internal only
 pub mod resources; // VM resource suggestions
+pub mod schema; // Schema-aware type detection
 pub mod validate;
 pub mod validator;
 pub mod yaml; // YAML operations module
