@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.0] - 2025-10-16
+
+### Added
+- **File Transfer Command**: New `vm copy` command for simple file transfer between host and VMs
+  - Syntax: `vm copy <source> <destination>` (similar to `docker cp`)
+  - Supports both upload to VM and download from VM
+  - Auto-detects container name when in project directory
+  - Works across all providers (Docker, Vagrant, Tart)
+  - Examples:
+    ```bash
+    vm copy ./local.txt /workspace/remote.txt      # Upload
+    vm copy my-vm:/remote/file.txt ./local.txt    # Download
+    vm copy ./file.txt /path/in/vm                # Auto-detect container
+    ```
+  - Docker provider uses native `docker cp` for fast transfers
+  - Vagrant/Tart providers use SSH-based transfer with cat/redirect
+
+- **Unlimited CPU Support**: CPU configuration now supports "unlimited" option matching memory
+  - Configure with `cpus: unlimited` in vm.yaml for no CPU limits
+  - Dynamic CPU allocation - container can use all available CPUs as needed
+  - Docker's CFS scheduler manages CPU distribution automatically
+  - Multiple containers can share CPUs efficiently
+  - Example configuration:
+    ```yaml
+    vm:
+      cpus: unlimited  # No CPU limit (or specify number like: 4)
+      memory: unlimited  # No memory limit (or specify MB like: 8192)
+    ```
+  - Validation skips CPU checks when set to unlimited
+  - Status commands display "unlimited" for unlimited CPU/memory
+
+### Changed
+- **CPU Configuration Type**: `vm.cpus` field changed from `Option<u32>` to `Option<CpuLimit>` enum
+  - Maintains backward compatibility - integer values still work
+  - Serializes as integer or "unlimited" string
+  - Custom deserializer accepts both formats seamlessly
+
+### Fixed
+- **YAML Formatting**: Corrected indentation for `networking.networks` field in configuration
+- **Type Safety**: Fixed compilation errors in resource auto-detection code
+
+### Documentation
+- Updated configuration guide with unlimited CPU/memory options
+- Added concise documentation next to memory configuration
+- Updated CLI reference with `vm copy` command examples
+
+### Technical Improvements
+- Added `CpuLimit` enum following `MemoryLimit` pattern for consistency
+- Updated all provider implementations (Docker, Vagrant, Tart) to handle unlimited CPUs
+- Docker compose template conditionally omits `cpus` field when unlimited
+- Enhanced validation logic to skip CPU checks for unlimited configuration
+- Added comprehensive test coverage for new enum types
+
 ## [3.0.0] - 2025-10-15
 
 ### Breaking Changes
