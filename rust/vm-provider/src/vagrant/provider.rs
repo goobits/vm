@@ -164,7 +164,9 @@ impl VagrantProvider {
             }
         }
         if vm_settings.cpus.is_none() {
-            vm_settings.cpus = global_config.defaults.cpus;
+            if let Some(cpus) = global_config.defaults.cpus {
+                vm_settings.cpus = Some(vm_config::config::CpuLimit::Limited(cpus));
+            }
         }
 
         // 2. Get all machine names for this project to define them in the Vagrantfile
@@ -194,6 +196,7 @@ impl VagrantProvider {
                 content.push_str("  config.vm.provider \"virtualbox\" do |vb|\n");
                 content.push_str(&format!("    vb.memory = \"{}\"\n", mb));
                 if let Some(cpus) = &vm_settings.cpus {
+                    #[allow(clippy::excessive_nesting)]
                     if let Some(count) = cpus.to_count() {
                         content.push_str(&format!("    vb.cpus = {}\n", count));
                     }

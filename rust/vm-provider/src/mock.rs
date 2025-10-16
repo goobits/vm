@@ -40,6 +40,11 @@ impl Provider for MockProvider {
         Ok(())
     }
 
+    fn copy(&self, _source: &str, _destination: &str, _container: Option<&str>) -> Result<()> {
+        println!("Mock copy successful");
+        Ok(())
+    }
+
     fn status(&self, _container: Option<&str>) -> Result<()> {
         println!("Status for mock-vm:");
         println!("  Running: true");
