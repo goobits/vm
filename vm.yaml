@@ -38,4 +38,4 @@ aliases:
   geminiyolo: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini
 networking:
   networks:
-    - jules
+  - jules
