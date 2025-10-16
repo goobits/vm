@@ -193,7 +193,7 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
                         }),
                         vm: Some(vm_config::config::VmSettings {
                             memory: Some(vm_config::config::MemoryLimit::Limited(resources.memory)),
-                            cpus: Some(resources.cpus),
+                            cpus: Some(vm_config::config::CpuLimit::Limited(resources.cpus)),
                             ..Default::default()
                         }),
                         ..Default::default()

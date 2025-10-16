@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use sysinfo::System;
 use vm_config::{
-    config::{MemoryLimit, ProjectConfig, VmConfig, VmSettings},
+    config::{CpuLimit, MemoryLimit, ProjectConfig, VmConfig, VmSettings},
     detector::detect_project_name,
 };
 use vm_core::{vm_println, vm_success};
@@ -72,7 +72,7 @@ pub fn handle_init(
             ..Default::default()
         }),
         vm: Some(VmSettings {
-            cpus: Some(resources.recommended_cpus),
+            cpus: Some(CpuLimit::Limited(resources.recommended_cpus)),
             memory: Some(resources.recommended_memory.clone()),
             user: Some(username),
             ..Default::default()
