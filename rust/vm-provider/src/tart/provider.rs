@@ -224,12 +224,18 @@ impl TartProvider {
             if let Some(cpus) = &vm_config.cpus {
                 match cpus.to_count() {
                     Some(count) => {
-                        ProgressReporter::task(&main_phase, &format!("Setting CPUs to {}...", count));
+                        ProgressReporter::task(
+                            &main_phase,
+                            &format!("Setting CPUs to {}...", count),
+                        );
                         stream_command("tart", &["set", vm_name, "--cpu", &count.to_string()])?;
                         ProgressReporter::task(&main_phase, "CPUs configured.");
                     }
                     None => {
-                        ProgressReporter::task(&main_phase, "CPUs set to unlimited (no Tart limit).");
+                        ProgressReporter::task(
+                            &main_phase,
+                            "CPUs set to unlimited (no Tart limit).",
+                        );
                     }
                 }
             }
@@ -431,9 +437,17 @@ impl Provider for TartProvider {
         if is_upload {
             // Upload: local -> VM
             let copy_cmd = format!("cat > '{}'", remote_path.replace('\'', "'\"'\"'"));
-            let output = cmd!("sh", "-c", format!("cat '{}' | tart ssh {} -- sh -c \"{}\"",
-                local_path.replace('\'', "'\"'\"'"), vm_name, copy_cmd))
-                .run();
+            let output = cmd!(
+                "sh",
+                "-c",
+                format!(
+                    "cat '{}' | tart ssh {} -- sh -c \"{}\"",
+                    local_path.replace('\'', "'\"'\"'"),
+                    vm_name,
+                    copy_cmd
+                )
+            )
+            .run();
 
             output.map_err(|e| VmError::Provider(format!("Failed to copy file to VM: {}", e)))?;
         } else {

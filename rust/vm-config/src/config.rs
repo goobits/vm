@@ -331,9 +331,7 @@ impl Serialize for MemoryLimit {
     {
         match self {
             MemoryLimit::Limited(mb) => serializer.serialize_u32(*mb),
-            MemoryLimit::Percentage(percent) => {
-                serializer.serialize_str(&format!("{}%", percent))
-            }
+            MemoryLimit::Percentage(percent) => serializer.serialize_str(&format!("{}%", percent)),
             MemoryLimit::Unlimited => serializer.serialize_str("unlimited"),
         }
     }
@@ -623,9 +621,7 @@ impl<'de> Deserialize<'de> for DiskLimit {
                 Ok(DiskLimit::Limited(gb))
             }
             ParsedLimit::Percentage(percent) => Ok(DiskLimit::Percentage(percent)),
-            ParsedLimit::Unlimited => {
-                Err(de::Error::custom("Disk size cannot be unlimited"))
-            }
+            ParsedLimit::Unlimited => Err(de::Error::custom("Disk size cannot be unlimited")),
         }
     }
 }
@@ -911,7 +907,7 @@ impl VmConfig {
                         errors.push("VM memory allocation cannot be 0".to_string());
                     }
                     Some(_) => {} // Valid memory allocation
-                    None => {} // Unlimited memory is valid
+                    None => {}    // Unlimited memory is valid
                 }
             }
         }

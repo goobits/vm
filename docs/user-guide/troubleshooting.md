@@ -450,13 +450,13 @@ vm --config test.yaml create
 ```yaml
 # Minimal resources for simple projects
 vm:
-  memory: 2048
-  cpus: 1
+  memory: 2048  # Also: "2gb", "50%", "unlimited"
+  cpus: 1       # Also: "50%", "unlimited"
 
 # More resources for complex projects
 vm:
-  memory: 8192
-  cpus: 4
+  memory: 8192  # Also: "8gb", "75%", "unlimited"
+  cpus: 4       # Also: "75%", "unlimited"
 ```
 
 ### Reduce Startup Time

@@ -80,7 +80,7 @@ packages:
 **Solution**: Ensure that your Kubernetes cluster is running and that your `KUBECONFIG` environment variable is pointing to the correct configuration file.
 
 ### Issue: `command not found: kubectl`
-**Solution**: The `kubectl` binary is installed during the provisioning step. Run `vm provision` to ensure all setup scripts have been executed.
+**Solution**: The `kubectl` binary is installed during the provisioning step. Run `vm apply` to ensure all setup scripts have been executed.
 
 ## Related Documentation
 

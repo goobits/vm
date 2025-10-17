@@ -2,6 +2,12 @@
 
 Real-world configuration examples for different project types and use cases.
 
+**Note**: Resource limits (`memory`, `cpus`, `swap`, `disk_size`) support flexible formats:
+- Numbers: `4096` (MB for memory/swap, GB for disk)
+- Units: `"4gb"`, `"512mb"`, `"1.5gb"`
+- Percentages: `"50%"`, `"75%"`
+- Unlimited: `"unlimited"`
+
 ## 🎯 Frontend Projects
 
 ### React Development
@@ -213,7 +219,7 @@ project:
   name: ml-project
   hostname: dev.ml-project.local
 vm:
-  memory: 12288  # 12GB for ML workloads
+  memory: "12gb"  # Supports: 12288 (MB), "12gb", "75%", "unlimited"
   cpus: 6
 ports:
   jupyter: 8888
@@ -477,8 +483,8 @@ provider: docker
 project:
   name: lightweight-project
 vm:
-  memory: 2048
-  cpus: 1
+  memory: "2gb"
+  cpus: "50%"
 
 # Heavy for complex workloads
 os: ubuntu
@@ -486,8 +492,8 @@ provider: docker
 project:
   name: heavy-project
 vm:
-  memory: 12288
-  cpus: 8
+  memory: "12gb"
+  cpus: "75%"
 ```
 
 ### Network Access

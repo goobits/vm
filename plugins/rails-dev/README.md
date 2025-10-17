@@ -93,7 +93,7 @@ packages:
 ## Troubleshooting
 
 ### Issue: Gem installation failure
-**Solution**: Some gems have native extensions that require specific system libraries. Ensure all necessary `-dev` packages are listed under `packages.system` in your `vm.yaml`. Run `vm provision` after updating the configuration.
+**Solution**: Some gems have native extensions that require specific system libraries. Ensure all necessary `-dev` packages are listed under `packages.system` in your `vm.yaml`. Run `vm apply` after updating the configuration.
 
 ### Issue: `ActiveRecord::NoDatabaseError`
 **Solution**: Make sure you have created the database. Run `vm exec "rails db:create"` and then `vm exec "rails db:migrate"`.

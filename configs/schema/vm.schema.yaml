@@ -67,18 +67,49 @@ properties:
             minimum: 512
             description: Memory allocation in MB
           - type: string
-            enum: ["unlimited"]
-            description: Unlimited memory access
+            pattern: ^(\d+(\.\d+)?(gb|mb|kb)|[1-9]\d?%|unlimited)$
+            description: Memory with units ("1gb", "512mb"), percentage ("50%"), or "unlimited"
         default: 2048
-        description: Memory allocation in MB or "unlimited" for no limit
+        description: Memory allocation. Supports integers (MB), units ("2gb"), percentages ("50%"), or "unlimited"
         examples:
           - 8192
+          - "4gb"
+          - "50%"
           - "unlimited"
       cpus:
-        type: integer
-        minimum: 1
+        oneOf:
+          - type: integer
+            minimum: 1
+            description: Number of CPU cores
+          - type: string
+            pattern: ^([1-9]\d?%|unlimited)$
+            description: CPUs as percentage ("50%") or "unlimited"
         default: 2
-        description: Number of CPU cores to allocate
+        description: CPU cores to allocate. Supports integers, percentages ("50%"), or "unlimited"
+        examples:
+          - 4
+          - "50%"
+          - "unlimited"
+      swap:
+        oneOf:
+          - type: integer
+            minimum: 0
+            description: Swap size in MB (0 to disable)
+          - type: string
+            pattern: ^(\d+(\.\d+)?(gb|mb|kb)|[1-9]\d?%|unlimited)$
+            description: Swap with units ("1gb", "512mb"), percentage ("50%"), or "unlimited"
+        description: Swap size. Supports integers (MB), units ("1gb"), percentages ("50%"), or "unlimited"
+        examples:
+          - 2048
+          - "1gb"
+          - "50%"
+          - "unlimited"
+      swappiness:
+        type: integer
+        minimum: 0
+        maximum: 100
+        default: 60
+        description: Swappiness value (0-100). Controls tendency to swap memory to disk.
       user:
         type: string
         default: developer
@@ -166,11 +197,20 @@ properties:
           - macos
         description: Guest operating system type
       disk_size:
-        type: integer
+        oneOf:
+          - type: integer
+            minimum: 10
+            maximum: 500
+            description: Disk size in GB
+          - type: string
+            pattern: ^(\d+(\.\d+)?(gb|mb)|[1-9]\d?%)$
+            description: Disk size with units ("40gb") or percentage ("50%")
         default: 50
-        minimum: 10
-        maximum: 500
-        description: Disk size in GB
+        description: Disk size. Supports integers (GB), units ("40gb"), or percentages ("50%")
+        examples:
+          - 60
+          - "60gb"
+          - "50%"
       rosetta:
         type: boolean
         default: true

@@ -740,13 +740,34 @@ impl Provider for VagrantProvider {
             let copy_cmd = format!("cat > {}", escaped_remote);
 
             let status = if machine_name == DEFAULT_MACHINE_NAME {
-                duct::cmd("sh", &["-c", &format!("cat {} | vagrant ssh -c '{}'", shell_escape(local_path), copy_cmd)])
-                    .env("VAGRANT_CWD", &vagrant_cwd)
-                    .run()
+                duct::cmd(
+                    "sh",
+                    &[
+                        "-c",
+                        &format!(
+                            "cat {} | vagrant ssh -c '{}'",
+                            shell_escape(local_path),
+                            copy_cmd
+                        ),
+                    ],
+                )
+                .env("VAGRANT_CWD", &vagrant_cwd)
+                .run()
             } else {
-                duct::cmd("sh", &["-c", &format!("cat {} | vagrant ssh {} -c '{}'", shell_escape(local_path), machine_name, copy_cmd)])
-                    .env("VAGRANT_CWD", &vagrant_cwd)
-                    .run()
+                duct::cmd(
+                    "sh",
+                    &[
+                        "-c",
+                        &format!(
+                            "cat {} | vagrant ssh {} -c '{}'",
+                            shell_escape(local_path),
+                            machine_name,
+                            copy_cmd
+                        ),
+                    ],
+                )
+                .env("VAGRANT_CWD", &vagrant_cwd)
+                .run()
             };
 
             status.map_err(|e| VmError::Provider(format!("Failed to copy file to VM: {}", e)))?;
@@ -767,7 +788,8 @@ impl Provider for VagrantProvider {
                     .run()
             };
 
-            let result = output.map_err(|e| VmError::Provider(format!("Failed to read file from VM: {}", e)))?;
+            let result = output
+                .map_err(|e| VmError::Provider(format!("Failed to read file from VM: {}", e)))?;
             std::fs::write(local_path, result.stdout)
                 .map_err(|e| VmError::Provider(format!("Failed to write local file: {}", e)))?;
         }

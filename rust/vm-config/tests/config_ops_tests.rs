@@ -102,7 +102,12 @@ mod config_ops_tests {
         );
 
         // Test setting a nested value
-        ConfigOps::set("services.docker.enabled", &["true".to_string()], false, false)?;
+        ConfigOps::set(
+            "services.docker.enabled",
+            &["true".to_string()],
+            false,
+            false,
+        )?;
 
         // Verify the nested structure
         let config_content = fs::read_to_string(&config_path)?;
@@ -147,7 +152,10 @@ mod config_ops_tests {
         let config: VmConfig = serde_yaml::from_str(&config_content)?;
 
         assert_eq!(config.provider.as_deref(), Some("tart"));
-        assert_eq!(config.vm.as_ref().and_then(|v| v.cpus.as_ref()), Some(&vm_config::config::CpuLimit::Limited(8)));
+        assert_eq!(
+            config.vm.as_ref().and_then(|v| v.cpus.as_ref()),
+            Some(&vm_config::config::CpuLimit::Limited(8))
+        );
 
         // Test unsetting a global value
         ConfigOps::unset("vm.cpus", true)?;
@@ -156,7 +164,10 @@ mod config_ops_tests {
         let updated_config: VmConfig = serde_yaml::from_str(&updated_content)?;
 
         assert_eq!(updated_config.provider.as_deref(), Some("tart"));
-        assert_eq!(updated_config.vm.as_ref().and_then(|v| v.cpus.as_ref()), None);
+        assert_eq!(
+            updated_config.vm.as_ref().and_then(|v| v.cpus.as_ref()),
+            None
+        );
 
         Ok(())
     }
@@ -221,9 +232,24 @@ vm:
         fixture.set_working_dir()?;
 
         // Test deep nested setting
-        ConfigOps::set("services.postgresql.version", &["15".to_string()], false, false)?;
-        ConfigOps::set("services.postgresql.port", &["5432".to_string()], false, false)?;
-        ConfigOps::set("services.redis.enabled", &["true".to_string()], false, false)?;
+        ConfigOps::set(
+            "services.postgresql.version",
+            &["15".to_string()],
+            false,
+            false,
+        )?;
+        ConfigOps::set(
+            "services.postgresql.port",
+            &["5432".to_string()],
+            false,
+            false,
+        )?;
+        ConfigOps::set(
+            "services.redis.enabled",
+            &["true".to_string()],
+            false,
+            false,
+        )?;
 
         // Verify nested structure was created correctly
         let config_path = std::env::current_dir()?.join("vm.yaml");

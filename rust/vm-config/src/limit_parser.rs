@@ -160,7 +160,10 @@ mod tests {
 
     #[test]
     fn test_parse_raw_numbers() {
-        assert_eq!(parse_limit_value("1024").unwrap(), ParsedLimit::Number(1024));
+        assert_eq!(
+            parse_limit_value("1024").unwrap(),
+            ParsedLimit::Number(1024)
+        );
         assert_eq!(parse_limit_value("4").unwrap(), ParsedLimit::Number(4));
         assert_eq!(parse_limit_value("0").unwrap(), ParsedLimit::Number(0));
     }
@@ -200,8 +203,14 @@ mod tests {
 
     #[test]
     fn test_parse_percentages() {
-        assert_eq!(parse_limit_value("50%").unwrap(), ParsedLimit::Percentage(50));
-        assert_eq!(parse_limit_value("90%").unwrap(), ParsedLimit::Percentage(90));
+        assert_eq!(
+            parse_limit_value("50%").unwrap(),
+            ParsedLimit::Percentage(50)
+        );
+        assert_eq!(
+            parse_limit_value("90%").unwrap(),
+            ParsedLimit::Percentage(90)
+        );
         assert_eq!(parse_limit_value("1%").unwrap(), ParsedLimit::Percentage(1));
         assert_eq!(
             parse_limit_value("100%").unwrap(),
@@ -211,7 +220,10 @@ mod tests {
 
     #[test]
     fn test_parse_unlimited() {
-        assert_eq!(parse_limit_value("unlimited").unwrap(), ParsedLimit::Unlimited);
+        assert_eq!(
+            parse_limit_value("unlimited").unwrap(),
+            ParsedLimit::Unlimited
+        );
         assert_eq!(
             parse_limit_value("UNLIMITED").unwrap(),
             ParsedLimit::Unlimited

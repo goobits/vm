@@ -86,10 +86,7 @@ fn build_vm_schema_cache() -> HashMap<String, SchemaType> {
         "audio",
         "gpu",
     ] {
-        cache.insert(
-            format!("services.{}.enabled", service),
-            SchemaType::Boolean,
-        );
+        cache.insert(format!("services.{}.enabled", service), SchemaType::Boolean);
         cache.insert(format!("services.{}.port", service), SchemaType::Integer);
     }
 
@@ -136,10 +133,7 @@ fn build_vm_schema_cache() -> HashMap<String, SchemaType> {
     cache.insert("terminal.username".to_string(), SchemaType::String);
     cache.insert("terminal.theme".to_string(), SchemaType::String);
     cache.insert("terminal.show_git_branch".to_string(), SchemaType::Boolean);
-    cache.insert(
-        "terminal.show_timestamp".to_string(),
-        SchemaType::Boolean,
-    );
+    cache.insert("terminal.show_timestamp".to_string(), SchemaType::Boolean);
 
     // Package arrays
     cache.insert(
@@ -238,10 +232,7 @@ fn build_global_schema_cache() -> HashMap<String, SchemaType> {
         "services.auth_proxy.enabled".to_string(),
         SchemaType::Boolean,
     );
-    cache.insert(
-        "services.auth_proxy.port".to_string(),
-        SchemaType::Integer,
-    );
+    cache.insert("services.auth_proxy.port".to_string(), SchemaType::Integer);
     cache.insert(
         "services.auth_proxy.token_expiry_hours".to_string(),
         SchemaType::Integer,
@@ -323,11 +314,7 @@ pub fn lookup_field_type(field: &str, global: bool) -> SchemaType {
 }
 
 /// Parse a value according to its schema type
-pub fn parse_value_with_schema(
-    field: &str,
-    values: &[String],
-    global: bool,
-) -> Result<Value> {
+pub fn parse_value_with_schema(field: &str, values: &[String], global: bool) -> Result<Value> {
     let schema_type = lookup_field_type(field, global);
 
     match schema_type {
@@ -400,12 +387,7 @@ fn parse_integer(value: &str) -> Result<Value> {
     value
         .parse::<i64>()
         .map(|n| Value::Number(n.into()))
-        .map_err(|_| {
-            VmError::Config(format!(
-                "'{}' is not a valid integer value",
-                value
-            ))
-        })
+        .map_err(|_| VmError::Config(format!("'{}' is not a valid integer value", value)))
 }
 
 #[cfg(test)]
@@ -442,8 +424,9 @@ mod tests {
 
     #[test]
     fn test_lookup_integer_fields() {
-        assert_eq!(lookup_field_type("vm.memory", false), SchemaType::Integer);
-        assert_eq!(lookup_field_type("vm.cpus", false), SchemaType::Integer);
+        // vm.memory and vm.cpus are now String to support flexible formats (e.g., "1gb", "50%", "unlimited")
+        assert_eq!(lookup_field_type("vm.memory", false), SchemaType::String);
+        assert_eq!(lookup_field_type("vm.cpus", false), SchemaType::String);
         assert_eq!(
             lookup_field_type("ports.frontend", false),
             SchemaType::Integer

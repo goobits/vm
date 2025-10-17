@@ -109,8 +109,8 @@ When you need specific provider features:
 ```yaml
 provider: docker  # Force Docker provider
 vm:
-  memory: 8192   # 8GB RAM
-  cpus: 4        # 4 CPU cores
+  memory: "8gb"  # Supports: 8192 (MB), "8gb", "50%", "unlimited"
+  cpus: 4        # Supports: 4, "50%", "unlimited"
 ```
 
 ## 📁 Configuration Files
@@ -159,9 +159,9 @@ project:
 
 vm:
   box: bento/ubuntu-24.04  # Vagrant box (Vagrant only)
-  memory: 4096  # RAM in MB (or "unlimited" for no limit)
-  cpus: 2  # CPU cores (or "unlimited" for no limit)
-  swap: 2048 # Swap in MB
+  memory: 4096  # RAM: 4096 (MB), "2gb", "50%", "unlimited"
+  cpus: 2  # CPUs: 2, "50%", "unlimited"
+  swap: 2048 # Swap: 2048 (MB), "1gb", "50%", "unlimited"
   swappiness: 60 # Swappiness (0-100)
   user: developer  # VM/container user (changed from vagrant)
   port_binding: 127.0.0.1  # or "0.0.0.0" for network access
@@ -475,7 +475,7 @@ provider: tart
 tart:
   image: ghcr.io/cirruslabs/macos-sonoma-base:latest
   rosetta: true  # Enable x86 emulation for Linux VMs
-  disk_size: 60  # GB
+  disk_size: 60  # Disk: 60 (GB), "60gb", "50%"
   ssh_user: admin
 ```
 

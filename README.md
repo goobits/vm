@@ -173,7 +173,7 @@ Commands for managing and monitoring your environments:
 vm list                # List all environments with their status
 vm status              # Show the status and health of an environment
 vm logs                # View the logs for an environment
-vm provision           # Re-run the provisioning process
+vm apply               # Re-apply configuration to running environment
 vm restart             # Restart an environment
 ```
 
@@ -221,7 +221,7 @@ vm create                # Create and provision a new VM
 vm start                 # Start a stopped VM
 vm stop                  # Stop a running VM
 vm restart               # Restart a VM
-vm provision             # Re-run VM provisioning
+vm apply                 # Re-apply configuration to running VM
 vm destroy               # Destroy a VM
 vm status                # Show VM status and health
 vm ssh                   # Connect to a VM via SSH

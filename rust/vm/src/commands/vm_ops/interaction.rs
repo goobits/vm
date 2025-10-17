@@ -479,11 +479,7 @@ pub fn handle_copy(
         .unwrap_or("vm-project");
 
     // Determine direction for user feedback
-    let direction = if source.contains(':') {
-        "from"
-    } else {
-        "to"
-    };
+    let direction = if source.contains(':') { "from" } else { "to" };
 
     vm_println!("📦 Copying file {} VM '{}'...", direction, vm_name);
 

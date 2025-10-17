@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use crate::config::{CpuLimit, DiskLimit, MemoryLimit, SwapLimit, TartConfig, VmConfig, VmSettings};
+    use crate::config::{
+        CpuLimit, DiskLimit, MemoryLimit, SwapLimit, TartConfig, VmConfig, VmSettings,
+    };
     use serde_yaml_ng as serde_yaml;
 
     // ===== Memory Limit Tests =====

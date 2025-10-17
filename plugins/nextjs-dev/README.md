@@ -92,7 +92,7 @@ packages:
 **Solution**: The default port (3000) is already in use on your host. Map it to a different host port in your `vm.yaml` under the `ports` section.
 
 ### Issue: Image optimization errors with `sharp`
-**Solution**: Ensure that the `sharp` package installed correctly. You may need to run `vm provision` to reinstall dependencies if you encounter native compilation issues.
+**Solution**: Ensure that the `sharp` package installed correctly. You may need to run `vm apply` to reinstall dependencies if you encounter native compilation issues.
 
 ## Related Documentation
 

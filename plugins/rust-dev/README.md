@@ -80,7 +80,7 @@ packages:
 **Solution**: This preset installs `libssl-dev`, which should resolve most OpenSSL-related compilation issues. If you still encounter problems, ensure your `Cargo.toml` specifies a compatible version of the `openssl` crate.
 
 ### Issue: `error: linker 'cc' not found`
-**Solution**: The `build-essential` package provides the necessary C compiler. If you see this error, run `vm provision` to ensure all system packages are installed correctly.
+**Solution**: The `build-essential` package provides the necessary C compiler. If you see this error, run `vm apply` to ensure all system packages are installed correctly.
 
 ## Related Documentation
 
