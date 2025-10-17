@@ -342,4 +342,220 @@ vm:
             &CpuLimit::Percentage(50)
         );
     }
+
+    // ===== Swap Limit Tests =====
+
+    #[test]
+    fn test_swap_numeric_serialization() {
+        use crate::config::SwapLimit;
+
+        let config = VmConfig {
+            vm: Some(VmSettings {
+                memory: Some(MemoryLimit::Limited(4096)),
+                swap: Some(SwapLimit::Limited(1024)),
+                user: Some("developer".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let yaml = serde_yaml::to_string(&config).unwrap();
+        assert!(yaml.contains("swap: 1024"));
+    }
+
+    #[test]
+    fn test_swap_percentage_serialization() {
+        use crate::config::SwapLimit;
+
+        let config = VmConfig {
+            vm: Some(VmSettings {
+                memory: Some(MemoryLimit::Limited(4096)),
+                swap: Some(SwapLimit::Percentage(25)),
+                user: Some("developer".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let yaml = serde_yaml::to_string(&config).unwrap();
+        assert!(yaml.contains("swap: 25%"));
+    }
+
+    #[test]
+    fn test_swap_unlimited_serialization() {
+        use crate::config::SwapLimit;
+
+        let config = VmConfig {
+            vm: Some(VmSettings {
+                memory: Some(MemoryLimit::Limited(4096)),
+                swap: Some(SwapLimit::Unlimited),
+                user: Some("developer".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let yaml = serde_yaml::to_string(&config).unwrap();
+        assert!(yaml.contains("swap: unlimited"));
+    }
+
+    #[test]
+    fn test_swap_units_deserialization() {
+        use crate::config::SwapLimit;
+
+        let yaml = r#"
+vm:
+  swap: "1gb"
+  user: developer
+"#;
+        let config: VmConfig = serde_yaml::from_str(yaml).unwrap();
+        let swap = config.vm.unwrap().swap.unwrap();
+        assert_eq!(swap.to_mb(), Some(1024));
+
+        let yaml2 = r#"
+vm:
+  swap: "512mb"
+  user: developer
+"#;
+        let config2: VmConfig = serde_yaml::from_str(yaml2).unwrap();
+        let swap2 = config2.vm.unwrap().swap.unwrap();
+        assert_eq!(swap2.to_mb(), Some(512));
+    }
+
+    #[test]
+    fn test_swap_percentage_deserialization() {
+        use crate::config::SwapLimit;
+
+        let yaml = r#"
+vm:
+  swap: "25%"
+  user: developer
+"#;
+        let config: VmConfig = serde_yaml::from_str(yaml).unwrap();
+        let swap = config.vm.unwrap().swap.unwrap();
+        assert!(swap.is_percentage());
+        assert_eq!(swap.to_percentage(), Some(25));
+    }
+
+    #[test]
+    fn test_swap_unlimited_deserialization() {
+        use crate::config::SwapLimit;
+
+        let yaml = r#"
+vm:
+  swap: "unlimited"
+  user: developer
+"#;
+        let config: VmConfig = serde_yaml::from_str(yaml).unwrap();
+        let swap = config.vm.unwrap().swap.unwrap();
+        assert!(swap.is_unlimited());
+    }
+
+    #[test]
+    fn test_swap_percentage_resolution() {
+        use crate::config::SwapLimit;
+
+        let percent_25 = SwapLimit::Percentage(25);
+        let limited = SwapLimit::Limited(1024);
+
+        // 25% of 8GB = 2GB
+        assert_eq!(percent_25.resolve_percentage(8192), Some(2048));
+        // Limited just returns the value
+        assert_eq!(limited.resolve_percentage(8192), Some(1024));
+    }
+
+    // ===== Disk Limit Tests =====
+
+    #[test]
+    fn test_disk_numeric_serialization() {
+        use crate::config::{DiskLimit, TartConfig};
+
+        let config = VmConfig {
+            tart: Some(TartConfig {
+                disk_size: Some(DiskLimit::Limited(40)),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let yaml = serde_yaml::to_string(&config).unwrap();
+        assert!(yaml.contains("disk_size: 40"));
+    }
+
+    #[test]
+    fn test_disk_percentage_serialization() {
+        use crate::config::{DiskLimit, TartConfig};
+
+        let config = VmConfig {
+            tart: Some(TartConfig {
+                disk_size: Some(DiskLimit::Percentage(50)),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let yaml = serde_yaml::to_string(&config).unwrap();
+        assert!(yaml.contains("disk_size: 50%"));
+    }
+
+    #[test]
+    fn test_disk_units_deserialization() {
+        use crate::config::DiskLimit;
+
+        let yaml = r#"
+tart:
+  disk_size: "40gb"
+"#;
+        let config: VmConfig = serde_yaml::from_str(yaml).unwrap();
+        let disk = config.tart.unwrap().disk_size.unwrap();
+        assert_eq!(disk.to_gb(), Some(40));
+
+        // Test just number
+        let yaml2 = r#"
+tart:
+  disk_size: 80
+"#;
+        let config2: VmConfig = serde_yaml::from_str(yaml2).unwrap();
+        let disk2 = config2.tart.unwrap().disk_size.unwrap();
+        assert_eq!(disk2.to_gb(), Some(80));
+    }
+
+    #[test]
+    fn test_disk_percentage_deserialization() {
+        use crate::config::DiskLimit;
+
+        let yaml = r#"
+tart:
+  disk_size: "50%"
+"#;
+        let config: VmConfig = serde_yaml::from_str(yaml).unwrap();
+        let disk = config.tart.unwrap().disk_size.unwrap();
+        assert!(disk.is_percentage());
+        assert_eq!(disk.to_percentage(), Some(50));
+    }
+
+    #[test]
+    fn test_disk_rejects_unlimited() {
+        let yaml = r#"
+tart:
+  disk_size: "unlimited"
+"#;
+        let result: Result<VmConfig, _> = serde_yaml::from_str(yaml);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("cannot be unlimited"));
+    }
+
+    #[test]
+    fn test_disk_percentage_resolution() {
+        use crate::config::DiskLimit;
+
+        let percent_50 = DiskLimit::Percentage(50);
+        let limited = DiskLimit::Limited(40);
+
+        // 50% of 200GB = 100GB
+        assert_eq!(percent_50.resolve_percentage(200), Some(100));
+        // Limited just returns the value
+        assert_eq!(limited.resolve_percentage(200), Some(40));
+    }
 }

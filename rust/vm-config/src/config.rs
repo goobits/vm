@@ -302,7 +302,7 @@ pub struct VmSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cpus: Option<CpuLimit>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub swap: Option<u32>,
+    pub swap: Option<SwapLimit>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub swappiness: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -498,6 +498,175 @@ impl CpuLimit {
     }
 }
 
+/// Swap space limit configuration supporting both specific limits and unlimited access.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SwapLimit {
+    /// Specific swap limit in megabytes
+    Limited(u32),
+    /// Percentage of available system memory (1-100)
+    Percentage(u8),
+    /// No swap limit
+    Unlimited,
+}
+
+impl Serialize for SwapLimit {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            SwapLimit::Limited(mb) => serializer.serialize_u32(*mb),
+            SwapLimit::Percentage(percent) => serializer.serialize_str(&format!("{}%", percent)),
+            SwapLimit::Unlimited => serializer.serialize_str("unlimited"),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SwapLimit {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use crate::limit_parser::{LimitVisitor, ParsedLimit};
+        use serde::de;
+
+        let visitor = LimitVisitor::new("swap (MB)");
+        let parsed = deserializer.deserialize_any(visitor)?;
+
+        match parsed {
+            ParsedLimit::Number(mb) => Ok(SwapLimit::Limited(mb)),
+            ParsedLimit::Bytes(bytes) => {
+                let mb = (bytes / 1024 / 1024) as u32;
+                Ok(SwapLimit::Limited(mb))
+            }
+            ParsedLimit::Percentage(percent) => Ok(SwapLimit::Percentage(percent)),
+            ParsedLimit::Unlimited => Ok(SwapLimit::Unlimited),
+        }
+    }
+}
+
+impl SwapLimit {
+    /// Get the swap limit in MB if it's a fixed value
+    /// Returns None for Unlimited or Percentage (needs resolution)
+    pub fn to_mb(&self) -> Option<u32> {
+        match self {
+            SwapLimit::Limited(mb) => Some(*mb),
+            SwapLimit::Percentage(_) | SwapLimit::Unlimited => None,
+        }
+    }
+
+    /// Check if this limit is unlimited
+    pub fn is_unlimited(&self) -> bool {
+        matches!(self, SwapLimit::Unlimited)
+    }
+
+    /// Check if this limit is a percentage
+    pub fn is_percentage(&self) -> bool {
+        matches!(self, SwapLimit::Percentage(_))
+    }
+
+    /// Get the percentage value if this is a percentage limit
+    pub fn to_percentage(&self) -> Option<u8> {
+        match self {
+            SwapLimit::Percentage(percent) => Some(*percent),
+            _ => None,
+        }
+    }
+
+    /// Resolve a percentage limit to concrete MB value based on available memory
+    pub fn resolve_percentage(&self, available_mb: u64) -> Option<u32> {
+        match self {
+            SwapLimit::Percentage(percent) => {
+                let mb = (available_mb * (*percent as u64) / 100) as u32;
+                Some(mb)
+            }
+            SwapLimit::Limited(mb) => Some(*mb),
+            SwapLimit::Unlimited => None,
+        }
+    }
+}
+
+/// Disk size limit configuration supporting both specific limits and unlimited access.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DiskLimit {
+    /// Specific disk size limit in gigabytes
+    Limited(u32),
+    /// Percentage of available disk space (1-100)
+    Percentage(u8),
+}
+
+impl Serialize for DiskLimit {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            DiskLimit::Limited(gb) => serializer.serialize_u32(*gb),
+            DiskLimit::Percentage(percent) => serializer.serialize_str(&format!("{}%", percent)),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for DiskLimit {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use crate::limit_parser::{LimitVisitor, ParsedLimit};
+        use serde::de;
+
+        let visitor = LimitVisitor::new("disk size (GB)");
+        let parsed = deserializer.deserialize_any(visitor)?;
+
+        match parsed {
+            ParsedLimit::Number(gb) => Ok(DiskLimit::Limited(gb)),
+            ParsedLimit::Bytes(bytes) => {
+                let gb = (bytes / 1024 / 1024 / 1024) as u32;
+                Ok(DiskLimit::Limited(gb))
+            }
+            ParsedLimit::Percentage(percent) => Ok(DiskLimit::Percentage(percent)),
+            ParsedLimit::Unlimited => {
+                Err(de::Error::custom("Disk size cannot be unlimited"))
+            }
+        }
+    }
+}
+
+impl DiskLimit {
+    /// Get the disk size in GB if it's a fixed value
+    /// Returns None for Percentage (needs resolution)
+    pub fn to_gb(&self) -> Option<u32> {
+        match self {
+            DiskLimit::Limited(gb) => Some(*gb),
+            DiskLimit::Percentage(_) => None,
+        }
+    }
+
+    /// Check if this limit is a percentage
+    pub fn is_percentage(&self) -> bool {
+        matches!(self, DiskLimit::Percentage(_))
+    }
+
+    /// Get the percentage value if this is a percentage limit
+    pub fn to_percentage(&self) -> Option<u8> {
+        match self {
+            DiskLimit::Percentage(percent) => Some(*percent),
+            _ => None,
+        }
+    }
+
+    /// Resolve a percentage limit to concrete GB value based on available disk space
+    pub fn resolve_percentage(&self, available_gb: u64) -> Option<u32> {
+        match self {
+            DiskLimit::Percentage(percent) => {
+                let gb = (available_gb * (*percent as u64) / 100) as u32;
+                Some(gb)
+            }
+            DiskLimit::Limited(gb) => Some(*gb),
+        }
+    }
+}
+
 /// Language runtime and tool version specifications.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct VersionsConfig {
@@ -580,7 +749,7 @@ pub struct TartConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub guest_os: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub disk_size: Option<u32>,
+    pub disk_size: Option<DiskLimit>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rosetta: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -43,13 +43,13 @@ fn build_vm_schema_cache() -> HashMap<String, SchemaType> {
 
     // VM fields
     cache.insert("vm.box".to_string(), SchemaType::String);
-    cache.insert("vm.memory".to_string(), SchemaType::Integer);
-    cache.insert("vm.cpus".to_string(), SchemaType::Integer);
+    cache.insert("vm.memory".to_string(), SchemaType::String); // Supports: 1024, "1gb", "50%", "unlimited"
+    cache.insert("vm.cpus".to_string(), SchemaType::String); // Supports: 4, "50%", "unlimited"
     cache.insert("vm.user".to_string(), SchemaType::String);
     cache.insert("vm.port_binding".to_string(), SchemaType::String);
     cache.insert("vm.gui".to_string(), SchemaType::Boolean);
     cache.insert("vm.timezone".to_string(), SchemaType::String);
-    cache.insert("vm.swap".to_string(), SchemaType::Integer);
+    cache.insert("vm.swap".to_string(), SchemaType::String); // Supports: 1024, "1gb", "50%", "unlimited"
     cache.insert("vm.swappiness".to_string(), SchemaType::Integer);
 
     // Version fields
@@ -69,7 +69,7 @@ fn build_vm_schema_cache() -> HashMap<String, SchemaType> {
     // Tart fields
     cache.insert("tart.image".to_string(), SchemaType::String);
     cache.insert("tart.guest_os".to_string(), SchemaType::String);
-    cache.insert("tart.disk_size".to_string(), SchemaType::Integer);
+    cache.insert("tart.disk_size".to_string(), SchemaType::String); // Supports: 40, "40gb", "50%"
     cache.insert("tart.rosetta".to_string(), SchemaType::Boolean);
     cache.insert("tart.ssh_user".to_string(), SchemaType::String);
     cache.insert("tart.install_docker".to_string(), SchemaType::Boolean);

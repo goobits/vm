@@ -128,9 +128,7 @@ services:
     {% if config.vm.swappiness is defined %}
     mem_swappiness: {{ config.vm.swappiness }}
     {% endif %}
-    {% if config.vm.swap is defined and config.vm.memory is defined and config.vm.memory != "unlimited" %}
-    memswap_limit: {{ config.vm.memory + config.vm.swap }}m
-    {% endif %}
+    {# Note: swap is now a SwapLimit enum, memswap_limit is computed provider-side #}
     {% if config.security.pids_limit %}
     pids_limit: {{ config.security.pids_limit }}
     {% endif %}

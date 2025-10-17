@@ -237,16 +237,18 @@ impl TartProvider {
 
         // Set disk size if specified
         if let Some(tart_config) = &config.tart {
-            if let Some(disk_size) = tart_config.disk_size {
-                ProgressReporter::task(
-                    &main_phase,
-                    &format!("Setting disk size to {} GB...", disk_size),
-                );
-                stream_command(
-                    "tart",
-                    &["set", vm_name, "--disk-size", &disk_size.to_string()],
-                )?;
-                ProgressReporter::task(&main_phase, "Disk size configured.");
+            if let Some(disk_limit) = &tart_config.disk_size {
+                if let Some(disk_gb) = disk_limit.to_gb() {
+                    ProgressReporter::task(
+                        &main_phase,
+                        &format!("Setting disk size to {} GB...", disk_gb),
+                    );
+                    stream_command(
+                        "tart",
+                        &["set", vm_name, "--disk-size", &disk_gb.to_string()],
+                    )?;
+                    ProgressReporter::task(&main_phase, "Disk size configured.");
+                }
             }
         }
 
