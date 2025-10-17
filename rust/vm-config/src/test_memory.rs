@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::config::{CpuLimit, MemoryLimit, VmConfig, VmSettings};
+    use crate::config::{CpuLimit, DiskLimit, MemoryLimit, SwapLimit, TartConfig, VmConfig, VmSettings};
     use serde_yaml_ng as serde_yaml;
 
     // ===== Memory Limit Tests =====
@@ -347,8 +347,6 @@ vm:
 
     #[test]
     fn test_swap_numeric_serialization() {
-        use crate::config::SwapLimit;
-
         let config = VmConfig {
             vm: Some(VmSettings {
                 memory: Some(MemoryLimit::Limited(4096)),
@@ -365,8 +363,6 @@ vm:
 
     #[test]
     fn test_swap_percentage_serialization() {
-        use crate::config::SwapLimit;
-
         let config = VmConfig {
             vm: Some(VmSettings {
                 memory: Some(MemoryLimit::Limited(4096)),
@@ -383,8 +379,6 @@ vm:
 
     #[test]
     fn test_swap_unlimited_serialization() {
-        use crate::config::SwapLimit;
-
         let config = VmConfig {
             vm: Some(VmSettings {
                 memory: Some(MemoryLimit::Limited(4096)),
@@ -401,8 +395,6 @@ vm:
 
     #[test]
     fn test_swap_units_deserialization() {
-        use crate::config::SwapLimit;
-
         let yaml = r#"
 vm:
   swap: "1gb"
@@ -424,8 +416,6 @@ vm:
 
     #[test]
     fn test_swap_percentage_deserialization() {
-        use crate::config::SwapLimit;
-
         let yaml = r#"
 vm:
   swap: "25%"
@@ -439,8 +429,6 @@ vm:
 
     #[test]
     fn test_swap_unlimited_deserialization() {
-        use crate::config::SwapLimit;
-
         let yaml = r#"
 vm:
   swap: "unlimited"
@@ -453,8 +441,6 @@ vm:
 
     #[test]
     fn test_swap_percentage_resolution() {
-        use crate::config::SwapLimit;
-
         let percent_25 = SwapLimit::Percentage(25);
         let limited = SwapLimit::Limited(1024);
 
@@ -468,8 +454,6 @@ vm:
 
     #[test]
     fn test_disk_numeric_serialization() {
-        use crate::config::{DiskLimit, TartConfig};
-
         let config = VmConfig {
             tart: Some(TartConfig {
                 disk_size: Some(DiskLimit::Limited(40)),
@@ -484,8 +468,6 @@ vm:
 
     #[test]
     fn test_disk_percentage_serialization() {
-        use crate::config::{DiskLimit, TartConfig};
-
         let config = VmConfig {
             tart: Some(TartConfig {
                 disk_size: Some(DiskLimit::Percentage(50)),
@@ -500,8 +482,6 @@ vm:
 
     #[test]
     fn test_disk_units_deserialization() {
-        use crate::config::DiskLimit;
-
         let yaml = r#"
 tart:
   disk_size: "40gb"
@@ -522,8 +502,6 @@ tart:
 
     #[test]
     fn test_disk_percentage_deserialization() {
-        use crate::config::DiskLimit;
-
         let yaml = r#"
 tart:
   disk_size: "50%"
@@ -548,8 +526,6 @@ tart:
 
     #[test]
     fn test_disk_percentage_resolution() {
-        use crate::config::DiskLimit;
-
         let percent_50 = DiskLimit::Percentage(50);
         let limited = DiskLimit::Limited(40);
 

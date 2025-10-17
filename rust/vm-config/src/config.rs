@@ -345,7 +345,6 @@ impl<'de> Deserialize<'de> for MemoryLimit {
         D: Deserializer<'de>,
     {
         use crate::limit_parser::{LimitVisitor, ParsedLimit};
-        use serde::de;
 
         let visitor = LimitVisitor::new("memory (MB)");
         let parsed = deserializer.deserialize_any(visitor)?;
@@ -528,7 +527,6 @@ impl<'de> Deserialize<'de> for SwapLimit {
         D: Deserializer<'de>,
     {
         use crate::limit_parser::{LimitVisitor, ParsedLimit};
-        use serde::de;
 
         let visitor = LimitVisitor::new("swap (MB)");
         let parsed = deserializer.deserialize_any(visitor)?;
