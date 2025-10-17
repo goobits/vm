@@ -107,21 +107,36 @@ impl ConfigValidator {
     fn validate_cpu(&self, config: &VmConfig, report: &mut ValidationReport) -> Result<()> {
         if let Some(vm_settings) = &config.vm {
             if let Some(cpu_limit) = &vm_settings.cpus {
-                // Only validate if a specific limit is set (not unlimited)
-                if let Some(requested_cpus) = cpu_limit.to_count() {
-                    let available_cpus = self.system.cpus().len() as u32;
-                    #[allow(clippy::excessive_nesting)]
-                    if requested_cpus > available_cpus {
-                        report.add_error(format!(
-                            "Requested {requested_cpus} CPUs but only {available_cpus} are available. Please reduce 'vm.cpus' in your vm.yaml."
+                let available_cpus = self.system.cpus().len() as u32;
+
+                // Resolve percentage or get direct value
+                let requested_cpus = match cpu_limit {
+                    crate::config::CpuLimit::Limited(count) => Some(*count),
+                    crate::config::CpuLimit::Percentage(percent) => {
+                        let resolved = cpu_limit.resolve_percentage(available_cpus).unwrap();
+                        report.add_info(format!(
+                            "{}% of {} CPUs = {} CPUs",
+                            percent, available_cpus, resolved
                         ));
-                    } else if requested_cpus > (available_cpus * 3 / 4) {
+                        Some(resolved)
+                    }
+                    crate::config::CpuLimit::Unlimited => None,
+                };
+
+                if let Some(requested) = requested_cpus {
+                    #[allow(clippy::excessive_nesting)]
+                    if requested > available_cpus {
+                        report.add_error(format!(
+                            "Requested {} CPUs but only {} are available. Please reduce 'vm.cpus' in your vm.yaml.",
+                            requested, available_cpus
+                        ));
+                    } else if requested > (available_cpus * 3 / 4) {
                         report.add_warning(format!(
-                            "Assigning {requested_cpus} of {available_cpus} available CPUs may impact host performance."
+                            "Assigning {} of {} available CPUs may impact host performance.",
+                            requested, available_cpus
                         ));
                     }
                 }
-                // If unlimited, no validation needed
             }
         }
         Ok(())
@@ -131,12 +146,28 @@ impl ConfigValidator {
     fn validate_memory(&self, config: &VmConfig, report: &mut ValidationReport) -> Result<()> {
         if let Some(vm_settings) = &config.vm {
             if let Some(memory_limit) = &vm_settings.memory {
-                if let Some(requested_mb) = memory_limit.to_mb() {
-                    let total_mb = self.system.total_memory() / 1024 / 1024;
+                let total_mb = self.system.total_memory() / 1024 / 1024;
+
+                // Resolve percentage or get direct value
+                let requested_mb = match memory_limit {
+                    crate::config::MemoryLimit::Limited(mb) => Some(*mb as u64),
+                    crate::config::MemoryLimit::Percentage(percent) => {
+                        let resolved = memory_limit.resolve_percentage(total_mb).unwrap() as u64;
+                        report.add_info(format!(
+                            "{}% of {}MB RAM = {}MB",
+                            percent, total_mb, resolved
+                        ));
+                        Some(resolved)
+                    }
+                    crate::config::MemoryLimit::Unlimited => None,
+                };
+
+                if let Some(requested) = requested_mb {
                     #[allow(clippy::excessive_nesting)]
-                    if requested_mb as u64 > total_mb {
+                    if requested > total_mb {
                         report.add_error(format!(
-                            "Requested {requested_mb}MB RAM but only {total_mb}MB is available. Please reduce 'vm.memory' in your vm.yaml."
+                            "Requested {}MB RAM but only {}MB is available. Please reduce 'vm.memory' in your vm.yaml.",
+                            requested, total_mb
                         ));
                     }
                 }

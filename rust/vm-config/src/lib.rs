@@ -15,6 +15,7 @@ pub mod config_ops;
 pub mod detector;
 mod embedded_presets;
 pub mod global_config;
+pub mod limit_parser; // Shared limit parsing logic
 pub mod loader;
 pub mod merge;
 mod paths; // Internal only

@@ -316,7 +316,11 @@ pub struct VmSettings {
 /// Memory limit configuration supporting both specific limits and unlimited access.
 #[derive(Debug, Clone, PartialEq)]
 pub enum MemoryLimit {
+    /// Specific memory limit in megabytes
     Limited(u32),
+    /// Percentage of available system memory (1-100)
+    Percentage(u8),
+    /// No memory limit
     Unlimited,
 }
 
@@ -327,6 +331,9 @@ impl Serialize for MemoryLimit {
     {
         match self {
             MemoryLimit::Limited(mb) => serializer.serialize_u32(*mb),
+            MemoryLimit::Percentage(percent) => {
+                serializer.serialize_str(&format!("{}%", percent))
+            }
             MemoryLimit::Unlimited => serializer.serialize_str("unlimited"),
         }
     }
@@ -337,60 +344,69 @@ impl<'de> Deserialize<'de> for MemoryLimit {
     where
         D: Deserializer<'de>,
     {
-        use serde::de::{self, Visitor};
-        use std::fmt;
+        use crate::limit_parser::{LimitVisitor, ParsedLimit};
+        use serde::de;
 
-        struct MemoryLimitVisitor;
+        let visitor = LimitVisitor::new("memory (MB)");
+        let parsed = deserializer.deserialize_any(visitor)?;
 
-        impl<'de> Visitor<'de> for MemoryLimitVisitor {
-            type Value = MemoryLimit;
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a positive integer (MB) or \"unlimited\"")
+        match parsed {
+            ParsedLimit::Number(mb) => Ok(MemoryLimit::Limited(mb)),
+            ParsedLimit::Bytes(bytes) => {
+                let mb = (bytes / 1024 / 1024) as u32;
+                Ok(MemoryLimit::Limited(mb))
             }
-            fn visit_u32<E>(self, value: u32) -> std::result::Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(MemoryLimit::Limited(value))
-            }
-            fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                if value <= u32::MAX as u64 {
-                    Ok(MemoryLimit::Limited(value as u32))
-                } else {
-                    Err(E::custom("memory limit too large (max: 4294967295 MB)"))
-                }
-            }
-            fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                match value {
-                    "unlimited" => Ok(MemoryLimit::Unlimited),
-                    _ => Err(E::custom("expected \"unlimited\" for string memory value")),
-                }
-            }
+            ParsedLimit::Percentage(percent) => Ok(MemoryLimit::Percentage(percent)),
+            ParsedLimit::Unlimited => Ok(MemoryLimit::Unlimited),
         }
-        deserializer.deserialize_any(MemoryLimitVisitor)
     }
 }
 
 impl MemoryLimit {
+    /// Get the memory limit in MB if it's a fixed value
+    /// Returns None for Unlimited or Percentage (needs resolution)
     pub fn to_mb(&self) -> Option<u32> {
         match self {
+            MemoryLimit::Limited(mb) => Some(*mb),
+            MemoryLimit::Percentage(_) | MemoryLimit::Unlimited => None,
+        }
+    }
+
+    /// Check if this limit is unlimited
+    pub fn is_unlimited(&self) -> bool {
+        matches!(self, MemoryLimit::Unlimited)
+    }
+
+    /// Check if this limit is a percentage
+    pub fn is_percentage(&self) -> bool {
+        matches!(self, MemoryLimit::Percentage(_))
+    }
+
+    /// Get the percentage value if this is a percentage limit
+    pub fn to_percentage(&self) -> Option<u8> {
+        match self {
+            MemoryLimit::Percentage(percent) => Some(*percent),
+            _ => None,
+        }
+    }
+
+    /// Resolve a percentage limit to concrete MB value based on available memory
+    pub fn resolve_percentage(&self, available_mb: u64) -> Option<u32> {
+        match self {
+            MemoryLimit::Percentage(percent) => {
+                let mb = (available_mb * (*percent as u64) / 100) as u32;
+                Some(mb)
+            }
             MemoryLimit::Limited(mb) => Some(*mb),
             MemoryLimit::Unlimited => None,
         }
     }
-    pub fn is_unlimited(&self) -> bool {
-        matches!(self, MemoryLimit::Unlimited)
-    }
+
+    /// Convert to Docker memory format (e.g., "1024m")
     pub fn to_docker_format(&self) -> Option<String> {
         match self {
             MemoryLimit::Limited(mb) => Some(format!("{mb}m")),
-            MemoryLimit::Unlimited => None,
+            MemoryLimit::Percentage(_) | MemoryLimit::Unlimited => None,
         }
     }
 }
@@ -398,7 +414,11 @@ impl MemoryLimit {
 /// CPU limit configuration supporting both specific limits and unlimited access.
 #[derive(Debug, Clone, PartialEq)]
 pub enum CpuLimit {
+    /// Specific CPU count limit
     Limited(u32),
+    /// Percentage of available CPUs (1-100)
+    Percentage(u8),
+    /// No CPU limit
     Unlimited,
 }
 
@@ -409,6 +429,7 @@ impl Serialize for CpuLimit {
     {
         match self {
             CpuLimit::Limited(count) => serializer.serialize_u32(*count),
+            CpuLimit::Percentage(percent) => serializer.serialize_str(&format!("{}%", percent)),
             CpuLimit::Unlimited => serializer.serialize_str("unlimited"),
         }
     }
@@ -419,55 +440,61 @@ impl<'de> Deserialize<'de> for CpuLimit {
     where
         D: Deserializer<'de>,
     {
-        use serde::de::{self, Visitor};
-        use std::fmt;
+        use crate::limit_parser::{LimitVisitor, ParsedLimit};
+        use serde::de;
 
-        struct CpuLimitVisitor;
+        let visitor = LimitVisitor::new("CPU count");
+        let parsed = deserializer.deserialize_any(visitor)?;
 
-        impl<'de> Visitor<'de> for CpuLimitVisitor {
-            type Value = CpuLimit;
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a positive integer (CPU count) or \"unlimited\"")
-            }
-            fn visit_u32<E>(self, value: u32) -> std::result::Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(CpuLimit::Limited(value))
-            }
-            fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                if value <= u32::MAX as u64 {
-                    Ok(CpuLimit::Limited(value as u32))
-                } else {
-                    Err(E::custom("CPU count too large (max: 4294967295)"))
-                }
-            }
-            fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                match value {
-                    "unlimited" => Ok(CpuLimit::Unlimited),
-                    _ => Err(E::custom("expected \"unlimited\" for string CPU value")),
-                }
-            }
+        match parsed {
+            ParsedLimit::Number(count) => Ok(CpuLimit::Limited(count)),
+            ParsedLimit::Bytes(_) => Err(de::Error::custom(
+                "Memory units (gb, mb) are not valid for CPU limits",
+            )),
+            ParsedLimit::Percentage(percent) => Ok(CpuLimit::Percentage(percent)),
+            ParsedLimit::Unlimited => Ok(CpuLimit::Unlimited),
         }
-        deserializer.deserialize_any(CpuLimitVisitor)
     }
 }
 
 impl CpuLimit {
+    /// Get the CPU count if it's a fixed value
+    /// Returns None for Unlimited or Percentage (needs resolution)
     pub fn to_count(&self) -> Option<u32> {
         match self {
             CpuLimit::Limited(count) => Some(*count),
-            CpuLimit::Unlimited => None,
+            CpuLimit::Percentage(_) | CpuLimit::Unlimited => None,
         }
     }
+
+    /// Check if this limit is unlimited
     pub fn is_unlimited(&self) -> bool {
         matches!(self, CpuLimit::Unlimited)
+    }
+
+    /// Check if this limit is a percentage
+    pub fn is_percentage(&self) -> bool {
+        matches!(self, CpuLimit::Percentage(_))
+    }
+
+    /// Get the percentage value if this is a percentage limit
+    pub fn to_percentage(&self) -> Option<u8> {
+        match self {
+            CpuLimit::Percentage(percent) => Some(*percent),
+            _ => None,
+        }
+    }
+
+    /// Resolve a percentage limit to concrete CPU count based on available CPUs
+    pub fn resolve_percentage(&self, available_cpus: u32) -> Option<u32> {
+        match self {
+            CpuLimit::Percentage(percent) => {
+                let count = ((available_cpus * (*percent as u32)) / 100).max(1); // At least 1 CPU
+                Some(count)
+            }
+            CpuLimit::Limited(count) => Some(*count),
+            CpuLimit::Unlimited => None,
+        }
     }
 }
 
