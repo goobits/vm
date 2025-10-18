@@ -76,6 +76,7 @@ services:
       {% endif %}
       {% if config.services.postgresql.enabled | default(value=false) %}
       - DATABASE_URL=postgresql://{{ config.services.postgresql.user | default(value="postgres") }}:{{ config.services.postgresql.password | default(value="postgres") }}@postgres:5432/{{ config.services.postgresql.database | default(value=project_name ~ "_dev") }}
+      - PGPASSWORD={{ config.services.postgresql.password | default(value="postgres") }}
       {% endif %}
       # Disable Python bytecode generation for clean read-only mounting
       - PYTHONDONTWRITEBYTECODE=1
