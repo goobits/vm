@@ -101,9 +101,18 @@ alias dps='docker ps'
 alias dimg='docker images'
 
 # Database Shortcuts
-alias psql='sudo -u postgres psql -p {{ project_config.services.postgresql.port | default(5432) }}'
-alias redis='redis-cli -p {{ project_config.services.redis.port | default(6379) }}'
-alias mongo='mongosh --port {{ project_config.services.mongodb.port | default(27017) }}'
+# Detect if running in Docker container (PostgreSQL runs in separate container)
+if [ -f /.dockerenv ]; then
+  # Docker: Connect to postgres service container
+  alias psql='psql -h postgres -U postgres{% if project_config.services.postgresql.database is defined %} -d {{ project_config.services.postgresql.database }}{% endif %}'
+  alias redis='redis-cli -h redis -p {{ project_config.services.redis.port | default(6379) }}'
+  alias mongo='mongosh --host mongodb --port {{ project_config.services.mongodb.port | default(27017) }}'
+else
+  # Vagrant/VM: PostgreSQL runs locally
+  alias psql='sudo -u postgres psql -p {{ project_config.services.postgresql.port | default(5432) }}'
+  alias redis='redis-cli -p {{ project_config.services.redis.port | default(6379) }}'
+  alias mongo='mongosh --port {{ project_config.services.mongodb.port | default(27017) }}'
+fi
 # SECURITY: MySQL password should be provided via environment variable MYSQL_ROOT_PASSWORD
 alias mysql='mysql -u root -p${MYSQL_ROOT_PASSWORD:-mysql} -P {{ project_config.services.mysql.port | default(3306) }}'
 

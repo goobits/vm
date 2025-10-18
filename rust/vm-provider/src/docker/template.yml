@@ -161,6 +161,12 @@ services:
     ports:
       - "{{ config.services.postgresql.port | default(value=5432) }}:5432"
     restart: unless-stopped
+    {% if config.networking and config.networking.networks and config.networking.networks | length > 0 -%}
+    networks:
+      {% for network in config.networking.networks -%}
+      - {{ network }}
+      {% endfor -%}
+    {%- endif %}
   {% endif %}
 
 {% if config.services.postgresql.enabled | default(value=false) %}
