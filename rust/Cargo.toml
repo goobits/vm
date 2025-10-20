@@ -53,7 +53,7 @@ colored = "2.1.0"
 uuid = { version = "1.0", features = ["v4", "serde"] }
 sysinfo = "0.30.13"
 axum = { version = "0.8", features = ["multipart", "ws"] }
-tokio = { version = "1.47", features = ["net", "rt-multi-thread", "macros", "fs", "process"] }
+tokio = { version = "1.48", features = ["net", "rt-multi-thread", "macros", "fs", "process"] }
 aes-gcm = "0.10"
 pbkdf2 = "0.12.2"
 rand = "0.9"
