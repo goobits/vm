@@ -10,47 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [3.1.1] - 2025-10-21
 
 ### Added
-- **Development Tools in Supercool Base Image**: Enhanced development environment
+- **Supercool Base Image Enhancements**
   - Added `jspcd` npm package for JavaScript/TypeScript project analysis
-  - Added cargo development tools: `cargo-nextest`, `cargo-watch`, `cargo-udeps`
+  - Added cargo tools: `cargo-nextest`, `cargo-watch`, `cargo-udeps`
   - Added `mold` linker for faster Rust builds
-  - Updated Makefile with nextest integration and new quality gates
-  - New `make watch` and `make dev` targets for auto-rebuild workflow
-  - New `make udeps` target for finding unused dependencies
+  - Added Makefile targets: `make watch`, `make dev`, `make udeps`
 
-- **Auto-Build Support for Custom Base Images**: Streamlined custom image workflow
-  - Automatic detection and building of custom Dockerfiles (e.g., `supercool.dockerfile`)
-  - Checks if custom image exists locally before building
-  - Smart build context detection for Dockerfile location
-  - Build status messages and progress indication
+- **Auto-Build Support for Custom Base Images**
+  - Automatic detection and building of custom Dockerfiles
+  - Checks if image exists locally before building
   - 5-15 minute build time on first run, instant on subsequent uses
 
-- **PostgreSQL Environment Variables**: Improved database workflow
+- **PostgreSQL Improvements**
   - Added `PGPASSWORD` environment variable for passwordless `psql` connections
-  - Eliminates need for interactive password entry in scripts
-  - Automatically set when PostgreSQL service is enabled
 
 ### Fixed
-- **PostgreSQL Service Networking**: Corrected database connection configuration
-  - Fixed Docker database connection aliases for proper container-to-container communication
-  - Resolved PostgreSQL service networking issues
-  - Improved database connectivity reliability
-
-- **Code Quality Improvements**: Cleaned up codebase warnings
-  - Removed unused imports across multiple files (3 separate cleanup commits)
-  - Added missing imports to integration tests
-  - Added feature gates to integration test helpers to resolve dead code warnings
-  - All clippy warnings resolved
-
-- **Install Script Dependencies**: Added missing build tools
-  - Added OpenSSL development libraries (`libssl-dev`) to install script
-  - Ensures successful compilation on fresh systems
-
-### Technical Improvements
-- Supercool base image now includes comprehensive tooling for modern development
-- Makefile improvements with fallback support for systems without new tools
-- Enhanced welcome message and help menu in supercool image
-- Build automation maintains backward compatibility
+- PostgreSQL service networking and Docker database connection aliases
+- Unused imports and clippy warnings
+- Install script now includes OpenSSL dependencies (`libssl-dev`)
 
 ## [3.1.0] - 2025-10-16
 
