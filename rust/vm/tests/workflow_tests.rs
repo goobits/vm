@@ -1,20 +1,29 @@
+#[cfg(feature = "integration")]
 use anyhow::Result;
+#[cfg(feature = "integration")]
 use std::fs;
+#[cfg(feature = "integration")]
 use std::path::PathBuf;
+#[cfg(feature = "integration")]
 use std::process::Command;
+#[cfg(feature = "integration")]
 use std::sync::Mutex;
+#[cfg(feature = "integration")]
 use tempfile::TempDir;
 
 // Global mutex to ensure tests run sequentially to avoid environment variable conflicts
+#[cfg(feature = "integration")]
 static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
 /// Test fixture for end-to-end CLI workflow testing
+#[cfg(feature = "integration")]
 struct WorkflowTestFixture {
     _temp_dir: TempDir,
     test_dir: PathBuf,
     binary_path: PathBuf,
 }
 
+#[cfg(feature = "integration")]
 impl WorkflowTestFixture {
     fn new() -> Result<Self> {
         let temp_dir = TempDir::new()?;

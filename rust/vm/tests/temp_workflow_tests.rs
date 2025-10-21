@@ -1,10 +1,16 @@
+#[cfg(feature = "integration")]
 use anyhow::Result;
+#[cfg(feature = "integration")]
 use std::fs;
+#[cfg(feature = "integration")]
 use std::path::PathBuf;
+#[cfg(feature = "integration")]
 use std::process::Command;
+#[cfg(feature = "integration")]
 use tempfile::TempDir;
 
 /// Test fixture for end-to-end CLI workflow testing
+#[cfg(feature = "integration")]
 struct TempWorkflowTestFixture {
     _temp_dir: TempDir,
     test_dir: PathBuf,
@@ -12,6 +18,7 @@ struct TempWorkflowTestFixture {
     mount_dir: PathBuf,
 }
 
+#[cfg(feature = "integration")]
 impl TempWorkflowTestFixture {
     fn new() -> Result<Self> {
         let temp_dir = TempDir::new()?;
@@ -63,6 +70,7 @@ impl TempWorkflowTestFixture {
 }
 
 /// Check if Docker is available and working on the system
+#[cfg(feature = "integration")]
 fn is_docker_available() -> bool {
     // Check if docker command exists
     let docker_version = Command::new("docker")

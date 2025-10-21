@@ -1,13 +1,18 @@
+#[cfg(feature = "integration")]
 use std::fs;
+#[cfg(feature = "integration")]
 use std::path::{Path, PathBuf};
+#[cfg(feature = "integration")]
 use tempfile::TempDir;
 
+#[cfg(feature = "integration")]
 struct TestFixture {
     _temp_dir: TempDir,
     home_dir: PathBuf,
     bin_dir: PathBuf,
 }
 
+#[cfg(feature = "integration")]
 impl TestFixture {
     fn new() -> Self {
         let temp_dir = TempDir::new().unwrap();
@@ -27,6 +32,7 @@ impl TestFixture {
 }
 
 // This function is not public, so we have to recreate it here to test it.
+#[cfg(feature = "integration")]
 fn add_to_profile(profile_path: &Path, bin_dir: &Path) -> anyhow::Result<()> {
     use std::io::Write;
     let mut file = fs::OpenOptions::new()

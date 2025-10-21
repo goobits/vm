@@ -1,5 +1,7 @@
+#[cfg(feature = "integration")]
 use tokio::process::Command;
 
+#[cfg(feature = "integration")]
 async fn is_docker_available() -> bool {
     Command::new("docker")
         .arg("version")
@@ -8,6 +10,7 @@ async fn is_docker_available() -> bool {
         .is_ok_and(|output| output.status.success())
 }
 
+#[cfg(feature = "integration")]
 async fn run_docker_command(args: &[&str]) -> anyhow::Result<()> {
     let output = Command::new("docker").args(args).output().await?;
     if !output.status.success() {
