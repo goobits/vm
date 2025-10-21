@@ -8,6 +8,22 @@ Real-world configuration examples for different project types and use cases.
 - Percentages: `"50%"`, `"75%"`
 - Unlimited: `"unlimited"`
 
+## 🎨 Custom Base Images
+
+Speed up VM creation by pre-installing heavy dependencies (like Playwright, Chromium) in reusable Docker base images. See [examples/base-images/](../../examples/base-images/) for ready-to-use Dockerfiles and detailed guides.
+
+**Quick example:**
+```bash
+# Build a base image with Playwright pre-installed
+docker build -f examples/base-images/playwright-chromium.dockerfile -t my-base:latest .
+
+# Use in your project
+vm:
+  box_name: my-base:latest  # Instead of ubuntu:24.04
+```
+
+VM creation is now 5-10x faster since Playwright/Chromium are already installed!
+
 ## 🎯 Frontend Projects
 
 ### React Development

@@ -346,6 +346,61 @@ impl DockerOps {
         }
         Ok(())
     }
+
+    /// Check if a Docker image exists locally.
+    ///
+    /// # Arguments
+    /// * `image_name` - Name of the image (e.g., "supercool:latest")
+    pub fn image_exists(image_name: &str) -> Result<bool> {
+        let output = DockerCommand::new()
+            .subcommand("images")
+            .arg("--format")
+            .arg("{{.Repository}}:{{.Tag}}")
+            .execute_with_output()?;
+
+        Ok(output.lines().any(|line| line.trim() == image_name))
+    }
+
+    /// Build a custom Docker image from a Dockerfile.
+    ///
+    /// # Arguments
+    /// * `dockerfile_path` - Path to the Dockerfile
+    /// * `image_name` - Tag for the built image (e.g., "supercool:latest")
+    /// * `context_dir` - Build context directory (usually parent of Dockerfile)
+    pub fn build_custom_image(
+        dockerfile_path: &std::path::Path,
+        image_name: &str,
+        context_dir: &std::path::Path,
+    ) -> Result<()> {
+        use vm_core::vm_info;
+
+        vm_info!(
+            "Building custom base image '{}' from {:?}...",
+            image_name,
+            dockerfile_path
+        );
+        vm_info!("This may take 5-15 minutes on first build...");
+
+        let output = DockerCommand::new()
+            .subcommand("build")
+            .arg("-f")
+            .arg(dockerfile_path.to_string_lossy().to_string())
+            .arg("-t")
+            .arg(image_name)
+            .arg(context_dir.to_string_lossy().to_string())
+            .execute_raw()?;
+
+        if output.status.success() {
+            vm_info!("✓ Successfully built custom base image '{}'", image_name);
+            Ok(())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(VmError::Internal(format!(
+                "Failed to build custom base image '{}': {}",
+                image_name, stderr
+            )))
+        }
+    }
 }
 
 #[cfg(test)]
