@@ -1,5 +1,4 @@
 use anyhow::Result;
-use serde_yaml_ng as serde_yaml;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;

@@ -1,5 +1,4 @@
 use tokio::process::Command;
-use vm_docker_registry::server;
 
 async fn is_docker_available() -> bool {
     Command::new("docker")
