@@ -1,5 +1,7 @@
 #[cfg(feature = "integration")]
 use tokio::process::Command;
+#[cfg(feature = "integration")]
+use vm_docker_registry::server;
 
 #[cfg(feature = "integration")]
 async fn is_docker_available() -> bool {

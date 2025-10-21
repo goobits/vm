@@ -1,6 +1,8 @@
 #[cfg(feature = "integration")]
 use anyhow::Result;
 #[cfg(feature = "integration")]
+use serde_yaml_ng as serde_yaml;
+#[cfg(feature = "integration")]
 use std::fs;
 #[cfg(feature = "integration")]
 use std::path::PathBuf;

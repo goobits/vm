@@ -1,3 +1,6 @@
+#[cfg(feature = "integration")]
+use vm_installer::dependencies;
+
 #[test]
 #[cfg(feature = "integration")]
 fn test_dependency_check_success() {

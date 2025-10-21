@@ -5,7 +5,7 @@ use std::path::Path;
 #[cfg(feature = "integration")]
 use tempfile::TempDir;
 #[cfg(feature = "integration")]
-use vm_plugin::validation;
+use vm_plugin::{validation, Plugin, PluginInfo, PluginType};
 
 #[cfg(feature = "integration")]
 fn create_test_plugin(

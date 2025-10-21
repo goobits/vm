@@ -1,3 +1,6 @@
+#[cfg(feature = "integration")]
+use vm_docker_registry::{auto_manager::AutoManager, types::AutoConfig};
+
 #[test]
 #[cfg(feature = "integration")]
 fn test_auto_manager_creation_integration() {

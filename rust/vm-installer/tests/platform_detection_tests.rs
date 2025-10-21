@@ -1,3 +1,6 @@
+#[cfg(feature = "integration")]
+use vm_installer::platform;
+
 #[test]
 #[cfg(feature = "integration")]
 fn test_detect_platform_string_integration() {
