@@ -32,6 +32,7 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     pkg-config \
     libssl-dev \
+    mold \
     # CLI utilities
     tree \
     htop \
@@ -88,6 +89,14 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 # ============================================================================
+# CARGO TOOLS - Development & Testing Utilities
+# ============================================================================
+RUN . "$HOME/.cargo/env" && \
+    cargo install cargo-nextest && \
+    cargo install cargo-watch && \
+    cargo install cargo-udeps
+
+# ============================================================================
 # PLAYWRIGHT - The slow part (5-10 minutes)
 # ============================================================================
 RUN npm install -g playwright@latest && \
@@ -133,6 +142,8 @@ RUN echo '#!/bin/bash' > /usr/local/bin/welcome && \
     echo '║                                                           ║' >> /usr/local/bin/welcome && \
     echo '║  Node.js ✓  Bun ✓  Rust ✓  Python ✓  Playwright ✓        ║' >> /usr/local/bin/welcome && \
     echo '║  TypeScript ✓  Chromium ✓  Essential Tools ✓             ║' >> /usr/local/bin/welcome && \
+    echo '║                                                           ║' >> /usr/local/bin/welcome && \
+    echo '║  🦀 Cargo Tools: nextest · watch · udeps · mold          ║' >> /usr/local/bin/welcome && \
     echo '║                                                           ║' >> /usr/local/bin/welcome && \
     echo '╚═══════════════════════════════════════════════════════════╝' >> /usr/local/bin/welcome && \
     echo 'EOF' >> /usr/local/bin/welcome && \
