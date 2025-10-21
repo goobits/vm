@@ -757,6 +757,125 @@ check_build_tools() {
 }
 
 # ============================================================================
+# Build Dependencies Installation (mold linker and SSL libraries)
+# ============================================================================
+
+install_build_dependencies() {
+    log_info "Installing build dependencies (mold linker, OpenSSL)..."
+
+    case "$OS_TYPE" in
+        ubuntu|debian)
+            # Check if mold is already installed
+            if command_exists mold; then
+                log_success "mold linker already installed"
+            else
+                log_info "Installing mold linker..."
+                if sudo apt-get update && sudo apt-get install -y mold; then
+                    log_success "mold linker installed successfully"
+                else
+                    log_warning "Failed to install mold, build may fail"
+                fi
+            fi
+
+            # Check if libssl-dev is already installed
+            if dpkg -l | grep -q libssl-dev; then
+                log_success "libssl-dev already installed"
+            else
+                log_info "Installing libssl-dev and pkg-config..."
+                if sudo apt-get install -y libssl-dev pkg-config; then
+                    log_success "SSL development libraries installed successfully"
+                else
+                    log_warning "Failed to install libssl-dev, build may fail"
+                fi
+            fi
+            ;;
+
+        macos)
+            # macOS uses the default linker, no mold needed
+            log_info "Using default macOS linker (mold not needed)"
+
+            # Check for OpenSSL (usually installed via Homebrew)
+            if ! brew list openssl &>/dev/null; then
+                log_info "Installing OpenSSL..."
+                if brew install openssl; then
+                    log_success "OpenSSL installed successfully"
+                else
+                    log_warning "Failed to install OpenSSL, build may fail"
+                fi
+            else
+                log_success "OpenSSL already installed"
+            fi
+            ;;
+
+        fedora|rhel|centos|rocky|almalinux)
+            # Install mold if available
+            if command_exists mold; then
+                log_success "mold linker already installed"
+            else
+                log_info "Installing mold linker..."
+                if command_exists dnf; then
+                    if sudo dnf install -y mold; then
+                        log_success "mold linker installed successfully"
+                    else
+                        log_warning "mold not available in repos, build may be slower"
+                    fi
+                else
+                    log_warning "mold not available, build may be slower"
+                fi
+            fi
+
+            # Install OpenSSL development libraries
+            log_info "Installing OpenSSL development libraries..."
+            if command_exists dnf; then
+                sudo dnf install -y openssl-devel pkg-config
+            else
+                sudo yum install -y openssl-devel pkg-config
+            fi
+            log_success "SSL development libraries installed successfully"
+            ;;
+
+        arch|manjaro|endeavouros)
+            # Install mold
+            if command_exists mold; then
+                log_success "mold linker already installed"
+            else
+                log_info "Installing mold linker..."
+                if sudo pacman -S --noconfirm mold; then
+                    log_success "mold linker installed successfully"
+                else
+                    log_warning "Failed to install mold, build may fail"
+                fi
+            fi
+
+            # Install OpenSSL
+            log_info "Installing OpenSSL..."
+            sudo pacman -S --noconfirm openssl pkg-config
+            log_success "SSL development libraries installed successfully"
+            ;;
+
+        alpine)
+            # Alpine uses musl, mold may not be available
+            log_info "Installing build dependencies for Alpine..."
+            if sudo apk add mold 2>/dev/null; then
+                log_success "mold linker installed successfully"
+            else
+                log_warning "mold not available for Alpine, using default linker"
+            fi
+
+            sudo apk add openssl-dev pkgconf
+            log_success "SSL development libraries installed successfully"
+            ;;
+
+        *)
+            log_warning "Unknown OS type: $OS_TYPE"
+            log_warning "You may need to manually install: mold, libssl-dev, pkg-config"
+            ;;
+    esac
+
+    return 0
+}
+
+# ============================================================================
 # Path Configuration
 # ============================================================================
 
@@ -1117,6 +1236,10 @@ main() {
 
         # Check for build tools (gcc/clang)
         check_build_tools
+        echo ""
+
+        # Install build dependencies (mold, OpenSSL)
+        install_build_dependencies
         echo ""
 
         # Install VM tool from source

@@ -5,6 +5,10 @@ target-dir = "../.build/target"
 dead-code = "clippy -- -D dead_code"
 dead-deps = "machete"
 
-# Use mold linker for faster parallel linking
+# Use mold linker for faster parallel linking on Linux
+# Note: mold must be installed (see install.sh)
 [target.aarch64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[target.x86_64-unknown-linux-gnu]
 rustflags = ["-C", "link-arg=-fuse-ld=mold"]
