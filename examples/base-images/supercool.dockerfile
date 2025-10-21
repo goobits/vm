@@ -114,7 +114,9 @@ RUN npm install -g \
     tsx \
     # Code quality
     prettier \
-    eslint
+    eslint \
+    # Development tools
+    jspcd
 
 # ============================================================================
 # ENVIRONMENT SETUP
