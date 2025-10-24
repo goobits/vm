@@ -21,6 +21,14 @@ services:
     {%- endif %}
     volumes:
       - {{ project_dir }}:/workspace:rw
+      {% if ssh_auth_sock %}
+      # SSH agent forwarding (read-only for security)
+      - {{ ssh_auth_sock }}:/ssh-agent:ro
+      {% endif %}
+      {% if ssh_config_path %}
+      # SSH config (read-only)
+      - {{ ssh_config_path }}:/home/{{ project_user }}/.ssh/config:ro
+      {% endif %}
       {% if worktrees_base_dir %}
       # Git worktrees base directory (mounted at identical absolute path)
       - {{ worktrees_base_dir }}:{{ worktrees_base_dir }}:rw
@@ -77,6 +85,10 @@ services:
       {%- endif %}
     {%- endif %}
     environment:
+      {% if ssh_auth_sock %}
+      # SSH agent socket for forwarding
+      - SSH_AUTH_SOCK=/ssh-agent
+      {% endif %}
       {% if is_macos %}
       - PULSE_SERVER=unix:/tmp/pulseaudio.socket
       {% endif %}

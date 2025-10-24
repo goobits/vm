@@ -730,6 +730,59 @@ vm:
   timezone: "America/New_York"
 ```
 
+### Development Configuration
+
+Enhanced developer workflows for SSH keys, dotfiles, and debugging support.
+
+#### SSH Agent Forwarding 🔑
+
+Securely use your host's SSH keys inside the VM without copying private keys:
+
+```yaml
+# vm.yaml
+development:
+  ssh_agent_forwarding: true  # Enable SSH agent forwarding
+  mount_ssh_config: true      # Mount ~/.ssh/config (optional, defaults to true)
+```
+
+**What it does:**
+- Forwards your host's SSH agent socket into the VM (read-only)
+- Mounts `~/.ssh/config` for host alias support
+- Enables git operations with SSH keys without exposing private keys
+- Works with GitHub, GitLab, and other SSH-based services
+
+**Requirements:**
+- SSH agent running on host: `ssh-add -l` should list keys
+- `SSH_AUTH_SOCK` environment variable set on host
+
+**Usage inside VM:**
+```bash
+vm ssh
+# Your SSH keys are now available
+ssh -T git@github.com
+git clone git@github.com:user/repo.git
+```
+
+**Security:**
+- Private keys **never** copied to the VM
+- Socket mounted read-only
+- SSH config mounted read-only
+- Agent forwarding is opt-in per project
+
+**Troubleshooting:**
+```bash
+# Check if SSH agent is running on host
+ssh-add -l
+
+# If no agent running, start one
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_ed25519
+
+# Inside VM, verify SSH_AUTH_SOCK
+echo $SSH_AUTH_SOCK  # Should be: /ssh-agent
+ssh-add -l           # Should list your keys
+```
+
 ## 📚 Additional Resources
 
 - **[Examples Guide](../getting-started/examples.md)** - Real-world configuration examples

@@ -157,6 +157,9 @@ pub struct VmConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub terminal: Option<TerminalConfig>,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub development: Option<DevelopmentConfig>,
+
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub aliases: IndexMap<String, String>,
 
@@ -733,6 +736,22 @@ pub struct TerminalConfig {
     pub show_git_branch: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_timestamp: Option<bool>,
+}
+
+/// Development environment configuration for enhanced workflows
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DevelopmentConfig {
+    /// Enable SSH agent forwarding (requires ssh-agent running on host)
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub ssh_agent_forwarding: bool,
+
+    /// Mount ~/.ssh/config read-only (enabled by default if ssh_agent_forwarding is true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mount_ssh_config: Option<bool>,
+
+    /// List of dotfiles to sync from host (e.g., ["~/.vimrc", "~/.config/nvim"])
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sync_dotfiles: Vec<String>,
 }
 
 /// Tart virtualization provider configuration.

@@ -37,6 +37,49 @@ fn extract_path_mount(path_string: &String) -> Option<(&str, &str)> {
         .and_then(|name| path.to_str().map(|path_str| (path_str, name)))
 }
 
+/// Helper function to get SSH config path if it exists
+fn get_ssh_config_path() -> Option<String> {
+    let home = std::env::var("HOME").ok()?;
+    let ssh_config_path = format!("{}/.ssh/config", home);
+    if std::path::Path::new(&ssh_config_path).exists() {
+        Some(ssh_config_path)
+    } else {
+        None
+    }
+}
+
+/// Configure SSH agent forwarding in tera context if enabled
+fn configure_ssh_agent(config: &VmConfig, tera_context: &mut TeraContext) {
+    let ssh_agent_enabled = config
+        .development
+        .as_ref()
+        .map(|d| d.ssh_agent_forwarding)
+        .unwrap_or(false);
+
+    if !ssh_agent_enabled {
+        return;
+    }
+
+    let Ok(ssh_auth_sock) = std::env::var("SSH_AUTH_SOCK") else {
+        return;
+    };
+
+    tera_context.insert("ssh_auth_sock", &ssh_auth_sock);
+
+    // Check if we should mount ~/.ssh/config (default to true if ssh_agent_forwarding is enabled)
+    let mount_ssh_config = config
+        .development
+        .as_ref()
+        .and_then(|d| d.mount_ssh_config)
+        .unwrap_or(true);
+
+    if mount_ssh_config {
+        if let Some(ssh_config_path) = get_ssh_config_path() {
+            tera_context.insert("ssh_config_path", &ssh_config_path);
+        }
+    }
+}
+
 impl<'a> ComposeOperations<'a> {
     pub fn new(config: &'a VmConfig, temp_dir: &'a PathBuf, project_dir: &'a PathBuf) -> Self {
         Self {
@@ -217,6 +260,9 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("local_pipx_mounts", &local_pipx_mounts);
         tera_context.insert("local_env_vars", &local_env_vars);
 
+        // SSH agent forwarding
+        configure_ssh_agent(self.config, &mut tera_context);
+
         // Git worktrees volume
         // Check if worktrees are enabled
         let worktrees_enabled = self
@@ -353,6 +399,9 @@ impl<'a> ComposeOperations<'a> {
 
         tera_context.insert("local_pipx_mounts", &local_pipx_mounts);
         tera_context.insert("local_env_vars", &local_env_vars);
+
+        // SSH agent forwarding
+        configure_ssh_agent(self.config, &mut tera_context);
 
         // Git worktrees volume
         // Check if worktrees are enabled
