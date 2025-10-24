@@ -8,14 +8,7 @@ use tracing::{debug, info_span, warn};
 
 use crate::error::{VmError, VmResult};
 use vm_cli::msg;
-use vm_config::{
-    config::MemoryLimit,
-    config::VmConfig,
-    detector::detect_debugger_ports,
-    ports::{PortMapping, Protocol},
-    validator::ConfigValidator,
-    GlobalConfig,
-};
+use vm_config::{config::MemoryLimit, config::VmConfig, validator::ConfigValidator, GlobalConfig};
 use vm_core::{get_cpu_core_count, get_total_memory_gb, vm_error, vm_println};
 use vm_messages::messages::MESSAGES;
 use vm_provider::{Provider, ProviderContext};
@@ -94,61 +87,6 @@ fn auto_adjust_resources(config: &mut VmConfig) -> VmResult<()> {
     Ok(())
 }
 
-/// Auto-configure debugger ports based on project type when debugging is enabled
-fn auto_configure_debugger_ports(config: &mut VmConfig) -> VmResult<()> {
-    // Only configure if debugging is enabled
-    let debugging_enabled = config
-        .security
-        .as_ref()
-        .map(|s| s.enable_debugging)
-        .unwrap_or(false);
-
-    if !debugging_enabled {
-        return Ok(());
-    }
-
-    // Detect project type and get appropriate debugger ports
-    let project_dir = std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf());
-    let debugger_ports = detect_debugger_ports(&project_dir);
-
-    if debugger_ports.is_empty() {
-        return Ok(());
-    }
-
-    // Check if any debugger ports are already configured
-    let existing_ports: std::collections::HashSet<u16> =
-        config.ports.mappings.iter().map(|m| m.guest).collect();
-
-    // Add debugger ports that aren't already configured
-    let mut added_ports = Vec::new();
-    for debugger_port in &debugger_ports {
-        if !existing_ports.contains(&debugger_port.port) {
-            config.ports.mappings.push(PortMapping {
-                host: debugger_port.port,
-                guest: debugger_port.port,
-                protocol: Protocol::Tcp,
-            });
-            added_ports.push(debugger_port);
-        }
-    }
-
-    // Inform user about auto-configured debugger ports
-    if !added_ports.is_empty() {
-        vm_println!("🔧 Debugging enabled: Auto-configured debugger ports");
-        for port in &added_ports {
-            vm_println!(
-                "   • Port {} - {} ({})",
-                port.port,
-                port.description,
-                port.protocol
-            );
-        }
-        vm_println!("");
-    }
-
-    Ok(())
-}
-
 /// Handle VM creation
 pub async fn handle_create(
     provider: Box<dyn Provider>,
@@ -171,9 +109,6 @@ pub async fn handle_create(
     } else {
         // Auto-adjust resources if needed (before validation)
         auto_adjust_resources(&mut config)?;
-
-        // Auto-configure debugger ports if debugging is enabled
-        auto_configure_debugger_ports(&mut config)?;
 
         // Validate config before proceeding
         vm_println!("Validating configuration...");
