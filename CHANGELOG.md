@@ -7,6 +7,99 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.0] - 2025-10-24
+
+### Added
+
+- **Dynamic Port Forwarding**: On-demand port tunneling for debugging and testing
+  - New `vm port forward <host>:<container>` command for ephemeral port tunnels
+  - `vm port list` to show active port forwarding tunnels
+  - `vm port stop <port>` to stop specific tunnels or `--all` for all tunnels
+  - Uses Docker relay containers with `alpine/socat` for traffic forwarding
+  - Network namespace sharing with target container for seamless routing
+  - State tracked in `~/.config/vm/tunnels/active.json`
+  - Automatic cleanup of dead containers
+  - **Use cases:**
+    - Debugging: `vm port forward 9229:9229` for Node.js inspector
+    - Multi-VM testing: Different host ports → same container ports
+    - Temporary services: On-demand database access without permanent configuration
+  - No port conflicts between VMs - each tunnel is independently managed
+
+- **SSH Agent Forwarding**: Secure SSH key usage inside VMs without copying private keys
+  - Enable with `development.ssh_agent_forwarding: true` in vm.yaml
+  - Forwards `SSH_AUTH_SOCK` socket into container (read-only)
+  - Optionally mounts `~/.ssh/config` for host aliases (read-only)
+  - Enables git operations with GitHub, GitLab, and SSH-based services
+  - Private keys never exposed to VMs - maximum security
+  - Opt-in per project configuration
+
+- **Selective Dotfiles Sync**: Mount configuration files from host without copying
+  - Configure with `development.sync_dotfiles` array in vm.yaml
+  - Mount specific files or directories (e.g., `~/.vimrc`, `~/.config/nvim`, `~/.tmux.conf`)
+  - Automatic tilde (`~`) expansion for home directory
+  - Read-only mounts to prevent accidental changes on host
+  - Path validation with warnings for non-existent files
+  - Preserves directory structure in container
+  - **Use cases:**
+    - Vim/Neovim users: Consistent editor configuration
+    - Tmux + Shell users: Persistent terminal environment
+    - Full-stack developers: Sync tool configs (.npmrc, .pypirc, .gitconfig)
+
+- **Shell Completion Support**: Tab completion for all vm commands
+  - New `vm completion <shell>` command for bash, zsh, fish, and powershell
+  - Enables autocomplete for commands, subcommands, and flags
+  - Installation: `vm completion bash > /usr/share/bash-completion/completions/vm`
+
+- **Service Wait Command**: Block until services are ready
+  - New `vm wait` command with configurable timeout (default: 60s)
+  - Wait for specific service: `vm wait --service postgresql`
+  - Wait for all services: `vm wait`
+  - Useful for CI/CD pipelines: `vm start && vm wait && npm run migrate`
+
+- **Port Discovery Command**: Show all exposed port mappings
+  - New `vm ports` command displays host→container port mappings
+  - Shows service health status for each port
+  - Helps identify which ports are in use
+
+- **Environment Variable Validation**: Catch misconfigurations early
+  - New `vm env validate` to check .env against template
+  - `vm env diff` to show differences between environments
+  - `vm env list` to display all variables (with sensitive value masking)
+  - Prevents deployment with missing required environment variables
+
+- **Shell History Persistence**: History survives container recreations
+  - Docker volume mount for persistent bash/zsh history
+  - History preserved across `vm destroy && vm create` cycles
+
+- **File Watch Fix**: Hot reload for webpack, vite, nodemon
+  - Configured `fs.inotify` limits in docker-compose
+  - Sets `max_user_watches=524288` and `max_user_instances=256`
+  - Fixes hot reload issues with modern development tools
+
+- **Worktrees Security Enhancements**:
+  - Path validation to prevent `VM_WORKTREES` override to dangerous system directories
+  - Path traversal protection with realpath validation
+  - Enhanced worktree name validation with path traversal detection
+
+- **Discovery UX Improvements**:
+  - First-time user tips on `vm ssh` explaining vm-worktree commands
+  - Helpful error messages and troubleshooting guidance
+
+### Changed
+
+- Refactored nested code to reduce complexity per clippy suggestions
+- Used `entry().or_insert_with()` instead of `contains_key + insert` pattern
+- Simplified error handling to avoid excessive nesting
+
+### Technical Improvements
+
+- Added `clap_complete` dependency for shell completions
+- Created new command modules: `wait.rs`, `ports.rs`, `env.rs`, `port_forward.rs`
+- Enhanced `vm-worktree.sh` with comprehensive security checks
+- Added shell history volume mount to docker-compose template
+- All clippy lints resolved
+- Comprehensive documentation updates for all new features
+
 ## [3.1.1] - 2025-10-21
 
 ### Added
