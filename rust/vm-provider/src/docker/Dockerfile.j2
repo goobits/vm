@@ -174,13 +174,86 @@ RUN chmod +x /etc/profile.d/vm-worktree-repair.sh && \
     echo '. /etc/profile.d/vm-worktree-repair.sh' >> /home/${PROJECT_USER}/.bashrc && \
     echo '. /etc/profile.d/vm-worktree-repair.sh' >> /home/${PROJECT_USER}/.zshrc
 
+# --- Git Worktree Helper Configuration ---
+# Set VM_WORKTREES environment variable and create vm-worktree command
+RUN echo 'export VM_WORKTREES={{ worktrees_base_dir }}' >> /etc/bash.bashrc && \
+    echo 'export VM_WORKTREES={{ worktrees_base_dir }}' >> /home/${PROJECT_USER}/.bashrc && \
+    echo 'export VM_WORKTREES={{ worktrees_base_dir }}' >> /home/${PROJECT_USER}/.zshrc
+
+# Install vm-worktree helper command
+COPY vm-worktree.sh /usr/local/bin/vm-worktree
+RUN chmod +x /usr/local/bin/vm-worktree
+
 # --- Shell History Configuration ---
 USER ${PROJECT_USER}
+
+# Create persistent history directory
+RUN mkdir -p /home/${PROJECT_USER}/.shell_history
+
+# Configure Zsh history
 RUN echo '' >> /home/${PROJECT_USER}/.zshrc && \
     echo '# --- Shell History Settings ---' >> /home/${PROJECT_USER}/.zshrc && \
     echo 'export HISTSIZE=50000' >> /home/${PROJECT_USER}/.zshrc && \
     echo 'export SAVEHIST=50000' >> /home/${PROJECT_USER}/.zshrc && \
-    echo 'export HISTFILE=~/.zsh_history' >> /home/${PROJECT_USER}/.zshrc
+    echo 'export HISTFILE=~/.shell_history/zsh_history' >> /home/${PROJECT_USER}/.zshrc && \
+    echo 'setopt INC_APPEND_HISTORY      # Append to history immediately' >> /home/${PROJECT_USER}/.zshrc && \
+    echo 'setopt SHARE_HISTORY            # Share history across sessions' >> /home/${PROJECT_USER}/.zshrc && \
+    echo 'setopt HIST_IGNORE_DUPS         # Ignore duplicate commands' >> /home/${PROJECT_USER}/.zshrc && \
+    echo 'setopt HIST_FIND_NO_DUPS        # Do not show duplicates in search' >> /home/${PROJECT_USER}/.zshrc
+
+# Configure Bash history
+RUN echo '' >> /home/${PROJECT_USER}/.bashrc && \
+    echo '# --- Shell History Settings ---' >> /home/${PROJECT_USER}/.bashrc && \
+    echo 'export HISTSIZE=50000' >> /home/${PROJECT_USER}/.bashrc && \
+    echo 'export HISTFILESIZE=50000' >> /home/${PROJECT_USER}/.bashrc && \
+    echo 'export HISTFILE=~/.shell_history/bash_history' >> /home/${PROJECT_USER}/.bashrc && \
+    echo 'export HISTCONTROL=ignoredups:erasedups' >> /home/${PROJECT_USER}/.bashrc && \
+    echo 'shopt -s histappend' >> /home/${PROJECT_USER}/.bashrc && \
+    echo 'PROMPT_COMMAND="history -a; history -c; history -r; $PROMPT_COMMAND"' >> /home/${PROJECT_USER}/.bashrc
+
+# --- Git Worktree Discovery Message ---
+RUN echo '' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '# Show vm-worktree hint on first login' >> /home/${PROJECT_USER}/.zshrc && \
+    echo 'if [[ ! -f ~/.vm_worktree_tip_shown ]] && [[ -n "${VM_WORKTREES:-}" ]]; then' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '    echo ""' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '    echo "💡 Tip: Use \\033[1;36mvm-worktree\\033[0m to create git worktrees that work on both host and container:"' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '    echo "  \\033[0;32mvm-worktree add feature-x\\033[0m   # Create new worktree"' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '    echo "  \\033[0;32mvm-worktree list\\033[0m            # List all worktrees"' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '    echo ""' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '    touch ~/.vm_worktree_tip_shown' >> /home/${PROJECT_USER}/.zshrc && \
+    echo 'fi' >> /home/${PROJECT_USER}/.zshrc
+
+RUN echo '' >> /home/${PROJECT_USER}/.bashrc && \
+    echo '# Show vm-worktree hint on first login' >> /home/${PROJECT_USER}/.bashrc && \
+    echo 'if [[ ! -f ~/.vm_worktree_tip_shown ]] && [[ -n "${VM_WORKTREES:-}" ]]; then' >> /home/${PROJECT_USER}/.bashrc && \
+    echo '    echo ""' >> /home/${PROJECT_USER}/.bashrc && \
+    echo '    echo -e "💡 Tip: Use \\033[1;36mvm-worktree\\033[0m to create git worktrees that work on both host and container:"' >> /home/${PROJECT_USER}/.bashrc && \
+    echo '    echo -e "  \\033[0;32mvm-worktree add feature-x\\033[0m   # Create new worktree"' >> /home/${PROJECT_USER}/.bashrc && \
+    echo '    echo -e "  \\033[0;32mvm-worktree list\\033[0m            # List all worktrees"' >> /home/${PROJECT_USER}/.bashrc && \
+    echo '    echo ""' >> /home/${PROJECT_USER}/.bashrc && \
+    echo '    touch ~/.vm_worktree_tip_shown' >> /home/${PROJECT_USER}/.bashrc && \
+    echo 'fi' >> /home/${PROJECT_USER}/.bashrc
+
+# --- Worktree Prompt Indicator ---
+# Add prompt indicator for bash
+RUN echo '' >> /home/${PROJECT_USER}/.bashrc && \
+    echo '# Show worktree in prompt if inside one' >> /home/${PROJECT_USER}/.bashrc && \
+    echo 'if [[ -n "${VM_WORKTREES:-}" ]] && [[ "$PWD" == "$VM_WORKTREES"/* ]]; then' >> /home/${PROJECT_USER}/.bashrc && \
+    echo '    WT_NAME=$(basename "$PWD")' >> /home/${PROJECT_USER}/.bashrc && \
+    echo '    PS1="(worktree:$WT_NAME) $PS1"' >> /home/${PROJECT_USER}/.bashrc && \
+    echo 'fi' >> /home/${PROJECT_USER}/.bashrc
+
+# Add prompt indicator for zsh
+RUN echo '' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '# Show worktree in prompt if inside one' >> /home/${PROJECT_USER}/.zshrc && \
+    echo 'precmd() {' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '    if [[ -n "${VM_WORKTREES:-}" ]] && [[ "$PWD" == "$VM_WORKTREES"/* ]]; then' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '        WT_NAME=$(basename "$PWD")' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '        PROMPT="(worktree:$WT_NAME) %~ %# "' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '    else' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '        PROMPT="%~ %# "' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '    fi' >> /home/${PROJECT_USER}/.zshrc && \
+    echo '}' >> /home/${PROJECT_USER}/.zshrc
 
 # --- Finalization ---
 USER ${PROJECT_USER}

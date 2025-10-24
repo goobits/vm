@@ -13,14 +13,18 @@ mod helpers;
 mod interaction;
 mod lifecycle;
 mod list;
+mod ports;
 mod status;
+mod wait;
 
 // Re-export all public handlers for external use
 pub use create::handle_create;
 pub use helpers::handle_get_sync_directory;
 pub use interaction::{handle_copy, handle_exec, handle_logs, handle_ssh};
 pub use lifecycle::{handle_apply, handle_restart, handle_start, handle_stop};
+pub use ports::handle_ports;
 pub use status::handle_status;
+pub use wait::handle_wait;
 
 // Legacy exports for backward compatibility
 #[allow(unused_imports)]

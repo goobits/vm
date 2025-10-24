@@ -21,12 +21,18 @@ services:
     {%- endif %}
     volumes:
       - {{ project_dir }}:/workspace:rw
+      {% if worktrees_base_dir %}
+      # Git worktrees base directory (mounted at identical absolute path)
+      - {{ worktrees_base_dir }}:{{ worktrees_base_dir }}:rw
+      {% endif %}
       {% if worktrees %}
-      # Git worktrees
+      # Git worktrees (backward compatibility - old detection method)
       {% for worktree in worktrees %}
       - {{ worktree.0 }}:/workspace/{{ worktree.1 }}:rw
       {% endfor %}
       {% endif %}
+      # Shell history persistence (survives container recreation)
+      - {{ project_name }}_shell_history:/home/{{ project_user }}/.shell_history:rw
       {% if is_macos %}
       # macOS specific volume for audio
       - /tmp/pulseaudio.socket:/tmp/pulseaudio.socket
@@ -139,6 +145,10 @@ services:
       - /tmp
       - /var/tmp
     {% endif %}
+    # File watching support for hot reload (webpack, vite, nodemon, etc.)
+    sysctls:
+      - fs.inotify.max_user_watches=524288
+      - fs.inotify.max_user_instances=256
     command: ["tail", "-f", "/dev/null"]
     tty: true
     stdin_open: true
@@ -170,10 +180,11 @@ services:
     {%- endif %}
   {% endif %}
 
-{% if config.services.postgresql.enabled | default(value=false) %}
 volumes:
+  {{ project_name }}_shell_history:
+  {% if config.services.postgresql.enabled | default(value=false) %}
   postgres_data:
-{% endif %}
+  {% endif %}
 
 {% if config.networking and config.networking.networks and config.networking.networks | length > 0 -%}
 networks:

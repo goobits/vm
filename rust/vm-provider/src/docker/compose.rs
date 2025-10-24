@@ -29,6 +29,14 @@ struct HostPackageContext {
     host_env_vars: Vec<(String, String)>,
 }
 
+/// Helper function to extract path and mount name from a worktree path
+fn extract_path_mount(path_string: &String) -> Option<(&str, &str)> {
+    let path = Path::new(path_string);
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .and_then(|name| path.to_str().map(|path_str| (path_str, name)))
+}
+
 impl<'a> ComposeOperations<'a> {
     pub fn new(config: &'a VmConfig, temp_dir: &'a PathBuf, project_dir: &'a PathBuf) -> Self {
         Self {
@@ -210,18 +218,44 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("local_env_vars", &local_env_vars);
 
         // Git worktrees volume
-        if let Ok(worktrees) = detect_worktrees() {
-            if !worktrees.is_empty() {
-                let worktree_mounts: Vec<_> = worktrees
-                    .iter()
-                    .filter_map(|path_string| {
-                        let path = Path::new(path_string);
-                        path.file_name()
-                            .and_then(|name| name.to_str())
-                            .and_then(|name| path.to_str().map(|path_str| (path_str, name)))
-                    })
-                    .collect();
-                tera_context.insert("worktrees", &worktree_mounts);
+        // Check if worktrees are enabled
+        let worktrees_enabled = self
+            .config
+            .worktrees
+            .as_ref()
+            .map(|w| w.enabled)
+            .unwrap_or_else(|| {
+                // Check global config if project config doesn't have it
+                vm_config::GlobalConfig::load()
+                    .ok()
+                    .map(|gc| gc.worktrees.enabled)
+                    .unwrap_or(true) // Default to true
+            });
+
+        if worktrees_enabled {
+            // Get the worktrees base directory path
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/home/developer".to_string());
+            let worktrees_base = format!("{}/.vm/worktrees/{}", home, project_name);
+
+            // Create the directory on host if it doesn't exist
+            if let Err(e) = fs::create_dir_all(&worktrees_base) {
+                eprintln!(
+                    "Warning: Failed to create worktrees directory {}: {}",
+                    worktrees_base, e
+                );
+            }
+
+            // Mount at identical absolute path in container
+            // This allows git worktrees created inside container to work on host too
+            tera_context.insert("worktrees_base_dir", &worktrees_base);
+
+            // Also detect and mount existing worktrees (for backward compatibility)
+            if let Ok(worktrees) = detect_worktrees() {
+                if !worktrees.is_empty() {
+                    let worktree_mounts: Vec<_> =
+                        worktrees.iter().filter_map(extract_path_mount).collect();
+                    tera_context.insert("worktrees", &worktree_mounts);
+                }
             }
         }
 
@@ -321,18 +355,44 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("local_env_vars", &local_env_vars);
 
         // Git worktrees volume
-        if let Ok(worktrees) = detect_worktrees() {
-            if !worktrees.is_empty() {
-                let worktree_mounts: Vec<_> = worktrees
-                    .iter()
-                    .filter_map(|path_string| {
-                        let path = Path::new(path_string);
-                        path.file_name()
-                            .and_then(|name| name.to_str())
-                            .and_then(|name| path.to_str().map(|path_str| (path_str, name)))
-                    })
-                    .collect();
-                tera_context.insert("worktrees", &worktree_mounts);
+        // Check if worktrees are enabled
+        let worktrees_enabled = self
+            .config
+            .worktrees
+            .as_ref()
+            .map(|w| w.enabled)
+            .unwrap_or_else(|| {
+                // Check global config if project config doesn't have it
+                vm_config::GlobalConfig::load()
+                    .ok()
+                    .map(|gc| gc.worktrees.enabled)
+                    .unwrap_or(true) // Default to true
+            });
+
+        if worktrees_enabled {
+            // Get the worktrees base directory path
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/home/developer".to_string());
+            let worktrees_base = format!("{}/.vm/worktrees/{}", home, project_name);
+
+            // Create the directory on host if it doesn't exist
+            if let Err(e) = fs::create_dir_all(&worktrees_base) {
+                eprintln!(
+                    "Warning: Failed to create worktrees directory {}: {}",
+                    worktrees_base, e
+                );
+            }
+
+            // Mount at identical absolute path in container
+            // This allows git worktrees created inside container to work on host too
+            tera_context.insert("worktrees_base_dir", &worktrees_base);
+
+            // Also detect and mount existing worktrees (for backward compatibility)
+            if let Ok(worktrees) = detect_worktrees() {
+                if !worktrees.is_empty() {
+                    let worktree_mounts: Vec<_> =
+                        worktrees.iter().filter_map(extract_path_mount).collect();
+                    tera_context.insert("worktrees", &worktree_mounts);
+                }
             }
         }
 

@@ -21,6 +21,7 @@ pub mod auth;
 pub mod config;
 pub mod db;
 pub mod doctor;
+pub mod env;
 pub mod init;
 pub mod pkg;
 pub mod plugin;
@@ -93,6 +94,14 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         Command::Db { command } => {
             debug!("Calling db operations");
             db::handle_db(command.clone()).await
+        }
+        Command::Env { command } => {
+            debug!("Calling env operations");
+            env::handle_env_command(command, args.config)
+        }
+        Command::Completion { shell } => {
+            debug!("Generating shell completions for: {}", shell);
+            handle_completion(shell)
         }
         _ => {
             // Provider-based commands
@@ -363,6 +372,24 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             config,
             global_config.clone(),
         ),
+        Command::Wait {
+            container,
+            service,
+            timeout,
+        } => vm_ops::handle_wait(
+            provider,
+            container.as_deref(),
+            service.as_deref(),
+            timeout,
+            config,
+            global_config.clone(),
+        ),
+        Command::Ports { container } => vm_ops::handle_ports(
+            provider,
+            container.as_deref(),
+            config,
+            global_config.clone(),
+        ),
         Command::Exec { container, command } => {
             vm_ops::handle_exec(provider, container.as_deref(), command, config.clone())
         }
@@ -406,6 +433,46 @@ fn handle_plugin_command(command: &PluginSubcommand) -> VmResult<()> {
         } => plugin_new::handle_plugin_new(plugin_name, r#type).map_err(VmError::from),
         PluginSubcommand::Validate { plugin_name } => {
             plugin::handle_plugin_validate(plugin_name).map_err(VmError::from)
+        }
+    }
+}
+
+fn handle_completion(shell: &str) -> VmResult<()> {
+    use clap::CommandFactory;
+    use clap_complete::{generate, shells};
+    use std::io;
+
+    let mut cmd = crate::cli::Args::command();
+
+    match shell.to_lowercase().as_str() {
+        "bash" => {
+            generate(shells::Bash, &mut cmd, "vm", &mut io::stdout());
+            Ok(())
+        }
+        "zsh" => {
+            generate(shells::Zsh, &mut cmd, "vm", &mut io::stdout());
+            Ok(())
+        }
+        "fish" => {
+            generate(shells::Fish, &mut cmd, "vm", &mut io::stdout());
+            Ok(())
+        }
+        "powershell" => {
+            generate(shells::PowerShell, &mut cmd, "vm", &mut io::stdout());
+            Ok(())
+        }
+        _ => {
+            vm_error!(
+                "Unsupported shell: {}. Supported shells: bash, zsh, fish, powershell",
+                shell
+            );
+            Err(VmError::general(
+                std::io::Error::new(std::io::ErrorKind::InvalidInput, "Unsupported shell"),
+                format!(
+                    "Shell '{}' is not supported. Use: bash, zsh, fish, or powershell",
+                    shell
+                ),
+            ))
         }
     }
 }

@@ -89,6 +89,12 @@ impl<'a> BuildOperations<'a> {
         let dockerfile_path = build_context.join("Dockerfile.generated");
         self.generate_dockerfile(&dockerfile_path)?;
 
+        // Copy vm-worktree.sh script to build context
+        // The Dockerfile will COPY this into the container
+        let worktree_script = include_str!("vm-worktree.sh");
+        let worktree_script_path = build_context.join("vm-worktree.sh");
+        fs::write(&worktree_script_path, worktree_script)?;
+
         Ok(build_context)
     }
 

@@ -587,27 +587,73 @@ worktrees:
 ```
 
 **Features**:
-- Automatic detection of worktree repositories
-- Proper volume mounting for worktree directories
-- Support for relative worktree paths (Git 2.48+)
+- **Automatic mounting** at identical absolute paths (host and container)
+- **Create worktrees from inside containers** - they work on host too!
+- **Helper command** `vm-worktree` for easy management
+- **Prompt indicator** shows current worktree
+- Automatic detection and remounting of existing worktrees
+- Support for multiple branches simultaneously
 
 **Use Cases**:
 - Developing multiple branches simultaneously
 - Testing feature branches in isolation
+- Quick branch switching without leaving container
 - CI/CD workflows with parallel branch testing
 
-**Example Workflow**:
+**Example Workflows**:
+
+**Creating worktrees from inside container (NEW!):**
 ```bash
-# Create worktree
+vm ssh
+
+# Create worktree from inside container
+vm-worktree add feature-x
+# ✓ Worktree created: feature-x
+# (worktree:feature-x) $  # Automatically navigated with prompt indicator
+
+# Work on the feature
+git commit -m "Add feature"
+
+# On host (also works!)
+cd ~/.vm/worktrees/myproject/feature-x
+git status  # Shows your commits
+
+# List all worktrees
+vm-worktree list
+# 📁 Worktrees:
+#   feature-x
+#   bugfix-123
+
+# Jump to another worktree
+vm-worktree goto bugfix-123
+(worktree:bugfix-123) $
+
+# Remove when done
+vm-worktree remove feature-x
+# ✓ Worktree removed: feature-x
+```
+
+**Traditional workflow (still supported):**
+```bash
+# Create worktree on host
 git worktree add ../feature-branch
 
 # Navigate and create VM
 cd ../feature-branch
-vm config worktrees enable
 vm create
 
-# Each worktree gets isolated VM environment
+# Auto-detected and mounted
+vm ssh  # Will detect and offer to mount new worktree
 ```
+
+**Security Features**:
+- **Path validation**: Prevents worktrees from escaping the designated directory
+- **Input sanitization**: Worktree names are sanitized to prevent command injection
+- **Safe directory mounting**: VM_WORKTREES can only point to safe, user-owned directories
+- **Automatic discovery**: First-time users see helpful tips on `vm ssh`
+
+**Shell History Persistence**:
+Your command history is now preserved across container recreations! Both bash and zsh history are stored in a persistent Docker volume, so you won't lose your command history when rebuilding or recreating containers.
 
 ### Environment Templates
 

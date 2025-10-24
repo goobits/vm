@@ -26,7 +26,7 @@ Create development environments that automatically configure themselves based on
 
 **Intelligent File Sync** — Edit code locally with your favorite tools while execution happens in the VM. Changes appear immediately without manual copying.
 
-**Git Worktree Support** — Automatic detection and remounting of new Git worktrees when connecting via SSH, enabling seamless multi-branch development workflows.
+**Git Worktree Support** — Create worktrees from inside containers that work on host too! Use `vm-worktree add feature-x` for instant branch switching without leaving your container.
 
 **Zero-Config Presets** — Language runtimes, databases, and development tools install automatically based on your project structure.
 

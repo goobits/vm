@@ -299,6 +299,24 @@ pub enum DbSubcommand {
 }
 
 #[derive(Debug, Clone, Subcommand)]
+pub enum EnvSubcommand {
+    /// Validate .env against template
+    Validate {
+        /// Show all variables (not just missing ones)
+        #[arg(long)]
+        all: bool,
+    },
+    /// Show differences between .env and template
+    Diff,
+    /// List all environment variables from .env
+    List {
+        /// Show variable values (masked by default)
+        #[arg(long)]
+        show_values: bool,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
 pub enum PluginSubcommand {
     /// See installed plugins
     List,
@@ -432,6 +450,24 @@ pub enum Command {
         #[arg()]
         container: Option<String>,
     },
+    /// Wait for services to be ready
+    Wait {
+        /// Container name, ID, or project name
+        #[arg()]
+        container: Option<String>,
+        /// Service to wait for (postgres, redis, mongodb). If omitted, waits for all services.
+        #[arg()]
+        service: Option<String>,
+        /// Timeout in seconds (default: 60)
+        #[arg(long, default_value = "60")]
+        timeout: u64,
+    },
+    /// Show ports and listening services
+    Ports {
+        /// Container name, ID, or project name
+        #[arg()]
+        container: Option<String>,
+    },
     /// Jump into your environment
     Ssh {
         /// Container name, ID, or project name to connect to
@@ -499,10 +535,22 @@ pub enum Command {
         command: DbSubcommand,
     },
 
+    /// Manage environment variables
+    Env {
+        #[command(subcommand)]
+        command: EnvSubcommand,
+    },
+
     /// Extend with plugins
     Plugin {
         #[command(subcommand)]
         command: PluginSubcommand,
+    },
+
+    /// Generate shell completion scripts
+    Completion {
+        /// Shell type (bash, zsh, fish, powershell)
+        shell: String,
     },
 
     /// Update to the latest version
