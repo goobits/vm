@@ -851,6 +851,113 @@ development:
 - Non-existent files are skipped with a warning during VM creation
 - Use this for configuration files, not for workspace files
 
+### Dynamic Port Forwarding 🔀
+
+#### Ephemeral Port Tunneling
+
+Forward ports on-demand without permanent configuration. Perfect for debugging, testing, or temporary services.
+
+```bash
+# Forward localhost:8080 to container port 3000
+vm port forward 8080:3000
+
+# Forward to a specific container
+vm port forward 8080:3000 myapp-dev
+
+# List active port forwarding tunnels
+vm port list
+
+# Stop a specific tunnel
+vm port stop 8080
+
+# Stop all tunnels
+vm port stop --all
+```
+
+**What it does:**
+- Creates ephemeral port forwarding using lightweight relay containers
+- No permanent configuration needed - tunnels exist only while active
+- Solves port conflicts between multiple VMs (each tunnel is independent)
+- Automatic cleanup when containers stop
+
+**Use Cases:**
+
+**Debugging:**
+```bash
+# Start debugger in container
+vm ssh
+node --inspect=0.0.0.0:9229 app.js
+
+# In another terminal, forward the debugger port
+vm port forward 9229:9229
+
+# Attach VS Code debugger to localhost:9229
+# When done debugging:
+vm port stop 9229
+```
+
+**Testing multiple environments:**
+```bash
+# Each VM can use the same internal port
+vm port forward 3000:3000 myapp-dev      # localhost:3000 → dev:3000
+vm port forward 3001:3000 myapp-staging  # localhost:3001 → staging:3000
+vm port forward 3002:3000 myapp-prod     # localhost:3002 → prod:3000
+
+# Test all three simultaneously
+curl localhost:3000  # hits dev
+curl localhost:3001  # hits staging
+curl localhost:3002  # hits prod
+```
+
+**Temporary services:**
+```bash
+# Forward a database for local inspection
+vm port forward 5432:5432
+
+# Use with local tools
+psql -h localhost -p 5432 -U postgres
+
+# Clean up when done
+vm port stop 5432
+```
+
+**How it works:**
+- Creates a lightweight Alpine container with `socat`
+- Shares network namespace with your VM container
+- Routes traffic: `localhost:HOST → relay → container:GUEST`
+- Tracked in `~/.config/vm/tunnels/active.json`
+
+**Viewing active tunnels:**
+```bash
+vm port list
+```
+```
+🔀 Active Port Forwarding Tunnels
+
+  localhost:9229 → myapp-dev:9229
+    Relay: vm-port-forward-myapp-dev-9229 | Created: 2025-10-24T20:15:30Z
+
+  localhost:3000 → myapp-staging:3000
+    Relay: vm-port-forward-myapp-staging-3000 | Created: 2025-10-24T20:16:45Z
+```
+
+**Notes:**
+- Tunnels are ephemeral - they don't survive system reboots
+- Each tunnel uses a small relay container (~5MB memory)
+- Conflicts with existing port bindings will error
+- Use permanent ports in `vm.yaml` for production services
+- Tunnels automatically stop when target container stops
+
+**vs. Permanent Ports:**
+
+| Feature | Dynamic (`vm port forward`) | Permanent (`ports:` in vm.yaml) |
+|---------|---------------------------|--------------------------------|
+| Configuration | Command-line, temporary | vm.yaml, permanent |
+| Use case | Debugging, testing | Production services |
+| Conflicts | Each VM independent | Must be unique across VMs |
+| Lifecycle | Manual start/stop | Starts with VM |
+| Overhead | Relay container per tunnel | Native Docker port mapping |
+
 ## 📚 Additional Resources
 
 - **[Examples Guide](../getting-started/examples.md)** - Real-world configuration examples

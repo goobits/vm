@@ -215,6 +215,35 @@ pub enum PkgConfigAction {
 }
 
 #[derive(Debug, Clone, Subcommand)]
+pub enum PortSubcommand {
+    /// Forward a port dynamically using SSH tunneling
+    Forward {
+        /// Port mapping (e.g., 8080:3000 maps localhost:8080 to container:3000)
+        mapping: String,
+        /// Container name, ID, or project name
+        #[arg()]
+        container: Option<String>,
+    },
+    /// List active port forwarding tunnels
+    List {
+        /// Container name, ID, or project name
+        #[arg()]
+        container: Option<String>,
+    },
+    /// Stop port forwarding tunnel(s)
+    Stop {
+        /// Host port to stop (omit to stop all tunnels)
+        port: Option<u16>,
+        /// Container name, ID, or project name
+        #[arg()]
+        container: Option<String>,
+        /// Stop all tunnels for this container
+        #[arg(long)]
+        all: bool,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
 pub enum AuthSubcommand {
     /// Check auth proxy status
     Status,
@@ -467,6 +496,11 @@ pub enum Command {
         /// Container name, ID, or project name
         #[arg()]
         container: Option<String>,
+    },
+    /// Manage dynamic port forwarding
+    Port {
+        #[command(subcommand)]
+        command: PortSubcommand,
     },
     /// Jump into your environment
     Ssh {

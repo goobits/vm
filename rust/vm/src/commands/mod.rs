@@ -3,7 +3,7 @@
 use crate::error::{VmError, VmResult};
 use tracing::debug;
 // Import the CLI types
-use crate::cli::{Args, Command, PluginSubcommand};
+use crate::cli::{Args, Command, PluginSubcommand, PortSubcommand};
 use std::path::Path;
 use vm_cli::msg;
 use vm_config::{
@@ -26,6 +26,7 @@ pub mod init;
 pub mod pkg;
 pub mod plugin;
 pub mod plugin_new;
+pub mod port_forward;
 pub mod temp;
 pub mod uninstall;
 pub mod update;
@@ -390,6 +391,33 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             config,
             global_config.clone(),
         ),
+        Command::Port { command } => match command {
+            PortSubcommand::Forward { mapping, container } => port_forward::handle_port_forward(
+                provider,
+                mapping.as_str(),
+                container.as_deref(),
+                config,
+                global_config.clone(),
+            ),
+            PortSubcommand::List { container } => port_forward::handle_port_list(
+                provider,
+                container.as_deref(),
+                config,
+                global_config.clone(),
+            ),
+            PortSubcommand::Stop {
+                port,
+                container,
+                all,
+            } => port_forward::handle_port_stop(
+                provider,
+                port.as_ref().copied(),
+                container.as_deref(),
+                all,
+                config,
+                global_config.clone(),
+            ),
+        },
         Command::Exec { container, command } => {
             vm_ops::handle_exec(provider, container.as_deref(), command, config.clone())
         }
