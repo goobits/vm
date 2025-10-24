@@ -851,6 +851,85 @@ development:
 - Non-existent files are skipped with a warning during VM creation
 - Use this for configuration files, not for workspace files
 
+### Debugging Support 🐛
+
+#### Automatic Debugger Port Configuration
+
+When you enable debugging, the VM automatically detects your project type and exposes the appropriate debugger ports:
+
+```yaml
+# vm.yaml
+security:
+  enable_debugging: true  # Enables debugging + auto-configures ports
+```
+
+**What it does:**
+- Automatically detects project language/framework
+- Exposes standard debugger ports for detected technologies
+- Configures Docker security settings for debugging (SYS_PTRACE, seccomp=unconfined)
+- Shows which ports were configured during VM creation
+
+**Supported Debuggers:**
+
+| Language/Framework | Port | Protocol | Debugger |
+|-------------------|------|----------|----------|
+| Node.js / JavaScript | 9229 | Inspector | Node.js Inspector |
+| Python / Django / Flask | 5678 | DAP | debugpy |
+| Go | 2345 | DAP | Delve |
+| PHP | 9003 | DBGp | Xdebug 3.x |
+| Ruby / Rails | 1234 | DAP | ruby-debug-ide |
+| Java | 5005 | JDWP | Java Debugger |
+
+**Example output during `vm create`:**
+```
+🔧 Debugging enabled: Auto-configured debugger ports
+   • Port 9229 - Node.js debugger (Inspector Protocol)
+   • Port 5678 - Python debugger (debugpy) (DAP)
+```
+
+**VS Code Configuration:**
+
+Node.js:
+```json
+{
+  "type": "node",
+  "request": "attach",
+  "name": "Attach to VM",
+  "address": "localhost",
+  "port": 9229
+}
+```
+
+Python:
+```json
+{
+  "type": "python",
+  "request": "attach",
+  "name": "Attach to VM",
+  "connect": {
+    "host": "localhost",
+    "port": 5678
+  }
+}
+```
+
+**Manual Port Override:**
+If you need different ports, you can override them:
+```yaml
+security:
+  enable_debugging: true
+ports:
+  mappings:
+    - host: 9999      # Custom debugger port
+      guest: 9229     # Node.js debugger in container
+```
+
+**Notes:**
+- Only ports for detected languages are exposed
+- Manually configured ports are preserved
+- Multi-language projects get multiple debugger ports
+- Rust uses gdb/lldb (no network debugger port needed)
+
 ## 📚 Additional Resources
 
 - **[Examples Guide](../getting-started/examples.md)** - Real-world configuration examples

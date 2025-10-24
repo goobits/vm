@@ -40,11 +40,13 @@ use std::path::Path;
 use vm_core::error::{Result, VmError};
 use vm_core::file_system::{has_any_dir, has_any_file, has_file, has_file_containing};
 
+pub mod debugger;
 pub mod git;
 pub mod os;
 pub mod presets;
 pub mod tools;
 
+pub use debugger::{detect_debugger_ports, get_all_debugger_ports, DebuggerPort};
 pub use os::detect_host_os;
 pub use presets::{
     detect_preset_for_project, get_detected_technologies, get_recommended_preset,
