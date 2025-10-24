@@ -29,6 +29,12 @@ services:
       # SSH config (read-only)
       - {{ ssh_config_path }}:/home/{{ project_user }}/.ssh/config:ro
       {% endif %}
+      {% if dotfile_mounts %}
+      # Dotfiles sync (read-only)
+      {% for dotfile in dotfile_mounts %}
+      - {{ dotfile.0 }}:{{ dotfile.1 }}:ro
+      {% endfor %}
+      {% endif %}
       {% if worktrees_base_dir %}
       # Git worktrees base directory (mounted at identical absolute path)
       - {{ worktrees_base_dir }}:{{ worktrees_base_dir }}:rw

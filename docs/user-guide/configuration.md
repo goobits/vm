@@ -783,6 +783,74 @@ echo $SSH_AUTH_SOCK  # Should be: /ssh-agent
 ssh-add -l           # Should list your keys
 ```
 
+#### Dotfiles Sync 📄
+
+Selectively sync your configuration files from host to VM for a consistent development environment:
+
+```yaml
+# vm.yaml
+development:
+  sync_dotfiles:
+    - "~/.vimrc"            # Vim configuration
+    - "~/.config/nvim"      # Neovim configuration directory
+    - "~/.tmux.conf"        # Tmux configuration
+    - "~/.gitconfig"        # Git configuration
+    - "~/.bashrc"           # Bash configuration
+    - "~/.zshrc"            # Zsh configuration
+```
+
+**What it does:**
+- Mounts specified dotfiles from host into the VM (read-only)
+- Supports both files and directories
+- Expands `~` to your home directory automatically
+- Preserves directory structure in container
+
+**Path mapping:**
+- `~/.vimrc` → `/home/developer/.vimrc` (in container)
+- `~/.config/nvim` → `/home/developer/.config/nvim` (in container)
+- Absolute paths (`/etc/foo`) stay the same
+
+**Features:**
+- **Read-only mounts** - Prevents accidental modification from inside VM
+- **Selective sync** - Only mount what you need, keep containers minimal
+- **Automatic validation** - Skips non-existent files with warnings
+- **Path expansion** - Handles `~` expansion automatically
+
+**Example configurations:**
+
+**Vim/Neovim users:**
+```yaml
+development:
+  sync_dotfiles:
+    - "~/.vimrc"
+    - "~/.config/nvim"
+```
+
+**Tmux + Zsh users:**
+```yaml
+development:
+  sync_dotfiles:
+    - "~/.tmux.conf"
+    - "~/.zshrc"
+    - "~/.oh-my-zsh"  # If using oh-my-zsh
+```
+
+**Full stack developers:**
+```yaml
+development:
+  sync_dotfiles:
+    - "~/.gitconfig"
+    - "~/.npmrc"
+    - "~/.pypirc"
+    - "~/.cargo/config.toml"
+```
+
+**Notes:**
+- Dotfiles are mounted read-only to prevent accidental changes
+- Changes to dotfiles on host are immediately visible in VM
+- Non-existent files are skipped with a warning during VM creation
+- Use this for configuration files, not for workspace files
+
 ## 📚 Additional Resources
 
 - **[Examples Guide](../getting-started/examples.md)** - Real-world configuration examples

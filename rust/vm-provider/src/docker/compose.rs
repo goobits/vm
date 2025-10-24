@@ -80,6 +80,62 @@ fn configure_ssh_agent(config: &VmConfig, tera_context: &mut TeraContext) {
     }
 }
 
+/// Expand tilde (~) in path to home directory
+fn expand_tilde(path: &str) -> Option<String> {
+    if path.starts_with("~/") {
+        let home = std::env::var("HOME").ok()?;
+        Some(path.replacen("~", &home, 1))
+    } else if path == "~" {
+        std::env::var("HOME").ok()
+    } else {
+        Some(path.to_string())
+    }
+}
+
+/// Process dotfiles configuration and return validated paths
+/// Returns Vec of (host_path, container_path) tuples
+fn process_dotfiles(config: &VmConfig, username: &str) -> Vec<(String, String)> {
+    let Some(dev_config) = config.development.as_ref() else {
+        return Vec::new();
+    };
+
+    if dev_config.sync_dotfiles.is_empty() {
+        return Vec::new();
+    }
+
+    dev_config
+        .sync_dotfiles
+        .iter()
+        .filter_map(|dotfile_path| {
+            // Expand tilde to home directory
+            let expanded = expand_tilde(dotfile_path)?;
+
+            // Check if the path exists
+            let path = Path::new(&expanded);
+            if !path.exists() {
+                eprintln!("Warning: Dotfile not found, skipping: {}", expanded);
+                return None;
+            }
+
+            // Determine container path based on the original path
+            let container_path = if let Some(relative_path) = dotfile_path.strip_prefix("~/") {
+                // Map ~/.vimrc to /home/username/.vimrc
+                format!("/home/{}/{}", username, relative_path)
+            } else if dotfile_path == "~" {
+                format!("/home/{}", username)
+            } else if dotfile_path.starts_with('/') {
+                // Absolute paths stay the same
+                dotfile_path.clone()
+            } else {
+                // Relative paths go to container home
+                format!("/home/{}/{}", username, dotfile_path)
+            };
+
+            Some((expanded, container_path))
+        })
+        .collect()
+}
+
 impl<'a> ComposeOperations<'a> {
     pub fn new(config: &'a VmConfig, temp_dir: &'a PathBuf, project_dir: &'a PathBuf) -> Self {
         Self {
@@ -263,6 +319,12 @@ impl<'a> ComposeOperations<'a> {
         // SSH agent forwarding
         configure_ssh_agent(self.config, &mut tera_context);
 
+        // Dotfiles sync
+        let dotfile_mounts = process_dotfiles(self.config, &user_config.username);
+        if !dotfile_mounts.is_empty() {
+            tera_context.insert("dotfile_mounts", &dotfile_mounts);
+        }
+
         // Git worktrees volume
         // Check if worktrees are enabled
         let worktrees_enabled = self
@@ -402,6 +464,12 @@ impl<'a> ComposeOperations<'a> {
 
         // SSH agent forwarding
         configure_ssh_agent(self.config, &mut tera_context);
+
+        // Dotfiles sync
+        let dotfile_mounts = process_dotfiles(self.config, &user_config.username);
+        if !dotfile_mounts.is_empty() {
+            tera_context.insert("dotfile_mounts", &dotfile_mounts);
+        }
 
         // Git worktrees volume
         // Check if worktrees are enabled

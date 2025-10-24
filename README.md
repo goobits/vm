@@ -30,6 +30,8 @@ Create development environments that automatically configure themselves based on
 
 **SSH Agent Forwarding** — Use your host SSH keys inside VMs without copying private keys. Enable with `development.ssh_agent_forwarding: true` for secure git operations and remote SSH access.
 
+**Dotfiles Sync** — Selectively mount your configuration files (`~/.vimrc`, `~/.tmux.conf`, etc.) into VMs with `development.sync_dotfiles` for a consistent development environment without manual copying.
+
 **Zero-Config Presets** — Language runtimes, databases, and development tools install automatically based on your project structure.
 
 **Shared Database Services** — Optional, shared instances of PostgreSQL, Redis, and MongoDB that run on the host and are accessible to all VMs. This saves memory, speeds up startup, and persists data across VM rebuilds. See the [Shared Services User Guide](docs/user-guide/shared-services.md) for details.
