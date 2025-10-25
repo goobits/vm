@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.0] - 2025-10-25
+
+### Added
+
+- **VM Snapshots**: Complete state preservation and restoration system
+  - New `vm snapshot create <name>` command to capture entire VM state
+  - New `vm snapshot restore <name>` command to restore from snapshot
+  - New `vm snapshot list` command to show available snapshots
+  - New `vm snapshot delete <name>` command to remove snapshots
+  - Captures containers, volumes, configurations, and git metadata
+  - Docker integration with commit, save/load, and volume backup
+  - Project-specific storage at `~/.config/vm/snapshots`
+  - **Use cases:**
+    - Save development environment as reusable template
+    - Share pre-configured environments across team
+    - Quick environment switching between projects
+    - Backup before major configuration changes
+  - Snapshots are designed as permanent reusable templates (like Docker images)
+  - Single command restoration of complete environments
+
+### Changed
+
+- **Examples Workflow**: Migrated from file-based examples to snapshot-based templates
+  - Replaced 11 legacy example files with snapshot migration documentation
+  - Enhanced examples/README.md with snapshot workflow guide
+  - Updated user guide with comprehensive snapshot documentation
+
+### Removed
+
+- **Legacy Example Files**: Removed obsolete example configurations
+  - Removed `examples/base-images/QUICKSTART.md`
+  - Removed `examples/base-images/README.md`
+  - Removed `examples/base-images/build.sh`
+  - Removed `examples/base-images/minimal-node.dockerfile`
+  - Removed `examples/base-images/supercool.dockerfile`
+  - Removed `examples/configurations/full-stack.yaml`
+  - Removed `examples/configurations/minimal.yaml`
+  - Removed `examples/nextjs-app/vm.yaml`
+  - Removed `examples/services/mongodb.yaml`
+  - Removed `examples/services/postgresql.yaml`
+  - Removed `examples/services/redis.yaml`
+
+### Technical Improvements
+
+- Added new snapshot command modules: `create.rs`, `restore.rs`, `manager.rs`, `metadata.rs`
+- Enhanced global configuration with snapshot settings support
+- Added snapshot metadata tracking with JSON serialization
+- Comprehensive documentation in proposals/00_snapshots.proposal.md
+- Net change: +1302 lines added, -843 lines removed across 24 files
+
 ## [3.2.0] - 2025-10-24
 
 ### Added
