@@ -1,17 +1,57 @@
-# Example Configurations
+# VM Snapshots - The New Way to Share Environments
 
-This directory contains example `vm.yaml` configurations and custom base images for various project types. You can use these as a starting point for your own projects.
+**This directory previously contained example configurations for manual VM setup.**
 
-To use an example, copy the `vm.yaml` file to the root of your project directory and customize it as needed.
+**As of v3.2.0, the recommended approach is to use VM snapshots instead.**
 
-## Project Examples
+## Why Snapshots?
 
--   **`nextjs-app/`**: A basic configuration for a Next.js web application.
--   **`configurations/`**: Sample configurations (minimal, full-stack)
--   **`services/`**: Service-specific examples (PostgreSQL, Redis, MongoDB)
+The old workflow:
+- ❌ Copy example configs manually
+- ❌ Lose state when destroying VMs
+- ❌ Can't capture installed packages or code changes
+- ❌ Requires rebuilding from scratch
 
-## Custom Base Images
+The new workflow:
+- ✅ `vm snapshot create my-setup` - Captures everything
+- ✅ `vm snapshot restore my-setup` - Instant environment recovery
+- ✅ Share complete working environments with teammates
+- ✅ Safe experimentation with easy rollback
 
--   **`base-images/`**: Example Dockerfiles for creating reusable base images with pre-installed dependencies (Playwright, Chromium, dev tools, etc.)
+## Migration Guide
 
-See [base-images/README.md](./base-images/README.md) for details on creating and using custom base images to speed up VM creation.
+### Old Way (Deprecated)
+```bash
+cp examples/nextjs-app/vm.yaml ./
+vm init
+vm create
+# Manually configure packages, databases, etc.
+```
+
+### New Way (Recommended)
+```bash
+# Set up once
+vm init
+vm create
+# Install packages, configure services, etc.
+
+# Save your working environment
+vm snapshot create my-setup --description "Fully configured Next.js environment"
+
+# Later: instant restoration
+vm snapshot restore my-setup
+```
+
+## For Template Configs
+
+If you need starter `vm.yaml` files, use:
+```bash
+vm init  # Interactive configuration wizard
+```
+
+Or see [Configuration Guide](../docs/user-guide/configuration.md) for examples.
+
+## Documentation
+
+- [Snapshot User Guide](../docs/user-guide/configuration.md#vm-snapshots-)
+- [Configuration Reference](../docs/user-guide/configuration.md)

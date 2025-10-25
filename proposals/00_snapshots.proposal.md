@@ -1,70 +1,120 @@
 ## Problem
 
-Developers cannot save and restore the state of their development environments. When switching between features, testing configurations, or recovering from mistakes, they must rebuild environments from scratch. Database backups exist (`vm db backup/restore`) but container filesystem changes, installed packages, and code modifications are lost on destroy.
+Our current “examples box” workflow cannot persist developer state. Destroying a VM resets container filesystems, installed packages, volume data, and local configuration; recreating the box from `examples/` only rebuilds the base Compose stack. Database backups (`vm db backup/restore`) partially mitigate data loss but ignore the rest of the environment. As a result:
 
-## Solution(s)
+- Context switches are slow because engineers must manually replay setup steps.
+- Experiments are risky; recovering from mistakes requires full rebuilds.
+- Sharing a working environment with teammates is impractical.
+- The legacy examples workflow competes with the proposed snapshot concept, creating duplicated code paths and documentation.
 
-Implement Docker Compose State Save approach that captures the complete environment state:
+## Goals
 
-1. **Container Filesystem:** Use `docker commit` to save container changes as images
-2. **Volume Data:** Create tar archives of all mounted volumes (complementing existing DB backups)
-3. **Configuration:** Store vm.yaml and docker-compose.yml state
-4. **Metadata:** Track snapshot timestamp, git commit hash, and user description
+Deliver a single, comprehensive snapshot system that replaces the “super cool box” experience everywhere. “Done” means:
 
-Storage location: `~/.config/vm/snapshots/<project>/<snapshot-name>/`
+1. Users can save and restore the entire VM state (containers, volumes, configs, metadata) with `vm snapshot <verb>`.
+2. Snapshots work for every Docker Compose-based VM (single or multi-instance) today.
+3. Provider APIs expose snapshot hooks so future providers can adopt the same UX.
+4. All legacy box/example tooling, docs, and references are removed or redirected to the snapshot workflow.
 
-## Checklists
+## Non-Goals
 
-- [ ] **Core Implementation:**
-    - [ ] Create `rust/vm/src/commands/snapshot.rs` module
-    - [ ] Define `SnapshotManager` struct with snapshots_dir path
-    - [ ] Define `SnapshotInfo` struct (name, created_at, container_image, volume_backups, config_files, git_commit, description)
-    - [ ] Implement snapshot metadata serialization (JSON)
-- [ ] **Snapshot Creation:**
-    - [ ] Execute `docker commit <container>` to create image
-    - [ ] Backup all volume data to tar archives
-    - [ ] Copy vm.yaml and docker-compose.yml
-    - [ ] Capture git commit hash if in git repository
-    - [ ] Save metadata file
-- [ ] **Snapshot Restoration:**
-    - [ ] Load snapshot metadata
-    - [ ] Recreate volumes from tar archives
-    - [ ] Restore container from committed image
-    - [ ] Apply saved configuration files
-    - [ ] Start container with docker-compose
-- [ ] **CLI Commands:**
-    - [ ] Add `vm snapshot create <name>` command
-    - [ ] Add `vm snapshot list` command
-    - [ ] Add `vm snapshot restore <name>` command
-    - [ ] Add `vm snapshot delete <name>` command
-- [ ] **Provider Integration:**
-    - [ ] Add `snapshot()` method to Provider trait
-    - [ ] Add `restore()` method to Provider trait
-    - [ ] Implement for DockerProvider
-    - [ ] Return unsupported error for Vagrant/Tart providers
-- [ ] **Documentation:**
-    - [ ] Add snapshot section to docs/user-guide/configuration.md
-    - [ ] Update README.md with snapshot feature
-    - [ ] Add examples for common workflows
-- [ ] **Verification:**
-    - [ ] Test create/restore cycle preserves filesystem changes
-    - [ ] Test multi-instance snapshot support
-    - [ ] Verify volume data integrity
-    - [ ] Ensure snapshots are portable (restore on clean system)
-    - [ ] Run all existing tests to confirm no regressions
+- Supporting non-Compose providers (Tart/Vagrant) on day one. They will return “unsupported” but share the same CLI wiring.
+- Deduplicating snapshot storage layers. Users manage disk via `vm snapshot delete`.
+- Hot snapshotting running containers; the workflow stops services before capture to guarantee consistency.
+
+## Architecture Overview
+
+### Storage Layout
+
+```
+~/.config/vm/snapshots/<project>/<snapshot-name>/
+    metadata.json
+    compose/
+        docker-compose.yml
+        vm.yaml
+    images/
+        <service>.tar   # result of docker commit && docker save
+    volumes/
+        <volume>.tar.gz
+```
+
+### Snapshot Capture Flow
+
+1. Discover all running Compose services (`docker compose ps --services`).
+2. For each container:
+   - `docker commit` → temporary image tag `vm-snapshot/<project>/<service>:<name>`
+   - `docker save` the tag into `images/<service>.tar`
+3. Enumerate named volumes from `docker compose config --volumes`. For each, run `docker run --rm -v <volume>:/data busybox tar czf - /data`.
+4. Copy `vm.yaml`, generated `docker-compose.yml`, and any provider override files into `compose/`.
+5. Record metadata:
+   - Snapshot name, created_at (UTC), git commit hash + dirty flag, Docker image digests, volume sizes, user-supplied description, project identifier.
+6. Stop the Compose application only if requested via `--quiesce`; otherwise warn that live snapshots may race.
+
+### Snapshot Restore Flow
+
+1. Validate metadata and ensure destination project directory matches the snapshot’s project slug.
+2. Stop any running Compose stack for the project.
+3. For each volume archive:
+   - Remove existing volume (`docker volume rm`) or rename it for rollback.
+   - Create a fresh volume and restore data via helper container untar.
+4. Load images (`docker load < images/<service>.tar`) and retag them to the service names.
+5. Overwrite `vm.yaml`/`docker-compose.yml` with archived copies (backing up current files).
+6. Run `docker compose up -d` to start services using the restored state.
+
+### CLI Surface
+
+```
+vm snapshot create <name> [--description "text"] [--project myproj]
+vm snapshot list [--project myproj]
+vm snapshot restore <name> [--project myproj] [--force]
+vm snapshot delete <name> [--project myproj]
+vm snapshot clean --max-age 30d --max-count 5
+```
+
+### Provider Integration
+
+- Extend `Provider` trait with `snapshot(&self, SnapshotRequest)` and `restore(&self, SnapshotRestoreRequest)`.
+- Implement fully for `DockerProvider`.
+- Other providers return `ProviderError::Unsupported("snapshot")`.
+- `SnapshotManager` orchestrates filesystem layout, metadata, and dispatches to the active provider.
+
+### Legacy Removal
+
+1. Delete examples-based box creation scripts/configs that overlap with snapshot functionality.
+2. Update docs (`README.md`, `docs/user-guide/configuration.md`, `examples/README.md`) to reference snapshots exclusively.
+3. Provide a migration guide: “If you previously duplicated examples/<box>, run `vm snapshot create <name>` instead.”
+4. Remove CLI commands that spin up legacy boxes, or make them wrappers around snapshot-aware flows before final removal.
+
+## Implementation Plan
+
+1. **Foundations**
+   - Create `rust/vm/src/commands/snapshot.rs` with `SnapshotManager`.
+   - Define `SnapshotInfo` struct and JSON serialization.
+   - Add config entry for `snapshots_dir`.
+2. **CLI Commands**
+   - Wire `vm snapshot <subcommand>` parsing.
+   - Implement command handlers calling `SnapshotManager`.
+3. **Docker Provider**
+   - Container commit/save helpers.
+   - Volume archive/restore helpers.
+   - Compose config capture utilities.
+   - Safety checks (disk space, running state).
+4. **Metadata + UX**
+   - Human-readable metadata (timestamps, git hash, size).
+   - `vm snapshot list` formatting (name, created_at, size, description).
+   - Destructive-action confirmations (`restore`, `delete`).
+5. **Legacy Deletion**
+   - Remove redundant example box generator scripts.
+   - Prune docs referencing the deprecated workflow.
+6. **Verification**
+   - Automated tests for metadata serialization.
+   - Integration script exercising create → delete → restore cycle.
+   - Manual QA checklist for multi-instance projects.
 
 ## Success Criteria
 
-- Users can execute `vm snapshot create dev-working` and capture full environment state
-- `vm snapshot restore dev-working` recreates the exact environment including installed packages, code changes, and volume data
-- Snapshots support multi-instance VMs (`myproject-dev`, `myproject-staging`)
-- Snapshot list shows name, creation time, size, and description
-- All existing tests pass without modification
-
-## Benefits
-
-- Enables "save game" style development workflow
-- Fast environment recovery from mistakes or failed experiments
-- Share development environments across team members
-- Test configuration changes with easy rollback
-- Complements existing git worktree workflow for branch switching
+- Running `vm snapshot create <name>` captures filesystem + volume + config state within one command.
+- `vm snapshot restore <name>` reproduces a working environment indistinguishable from the moment of capture.
+- Snapshot list shows name, creation time, size, description, and git hash.
+- All Compose-based providers use the new workflow; legacy examples/boxes are removed, and docs point solely to snapshots.
+- Existing regression suite passes; new snapshot integration tests cover save/restore/migrate flows.

@@ -38,6 +38,10 @@ pub struct GlobalConfig {
     #[serde(default, skip_serializing_if = "BackupSettings::is_default")]
     pub backups: BackupSettings,
 
+    /// Snapshot settings
+    #[serde(default, skip_serializing_if = "SnapshotSettings::is_default")]
+    pub snapshots: SnapshotSettings,
+
     /// Extra configuration for extensions
     #[serde(flatten)]
     pub extra: IndexMap<String, serde_json::Value>,
@@ -89,6 +93,32 @@ impl BackupSettings {
             && self.path == default_backup_path()
             && self.keep_count == default_keep_count()
             && self.databases_only
+    }
+}
+
+/// Snapshot management settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnapshotSettings {
+    /// Directory to store snapshots
+    #[serde(default = "default_snapshots_path")]
+    pub path: String,
+}
+
+fn default_snapshots_path() -> String {
+    "~/.config/vm/snapshots".to_string()
+}
+
+impl Default for SnapshotSettings {
+    fn default() -> Self {
+        Self {
+            path: default_snapshots_path(),
+        }
+    }
+}
+
+impl SnapshotSettings {
+    pub fn is_default(&self) -> bool {
+        self.path == default_snapshots_path()
     }
 }
 

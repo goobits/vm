@@ -34,6 +34,8 @@ Create development environments that automatically configure themselves based on
 
 **Dynamic Port Forwarding** — On-demand port tunneling with `vm port forward 8080:3000` for debugging and testing. No port conflicts between VMs, automatic cleanup, perfect for ephemeral debugging sessions.
 
+**VM Snapshots** — Save and restore complete development environment state with `vm snapshot create/restore`. Capture containers, volumes, and configs for safe experimentation, context switching, and team collaboration.
+
 **Zero-Config Presets** — Language runtimes, databases, and development tools install automatically based on your project structure.
 
 **Shared Database Services** — Optional, shared instances of PostgreSQL, Redis, and MongoDB that run on the host and are accessible to all VMs. This saves memory, speeds up startup, and persists data across VM rebuilds. See the [Shared Services User Guide](docs/user-guide/shared-services.md) for details.
@@ -293,6 +295,15 @@ vm db size <db_name>     # Show the size of a database
 vm db export <db_name>   # Export a database to a file
 vm db import <db_name>   # Import a database from a file
 vm db reset <db_name>    # Reset a database to its initial state
+```
+
+### Snapshots (`vm snapshot`)
+Save and restore complete VM state as reusable templates:
+```bash
+vm snapshot create <name>          # Save current state
+vm snapshot list                    # Show all snapshots
+vm snapshot restore <name>          # Restore from snapshot
+vm snapshot delete <name>           # Remove snapshot
 ```
 
 ### System Management

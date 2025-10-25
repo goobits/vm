@@ -27,6 +27,7 @@ pub mod pkg;
 pub mod plugin;
 pub mod plugin_new;
 pub mod port_forward;
+pub mod snapshot;
 pub mod temp;
 pub mod uninstall;
 pub mod update;
@@ -95,6 +96,10 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         Command::Db { command } => {
             debug!("Calling db operations");
             db::handle_db(command.clone()).await
+        }
+        Command::Snapshot { command } => {
+            debug!("Calling snapshot operations");
+            snapshot::handle_snapshot(command.clone(), args.config).await
         }
         Command::Env { command } => {
             debug!("Calling env operations");

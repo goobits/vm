@@ -49,6 +49,22 @@ pub struct VmStatusReport {
     pub services: Vec<ServiceStatus>,
 }
 
+/// Request to create a VM snapshot
+#[derive(Debug, Clone)]
+pub struct SnapshotRequest {
+    pub snapshot_name: String,
+    pub description: Option<String>,
+    pub quiesce: bool,
+}
+
+/// Request to restore a VM from snapshot
+#[derive(Debug, Clone)]
+pub struct SnapshotRestoreRequest {
+    pub snapshot_name: String,
+    pub snapshot_path: std::path::PathBuf,
+    pub force: bool,
+}
+
 pub mod common;
 pub mod context;
 pub mod progress;
@@ -223,6 +239,26 @@ pub trait Provider {
     fn get_status_report(&self, _container: Option<&str>) -> Result<VmStatusReport> {
         Err(VmError::Provider(
             "Enhanced status not supported by this provider".to_string(),
+        ))
+    }
+
+    /// Create a snapshot of the VM state
+    ///
+    /// For Docker: commits containers, saves images, backs up volumes
+    /// For other providers: returns Unsupported error
+    fn snapshot(&self, _request: &SnapshotRequest) -> Result<()> {
+        Err(VmError::Provider(
+            "Snapshots not supported by this provider".to_string(),
+        ))
+    }
+
+    /// Restore a VM from a snapshot
+    ///
+    /// For Docker: loads images, restores volumes, recreates containers
+    /// For other providers: returns Unsupported error
+    fn restore_snapshot(&self, _request: &SnapshotRestoreRequest) -> Result<()> {
+        Err(VmError::Provider(
+            "Snapshot restore not supported by this provider".to_string(),
         ))
     }
 

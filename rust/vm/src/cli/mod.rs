@@ -328,6 +328,52 @@ pub enum DbSubcommand {
 }
 
 #[derive(Debug, Clone, Subcommand)]
+pub enum SnapshotSubcommand {
+    /// Create a snapshot of the current VM state
+    Create {
+        /// Snapshot name
+        name: String,
+        /// Optional description
+        #[arg(long)]
+        description: Option<String>,
+        /// Stop services before snapshotting for consistency
+        #[arg(long)]
+        quiesce: bool,
+        /// Project name (auto-detected if omitted)
+        #[arg(long)]
+        project: Option<String>,
+    },
+    /// List available snapshots
+    List {
+        /// Filter by project name
+        #[arg(long)]
+        project: Option<String>,
+    },
+    /// Restore VM from a snapshot
+    Restore {
+        /// Snapshot name to restore
+        name: String,
+        /// Project name (auto-detected if omitted)
+        #[arg(long)]
+        project: Option<String>,
+        /// Force restore without confirmation
+        #[arg(long)]
+        force: bool,
+    },
+    /// Delete a snapshot
+    Delete {
+        /// Snapshot name to delete
+        name: String,
+        /// Project name (auto-detected if omitted)
+        #[arg(long)]
+        project: Option<String>,
+        /// Skip confirmation
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
 pub enum EnvSubcommand {
     /// Validate .env against template
     Validate {
@@ -569,6 +615,12 @@ pub enum Command {
         command: DbSubcommand,
     },
 
+    /// Manage VM snapshots
+    Snapshot {
+        #[command(subcommand)]
+        command: SnapshotSubcommand,
+    },
+
     /// Manage environment variables
     Env {
         #[command(subcommand)]
@@ -612,7 +664,10 @@ pub enum Command {
 
 #[cfg(test)]
 mod tests {
-    use super::{Args, AuthSubcommand, Command, PkgSubcommand, PluginSubcommand, TempSubcommand};
+    use super::{
+        Args, AuthSubcommand, Command, PkgSubcommand, PluginSubcommand, SnapshotSubcommand,
+        TempSubcommand,
+    };
     use clap::Parser;
 
     #[test]

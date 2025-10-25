@@ -2,6 +2,8 @@
 
 Complete reference for configuring your VM development environment with YAML.
 
+> **📌 Migration Notice:** The legacy `examples/` directory workflow has been replaced by VM snapshots as of v3.2.0. See [VM Snapshots](#vm-snapshots-) below for the modern approach to sharing and restoring development environments.
+
 ## 📖 Table of Contents
 
 - [Configuration Files](#-configuration-files)
@@ -957,6 +959,130 @@ vm port list
 | Conflicts | Each VM independent | Must be unique across VMs |
 | Lifecycle | Manual start/stop | Starts with VM |
 | Overhead | Relay container per tunnel | Native Docker port mapping |
+
+### VM Snapshots 📸
+
+#### Save and Restore Complete VM State
+
+Snapshots capture your entire development environment including containers, volumes, and configurations.
+
+```bash
+# Create a snapshot
+vm snapshot create my-working-state
+
+# With description
+vm snapshot create before-refactor --description "Stable state before major changes"
+
+# List snapshots
+vm snapshot list
+
+# Restore from snapshot
+vm snapshot restore my-working-state
+
+# Delete old snapshots
+vm snapshot delete old-experiment
+```
+
+**Storage Location:** `~/.config/vm/snapshots/<project>/<snapshot-name>/`
+
+**What's Captured:**
+- Container filesystems (installed packages, code changes)
+- All volume data (databases, uploads, logs)
+- Configuration files (vm.yaml, docker-compose.yml)
+- Git commit hash and dirty state
+- Creation timestamp and description
+
+**Use Cases:**
+
+**Safe Experimentation:**
+```bash
+vm snapshot create stable-baseline
+# Try risky changes...
+# Something broke? Restore:
+vm snapshot restore stable-baseline
+```
+
+**Context Switching:**
+```bash
+# Save current feature work
+vm snapshot create feature-x-wip
+
+# Switch to urgent bugfix
+git checkout hotfix-branch
+vm destroy && vm create
+# Work on hotfix...
+
+# Back to feature work
+vm snapshot restore feature-x-wip
+```
+
+**Team Collaboration:**
+```bash
+# Share working environment
+vm snapshot create demo-ready
+# Archive and send snapshot directory to teammate
+# Teammate: vm snapshot restore demo-ready
+```
+
+**Configuration:**
+
+```yaml
+# ~/.vm/config.yaml
+snapshots:
+  path: "~/.config/vm/snapshots"  # Snapshot storage directory
+```
+
+**Notes:**
+- Snapshots are project-specific and designed to be reused as base templates
+- Large snapshots can consume significant disk space
+- Use `vm snapshot delete <name>` to manually remove unwanted snapshots
+- Quiesce flag (`--quiesce`) stops services for consistent snapshots
+
+---
+
+#### Migrating from Examples/Boxes
+
+**Old Workflow (Deprecated):**
+```bash
+# Copy example configuration
+cp examples/nextjs-app/vm.yaml ./
+vm create
+# Manually set up packages, databases, etc.
+```
+
+**Problems:**
+- Lost all state on `vm destroy`
+- Couldn't capture package installations
+- Manual setup steps required after recreation
+- Hard to share working environments
+
+**New Workflow:**
+```bash
+# Initial setup (once)
+vm init
+vm create
+# Install packages, configure databases, etc.
+
+# Save working state
+vm snapshot create my-configured-env
+
+# Share with team or restore later
+vm snapshot restore my-configured-env
+```
+
+**Benefits:**
+- Complete state preservation
+- One-command environment replication
+- Safe experimentation with rollback
+- Team collaboration ready
+
+**If you previously used custom base images:**
+- Create a VM with your desired packages installed
+- Run `vm snapshot create base-environment`
+- Share the snapshot instead of the Dockerfile
+- Team members: `vm snapshot restore base-environment`
+
+---
 
 ## 📚 Additional Resources
 
