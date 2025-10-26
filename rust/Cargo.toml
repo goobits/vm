@@ -36,7 +36,7 @@ clap = { version = "4.5.11", features = ["derive"] }
 clap_complete = "4.5"
 anyhow = "1.0.82"
 thiserror = "2.0"
-indexmap = { version = "2.0", features = ["serde"] }
+indexmap = { version = "2.12", features = ["serde"] }
 regex = "1.10.5"
 tera = "1.20"
 which = "8.0"
