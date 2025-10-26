@@ -173,7 +173,9 @@ services:
     {% if config.networking and config.networking.networks and config.networking.networks | length > 0 -%}
     networks:
       {% for network in config.networking.networks -%}
-      - {{ network }}
+      {{ network }}:
+        aliases:
+          - {{ project_name }}-dev
       {% endfor -%}
     {%- endif %}
 
@@ -193,7 +195,10 @@ services:
     {% if config.networking and config.networking.networks and config.networking.networks | length > 0 -%}
     networks:
       {% for network in config.networking.networks -%}
-      - {{ network }}
+      {{ network }}:
+        aliases:
+          - {{ project_name }}-postgres
+          - postgres
       {% endfor -%}
     {%- endif %}
   {% endif %}
