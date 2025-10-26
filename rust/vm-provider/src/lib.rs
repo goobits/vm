@@ -5,13 +5,14 @@
 //! for provider instantiation and management.
 
 // Standard library
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 // External crates
 use vm_core::error::Result;
 
 // Internal imports
-use vm_config::config::VmConfig;
+use vm_config::config::{BoxSpec, VmConfig};
 
 // Re-export common types for convenience
 pub use common::instance::{InstanceInfo, InstanceResolver};
@@ -87,6 +88,175 @@ mod vagrant;
 pub mod mock;
 
 pub use temp_models::{Mount, MountPermission, TempVmState};
+
+/// Internal representation of box configuration after provider-specific parsing
+#[derive(Debug, Clone)]
+pub enum BoxConfig {
+    /// Docker image from registry (e.g., "ubuntu:24.04")
+    DockerImage(String),
+
+    /// Build from Dockerfile
+    Dockerfile {
+        path: PathBuf,
+        context: PathBuf,
+        args: Option<HashMap<String, String>>,
+    },
+
+    /// Vagrant box from Vagrant Cloud (e.g., "ubuntu/focal64")
+    VagrantBox(String),
+
+    /// Tart OCI image (e.g., "ghcr.io/cirruslabs/ubuntu:latest")
+    TartImage(String),
+
+    /// Snapshot reference (universal across providers)
+    Snapshot(String),
+}
+
+impl BoxConfig {
+    /// Parse a BoxSpec for Docker provider
+    ///
+    /// # Detection Rules
+    /// - Starts with `@` → Snapshot
+    /// - Starts with `./`, `../`, `/` → Dockerfile path
+    /// - Ends with `.dockerfile` → Dockerfile
+    /// - Otherwise → Docker image
+    pub fn parse_for_docker(spec: &BoxSpec, base_dir: &Path) -> Result<Self> {
+        match spec {
+            BoxSpec::String(s) => {
+                // Snapshot (@prefix)
+                if let Some(name) = s.strip_prefix('@') {
+                    return Ok(BoxConfig::Snapshot(name.to_string()));
+                }
+
+                // Dockerfile (path-like)
+                let potential_path = Path::new(s);
+                if s.starts_with("./") || s.starts_with("../") || potential_path.is_absolute() {
+                    let path = if potential_path.is_absolute() {
+                        PathBuf::from(s)
+                    } else {
+                        base_dir.join(s)
+                    };
+                    let context = path.parent().unwrap_or(base_dir).to_path_buf();
+                    return Ok(BoxConfig::Dockerfile {
+                        path,
+                        context,
+                        args: None,
+                    });
+                }
+
+                // Dockerfile (.dockerfile extension)
+                if s.ends_with(".dockerfile") {
+                    let path = base_dir.join(s);
+                    let context = base_dir.to_path_buf();
+                    return Ok(BoxConfig::Dockerfile {
+                        path,
+                        context,
+                        args: None,
+                    });
+                }
+
+                // Default: Docker image
+                Ok(BoxConfig::DockerImage(s.to_string()))
+            }
+
+            BoxSpec::Build {
+                dockerfile,
+                context,
+                args,
+            } => {
+                // Handle absolute vs relative paths correctly
+                let dockerfile_path = Path::new(dockerfile);
+                let path = if dockerfile_path.is_absolute() {
+                    PathBuf::from(dockerfile)
+                } else {
+                    base_dir.join(dockerfile)
+                };
+
+                let ctx = if let Some(c) = context {
+                    let context_path = Path::new(c);
+                    if context_path.is_absolute() {
+                        PathBuf::from(c)
+                    } else {
+                        base_dir.join(c)
+                    }
+                } else {
+                    // Default to Dockerfile's parent directory
+                    path.parent().unwrap_or(base_dir).to_path_buf()
+                };
+
+                Ok(BoxConfig::Dockerfile {
+                    path,
+                    context: ctx,
+                    args: args.clone().map(|m| m.into_iter().collect()),
+                })
+            }
+        }
+    }
+
+    /// Parse a BoxSpec for Vagrant provider
+    ///
+    /// # Detection Rules
+    /// - Starts with `@` → Snapshot
+    /// - Must contain `/` (user/box format) → Vagrant box
+    /// - Build variant → Error (not supported)
+    pub fn parse_for_vagrant(spec: &BoxSpec) -> Result<Self> {
+        match spec {
+            BoxSpec::String(s) => {
+                // Snapshot
+                if let Some(name) = s.strip_prefix('@') {
+                    return Ok(BoxConfig::Snapshot(name.to_string()));
+                }
+
+                // Vagrant box (validate format: must be "user/boxname" with content on both sides)
+                if !s.contains('/') {
+                    return Err(VmError::Config(format!(
+                        "Vagrant box must be in 'user/boxname' format, got: {}",
+                        s
+                    )));
+                }
+
+                // Ensure there's content before and after the first/last slash
+                // This allows for nested paths like "company/team/box" while rejecting "/box" or "user/"
+                if s.starts_with('/') || s.ends_with('/') {
+                    return Err(VmError::Config(format!(
+                        "Vagrant box must be in 'user/boxname' format with non-empty user and box name, got: {}",
+                        s
+                    )));
+                }
+
+                Ok(BoxConfig::VagrantBox(s.to_string()))
+            }
+
+            BoxSpec::Build { .. } => Err(VmError::Config(
+                "Vagrant provider does not support Dockerfile builds".to_string(),
+            )),
+        }
+    }
+
+    /// Parse a BoxSpec for Tart provider
+    ///
+    /// # Detection Rules
+    /// - Starts with `@` → Snapshot
+    /// - Otherwise → OCI image
+    /// - Build variant → Error (not supported)
+    pub fn parse_for_tart(spec: &BoxSpec) -> Result<Self> {
+        match spec {
+            BoxSpec::String(s) => {
+                // Snapshot
+                if let Some(name) = s.strip_prefix('@') {
+                    return Ok(BoxConfig::Snapshot(name.to_string()));
+                }
+
+                // OCI image
+                Ok(BoxConfig::TartImage(s.to_string()))
+            }
+
+            BoxSpec::Build { .. } => Err(VmError::Config(
+                "Tart provider does not support Dockerfile builds".to_string(),
+            )),
+        }
+    }
+}
 
 /// Trait for providers that support temporary VM mount updates
 pub trait TempProvider {

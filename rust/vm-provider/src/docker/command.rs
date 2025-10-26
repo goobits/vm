@@ -367,10 +367,12 @@ impl DockerOps {
     /// * `dockerfile_path` - Path to the Dockerfile
     /// * `image_name` - Tag for the built image (e.g., "supercool:latest")
     /// * `context_dir` - Build context directory (usually parent of Dockerfile)
+    /// * `build_args` - Optional build arguments to pass to docker build (--build-arg KEY=VALUE)
     pub fn build_custom_image(
         dockerfile_path: &std::path::Path,
         image_name: &str,
         context_dir: &std::path::Path,
+        build_args: Option<&std::collections::HashMap<String, String>>,
     ) -> Result<()> {
         use vm_core::vm_info;
 
@@ -381,12 +383,21 @@ impl DockerOps {
         );
         vm_info!("This may take 5-15 minutes on first build...");
 
-        let output = DockerCommand::new()
+        let mut cmd = DockerCommand::new()
             .subcommand("build")
             .arg("-f")
             .arg(dockerfile_path.to_string_lossy().to_string())
             .arg("-t")
-            .arg(image_name)
+            .arg(image_name);
+
+        // Add build arguments if provided
+        if let Some(args) = build_args {
+            for (key, value) in args {
+                cmd = cmd.arg("--build-arg").arg(format!("{}={}", key, value));
+            }
+        }
+
+        let output = cmd
             .arg(context_dir.to_string_lossy().to_string())
             .execute_raw()?;
 

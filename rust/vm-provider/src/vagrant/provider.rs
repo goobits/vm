@@ -3,8 +3,8 @@ use crate::{
     context::ProviderContext,
     progress::ProgressReporter,
     security::SecurityValidator,
-    Mount, MountPermission, Provider, ResourceUsage, ServiceStatus, TempProvider, TempVmState,
-    VmError, VmStatusReport,
+    BoxConfig, Mount, MountPermission, Provider, ResourceUsage, ServiceStatus, TempProvider,
+    TempVmState, VmError, VmStatusReport,
 };
 use std::env;
 use std::path::Path;
@@ -154,6 +154,33 @@ impl VagrantProvider {
         }
     }
 
+    /// Get the Vagrant box name from config using BoxConfig system
+    fn get_vagrant_box(&self) -> Result<String> {
+        if let Some(vm_settings) = &self.config.vm {
+            if let Some(box_spec) = vm_settings.get_box_spec() {
+                let box_config = BoxConfig::parse_for_vagrant(&box_spec)?;
+                return match box_config {
+                    BoxConfig::VagrantBox(name) => Ok(name),
+                    BoxConfig::Snapshot(name) => Err(VmError::Config(format!(
+                        "Cannot use snapshot '{}' as base box. Use 'vm snapshot restore {}' to restore from a snapshot.",
+                        name, name
+                    ))),
+                    _ => Err(VmError::Internal(
+                        "Invalid box type for Vagrant provider".into(),
+                    )),
+                };
+            }
+        }
+        // Fall back to legacy box_name field for backwards compatibility
+        if let Some(vm_settings) = &self.config.vm {
+            if let Some(box_name) = &vm_settings.box_name {
+                return Ok(box_name.clone());
+            }
+        }
+        // Default box
+        Ok("ubuntu/focal64".to_string())
+    }
+
     /// Generate Vagrantfile content based on global config
     fn generate_vagrantfile_content(&self, global_config: &GlobalConfig) -> Result<String> {
         // 1. Merge project config with global defaults to get final VM settings
@@ -216,6 +243,9 @@ impl VagrantProvider {
         // Get project name for hostnames
         let project_name = extract_project_name(&self.config);
 
+        // Get the Vagrant box name using BoxConfig system
+        let box_name = self.get_vagrant_box()?;
+
         // Define each machine
         for machine_name in &machines {
             content.push_str(&format!(
@@ -223,7 +253,6 @@ impl VagrantProvider {
                 machine_name, machine_name
             ));
 
-            let box_name = vm_settings.box_name.as_deref().unwrap_or("ubuntu/focal64");
             content.push_str(&format!("    {}.vm.box = \"{}\"\n", machine_name, box_name));
 
             content.push_str(&format!(

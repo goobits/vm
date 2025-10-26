@@ -3,7 +3,8 @@ use crate::{
     common::instance::{extract_project_name, InstanceInfo, InstanceResolver},
     context::ProviderContext,
     progress::ProgressReporter,
-    Provider, ResourceUsage, ServiceStatus, TempProvider, TempVmState, VmError, VmStatusReport,
+    BoxConfig, Provider, ResourceUsage, ServiceStatus, TempProvider, TempVmState, VmError,
+    VmStatusReport,
 };
 use duct::cmd;
 use serde::Deserialize;
@@ -153,6 +154,33 @@ impl TartProvider {
         }
     }
 
+    /// Get Tart OCI image with BoxConfig support
+    fn get_tart_image(&self, config: &VmConfig) -> Result<String> {
+        // Try new vm.box first
+        if let Some(vm_settings) = &config.vm {
+            if let Some(box_spec) = vm_settings.get_box_spec() {
+                let box_config = BoxConfig::parse_for_tart(&box_spec)?;
+                return match box_config {
+                    BoxConfig::TartImage(image) => Ok(image),
+                    BoxConfig::Snapshot(name) => Err(VmError::Config(format!(
+                        "Use 'vm snapshot restore {}' for snapshots",
+                        name
+                    ))),
+                    _ => Err(VmError::Internal("Invalid box type for Tart".into())),
+                };
+            }
+        }
+
+        // Fall back to deprecated tart.image
+        if let Some(tart_config) = &config.tart {
+            if let Some(image) = &tart_config.image {
+                return Ok(image.clone());
+            }
+        }
+
+        Ok(DEFAULT_TART_IMAGE.to_string())
+    }
+
     /// Internal VM creation logic shared by create() and create_instance()
     fn create_vm_internal(
         &self,
@@ -183,16 +211,12 @@ impl TartProvider {
         }
         ProgressReporter::task(&main_phase, "VM not found, proceeding with creation.");
 
-        // Get image from config
-        let image = config
-            .tart
-            .as_ref()
-            .and_then(|t| t.image.as_deref())
-            .unwrap_or(DEFAULT_TART_IMAGE);
+        // Get image from config using new BoxConfig system
+        let image = self.get_tart_image(config)?;
 
         // Clone the base image
         ProgressReporter::task(&main_phase, &format!("Cloning image '{}'...", image));
-        let clone_result = stream_command("tart", &["clone", image, vm_name]);
+        let clone_result = stream_command("tart", &["clone", &image, vm_name]);
         if clone_result.is_err() {
             ProgressReporter::task(&main_phase, "Clone failed.");
             ProgressReporter::finish_phase(&main_phase, "Creation failed.");

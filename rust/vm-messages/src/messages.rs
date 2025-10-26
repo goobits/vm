@@ -35,6 +35,12 @@ pub struct Messages {
     pub error_unexpected: &'static str,
     pub error_with_context: &'static str,
 
+    // BoxSpec-related errors
+    pub box_dockerfile_not_found: &'static str,
+    pub box_invalid_vagrant_format: &'static str,
+    pub box_provider_mismatch: &'static str,
+    pub box_snapshot_use_restore: &'static str,
+
     // ============================================================================
     // Generic Messages (keeping for backwards compatibility)
     // ============================================================================
@@ -616,6 +622,12 @@ pub const MESSAGES: Messages = Messages {
     error_generic: "❌ Error: {error}",
     error_unexpected: "❌ Unexpected error occurred\n\n💡 Try: vm doctor",
     error_with_context: "{error}",
+
+    // BoxSpec-related errors
+    box_dockerfile_not_found: "Dockerfile not found at specified path. Please check the path in your vm.yaml configuration.",
+    box_invalid_vagrant_format: "Vagrant boxes must be in 'user/boxname' format (e.g., 'ubuntu/focal64' or 'hashicorp/bionic64').",
+    box_provider_mismatch: "The specified box type is not supported by the current provider. Docker supports Dockerfiles, Vagrant requires Vagrant boxes, and Tart uses OCI images.",
+    box_snapshot_use_restore: "Snapshot reference detected in box field. To restore from a snapshot, use the command: vm snapshot restore <name>",
 
     // ============================================================================
     // Generic Messages (keeping for backwards compatibility)

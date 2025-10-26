@@ -1,4 +1,4 @@
-use crate::config::VmConfig;
+use crate::config::{BoxSpec, VmConfig};
 use regex::Regex;
 use std::collections::HashSet;
 use std::net::TcpListener;
@@ -6,6 +6,56 @@ use std::path::PathBuf;
 use tracing::warn;
 use vm_core::error::{Result, VmError};
 use vm_core::vm_error;
+
+/// Validate box spec configurations are compatible with the provider
+pub fn validate_box_spec(config: &VmConfig, provider: &str) -> Vec<String> {
+    let mut errors = Vec::new();
+
+    let Some(vm) = &config.vm else {
+        return errors;
+    };
+    let Some(box_spec) = vm.get_box_spec() else {
+        return errors;
+    };
+
+    match provider {
+        "docker" => validate_docker_box_spec(&box_spec, &mut errors),
+        "vagrant" => validate_vagrant_box_spec(&box_spec, &mut errors),
+        "tart" => validate_tart_box_spec(&box_spec, &mut errors),
+        _ => {}
+    }
+
+    errors
+}
+
+fn validate_docker_box_spec(box_spec: &BoxSpec, errors: &mut Vec<String>) {
+    if let BoxSpec::Build { dockerfile, .. } = box_spec {
+        let path = std::path::Path::new(dockerfile);
+        if !path.exists() {
+            errors.push(format!("Dockerfile not found: {}", dockerfile));
+        }
+    }
+}
+
+fn validate_vagrant_box_spec(box_spec: &BoxSpec, errors: &mut Vec<String>) {
+    if matches!(box_spec, BoxSpec::Build { .. }) {
+        errors.push("Vagrant does not support Dockerfile builds".to_string());
+    }
+    if let BoxSpec::String(s) = box_spec {
+        if !s.starts_with('@') && !s.contains('/') {
+            errors.push(format!(
+                "Vagrant box must be in 'user/box' format, got: {}",
+                s
+            ));
+        }
+    }
+}
+
+fn validate_tart_box_spec(box_spec: &BoxSpec, errors: &mut Vec<String>) {
+    if matches!(box_spec, BoxSpec::Build { .. }) {
+        errors.push("Tart does not support Dockerfile builds".to_string());
+    }
+}
 
 /// Validate GPU type for GPU service
 fn validate_gpu_type(gpu_type: &Option<String>) -> Result<()> {
@@ -60,6 +110,7 @@ impl ConfigValidator {
     fn validate_manual(&self) -> Result<()> {
         self.validate_required_fields()?;
         self.validate_provider()?;
+        self.validate_box_spec_compat()?;
         self.validate_project()?;
         self.validate_ports()?;
         self.validate_services()?;
@@ -101,6 +152,19 @@ impl ConfigValidator {
         } else {
             Ok(())
         }
+    }
+
+    fn validate_box_spec_compat(&self) -> Result<()> {
+        if let Some(provider) = &self.config.provider {
+            let errors = validate_box_spec(&self.config, provider);
+            if !errors.is_empty() {
+                for error in &errors {
+                    vm_error!("{}", error);
+                }
+                return Err(vm_core::error::VmError::Config(errors.join("; ")));
+            }
+        }
+        Ok(())
     }
 
     fn validate_project(&self) -> Result<()> {

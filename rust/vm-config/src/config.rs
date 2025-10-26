@@ -293,9 +293,32 @@ pub struct ProjectConfig {
     pub env_template_path: Option<String>,
 }
 
+/// Box specification - unified way to specify VM base images, Dockerfiles, or snapshots
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum BoxSpec {
+    /// Simple string reference (image name, Dockerfile path, or snapshot)
+    /// Examples: "ubuntu:24.04", "./Dockerfile", "@my-snapshot"
+    String(String),
+
+    /// Advanced Docker build configuration with context and build arguments
+    Build {
+        dockerfile: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        context: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        args: Option<IndexMap<String, String>>,
+    },
+}
+
 /// Virtual machine resource and system configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct VmSettings {
+    /// NEW: Unified box configuration (replaces box_name)
+    #[serde(skip_serializing_if = "Option::is_none", rename = "box")]
+    pub r#box: Option<BoxSpec>,
+
+    /// DEPRECATED: Use box instead. Kept for backwards compatibility.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub box_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -314,6 +337,15 @@ pub struct VmSettings {
     pub port_binding: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gui: Option<bool>,
+}
+
+impl VmSettings {
+    /// Get box specification, preferring new `box` field and falling back to deprecated `box_name`
+    pub fn get_box_spec(&self) -> Option<BoxSpec> {
+        self.r#box
+            .clone()
+            .or_else(|| self.box_name.as_ref().map(|s| BoxSpec::String(s.clone())))
+    }
 }
 
 /// Memory limit configuration supporting both specific limits and unlimited access.

@@ -102,7 +102,7 @@ impl<'a> LifecycleOperations<'a> {
 
         // Step 2: Prepare build context with embedded resources
         let build_ops = BuildOperations::new(&modified_config, self.temp_dir);
-        let build_context = build_ops.prepare_build_context()?;
+        let (build_context, base_image) = build_ops.prepare_build_context()?;
 
         // Step 2.5: Ensure Docker networks exist (create them if needed)
         if let Some(networking) = &modified_config.networking {
@@ -117,7 +117,7 @@ impl<'a> LifecycleOperations<'a> {
         let compose_path = compose_ops.write_docker_compose(&build_context, context)?;
 
         // Step 3: Gather build arguments for packages
-        let build_args = build_ops.gather_build_args();
+        let build_args = build_ops.gather_build_args(&base_image);
 
         // Step 4: Build with all package arguments
         let base_compose_args = ComposeCommand::build_args(&compose_path, "build", &[])?;
@@ -246,7 +246,7 @@ impl<'a> LifecycleOperations<'a> {
 
         // Step 2: Prepare build context with embedded resources
         let build_ops = BuildOperations::new(&modified_config, self.temp_dir);
-        let build_context = build_ops.prepare_build_context()?;
+        let (build_context, base_image) = build_ops.prepare_build_context()?;
 
         // Step 2.5: Ensure Docker networks exist (create them if needed)
         if let Some(networking) = &modified_config.networking {
@@ -265,7 +265,7 @@ impl<'a> LifecycleOperations<'a> {
         )?;
 
         // Step 3: Gather build arguments for packages
-        let build_args = build_ops.gather_build_args();
+        let build_args = build_ops.gather_build_args(&base_image);
 
         // Step 4: Build with all package arguments
         let base_compose_args = ComposeCommand::build_args(&compose_path, "build", &[])?;

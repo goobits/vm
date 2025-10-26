@@ -1,4 +1,5 @@
 // Standard library
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -10,6 +11,7 @@ use vm_core::error::{Result, VmError};
 // Internal imports
 use super::UserConfig;
 use crate::resources;
+use crate::BoxConfig;
 use vm_config::config::VmConfig;
 
 pub struct BuildOperations<'a> {
@@ -20,6 +22,33 @@ pub struct BuildOperations<'a> {
 impl<'a> BuildOperations<'a> {
     pub fn new(config: &'a VmConfig, temp_dir: &'a PathBuf) -> Self {
         Self { config, temp_dir }
+    }
+
+    /// Get box configuration, parsing BoxSpec from vm.box field
+    fn get_box_config(&self) -> Result<BoxConfig> {
+        let base_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+
+        if let Some(vm_settings) = &self.config.vm {
+            if let Some(box_spec) = vm_settings.get_box_spec() {
+                return BoxConfig::parse_for_docker(&box_spec, &base_dir);
+            }
+        }
+
+        // Default to ubuntu:24.04
+        Ok(BoxConfig::DockerImage("ubuntu:24.04".to_string()))
+    }
+
+    /// Get the generated custom image name for Dockerfiles
+    fn get_custom_image_name(&self) -> String {
+        format!(
+            "vm-custom-{}",
+            self.config
+                .project
+                .as_ref()
+                .and_then(|p| p.name.as_ref())
+                .map(|s| s.as_str())
+                .unwrap_or("dev")
+        )
     }
 
     pub fn pull_image(&self, image: &str) -> Result<()> {
@@ -58,18 +87,59 @@ impl<'a> BuildOperations<'a> {
     }
 
     /// Prepare build context with embedded resources and generated Dockerfile
-    pub fn prepare_build_context(&self) -> Result<PathBuf> {
-        let image_to_pull = self
-            .config
-            .vm
-            .as_ref()
-            .and_then(|vm| vm.box_name.as_deref())
-            .unwrap_or("ubuntu:24.04");
+    ///
+    /// Returns a tuple of (build_context_path, base_image_name)
+    pub fn prepare_build_context(&self) -> Result<(PathBuf, String)> {
+        use super::command::DockerOps;
+        use vm_core::vm_info;
 
-        // Auto-build custom base images if needed
-        self.build_base_image_if_needed(image_to_pull)?;
+        // Get box configuration
+        let box_config = self.get_box_config()?;
 
-        self.pull_image(image_to_pull)?;
+        // Handle different box types
+        let base_image = match &box_config {
+            BoxConfig::DockerImage(image) => {
+                // Pull Docker image from registry
+                self.pull_image(image)?;
+                image.clone()
+            }
+            BoxConfig::Dockerfile {
+                path,
+                context,
+                args,
+            } => {
+                // Build from custom Dockerfile
+                if !path.exists() {
+                    return Err(VmError::NotFound(format!(
+                        "Dockerfile not found: {}",
+                        path.display()
+                    )));
+                }
+
+                vm_info!("Building from custom Dockerfile: {}", path.display());
+
+                // Build the image with a generated name
+                let image_name = self.get_custom_image_name();
+
+                // Pass build args from BoxSpec::Build variant
+                DockerOps::build_custom_image(path, &image_name, context, args.as_ref())?;
+
+                image_name
+            }
+            BoxConfig::Snapshot(name) => {
+                return Err(VmError::Config(format!(
+                    "Snapshot reference '@{}' detected. Use 'vm snapshot restore {}' command instead.",
+                    name, name
+                )));
+            }
+            _ => {
+                return Err(VmError::Internal(
+                    "Invalid box configuration for Docker provider".to_string(),
+                ));
+            }
+        };
+
+        // Now use base_image for the rest of the build process
 
         // Create temporary build context directory
         let build_context = self.temp_dir.join("build_context");
@@ -95,7 +165,7 @@ impl<'a> BuildOperations<'a> {
         let worktree_script_path = build_context.join("vm-worktree.sh");
         fs::write(&worktree_script_path, worktree_script)?;
 
-        Ok(build_context)
+        Ok((build_context, base_image))
     }
 
     /// Generate Dockerfile from template with build args
@@ -119,17 +189,14 @@ impl<'a> BuildOperations<'a> {
     }
 
     /// Gather all package lists and format as build arguments
-    pub fn gather_build_args(&self) -> Vec<String> {
+    ///
+    /// # Arguments
+    /// * `base_image` - The base image name (from prepare_build_context)
+    pub fn gather_build_args(&self, base_image: &str) -> Vec<String> {
         let mut args = Vec::new();
 
-        if let Some(image) = self
-            .config
-            .vm
-            .as_ref()
-            .and_then(|vm| vm.box_name.as_deref())
-        {
-            args.push(format!("--build-arg=base_image={image}"));
-        }
+        // Use the provided base image (already determined in prepare_build_context)
+        args.push(format!("--build-arg=base_image={}", base_image));
 
         // Add version build args
         if let Some(versions) = &self.config.versions {
@@ -215,102 +282,5 @@ impl<'a> BuildOperations<'a> {
     /// Centralizes the creation of UserConfig to avoid duplication and ensure consistency.
     fn get_user_config(&self) -> UserConfig {
         UserConfig::from_vm_config(self.config)
-    }
-
-    /// Check if an image name matches a base image in examples/base-images/
-    ///
-    /// Returns the path to the Dockerfile if it exists, None otherwise.
-    fn find_base_image_dockerfile(&self, image_name: &str) -> Option<PathBuf> {
-        use vm_core::vm_dbg;
-
-        // Extract base name (remove :tag if present)
-        let base_name = image_name.split(':').next().unwrap_or(image_name);
-
-        // Try to find workspace root (walk up from current dir)
-        let workspace_root = self.find_workspace_root()?;
-
-        // Check for dockerfile in examples/base-images/
-        let dockerfile_path = workspace_root
-            .join("examples")
-            .join("base-images")
-            .join(format!("{}.dockerfile", base_name));
-
-        if dockerfile_path.exists() {
-            vm_dbg!("Found base image Dockerfile at: {:?}", &dockerfile_path);
-            Some(dockerfile_path)
-        } else {
-            None
-        }
-    }
-
-    /// Find workspace root by looking for .git directory or Cargo.toml
-    fn find_workspace_root(&self) -> Option<PathBuf> {
-        let mut current = std::env::current_dir().ok()?;
-
-        loop {
-            // Check for .git directory
-            if current.join(".git").exists() {
-                return Some(current);
-            }
-
-            // Check for workspace Cargo.toml
-            if current.join("Cargo.toml").exists() {
-                return Some(current);
-            }
-
-            // Check for examples directory (direct indicator)
-            if current.join("examples").join("base-images").exists() {
-                return Some(current);
-            }
-
-            // Move up to parent
-            if !current.pop() {
-                break;
-            }
-        }
-
-        None
-    }
-
-    /// Auto-build custom base image if it doesn't exist locally
-    fn build_base_image_if_needed(&self, image_name: &str) -> Result<()> {
-        use super::command::DockerOps;
-        use vm_core::{vm_dbg, vm_info};
-
-        // Check if this looks like a custom base image
-        let dockerfile_path = match self.find_base_image_dockerfile(image_name) {
-            Some(path) => path,
-            None => {
-                vm_dbg!(
-                    "'{}' is not a custom base image, will pull from registry",
-                    image_name
-                );
-                return Ok(());
-            }
-        };
-
-        // Check if image already exists locally
-        if DockerOps::image_exists(image_name)? {
-            vm_info!(
-                "Custom base image '{}' already exists, skipping build",
-                image_name
-            );
-            return Ok(());
-        }
-
-        // Build the custom base image
-        vm_info!(
-            "Custom base image '{}' not found, building from {:?}...",
-            image_name,
-            dockerfile_path
-        );
-
-        let context_dir = dockerfile_path.parent().ok_or_else(|| {
-            VmError::Internal("Failed to get parent directory of Dockerfile".to_string())
-        })?;
-
-        DockerOps::build_custom_image(&dockerfile_path, image_name, context_dir)?;
-
-        Ok(())
     }
 }

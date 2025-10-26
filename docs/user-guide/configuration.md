@@ -160,7 +160,7 @@ project:
   backup_pattern: "*backup*.sql.gz"  # For auto-restore
 
 vm:
-  box: bento/ubuntu-24.04  # Vagrant box (Vagrant only)
+  box: bento/ubuntu-24.04  # Base image/box (see Box Configuration section)
   memory: 4096  # RAM: 4096 (MB), "2gb", "50%", "unlimited"
   cpus: 2  # CPUs: 2, "50%", "unlimited"
   swap: 2048 # Swap: 2048 (MB), "1gb", "50%", "unlimited"
@@ -482,6 +482,76 @@ tart:
 ```
 
 **Requirements**: Apple Silicon Mac (M1/M2/M3/M4), Tart installed via `brew install cirruslabs/cli/tart`
+
+### Box Configuration
+
+The `vm.box` field specifies what to use as the base environment. It works across all providers with smart detection:
+
+#### Simple String (Recommended)
+
+For most cases, use a simple string:
+
+```yaml
+# Docker provider
+vm:
+  box: ubuntu:24.04          # Docker Hub image
+  box: node:20-alpine        # Docker Hub image
+  box: ./Dockerfile          # Build from local Dockerfile
+  box: supercool.dockerfile  # Build from named Dockerfile
+
+# Vagrant provider
+vm:
+  box: ubuntu/focal64        # Vagrant Cloud box
+  box: hashicorp/bionic64    # Vagrant Cloud box
+
+# Tart provider (macOS)
+vm:
+  box: ghcr.io/cirruslabs/ubuntu:latest       # OCI image
+  box: ghcr.io/cirruslabs/macos-ventura:latest # macOS VM
+
+# All providers
+vm:
+  box: @my-snapshot          # Restore from snapshot
+```
+
+#### Advanced Docker Build
+
+For complex Docker builds with build arguments:
+
+```yaml
+vm:
+  box:
+    dockerfile: ./docker/dev.dockerfile
+    context: .
+    args:
+      NODE_VERSION: "20"
+      INSTALL_CHROMIUM: "true"
+```
+
+#### Detection Rules
+
+The provider determines how to interpret the `box` string:
+
+- **Starts with `@`** → Snapshot (all providers)
+- **Starts with `./`, `../`, `/`** → Dockerfile path (Docker only)
+- **Ends with `.dockerfile`** → Dockerfile (Docker only)
+- **Contains `/` in Vagrant format** → Vagrant box
+- **Registry format** → Docker/Tart image
+- **Everything else** → Image name
+
+#### Migration from box_name
+
+The old `box_name` field is still supported for backwards compatibility:
+
+```yaml
+# Old (still works)
+vm:
+  box_name: ubuntu:24.04
+
+# New (recommended)
+vm:
+  box: ubuntu:24.04
+```
 
 ## 🗣️ Language Runtimes
 

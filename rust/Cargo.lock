@@ -3642,6 +3642,7 @@ version = "3.3.0"
 dependencies = [
  "chrono",
  "duct",
+ "indexmap",
  "indicatif",
  "rayon",
  "regex",

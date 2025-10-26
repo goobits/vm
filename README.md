@@ -36,6 +36,8 @@ Create development environments that automatically configure themselves based on
 
 **VM Snapshots** — Save and restore complete development environment state with `vm snapshot create/restore`. Capture containers, volumes, and configs for safe experimentation, context switching, and team collaboration.
 
+**Unified Box Configuration** — Single `box` field works across Docker, Vagrant, and Tart providers. Direct image references (`box: ubuntu:24.04`), Dockerfile builds (`box: ./Dockerfile`), or snapshot restore (`box: @my-snapshot`).
+
 **Zero-Config Presets** — Language runtimes, databases, and development tools install automatically based on your project structure.
 
 **Shared Database Services** — Optional, shared instances of PostgreSQL, Redis, and MongoDB that run on the host and are accessible to all VMs. This saves memory, speeds up startup, and persists data across VM rebuilds. See the [Shared Services User Guide](docs/user-guide/shared-services.md) for details.
@@ -134,8 +136,13 @@ vm ssh myproject-dev         # Connect to specific instance
 
 ```yaml
 # Optional: vm.yaml for custom configuration
-os: ubuntu
+vm:
+  box: ubuntu:24.04    # Base image or Dockerfile path
+  memory: 4096
+  cpus: 2
+
 provider: docker  # or vagrant for full isolation
+
 project:
   name: my-project
 ```
@@ -157,7 +164,12 @@ cd fullstack-app && vm create    # → Multiple presets combined
 Choose your provider explicitly:
 ```yaml
 # vm.yaml for Vagrant isolation
+vm:
+  box: ubuntu:24.04
+  memory: 8192
+
 provider: vagrant
+
 project:
   name: my-project
 ```
