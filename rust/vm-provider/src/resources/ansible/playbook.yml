@@ -685,43 +685,6 @@
           - not is_docker_container
         no_log: true
 
-      # Handle database backup restoration for PostgreSQL
-      - name: Check for database backup
-        find:
-            paths: '{{ project_path }}/backups'
-            # Match project name by default to avoid restoring wrong backups
-            patterns: "{{ project_config.backup_pattern | default(project_name + '-backup*.sql.gz') }}"
-        register: backup_files
-        when:
-          - project_config.services.postgresql.enabled | default(false)
-          # Allow disabling backup restore via config
-          - project_config.services.postgresql.restore_backup | default(true)
-
-      - name: Restore database from backup
-        shell: |
-            gunzip -c "{{ (backup_files.files | sort(attribute='mtime') | last).path }}" | sudo -u postgres psql -p {{ project_config.services.postgresql.port | default(5432) }} -d "{{ project_config.services.postgresql.database }}"
-        register: restore_result
-        # Don't fail VM creation if backup restore fails
-        ignore_errors: yes
-        when:
-          - project_config.services.postgresql.enabled | default(false)
-          - project_config.services.postgresql.restore_backup | default(true)
-          - backup_files is defined
-          - backup_files.files | length > 0
-
-      - name: Display backup restore warning if failed
-        debug:
-            msg: |
-                ⚠️  Warning: Database backup restore failed
-                Backup file: {{ (backup_files.files | sort(attribute='mtime') | last).path }}
-                Error: Check that backup is for database '{{ project_config.services.postgresql.database }}'
-
-                Continuing with VM creation...
-        when:
-          - project_config.services.postgresql.enabled | default(false)
-          - restore_result is defined
-          - restore_result.failed | default(false)
-
       # Claude Code setup
       - name: Create Claude settings directory
         file:
