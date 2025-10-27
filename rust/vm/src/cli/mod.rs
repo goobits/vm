@@ -664,9 +664,7 @@ pub enum Command {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        Args, AuthSubcommand, Command, PkgSubcommand, PluginSubcommand, TempSubcommand,
-    };
+    use super::{Args, AuthSubcommand, Command, PkgSubcommand, PluginSubcommand, TempSubcommand};
     use clap::Parser;
 
     #[test]
