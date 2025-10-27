@@ -189,4 +189,79 @@ impl<'a> LifecycleOperations<'a> {
         stream_command("docker", &["logs", "--tail", "50", "-t", &target_container])
             .map_err(|e| VmError::Internal(format!("Failed to show logs: {e}")))
     }
+
+    #[must_use = "log display results should be handled"]
+    pub fn show_logs_extended(
+        &self,
+        container: Option<&str>,
+        follow: bool,
+        tail: usize,
+        service: Option<&str>,
+        _config: &vm_config::config::VmConfig,
+    ) -> Result<()> {
+        // If service flag is set, map to container name
+        let target_container = if let Some(svc) = service {
+            self.map_service_to_container(svc)?
+        } else {
+            self.resolve_target_container(container)?
+        };
+
+        // Build docker logs command
+        let mut args = vec!["logs"];
+
+        if follow {
+            args.push("--follow");
+        }
+
+        args.push("--tail");
+        let tail_str = tail.to_string();
+        args.push(&tail_str);
+
+        args.push("--timestamps");
+        args.push(&target_container);
+
+        // Show helpful header
+        if follow {
+            vm_println!(
+                "📜 Following logs for '{}' (press Ctrl+C to stop)",
+                target_container
+            );
+            vm_println!("──────────────────────────────────────────\n");
+        } else {
+            vm_println!("📜 Logs for '{}' (last {} lines)", target_container, tail);
+            vm_println!("──────────────────────────────────────────\n");
+        }
+
+        stream_command("docker", &args)
+            .map_err(|e| VmError::Internal(format!("Failed to show logs: {e}")))
+    }
+
+    /// Map service names to global container names
+    fn map_service_to_container(&self, service: &str) -> Result<String> {
+        let container = match service {
+            "postgresql" | "postgres" => "vm-postgres-global",
+            "redis" => "vm-redis-global",
+            "mongodb" | "mongo" => "vm-mongodb-global",
+            "mysql" => "vm-mysql-global",
+            _ => {
+                return Err(VmError::Internal(format!(
+                    "Unknown service: '{}'. Available: postgresql, redis, mongodb, mysql",
+                    service
+                )))
+            }
+        };
+
+        // Check if container exists
+        let check = std::process::Command::new("docker")
+            .args(["inspect", container])
+            .output();
+
+        match check {
+            Ok(output) if output.status.success() => Ok(container.to_string()),
+            _ => Err(VmError::Internal(format!(
+                "Service '{}' container not found ({}). Start the VM to enable {} service",
+                service, container, service
+            ))),
+        }
+    }
 }

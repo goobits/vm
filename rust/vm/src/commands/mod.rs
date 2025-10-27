@@ -426,9 +426,19 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
         Command::Exec { container, command } => {
             vm_ops::handle_exec(provider, container.as_deref(), command, config.clone())
         }
-        Command::Logs { container } => {
-            vm_ops::handle_logs(provider, container.as_deref(), config.clone())
-        }
+        Command::Logs {
+            container,
+            follow,
+            tail,
+            service,
+        } => vm_ops::handle_logs(
+            provider,
+            container.as_deref(),
+            config.clone(),
+            follow,
+            tail,
+            service.as_deref(),
+        ),
         Command::Copy {
             source,
             destination,

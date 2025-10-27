@@ -295,6 +295,18 @@ impl Provider for DockerProvider {
         lifecycle.show_logs(container)
     }
 
+    fn logs_extended(
+        &self,
+        container: Option<&str>,
+        follow: bool,
+        tail: usize,
+        service: Option<&str>,
+        config: &VmConfig,
+    ) -> Result<()> {
+        let lifecycle = self.lifecycle_ops();
+        lifecycle.show_logs_extended(container, follow, tail, service, config)
+    }
+
     fn copy(&self, source: &str, destination: &str, container: Option<&str>) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
 

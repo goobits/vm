@@ -325,6 +325,21 @@ pub trait Provider {
     /// Get the logs of the VM.
     fn logs(&self, container: Option<&str>) -> Result<()>;
 
+    /// Get the logs of the VM with extended options (follow, tail, service filtering).
+    /// Providers that don't implement this will fall back to basic logs behavior.
+    fn logs_extended(
+        &self,
+        container: Option<&str>,
+        follow: bool,
+        tail: usize,
+        service: Option<&str>,
+        _config: &VmConfig,
+    ) -> Result<()> {
+        // Default implementation: ignore new params and fall back to basic logs
+        let _ = (follow, tail, service);
+        self.logs(container)
+    }
+
     /// Copy files to/from the VM.
     ///
     /// # Arguments

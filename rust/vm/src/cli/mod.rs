@@ -585,6 +585,15 @@ pub enum Command {
         /// Container name, ID, or project name
         #[arg()]
         container: Option<String>,
+        /// Follow log output (live stream)
+        #[arg(short = 'f', long)]
+        follow: bool,
+        /// Number of lines to show from end of logs
+        #[arg(short = 'n', long, default_value = "50")]
+        tail: usize,
+        /// Show logs for specific service (postgresql, redis, mongodb, mysql)
+        #[arg(short = 's', long)]
+        service: Option<String>,
     },
     /// Copy files to/from your environment
     Copy {

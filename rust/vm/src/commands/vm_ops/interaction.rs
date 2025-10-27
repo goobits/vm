@@ -433,26 +433,20 @@ pub fn handle_logs(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     config: VmConfig,
+    follow: bool,
+    tail: usize,
+    service: Option<&str>,
 ) -> VmResult<()> {
-    debug!("Viewing VM logs: provider='{}'", provider.name());
-
-    let vm_name = config
-        .project
-        .as_ref()
-        .and_then(|p| p.name.as_ref())
-        .map(|s| s.as_str())
-        .unwrap_or("vm-project");
-
-    let container_name = format!("{vm_name}-dev");
-
-    vm_println!("{}", msg!(MESSAGES.vm_logs_header, name = vm_name));
-
-    let result = provider.logs(container);
-
-    vm_println!(
-        "{}",
-        msg!(MESSAGES.vm_logs_footer, container = &container_name)
+    debug!(
+        "Viewing VM logs: provider='{}', follow={}, tail={}, service={:?}",
+        provider.name(),
+        follow,
+        tail,
+        service
     );
+
+    // Use extended logs method (falls back to basic logs for non-Docker providers)
+    let result = provider.logs_extended(container, follow, tail, service, &config);
 
     result.map_err(VmError::from)
 }

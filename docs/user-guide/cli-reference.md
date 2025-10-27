@@ -83,10 +83,30 @@ vm exec <command>
 ```
 
 ### `vm logs`
-View the logs for a VM.
+View and follow logs from VM containers and services.
+
+**Basic usage**:
 ```bash
-vm logs
+vm logs              # Show last 50 lines of dev container
+vm logs -n 100       # Show last 100 lines
 ```
+
+**Follow logs in real-time**:
+```bash
+vm logs -f           # Follow dev container logs
+vm logs --follow
+```
+
+**View logs for specific service**:
+```bash
+vm logs --service postgresql
+vm logs --service redis -f          # Follow Redis logs
+vm logs -s mongodb --tail 200       # Last 200 lines of MongoDB
+```
+
+**Available services**: `postgresql`, `redis`, `mongodb`, `mysql`
+
+**Press Ctrl+C** to stop following logs.
 
 ### `vm copy`
 Copy files to/from a VM.
