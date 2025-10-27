@@ -2,12 +2,16 @@
 use crate::error::{VmError, VmResult};
 use chrono::Local;
 use std::path::{Path, PathBuf};
+use vm_config::GlobalConfig;
 
 /// Get the base directory for backups
 fn get_backup_dir() -> VmResult<PathBuf> {
-    let backup_dir = vm_core::user_paths::home_dir()?
-        .join("backups")
-        .join("postgres");
+    let global_config = GlobalConfig::load()?;
+
+    // Expand tilde in configured backup path
+    let expanded_path = shellexpand::tilde(&global_config.backups.path);
+    let backup_dir = PathBuf::from(expanded_path.as_ref()).join("postgres");
+
     std::fs::create_dir_all(&backup_dir)
         .map_err(|e| VmError::filesystem(e, backup_dir.to_string_lossy(), "create_dir_all"))?;
     Ok(backup_dir)
@@ -227,6 +231,41 @@ pub async fn reset_db(db_name: &str, force: bool) -> VmResult<()> {
 
     vm_core::vm_success!("Database '{}' has been reset.", db_name);
     Ok(())
+}
+
+/// Get the number of backups for a specific database
+pub async fn count_backups(db_name: &str) -> VmResult<usize> {
+    let backup_dir = get_backup_dir()?;
+
+    if !backup_dir.exists() {
+        return Ok(0);
+    }
+
+    let mut read_dir = tokio::fs::read_dir(&backup_dir)
+        .await
+        .map_err(|e| VmError::filesystem(e, backup_dir.to_string_lossy(), "read_dir"))?;
+
+    let mut count = 0;
+    while let Some(entry) = read_dir
+        .next_entry()
+        .await
+        .map_err(|e| VmError::general(e, "Failed to read backup directory entries"))?
+    {
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with(&format!("{db_name}_"))
+        {
+            count += 1;
+        }
+    }
+
+    Ok(count)
+}
+
+/// Get the backup directory path as a string
+pub fn get_backup_path() -> VmResult<String> {
+    Ok(get_backup_dir()?.to_string_lossy().to_string())
 }
 
 /// Clean up old backups, keeping only the most recent `retention_count`

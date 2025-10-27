@@ -282,10 +282,13 @@ pub enum AuthSubcommand {
 pub enum DbSubcommand {
     /// Backup a database
     Backup {
-        /// The name of the database to backup
-        db_name: String,
+        /// The name of the database to backup (omit if using --all)
+        db_name: Option<String>,
         /// Optional backup name
         name: Option<String>,
+        /// Backup all databases (excludes system databases)
+        #[arg(long)]
+        all: bool,
     },
     /// Restore a database from a backup
     Restore {

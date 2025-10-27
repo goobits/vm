@@ -265,23 +265,116 @@ vm plugin validate <name>
 ## Database (`vm db`)
 Manage databases and backups.
 
+### `vm db list`
+List all databases with sizes and backup counts.
+```bash
+vm db list
+```
+
+**Output:**
+```
+📊 Databases:
+  - myapp_dev                     125MB (3 backups)
+  - test_db                       45MB (1 backup)
+  - postgres                      8MB (no backups)
+
+💾 Backups stored in: ~/.vm/backups/postgres/
+```
+
 ### `vm db backup`
 Create a backup of a database.
+
+**Backup single database:**
 ```bash
 vm db backup <db_name>
+
+# Example
+vm db backup myapp_dev
 ```
+
+**Backup all databases:**
+```bash
+vm db backup --all
+
+# Excludes system databases (postgres, template0, template1)
+```
+
+**Backups are stored in:** `~/.vm/backups/postgres/` by default
+**Format:** PostgreSQL custom format (`.dump`)
+**Retention:** Keeps last 5 backups by default (configurable in `~/.vm/config.yaml`)
 
 ### `vm db restore`
 Restore a database from a backup.
 ```bash
 vm db restore <backup_name> <db_name>
+
+# Example
+vm db restore myapp_dev_20250127_143022.dump myapp_dev
+```
+
+**⚠️ Warning:** This will **drop and recreate** the database before restoring.
+
+### `vm db export`
+Export a database to a SQL file (text format).
+```bash
+vm db export <db_name> <file_path>
+
+# Example
+vm db export myapp_dev ./backup.sql
+```
+
+**Use export when:**
+- Sharing with others (readable SQL)
+- Version controlling schema
+- Cross-platform compatibility
+
+### `vm db import`
+Import a database from a SQL file.
+```bash
+vm db import <file_path> <db_name>
+
+# Example
+vm db import ./backup.sql myapp_dev
+```
+
+### `vm db size`
+Show disk usage per database.
+```bash
+vm db size
+```
+
+### `vm db reset`
+Drop and recreate a database (delete all data).
+```bash
+vm db reset <db_name>
+
+# Skip confirmation
+vm db reset <db_name> --force
 ```
 
 ### `vm db credentials`
 Show the generated credentials for a database service.
 ```bash
 vm db credentials <service_name>
+
+# Example
+vm db credentials postgresql
 ```
+
+---
+
+### Backup vs Export
+
+| Feature | Backup | Export |
+|---------|--------|--------|
+| Format | Binary (.dump) | Text (.sql) |
+| Size | Compressed, smaller | Larger |
+| Speed | Faster | Slower |
+| Retention | Auto-managed | Manual |
+| Location | `~/.vm/backups/postgres/` | User-specified |
+| Use case | Regular backups, snapshots | Sharing, version control |
+
+**Recommendation:** Use `backup` for regular backups, use `export` when you need readable SQL files.
 
 ---
 

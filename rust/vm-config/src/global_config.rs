@@ -185,18 +185,6 @@ pub struct PostgresSettings {
     /// Directory to store PostgreSQL data
     #[serde(default = "default_postgres_data_dir")]
     pub data_dir: String,
-
-    /// Whether to automatically back up on destroy
-    #[serde(default)]
-    pub auto_backup: bool,
-
-    /// Number of backups to keep (0 for infinite)
-    #[serde(default = "default_backup_retention")]
-    pub backup_retention: u32,
-}
-
-fn default_backup_retention() -> u32 {
-    7
 }
 
 impl Default for PostgresSettings {
@@ -206,8 +194,6 @@ impl Default for PostgresSettings {
             port: default_postgres_port(),
             version: default_postgres_version(),
             data_dir: default_postgres_data_dir(),
-            auto_backup: false,
-            backup_retention: default_backup_retention(),
         }
     }
 }
@@ -215,7 +201,7 @@ impl Default for PostgresSettings {
 impl PostgresSettings {
     /// Check if settings are at defaults
     pub fn is_default(&self) -> bool {
-        !self.enabled && !self.auto_backup && self.backup_retention == default_backup_retention()
+        !self.enabled
     }
 }
 
