@@ -231,8 +231,40 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
         }
     };
     // Extract VM config and global config
-    let config = app_config.vm;
+    let mut config = app_config.vm;
     let global_config = app_config.global;
+
+    // For snapshot builds, modify config BEFORE creating provider to avoid container name conflicts
+    if let Command::Create {
+        save_as: Some(ref save_as),
+        from_dockerfile: Some(ref dockerfile_path),
+        ..
+    } = args.command
+    {
+        use vm_core::vm_println;
+
+        vm_println!("Building from Dockerfile: {}", dockerfile_path.display());
+
+        // Override box configuration
+        let mut vm_settings = config.vm.take().unwrap_or_default();
+        vm_settings.r#box = Some(vm_config::config::BoxSpec::String(
+            dockerfile_path.to_string_lossy().to_string(),
+        ));
+        config.vm = Some(vm_settings);
+
+        // Use temporary project name to avoid conflicts with existing VMs
+        let clean_name = save_as.strip_prefix('@').unwrap_or(save_as);
+        let temp_project_name = format!("{}-build", clean_name);
+
+        vm_println!(
+            "Using temporary project name '{}' for snapshot build",
+            temp_project_name
+        );
+
+        let mut project_config = config.project.take().unwrap_or_default();
+        project_config.name = Some(temp_project_name);
+        config.project = Some(project_config);
+    }
 
     debug!(
         "Loaded configuration: provider={:?}, project_name={:?}",
@@ -260,7 +292,7 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
         ));
     }
 
-    // Get the appropriate provider
+    // Get the appropriate provider (with potentially modified config for snapshot builds)
     let provider = get_provider(config.clone()).map_err(VmError::from)?;
 
     // Log provider being used

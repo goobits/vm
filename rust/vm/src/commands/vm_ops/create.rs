@@ -103,31 +103,8 @@ pub async fn handle_create(
     let _enter = span.enter();
     debug!("Starting VM creation");
 
-    // Handle --from-dockerfile flag (override box config)
-    if let Some(dockerfile_path) = &from_dockerfile {
-        vm_println!("Building from Dockerfile: {}", dockerfile_path.display());
-        let mut vm_settings = config.vm.take().unwrap_or_default();
-        vm_settings.r#box = Some(vm_config::config::BoxSpec::String(
-            dockerfile_path.to_string_lossy().to_string(),
-        ));
-        config.vm = Some(vm_settings);
-
-        // If building a snapshot, use temporary project name to avoid conflicts
-        if save_as.is_some() {
-            let snapshot_name = save_as.as_ref().unwrap();
-            let clean_name = snapshot_name.strip_prefix('@').unwrap_or(snapshot_name);
-            let temp_project_name = format!("{}-build", clean_name);
-
-            vm_println!(
-                "Using temporary project name '{}' for snapshot build",
-                temp_project_name
-            );
-
-            let mut project_config = config.project.take().unwrap_or_default();
-            project_config.name = Some(temp_project_name);
-            config.project = Some(project_config);
-        }
-    }
+    // Note: Config modifications for --from-dockerfile and --save-as are now handled
+    // in commands/mod.rs before provider creation to avoid container name conflicts
 
     if force {
         vm_println!("⚡ Force mode: using minimal resources and skipping validation");
