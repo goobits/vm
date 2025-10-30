@@ -57,10 +57,13 @@ RUN apt-get update && apt-get install -y \
     libcairo2 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js (latest LTS)
+# Install Node.js (latest LTS - auto-detects and installs latest stable LTS version)
 RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
     && apt-get install -y nodejs \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    # Show installed versions
+    && echo "Node.js version: $(node --version)" \
+    && echo "npm version: $(npm --version)"
 
 # Install Python (latest stable from deadsnakes)
 # Filters to stable versions only (3.10-3.14), excludes nightly builds (3.15+)
@@ -83,10 +86,13 @@ RUN apt-get update && apt-get install -y \
     # Install pip via get-pip.py (works for all Python versions)
     && curl -sS https://bootstrap.pypa.io/get-pip.py | ${PYTHON_STABLE}
 
-# Install Rust and Cargo (latest stable)
+# Install Rust and Cargo (latest stable - auto-installs latest stable release)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile default \
     && . /root/.cargo/env \
-    && rustup component add rustfmt clippy rust-analyzer
+    && rustup component add rustfmt clippy rust-analyzer \
+    # Show installed version
+    && echo "Rust version: $(rustc --version)" \
+    && echo "Cargo version: $(cargo --version)"
 
 # Make Rust available system-wide
 ENV PATH="/root/.cargo/bin:${PATH}"
