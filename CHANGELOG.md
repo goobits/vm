@@ -7,6 +7,108 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.4.0] - 2025-10-30
+
+### Added
+
+- **Snapshot Import/Export System**: Share portable base images across machines without Docker registry
+  - New `vm create --save-as @name --from-dockerfile <path>` to build and save global snapshots
+  - New `vm snapshot export @name [-o output.tar.gz]` to export snapshots as compressed archives
+  - New `vm snapshot import <file.tar.gz>` to import snapshots from archive files
+  - Support for `vm.box: @snapshot-name` to use imported snapshots as base images (instant startup)
+  - Snapshots stored in `~/.config/vm/snapshots/global/`
+  - **Benefits:**
+    - Build complex Dockerfiles once (10-15 min), share instantly across team
+    - 5-10 second VM creation vs 10-15 minute rebuilds
+    - Team collaboration without Docker registry
+    - Air-gapped environment support
+  - Includes example `Dockerfile.vibe` with Node.js LTS, Python 3.13, Rust stable, Playwright
+
+- **Enhanced VM Logs Command**: Powerful log viewing with follow mode and filtering (Docker provider only)
+  - New `-f/--follow` flag for live log streaming
+  - New `-n/--tail <lines>` flag to show custom number of lines (default: 50)
+  - New `--service <name>` flag to filter logs by service (postgresql, redis, mongodb, mysql)
+  - Example: `vm logs -f --tail 100 --service postgresql`
+
+- **Bulk Database Backup**: Streamlined database management
+  - New `--all` flag for `vm db backup` to backup all databases at once
+  - Automatically excludes system databases (postgres, template0, template1)
+  - Shows success/failure count after bulk operations
+  - Enhanced `vm db list` now displays backup counts and sizes per database
+
+- **Unified Box Configuration**: Consistent `vm.box` field across all providers
+  - Smart string detection: `@snapshots`, `./Dockerfiles`, registry images
+  - Support for Docker build context and arguments in Dockerfile specs
+  - Cross-platform path handling (Windows + Unix)
+  - Provider-specific validation with helpful error messages
+  - Full backwards compatibility with `vm.box_name` (deprecated but supported)
+  - 80 new tests with 100% pass rate
+
+### Changed
+
+- **Logging System**: Reduced console noise for cleaner output
+  - Default `LOG_LEVEL` changed from "info" to "error"
+  - Default `LOG_OUTPUT` changed from "console" to "file" (/tmp/vm.log)
+  - Users can enable verbose logging with: `LOG_LEVEL=info LOG_OUTPUT=console`
+  - Eliminates structured tracing logs, docker version output, and container listings
+
+- **Database Backup System**: Configuration consolidation
+  - Uses `GlobalConfig.backups.path` instead of hardcoded `~/.vm/backups`
+  - Respects user-configured backup location with tilde expansion
+  - Consolidated retention on `GlobalConfig.backups.keep_count` (default: 5)
+
+- **VM Init Command**: Improved consistency
+  - Deduplicated initialization logic to ensure consistent config generation
+  - Both `vm init` and `vm config preset X` now produce identical configs
+  - Reduced code from 108 lines to 20 lines by delegating to vm-config library
+
+### Fixed
+
+- **Snapshot Build Conflicts**: Temporary project naming prevents collisions
+  - When using `--from-dockerfile` with `--save-as`, tool now uses temporary project name
+  - Format: `{snapshot-name}-build` to avoid conflicts with existing vm.yaml
+  - Automatic cleanup of temporary build container after snapshot is saved
+  - Respects explicit user instructions over auto-detected configurations
+
+- **Database Restore Failures**: Non-fatal backup restoration
+  - Database restore now non-fatal during VM creation (won't block VM startup)
+  - Default backup pattern matches project name to prevent unrelated backup conflicts
+  - New `restore_backup` config flag to disable restoration
+  - Clear warning messages when restore fails
+
+- **Network DNS Resolution**: Service discovery on external networks
+  - Added network aliases for containers on external networks (e.g., "jules")
+  - Containers now reachable by name instead of requiring IP addresses
+  - Main dev container gets alias: `{project_name}-dev`
+  - Service containers get proper aliases (e.g., `{project_name}-postgres`, `postgres`)
+
+- **Vibe Preset**: Fixed claude_sync and gemini_sync configuration
+  - Added missing `claude_sync: true` and `gemini_sync: true` flags
+  - Enables proper AI tool installation in vibe preset
+
+### Removed
+
+- **Legacy Ansible Backup System**: Cleaned up orphaned backup/restore logic
+  - Removed Docker-incompatible backup restoration code
+  - Users should use modern `vm db backup`/`restore` commands
+  - Auto-backup still available with `backup_on_destroy: true`
+
+### Technical Improvements
+
+- Added `flate2` and `tar` dependencies for snapshot archive handling
+- Enhanced BoxSpec with two-layer design: user-facing → provider-specific parsing
+- Created new snapshot modules: `export.rs` and `import.rs`
+- 80 new tests for box configuration validation
+- Comprehensive documentation for all new features
+- Zero breaking changes, full backwards compatibility maintained
+
+### Documentation
+
+- Added snapshot import/export workflow guide
+- Enhanced database backup documentation with backup vs export comparison
+- Updated CLI reference with new flags and commands
+- Added troubleshooting guides for network DNS issues
+
 ## [3.3.0] - 2025-10-25
 
 ### Added
