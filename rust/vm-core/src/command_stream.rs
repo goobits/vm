@@ -26,6 +26,17 @@ pub fn stream_command<A: AsRef<OsStr>>(command: &str, args: &[A]) -> Result<()> 
     Ok(())
 }
 
+/// Stream command output directly to stdout, bypassing the logging system.
+/// Use this for long-running commands where user needs progress feedback.
+pub fn stream_command_visible<A: AsRef<OsStr>>(command: &str, args: &[A]) -> Result<()> {
+    let reader = cmd(command, args).stderr_to_stdout().reader()?;
+    let lines = BufReader::new(reader).lines();
+    for line in lines {
+        println!("{}", line?);
+    }
+    Ok(())
+}
+
 /// Stream command output with optional progress parsing
 pub fn stream_command_with_progress<A: AsRef<OsStr>>(
     command: &str,

@@ -15,7 +15,7 @@ use super::{ComposeCommand, DockerOps, UserConfig};
 use crate::ProviderContext;
 use crate::TempVmState;
 use vm_config::{config::VmConfig, detect_worktrees};
-use vm_core::command_stream::stream_command;
+use vm_core::command_stream::{stream_command, stream_command_visible};
 
 pub struct ComposeOperations<'a> {
     pub config: &'a VmConfig,
@@ -565,7 +565,8 @@ impl<'a> ComposeOperations<'a> {
 
         let args = ComposeCommand::build_args(&compose_path, command, &extra_args)?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        stream_command("docker", &args_refs).map_err(|e| {
+        // Use visible streaming for docker-compose up to show build progress
+        stream_command_visible("docker", &args_refs).map_err(|e| {
             VmError::Internal(format!(
                 "Failed to start container using docker-compose: {e}"
             ))
