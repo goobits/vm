@@ -119,8 +119,8 @@ impl Visit for FieldVisitor<'_> {
 
 /// Initializes the global tracing subscriber based on environment variables.
 pub fn init_subscriber() -> Option<WorkerGuard> {
-    let log_level = env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string());
-    let log_output = env::var("LOG_OUTPUT").unwrap_or_else(|_| "console".to_string());
+    let log_level = env::var("LOG_LEVEL").unwrap_or_else(|_| "error".to_string());
+    let log_output = env::var("LOG_OUTPUT").unwrap_or_else(|_| "file".to_string());
     let log_format = env::var("LOG_FORMAT").unwrap_or_else(|_| "human".to_string());
     let log_tags = env::var("LOG_TAGS").unwrap_or_else(|_| String::new());
     let log_file_path = env::var("LOG_FILE_PATH").unwrap_or_else(|_| "/tmp/vm.log".to_string());

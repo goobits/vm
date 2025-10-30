@@ -111,6 +111,22 @@ pub async fn handle_create(
             dockerfile_path.to_string_lossy().to_string(),
         ));
         config.vm = Some(vm_settings);
+
+        // If building a snapshot, use temporary project name to avoid conflicts
+        if save_as.is_some() {
+            let snapshot_name = save_as.as_ref().unwrap();
+            let clean_name = snapshot_name.strip_prefix('@').unwrap_or(snapshot_name);
+            let temp_project_name = format!("{}-build", clean_name);
+
+            vm_println!(
+                "Using temporary project name '{}' for snapshot build",
+                temp_project_name
+            );
+
+            let mut project_config = config.project.take().unwrap_or_default();
+            project_config.name = Some(temp_project_name);
+            config.project = Some(project_config);
+        }
     }
 
     if force {
@@ -485,6 +501,28 @@ pub async fn handle_create(
                 vm_println!("  2. Run: vm create");
                 vm_println!("\nTo export and share:");
                 vm_println!("  vm snapshot export @{}", clean_name);
+
+                // Clean up temporary build container
+                vm_println!("\n  Cleaning up temporary build container...");
+                let cleanup_container_name = if let Some(instance_name) = &instance {
+                    format!("{vm_name}-{instance_name}")
+                } else {
+                    format!("{vm_name}-dev")
+                };
+
+                // Stop container
+                let _ = tokio::process::Command::new("docker")
+                    .args(["stop", &cleanup_container_name])
+                    .output()
+                    .await;
+
+                // Remove container
+                let _ = tokio::process::Command::new("docker")
+                    .args(["rm", &cleanup_container_name])
+                    .output()
+                    .await;
+
+                vm_println!("  ✓ Cleanup complete");
             }
 
             Ok(())
