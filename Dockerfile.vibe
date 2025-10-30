@@ -62,22 +62,26 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python 3.13 (latest stable in deadsnakes for Ubuntu 22.04)
+# Install Python (latest stable from deadsnakes)
+# Filters to stable versions only (3.10-3.14), excludes nightly builds (3.15+)
 RUN apt-get update && apt-get install -y \
     software-properties-common \
     curl \
     && add-apt-repository ppa:deadsnakes/ppa \
     && apt-get update \
+    # Find latest stable Python (3.10-3.14 range, excludes 3.15+ nightly)
+    && PYTHON_STABLE=$(apt-cache search 'python3\.[0-9]+$' | grep -oP 'python3\.1[0-4]' | sort -V | tail -1) \
+    && echo "Installing Python: ${PYTHON_STABLE}" \
     && apt-get install -y \
-    python3.13 \
-    python3.13-venv \
-    python3.13-dev \
+    ${PYTHON_STABLE} \
+    ${PYTHON_STABLE}-venv \
+    ${PYTHON_STABLE}-dev \
     && rm -rf /var/lib/apt/lists/* \
     # Set as default
-    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 1 \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/${PYTHON_STABLE} 1 \
     && ln -sf /usr/bin/python3 /usr/bin/python \
-    # Install pip via get-pip.py (Python 3.13+ uses ensurepip, no distutils needed)
-    && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.13
+    # Install pip via get-pip.py (works for all Python versions)
+    && curl -sS https://bootstrap.pypa.io/get-pip.py | ${PYTHON_STABLE}
 
 # Install Rust and Cargo (latest stable)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile default \
