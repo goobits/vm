@@ -25,7 +25,7 @@ fn test_migration_command_successful() {
     setup_legacy_environment(temp_home.path());
 
     // --- Run the migration command ---
-    let mut cmd = Command::cargo_bin("vm-config").unwrap();
+    let mut cmd = Command::from(assert_cmd::cargo::cargo_bin("vm-config"));
     cmd.env("HOME", temp_home.path())
         .arg("migrate")
         .write_stdin("y\n") // Confirm the prompt
@@ -62,7 +62,7 @@ fn test_migration_command_successful() {
 fn test_migration_command_no_files_to_migrate() {
     let temp_home = tempdir().unwrap();
 
-    let mut cmd = Command::cargo_bin("vm-config").unwrap();
+    let mut cmd = Command::from(assert_cmd::cargo::cargo_bin("vm-config"));
     cmd.env("HOME", temp_home.path())
         .arg("migrate")
         .assert()
@@ -75,7 +75,7 @@ fn test_migration_command_user_cancels() {
     let temp_home = tempdir().unwrap();
     setup_legacy_environment(temp_home.path());
 
-    let mut cmd = Command::cargo_bin("vm-config").unwrap();
+    let mut cmd = Command::from(assert_cmd::cargo::cargo_bin("vm-config"));
     cmd.env("HOME", temp_home.path())
         .arg("migrate")
         .write_stdin("n\n") // Deny the prompt
