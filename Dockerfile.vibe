@@ -30,6 +30,8 @@ RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     make \
+    pkg-config \
+    libssl-dev \
     # Common dev utilities
     jq \
     vim \
