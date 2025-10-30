@@ -1,0 +1,166 @@
+# Vibe Development Environment Dockerfile
+# Optimized base image for fast snapshot-based Docker image creation
+# Based on your vm.yaml configuration
+
+FROM ubuntu:22.04
+
+# Build arguments for flexibility
+ARG USER_NAME=developer
+ARG USER_UID=1000
+ARG USER_GID=1000
+
+# Avoid prompts from apt
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system packages + build essentials + common dev tools
+RUN apt-get update && apt-get install -y \
+    # Core utilities from vibe preset
+    tree \
+    ripgrep \
+    unzip \
+    htop \
+    # Essential tools
+    curl \
+    wget \
+    git \
+    ca-certificates \
+    gnupg \
+    # Build essentials for native modules
+    build-essential \
+    gcc \
+    g++ \
+    make \
+    # Common dev utilities
+    jq \
+    vim \
+    nano \
+    tmux \
+    procps \
+    net-tools \
+    iputils-ping \
+    # For Playwright/Chromium dependencies
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libdbus-1-3 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    libpango-1.0-0 \
+    libcairo2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js (latest LTS)
+RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python (latest stable from deadsnakes PPA)
+RUN apt-get update && apt-get install -y \
+    software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update \
+    && PYTHON_LATEST=$(apt-cache search python3.[0-9]$ | grep -oP 'python3\.\d+' | sort -V | tail -1) \
+    && apt-get install -y \
+    ${PYTHON_LATEST} \
+    ${PYTHON_LATEST}-pip \
+    ${PYTHON_LATEST}-venv \
+    ${PYTHON_LATEST}-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    # Set as default
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/${PYTHON_LATEST} 1 \
+    && update-alternatives --install /usr/bin/pip3 pip3 /usr/bin/pip$(echo ${PYTHON_LATEST} | grep -oP '\d+\.\d+') 1 \
+    && ln -sf /usr/bin/python3 /usr/bin/python
+
+# Install Rust and Cargo (latest stable)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile default \
+    && . /root/.cargo/env \
+    && rustup component add rustfmt clippy rust-analyzer
+
+# Make Rust available system-wide
+ENV PATH="/root/.cargo/bin:${PATH}"
+ENV CARGO_HOME="/root/.cargo"
+ENV RUSTUP_HOME="/root/.rustup"
+
+# Install common Cargo tools
+RUN . /root/.cargo/env && cargo install \
+    cargo-watch \
+    cargo-edit \
+    cargo-audit \
+    cargo-outdated
+
+# Install NPM packages globally (includes Playwright)
+RUN npm install -g \
+    @anthropic-ai/claude-code \
+    @google/gemini-cli \
+    playwright \
+    && npx playwright install chromium \
+    && npx playwright install-deps chromium
+
+# Install Python packages (including Playwright)
+RUN pip3 install --no-cache-dir \
+    claudeflow \
+    playwright \
+    pytest \
+    pytest-playwright
+
+# Install common dev tools that presets might need
+RUN npm install -g \
+    prettier \
+    eslint \
+    typescript \
+    ts-node \
+    nodemon \
+    npm-check-updates
+
+# Set up working directory
+WORKDIR /workspace
+
+# Create user with matching configuration
+RUN groupadd -g ${USER_GID} ${USER_NAME} || true && \
+    useradd -m -u ${USER_UID} -g ${USER_GID} -s /bin/bash ${USER_NAME} && \
+    mkdir -p /workspace && \
+    chown -R ${USER_NAME}:${USER_NAME} /workspace
+
+# Set up bash aliases from vm.yaml and environment
+RUN echo 'alias claudeyolo="claude --dangerously-skip-permissions"' >> /home/${USER_NAME}/.bashrc && \
+    echo 'alias geminiyolo="GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini"' >> /home/${USER_NAME}/.bashrc && \
+    echo 'export PATH="$PATH:/home/${USER_NAME}/.local/bin:/root/.cargo/bin"' >> /home/${USER_NAME}/.bashrc && \
+    echo 'export CARGO_HOME="/root/.cargo"' >> /home/${USER_NAME}/.bashrc && \
+    echo 'export RUSTUP_HOME="/root/.rustup"' >> /home/${USER_NAME}/.bashrc
+
+# Set timezone
+ENV TZ=America/Los_Angeles
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# Environment variables for development
+ENV NODE_ENV=development \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/home/${USER_NAME}/.cache/ms-playwright
+
+# Add labels for metadata
+LABEL org.opencontainers.image.title="Vibe Development Base" \
+      org.opencontainers.image.description="Optimized base image with latest stable Node.js, Python, Rust, Playwright, and AI CLI tools" \
+      org.opencontainers.image.version="1.0" \
+      com.vm-tool.preset="vibe" \
+      com.vm-tool.auto-update="true"
+
+# Switch to developer user
+USER ${USER_NAME}
+
+# Set default shell to bash
+SHELL ["/bin/bash", "-c"]
+
+# Healthcheck to ensure the container is ready
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD command -v node && command -v python3 && command -v cargo && command -v claude || exit 1
+
+# Default command
+CMD ["/bin/bash"]

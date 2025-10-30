@@ -1,5 +1,7 @@
 //! VM snapshot management
 pub mod create;
+pub mod export;
+pub mod import;
 pub mod manager;
 pub mod metadata;
 pub mod restore;
@@ -42,5 +44,17 @@ pub async fn handle_snapshot(
             project,
             force,
         } => manager::handle_delete(&name, project.as_deref(), force).await,
+        SnapshotSubcommand::Export {
+            name,
+            output,
+            compress,
+            project,
+        } => export::handle_export(&name, output.as_deref(), compress, project.as_deref()).await,
+        SnapshotSubcommand::Import {
+            file,
+            name,
+            verify,
+            force,
+        } => import::handle_import(&file, name.as_deref(), verify, force).await,
     }
 }

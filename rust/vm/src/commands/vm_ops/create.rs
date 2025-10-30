@@ -88,6 +88,7 @@ fn auto_adjust_resources(config: &mut VmConfig) -> VmResult<()> {
 }
 
 /// Handle VM creation
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_create(
     provider: Box<dyn Provider>,
     mut config: VmConfig,
@@ -95,10 +96,22 @@ pub async fn handle_create(
     force: bool,
     instance: Option<String>,
     verbose: bool,
+    save_as: Option<String>,
+    from_dockerfile: Option<std::path::PathBuf>,
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "create");
     let _enter = span.enter();
     debug!("Starting VM creation");
+
+    // Handle --from-dockerfile flag (override box config)
+    if let Some(dockerfile_path) = &from_dockerfile {
+        vm_println!("Building from Dockerfile: {}", dockerfile_path.display());
+        let mut vm_settings = config.vm.take().unwrap_or_default();
+        vm_settings.r#box = Some(vm_config::config::BoxSpec::String(
+            dockerfile_path.to_string_lossy().to_string(),
+        ));
+        config.vm = Some(vm_settings);
+    }
 
     if force {
         vm_println!("⚡ Force mode: using minimal resources and skipping validation");
@@ -256,7 +269,7 @@ pub async fn handle_create(
                 msg!(
                     MESSAGES.vm_create_info_block,
                     status = MESSAGES.common_status_running,
-                    container = container_name
+                    container = &container_name
                 )
             );
 
@@ -327,6 +340,153 @@ pub async fn handle_create(
             } else {
                 vm_println!("{}", MESSAGES.common_connect_hint);
             }
+
+            // Handle --save-as flag (save container as global snapshot)
+            if let Some(snapshot_name) = &save_as {
+                use crate::commands::snapshot::{
+                    manager::SnapshotManager,
+                    metadata::{ServiceSnapshot, SnapshotMetadata},
+                };
+
+                let (is_global, clean_name) =
+                    if let Some(stripped) = snapshot_name.strip_prefix('@') {
+                        (true, stripped)
+                    } else {
+                        (false, snapshot_name.as_str())
+                    };
+
+                if !is_global {
+                    vm_println!("\n⚠️  Warning: Snapshot name should start with @ for global snapshots (e.g., @vibe-base)");
+                    vm_println!("   Saving as @{} instead...", clean_name);
+                }
+
+                vm_println!(
+                    "\n📸 Saving container as global snapshot '@{}'...",
+                    clean_name
+                );
+
+                // Create snapshot manager and directory
+                let manager = SnapshotManager::new()?;
+                let snapshot_dir = manager.get_snapshot_dir(Some("global"), clean_name);
+
+                if snapshot_dir.exists() {
+                    vm_println!(
+                        "⚠️  Snapshot '@{}' already exists, overwriting...",
+                        clean_name
+                    );
+                    std::fs::remove_dir_all(&snapshot_dir).map_err(|e| {
+                        VmError::filesystem(e, snapshot_dir.display().to_string(), "remove_dir_all")
+                    })?;
+                }
+
+                let images_dir = snapshot_dir.join("images");
+                std::fs::create_dir_all(&images_dir).map_err(|e| {
+                    VmError::filesystem(e, images_dir.display().to_string(), "create_dir_all")
+                })?;
+
+                // Commit container to image
+                let image_tag = format!("vm-snapshot/global/{}:latest", clean_name);
+                vm_println!("  Creating image from container...");
+
+                // Clone container_name since it was moved earlier
+                let container_name_clone = container_name.clone();
+                let commit_output = tokio::process::Command::new("docker")
+                    .args(["commit", &container_name_clone, &image_tag])
+                    .output()
+                    .await
+                    .map_err(|e| VmError::general(e, "Failed to commit container"))?;
+
+                if !commit_output.status.success() {
+                    let stderr = String::from_utf8_lossy(&commit_output.stderr);
+                    return Err(VmError::general(
+                        std::io::Error::new(std::io::ErrorKind::Other, "Docker commit failed"),
+                        format!("Failed to commit container: {}", stderr),
+                    ));
+                }
+
+                // Save image to tar file
+                vm_println!("  Saving image to snapshot directory...");
+                let image_file = "base.tar";
+                let image_path = images_dir.join(image_file);
+
+                let save_output = tokio::process::Command::new("docker")
+                    .args(["save", &image_tag, "-o", image_path.to_str().unwrap()])
+                    .output()
+                    .await
+                    .map_err(|e| VmError::general(e, "Failed to save image"))?;
+
+                if !save_output.status.success() {
+                    let stderr = String::from_utf8_lossy(&save_output.stderr);
+                    return Err(VmError::general(
+                        std::io::Error::new(std::io::ErrorKind::Other, "Docker save failed"),
+                        format!("Failed to save image: {}", stderr),
+                    ));
+                }
+
+                // Get image digest
+                let digest_output = tokio::process::Command::new("docker")
+                    .args(["inspect", "--format={{.Id}}", &image_tag])
+                    .output()
+                    .await
+                    .map_err(|e| VmError::general(e, "Failed to inspect image"))?;
+
+                let digest = if digest_output.status.success() {
+                    Some(
+                        String::from_utf8_lossy(&digest_output.stdout)
+                            .trim()
+                            .to_string(),
+                    )
+                } else {
+                    None
+                };
+
+                // Calculate snapshot size
+                let snapshot_size = calculate_directory_size(&snapshot_dir)?;
+
+                // Create metadata
+                let metadata = SnapshotMetadata {
+                    name: clean_name.to_string(),
+                    created_at: chrono::Utc::now(),
+                    description: Some("Base image snapshot created from Dockerfile".to_string()),
+                    project_name: "global".to_string(),
+                    project_dir: std::env::current_dir()
+                        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                        .to_string_lossy()
+                        .to_string(),
+                    git_commit: None,
+                    git_dirty: false,
+                    git_branch: None,
+                    services: vec![ServiceSnapshot {
+                        name: "base".to_string(),
+                        image_tag: image_tag.clone(),
+                        image_file: image_file.to_string(),
+                        image_digest: digest,
+                    }],
+                    volumes: vec![],
+                    compose_file: "".to_string(),
+                    vm_config_file: "".to_string(),
+                    total_size_bytes: snapshot_size,
+                };
+
+                metadata.save(snapshot_dir.join("metadata.json"))?;
+
+                vm_println!(
+                    "  ✓ Snapshot saved ({:.2} MB)",
+                    snapshot_size as f64 / (1024.0 * 1024.0)
+                );
+                vm_println!(
+                    "\n🎉 Global snapshot '@{}' created successfully!",
+                    clean_name
+                );
+                vm_println!("\nTo use this base image in other projects:");
+                vm_println!("  1. Add to vm.yaml:");
+                vm_println!("     vm:");
+                vm_println!("       box: @{}", clean_name);
+                vm_println!("  2. Run: vm create");
+                vm_println!("\nTo export and share:");
+                vm_println!("  vm snapshot export @{}", clean_name);
+            }
+
             Ok(())
         }
         Err(e) => {
@@ -358,4 +518,29 @@ pub async fn handle_create(
     }
 
     Ok(())
+}
+
+/// Calculate total size of directory recursively
+fn calculate_directory_size(path: &std::path::Path) -> VmResult<u64> {
+    let mut total = 0u64;
+
+    if path.is_dir() {
+        let entries = std::fs::read_dir(path)
+            .map_err(|e| VmError::filesystem(e, path.to_string_lossy(), "read_dir"))?;
+
+        for entry in entries {
+            let entry = entry.map_err(|e| VmError::general(e, "Failed to read directory entry"))?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                total += calculate_directory_size(&path)?;
+            } else {
+                let metadata = std::fs::metadata(&path)
+                    .map_err(|e| VmError::filesystem(e, path.to_string_lossy(), "metadata"))?;
+                total += metadata.len();
+            }
+        }
+    }
+
+    Ok(total)
 }

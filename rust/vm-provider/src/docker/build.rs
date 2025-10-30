@@ -127,10 +127,103 @@ impl<'a> BuildOperations<'a> {
                 image_name
             }
             BoxConfig::Snapshot(name) => {
-                return Err(VmError::Config(format!(
-                    "Snapshot reference '@{}' detected. Use 'vm snapshot restore {}' command instead.",
-                    name, name
-                )));
+                // Load image from global snapshot
+                use vm_core::vm_println;
+
+                vm_println!("Loading base image from snapshot '@{}'...", name);
+
+                // Check if snapshot exists in ~/.config/vm/snapshots/global/<name>/
+                let home_dir = std::env::var("HOME")
+                    .or_else(|_| std::env::var("USERPROFILE"))
+                    .map_err(|_| {
+                        VmError::Internal("Could not determine home directory".to_string())
+                    })?;
+
+                let snapshot_dir = PathBuf::from(home_dir)
+                    .join(".config")
+                    .join("vm")
+                    .join("snapshots")
+                    .join("global")
+                    .join(name);
+
+                if !snapshot_dir.exists() {
+                    return Err(VmError::Config(format!(
+                        "Snapshot '@{}' not found. Import it first with:\n  vm snapshot import <file>",
+                        name
+                    )));
+                }
+
+                // Load metadata to get image tag
+                let metadata_path = snapshot_dir.join("metadata.json");
+                if !metadata_path.exists() {
+                    return Err(VmError::Config(format!(
+                        "Snapshot '@{}' is corrupted (metadata.json not found)",
+                        name
+                    )));
+                }
+
+                let metadata_content = std::fs::read_to_string(&metadata_path).map_err(|e| {
+                    VmError::Internal(format!("Failed to read metadata file: {}", e))
+                })?;
+
+                let metadata: serde_json::Value =
+                    serde_json::from_str(&metadata_content).map_err(|e| {
+                        VmError::Internal(format!("Failed to parse metadata.json: {}", e))
+                    })?;
+
+                // Get the image tag from first service (base image snapshot always has one service)
+                let image_tag = metadata
+                    .get("services")
+                    .and_then(|s| s.as_array())
+                    .and_then(|arr| arr.first())
+                    .and_then(|svc| svc.get("image_tag"))
+                    .and_then(|tag| tag.as_str())
+                    .ok_or_else(|| {
+                        VmError::Config(format!(
+                            "Snapshot '@{}' is corrupted (image_tag not found in metadata)",
+                            name
+                        ))
+                    })?;
+
+                // Check if image is already loaded
+                let image_exists = Command::new("docker")
+                    .args(["image", "inspect", image_tag])
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false);
+
+                if !image_exists {
+                    vm_println!("  Image not loaded, loading from snapshot...");
+
+                    // Load image from tar file
+                    let image_file_path = snapshot_dir.join("images").join("base.tar");
+
+                    if !image_file_path.exists() {
+                        return Err(VmError::Config(format!(
+                            "Snapshot '@{}' is corrupted (base.tar not found)",
+                            name
+                        )));
+                    }
+
+                    let load_output = Command::new("docker")
+                        .args(["load", "-i", image_file_path.to_str().unwrap()])
+                        .output()
+                        .map_err(|e| {
+                            VmError::Internal(format!("Failed to load Docker image: {}", e))
+                        })?;
+
+                    if !load_output.status.success() {
+                        let stderr = String::from_utf8_lossy(&load_output.stderr);
+                        return Err(VmError::Internal(format!(
+                            "Failed to load Docker image from snapshot: {}",
+                            stderr
+                        )));
+                    }
+
+                    vm_println!("  ✓ Image loaded successfully");
+                }
+
+                image_tag.to_string()
             }
             _ => {
                 return Err(VmError::Internal(

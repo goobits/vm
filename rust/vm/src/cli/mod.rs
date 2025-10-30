@@ -374,6 +374,34 @@ pub enum SnapshotSubcommand {
         #[arg(long)]
         force: bool,
     },
+    /// Export a snapshot to a portable file
+    Export {
+        /// Snapshot name to export (use @name for global snapshots)
+        name: String,
+        /// Output file path (default: <name>.snapshot.tar.gz)
+        #[arg(long, short = 'o')]
+        output: Option<PathBuf>,
+        /// Compression level (1-9, default: 6)
+        #[arg(long, default_value = "6")]
+        compress: u8,
+        /// Project name (auto-detected if omitted, not needed for @global snapshots)
+        #[arg(long)]
+        project: Option<String>,
+    },
+    /// Import a snapshot from a portable file
+    Import {
+        /// Path to snapshot file (.snapshot.tar.gz)
+        file: PathBuf,
+        /// Override snapshot name (default: use name from file)
+        #[arg(long)]
+        name: Option<String>,
+        /// Verify checksum before importing
+        #[arg(long)]
+        verify: bool,
+        /// Overwrite existing snapshot with same name
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -464,6 +492,12 @@ pub enum Command {
         /// Show detailed output including all Ansible tasks
         #[arg(long)]
         verbose: bool,
+        /// Save as global snapshot (e.g., @vibe-base) for reuse across projects
+        #[arg(long, value_name = "@NAME")]
+        save_as: Option<String>,
+        /// Build directly from a Dockerfile (overrides vm.yaml box config)
+        #[arg(long, value_name = "PATH")]
+        from_dockerfile: Option<PathBuf>,
     },
     /// Start your environment
     Start {
@@ -713,10 +747,40 @@ mod tests {
                 force,
                 instance,
                 verbose,
+                save_as,
+                from_dockerfile,
             } => {
                 assert!(force);
                 assert_eq!(instance, Some("test-vm".to_string()));
                 assert!(verbose);
+                assert_eq!(save_as, None);
+                assert_eq!(from_dockerfile, None);
+            }
+            _ => panic!("Expected Command::Create"),
+        }
+    }
+
+    #[test]
+    fn test_create_with_save_as_parsing() {
+        let args = Args::parse_from([
+            "vm",
+            "create",
+            "--save-as",
+            "@vibe-base",
+            "--from-dockerfile",
+            "./Dockerfile.vibe",
+        ]);
+        match args.command {
+            Command::Create {
+                save_as,
+                from_dockerfile,
+                ..
+            } => {
+                assert_eq!(save_as, Some("@vibe-base".to_string()));
+                assert_eq!(
+                    from_dockerfile,
+                    Some(std::path::PathBuf::from("./Dockerfile.vibe"))
+                );
             }
             _ => panic!("Expected Command::Create"),
         }

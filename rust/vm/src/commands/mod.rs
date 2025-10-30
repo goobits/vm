@@ -273,6 +273,8 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             force,
             instance,
             verbose,
+            save_as,
+            from_dockerfile,
         } => {
             vm_ops::handle_create(
                 provider,
@@ -281,6 +283,8 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
                 force,
                 instance,
                 verbose,
+                save_as,
+                from_dockerfile,
             )
             .await
         }
