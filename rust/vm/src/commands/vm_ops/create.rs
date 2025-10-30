@@ -97,7 +97,7 @@ pub async fn handle_create(
     instance: Option<String>,
     verbose: bool,
     save_as: Option<String>,
-    from_dockerfile: Option<std::path::PathBuf>,
+    _from_dockerfile: Option<std::path::PathBuf>,
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "create");
     let _enter = span.enter();
@@ -225,14 +225,19 @@ pub async fn handle_create(
     vm_println!("{}", MESSAGES.vm_create_progress);
 
     // Register VM services BEFORE creating container so docker-compose can inject env vars
+    // Skip service registration for snapshot builds (they're just base images, no running services needed)
     let vm_instance_name = if let Some(instance_name) = &instance {
         format!("{vm_name}-{instance_name}")
     } else {
         format!("{vm_name}-dev")
     };
 
-    vm_println!("{}", MESSAGES.common_configuring_services);
-    register_vm_services_helper(&vm_instance_name, &config, &global_config).await?;
+    if save_as.is_none() {
+        vm_println!("{}", MESSAGES.common_configuring_services);
+        register_vm_services_helper(&vm_instance_name, &config, &global_config).await?;
+    } else {
+        debug!("Skipping service registration for snapshot build");
+    }
 
     // Create provider context with verbose flag and global config
     let context = ProviderContext::with_verbose(verbose).with_config(global_config.clone());
