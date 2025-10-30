@@ -118,7 +118,6 @@ RUN npm install -g \
 
 # Install Python packages (including Playwright)
 RUN pip3 install --no-cache-dir \
-    claudeflow \
     playwright \
     pytest \
     pytest-playwright
