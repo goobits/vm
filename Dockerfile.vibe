@@ -63,21 +63,26 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python (latest stable from deadsnakes PPA)
+# Note: Using get-pip.py for pip installation (more reliable than distro packages)
 RUN apt-get update && apt-get install -y \
     software-properties-common \
+    curl \
     && add-apt-repository ppa:deadsnakes/ppa \
     && apt-get update \
-    && PYTHON_LATEST=$(apt-cache search python3.[0-9]$ | grep -oP 'python3\.\d+' | sort -V | tail -1) \
+    # Find latest Python 3.10+ (filter out older versions)
+    && PYTHON_LATEST=$(apt-cache search 'python3\.[0-9]+$' | grep -oP 'python3\.1[0-9]+' | sort -V | tail -1) \
+    && echo "Installing Python: ${PYTHON_LATEST}" \
     && apt-get install -y \
     ${PYTHON_LATEST} \
-    ${PYTHON_LATEST}-pip \
+    ${PYTHON_LATEST}-distutils \
     ${PYTHON_LATEST}-venv \
     ${PYTHON_LATEST}-dev \
     && rm -rf /var/lib/apt/lists/* \
     # Set as default
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/${PYTHON_LATEST} 1 \
-    && update-alternatives --install /usr/bin/pip3 pip3 /usr/bin/pip$(echo ${PYTHON_LATEST} | grep -oP '\d+\.\d+') 1 \
-    && ln -sf /usr/bin/python3 /usr/bin/python
+    && ln -sf /usr/bin/python3 /usr/bin/python \
+    # Install pip via get-pip.py (works for all Python versions)
+    && curl -sS https://bootstrap.pypa.io/get-pip.py | ${PYTHON_LATEST}
 
 # Install Rust and Cargo (latest stable)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile default \
