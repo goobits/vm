@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     wget \
     git \
+    git-lfs \
     ca-certificates \
     gnupg \
     # Build essentials for native modules
