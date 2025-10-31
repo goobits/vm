@@ -163,10 +163,12 @@ services:
       - /tmp
       - /var/tmp
     {% endif %}
+    {% if not is_macos %}
     # File watching support for hot reload (webpack, vite, nodemon, etc.)
     sysctls:
       - fs.inotify.max_user_watches=524288
       - fs.inotify.max_user_instances=256
+    {% endif %}
     command: ["tail", "-f", "/dev/null"]
     tty: true
     stdin_open: true

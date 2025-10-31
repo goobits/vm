@@ -84,16 +84,21 @@ RUN apt-get update && apt-get install -y \
     ${PYTHON_STABLE}-dev \
     && rm -rf /var/lib/apt/lists/* \
     # Set as default
-    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/${PYTHON_STABLE} 1 \
-    && ln -sf /usr/bin/python3 /usr/bin/python \
-    # Install pip via get-pip.py (works for all Python versions)
-    && curl -sS https://bootstrap.pypa.io/get-pip.py | ${PYTHON_STABLE}
+      && update-alternatives --install /usr/bin/python3 python3 /usr/bin/${PYTHON_STABLE} 1 \
+      && ln -sf /usr/bin/python3 /usr/bin/python \
+      # Install pip via get-pip.py (works for all Python versions)
+      && curl -sS https://bootstrap.pypa.io/get-pip.py | ${PYTHON_STABLE}
 
-# Install Rust and Cargo (latest stable - auto-installs latest stable release)
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile default \
-    && . /root/.cargo/env \
-    && rustup component add rustfmt clippy rust-analyzer \
-    # Show installed version
+# Install Ansible (required for VM provisioning)
+RUN apt-get update \
+    && apt-get install -y ansible \
+    && rm -rf /var/lib/apt/lists/*
+
+  # Install Rust and Cargo (latest stable - auto-installs latest stable release)
+  RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile default \
+      && . /root/.cargo/env \
+      && rustup component add rustfmt clippy rust-analyzer \
+      # Show installed version
     && echo "Rust version: $(rustc --version)" \
     && echo "Cargo version: $(cargo --version)"
 
