@@ -146,7 +146,7 @@ impl<'a> LifecycleOperations<'a> {
         // Step 5: Start containers
         let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        stream_command("docker", &args_refs).map_err(|e| {
+        stream_command_visible("docker", &args_refs).map_err(|e| {
             VmError::Internal(format!(
                 "Failed to start container '{}'. Container may have failed to start properly: {}",
                 self.container_name(),
@@ -283,7 +283,7 @@ impl<'a> LifecycleOperations<'a> {
             vm_dbg!("Build context contains {} files/directories", file_count);
         }
 
-        stream_command("docker", &all_args).map_err(|e| {
+        stream_command_visible("docker", &all_args).map_err(|e| {
             VmError::Internal(format!(
                 "Docker build failed for project '{}' instance '{}'. Check that Docker is running and build context is valid: {}",
                 self.project_name(),
@@ -295,7 +295,7 @@ impl<'a> LifecycleOperations<'a> {
         // Step 5: Start containers
         let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        stream_command("docker", &args_refs).map_err(|e| {
+        stream_command_visible("docker", &args_refs).map_err(|e| {
             VmError::Internal(format!(
                 "Failed to start container '{container_name}'. Container may have failed to start properly: {e}"
             ))
