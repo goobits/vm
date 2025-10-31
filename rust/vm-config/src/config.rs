@@ -974,7 +974,8 @@ impl VmConfig {
 
     pub fn from_file(path: &PathBuf) -> Result<Self> {
         let content = std::fs::read_to_string(path)?;
-        Ok(serde_yaml::from_str(&content)?)
+        let source_desc = format!("{}", path.display());
+        crate::yaml::CoreOperations::parse_yaml_with_diagnostics(&content, &source_desc)
     }
 
     pub fn to_json(&self) -> Result<String> {

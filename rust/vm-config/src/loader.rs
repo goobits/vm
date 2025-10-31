@@ -79,8 +79,12 @@ impl ConfigLoader {
     fn load_file(&self, path: &Path) -> Result<VmConfig> {
         let contents = fs::read_to_string(path)
             .with_context(|| format!("Failed to read file at {}", path.display()))?;
-        let mut config: VmConfig = serde_yaml_ng::from_str(&contents)
-            .with_context(|| format!("Failed to parse YAML from {}", path.display()))?;
+
+        // Use centralized YAML parsing with enhanced diagnostics
+        let source_desc = format!("{}", path.display());
+        let mut config: VmConfig =
+            crate::yaml::CoreOperations::parse_yaml_with_diagnostics(&contents, &source_desc)
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
 
         // Store the source path for debugging purposes.
         config.source_path = Some(path.to_path_buf());

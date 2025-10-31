@@ -53,9 +53,9 @@ impl PresetDetector {
 
         // Try embedded presets second (system presets: base, tart-*)
         if let Some(content) = crate::embedded_presets::get_preset_content(name) {
-            let preset_file: PresetFile = serde_yaml::from_str(content).map_err(|e| {
-                VmError::Serialization(format!("Failed to parse embedded preset '{name}': {e}"))
-            })?;
+            let source_desc = format!("embedded preset '{}'", name);
+            let preset_file: PresetFile =
+                crate::yaml::CoreOperations::parse_yaml_with_diagnostics(content, &source_desc)?;
             return Ok(preset_file.config);
         }
 
@@ -71,8 +71,9 @@ impl PresetDetector {
         }
 
         let content = std::fs::read_to_string(&preset_path)?;
-        let preset_file: PresetFile = serde_yaml::from_str(&content)
-            .map_err(|e| VmError::Serialization(format!("Failed to parse preset '{name}': {e}")))?;
+        let source_desc = format!("preset file '{}'", preset_path.display());
+        let preset_file: PresetFile =
+            crate::yaml::CoreOperations::parse_yaml_with_diagnostics(&content, &source_desc)?;
 
         Ok(preset_file.config)
     }
