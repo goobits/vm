@@ -47,23 +47,23 @@ services:
       {% endif %}
       # Shell history persistence (survives container recreation)
       - {{ project_name }}_shell_history:/home/{{ project_user }}/.shell_history:rw
-      {% if config.claude_sync | default(value=true) %}
+      {% if claude_sync_enabled %}
       # Claude AI data persistence
       - {{ home_dir }}/.claude/vms/{{ project_name }}:/home/{{ project_user }}/.claude:rw
       {% endif %}
-      {% if config.gemini_sync | default(value=true) %}
+      {% if gemini_sync_enabled %}
       # Gemini CLI data persistence
       - {{ home_dir }}/.gemini/vms/{{ project_name }}:/home/{{ project_user }}/.gemini:rw
       {% endif %}
-      {% if config.codex_sync | default(value=false) %}
+      {% if codex_sync_enabled %}
       # OpenAI Codex data persistence
       - {{ home_dir }}/.codex/vms/{{ project_name }}:/home/{{ project_user }}/.codex:rw
       {% endif %}
-      {% if config.cursor_sync | default(value=false) %}
+      {% if cursor_sync_enabled %}
       # Cursor AI data persistence
       - {{ home_dir }}/.cursor/vms/{{ project_name }}:/home/{{ project_user }}/.cursor:rw
       {% endif %}
-      {% if config.aider_sync | default(value=false) %}
+      {% if aider_sync_enabled %}
       # Aider AI data persistence
       - {{ home_dir }}/.aider/vms/{{ project_name }}:/home/{{ project_user }}/.aider:rw
       {% endif %}

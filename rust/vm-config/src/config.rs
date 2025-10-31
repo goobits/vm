@@ -167,20 +167,8 @@ pub struct VmConfig {
     pub environment: IndexMap<String, String>,
 
     // 10. Feature Flags & Integrations
-    #[serde(default = "default_true", skip_serializing_if = "is_true")]
-    pub claude_sync: bool,
-
-    #[serde(default = "default_true", skip_serializing_if = "is_true")]
-    pub gemini_sync: bool,
-
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub codex_sync: bool,
-
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub cursor_sync: bool,
-
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub aider_sync: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ai_sync: Option<AiSyncConfig>,
 
     #[serde(default = "default_true")]
     pub copy_git_config: bool,
@@ -825,11 +813,90 @@ pub struct PackageLinkingConfig {
     pub cargo: bool,
 }
 
+/// AI tool synchronization configuration.
+/// Supports both boolean (enable/disable all) and granular per-tool control.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum AiSyncConfig {
+    /// Simple mode: true enables all tools, false disables all
+    Boolean(bool),
+    /// Granular mode: control each tool individually
+    Detailed(AiSyncTools),
+}
+
+impl Default for AiSyncConfig {
+    fn default() -> Self {
+        // Default: enable claude and gemini, disable others
+        AiSyncConfig::Detailed(AiSyncTools::default())
+    }
+}
+
+impl AiSyncConfig {
+    pub fn is_claude_enabled(&self) -> bool {
+        match self {
+            AiSyncConfig::Boolean(enabled) => *enabled,
+            AiSyncConfig::Detailed(tools) => tools.claude,
+        }
+    }
+
+    pub fn is_gemini_enabled(&self) -> bool {
+        match self {
+            AiSyncConfig::Boolean(enabled) => *enabled,
+            AiSyncConfig::Detailed(tools) => tools.gemini,
+        }
+    }
+
+    pub fn is_codex_enabled(&self) -> bool {
+        match self {
+            AiSyncConfig::Boolean(enabled) => *enabled,
+            AiSyncConfig::Detailed(tools) => tools.codex,
+        }
+    }
+
+    pub fn is_cursor_enabled(&self) -> bool {
+        match self {
+            AiSyncConfig::Boolean(enabled) => *enabled,
+            AiSyncConfig::Detailed(tools) => tools.cursor,
+        }
+    }
+
+    pub fn is_aider_enabled(&self) -> bool {
+        match self {
+            AiSyncConfig::Boolean(enabled) => *enabled,
+            AiSyncConfig::Detailed(tools) => tools.aider,
+        }
+    }
+}
+
+/// Individual AI tool sync settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiSyncTools {
+    #[serde(default = "default_true")]
+    pub claude: bool,
+    #[serde(default = "default_true")]
+    pub gemini: bool,
+    #[serde(default)]
+    pub codex: bool,
+    #[serde(default)]
+    pub cursor: bool,
+    #[serde(default)]
+    pub aider: bool,
+}
+
+impl Default for AiSyncTools {
+    fn default() -> Self {
+        Self {
+            claude: true,
+            gemini: true,
+            codex: false,
+            cursor: false,
+            aider: false,
+        }
+    }
+}
+
 fn is_false(b: &bool) -> bool {
     !b
-}
-fn is_true(b: &bool) -> bool {
-    *b
 }
 fn default_true() -> bool {
     true

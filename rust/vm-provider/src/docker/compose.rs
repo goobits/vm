@@ -147,6 +147,10 @@ impl<'a> ComposeOperations<'a> {
 
     /// Ensure AI sync directories exist on host before mounting
     fn ensure_ai_sync_dirs(&self) -> Result<()> {
+        let Some(ai_sync) = &self.config.ai_sync else {
+            return Ok(()); // No AI sync configured
+        };
+
         let home = std::env::var("HOME")
             .map_err(|_| VmError::Internal("HOME environment variable not set".to_string()))?;
 
@@ -158,7 +162,7 @@ impl<'a> ComposeOperations<'a> {
             .unwrap_or("vm-project");
 
         // Claude sync (default: true)
-        if self.config.claude_sync {
+        if ai_sync.is_claude_enabled() {
             let claude_dir = format!("{}/.claude/vms/{}", home, project_name);
             fs::create_dir_all(&claude_dir).map_err(|e| {
                 VmError::Internal(format!("Failed to create Claude sync directory: {}", e))
@@ -166,7 +170,7 @@ impl<'a> ComposeOperations<'a> {
         }
 
         // Gemini sync (default: true)
-        if self.config.gemini_sync {
+        if ai_sync.is_gemini_enabled() {
             let gemini_dir = format!("{}/.gemini/vms/{}", home, project_name);
             fs::create_dir_all(&gemini_dir).map_err(|e| {
                 VmError::Internal(format!("Failed to create Gemini sync directory: {}", e))
@@ -174,7 +178,7 @@ impl<'a> ComposeOperations<'a> {
         }
 
         // Codex sync (default: false, opt-in)
-        if self.config.codex_sync {
+        if ai_sync.is_codex_enabled() {
             let codex_dir = format!("{}/.codex/vms/{}", home, project_name);
             fs::create_dir_all(&codex_dir).map_err(|e| {
                 VmError::Internal(format!("Failed to create Codex sync directory: {}", e))
@@ -182,7 +186,7 @@ impl<'a> ComposeOperations<'a> {
         }
 
         // Cursor sync (default: false, opt-in)
-        if self.config.cursor_sync {
+        if ai_sync.is_cursor_enabled() {
             let cursor_dir = format!("{}/.cursor/vms/{}", home, project_name);
             fs::create_dir_all(&cursor_dir).map_err(|e| {
                 VmError::Internal(format!("Failed to create Cursor sync directory: {}", e))
@@ -190,7 +194,7 @@ impl<'a> ComposeOperations<'a> {
         }
 
         // Aider sync (default: false, opt-in)
-        if self.config.aider_sync {
+        if ai_sync.is_aider_enabled() {
             let aider_dir = format!("{}/.aider/vms/{}", home, project_name);
             fs::create_dir_all(&aider_dir).map_err(|e| {
                 VmError::Internal(format!("Failed to create Aider sync directory: {}", e))
@@ -364,6 +368,15 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("is_macos", &cfg!(target_os = "macos"));
         tera_context.insert("host_mounts", &pkg_context.host_mounts);
         tera_context.insert("host_env_vars", &pkg_context.host_env_vars);
+
+        // AI sync flags for template
+        if let Some(ai_sync) = &self.config.ai_sync {
+            tera_context.insert("claude_sync_enabled", &ai_sync.is_claude_enabled());
+            tera_context.insert("gemini_sync_enabled", &ai_sync.is_gemini_enabled());
+            tera_context.insert("codex_sync_enabled", &ai_sync.is_codex_enabled());
+            tera_context.insert("cursor_sync_enabled", &ai_sync.is_cursor_enabled());
+            tera_context.insert("aider_sync_enabled", &ai_sync.is_aider_enabled());
+        }
         // No local package mounts or environment variables needed
         let local_pipx_mounts: Vec<(String, String)> = Vec::new();
         let local_env_vars: Vec<(String, String)> = Vec::new();
@@ -516,6 +529,15 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("is_macos", &cfg!(target_os = "macos"));
         tera_context.insert("host_mounts", &pkg_context.host_mounts);
         tera_context.insert("host_env_vars", &pkg_context.host_env_vars);
+
+        // AI sync flags for template
+        if let Some(ai_sync) = &self.config.ai_sync {
+            tera_context.insert("claude_sync_enabled", &ai_sync.is_claude_enabled());
+            tera_context.insert("gemini_sync_enabled", &ai_sync.is_gemini_enabled());
+            tera_context.insert("codex_sync_enabled", &ai_sync.is_codex_enabled());
+            tera_context.insert("cursor_sync_enabled", &ai_sync.is_cursor_enabled());
+            tera_context.insert("aider_sync_enabled", &ai_sync.is_aider_enabled());
+        }
         // No local package mounts or environment variables needed
         let local_pipx_mounts: Vec<(String, String)> = Vec::new();
         let local_env_vars: Vec<(String, String)> = Vec::new();

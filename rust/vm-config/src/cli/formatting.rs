@@ -214,8 +214,14 @@ fn flatten_config_to_shell(prefix: &str, config: &VmConfig, exports: &mut Vec<St
     }
 
     // Handle boolean flags
-    add_export_bool(exports, "claude_sync", config.claude_sync);
-    add_export_bool(exports, "gemini_sync", config.gemini_sync);
+    // AI sync - export individual tool flags if configured
+    if let Some(ai_sync) = &config.ai_sync {
+        add_export_bool(exports, "claude_sync", ai_sync.is_claude_enabled());
+        add_export_bool(exports, "gemini_sync", ai_sync.is_gemini_enabled());
+        add_export_bool(exports, "codex_sync", ai_sync.is_codex_enabled());
+        add_export_bool(exports, "cursor_sync", ai_sync.is_cursor_enabled());
+        add_export_bool(exports, "aider_sync", ai_sync.is_aider_enabled());
+    }
 
     // For complex nested structures (project, vm, services, etc.),
     // we'd need to implement similar flattening logic, but the current implementation
