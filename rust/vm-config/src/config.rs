@@ -167,11 +167,20 @@ pub struct VmConfig {
     pub environment: IndexMap<String, String>,
 
     // 10. Feature Flags & Integrations
-    #[serde(default, skip_serializing_if = "is_false")]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub claude_sync: bool,
 
-    #[serde(default, skip_serializing_if = "is_false")]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub gemini_sync: bool,
+
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub codex_sync: bool,
+
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub cursor_sync: bool,
+
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub aider_sync: bool,
 
     #[serde(default = "default_true")]
     pub copy_git_config: bool,
@@ -818,6 +827,9 @@ pub struct PackageLinkingConfig {
 
 fn is_false(b: &bool) -> bool {
     !b
+}
+fn is_true(b: &bool) -> bool {
+    *b
 }
 fn default_true() -> bool {
     true

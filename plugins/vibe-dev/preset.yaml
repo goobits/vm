@@ -12,9 +12,10 @@ npm_packages:
 pip_packages:
   - anthropic
 
-# Enable AI CLI tool installation
+# Enable AI CLI tool installation and data persistence
 claude_sync: true
 gemini_sync: true
+codex_sync: true
 
 aliases:
   claudeyolo: "claude --dangerously-skip-permissions"

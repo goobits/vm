@@ -487,6 +487,18 @@ properties:
     type: boolean
     default: true
     description: Enable Gemini AI data synchronization to ~/.gemini/vms/{project_name}
+  codex_sync:
+    type: boolean
+    default: false
+    description: Enable OpenAI Codex data synchronization to ~/.codex/vms/{project_name}
+  cursor_sync:
+    type: boolean
+    default: false
+    description: Enable Cursor AI data synchronization to ~/.cursor/vms/{project_name}
+  aider_sync:
+    type: boolean
+    default: false
+    description: Enable Aider AI data synchronization to ~/.aider/vms/{project_name}
   package_linking:
     type: object
     description: Package linking detection configuration

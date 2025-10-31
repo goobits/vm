@@ -145,6 +145,61 @@ impl<'a> ComposeOperations<'a> {
         }
     }
 
+    /// Ensure AI sync directories exist on host before mounting
+    fn ensure_ai_sync_dirs(&self) -> Result<()> {
+        let home = std::env::var("HOME")
+            .map_err(|_| VmError::Internal("HOME environment variable not set".to_string()))?;
+
+        let project_name = self
+            .config
+            .project
+            .as_ref()
+            .and_then(|p| p.name.as_deref())
+            .unwrap_or("vm-project");
+
+        // Claude sync (default: true)
+        if self.config.claude_sync {
+            let claude_dir = format!("{}/.claude/vms/{}", home, project_name);
+            fs::create_dir_all(&claude_dir).map_err(|e| {
+                VmError::Internal(format!("Failed to create Claude sync directory: {}", e))
+            })?;
+        }
+
+        // Gemini sync (default: true)
+        if self.config.gemini_sync {
+            let gemini_dir = format!("{}/.gemini/vms/{}", home, project_name);
+            fs::create_dir_all(&gemini_dir).map_err(|e| {
+                VmError::Internal(format!("Failed to create Gemini sync directory: {}", e))
+            })?;
+        }
+
+        // Codex sync (default: false, opt-in)
+        if self.config.codex_sync {
+            let codex_dir = format!("{}/.codex/vms/{}", home, project_name);
+            fs::create_dir_all(&codex_dir).map_err(|e| {
+                VmError::Internal(format!("Failed to create Codex sync directory: {}", e))
+            })?;
+        }
+
+        // Cursor sync (default: false, opt-in)
+        if self.config.cursor_sync {
+            let cursor_dir = format!("{}/.cursor/vms/{}", home, project_name);
+            fs::create_dir_all(&cursor_dir).map_err(|e| {
+                VmError::Internal(format!("Failed to create Cursor sync directory: {}", e))
+            })?;
+        }
+
+        // Aider sync (default: false, opt-in)
+        if self.config.aider_sync {
+            let aider_dir = format!("{}/.aider/vms/{}", home, project_name);
+            fs::create_dir_all(&aider_dir).map_err(|e| {
+                VmError::Internal(format!("Failed to create Aider sync directory: {}", e))
+            })?;
+        }
+
+        Ok(())
+    }
+
     /// Build host package context from config and provider context
     ///
     /// This consolidates all package detection, volume mounting, and environment
@@ -380,6 +435,9 @@ impl<'a> ComposeOperations<'a> {
         build_context_dir: &Path,
         context: &ProviderContext,
     ) -> Result<PathBuf> {
+        // Ensure AI sync directories exist before rendering compose file
+        self.ensure_ai_sync_dirs()?;
+
         let content = self.render_docker_compose(build_context_dir, context)?;
 
         let path = self.temp_dir.join("docker-compose.yml");
@@ -395,6 +453,9 @@ impl<'a> ComposeOperations<'a> {
         instance_name: &str,
         context: &ProviderContext,
     ) -> Result<PathBuf> {
+        // Ensure AI sync directories exist before rendering compose file
+        self.ensure_ai_sync_dirs()?;
+
         let content =
             self.render_docker_compose_with_instance(build_context_dir, instance_name, context)?;
 
