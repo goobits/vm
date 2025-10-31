@@ -77,7 +77,7 @@ impl<'a> BuildOperations<'a> {
     }
 
     /// Safely convert a path to string with descriptive error message
-    pub fn path_to_string(path: &Path) -> Result<&str> {
+    pub(crate) fn path_to_string(path: &Path) -> Result<&str> {
         path.to_str().ok_or_else(|| {
             VmError::Internal(format!(
                 "Path '{}' contains invalid UTF-8 characters and cannot be used as Docker build argument",

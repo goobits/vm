@@ -453,8 +453,10 @@ impl<'a> ComposeOperations<'a> {
             // Also detect and mount existing worktrees (for backward compatibility)
             if let Ok(worktrees) = detect_worktrees() {
                 if !worktrees.is_empty() {
-                    let worktree_mounts: Vec<_> =
-                        worktrees.iter().filter_map(extract_path_mount).collect();
+                    let worktree_mounts: Vec<_> = worktrees
+                        .iter()
+                        .filter_map(|s| extract_path_mount(s))
+                        .collect();
                     tera_context.insert("worktrees", &worktree_mounts);
                 }
             }
@@ -624,8 +626,10 @@ impl<'a> ComposeOperations<'a> {
             // Also detect and mount existing worktrees (for backward compatibility)
             if let Ok(worktrees) = detect_worktrees() {
                 if !worktrees.is_empty() {
-                    let worktree_mounts: Vec<_> =
-                        worktrees.iter().filter_map(extract_path_mount).collect();
+                    let worktree_mounts: Vec<_> = worktrees
+                        .iter()
+                        .filter_map(|s| extract_path_mount(s))
+                        .collect();
                     tera_context.insert("worktrees", &worktree_mounts);
                 }
             }

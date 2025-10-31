@@ -32,8 +32,8 @@ fn auto_adjust_resources(config: &mut VmConfig) -> VmResult<()> {
     if let Some(cpu_limit) = &vm_settings.cpus {
         if let Some(requested_cpus) = cpu_limit.to_count() {
             if requested_cpus > system_cpus {
-                // Use 50% of available CPUs, minimum 2, maximum available
-                let safe_cpus = (system_cpus / 2).max(2).min(system_cpus);
+                // Use 50% of available CPUs, minimum 1, maximum available
+                let safe_cpus = (system_cpus / 2).max(1).min(system_cpus);
 
                 vm_println!(
                     "⚠️  Requested {} CPUs but system only has {}.",
@@ -97,7 +97,7 @@ pub async fn handle_create(
     instance: Option<String>,
     verbose: bool,
     save_as: Option<String>,
-    _from_dockerfile: Option<std::path::PathBuf>,
+    from_dockerfile: Option<std::path::PathBuf>,
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "create");
     let _enter = span.enter();
@@ -108,7 +108,7 @@ pub async fn handle_create(
 
     // Auto-enable force mode for snapshot builds to avoid prompts
     // Note: We still want full resources for snapshot builds, not minimal
-    let is_snapshot_build = save_as.is_some() && _from_dockerfile.is_some();
+    let is_snapshot_build = save_as.is_some() && from_dockerfile.is_some();
     if is_snapshot_build {
         debug!("Auto-enabling force mode for snapshot build from Dockerfile");
         force = true;

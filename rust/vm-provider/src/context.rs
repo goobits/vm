@@ -11,6 +11,7 @@ use vm_config::GlobalConfig;
 pub struct ProviderContext {
     /// Show detailed/verbose output
     pub verbose: bool,
+    /// Global configuration settings
     pub global_config: Option<GlobalConfig>,
     /// Skip Ansible provisioning (used for snapshot builds)
     pub skip_provisioning: bool,
