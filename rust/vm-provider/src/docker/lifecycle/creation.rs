@@ -14,7 +14,7 @@ use crate::{
 use vm_cli::msg;
 use vm_config::config::VmConfig;
 use vm_core::{
-    command_stream::{stream_command, stream_command_visible},
+    command_stream::stream_command_visible,
     error::{Result, VmError},
     vm_dbg,
 };
