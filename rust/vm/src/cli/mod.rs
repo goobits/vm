@@ -635,6 +635,9 @@ pub enum Command {
         source: String,
         /// Destination path (local file or <container>:/path)
         destination: String,
+        /// Copy to/from all running containers
+        #[arg(long)]
+        all_vms: bool,
     },
 
     /// Work with temporary environments

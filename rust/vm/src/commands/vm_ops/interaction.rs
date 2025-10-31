@@ -456,39 +456,111 @@ pub fn handle_copy(
     provider: Box<dyn Provider>,
     source: &str,
     destination: &str,
+    all_vms: bool,
     config: VmConfig,
 ) -> VmResult<()> {
-    debug!(
-        "Copying files: source='{}', destination='{}', provider='{}'",
-        source,
-        destination,
-        provider.name()
-    );
+    if all_vms {
+        // Get all instances from the provider
+        let instances = provider.list_instances().map_err(VmError::from)?;
 
-    let vm_name = config
-        .project
-        .as_ref()
-        .and_then(|p| p.name.as_ref())
-        .map(|s| s.as_str())
-        .unwrap_or("vm-project");
-
-    // Determine direction for user feedback
-    let direction = if source.contains(':') { "from" } else { "to" };
-
-    vm_println!("📦 Copying file {} VM '{}'...", direction, vm_name);
-
-    let result = provider.copy(source, destination, None);
-
-    match &result {
-        Ok(()) => {
-            vm_println!("✓ File copied successfully");
+        if instances.is_empty() {
+            vm_println!("No instances found");
+            return Ok(());
         }
-        Err(e) => {
-            vm_println!("❌ Copy failed: {}", e);
+
+        // Determine direction and prepare the path template
+        let (direction, is_to_vms) = if source.contains(':') {
+            ("from", false)
+        } else {
+            ("to", true)
+        };
+
+        vm_println!(
+            "📦 Copying files {} {} instances...",
+            direction,
+            instances.len()
+        );
+
+        let mut success_count = 0;
+        let mut failed = vec![];
+
+        for instance in &instances {
+            let (actual_source, actual_dest) = if is_to_vms {
+                // Copy TO all VMs: source is local, destination has container prefix
+                let dest_path = destination.strip_prefix(':').unwrap_or(destination);
+                (
+                    source.to_string(),
+                    format!("{}:{}", instance.name, dest_path),
+                )
+            } else {
+                // Copy FROM all VMs: source has container prefix, destination is local
+                let src_path = source.strip_prefix(':').unwrap_or(source);
+                (
+                    format!("{}:{}", instance.name, src_path),
+                    destination.to_string(),
+                )
+            };
+
+            match provider.copy(&actual_source, &actual_dest, Some(&instance.name)) {
+                Ok(()) => {
+                    vm_println!("  ✓ {} '{}'", direction, instance.name);
+                    success_count += 1;
+                }
+                Err(e) => {
+                    vm_println!("  ❌ '{}': {}", instance.name, e);
+                    failed.push(instance.name.clone());
+                }
+            }
         }
+
+        vm_println!(
+            "\n📊 {} of {} copies successful",
+            success_count,
+            instances.len()
+        );
+
+        if !failed.is_empty() {
+            return Err(VmError::general(
+                std::io::Error::new(std::io::ErrorKind::Other, "Some copies failed"),
+                format!("Failed for instances: {}", failed.join(", ")),
+            ));
+        }
+
+        Ok(())
+    } else {
+        // Original single-VM copy logic
+        debug!(
+            "Copying files: source='{}', destination='{}', provider='{}'",
+            source,
+            destination,
+            provider.name()
+        );
+
+        let vm_name = config
+            .project
+            .as_ref()
+            .and_then(|p| p.name.as_ref())
+            .map(|s| s.as_str())
+            .unwrap_or("vm-project");
+
+        // Determine direction for user feedback
+        let direction = if source.contains(':') { "from" } else { "to" };
+
+        vm_println!("📦 Copying file {} VM '{}'...", direction, vm_name);
+
+        let result = provider.copy(source, destination, None);
+
+        match &result {
+            Ok(()) => {
+                vm_println!("✓ File copied successfully");
+            }
+            Err(e) => {
+                vm_println!("❌ Copy failed: {}", e);
+            }
+        }
+
+        result.map_err(VmError::from)
     }
-
-    result.map_err(VmError::from)
 }
 
 #[cfg(test)]

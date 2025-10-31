@@ -7,7 +7,7 @@ use crate::cli::{Args, Command, PluginSubcommand, PortSubcommand};
 use std::path::Path;
 use vm_cli::msg;
 use vm_config::{
-    config::{ProjectConfig, VmConfig},
+    config::{PortsConfig, ProjectConfig, VmConfig},
     detector::detect_project_name,
     resources::detect_resource_defaults,
     AppConfig,
@@ -264,6 +264,11 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
         let mut project_config = config.project.take().unwrap_or_default();
         project_config.name = Some(temp_project_name);
         config.project = Some(project_config);
+
+        // Snapshot builds should not expose project ports or services (avoid host conflicts)
+        config.ports = PortsConfig::default();
+        // Disable services for snapshot builds to keep base images lightweight
+        config.services.clear();
     }
 
     debug!(
@@ -478,7 +483,8 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
         Command::Copy {
             source,
             destination,
-        } => vm_ops::handle_copy(provider, &source, &destination, config.clone()),
+            all_vms,
+        } => vm_ops::handle_copy(provider, &source, &destination, all_vms, config.clone()),
         cmd => {
             vm_error!(
                 "Command {:?} should have been handled in earlier match statement",
