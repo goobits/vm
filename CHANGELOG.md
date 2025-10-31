@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING: Host Sync Configuration Consolidation (v2.0)**: All host-to-VM synchronization features consolidated under unified `host_sync` category
+  - **Migration required**: Update your `vm.yaml` configuration files to v2.0 syntax
+  - **Field mappings:**
+    - `copy_git_config` → `host_sync.git_config`
+    - `development.ssh_agent_forwarding` → `host_sync.ssh_agent`
+    - `development.mount_ssh_config` → `host_sync.ssh_config`
+    - `development.sync_dotfiles` → `host_sync.dotfiles`
+    - `ai_sync` → `host_sync.ai_tools`
+    - `package_linking` → `host_sync.package_links`
+    - `worktrees` → `host_sync.worktrees`
+  - **Benefits:**
+    - Cleaner, more organized configuration structure
+    - All host synchronization settings in one logical place
+    - Better discoverability and documentation
+  - **Migration example:**
+    ```yaml
+    # v1.x (OLD - no longer supported)
+    copy_git_config: true
+    ai_sync: true
+    package_linking:
+      npm: true
+    worktrees:
+      enabled: true
+
+    # v2.0 (NEW - required)
+    host_sync:
+      git_config: true
+      ai_tools: true
+      package_links:
+        npm: true
+      worktrees:
+        enabled: true
+    ```
+
 ## [3.4.0] - 2025-10-30
 
 ### Added

@@ -40,7 +40,7 @@ services:
       - {{ worktrees_base_dir }}:{{ worktrees_base_dir }}:rw
       {% endif %}
       {% if worktrees %}
-      # Git worktrees (backward compatibility - old detection method)
+      # Git worktrees (fallback: individual worktree mounts)
       {% for worktree in worktrees %}
       - {{ worktree.0 }}:/workspace/{{ worktree.1 }}:rw
       {% endfor %}

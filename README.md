@@ -28,9 +28,9 @@ Create development environments that automatically configure themselves based on
 
 **Git Worktree Support** — Create worktrees from inside containers that work on host too! Use `vm-worktree add feature-x` for instant branch switching without leaving your container.
 
-**SSH Agent Forwarding** — Use your host SSH keys inside VMs without copying private keys. Enable with `development.ssh_agent_forwarding: true` for secure git operations and remote SSH access.
+**SSH Agent Forwarding** — Use your host SSH keys inside VMs without copying private keys. Enable with `host_sync.ssh_agent: true` for secure git operations and remote SSH access.
 
-**Dotfiles Sync** — Selectively mount your configuration files (`~/.vimrc`, `~/.tmux.conf`, etc.) into VMs with `development.sync_dotfiles` for a consistent development environment without manual copying.
+**Dotfiles Sync** — Selectively mount your configuration files (`~/.vimrc`, `~/.tmux.conf`, etc.) into VMs with `host_sync.dotfiles` for a consistent development environment without manual copying.
 
 **Dynamic Port Forwarding** — On-demand port tunneling with `vm port forward 8080:3000` for debugging and testing. No port conflicts between VMs, automatic cleanup, perfect for ephemeral debugging sessions.
 

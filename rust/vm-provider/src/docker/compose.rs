@@ -67,13 +67,13 @@ fn configure_ssh_agent(config: &VmConfig, tera_context: &mut TeraContext) {
     tera_context.insert("ssh_auth_sock", &ssh_auth_sock);
 
     // Check if we should mount ~/.ssh/config (default to true if ssh_agent is enabled)
-    let mount_ssh_config = config
+    let ssh_config_enabled = config
         .host_sync
         .as_ref()
         .map(|hs| hs.ssh_config)
         .unwrap_or(ssh_agent_enabled);
 
-    if mount_ssh_config {
+    if ssh_config_enabled {
         if let Some(ssh_config_path) = get_ssh_config_path() {
             tera_context.insert("ssh_config_path", &ssh_config_path);
         }

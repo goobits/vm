@@ -774,14 +774,16 @@ Automatically copy your host's Git configuration (`user.name`, `user.email`, etc
 
 ```yaml
 # vm.yaml
-copy_git_config: true  # default
+host_sync:
+  git_config: true  # default
 ```
 
-To disable this feature, set `copy_git_config` to `false`:
+To disable this feature, set `git_config` to `false`:
 
 ```yaml
 # vm.yaml
-copy_git_config: false
+host_sync:
+  git_config: false
 ```
 
 #### Timezone
@@ -812,9 +814,9 @@ Securely use your host's SSH keys inside the VM without copying private keys:
 
 ```yaml
 # vm.yaml
-development:
-  ssh_agent_forwarding: true  # Enable SSH agent forwarding
-  mount_ssh_config: true      # Mount ~/.ssh/config (optional, defaults to true)
+host_sync:
+  ssh_agent: true      # Enable SSH agent forwarding
+  ssh_config: true     # Mount ~/.ssh/config (optional, defaults to true)
 ```
 
 **What it does:**
@@ -861,8 +863,8 @@ Selectively sync your configuration files from host to VM for a consistent devel
 
 ```yaml
 # vm.yaml
-development:
-  sync_dotfiles:
+host_sync:
+  dotfiles:
     - "~/.vimrc"            # Vim configuration
     - "~/.config/nvim"      # Neovim configuration directory
     - "~/.tmux.conf"        # Tmux configuration
@@ -892,16 +894,16 @@ development:
 
 **Vim/Neovim users:**
 ```yaml
-development:
-  sync_dotfiles:
+host_sync:
+  dotfiles:
     - "~/.vimrc"
     - "~/.config/nvim"
 ```
 
 **Tmux + Zsh users:**
 ```yaml
-development:
-  sync_dotfiles:
+host_sync:
+  dotfiles:
     - "~/.tmux.conf"
     - "~/.zshrc"
     - "~/.oh-my-zsh"  # If using oh-my-zsh
@@ -909,8 +911,8 @@ development:
 
 **Full stack developers:**
 ```yaml
-development:
-  sync_dotfiles:
+host_sync:
+  dotfiles:
     - "~/.gitconfig"
     - "~/.npmrc"
     - "~/.pypirc"
