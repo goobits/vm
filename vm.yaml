@@ -1,4 +1,4 @@
-version: 1.2.1
+version: "2.0"
 provider: docker
 os: auto
 project:
@@ -25,6 +25,7 @@ apt_packages:
 npm_packages:
   - '@anthropic-ai/claude-code'
   - '@google/gemini-cli'
+  - '@openai/codex'
 terminal:
   emoji: 🚀
   show_git_branch: true
@@ -35,11 +36,9 @@ aliases:
   claudeyolo: claude --dangerously-skip-permissions
   codexyolo: codex --dangerously-bypass-approvals-and-sandbox
   geminiyolo: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --approval-mode=yolo
-ai_sync: true
-npm_packages:
-  - '@anthropic-ai/claude-code'
-  - '@google/gemini-cli'
-  - '@openai/codex'
+host_sync:
+  git_config: true
+  ai_tools: true
 networking:
   networks:
   - jules

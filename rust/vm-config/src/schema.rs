@@ -165,19 +165,37 @@ fn build_vm_schema_cache() -> HashMap<String, SchemaType> {
     cache.insert("aliases".to_string(), SchemaType::Object);
     cache.insert("environment".to_string(), SchemaType::Object);
 
-    // Boolean sync flags
-    cache.insert("claude_sync".to_string(), SchemaType::Boolean);
-    cache.insert("gemini_sync".to_string(), SchemaType::Boolean);
-    cache.insert("copy_git_config".to_string(), SchemaType::Boolean);
-
-    // Package linking
-    cache.insert("package_linking.npm".to_string(), SchemaType::Boolean);
-    cache.insert("package_linking.pip".to_string(), SchemaType::Boolean);
-    cache.insert("package_linking.cargo".to_string(), SchemaType::Boolean);
-
-    // Worktrees
-    cache.insert("worktrees.enabled".to_string(), SchemaType::Boolean);
-    cache.insert("worktrees.base_path".to_string(), SchemaType::String);
+    // Host synchronization (v2.0)
+    cache.insert("host_sync.git_config".to_string(), SchemaType::Boolean);
+    cache.insert("host_sync.ssh_agent".to_string(), SchemaType::Boolean);
+    cache.insert("host_sync.ssh_config".to_string(), SchemaType::Boolean);
+    cache.insert(
+        "host_sync.dotfiles".to_string(),
+        SchemaType::Array {
+            item_type: Box::new(SchemaType::String),
+        },
+    );
+    cache.insert("host_sync.ai_tools".to_string(), SchemaType::Boolean); // Can also be object
+    cache.insert(
+        "host_sync.package_links.npm".to_string(),
+        SchemaType::Boolean,
+    );
+    cache.insert(
+        "host_sync.package_links.pip".to_string(),
+        SchemaType::Boolean,
+    );
+    cache.insert(
+        "host_sync.package_links.cargo".to_string(),
+        SchemaType::Boolean,
+    );
+    cache.insert(
+        "host_sync.worktrees.enabled".to_string(),
+        SchemaType::Boolean,
+    );
+    cache.insert(
+        "host_sync.worktrees.base_path".to_string(),
+        SchemaType::String,
+    );
 
     // Networking
     cache.insert(

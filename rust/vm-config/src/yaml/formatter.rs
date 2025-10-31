@@ -32,14 +32,12 @@ const FIELD_ORDER: &[&str] = &[
     "npm_packages",
     "pip_packages",
     "cargo_packages",
-    "package_linking",
     // 9. Development Environment
     "terminal",
     "aliases",
     "environment",
-    // 10. Feature Flags & Integrations
-    "claude_sync",
-    "gemini_sync",
+    // 10. Host Synchronization
+    "host_sync",
     // 11. Security
     "security",
 ];

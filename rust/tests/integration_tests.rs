@@ -157,7 +157,7 @@ fn test_host_integration_features() -> Result<()> {
     fs::write(fixture.test_dir.join(".gitconfig"), gitconfig_content)?;
 
     // Step 2: Set local config to enable host integrations
-    ConfigOps::set("copy_git_config", "true", false, false)?;
+    ConfigOps::set("host_sync.git_config", "true", false, false)?;
     ConfigOps::set("vm.timezone", "auto", false, false)?;
 
     // Step 3: Load the configuration
