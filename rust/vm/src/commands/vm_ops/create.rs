@@ -93,7 +93,7 @@ pub async fn handle_create(
     provider: Box<dyn Provider>,
     mut config: VmConfig,
     global_config: GlobalConfig,
-    force: bool,
+    mut force: bool,
     instance: Option<String>,
     verbose: bool,
     save_as: Option<String>,
@@ -106,7 +106,16 @@ pub async fn handle_create(
     // Note: Config modifications for --from-dockerfile and --save-as are now handled
     // in commands/mod.rs before provider creation to avoid container name conflicts
 
-    if force {
+    // Auto-enable force mode for snapshot builds to avoid prompts
+    // Note: We still want full resources for snapshot builds, not minimal
+    let is_snapshot_build = save_as.is_some() && _from_dockerfile.is_some();
+    if is_snapshot_build {
+        debug!("Auto-enabling force mode for snapshot build from Dockerfile");
+        force = true;
+    }
+
+    if force && !is_snapshot_build {
+        // Regular force mode: use minimal resources and skip validation
         vm_println!("⚡ Force mode: using minimal resources and skipping validation");
         let mut vm_settings = config.vm.take().unwrap_or_default();
         vm_settings.memory = Some(vm_config::config::MemoryLimit::Limited(2048));
