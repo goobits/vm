@@ -374,6 +374,7 @@ impl DockerOps {
         context_dir: &std::path::Path,
         build_args: Option<&std::collections::HashMap<String, String>>,
     ) -> Result<()> {
+        use vm_core::command_stream::stream_command_visible;
         use vm_core::vm_info;
 
         vm_info!(
@@ -383,34 +384,29 @@ impl DockerOps {
         );
         vm_info!("This may take 5-15 minutes on first build...");
 
-        let mut cmd = DockerCommand::new()
-            .subcommand("build")
-            .arg("-f")
-            .arg(dockerfile_path.to_string_lossy().to_string())
-            .arg("-t")
-            .arg(image_name);
+        let mut args = vec![
+            "build".to_string(),
+            "-f".to_string(),
+            dockerfile_path.to_string_lossy().to_string(),
+            "-t".to_string(),
+            image_name.to_string(),
+        ];
 
         // Add build arguments if provided
-        if let Some(args) = build_args {
-            for (key, value) in args {
-                cmd = cmd.arg("--build-arg").arg(format!("{}={}", key, value));
+        if let Some(build_args_map) = build_args {
+            for (key, value) in build_args_map {
+                args.push("--build-arg".to_string());
+                args.push(format!("{}={}", key, value));
             }
         }
 
-        let output = cmd
-            .arg(context_dir.to_string_lossy().to_string())
-            .execute_raw()?;
+        args.push(context_dir.to_string_lossy().to_string());
 
-        if output.status.success() {
-            vm_info!("✓ Successfully built custom base image '{}'", image_name);
-            Ok(())
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            Err(VmError::Internal(format!(
-                "Failed to build custom base image '{}': {}",
-                image_name, stderr
-            )))
-        }
+        // Stream the build output directly to the user
+        stream_command_visible("docker", &args)?;
+
+        vm_info!("✓ Successfully built custom base image '{}'", image_name);
+        Ok(())
     }
 }
 
