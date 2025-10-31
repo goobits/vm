@@ -305,12 +305,17 @@ ARG PROJECT_UID={uid}
 ARG PROJECT_GID={gid}
 ARG PROJECT_USER={user}
 
+# Switch to root temporarily to copy system resources
+USER root
+
 # Copy shared resources (shell prompt, utilities, etc.)
 COPY shared/ /usr/local/share/vm/
 
-# Copy git worktree helper script
-COPY vm-worktree.sh /usr/local/bin/vm-worktree
-RUN chmod +x /usr/local/bin/vm-worktree
+# Copy git worktree helper script with executable permissions
+COPY --chmod=755 vm-worktree.sh /usr/local/bin/vm-worktree
+
+# Switch back to the project user (if the base image set one)
+USER ${user}
 
 # Set working directory
 WORKDIR /workspace
