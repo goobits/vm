@@ -10,8 +10,8 @@ use serde_yaml_ng::Value;
 use crate::config::VmConfig;
 use crate::ports::PortRange;
 use crate::preset::PresetDetector;
+use crate::yaml::core::CoreOperations;
 use vm_core::error::Result;
-use vm_core::error::VmError;
 use vm_core::vm_warning;
 
 static PORT_PLACEHOLDER_RE: OnceLock<Regex> = OnceLock::new();
@@ -125,8 +125,9 @@ pub(crate) fn load_preset_with_placeholders(
         raw_content
     };
 
-    let preset_file: crate::preset::PresetFile = serde_yaml::from_str(&processed_content)
-        .map_err(|e| VmError::Config(format!("Failed to parse preset '{preset_name}': {e}")))?;
+    let source_desc = format!("preset '{}' with placeholders", preset_name);
+    let preset_file: crate::preset::PresetFile =
+        CoreOperations::parse_yaml_with_diagnostics(&processed_content, &source_desc)?;
 
     Ok(preset_file.config)
 }

@@ -13,9 +13,10 @@ impl FieldOperations {
         let mut value = CoreOperations::load_yaml_file(file)?;
 
         // Parse new value as YAML
-        let parsed_value: Value = serde_yaml::from_str(new_value).map_err(|e| {
-            VmError::Serialization(format!("Failed to parse new value: {new_value}: {e}"))
-        })?;
+        let parsed_value: Value = CoreOperations::parse_yaml_with_diagnostics(
+            new_value,
+            &format!("field value '{}'", field),
+        )?;
 
         // Set the field
         Self::set_field_value(&mut value, field, parsed_value)?;

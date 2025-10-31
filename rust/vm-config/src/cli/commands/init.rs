@@ -106,8 +106,10 @@ pub fn execute(
 
     // Load embedded defaults
     const EMBEDDED_DEFAULTS: &str = include_str!("../../../../../configs/defaults.yaml");
-    let mut config: VmConfig = serde_yaml::from_str(EMBEDDED_DEFAULTS)
-        .map_err(|e| VmError::Serialization(format!("Failed to parse embedded defaults: {e}")))?;
+    let mut config: VmConfig = crate::yaml::CoreOperations::parse_yaml_with_diagnostics(
+        EMBEDDED_DEFAULTS,
+        "embedded defaults",
+    )?;
 
     // Customize config for this directory
     if let Some(ref mut project) = config.project {
@@ -185,11 +187,10 @@ pub fn execute(
                 }
             };
 
-            serde_yaml::from_str(default_config).map_err(|e| {
-                VmError::Config(format!(
-                    "Failed to parse embedded service config for {service}: {e}"
-                ))
-            })?
+            crate::yaml::CoreOperations::parse_yaml_with_diagnostics(
+                default_config,
+                &format!("embedded service config for {}", service),
+            )?
         };
 
         // Extract only the specific service we want to enable from the service config
@@ -220,9 +221,8 @@ pub fn execute(
     let config_yaml = serde_yaml::to_string(&config).map_err(|e| {
         VmError::Serialization(format!("Failed to serialize configuration to YAML: {e}"))
     })?;
-    let config_value: Value = serde_yaml::from_str(&config_yaml).map_err(|e| {
-        VmError::Serialization(format!("Failed to convert config to YAML Value: {e}"))
-    })?;
+    let config_value: Value =
+        crate::yaml::CoreOperations::parse_yaml_with_diagnostics(&config_yaml, "generated config")?;
 
     // Write using the centralized function for consistent formatting
     CoreOperations::write_yaml_file(&target_path, &config_value).map_err(|e| {
