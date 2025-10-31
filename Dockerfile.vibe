@@ -89,10 +89,8 @@ RUN apt-get update && apt-get install -y \
       # Install pip via get-pip.py (works for all Python versions)
       && curl -sS https://bootstrap.pypa.io/get-pip.py | ${PYTHON_STABLE}
 
-# Install Ansible (required for VM provisioning)
-RUN apt-get update \
-    && apt-get install -y ansible \
-    && rm -rf /var/lib/apt/lists/*
+# Install Ansible (compatible with installed Python version)
+RUN pip3 install --no-cache-dir ansible
 
   # Install Rust and Cargo (latest stable - auto-installs latest stable release)
   RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile default \
