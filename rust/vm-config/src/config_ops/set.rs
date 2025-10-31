@@ -31,7 +31,8 @@ pub fn set(field: &str, values: &[String], global: bool, dry_run: bool) -> Resul
 
     let mut yaml_value = if config_path.exists() {
         let content = fs::read_to_string(&config_path)?;
-        serde_yaml::from_str(&content)?
+        let source_desc = format!("{}", config_path.display());
+        CoreOperations::parse_yaml_with_diagnostics(&content, &source_desc)?
     } else {
         Value::Mapping(Mapping::new())
     };

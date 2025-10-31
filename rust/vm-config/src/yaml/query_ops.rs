@@ -19,8 +19,8 @@ impl QueryOperations {
     pub fn filter(file: &PathBuf, expression: &str, output_format: &OutputFormat) -> Result<()> {
         let content = CoreOperations::read_file_or_stdin(file)?;
 
-        let value: Value = serde_yaml::from_str(&content)
-            .map_err(|e| VmError::Serialization(format!("Invalid YAML in file: {file:?}: {e}")))?;
+        let source_desc = format!("file: {file:?}");
+        let value: Value = CoreOperations::parse_yaml_with_diagnostics(&content, &source_desc)?;
 
         // Apply the filter expression
         let result = Self::apply_filter(&value, expression);

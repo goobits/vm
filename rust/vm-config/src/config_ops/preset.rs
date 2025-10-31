@@ -57,7 +57,8 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
     let base_config = if global {
         if config_path.exists() {
             let content = std::fs::read_to_string(&config_path)?;
-            serde_yaml::from_str(&content)?
+            let source_desc = format!("{}", config_path.display());
+            CoreOperations::parse_yaml_with_diagnostics(&content, &source_desc)?
         } else {
             VmConfig::default()
         }
@@ -84,7 +85,7 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
     }
 
     let config_yaml = serde_yaml::to_string(&merged_config)?;
-    let config_value = serde_yaml::from_str(&config_yaml)?;
+    let config_value = CoreOperations::parse_yaml_with_diagnostics(&config_yaml, "merged config")?;
     CoreOperations::write_yaml_file(&config_path, &config_value)?;
 
     let scope = if global { "global" } else { "local" };

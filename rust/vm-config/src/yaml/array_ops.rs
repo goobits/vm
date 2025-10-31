@@ -13,12 +13,11 @@ impl ArrayOperations {
     pub fn add(file: &PathBuf, path: &str, item: &str) -> Result<()> {
         let content = CoreOperations::read_file_or_stdin(file)?;
 
-        let mut value: Value = serde_yaml::from_str(&content)
-            .map_err(|e| VmError::Serialization(format!("Invalid YAML in file: {file:?}: {e}")))?;
+        let source_desc = format!("file: {file:?}");
+        let mut value: Value = CoreOperations::parse_yaml_with_diagnostics(&content, &source_desc)?;
 
         // Parse the item as YAML
-        let new_item: Value = serde_yaml::from_str(item)
-            .map_err(|e| VmError::Serialization(format!("Invalid YAML item: {item}: {e}")))?;
+        let new_item: Value = CoreOperations::parse_yaml_with_diagnostics(item, "array item")?;
 
         // Navigate to the path and add the item
         let path_parts: Vec<&str> = path.split('.').collect();
@@ -32,8 +31,8 @@ impl ArrayOperations {
     pub fn remove(file: &PathBuf, path: &str, filter: &str) -> Result<()> {
         let content = CoreOperations::read_file_or_stdin(file)?;
 
-        let mut value: Value = serde_yaml::from_str(&content)
-            .map_err(|e| VmError::Serialization(format!("Invalid YAML in file: {file:?}: {e}")))?;
+        let source_desc = format!("file: {file:?}");
+        let mut value: Value = CoreOperations::parse_yaml_with_diagnostics(&content, &source_desc)?;
 
         // Navigate to the path and remove matching items
         let path_parts: Vec<&str> = path.split('.').collect();
@@ -76,8 +75,8 @@ impl ArrayOperations {
 
         // Convert via string to avoid type compatibility issues
         let yaml_string = serde_yaml::to_string(&json_value)?;
-        let yaml_value: Value = serde_yaml::from_str(&yaml_string)
-            .map_err(|e| VmError::Serialization(format!("Failed to convert JSON to YAML: {e}")))?;
+        let yaml_value: Value =
+            CoreOperations::parse_yaml_with_diagnostics(&yaml_string, "JSON-to-YAML conversion")?;
 
         // Navigate to the path and add the object
         let path_parts: Vec<&str> = path.split('.').collect();

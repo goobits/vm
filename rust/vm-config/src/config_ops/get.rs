@@ -7,6 +7,7 @@ use serde_yaml_ng::Value;
 
 // Internal imports
 use crate::config_ops::io::{find_local_config, get_global_config_path};
+use crate::yaml::core::CoreOperations;
 use vm_core::error::Result;
 use vm_core::{vm_error, vm_error_hint, vm_println};
 use vm_messages::messages::MESSAGES;
@@ -37,7 +38,8 @@ pub fn get(field: Option<&str>, global: bool) -> Result<()> {
     }
 
     let content = fs::read_to_string(&config_path)?;
-    let yaml_value: Value = serde_yaml::from_str(&content)?;
+    let source_desc = format!("{}", config_path.display());
+    let yaml_value: Value = CoreOperations::parse_yaml_with_diagnostics(&content, &source_desc)?;
 
     match field {
         Some(f) => {
