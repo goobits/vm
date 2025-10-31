@@ -294,7 +294,11 @@ impl<'a> BuildOperations<'a> {
     /// been built into an image, so we just need a minimal wrapper Dockerfile that:
     /// 1. Uses FROM the pre-built custom image
     /// 2. Copies shared resources (shell prompt, etc.)
-    pub fn generate_dockerfile_from_image(&self, output_path: &Path, base_image: &str) -> Result<()> {
+    pub fn generate_dockerfile_from_image(
+        &self,
+        output_path: &Path,
+        base_image: &str,
+    ) -> Result<()> {
         let user_config = self.get_user_config();
 
         let content = format!(
