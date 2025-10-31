@@ -10,7 +10,77 @@ use super::{
     ANSIBLE_PLAYBOOK_PATH, CONTAINER_READINESS_MAX_ATTEMPTS, CONTAINER_READINESS_SLEEP_SECONDS,
 };
 
+/// Adapter to convert AnsibleProgressParser to CoreProgressParser trait
+struct AnsibleParserAdapter(AnsibleProgressParser);
+
+impl CoreProgressParser for AnsibleParserAdapter {
+    fn parse_line(&mut self, line: &str) {
+        ProgressParser::parse_line(&mut self.0, line);
+    }
+    fn finish(&self) {
+        ProgressParser::finish(&self.0);
+    }
+}
+
 impl<'a> LifecycleOperations<'a> {
+    /// Run Ansible provisioning on a container
+    fn run_ansible_provisioning(container_name: &str, context: &ProviderContext) -> Result<()> {
+        let parser = if context.is_verbose() {
+            None
+        } else {
+            Some(
+                Box::new(AnsibleParserAdapter(AnsibleProgressParser::new(false)))
+                    as Box<dyn CoreProgressParser>,
+            )
+        };
+
+        stream_command_with_progress(
+            "docker",
+            &[
+                "exec",
+                container_name,
+                "bash",
+                "-c",
+                &format!(
+                    "ansible-playbook -i localhost, -c local {} {}",
+                    ANSIBLE_PLAYBOOK_PATH,
+                    context.ansible_verbosity()
+                ),
+            ],
+            parser,
+        )
+        .map_err(|e| {
+            VmError::Internal(format!(
+                "Ansible provisioning failed. The playbook exited with an error. To see the full output, run `vm create --verbose`. Error: {e}"
+            ))
+        })?;
+
+        Ok(())
+    }
+
+    /// Wait for container to become ready
+    fn wait_for_container_ready(container_name: &str) -> Result<()> {
+        let mut attempt = 1;
+        while attempt <= CONTAINER_READINESS_MAX_ATTEMPTS {
+            if crate::docker::DockerOps::test_container_readiness(container_name) {
+                return Ok(());
+            }
+            if attempt == CONTAINER_READINESS_MAX_ATTEMPTS {
+                vm_error!("Container failed to become ready");
+                return Err(VmError::Internal(format!(
+                    "Container '{}' failed to become ready after {} seconds. Container may be unhealthy or not starting properly",
+                    container_name,
+                    u64::from(CONTAINER_READINESS_MAX_ATTEMPTS) * CONTAINER_READINESS_SLEEP_SECONDS
+                )));
+            }
+            std::thread::sleep(std::time::Duration::from_secs(
+                CONTAINER_READINESS_SLEEP_SECONDS,
+            ));
+            attempt += 1;
+        }
+        Ok(())
+    }
+
     /// Re-provision existing container (public API)
     pub fn provision_existing(&self, container: Option<&str>) -> Result<()> {
         let context = ProviderContext::default();
@@ -43,69 +113,11 @@ impl<'a> LifecycleOperations<'a> {
         }
 
         // Step 6: Wait for readiness and run ansible (configuration only)
-        let mut attempt = 1;
-        while attempt <= CONTAINER_READINESS_MAX_ATTEMPTS {
-            if crate::docker::DockerOps::test_container_readiness(&self.container_name()) {
-                break;
-            }
-            if attempt == CONTAINER_READINESS_MAX_ATTEMPTS {
-                vm_error!("Container failed to become ready");
-                return Err(VmError::Internal(format!(
-                    "Container '{}' failed to become ready after {} seconds. Container may be unhealthy or not starting properly",
-                    self.container_name(),
-                    u64::from(CONTAINER_READINESS_MAX_ATTEMPTS) * CONTAINER_READINESS_SLEEP_SECONDS
-                )));
-            }
-            std::thread::sleep(std::time::Duration::from_secs(
-                CONTAINER_READINESS_SLEEP_SECONDS,
-            ));
-            attempt += 1;
-        }
+        Self::wait_for_container_ready(&self.container_name())?;
 
         self.prepare_and_copy_config()?;
 
-        // Use progress-aware streaming with AnsibleProgressParser
-        let parser = if context.is_verbose() {
-            None
-        } else {
-            // Implement the trait adapter
-            struct AnsibleParserAdapter(AnsibleProgressParser);
-            impl CoreProgressParser for AnsibleParserAdapter {
-                fn parse_line(&mut self, line: &str) {
-                    ProgressParser::parse_line(&mut self.0, line);
-                }
-                fn finish(&self) {
-                    ProgressParser::finish(&self.0);
-                }
-            }
-            Some(
-                Box::new(AnsibleParserAdapter(AnsibleProgressParser::new(false)))
-                    as Box<dyn CoreProgressParser>,
-            )
-        };
-
-        stream_command_with_progress(
-            "docker",
-            &[
-                "exec",
-                &self.container_name(),
-                "bash",
-                "-c",
-                &format!(
-                    "ansible-playbook -i localhost, -c local {} {}",
-                    ANSIBLE_PLAYBOOK_PATH,
-                    context.ansible_verbosity()
-                ),
-            ],
-            parser,
-        )
-        .map_err(|e| {
-            VmError::Internal(format!(
-                "Ansible provisioning failed. The playbook exited with an error. To see the full output, run `vm create --verbose`. Error: {e}"
-            ))
-        })?;
-
-        Ok(())
+        Self::run_ansible_provisioning(&self.container_name(), context)
     }
 
     /// Provision container with custom instance name and context
@@ -122,67 +134,10 @@ impl<'a> LifecycleOperations<'a> {
         let container_name = self.container_name_with_instance(instance_name);
 
         // Step 6: Wait for readiness and run ansible (configuration only)
-        let mut attempt = 1;
-        while attempt <= CONTAINER_READINESS_MAX_ATTEMPTS {
-            if crate::docker::DockerOps::test_container_readiness(&container_name) {
-                break;
-            }
-            if attempt == CONTAINER_READINESS_MAX_ATTEMPTS {
-                vm_error!("Container failed to become ready");
-                return Err(VmError::Internal(format!(
-                    "Container '{}' failed to become ready after {} seconds. Container may be unhealthy or not starting properly",
-                    container_name,
-                    u64::from(CONTAINER_READINESS_MAX_ATTEMPTS) * CONTAINER_READINESS_SLEEP_SECONDS
-                )));
-            }
-            std::thread::sleep(std::time::Duration::from_secs(
-                CONTAINER_READINESS_SLEEP_SECONDS,
-            ));
-            attempt += 1;
-        }
+        Self::wait_for_container_ready(&container_name)?;
 
         self.prepare_and_copy_config()?;
 
-        // Use progress-aware streaming with AnsibleProgressParser
-        let parser = if context.is_verbose() {
-            None
-        } else {
-            // Implement the trait adapter
-            struct AnsibleParserAdapter(AnsibleProgressParser);
-            impl CoreProgressParser for AnsibleParserAdapter {
-                fn parse_line(&mut self, line: &str) {
-                    ProgressParser::parse_line(&mut self.0, line);
-                }
-                fn finish(&self) {
-                    ProgressParser::finish(&self.0);
-                }
-            }
-            Some(
-                Box::new(AnsibleParserAdapter(AnsibleProgressParser::new(false)))
-                    as Box<dyn CoreProgressParser>,
-            )
-        };
-
-        stream_command_with_progress(
-            "docker",
-            &[
-                "exec",
-                &container_name,
-                "bash",
-                "-c",
-                &format!(
-                    "ansible-playbook -i localhost, -c local {} {}",
-                    ANSIBLE_PLAYBOOK_PATH,
-                    context.ansible_verbosity()
-                ),
-            ],
-            parser,
-        )
-        .map_err(|e| {
-            VmError::Internal(format!(
-                "Ansible provisioning failed. The playbook exited with an error. To see the full output, run `vm create --verbose`. Error: {e}"
-            ))
-        })?;
-        Ok(())
+        Self::run_ansible_provisioning(&container_name, context)
     }
 }
