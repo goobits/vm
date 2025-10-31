@@ -248,9 +248,12 @@ impl<'a> BuildOperations<'a> {
         // Copy embedded resources to build context
         resources::copy_embedded_resources(&shared_dir)?;
 
-        // Generate Dockerfile from template
-        let dockerfile_path = build_context.join("Dockerfile.generated");
-        self.generate_dockerfile(&dockerfile_path)?;
+        // Only generate Dockerfile from template if not using a custom Dockerfile
+        // (Custom Dockerfiles are already built in the BoxConfig::Dockerfile match arm above)
+        if !matches!(box_config, BoxConfig::Dockerfile { .. }) {
+            let dockerfile_path = build_context.join("Dockerfile.generated");
+            self.generate_dockerfile(&dockerfile_path)?;
+        }
 
         // Copy vm-worktree.sh script to build context
         // The Dockerfile will COPY this into the container
