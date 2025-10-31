@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0] - 2025-10-31
+
 ### Changed
 
 - **BREAKING: Host Sync Configuration Consolidation (v2.0)**: All host-to-VM synchronization features consolidated under unified `host_sync` category
@@ -42,6 +44,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       worktrees:
         enabled: true
     ```
+
+### Added
+
+- **AI Tool Data Synchronization**: Enhanced multi-tool support for AI development environments
+  - Configurable sync for Claude, Gemini, Codex, Cursor, and Aider
+  - Boolean shorthand (`ai_tools: true`) or granular control per tool
+  - Automatic data directory creation and mounting
+  - Part of unified `host_sync` configuration
+
+- **Ansible Support**: First-class Ansible support for infrastructure automation
+  - Auto-installed via pip for Python 3.13 compatibility
+  - macOS compatibility improvements
+  - Integrated into development environment
+
+- **Copy Command Enhancement**: Bulk VM file copying
+  - New `--all-vms` flag to copy files across all VMs simultaneously
+  - Useful for distributing configuration updates
+
+- **Progressive Build Output**: Real-time Docker build feedback
+  - Live progress display when building custom Dockerfiles
+  - Wrapper Dockerfile progress indication
+  - Container startup progress feedback
+  - Bypasses log level for critical build output
+
+- **Development Environment Improvements**:
+  - Unconditional `~/.local/bin` in PATH for user binaries
+  - git-lfs (Large File Storage) support
+  - Auto-detection of latest stable Python version
+  - Version output for all auto-detected languages
+
+### Fixed
+
+- **VM Destroy**: Now correctly respects container name argument instead of always using default
+- **Shell History Persistence**: Ensures shell history survives across `vm ssh` sessions
+- **Snapshot Build Improvements**:
+  - Auto-force-recreate for snapshot builds from Dockerfile
+  - Always destroy stale containers when forcing recreate
+  - Skip service registration for snapshot builds
+  - Resolve container name conflicts
+- **User Permissions**: Fixed permission handling in wrapper Dockerfiles
+- **Python 3.13 Support**: Updated Dockerfile Python installation for deadsnakes PPA
+- **Code Quality**: Resolved clippy warnings, removed unused imports and needless borrows
+- **Deprecated APIs**: Migrated from deprecated `cargo_bin` to `cargo::cargo_bin!` macro
 
 ## [3.4.0] - 2025-10-30
 
