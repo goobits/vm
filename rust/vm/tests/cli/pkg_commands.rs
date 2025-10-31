@@ -20,7 +20,9 @@ impl PkgTestFixture {
         fs::create_dir_all(&test_dir)?;
 
         // Get the path to the vm binary
-        let binary_path = Command::cargo_bin("vm")?.get_program().into();
+        let binary_path = Command::new(assert_cmd::cargo::cargo_bin!("vm"))
+            .get_program()
+            .into();
 
         Ok(Self {
             _temp_dir: temp_dir,

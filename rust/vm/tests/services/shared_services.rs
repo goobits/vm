@@ -23,7 +23,9 @@ impl CliTestFixture {
         let temp_dir = TempDir::new()?;
 
         // Get the path to the vm binary
-        let vm_binary = Command::cargo_bin("vm")?.get_program().into();
+        let vm_binary = Command::new(assert_cmd::cargo::cargo_bin!("vm"))
+            .get_program()
+            .into();
 
         Ok(Self {
             _temp_dir: temp_dir,
@@ -230,7 +232,7 @@ fn test_shared_postgres_lifecycle_integration() -> Result<()> {
     let project_dir = home_dir.join("test-project");
     std::fs::create_dir_all(&project_dir)?;
 
-    let vm_binary = assert_cmd::cargo::cargo_bin("vm");
+    let vm_binary = assert_cmd::cargo::cargo_bin!("vm");
 
     // 1. Enable shared postgresql globally
     let output = Command::new(&vm_binary)
@@ -317,7 +319,7 @@ fn test_shared_redis_lifecycle_integration() -> Result<()> {
     let project_dir = home_dir.join("test-project-redis");
     std::fs::create_dir_all(&project_dir)?;
 
-    let vm_binary = assert_cmd::cargo::cargo_bin("vm");
+    let vm_binary = assert_cmd::cargo::cargo_bin!("vm");
 
     // 1. Enable shared redis globally
     let output = Command::new(&vm_binary)

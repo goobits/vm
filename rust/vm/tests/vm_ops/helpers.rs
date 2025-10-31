@@ -185,6 +185,6 @@ impl Drop for VmOpsTestFixture {
 /// This function uses `assert_cmd` to locate the binary for the `vm` package,
 /// ensuring a reliable path for integration tests.
 pub fn binary_path() -> Result<PathBuf> {
-    let cmd = Command::cargo_bin("vm")?;
+    let cmd = Command::new(assert_cmd::cargo::cargo_bin!("vm"));
     Ok(PathBuf::from(cmd.get_program()))
 }

@@ -67,7 +67,7 @@ vm:
     fs::write(repo_path.join("vm.yaml"), vm_yaml)?;
 
     // 3. Create VM
-    Command::cargo_bin("vm")?
+    Command::new(assert_cmd::cargo::cargo_bin!("vm"))
         .arg("create")
         .current_dir(repo_path)
         .assert()
@@ -81,7 +81,7 @@ vm:
         .success();
 
     // 5. SSH with refresh
-    let output = Command::cargo_bin("vm")?
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("vm"))
         .arg("ssh")
         .arg("--force-refresh")
         .current_dir(repo_path)
@@ -89,7 +89,7 @@ vm:
     assert!(output.status.success());
 
     // 6. Verify new worktree is mounted
-    let output = Command::cargo_bin("vm")?
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("vm"))
         .arg("exec")
         .arg("--")
         .arg("ls")
@@ -100,7 +100,7 @@ vm:
     assert!(stdout.contains("feature-branch"));
 
     // Cleanup
-    Command::cargo_bin("vm")?
+    Command::new(assert_cmd::cargo::cargo_bin!("vm"))
         .arg("destroy")
         .arg("--force")
         .current_dir(repo_path)

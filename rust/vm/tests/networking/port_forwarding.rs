@@ -53,7 +53,7 @@ impl TestFixture {
     /// Runs a `vm` command within the temporary project directory and asserts success.
     /// This should be used for the main test logic.
     fn run_vm_command(&self, args: &[&str]) -> Result<()> {
-        Command::cargo_bin("vm")?
+        Command::new(assert_cmd::cargo::cargo_bin!("vm"))
             .args(args)
             .current_dir(self.path())
             .assert()
@@ -63,7 +63,7 @@ impl TestFixture {
 
     /// Runs a `vm` command that is expected to fail and returns the assertion object.
     fn run_failing_vm_command(&self, args: &[&str]) -> Result<assert_cmd::assert::Assert> {
-        let mut cmd = Command::cargo_bin("vm")?;
+        let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("vm"));
         cmd.current_dir(self.path());
         cmd.args(args);
         Ok(cmd.assert().failure())
@@ -73,13 +73,12 @@ impl TestFixture {
     /// for the Drop implementation to prevent panics during cleanup.
     fn run_cleanup_command(&self) {
         // Use `vm destroy` to clean up - it handles all Docker cleanup without sudo
-        if let Ok(mut cmd) = Command::cargo_bin("vm") {
-            cmd.current_dir(self.path());
-            cmd.args(["destroy", "--force"]);
-            // Do not assert success. Just run it and ignore the result.
-            // This prevents a panic in a panic, which would abort the test runner.
-            let _ = cmd.output();
-        }
+        let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("vm"));
+        cmd.current_dir(self.path());
+        cmd.args(["destroy", "--force"]);
+        // Do not assert success. Just run it and ignore the result.
+        // This prevents a panic in a panic, which would abort the test runner.
+        let _ = cmd.output();
     }
 }
 
