@@ -14,7 +14,7 @@ use crate::{
 use vm_cli::msg;
 use vm_config::config::VmConfig;
 use vm_core::{
-    command_stream::stream_command,
+    command_stream::{stream_command, stream_command_visible},
     error::{Result, VmError},
     vm_dbg,
 };
@@ -135,7 +135,7 @@ impl<'a> LifecycleOperations<'a> {
             vm_dbg!("Build context contains {} files/directories", file_count);
         }
 
-        stream_command("docker", &all_args).map_err(|e| {
+        stream_command_visible("docker", &all_args).map_err(|e| {
             VmError::Internal(format!(
                 "Docker build failed for project '{}'. Check that Docker is running and build context is valid: {}",
                 self.project_name(),
