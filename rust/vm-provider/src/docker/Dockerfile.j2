@@ -187,19 +187,11 @@ RUN chmod +x /usr/local/bin/vm-worktree
 # --- Shell History Configuration ---
 USER ${PROJECT_USER}
 
-# Create persistent history directory
-RUN mkdir -p /home/${PROJECT_USER}/.shell_history
+# Create persistent history directory with correct permissions
+RUN mkdir -p /home/${PROJECT_USER}/.shell_history && \
+    chmod 700 /home/${PROJECT_USER}/.shell_history
 
-# Configure Zsh history
-RUN echo '' >> /home/${PROJECT_USER}/.zshrc && \
-    echo '# --- Shell History Settings ---' >> /home/${PROJECT_USER}/.zshrc && \
-    echo 'export HISTSIZE=50000' >> /home/${PROJECT_USER}/.zshrc && \
-    echo 'export SAVEHIST=50000' >> /home/${PROJECT_USER}/.zshrc && \
-    echo 'export HISTFILE=~/.shell_history/zsh_history' >> /home/${PROJECT_USER}/.zshrc && \
-    echo 'setopt INC_APPEND_HISTORY      # Append to history immediately' >> /home/${PROJECT_USER}/.zshrc && \
-    echo 'setopt SHARE_HISTORY            # Share history across sessions' >> /home/${PROJECT_USER}/.zshrc && \
-    echo 'setopt HIST_IGNORE_DUPS         # Ignore duplicate commands' >> /home/${PROJECT_USER}/.zshrc && \
-    echo 'setopt HIST_FIND_NO_DUPS        # Do not show duplicates in search' >> /home/${PROJECT_USER}/.zshrc
+# Note: Zsh history is now configured in zshrc.j2 template
 
 # Configure Bash history
 RUN echo '' >> /home/${PROJECT_USER}/.bashrc && \

@@ -5,6 +5,26 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 
+# Shell History Directory Initialization
+# Ensure history directory exists and is writable before shell uses it
+_SHELL_HISTORY_DIR="$HOME/.shell_history"
+if [ ! -d "$_SHELL_HISTORY_DIR" ]; then
+  mkdir -p "$_SHELL_HISTORY_DIR" 2>/dev/null || true
+fi
+if [ ! -w "$_SHELL_HISTORY_DIR" ]; then
+  chmod u+w "$_SHELL_HISTORY_DIR" 2>/dev/null || true
+fi
+unset _SHELL_HISTORY_DIR
+
+# Shell History Configuration
+export HISTSIZE=50000
+export SAVEHIST=50000
+export HISTFILE="$HOME/.shell_history/zsh_history"
+setopt INC_APPEND_HISTORY      # Append to history immediately
+setopt SHARE_HISTORY            # Share history across sessions
+setopt HIST_IGNORE_DUPS         # Ignore duplicate commands
+setopt HIST_FIND_NO_DUPS        # Do not show duplicates in search
+
 # Locale Settings
 export LANG=en_US.UTF-8
 export LANGUAGE=en_US:en
