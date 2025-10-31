@@ -68,9 +68,10 @@ fi
 export PATH="$HOME/.cargo/bin:$PATH"
 {% endif %}
 
-{% if project_config.pip_packages is defined and project_config.pip_packages | length > 0 %}
-# Python/pipx Environment
+# User binaries (pipx, pip --user, manual installs, etc.)
 export PATH="$HOME/.local/bin:$PATH"
+
+{% if project_config.pip_packages is defined and project_config.pip_packages | length > 0 %}
 # Python/pyenv Environment (if available)
 export PYENV_ROOT="$HOME/.pyenv"
 export PATH="$PYENV_ROOT/bin:$PATH"
