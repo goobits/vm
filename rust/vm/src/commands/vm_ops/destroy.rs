@@ -56,25 +56,25 @@ pub async fn handle_destroy(
         .map(|s| s.as_str())
         .unwrap_or("VM");
 
-    let container_name = format!("{vm_name}-dev");
+    let config_container_name = format!("{vm_name}-dev");
+
+    // Use provided container name if given, otherwise use config-derived name
+    let target_container = if let Some(container_name) = container {
+        container_name.to_string()
+    } else {
+        config_container_name.clone()
+    };
 
     debug!(
-        "Destroying VM: vm_name='{}', provider='{}', force={}",
-        vm_name,
+        "Destroying VM: target_container='{}', provider='{}', force={}",
+        target_container,
         provider.name(),
         force
     );
 
-    // Determine the instance name for service cleanup
-    let vm_instance_name = if let Some(container_name) = container {
-        container_name.to_string()
-    } else {
-        container_name.clone()
-    };
-
     // Check if container exists before showing confirmation
     let container_exists = std::process::Command::new("docker")
-        .args(["inspect", &container_name])
+        .args(["inspect", &target_container])
         .output()
         .ok()
         .map(|output| output.status.success())
@@ -88,7 +88,7 @@ pub async fn handle_destroy(
             .args(["image", "rm", "-f", &format!("{vm_name}-image")])
             .output();
 
-        unregister_vm_services_helper(&vm_instance_name, &global_config).await?;
+        unregister_vm_services_helper(&target_container, &global_config).await?;
 
         vm_println!("{}", MESSAGES.common_cleanup_complete);
         return Ok(());
@@ -100,7 +100,7 @@ pub async fn handle_destroy(
         true
     } else {
         // Check status to show current state
-        let is_running = provider.status(None).is_ok();
+        let is_running = provider.status(container).is_ok();
 
         let service_manager = get_service_manager();
         if let Some(pg_state) = service_manager.get_service_status("postgresql") {
@@ -137,7 +137,7 @@ pub async fn handle_destroy(
                 } else {
                     MESSAGES.common_status_stopped
                 },
-                container = container_name
+                container = &target_container
             )
         );
         print!("{}", MESSAGES.vm_destroy_confirm_prompt);
@@ -164,7 +164,7 @@ pub async fn handle_destroy(
                 }
 
                 vm_println!("{}", MESSAGES.common_configuring_services);
-                unregister_vm_services_helper(&vm_instance_name, &global_config).await?;
+                unregister_vm_services_helper(&target_container, &global_config).await?;
 
                 vm_println!("{}", MESSAGES.vm_destroy_success);
                 Ok(())
