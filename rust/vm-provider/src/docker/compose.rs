@@ -51,9 +51,9 @@ fn get_ssh_config_path() -> Option<String> {
 /// Configure SSH agent forwarding in tera context if enabled
 fn configure_ssh_agent(config: &VmConfig, tera_context: &mut TeraContext) {
     let ssh_agent_enabled = config
-        .development
+        .host_sync
         .as_ref()
-        .map(|d| d.ssh_agent_forwarding)
+        .map(|hs| hs.ssh_agent)
         .unwrap_or(false);
 
     if !ssh_agent_enabled {
@@ -66,12 +66,12 @@ fn configure_ssh_agent(config: &VmConfig, tera_context: &mut TeraContext) {
 
     tera_context.insert("ssh_auth_sock", &ssh_auth_sock);
 
-    // Check if we should mount ~/.ssh/config (default to true if ssh_agent_forwarding is enabled)
+    // Check if we should mount ~/.ssh/config (default to true if ssh_agent is enabled)
     let mount_ssh_config = config
-        .development
+        .host_sync
         .as_ref()
-        .and_then(|d| d.mount_ssh_config)
-        .unwrap_or(true);
+        .map(|hs| hs.ssh_config)
+        .unwrap_or(ssh_agent_enabled);
 
     if mount_ssh_config {
         if let Some(ssh_config_path) = get_ssh_config_path() {
@@ -95,16 +95,16 @@ fn expand_tilde(path: &str) -> Option<String> {
 /// Process dotfiles configuration and return validated paths
 /// Returns Vec of (host_path, container_path) tuples
 fn process_dotfiles(config: &VmConfig, username: &str) -> Vec<(String, String)> {
-    let Some(dev_config) = config.development.as_ref() else {
+    let Some(host_sync) = config.host_sync.as_ref() else {
         return Vec::new();
     };
 
-    if dev_config.sync_dotfiles.is_empty() {
+    if host_sync.dotfiles.is_empty() {
         return Vec::new();
     }
 
-    dev_config
-        .sync_dotfiles
+    host_sync
+        .dotfiles
         .iter()
         .filter_map(|dotfile_path| {
             // Expand tilde to home directory
@@ -147,7 +147,12 @@ impl<'a> ComposeOperations<'a> {
 
     /// Ensure AI sync directories exist on host before mounting
     fn ensure_ai_sync_dirs(&self) -> Result<()> {
-        let Some(ai_sync) = &self.config.ai_sync else {
+        let Some(ai_sync) = &self
+            .config
+            .host_sync
+            .as_ref()
+            .and_then(|hs| hs.ai_tools.as_ref())
+        else {
             return Ok(()); // No AI sync configured
         };
 
@@ -213,7 +218,12 @@ impl<'a> ComposeOperations<'a> {
         let mut host_info = super::host_packages::HostPackageInfo::new();
 
         // Check pip packages only if pip linking is enabled
-        if self.config.package_linking.as_ref().is_some_and(|p| p.pip)
+        if self
+            .config
+            .host_sync
+            .as_ref()
+            .and_then(|hs| hs.package_links.as_ref())
+            .is_some_and(|p| p.pip)
             && !self.config.pip_packages.is_empty()
         {
             let pip_info = detect_packages(&self.config.pip_packages, PackageManager::Pip);
@@ -227,7 +237,12 @@ impl<'a> ComposeOperations<'a> {
         }
 
         // Check npm packages only if npm linking is enabled
-        if self.config.package_linking.as_ref().is_some_and(|p| p.npm)
+        if self
+            .config
+            .host_sync
+            .as_ref()
+            .and_then(|hs| hs.package_links.as_ref())
+            .is_some_and(|p| p.npm)
             && !self.config.npm_packages.is_empty()
         {
             let npm_info = detect_packages(&self.config.npm_packages, PackageManager::Npm);
@@ -241,8 +256,9 @@ impl<'a> ComposeOperations<'a> {
         // Check cargo packages only if cargo linking is enabled
         if self
             .config
-            .package_linking
+            .host_sync
             .as_ref()
+            .and_then(|hs| hs.package_links.as_ref())
             .is_some_and(|p| p.cargo)
             && !self.config.cargo_packages.is_empty()
         {
@@ -370,7 +386,12 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("host_env_vars", &pkg_context.host_env_vars);
 
         // AI sync flags for template
-        if let Some(ai_sync) = &self.config.ai_sync {
+        if let Some(ai_sync) = &self
+            .config
+            .host_sync
+            .as_ref()
+            .and_then(|hs| hs.ai_tools.as_ref())
+        {
             tera_context.insert("claude_sync_enabled", &ai_sync.is_claude_enabled());
             tera_context.insert("gemini_sync_enabled", &ai_sync.is_gemini_enabled());
             tera_context.insert("codex_sync_enabled", &ai_sync.is_codex_enabled());
@@ -397,8 +418,9 @@ impl<'a> ComposeOperations<'a> {
         // Check if worktrees are enabled
         let worktrees_enabled = self
             .config
-            .worktrees
+            .host_sync
             .as_ref()
+            .and_then(|hs| hs.worktrees.as_ref())
             .map(|w| w.enabled)
             .unwrap_or_else(|| {
                 // Check global config if project config doesn't have it
@@ -531,7 +553,12 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("host_env_vars", &pkg_context.host_env_vars);
 
         // AI sync flags for template
-        if let Some(ai_sync) = &self.config.ai_sync {
+        if let Some(ai_sync) = &self
+            .config
+            .host_sync
+            .as_ref()
+            .and_then(|hs| hs.ai_tools.as_ref())
+        {
             tera_context.insert("claude_sync_enabled", &ai_sync.is_claude_enabled());
             tera_context.insert("gemini_sync_enabled", &ai_sync.is_gemini_enabled());
             tera_context.insert("codex_sync_enabled", &ai_sync.is_codex_enabled());
@@ -558,8 +585,9 @@ impl<'a> ComposeOperations<'a> {
         // Check if worktrees are enabled
         let worktrees_enabled = self
             .config
-            .worktrees
+            .host_sync
             .as_ref()
+            .and_then(|hs| hs.worktrees.as_ref())
             .map(|w| w.enabled)
             .unwrap_or_else(|| {
                 // Check global config if project config doesn't have it
@@ -696,7 +724,7 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
     use vm_config::{
-        config::{ProjectConfig, VmConfig, WorktreesConfig},
+        config::{HostSyncConfig, ProjectConfig, VmConfig, WorktreesConfig},
         global_config::{GlobalConfig, WorktreesGlobalSettings},
     };
 
@@ -1078,9 +1106,12 @@ mod tests {
                 name: Some("test-project".into()),
                 ..Default::default()
             }),
-            worktrees: Some(WorktreesConfig {
-                enabled: true,
-                base_path: None,
+            host_sync: Some(HostSyncConfig {
+                worktrees: Some(WorktreesConfig {
+                    enabled: true,
+                    base_path: None,
+                }),
+                ..Default::default()
             }),
             ..Default::default()
         };
@@ -1103,9 +1134,12 @@ mod tests {
                 name: Some("test-project".into()),
                 ..Default::default()
             }),
-            worktrees: Some(WorktreesConfig {
-                enabled: true,
-                base_path: None,
+            host_sync: Some(HostSyncConfig {
+                worktrees: Some(WorktreesConfig {
+                    enabled: true,
+                    base_path: None,
+                }),
+                ..Default::default()
             }),
             ..Default::default()
         };
@@ -1129,9 +1163,12 @@ mod tests {
                 name: Some("test-project".into()),
                 ..Default::default()
             }),
-            worktrees: Some(WorktreesConfig {
-                enabled: true,
-                base_path: Some("/custom/path".to_string()),
+            host_sync: Some(HostSyncConfig {
+                worktrees: Some(WorktreesConfig {
+                    enabled: true,
+                    base_path: Some("/custom/path".to_string()),
+                }),
+                ..Default::default()
             }),
             ..Default::default()
         };
@@ -1180,9 +1217,12 @@ mod tests {
                 name: Some("test-project".into()),
                 ..Default::default()
             }),
-            worktrees: Some(WorktreesConfig {
-                enabled: true,
-                base_path: Some("/project/path".to_string()),
+            host_sync: Some(HostSyncConfig {
+                worktrees: Some(WorktreesConfig {
+                    enabled: true,
+                    base_path: Some("/project/path".to_string()),
+                }),
+                ..Default::default()
             }),
             ..Default::default()
         };

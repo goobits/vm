@@ -7,7 +7,7 @@ properties:
   version:
     type: string
     description: Configuration format version.
-    default: '1.0'
+    default: '2.0'
   os:
     type: string
     enum:
@@ -479,72 +479,91 @@ properties:
     examples:
       - NODE_ENV: development
         DEBUG: "true"
-  ai_sync:
-    oneOf:
-      - type: boolean
-        description: "Simple mode: true enables all AI tools, false disables all"
-      - type: object
-        description: "Granular mode: control each AI tool individually"
-        properties:
-          claude:
-            type: boolean
-            default: true
-            description: Sync Claude AI data to ~/.claude/vms/{project_name}
-          gemini:
-            type: boolean
-            default: true
-            description: Sync Gemini CLI data to ~/.gemini/vms/{project_name}
-          codex:
-            type: boolean
-            default: false
-            description: Sync OpenAI Codex data to ~/.codex/vms/{project_name}
-          cursor:
-            type: boolean
-            default: false
-            description: Sync Cursor AI data to ~/.cursor/vms/{project_name}
-          aider:
-            type: boolean
-            default: false
-            description: Sync Aider AI data to ~/.aider/vms/{project_name}
-    examples:
-      - true  # Enable all AI tools
-      - false # Disable all AI tools
-      - claude: true
-        gemini: true
-        codex: true
-        cursor: false
-        aider: false
-  package_linking:
+  host_sync:
     type: object
-    description: Package linking detection configuration
+    description: Host-to-VM synchronization configuration for git, SSH, dotfiles, AI tools, package links, and worktrees
     properties:
-      npm:
+      git_config:
         type: boolean
         default: true
-        description: Enable automatic detection and mounting of npm linked packages
-      pip:
+        description: Copy git configuration from host ~/.gitconfig into the VM
+      ssh_agent:
         type: boolean
         default: false
-        description: Enable automatic detection and mounting of pip editable packages
-      cargo:
+        description: Enable SSH agent forwarding (requires ssh-agent running on host)
+      ssh_config:
         type: boolean
         default: false
-        description: Enable automatic detection and mounting of cargo path-based packages
-  worktrees:
-    type: object
-    description: Git worktrees support configuration for multi-branch development workflows
-    properties:
-      enabled:
-        type: boolean
-        default: false
-        description: Enable git worktrees support with automatic path repair and volume mounting
-      base_path:
-        type: string
-        description: Custom base directory for worktrees (supports tilde expansion). Defaults to ~/.vm/worktrees/project-{name}/
+        description: Mount ~/.ssh/config read-only
+      dotfiles:
+        type: array
+        description: List of dotfiles to sync from host (e.g., ["~/.vimrc", "~/.config/nvim"])
+        items:
+          type: string
+        default: []
+      ai_tools:
+        oneOf:
+          - type: boolean
+            description: "Simple mode: true enables all AI tools, false disables all"
+          - type: object
+            description: "Granular mode: control each AI tool individually"
+            properties:
+              claude:
+                type: boolean
+                default: true
+                description: Sync Claude AI data to ~/.claude/vms/{project_name}
+              gemini:
+                type: boolean
+                default: true
+                description: Sync Gemini CLI data to ~/.gemini/vms/{project_name}
+              codex:
+                type: boolean
+                default: false
+                description: Sync OpenAI Codex data to ~/.codex/vms/{project_name}
+              cursor:
+                type: boolean
+                default: false
+                description: Sync Cursor AI data to ~/.cursor/vms/{project_name}
+              aider:
+                type: boolean
+                default: false
+                description: Sync Aider AI data to ~/.aider/vms/{project_name}
         examples:
-          - ~/worktrees
-          - ~/dev/worktrees
-          - /mnt/worktrees
+          - true
+          - false
+          - claude: true
+            gemini: true
+            codex: true
+      package_links:
+        type: object
+        description: Package linking detection and mounting for development workflows
+        properties:
+          npm:
+            type: boolean
+            default: true
+            description: Enable automatic detection and mounting of npm linked packages
+          pip:
+            type: boolean
+            default: false
+            description: Enable automatic detection and mounting of pip editable packages
+          cargo:
+            type: boolean
+            default: false
+            description: Enable automatic detection and mounting of cargo path-based packages
+      worktrees:
+        type: object
+        description: Git worktrees support for multi-branch development workflows
+        properties:
+          enabled:
+            type: boolean
+            default: false
+            description: Enable git worktrees support with automatic path repair and volume mounting
+          base_path:
+            type: string
+            description: Custom base directory for worktrees (supports tilde expansion)
+            examples:
+              - ~/worktrees
+              - ~/dev/worktrees
 required:
   - project
 additionalProperties: false

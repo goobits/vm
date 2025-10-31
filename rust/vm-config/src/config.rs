@@ -150,15 +150,9 @@ pub struct VmConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cargo_packages: Vec<String>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub package_linking: Option<PackageLinkingConfig>,
-
     // 9. Development Environment
     #[serde(skip_serializing_if = "Option::is_none")]
     pub terminal: Option<TerminalConfig>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub development: Option<DevelopmentConfig>,
 
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub aliases: IndexMap<String, String>,
@@ -166,22 +160,15 @@ pub struct VmConfig {
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub environment: IndexMap<String, String>,
 
-    // 10. Feature Flags & Integrations
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ai_sync: Option<AiSyncConfig>,
-
-    #[serde(default = "default_true")]
-    pub copy_git_config: bool,
+    // 10. Host Synchronization
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host_sync: Option<HostSyncConfig>,
 
     // 11. Security
     #[serde(skip_serializing_if = "Option::is_none")]
     pub security: Option<SecurityConfig>,
 
-    // 12. Git Worktrees
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub worktrees: Option<WorktreesConfig>,
-
-    // 13. Extra/Custom
+    // 12. Extra/Custom
     #[serde(flatten)]
     pub extra_config: IndexMap<String, serde_json::Value>,
 
@@ -767,20 +754,37 @@ pub struct TerminalConfig {
     pub show_timestamp: Option<bool>,
 }
 
-/// Development environment configuration for enhanced workflows
+/// Host-to-VM synchronization configuration.
+/// Consolidates all features that sync data/config from host machine into VM.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct DevelopmentConfig {
+pub struct HostSyncConfig {
+    /// Copy git configuration from host ~/.gitconfig (default: true)
+    #[serde(default = "default_true")]
+    pub git_config: bool,
+
     /// Enable SSH agent forwarding (requires ssh-agent running on host)
     #[serde(default, skip_serializing_if = "is_false")]
-    pub ssh_agent_forwarding: bool,
+    pub ssh_agent: bool,
 
-    /// Mount ~/.ssh/config read-only (enabled by default if ssh_agent_forwarding is true)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mount_ssh_config: Option<bool>,
+    /// Mount ~/.ssh/config read-only (default: false)
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub ssh_config: bool,
 
     /// List of dotfiles to sync from host (e.g., ["~/.vimrc", "~/.config/nvim"])
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub sync_dotfiles: Vec<String>,
+    pub dotfiles: Vec<String>,
+
+    /// AI tool data synchronization (claude, gemini, codex, cursor, aider)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ai_tools: Option<AiSyncConfig>,
+
+    /// Package linking detection and mounting
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub package_links: Option<PackageLinkingConfig>,
+
+    /// Git worktrees support
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub worktrees: Option<WorktreesConfig>,
 }
 
 /// Tart virtualization provider configuration.

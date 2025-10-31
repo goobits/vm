@@ -80,7 +80,13 @@ impl AppConfig {
         let mut vm = config::VmConfig::load(config_path.clone())?;
 
         // Handle host integrations
-        if vm.copy_git_config {
+        let should_copy_git = vm
+            .host_sync
+            .as_ref()
+            .map(|hs| hs.git_config)
+            .unwrap_or(true); // Default: true
+
+        if should_copy_git {
             vm.git_config = Some(detector::git::detect_git_config()?);
         }
 

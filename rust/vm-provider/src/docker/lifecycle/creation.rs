@@ -35,7 +35,12 @@ impl<'a> LifecycleOperations<'a> {
         // Check platform support for worktrees (Windows native not supported)
         #[cfg(target_os = "windows")]
         {
-            if self.config.worktrees.as_ref().is_some_and(|w| w.enabled)
+            if self
+                .config
+                .host_sync
+                .as_ref()
+                .and_then(|hs| hs.worktrees.as_ref())
+                .is_some_and(|w| w.enabled)
                 || context
                     .global_config
                     .as_ref()
@@ -179,7 +184,12 @@ impl<'a> LifecycleOperations<'a> {
         // Check platform support for worktrees (Windows native not supported)
         #[cfg(target_os = "windows")]
         {
-            if self.config.worktrees.as_ref().is_some_and(|w| w.enabled)
+            if self
+                .config
+                .host_sync
+                .as_ref()
+                .and_then(|hs| hs.worktrees.as_ref())
+                .is_some_and(|w| w.enabled)
                 || context
                     .global_config
                     .as_ref()

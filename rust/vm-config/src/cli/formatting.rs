@@ -215,7 +215,11 @@ fn flatten_config_to_shell(prefix: &str, config: &VmConfig, exports: &mut Vec<St
 
     // Handle boolean flags
     // AI sync - export individual tool flags if configured
-    if let Some(ai_sync) = &config.ai_sync {
+    if let Some(ai_sync) = &config
+        .host_sync
+        .as_ref()
+        .and_then(|hs| hs.ai_tools.as_ref())
+    {
         add_export_bool(exports, "claude_sync", ai_sync.is_claude_enabled());
         add_export_bool(exports, "gemini_sync", ai_sync.is_gemini_enabled());
         add_export_bool(exports, "codex_sync", ai_sync.is_codex_enabled());

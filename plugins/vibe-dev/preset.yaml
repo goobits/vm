@@ -12,8 +12,10 @@ npm_packages:
 pip_packages:
   - anthropic
 
-# Enable all AI tools (claude, gemini, codex, cursor, aider)
-ai_sync: true
+# Host synchronization configuration
+host_sync:
+  git_config: true
+  ai_tools: true  # Enable all AI tools (claude, gemini, codex, cursor, aider)
 
 aliases:
   claudeyolo: "claude --dangerously-skip-permissions"
