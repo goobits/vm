@@ -85,8 +85,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Resolve container name conflicts
 - **User Permissions**: Fixed permission handling in wrapper Dockerfiles
 - **Python 3.13 Support**: Updated Dockerfile Python installation for deadsnakes PPA
-- **Code Quality**: Resolved clippy warnings, removed unused imports and needless borrows
-- **Deprecated APIs**: Migrated from deprecated `cargo_bin` to `cargo::cargo_bin!` macro
 
 ## [3.4.0] - 2025-10-30
 
@@ -123,7 +121,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Cross-platform path handling (Windows + Unix)
   - Provider-specific validation with helpful error messages
   - Full backwards compatibility with `vm.box_name` (deprecated but supported)
-  - 80 new tests with 100% pass rate
 
 ### Changed
 
@@ -174,22 +171,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Users should use modern `vm db backup`/`restore` commands
   - Auto-backup still available with `backup_on_destroy: true`
 
-### Technical Improvements
-
-- Added `flate2` and `tar` dependencies for snapshot archive handling
-- Enhanced BoxSpec with two-layer design: user-facing → provider-specific parsing
-- Created new snapshot modules: `export.rs` and `import.rs`
-- 80 new tests for box configuration validation
-- Comprehensive documentation for all new features
-- Zero breaking changes, full backwards compatibility maintained
-
-### Documentation
-
-- Added snapshot import/export workflow guide
-- Enhanced database backup documentation with backup vs export comparison
-- Updated CLI reference with new flags and commands
-- Added troubleshooting guides for network DNS issues
-
 ## [3.3.0] - 2025-10-25
 
 ### Added
@@ -231,14 +212,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Removed `examples/services/mongodb.yaml`
   - Removed `examples/services/postgresql.yaml`
   - Removed `examples/services/redis.yaml`
-
-### Technical Improvements
-
-- Added new snapshot command modules: `create.rs`, `restore.rs`, `manager.rs`, `metadata.rs`
-- Enhanced global configuration with snapshot settings support
-- Added snapshot metadata tracking with JSON serialization
-- Comprehensive documentation in proposals/00_snapshots.proposal.md
-- Net change: +1302 lines added, -843 lines removed across 24 files
 
 ## [3.2.0] - 2025-10-24
 
@@ -318,21 +291,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - First-time user tips on `vm ssh` explaining vm-worktree commands
   - Helpful error messages and troubleshooting guidance
 
-### Changed
-
-- Refactored nested code to reduce complexity per clippy suggestions
-- Used `entry().or_insert_with()` instead of `contains_key + insert` pattern
-- Simplified error handling to avoid excessive nesting
-
-### Technical Improvements
-
-- Added `clap_complete` dependency for shell completions
-- Created new command modules: `wait.rs`, `ports.rs`, `env.rs`, `port_forward.rs`
-- Enhanced `vm-worktree.sh` with comprehensive security checks
-- Added shell history volume mount to docker-compose template
-- All clippy lints resolved
-- Comprehensive documentation updates for all new features
-
 ## [3.1.1] - 2025-10-21
 
 ### Added
@@ -352,7 +310,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - PostgreSQL service networking and Docker database connection aliases
-- Unused imports and clippy warnings
 - Install script now includes OpenSSL dependencies (`libssl-dev`)
 
 ## [3.1.0] - 2025-10-16
@@ -396,18 +353,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **YAML Formatting**: Corrected indentation for `networking.networks` field in configuration
 - **Type Safety**: Fixed compilation errors in resource auto-detection code
 
-### Documentation
-- Updated configuration guide with unlimited CPU/memory options
-- Added concise documentation next to memory configuration
-- Updated CLI reference with `vm copy` command examples
-
-### Technical Improvements
-- Added `CpuLimit` enum following `MemoryLimit` pattern for consistency
-- Updated all provider implementations (Docker, Vagrant, Tart) to handle unlimited CPUs
-- Docker compose template conditionally omits `cpus` field when unlimited
-- Enhanced validation logic to skip CPU checks for unlimited configuration
-- Added comprehensive test coverage for new enum types
-
 ## [3.0.0] - 2025-10-15
 
 ### Breaking Changes
@@ -433,21 +378,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Handler function renamed from `handle_provision` to `handle_apply`
   - All messages updated in vm-messages crate
   - Documentation updated across all markdown files
-
-### Fixed
-- Improved error handling across multiple crates (eliminated `.unwrap()` and `.expect()` calls)
-- Enhanced test infrastructure for Docker availability checks
-
-### Documentation
-- Updated CLI reference with new `vm apply` command
-- Added network configuration examples and troubleshooting guides
-- Removed completed error handling proposal
-
-### Technical Improvements
-- Network validation enforces Docker naming conventions
-- Auto-creation of external Docker networks before container startup
-- Clean separation of network concerns in docker-compose generation
-- All tests passing (273 tests across workspace)
 
 ## [2.3.0] - 2025-10-12
 
@@ -527,25 +457,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Cleaned up unused abstractions
   - Simplified codebase architecture
 
-### Documentation
-- Added project audit report and bug tracking documentation
-- Consolidated testing documentation, kept only action plan
-- Removed completed database persistence planning document
-- Split bug reports into focused proposals
-- Reordered proposals by priority and dependencies
-
-### Technical Improvements
-- **Database environment variables integration test**: Comprehensive test coverage
-  - Verifies DATABASE_URL, REDIS_URL, MONGODB_URL injection
-  - Tests correct host addressing (172.17.0.1 on Linux, host.docker.internal on macOS/Windows)
-  - Validates service auto-start/stop behavior
-  - Prevents regression of missing environment variables issue
-- Added port forwarding integration tests with TestFixture pattern
-- Enhanced test coverage for service configuration
-- Improved code organization and maintainability
-- All tests passing with improved reliability
-- New crate: `vm-logging` for structured logging support
-
 ## [2.2.0] - 2025-10-11
 
 ### Added
@@ -573,31 +484,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Dependency Updates**: Pinned all workspace dependencies to specific patch versions for reproducible builds
-  - Updated 28 dependencies including serde (1.0.228), clap (4.5.11), anyhow (1.0.82), tokio (1.47)
-  - Full list in commit 1fbf036
-
-- **Code Modernization**
-  - Applied clippy's `uninlined_format_args` suggestions across codebase
-  - Use inline format args: `format!("{key}")` instead of `format!("{}", key)`
 
 ### Fixed
 - **Worktree Tests**: Updated tests for new dynamic detection approach
-- **Documentation**: Synchronized all documentation with worktree remounting feature
-
-### Documentation
-- Enhanced shared services guide with troubleshooting and per-project isolation
-- Updated Development Guide (docs/DEVELOPMENT.md) with ServiceManager architecture details
-- Updated README with shared database services feature
-- Synchronized documentation with automatic worktree remounting feature
-
-### Technical Improvements
-- Added `VmState` struct for tracking active SSH sessions per project
-- Enhanced `handle_ssh()` with worktree detection and mount comparison logic
-- Implemented `worktrees_match()` helper for efficient mount verification
-- Extended `GlobalConfig` with PostgreSQL, Redis, and MongoDB settings
-- Added service lifecycle management to `ServiceManager` (start, stop, health checks)
-- All worktree-related tests passing (7/7)
-- Service lifecycle integration tests expanded and passing
 
 ## [2.1.1]
 
@@ -618,15 +507,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Tart provider rating upgraded from ⭐⭐⭐ (30% advanced features) to ⭐⭐⭐⭐⭐ (100% complete)
 
-### Removed
-- Completed PROPOSAL_TART_PROVIDER_PARITY.md (all features implemented)
-
-### Technical Improvements
-- Added `rust/vm-provider/src/tart/provisioner.rs` (255 lines) for comprehensive provisioning
-- Added `rust/vm-provider/src/tart/scripts/collect_metrics.sh` (48 lines) for metrics collection
-- Enhanced `rust/vm-provider/src/tart/provider.rs` (+274 lines) with all missing Provider trait methods
-- All workspace tests passing (77 vm-config + 37 vm-provider tests)
-
 ## [2.1.0] - 2025-10-08
 
 ### Added
@@ -637,80 +517,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Opt-in configuration via global (`~/.vm/config.yaml`) or per-project (`vm.yaml`) settings
   - Custom base path support with tilde expansion
   - Platform detection with WSL2 support (Linux, macOS, WSL2 supported; Windows native blocked with clear error)
-- Automatic version bumping with `make build` command
-- Comprehensive git worktrees proposal documentation
-- Improved provider error handling
 
 ### Fixed
 - Git worktrees: Shell hook now runs in ALL shell contexts (previously only interactive zsh)
 - Git worktrees: Directory creation timing fixed to prevent Docker mount failures
 - Git worktrees: Added Windows platform detection with WSL2 validation
 - Supervisor: Removed redundant restart causing permission errors
-- Clippy warnings: Fixed `field_reassign_with_default` in test code (8 instances)
-
-### Changed
-- Git worktrees: `get_worktrees_host_path()` visibility changed to `pub` for lifecycle access
-- Git worktrees: Applied modern Rust idioms (`is_some_and` instead of `map_or`)
-- Vagrant provider: Thread-unsafe `env::set_var()` replaced with per-command environment variables
-- Tart provider: Deduplicated VM creation logic (130 lines reduced, 62% less duplication)
-- Extracted `extract_project_name()` helper to common module for reuse across providers
-- Vagrant/Tart: Implemented `create_with_context()` trait methods for Provider interface
-
-### Removed
-- Tart provider: Dead code `create_instance()` method (36 lines)
-- Obsolete error improvement proposal document
-
-### Documentation
-- **Complete documentation cleanup (Phases 1-3)**: Comprehensive overhaul of all project documentation
-  - Phase 1 (Critical): Fixed invalid CLI commands, corrected configuration examples, overhauled all plugin READMEs
-  - Phase 2 (Major): Added Git worktrees documentation, synchronized CHANGELOG, standardized preset naming
-  - Phase 3 (Standardization): Created plugin README template, refactored all 10 plugin READMEs with consistent structure
-- Created standard `PLUGIN_README_TEMPLATE.md` for consistent plugin documentation
-- Updated all plugin READMEs with: detailed package descriptions, enabled services, configuration examples, use cases, troubleshooting
-- Fixed invalid CLI examples in user guides (removed non-existent flags like `--raw`, `--container-id`)
-- Corrected vm-package-server documentation (removed 130+ lines of non-existent commands)
-- Added comprehensive Git worktrees usage guide and troubleshooting
-- Updated test coverage statistics in testing.md (305 total tests)
-
-### Technical Improvements
-- 7 new git worktrees tests (all passing)
-- 490 total tests passing (100% pass rate)
-- Zero regressions detected
-- Auto-formatted code per project standards
-- Vagrant/Tart providers now compile with `--all-features` flag
-- Net reduction of 146 lines across provider implementations
-- Thread-safe command execution in Vagrant provider using duct with isolated environments
 
 ## [2.0.5] - 2025-10-02
 
-### Changed
-- Refactored vm-auth-proxy to extract `parse_secret_scope()` helper function for better code reuse
-- Eliminated cross-platform code duplication in vm-platform with `SharedPlatformOps` trait
-- Consolidated duplicate package context logic in vm-provider's compose.rs module
-
-### Removed
-- Obsolete proposal documents (PROPOSAL_COLOCATED_PORTS.md, PROPOSAL_CONFIG_PORTS.md, etc.)
-- Legacy port configuration references
-
-### Technical Improvements
-- Reduced codebase duplication from 4.31% to 3.61% (132 duplicate lines eliminated)
-- Created shared platform operations trait with 11 default implementations
-- Improved maintainability through better code organization and helper extraction
-- All 62 tests passing across vm-provider, vm-platform, and vm-auth-proxy
-
 ## [2.0.4] - 2025-09-30
-
-### Added
-- Build automation and code quality tooling
-- Comprehensive vm-messages migration infrastructure
-
-### Changed
-- Migrated update.rs and mod.rs to centralized vm-messages system
-- Migrated doctor.rs and auth.rs to vm-messages for consistent user-facing text
-- Complete config.rs migration to vm-messages system
-- Migrated uninstall.rs, pkg.rs, and plugin modules to vm-messages
-- Migrated vm-provider docker/lifecycle.rs and progress.rs to vm-messages
-- Complete vm_ops.rs migration to vm-messages system for i18n readiness
 
 ### Fixed
 - Ensure supervisord is running before executing supervisorctl commands
@@ -731,19 +547,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Auto-configure package registry for all VMs during provisioning
 - Smart sccache detection in installer for improved Rust build performance
 
-### Changed
-- Consolidated messages with multi-line strings and improved naming conventions
-- Migrated all handle_* command functions to vm-messages system
-- Embed service configs in vm init to prevent missing file errors
-
 ### Fixed
 - Docker fixes for service port allocation and conflict resolution
 - Correct Cargo package index path structure
 - Add auto-restart capability to critical services
 - Remove workspace directory creation from Dockerfile to prevent permission issues
-
-### Removed
-- Unused workspace dependencies identified by cargo-machete
 
 ## [2.0.2] - 2025-09-24
 
@@ -751,22 +559,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Automatic service lifecycle management
 - Enhanced plugin system capabilities
 
-### Changed
-- Centralized version management to workspace Cargo.toml
-- Aligned vm-plugin with workspace standards for consistency
-
-### Removed
-- Legacy code cleanup across multiple modules
-
 ## [2.0.1] - 2025-09-23
 
 ### Added
 - Initial vm-messages system foundation for centralized message management
 - Message templates for better internationalization (i18n) support
-
-### Changed
-- Major refactoring to introduce message centralization pattern
-- Improved code organization across packages
 
 ## [2.0.0] - 2024-09-28
 
@@ -890,13 +687,6 @@ Next.js, React, Angular, Vue, Django, Flask, Rails, Node.js, Python, Rust, Go, P
 - **95% bandwidth savings** for Docker images
 - **Zero cold start penalty** for cached resources
 
-### 🧪 **Quality Assurance**
-
-- **465+ tests** across all components
-- **Comprehensive integration testing** with real Docker containers
-- **Security hardened** with 77 dedicated security tests
-- **Production-ready** test coverage and reliability
-
 ### 🚀 **Migration Guide**
 
 #### **From v1.x to v2.0**
@@ -945,35 +735,6 @@ vm ssh  # Your fully configured environment awaits!
 
 For complete documentation, see [README.md](README.md)
 
----
-
-### Fixed
-
-#### 🧪 Test Suite Reliability Improvements
-- **Fixed flaky test failures** that were causing CI instability
-  - `test_add_and_list_secrets` - Eliminated port conflicts by implementing dynamic port allocation
-  - `test_pkg_status_command` - Resolved Tokio runtime conflicts with alternative test implementation
-- **Improved test strategy** for environment-dependent tests
-  - Replaced "always ignored" tests with conditional execution based on environment capabilities
-  - Added `test_pkg_status_functionality` as alternative to CLI-dependent test
-  - Made `test_pkg_full_lifecycle` conditional on `VM_INTEGRATION_TESTS` environment variable
-  - Made `test_cargo_package_lifecycle` conditional on `cargo-tests` feature flag
-
-#### 📚 Documentation Testing
-- **Fixed all 24 doc test failures** in vm-package-server crate
-  - Corrected import paths from `crate::` to `vm_package_server::` in documentation examples
-  - Added proper async context and missing dependencies to doc test examples
-  - Converted HTTP endpoint examples from rust to text format for appropriate rendering
-  - Enhanced documentation examples with proper setup and teardown code
-
-### Changed
-
-- **Test execution model** now supports conditional testing based on environment capabilities rather than blanket ignoring
-- **CI reliability** significantly improved with elimination of flaky tests
-- **Developer experience** enhanced with clearer test failure messages and better error handling
-
----
-
 ## [1.4.0] - 2024-09-27
 
 ### Added
@@ -1006,72 +767,12 @@ For complete documentation, see [README.md](README.md)
 - **Automatic service provisioning** during VM creation when services are enabled
 - **Provider integration** with Docker daemon configuration and environment setup
 
-### Changed
-
-- **Main command dispatcher** now uses async/await pattern for better performance
-- **Status reporting** consolidated to show all services (VM, Package Registry, Auth Proxy, Docker Registry)
-- **Service architecture** migrated to library-first design with separate crates
-- **CLI help documentation** enhanced with detailed command descriptions and examples
-
-### Technical Details
-
-#### New Library Crates
-- `vm-auth-proxy` - Secure secret management with encryption and REST API
-- `vm-docker-registry` - Docker image caching with nginx proxy architecture
-
-#### CLI Commands Added
-```bash
-# Auth Proxy Management
-vm auth status
-vm auth add <name> <value> [--scope global|project:NAME|instance:NAME] [--description TEXT]
-vm auth list [--show-values]
-vm auth remove <name> [--force]
-vm auth interactive
-
-# Package Registry (Enhanced)
-vm pkg status
-vm pkg add [--type python,npm,cargo]
-vm pkg remove [--force]
-vm pkg list
-vm pkg config show|get|set
-vm pkg use [--shell bash|zsh|fish]
-
-# System Management
-vm update [--version v1.2.3] [--force]
-vm uninstall [--keep-config] [--yes]
-vm doctor
-```
-
-#### Configuration Schema Updates
-```yaml
-# New optional service flags in vm.yaml
-auth_proxy: true        # Enable secure secret management
-docker_registry: true   # Enable Docker image caching
-package_registry: true  # Enable package caching (existing)
-```
-
-### Performance Improvements
-
-- **Docker image caching** reduces build times and bandwidth usage
-- **Secret injection** eliminates need for manual environment configuration
-- **Package caching** speeds up dependency installation across VMs
-- **Async command processing** improves CLI responsiveness
-
 ### Security Enhancements
 
 - **End-to-end encryption** for secret storage using industry-standard algorithms
 - **Bearer token authentication** for API access
 - **Secure file permissions** (700/600) for auth proxy data
 - **Isolated service architecture** with proper network boundaries
-
-### Developer Experience
-
-- **Unified service management** through consistent CLI patterns
-- **Auto-start prompts** for seamless service dependency handling
-- **Comprehensive status reporting** for troubleshooting and monitoring
-- **Interactive secret management** with guided workflows
-
----
 
 ## [1.3.0] - Previous Release
 
