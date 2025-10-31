@@ -33,7 +33,14 @@ terminal:
   username: vm-dev
 aliases:
   claudeyolo: claude --dangerously-skip-permissions
-  geminiyolo: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini
+  codexyolo: codex --dangerously-bypass-approvals-and-sandbox
+  geminiyolo: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --approval-mode=yolo
+ai_sync: true
+npm_packages:
+  - '@anthropic-ai/claude-code'
+  - '@google/gemini-cli'
+  - '@openai/codex'
 networking:
   networks:
   - jules
+  - spacebase
