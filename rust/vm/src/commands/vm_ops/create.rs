@@ -217,15 +217,15 @@ pub async fn handle_create(
         }
 
         if force {
-            debug!("Force flag set - will destroy existing VM if present");
-            // Check if VM exists and destroy it first
-            if provider.status(None).is_ok() {
-                warn!("VM exists, destroying due to --force flag");
-                vm_println!(
-                    "{}",
-                    msg!(MESSAGES.vm_create_force_recreating, name = vm_name)
-                );
-                provider.destroy(None).map_err(VmError::from)?;
+            debug!("Force flag set - attempting to destroy existing VM (if any)");
+            warn!("Forcing recreation of VM '{}'", vm_name);
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.vm_create_force_recreating, name = vm_name)
+            );
+
+            if let Err(err) = provider.destroy(None) {
+                debug!("Force destroy skipped or failed (container may not exist yet): {err}");
             }
         }
     }
