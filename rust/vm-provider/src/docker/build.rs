@@ -248,10 +248,14 @@ impl<'a> BuildOperations<'a> {
         // Copy embedded resources to build context
         resources::copy_embedded_resources(&shared_dir)?;
 
-        // Only generate Dockerfile from template if not using a custom Dockerfile
-        // (Custom Dockerfiles are already built in the BoxConfig::Dockerfile match arm above)
-        if !matches!(box_config, BoxConfig::Dockerfile { .. }) {
-            let dockerfile_path = build_context.join("Dockerfile.generated");
+        // Generate Dockerfile from template
+        // For custom Dockerfiles, generate a minimal wrapper that uses the pre-built image
+        let dockerfile_path = build_context.join("Dockerfile.generated");
+        if matches!(box_config, BoxConfig::Dockerfile { .. }) {
+            // Custom Dockerfile case: Generate minimal Dockerfile that uses the pre-built image
+            self.generate_dockerfile_from_image(&dockerfile_path, &base_image)?;
+        } else {
+            // Standard case: Generate full Dockerfile from template
             self.generate_dockerfile(&dockerfile_path)?;
         }
 
@@ -281,6 +285,46 @@ impl<'a> BuildOperations<'a> {
             .map_err(|e| VmError::Internal(format!("Failed to render Dockerfile template: {e}")))?;
         fs::write(output_path, content.as_bytes())?;
 
+        Ok(())
+    }
+
+    /// Generate minimal Dockerfile that uses a pre-built custom image as base
+    ///
+    /// This is used when --from-dockerfile is specified. The custom Dockerfile has already
+    /// been built into an image, so we just need a minimal wrapper Dockerfile that:
+    /// 1. Uses FROM the pre-built custom image
+    /// 2. Copies shared resources (shell prompt, etc.)
+    pub fn generate_dockerfile_from_image(&self, output_path: &Path, base_image: &str) -> Result<()> {
+        let user_config = self.get_user_config();
+
+        let content = format!(
+            r#"# Generated Dockerfile wrapper for custom base image
+FROM {base_image}
+
+ARG PROJECT_UID={uid}
+ARG PROJECT_GID={gid}
+ARG PROJECT_USER={user}
+
+# Copy shared resources (shell prompt, utilities, etc.)
+COPY shared/ /usr/local/share/vm/
+
+# Copy git worktree helper script
+COPY vm-worktree.sh /usr/local/bin/vm-worktree
+RUN chmod +x /usr/local/bin/vm-worktree
+
+# Set working directory
+WORKDIR /workspace
+
+# Keep container running
+CMD ["tail", "-f", "/dev/null"]
+"#,
+            base_image = base_image,
+            uid = user_config.uid,
+            gid = user_config.gid,
+            user = user_config.username,
+        );
+
+        fs::write(output_path, content.as_bytes())?;
         Ok(())
     }
 
