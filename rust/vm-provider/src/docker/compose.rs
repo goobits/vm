@@ -414,6 +414,10 @@ impl<'a> ComposeOperations<'a> {
             tera_context.insert("dotfile_mounts", &dotfile_mounts);
         }
 
+        // Get home directory for template (needed for AI tools sync)
+        let home_dir = std::env::var("HOME").unwrap_or_else(|_| "/home/developer".to_string());
+        tera_context.insert("home_dir", &home_dir);
+
         // Git worktrees volume
         // Check if worktrees are enabled
         let worktrees_enabled = self
@@ -432,8 +436,7 @@ impl<'a> ComposeOperations<'a> {
 
         if worktrees_enabled {
             // Get the worktrees base directory path
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/home/developer".to_string());
-            let worktrees_base = format!("{}/.vm/worktrees/{}", home, project_name);
+            let worktrees_base = format!("{}/.vm/worktrees/{}", home_dir, project_name);
 
             // Create the directory on host if it doesn't exist
             if let Err(e) = fs::create_dir_all(&worktrees_base) {
@@ -460,7 +463,8 @@ impl<'a> ComposeOperations<'a> {
         let content = tera
             .render("docker-compose.yml", &tera_context)
             .map_err(|e| {
-                VmError::Internal(format!("Failed to render docker-compose template: {e}"))
+                eprintln!("Tera render error: {:?}", e);
+                VmError::Internal(format!("Failed to render docker-compose template: {:?}", e))
             })?;
         Ok(content)
     }
@@ -581,6 +585,10 @@ impl<'a> ComposeOperations<'a> {
             tera_context.insert("dotfile_mounts", &dotfile_mounts);
         }
 
+        // Get home directory for template (needed for AI tools sync)
+        let home_dir = std::env::var("HOME").unwrap_or_else(|_| "/home/developer".to_string());
+        tera_context.insert("home_dir", &home_dir);
+
         // Git worktrees volume
         // Check if worktrees are enabled
         let worktrees_enabled = self
@@ -599,8 +607,7 @@ impl<'a> ComposeOperations<'a> {
 
         if worktrees_enabled {
             // Get the worktrees base directory path
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/home/developer".to_string());
-            let worktrees_base = format!("{}/.vm/worktrees/{}", home, project_name);
+            let worktrees_base = format!("{}/.vm/worktrees/{}", home_dir, project_name);
 
             // Create the directory on host if it doesn't exist
             if let Err(e) = fs::create_dir_all(&worktrees_base) {

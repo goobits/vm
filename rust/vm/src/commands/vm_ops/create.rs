@@ -249,7 +249,11 @@ pub async fn handle_create(
     }
 
     // Create provider context with verbose flag and global config
-    let context = ProviderContext::with_verbose(verbose).with_config(global_config.clone());
+    // Skip provisioning for snapshot builds (Dockerfile already has everything)
+    let mut context = ProviderContext::with_verbose(verbose).with_config(global_config.clone());
+    if save_as.is_some() {
+        context = context.skip_provisioning();
+    }
 
     // Call the appropriate create method based on whether instance is specified
     let create_result = if let Some(instance_name) = &instance {

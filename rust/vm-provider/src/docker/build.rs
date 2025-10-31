@@ -324,8 +324,8 @@ ARG PROJECT_USER={user}
 # Switch to root temporarily to copy system resources
 USER root
 
-# Copy shared resources (shell prompt, utilities, etc.)
-COPY shared/ /usr/local/share/vm/
+# Copy shared resources (ansible playbooks, services, templates)
+COPY shared/ /app/shared/
 
 # Copy git worktree helper script with executable permissions
 COPY --chmod=755 vm-worktree.sh /usr/local/bin/vm-worktree

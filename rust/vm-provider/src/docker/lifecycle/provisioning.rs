@@ -37,6 +37,11 @@ impl<'a> LifecycleOperations<'a> {
 
     /// Internal provisioning with context
     pub(super) fn provision_container_with_context(&self, context: &ProviderContext) -> Result<()> {
+        // Skip provisioning if requested (e.g., for snapshot builds from Dockerfiles)
+        if context.skip_provisioning {
+            return Ok(());
+        }
+
         // Step 6: Wait for readiness and run ansible (configuration only)
         let mut attempt = 1;
         while attempt <= CONTAINER_READINESS_MAX_ATTEMPTS {
@@ -109,6 +114,11 @@ impl<'a> LifecycleOperations<'a> {
         instance_name: &str,
         context: &ProviderContext,
     ) -> Result<()> {
+        // Skip provisioning if requested (e.g., for snapshot builds from Dockerfiles)
+        if context.skip_provisioning {
+            return Ok(());
+        }
+
         let container_name = self.container_name_with_instance(instance_name);
 
         // Step 6: Wait for readiness and run ansible (configuration only)
