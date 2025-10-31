@@ -4,7 +4,6 @@
 //! at the CLI level, testing the actual user-facing behavior.
 
 use anyhow::Result;
-use assert_cmd::prelude::*; // For CommandCargoExt
 use std::process::Command;
 use std::sync::Mutex;
 use tempfile::TempDir;
@@ -235,7 +234,7 @@ fn test_shared_postgres_lifecycle_integration() -> Result<()> {
     let vm_binary = assert_cmd::cargo::cargo_bin!("vm");
 
     // 1. Enable shared postgresql globally
-    let output = Command::new(&vm_binary)
+    let output = Command::new(vm_binary)
         .args(["config", "set", "services.postgresql.enabled", "true"])
         .env("HOME", home_dir)
         .output()?;
@@ -246,7 +245,7 @@ fn test_shared_postgres_lifecycle_integration() -> Result<()> {
     );
 
     // 2. Create a VM. This should start the postgres service.
-    let output = Command::new(&vm_binary)
+    let output = Command::new(vm_binary)
         .args(["create"])
         .current_dir(&project_dir)
         .env("HOME", home_dir)
@@ -275,7 +274,7 @@ fn test_shared_postgres_lifecycle_integration() -> Result<()> {
     );
 
     // 4. Destroy the VM. This should stop the postgres service.
-    let output = Command::new(&vm_binary)
+    let output = Command::new(vm_binary)
         .args(["destroy", "--yes"])
         .current_dir(&project_dir)
         .env("HOME", home_dir)
@@ -322,7 +321,7 @@ fn test_shared_redis_lifecycle_integration() -> Result<()> {
     let vm_binary = assert_cmd::cargo::cargo_bin!("vm");
 
     // 1. Enable shared redis globally
-    let output = Command::new(&vm_binary)
+    let output = Command::new(vm_binary)
         .args(["config", "set", "services.redis.enabled", "true"])
         .env("HOME", home_dir)
         .output()?;
@@ -333,7 +332,7 @@ fn test_shared_redis_lifecycle_integration() -> Result<()> {
     );
 
     // 2. Create a VM. This should start the redis service.
-    let output = Command::new(&vm_binary)
+    let output = Command::new(vm_binary)
         .args(["create"])
         .current_dir(&project_dir)
         .env("HOME", home_dir)
@@ -362,7 +361,7 @@ fn test_shared_redis_lifecycle_integration() -> Result<()> {
     );
 
     // 4. Destroy the VM. This should stop the redis service.
-    let output = Command::new(&vm_binary)
+    let output = Command::new(vm_binary)
         .args(["destroy", "--yes"])
         .current_dir(&project_dir)
         .env("HOME", home_dir)
