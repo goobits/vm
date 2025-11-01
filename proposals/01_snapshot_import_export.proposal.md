@@ -162,96 +162,49 @@ When user specifies `vm.box: @vibe-base`:
 3. Uses as base instead of pulling/building
 4. Instant startup!
 
-## Implementation Plan
+## Implementation Checklist
 
-### Phase 1: Export Command (2-3 days)
+- [x] **Export Command**
+  - [x] Create `rust/vm/src/commands/snapshot/export.rs`
+  - [x] Implement `handle_export()` function with compression support
+  - [x] Validate snapshot exists before export
+  - [x] Create temp directory for tarball contents
+  - [x] Save docker image: `docker save <image> > images/base.tar`
+  - [x] Generate manifest.json with metadata
+  - [x] Support optional volume inclusion
+  - [x] Create compressed tarball
+  - [x] Verify integrity
+  - [x] Display export stats
 
-**File:** `rust/vm/src/commands/snapshot/export.rs`
+- [x] **Import Command**
+  - [x] Create `rust/vm/src/commands/snapshot/import.rs`
+  - [x] Implement `handle_import()` function
+  - [x] Verify tarball integrity (checksums)
+  - [x] Extract to temp directory
+  - [x] Load manifest.json
+  - [x] Check for conflicts (existing snapshot)
+  - [x] Load docker image: `docker load < images/base.tar`
+  - [x] Copy to `~/.config/vm/snapshots/global/<name>/`
+  - [x] Display import stats + usage instructions
 
-```rust
-pub async fn handle_export(
-    name: &str,
-    output_path: Option<&str>,
-    compress_level: u8,
-    include_volumes: bool,
-    project: Option<&str>,
-) -> VmResult<()> {
-    // 1. Validate snapshot exists
-    // 2. Create temp directory for tarball contents
-    // 3. Save docker image: docker save <image> > images/base.tar
-    // 4. Generate manifest.json with metadata
-    // 5. Optionally include volumes
-    // 6. Create compressed tarball
-    // 7. Verify integrity
-    // 8. Display export stats
-}
-```
+- [x] **BoxSpec @snapshot Integration**
+  - [x] Update `rust/vm-provider/src/docker/build.rs`
+  - [x] Implement `BoxConfig::Snapshot` handling
+  - [x] Check if snapshot exists in global directory
+  - [x] Load image from snapshot
+  - [x] Get image tag from metadata
+  - [x] Provide helpful error messages for missing snapshots
 
-### Phase 2: Import Command (2-3 days)
+- [x] **Enhanced List Command**
+  - [x] Show snapshot type (project-specific vs. global)
+  - [x] Display platform information
+  - [x] Show creation date and size
+  - [x] Include description if available
 
-**File:** `rust/vm/src/commands/snapshot/import.rs`
-
-```rust
-pub async fn handle_import(
-    file_path: &str,
-    name_override: Option<&str>,
-    verify: bool,
-    force: bool,
-) -> VmResult<()> {
-    // 1. Verify tarball integrity (checksums)
-    // 2. Extract to temp directory
-    // 3. Load manifest.json
-    // 4. Check for conflicts (existing snapshot)
-    // 5. Load docker image: docker load < images/base.tar
-    // 6. Copy to ~/.config/vm/snapshots/global/<name>/
-    // 7. Register in snapshot registry
-    // 8. Display import stats + usage instructions
-}
-```
-
-### Phase 3: BoxSpec @snapshot Integration (1 day)
-
-**File:** `rust/vm-provider/src/docker/build.rs`
-
-Already has `BoxConfig::Snapshot` handling at line 129-134, but returns error.
-Update to:
-
-```rust
-BoxConfig::Snapshot(name) => {
-    let snapshot_manager = SnapshotManager::new()?;
-    let snapshot_dir = snapshot_manager.get_snapshot_dir(Some("global"), name);
-
-    if !snapshot_dir.exists() {
-        return Err(VmError::NotFound(format!(
-            "Snapshot '@{}' not found. Import it first with:\n  vm snapshot import <file>",
-            name
-        )));
-    }
-
-    // Load image from snapshot
-    let image_path = snapshot_dir.join("images/base.tar");
-    DockerOps::load_image(&image_path)?;
-
-    // Get image tag from metadata
-    let metadata = SnapshotMetadata::load(snapshot_dir.join("metadata.json"))?;
-    metadata.services[0].image_tag.clone()
-}
-```
-
-### Phase 4: Enhanced List Command (1 day)
-
-Update `vm snapshot list` to show:
-- Snapshot type (project-specific vs. global/importable)
-- Platform (linux/amd64, etc.)
-- Languages/tools installed
-- Source (built locally vs. imported)
-
-### Phase 5: Documentation & Examples (1 day)
-
-- Update docs/user-guide/configuration.md
-- Add examples/base-images/README.md
-- Document export/import workflow
-- Add CI/CD integration example
+- [x] **Documentation & Examples**
+  - [x] Update user guide with export/import workflow
+  - [x] Document `@snapshot-name` syntax
+  - [x] Provide team sharing examples
 
 ## Non-Goals
 

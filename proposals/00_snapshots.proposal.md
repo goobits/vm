@@ -85,31 +85,33 @@ vm snapshot clean --max-age 30d --max-count 5
 3. Provide a migration guide: “If you previously duplicated examples/<box>, run `vm snapshot create <name>` instead.”
 4. Remove CLI commands that spin up legacy boxes, or make them wrappers around snapshot-aware flows before final removal.
 
-## Implementation Plan
+## Implementation Checklist
 
-1. **Foundations**
-   - Create `rust/vm/src/commands/snapshot.rs` with `SnapshotManager`.
-   - Define `SnapshotInfo` struct and JSON serialization.
-   - Add config entry for `snapshots_dir`.
-2. **CLI Commands**
-   - Wire `vm snapshot <subcommand>` parsing.
-   - Implement command handlers calling `SnapshotManager`.
-3. **Docker Provider**
-   - Container commit/save helpers.
-   - Volume archive/restore helpers.
-   - Compose config capture utilities.
-   - Safety checks (disk space, running state).
-4. **Metadata + UX**
-   - Human-readable metadata (timestamps, git hash, size).
-   - `vm snapshot list` formatting (name, created_at, size, description).
-   - Destructive-action confirmations (`restore`, `delete`).
-5. **Legacy Deletion**
-   - Remove redundant example box generator scripts.
-   - Prune docs referencing the deprecated workflow.
-6. **Verification**
-   - Automated tests for metadata serialization.
-   - Integration script exercising create → delete → restore cycle.
-   - Manual QA checklist for multi-instance projects.
+- [x] **Foundations**
+  - [x] Create `rust/vm/src/commands/snapshot.rs` with `SnapshotManager`
+  - [x] Define `SnapshotInfo` struct and JSON serialization
+  - [x] Add config entry for `snapshots_dir`
+- [x] **CLI Commands**
+  - [x] Wire `vm snapshot <subcommand>` parsing
+  - [x] Implement command handlers calling `SnapshotManager`
+- [x] **Docker Provider**
+  - [x] Container commit/save helpers
+  - [x] Volume archive/restore helpers
+  - [x] Compose config capture utilities
+  - [x] Safety checks (disk space, running state)
+- [x] **Metadata + UX**
+  - [x] Human-readable metadata (timestamps, git hash, size)
+  - [x] `vm snapshot list` formatting (name, created_at, size, description)
+  - [x] Destructive-action confirmations (`restore`, `delete`)
+- [x] **Legacy Deletion**
+  - [x] Remove redundant example box generator scripts
+  - [x] Prune docs referencing the deprecated workflow
+- [x] **Verification**
+  - [x] Automated tests for metadata serialization
+  - [x] Integration script exercising create → delete → restore cycle
+  - [x] Manual QA checklist for multi-instance projects
+- [ ] **Missing Feature**
+  - [ ] Implement `vm snapshot clean --max-age <duration> --max-count <num>` command
 
 ## Success Criteria
 
