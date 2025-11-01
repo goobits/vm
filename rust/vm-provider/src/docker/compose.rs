@@ -350,9 +350,11 @@ impl<'a> ComposeOperations<'a> {
         })
     }
 
-    pub fn render_docker_compose(
+    /// Internal method that handles rendering with optional instance name
+    fn render_docker_compose_internal(
         &self,
         build_context_dir: &Path,
+        instance_name: Option<&str>,
         context: &ProviderContext,
     ) -> Result<String> {
         // Use shared template engine instead of creating new instance
@@ -366,16 +368,36 @@ impl<'a> ComposeOperations<'a> {
         // Build host package context (consolidated package detection and env setup)
         let pkg_context = self.build_host_package_context(context)?;
 
-        let project_name = self
+        let base_project_name = self
             .config
             .project
             .as_ref()
             .and_then(|p| p.name.as_deref())
             .unwrap_or("vm-project");
 
+        // Handle instance name modification if provided
+        let (final_config, final_project_name) = if let Some(instance) = instance_name {
+            let mut custom_config = self.config.clone();
+            if let Some(ref mut project) = custom_config.project {
+                if let Some(ref project_name) = project.name {
+                    project.name = Some(format!("{}-{}", project_name, instance));
+                } else {
+                    project.name = Some(format!("vm-project-{}", instance));
+                }
+            } else {
+                custom_config.project = Some(vm_config::config::ProjectConfig {
+                    name: Some(format!("vm-project-{}", instance)),
+                    ..Default::default()
+                });
+            }
+            (custom_config, format!("{}-{}", base_project_name, instance))
+        } else {
+            (self.config.clone(), base_project_name.to_string())
+        };
+
         let mut tera_context = TeraContext::new();
-        tera_context.insert("config", &self.config);
-        tera_context.insert("project_name", &project_name);
+        tera_context.insert("config", &final_config);
+        tera_context.insert("project_name", &final_project_name);
         tera_context.insert("project_dir", &project_dir_str);
         tera_context.insert("build_context_dir", &build_context_str);
         tera_context.insert("project_uid", &user_config.uid.to_string());
@@ -436,19 +458,23 @@ impl<'a> ComposeOperations<'a> {
 
         if worktrees_enabled {
             // Get the worktrees base directory path
-            let worktrees_base = format!("{}/.vm/worktrees/{}", home_dir, project_name);
+            let worktrees_base = format!("{}/.vm/worktrees/{}", home_dir, final_project_name);
 
-            // Create the directory on host if it doesn't exist
-            if let Err(e) = fs::create_dir_all(&worktrees_base) {
-                eprintln!(
-                    "Warning: Failed to create worktrees directory {}: {}",
-                    worktrees_base, e
-                );
+            // Try to create the directory on host - only mount if successful
+            match fs::create_dir_all(&worktrees_base) {
+                Ok(_) => {
+                    // Mount at identical absolute path in container
+                    // This allows git worktrees created inside container to work on host too
+                    tera_context.insert("worktrees_base_dir", &worktrees_base);
+                }
+                Err(e) => {
+                    eprintln!(
+                        "Warning: Failed to create worktrees directory {}: {}",
+                        worktrees_base, e
+                    );
+                    eprintln!("         Worktrees base directory will not be mounted.");
+                }
             }
-
-            // Mount at identical absolute path in container
-            // This allows git worktrees created inside container to work on host too
-            tera_context.insert("worktrees_base_dir", &worktrees_base);
 
             // Also detect and mount existing worktrees (for backward compatibility)
             if let Ok(worktrees) = detect_worktrees() {
@@ -469,6 +495,15 @@ impl<'a> ComposeOperations<'a> {
                 VmError::Internal(format!("Failed to render docker-compose template: {:?}", e))
             })?;
         Ok(content)
+    }
+
+    /// Render docker-compose.yml without instance name
+    pub fn render_docker_compose(
+        &self,
+        build_context_dir: &Path,
+        context: &ProviderContext,
+    ) -> Result<String> {
+        self.render_docker_compose_internal(build_context_dir, None, context)
     }
 
     pub fn write_docker_compose(
@@ -513,134 +548,7 @@ impl<'a> ComposeOperations<'a> {
         instance_name: &str,
         context: &ProviderContext,
     ) -> Result<String> {
-        // Use shared template engine instead of creating new instance
-        let tera = super::get_compose_tera();
-
-        let project_dir_str = BuildOperations::path_to_string(self.project_dir)?;
-        let build_context_str = BuildOperations::path_to_string(build_context_dir)?;
-
-        let user_config = UserConfig::from_vm_config(self.config);
-
-        // Build host package context (consolidated package detection and env setup)
-        let pkg_context = self.build_host_package_context(context)?;
-
-        let project_name = self
-            .config
-            .project
-            .as_ref()
-            .and_then(|p| p.name.as_deref())
-            .unwrap_or("vm-project");
-
-        // Create a custom config with the instance name
-        let mut custom_config = self.config.clone();
-        if let Some(ref mut project) = custom_config.project {
-            if let Some(ref project_name) = project.name {
-                project.name = Some(format!("{project_name}-{instance_name}"));
-            } else {
-                project.name = Some(format!("vm-project-{instance_name}"));
-            }
-        } else {
-            custom_config.project = Some(vm_config::config::ProjectConfig {
-                name: Some(format!("vm-project-{instance_name}")),
-                ..Default::default()
-            });
-        }
-
-        let mut tera_context = TeraContext::new();
-        tera_context.insert("config", &custom_config);
-        tera_context.insert("project_name", &format!("{project_name}-{instance_name}"));
-        tera_context.insert("project_dir", &project_dir_str);
-        tera_context.insert("build_context_dir", &build_context_str);
-        tera_context.insert("project_uid", &user_config.uid.to_string());
-        tera_context.insert("project_gid", &user_config.gid.to_string());
-        tera_context.insert("project_user", &user_config.username);
-        tera_context.insert("is_macos", &cfg!(target_os = "macos"));
-        tera_context.insert("host_mounts", &pkg_context.host_mounts);
-        tera_context.insert("host_env_vars", &pkg_context.host_env_vars);
-
-        // AI sync flags for template
-        if let Some(ai_sync) = &self
-            .config
-            .host_sync
-            .as_ref()
-            .and_then(|hs| hs.ai_tools.as_ref())
-        {
-            tera_context.insert("claude_sync_enabled", &ai_sync.is_claude_enabled());
-            tera_context.insert("gemini_sync_enabled", &ai_sync.is_gemini_enabled());
-            tera_context.insert("codex_sync_enabled", &ai_sync.is_codex_enabled());
-            tera_context.insert("cursor_sync_enabled", &ai_sync.is_cursor_enabled());
-            tera_context.insert("aider_sync_enabled", &ai_sync.is_aider_enabled());
-        }
-        // No local package mounts or environment variables needed
-        let local_pipx_mounts: Vec<(String, String)> = Vec::new();
-        let local_env_vars: Vec<(String, String)> = Vec::new();
-
-        tera_context.insert("local_pipx_mounts", &local_pipx_mounts);
-        tera_context.insert("local_env_vars", &local_env_vars);
-
-        // SSH agent forwarding
-        configure_ssh_agent(self.config, &mut tera_context);
-
-        // Dotfiles sync
-        let dotfile_mounts = process_dotfiles(self.config, &user_config.username);
-        if !dotfile_mounts.is_empty() {
-            tera_context.insert("dotfile_mounts", &dotfile_mounts);
-        }
-
-        // Get home directory for template (needed for AI tools sync)
-        let home_dir = std::env::var("HOME").unwrap_or_else(|_| "/home/developer".to_string());
-        tera_context.insert("home_dir", &home_dir);
-
-        // Git worktrees volume
-        // Check if worktrees are enabled
-        let worktrees_enabled = self
-            .config
-            .host_sync
-            .as_ref()
-            .and_then(|hs| hs.worktrees.as_ref())
-            .map(|w| w.enabled)
-            .unwrap_or_else(|| {
-                // Check global config if project config doesn't have it
-                vm_config::GlobalConfig::load()
-                    .ok()
-                    .map(|gc| gc.worktrees.enabled)
-                    .unwrap_or(true) // Default to true
-            });
-
-        if worktrees_enabled {
-            // Get the worktrees base directory path
-            let worktrees_base = format!("{}/.vm/worktrees/{}", home_dir, project_name);
-
-            // Create the directory on host if it doesn't exist
-            if let Err(e) = fs::create_dir_all(&worktrees_base) {
-                eprintln!(
-                    "Warning: Failed to create worktrees directory {}: {}",
-                    worktrees_base, e
-                );
-            }
-
-            // Mount at identical absolute path in container
-            // This allows git worktrees created inside container to work on host too
-            tera_context.insert("worktrees_base_dir", &worktrees_base);
-
-            // Also detect and mount existing worktrees (for backward compatibility)
-            if let Ok(worktrees) = detect_worktrees() {
-                if !worktrees.is_empty() {
-                    let worktree_mounts: Vec<_> = worktrees
-                        .iter()
-                        .filter_map(|s| extract_path_mount(s))
-                        .collect();
-                    tera_context.insert("worktrees", &worktree_mounts);
-                }
-            }
-        }
-
-        let content = tera
-            .render("docker-compose.yml", &tera_context)
-            .map_err(|e| {
-                VmError::Internal(format!("Failed to render docker-compose template: {e}"))
-            })?;
-        Ok(content)
+        self.render_docker_compose_internal(build_context_dir, Some(instance_name), context)
     }
 
     pub fn render_docker_compose_with_mounts(&self, state: &TempVmState) -> Result<String> {

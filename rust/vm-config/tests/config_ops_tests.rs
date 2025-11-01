@@ -20,6 +20,8 @@ struct SimpleTestFixture {
 
 impl SimpleTestFixture {
     fn new() -> Result<Self> {
+        let _ = fs::remove_file("/tmp/vm.yaml");
+
         let temp_dir = TempDir::new()?;
         let test_dir = temp_dir.path().to_path_buf();
 

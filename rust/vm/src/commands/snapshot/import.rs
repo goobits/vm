@@ -169,7 +169,16 @@ pub async fn handle_import(
 
             vm_println!("    Loading image for service '{}'...", service.name);
 
-            let load_args = ["load", "-i", image_path.to_str().unwrap()];
+            let image_path_str = image_path.to_str().ok_or_else(|| {
+                VmError::general(
+                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid UTF-8 in path"),
+                    format!(
+                        "Snapshot path contains invalid UTF-8 characters: {}",
+                        image_path.display()
+                    ),
+                )
+            })?;
+            let load_args = ["load", "-i", image_path_str];
             execute_docker(&load_args).await?;
         }
     }

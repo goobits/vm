@@ -420,8 +420,21 @@ pub async fn handle_create(
                 let image_file = "base.tar";
                 let image_path = images_dir.join(image_file);
 
+                let image_path_str = image_path.to_str().ok_or_else(|| {
+                    VmError::general(
+                        std::io::Error::new(
+                            std::io::ErrorKind::InvalidInput,
+                            "Invalid UTF-8 in path",
+                        ),
+                        format!(
+                            "Snapshot path contains invalid UTF-8 characters: {}",
+                            image_path.display()
+                        ),
+                    )
+                })?;
+
                 let save_output = tokio::process::Command::new("docker")
-                    .args(["save", &image_tag, "-o", image_path.to_str().unwrap()])
+                    .args(["save", &image_tag, "-o", image_path_str])
                     .output()
                     .await
                     .map_err(|e| VmError::general(e, "Failed to save image"))?;

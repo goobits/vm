@@ -155,7 +155,16 @@ pub async fn handle_restore(
             vm_core::vm_println!("  Loading image: {}", service.name);
 
             let image_path = images_dir.join(&service.image_file);
-            execute_docker(&["load", "-i", image_path.to_str().unwrap()]).await?;
+            let image_path_str = image_path.to_str().ok_or_else(|| {
+                VmError::general(
+                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid UTF-8 in path"),
+                    format!(
+                        "Snapshot path contains invalid UTF-8 characters: {}",
+                        image_path.display()
+                    ),
+                )
+            })?;
+            execute_docker(&["load", "-i", image_path_str]).await?;
         }
     }
 

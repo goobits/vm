@@ -182,7 +182,16 @@ pub async fn handle_create(
         // Save image to tar file
         let image_file = format!("{}.tar", service);
         let image_path = images_dir.join(&image_file);
-        execute_docker(&["save", &image_tag, "-o", image_path.to_str().unwrap()]).await?;
+        let image_path_str = image_path.to_str().ok_or_else(|| {
+            VmError::general(
+                std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid UTF-8 in path"),
+                format!(
+                    "Snapshot path contains invalid UTF-8 characters: {}",
+                    image_path.display()
+                ),
+            )
+        })?;
+        execute_docker(&["save", &image_tag, "-o", image_path_str]).await?;
 
         // Get image digest
         let digest_output = execute_docker(&["inspect", "--format={{.Id}}", &image_tag]).await?;

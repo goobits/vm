@@ -186,11 +186,23 @@ impl<'a> BuildOperations<'a> {
                     })?;
 
                 // Check if image is already loaded
-                let image_exists = Command::new("docker")
+                let image_exists = match Command::new("docker")
                     .args(["image", "inspect", image_tag])
                     .output()
-                    .map(|o| o.status.success())
-                    .unwrap_or(false);
+                {
+                    Ok(output) => output.status.success(),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        return Err(VmError::Dependency(
+                            "Docker is not installed or not in PATH. Please install Docker to use VM.".to_string()
+                        ));
+                    }
+                    Err(e) => {
+                        return Err(VmError::Internal(format!(
+                            "Failed to check if Docker image exists. Is Docker running? Error: {}",
+                            e
+                        )));
+                    }
+                };
 
                 if !image_exists {
                     vm_println!("  Image not loaded, loading from snapshot...");
@@ -206,7 +218,7 @@ impl<'a> BuildOperations<'a> {
                     }
 
                     let load_output = Command::new("docker")
-                        .args(["load", "-i", image_file_path.to_str().unwrap()])
+                        .args(["load", "-i", Self::path_to_string(&image_file_path)?])
                         .output()
                         .map_err(|e| {
                             VmError::Internal(format!("Failed to load Docker image: {}", e))
