@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use chrono::Local;
 use vm_core::error::{Result, VmError};
 use vm_core::user_paths;
-use vm_core::{vm_info, vm_success, vm_warning};
+use vm_core::{vm_info, vm_success};
 
 /// Represents a single configuration file to be migrated.
 struct MigrationPath {
@@ -53,7 +53,7 @@ pub fn migrate_config_files() -> Result<()> {
     display_pending_migrations(&pending_migrations);
 
     if !confirm_migration()? {
-        vm_warning!("Migration cancelled by user.");
+        vm_success!("Migration cancelled by user.");
         return Ok(());
     }
 
