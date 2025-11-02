@@ -151,6 +151,17 @@ impl PortRegistry {
         })
     }
 
+    /// Gets a project's registry entry if it exists.
+    ///
+    /// # Arguments
+    /// * `project` - The project name to look up
+    ///
+    /// # Returns
+    /// `Some(&ProjectEntry)` if the project is registered, `None` otherwise.
+    pub fn get_entry(&self, project: &str) -> Option<&ProjectEntry> {
+        self.entries.get(project)
+    }
+
     /// Lists all registered project port ranges to stdout.
     pub fn list(&self) {
         if self.entries.is_empty() {

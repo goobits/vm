@@ -123,20 +123,30 @@ pub fn execute(
 
     // Use vm-ports library to suggest and register an available port range
     if let Ok(registry) = PortRegistry::load() {
-        if let Some(range_str) = registry.suggest_next_range(10, 3000) {
-            // Parse the range string to get start and end
+        // Check if this project already has ports registered
+        let (range_str, is_new_project) =
+            if let Some(existing_entry) = registry.get_entry(sanitized_name) {
+                // Project already has ports - reuse them
+                info!(
+                    "♻️  Reusing existing port range {} for project '{}'",
+                    existing_entry.range, sanitized_name
+                );
+                (Some(existing_entry.range.clone()), false)
+            } else {
+                // New project - suggest next available range
+                (registry.suggest_next_range(10, 3000), true)
+            };
+
+        if let Some(range_str) = range_str {
             if let Ok(range) = PortRange::parse(&range_str) {
                 config.ports.range = Some(vec![range.start, range.end]);
 
-                // Register this range
-                let mut registry = PortRegistry::load().unwrap_or_else(|_| {
-                    warn!("Failed to load port registry, using default");
-                    PortRegistry::default()
-                });
-                if let Err(e) =
-                    registry.register(sanitized_name, &range, &current_dir.to_string_lossy())
-                {
-                    warn!("Failed to register port range: {}", e);
+                // Register if this is a new project
+                if is_new_project {
+                    let mut registry = PortRegistry::load().unwrap_or_default();
+                    let _ = registry
+                        .register(sanitized_name, &range, &current_dir.to_string_lossy())
+                        .map_err(|e| warn!("Failed to register port range: {}", e));
                 }
             }
         } else {
