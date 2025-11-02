@@ -83,20 +83,14 @@
             terminal_colors: "{{ terminal_themes[project_config.terminal.theme | default('dracula')].colors | default(terminal_themes.dracula.colors) }}"
             home_dir: "/home/{{ project_config.vm.user | default(default_user) }}"
             # Consolidated conditions for package manager installation requirements
-            nodejs_required: >-
-              (project_config.npm_packages is defined and project_config.npm_packages is not none and project_config.npm_packages | length > 0) or
-              project_config.claude_sync | default(false) or
-              project_config.gemini_sync | default(false)
-            pip_packages_required: "{{ project_config.pip_packages is defined and project_config.pip_packages | length > 0 }}"
-            cargo_packages_required: "{{ project_config.cargo_packages is defined and project_config.cargo_packages | length > 0 }}"
-            apt_packages_required: "{{ project_config.apt_packages is defined and project_config.apt_packages | length > 0 }}"
+            nodejs_required: "{{ ((project_config.npm_packages is defined and project_config.npm_packages is not none and project_config.npm_packages | length > 0) or project_config.claude_sync | default(false) or project_config.gemini_sync | default(false)) | bool }}"
+            pip_packages_required: "{{ (project_config.pip_packages is defined and project_config.pip_packages | length > 0) | bool }}"
+            cargo_packages_required: "{{ (project_config.cargo_packages is defined and project_config.cargo_packages | length > 0) | bool }}"
+            apt_packages_required: "{{ (project_config.apt_packages is defined and project_config.apt_packages | length > 0) | bool }}"
             # Environment template configuration
-            env_template_configured: "{{ project_config.project.env_template_path is defined and project_config.project.env_template_path }}"
+            env_template_configured: "{{ (project_config.project.env_template_path is defined and project_config.project.env_template_path) | bool }}"
             # Consolidated condition for port configurations
-            ports_configured: >-
-              project_config.ports is defined and
-              project_config.ports is mapping and
-              project_config.ports | length > 0
+            ports_configured: "{{ (project_config.ports is defined and project_config.ports is mapping and project_config.ports | length > 0) | bool }}"
 
       # User creation pre-task
       - name: Ensure project user exists with correct UID/GID

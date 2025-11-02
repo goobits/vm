@@ -132,16 +132,11 @@ impl<'a> BuildOperations<'a> {
 
                 vm_println!("Loading base image from snapshot '@{}'...", name);
 
-                // Check if snapshot exists in ~/.config/vm/snapshots/global/<name>/
-                let home_dir = std::env::var("HOME")
-                    .or_else(|_| std::env::var("USERPROFILE"))
-                    .map_err(|_| {
-                        VmError::Internal("Could not determine home directory".to_string())
-                    })?;
-
-                let snapshot_dir = PathBuf::from(home_dir)
-                    .join(".config")
-                    .join("vm")
+                // Check if snapshot exists in user data directory (platform-specific)
+                let snapshot_dir = vm_core::user_paths::user_data_dir()
+                    .map_err(|e| {
+                        VmError::Internal(format!("Could not determine user data directory: {}", e))
+                    })?
                     .join("snapshots")
                     .join("global")
                     .join(name);

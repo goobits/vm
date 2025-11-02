@@ -67,15 +67,19 @@ impl UserConfig {
     pub fn from_vm_config(config: &VmConfig) -> Self {
         let current_uid = vm_config::get_current_uid();
         let current_gid = vm_config::get_current_gid();
-        let project_user = config
-            .vm
-            .as_ref()
+
+        let vm_settings = config.vm.as_ref();
+        let project_user = vm_settings
             .and_then(|vm| vm.user.as_deref())
             .unwrap_or("developer");
 
+        // Use UID/GID from config if specified, otherwise fall back to host UID/GID
+        let uid = vm_settings.and_then(|vm| vm.uid).unwrap_or(current_uid);
+        let gid = vm_settings.and_then(|vm| vm.gid).unwrap_or(current_gid);
+
         Self {
-            uid: current_uid,
-            gid: current_gid,
+            uid,
+            gid,
             username: project_user.to_string(),
         }
     }
