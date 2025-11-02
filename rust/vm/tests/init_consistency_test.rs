@@ -134,7 +134,7 @@ fn test_init_values_match_defaults() -> Result<()> {
     let config: VmConfig = serde_yaml_ng::from_str(&yaml_content)?;
 
     // Check that default values from defaults.yaml are preserved
-    assert_eq!(config.version, Some("1.2.1".to_string()));
+    assert_eq!(config.version, Some("2.0".to_string()));
     assert_eq!(config.provider, Some("docker".to_string()));
     assert_eq!(config.os, Some("auto".to_string()));
 

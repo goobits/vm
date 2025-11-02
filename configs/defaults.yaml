@@ -3,7 +3,7 @@
 # This file provides sensible defaults for all VM configuration options
 
 # Metadata & Schema
-version: "1.2.1"
+version: '2.0'
 
 # Provider & Environment
 provider: docker
@@ -29,13 +29,41 @@ vm:
 
 # Runtime Versions
 versions:
-  node: "22"
-  python: "3.11"
+  node: '22'
+  python: '3.11'
+
+# Port Configuration
+ports:
+  _range: []  # Auto-allocated during init
+
+# Services & Infrastructure (empty by default, populated during init)
+services: {}
+
+# Package Management (empty by default, can be populated by presets)
+apt_packages: []
+npm_packages: []
+pip_packages: []
+cargo_packages: []
 
 # Development Environment
 terminal:
-  emoji: "🚀"
+  emoji: 🚀
   username: dev
   theme: dracula
   show_git_branch: true
   show_timestamp: false
+
+# Shell Aliases (empty by default, can be populated by presets)
+aliases: {}
+
+# Environment Variables (empty by default)
+environment: {}
+
+# Host Synchronization (minimal defaults)
+host_sync:
+  git_config: true
+  ai_tools: false
+
+# Networking (empty by default)
+networking:
+  networks: []
