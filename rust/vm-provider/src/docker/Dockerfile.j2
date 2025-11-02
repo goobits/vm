@@ -120,7 +120,15 @@ RUN --mount=type=cache,target=/home/${PROJECT_USER}/.cargo/registry,uid=${PROJEC
     --mount=type=cache,target=/home/${PROJECT_USER}/.cargo/git,uid=${PROJECT_UID},gid=${PROJECT_GID} \
     if [ -n "${CARGO_PACKAGES}" ]; then \
         echo "Installing Cargo packages: ${CARGO_PACKAGES}"; \
-        . "$HOME/.cargo/env" && cargo install ${CARGO_PACKAGES}; \
+        . "$HOME/.cargo/env" && \
+        for pkg in ${CARGO_PACKAGES}; do \
+            if ! cargo install --list | grep -q "^${pkg} "; then \
+                echo "Installing ${pkg}..."; \
+                cargo install "${pkg}"; \
+            else \
+                echo "Skipping ${pkg} (already installed)"; \
+            fi; \
+        done; \
     fi
 
 

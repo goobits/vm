@@ -343,20 +343,25 @@
             - service_item.value.port is not none
 
       # Install Node.js/npm if npm_packages is defined OR claude_sync/gemini_sync enabled
+      - name: Check if NVM is already installed
+        stat:
+            path: '/home/{{ project_user }}/.nvm/nvm.sh'
+        register: nvm_present
+
       - name: Download NVM installer
         get_url:
             url: "https://raw.githubusercontent.com/nvm-sh/nvm/{{ project_config.versions.nvm | default('v0.40.3') }}/install.sh"
             dest: /tmp/install_nvm.sh
             mode: '0755'
         become_user: '{{ project_user }}'
-        when: nodejs_required
+        when: "{{ nodejs_required and not nvm_present.stat.exists | bool }}"
 
       - name: Install NVM
         shell: /tmp/install_nvm.sh
         args:
             creates: '/home/{{ project_user }}/.nvm/nvm.sh'
         become_user: '{{ project_user }}'
-        when: nodejs_required
+        when: "{{ nodejs_required and not nvm_present.stat.exists | bool }}"
 
       # Change default shell to zsh
       - name: Change user shell to zsh
@@ -428,15 +433,23 @@
           - nodejs_required
           - corepack_result.failed | default(false)
 
+      - name: Check installed apt packages
+        package_facts:
+            manager: apt
+        when: apt_packages_required
+
       - name: Install additional APT packages
         apt:
-            name: '{{ project_config.apt_packages }}'
+            name: "{{ item }}"
             state: present
+        loop: "{{ project_config.apt_packages | default([]) }}"
         retries: 5
         delay: 10
         register: apt_packages_install
         until: apt_packages_install is succeeded
-        when: apt_packages_required
+        when:
+          - apt_packages_required
+          - item not in ansible_facts.packages
 
 
       - name: Install Claude Code CLI
