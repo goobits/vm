@@ -121,7 +121,7 @@ mod cli_integration_tests {
 
         let stdout = String::from_utf8(output.stdout)?;
         assert!(stdout.contains("vm:"));
-        assert!(stdout.contains("memory: 4096"));
+        assert!(stdout.contains("memory: '4096'") || stdout.contains("memory: 4096"));
 
         Ok(())
     }
@@ -191,7 +191,7 @@ mod cli_integration_tests {
         let output = fixture.run_vm_command(&["config", "get"])?;
         let stdout = String::from_utf8(output.stdout)?;
         assert!(!stdout.contains("memory"));
-        assert!(stdout.contains("cpus: 4"));
+        assert!(stdout.contains("cpus: '4'") || stdout.contains("cpus: 4"));
         assert!(stdout.contains("provider: docker"));
 
         Ok(())

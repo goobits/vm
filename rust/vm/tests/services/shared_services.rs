@@ -236,6 +236,7 @@ fn test_shared_postgres_lifecycle_integration() -> Result<()> {
     // 1. Enable shared postgresql globally
     let output = Command::new(vm_binary)
         .args(["config", "set", "services.postgresql.enabled", "true"])
+        .current_dir(&project_dir)
         .env("HOME", home_dir)
         .output()?;
     assert!(
@@ -323,6 +324,7 @@ fn test_shared_redis_lifecycle_integration() -> Result<()> {
     // 1. Enable shared redis globally
     let output = Command::new(vm_binary)
         .args(["config", "set", "services.redis.enabled", "true"])
+        .current_dir(&project_dir)
         .env("HOME", home_dir)
         .output()?;
     assert!(
