@@ -202,7 +202,69 @@
             update_cache: yes
             cache_valid_time: 3600
 
-      # Setup supervisor for Docker containers
+      # Install base system packages FIRST (before any configuration)
+      - name: Wait for apt lock to be released
+        shell: while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 1; done
+
+      - name: Install locale packages
+        apt:
+            name:
+                - locales
+                - locales-all
+            state: present
+        retries: 5
+        delay: 10
+        register: locale_install
+        until: locale_install is succeeded
+
+      - name: Install base system packages
+        apt:
+            name:
+                - curl
+                - wget
+                - git
+                - git-lfs
+                - build-essential
+                - python3-pip
+                - python3-dev
+                - python3-venv
+                - ufw
+                - fail2ban
+                - unattended-upgrades
+                - python3-psycopg2
+                - zsh
+                - zsh-syntax-highlighting
+                - supervisor
+            state: present
+        retries: 5
+        delay: 10
+        register: base_packages_install
+        until: base_packages_install is succeeded
+
+      # Locale configuration
+      - name: Generate en_US.UTF-8 locale
+        locale_gen:
+            name: en_US.UTF-8
+            state: present
+
+      - name: Set system locale
+        copy:
+            dest: /etc/default/locale
+            content: |
+                LANG=en_US.UTF-8
+                LANGUAGE=en_US:en
+                LC_ALL=en_US.UTF-8
+                LC_CTYPE=en_US.UTF-8
+            mode: '0644'
+        no_log: true
+
+      # Timezone configuration (unified method for both VM and container)
+      - name: Set system timezone
+        shell: |
+            ln -sf /usr/share/zoneinfo/{{ project_config.vm.timezone | default('UTC') }} /etc/localtime
+            echo "{{ project_config.vm.timezone | default('UTC') }}" > /etc/timezone
+
+      # Setup supervisor for Docker containers (AFTER it's installed)
       - name: Setup supervisor for Docker containers
         block:
           - name: Create supervisor directories with proper permissions
@@ -242,66 +304,6 @@
                 [include]
                 files = /etc/supervisor/conf.d/*.conf
         when: is_docker_container
-
-      # Locale configuration
-      - name: Wait for apt lock to be released
-        shell: while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 1; done
-      - name: Install locale packages
-        apt:
-            name:
-                - locales
-                - locales-all
-            state: present
-        retries: 5
-        delay: 10
-        register: locale_install
-        until: locale_install is succeeded
-
-      - name: Generate en_US.UTF-8 locale
-        locale_gen:
-            name: en_US.UTF-8
-            state: present
-
-      - name: Set system locale
-        copy:
-            dest: /etc/default/locale
-            content: |
-                LANG=en_US.UTF-8
-                LANGUAGE=en_US:en
-                LC_ALL=en_US.UTF-8
-                LC_CTYPE=en_US.UTF-8
-            mode: '0644'
-        no_log: true
-
-      # Timezone configuration (unified method for both VM and container)
-      - name: Set system timezone
-        shell: |
-            ln -sf /usr/share/zoneinfo/{{ project_config.vm.timezone | default('UTC') }} /etc/localtime
-            echo "{{ project_config.vm.timezone | default('UTC') }}" > /etc/timezone
-
-      - name: Install base system packages
-        apt:
-            name:
-                - curl
-                - wget
-                - git
-                - git-lfs
-                - build-essential
-                - python3-pip
-                - python3-dev
-                - python3-venv
-                - ufw
-                - fail2ban
-                - unattended-upgrades
-                - python3-psycopg2
-                - zsh
-                - zsh-syntax-highlighting
-                - supervisor
-            state: present
-        retries: 5
-        delay: 10
-        register: base_packages_install
-        until: base_packages_install is succeeded
 
       # Security setup - Configure rules first, enable last
       - name: Allow SSH (critical - must be first)
