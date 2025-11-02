@@ -1,4 +1,4 @@
-version: "2.0"
+version: '2.0'
 provider: docker
 os: auto
 project:
@@ -17,6 +17,12 @@ versions:
   python: '3.11'
 ports:
   _range: [3120, 3129]
+services:
+  postgresql:
+    enabled: true
+    port: 3129
+  redis:
+    enabled: true
 apt_packages:
   - tree
   - ripgrep
