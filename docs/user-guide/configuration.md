@@ -141,7 +141,7 @@ ports:
 ## 📋 Full Reference
 
 ```yaml
-version: "1.0"  # Configuration format version
+version: "2.0"  # Configuration format version
 
 # Simple mode (recommended)
 os: ubuntu  # Options: ubuntu, macos, debian, alpine, linux, auto

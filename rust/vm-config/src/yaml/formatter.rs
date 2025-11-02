@@ -210,7 +210,7 @@ mod tests {
     fn test_format_yaml_value_ordering() {
         let mut input = Mapping::new();
         input.insert(Value::String("vm".into()), Value::String("test".into()));
-        input.insert(Value::String("version".into()), Value::String("1.0".into()));
+        input.insert(Value::String("version".into()), Value::String("2.0".into()));
         input.insert(
             Value::String("provider".into()),
             Value::String("docker".into()),
@@ -234,7 +234,7 @@ mod tests {
             Value::String("custom_field".into()),
             Value::String("value".into()),
         );
-        input.insert(Value::String("version".into()), Value::String("1.0".into()));
+        input.insert(Value::String("version".into()), Value::String("2.0".into()));
 
         let result =
             format_yaml_value(&Value::Mapping(input)).expect("should format with unknown fields");
