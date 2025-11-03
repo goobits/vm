@@ -74,13 +74,25 @@ RUN apt-get update && apt-get install -y \
     libcairo2 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js (latest LTS - auto-detects and installs latest stable LTS version)
-RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
-    && apt-get install -y nodejs \
-    && rm -rf /var/lib/apt/lists/* \
-    # Show installed versions
-    && echo "Node.js version: $(node --version)" \
-    && echo "npm version: $(npm --version)"
+# Install Node.js via NVM (allows version management per project)
+USER ${USER_NAME}
+ENV NVM_DIR="/home/${USER_NAME}/.nvm"
+ENV NVM_VERSION="v0.40.3"
+ENV NODE_VERSION="22"
+
+RUN mkdir -p $NVM_DIR && \
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash && \
+    . $NVM_DIR/nvm.sh && \
+    nvm install ${NODE_VERSION} && \
+    nvm use ${NODE_VERSION} && \
+    nvm alias default ${NODE_VERSION} && \
+    echo "Node.js version: $(node --version)" && \
+    echo "npm version: $(npm --version)"
+
+# Add NVM to PATH
+ENV PATH="${NVM_DIR}/versions/node/v${NODE_VERSION}/bin:${PATH}"
+
+USER root
 
 # Install Python (latest stable from deadsnakes)
 # Filters to stable versions only (3.10-3.14), excludes nightly builds (3.15+)
@@ -106,42 +118,43 @@ RUN apt-get update && apt-get install -y \
 # Install Ansible (compatible with installed Python version)
 RUN pip3 install --no-cache-dir ansible
 
-  # Install Rust and Cargo (latest stable - auto-installs latest stable release)
-  RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile default \
-      && . /root/.cargo/env \
-      && rustup component add rustfmt clippy rust-analyzer \
-      # Show installed version
+# Create user early so we can install tools for them
+ARG USER_NAME=developer
+ARG USER_UID=1000
+ARG USER_GID=1000
+
+RUN groupadd -g ${USER_GID} ${USER_NAME} || true && \
+    useradd -m -u ${USER_UID} -g ${USER_GID} -s /bin/bash ${USER_NAME}
+
+# Install Rust and Cargo as developer user (latest stable)
+USER ${USER_NAME}
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile default \
+    && . $HOME/.cargo/env \
+    && rustup component add rustfmt clippy rust-analyzer \
     && echo "Rust version: $(rustc --version)" \
     && echo "Cargo version: $(cargo --version)"
 
-# Make Rust available system-wide
-ENV PATH="/root/.cargo/bin:${PATH}"
-ENV CARGO_HOME="/root/.cargo"
-ENV RUSTUP_HOME="/root/.rustup"
-
-# Install common Cargo tools
-RUN . /root/.cargo/env && cargo install \
+# Install common Cargo tools as developer user
+RUN . $HOME/.cargo/env && cargo install \
     cargo-watch \
     cargo-edit \
     cargo-audit \
     cargo-outdated
 
-# Install NPM packages globally (includes Playwright)
-RUN npm install -g \
+# Switch back to root for remaining setup
+USER root
+
+# Make Rust available in PATH for developer user
+ENV PATH="/home/${USER_NAME}/.cargo/bin:${PATH}"
+ENV CARGO_HOME="/home/${USER_NAME}/.cargo"
+ENV RUSTUP_HOME="/home/${USER_NAME}/.rustup"
+
+# Install NPM packages globally as developer user (using NVM)
+USER ${USER_NAME}
+RUN . $NVM_DIR/nvm.sh && npm install -g \
     @anthropic-ai/claude-code \
     @google/gemini-cli \
     playwright \
-    && npx playwright install chromium \
-    && npx playwright install-deps chromium
-
-# Install Python packages (including Playwright)
-RUN pip3 install --no-cache-dir \
-    playwright \
-    pytest \
-    pytest-playwright
-
-# Install common dev tools that presets might need
-RUN npm install -g \
     prettier \
     eslint \
     typescript \
@@ -149,13 +162,26 @@ RUN npm install -g \
     nodemon \
     npm-check-updates
 
+# Install Playwright browsers as developer user
+RUN . $NVM_DIR/nvm.sh && npx playwright install chromium
+
+# Switch to root for system-level Playwright deps
+USER root
+RUN apt-get update && \
+    . /home/${USER_NAME}/.nvm/nvm.sh && npx playwright install-deps chromium && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Python packages (including Playwright)
+RUN pip3 install --no-cache-dir \
+    playwright \
+    pytest \
+    pytest-playwright
+
 # Set up working directory
 WORKDIR /workspace
 
-# Create user with matching configuration
-RUN groupadd -g ${USER_GID} ${USER_NAME} || true && \
-    useradd -m -u ${USER_UID} -g ${USER_GID} -s /bin/bash ${USER_NAME} && \
-    mkdir -p /workspace && \
+# Set workspace ownership (user already created above)
+RUN mkdir -p /workspace && \
     chown -R ${USER_NAME}:${USER_NAME} /workspace
 
 # Set up bash aliases from vm.yaml and environment

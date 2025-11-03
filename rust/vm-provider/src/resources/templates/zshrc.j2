@@ -185,3 +185,8 @@ save_current_directory() {
 zshexit() {
   save_current_directory
 }
+
+# Source .bashrc if it exists (preserves custom aliases and env vars from Dockerfiles)
+if [ -f "$HOME/.bashrc" ]; then
+  source "$HOME/.bashrc"
+fi
