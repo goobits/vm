@@ -39,7 +39,7 @@ ENV TERM=xterm-256color
 # --- Base System Setup ---
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    echo "${TZ}" > /etc/timezone && \
+    (echo "${TZ}" > /etc/timezone || true) && \
     apt-get update && apt-get install -y \
     locales \
     curl wget git git-lfs build-essential \
@@ -205,8 +205,9 @@ RUN chmod +x /usr/local/bin/vm-worktree
 USER ${PROJECT_USER}
 
 # Create persistent history directory with correct permissions
+# Note: chmod may fail if directory exists from snapshot with different UID - that's OK
 RUN mkdir -p /home/${PROJECT_USER}/.shell_history && \
-    chmod 700 /home/${PROJECT_USER}/.shell_history
+    chmod 700 /home/${PROJECT_USER}/.shell_history || true
 
 # Note: Zsh history is now configured in zshrc.j2 template
 
