@@ -6,9 +6,7 @@
 # Security: Enterprise-grade with verification and comprehensive error handling
 #
 # Usage:
-#   ./install.sh                    # Install vm tool from pre-compiled binary
-#   ./install.sh --version v1.2.3   # Install specific version
-#   ./install.sh --build-from-source  # Build from source
+#   ./install.sh                    # Build and install vm tool from source
 #
 
 set -euo pipefail  # Exit on error, undefined vars, pipe failures
@@ -1220,31 +1218,25 @@ main() {
     check_docker_is_running
     echo ""
 
-    # Step 3: Install based on mode
-    if [[ "$INSTALL_MODE" == "binary" ]]; then
-        # Install from pre-compiled binary
-        install_from_release
-    else
-        # Build from source
-        log_info "Building from source..."
+    # Step 3: Always build from source
+    log_info "Building from source..."
 
-        # Install Rust if needed
-        install_rust_secure || handle_error $ERR_INSTALL_FAILED \
-            "Rust installation failed" \
-            "Try installing Rust manually from https://rustup.rs"
-        echo ""
+    # Install Rust if needed
+    install_rust_secure || handle_error $ERR_INSTALL_FAILED \
+        "Rust installation failed" \
+        "Try installing Rust manually from https://rustup.rs"
+    echo ""
 
-        # Check for build tools (gcc/clang)
-        check_build_tools
-        echo ""
+    # Check for build tools (gcc/clang)
+    check_build_tools
+    echo ""
 
-        # Install build dependencies (mold, OpenSSL)
-        install_build_dependencies
-        echo ""
+    # Install build dependencies (mold, OpenSSL)
+    install_build_dependencies
+    echo ""
 
-        # Install VM tool from source
-        install_vm_tool
-    fi
+    # Install VM tool from source
+    install_vm_tool
     echo ""
 
     # Step 3: Configure PATH

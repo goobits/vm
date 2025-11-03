@@ -366,6 +366,11 @@ CMD ["tail", "-f", "/dev/null"]
         // Use the provided base image (already determined in prepare_build_context)
         args.push(format!("--build-arg=base_image={}", base_image));
 
+        // Detect if using a pre-provisioned snapshot to skip redundant base provisioning
+        let is_snapshot =
+            base_image.starts_with("vm-snapshot/") || base_image.contains("vibe-base");
+        args.push(format!("--build-arg=BASE_PREPROVISIONED={}", is_snapshot));
+
         // Add version build args
         if let Some(versions) = &self.config.versions {
             if let Some(node) = &versions.node {

@@ -26,6 +26,9 @@ ARG GIT_INIT_DEFAULT_BRANCH
 ARG GIT_CORE_EDITOR
 ARG GIT_CORE_EXCLUDESFILE_CONTENT
 
+# Snapshot detection - set to "true" when base_image is a pre-provisioned snapshot
+ARG BASE_PREPROVISIONED=false
+
 ARG TZ=UTC
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=en_US.UTF-8
@@ -37,39 +40,52 @@ ENV PAGER="less -R"
 ENV TERM=xterm-256color
 
 # --- Base System Setup ---
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    (echo "${TZ}" > /etc/timezone || true) && \
-    apt-get update && apt-get install -y \
-    locales \
-    curl wget git git-lfs build-essential \
-    python3 python3-dev python3-pip python3-venv \
-    ansible \
-    supervisor \
-    sudo \
-    nano vim \
-    unzip zip tree jq \
-    htop lsof \
-    netcat-openbsd telnet dnsutils iputils-ping \
-    zsh zsh-syntax-highlighting \
-    tzdata \
-    && locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8
+# Skip for pre-provisioned snapshots to avoid permission conflicts
+RUN if [ "$BASE_PREPROVISIONED" != "true" ]; then \
+        (echo "${TZ}" > /etc/timezone || true) && \
+        apt-get update && apt-get install -y \
+        locales \
+        curl wget git git-lfs build-essential \
+        python3 python3-dev python3-pip python3-venv \
+        ansible \
+        supervisor \
+        sudo \
+        nano vim \
+        unzip zip tree jq \
+        htop lsof \
+        netcat-openbsd telnet dnsutils iputils-ping \
+        zsh zsh-syntax-highlighting \
+        tzdata \
+        && locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8; \
+    else \
+        echo "Skipping base system setup (using pre-provisioned snapshot)"; \
+    fi
 
 # --- User Setup ---
+# Force root user to avoid "user currently used by process 1" errors
+USER root
+
 # Create/update user and group, handling both fresh images and snapshots
 # For snapshots with existing users, we change the UID/GID to match the host
 RUN groupadd -f -g ${PROJECT_GID} ${PROJECT_USER} && \
     if id -u ${PROJECT_USER} >/dev/null 2>&1; then \
-        # User exists (from snapshot), save old UID/GID and change to match host
+        # User exists (from snapshot)
         OLD_UID=$(id -u ${PROJECT_USER}) && \
         OLD_GID=$(id -g ${PROJECT_USER}) && \
-        usermod -u ${PROJECT_UID} ${PROJECT_USER} && \
-        groupmod -g ${PROJECT_GID} ${PROJECT_USER} && \
-        # Fix ownership of all files owned by old UID/GID
-        find /home/${PROJECT_USER} -user $OLD_UID -exec chown ${PROJECT_UID} {} + 2>/dev/null || true && \
-        find /home/${PROJECT_USER} -group $OLD_GID -exec chgrp ${PROJECT_GID} {} + 2>/dev/null || true; \
+        # Only modify if UID/GID differs from target
+        if [ "$OLD_UID" != "${PROJECT_UID}" ] || [ "$OLD_GID" != "${PROJECT_GID}" ]; then \
+            echo "Adjusting UID/GID: $OLD_UID:$OLD_GID -> ${PROJECT_UID}:${PROJECT_GID}" && \
+            usermod -u ${PROJECT_UID} ${PROJECT_USER} && \
+            groupmod -g ${PROJECT_GID} ${PROJECT_USER} && \
+            # Fix ownership of all files owned by old UID/GID
+            find /home/${PROJECT_USER} -user $OLD_UID -exec chown ${PROJECT_UID} {} + 2>/dev/null || true && \
+            find /home/${PROJECT_USER} -group $OLD_GID -exec chgrp ${PROJECT_GID} {} + 2>/dev/null || true; \
+        else \
+            echo "UID/GID already matches (${PROJECT_UID}:${PROJECT_GID}), skipping adjustment"; \
+        fi; \
     else \
         # User doesn't exist, create them
+        echo "Creating user ${PROJECT_USER} (${PROJECT_UID}:${PROJECT_GID})" && \
         useradd -m -u ${PROJECT_UID} -g ${PROJECT_GID} -s /bin/zsh ${PROJECT_USER}; \
     fi && \
     usermod -aG sudo ${PROJECT_USER} && \
