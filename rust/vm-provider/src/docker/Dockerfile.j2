@@ -114,7 +114,9 @@ RUN if id -u ${PROJECT_USER} >/dev/null 2>&1; then \
     fi && \
     usermod -aG sudo ${PROJECT_USER} && \
     mkdir -p /etc/sudoers.d && \
-    echo "${PROJECT_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-nopasswd-user
+    echo "${PROJECT_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-nopasswd-user && \
+    chmod 0440 /etc/sudoers.d/90-nopasswd-user && \
+    visudo -c -f /etc/sudoers.d/90-nopasswd-user
 
 # --- Language Runtimes & Package Managers ---
 # Install NVM with proper permissions
