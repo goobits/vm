@@ -56,16 +56,32 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8
 
 # --- User Setup ---
+# Create/update user and group, handling both fresh images and snapshots
+# For snapshots with existing users, we change the UID/GID to match the host
 RUN groupadd -f -g ${PROJECT_GID} ${PROJECT_USER} && \
-    (id -u ${PROJECT_USER} >/dev/null 2>&1 || useradd -m -u ${PROJECT_UID} -g ${PROJECT_GID} -s /bin/zsh ${PROJECT_USER}) && \
+    if id -u ${PROJECT_USER} >/dev/null 2>&1; then \
+        # User exists (from snapshot), save old UID/GID and change to match host
+        OLD_UID=$(id -u ${PROJECT_USER}) && \
+        OLD_GID=$(id -g ${PROJECT_USER}) && \
+        usermod -u ${PROJECT_UID} ${PROJECT_USER} && \
+        groupmod -g ${PROJECT_GID} ${PROJECT_USER} && \
+        # Fix ownership of all files owned by old UID/GID
+        find /home/${PROJECT_USER} -user $OLD_UID -exec chown ${PROJECT_UID} {} + 2>/dev/null || true && \
+        find /home/${PROJECT_USER} -group $OLD_GID -exec chgrp ${PROJECT_GID} {} + 2>/dev/null || true; \
+    else \
+        # User doesn't exist, create them
+        useradd -m -u ${PROJECT_UID} -g ${PROJECT_GID} -s /bin/zsh ${PROJECT_USER}; \
+    fi && \
     usermod -aG sudo ${PROJECT_USER} && \
-    echo "${PROJECT_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-nopasswd-user && \
-    chown -R ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER}
+    echo "${PROJECT_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-nopasswd-user
 
 # --- Language Runtimes & Package Managers ---
-# Install NVM with proper permissions: install -d guarantees ownership after cache mount
+# Install NVM with proper permissions
+# Note: install -d runs as root and creates directory with specified ownership
+# This handles snapshots where /home/developer may have different UID/GID
 RUN --mount=type=cache,target=/home/${PROJECT_USER}/.nvm/.cache,uid=${PROJECT_UID},gid=${PROJECT_GID} \
-    install -d -o ${PROJECT_UID} -g ${PROJECT_GID} /home/${PROJECT_USER}/.nvm && \
+    mkdir -p /home/${PROJECT_USER}/.nvm && \
+    chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER}/.nvm && \
     su - ${PROJECT_USER} -c 'if [ ! -s "$HOME/.nvm/nvm.sh" ]; then curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/'${NVM_VERSION}'/install.sh" | bash; fi && export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && (nvm list | grep -q "v'${NODE_VERSION}'" || nvm install '${NODE_VERSION}') && nvm use '${NODE_VERSION}' && nvm alias default '${NODE_VERSION}' && corepack enable && corepack prepare pnpm@'${PNPM_VERSION}' --activate'
 
 # --- Git Configuration ---
