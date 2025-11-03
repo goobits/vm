@@ -81,11 +81,8 @@ RUN if id -u ${PROJECT_USER} >/dev/null 2>&1; then \
             if getent group ${PROJECT_GID} >/dev/null 2>&1; then \
                 EXISTING_GROUP=$(getent group ${PROJECT_GID} | cut -d: -f1) && \
                 if [ "$EXISTING_GROUP" != "$OLD_GROUP" ]; then \
-                    echo "⚠️  GID ${PROJECT_GID} conflicts with $EXISTING_GROUP, creating ${PROJECT_USER}_${PROJECT_GID} group" && \
-                    TARGET_GROUP="${PROJECT_USER}_${PROJECT_GID}" && \
-                    if ! getent group "$TARGET_GROUP" >/dev/null 2>&1; then \
-                        groupadd -g ${PROJECT_GID} "$TARGET_GROUP"; \
-                    fi; \
+                    echo "⚠️  GID ${PROJECT_GID} conflicts with $EXISTING_GROUP, adding user to existing group" && \
+                    TARGET_GROUP="$EXISTING_GROUP"; \
                 else \
                     TARGET_GROUP="$OLD_GROUP" && \
                     groupmod -g ${PROJECT_GID} "$TARGET_GROUP"; \
@@ -107,11 +104,8 @@ RUN if id -u ${PROJECT_USER} >/dev/null 2>&1; then \
         # Handle group creation with conflict detection
         if getent group ${PROJECT_GID} >/dev/null 2>&1; then \
             EXISTING_GROUP=$(getent group ${PROJECT_GID} | cut -d: -f1) && \
-            echo "GID ${PROJECT_GID} belongs to $EXISTING_GROUP, creating ${PROJECT_USER}_${PROJECT_GID}" && \
-            TARGET_GROUP="${PROJECT_USER}_${PROJECT_GID}" && \
-            if ! getent group "$TARGET_GROUP" >/dev/null 2>&1; then \
-                groupadd -g ${PROJECT_GID} "$TARGET_GROUP"; \
-            fi; \
+            echo "⚠️  GID ${PROJECT_GID} belongs to $EXISTING_GROUP, using existing group" && \
+            TARGET_GROUP="$EXISTING_GROUP"; \
         else \
             TARGET_GROUP="${PROJECT_USER}" && \
             groupadd -g ${PROJECT_GID} "$TARGET_GROUP"; \
