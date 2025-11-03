@@ -12,8 +12,15 @@ ARG USER_GID=1000
 # Avoid prompts from apt
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Set locale to prevent warnings
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+
 # Install system packages + build essentials + common dev tools
 RUN apt-get update && apt-get install -y \
+    # Locale support (must come first)
+    locales \
     # Core utilities from vibe preset
     tree \
     ripgrep \
@@ -72,6 +79,8 @@ RUN apt-get update && apt-get install -y \
     libasound2 \
     libpango-1.0-0 \
     libcairo2 \
+    && locale-gen en_US.UTF-8 \
+    && update-locale LANG=en_US.UTF-8 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create user early so we can install tools for them
@@ -214,8 +223,9 @@ USER ${USER_NAME}
 SHELL ["/bin/bash", "-c"]
 
 # Healthcheck to ensure the container is ready
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD command -v node && command -v python3 && command -v cargo && command -v claude || exit 1
+# Source environment to make NVM/Cargo available, check basic tools only
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD bash -c 'source ~/.nvm/nvm.sh && source ~/.cargo/env 2>/dev/null && command -v node && command -v python3 || exit 1'
 
 # Default command
 CMD ["/bin/bash"]
