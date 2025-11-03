@@ -35,6 +35,7 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     # Process management
     supervisor \
+    sudo \
     # Security tools
     ufw \
     fail2ban \

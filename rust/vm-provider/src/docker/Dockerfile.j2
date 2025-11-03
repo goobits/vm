@@ -266,15 +266,18 @@ USER ${PROJECT_USER}
 
 # Note: Zsh history is now configured in zshrc.j2 template
 
-# Configure Bash history
+# Configure Bash history (guard bash-specific commands for zsh compatibility)
 RUN echo '' >> /home/${PROJECT_USER}/.bashrc && \
     echo '# --- Shell History Settings ---' >> /home/${PROJECT_USER}/.bashrc && \
     echo 'export HISTSIZE=50000' >> /home/${PROJECT_USER}/.bashrc && \
     echo 'export HISTFILESIZE=50000' >> /home/${PROJECT_USER}/.bashrc && \
     echo 'export HISTFILE=~/.shell_history/bash_history' >> /home/${PROJECT_USER}/.bashrc && \
     echo 'export HISTCONTROL=ignoredups:erasedups' >> /home/${PROJECT_USER}/.bashrc && \
-    echo 'shopt -s histappend' >> /home/${PROJECT_USER}/.bashrc && \
-    echo 'PROMPT_COMMAND="history -a; history -c; history -r; $PROMPT_COMMAND"' >> /home/${PROJECT_USER}/.bashrc
+    echo '# Bash-specific commands (skip if sourced by zsh)' >> /home/${PROJECT_USER}/.bashrc && \
+    echo 'if [ -n "$BASH_VERSION" ]; then' >> /home/${PROJECT_USER}/.bashrc && \
+    echo '    shopt -s histappend' >> /home/${PROJECT_USER}/.bashrc && \
+    echo '    PROMPT_COMMAND="history -a; history -c; history -r; $PROMPT_COMMAND"' >> /home/${PROJECT_USER}/.bashrc && \
+    echo 'fi' >> /home/${PROJECT_USER}/.bashrc
 
 # --- Git Worktree Discovery Message ---
 RUN echo '' >> /home/${PROJECT_USER}/.zshrc && \
@@ -289,23 +292,27 @@ RUN echo '' >> /home/${PROJECT_USER}/.zshrc && \
     echo 'fi' >> /home/${PROJECT_USER}/.zshrc
 
 RUN echo '' >> /home/${PROJECT_USER}/.bashrc && \
-    echo '# Show vm-worktree hint on first login' >> /home/${PROJECT_USER}/.bashrc && \
-    echo 'if [[ ! -f ~/.vm_worktree_tip_shown ]] && [[ -n "${VM_WORKTREES:-}" ]]; then' >> /home/${PROJECT_USER}/.bashrc && \
+    echo '# Show vm-worktree hint on first login (bash only)' >> /home/${PROJECT_USER}/.bashrc && \
+    echo 'if [ -n "$BASH_VERSION" ]; then' >> /home/${PROJECT_USER}/.bashrc && \
+    echo '  if [[ ! -f ~/.vm_worktree_tip_shown ]] && [[ -n "${VM_WORKTREES:-}" ]]; then' >> /home/${PROJECT_USER}/.bashrc && \
     echo '    echo ""' >> /home/${PROJECT_USER}/.bashrc && \
     echo '    echo -e "💡 Tip: Use \\033[1;36mvm-worktree\\033[0m to create git worktrees that work on both host and container:"' >> /home/${PROJECT_USER}/.bashrc && \
     echo '    echo -e "  \\033[0;32mvm-worktree add feature-x\\033[0m   # Create new worktree"' >> /home/${PROJECT_USER}/.bashrc && \
     echo '    echo -e "  \\033[0;32mvm-worktree list\\033[0m            # List all worktrees"' >> /home/${PROJECT_USER}/.bashrc && \
     echo '    echo ""' >> /home/${PROJECT_USER}/.bashrc && \
     echo '    touch ~/.vm_worktree_tip_shown' >> /home/${PROJECT_USER}/.bashrc && \
+    echo '  fi' >> /home/${PROJECT_USER}/.bashrc && \
     echo 'fi' >> /home/${PROJECT_USER}/.bashrc
 
 # --- Worktree Prompt Indicator ---
 # Add prompt indicator for bash
 RUN echo '' >> /home/${PROJECT_USER}/.bashrc && \
-    echo '# Show worktree in prompt if inside one' >> /home/${PROJECT_USER}/.bashrc && \
-    echo 'if [[ -n "${VM_WORKTREES:-}" ]] && [[ "$PWD" == "$VM_WORKTREES"/* ]]; then' >> /home/${PROJECT_USER}/.bashrc && \
+    echo '# Show worktree in prompt if inside one (bash only)' >> /home/${PROJECT_USER}/.bashrc && \
+    echo 'if [ -n "$BASH_VERSION" ]; then' >> /home/${PROJECT_USER}/.bashrc && \
+    echo '  if [[ -n "${VM_WORKTREES:-}" ]] && [[ "$PWD" == "$VM_WORKTREES"/* ]]; then' >> /home/${PROJECT_USER}/.bashrc && \
     echo '    WT_NAME=$(basename "$PWD")' >> /home/${PROJECT_USER}/.bashrc && \
     echo '    PS1="(worktree:$WT_NAME) $PS1"' >> /home/${PROJECT_USER}/.bashrc && \
+    echo '  fi' >> /home/${PROJECT_USER}/.bashrc && \
     echo 'fi' >> /home/${PROJECT_USER}/.bashrc
 
 # Add prompt indicator for zsh
