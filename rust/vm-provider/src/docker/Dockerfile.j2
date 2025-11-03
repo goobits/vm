@@ -75,19 +75,27 @@ RUN if id -u ${PROJECT_USER} >/dev/null 2>&1; then \
         # Only modify if UID/GID differs from target
         if [ "$OLD_UID" != "${PROJECT_UID}" ] || [ "$OLD_GID" != "${PROJECT_GID}" ]; then \
             echo "Adjusting UID/GID: $OLD_UID:$OLD_GID -> ${PROJECT_UID}:${PROJECT_GID}" && \
-            # Change user UID
+            # Change user UID first
             usermod -u ${PROJECT_UID} ${PROJECT_USER} && \
-            # Check if target GID is already in use by a different group
-            if getent group ${PROJECT_GID} >/dev/null && [ "$(getent group ${PROJECT_GID} | cut -d: -f1)" != "$OLD_GROUP" ]; then \
-                echo "⚠️  GID ${PROJECT_GID} conflicts with existing group, keeping user in group $OLD_GROUP (gid $OLD_GID)" && \
-                # Just ensure user is in the group (no GID change)
-                usermod -g $OLD_GROUP ${PROJECT_USER}; \
+            # Handle GID: create new group if target GID conflicts
+            if getent group ${PROJECT_GID} >/dev/null 2>&1; then \
+                EXISTING_GROUP=$(getent group ${PROJECT_GID} | cut -d: -f1) && \
+                if [ "$EXISTING_GROUP" != "$OLD_GROUP" ]; then \
+                    echo "⚠️  GID ${PROJECT_GID} conflicts with $EXISTING_GROUP, creating ${PROJECT_USER}_${PROJECT_GID} group" && \
+                    TARGET_GROUP="${PROJECT_USER}_${PROJECT_GID}" && \
+                    if ! getent group "$TARGET_GROUP" >/dev/null 2>&1; then \
+                        groupadd -g ${PROJECT_GID} "$TARGET_GROUP"; \
+                    fi; \
+                else \
+                    TARGET_GROUP="$OLD_GROUP" && \
+                    groupmod -g ${PROJECT_GID} "$TARGET_GROUP"; \
+                fi; \
             else \
-                # Safe to change group GID
-                groupmod -g ${PROJECT_GID} $OLD_GROUP && \
-                usermod -g $OLD_GROUP ${PROJECT_USER}; \
+                TARGET_GROUP="$OLD_GROUP" && \
+                groupmod -g ${PROJECT_GID} "$TARGET_GROUP"; \
             fi && \
-            # Fix ownership of all files owned by old UID/GID
+            usermod -g "$TARGET_GROUP" ${PROJECT_USER} && \
+            # Fix ownership of all files
             find /home/${PROJECT_USER} -user $OLD_UID -exec chown ${PROJECT_UID} {} + 2>/dev/null || true && \
             find /home/${PROJECT_USER} -group $OLD_GID -exec chgrp ${PROJECT_GID} {} + 2>/dev/null || true; \
         else \
@@ -96,13 +104,19 @@ RUN if id -u ${PROJECT_USER} >/dev/null 2>&1; then \
     else \
         # User doesn't exist, create them
         echo "Creating user ${PROJECT_USER} (${PROJECT_UID}:${PROJECT_GID})" && \
-        # Create group if it doesn't exist, or use existing
-        if ! getent group ${PROJECT_GID} >/dev/null; then \
-            groupadd -g ${PROJECT_GID} ${PROJECT_USER}; \
+        # Handle group creation with conflict detection
+        if getent group ${PROJECT_GID} >/dev/null 2>&1; then \
+            EXISTING_GROUP=$(getent group ${PROJECT_GID} | cut -d: -f1) && \
+            echo "GID ${PROJECT_GID} belongs to $EXISTING_GROUP, creating ${PROJECT_USER}_${PROJECT_GID}" && \
+            TARGET_GROUP="${PROJECT_USER}_${PROJECT_GID}" && \
+            if ! getent group "$TARGET_GROUP" >/dev/null 2>&1; then \
+                groupadd -g ${PROJECT_GID} "$TARGET_GROUP"; \
+            fi; \
         else \
-            echo "Group with GID ${PROJECT_GID} already exists, using it"; \
+            TARGET_GROUP="${PROJECT_USER}" && \
+            groupadd -g ${PROJECT_GID} "$TARGET_GROUP"; \
         fi && \
-        useradd -m -u ${PROJECT_UID} -g ${PROJECT_GID} -s /bin/zsh ${PROJECT_USER}; \
+        useradd -m -u ${PROJECT_UID} -g "$TARGET_GROUP" -s /bin/zsh ${PROJECT_USER}; \
     fi && \
     usermod -aG sudo ${PROJECT_USER} && \
     echo "${PROJECT_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-nopasswd-user
