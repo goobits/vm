@@ -42,6 +42,7 @@ ENV TERM=xterm-256color
 # --- Base System Setup ---
 # Skip for pre-provisioned snapshots to avoid permission conflicts
 RUN if [ "$BASE_PREPROVISIONED" != "true" ]; then \
+        # Set timezone (|| true: file may be on read-only layer in some base images)
         (echo "${TZ}" > /etc/timezone || true) && \
         apt-get update && apt-get install -y \
         locales \
@@ -64,6 +65,13 @@ RUN if [ "$BASE_PREPROVISIONED" != "true" ]; then \
 # --- User Setup ---
 # Force root user to avoid "user currently used by process 1" errors
 USER root
+
+# Ensure sudo is available (snapshots may not have it, needed for usermod and visudo)
+RUN if ! command -v sudo >/dev/null 2>&1; then \
+        echo "Installing sudo package..." && \
+        apt-get update && apt-get install -y sudo && \
+        rm -rf /var/lib/apt/lists/*; \
+    fi
 
 # Create/update user and group, handling both fresh images and snapshots
 # For snapshots with existing users, we change the UID/GID to match the host
@@ -92,7 +100,7 @@ RUN if id -u ${PROJECT_USER} >/dev/null 2>&1; then \
                 groupmod -g ${PROJECT_GID} "$TARGET_GROUP"; \
             fi && \
             usermod -g "$TARGET_GROUP" ${PROJECT_USER} && \
-            # Fix ownership of all files
+            # Fix ownership of all files (|| true: Docker layering may prevent some changes)
             find /home/${PROJECT_USER} -user $OLD_UID -exec chown ${PROJECT_UID} {} + 2>/dev/null || true && \
             find /home/${PROJECT_USER} -group $OLD_GID -exec chgrp ${PROJECT_GID} {} + 2>/dev/null || true; \
         else \
@@ -116,7 +124,9 @@ RUN if id -u ${PROJECT_USER} >/dev/null 2>&1; then \
     mkdir -p /etc/sudoers.d && \
     echo "${PROJECT_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-nopasswd-user && \
     chmod 0440 /etc/sudoers.d/90-nopasswd-user && \
-    (visudo -c -f /etc/sudoers.d/90-nopasswd-user || true)
+    if command -v visudo >/dev/null 2>&1; then \
+        visudo -c -f /etc/sudoers.d/90-nopasswd-user; \
+    fi
 
 # --- Language Runtimes & Package Managers ---
 # Install NVM with proper permissions
