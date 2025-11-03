@@ -113,6 +113,7 @@ RUN if id -u ${PROJECT_USER} >/dev/null 2>&1; then \
         useradd -m -u ${PROJECT_UID} -g "$TARGET_GROUP" -s /bin/zsh ${PROJECT_USER}; \
     fi && \
     usermod -aG sudo ${PROJECT_USER} && \
+    mkdir -p /etc/sudoers.d && \
     echo "${PROJECT_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-nopasswd-user
 
 # --- Language Runtimes & Package Managers ---
