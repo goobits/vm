@@ -29,7 +29,7 @@ fi
 readonly SCRIPT_NAME="$(basename "$0")"
 readonly LOG_PREFIX="🔧 VM Installer"
 readonly TIMEOUT_SECONDS=30
-readonly CARGO_TIMEOUT_SECONDS=120  # Longer timeout for cargo operations
+readonly CARGO_TIMEOUT_SECONDS=600  # 10 minutes for cargo operations (clean builds take 2-3 minutes)
 readonly LOG_FILE="$HOME/.vm-install.log"
 readonly REPO_URL="https://github.com/goobits/vm"  # Replace with your repo
 
