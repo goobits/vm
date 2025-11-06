@@ -68,6 +68,7 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
 
     let preset_iter = preset_names.split(',').map(|s| s.trim());
     let mut merged_config = base_config;
+    let mut last_preset_config: Option<VmConfig> = None;
 
     for preset_name in preset_iter {
         let port_range_str = merged_config.ports.range.as_ref().and_then(|range| {
@@ -81,12 +82,14 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
         let preset_config = load_preset_with_placeholders(&detector, preset_name, &port_range_str)
             .map_err(|e| VmError::Config(format!("Failed to load preset: {preset_name}: {e}")))?;
 
-        merged_config = ConfigMerger::new(merged_config).merge(preset_config)?;
+        merged_config = ConfigMerger::new(merged_config).merge(preset_config.clone())?;
+        last_preset_config = Some(preset_config);
     }
 
     // Create minimal config with only project-specific fields
     // Everything else (packages, versions, aliases, host_sync, etc.) comes from preset/defaults at runtime
-    let minimal_config = create_minimal_preset_config(&merged_config, preset_names);
+    let minimal_config =
+        create_minimal_preset_config(&merged_config, preset_names, last_preset_config.as_ref());
 
     let config_yaml = serde_yaml::to_string(&minimal_config)?;
     let config_value = CoreOperations::parse_yaml_with_diagnostics(&config_yaml, "merged config")?;
@@ -118,26 +121,47 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
 ///
 /// The minimal config contains only what users should customize per-project:
 /// - `preset`: Which preset to use (declared explicitly)
+/// - `provider`: Which provider to use (required field)
 /// - `project`: Project identity (name, hostname, workspace)
-/// - `vm.box`: Base image/box (explicit so it's visible and overridable)
+/// - `vm.box`: Base image/box (from preset if specified, otherwise merged)
 /// - `ports`: Project-specific port allocation
 /// - `services`: Which services this project needs
 /// - `terminal`: Per-project terminal customization
 ///
-/// Everything else (packages, versions, aliases, host_sync, provider, os, etc.)
+/// Everything else (packages, versions, aliases, host_sync, os, etc.)
 /// comes from the preset/defaults at runtime and shouldn't be written to vm.yaml.
-fn create_minimal_preset_config(merged: &VmConfig, preset_names: &str) -> VmConfig {
+fn create_minimal_preset_config(
+    merged: &VmConfig,
+    preset_names: &str,
+    preset: Option<&VmConfig>,
+) -> VmConfig {
     use crate::config::VmSettings;
 
-    // VM box only (not memory/cpus/swap - those come from defaults)
-    let vm = merged.vm.as_ref().map(|vm| VmSettings {
-        r#box: vm.r#box.clone(),
-        ..Default::default()
-    });
+    // Use preset's vm.box if it exists, otherwise use merged value
+    // This preserves snapshot references like '@vibe-box' from the preset
+    let vm = if let Some(preset_vm) = preset.and_then(|p| p.vm.as_ref()) {
+        if preset_vm.r#box.is_some() {
+            Some(VmSettings {
+                r#box: preset_vm.r#box.clone(),
+                ..Default::default()
+            })
+        } else {
+            merged.vm.as_ref().map(|vm| VmSettings {
+                r#box: vm.r#box.clone(),
+                ..Default::default()
+            })
+        }
+    } else {
+        merged.vm.as_ref().map(|vm| VmSettings {
+            r#box: vm.r#box.clone(),
+            ..Default::default()
+        })
+    };
 
     VmConfig {
         preset: Some(preset_names.to_string()),
         version: merged.version.clone(),
+        provider: merged.provider.clone(), // Required field for validation
         project: merged.project.clone(),
         vm,
         ports: merged.ports.clone(),
