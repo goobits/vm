@@ -7,6 +7,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0] - 2025-11-06
+
+### Added
+
+- **Snapshot-Based Provisioning Optimization**: Dramatic performance improvements for snapshot-based VM creation
+  - Intelligent package detection: Skip reinstalling packages already present in snapshot
+  - Smart UID/GID handling: Skip expensive file ownership operations for pre-provisioned snapshots
+  - Incremental package installation for APT, NPM, and PIP packages
+  - **Performance impact:**
+    - Fresh projects: ~210s (unchanged)
+    - With snapshot (UID matches): ~5-10s (95% faster) 🚀
+    - With snapshot (UID differs): ~10-15s (93% faster)
+  - Enhanced snapshot detection: Supports `-base` and `-box` suffix patterns
+
+- **Vibe Development Preset**: Pre-configured development environment with @vibe-box snapshot
+  - Includes Node.js 22, Python 3.14, Rust stable, Playwright, and AI CLI tools
+  - Pre-installed packages: tree, ripgrep, unzip, htop
+  - Pre-configured AI tools: Claude Code, Gemini CLI, OpenAI Codex
+  - Shell aliases for quick AI tool access (claudeyolo, geminiyolo, codexyolo)
+  - Minimal preset configuration leverages snapshot for instant startup
+
+- **Snapshot Box Reference Support**: Use `@snapshot-name` syntax in presets
+  - Presets can now reference global snapshots via `vm.box: '@vibe-box'`
+  - Supports unquoted @ symbols in snapshot box references
+  - Automatic detection and optimization for snapshot-based images
+
+### Fixed
+
+- **Shell Compatibility**: Enhanced bash/zsh cross-compatibility
+  - Added early return guard in .bashrc for non-bash shells
+  - Bash-specific commands now properly guarded with `$BASH_VERSION` checks
+  - Prevents errors when zsh sources bash configuration files
+
+- **UID/GID Mismatch Handling**: Robust user ID synchronization between host and container
+  - Graceful handling of GID conflicts (uses existing group instead of failing)
+  - Conditional file ownership fixes (skipped for pre-provisioned snapshots)
+  - Force root user during setup to avoid "user currently used by process 1" errors
+  - Improved permission handling for shell history and config directories
+
+- **Sudo Installation**: More robust sudo setup and validation
+  - Automatic sudo package installation if missing from base image
+  - Optional visudo validation (handles cases where visudo isn't installed yet)
+  - Correct sudoers file permissions (0440)
+  - Automatic /etc/sudoers.d directory creation
+
+- **Provisioning Robustness**: Enhanced provisioning reliability
+  - Install packages before running Ansible configuration
+  - Strategic guards to prevent redundant expensive operations
+  - Improved locale generation and healthcheck
+  - Better snapshot permission handling
+
+- **Port Range Management**: Fixed port allocation for re-initialized projects
+  - Reuse existing port ranges when re-initializing projects
+  - Prevents port conflicts and unnecessary port reassignments
+
+- **Configuration Defaults**: Fixed incorrect default box image
+  - Changed default from `ubuntu/jammy64` (Vagrant) to `ubuntu:jammy` (Docker)
+  - Updated schema documentation to clarify Docker vs Vagrant box formats
+
+### Changed
+
+- **Vibe Preset Structure**: Streamlined to minimal snapshot-referencing configuration
+  - Removed redundant package lists (now provided by @vibe-box snapshot)
+  - Removed aliases (baked into snapshot's .bashrc)
+  - Retained only runtime behavior: vm.box reference and host_sync configuration
+  - Clearer separation between baked-in (snapshot) and runtime (preset) concerns
+
 ## [4.0.0] - 2025-10-31
 
 ### Changed
