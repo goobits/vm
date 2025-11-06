@@ -1,29 +1,12 @@
-packages:
-  - tree
-  - ripgrep
-  - unzip
-  - htop
-
-npm_packages:
-  - '@anthropic-ai/claude-code'
-  - '@google/gemini-cli'
-  - '@openai/codex'
-
-pip_packages:
-  - anthropic
-
-# Host synchronization configuration
-host_sync:
-  git_config: true
-  ai_tools: true  # Enable all AI tools (claude, gemini, codex, cursor, aider)
-
-aliases:
-  claudeyolo: "claude --dangerously-skip-permissions"
-  geminiyolo: "GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --approval-mode=yolo"
-  codexyolo: "codex --dangerously-bypass-approvals-and-sandbox"
+# Vibe Development Preset
+# Uses pre-built @vibe-box snapshot with all packages and tools pre-installed
+# (Node.js, Python, Rust, Playwright, AI CLI tools, common utilities)
 
 # Reference pre-built vibe-box snapshot
 vm:
   box: '@vibe-box'
 
-# Packages listed here will be checked against snapshot and only installed if missing
+# Host synchronization configuration (runtime behavior)
+host_sync:
+  git_config: true
+  ai_tools: true  # Enable all AI tools (claude, gemini, codex, cursor, aider)
