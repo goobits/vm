@@ -104,6 +104,9 @@ pub struct VmConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preset: Option<String>,
+
     // 2. Provider & Environment
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,

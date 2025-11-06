@@ -84,7 +84,11 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
         merged_config = ConfigMerger::new(merged_config).merge(preset_config)?;
     }
 
-    let config_yaml = serde_yaml::to_string(&merged_config)?;
+    // Create minimal config with only project-specific fields
+    // Everything else (packages, versions, aliases, host_sync, etc.) comes from preset/defaults at runtime
+    let minimal_config = create_minimal_preset_config(&merged_config, preset_names);
+
+    let config_yaml = serde_yaml::to_string(&minimal_config)?;
     let config_value = CoreOperations::parse_yaml_with_diagnostics(&config_yaml, "merged config")?;
     CoreOperations::write_yaml_file(&config_path, &config_value)?;
 
@@ -108,4 +112,37 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
 
     vm_println!("{}", MESSAGES.config_restart_hint);
     Ok(())
+}
+
+/// Create a minimal configuration that only includes project-specific fields.
+///
+/// The minimal config contains only what users should customize per-project:
+/// - `preset`: Which preset to use (declared explicitly)
+/// - `project`: Project identity (name, hostname, workspace)
+/// - `vm.box`: Base image/box (explicit so it's visible and overridable)
+/// - `ports`: Project-specific port allocation
+/// - `services`: Which services this project needs
+/// - `terminal`: Per-project terminal customization
+///
+/// Everything else (packages, versions, aliases, host_sync, provider, os, etc.)
+/// comes from the preset/defaults at runtime and shouldn't be written to vm.yaml.
+fn create_minimal_preset_config(merged: &VmConfig, preset_names: &str) -> VmConfig {
+    use crate::config::VmSettings;
+
+    // VM box only (not memory/cpus/swap - those come from defaults)
+    let vm = merged.vm.as_ref().map(|vm| VmSettings {
+        r#box: vm.r#box.clone(),
+        ..Default::default()
+    });
+
+    VmConfig {
+        preset: Some(preset_names.to_string()),
+        version: merged.version.clone(),
+        project: merged.project.clone(),
+        vm,
+        ports: merged.ports.clone(),
+        services: merged.services.clone(),
+        terminal: merged.terminal.clone(),
+        ..Default::default()
+    }
 }
