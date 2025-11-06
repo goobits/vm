@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.1] - 2025-11-06
+
+### Fixed
+
+- **Vibe Preset Portability**: Restored declarative package lists and aliases for non-Docker scenarios
+  - Preset now works correctly for first-time Docker users (without @vibe-box snapshot)
+  - Vagrant and Tart providers receive full package installation
+  - Shell aliases (claudeyolo, geminiyolo, codexyolo) now render properly
+  - Docker with @vibe-box still uses fast path via smart package checks (5-10s unchanged)
+  - Falls back gracefully to full installation when snapshot unavailable
+
+- **Snapshot Detection Safety**: Fixed false positives in pre-provisioned snapshot detection
+  - Now uses explicit BoxConfig::Snapshot check instead of string matching
+  - Prevents treating unrelated images like `company/dev-box:latest` as snapshots
+  - Eliminates risk of skipping base system setup for non-snapshot images
+  - More accurate and safer detection logic
+
+### Technical
+
+- Changed snapshot detection from heuristic (`contains("-box")`) to type-safe check
+- Restored full preset configuration for provider portability
+- Maintained Docker performance optimization via smart package existence checks
+
 ## [4.1.0] - 2025-11-06
 
 ### Added
