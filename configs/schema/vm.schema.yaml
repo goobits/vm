@@ -59,8 +59,8 @@ properties:
     properties:
       box:
         type: string
-        default: ubuntu/jammy64
-        description: Vagrant box to use (Vagrant provider only)
+        default: ubuntu:jammy
+        description: Base image (ubuntu:jammy for Docker, ubuntu/jammy64 for Vagrant)
       memory:
         oneOf:
           - type: integer

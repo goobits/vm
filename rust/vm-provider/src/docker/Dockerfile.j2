@@ -100,9 +100,14 @@ RUN if id -u ${PROJECT_USER} >/dev/null 2>&1; then \
                 groupmod -g ${PROJECT_GID} "$TARGET_GROUP"; \
             fi && \
             usermod -g "$TARGET_GROUP" ${PROJECT_USER} && \
-            # Fix ownership of all files (|| true: Docker layering may prevent some changes)
-            find /home/${PROJECT_USER} -user $OLD_UID -exec chown ${PROJECT_UID} {} + 2>/dev/null || true && \
-            find /home/${PROJECT_USER} -group $OLD_GID -exec chgrp ${PROJECT_GID} {} + 2>/dev/null || true; \
+            # Only fix ownership if NOT using pre-provisioned snapshot
+            # For snapshots, Docker layers handle ownership correctly on container start
+            if [ "$BASE_PREPROVISIONED" != "true" ]; then \
+                find /home/${PROJECT_USER} -user $OLD_UID -exec chown ${PROJECT_UID} {} + 2>/dev/null || true && \
+                find /home/${PROJECT_USER} -group $OLD_GID -exec chgrp ${PROJECT_GID} {} + 2>/dev/null || true; \
+            else \
+                echo "Skipping file ownership fix (snapshot will handle via Docker layers)"; \
+            fi; \
         else \
             echo "UID/GID already matches (${PROJECT_UID}:${PROJECT_GID}), skipping adjustment"; \
         fi; \
@@ -166,22 +171,50 @@ USER root
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     if [ -n "${APT_PACKAGES}" ]; then \
-    apt-get update && apt-get install -y ${APT_PACKAGES}; \
-fi
+        echo "Checking APT packages: ${APT_PACKAGES}"; \
+        PACKAGES_TO_INSTALL=""; \
+        for pkg in ${APT_PACKAGES}; do \
+            if ! dpkg -l | grep -q "^ii  $pkg "; then \
+                PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL $pkg"; \
+            else \
+                echo "Skipping $pkg (already installed)"; \
+            fi; \
+        done; \
+        if [ -n "$PACKAGES_TO_INSTALL" ]; then \
+            apt-get update && apt-get install -y $PACKAGES_TO_INSTALL; \
+        else \
+            echo "All APT packages already installed"; \
+        fi; \
+    fi
 USER ${PROJECT_USER}
 
 # NPM Package Installation
 RUN --mount=type=cache,target=/home/${PROJECT_USER}/.npm,uid=${PROJECT_UID},gid=${PROJECT_GID} \
     if [ -n "${NPM_PACKAGES}" ]; then \
-        echo "Installing NPM packages: ${NPM_PACKAGES}"; \
-        . "$NVM_DIR/nvm.sh" && npm install -g ${NPM_PACKAGES}; \
+        echo "Checking NPM packages: ${NPM_PACKAGES}"; \
+        . "$NVM_DIR/nvm.sh" && \
+        for pkg in ${NPM_PACKAGES}; do \
+            if ! npm list -g --depth=0 "$pkg" >/dev/null 2>&1; then \
+                echo "Installing $pkg..."; \
+                npm install -g "$pkg"; \
+            else \
+                echo "Skipping $pkg (already installed)"; \
+            fi; \
+        done; \
     fi
 
 # Python Package Installation
 RUN --mount=type=cache,target=/home/${PROJECT_USER}/.cache/pip,uid=${PROJECT_UID},gid=${PROJECT_GID} \
     if [ -n "${PIP_PACKAGES}" ]; then \
-        echo "Installing Python packages: ${PIP_PACKAGES}"; \
-        pip3 install --user --break-system-packages ${PIP_PACKAGES}; \
+        echo "Checking Python packages: ${PIP_PACKAGES}"; \
+        for pkg in ${PIP_PACKAGES}; do \
+            if ! pip3 show "$pkg" >/dev/null 2>&1; then \
+                echo "Installing $pkg..."; \
+                pip3 install --user --break-system-packages "$pkg"; \
+            else \
+                echo "Skipping $pkg (already installed)"; \
+            fi; \
+        done; \
     fi
 
 # Cargo Package Installation

@@ -367,8 +367,14 @@ CMD ["tail", "-f", "/dev/null"]
         args.push(format!("--build-arg=base_image={}", base_image));
 
         // Detect if using a pre-provisioned snapshot to skip redundant base provisioning
-        let is_snapshot =
-            base_image.starts_with("vm-snapshot/") || base_image.contains("vibe-base");
+        // Patterns:
+        // - Official snapshots: vm-snapshot/global/name or vm-snapshot/project/name
+        // - Named snapshots: @snapshot-name (resolved to vm-snapshot/global/name)
+        // - Tagged snapshots: contains -base or -box suffix (vibe-box, dev-box, vibe-base, etc.)
+        let is_snapshot = base_image.starts_with("vm-snapshot/")
+            || base_image.contains("-base")
+            || base_image.contains("-box");
+
         args.push(format!("--build-arg=BASE_PREPROVISIONED={}", is_snapshot));
 
         // Add version build args

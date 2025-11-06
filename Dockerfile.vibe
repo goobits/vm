@@ -1,6 +1,6 @@
 # Vibe Development Environment Dockerfile
 # Optimized base image for fast snapshot-based Docker image creation
-# Based on your vm.yaml configuration
+# Build this once, save as @vibe-box snapshot, then reference in presets
 
 FROM ubuntu:22.04
 
@@ -211,10 +211,11 @@ ENV NODE_ENV=development \
     PLAYWRIGHT_BROWSERS_PATH=/home/${USER_NAME}/.cache/ms-playwright
 
 # Add labels for metadata
-LABEL org.opencontainers.image.title="Vibe Development Base" \
+LABEL org.opencontainers.image.title="Vibe Development Box" \
       org.opencontainers.image.description="Optimized base image with latest stable Node.js, Python, Rust, Playwright, and AI CLI tools" \
       org.opencontainers.image.version="1.0" \
       com.vm-tool.preset="vibe" \
+      com.vm-tool.snapshot-name="vibe-box" \
       com.vm-tool.auto-update="true"
 
 # Switch to developer user
