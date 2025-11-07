@@ -74,14 +74,19 @@ RUN if ! command -v sudo >/dev/null 2>&1; then \
     fi
 
 # Create/update user and group, handling both fresh images and snapshots
-# For snapshots with existing users, we change the UID/GID to match the host
+# For pre-provisioned snapshots: skip expensive UID/GID changes (use snapshot as-is)
+# For fresh images: set up user with host UID/GID for proper file permissions
 RUN if id -u ${PROJECT_USER} >/dev/null 2>&1; then \
-        # User exists (from snapshot)
+        # User exists (likely from snapshot)
         OLD_UID=$(id -u ${PROJECT_USER}) && \
         OLD_GID=$(id -g ${PROJECT_USER}) && \
         OLD_GROUP=$(id -gn ${PROJECT_USER}) && \
-        # Only modify if UID/GID differs from target
-        if [ "$OLD_UID" != "${PROJECT_UID}" ] || [ "$OLD_GID" != "${PROJECT_GID}" ]; then \
+        # Skip UID/GID adjustment for pre-provisioned snapshots (expensive: 2-3 min)
+        # usermod/groupmod internally update ALL file ownerships, defeating snapshot optimization
+        if [ "$BASE_PREPROVISIONED" = "true" ]; then \
+            echo "Using snapshot user as-is: ${PROJECT_USER} ($OLD_UID:$OLD_GID)" && \
+            echo "⚠️  Note: File permissions use snapshot UID/GID, not host UID/GID"; \
+        elif [ "$OLD_UID" != "${PROJECT_UID}" ] || [ "$OLD_GID" != "${PROJECT_GID}" ]; then \
             echo "Adjusting UID/GID: $OLD_UID:$OLD_GID -> ${PROJECT_UID}:${PROJECT_GID}" && \
             # Change user UID first
             usermod -u ${PROJECT_UID} ${PROJECT_USER} && \
@@ -100,14 +105,9 @@ RUN if id -u ${PROJECT_USER} >/dev/null 2>&1; then \
                 groupmod -g ${PROJECT_GID} "$TARGET_GROUP"; \
             fi && \
             usermod -g "$TARGET_GROUP" ${PROJECT_USER} && \
-            # Only fix ownership if NOT using pre-provisioned snapshot
-            # For snapshots, Docker layers handle ownership correctly on container start
-            if [ "$BASE_PREPROVISIONED" != "true" ]; then \
-                find /home/${PROJECT_USER} -user $OLD_UID -exec chown ${PROJECT_UID} {} + 2>/dev/null || true && \
-                find /home/${PROJECT_USER} -group $OLD_GID -exec chgrp ${PROJECT_GID} {} + 2>/dev/null || true; \
-            else \
-                echo "Skipping file ownership fix (snapshot will handle via Docker layers)"; \
-            fi; \
+            # Fix ownership of home directory files
+            find /home/${PROJECT_USER} -user $OLD_UID -exec chown ${PROJECT_UID} {} + 2>/dev/null || true && \
+            find /home/${PROJECT_USER} -group $OLD_GID -exec chgrp ${PROJECT_GID} {} + 2>/dev/null || true; \
         else \
             echo "UID/GID already matches (${PROJECT_UID}:${PROJECT_GID}), skipping adjustment"; \
         fi; \
