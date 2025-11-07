@@ -1,13 +1,13 @@
 # Vibe Development Preset
-# Uses pre-built @vibe-base snapshot when available (Docker provider)
+# Uses pre-built @vibe-box snapshot when available (Docker provider)
 # Falls back to installing packages from scratch for first-time users or other providers
 # (Node.js, Python, Rust, Playwright, AI CLI tools, common utilities)
 
-# Reference pre-built vibe-base snapshot (Docker fast path when available)
-vm_box: '@vibe-base'
+# Reference pre-built vibe-box snapshot (Docker fast path when available)
+vm_box: '@vibe-box'
 
 # Package declarations (installed if not already present in snapshot)
-# For Docker with @vibe-base: smart checks skip these (already installed)
+# For Docker with @vibe-box: smart checks skip these (already installed)
 # For Docker without snapshot: installs from scratch
 # For Vagrant/Tart: installs as normal
 packages:
