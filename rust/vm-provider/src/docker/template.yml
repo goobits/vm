@@ -190,6 +190,7 @@ services:
       - fs.inotify.max_user_instances=256
     {% endif %}
     command: ["tail", "-f", "/dev/null"]
+    init: true  # Enable tini for proper PID 1 handling (zombie reaping, signal forwarding)
     tty: true
     stdin_open: true
     {% if config.networking and config.networking.networks and config.networking.networks | length > 0 -%}

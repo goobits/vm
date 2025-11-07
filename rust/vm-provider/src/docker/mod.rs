@@ -210,6 +210,7 @@ services:
       {% if config.security.no_new_privileges | default(value=true) %}
       - no-new-privileges
       {% endif %}
+    init: true  # Enable tini for proper PID 1 handling (zombie reaping, signal forwarding)
 
 volumes:
   vmtemp_nvm:
