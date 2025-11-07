@@ -51,6 +51,9 @@ pub struct PresetContent {
     pub aliases: std::collections::HashMap<String, String>,
 
     #[serde(default)]
+    pub vm_box: Option<String>,
+
+    #[serde(default)]
     pub provision: Vec<String>,
 }
 

@@ -4,8 +4,7 @@
 # (Node.js, Python, Rust, Playwright, AI CLI tools, common utilities)
 
 # Reference pre-built vibe-box snapshot (Docker fast path when available)
-vm:
-  box: '@vibe-box'
+vm_box: '@vibe-box'
 
 # Package declarations (installed if not already present in snapshot)
 # For Docker with @vibe-box: smart checks skip these (already installed)

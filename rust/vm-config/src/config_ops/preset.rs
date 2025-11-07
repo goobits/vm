@@ -137,26 +137,21 @@ fn create_minimal_preset_config(
 ) -> VmConfig {
     use crate::config::VmSettings;
 
-    // Use preset's vm.box if it exists, otherwise use merged value
-    // This preserves snapshot references like '@vibe-box' from the preset
-    let vm = if let Some(preset_vm) = preset.and_then(|p| p.vm.as_ref()) {
-        if preset_vm.r#box.is_some() {
-            Some(VmSettings {
-                r#box: preset_vm.r#box.clone(),
-                ..Default::default()
-            })
-        } else {
-            merged.vm.as_ref().map(|vm| VmSettings {
-                r#box: vm.r#box.clone(),
-                ..Default::default()
-            })
+    // Start with merged VM settings so required defaults (user, timezone, etc.) stay intact
+    let mut vm = merged.vm.clone();
+
+    // If preset specifies a box (e.g., '@vibe-box'), override the cloned value
+    if let Some(preset_box) = preset
+        .and_then(|p| p.vm.as_ref())
+        .and_then(|vm| vm.r#box.clone())
+    {
+        if vm.is_none() {
+            vm = Some(VmSettings::default());
         }
-    } else {
-        merged.vm.as_ref().map(|vm| VmSettings {
-            r#box: vm.r#box.clone(),
-            ..Default::default()
-        })
-    };
+        if let Some(vm_settings) = vm.as_mut() {
+            vm_settings.r#box = Some(preset_box);
+        }
+    }
 
     VmConfig {
         preset: Some(preset_names.to_string()),

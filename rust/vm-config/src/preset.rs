@@ -1,4 +1,4 @@
-use crate::config::VmConfig;
+use crate::config::{BoxSpec, VmConfig, VmSettings};
 use crate::detector::detect_preset_for_project;
 use glob::glob;
 use serde::{Deserialize, Serialize};
@@ -92,7 +92,7 @@ impl PresetDetector {
 
         if let Some(plugin) = preset_plugin {
             // Load preset content
-            let content = match vm_plugin::load_preset_content(plugin) {
+            let mut content = match vm_plugin::load_preset_content(plugin) {
                 Ok(c) => c,
                 Err(e) => {
                     eprintln!("Warning: Failed to load preset content from plugin {name}: {e}");
@@ -126,6 +126,11 @@ impl PresetDetector {
                 );
             }
 
+            let vm = content.vm_box.take().map(|value| VmSettings {
+                r#box: Some(BoxSpec::String(value)),
+                ..Default::default()
+            });
+
             let config = VmConfig {
                 apt_packages: content.packages,
                 npm_packages: content.npm_packages,
@@ -134,6 +139,7 @@ impl PresetDetector {
                 environment,
                 aliases,
                 services,
+                vm,
                 ..Default::default()
             };
 
