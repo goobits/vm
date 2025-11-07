@@ -12,10 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Vibe Preset Portability**: Restored declarative package lists and aliases for non-Docker scenarios
-  - Preset now works correctly for first-time Docker users (without @vibe-box snapshot)
+  - Preset now works correctly for first-time Docker users (without @vibe-base snapshot)
   - Vagrant and Tart providers receive full package installation
   - Shell aliases (claudeyolo, geminiyolo, codexyolo) now render properly
-  - Docker with @vibe-box still uses fast path via smart package checks (5-10s unchanged)
+  - Docker with @vibe-base still uses fast path via smart package checks (5-10s unchanged)
   - Falls back gracefully to full installation when snapshot unavailable
 
 - **Snapshot Detection Safety**: Fixed false positives in pre-provisioned snapshot detection
@@ -44,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - With snapshot (UID differs): ~10-15s (93% faster)
   - Enhanced snapshot detection: Supports `-base` and `-box` suffix patterns
 
-- **Vibe Development Preset**: Pre-configured development environment with @vibe-box snapshot
+- **Vibe Development Preset**: Pre-configured development environment with @vibe-base snapshot
   - Includes Node.js 22, Python 3.14, Rust stable, Playwright, and AI CLI tools
   - Pre-installed packages: tree, ripgrep, unzip, htop
   - Pre-configured AI tools: Claude Code, Gemini CLI, OpenAI Codex
@@ -52,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Minimal preset configuration leverages snapshot for instant startup
 
 - **Snapshot Box Reference Support**: Use `@snapshot-name` syntax in presets
-  - Presets can now reference global snapshots via `vm.box: '@vibe-box'`
+  - Presets can now reference global snapshots via `vm.box: '@vibe-base'`
   - Supports unquoted @ symbols in snapshot box references
   - Automatic detection and optimization for snapshot-based images
 
@@ -92,7 +92,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Vibe Preset Structure**: Streamlined to minimal snapshot-referencing configuration
-  - Removed redundant package lists (now provided by @vibe-box snapshot)
+  - Removed redundant package lists (now provided by @vibe-base snapshot)
   - Removed aliases (baked into snapshot's .bashrc)
   - Retained only runtime behavior: vm.box reference and host_sync configuration
   - Clearer separation between baked-in (snapshot) and runtime (preset) concerns

@@ -140,7 +140,7 @@ fn create_minimal_preset_config(
     // Start with merged VM settings so required defaults (user, timezone, etc.) stay intact
     let mut vm = merged.vm.clone();
 
-    // If preset specifies a box (e.g., '@vibe-box'), override the cloned value
+    // If preset specifies a box (e.g., '@vibe-base'), override the cloned value
     if let Some(preset_box) = preset
         .and_then(|p| p.vm.as_ref())
         .and_then(|vm| vm.r#box.clone())
