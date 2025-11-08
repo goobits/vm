@@ -15,7 +15,7 @@ publish = true  # Override workspace publish = false
 anyhow = { workspace = true }
 clap = { workspace = true }
 clap_complete = { workspace = true }
-shellexpand = "3.1.0"
+shellexpand = "3.1.1"
 dirs = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
