@@ -1,8 +1,8 @@
-# 💻 Installation Guide
+# Installation Guide
 
 Development environment setup.
 
-## 🏃 Installation
+## Installation
 
 **Note**: Pre-compiled binaries are not yet available for all platforms, and the project is not published on `crates.io`. The only official installation method is to build from source.
 
@@ -19,13 +19,13 @@ cd vm
 ./install.sh --build-from-source
 
 # 3. Follow the on-screen instructions to update your shell's PATH
-#    (e.g., run `source ~/.bashrc` or restart your terminal)
+#   (e.g., run `source ~/.bashrc` or restart your terminal)
 
 # 4. Start using the tool
 vm --version
 ```
 
-## 📋 Prerequisites
+## Prerequisites
 
 ### For Building from Source
 - **Rust Toolchain**: Required to compile the project. Get it from [rustup.rs](https://rustup.rs/).
@@ -44,7 +44,7 @@ vm --version
 - **Tart** virtualization tool (`brew install cirruslabs/cli/tart`)
 - **SSH client** (included in macOS)
 
-## 🍎 macOS Installation
+## macOS Installation
 
 ### Docker Provider
 ```bash
@@ -73,7 +73,7 @@ tart --version
 # echo "os: macos" > vm.yaml && vm create
 ```
 
-## 🐧 Ubuntu/Debian Installation
+## Ubuntu/Debian Installation
 
 ### Docker Provider
 ```bash
@@ -100,7 +100,7 @@ echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
 sudo apt update && sudo apt install vagrant virtualbox
 ```
 
-## 🪟 Windows Installation
+## Windows Installation
 
 ### Docker Provider
 1. Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop)
@@ -109,7 +109,7 @@ sudo apt update && sudo apt install vagrant virtualbox
 1. Download **Vagrant** from [vagrant.com](https://www.vagrantup.com/downloads)
 2. Download **VirtualBox** from [virtualbox.org](https://www.virtualbox.org/wiki/Downloads)
 
-## ✅ Verification
+## Verification
 
 After installation, verify everything works:
 
@@ -127,7 +127,7 @@ vm --help
 vm create  # Should work with defaults
 ```
 
-## ⚙️ Environment Variables
+## Environment Variables
 
 ### VM_TOOL_DIR
 Override VM tool directory detection for custom installations:
@@ -151,7 +151,7 @@ echo 'export VM_TOOL_DIR=/path/to/vm' >> ~/.zshrc
 
 **Auto-detection**: Usually unnecessary - VM tool automatically detects installation path from binary location.
 
-## 🚨 Troubleshooting Installation
+## Troubleshooting Installation
 
 ### Docker Issues
 - **macOS/Windows**: Ensure Docker Desktop is running
@@ -167,7 +167,61 @@ echo 'export VM_TOOL_DIR=/path/to/vm' >> ~/.zshrc
 - **Path problems**: Make sure the vm command is in your PATH after global installation
 - **Permission denied**: Check that install.sh is executable: `chmod +x install.sh`
 
-## 🔄 Updating
+## Shell Completion
+
+Enable tab completion for the `vm` command in your shell.
+
+### Bash
+
+```bash
+# Generate completion script
+vm completion bash > ~/.vm-completion.bash
+
+# Add to your ~/.bashrc
+echo 'source ~/.vm-completion.bash' >> ~/.bashrc
+
+# Reload shell
+source ~/.bashrc
+```
+
+### Zsh
+
+```bash
+# Generate completion script
+vm completion zsh > ~/.vm-completion.zsh
+
+# Add to your ~/.zshrc
+echo 'source ~/.vm-completion.zsh' >> ~/.zshrc
+
+# Reload shell
+source ~/.zshrc
+```
+
+### Fish
+
+```bash
+# Generate and install completion
+vm completion fish > ~/.config/fish/completions/vm.fish
+
+# Fish will automatically load completions on next shell start
+```
+
+### PowerShell
+
+```powershell
+# Generate completion script
+vm completion powershell > $PROFILE\..\vm-completion.ps1
+
+# Add to your PowerShell profile
+Add-Content $PROFILE ". $PROFILE\..\vm-completion.ps1"
+
+# Reload profile
+. $PROFILE
+```
+
+With completion enabled, you can press Tab to complete commands, flags, and arguments.
+
+## Updating
 
 ### Self-Update Command (All Installation Methods)
 ```bash
@@ -201,7 +255,7 @@ git pull
 ./install.sh --build-from-source
 ```
 
-## 🗑️ Uninstallation
+## Uninstallation
 
 ### Automated Uninstall (Recommended)
 ```bash

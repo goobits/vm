@@ -1,8 +1,8 @@
-# 🔧 Troubleshooting Guide
+# Troubleshooting Guide
 
 Common issues and solutions for the VM development environment.
 
-## 🚨 Quick Fixes
+## Quick Fixes
 
 ### VM Won't Start
 ```bash
@@ -90,7 +90,7 @@ docker port <container_name>
 vm destroy && vm create
 ```
 
-## 📦 Vagrant Issues
+## Vagrant Issues
 
 ### VirtualBox Conflicts
 ```bash
@@ -141,7 +141,7 @@ vagrant box add bento/ubuntu-24.04 --provider virtualbox --force
 ping -c 4 vagrantcloud.com
 ```
 
-## 🍎 Tart Issues (Apple Silicon)
+## Tart Issues (Apple Silicon)
 
 ### Tart Not Found
 ```bash
@@ -174,7 +174,7 @@ tart run <vm-name> -- systemctl status ssh
 cat ~/.ssh/id_rsa.pub
 ```
 
-## ⚙️ Configuration Issues
+## Configuration Issues
 
 ### Invalid Configuration
 ```bash
@@ -215,7 +215,7 @@ vm exec "systemctl status redis"
 vm apply  # Re-run applying scripts
 ```
 
-## 🗄️ Database Issues
+## Database Issues
 
 ### PostgreSQL Won't Start
 ```bash
@@ -257,7 +257,7 @@ project:
 vm destroy && vm create
 ```
 
-## 🌐 Network Issues
+## Network Issues
 
 ### Can't Access Services from Host
 ```bash
@@ -336,7 +336,7 @@ vagrant plugin install vagrant-vbguest
 vagrant reload
 ```
 
-## 🔍 Debugging Mode
+## Debugging Mode
 
 ### Enable Debug Output
 ```bash
@@ -398,7 +398,7 @@ vm exec "tail -f /var/log/syslog"
 vm exec "docker logs redis"  # If using Docker services
 ```
 
-## 🆘 Getting Help
+## Getting Help
 
 ### System Information
 ```bash

@@ -1,8 +1,8 @@
-# 🚀 Quick Start Guide
+# Quick Start Guide
 
 Setup guide for getting your development environment running.
 
-## 🎯 Minimal Setup
+## Minimal Setup
 
 ```bash
 # 1. Clone the repository and build from source
@@ -23,7 +23,7 @@ The tool automatically:
 - Sets up port forwarding and file sync
 - Installs language runtimes and dependencies
 
-## 🛠️ Common Workflows
+## Common Workflows
 
 ### Web Development
 ```bash
@@ -51,7 +51,7 @@ vm temp ssh                  # Jump in and experiment
 vm temp destroy              # Clean up when done
 ```
 
-## ⚙️ Basic Customization
+## Basic Customization
 
 Only customize if the auto-detection doesn't work for you:
 
@@ -66,7 +66,7 @@ ports:
   backend: 8000
 ```
 
-## 🎮 Essential Commands
+## Essential Commands
 
 ```bash
 # Daily workflow
@@ -82,7 +82,7 @@ vm list          # Show all VMs
 vm logs          # View service logs
 ```
 
-## 🧪 Temporary VMs
+## Temporary VMs
 
 Suitable for testing, code reviews, or experiments:
 
@@ -92,7 +92,7 @@ vm temp ssh                      # Enter temp environment
 vm temp destroy                  # Clean up when done
 ```
 
-## 🆘 Need Help?
+## Need Help?
 
 - **Not working?** Try `vm destroy && vm create` to reset
 - **Missing features?** Check the [Presets Guide](../user-guide/presets.md) for available configurations

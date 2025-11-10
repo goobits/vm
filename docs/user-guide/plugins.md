@@ -1,4 +1,4 @@
-# 🔌 VM Tool Plugin System
+# VM Tool Plugin System
 
 ## Overview
 

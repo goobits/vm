@@ -110,7 +110,8 @@ docs/
 
 ## Related Documentation
 
-- [docs/DEVELOPMENT.md](../DEVELOPMENT.md) - Development notes and testing
-- [docs/TESTING.md](../TESTING.md) - Comprehensive testing documentation
-- [rust/ARCHITECTURE.md](../../rust/ARCHITECTURE.md) - Detailed Rust crate architecture
-- [docs/development/contributing.md](contributing.md) - Contribution guidelines
+- [Development Guide](guide.md) - Development environment setup and workflows
+- [Testing Quick Reference](testing-quick-reference.md) - Quick testing commands
+- [Comprehensive Testing Guide](testing.md) - Complete testing documentation
+- [Rust Architecture](../../rust/ARCHITECTURE.md) - Detailed Rust crate architecture
+- [Contributing Guidelines](../../CONTRIBUTING.md) - How to contribute

@@ -1,13 +1,52 @@
-# 🛠️ VM CLI Reference
+# VM CLI Reference
 
-This document provides a complete reference for all `vm` commands.
+Complete reference for all `vm` commands.
 
-## 📚 Table of Contents
+## Quick Reference
+
+| Task | Command |
+|------|---------|
+| Create VM | `vm create` |
+| Start VM | `vm start` |
+| Stop VM | `vm stop` |
+| Connect to VM | `vm ssh` |
+| Check status | `vm status` |
+| View logs | `vm logs [-f]` |
+| Wait for services | `vm wait [--service <name>]` |
+| Destroy VM | `vm destroy` |
+| List VMs | `vm list` |
+| Run command | `vm exec <command>` |
+| **Snapshots** | |
+| Create snapshot | `vm snapshot create <name>` |
+| Restore snapshot | `vm snapshot restore <name>` |
+| Export snapshot | `vm snapshot export <name>` |
+| Import snapshot | `vm snapshot import <file>` |
+| **Configuration** | |
+| Initialize config | `vm init` |
+| Validate config | `vm config validate` |
+| Apply preset | `vm config preset <name>` |
+| **Environment** | |
+| Validate .env | `vm env validate` |
+| Show env diff | `vm env diff` |
+| **Database** | |
+| Backup database | `vm db backup <name>` |
+| Restore database | `vm db restore <backup> <db>` |
+| **System** | |
+| Health check | `vm doctor` |
+| Update vm tool | `vm update` |
+| Generate completion | `vm completion <shell>` |
+
+---
+
+## Table of Contents
 - [Global Options](#global-options)
 - [Core Commands](#core-commands)
 - [Configuration (`vm config`)](#configuration-vm-config)
+- [Environment Variables (`vm env`)](#environment-variables-vm-env)
 - [Temporary VMs (`vm temp`)](#temporary-vms-vm-temp)
 - [Plugins (`vm plugin`)](#plugins-vm-plugin)
+- [Snapshots (`vm snapshot`)](#snapshots-vm-snapshot)
+- [Database (`vm db`)](#database-vm-db)
 - [Secrets Management (`vm auth`)](#secrets-management-vm-auth)
 - [Package Registry (`vm pkg`)](#package-registry-vm-pkg)
 - [System Management](#system-management)
@@ -127,6 +166,33 @@ List all available VMs.
 vm list
 ```
 
+### `vm wait`
+Wait for services to become ready before proceeding.
+```bash
+vm wait [--service <name>] [--timeout <seconds>]
+```
+
+**Wait for all services:**
+```bash
+vm wait
+```
+
+**Wait for specific service:**
+```bash
+vm wait --service postgresql
+vm wait --service redis --timeout 60
+```
+
+**Options:**
+- `--service <name>` - Wait for specific service (postgresql, redis, mongodb, mysql)
+- `--timeout <seconds>` - Maximum wait time in seconds (default: 120)
+- `--container <name>` - Target specific container
+
+**Use cases:**
+- CI/CD pipelines: Wait for database before running migrations
+- Scripts: Ensure services are ready before executing commands
+- Development: Verify services started correctly after `vm create`
+
 ---
 
 ## Configuration (`vm config`)
@@ -185,6 +251,62 @@ Reset your configuration.
 ```bash
 vm config clear
 ```
+
+---
+
+## Environment Variables (`vm env`)
+Manage environment variables and validate against templates.
+
+Requires `project.env_template_path` configured in vm.yaml.
+
+### `vm env validate`
+Validate .env file against template.
+```bash
+vm env validate [--all]
+```
+
+**Basic validation:**
+```bash
+vm env validate
+```
+
+Shows missing variables that need to be set.
+
+**Show all variables:**
+```bash
+vm env validate --all
+```
+
+Shows missing, extra, and present variables.
+
+### `vm env diff`
+Show differences between .env and template.
+```bash
+vm env diff
+```
+
+Displays side-by-side comparison of template vs actual values.
+
+### `vm env list`
+List all environment variables from .env.
+```bash
+vm env list [--show-values]
+```
+
+**List variable names:**
+```bash
+vm env list
+```
+
+**Show values (masked):**
+```bash
+vm env list --show-values
+```
+
+**Use cases:**
+- Onboarding: Verify team members have all required environment variables
+- CI/CD: Validate environment configuration before deployment
+- Development: Check which environment variables are currently configured
 
 ---
 
@@ -279,6 +401,94 @@ Validate a plugin's configuration.
 ```bash
 vm plugin validate <name>
 ```
+
+---
+
+## Snapshots (`vm snapshot`)
+Create, manage, and share VM snapshots.
+
+### `vm snapshot create`
+Create a new snapshot of current VM state.
+```bash
+vm snapshot create <name> [--project <name>]
+```
+
+### `vm snapshot list`
+List all available snapshots.
+```bash
+vm snapshot list [--project <name>]
+```
+
+### `vm snapshot restore`
+Restore VM to a snapshot.
+```bash
+vm snapshot restore <name> [--project <name>]
+```
+
+### `vm snapshot delete`
+Delete a snapshot.
+```bash
+vm snapshot delete <name> [--project <name>] [--force]
+```
+
+### `vm snapshot export`
+Export a snapshot to a portable file for sharing.
+```bash
+vm snapshot export <name> [--output <path>] [--compress <level>]
+```
+
+**Basic export:**
+```bash
+vm snapshot export my-snapshot
+```
+
+Creates `my-snapshot.snapshot.tar.gz` in current directory.
+
+**Custom output location:**
+```bash
+vm snapshot export my-snapshot --output ~/backups/snapshot.tar.gz
+```
+
+**Adjust compression (1-9):**
+```bash
+vm snapshot export my-snapshot --compress 9
+```
+
+Higher compression = smaller file but slower. Default is 6.
+
+### `vm snapshot import`
+Import a snapshot from a file.
+```bash
+vm snapshot import <file> [--name <name>] [--verify] [--force]
+```
+
+**Basic import:**
+```bash
+vm snapshot import my-snapshot.snapshot.tar.gz
+```
+
+Uses the snapshot name embedded in the file.
+
+**Override snapshot name:**
+```bash
+vm snapshot import backup.tar.gz --name team-baseline
+```
+
+**Verify checksum:**
+```bash
+vm snapshot import backup.tar.gz --verify
+```
+
+**Overwrite existing:**
+```bash
+vm snapshot import backup.tar.gz --force
+```
+
+**Use cases:**
+- Team onboarding: Share baseline development environment
+- Backup: Export snapshots before major changes
+- Migration: Move snapshots between machines
+- Distribution: Share pre-configured environments
 
 ---
 

@@ -1,9 +1,44 @@
-# ⚙️ Configuration Guide
+# Configuration Guide
 
 Complete reference for configuring your VM development environment with YAML.
 
-> **📌 Migration Notice:** The legacy `examples/` directory workflow has been replaced by VM snapshots as of v3.2.0. See [VM Snapshots](#vm-snapshots-) below for the modern approach to sharing and restoring development environments.
+> Migration Notice: The legacy `examples/` directory workflow has been replaced by VM snapshots as of v3.2.0. See [VM Snapshots](#vm-snapshots) for the modern approach.
 
+## Quick Reference
+
+| Configuration | Location | Purpose |
+|---------------|----------|---------|
+| `vm.yaml` | Project root | VM-specific: services, ports, packages, environment |
+| `~/.vm/config.yaml` | Home directory | Global: defaults, shared services, preferences |
+
+**Most common fields:**
+```yaml
+# vm.yaml
+project:
+  name: my-app
+os: ubuntu                    # ubuntu, macos, alpine
+ports:
+  app: 3000
+services:
+  postgresql:
+    enabled: true
+    database: myapp_dev
+  redis:
+    enabled: true
+npm_packages:
+  - typescript
+  - eslint
+```
+
+**Key sections:**
+- [Services](#services) - PostgreSQL, Redis, MongoDB, MySQL, Docker
+- [Language Runtimes](#language-runtimes) - Node, Python, Rust versions
+- [Host Sync](#host-system-integration) - SSH keys, dotfiles, AI tools
+- [Advanced Features](#advanced-features) - Worktrees, snapshots, security
+
+---
+
+## Table of Contents
 ## 📖 Table of Contents
 
 - [Configuration Files](#-configuration-files)
@@ -59,7 +94,7 @@ defaults:
 
 **Key Difference:** VM config controls individual project services, global config controls shared infrastructure services.
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Simplest Setup (Recommended)
 
@@ -138,7 +173,7 @@ ports:
   frontend: 3020
 ```
 
-## 📋 Full Reference
+## Full Reference
 
 ```yaml
 version: "2.0"  # Configuration format version
@@ -227,7 +262,7 @@ terminal:
   show_timestamp: false  # Show time
 ```
 
-## 🛠️ Services
+## Services
 
 VM-scoped services are configured in `vm.yaml` and run **inside** each VM/container. Global services are configured in `~/.vm/config.yaml` and shared across all VMs. All services are accessed via `localhost` from within the VM.
 
@@ -296,7 +331,55 @@ services:
     enabled: true  # Installs Chrome/Chromium for testing
 ```
 
-## 🌐 Global Services Configuration
+### Advanced Service Configuration
+
+Additional service options for specialized use cases:
+
+**Database services (PostgreSQL, MySQL, MongoDB):**
+```yaml
+services:
+  postgresql:
+    enabled: true
+    version: "16"                # Specific version
+    database: myapp_dev          # Database name
+    user: postgres               # Username
+    password: postgres           # Password
+    memory_mb: 1024              # Memory limit (MB)
+    seed_file: ./db/seed.sql     # SQL file to run on first start
+    backup_on_destroy: true      # Auto-backup before vm destroy
+```
+
+**Docker-in-Docker:**
+```yaml
+services:
+  docker:
+    enabled: true
+    buildx: true                 # Enable Docker Buildx for multi-platform builds
+    driver: docker-container     # Buildx driver (docker-container, kubernetes)
+```
+
+**Headless Browser:**
+```yaml
+services:
+  headless_browser:
+    enabled: true
+    display: ":99"               # X11 display number
+    executable_path: /usr/bin/chromium  # Custom browser path
+    share_microphone: false      # Share host microphone
+```
+
+**Service options:**
+- **version**: Service version (postgresql: "16", "15", etc.)
+- **memory_mb**: Memory limit in MB (prevents runaway processes)
+- **seed_file**: SQL or script to run on first start (databases only)
+- **backup_on_destroy**: Auto-backup before destroying VM (databases only)
+- **buildx**: Enable Docker Buildx (docker service only)
+- **driver**: Buildx driver type (docker service only)
+- **display**: X11 display number (headless_browser only)
+- **executable_path**: Custom binary path (headless_browser only)
+- **share_microphone**: Enable microphone access (headless_browser only)
+
+## Global Services Configuration
 
 Global services are configured in `~/.vm/config.yaml` and serve **all** VMs on your system.
 
@@ -476,10 +559,22 @@ os: macos  # Automatically uses Tart on M1/M2/M3
 provider: tart
 tart:
   image: ghcr.io/cirruslabs/macos-sonoma-base:latest
-  rosetta: true  # Enable x86 emulation for Linux VMs
-  disk_size: 60  # Disk: 60 (GB), "60gb", "50%"
-  ssh_user: admin
+  guest_os: linux              # Guest OS type: linux or macos
+  rosetta: true                # Enable x86 emulation for Linux VMs
+  disk_size: 60                # Disk: 60 (GB), "60gb", "50%"
+  ssh_user: admin              # SSH username (default: admin)
+  install_docker: false        # Install Docker in the VM
+  storage_path: ~/.tart/vms    # Custom VM storage location
 ```
+
+**Tart options:**
+- **image**: OCI image to use (required)
+- **guest_os**: `linux` or `macos` (auto-detected from image if omitted)
+- **rosetta**: Enable x86 emulation on ARM (default: false)
+- **disk_size**: VM disk size in GB (default: 50)
+- **ssh_user**: SSH username for connecting (default: admin)
+- **install_docker**: Install Docker in VM (default: false)
+- **storage_path**: Custom VM storage directory (default: ~/.tart/vms)
 
 **Requirements**: Apple Silicon Mac (M1/M2/M3/M4), Tart installed via `brew install cirruslabs/cli/tart`
 
@@ -575,11 +670,14 @@ The VM will:
 ```yaml
 versions:
   node: 22.11.0    # Specific Node.js version
+  npm: 10.2.4      # Specific npm version (usually managed by nvm)
   nvm: v0.40.3     # NVM version
   pnpm: latest     # pnpm version
 ```
 
-## 🎨 Terminal Customization
+**Note**: npm is typically installed automatically with Node.js via nvm. Only set `npm` explicitly if you need a specific version different from the one bundled with Node.
+
+## Terminal Customization
 
 ### Available Themes
 
@@ -605,7 +703,7 @@ terminal:
 
 Result: `🚀 developer my-app (main) >`
 
-## 🔌 Port Strategy
+## Port Strategy
 
 Avoid conflicts by giving each project 10 ports:
 
@@ -639,7 +737,7 @@ vm:
   port_binding: "0.0.0.0"  # Share with your network
 ```
 
-## 🔄 Advanced Features
+## Advanced Features
 
 ### Git Worktrees (New in 2.0.6)
 
@@ -661,10 +759,12 @@ worktrees:
 **Features**:
 - **Automatic mounting** at identical absolute paths (host and container)
 - **Create worktrees from inside containers** - they work on host too!
-- **Helper command** `vm-worktree` for easy management
+- **In-container helper** `vm-worktree` command for easy management (available inside VM via `vm ssh`)
 - **Prompt indicator** shows current worktree
 - Automatic detection and remounting of existing worktrees
 - Support for multiple branches simultaneously
+
+**Note**: The `vm-worktree` command is available inside the container, not as a `vm` CLI subcommand. Access it by running `vm ssh` first.
 
 **Use Cases**:
 - Developing multiple branches simultaneously
@@ -674,12 +774,12 @@ worktrees:
 
 **Example Workflows**:
 
-**Creating worktrees from inside container (NEW!):**
+**Creating worktrees from inside container:**
 ```bash
-vm ssh
+$ vm ssh
+# Now inside container
 
-# Create worktree from inside container
-vm-worktree add feature-x
+$ vm-worktree add feature-x
 # ✓ Worktree created: feature-x
 # (worktree:feature-x) $  # Automatically navigated with prompt indicator
 
@@ -693,8 +793,8 @@ git status  # Shows your commits
 # List all worktrees
 vm-worktree list
 # 📁 Worktrees:
-#   feature-x
-#   bugfix-123
+#  feature-x
+#  bugfix-123
 
 # Jump to another worktree
 vm-worktree goto bugfix-123
@@ -925,7 +1025,121 @@ host_sync:
 - Non-existent files are skipped with a warning during VM creation
 - Use this for configuration files, not for workspace files
 
-### Dynamic Port Forwarding 🔀
+#### AI Tool Integration
+
+Automatically sync AI coding assistant configurations into your VM for seamless AI-powered development.
+
+**Enable all AI tools:**
+```yaml
+# vm.yaml
+host_sync:
+  ai_tools: true
+```
+
+**Granular control per tool:**
+```yaml
+# vm.yaml
+host_sync:
+  ai_tools:
+    claude: true      # Claude Desktop (~/.config/claude)
+    cursor: true      # Cursor editor (~/.cursor)
+    aider: true       # Aider AI (~/.aider)
+    codex: false      # OpenAI Codex (disabled)
+    gemini: false     # Google Gemini (disabled)
+```
+
+**Supported AI tools:**
+- **Claude** - Claude Desktop configuration and settings
+- **Cursor** - Cursor editor AI configuration
+- **Aider** - Aider AI coding assistant settings
+- **Codex** - OpenAI Codex configuration
+- **Gemini** - Google Gemini AI settings
+
+**What gets synchronized:**
+- API keys and authentication tokens
+- Model preferences and settings
+- Custom prompts and configurations
+- Tool-specific preferences
+
+**Security considerations:**
+- AI tool configs often contain API keys - ensure your host machine is secure
+- Configs are mounted read-only into the VM
+- Changes made in VM don't affect host configurations
+- Disable specific tools you don't use to minimize mounted secrets
+
+**Use cases:**
+- Consistent AI tooling across multiple projects
+- Team standardization of AI tool configurations
+- Quick onboarding with pre-configured AI assistants
+
+#### Package Linking
+
+Automatically detect and mount linked npm, pip, and cargo packages for monorepo and local package development.
+
+**Enable all package managers:**
+```yaml
+# vm.yaml
+host_sync:
+  package_linking: true
+```
+
+**Selective package manager support:**
+```yaml
+# vm.yaml
+host_sync:
+  package_linking:
+    npm: true      # Link npm packages (npm link, yarn link)
+    pip: true      # Link Python packages (pip install -e)
+    cargo: false   # Disable Rust package linking
+```
+
+**How it works:**
+- Detects `npm link` / `yarn link` relationships automatically
+- Finds `pip install -e` editable installations
+- Mounts linked package source directories into VM
+- Preserves package linking inside the VM
+- Updates automatically when host links change
+
+**npm/yarn example:**
+```bash
+# On host: Link shared component library
+cd ~/projects/shared-components
+npm link
+
+cd ~/projects/my-app
+npm link shared-components
+
+# In VM: shared-components is automatically mounted and linked
+vm ssh
+npm list shared-components  # Shows linked local package
+```
+
+**pip example:**
+```bash
+# On host: Install local package in editable mode
+cd ~/projects/my-library
+pip install -e .
+
+cd ~/projects/my-app
+pip install -e ../my-library
+
+# In VM: my-library source is automatically mounted
+vm ssh
+pip show my-library  # Shows editable install location
+```
+
+**Use cases:**
+- Monorepo development with multiple packages
+- Local package development and testing
+- Shared internal libraries across projects
+- Component library development
+
+**Troubleshooting:**
+- Ensure packages are linked before creating the VM
+- Use `vm apply` to refresh mounts after changing links on host
+- Check `vm status` to see which packages are mounted
+
+### Dynamic Port Forwarding
 
 #### Ephemeral Port Tunneling
 
@@ -1156,8 +1370,92 @@ vm snapshot restore my-configured-env
 
 ---
 
-## 📚 Additional Resources
+### Security Configuration
 
-- **[Examples Guide](../getting-started/examples.md)** - Real-world configuration examples
-- **[Schema Reference](../api/configuration-schema.md)** - Complete field documentation
-- **[Troubleshooting](troubleshooting.md)** - Common configuration issues
+Configure container security hardening options for production or sensitive environments.
+
+**Enable security features:**
+```yaml
+# vm.yaml
+security:
+  enable_debugging: false        # Disable debugging features
+  no_new_privileges: true        # Prevent privilege escalation
+  read_only_root: false          # Make root filesystem read-only
+  user_namespaces: true          # Enable user namespace remapping
+  drop_capabilities:             # Drop Linux capabilities
+    - NET_RAW
+    - SYS_ADMIN
+  security_opts:                 # Additional security options
+    - "no-new-privileges:true"
+    - "seccomp=unconfined"       # Or path to custom seccomp profile
+
+  # Resource limits
+  memory_mb: 2048               # Maximum memory (MB)
+  cpu_limit: 2.0                # Maximum CPU cores
+  pids_limit: 100               # Maximum processes
+```
+
+**Security options explained:**
+
+**enable_debugging** (default: true)
+- Set to `false` to disable debugging features in production
+- Removes development-only mounts and capabilities
+
+**no_new_privileges** (default: false)
+- Prevents processes from gaining new privileges
+- Blocks setuid binaries and capability escalation
+- Recommended for production containers
+
+**read_only_root** (default: false)
+- Makes root filesystem read-only
+- Requires explicit writable mounts for /tmp, /var
+- Prevents unauthorized file modifications
+
+**user_namespaces** (default: false)
+- Remaps container root to unprivileged host user
+- Adds isolation layer between container and host
+- Requires Docker daemon configuration
+
+**drop_capabilities**
+- Remove Linux capabilities from container
+- Common capabilities to drop: NET_RAW, SYS_ADMIN, SYS_PTRACE
+- See `man capabilities` for full list
+
+**security_opts**
+- Additional Docker security options
+- Can specify custom AppArmor or SELinux profiles
+- Configure seccomp filtering
+
+**Resource limits:**
+- **memory_mb**: Hard memory limit (OOM kill if exceeded)
+- **cpu_limit**: CPU quota (1.0 = 1 core, 2.0 = 2 cores)
+- **pids_limit**: Maximum process count (prevents fork bombs)
+
+**Production example:**
+```yaml
+security:
+  enable_debugging: false
+  no_new_privileges: true
+  drop_capabilities:
+    - ALL                        # Drop all, then add back specific ones
+  memory_mb: 4096
+  cpu_limit: 2.0
+  pids_limit: 200
+```
+
+**Development example (default):**
+```yaml
+security:
+  enable_debugging: true         # Allow debugging
+  # Minimal restrictions for development flexibility
+```
+
+🚨 **Security note**: These options provide defense-in-depth but don't replace proper application security. Validate inputs, use least privilege, and keep dependencies updated.
+
+---
+
+## Additional Resources
+
+- [Examples Guide](../getting-started/examples.md) - Real-world configuration examples
+- [Schema Reference](../../configs/schema/vm.schema.yaml) - Raw YAML schema with complete field definitions
+- [Troubleshooting](troubleshooting.md) - Common configuration issues

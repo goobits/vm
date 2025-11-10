@@ -1,4 +1,4 @@
-# 📦 VM Tool Presets
+# VM Tool Presets
 
 ## Overview
 Preset system that auto-configures VMs based on detected project type.
@@ -162,9 +162,9 @@ vm plugin new my-preset --type preset
 
 # This creates:
 # ~/.vm/plugins/presets/my-preset/
-#   ├── plugin.yaml    # Plugin metadata
-#   ├── preset.yaml    # Preset configuration
-#   └── README.md      # Documentation
+#  ├── plugin.yaml    # Plugin metadata
+#  ├── preset.yaml    # Preset configuration
+#  └── README.md      # Documentation
 ```
 
 Edit the generated files:

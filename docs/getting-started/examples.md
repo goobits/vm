@@ -1,4 +1,4 @@
-# 📝 Common Examples
+# Common Examples
 
 Real-world configuration examples for different project types and use cases.
 
@@ -8,7 +8,7 @@ Real-world configuration examples for different project types and use cases.
 - Percentages: `"50%"`, `"75%"`
 - Unlimited: `"unlimited"`
 
-## 🎨 Custom Base Images
+## Custom Base Images
 
 Speed up VM creation by pre-installing heavy dependencies (like Playwright, Chromium) in reusable Docker base images. See [examples/base-images/](../../examples/base-images/) for ready-to-use Dockerfiles and detailed guides.
 
@@ -24,7 +24,7 @@ vm:
 
 VM creation is now 5-10x faster since Playwright/Chromium are already installed!
 
-## 🎯 Frontend Projects
+## Frontend Projects
 
 ### React Development
 ```yaml
@@ -61,7 +61,7 @@ aliases:
   build: "npm run build && npm run preview"
 ```
 
-## 🔧 Backend Projects
+## Backend Projects
 
 ### Django API
 ```yaml
@@ -121,7 +121,7 @@ services:
     enabled: true
 ```
 
-## 🔗 Full-Stack Projects
+## Full-Stack Projects
 
 ### React + Node.js API
 ```yaml
@@ -189,7 +189,7 @@ services:
     database: vuedjango_dev
 ```
 
-## 🚀 Specialized Environments
+## Specialized Environments
 
 ### Mobile Development Backend
 ```yaml
@@ -286,7 +286,7 @@ aliases:
   dev-all: "concurrently \"rust-dev\" \"python-dev\" \"frontend-dev\""
 ```
 
-## 🧪 Development Patterns
+## Development Patterns
 
 ### Microservices Development
 ```yaml
@@ -446,7 +446,7 @@ services:
     cleanup_interval_hours: 1  # Aggressive cleanup
 ```
 
-## 🎨 Customization Patterns
+## Customization Patterns
 
 ### Port Strategy (Team Development)
 ```yaml
