@@ -21,6 +21,9 @@
 		"vite": "^7.1.10"
 	},
 	"dependencies": {
-		"@goobits/docs-engine": "^2.0.0"
+		"@goobits/docs-engine": "^2.0.0",
+		"marked": "^17.0.0",
+		"mdsvex": "^0.12.6",
+		"remark-math": "^6.0.0"
 	}
 }
