@@ -162,6 +162,10 @@ fn create_minimal_preset_config(
         ports: merged.ports.clone(),
         services: merged.services.clone(),
         terminal: merged.terminal.clone(),
+        apt_packages: merged.apt_packages.clone(),
+        npm_packages: merged.npm_packages.clone(),
+        pip_packages: merged.pip_packages.clone(),
+        cargo_packages: merged.cargo_packages.clone(),
         ..Default::default()
     }
 }
