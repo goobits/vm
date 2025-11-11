@@ -42,24 +42,32 @@ These URLs point to the service running on the host machine.
 
 ### Example: Connecting to PostgreSQL
 
-Your application can read the `DATABASE_URL` environment variable to connect.
+Your application can read the `DATABASE_URL` environment variable to connect:
 
 ```
-postgresql://postgres:postgres@host.docker.internal:5432/my-project
+postgresql://postgres:postgres@${VM_HOST}:5432/my-project
 ```
 
-- **Host:** `host.docker.internal` (for Docker provider)
-- **Port:** The configured port (default: 5432)
-- **User/Password:** `postgres`/`postgres` (a simple default for local development)
-- **Database:** The database name is automatically set to your project's name.
+**Connection host by provider:**
+- **Docker**: Use `host.docker.internal` (to reach host from container)
+- **Vagrant/Tart**: Use `localhost` or `127.0.0.1`
+
+The VM tool automatically configures the correct connection pattern for your provider.
+
+**Connection details:**
+- **Port:** 5432 (default, configurable in `~/.vm/config.yaml`)
+- **User/Password:** `postgres`/`postgres` (simple default for local development)
+- **Database:** Automatically set to your project's name
 
 ### Example: Connecting to Redis
 
-Your application can use the `REDIS_URL`.
+Your application can use the `REDIS_URL`:
 
 ```
-redis://host.docker.internal:6379
+redis://${VM_HOST}:6379
 ```
+
+Use the same `$VM_HOST` pattern as PostgreSQL (see above for provider-specific values).
 
 ## Data Persistence and Location
 
@@ -77,10 +85,10 @@ Each project automatically gets its own PostgreSQL database named after the proj
 
 ```bash
 # Project: my-app
-DATABASE_URL=postgresql://postgres:postgres@host.docker.internal:5432/my-app
+DATABASE_URL=postgresql://postgres:postgres@${VM_HOST}:5432/my-app
 
 # Project: other-project
-DATABASE_URL=postgresql://postgres:postgres@host.docker.internal:5432/other-project
+DATABASE_URL=postgresql://postgres:postgres@${VM_HOST}:5432/other-project
 ```
 
 Redis and MongoDB are shared across all projects (use different key prefixes or collections to separate data).

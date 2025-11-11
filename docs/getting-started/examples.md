@@ -5,22 +5,6 @@ Real-world configurations for different project types. All examples assume `os: 
 **Resource Format Options**: `memory: 4096` (MB), `"4gb"`, `"50%"`, `"unlimited"` - same for cpus, swap, disk_size.
 **See Full Reference**: [Configuration Guide](../user-guide/configuration.md) for all available options
 
-## Custom Base Images
-
-Speed up VM creation by pre-installing heavy dependencies (like Playwright, Chromium) in reusable Docker base images. See [examples/base-images/](../../examples/base-images/) for ready-to-use Dockerfiles and detailed guides.
-
-**Quick example:**
-```bash
-# Build a base image with Playwright pre-installed
-docker build -f examples/base-images/playwright-chromium.dockerfile -t my-base:latest .
-
-# Use in your project
-vm:
-  box: my-base:latest  # Instead of ubuntu:24.04
-```
-
-VM creation is significantly faster (seconds instead of the usual 5+ minutes to install Playwright/Chromium).
-
 ## Frontend Projects
 
 ### React / Vue / Angular
@@ -121,6 +105,22 @@ aliases:
 *Tip*: Use [base images](../../examples/base-images/python-ml.dockerfile) to pre-install ML libraries (saves 8+ minutes per VM)
 
 ## Advanced Patterns
+
+### Custom Base Images
+
+Speed up VM creation by pre-installing heavy dependencies (like Playwright, Chromium) in reusable Docker base images. See [examples/base-images/](../../examples/base-images/) for ready-to-use Dockerfiles and detailed guides.
+
+**Quick example:**
+```bash
+# Build a base image with Playwright pre-installed
+docker build -f examples/base-images/playwright-chromium.dockerfile -t my-base:latest .
+
+# Use in your project
+vm:
+  box: my-base:latest  # Instead of ubuntu:24.04
+```
+
+VM creation is significantly faster (seconds instead of the usual 5+ minutes to install Playwright/Chromium).
 
 ### Multiple Databases
 ```yaml

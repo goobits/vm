@@ -2,7 +2,7 @@
 
 Complete reference for configuring your VM development environment with YAML.
 
-> Migration Notice: The legacy `examples/` directory workflow has been replaced by VM snapshots as of v3.2.0. See [VM Snapshots](#vm-snapshots) for the modern approach.
+> Migration Notice: The legacy `examples/` directory workflow has been replaced by VM snapshots. See [VM Snapshots](#vm-snapshots) for the modern approach. Run `vm --version` to check your current version.
 
 ## Quick Reference
 
@@ -293,10 +293,12 @@ services:
 
 ### Development Environment
 
+> **Pre-installed packages**: The VM includes these npm packages by default: `@anthropic-ai/claude-code`, `@google/gemini-cli`, `npm-check-updates`, `prettier`, and `eslint`. Add additional packages below, or set `npm_packages: []` to start with a minimal environment.
+
 ```yaml
 npm_packages:
-  - prettier
-  - eslint
+  - typescript  # Adds to defaults
+  - your-package
 
 pip_packages:
   - black
@@ -647,19 +649,7 @@ The provider determines how to interpret the `box` string:
 - **Registry format** → Docker/Tart image
 - **Everything else** → Image name
 
-#### Migration from box_name
-
-The old `box_name` field is still supported for backwards compatibility:
-
-```yaml
-# Old (still works)
-vm:
-  box_name: ubuntu:24.04
-
-# New (recommended)
-vm:
-  box: ubuntu:24.04
-```
+**Migration note**: If you're updating from an older version, `box_name` has been renamed to `box`. The functionality is identical—simply update your field name in `vm.yaml`.
 
 ## Language Runtimes
 
@@ -909,13 +899,26 @@ vm:
   timezone: auto  # default
 ```
 
-To override the timezone, specify a valid timezone name:
+To override the timezone, specify a valid IANA timezone name:
 
 ```yaml
 # vm.yaml
 vm:
   timezone: "America/New_York"
 ```
+
+**Common timezones:**
+- `America/New_York` - Eastern Time (US)
+- `America/Chicago` - Central Time (US)
+- `America/Denver` - Mountain Time (US)
+- `America/Los_Angeles` - Pacific Time (US)
+- `Europe/London` - UK
+- `Europe/Paris` - Central European Time
+- `Asia/Tokyo` - Japan Standard Time
+- `Australia/Sydney` - Australian Eastern Time
+- `UTC` - Coordinated Universal Time
+
+**Full timezone list**: See the [IANA timezone database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) for all 600+ valid timezone identifiers.
 
 ### Development Configuration
 
@@ -1380,6 +1383,39 @@ vm snapshot restore my-configured-env
 - Run `vm snapshot create base-environment`
 - Share the snapshot instead of the Dockerfile
 - Team members: `vm snapshot restore base-environment`
+
+---
+
+## Glossary
+
+**VM (Virtual Machine / Development Environment)**
+- Your isolated development environment
+- Implemented as a Docker container (default), Vagrant virtual machine, or Tart VM depending on your provider
+- Throughout documentation, "VM" refers to all provider types unless specifically noted
+
+**Provider**
+- The backend technology that runs your VM: Docker, Vagrant, or Tart
+- Docker provides lightweight containers (fast, shared kernel)
+- Vagrant provides full virtual machines (complete isolation, any OS)
+- Tart provides macOS virtual machines on Apple Silicon
+
+**Box / Image**
+- The base template used to create your VM
+- Docker: "image" (e.g., `ubuntu:24.04`)
+- Vagrant: "box" (e.g., `ubuntu/jammy64`)
+- Tart: "image" (e.g., `ghcr.io/cirruslabs/macos-ventura`)
+
+**Host**
+- Your physical computer where the VM Tool runs
+- Your local filesystem, SSH keys, and configuration
+
+**Guest**
+- The VM environment running inside the host
+- Where your project code executes
+
+**Snapshot**
+- A saved state of your entire VM including installed packages, configuration, and data
+- Can be exported, shared, and restored on other machines
 
 ---
 
