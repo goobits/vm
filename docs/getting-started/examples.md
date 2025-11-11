@@ -22,7 +22,7 @@ vm:
   box: my-base:latest  # Instead of ubuntu:24.04
 ```
 
-VM creation is now 5-10x faster since Playwright/Chromium are already installed!
+VM creation is significantly faster (seconds instead of the usual 5+ minutes to install Playwright/Chromium).
 
 ## Frontend Projects
 
@@ -353,7 +353,7 @@ services:
     enabled: true
 ```
 
-## 🐳 Docker Registry Caching
+## Docker Registry Caching
 
 ### Simple Docker Registry Setup
 ```yaml
@@ -489,7 +489,7 @@ vm --config testing.yaml create   # Testing environment
 vm --config staging.yaml create   # Staging mirror
 ```
 
-## 💡 Tips & Tricks
+## Tips & Tricks
 
 ### Resource Optimization
 ```yaml

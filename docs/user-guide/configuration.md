@@ -39,9 +39,8 @@ npm_packages:
 ---
 
 ## Table of Contents
-## 📖 Table of Contents
 
-- [Configuration Files](#-configuration-files)
+- [Configuration Files](#configuration-files)
 - [Quick Start](#-quick-start)
 - [Global Services Configuration](#-global-services-configuration)
 - [Full Reference](#-full-reference)
@@ -52,7 +51,7 @@ npm_packages:
 
 For configuration examples, see the [Examples Guide](../getting-started/examples.md).
 
-## 📁 Configuration Files
+## Configuration Files
 
 The VM tool uses two types of configuration files:
 
@@ -150,7 +149,7 @@ vm:
   cpus: 4        # Supports: 4, "50%", "unlimited"
 ```
 
-## 📁 Configuration Files
+## Configuration Files
 
 ### Automatic Discovery
 
@@ -525,7 +524,7 @@ docker logs vm-package-server      # Package registry logs
 ```
 
 
-## 🖥️ Operating System Configuration
+## Operating System Configuration
 
 ### OS Field (Recommended)
 
@@ -648,7 +647,7 @@ vm:
   box: ubuntu:24.04
 ```
 
-## 🗣️ Language Runtimes
+## Language Runtimes
 
 ### Automatic Installation
 

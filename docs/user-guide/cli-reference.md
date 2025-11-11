@@ -28,6 +28,11 @@ Complete reference for all `vm` commands.
 | **Environment** | |
 | Validate .env | `vm env validate` |
 | Show env diff | `vm env diff` |
+| **Port Management** | |
+| Show ports | `vm ports` |
+| Forward port | `vm port forward <host>:<container>` |
+| List tunnels | `vm port list` |
+| Stop tunnel | `vm port stop [port]` |
 | **Database** | |
 | Backup database | `vm db backup <name>` |
 | Restore database | `vm db restore <backup> <db>` |
@@ -42,6 +47,7 @@ Complete reference for all `vm` commands.
 - [Global Options](#global-options)
 - [Core Commands](#core-commands)
 - [Configuration (`vm config`)](#configuration-vm-config)
+- [Port Management](#port-management)
 - [Environment Variables (`vm env`)](#environment-variables-vm-env)
 - [Temporary VMs (`vm temp`)](#temporary-vms-vm-temp)
 - [Plugins (`vm plugin`)](#plugins-vm-plugin)
@@ -251,6 +257,78 @@ Reset your configuration.
 ```bash
 vm config clear
 ```
+
+---
+
+## Port Management
+
+### `vm ports`
+Show all listening ports and services in the VM.
+```bash
+vm ports [container]
+```
+
+Displays which services are listening on which ports inside the container.
+
+**Example output:**
+```
+Port   Service        Status
+3000   frontend       listening
+5432   postgresql     listening
+6379   redis          listening
+```
+
+### `vm port forward`
+Create dynamic port forwarding tunnel without permanent configuration.
+```bash
+vm port forward <mapping> [container]
+```
+
+**Forward localhost port to container port:**
+```bash
+vm port forward 8080:3000
+```
+
+Makes container port 3000 accessible at localhost:8080 on your host machine.
+
+**Forward to specific container:**
+```bash
+vm port forward 9229:9229 myapp-dev
+```
+
+Useful for debugging or temporary access to services.
+
+### `vm port list`
+List all active port forwarding tunnels.
+```bash
+vm port list [container]
+```
+
+Shows which ports are currently being forwarded and to which containers.
+
+### `vm port stop`
+Stop port forwarding tunnel(s).
+```bash
+vm port stop [port] [container] [--all]
+```
+
+**Stop specific port:**
+```bash
+vm port stop 8080
+```
+
+**Stop all tunnels:**
+```bash
+vm port stop --all
+```
+
+**Use cases:**
+- Debugging: Forward debugger port temporarily (`vm port forward 9229:9229`)
+- Testing: Access internal service without permanent port config
+- Conflict resolution: Tunnel to alternate host port when default is busy
+- Temporary access: Forward database port for one-time query
+
+See [Dynamic Port Forwarding](configuration.md#dynamic-port-forwarding) in configuration guide for detailed examples.
 
 ---
 

@@ -17,11 +17,13 @@ vm create
 vm ssh
 ```
 
-The tool automatically:
-- Detects your project type (React, Django, Rails, Vue, etc.)
-- Configures appropriate services and tools
-- Sets up port forwarding and file sync
-- Installs language runtimes and dependencies
+The tool detects common project types by analyzing:
+- `package.json` for Node.js projects (React, Vue, Angular)
+- `requirements.txt` / `Pipfile` for Python projects (Django, Flask)
+- `Gemfile` for Ruby projects (Rails, Sinatra)
+- Framework-specific files (manage.py, config.ru, etc.)
+
+If detection doesn't match your setup, you can configure it manually with `vm.yaml`.
 
 ## Common Workflows
 

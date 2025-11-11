@@ -41,7 +41,7 @@ netstat -tulpn | grep :3000
 vm destroy && vm create
 ```
 
-## 🐳 Docker Issues
+## Docker Issues
 
 ### Docker Permission Denied
 ```bash
@@ -297,7 +297,7 @@ vm exec "dig google.com"
 vm exec "echo 'nameserver 8.8.8.8' >> /etc/resolv.conf"
 ```
 
-## 📁 File Sync Issues
+## File Sync Issues
 
 ### Files Not Syncing
 ```bash
@@ -433,7 +433,7 @@ When reporting issues, include:
 4. Error messages and logs
 5. Steps to reproduce
 
-## 💡 Performance Tips
+## Performance Tips
 
 ### Speed Up VM Creation
 ```bash
