@@ -32,7 +32,6 @@ npm_packages:
 
 **Key sections:**
 - [Services](#services) - PostgreSQL, Redis, MongoDB, MySQL, Docker
-- [Security](#security) - Container hardening, production configuration
 - [Language Runtimes](#language-runtimes) - Node, Python, Rust versions
 - [Host Sync](#host-system-integration) - SSH keys, dotfiles, AI tools
 - [Advanced Features](#advanced-features) - Worktrees, snapshots
@@ -426,7 +425,7 @@ Global services use reference counting:
 3. **Zero maintenance** - fully automated lifecycle
 4. **Shared resources** - all VMs benefit from the same service instance
 
-### Docker Registry (Automatic Caching) 🆕
+### Docker Registry (Automatic Caching)
 
 Enable intelligent Docker image caching that works like a browser cache - completely invisible while dramatically speeding up Docker pulls:
 
@@ -620,7 +619,7 @@ vm:
 
 # All providers
 vm:
-  box: @my-snapshot          # Restore from snapshot
+  box: "@my-snapshot"        # Restore from snapshot
 ```
 
 #### Advanced Docker Build
@@ -662,88 +661,6 @@ vm:
   box: ubuntu:24.04
 ```
 
-## Security
-
-Configure container security hardening for production or sensitive environments.
-
-**Enable security features:**
-```yaml
-# vm.yaml
-security:
-  enable_debugging: false        # Disable debugging features
-  no_new_privileges: true        # Prevent privilege escalation
-  read_only_root: false          # Make root filesystem read-only
-  user_namespaces: true          # Enable user namespace remapping
-  drop_capabilities:             # Drop Linux capabilities
-    - NET_RAW
-    - SYS_ADMIN
-  security_opts:                 # Additional security options
-    - "no-new-privileges:true"
-    - "seccomp=unconfined"       # Or path to custom seccomp profile
-
-  # Resource limits
-  memory_mb: 2048               # Maximum memory (MB)
-  cpu_limit: 2.0                # Maximum CPU cores
-  pids_limit: 100               # Maximum processes
-```
-
-**Security options explained:**
-
-**enable_debugging** (default: true)
-- Set to `false` to disable debugging features in production
-- Removes development-only mounts and capabilities
-
-**no_new_privileges** (default: false)
-- Prevents processes from gaining new privileges
-- Blocks setuid binaries and capability escalation
-- Recommended for production containers
-
-**read_only_root** (default: false)
-- Makes root filesystem read-only
-- Requires explicit writable mounts for /tmp, /var
-- Prevents unauthorized file modifications
-
-**user_namespaces** (default: false)
-- Remaps container root to unprivileged host user
-- Adds isolation layer between container and host
-- Requires Docker daemon configuration
-
-**drop_capabilities**
-- Remove Linux capabilities from container
-- Common capabilities to drop: NET_RAW, SYS_ADMIN, SYS_PTRACE
-- See `man capabilities` for full list
-
-**security_opts**
-- Additional Docker security options
-- Can specify custom AppArmor or SELinux profiles
-- Configure seccomp filtering
-
-**Resource limits:**
-- **memory_mb**: Hard memory limit (OOM kill if exceeded)
-- **cpu_limit**: CPU quota (1.0 = 1 core, 2.0 = 2 cores)
-- **pids_limit**: Maximum process count (prevents fork bombs)
-
-**Production example:**
-```yaml
-security:
-  enable_debugging: false
-  no_new_privileges: true
-  drop_capabilities:
-    - ALL                        # Drop all, then add back specific ones
-  memory_mb: 4096
-  cpu_limit: 2.0
-  pids_limit: 200
-```
-
-**Development example (default):**
-```yaml
-security:
-  enable_debugging: true         # Allow debugging
-  # Minimal restrictions for development flexibility
-```
-
-🚨 **Security note**: These options provide defense-in-depth but don't replace proper application security. Validate inputs, use least privilege, and keep dependencies updated.
-
 ## Language Runtimes
 
 ### Automatic Installation
@@ -777,7 +694,7 @@ versions:
 
 ### Available Themes
 
-- `dracula` ⭐ - Purple magic (default)
+- `dracula` - Purple magic (default)
 - `gruvbox_dark` - Retro warmth
 - `solarized_dark` - Science-backed colors
 - `nord` - Arctic vibes
@@ -1004,7 +921,7 @@ vm:
 
 Enhanced developer workflows for SSH keys, dotfiles, and debugging support.
 
-#### SSH Agent Forwarding 🔑
+#### SSH Agent Forwarding
 
 Securely use your host's SSH keys inside the VM without copying private keys:
 
@@ -1053,7 +970,7 @@ echo $SSH_AUTH_SOCK  # Should be: /ssh-agent
 ssh-add -l           # Should list your keys
 ```
 
-#### Dotfiles Sync 📄
+#### Dotfiles Sync
 
 Selectively sync your configuration files from host to VM for a consistent development environment:
 
@@ -1342,7 +1259,7 @@ vm port list
 | Lifecycle | Manual start/stop | Starts with VM |
 | Overhead | Relay container per tunnel | Native Docker port mapping |
 
-### VM Snapshots 📸
+### VM Snapshots
 
 #### Save and Restore Complete VM State
 
