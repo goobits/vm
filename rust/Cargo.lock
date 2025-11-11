@@ -1087,6 +1087,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "goobits-vm"
+version = "4.1.1"
+dependencies = [
+ "anyhow",
+ "assert_cmd",
+ "chrono",
+ "clap",
+ "clap_complete",
+ "dialoguer",
+ "dirs 6.0.0",
+ "flate2",
+ "futures",
+ "predicates",
+ "rand 0.9.2",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng",
+ "shellexpand 3.1.1",
+ "sysinfo",
+ "tar",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "uuid",
+ "vm-auth-proxy",
+ "vm-cli",
+ "vm-config",
+ "vm-core",
+ "vm-docker-registry",
+ "vm-logging",
+ "vm-messages",
+ "vm-package-server",
+ "vm-platform",
+ "vm-plugin",
+ "vm-provider",
+ "vm-temp",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3336,46 +3376,6 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-
-[[package]]
-name = "vm"
-version = "4.1.1"
-dependencies = [
- "anyhow",
- "assert_cmd",
- "chrono",
- "clap",
- "clap_complete",
- "dialoguer",
- "dirs 6.0.0",
- "flate2",
- "futures",
- "predicates",
- "rand 0.9.2",
- "reqwest",
- "serde",
- "serde_json",
- "serde_yaml_ng",
- "shellexpand 3.1.1",
- "sysinfo",
- "tar",
- "tempfile",
- "tokio",
- "tracing",
- "uuid",
- "vm-auth-proxy",
- "vm-cli",
- "vm-config",
- "vm-core",
- "vm-docker-registry",
- "vm-logging",
- "vm-messages",
- "vm-package-server",
- "vm-platform",
- "vm-plugin",
- "vm-provider",
- "vm-temp",
-]
 
 [[package]]
 name = "vm-auth-proxy"

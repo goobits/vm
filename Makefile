@@ -1,4 +1,4 @@
-.PHONY: help build build-no-bump test test-unit test-integration test-network clippy fmt fmt-fix check-duplicates check bump-version quality-gates deny watch dev udeps
+.PHONY: help build build-no-bump publish test test-unit test-integration test-network clippy fmt fmt-fix check-duplicates check bump-version quality-gates deny watch dev udeps
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -10,6 +10,7 @@ help:
 	@echo "  make build            - Build with automatic version bump (+0.0.1)"
 	@echo "  make build-no-bump    - Build without version bump"
 	@echo "  make bump-version     - Bump version without building"
+	@echo "  make publish          - Publish goobits-vm to crates.io"
 	@echo ""
 	@echo "  make test             - Run all tests (unit + integration, no network)"
 	@echo "  make test-unit        - Run unit tests"
@@ -35,6 +36,10 @@ build:
 # Build without version bump
 build-no-bump:
 	cd rust && cargo build --workspace
+
+# Publish to crates.io
+publish:
+	cd rust && cargo publish --package goobits-vm
 
 # Test (using nextest for faster execution)
 test: test-unit test-integration-conditional

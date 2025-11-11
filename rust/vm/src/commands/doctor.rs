@@ -12,7 +12,7 @@ pub fn run() -> Result<()> {
     if Command::new("rustc").arg("--version").status().is_ok() {
         println!("✓");
     } else {
-        println!("⚠️  (not required, but needed for `cargo install vm`)");
+        println!("⚠️  (not required, but needed for `cargo install goobits-vm`)");
     }
 
     // Check Docker (critical)

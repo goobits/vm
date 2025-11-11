@@ -1,5 +1,5 @@
 [package]
-name = "vm"
+name = "goobits-vm"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -10,6 +10,10 @@ homepage = "https://github.com/goobits/vm"
 keywords = ["development", "docker", "vm", "devenv"]
 categories = ["development-tools"]
 publish = true  # Override workspace publish = false
+
+[[bin]]
+name = "vm"
+path = "src/main.rs"
 
 [dependencies]
 anyhow = { workspace = true }

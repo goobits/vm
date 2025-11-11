@@ -2,7 +2,7 @@
 
 ![Build Status](https://img.shields.io/github/actions/workflow/status/goobits/vm/ci.yml?branch=main&style=for-the-badge)
 ![License](https://img.shields.io/github/license/goobits/vm?style=for-the-badge)
-![Crates.io](https://img.shields.io/crates/v/vm-cli?style=for-the-badge)
+![Crates.io](https://img.shields.io/crates/v/goobits-vm?style=for-the-badge)
 ![Codecov](https://img.shields.io/codecov/c/github/goobits/vm?style=for-the-badge)
 
 Create development environments that automatically configure themselves based on your project type. Zero configuration required for most projects.
@@ -98,11 +98,18 @@ If you get an error like `Cannot connect to the Docker daemon. Is the docker dae
 
 ## 🚀 Quick Start
 
-**Note**: Pre-compiled binaries are not yet available. The recommended installation method is to build from source.
-
 Get up and running in a few simple steps:
 
-**1. Install `vm` from Source**
+**1. Install `vm`**
+
+Choose one of the following installation methods:
+
+**From crates.io (Recommended):**
+```bash
+cargo install goobits-vm  # Installs 'vm' binary
+```
+
+**From Source:**
 ```bash
 # Clone the repository and run the install script
 git clone https://github.com/goobits/vm.git
@@ -345,7 +352,7 @@ The VM tool is built from multiple focused Rust crates:
 
 | Crate | Purpose | Key Responsibilities |
 |-------|---------|---------------------|
-| `vm` | Main CLI application | Command orchestration, user interaction |
+| `goobits-vm` | Main CLI application | Command orchestration, user interaction |
 | `vm-core` | Foundation utilities | Error handling, file system, command execution |
 | `vm-messages` | Message templates | Centralized user-facing text and messages |
 | `vm-cli` | CLI formatting | Structured output, message building |

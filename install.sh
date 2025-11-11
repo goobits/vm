@@ -1021,7 +1021,7 @@ install_vm_tool() {
         echo "Common fixes:"
         echo "  • Ensure Rust is up to date: rustup update"
         echo "  • Check internet connection"
-        echo "  • Try: cargo install vm --locked"
+        echo "  • Try: cargo install goobits-vm --locked"
 
         # Extract last meaningful error from output
         local error_detail
