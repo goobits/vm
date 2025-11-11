@@ -7,6 +7,8 @@ import type { PageServerLoad } from './$types';
 const DOCS_DIR = join(process.cwd(), '..', 'docs');
 
 // Configure marked for better rendering
+// Note: Full docs-engine plugin support (mermaid, callouts, tabs) requires
+// build-time processing with mdsvex. For now, we use runtime markdown parsing.
 marked.setOptions({
 	gfm: true,
 	breaks: false,
