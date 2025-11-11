@@ -103,6 +103,6 @@ vm temp destroy                  # Clean up when done
 
 ## Next Steps
 
-- [📖 Configuration Guide](../user-guide/configuration.md) - Customize your environment
-- [🎯 Presets Guide](../user-guide/presets.md) - Understand auto-detection
-- [🛠️ CLI Reference](../user-guide/cli-reference.md) - Complete command list
+- [Configuration Guide](../user-guide/configuration.md) - Customize your environment
+- [Presets Guide](../user-guide/presets.md) - Understand auto-detection
+- [CLI Reference](../user-guide/cli-reference.md) - Complete command list

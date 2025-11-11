@@ -97,7 +97,7 @@ cargo test --workspace
 cargo test --package vm-config
 ```
 
-See [docs/DEVELOPMENT.md](../DEVELOPMENT.md) and [docs/TESTING.md](../TESTING.md) for detailed testing instructions.
+See [Development Guide](guide.md) and [Testing Guide](testing.md) for detailed testing instructions.
 
 ## Documentation Structure
 

@@ -581,12 +581,12 @@ vm db list
 
 **Output:**
 ```
-📊 Databases:
+Databases:
   - myapp_dev                     125MB (3 backups)
   - test_db                       45MB (1 backup)
   - postgres                      8MB (no backups)
 
-💾 Backups stored in: ~/.vm/backups/postgres/
+Backups stored in: ~/.vm/backups/postgres/
 ```
 
 ### `vm db backup`

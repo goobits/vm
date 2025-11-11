@@ -32,9 +32,10 @@ npm_packages:
 
 **Key sections:**
 - [Services](#services) - PostgreSQL, Redis, MongoDB, MySQL, Docker
+- [Security](#security) - Container hardening, production configuration
 - [Language Runtimes](#language-runtimes) - Node, Python, Rust versions
 - [Host Sync](#host-system-integration) - SSH keys, dotfiles, AI tools
-- [Advanced Features](#advanced-features) - Worktrees, snapshots, security
+- [Advanced Features](#advanced-features) - Worktrees, snapshots
 
 ---
 
@@ -458,12 +459,12 @@ services:
 ```
 
 **Benefits:**
-- 🚀 **10-100x faster** Docker pulls after first cache
-- 💾 **Bandwidth savings** - images pulled once, used many times
-- 🤖 **Zero maintenance** - automatic cleanup and management
-- 🔄 **Shared cache** - all VMs share the same image cache
+- **10-100x faster** Docker pulls after first cache
+- **Bandwidth savings** - images pulled once, used many times
+- **Zero maintenance** - automatic cleanup and management
+- **Shared cache** - all VMs share the same image cache
 
-### Auth Proxy (Secure Secrets) 🔐
+### Auth Proxy (Secure Secrets)
 
 Enable secure secret management across all VMs:
 
@@ -476,7 +477,7 @@ services:
     token_expiry_hours: 24  # Token expiry (default: 24)
 ```
 
-### Package Registry (Shared Cache) 📦
+### Package Registry (Shared Cache)
 
 Enable shared package caching for npm, pip, and cargo:
 
@@ -661,6 +662,88 @@ vm:
   box: ubuntu:24.04
 ```
 
+## Security
+
+Configure container security hardening for production or sensitive environments.
+
+**Enable security features:**
+```yaml
+# vm.yaml
+security:
+  enable_debugging: false        # Disable debugging features
+  no_new_privileges: true        # Prevent privilege escalation
+  read_only_root: false          # Make root filesystem read-only
+  user_namespaces: true          # Enable user namespace remapping
+  drop_capabilities:             # Drop Linux capabilities
+    - NET_RAW
+    - SYS_ADMIN
+  security_opts:                 # Additional security options
+    - "no-new-privileges:true"
+    - "seccomp=unconfined"       # Or path to custom seccomp profile
+
+  # Resource limits
+  memory_mb: 2048               # Maximum memory (MB)
+  cpu_limit: 2.0                # Maximum CPU cores
+  pids_limit: 100               # Maximum processes
+```
+
+**Security options explained:**
+
+**enable_debugging** (default: true)
+- Set to `false` to disable debugging features in production
+- Removes development-only mounts and capabilities
+
+**no_new_privileges** (default: false)
+- Prevents processes from gaining new privileges
+- Blocks setuid binaries and capability escalation
+- Recommended for production containers
+
+**read_only_root** (default: false)
+- Makes root filesystem read-only
+- Requires explicit writable mounts for /tmp, /var
+- Prevents unauthorized file modifications
+
+**user_namespaces** (default: false)
+- Remaps container root to unprivileged host user
+- Adds isolation layer between container and host
+- Requires Docker daemon configuration
+
+**drop_capabilities**
+- Remove Linux capabilities from container
+- Common capabilities to drop: NET_RAW, SYS_ADMIN, SYS_PTRACE
+- See `man capabilities` for full list
+
+**security_opts**
+- Additional Docker security options
+- Can specify custom AppArmor or SELinux profiles
+- Configure seccomp filtering
+
+**Resource limits:**
+- **memory_mb**: Hard memory limit (OOM kill if exceeded)
+- **cpu_limit**: CPU quota (1.0 = 1 core, 2.0 = 2 cores)
+- **pids_limit**: Maximum process count (prevents fork bombs)
+
+**Production example:**
+```yaml
+security:
+  enable_debugging: false
+  no_new_privileges: true
+  drop_capabilities:
+    - ALL                        # Drop all, then add back specific ones
+  memory_mb: 4096
+  cpu_limit: 2.0
+  pids_limit: 200
+```
+
+**Development example (default):**
+```yaml
+security:
+  enable_debugging: true         # Allow debugging
+  # Minimal restrictions for development flexibility
+```
+
+🚨 **Security note**: These options provide defense-in-depth but don't replace proper application security. Validate inputs, use least privilege, and keep dependencies updated.
+
 ## Language Runtimes
 
 ### Automatic Installation
@@ -805,7 +888,7 @@ git status  # Shows your commits
 
 # List all worktrees
 vm-worktree list
-# 📁 Worktrees:
+# Worktrees:
 #  feature-x
 #  bugfix-123
 
@@ -1380,90 +1463,6 @@ vm snapshot restore my-configured-env
 - Run `vm snapshot create base-environment`
 - Share the snapshot instead of the Dockerfile
 - Team members: `vm snapshot restore base-environment`
-
----
-
-### Security Configuration
-
-Configure container security hardening options for production or sensitive environments.
-
-**Enable security features:**
-```yaml
-# vm.yaml
-security:
-  enable_debugging: false        # Disable debugging features
-  no_new_privileges: true        # Prevent privilege escalation
-  read_only_root: false          # Make root filesystem read-only
-  user_namespaces: true          # Enable user namespace remapping
-  drop_capabilities:             # Drop Linux capabilities
-    - NET_RAW
-    - SYS_ADMIN
-  security_opts:                 # Additional security options
-    - "no-new-privileges:true"
-    - "seccomp=unconfined"       # Or path to custom seccomp profile
-
-  # Resource limits
-  memory_mb: 2048               # Maximum memory (MB)
-  cpu_limit: 2.0                # Maximum CPU cores
-  pids_limit: 100               # Maximum processes
-```
-
-**Security options explained:**
-
-**enable_debugging** (default: true)
-- Set to `false` to disable debugging features in production
-- Removes development-only mounts and capabilities
-
-**no_new_privileges** (default: false)
-- Prevents processes from gaining new privileges
-- Blocks setuid binaries and capability escalation
-- Recommended for production containers
-
-**read_only_root** (default: false)
-- Makes root filesystem read-only
-- Requires explicit writable mounts for /tmp, /var
-- Prevents unauthorized file modifications
-
-**user_namespaces** (default: false)
-- Remaps container root to unprivileged host user
-- Adds isolation layer between container and host
-- Requires Docker daemon configuration
-
-**drop_capabilities**
-- Remove Linux capabilities from container
-- Common capabilities to drop: NET_RAW, SYS_ADMIN, SYS_PTRACE
-- See `man capabilities` for full list
-
-**security_opts**
-- Additional Docker security options
-- Can specify custom AppArmor or SELinux profiles
-- Configure seccomp filtering
-
-**Resource limits:**
-- **memory_mb**: Hard memory limit (OOM kill if exceeded)
-- **cpu_limit**: CPU quota (1.0 = 1 core, 2.0 = 2 cores)
-- **pids_limit**: Maximum process count (prevents fork bombs)
-
-**Production example:**
-```yaml
-security:
-  enable_debugging: false
-  no_new_privileges: true
-  drop_capabilities:
-    - ALL                        # Drop all, then add back specific ones
-  memory_mb: 4096
-  cpu_limit: 2.0
-  pids_limit: 200
-```
-
-**Development example (default):**
-```yaml
-security:
-  enable_debugging: true         # Allow debugging
-  # Minimal restrictions for development flexibility
-```
-
-🚨 **Security note**: These options provide defense-in-depth but don't replace proper application security. Validate inputs, use least privilege, and keep dependencies updated.
 
 ---
 

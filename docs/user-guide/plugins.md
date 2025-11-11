@@ -274,7 +274,7 @@ vm plugin info nodejs
 
 Output:
 ```
-📦 Plugin: nodejs
+Plugin: nodejs
 
   Version: 1.0.0
   Type: preset
@@ -283,7 +283,7 @@ Output:
   Description: Node.js Development - Optimized for JavaScript/TypeScript projects
   Minimum VM Version: >=0.1.0
 
-  📁 Location: /home/user/.vm/plugins/presets/nodejs
+  Location: /home/user/.vm/plugins/presets/nodejs
 ```
 
 ### Remove Plugin
