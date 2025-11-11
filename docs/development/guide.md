@@ -1,5 +1,12 @@
 # Claude Development Notes
 
+VM Tool is a Rust-based development environment manager that provides isolated, reproducible environments via Docker, Vagrant, or Tart. This guide covers building from source, testing, and the development workflow.
+
+**Before you start:**
+- Review the [Architecture Guide](architecture.md) to understand system design
+- Check [Testing Guide](testing.md) for test strategy and best practices
+- Join discussions in GitHub Issues for feature planning
+
 ## Installation
 
 ### From Source (Recommended)
@@ -357,7 +364,8 @@ The project uses automatic version bumping:
 - **Runtime access**: Use `env!("CARGO_PKG_VERSION")` in Rust code to access the current version
 
 ```bash
-# Current version: 2.0.6
+# Example version progression (actual versions will differ)
+# Starting version: 2.0.6
 make build          # → Bumps to 2.0.7 and builds
 make bump-version   # → Bumps to 2.0.8 (no build)
 ```

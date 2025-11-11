@@ -1,0 +1,16 @@
+/**
+ * V2 Design Tokens for @goobits/docs-engine
+ * Minimal SCSS mixins required by docs-engine components
+ */
+
+// Focus ring mixin for accessibility
+@mixin v2-focus-ring {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+
+  &:focus-visible {
+    outline-color: var(--v2-text-accent, #0066cc);
+  }
+}
+
+// Additional mixins can be added here as needed
