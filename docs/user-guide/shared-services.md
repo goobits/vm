@@ -1,6 +1,6 @@
-# Shared Database Services
+# Shared Services
 
-The VM tool provides optional, shared database services that run on the host machine and can be accessed by any VM. This approach offers significant benefits over running a separate database instance inside each VM.
+Run databases on the host instead of inside each VM - reducing memory usage by 80%, eliminating duplicate data, and speeding up VM creation. One PostgreSQL instance serves all your VMs instead of running N copies.
 
 ## Supported Services
 

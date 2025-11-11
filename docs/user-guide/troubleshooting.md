@@ -1,6 +1,6 @@
-# Troubleshooting Guide
+# Troubleshooting
 
-Common issues and solutions for the VM development environment.
+Fix common VM issues quickly. Start with [Quick Fixes](#quick-fixes) for the most frequent problems, then search by symptom (VM won't start, can't connect, database issues, etc.). Provider-specific issues are documented at the end.
 
 ## Quick Fixes
 

@@ -1,7 +1,6 @@
-# VM Tool Presets
+# Presets
 
-## Overview
-Preset system that auto-configures VMs based on detected project type.
+Skip manual configuration - VM auto-detects your project type and applies optimized defaults. When you run `vm create` without a config file, the tool analyzes your project files and selects the appropriate preset.
 
 ## Available Presets
 

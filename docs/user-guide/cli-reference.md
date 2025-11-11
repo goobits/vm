@@ -1,6 +1,6 @@
-# VM CLI Reference
+# CLI Reference
 
-Complete reference for all `vm` commands.
+All `vm` commands with usage examples and expected output. Use this as a reference when building workflows or troubleshooting issues.
 
 ## Quick Reference
 

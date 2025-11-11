@@ -1,8 +1,6 @@
-# VM Tool Plugin System
+# Plugins
 
-## Overview
-
-The plugin system allows you to extend VM Tool with custom presets and services. Plugins are discoverable, versioned, and validated automatically.
+Extend VM with custom presets and services that integrate seamlessly with the core tool. Share configurations across teams, add support for specialized frameworks, or bundle company-specific tooling - plugins make VM configurations portable and reusable.
 
 ## Quick Start
 
