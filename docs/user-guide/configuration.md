@@ -338,9 +338,14 @@ Each VM gets its own instance. Access via `localhost` inside the VM.
 | `docker` | - | buildx, driver | Docker-in-Docker for builds |
 | `headless_browser` | - | display, executable_path | Playwright/Selenium testing |
 
-**Basic configuration:**
+**Common configurations:**
+
+:::tabs
+
+== PostgreSQL + Redis
+
 ```yaml
-# vm.yaml
+# vm.yaml - Most common: API with database and cache
 services:
   postgresql:
     enabled: true
@@ -355,7 +360,71 @@ ports:
   redis: 6379
 ```
 
-You can now connect to PostgreSQL at `localhost:5432` and Redis at `localhost:6379` inside your VM.
+Connect to PostgreSQL at `localhost:5432` and Redis at `localhost:6379` inside your VM.
+
+== PostgreSQL Only
+
+```yaml
+# vm.yaml - Simple database-backed app
+services:
+  postgresql:
+    enabled: true
+    database: myapp_dev
+    user: postgres
+    password: postgres
+
+ports:
+  postgresql: 5432
+```
+
+== All Databases
+
+```yaml
+# vm.yaml - Multi-database development
+services:
+  postgresql:
+    enabled: true
+    database: pg_dev
+  mongodb:
+    enabled: true
+    database: mongo_dev
+  redis:
+    enabled: true
+
+ports:
+  postgresql: 5432
+  mongodb: 27017
+  redis: 6379
+```
+
+== MySQL + Redis
+
+```yaml
+# vm.yaml - Alternative to PostgreSQL
+services:
+  mysql:
+    enabled: true
+    database: myapp_dev
+    user: root
+    password: root
+  redis:
+    enabled: true
+
+ports:
+  mysql: 3306
+  redis: 6379
+```
+
+:::
+
+:::tip Default Credentials
+All databases use simple defaults for development:
+- PostgreSQL: `postgres/postgres`
+- MySQL: `root/root`
+- MongoDB: No authentication by default
+
+Change these in production configurations!
+:::
 
 ### Advanced Service Configuration
 

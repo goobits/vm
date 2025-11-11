@@ -1,6 +1,70 @@
 # Troubleshooting
 
-Fix common VM issues quickly. Start with [Quick Fixes](#quick-fixes) for the most frequent problems, then search by symptom (VM won't start, can't connect, database issues, etc.). Provider-specific issues are documented at the end.
+Fix common VM issues quickly with our diagnostic flowchart.
+
+## Diagnostic Guide
+
+```mermaid
+flowchart TD
+    Start{What's the<br/>problem?}
+
+    Start -->|VM won't start| WontStart{Provider<br/>running?}
+    Start -->|Can't connect| CantConnect{VM status<br/>= running?}
+    Start -->|Service issues| ServiceIssue{Which<br/>service?}
+    Start -->|Port conflict| PortIssue[Check port usage:<br/>lsof -i :PORT]
+
+    WontStart -->|No| ProviderCheck{Docker Desktop<br/>running?}
+    WontStart -->|Yes| SpaceCheck{Disk space<br/>OK?}
+
+    ProviderCheck -->|No| StartProvider[Start Docker Desktop<br/>or provider]
+    ProviderCheck -->|Yes| SpaceCheck
+
+    SpaceCheck -->|No| CleanSpace[docker system prune<br/>-a --volumes]
+    SpaceCheck -->|Yes| Reset[vm destroy && vm create]
+
+    CantConnect -->|No| StartVM[vm start]
+    CantConnect -->|Yes| SSHCheck{SSH<br/>working?}
+
+    SSHCheck -->|No| SSHDebug[vm ssh -v<br/>Check verbose output]
+    SSHCheck -->|Yes| RestartVM[vm stop && vm start]
+
+    ServiceIssue -->|PostgreSQL| PG[vm logs -s postgresql<br/>Check database logs]
+    ServiceIssue -->|Redis| Redis[vm exec redis-cli ping]
+    ServiceIssue -->|Other| ServiceRestart[vm apply]
+
+    PortIssue --> FindProcess{Kill the<br/>process?}
+    FindProcess -->|Yes| KillIt[kill -9 PID]
+    FindProcess -->|No| ChangePort[Update port in vm.yaml]
+
+    StartProvider --> Verify
+    CleanSpace --> Verify
+    Reset --> Verify
+    StartVM --> Verify
+    RestartVM --> Verify
+    SSHDebug --> Verify
+    ServiceRestart --> Verify
+    PG --> Verify
+    Redis --> Verify
+    KillIt --> Verify
+    ChangePort --> Verify
+
+    Verify{Working<br/>now?}
+    Verify -->|Yes| Success[🎉 Problem Solved!]
+    Verify -->|No| Advanced[See detailed sections below]
+
+    style Start fill:#fff3e0
+    style Success fill:#e8f5e9
+    style Advanced fill:#ffebee
+    style Reset fill:#fff9c4
+```
+
+:::danger Universal Fix
+90% of issues are solved by resetting your environment. Try this first:
+```bash
+vm destroy && vm create
+```
+Your database backups are created automatically, so your data is safe!
+:::
 
 ## Quick Fixes
 

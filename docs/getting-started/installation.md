@@ -2,9 +2,46 @@
 
 Development environment setup.
 
+## Choose Your Installation Path
+
+```mermaid
+flowchart TD
+    Start{What's your<br/>platform?}
+    Start -->|macOS| MacOS{What hardware?}
+    Start -->|Linux| Linux[Linux Installation]
+    Start -->|Windows| Windows[Windows + WSL2]
+
+    MacOS -->|Apple Silicon| AppleSilicon{What do you need?}
+    MacOS -->|Intel| IntelMac[Docker Desktop<br/>Recommended]
+
+    AppleSilicon -->|macOS VMs| Tart[Tart Provider<br/>Native Performance]
+    AppleSilicon -->|Linux VMs| DockerAS[Docker Desktop<br/>Cross-Platform]
+
+    Tart --> Build[Build from Source]
+    DockerAS --> Build
+    IntelMac --> Build
+    Linux --> Build
+    Windows --> Build
+
+    Build --> Ready[Ready to Use]
+
+    style Start fill:#fff3e0
+    style Ready fill:#e8f5e9
+    style Tart fill:#e1f5fe
+    style DockerAS fill:#e1f5fe
+```
+
+:::tip Apple Silicon Users
+Tart provides native macOS virtualization with better performance than Docker for macOS VMs. Use `os: macos` in your `vm.yaml` to leverage this!
+:::
+
+:::info Windows Users
+WSL2 + Docker Desktop provides the best experience. Install WSL2 first, then follow the Linux installation steps inside your WSL environment.
+:::
+
 ## Installation
 
-**Note**: Pre-compiled binaries are not yet available for all platforms, and the project is not published on `crates.io`. The only official installation method is to build from source.
+**Note**: Pre-compiled binaries are not yet available for all platforms. The only official installation method is to build from source.
 
 ### Build from Source (Recommended)
 
@@ -171,7 +208,9 @@ echo 'export VM_TOOL_DIR=/path/to/vm' >> ~/.zshrc
 
 Enable tab completion for the `vm` command in your shell.
 
-### Bash
+:::tabs
+
+== Bash
 
 ```bash
 # Generate completion script
@@ -184,7 +223,7 @@ echo 'source ~/.vm-completion.bash' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-### Zsh
+== Zsh
 
 ```bash
 # Generate completion script
@@ -197,7 +236,7 @@ echo 'source ~/.vm-completion.zsh' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-### Fish
+== Fish
 
 ```bash
 # Generate and install completion
@@ -206,7 +245,7 @@ vm completion fish > ~/.config/fish/completions/vm.fish
 # Fish will automatically load completions on next shell start
 ```
 
-### PowerShell
+== PowerShell
 
 ```powershell
 # Generate completion script
@@ -219,7 +258,11 @@ Add-Content $PROFILE ". $PROFILE\..\vm-completion.ps1"
 . $PROFILE
 ```
 
-With completion enabled, you can press Tab to complete commands, flags, and arguments.
+:::
+
+:::tip Test Completion
+After setup, verify it works: Type `vm cr` and press Tab → it should complete to `vm create`
+:::
 
 ## Updating
 
