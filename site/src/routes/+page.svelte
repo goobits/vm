@@ -8,13 +8,13 @@
 	<nav class="docs-nav">
 		<h2>Documentation</h2>
 		<ul>
-			<li><a href="/docs/README">Overview</a></li>
-			<li><a href="/docs/getting-started/installation">Getting Started</a></li>
-			<li><a href="/docs/getting-started/quick-start">Quick Start</a></li>
-			<li><a href="/docs/getting-started/examples">Examples</a></li>
-			<li><a href="/docs/user-guide/configuration">Configuration Guide</a></li>
-			<li><a href="/docs/user-guide/cli-reference">CLI Reference</a></li>
-			<li><a href="/docs/development/guide">Development Guide</a></li>
+			<li><a href="/docs-md/README">Overview</a></li>
+			<li><a href="/docs-md/getting-started/installation">Getting Started</a></li>
+			<li><a href="/docs-md/getting-started/quick-start">Quick Start</a></li>
+			<li><a href="/docs-md/getting-started/examples">Examples</a></li>
+			<li><a href="/docs-md/user-guide/configuration">Configuration Guide</a></li>
+			<li><a href="/docs-md/user-guide/cli-reference">CLI Reference</a></li>
+			<li><a href="/docs-md/development/guide">Development Guide</a></li>
 		</ul>
 	</nav>
 </div>

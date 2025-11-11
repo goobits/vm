@@ -23,8 +23,10 @@
 	},
 	"dependencies": {
 		"@goobits/docs-engine": "^2.0.0",
+		"@lucide/svelte": "^0.553.0",
 		"marked": "^17.0.0",
 		"mdsvex": "^0.12.6",
+		"mermaid": "^11.12.1",
 		"rehype-stringify": "^10.0.1",
 		"remark-gfm": "^4.0.1",
 		"remark-math": "^6.0.0",
