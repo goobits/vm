@@ -433,6 +433,200 @@ When reporting issues, include:
 4. Error messages and logs
 5. Steps to reproduce
 
+## Advanced Debugging
+
+For power users and contributors debugging complex issues.
+
+### Debug Mode
+
+Enable verbose logging to see internal operations:
+
+```bash
+# Verbose output for single command
+vm --verbose create
+vm -v status
+
+# Persistent debug logging
+export VM_DEBUG=1
+vm create
+vm status
+
+# Rust logging (for developers)
+export RUST_LOG=debug
+vm create
+```
+
+**Log levels:**
+- `error` - Only errors
+- `warn` - Warnings and errors
+- `info` - General information (default)
+- `debug` - Detailed debugging
+- `trace` - Very verbose tracing
+
+### Service Health Checks
+
+Diagnose service connectivity issues:
+
+```bash
+# Inside VM - check service health
+vm ssh
+
+# PostgreSQL
+pg_isready -h localhost -p 5432
+psql -h localhost -U postgres -c "SELECT version();"
+
+# Redis
+redis-cli ping
+redis-cli info
+
+# MongoDB
+mongosh --eval "db.adminCommand('ping')"
+
+# MySQL
+mysqladmin ping -h localhost
+
+# Check ports actually listening
+netstat -tulpn | grep LISTEN
+ss -tulpn | grep LISTEN
+```
+
+### Plugin Debugging
+
+Validate and debug custom plugins:
+
+```bash
+# Validate plugin structure
+vm plugin validate my-plugin
+
+# Check plugin manifest
+cat ~/.vm/plugins/my-plugin/plugin.yaml
+
+# Test plugin in isolation
+vm config preset my-plugin --dry-run
+
+# Plugin logs
+ls -la ~/.vm/plugins/
+cat ~/.vm/logs/plugins/my-plugin.log
+```
+
+### Snapshot Verification
+
+Debug snapshot issues:
+
+```bash
+# List snapshots with details
+vm snapshot list --verbose
+
+# Verify snapshot integrity
+vm snapshot export my-snapshot --verify
+
+# Check snapshot contents
+tar -tzf my-snapshot.snapshot.tar.gz | head -20
+
+# Import with verification
+vm snapshot import backup.tar.gz --verify
+```
+
+### Performance Profiling
+
+Identify bottlenecks:
+
+```bash
+# Time VM creation
+time vm create
+
+# Profile docker operations
+docker stats
+
+# Check disk I/O
+iostat -x 1 5  # Linux
+sudo fs_usage | grep docker  # macOS
+
+# Memory usage
+docker system df
+free -h  # Linux
+vm_stat  # macOS
+
+# Network debugging
+vm ssh
+tcpdump -i any port 5432  # Monitor PostgreSQL traffic
+```
+
+### Collect Debug Information
+
+Gather comprehensive debug info for bug reports:
+
+```bash
+# System information
+vm doctor > debug-info.txt
+
+# Configuration
+cat vm.yaml >> debug-info.txt
+cat ~/.vm/config.yaml >> debug-info.txt
+
+# Logs
+vm logs -n 100 >> debug-info.txt
+docker logs $(docker ps -q --filter ancestor=ubuntu) >> debug-info.txt
+
+# Provider status
+docker ps -a >> debug-info.txt
+docker version >> debug-info.txt
+
+# Network configuration
+docker network ls >> debug-info.txt
+docker network inspect bridge >> debug-info.txt
+```
+
+### Common Advanced Issues
+
+**Plugin not loading:**
+```bash
+# Check plugin directory permissions
+ls -la ~/.vm/plugins/my-plugin
+
+# Validate YAML syntax
+vm plugin validate my-plugin
+
+# Check for naming conflicts
+vm plugin list | grep my-plugin
+```
+
+**Service port conflicts:**
+```bash
+# Find process using port
+lsof -i :5432
+netstat -tulpn | grep 5432
+
+# Check Docker port bindings
+docker port $(docker ps -q --filter name=my-project)
+```
+
+**Snapshot corruption:**
+```bash
+# Verify archive integrity
+tar -tzf snapshot.tar.gz > /dev/null
+
+# Check file permissions
+ls -lh snapshot.tar.gz
+
+# Re-export with higher compression
+vm snapshot export my-snap --compress 1  # Faster, less compression
+```
+
+**Memory issues:**
+```bash
+# Check container resource limits
+docker stats --no-stream
+
+# Inspect actual memory usage
+docker exec my-project free -h
+
+# Adjust limits in vm.yaml
+vm:
+  memory: "8gb"  # Increase if hitting OOM
+  swap: "4gb"
+```
+
 ## Performance Tips
 
 ### Speed Up VM Creation

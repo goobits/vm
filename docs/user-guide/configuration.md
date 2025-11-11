@@ -174,45 +174,111 @@ ports:
 
 ## Full Reference
 
+Complete field reference organized by category.
+
+### Configuration Options Table
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| **Project** ||||
+| `project.name` | string | directory name | VM/container name and shell prompt |
+| `project.hostname` | string | required | VM/container hostname |
+| `project.workspace_path` | string | /workspace | Mount path inside container |
+| `project.env_template_path` | string | null | Path to .env template for validation |
+| `project.backup_pattern` | string | *backup*.sql.gz | Pattern for auto-restore |
+| **VM Resources** ||||
+| `vm.box` | string | ubuntu:24.04 | Base image (Docker/OCI) or box (Vagrant) |
+| `vm.memory` | int/string | 4096 | RAM in MB, or "2gb", "50%", "unlimited" |
+| `vm.cpus` | int/string | 2 | CPU cores, or "50%", "unlimited" |
+| `vm.swap` | int/string | 2048 | Swap in MB, or "1gb", "50%", "unlimited" |
+| `vm.swappiness` | int | 60 | Kernel swappiness (0-100) |
+| `vm.user` | string | developer | Username inside container |
+| `vm.port_binding` | string | 127.0.0.1 | Bind address ("0.0.0.0" for network) |
+| **Operating System** ||||
+| `os` | string | ubuntu | ubuntu, macos, debian, alpine, linux, auto |
+| `provider` | string | auto | docker, vagrant, tart (auto-detected from OS) |
+| **Language Versions** ||||
+| `versions.node` | string | latest | Node.js version |
+| `versions.npm` | string | auto | npm version (usually auto-installed with Node) |
+| `versions.nvm` | string | latest | NVM version |
+| `versions.pnpm` | string | latest | pnpm version |
+| **Services** ||||
+| `services.<name>.enabled` | bool | false | Enable service |
+| `services.<name>.version` | string | latest | Service version |
+| `services.<name>.database` | string | - | Database name (databases only) |
+| `services.<name>.user` | string | - | Username (databases only) |
+| `services.<name>.password` | string | - | Password (databases only) |
+| **Development** ||||
+| `npm_packages` | array | [] | Global npm packages to install |
+| `cargo_packages` | array | [] | Global Cargo packages (installs Rust) |
+| `pip_packages` | array | [] | Global pip packages (installs Python) |
+| `aliases` | object | {} | Shell aliases (key: command) |
+| `environment` | object | {} | Environment variables |
+| **Terminal** ||||
+| `terminal.emoji` | string | ⚡ | Shell prompt emoji |
+| `terminal.username` | string | developer | Shell prompt username |
+| `terminal.theme` | string | dracula | Color theme |
+| `terminal.show_git_branch` | bool | true | Show git branch in prompt |
+| `terminal.show_timestamp` | bool | false | Show timestamp in prompt |
+
+---
+
+### Project Configuration
+
 ```yaml
-version: "2.0"  # Configuration format version
-
-# Simple mode (recommended)
-os: ubuntu  # Options: ubuntu, macos, debian, alpine, linux, auto
-           # Provider auto-selected based on your platform
-           # 'auto' detects OS from your project files
-
-# Advanced mode (when you need specific control)
-provider: docker  # Options: docker, vagrant, tart
-                 # Note: Use 'os' field for simpler setup
+version: "2.0"
 
 project:
-  name: my-app  # VM/container name & prompt
-  hostname: dev.my-app.local  # VM/container hostname (required)
-  workspace_path: /workspace  # Sync path in VM/container
-  env_template_path: null  # e.g. "backend/.env.template"
-  backup_pattern: "*backup*.sql.gz"  # For auto-restore
+  name: my-app              # VM name and shell prompt
+  hostname: dev.local       # Container hostname (required)
+  workspace_path: /workspace
+  env_template_path: .env.template  # For vm env validate
+```
 
+### VM Resources
+
+```yaml
 vm:
-  box: bento/ubuntu-24.04  # Base image/box (see Box Configuration section)
-  memory: 4096  # RAM: 4096 (MB), "2gb", "50%", "unlimited"
-  cpus: 2  # CPUs: 2, "50%", "unlimited"
-  swap: 2048 # Swap: 2048 (MB), "1gb", "50%", "unlimited"
-  swappiness: 60 # Swappiness (0-100)
-  user: developer  # VM/container user (changed from vagrant)
-  port_binding: 127.0.0.1  # or "0.0.0.0" for network access
+  box: ubuntu:24.04         # Docker image or Vagrant box
+  memory: 4096              # RAM: 4096 (MB), "2gb", "50%", "unlimited"
+  cpus: 2                   # CPUs: 2, "50%", "unlimited"
+  swap: 2048                # Swap memory in MB
+  user: developer           # Username inside container
+  port_binding: 127.0.0.1   # "0.0.0.0" for network access
+```
 
+### Operating System Selection
+
+```yaml
+# Simple mode (recommended)
+os: ubuntu                  # ubuntu, macos, debian, alpine, auto
+
+# Advanced mode (explicit provider)
+provider: docker            # docker, vagrant, tart
+```
+
+### Language Versions
+
+```yaml
 versions:
-  node: 22.11.0  # Node version
-  nvm: v0.40.3  # NVM version
-  pnpm: latest  # pnpm version
+  node: 22.11.0             # Specific Node.js version
+  nvm: v0.40.3              # NVM version
+  pnpm: latest              # pnpm package manager
+```
 
+### Port Configuration
+
+```yaml
 ports:
   frontend: 3000
   backend: 3001
   postgresql: 5432
   redis: 6379
+```
 
+### Service Configuration
+
+```yaml
 services:
   postgresql:
     enabled: true
@@ -221,114 +287,73 @@ services:
     password: postgres
   redis:
     enabled: true
-  mongodb:
-    enabled: false
   docker:
-    enabled: true
-  headless_browser:
-    enabled: false
+    enabled: true           # Docker-in-Docker
+```
 
+### Development Environment
+
+```yaml
 npm_packages:
-  # Global npm packages
   - prettier
   - eslint
 
-cargo_packages:
-  # Global Cargo packages (triggers Rust installation)
-  - cargo-watch
-  - tokei
-
 pip_packages:
-  # Global pip packages (triggers Python/pyenv installation)
   - black
   - pytest
 
 aliases:
-  # Custom aliases
   dev: pnpm dev
   test: pnpm test
 
 environment:
-  # Environment variables
   NODE_ENV: development
   API_URL: http://localhost:3001
 
 terminal:
-  emoji: "⚡"  # Prompt emoji
-  username: hacker  # Prompt name
-  theme: tokyo_night  # Color theme
-  show_git_branch: true  # Show branch
-  show_timestamp: false  # Show time
+  emoji: "⚡"
+  username: hacker
+  theme: tokyo_night
+  show_git_branch: true
 ```
+
+---
 
 ## Services
 
-VM-scoped services are configured in `vm.yaml` and run **inside** each VM/container. Global services are configured in `~/.vm/config.yaml` and shared across all VMs. All services are accessed via `localhost` from within the VM.
+Configure services in `vm.yaml` (VM-scoped) or `~/.vm/config.yaml` (global, shared across VMs).
 
-### PostgreSQL
+### VM-Scoped Services
 
+Each VM gets its own instance. Access via `localhost` inside the VM.
+
+| Service | Default Port | Common Options | Use Case |
+|---------|--------------|----------------|----------|
+| `postgresql` | 5432 | database, user, password, version | SQL database |
+| `mysql` | 3306 | database, user, password, version | SQL database |
+| `mongodb` | 27017 | database, user, password, version | NoSQL database |
+| `redis` | 6379 | version | Cache / message broker |
+| `docker` | - | buildx, driver | Docker-in-Docker for builds |
+| `headless_browser` | - | display, executable_path | Playwright/Selenium testing |
+
+**Basic configuration:**
 ```yaml
-# vm.yaml - VM-scoped service
+# vm.yaml
 services:
   postgresql:
     enabled: true
     database: myapp_dev
     user: postgres
     password: postgres
-ports:
-  postgresql: 5432  # Access via localhost:5432
-```
-
-### Redis
-
-```yaml
-# vm.yaml - VM-scoped service
-services:
   redis:
     enabled: true
+
 ports:
-  redis: 6379  # Access via localhost:6379
+  postgresql: 5432
+  redis: 6379
 ```
 
-### MongoDB
-
-```yaml
-# vm.yaml - VM-scoped service
-services:
-  mongodb:
-    enabled: true
-ports:
-  mongodb: 27017  # Access via localhost:27017
-```
-
-### MySQL
-
-```yaml
-# vm.yaml - VM-scoped service
-services:
-  mysql:
-    enabled: true
-ports:
-  mysql: 3306  # Access via localhost:3306
-```
-
-### Docker-in-Docker
-
-```yaml
-# vm.yaml - VM-scoped service
-services:
-  docker:
-    enabled: true  # Allows running docker commands inside VM
-```
-
-### Headless Browser (for testing)
-
-```yaml
-# vm.yaml - VM-scoped service
-services:
-  headless_browser:
-    enabled: true  # Installs Chrome/Chromium for testing
-```
+You can now connect to PostgreSQL at `localhost:5432` and Redis at `localhost:6379` inside your VM.
 
 ### Advanced Service Configuration
 
@@ -382,28 +407,17 @@ services:
 
 Global services are configured in `~/.vm/config.yaml` and serve **all** VMs on your system.
 
-### Service Architecture Overview
+### Global Services
 
-The VM tool supports two types of services:
-
-#### VM-Scoped Services (configured in `vm.yaml`)
-Each VM gets its own instance of these services:
-- **postgresql** - Database per VM
-- **redis** - Cache per VM
-- **mongodb** - Database per VM
-- **mysql** - Database per VM
-- **docker** - Docker-in-Docker per VM
-- **headless_browser** - Browser testing per VM
-- **audio** - Audio support per VM
-- **gpu** - GPU acceleration per VM
-
-#### Global Services (configured in `~/.vm/config.yaml`)
 Shared across all VMs with automatic lifecycle management:
-- **docker_registry** - Docker image caching and registry mirror
-- **auth_proxy** - Authentication proxy for secure secret management
-- **package_registry** - Package caching for npm, pip, and cargo
 
-### Global Service Lifecycle
+| Service | Purpose | Auto-managed |
+|---------|---------|--------------|
+| `docker_registry` | Docker image caching | Auto-start/stop |
+| `auth_proxy` | Secure secret management | Auto-start/stop |
+| `package_registry` | npm/pip/cargo package caching | Auto-start/stop |
+
+**Lifecycle:**
 
 Global services use reference counting:
 1. **Auto-start** when first VM needs them
