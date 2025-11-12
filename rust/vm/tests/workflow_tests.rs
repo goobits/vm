@@ -21,19 +21,40 @@ static TEST_MUTEX: Mutex<()> = Mutex::new(());
 #[cfg(feature = "integration")]
 fn assert_yaml_value_eq(value: &serde_yaml::Value, expected: &str, field_name: &str) {
     if let Some(s) = value.as_str() {
-        assert_eq!(s, expected, "Expected {} to be '{}' (as string)", field_name, expected);
+        assert_eq!(
+            s, expected,
+            "Expected {} to be '{}' (as string)",
+            field_name, expected
+        );
     } else if let Some(n) = value.as_i64() {
         let expected_num: i64 = expected.parse().unwrap_or_else(|_| {
-            panic!("Cannot parse '{}' as number for field {}", expected, field_name)
+            panic!(
+                "Cannot parse '{}' as number for field {}",
+                expected, field_name
+            )
         });
-        assert_eq!(n, expected_num, "Expected {} to be {} (as number)", field_name, expected_num);
+        assert_eq!(
+            n, expected_num,
+            "Expected {} to be {} (as number)",
+            field_name, expected_num
+        );
     } else if let Some(n) = value.as_u64() {
         let expected_num: u64 = expected.parse().unwrap_or_else(|_| {
-            panic!("Cannot parse '{}' as number for field {}", expected, field_name)
+            panic!(
+                "Cannot parse '{}' as number for field {}",
+                expected, field_name
+            )
         });
-        assert_eq!(n, expected_num, "Expected {} to be {} (as number)", field_name, expected_num);
+        assert_eq!(
+            n, expected_num,
+            "Expected {} to be {} (as number)",
+            field_name, expected_num
+        );
     } else {
-        panic!("{} is neither string nor number, got: {:?}", field_name, value);
+        panic!(
+            "{} is neither string nor number, got: {:?}",
+            field_name, value
+        );
     }
 }
 
@@ -188,8 +209,8 @@ fn test_basic_config_workflow() -> Result<()> {
         .join("\n");
 
     // Parse the YAML output to check values programmatically
-    let config_value: serde_yaml::Value = serde_yaml::from_str(&yaml_content)
-        .expect("Failed to parse YAML output");
+    let config_value: serde_yaml::Value =
+        serde_yaml::from_str(&yaml_content).expect("Failed to parse YAML output");
 
     // Check memory value (can be string or number)
     assert_yaml_value_eq(&config_value["vm"]["memory"], "4096", "vm.memory");
@@ -248,20 +269,29 @@ npm_packages:
     let config_content = fixture.read_file("vm.yaml")?;
 
     // Parse YAML to check numeric values
-    let config_value: serde_yaml::Value = serde_yaml::from_str(&config_content)
-        .expect("Failed to parse vm.yaml");
+    let config_value: serde_yaml::Value =
+        serde_yaml::from_str(&config_content).expect("Failed to parse vm.yaml");
 
     // Check numeric values (can be strings or numbers)
     assert_yaml_value_eq(&config_value["vm"]["memory"], "8192", "vm.memory");
     assert_yaml_value_eq(&config_value["vm"]["cpus"], "4", "vm.cpus");
 
     // Check services are present
-    assert!(!config_value["services"]["redis"].is_null(), "Expected redis service");
-    assert!(!config_value["services"]["postgresql"].is_null(), "Expected postgresql service");
+    assert!(
+        !config_value["services"]["redis"].is_null(),
+        "Expected redis service"
+    );
+    assert!(
+        !config_value["services"]["postgresql"].is_null(),
+        "Expected postgresql service"
+    );
 
     // Check npm_packages contains eslint
     let npm_packages = config_value["npm_packages"].as_sequence();
-    assert!(npm_packages.is_some(), "Expected npm_packages to be an array");
+    assert!(
+        npm_packages.is_some(),
+        "Expected npm_packages to be an array"
+    );
     let has_eslint = npm_packages
         .unwrap()
         .iter()
@@ -417,10 +447,12 @@ fn test_global_vs_local_config_workflow() -> Result<()> {
         .join("\n");
 
     // Parse the YAML output to check values programmatically
-    let config_value: serde_yaml::Value = serde_yaml::from_str(&yaml_content)
-        .unwrap_or_else(|e| {
-            panic!("Failed to parse global config YAML output.\nError: {}\nYAML content:\n{}", e, yaml_content);
-        });
+    let config_value: serde_yaml::Value = serde_yaml::from_str(&yaml_content).unwrap_or_else(|e| {
+        panic!(
+            "Failed to parse global config YAML output.\nError: {}\nYAML content:\n{}",
+            e, yaml_content
+        );
+    });
 
     // Check global config values
     assert_eq!(
@@ -448,8 +480,8 @@ fn test_global_vs_local_config_workflow() -> Result<()> {
         .join("\n");
 
     // Parse the YAML output to check values programmatically
-    let config_value: serde_yaml::Value = serde_yaml::from_str(&yaml_content)
-        .expect("Failed to parse local config YAML output");
+    let config_value: serde_yaml::Value =
+        serde_yaml::from_str(&yaml_content).expect("Failed to parse local config YAML output");
 
     // Check local config values (local overrides global)
     assert_eq!(
@@ -520,25 +552,46 @@ ports:
     let config_content = fixture.read_file("vm.yaml")?;
 
     // Parse YAML to check numeric values
-    let config_value: serde_yaml::Value = serde_yaml::from_str(&config_content)
-        .expect("Failed to parse vm.yaml");
+    let config_value: serde_yaml::Value =
+        serde_yaml::from_str(&config_content).expect("Failed to parse vm.yaml");
 
     // Memory should be from override preset
-    assert_yaml_value_eq(&config_value["vm"]["memory"], "4096", "vm.memory (from override preset)");
+    assert_yaml_value_eq(
+        &config_value["vm"]["memory"],
+        "4096",
+        "vm.memory (from override preset)",
+    );
 
     // CPUs should be from base preset (not overridden)
-    assert_yaml_value_eq(&config_value["vm"]["cpus"], "2", "vm.cpus (from base preset)");
+    assert_yaml_value_eq(
+        &config_value["vm"]["cpus"],
+        "2",
+        "vm.cpus (from base preset)",
+    );
 
     // Swap should be added from override
-    assert_yaml_value_eq(&config_value["vm"]["swap"], "1024", "vm.swap (from override preset)");
+    assert_yaml_value_eq(
+        &config_value["vm"]["swap"],
+        "1024",
+        "vm.swap (from override preset)",
+    );
 
     // Both services should be present
-    assert!(!config_value["services"]["redis"].is_null(), "Expected redis service");
-    assert!(!config_value["services"]["postgresql"].is_null(), "Expected postgresql service");
+    assert!(
+        !config_value["services"]["redis"].is_null(),
+        "Expected redis service"
+    );
+    assert!(
+        !config_value["services"]["postgresql"].is_null(),
+        "Expected postgresql service"
+    );
 
     // npm_packages should be from override (arrays replace)
     let npm_packages = config_value["npm_packages"].as_sequence();
-    assert!(npm_packages.is_some(), "Expected npm_packages to be an array");
+    assert!(
+        npm_packages.is_some(),
+        "Expected npm_packages to be an array"
+    );
     let has_prettier = npm_packages
         .unwrap()
         .iter()
@@ -546,7 +599,10 @@ ports:
     assert!(has_prettier, "Expected prettier in npm_packages");
 
     // Ports range should be added
-    assert!(!config_value["ports"]["_range"].is_null(), "Expected ports._range to be set");
+    assert!(
+        !config_value["ports"]["_range"].is_null(),
+        "Expected ports._range to be set"
+    );
 
     Ok(())
 }
