@@ -48,30 +48,10 @@ impl DockerProgressParser {
         Self {
             mp,
             main_bar,
-            step_regex: Regex::new(r"Step (\d+)/(\d+)").unwrap_or_else(|_| {
-                // If the primary regex fails, create a never-matching regex
-                // This should never fail as it's a simple pattern
-                Regex::new(r"(?-u)a^").unwrap_or_else(|_| {
-                    // Last resort: Create a pattern that never matches
-                    Regex::new("").unwrap_or_else(|_| {
-                        // This is unreachable as empty regex is valid
-                        panic!("Regex compilation failed for empty pattern")
-                    })
-                })
-            }),
-            layer_pull_regex: Regex::new(r"([a-f0-9]{12}): Pulling fs layer").unwrap_or_else(
-                |_| {
-                    // If the primary regex fails, create a never-matching regex
-                    // This should never fail as it's a simple pattern
-                    Regex::new(r"(?-u)a^").unwrap_or_else(|_| {
-                        // Last resort: Create a pattern that never matches
-                        Regex::new("").unwrap_or_else(|_| {
-                            // This is unreachable as empty regex is valid
-                            panic!("Regex compilation failed for empty pattern")
-                        })
-                    })
-                },
-            ),
+            step_regex: Regex::new(r"Step (\d+)/(\d+)")
+                .expect("Hardcoded Docker step regex pattern should always compile"),
+            layer_pull_regex: Regex::new(r"([a-f0-9]{12}): Pulling fs layer")
+                .expect("Hardcoded Docker layer pull regex pattern should always compile"),
             total_steps: 0,
             current_step: 0,
             layer_bars: HashMap::new(),

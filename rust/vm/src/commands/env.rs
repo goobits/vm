@@ -167,19 +167,28 @@ fn handle_diff(app_config: &AppConfig) -> VmResult<()> {
     let common: Vec<_> = template_keys.intersection(&env_keys).collect();
     let mut differences = Vec::new();
     for var in common {
-        let template_val = template_vars.get(*var).unwrap();
-        let env_val = env_vars.get(*var).unwrap();
-        if template_val != env_val {
-            differences.push(var.to_string());
+        // These keys are guaranteed to exist because they're in the intersection
+        if let (Some(template_val), Some(env_val)) = (template_vars.get(*var), env_vars.get(*var)) {
+            if template_val != env_val {
+                differences.push(var.to_string());
+            }
         }
     }
 
     if !differences.is_empty() {
         vm_println!("🔄 Different values:");
         for var in differences {
-            let template_val = mask_value(template_vars.get(&var).unwrap());
-            let env_val = mask_value(env_vars.get(&var).unwrap());
-            vm_println!("   {} (template: {} → env: {})", var, template_val, env_val);
+            // These keys are guaranteed to exist because they're in both maps
+            if let (Some(template_val), Some(env_val)) =
+                (template_vars.get(&var), env_vars.get(&var))
+            {
+                vm_println!(
+                    "   {} (template: {} → env: {})",
+                    var,
+                    mask_value(template_val),
+                    mask_value(env_val)
+                );
+            }
         }
         vm_println!("");
     }

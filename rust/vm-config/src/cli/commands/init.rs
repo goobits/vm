@@ -23,29 +23,15 @@ static CONSECUTIVE_HYPHENS_RE: OnceLock<Regex> = OnceLock::new();
 
 fn get_invalid_chars_regex() -> &'static Regex {
     INVALID_CHARS_RE.get_or_init(|| {
-        Regex::new(r"[^a-zA-Z0-9_-]").unwrap_or_else(|_| {
-            // Fallback to a safe pattern if the main one fails
-            Regex::new(r"[^\w-]").unwrap_or_else(|_| {
-                // Final fallback - use simple pattern that cannot fail
-                Regex::new(r"").unwrap_or_else(|_| {
-                    panic!("Critical: Even empty regex pattern is failing - regex engine corrupted")
-                })
-            })
-        })
+        Regex::new(r"[^a-zA-Z0-9_-]")
+            .expect("Hardcoded invalid characters regex pattern should always compile")
     })
 }
 
 fn get_consecutive_hyphens_regex() -> &'static Regex {
     CONSECUTIVE_HYPHENS_RE.get_or_init(|| {
-        Regex::new(r"-+").unwrap_or_else(|_| {
-            // Fallback to a safe pattern if the main one fails
-            Regex::new(r"--+").unwrap_or_else(|_| {
-                // Final fallback - use simple pattern that cannot fail
-                Regex::new(r"").unwrap_or_else(|_| {
-                    panic!("Critical: Even empty regex pattern is failing - regex engine corrupted")
-                })
-            })
-        })
+        Regex::new(r"-+")
+            .expect("Hardcoded consecutive hyphens regex pattern should always compile")
     })
 }
 

@@ -101,12 +101,17 @@ impl ConfigLoader {
     /// which is more ergonomic than requiring `box: '@snapshot-name'`.
     fn preprocess_yaml(contents: &str) -> String {
         use regex::Regex;
+        use std::sync::OnceLock;
 
         // Pattern to match unquoted @ values in box field
         // Matches: "box: @value" or "box:@value" (with optional spaces and comments)
         // Captures the @ symbol and the value that follows (alphanumeric, dash, underscore)
         // and preserves any trailing content (like comments)
-        let re = Regex::new(r"(?m)^(\s*box:\s*)(@[\w-]+)(\s*.*)$").unwrap();
+        static BOX_PATTERN: OnceLock<Regex> = OnceLock::new();
+        let re = BOX_PATTERN.get_or_init(|| {
+            Regex::new(r"(?m)^(\s*box:\s*)(@[\w-]+)(\s*.*)$")
+                .expect("Hardcoded regex pattern should always compile")
+        });
 
         // Replace unquoted @value with '@value', preserving trailing content
         re.replace_all(contents, r#"$1'$2'$3"#).to_string()

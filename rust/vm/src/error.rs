@@ -426,6 +426,74 @@ impl From<vm_core::error::VmError> for VmError {
     }
 }
 
+/// Macro to simplify creating VmError::Config errors
+///
+/// # Examples
+/// ```ignore
+/// // Instead of:
+/// VmError::config(err, "Failed to parse configuration")
+///
+/// // You can write:
+/// config_error!(err, "Failed to parse configuration")
+/// ```
+#[macro_export]
+macro_rules! config_error {
+    ($source:expr, $context:expr) => {
+        $crate::error::VmError::config($source, $context)
+    };
+}
+
+/// Macro to simplify map_err for creating config errors
+///
+/// # Examples
+/// ```ignore
+/// // Instead of:
+/// .map_err(|e| VmError::config(e, "Failed to load config"))?
+///
+/// // You can write:
+/// .map_err(map_config_err!("Failed to load config"))?
+/// ```
+#[macro_export]
+macro_rules! map_config_err {
+    ($context:expr) => {
+        |e| $crate::error::VmError::config(e, $context)
+    };
+}
+
+/// Macro to simplify map_err for creating filesystem errors
+///
+/// # Examples
+/// ```ignore
+/// // Instead of:
+/// .map_err(|e| VmError::filesystem(e, path, "read"))?
+///
+/// // You can write:
+/// .map_err(map_fs_err!(path, "read"))?
+/// ```
+#[macro_export]
+macro_rules! map_fs_err {
+    ($path:expr, $operation:expr) => {
+        |e| $crate::error::VmError::filesystem(e, $path, $operation)
+    };
+}
+
+/// Macro to simplify map_err for creating general errors
+///
+/// # Examples
+/// ```ignore
+/// // Instead of:
+/// .map_err(|e| VmError::general(e, "Failed to process"))?
+///
+/// // You can write:
+/// .map_err(map_general_err!("Failed to process"))?
+/// ```
+#[macro_export]
+macro_rules! map_general_err {
+    ($context:expr) => {
+        |e| $crate::error::VmError::general(e, $context)
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -74,11 +74,16 @@ async fn get_git_info(
 
     for line in stdout.lines() {
         if line.starts_with("# branch.oid ") {
-            commit = Some(line.strip_prefix("# branch.oid ").unwrap().to_string());
+            // Safe: we just checked that the line starts with this prefix
+            if let Some(oid) = line.strip_prefix("# branch.oid ") {
+                commit = Some(oid.to_string());
+            }
         } else if line.starts_with("# branch.head ") {
-            let branch_name = line.strip_prefix("# branch.head ").unwrap();
-            if branch_name != "(detached)" {
-                branch = Some(branch_name.to_string());
+            // Safe: we just checked that the line starts with this prefix
+            if let Some(branch_name) = line.strip_prefix("# branch.head ") {
+                if branch_name != "(detached)" {
+                    branch = Some(branch_name.to_string());
+                }
             }
         } else if !line.starts_with('#') && !line.is_empty() {
             // Any non-header, non-empty line indicates changes

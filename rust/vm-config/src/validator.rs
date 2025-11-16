@@ -113,12 +113,24 @@ impl ConfigValidator {
                 let requested_cpus = match cpu_limit {
                     crate::config::CpuLimit::Limited(count) => Some(*count),
                     crate::config::CpuLimit::Percentage(percent) => {
-                        let resolved = cpu_limit.resolve_percentage(available_cpus).unwrap();
-                        report.add_info(format!(
-                            "{}% of {} CPUs = {} CPUs",
-                            percent, available_cpus, resolved
-                        ));
-                        Some(resolved)
+                        // Percentage resolution should always succeed for valid percentage
+                        #[allow(clippy::excessive_nesting)]
+                        match cpu_limit.resolve_percentage(available_cpus) {
+                            Some(resolved) => {
+                                report.add_info(format!(
+                                    "{}% of {} CPUs = {} CPUs",
+                                    percent, available_cpus, resolved
+                                ));
+                                Some(resolved)
+                            }
+                            None => {
+                                report.add_error(format!(
+                                    "Failed to resolve CPU percentage: {}%",
+                                    percent
+                                ));
+                                None
+                            }
+                        }
                     }
                     crate::config::CpuLimit::Unlimited => None,
                 };
@@ -152,12 +164,24 @@ impl ConfigValidator {
                 let requested_mb = match memory_limit {
                     crate::config::MemoryLimit::Limited(mb) => Some(*mb as u64),
                     crate::config::MemoryLimit::Percentage(percent) => {
-                        let resolved = memory_limit.resolve_percentage(total_mb).unwrap() as u64;
-                        report.add_info(format!(
-                            "{}% of {}MB RAM = {}MB",
-                            percent, total_mb, resolved
-                        ));
-                        Some(resolved)
+                        // Percentage resolution should always succeed for valid percentage
+                        #[allow(clippy::excessive_nesting)]
+                        match memory_limit.resolve_percentage(total_mb) {
+                            Some(resolved) => {
+                                report.add_info(format!(
+                                    "{}% of {}MB RAM = {}MB",
+                                    percent, total_mb, resolved
+                                ));
+                                Some(resolved as u64)
+                            }
+                            None => {
+                                report.add_error(format!(
+                                    "Failed to resolve memory percentage: {}%",
+                                    percent
+                                ));
+                                None
+                            }
+                        }
                     }
                     crate::config::MemoryLimit::Unlimited => None,
                 };

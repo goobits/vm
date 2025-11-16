@@ -108,19 +108,19 @@ pub fn handle_wait(
                     report.services.iter().collect()
                 };
 
-                if services_to_check.is_empty() && service_filter.is_some() {
-                    vm_println!(
-                        "❌ Service '{}' not found",
-                        service_filter.as_ref().unwrap()
-                    );
-                    vm_println!("   Available services:");
-                    for svc in &report.services {
-                        vm_println!("     • {}", svc.name);
+                if services_to_check.is_empty() {
+                    if let Some(ref filter) = service_filter {
+                        vm_println!("❌ Service '{}' not found", filter);
+                        vm_println!("   Available services:");
+                        #[allow(clippy::excessive_nesting)]
+                        for svc in &report.services {
+                            vm_println!("     • {}", svc.name);
+                        }
+                        return Err(VmError::general(
+                            std::io::Error::new(std::io::ErrorKind::NotFound, "Service not found"),
+                            format!("Service '{}' not found", filter),
+                        ));
                     }
-                    return Err(VmError::general(
-                        std::io::Error::new(std::io::ErrorKind::NotFound, "Service not found"),
-                        format!("Service '{}' not found", service_filter.as_ref().unwrap()),
-                    ));
                 }
 
                 // Check if all target services are ready

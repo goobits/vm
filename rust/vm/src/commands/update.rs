@@ -221,12 +221,19 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
 }
 
 fn detect_target() -> String {
+    // Use compile_error! for truly unsupported platforms (compile-time check)
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    compile_error!("Unsupported architecture - only x86_64 and aarch64 are supported");
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    compile_error!("Unsupported OS - only macOS, Linux, and Windows are supported");
+
     let arch = if cfg!(target_arch = "x86_64") {
         "x86_64"
     } else if cfg!(target_arch = "aarch64") {
         "aarch64"
     } else {
-        panic!("Unsupported architecture");
+        unreachable!("Architecture already checked at compile time")
     };
 
     let os = if cfg!(target_os = "macos") {
@@ -236,7 +243,7 @@ fn detect_target() -> String {
     } else if cfg!(target_os = "windows") {
         "pc-windows-msvc"
     } else {
-        panic!("Unsupported OS");
+        unreachable!("OS already checked at compile time")
     };
 
     format!("{arch}-{os}")

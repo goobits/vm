@@ -18,13 +18,8 @@ static PORT_PLACEHOLDER_RE: OnceLock<Regex> = OnceLock::new();
 
 fn get_port_placeholder_regex() -> &'static Regex {
     PORT_PLACEHOLDER_RE.get_or_init(|| {
-        Regex::new(r"\$\{port\.(\d+)\}").unwrap_or_else(|_| {
-            Regex::new(r"never_matches_anything_specific_placeholder_12345").unwrap_or_else(|_| {
-                Regex::new("").unwrap_or_else(|_| {
-                    panic!("Critical: Even empty regex pattern is failing - regex engine corrupted")
-                })
-            })
-        })
+        Regex::new(r"\$\{port\.(\d+)\}")
+            .expect("Hardcoded port placeholder regex pattern should always compile")
     })
 }
 

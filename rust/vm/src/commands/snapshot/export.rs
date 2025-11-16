@@ -154,11 +154,17 @@ pub async fn handle_export(
             }
 
             // Export image
+            let image_path_str = image_export_path.to_str()
+                .ok_or_else(|| VmError::general(
+                    std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid path"),
+                    format!("Image export path contains invalid UTF-8: {}", image_export_path.display())
+                ))?;
+
             let save_args = [
                 "save",
                 &image_tag,
                 "-o",
-                image_export_path.to_str().unwrap(),
+                image_path_str,
             ];
 
             execute_docker(&save_args).await?;
