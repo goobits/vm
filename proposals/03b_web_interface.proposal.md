@@ -19,8 +19,9 @@ Develop a new set of UI components within the existing `site/` Svelte/Vite proje
 - [ ] Add a "Delete" button to each workspace that calls `DELETE /api/v1/workspaces/{id}` with confirmation.
 - [ ] Implement status/health indicators (running, stopped, creating, failed, expiring) with TTL countdowns.
 - [ ] Create a UI element to display available templates/plugins from `GET /api/v1/templates` and (when available) `GET /api/v1/plugins`.
-- [ ] Ensure the UI handles authentication via `vm-auth-proxy` (login redirect, token refresh, logout).
+- [ ] Ensure the UI handles authentication via `vm-auth-proxy` (unauthenticated visits to `/app` redirect to the identity provider; successful logins store the session/token for the browser session; include logout/refresh handling).
 - [ ] Show operation history (create, rebuild, snapshot) using `GET /api/v1/operations`.
+- [ ] Add a primary navigation link (“Workspaces”) in the site header that routes to `/app`.
 
 ## Success Criteria
 

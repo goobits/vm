@@ -21,31 +21,50 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
     let detector = PresetDetector::new(project_dir, presets_dir);
 
     if list {
-        let presets = detector.list_presets()?;
-        vm_println!("{}", MESSAGES.config.available_presets);
-        for preset in presets {
-            let description = detector
-                .get_preset_description(&preset)
-                .map(|d| format!(" - {d}"))
-                .unwrap_or_default();
-            vm_println!("  • {}{}", preset, description);
-        }
-        vm_println!(
-            "{}",
-            msg!(MESSAGES.config.apply_preset_hint, name = "<name>")
-        );
-        return Ok(());
+        return list_presets(&detector);
     }
 
     if let Some(name) = show {
-        let preset_config = detector.load_preset(name)?;
-        let yaml = serde_yaml::to_string(&preset_config)?;
-        vm_println!("📋 Preset '{}' configuration:\n", name);
-        vm_println!("{}", yaml);
-        vm_println!("{}", msg!(MESSAGES.config.apply_preset_hint, name = name));
-        return Ok(());
+        return show_preset(&detector, name);
     }
 
+    apply_preset_to_config(&detector, preset_names, global)
+}
+
+/// List all available presets
+fn list_presets(detector: &PresetDetector) -> Result<()> {
+    let presets = detector.list_presets()?;
+    vm_println!("{}", MESSAGES.config.available_presets);
+    for preset in presets {
+        let description = detector
+            .get_preset_description(&preset)
+            .map(|d| format!(" - {d}"))
+            .unwrap_or_default();
+        vm_println!("  • {}{}", preset, description);
+    }
+    vm_println!(
+        "{}",
+        msg!(MESSAGES.config.apply_preset_hint, name = "<name>")
+    );
+    Ok(())
+}
+
+/// Show a specific preset configuration
+fn show_preset(detector: &PresetDetector, name: &str) -> Result<()> {
+    let preset_config = detector.load_preset(name)?;
+    let yaml = serde_yaml::to_string(&preset_config)?;
+    vm_println!("📋 Preset '{}' configuration:\n", name);
+    vm_println!("{}", yaml);
+    vm_println!("{}", msg!(MESSAGES.config.apply_preset_hint, name = name));
+    Ok(())
+}
+
+/// Apply preset(s) to configuration
+fn apply_preset_to_config(
+    detector: &PresetDetector,
+    preset_names: &str,
+    global: bool,
+) -> Result<()> {
     let config_path = if global {
         get_or_create_global_config_path()?
     } else {
@@ -93,17 +112,16 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
             }
         });
 
-        let preset_config = load_preset_with_placeholders(&detector, preset_name, &port_range_str)
-            .map_err(|e| VmError::Config(format!("Failed to load preset: {preset_name}: {e}")))?;
+        let preset_config = load_preset_with_placeholders(detector, preset_name, &port_range_str)
+            .map_err(|e| {
+            VmError::Config(format!("Failed to load preset: {preset_name}: {e}"))
+        })?;
 
         merged_config = ConfigMerger::new(merged_config).merge(preset_config.clone())?;
         last_preset_config = Some(preset_config);
     }
 
     // Create minimal config with only project-specific fields
-    // Bug #2 fix: Preserve user customizations if config existed OR we just called init
-    // If we just called init, preserve what it created (don't wastefully strip it)
-    // Everything else (packages, versions, aliases, host_sync, etc.) comes from preset/defaults at runtime
     let minimal_config = create_minimal_preset_config(
         &merged_config,
         preset_names,
@@ -113,7 +131,7 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
         } else {
             None
         },
-        called_init, // Don't warn if we just created the config
+        called_init,
     );
 
     let config_yaml = serde_yaml::to_string(&minimal_config)?;
@@ -168,9 +186,45 @@ fn create_minimal_preset_config(
     original_base_config: Option<&VmConfig>,
     suppress_warning: bool,
 ) -> VmConfig {
+    // Build VM section with preset box if specified
+    let vm = build_vm_section(merged, preset);
+
+    // Start with minimal config
+    let mut minimal = VmConfig {
+        preset: Some(preset_names.to_string()),
+        version: merged.version.clone(),
+        provider: merged.provider.clone(),
+        project: merged.project.clone(),
+        vm,
+        ports: merged.ports.clone(),
+        services: merged.services.clone(),
+        terminal: merged.terminal.clone(),
+        apt_packages: merged.apt_packages.clone(),
+        npm_packages: merged.npm_packages.clone(),
+        pip_packages: merged.pip_packages.clone(),
+        cargo_packages: merged.cargo_packages.clone(),
+        ..Default::default()
+    };
+
+    // Preserve user customizations if they existed before
+    if let Some(original) = original_base_config {
+        let has_customizations = preserve_user_customizations(&mut minimal, merged, original);
+
+        if has_customizations && !suppress_warning {
+            print_customization_warning(original);
+        }
+    }
+
+    minimal
+}
+
+/// Build VM section with preset box if specified
+fn build_vm_section(
+    merged: &VmConfig,
+    preset: Option<&VmConfig>,
+) -> Option<crate::config::VmSettings> {
     use crate::config::VmSettings;
 
-    // Start with merged VM settings so required defaults (user, timezone, etc.) stay intact
     let mut vm = merged.vm.clone();
 
     // If preset specifies a box (e.g., '@vibe-box'), override the cloned value
@@ -186,121 +240,104 @@ fn create_minimal_preset_config(
         }
     }
 
-    // Start with minimal config
-    let mut minimal = VmConfig {
-        preset: Some(preset_names.to_string()),
-        version: merged.version.clone(),
-        provider: merged.provider.clone(), // Required field for validation
-        project: merged.project.clone(),
-        vm,
-        ports: merged.ports.clone(),
-        services: merged.services.clone(),
-        terminal: merged.terminal.clone(),
-        apt_packages: merged.apt_packages.clone(),
-        npm_packages: merged.npm_packages.clone(),
-        pip_packages: merged.pip_packages.clone(),
-        cargo_packages: merged.cargo_packages.clone(),
-        ..Default::default()
-    };
+    vm
+}
 
-    // Bug #2 fix: Preserve user customizations if they existed before
-    if let Some(original) = original_base_config {
-        let mut has_customizations = false;
+/// Preserve user customizations from original config
+fn preserve_user_customizations(
+    minimal: &mut VmConfig,
+    merged: &VmConfig,
+    original: &VmConfig,
+) -> bool {
+    let mut has_customizations = false;
 
-        // Preserve versions if user had them
-        if original.versions.is_some() {
-            minimal.versions = merged.versions.clone();
-            has_customizations = true;
-        }
-
-        // Preserve apt packages if user had them
-        if !original.apt_packages.is_empty() {
-            minimal.apt_packages = merged.apt_packages.clone();
-            has_customizations = true;
-        }
-
-        // Preserve npm packages if user had them
-        if !original.npm_packages.is_empty() {
-            minimal.npm_packages = merged.npm_packages.clone();
-            has_customizations = true;
-        }
-
-        // Preserve pip packages if user had them
-        if !original.pip_packages.is_empty() {
-            minimal.pip_packages = merged.pip_packages.clone();
-            has_customizations = true;
-        }
-
-        // Preserve cargo packages if user had them
-        if !original.cargo_packages.is_empty() {
-            minimal.cargo_packages = merged.cargo_packages.clone();
-            has_customizations = true;
-        }
-
-        // Preserve aliases if user had them
-        if !original.aliases.is_empty() {
-            minimal.aliases = merged.aliases.clone();
-            has_customizations = true;
-        }
-
-        // Preserve environment if user had it
-        if !original.environment.is_empty() {
-            minimal.environment = merged.environment.clone();
-            has_customizations = true;
-        }
-
-        // Preserve host_sync if user had it
-        if original.host_sync.is_some() {
-            minimal.host_sync = merged.host_sync.clone();
-            has_customizations = true;
-        }
-
-        // Preserve os if user had it
-        if original.os.is_some() {
-            minimal.os = merged.os.clone();
-            has_customizations = true;
-        }
-
-        // Preserve networking if user had it
-        if original.networking.is_some() {
-            minimal.networking = merged.networking.clone();
-            has_customizations = true;
-        }
-
-        // Warn user about preserved customizations (but not if we just created the config)
-        if has_customizations && !suppress_warning {
-            vm_println!("");
-            vm_println!("⚠️  Note: Your vm.yaml contains customizations that are typically defined in presets:");
-            if original.versions.is_some() {
-                vm_println!("   - versions (node, python, etc.)");
-            }
-            if !original.apt_packages.is_empty()
-                || !original.npm_packages.is_empty()
-                || !original.pip_packages.is_empty()
-                || !original.cargo_packages.is_empty()
-            {
-                vm_println!("   - packages (apt, npm, pip, cargo)");
-            }
-            if !original.aliases.is_empty() {
-                vm_println!("   - aliases");
-            }
-            if !original.environment.is_empty() {
-                vm_println!("   - environment variables");
-            }
-            if original.host_sync.is_some() {
-                vm_println!("   - host_sync settings");
-            }
-            if original.networking.is_some() {
-                vm_println!("   - networking config");
-            }
-            vm_println!("");
-            vm_println!("These have been preserved, but consider:");
-            vm_println!("   • Moving global preferences to ~/.vm/config.yaml");
-            vm_println!("   • Creating a custom preset for reusable configurations");
-            vm_println!("   • See: https://github.com/goobits/vm#presets");
-            vm_println!("");
-        }
+    if original.versions.is_some() {
+        minimal.versions = merged.versions.clone();
+        has_customizations = true;
     }
 
-    minimal
+    if !original.apt_packages.is_empty() {
+        minimal.apt_packages = merged.apt_packages.clone();
+        has_customizations = true;
+    }
+
+    if !original.npm_packages.is_empty() {
+        minimal.npm_packages = merged.npm_packages.clone();
+        has_customizations = true;
+    }
+
+    if !original.pip_packages.is_empty() {
+        minimal.pip_packages = merged.pip_packages.clone();
+        has_customizations = true;
+    }
+
+    if !original.cargo_packages.is_empty() {
+        minimal.cargo_packages = merged.cargo_packages.clone();
+        has_customizations = true;
+    }
+
+    if !original.aliases.is_empty() {
+        minimal.aliases = merged.aliases.clone();
+        has_customizations = true;
+    }
+
+    if !original.environment.is_empty() {
+        minimal.environment = merged.environment.clone();
+        has_customizations = true;
+    }
+
+    if original.host_sync.is_some() {
+        minimal.host_sync = merged.host_sync.clone();
+        has_customizations = true;
+    }
+
+    if original.os.is_some() {
+        minimal.os = merged.os.clone();
+        has_customizations = true;
+    }
+
+    if original.networking.is_some() {
+        minimal.networking = merged.networking.clone();
+        has_customizations = true;
+    }
+
+    has_customizations
+}
+
+/// Print warning about preserved customizations
+fn print_customization_warning(original: &VmConfig) {
+    vm_println!("");
+    vm_println!(
+        "⚠️  Note: Your vm.yaml contains customizations that are typically defined in presets:"
+    );
+
+    if original.versions.is_some() {
+        vm_println!("   - versions (node, python, etc.)");
+    }
+    if !original.apt_packages.is_empty()
+        || !original.npm_packages.is_empty()
+        || !original.pip_packages.is_empty()
+        || !original.cargo_packages.is_empty()
+    {
+        vm_println!("   - packages (apt, npm, pip, cargo)");
+    }
+    if !original.aliases.is_empty() {
+        vm_println!("   - aliases");
+    }
+    if !original.environment.is_empty() {
+        vm_println!("   - environment variables");
+    }
+    if original.host_sync.is_some() {
+        vm_println!("   - host_sync settings");
+    }
+    if original.networking.is_some() {
+        vm_println!("   - networking config");
+    }
+
+    vm_println!("");
+    vm_println!("These have been preserved, but consider:");
+    vm_println!("   • Moving global preferences to ~/.vm/config.yaml");
+    vm_println!("   • Creating a custom preset for reusable configurations");
+    vm_println!("   • See: https://github.com/goobits/vm#presets");
+    vm_println!("");
 }

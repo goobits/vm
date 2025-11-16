@@ -20,6 +20,7 @@ vm:
   box: ubuntu:jammy
   memory: 8192
   cpus: 6
+  # Platform-aware swap defaults: macOS=1GB/30, Windows=512MB/0, Linux=2GB/60
   swap: 2048
   swappiness: 60
   user: developer

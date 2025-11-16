@@ -160,3 +160,38 @@ fn test_init_values_match_defaults() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_init_outputs_host_sync_git_config_true() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let vm_yaml_path = temp_dir.path().join("vm.yaml");
+
+    // Run vm init via CLI
+    let output = Command::new(get_vm_binary())
+        .arg("init")
+        .arg("--file")
+        .arg(&vm_yaml_path)
+        .current_dir(temp_dir.path())
+        .output()?;
+
+    assert!(output.status.success(), "vm init failed: {:?}", output);
+
+    // Read the generated config
+    let yaml_content = fs::read_to_string(&vm_yaml_path)?;
+    let config: VmConfig = serde_yaml_ng::from_str(&yaml_content)?;
+
+    // Verify host_sync.git_config is present and set to true
+    assert!(
+        config.host_sync.is_some(),
+        "host_sync field should be present"
+    );
+
+    if let Some(host_sync) = config.host_sync {
+        assert_eq!(
+            host_sync.git_config, true,
+            "host_sync.git_config should be true"
+        );
+    }
+
+    Ok(())
+}

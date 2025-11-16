@@ -158,9 +158,20 @@ pub async fn handle_destroy(
 
         match provider.destroy(container) {
             Ok(()) => {
-                // Backup database services if configured
+                // Backup database services if configured (run in background)
                 if !no_backup {
-                    backup_databases(&config, vm_name, &global_config).await;
+                    // Clone values for the background task
+                    let config_clone = config.clone();
+                    let vm_name_clone = vm_name.to_string();
+                    let global_config_clone = global_config.clone();
+
+                    tokio::spawn(async move {
+                        vm_println!("🔄 Starting database backups in background...");
+                        backup_databases(&config_clone, &vm_name_clone, &global_config_clone).await;
+                        vm_println!("✅ Database backups completed");
+                    });
+
+                    vm_println!("⏩ VM destroy continuing (backups running in background)...");
                 }
 
                 vm_println!("{}", MESSAGES.common.configuring_services);

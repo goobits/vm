@@ -1,5 +1,5 @@
 // Standard library imports
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 // External crate imports
@@ -41,7 +41,53 @@ pub fn execute(
     ports: Option<u16>,
 ) -> Result<()> {
     // Determine target path
-    let target_path = match file_path {
+    let target_path = determine_target_path(file_path)?;
+
+    // Check if vm.yaml already exists
+    if target_path.exists() {
+        print_already_exists_message(&target_path);
+        std::process::exit(1);
+    }
+
+    // Get current directory name for project name
+    let current_dir = std::env::current_dir()?;
+    let sanitized_name = sanitize_project_name(&current_dir)?;
+
+    // Load and customize config
+    let mut config = build_initial_config(&sanitized_name)?;
+
+    // Allocate and register ports
+    allocate_and_register_ports(&mut config, &sanitized_name, &current_dir)?;
+
+    // Detect and configure services
+    let services_to_configure = detect_services_from_project(services, &current_dir)?;
+    apply_service_configurations(&mut config, services_to_configure)?;
+
+    // Apply port configuration
+    if let Some(port_start) = ports {
+        if port_start < 1024 {
+            return Err(VmError::Config(format!(
+                "Invalid port number: {port_start} (must be >= 1024)"
+            )));
+        }
+        config.ports.range = Some(vec![port_start, port_start + 9]);
+    }
+
+    // Allocate ports to enabled services
+    config.ensure_service_ports();
+
+    // Write config to file
+    write_config_file(&target_path, &config)?;
+
+    // Display success message
+    print_success_message(&target_path, &sanitized_name, &config, ports);
+
+    Ok(())
+}
+
+/// Determine the target file path for vm.yaml
+fn determine_target_path(file_path: Option<PathBuf>) -> Result<PathBuf> {
+    Ok(match file_path {
         Some(path) => {
             if path.is_dir() {
                 path.join("vm.yaml")
@@ -50,32 +96,30 @@ pub fn execute(
             }
         }
         None => std::env::current_dir()?.join("vm.yaml"),
-    };
+    })
+}
 
-    // Check if vm.yaml already exists
-    if target_path.exists() {
-        info!("{}", MESSAGES.service.init_welcome);
-        info!("");
-        info!("{}", MESSAGES.service.init_already_exists);
-        info!("   📁 {}", target_path.display());
-        info!("");
-        info!("{}", MESSAGES.service.init_options_hint);
-        info!("   rm vm.yaml && vm init           # Start fresh");
-        info!("   vm init --file other.yaml      # Create elsewhere");
-        info!("   vm create                       # Use existing config");
-        std::process::exit(1);
-    }
+/// Print message when vm.yaml already exists
+fn print_already_exists_message(target_path: &Path) {
+    info!("{}", MESSAGES.service.init_welcome);
+    info!("");
+    info!("{}", MESSAGES.service.init_already_exists);
+    info!("   📁 {}", target_path.display());
+    info!("");
+    info!("{}", MESSAGES.service.init_options_hint);
+    info!("   rm vm.yaml && vm init           # Start fresh");
+    info!("   vm init --file other.yaml      # Create elsewhere");
+    info!("   vm create                       # Use existing config");
+}
 
-    // Get current directory name for project name
-    let current_dir = std::env::current_dir()?;
+/// Sanitize directory name for use as project name
+fn sanitize_project_name(current_dir: &std::path::Path) -> Result<String> {
     let dir_name = current_dir
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("vm-project");
 
-    // Sanitize directory name for use as project name
     // Replace dots, spaces, and other invalid characters with hyphens
-    // Then remove any consecutive hyphens and trim leading/trailing hyphens
     let sanitized_name = get_invalid_chars_regex().replace_all(dir_name, "-");
     let sanitized_name = get_consecutive_hyphens_regex().replace_all(&sanitized_name, "-");
     let sanitized_name = sanitized_name.trim_matches('-');
@@ -90,7 +134,11 @@ pub fn execute(
         info!("");
     }
 
-    // Load embedded defaults
+    Ok(sanitized_name.to_string())
+}
+
+/// Build initial config from embedded defaults
+fn build_initial_config(sanitized_name: &str) -> Result<VmConfig> {
     const EMBEDDED_DEFAULTS: &str = include_str!("../../../../../configs/defaults.yaml");
     let mut config: VmConfig = crate::yaml::CoreOperations::parse_yaml_with_diagnostics(
         EMBEDDED_DEFAULTS,
@@ -107,7 +155,54 @@ pub fn execute(
         terminal.username = Some(format!("{sanitized_name}-dev"));
     }
 
-    // Use vm-ports library to suggest and register an available port range
+    // Add platform-aware swap defaults if not already set
+    use crate::detector::os::detect_host_os;
+
+    if let Some(ref mut vm) = config.vm {
+        if vm.swap.is_none() || vm.swappiness.is_none() {
+            let host_os = detect_host_os();
+
+            match host_os.as_str() {
+                "macos" => {
+                    if vm.swap.is_none() {
+                        vm.swap = Some(crate::config::SwapLimit::Limited(1024));
+                        // 1 GB for macOS
+                    }
+                    if vm.swappiness.is_none() {
+                        vm.swappiness = Some(30); // Lower swappiness for macOS
+                    }
+                }
+                "windows" => {
+                    if vm.swap.is_none() {
+                        vm.swap = Some(crate::config::SwapLimit::Limited(512)); // 512 MB for Windows
+                    }
+                    if vm.swappiness.is_none() {
+                        vm.swappiness = Some(0); // Disabled on Windows
+                    }
+                }
+                _ => {
+                    // Linux and other Unix-like systems
+                    if vm.swap.is_none() {
+                        vm.swap = Some(crate::config::SwapLimit::Limited(2048));
+                        // 2 GB default
+                    }
+                    if vm.swappiness.is_none() {
+                        vm.swappiness = Some(60); // Standard Linux default
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(config)
+}
+
+/// Allocate and register ports for the project
+fn allocate_and_register_ports(
+    config: &mut VmConfig,
+    sanitized_name: &str,
+    current_dir: &std::path::Path,
+) -> Result<()> {
     if let Ok(registry) = PortRegistry::load() {
         // Check if this project already has ports registered
         let (range_str, is_new_project) =
@@ -142,22 +237,34 @@ pub fn execute(
         warn!("Failed to load port registry");
     }
 
-    // Smart service detection and configuration
-    let services_to_configure = match services {
+    Ok(())
+}
+
+/// Detect services from project or use provided list
+fn detect_services_from_project(
+    services: Option<String>,
+    current_dir: &std::path::Path,
+) -> Result<Vec<String>> {
+    match services {
         Some(ref services_str) => {
             // Manual service specification
-            services_str
+            Ok(services_str
                 .split(',')
                 .map(|s| s.trim().to_string())
-                .collect()
+                .collect())
         }
         None => {
             // Smart detection
-            detect_and_recommend_services(&current_dir)?
+            detect_and_recommend_services(current_dir)
         }
-    };
+    }
+}
 
-    // Apply service configurations
+/// Apply service configurations to the config
+fn apply_service_configurations(
+    config: &mut VmConfig,
+    services_to_configure: Vec<String>,
+) -> Result<()> {
     for service in services_to_configure {
         // Try to load service config from file, or use embedded defaults
         let service_path =
@@ -198,37 +305,33 @@ pub fn execute(
         }
     }
 
-    // Apply port configuration
-    if let Some(port_start) = ports {
-        if port_start < 1024 {
-            return Err(VmError::Config(format!(
-                "Invalid port number: {port_start} (must be >= 1024)"
-            )));
-        }
+    Ok(())
+}
 
-        // Set up port range instead of individual ports - services will auto-assign
-        config.ports.range = Some(vec![port_start, port_start + 9]);
-    }
-
-    // Allocate ports to enabled services
-    config.ensure_service_ports();
-
-    // Convert config to Value and write with consistent formatting
+/// Write config to YAML file
+fn write_config_file(target_path: &PathBuf, config: &VmConfig) -> Result<()> {
     let config_yaml = serde_yaml::to_string(&config).map_err(|e| {
         VmError::Serialization(format!("Failed to serialize configuration to YAML: {e}"))
     })?;
     let config_value: Value =
         crate::yaml::CoreOperations::parse_yaml_with_diagnostics(&config_yaml, "generated config")?;
 
-    // Write using the centralized function for consistent formatting
-    CoreOperations::write_yaml_file(&target_path, &config_value).map_err(|e| {
+    CoreOperations::write_yaml_file(target_path, &config_value).map_err(|e| {
         VmError::Filesystem(format!(
             "Failed to write vm.yaml to {}: {}",
             target_path.display(),
             e
         ))
-    })?;
+    })
+}
 
+/// Print success message with config details
+fn print_success_message(
+    target_path: &Path,
+    sanitized_name: &str,
+    config: &VmConfig,
+    ports: Option<u16>,
+) {
     // Get the port range for display
     let port_display = if let Some(range) = &config.ports.range {
         format!("{}-{}", range[0], range[1])
@@ -268,8 +371,6 @@ pub fn execute(
     info!("   vm --help    # View all available commands");
     info!("");
     info!("📁 {}", target_path.display());
-
-    Ok(())
 }
 
 /// Detect project technologies and recommend services

@@ -15,5 +15,7 @@ which = { workspace = true }
 tempfile = { workspace = true }
 pathdiff = { workspace = true }
 sysinfo = { workspace = true }
+rand = { workspace = true }
+tokio = { workspace = true, features = ["fs"] }
 vm-messages = { path = "../vm-messages" }
 vm-platform = { path = "../vm-platform" }

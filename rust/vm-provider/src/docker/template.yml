@@ -125,8 +125,8 @@ services:
       - PULSE_SERVER=unix:/tmp/pulseaudio.socket
       {% endif %}
       {% if config.services.postgresql.enabled | default(value=false) %}
-      - DATABASE_URL=postgresql://{{ config.services.postgresql.user | default(value="postgres") }}:{{ config.services.postgresql.password | default(value="postgres") }}@postgres:5432/{{ config.services.postgresql.database | default(value=project_name ~ "_dev") }}
-      - PGPASSWORD={{ config.services.postgresql.password | default(value="postgres") }}
+      - DATABASE_URL=postgresql://{{ config.services.postgresql.user | default(value="postgres") }}:{{ postgresql_password | default(value="postgres") }}@postgres:5432/{{ config.services.postgresql.database | default(value=project_name ~ "_dev") }}
+      - PGPASSWORD={{ postgresql_password | default(value="postgres") }}
       {% endif %}
       # Disable Python bytecode generation for clean read-only mounting
       - PYTHONDONTWRITEBYTECODE=1
@@ -215,7 +215,7 @@ services:
     environment:
       - POSTGRES_DB={{ config.services.postgresql.database | default(value=project_name ~ "_dev") }}
       - POSTGRES_USER={{ config.services.postgresql.user | default(value="postgres") }}
-      - POSTGRES_PASSWORD={{ config.services.postgresql.password | default(value="postgres") }}
+      - POSTGRES_PASSWORD={{ postgresql_password | default(value="postgres") }}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:

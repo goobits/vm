@@ -502,6 +502,25 @@ impl<'a> ComposeOperations<'a> {
         // Git worktrees volume
         self.configure_worktrees(&mut tera_context, &home_dir, &final_project_name);
 
+        // Get or generate passwords for database services
+        // Note: Using sync version since we're in a non-async context
+        if final_config
+            .services
+            .get("postgresql")
+            .is_some_and(|s| s.enabled)
+        {
+            match vm_core::secrets::get_or_generate_password_sync("postgresql") {
+                Ok(password) => {
+                    tera_context.insert("postgresql_password", &password);
+                }
+                Err(e) => {
+                    eprintln!("⚠️  Warning: Failed to get PostgreSQL password: {}", e);
+                    // Fall back to default for backwards compatibility
+                    tera_context.insert("postgresql_password", "postgres");
+                }
+            }
+        }
+
         let content = tera
             .render("docker-compose.yml", &tera_context)
             .map_err(|e| {

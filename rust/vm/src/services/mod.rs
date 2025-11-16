@@ -36,21 +36,7 @@ pub trait ManagedService: Send + Sync {
 
 /// Get a password from the secrets store, or generate a new one if it doesn't exist.
 pub async fn get_or_generate_password(service_name: &str) -> Result<String> {
-    let secrets_dir = vm_core::user_paths::secrets_dir()?;
-    tokio::fs::create_dir_all(&secrets_dir).await?;
-    let secret_file = secrets_dir.join(format!("{}.env", service_name));
-
-    if secret_file.exists() {
-        let password = tokio::fs::read_to_string(secret_file).await?;
-        Ok(password.trim().to_string())
-    } else {
-        let password = crate::utils::generate_random_password(16);
-        tokio::fs::write(&secret_file, &password).await?;
-        vm_core::vm_println!(
-            "💡 Generated new password for {} and saved to {:?}",
-            service_name,
-            secret_file
-        );
-        Ok(password)
-    }
+    vm_core::secrets::get_or_generate_password(service_name)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to get password: {}", e))
 }

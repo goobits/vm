@@ -23,13 +23,14 @@ Develop a new, stateful RESTful API service (`vm-api`) as a separate binary with
     - [ ] `POST /api/v1/workspaces/{id}/commands`: Run a non-interactive command; respond with streamed logs or operation reference.
     - [ ] `DELETE /api/v1/workspaces/{id}`: Destroy a workspace and purge related volumes/snapshots.
     - [ ] `GET/POST /api/v1/workspaces/{id}/snapshots`: List and create snapshots using existing snapshot primitives.
+    - [ ] `POST /api/v1/workspaces/{id}/snapshots/{snapshot_id}/restore`: Restore a workspace (or create a new one) from a saved snapshot.
     - [ ] `GET /api/v1/templates`: List workspace templates/detected presets.
     - [ ] `GET /api/v1/operations` & `GET /api/v1/operations/{id}`: Track asynchronous tasks (create, rebuild, snapshots) for the UI.
     - [ ] WebSocket channels (`/ws/workspaces/{id}/events`, `/ws/workspaces/{id}/shell`) for real-time events/log streaming.
 - [ ] Integrate with `vm-config` and `vm-provider` crates to execute workspace creation and deletion.
-- [ ] Add a persistence layer using SQLite and `sqlx` to store workspace metadata.
+- [ ] Add a persistence layer using SQLite and `sqlx` to store workspace metadata (default path: `~/.vm/api/vm.db` on Linux/macOS, `%APPDATA%\\vm\\api\\vm.db` on Windows).
 - [ ] Implement basic security using the `vm-auth-proxy` crate to protect all endpoints (sessions + API tokens).
-- [ ] Persist lifecycle operations and TTL expirations so a janitor job can clean idle workspaces automatically.
+- [ ] Persist lifecycle operations and TTL expirations so a janitor job (e.g., a background tokio task spawned within `vm-api`) can clean idle workspaces automatically.
 - [ ] Defer optional plugin discovery until after core lifecycle parity is complete, but ensure the schema lets `POST /workspaces` include plugin IDs when available.
 
 ## Success Criteria

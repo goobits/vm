@@ -86,6 +86,15 @@ fn add_database_service_fields(cache: &mut HashMap<String, SchemaType>, service:
 fn build_vm_schema_cache() -> HashMap<String, SchemaType> {
     let mut cache = HashMap::new();
 
+    add_vm_schema_fields(&mut cache);
+    add_service_schema_fields(&mut cache);
+    add_terminal_and_package_fields(&mut cache);
+
+    cache
+}
+
+/// Add VM-related schema fields
+fn add_vm_schema_fields(cache: &mut HashMap<String, SchemaType>) {
     // Simple scalar types and project fields
     add_strings!(
         cache,
@@ -140,10 +149,13 @@ fn build_vm_schema_cache() -> HashMap<String, SchemaType> {
         "tart.storage_path"
     );
     add_booleans!(cache, "tart.rosetta", "tart.install_docker");
+}
 
+/// Add service-related schema fields
+fn add_service_schema_fields(cache: &mut HashMap<String, SchemaType>) {
     // Service fields (common pattern)
     add_service_entries(
-        &mut cache,
+        cache,
         &[
             "postgresql",
             "redis",
@@ -157,8 +169,8 @@ fn build_vm_schema_cache() -> HashMap<String, SchemaType> {
     );
 
     // Database-specific fields
-    add_database_service_fields(&mut cache, "postgresql");
-    add_database_service_fields(&mut cache, "mysql");
+    add_database_service_fields(cache, "postgresql");
+    add_database_service_fields(cache, "mysql");
 
     // Service-specific fields
     add_booleans!(
@@ -174,7 +186,10 @@ fn build_vm_schema_cache() -> HashMap<String, SchemaType> {
         "services.gpu.type"
     );
     add_integers!(cache, "services.gpu.memory_mb");
+}
 
+/// Add terminal, package, and host sync schema fields
+fn add_terminal_and_package_fields(cache: &mut HashMap<String, SchemaType>) {
     // Terminal fields
     add_strings!(
         cache,
@@ -211,8 +226,6 @@ fn build_vm_schema_cache() -> HashMap<String, SchemaType> {
     );
     add_strings!(cache, "host_sync.worktrees.base_path");
     add_string_arrays!(cache, "host_sync.dotfiles", "networking.networks");
-
-    cache
 }
 
 /// Build the global schema cache
