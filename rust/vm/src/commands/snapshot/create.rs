@@ -259,13 +259,14 @@ pub async fn handle_create(
         async move {
             vm_core::vm_println!("  Backing up volume: {}", volume);
 
-            let archive_file = format!("{}.tar.gz", volume);
+            // Use zstd compression for 3-5x faster backups (vs gzip)
+            let archive_file = format!("{}.tar.zst", volume);
             let archive_path = volumes_dir.join(&archive_file);
 
             // Get full volume name (might be prefixed with project name)
             let full_volume_name = format!("{}_{}", project_name, volume);
 
-            // Export volume data using a temporary container
+            // Export volume data using alpine (has zstd) with parallel compression
             let run_args = [
                 "run",
                 "--rm",
@@ -273,13 +274,10 @@ pub async fn handle_create(
                 &format!("{}:/data", full_volume_name),
                 "-v",
                 &format!("{}:/backup", volumes_dir.to_string_lossy()),
-                "busybox",
-                "tar",
-                "czf",
-                &format!("/backup/{}", archive_file),
-                "-C",
-                "/data",
-                ".",
+                "alpine:latest",
+                "sh",
+                "-c",
+                &format!("tar -c -C /data . | zstd -3 -T0 > /backup/{}", archive_file),
             ];
 
             execute_docker(&run_args).await?;

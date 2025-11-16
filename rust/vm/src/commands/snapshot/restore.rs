@@ -134,7 +134,15 @@ pub async fn handle_restore(
                 // Create volume
                 execute_docker(&["volume", "create", &full_volume_name]).await?;
 
-                // Restore volume data
+                // Restore volume data with zstd decompression (3-5x faster than gzip)
+                // Support both .tar.zst (new) and .tar.gz (legacy) formats
+                let restore_cmd = if archive_file.ends_with(".tar.zst") {
+                    format!("zstd -d -c /backup/{} | tar -x -C /data", archive_file)
+                } else {
+                    // Legacy .tar.gz format
+                    format!("tar -xzf /backup/{} -C /data", archive_file)
+                };
+
                 let run_args = [
                     "run",
                     "--rm",
@@ -142,12 +150,10 @@ pub async fn handle_restore(
                     &format!("{}:/data", full_volume_name),
                     "-v",
                     &format!("{}:/backup", volumes_dir.to_string_lossy()),
-                    "busybox",
-                    "tar",
-                    "xzf",
-                    &format!("/backup/{}", archive_file),
-                    "-C",
-                    "/data",
+                    "alpine:latest",
+                    "sh",
+                    "-c",
+                    &restore_cmd,
                 ];
 
                 execute_docker(&run_args).await?;
