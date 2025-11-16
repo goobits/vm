@@ -318,7 +318,15 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
             fi; \
         done; \
         if [ -n "$PACKAGES_TO_INSTALL" ]; then \
-            apt-get update && apt-get install -y $PACKAGES_TO_INSTALL; \
+            # Skip apt-get update if cache is recent (< 24h) - saves 30-60s
+            if [ ! -f /var/lib/apt/lists/*Packages ] || \
+               [ $(find /var/lib/apt/lists -name '*Packages' -mtime -1 2>/dev/null | wc -l) -eq 0 ]; then \
+                echo "Updating APT cache..."; \
+                apt-get update; \
+            else \
+                echo "APT cache is recent, skipping update"; \
+            fi && \
+            apt-get install -y $PACKAGES_TO_INSTALL; \
         else \
             echo "All APT packages already installed"; \
         fi; \

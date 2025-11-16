@@ -121,17 +121,19 @@ pub async fn handle_export(
         let service_name = service.name.clone();
         let image_tag = service.image_tag.clone();
         let image_file = service.image_file.clone();
+        let image_digest = service.image_digest.clone();
         let images_dir = images_dir.clone();
 
         async move {
             vm_println!("  Exporting image for service '{}'...", service_name);
 
             // Check if image exists
-            let image_exists = execute_docker(&["image", "inspect", &image_tag])
-                .await
-                .is_ok();
+            let current_digest =
+                execute_docker(&["image", "inspect", "--format={{.Id}}", &image_tag])
+                    .await
+                    .ok();
 
-            if !image_exists {
+            if current_digest.is_none() {
                 vm_error!(
                     "Image '{}' not found, skipping. You may need to recreate this snapshot.",
                     image_tag
@@ -139,8 +141,19 @@ pub async fn handle_export(
                 return Ok::<(), VmError>(());
             }
 
-            // Export image
+            // Check if export already exists with same digest (deduplication)
             let image_export_path = images_dir.join(&image_file);
+            if image_export_path.exists()
+                && matches!((&image_digest, &current_digest), (Some(stored), Some(current)) if stored == current)
+            {
+                vm_println!(
+                    "  Image '{}' unchanged (digest matches), skipping export",
+                    service_name
+                );
+                return Ok::<(), VmError>(());
+            }
+
+            // Export image
             let save_args = [
                 "save",
                 &image_tag,
