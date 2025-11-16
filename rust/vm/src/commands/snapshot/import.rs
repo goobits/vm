@@ -47,7 +47,8 @@ pub async fn handle_import(
     // Create temp directory for extraction
     let temp_dir = tempfile::tempdir().map_err(|e| VmError::filesystem(e, "tempdir", "create"))?;
     let extract_dir = temp_dir.path().join("snapshot");
-    std::fs::create_dir_all(&extract_dir)
+    tokio::fs::create_dir_all(&extract_dir)
+        .await
         .map_err(|e| VmError::filesystem(e, extract_dir.display().to_string(), "create_dir_all"))?;
 
     vm_println!("  Extracting archive...");
@@ -72,7 +73,8 @@ pub async fn handle_import(
         ));
     }
 
-    let manifest_content = std::fs::read_to_string(&manifest_path)
+    let manifest_content = tokio::fs::read_to_string(&manifest_path)
+        .await
         .map_err(|e| VmError::filesystem(e, manifest_path.display().to_string(), "read"))?;
 
     let manifest: serde_json::Value = serde_json::from_str(&manifest_content)
@@ -209,19 +211,23 @@ pub async fn handle_import(
 
     if snapshot_dir.exists() && force {
         vm_println!("  Removing existing snapshot...");
-        std::fs::remove_dir_all(&snapshot_dir).map_err(|e| {
-            VmError::filesystem(e, snapshot_dir.display().to_string(), "remove_dir_all")
-        })?;
+        tokio::fs::remove_dir_all(&snapshot_dir)
+            .await
+            .map_err(|e| {
+                VmError::filesystem(e, snapshot_dir.display().to_string(), "remove_dir_all")
+            })?;
     }
 
     vm_println!("  Installing snapshot...");
 
-    std::fs::create_dir_all(&snapshot_dir).map_err(|e| {
-        VmError::filesystem(e, snapshot_dir.display().to_string(), "create_dir_all")
-    })?;
+    tokio::fs::create_dir_all(&snapshot_dir)
+        .await
+        .map_err(|e| {
+            VmError::filesystem(e, snapshot_dir.display().to_string(), "create_dir_all")
+        })?;
 
     // Copy all snapshot contents
-    copy_dir_all(&extract_dir, &snapshot_dir)?;
+    copy_dir_all(&extract_dir, &snapshot_dir).await?;
 
     vm_success!("Snapshot '{}' imported successfully!", snapshot_name);
 
@@ -241,14 +247,20 @@ pub async fn handle_import(
 }
 
 /// Recursively copy a directory
-fn copy_dir_all(src: &Path, dst: &Path) -> VmResult<()> {
-    std::fs::create_dir_all(dst)
+async fn copy_dir_all(src: &Path, dst: &Path) -> VmResult<()> {
+    tokio::fs::create_dir_all(dst)
+        .await
         .map_err(|e| VmError::filesystem(e, dst.display().to_string(), "create_dir_all"))?;
 
-    for entry in std::fs::read_dir(src)
-        .map_err(|e| VmError::filesystem(e, src.display().to_string(), "read_dir"))?
+    let mut entries = tokio::fs::read_dir(src)
+        .await
+        .map_err(|e| VmError::filesystem(e, src.display().to_string(), "read_dir"))?;
+
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .map_err(|e| VmError::general(e, "Failed to read directory entry"))?
     {
-        let entry = entry.map_err(|e| VmError::general(e, "Failed to read directory entry"))?;
         let path = entry.path();
         let file_name = entry.file_name();
 
@@ -260,9 +272,10 @@ fn copy_dir_all(src: &Path, dst: &Path) -> VmResult<()> {
         let dest_path = dst.join(&file_name);
 
         if path.is_dir() {
-            copy_dir_all(&path, &dest_path)?;
+            Box::pin(copy_dir_all(&path, &dest_path)).await?;
         } else {
-            std::fs::copy(&path, &dest_path)
+            tokio::fs::copy(&path, &dest_path)
+                .await
                 .map_err(|e| VmError::filesystem(e, dest_path.display().to_string(), "copy"))?;
         }
     }

@@ -87,9 +87,11 @@ pub async fn handle_export(
     // Create temp directory for export
     let temp_dir = tempfile::tempdir().map_err(|e| VmError::filesystem(e, "tempdir", "create"))?;
     let export_build_dir = temp_dir.path().join("snapshot");
-    std::fs::create_dir_all(&export_build_dir).map_err(|e| {
-        VmError::filesystem(e, export_build_dir.display().to_string(), "create_dir_all")
-    })?;
+    tokio::fs::create_dir_all(&export_build_dir)
+        .await
+        .map_err(|e| {
+            VmError::filesystem(e, export_build_dir.display().to_string(), "create_dir_all")
+        })?;
 
     // Create manifest.json
     let manifest = serde_json::json!({
@@ -107,12 +109,14 @@ pub async fn handle_export(
     let manifest_path = export_build_dir.join("manifest.json");
     let manifest_json = serde_json::to_string_pretty(&manifest)
         .map_err(|e| VmError::general(e, "Failed to serialize manifest"))?;
-    std::fs::write(&manifest_path, manifest_json)
+    tokio::fs::write(&manifest_path, manifest_json)
+        .await
         .map_err(|e| VmError::filesystem(e, manifest_path.display().to_string(), "write"))?;
 
     // Create images directory and export Docker images
     let images_dir = export_build_dir.join("images");
-    std::fs::create_dir_all(&images_dir)
+    tokio::fs::create_dir_all(&images_dir)
+        .await
         .map_err(|e| VmError::filesystem(e, images_dir.display().to_string(), "create_dir_all"))?;
 
     // Parallelize image exports for 2-4x faster operation
@@ -182,21 +186,22 @@ pub async fn handle_export(
 
     // Copy metadata.json
     let metadata_dest = export_build_dir.join("metadata.json");
-    std::fs::copy(&metadata_path, &metadata_dest)
+    tokio::fs::copy(&metadata_path, &metadata_dest)
+        .await
         .map_err(|e| VmError::filesystem(e, metadata_dest.display().to_string(), "copy"))?;
 
     // Copy volumes if they exist
     let volumes_src = snapshot_dir.join("volumes");
     if volumes_src.exists() {
         let volumes_dest = export_build_dir.join("volumes");
-        copy_dir_all(&volumes_src, &volumes_dest)?;
+        copy_dir_all(&volumes_src, &volumes_dest).await?;
     }
 
     // Copy compose files if they exist
     let compose_src = snapshot_dir.join("compose");
     if compose_src.exists() {
         let compose_dest = export_build_dir.join("compose");
-        copy_dir_all(&compose_src, &compose_dest)?;
+        copy_dir_all(&compose_src, &compose_dest).await?;
     }
 
     vm_println!("  Compressing snapshot...");
@@ -238,21 +243,29 @@ pub async fn handle_export(
 }
 
 /// Recursively copy a directory
-fn copy_dir_all(src: &Path, dst: &Path) -> VmResult<()> {
-    std::fs::create_dir_all(dst)
+async fn copy_dir_all(src: &Path, dst: &Path) -> VmResult<()> {
+    tokio::fs::create_dir_all(dst)
+        .await
         .map_err(|e| VmError::filesystem(e, dst.display().to_string(), "create_dir_all"))?;
 
-    for entry in std::fs::read_dir(src)
-        .map_err(|e| VmError::filesystem(e, src.display().to_string(), "read_dir"))?
+    let mut entries = tokio::fs::read_dir(src)
+        .await
+        .map_err(|e| VmError::filesystem(e, src.display().to_string(), "read_dir"))?;
+
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .map_err(|e| VmError::general(e, "Failed to read directory entry"))?
     {
-        let entry = entry.map_err(|e| VmError::general(e, "Failed to read directory entry"))?;
         let path = entry.path();
-        let dest_path = dst.join(entry.file_name());
+        let file_name = entry.file_name();
+        let dest_path = dst.join(&file_name);
 
         if path.is_dir() {
-            copy_dir_all(&path, &dest_path)?;
+            Box::pin(copy_dir_all(&path, &dest_path)).await?;
         } else {
-            std::fs::copy(&path, &dest_path)
+            tokio::fs::copy(&path, &dest_path)
+                .await
                 .map_err(|e| VmError::filesystem(e, dest_path.display().to_string(), "copy"))?;
         }
     }

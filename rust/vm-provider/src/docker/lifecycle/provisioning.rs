@@ -58,14 +58,25 @@ impl<'a> LifecycleOperations<'a> {
         Ok(())
     }
 
-    /// Wait for container to become ready
-    fn wait_for_container_ready(container_name: &str) -> Result<()> {
-        let mut attempt = 1;
-        while attempt <= CONTAINER_READINESS_MAX_ATTEMPTS {
+    /// Wait for container to become ready with exponential backoff
+    async fn wait_for_container_ready_async(container_name: &str) -> Result<()> {
+        use tokio::time::{sleep, Duration, Instant};
+
+        let start = Instant::now();
+        let max_duration = Duration::from_secs(
+            u64::from(CONTAINER_READINESS_MAX_ATTEMPTS) * CONTAINER_READINESS_SLEEP_SECONDS,
+        );
+
+        // Exponential backoff: 100ms, 200ms, 400ms, 800ms, 1s, 1s, ...
+        let mut backoff = Duration::from_millis(100);
+        let max_backoff = Duration::from_secs(1);
+
+        loop {
             if crate::docker::DockerOps::test_container_readiness(container_name) {
                 return Ok(());
             }
-            if attempt == CONTAINER_READINESS_MAX_ATTEMPTS {
+
+            if start.elapsed() >= max_duration {
                 vm_error!("Container failed to become ready");
                 return Err(VmError::Internal(format!(
                     "Container '{}' failed to become ready after {} seconds. Container may be unhealthy or not starting properly",
@@ -73,12 +84,18 @@ impl<'a> LifecycleOperations<'a> {
                     u64::from(CONTAINER_READINESS_MAX_ATTEMPTS) * CONTAINER_READINESS_SLEEP_SECONDS
                 )));
             }
-            std::thread::sleep(std::time::Duration::from_secs(
-                CONTAINER_READINESS_SLEEP_SECONDS,
-            ));
-            attempt += 1;
+
+            sleep(backoff).await;
+            backoff = (backoff * 2).min(max_backoff);
         }
-        Ok(())
+    }
+
+    /// Wait for container to become ready (synchronous wrapper)
+    fn wait_for_container_ready(container_name: &str) -> Result<()> {
+        // Create a new tokio runtime to run async code in sync context
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|e| VmError::Internal(format!("Failed to create async runtime: {}", e)))?;
+        rt.block_on(Self::wait_for_container_ready_async(container_name))
     }
 
     /// Re-provision existing container (public API)

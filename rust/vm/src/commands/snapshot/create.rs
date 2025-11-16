@@ -5,7 +5,9 @@ use super::metadata::{ServiceSnapshot, SnapshotMetadata, VolumeSnapshot};
 use crate::error::{VmError, VmResult};
 use chrono::Utc;
 use futures::stream::{self, StreamExt};
+use rayon::prelude::*;
 use vm_config::AppConfig;
+use walkdir::WalkDir;
 
 /// Execute docker compose command and return output
 async fn execute_docker_compose(args: &[&str], project_dir: &std::path::Path) -> VmResult<String> {
@@ -153,7 +155,8 @@ pub async fn handle_create(
     let compose_dir = snapshot_dir.join("compose");
 
     for dir in [&snapshot_dir, &images_dir, &volumes_dir, &compose_dir] {
-        std::fs::create_dir_all(dir)
+        tokio::fs::create_dir_all(dir)
+            .await
             .map_err(|e| VmError::filesystem(e, dir.to_string_lossy(), "create_dir_all"))?;
     }
 
@@ -314,18 +317,20 @@ pub async fn handle_create(
     let vm_config_file = "vm.yaml";
 
     if project_dir.join(compose_file).exists() {
-        std::fs::copy(
+        tokio::fs::copy(
             project_dir.join(compose_file),
             compose_dir.join(compose_file),
         )
+        .await
         .map_err(|e| VmError::filesystem(e, compose_file, "copy"))?;
     }
 
     if project_dir.join(vm_config_file).exists() {
-        std::fs::copy(
+        tokio::fs::copy(
             project_dir.join(vm_config_file),
             compose_dir.join(vm_config_file),
         )
+        .await
         .map_err(|e| VmError::filesystem(e, vm_config_file, "copy"))?;
     }
 
@@ -363,29 +368,16 @@ pub async fn handle_create(
     Ok(())
 }
 
-/// Calculate total size of directory recursively
+/// Calculate total size of directory recursively using parallel iteration
 fn calculate_directory_size(path: &std::path::Path) -> VmResult<u64> {
-    let mut total = 0u64;
-
-    if path.is_dir() {
-        let entries = std::fs::read_dir(path)
-            .map_err(|e| VmError::filesystem(e, path.to_string_lossy(), "read_dir"))?;
-
-        for entry in entries {
-            let entry = entry.map_err(|e| VmError::general(e, "Failed to read directory entry"))?;
-            let path = entry.path();
-
-            if path.is_dir() {
-                total += calculate_directory_size(&path)?;
-            } else {
-                let metadata = std::fs::metadata(&path)
-                    .map_err(|e| VmError::filesystem(e, path.to_string_lossy(), "metadata"))?;
-                total += metadata.len();
-            }
-        }
-    }
-
-    Ok(total)
+    Ok(WalkDir::new(path)
+        .into_iter()
+        .par_bridge() // Parallel iteration with rayon
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .filter_map(|e| e.metadata().ok())
+        .map(|m| m.len())
+        .sum())
 }
 
 /// Handle snapshot creation from a Dockerfile

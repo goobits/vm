@@ -21,6 +21,7 @@ vm-platform = { path = "../vm-platform" }
 chrono = { workspace = true }
 rayon = { workspace = true }
 shellexpand = { workspace = true }
+tokio = { workspace = true, features = ["time", "rt"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

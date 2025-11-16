@@ -224,13 +224,15 @@ pub async fn handle_restore(
             // Create backup of existing file
             if dest.exists() {
                 let backup_path = project_dir.join(format!("{}.bak", config_file));
-                std::fs::copy(&dest, &backup_path)
+                tokio::fs::copy(&dest, &backup_path)
+                    .await
                     .map_err(|e| VmError::filesystem(e, dest.to_string_lossy(), "copy"))?;
                 vm_core::vm_println!("  Backed up {} to {}.bak", config_file, config_file);
             }
 
             // Restore from snapshot
-            std::fs::copy(&source, &dest)
+            tokio::fs::copy(&source, &dest)
+                .await
                 .map_err(|e| VmError::filesystem(e, dest.to_string_lossy(), "copy"))?;
             vm_core::vm_println!("  Restored {}", config_file);
         }
