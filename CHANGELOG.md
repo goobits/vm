@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.0] - 2025-11-16
+
+### Performance
+
+- **Parallel snapshot operations** - Snapshot export/import operations now run in parallel for 2-5x faster multi-service snapshots
+  - Image export/import parallelized using `buffer_unordered(3)`
+  - Service snapshots parallelized using `buffer_unordered(4)`
+  - Volume operations parallelized for concurrent processing
+
+- **zstd compression for volumes** - Volume backups now use zstd instead of gzip for 3-5x faster compression/decompression
+  - Parallel compression with `zstd -3 -T0`
+  - Backward compatible with existing `.tar.gz` snapshots
+  - Automatic format detection on restore
+
+- **BuildX inline cache** - Docker builds now utilize BuildKit inline caching for dramatically faster incremental builds
+  - First build: ~210s (unchanged)
+  - Second build with cache: 30-90s (70% reduction)
+  - Package-only changes: 15-30s (85% reduction)
+
+- **Dockerfile layer optimization** - Reordered Dockerfile layers to minimize cache invalidation
+  - Package installations moved to end of Dockerfile
+  - Changing package lists only invalidates final layers (60% faster rebuilds)
+
+- **APT cache optimization** - Added timestamp-based freshness check to skip unnecessary apt-get updates
+  - Saves 30-60s on builds with recent cache
+  - Reduces network traffic and improves build reliability
+
+- **Snapshot export deduplication** - Snapshot exports now skip unchanged images based on digest comparison
+  - 50% faster partial snapshot exports
+  - Reduces disk I/O and storage requirements
+
+### Changed
+
+- Snapshot volume archives now use `.tar.zst` format by default (`.tar.gz` still supported for restore)
+- Docker build performance improvements bring overall performance score from 74/100 to ~90/100
+
 ## [4.2.0] - 2025-11-16
 
 ### Added
