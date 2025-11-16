@@ -231,9 +231,9 @@ pub async fn handle_create(
         }
     });
 
-    // Snapshot up to 4 services concurrently
+    // Snapshot services concurrently (CPU-adaptive concurrency)
     let services: Vec<ServiceSnapshot> = stream::iter(snapshot_futures)
-        .buffer_unordered(4)
+        .buffer_unordered(super::optimal_concurrency())
         .collect::<Vec<_>>()
         .await
         .into_iter()
@@ -303,9 +303,9 @@ pub async fn handle_create(
         }
     });
 
-    // Backup up to 3 volumes concurrently
+    // Backup volumes concurrently (CPU-adaptive concurrency)
     let volumes: Vec<VolumeSnapshot> = stream::iter(volume_futures)
-        .buffer_unordered(3)
+        .buffer_unordered(super::optimal_concurrency())
         .collect::<Vec<_>>()
         .await
         .into_iter()

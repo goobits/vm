@@ -49,6 +49,7 @@ chrono = "0.4.42"
 rand = { workspace = true }
 rayon = { workspace = true }
 walkdir = { workspace = true }
+num_cpus = { workspace = true }
 flate2 = "1.0"
 tar = "0.4"
 

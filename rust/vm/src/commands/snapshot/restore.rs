@@ -161,9 +161,9 @@ pub async fn handle_restore(
             }
         });
 
-        // Restore up to 3 volumes concurrently
+        // Restore volumes concurrently (CPU-adaptive concurrency)
         stream::iter(volume_futures)
-            .buffer_unordered(3)
+            .buffer_unordered(super::optimal_concurrency())
             .collect::<Vec<_>>()
             .await
             .into_iter()
@@ -202,9 +202,9 @@ pub async fn handle_restore(
             }
         });
 
-        // Load up to 3 images concurrently (I/O bound, not CPU)
+        // Load images concurrently (CPU-adaptive concurrency)
         stream::iter(load_futures)
-            .buffer_unordered(3)
+            .buffer_unordered(super::optimal_concurrency())
             .collect::<Vec<_>>()
             .await
             .into_iter()

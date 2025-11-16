@@ -1,4 +1,5 @@
 // Standard library
+use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -80,15 +81,15 @@ fn configure_ssh_agent(config: &VmConfig, tera_context: &mut TeraContext) {
     }
 }
 
-/// Expand tilde (~) in path to home directory
-fn expand_tilde(path: &str) -> Option<String> {
+/// Expand tilde (~) in path to home directory (zero-copy for paths without tilde)
+fn expand_tilde(path: &str) -> Option<Cow<'_, str>> {
     if path.starts_with("~/") {
         let home = std::env::var("HOME").ok()?;
-        Some(path.replacen("~", &home, 1))
+        Some(Cow::Owned(path.replacen("~", &home, 1)))
     } else if path == "~" {
-        std::env::var("HOME").ok()
+        std::env::var("HOME").ok().map(Cow::Owned)
     } else {
-        Some(path.to_string())
+        Some(Cow::Borrowed(path))
     }
 }
 
@@ -111,7 +112,7 @@ fn process_dotfiles(config: &VmConfig, username: &str) -> Vec<(String, String)> 
             let expanded = expand_tilde(dotfile_path)?;
 
             // Check if the path exists
-            let path = Path::new(&expanded);
+            let path = Path::new(expanded.as_ref());
             if !path.exists() {
                 eprintln!("Warning: Dotfile not found, skipping: {}", expanded);
                 return None;
@@ -131,7 +132,7 @@ fn process_dotfiles(config: &VmConfig, username: &str) -> Vec<(String, String)> 
                 format!("/home/{}/{}", username, dotfile_path)
             };
 
-            Some((expanded, container_path))
+            Some((expanded.into_owned(), container_path))
         })
         .collect()
 }

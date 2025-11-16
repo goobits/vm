@@ -197,9 +197,9 @@ pub async fn handle_import(
             }
         });
 
-        // Load up to 3 images concurrently
+        // Load images concurrently (CPU-adaptive concurrency)
         stream::iter(load_futures)
-            .buffer_unordered(3)
+            .buffer_unordered(super::optimal_concurrency())
             .collect::<Vec<_>>()
             .await
             .into_iter()

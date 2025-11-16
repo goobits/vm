@@ -7,6 +7,7 @@
 
 use crate::error::{Result, VmError};
 use crate::vm_warning;
+use std::borrow::Cow;
 use std::path::PathBuf;
 
 /// Get the user's configuration directory for the VM tool.
@@ -203,17 +204,17 @@ pub fn is_windows_path(path: &str) -> bool {
 
 /// Convert a Unix-style path to the appropriate platform format.
 ///
-/// On Unix systems, this is a no-op. On Windows, it converts forward slashes
+/// On Unix systems, this is a no-op (zero-copy). On Windows, it converts forward slashes
 /// to backslashes and handles drive letters.
-pub fn to_platform_path(path: &str) -> String {
+pub fn to_platform_path(path: &str) -> Cow<'_, str> {
     #[cfg(windows)]
     {
-        path.replace('/', "\\")
+        Cow::Owned(path.replace('/', "\\"))
     }
 
     #[cfg(not(windows))]
     {
-        path.to_string()
+        Cow::Borrowed(path)
     }
 }
 

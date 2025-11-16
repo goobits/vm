@@ -176,9 +176,9 @@ pub async fn handle_export(
         }
     });
 
-    // Export up to 3 images concurrently
+    // Export images concurrently (CPU-adaptive concurrency)
     stream::iter(export_futures)
-        .buffer_unordered(3)
+        .buffer_unordered(super::optimal_concurrency())
         .collect::<Vec<_>>()
         .await
         .into_iter()

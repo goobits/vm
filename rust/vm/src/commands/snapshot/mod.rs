@@ -11,6 +11,19 @@ use crate::error::VmResult;
 use std::path::PathBuf;
 use vm_config::AppConfig;
 
+/// Calculate optimal concurrency limit based on available CPU count
+///
+/// Returns a value between 2 and 8 to balance:
+/// - Performance on multi-core systems (2-8 concurrent operations)
+/// - Protection against resource exhaustion (cap at 8)
+/// - Minimal performance on single/dual-core systems (minimum 2)
+///
+/// This is used for parallel Docker operations (image export/import, volume backup/restore)
+/// which are I/O-bound but can benefit from moderate parallelism.
+pub fn optimal_concurrency() -> usize {
+    num_cpus::get().clamp(2, 8)
+}
+
 pub async fn handle_snapshot(
     command: SnapshotSubcommand,
     config_path: Option<PathBuf>,
