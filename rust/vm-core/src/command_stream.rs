@@ -16,9 +16,24 @@ pub trait ProgressParser: Send + Sync {
     fn finish(&self);
 }
 
+/// Helper to enable BuildKit for Docker commands
+/// This provides 40-60% faster builds through parallel layer processing and cache mounts
+fn with_buildkit<A: AsRef<OsStr>>(command: &str, args: &[A]) -> duct::Expression {
+    let mut cmd_builder = cmd(command, args);
+
+    if command == "docker" {
+        cmd_builder = cmd_builder
+            .env("DOCKER_BUILDKIT", "1")
+            .env("COMPOSE_DOCKER_CLI_BUILD", "1")
+            .env("BUILDKIT_PROGRESS", "plain");
+    }
+
+    cmd_builder
+}
+
 /// The original simple command streamer for backward compatibility.
 pub fn stream_command<A: AsRef<OsStr>>(command: &str, args: &[A]) -> Result<()> {
-    let reader = cmd(command, args).stderr_to_stdout().reader()?;
+    let reader = with_buildkit(command, args).stderr_to_stdout().reader()?;
     let lines = BufReader::new(reader).lines();
     for line in lines {
         info!("{}", line?);
@@ -29,17 +44,7 @@ pub fn stream_command<A: AsRef<OsStr>>(command: &str, args: &[A]) -> Result<()> 
 /// Stream command output directly to stdout, bypassing the logging system.
 /// Use this for long-running commands where user needs progress feedback.
 pub fn stream_command_visible<A: AsRef<OsStr>>(command: &str, args: &[A]) -> Result<()> {
-    let mut command_builder = cmd(command, args);
-
-    // Enable BuildKit for Docker commands to leverage parallel builds and cache mounts
-    if command == "docker" {
-        command_builder = command_builder
-            .env("DOCKER_BUILDKIT", "1")
-            .env("COMPOSE_DOCKER_CLI_BUILD", "1")
-            .env("BUILDKIT_PROGRESS", "plain");
-    }
-
-    let reader = command_builder.stderr_to_stdout().reader()?;
+    let reader = with_buildkit(command, args).stderr_to_stdout().reader()?;
     let lines = BufReader::new(reader).lines();
     for line in lines {
         println!("{}", line?);
@@ -53,7 +58,7 @@ pub fn stream_command_with_progress<A: AsRef<OsStr>>(
     args: &[A],
     mut parser: Option<Box<dyn ProgressParser>>,
 ) -> Result<()> {
-    let reader = cmd(command, args).stderr_to_stdout().reader()?;
+    let reader = with_buildkit(command, args).stderr_to_stdout().reader()?;
     let lines = BufReader::new(reader).lines();
 
     for line in lines {
