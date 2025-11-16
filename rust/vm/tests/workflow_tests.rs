@@ -17,6 +17,47 @@ use tempfile::TempDir;
 #[cfg(feature = "integration")]
 static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
+/// Helper function to assert a YAML value equals an expected string, handling both string and numeric types
+#[cfg(feature = "integration")]
+fn assert_yaml_value_eq(value: &serde_yaml::Value, expected: &str, field_name: &str) {
+    if let Some(s) = value.as_str() {
+        assert_eq!(
+            s, expected,
+            "Expected {} to be '{}' (as string)",
+            field_name, expected
+        );
+    } else if let Some(n) = value.as_i64() {
+        let expected_num: i64 = expected.parse().unwrap_or_else(|_| {
+            panic!(
+                "Cannot parse '{}' as number for field {}",
+                expected, field_name
+            )
+        });
+        assert_eq!(
+            n, expected_num,
+            "Expected {} to be {} (as number)",
+            field_name, expected_num
+        );
+    } else if let Some(n) = value.as_u64() {
+        let expected_num: u64 = expected.parse().unwrap_or_else(|_| {
+            panic!(
+                "Cannot parse '{}' as number for field {}",
+                expected, field_name
+            )
+        });
+        assert_eq!(
+            n, expected_num,
+            "Expected {} to be {} (as number)",
+            field_name, expected_num
+        );
+    } else {
+        panic!(
+            "{} is neither string nor number, got: {:?}",
+            field_name, value
+        );
+    }
+}
+
 /// Test fixture for end-to-end CLI workflow testing
 #[cfg(feature = "integration")]
 struct WorkflowTestFixture {
@@ -156,8 +197,30 @@ fn test_basic_config_workflow() -> Result<()> {
     let output = fixture.run_vm_command(&["config", "get"])?;
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout)?;
-    assert!(stdout.contains("memory: 4096"));
-    assert!(stdout.contains("provider: docker"));
+
+    // Extract YAML content (skip header lines and footer hints)
+    let yaml_content: String = stdout
+        .lines()
+        .skip_while(|line| {
+            line.trim().is_empty() || line.starts_with("📋") || line.starts_with("💡")
+        })
+        .take_while(|line| !line.starts_with("💡"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // Parse the YAML output to check values programmatically
+    let config_value: serde_yaml::Value =
+        serde_yaml::from_str(&yaml_content).expect("Failed to parse YAML output");
+
+    // Check memory value (can be string or number)
+    assert_yaml_value_eq(&config_value["vm"]["memory"], "4096", "vm.memory");
+
+    // Check provider value
+    assert_eq!(
+        config_value["provider"].as_str().unwrap_or(""),
+        "docker",
+        "Expected provider to be docker"
+    );
 
     Ok(())
 }
@@ -204,11 +267,36 @@ npm_packages:
     // Step 4: Verify preset was applied
     assert!(fixture.file_exists("vm.yaml"));
     let config_content = fixture.read_file("vm.yaml")?;
-    assert!(config_content.contains("memory: 8192"));
-    assert!(config_content.contains("cpus: 4"));
-    assert!(config_content.contains("redis:"));
-    assert!(config_content.contains("postgresql:"));
-    assert!(config_content.contains("eslint"));
+
+    // Parse YAML to check numeric values
+    let config_value: serde_yaml::Value =
+        serde_yaml::from_str(&config_content).expect("Failed to parse vm.yaml");
+
+    // Check numeric values (can be strings or numbers)
+    assert_yaml_value_eq(&config_value["vm"]["memory"], "8192", "vm.memory");
+    assert_yaml_value_eq(&config_value["vm"]["cpus"], "4", "vm.cpus");
+
+    // Check services are present
+    assert!(
+        !config_value["services"]["redis"].is_null(),
+        "Expected redis service"
+    );
+    assert!(
+        !config_value["services"]["postgresql"].is_null(),
+        "Expected postgresql service"
+    );
+
+    // Check npm_packages contains eslint
+    let npm_packages = config_value["npm_packages"].as_sequence();
+    assert!(
+        npm_packages.is_some(),
+        "Expected npm_packages to be an array"
+    );
+    let has_eslint = npm_packages
+        .unwrap()
+        .iter()
+        .any(|p| p.as_str() == Some("eslint"));
+    assert!(has_eslint, "Expected eslint in npm_packages");
 
     // Step 5: Override a value from the preset
     let output = fixture.run_vm_command(&["config", "set", "vm.memory", "16384"])?;
@@ -347,15 +435,61 @@ fn test_global_vs_local_config_workflow() -> Result<()> {
     let output = fixture.run_vm_command(&["config", "get", "--global"])?;
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout)?;
-    assert!(stdout.contains("provider: tart"));
-    assert!(stdout.contains("cpus: 8"));
+
+    // Extract YAML content (skip header lines and footer hints)
+    let yaml_content: String = stdout
+        .lines()
+        .skip_while(|line| {
+            line.trim().is_empty() || line.starts_with("📋") || line.starts_with("💡")
+        })
+        .take_while(|line| !line.starts_with("💡"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // Parse the YAML output to check values programmatically
+    let config_value: serde_yaml::Value = serde_yaml::from_str(&yaml_content).unwrap_or_else(|e| {
+        panic!(
+            "Failed to parse global config YAML output.\nError: {}\nYAML content:\n{}",
+            e, yaml_content
+        );
+    });
+
+    // Check global config values
+    assert_eq!(
+        config_value["provider"].as_str().unwrap_or(""),
+        "tart",
+        "Expected global provider to be tart"
+    );
+
+    // Check vm.cpus
+    assert_yaml_value_eq(&config_value["vm"]["cpus"], "8", "vm.cpus");
 
     // Step 4: Verify local config
     let output = fixture.run_vm_command(&["config", "get"])?;
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout)?;
-    assert!(stdout.contains("provider: docker")); // Local overrides global
-    assert!(stdout.contains("memory: 4096"));
+
+    // Extract YAML content (skip header lines and footer hints)
+    let yaml_content: String = stdout
+        .lines()
+        .skip_while(|line| {
+            line.trim().is_empty() || line.starts_with("📋") || line.starts_with("💡")
+        })
+        .take_while(|line| !line.starts_with("💡"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // Parse the YAML output to check values programmatically
+    let config_value: serde_yaml::Value =
+        serde_yaml::from_str(&yaml_content).expect("Failed to parse local config YAML output");
+
+    // Check local config values (local overrides global)
+    assert_eq!(
+        config_value["provider"].as_str().unwrap_or(""),
+        "docker",
+        "Expected local provider to be docker (overrides global)"
+    );
+    assert_yaml_value_eq(&config_value["vm"]["memory"], "4096", "vm.memory");
 
     // Step 5: Verify local provider overrides global
     let output = fixture.run_vm_command(&["config", "get", "provider"])?;
@@ -417,24 +551,58 @@ ports:
     // Step 4: Verify composition results
     let config_content = fixture.read_file("vm.yaml")?;
 
+    // Parse YAML to check numeric values
+    let config_value: serde_yaml::Value =
+        serde_yaml::from_str(&config_content).expect("Failed to parse vm.yaml");
+
     // Memory should be from override preset
-    assert!(config_content.contains("memory: 4096"));
+    assert_yaml_value_eq(
+        &config_value["vm"]["memory"],
+        "4096",
+        "vm.memory (from override preset)",
+    );
 
     // CPUs should be from base preset (not overridden)
-    assert!(config_content.contains("cpus: 2"));
+    assert_yaml_value_eq(
+        &config_value["vm"]["cpus"],
+        "2",
+        "vm.cpus (from base preset)",
+    );
 
     // Swap should be added from override
-    assert!(config_content.contains("swap: 1024"));
+    assert_yaml_value_eq(
+        &config_value["vm"]["swap"],
+        "1024",
+        "vm.swap (from override preset)",
+    );
 
     // Both services should be present
-    assert!(config_content.contains("redis:"));
-    assert!(config_content.contains("postgresql:"));
+    assert!(
+        !config_value["services"]["redis"].is_null(),
+        "Expected redis service"
+    );
+    assert!(
+        !config_value["services"]["postgresql"].is_null(),
+        "Expected postgresql service"
+    );
 
     // npm_packages should be from override (arrays replace)
-    assert!(config_content.contains("prettier"));
+    let npm_packages = config_value["npm_packages"].as_sequence();
+    assert!(
+        npm_packages.is_some(),
+        "Expected npm_packages to be an array"
+    );
+    let has_prettier = npm_packages
+        .unwrap()
+        .iter()
+        .any(|p| p.as_str() == Some("prettier"));
+    assert!(has_prettier, "Expected prettier in npm_packages");
 
     // Ports range should be added
-    assert!(config_content.contains("_range:"));
+    assert!(
+        !config_value["ports"]["_range"].is_null(),
+        "Expected ports._range to be set"
+    );
 
     Ok(())
 }

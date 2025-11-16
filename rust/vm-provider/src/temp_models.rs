@@ -4,19 +4,14 @@ use std::path::{Path, PathBuf};
 use vm_core::error::{Result, VmError};
 
 /// Mount permission levels for temp VM mounts
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum MountPermission {
     #[serde(rename = "ro")]
     ReadOnly,
     #[serde(rename = "rw")]
+    #[default]
     ReadWrite,
-}
-
-impl Default for MountPermission {
-    fn default() -> Self {
-        Self::ReadWrite
-    }
 }
 
 impl std::fmt::Display for MountPermission {

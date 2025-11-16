@@ -5,20 +5,15 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Scope of secret access
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum SecretScope {
     /// Available to all VMs globally
+    #[default]
     Global,
     /// Available to specific project VMs only
     Project(String),
     /// Available to specific VM instance only
     Instance(String),
-}
-
-impl Default for SecretScope {
-    fn default() -> Self {
-        Self::Global
-    }
 }
 
 /// A stored secret with metadata
