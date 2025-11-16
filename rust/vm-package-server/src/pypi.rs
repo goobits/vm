@@ -51,8 +51,8 @@ pub async fn simple_index(State(state): State<Arc<AppState>>) -> AppResult<Html<
 
     for path in list_package_files(&pypi_dir).await? {
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            if let Some(pkg_name) = name.split('-').next() {
-                packages.insert(normalize_pypi_name(pkg_name));
+            if let Some(pkg_name) = crate::utils::extract_pypi_package_name(name) {
+                packages.insert(pkg_name);
             }
         }
     }
@@ -113,8 +113,8 @@ pub async fn package_index(
 
     for path in list_package_files(&pypi_dir).await? {
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            if let Some(pkg_name) = name.split('-').next() {
-                if normalize_pypi_name(pkg_name) == normalized_package {
+            if let Some(pkg_name) = crate::utils::extract_pypi_package_name(name) {
+                if pkg_name == normalized_package {
                     let meta_path = path.with_extension(format!(
                         "{}.meta",
                         path.extension().and_then(|ext| ext.to_str()).unwrap_or("")
@@ -203,10 +203,7 @@ pub async fn count_packages(state: &AppState) -> AppResult<usize> {
     package_utils::count_packages_by_pattern(
         &state.data_dir,
         &package_utils::RegistryPattern::PYPI,
-        |filename| {
-            // Extract package name (first part before hyphen) and normalize it
-            filename.split('-').next().map(normalize_pypi_name)
-        },
+        crate::utils::extract_pypi_package_name,
     )
     .await
 }
@@ -245,10 +242,7 @@ pub async fn list_all_packages(state: &AppState) -> AppResult<Vec<String>> {
     package_utils::list_packages_by_pattern(
         &state.data_dir,
         &package_utils::RegistryPattern::PYPI,
-        |filename| {
-            // Extract package name (first part before hyphen) and normalize it
-            filename.split('-').next().map(normalize_pypi_name)
-        },
+        crate::utils::extract_pypi_package_name,
     )
     .await
 }
@@ -271,19 +265,16 @@ pub async fn get_package_versions(
 
     for path in list_package_files(&pypi_dir).await? {
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            if let Some(pkg_name) = name.split('-').next() {
-                if normalize_pypi_name(pkg_name) == normalized_package {
-                    // Extract version from filename (package-version-...)
-                    let version =
-                        if let Some(version_start) = name.strip_prefix(&format!("{pkg_name}-")) {
-                            version_start
-                                .split('-')
-                                .next()
-                                .unwrap_or("unknown")
-                                .to_string()
-                        } else {
-                            "unknown".to_string()
-                        };
+            if let Some(pkg_name) = crate::utils::extract_pypi_package_name(name) {
+                if pkg_name == normalized_package {
+                    // Extract version from filename
+                    let version = if let Some((_, ver)) =
+                        crate::utils::extract_pypi_package_name_and_version(name)
+                    {
+                        ver
+                    } else {
+                        "unknown".to_string()
+                    };
 
                     let meta_path = path.with_extension(format!(
                         "{}.meta",
@@ -330,24 +321,7 @@ pub async fn get_recent_packages(
         &state.data_dir,
         &package_utils::RegistryPattern::PYPI,
         limit, // Helper already handles limit * 2 internally for deduplication
-        |filename| {
-            if let Some(pkg_name) = filename.split('-').next() {
-                let normalized = normalize_pypi_name(pkg_name);
-                let version =
-                    if let Some(version_start) = filename.strip_prefix(&format!("{pkg_name}-")) {
-                        version_start
-                            .split('-')
-                            .next()
-                            .unwrap_or("unknown")
-                            .to_string()
-                    } else {
-                        "unknown".to_string()
-                    };
-                Some((normalized, version))
-            } else {
-                None
-            }
-        },
+        crate::utils::extract_pypi_package_name_and_version,
     )
     .await?;
 

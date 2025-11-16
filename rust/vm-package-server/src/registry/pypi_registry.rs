@@ -89,10 +89,7 @@ impl PackageRegistry for PypiRegistry {
         package_utils::count_packages_by_pattern(
             &state.data_dir,
             &package_utils::RegistryPattern::PYPI,
-            |filename| {
-                // Extract package name (first part before hyphen) and normalize it
-                filename.split('-').next().map(normalize_pypi_name)
-            },
+            crate::utils::extract_pypi_package_name,
         )
         .await
     }
@@ -101,10 +98,7 @@ impl PackageRegistry for PypiRegistry {
         package_utils::list_packages_by_pattern(
             &state.data_dir,
             &package_utils::RegistryPattern::PYPI,
-            |filename| {
-                // Extract package name (first part before hyphen) and normalize it
-                filename.split('-').next().map(normalize_pypi_name)
-            },
+            crate::utils::extract_pypi_package_name,
         )
         .await
     }
@@ -123,17 +117,13 @@ impl PackageRegistry for PypiRegistry {
 
         for path in list_package_files(&pypi_dir).await? {
             if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if let Some(pkg_name) = name.split('-').next() {
-                    if normalize_pypi_name(pkg_name) == normalized_package {
-                        // Extract version from filename (package-version-...)
-                        let version = if let Some(version_start) =
-                            name.strip_prefix(&format!("{pkg_name}-"))
+                if let Some(pkg_name) = crate::utils::extract_pypi_package_name(name) {
+                    if pkg_name == normalized_package {
+                        // Extract version from filename
+                        let version = if let Some((_, ver)) =
+                            crate::utils::extract_pypi_package_name_and_version(name)
                         {
-                            version_start
-                                .split('-')
-                                .next()
-                                .unwrap_or("unknown")
-                                .to_string()
+                            ver
                         } else {
                             "unknown".to_string()
                         };
@@ -172,25 +162,7 @@ impl PackageRegistry for PypiRegistry {
             &state.data_dir,
             &package_utils::RegistryPattern::PYPI,
             limit, // Helper already handles limit * 2 internally for deduplication
-            |filename| {
-                if let Some(pkg_name) = filename.split('-').next() {
-                    let normalized = normalize_pypi_name(pkg_name);
-                    let version = if let Some(version_start) =
-                        filename.strip_prefix(&format!("{pkg_name}-"))
-                    {
-                        version_start
-                            .split('-')
-                            .next()
-                            .unwrap_or("unknown")
-                            .to_string()
-                    } else {
-                        "unknown".to_string()
-                    };
-                    Some((normalized, version))
-                } else {
-                    None
-                }
-            },
+            crate::utils::extract_pypi_package_name_and_version,
         )
         .await?;
 
@@ -312,7 +284,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore] // TODO(Phase 1&2): Fix PyPI package name deduplication in list_packages_by_pattern
     async fn test_list_packages_with_normalization() {
         let (state, _temp_dir) = create_pypi_test_state();
 
@@ -378,7 +349,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore] // TODO(Phase 1&2): Fix PyPI recent packages extraction - extracting wrong part of filename
     async fn test_get_recent_packages() {
         let (state, _temp_dir) = create_pypi_test_state();
 

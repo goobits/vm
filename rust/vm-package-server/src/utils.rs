@@ -24,34 +24,62 @@ pub fn extract_cargo_crate_name(filename: &str) -> Option<String> {
     extract_cargo_name_and_version(filename).map(|(name, _version)| name)
 }
 
-/// Extract package name from PyPI filename
-#[allow(dead_code)]
+/// Extract package name from PyPI filename (handles hyphenated names)
+///
+/// Algorithm: Split on hyphens, find first component starting with digit (version),
+/// everything before that is the package name.
+///
+/// Examples:
+/// - "my-package-1.0.0.whl" → Some("my-package")
+/// - "django-rest-framework-3.14.0.tar.gz" → Some("django-rest-framework")
+/// - "simple-1.0.0.whl" → Some("simple")
 pub fn extract_pypi_package_name(filename: &str) -> Option<String> {
-    // Handle wheel files (.whl)
-    if filename.ends_with(".whl") {
-        // Format: package_name-version-python-etc.whl
-        if let Some(dash_pos) = filename.find('-') {
-            return Some(filename[..dash_pos].replace('_', "-"));
+    let base = filename
+        .strip_suffix(".whl")
+        .or_else(|| filename.strip_suffix(".tar.gz"))?;
+
+    let parts: Vec<&str> = base.split('-').collect();
+    if parts.is_empty() {
+        return None;
+    }
+
+    // Find first component that starts with digit (that's the version)
+    for (i, part) in parts.iter().enumerate() {
+        if i > 0 && !part.is_empty() && part.chars().next().unwrap().is_ascii_digit() {
+            let pkg_name = parts[0..i].join("-");
+            return Some(crate::normalize_pypi_name(&pkg_name));
         }
     }
 
-    // Handle source distributions (.tar.gz)
-    if filename.ends_with(".tar.gz") {
-        let name_part = filename.trim_end_matches(".tar.gz");
-        // Format: package_name-version.tar.gz
-        if let Some(dash_pos) = name_part.rfind('-') {
-            // Check if what comes after dash looks like a version
-            let after_dash = &name_part[dash_pos + 1..];
-            if after_dash
-                .chars()
-                .next()
-                .is_some_and(|c| c.is_numeric() || c == 'v')
-            {
-                return Some(name_part[..dash_pos].to_string());
-            }
+    // No version found, treat entire base as package name
+    Some(crate::normalize_pypi_name(base))
+}
+
+/// Extract both package name and version from PyPI filename
+///
+/// Examples:
+/// - "my-package-1.0.0.whl" → Some(("my-package", "1.0.0"))
+/// - "django-rest-framework-3.14.0.tar.gz" → Some(("django-rest-framework", "3.14.0"))
+pub fn extract_pypi_package_name_and_version(filename: &str) -> Option<(String, String)> {
+    let base = filename
+        .strip_suffix(".whl")
+        .or_else(|| filename.strip_suffix(".tar.gz"))?;
+
+    let parts: Vec<&str> = base.split('-').collect();
+    if parts.is_empty() {
+        return None;
+    }
+
+    // Find first component that starts with digit
+    for (i, part) in parts.iter().enumerate() {
+        if i > 0 && !part.is_empty() && part.chars().next().unwrap().is_ascii_digit() {
+            let pkg_name = parts[0..i].join("-");
+            let normalized = crate::normalize_pypi_name(&pkg_name);
+            return Some((normalized, part.to_string()));
         }
     }
 
+    // No version found
     None
 }
 
@@ -100,18 +128,46 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_pypi_package_name() {
+    fn test_extract_pypi_package_name_simple() {
         assert_eq!(
-            extract_pypi_package_name("requests-2.28.0-py3-none-any.whl"),
-            Some("requests".to_string())
+            extract_pypi_package_name("django-1.0.0.whl"),
+            Some("django".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_pypi_package_name_hyphenated() {
+        assert_eq!(
+            extract_pypi_package_name("my-package-1.0.0.whl"),
+            Some("my-package".to_string())
         );
         assert_eq!(
-            extract_pypi_package_name("numpy-1.24.0.tar.gz"),
-            Some("numpy".to_string())
+            extract_pypi_package_name("django-rest-framework-3.14.0.tar.gz"),
+            Some("django-rest-framework".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_pypi_package_name_normalization() {
+        assert_eq!(
+            extract_pypi_package_name("My_Package-1.0.0.whl"),
+            Some("my-package".to_string())
         );
         assert_eq!(
-            extract_pypi_package_name("some_package-1.0.0-py3-none-any.whl"),
-            Some("some-package".to_string())
+            extract_pypi_package_name("my.package-2.0.0.whl"),
+            Some("my-package".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_pypi_package_name_and_version() {
+        assert_eq!(
+            extract_pypi_package_name_and_version("my-package-1.0.0.whl"),
+            Some(("my-package".to_string(), "1.0.0".to_string()))
+        );
+        assert_eq!(
+            extract_pypi_package_name_and_version("newest-package-2.5.0.tar.gz"),
+            Some(("newest-package".to_string(), "2.5.0".to_string()))
         );
     }
 }
