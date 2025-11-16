@@ -12,21 +12,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Podman Provider Support**: Rootless, daemonless container runtime as Docker alternative
-  - Usage: `provider: podman` in vm.yaml
+  - Configure with `provider: podman` in vm.yaml
   - Full Docker CLI compatibility with enhanced security
-  - Auto-detection of compose command variants
+  - Auto-detection of `podman compose` (built-in) vs `podman-compose` (standalone)
+  - Complete feature parity with Docker provider
 
-- **Snapshot from Dockerfile**: Build snapshots directly from Dockerfiles
+- **Snapshot Creation from Dockerfiles**: Simplified workflow for building custom base images
   - `vm snapshot create @name --from-dockerfile ./Dockerfile`
-  - `--build-arg KEY=VALUE` for build arguments
+  - `--build-arg KEY=VALUE` flag for passing build arguments (repeatable)
+  - Build context automatically determined from Dockerfile parent directory
 
-- **Init Process**: Automatic zombie process reaping in containers via tini
+- **Init Process for Containers**: Automatic zombie process reaping via tini
+  - Prevents zombie process accumulation from test suites (Jest, Playwright, Vitest)
+  - Proper signal forwarding (SIGTERM, SIGINT) to child processes
+  - Enabled automatically via Docker's built-in tini
 
 ### Changed
 
 - **BREAKING: Removed Vagrant Provider**
-  - Migration: Use `provider: docker` or `provider: podman`
-  - Removed ~1,900 lines of code
+  - Migration: Update `provider: vagrant` to `provider: docker` or `provider: podman` in vm.yaml
+  - Removed ~1,900 lines of code (12% reduction in vm-provider codebase)
+  - Clearer focus: containers (Docker/Podman) + native macOS VMs (Tart)
 
 ### Performance
 
@@ -34,98 +40,143 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Preserve user customizations when applying presets
-- Suppress warning when running `vm init` followed by `vm config preset`
+- Preserve user customizations when applying presets (packages, versions, aliases)
+- Suppress confusing warning when running `vm init` followed by `vm config preset`
 
 ## [4.1.1] - 2025-11-06
 
 ### Fixed
 
-- Vibe preset portability for non-Docker scenarios
-- Snapshot detection false positives (now uses type-safe check)
+- **Vibe Preset Portability**: Restored declarative package lists for non-Docker scenarios
+  - Works correctly for first-time Docker users (without @vibe-box snapshot)
+  - Tart provider receives full package installation
+  - Shell aliases (claudeyolo, geminiyolo, codexyolo) render properly
+
+- **Snapshot Detection**: Fixed false positives using type-safe check
+  - Prevents treating images like `company/dev-box:latest` as snapshots
 
 ## [4.1.0] - 2025-11-06
 
 ### Added
 
-- **Snapshot Optimization**: Smart package detection and UID/GID handling
-  - Fresh builds: ~210s | With snapshot: ~5-10s (95% faster)
-- **Vibe Preset**: Pre-configured dev environment with @vibe-box snapshot
-  - Node.js 22, Python 3.14, Rust, Playwright, AI CLI tools
-- **Snapshot References**: Use `@snapshot-name` syntax in presets
+- **Snapshot-Based Provisioning Optimization**: Dramatic performance improvements
+  - Smart package detection: Skip reinstalling packages already in snapshot
+  - Intelligent UID/GID handling: Skip expensive file ownership operations
+  - Performance: Fresh ~210s | With snapshot ~5-10s (95% faster)
+
+- **Vibe Development Preset**: Pre-configured environment with @vibe-box snapshot
+  - Includes Node.js 22, Python 3.14, Rust stable, Playwright, AI CLI tools
+  - Pre-installed: tree, ripgrep, unzip, htop
+  - Shell aliases for quick AI tool access
+
+- **Snapshot References**: Use `@snapshot-name` syntax in presets via `vm.box: '@vibe-box'`
 
 ### Fixed
 
-- Shell compatibility (bash/zsh cross-compatibility)
-- UID/GID mismatch handling
-- Sudo installation robustness
+- Enhanced bash/zsh cross-compatibility
+- Robust UID/GID mismatch handling
+- Improved sudo installation and validation
 - Port range reuse for re-initialized projects
+- Default box image (ubuntu:jammy instead of ubuntu/jammy64)
 
 ## [4.0.0] - 2025-10-31
 
 ### Changed
 
-- **BREAKING: Host Sync v2.0**: Consolidated configuration under `host_sync`
+- **BREAKING: Host Sync Configuration v2.0**: Consolidated under `host_sync` category
   - `copy_git_config` → `host_sync.git_config`
   - `ai_sync` → `host_sync.ai_tools`
   - `package_linking` → `host_sync.package_links`
   - `worktrees` → `host_sync.worktrees`
+  - `development.ssh_agent_forwarding` → `host_sync.ssh_agent`
+  - `development.mount_ssh_config` → `host_sync.ssh_config`
+  - `development.sync_dotfiles` → `host_sync.dotfiles`
 
 ### Added
 
-- AI tool data sync (Claude, Gemini, Codex, Cursor, Aider)
-- Ansible support (auto-installed via pip)
-- `--all-vms` flag for bulk file copying
-- Progressive build output with live feedback
+- **AI Tool Data Synchronization**: Multi-tool support for AI development
+  - Configurable sync for Claude, Gemini, Codex, Cursor, and Aider
+  - Boolean shorthand (`ai_tools: true`) or granular per-tool control
+  - Automatic data directory creation and mounting
+
+- Ansible support (auto-installed via pip for Python 3.13 compatibility)
+- `--all-vms` flag for bulk VM file copying
+- Progressive build output with real-time Docker build feedback
 
 ### Fixed
 
-- VM destroy respects container name argument
-- Shell history persistence across recreations
+- VM destroy now respects container name argument
+- Shell history persistence across container recreations
 - Python 3.13 support
 
 ## [3.4.0] - 2025-10-30
 
 ### Added
 
-- **Snapshot Import/Export**: Share portable base images without registry
-  - `vm snapshot export @name [-o file.tar.gz]`
+- **Snapshot Import/Export System**: Share portable base images without Docker registry
+  - `vm snapshot export @name [-o output.tar.gz]`
   - `vm snapshot import <file.tar.gz>`
-- Enhanced logs: `-f/--follow`, `-n/--tail`, `--service` filtering
-- Bulk database backup: `--all` flag
-- Unified `vm.box` field across all providers
+  - Use imported snapshots as base images: `vm.box: @snapshot-name`
+  - Snapshots stored in `~/.config/vm/snapshots/global/`
+
+- **Enhanced VM Logs**: Powerful log viewing with follow mode and filtering
+  - `-f/--follow` for live log streaming
+  - `-n/--tail <lines>` for custom line count (default: 50)
+  - `--service <name>` to filter by service (postgresql, redis, mongodb, mysql)
+
+- **Bulk Database Backup**: `--all` flag for `vm db backup`
+  - Automatically excludes system databases
+  - Enhanced `vm db list` shows backup counts and sizes
+
+- **Unified Box Configuration**: Consistent `vm.box` field across all providers
+  - Smart detection: @snapshots, ./Dockerfiles, registry images
+  - Provider-specific validation with helpful error messages
 
 ### Changed
 
-- Default `LOG_LEVEL=error` and `LOG_OUTPUT=file` for quieter output
-- Database backups use `GlobalConfig.backups.path`
+- Default logging: `LOG_LEVEL=error` and `LOG_OUTPUT=file` (/tmp/vm.log) for quieter output
+- Database backups use `GlobalConfig.backups.path` instead of hardcoded location
 
 ### Fixed
 
-- Snapshot build conflicts (temporary project naming)
+- Snapshot build conflicts via temporary project naming
 - Database restore non-fatal during VM creation
-- Network DNS resolution on external networks
+- Network DNS resolution on external networks with aliases
 
 ## [3.3.0] - 2025-10-25
 
 ### Added
 
-- **VM Snapshots**: State preservation and restoration
-  - `vm snapshot create/restore/list/delete`
-  - Captures containers, volumes, configs, git metadata
+- **VM Snapshots**: Complete state preservation and restoration
+  - `vm snapshot create/restore/list/delete <name>`
+  - Captures containers, volumes, configurations, and git metadata
+  - Project-specific storage at `~/.config/vm/snapshots`
 
 ## [3.2.0] - 2025-10-24
 
 ### Added
 
-- **Dynamic Port Forwarding**: `vm port forward/list/stop`
-- **SSH Agent Forwarding**: Secure SSH key usage without copying
-- **Selective Dotfiles Sync**: Mount configs from host
+- **Dynamic Port Forwarding**: On-demand port tunneling
+  - `vm port forward <host>:<container>` for ephemeral tunnels
+  - `vm port list` and `vm port stop <port>`
+  - Uses Docker relay containers for traffic forwarding
+
+- **SSH Agent Forwarding**: Secure SSH key usage without copying private keys
+  - Enable with `development.ssh_agent_forwarding: true`
+  - Forwards SSH_AUTH_SOCK socket (read-only)
+  - Optionally mounts ~/.ssh/config for host aliases
+
+- **Selective Dotfiles Sync**: Mount configuration files from host
+  - Configure with `development.sync_dotfiles` array
+  - Examples: ~/.vimrc, ~/.config/nvim, ~/.tmux.conf
+  - Read-only mounts with automatic tilde expansion
+
 - Shell completion support (bash, zsh, fish, powershell)
-- `vm wait` command for service readiness
-- `vm ports` command for port discovery
+- `vm wait` command to block until services are ready
+- `vm ports` command to show all exposed port mappings
 - Environment variable validation commands
-- File watch fix (inotify limits for hot reload)
+- File watch fix for hot reload (inotify limits configured)
+- Worktrees security enhancements (path validation, traversal protection)
 
 ## [3.1.1] - 2025-10-21
 
@@ -136,113 +187,140 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- PostgreSQL networking and aliases
-- Install script OpenSSL dependencies
+- PostgreSQL service networking and database connection aliases
+- Install script OpenSSL dependencies (`libssl-dev`)
 
 ## [3.1.0] - 2025-10-16
 
 ### Added
 
-- **File Transfer**: `vm copy` command (similar to `docker cp`)
-- **Unlimited CPU**: `cpus: unlimited` option
+- **File Transfer Command**: `vm copy <source> <destination>` (similar to `docker cp`)
+  - Upload: `vm copy ./local.txt /workspace/remote.txt`
+  - Download: `vm copy my-vm:/remote/file.txt ./local.txt`
+  - Auto-detect container: `vm copy ./file.txt /path/in/vm`
+  - Works across all providers (Docker, Tart)
+
+- **Unlimited CPU Support**: `cpus: unlimited` option matching memory
+  - Container can use all available CPUs as needed
+  - Docker's CFS scheduler manages distribution automatically
+
+### Changed
+
+- CPU configuration type: `Option<u32>` → `Option<CpuLimit>` enum (backward compatible)
 
 ## [3.0.0] - 2025-10-15
 
 ### Changed
 
-- **BREAKING**: Renamed `vm provision` → `vm apply`
+- **BREAKING**: Renamed `vm provision` → `vm apply` for clarity and industry alignment
+  - Migration: Replace all `vm provision` with `vm apply` in scripts
 
 ### Added
 
-- Docker network configuration: `networking.networks` in vm.yaml
+- **Docker Network Configuration**: Selective container-to-container communication
+  - New `networking.networks: []` in vm.yaml
+  - Networks automatically created during `vm create`
+  - Containers on same network communicate using container names as hostnames
 
 ## [2.3.0] - 2025-10-12
 
 ### Added
 
-- **Database Management**: `vm db` command suite
-  - backup/restore/export/import/list/size/reset
-  - Auto-backup on destroy, retention management
-- Structured logging system (JSON/pretty output)
-- Automatic resource auto-adjustment
-- Global config auto-creation
+- **Database Management Commands**: Comprehensive PostgreSQL lifecycle management
+  - `vm db backup/restore/export/import/list/size/reset`
+  - Auto-backup on `vm destroy` when destroying last VM using PostgreSQL
+  - Configurable retention (default: keep 7 most recent)
+  - Backups stored in `~/.vm/backups/postgres/`
+
+- **Structured Logging System**: Multiple output formats
+  - JSON output for machine parsing
+  - Pretty-printed output with color coding
+  - Configurable via `RUST_LOG` environment variable
+
+- Automatic resource auto-adjustment for VM creation
+- Global configuration auto-creation (`~/.vm/config.yaml`)
+- Enhanced service integration (vm.yaml services + ServiceManager)
 
 ### Changed
 
-- SSH start prompt defaults to "yes"
+- SSH start prompt defaults to "yes" for better UX
+
+### Fixed
+
+- Docker test skipping when Docker unavailable
 
 ## [2.2.0] - 2025-10-11
 
 ### Added
 
-- **Shared Database Services**: Host-level PostgreSQL/Redis/MongoDB
-  - Reference counting and automatic lifecycle
-- Automatic worktree remounting on SSH
+- **Shared Database Services**: Host-level database instances for all VMs
+  - PostgreSQL, Redis, and MongoDB managed by ServiceManager
+  - Automatic reference counting (start/stop based on VM usage)
+  - Data persistence in `~/.vm/data/`
+  - Environment variable injection (DATABASE_URL, REDIS_URL, MONGODB_URL)
+
+- **Automatic Worktree Remounting**: SSH detects new Git worktrees
+  - Interactive prompts when new worktrees detected
+  - Safety checks prevent remounting during active SSH sessions
 
 ## [2.1.1] - 2025-10-10
 
 ### Added
 
 - Tart provider feature parity (100% Docker parity)
+  - SSH-based provisioning with framework detection
+  - Automatic service installation
+  - Enhanced status reports with batched SSH metrics
+  - TempProvider trait implementation
 
 ## [2.1.0] - 2025-10-08
 
 ### Added
 
-- **Git Worktrees Support**: Multi-branch development
-  - Project-scoped directories, automatic path repair
+- **Git Worktrees Support**: Multi-branch development workflow
+  - Project-scoped worktrees directory (`~/.vm/worktrees/project-{name}/`)
+  - Automatic path repair using `git worktree repair`
+  - Universal shell support (bash, zsh, sh, interactive, non-interactive)
+  - Custom base path support with tilde expansion
 
 ### Fixed
 
-- Shell hook runs in ALL contexts (not just interactive zsh)
+- Git worktrees shell hook runs in ALL contexts (not just interactive zsh)
+- Directory creation timing prevents Docker mount failures
 - Windows platform detection with WSL2 validation
-
-## [2.0.5] - 2025-10-02
 
 ## [2.0.4] - 2025-09-30
 
 ### Fixed
 
-- Supervisord runtime checks
-- Container existence check before destroy
-- PostgreSQL provisioning reliability
+- Ensure supervisord running before executing supervisorctl commands
+- Container existence check before destroy operation
+- BuildKit cache mount ownership
+- PostgreSQL service provisioning reliability
 
 ### Performance
 
-- Optimized Dockerfile with BuildKit cache mounts
+- Optimized Dockerfile with batch installs and BuildKit cache mounts
 
 ## [2.0.3] - 2025-09-26
 
 ### Added
 
 - Co-located service ports with intelligent auto-allocation
-- Auto-install preset plugins
-- Auto-configure package registry
-
-## [2.0.2] - 2025-09-24
-
-### Added
-
-- Automatic service lifecycle management
-- Enhanced plugin system
-
-## [2.0.1] - 2025-09-23
-
-### Added
-
-- vm-messages system for centralized message management
+- Auto-install preset plugins during VM installation
+- Auto-configure package registry for all VMs
 
 ## [2.0.0] - 2024-09-28
 
 ### Added
 
 - **Unified Platform Architecture**
-  - `vm auth` - Centralized secrets (AES-256-GCM)
+  - `vm auth` - Centralized secrets management (AES-256-GCM encryption)
   - `vm pkg` - Package registry (npm, pip, cargo)
   - `vm create` - Smart project detection
   - Automatic service integration
 
-- **Auth Proxy Service**: Centralized secrets management
+- **Auth Proxy Service**: Centralized secrets with scoped access control
 - **Docker Registry Service**: Local image caching (80-95% bandwidth savings)
 - **Enhanced Package Registry**: Private package hosting
 
@@ -254,7 +332,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Performance
 
-- 60% faster VM creation, 90% faster package installs, 95% bandwidth savings
+- 60% faster VM creation
+- 90% faster package installs
+- 95% bandwidth savings for Docker images
 
 ## [1.4.0] - 2024-09-27
 
@@ -269,6 +349,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Features
 
-- Core VM management
-- Provider support (Docker, Vagrant, Tart)
-- Configuration and provisioning
+- Core VM management functionality
+- Provider support (Docker, Tart)
+- Configuration and provisioning capabilities
