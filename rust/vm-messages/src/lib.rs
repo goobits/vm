@@ -6,3 +6,6 @@
 
 pub mod categories;
 pub mod messages;
+
+// Re-export the main MESSAGES constant for convenient access
+pub use messages::MESSAGES;

@@ -154,7 +154,7 @@ impl AnsibleProgressParser {
 
         // Clear screen and redraw
         print!("\x1B[2J\x1B[1;1H"); // Clear screen and move to top
-        vm_println!("{}", MESSAGES.progress_creating_vm);
+        vm_println!("{}", MESSAGES.service.progress_creating_vm);
 
         let tasks = self.tasks.lock().expect("Mutex should not be poisoned");
         for task in tasks.iter() {
@@ -252,7 +252,10 @@ impl ProgressParser for AnsibleProgressParser {
             drop(tasks);
 
             // Show error in full
-            vm_println!("{}", msg!(MESSAGES.progress_ansible_error, error = line));
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.service.progress_ansible_error, error = line)
+            );
             self.update_display();
         }
         // Track package installations
@@ -287,7 +290,7 @@ impl ProgressParser for AnsibleProgressParser {
             }
             drop(tasks);
             self.update_display();
-            vm_println!("{}", MESSAGES.progress_provisioning_complete);
+            vm_println!("{}", MESSAGES.service.progress_provisioning_complete);
         }
     }
 }
@@ -335,7 +338,11 @@ impl ProgressReporter {
     pub fn phase_header(icon: &str, phase: &str) {
         vm_println!(
             "{}",
-            msg!(MESSAGES.progress_phase_header, icon = icon, phase = phase)
+            msg!(
+                MESSAGES.service.progress_phase_header,
+                icon = icon,
+                phase = phase
+            )
         );
     }
 
@@ -343,7 +350,7 @@ impl ProgressReporter {
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.progress_subtask,
+                MESSAGES.service.progress_subtask,
                 connector = connector,
                 task = task
             )
@@ -354,7 +361,7 @@ impl ProgressReporter {
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.progress_complete,
+                MESSAGES.service.progress_complete,
                 connector = connector,
                 message = message
             )
@@ -365,7 +372,7 @@ impl ProgressReporter {
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.progress_warning,
+                MESSAGES.service.progress_warning,
                 connector = connector,
                 message = message
             )
@@ -376,7 +383,7 @@ impl ProgressReporter {
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.progress_error,
+                MESSAGES.service.progress_error,
                 connector = connector,
                 message = message
             )
@@ -387,13 +394,16 @@ impl ProgressReporter {
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.progress_error,
+                MESSAGES.service.progress_error,
                 connector = connector,
                 message = main_message
             )
         );
         for detail in details {
-            vm_println!("{}", msg!(MESSAGES.progress_error_detail, detail = *detail));
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.service.progress_error_detail, detail = *detail)
+            );
         }
     }
 
@@ -401,12 +411,15 @@ impl ProgressReporter {
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.progress_error,
+                MESSAGES.service.progress_error,
                 connector = connector,
                 message = message
             )
         );
-        vm_println!("{}", msg!(MESSAGES.progress_error_hint, hint = hint));
+        vm_println!(
+            "{}",
+            msg!(MESSAGES.service.progress_error_hint, hint = hint)
+        );
     }
 }
 
@@ -433,9 +446,12 @@ impl StatusFormatter {
         memory: Option<u32>,
         cpus: Option<u32>,
     ) {
-        vm_println!("{}", MESSAGES.status_report_header);
-        vm_println!("{}", MESSAGES.status_report_separator);
-        vm_println!("{}", msg!(MESSAGES.status_report_name, name = vm_name));
+        vm_println!("{}", MESSAGES.service.status_report_header);
+        vm_println!("{}", MESSAGES.service.status_report_separator);
+        vm_println!(
+            "{}",
+            msg!(MESSAGES.service.status_report_name, name = vm_name)
+        );
 
         let status_icon = match state.to_lowercase().as_str() {
             "running" => "🟢 Running",
@@ -444,24 +460,27 @@ impl StatusFormatter {
         };
         vm_println!(
             "{}",
-            msg!(MESSAGES.status_report_status, status = status_icon)
+            msg!(MESSAGES.service.status_report_status, status = status_icon)
         );
         vm_println!(
             "{}",
-            msg!(MESSAGES.status_report_provider, provider = provider)
+            msg!(MESSAGES.service.status_report_provider, provider = provider)
         );
 
         if let Some(mem) = memory {
             vm_println!(
                 "{}",
-                msg!(MESSAGES.status_report_memory, memory = mem.to_string())
+                msg!(
+                    MESSAGES.service.status_report_memory,
+                    memory = mem.to_string()
+                )
             );
         }
 
         if let Some(cpu) = cpus {
             vm_println!(
                 "{}",
-                msg!(MESSAGES.status_report_cpus, cpus = cpu.to_string())
+                msg!(MESSAGES.service.status_report_cpus, cpus = cpu.to_string())
             );
         }
     }

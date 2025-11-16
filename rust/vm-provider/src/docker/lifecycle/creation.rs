@@ -334,16 +334,19 @@ impl<'a> LifecycleOperations<'a> {
         // Check if we're in an interactive terminal
         if std::io::stdin().is_terminal() {
             let option1 = if is_running {
-                MESSAGES.docker_container_exists_running
+                MESSAGES.service.docker_container_exists_running
             } else {
-                MESSAGES.docker_container_exists_stopped
+                MESSAGES.service.docker_container_exists_stopped
             };
 
             info!(
                 "{}",
-                msg!(MESSAGES.docker_container_exists_prompt, option1 = option1)
+                msg!(
+                    MESSAGES.service.docker_container_exists_prompt,
+                    option1 = option1
+                )
             );
-            print!("{}", MESSAGES.docker_container_choice_prompt);
+            print!("{}", MESSAGES.service.docker_container_choice_prompt);
             io::stdout().flush()?;
 
             let mut input = String::new();
@@ -355,12 +358,12 @@ impl<'a> LifecycleOperations<'a> {
                         info!("Using existing running container.");
                         Ok(())
                     } else {
-                        info!("{}", MESSAGES.docker_container_starting);
+                        info!("{}", MESSAGES.service.docker_container_starting);
                         self.start_container(None)
                     }
                 }
                 "2" => {
-                    info!("{}", MESSAGES.docker_container_recreating);
+                    info!("{}", MESSAGES.service.docker_container_recreating);
                     self.destroy_container(None)?;
                     // Continue with creation below
                     self.create_container()
@@ -399,16 +402,19 @@ impl<'a> LifecycleOperations<'a> {
         // Check if we're in an interactive terminal
         if std::io::stdin().is_terminal() {
             let option1 = if is_running {
-                MESSAGES.docker_container_exists_running
+                MESSAGES.service.docker_container_exists_running
             } else {
-                MESSAGES.docker_container_exists_stopped
+                MESSAGES.service.docker_container_exists_stopped
             };
 
             info!(
                 "{}",
-                msg!(MESSAGES.docker_container_exists_prompt, option1 = option1)
+                msg!(
+                    MESSAGES.service.docker_container_exists_prompt,
+                    option1 = option1
+                )
             );
-            print!("{}", MESSAGES.docker_container_choice_prompt);
+            print!("{}", MESSAGES.service.docker_container_choice_prompt);
             io::stdout().flush()?;
 
             let mut input = String::new();
@@ -420,12 +426,12 @@ impl<'a> LifecycleOperations<'a> {
                         info!("Using existing running container.");
                         Ok(())
                     } else {
-                        info!("{}", MESSAGES.docker_container_starting);
+                        info!("{}", MESSAGES.service.docker_container_starting);
                         self.start_container(Some(&container_name))
                     }
                 }
                 "2" => {
-                    info!("{}", MESSAGES.docker_container_recreating);
+                    info!("{}", MESSAGES.service.docker_container_recreating);
                     self.destroy_container(Some(&container_name))?;
                     // Continue with creation below
                     self.create_container_with_instance(instance_name)

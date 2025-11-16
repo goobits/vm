@@ -124,11 +124,11 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
         | Command::Restart { .. }
         | Command::Destroy { .. }
         | Command::Apply { .. } => {
-            vm_println!("{}", MESSAGES.vm_dry_run_header);
+            vm_println!("{}", MESSAGES.vm.dry_run_header);
             vm_println!(
                 "{}",
                 msg!(
-                    MESSAGES.vm_dry_run_command,
+                    MESSAGES.vm.dry_run_command,
                     command = format!("{:?}", args.command)
                 )
             );
@@ -136,12 +136,12 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
                 vm_println!(
                     "{}",
                     msg!(
-                        MESSAGES.vm_dry_run_config,
+                        MESSAGES.vm.dry_run_config,
                         config = config.display().to_string()
                     )
                 );
             }
-            vm_println!("{}", MESSAGES.vm_dry_run_complete);
+            vm_println!("{}", MESSAGES.vm.dry_run_complete);
             Ok(())
         }
         Command::Ssh {
@@ -221,8 +221,8 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
                     // Reload the AppConfig
                     AppConfig::load(args.config)?
                 } else {
-                    vm_println!("{}", MESSAGES.config_not_found);
-                    vm_println!("{}", MESSAGES.config_not_found_hint);
+                    vm_println!("{}", MESSAGES.config.not_found);
+                    vm_println!("{}", MESSAGES.config.not_found_hint);
                     return Err(VmError::from(e));
                 }
             } else {
@@ -283,11 +283,11 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
     let skip_port_check = !matches!(args.command, Command::Create { .. });
     let validation_errors = config.validate(skip_port_check);
     if !validation_errors.is_empty() {
-        vm_error!("{}", MESSAGES.common_validation_failed);
+        vm_error!("{}", MESSAGES.common.validation_failed);
         for error in &validation_errors {
             vm_println!("  ❌ {}", error);
         }
-        vm_println!("{}", MESSAGES.common_validation_hint);
+        vm_println!("{}", MESSAGES.common.validation_hint);
         return Err(VmError::validation(
             format!(
                 "Configuration has {} validation error(s)",

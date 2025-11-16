@@ -11,7 +11,7 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
     vm_println!(
         "{}",
         msg!(
-            MESSAGES.vm_update_current_version,
+            MESSAGES.vm.update_current_version,
             version = current_version
         )
     );
@@ -20,7 +20,7 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
     let target_version = version.unwrap_or("latest");
     vm_println!(
         "{}",
-        msg!(MESSAGES.vm_update_target_version, version = target_version)
+        msg!(MESSAGES.vm.update_target_version, version = target_version)
     );
 
     // Check if running from cargo or binary
@@ -32,19 +32,19 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
 
     if is_cargo_install && version.is_none() && !force {
         // For cargo installs without specific version, use cargo
-        vm_println!("{}", MESSAGES.vm_update_via_cargo);
+        vm_println!("{}", MESSAGES.vm.update_via_cargo);
 
         let output = Command::new("cargo")
             .args(["install", "vm", "--force"])
             .output()?;
 
         if output.status.success() {
-            vm_success!("{}", MESSAGES.vm_update_cargo_success);
+            vm_success!("{}", MESSAGES.vm.update_cargo_success);
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
             vm_error!(
                 "{}",
-                msg!(MESSAGES.vm_update_cargo_failed, error = stderr.to_string())
+                msg!(MESSAGES.vm.update_cargo_failed, error = stderr.to_string())
             );
             return Err(VmError::general(
                 std::io::Error::new(std::io::ErrorKind::Other, "Update failed"),
@@ -53,7 +53,7 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
         }
     } else {
         // Download binary from GitHub
-        vm_println!("{}", MESSAGES.vm_update_downloading_github);
+        vm_println!("{}", MESSAGES.vm.update_downloading_github);
 
         // Detect platform
         let target = detect_target();
@@ -71,7 +71,7 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
         std::fs::create_dir_all(&temp_dir)?;
 
         // Download release info
-        vm_println!("{}", MESSAGES.vm_update_fetching_release);
+        vm_println!("{}", MESSAGES.vm.update_fetching_release);
         let release_info = Command::new("curl")
             .args([
                 "-sSL",
@@ -82,11 +82,11 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
             .output()?;
 
         if !release_info.status.success() {
-            vm_error!("{}", MESSAGES.vm_update_release_fetch_failed);
+            vm_error!("{}", MESSAGES.vm.update_release_fetch_failed);
             vm_warning!(
                 "{}",
                 msg!(
-                    MESSAGES.vm_update_check_version_hint,
+                    MESSAGES.vm.update_check_version_hint,
                     version = target_version,
                     repo_url = repo_url
                 )
@@ -109,7 +109,7 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
             None => {
                 vm_error!(
                     "{}",
-                    msg!(MESSAGES.vm_update_platform_not_found, platform = &target)
+                    msg!(MESSAGES.vm.update_platform_not_found, platform = &target)
                 );
                 return Err(VmError::general(
                     std::io::Error::new(std::io::ErrorKind::NotFound, "Platform not supported"),
@@ -120,7 +120,7 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
         let archive_path = temp_dir.join(&asset_pattern);
 
         // Download the archive
-        vm_println!("{}", MESSAGES.vm_update_downloading_binary);
+        vm_println!("{}", MESSAGES.vm.update_downloading_binary);
         let archive_path_str = archive_path.to_str().ok_or_else(|| {
             VmError::general(
                 std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid path"),
@@ -132,7 +132,7 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
             .output()?;
 
         if !download_output.status.success() {
-            vm_error!("{}", MESSAGES.vm_update_download_failed);
+            vm_error!("{}", MESSAGES.vm.update_download_failed);
             return Err(VmError::general(
                 std::io::Error::new(std::io::ErrorKind::Other, "Download failed"),
                 "Failed to download binary from GitHub".to_string(),
@@ -140,7 +140,7 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
         }
 
         // Extract the archive
-        vm_println!("{}", MESSAGES.vm_update_extracting);
+        vm_println!("{}", MESSAGES.vm.update_extracting);
         let temp_dir_str = temp_dir.to_str().ok_or_else(|| {
             VmError::general(
                 std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid path"),
@@ -152,7 +152,7 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
             .output()?;
 
         if !extract_output.status.success() {
-            vm_error!("{}", MESSAGES.vm_update_extract_failed);
+            vm_error!("{}", MESSAGES.vm.update_extract_failed);
             return Err(VmError::general(
                 std::io::Error::new(std::io::ErrorKind::Other, "Extraction failed"),
                 "Failed to extract downloaded archive".to_string(),
@@ -167,7 +167,7 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
             // Try without the target suffix
             let temp_binary = temp_dir.join("vm");
             if !temp_binary.exists() {
-                vm_error!("{}", MESSAGES.vm_update_binary_not_found);
+                vm_error!("{}", MESSAGES.vm.update_binary_not_found);
                 return Err(VmError::general(
                     std::io::Error::new(std::io::ErrorKind::NotFound, "Binary not found"),
                     "Could not find vm binary in extracted archive".to_string(),
@@ -180,11 +180,11 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
         let backup_exe = current_exe.with_extension("backup");
 
         // Backup current binary
-        vm_println!("{}", MESSAGES.vm_update_backing_up);
+        vm_println!("{}", MESSAGES.vm.update_backing_up);
         std::fs::rename(&current_exe, &backup_exe)?;
 
         // Install new binary
-        vm_println!("{}", MESSAGES.vm_update_installing);
+        vm_println!("{}", MESSAGES.vm.update_installing);
         std::fs::copy(&temp_binary, &current_exe)?;
 
         // Make it executable on Unix
@@ -202,7 +202,7 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
 
         vm_success!(
             "{}",
-            msg!(MESSAGES.vm_update_success, version = target_version)
+            msg!(MESSAGES.vm.update_success, version = target_version)
         );
     }
 
@@ -213,7 +213,7 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
         let version_str = String::from_utf8_lossy(&version_output.stdout);
         vm_println!(
             "{}",
-            msg!(MESSAGES.vm_update_new_version, version = version_str.trim())
+            msg!(MESSAGES.vm.update_new_version, version = version_str.trim())
         );
     }
 

@@ -36,17 +36,17 @@ pub fn handle_list_enhanced(
         if let Some(provider_name) = provider_filter {
             vm_println!(
                 "{}",
-                msg!(MESSAGES.vm_list_empty_provider, provider = provider_name)
+                msg!(MESSAGES.vm.list_empty_provider, provider = provider_name)
             );
         } else {
-            vm_println!("{}", MESSAGES.vm_list_empty);
+            vm_println!("{}", MESSAGES.vm.list_empty);
         }
         return Ok(());
     }
 
     // Rich dashboard table (always displayed)
-    vm_println!("{}", MESSAGES.vm_list_table_header);
-    vm_println!("{}", MESSAGES.vm_list_table_separator);
+    vm_println!("{}", MESSAGES.vm.list_table_header);
+    vm_println!("{}", MESSAGES.vm.list_table_separator);
 
     // Sort instances by provider then name for consistent output
     let mut sorted_instances = all_instances;

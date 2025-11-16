@@ -65,7 +65,7 @@ pub fn handle_plugin_new(plugin_name: &str, plugin_type: &str) -> Result<()> {
     vm_println!(
         "{}",
         msg!(
-            MESSAGES.plugin_new_success,
+            MESSAGES.plugin.new_success,
             r#type = &plugin_type_lower,
             name = plugin_name
         )
@@ -73,7 +73,7 @@ pub fn handle_plugin_new(plugin_name: &str, plugin_type: &str) -> Result<()> {
     vm_println!(
         "{}",
         msg!(
-            MESSAGES.plugin_new_next_steps,
+            MESSAGES.plugin.new_next_steps,
             name = plugin_name,
             r#type = &plugin_type_lower
         )
@@ -81,7 +81,7 @@ pub fn handle_plugin_new(plugin_name: &str, plugin_type: &str) -> Result<()> {
     vm_println!(
         "{}",
         msg!(
-            MESSAGES.plugin_new_files_created,
+            MESSAGES.plugin.new_files_created,
             r#type = &plugin_type_lower,
             type_cap = type_cap
         )

@@ -11,12 +11,12 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
         VmError::general(e, "Failed to determine current executable path".to_string())
     })?;
 
-    vm_println!("{}", MESSAGES.vm_uninstall_header);
-    vm_println!("{}", MESSAGES.vm_uninstall_will_remove);
+    vm_println!("{}", MESSAGES.vm.uninstall_header);
+    vm_println!("{}", MESSAGES.vm.uninstall_will_remove);
     vm_println!(
         "{}",
         msg!(
-            MESSAGES.vm_uninstall_binary,
+            MESSAGES.vm.uninstall_binary,
             path = current_exe.display().to_string()
         )
     );
@@ -39,12 +39,12 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
     }
 
     if !keep_config && !config_files.is_empty() {
-        vm_println!("{}", MESSAGES.vm_uninstall_config_files);
+        vm_println!("{}", MESSAGES.vm.uninstall_config_files);
         for file in &config_files {
             vm_println!(
                 "{}",
                 msg!(
-                    MESSAGES.vm_uninstall_config_file_item,
+                    MESSAGES.vm.uninstall_config_file_item,
                     path = file.display().to_string()
                 )
             );
@@ -54,12 +54,12 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
     // Find shell config entries
     let shell_configs = find_shell_configs(&home);
     if !shell_configs.is_empty() {
-        vm_println!("{}", MESSAGES.vm_uninstall_path_entries);
+        vm_println!("{}", MESSAGES.vm.uninstall_path_entries);
         for config in &shell_configs {
             vm_println!(
                 "{}",
                 msg!(
-                    MESSAGES.vm_uninstall_path_entry_item,
+                    MESSAGES.vm.uninstall_path_entry_item,
                     path = config.display().to_string()
                 )
             );
@@ -82,12 +82,12 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
             .map_err(|e| VmError::general(e, "Failed to read user input"))?;
 
         if !response.trim().eq_ignore_ascii_case("y") {
-            vm_println!("{}", MESSAGES.vm_uninstall_cancelled);
+            vm_println!("{}", MESSAGES.vm.uninstall_cancelled);
             return Ok(());
         }
     }
 
-    vm_println!("{}", MESSAGES.vm_uninstall_progress);
+    vm_println!("{}", MESSAGES.vm.uninstall_progress);
 
     // Remove configuration files if requested
     if !keep_config {
@@ -95,7 +95,7 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
             vm_println!(
                 "{}",
                 msg!(
-                    MESSAGES.vm_uninstall_removing_file,
+                    MESSAGES.vm.uninstall_removing_file,
                     path = path.display().to_string()
                 )
             );
@@ -117,7 +117,7 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
             vm_println!(
                 "{}",
                 msg!(
-                    MESSAGES.vm_uninstall_cleaned_path,
+                    MESSAGES.vm.uninstall_cleaned_path,
                     path = config_file.display().to_string()
                 )
             );
@@ -127,27 +127,27 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
     // Instructions for final removal
     vm_println!();
     vm_success!("VM has been uninstalled!");
-    vm_println!("{}", MESSAGES.vm_uninstall_complete_instructions);
+    vm_println!("{}", MESSAGES.vm.uninstall_complete_instructions);
 
     // Provide the correct removal command based on location
     if current_exe.to_string_lossy().contains("cargo") {
         // Installed via cargo
-        vm_println!("{}", MESSAGES.vm_uninstall_remove_cargo);
+        vm_println!("{}", MESSAGES.vm.uninstall_remove_cargo);
     } else if current_exe.parent().and_then(|p| p.file_name()) == Some(std::ffi::OsStr::new("bin"))
     {
         // Installed in a bin directory
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.vm_uninstall_remove_sudo,
+                MESSAGES.vm.uninstall_remove_sudo,
                 path = current_exe.display().to_string()
             )
         );
-        vm_println!("{}", MESSAGES.vm_uninstall_remove_no_sudo_hint);
+        vm_println!("{}", MESSAGES.vm.uninstall_remove_no_sudo_hint);
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.vm_uninstall_remove_no_sudo,
+                MESSAGES.vm.uninstall_remove_no_sudo,
                 path = current_exe.display().to_string()
             )
         );
@@ -156,13 +156,13 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.vm_uninstall_remove_generic,
+                MESSAGES.vm.uninstall_remove_generic,
                 path = current_exe.display().to_string()
             )
         );
     }
 
-    vm_println!("{}", MESSAGES.vm_uninstall_thank_you);
+    vm_println!("{}", MESSAGES.vm.uninstall_thank_you);
 
     Ok(())
 }

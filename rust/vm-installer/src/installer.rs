@@ -96,7 +96,7 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
     let _enter = span.enter();
 
     vm_progress!("Building Rust binaries...");
-    vm_println!("{}", MESSAGES.installer_build_time_hint);
+    vm_println!("{}", MESSAGES.service.installer_build_time_hint);
 
     // Check for sccache availability
     let has_sccache = Command::new("sccache")
@@ -108,7 +108,7 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
         .unwrap_or(false);
 
     if has_sccache {
-        vm_println!("{}", MESSAGES.installer_sccache_enabled);
+        vm_println!("{}", MESSAGES.service.installer_sccache_enabled);
     } else {
         vm_warning!("sccache not found - builds will be slower. Install: cargo install sccache");
     }

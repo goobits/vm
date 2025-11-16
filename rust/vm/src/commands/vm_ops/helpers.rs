@@ -35,13 +35,13 @@ pub(super) async fn register_vm_services_helper(
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.common_services_config_failed,
+                MESSAGES.common.services_config_failed,
                 error = e.to_string()
             )
         );
         // Don't fail the operation if service registration fails
     } else {
-        vm_println!("{}", MESSAGES.common_services_config_success);
+        vm_println!("{}", MESSAGES.common.services_config_success);
     }
     Ok(())
 }
@@ -59,13 +59,13 @@ pub(super) async fn unregister_vm_services_helper(
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.common_services_cleanup_failed,
+                MESSAGES.common.services_cleanup_failed,
                 error = e.to_string()
             )
         );
         // Don't fail the operation if service cleanup fails
     } else {
-        vm_println!("{}", MESSAGES.common_services_cleaned);
+        vm_println!("{}", MESSAGES.common.services_cleaned);
     }
     Ok(())
 }

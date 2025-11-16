@@ -81,7 +81,7 @@ pub async fn handle_destroy(
         .unwrap_or(false);
 
     if !container_exists {
-        vm_println!("{}", MESSAGES.vm_destroy_cleanup_already_removed);
+        vm_println!("{}", MESSAGES.vm.destroy_cleanup_already_removed);
 
         // Clean up images even if container doesn't exist
         let _ = std::process::Command::new("docker")
@@ -90,13 +90,13 @@ pub async fn handle_destroy(
 
         unregister_vm_services_helper(&target_container, &global_config).await?;
 
-        vm_println!("{}", MESSAGES.common_cleanup_complete);
+        vm_println!("{}", MESSAGES.common.cleanup_complete);
         return Ok(());
     }
 
     let should_destroy = if force {
         debug!("Force flag set - skipping confirmation prompt");
-        vm_println!("{}", msg!(MESSAGES.vm_destroy_force, name = vm_name));
+        vm_println!("{}", msg!(MESSAGES.vm.destroy_force, name = vm_name));
         true
     } else {
         // Check status to show current state
@@ -127,20 +127,20 @@ pub async fn handle_destroy(
             }
         }
 
-        vm_println!("{}", msg!(MESSAGES.vm_destroy_confirm, name = vm_name));
+        vm_println!("{}", msg!(MESSAGES.vm.destroy_confirm, name = vm_name));
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.vm_destroy_info_block,
+                MESSAGES.vm.destroy_info_block,
                 status = if is_running {
-                    MESSAGES.common_status_running
+                    MESSAGES.common.status_running
                 } else {
-                    MESSAGES.common_status_stopped
+                    MESSAGES.common.status_stopped
                 },
                 container = &target_container
             )
         );
-        print!("{}", MESSAGES.vm_destroy_confirm_prompt);
+        print!("{}", MESSAGES.vm.destroy_confirm_prompt);
         io::stdout()
             .flush()
             .map_err(|e| VmError::general(e, "Failed to flush stdout"))?;
@@ -154,7 +154,7 @@ pub async fn handle_destroy(
 
     if should_destroy {
         debug!("Destroy confirmation: response='yes', proceeding with destruction");
-        vm_println!("{}", MESSAGES.vm_destroy_progress);
+        vm_println!("{}", MESSAGES.vm.destroy_progress);
 
         match provider.destroy(container) {
             Ok(()) => {
@@ -163,10 +163,10 @@ pub async fn handle_destroy(
                     backup_databases(&config, vm_name, &global_config).await;
                 }
 
-                vm_println!("{}", MESSAGES.common_configuring_services);
+                vm_println!("{}", MESSAGES.common.configuring_services);
                 unregister_vm_services_helper(&target_container, &global_config).await?;
 
-                vm_println!("{}", MESSAGES.vm_destroy_success);
+                vm_println!("{}", MESSAGES.vm.destroy_success);
                 Ok(())
             }
             Err(e) => {
@@ -176,7 +176,7 @@ pub async fn handle_destroy(
         }
     } else {
         debug!("Destroy confirmation: response='no', cancelling destruction");
-        vm_println!("{}", MESSAGES.vm_destroy_cancelled);
+        vm_println!("{}", MESSAGES.vm.destroy_cancelled);
         vm_error!("VM destruction cancelled by user");
         Err(VmError::general(
             std::io::Error::new(
@@ -251,17 +251,17 @@ fn handle_cross_provider_destroy(
     };
 
     if filtered_instances.is_empty() {
-        vm_println!("{}", MESSAGES.vm_destroy_cross_no_instances);
+        vm_println!("{}", MESSAGES.vm.destroy_cross_no_instances);
         return Ok(());
     }
 
     // Show what will be destroyed
-    vm_println!("{}", MESSAGES.vm_destroy_cross_list_header);
+    vm_println!("{}", MESSAGES.vm.destroy_cross_list_header);
     for instance in &filtered_instances {
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.vm_destroy_cross_list_item,
+                MESSAGES.vm.destroy_cross_list_item,
                 name = &instance.name,
                 provider = &instance.provider
             )
@@ -274,7 +274,7 @@ fn handle_cross_provider_destroy(
         print!(
             "{}",
             msg!(
-                MESSAGES.vm_destroy_cross_confirm_prompt,
+                MESSAGES.vm.destroy_cross_confirm_prompt,
                 count = filtered_instances.len().to_string()
             )
         );
@@ -285,7 +285,7 @@ fn handle_cross_provider_destroy(
     };
 
     if !should_destroy {
-        vm_println!("{}", MESSAGES.vm_destroy_cross_cancelled);
+        vm_println!("{}", MESSAGES.vm.destroy_cross_cancelled);
         return Ok(());
     }
 
@@ -297,7 +297,7 @@ fn handle_cross_provider_destroy(
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.vm_destroy_cross_progress,
+                MESSAGES.vm.destroy_cross_progress,
                 name = &instance.name,
                 provider = &instance.provider
             )
@@ -309,7 +309,7 @@ fn handle_cross_provider_destroy(
                 vm_println!(
                     "{}",
                     msg!(
-                        MESSAGES.vm_destroy_cross_success_item,
+                        MESSAGES.vm.destroy_cross_success_item,
                         name = &instance.name
                     )
                 );
@@ -319,7 +319,7 @@ fn handle_cross_provider_destroy(
                 vm_println!(
                     "{}",
                     msg!(
-                        MESSAGES.vm_destroy_cross_failed,
+                        MESSAGES.vm.destroy_cross_failed,
                         name = &instance.name,
                         error = e.to_string()
                     )
@@ -332,7 +332,7 @@ fn handle_cross_provider_destroy(
     vm_println!(
         "{}",
         msg!(
-            MESSAGES.vm_destroy_cross_complete,
+            MESSAGES.vm.destroy_cross_complete,
             success = success_count.to_string(),
             errors = error_count.to_string()
         )

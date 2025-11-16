@@ -72,19 +72,19 @@ pub fn set(field: &str, values: &[String], global: bool, dry_run: bool) -> Resul
             value_display,
             config_path.display()
         );
-        vm_println!("{}", MESSAGES.config_no_changes);
+        vm_println!("{}", MESSAGES.config.no_changes);
     } else {
         CoreOperations::write_yaml_file(&config_path, &yaml_value)?;
         vm_success!(
             "{}",
             msg!(
-                MESSAGES.config_set_success,
+                MESSAGES.config.set_success,
                 field = field,
                 value = value_display,
                 path = config_path.display().to_string()
             )
         );
-        vm_println!("{}", MESSAGES.config_apply_changes_hint);
+        vm_println!("{}", MESSAGES.config.apply_changes_hint);
     }
     Ok(())
 }

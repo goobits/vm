@@ -92,11 +92,11 @@ pub fn fuzzy_match_instances(partial: &str, instances: &[InstanceInfo]) -> Resul
                 }
             }
             // Otherwise return first match but warn about ambiguity
-            vm_error!("{}", MESSAGES.vm_ambiguous);
+            vm_error!("{}", MESSAGES.vm.ambiguous);
             for name in &matches {
                 vm_error!("  • {}", name);
             }
-            vm_error!("{}", msg!(MESSAGES.vm_using, name = &matches[0]));
+            vm_error!("{}", msg!(MESSAGES.vm.using, name = &matches[0]));
             Ok(matches[0].clone())
         }
     }

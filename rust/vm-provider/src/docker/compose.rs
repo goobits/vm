@@ -351,6 +351,78 @@ impl<'a> ComposeOperations<'a> {
         })
     }
 
+    /// Helper to create config with instance name suffix
+    fn create_instance_config(
+        &self,
+        base_project_name: &str,
+        instance: &str,
+    ) -> (VmConfig, String) {
+        let mut custom_config = self.config.clone();
+
+        // Determine instance project name
+        let instance_project_name = custom_config
+            .project
+            .as_ref()
+            .and_then(|p| p.name.as_ref())
+            .map(|name| format!("{}-{}", name, instance))
+            .unwrap_or_else(|| format!("vm-project-{}", instance));
+
+        // Update or create project config
+        let project = custom_config.project.get_or_insert_with(Default::default);
+        project.name = Some(instance_project_name.clone());
+
+        let final_name = format!("{}-{}", base_project_name, instance);
+        (custom_config, final_name)
+    }
+
+    /// Helper to configure worktrees in tera context
+    fn configure_worktrees(
+        &self,
+        tera_context: &mut TeraContext,
+        home_dir: &str,
+        final_project_name: &str,
+    ) {
+        let worktrees_enabled = self
+            .config
+            .host_sync
+            .as_ref()
+            .and_then(|hs| hs.worktrees.as_ref())
+            .map(|w| w.enabled)
+            .unwrap_or_else(|| {
+                vm_config::GlobalConfig::load()
+                    .ok()
+                    .map(|gc| gc.worktrees.enabled)
+                    .unwrap_or(true)
+            });
+
+        if !worktrees_enabled {
+            return;
+        }
+
+        // Setup worktrees base directory
+        let worktrees_base = format!("{}/.vm/worktrees/{}", home_dir, final_project_name);
+        if let Err(e) = fs::create_dir_all(&worktrees_base) {
+            eprintln!(
+                "Warning: Failed to create worktrees directory {}: {}",
+                worktrees_base, e
+            );
+            eprintln!("         Worktrees base directory will not be mounted.");
+        } else {
+            tera_context.insert("worktrees_base_dir", &worktrees_base);
+        }
+
+        // Detect and mount existing worktrees
+        if let Ok(worktrees) = detect_worktrees() {
+            if !worktrees.is_empty() {
+                let worktree_mounts: Vec<_> = worktrees
+                    .iter()
+                    .filter_map(|s| extract_path_mount(s))
+                    .collect();
+                tera_context.insert("worktrees", &worktree_mounts);
+            }
+        }
+    }
+
     /// Internal method that handles rendering with optional instance name
     fn render_docker_compose_internal(
         &self,
@@ -377,23 +449,9 @@ impl<'a> ComposeOperations<'a> {
             .unwrap_or("vm-project");
 
         // Handle instance name modification if provided
-        let (final_config, final_project_name) = if let Some(instance) = instance_name {
-            let mut custom_config = self.config.clone();
-            if let Some(ref mut project) = custom_config.project {
-                if let Some(ref project_name) = project.name {
-                    project.name = Some(format!("{}-{}", project_name, instance));
-                } else {
-                    project.name = Some(format!("vm-project-{}", instance));
-                }
-            } else {
-                custom_config.project = Some(vm_config::config::ProjectConfig {
-                    name: Some(format!("vm-project-{}", instance)),
-                    ..Default::default()
-                });
-            }
-            (custom_config, format!("{}-{}", base_project_name, instance))
-        } else {
-            (self.config.clone(), base_project_name.to_string())
+        let (final_config, final_project_name) = match instance_name {
+            Some(instance) => self.create_instance_config(base_project_name, instance),
+            None => (self.config.clone(), base_project_name.to_string()),
         };
 
         let mut tera_context = TeraContext::new();
@@ -442,52 +500,7 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("home_dir", &home_dir);
 
         // Git worktrees volume
-        // Check if worktrees are enabled
-        let worktrees_enabled = self
-            .config
-            .host_sync
-            .as_ref()
-            .and_then(|hs| hs.worktrees.as_ref())
-            .map(|w| w.enabled)
-            .unwrap_or_else(|| {
-                // Check global config if project config doesn't have it
-                vm_config::GlobalConfig::load()
-                    .ok()
-                    .map(|gc| gc.worktrees.enabled)
-                    .unwrap_or(true) // Default to true
-            });
-
-        if worktrees_enabled {
-            // Get the worktrees base directory path
-            let worktrees_base = format!("{}/.vm/worktrees/{}", home_dir, final_project_name);
-
-            // Try to create the directory on host - only mount if successful
-            match fs::create_dir_all(&worktrees_base) {
-                Ok(_) => {
-                    // Mount at identical absolute path in container
-                    // This allows git worktrees created inside container to work on host too
-                    tera_context.insert("worktrees_base_dir", &worktrees_base);
-                }
-                Err(e) => {
-                    eprintln!(
-                        "Warning: Failed to create worktrees directory {}: {}",
-                        worktrees_base, e
-                    );
-                    eprintln!("         Worktrees base directory will not be mounted.");
-                }
-            }
-
-            // Also detect and mount existing worktrees (for backward compatibility)
-            if let Ok(worktrees) = detect_worktrees() {
-                if !worktrees.is_empty() {
-                    let worktree_mounts: Vec<_> = worktrees
-                        .iter()
-                        .filter_map(|s| extract_path_mount(s))
-                        .collect();
-                    tera_context.insert("worktrees", &worktree_mounts);
-                }
-            }
-        }
+        self.configure_worktrees(&mut tera_context, &home_dir, &final_project_name);
 
         let content = tera
             .render("docker-compose.yml", &tera_context)

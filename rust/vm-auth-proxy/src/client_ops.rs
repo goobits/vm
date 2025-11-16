@@ -63,7 +63,7 @@ pub async fn add_secret(
         .context("Failed to send request to auth proxy")?;
 
     if response.status().is_success() {
-        info!("{}", msg!(MESSAGES.auth_secret_added, name = name));
+        info!("{}", msg!(MESSAGES.service.auth_secret_added, name = name));
     } else {
         let status = response.status();
         let error_text = response.text().await.unwrap_or_default();
@@ -95,14 +95,14 @@ pub async fn list_secrets(server_url: &str, show_values: bool) -> Result<()> {
     let list: SecretListResponse = response.json().await.context("Failed to parse response")?;
 
     if list.secrets.is_empty() {
-        info!("{}", MESSAGES.auth_secrets_empty);
+        info!("{}", MESSAGES.service.auth_secrets_empty);
         return Ok(());
     }
 
     info!(
         "{}",
         msg!(
-            MESSAGES.auth_secrets_list_header,
+            MESSAGES.service.auth_secrets_list_header,
             count = list.total.to_string()
         )
     );
@@ -112,7 +112,7 @@ pub async fn list_secrets(server_url: &str, show_values: bool) -> Result<()> {
     }
 
     if !show_values {
-        info!("{}", MESSAGES.auth_secrets_show_values_hint);
+        info!("{}", MESSAGES.service.auth_secrets_show_values_hint);
     }
 
     Ok(())
@@ -128,7 +128,7 @@ pub async fn remove_secret(server_url: &str, name: &str, force: bool) -> Result<
             .interact()?;
 
         if !confirm {
-            info!("{}", MESSAGES.auth_remove_cancelled);
+            info!("{}", MESSAGES.service.auth_remove_cancelled);
             return Ok(());
         }
     }
@@ -145,7 +145,10 @@ pub async fn remove_secret(server_url: &str, name: &str, force: bool) -> Result<
         .context("Failed to send request to auth proxy")?;
 
     if response.status().is_success() {
-        info!("{}", msg!(MESSAGES.auth_secret_removed, name = name));
+        info!(
+            "{}",
+            msg!(MESSAGES.service.auth_secret_removed, name = name)
+        );
     } else {
         let status = response.status();
         let error_text = response.text().await.unwrap_or_default();
@@ -349,7 +352,7 @@ pub async fn start_server_if_needed(port: u16) -> Result<()> {
         .interact()?;
 
     if confirm {
-        info!("{}", MESSAGES.auth_server_starting);
+        info!("{}", MESSAGES.service.auth_server_starting);
 
         let data_dir = get_auth_data_dir()?;
 
@@ -358,7 +361,7 @@ pub async fn start_server_if_needed(port: u16) -> Result<()> {
 
         // Verify it started
         if check_server_running(port).await {
-            info!("{}", MESSAGES.auth_server_started);
+            info!("{}", MESSAGES.service.auth_server_started);
         } else {
             return Err(anyhow!("Failed to start auth proxy server"));
         }

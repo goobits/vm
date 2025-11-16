@@ -172,7 +172,7 @@ pub fn handle_ports_command(fix: bool) -> VmResult<()> {
     vm_println!(
         "{}",
         msg!(
-            MESSAGES.config_ports_header,
+            MESSAGES.config.ports_header,
             project = project_name,
             range = &current_port_range
         )
@@ -189,7 +189,7 @@ pub fn handle_ports_command(fix: bool) -> VmResult<()> {
 
     // Only check for conflicts when --fix is specified
     vm_println!("");
-    vm_println!("{}", MESSAGES.config_ports_checking);
+    vm_println!("{}", MESSAGES.config.ports_checking);
 
     // Check for conflicts with running Docker containers
     let conflicts = check_docker_port_conflicts(&current_range)?;
@@ -210,7 +210,7 @@ pub fn handle_ports_command(fix: bool) -> VmResult<()> {
 
     // Fix conflicts by finding a new port range
     vm_println!("");
-    vm_println!("{}", MESSAGES.config_ports_fixing);
+    vm_println!("{}", MESSAGES.config.ports_fixing);
 
     let registry = PortRegistry::load().context("Failed to load port registry")?;
 
@@ -224,7 +224,7 @@ pub fn handle_ports_command(fix: bool) -> VmResult<()> {
 
     vm_println!(
         "{}",
-        msg!(MESSAGES.config_ports_updated, range = &new_range_str)
+        msg!(MESSAGES.config.ports_updated, range = &new_range_str)
     );
 
     // Update vm.yaml with new port range
@@ -244,12 +244,12 @@ pub fn handle_ports_command(fix: bool) -> VmResult<()> {
     vm_println!(
         "{}",
         msg!(
-            MESSAGES.config_ports_resolved,
+            MESSAGES.config.ports_resolved,
             old = &current_port_range,
             new = &new_range_str
         )
     );
-    vm_println!("{}", MESSAGES.config_ports_restart_hint);
+    vm_println!("{}", MESSAGES.config.ports_restart_hint);
 
     Ok(())
 }

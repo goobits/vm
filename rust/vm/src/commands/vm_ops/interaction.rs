@@ -87,11 +87,11 @@ fn handle_ssh_start_prompt(
 ) -> VmResult<Option<VmResult<()>>> {
     // Check if we're in an interactive terminal
     if !io::stdin().is_terminal() {
-        vm_println!("{}", MESSAGES.vm_ssh_start_hint);
+        vm_println!("{}", MESSAGES.vm.ssh_start_hint);
         return Ok(None);
     }
 
-    print!("{}", MESSAGES.vm_ssh_start_prompt);
+    print!("{}", MESSAGES.vm.ssh_start_prompt);
     io::stdout()
         .flush()
         .map_err(|e| VmError::general(e, "Failed to flush stdout"))?;
@@ -102,18 +102,18 @@ fn handle_ssh_start_prompt(
         .map_err(|e| VmError::general(e, "Failed to read user input"))?;
 
     if !matches!(input.trim().to_lowercase().as_str(), "y" | "yes" | "") {
-        vm_println!("{}", MESSAGES.vm_ssh_start_aborted);
+        vm_println!("{}", MESSAGES.vm.ssh_start_aborted);
         return Ok(None);
     }
 
     // Start the VM
-    vm_println!("{}", msg!(MESSAGES.vm_ssh_starting, name = vm_name));
+    vm_println!("{}", msg!(MESSAGES.vm.ssh_starting, name = vm_name));
 
     if let Err(e) = provider.start(container) {
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.vm_ssh_start_failed,
+                MESSAGES.vm.ssh_start_failed,
                 name = vm_name,
                 error = e.to_string()
             )
@@ -121,12 +121,12 @@ fn handle_ssh_start_prompt(
         return Ok(None);
     }
 
-    vm_println!("{}", msg!(MESSAGES.vm_ssh_reconnecting, name = vm_name));
+    vm_println!("{}", msg!(MESSAGES.vm.ssh_reconnecting, name = vm_name));
 
     let retry_result = provider.ssh(container, relative_path);
     match &retry_result {
         Ok(()) => {
-            vm_println!("{}", msg!(MESSAGES.vm_ssh_disconnected, name = vm_name));
+            vm_println!("{}", msg!(MESSAGES.vm.ssh_disconnected, name = vm_name));
         }
         Err(e) => {
             vm_println!("\n❌ SSH connection failed: {}", e);
@@ -177,7 +177,7 @@ fn connect_ssh(
         .and_then(|t| t.shell.as_deref())
         .unwrap_or("zsh");
 
-    vm_println!("{}", msg!(MESSAGES.vm_ssh_connecting, name = vm_name));
+    vm_println!("{}", msg!(MESSAGES.vm.ssh_connecting, name = vm_name));
 
     // Increment session count
     let mut state = VmState::load(vm_name)?;
@@ -194,18 +194,18 @@ fn connect_ssh(
     // Show message when SSH session ends
     match &result {
         Ok(()) => {
-            vm_println!("{}", msg!(MESSAGES.vm_ssh_disconnected, name = vm_name));
+            vm_println!("{}", msg!(MESSAGES.vm.ssh_disconnected, name = vm_name));
         }
         Err(e) => {
             let error_str = e.to_string();
 
             // Check if VM doesn't exist first
             if error_str.contains("No such container") || error_str.contains("No such object") {
-                vm_println!("{}", msg!(MESSAGES.vm_ssh_vm_not_found, name = vm_name));
+                vm_println!("{}", msg!(MESSAGES.vm.ssh_vm_not_found, name = vm_name));
 
                 // Offer to create the VM
                 if io::stdin().is_terminal() {
-                    print!("{}", MESSAGES.vm_ssh_create_prompt);
+                    print!("{}", MESSAGES.vm.ssh_create_prompt);
                     io::stdout().flush()?;
 
                     let mut input = String::new();
@@ -213,14 +213,14 @@ fn connect_ssh(
 
                     if matches!(input.trim().to_lowercase().as_str(), "y" | "yes") {
                         // Actually create the VM
-                        vm_println!("{}", msg!(MESSAGES.vm_ssh_creating, name = vm_name));
+                        vm_println!("{}", msg!(MESSAGES.vm.ssh_creating, name = vm_name));
 
                         #[allow(clippy::excessive_nesting)]
                         match provider.create() {
                             Ok(()) => {
                                 vm_println!(
                                     "{}",
-                                    msg!(MESSAGES.vm_ssh_create_success, name = vm_name)
+                                    msg!(MESSAGES.vm.ssh_create_success, name = vm_name)
                                 );
 
                                 // Now try SSH again
@@ -230,7 +230,7 @@ fn connect_ssh(
                                 vm_println!(
                                     "{}",
                                     msg!(
-                                        MESSAGES.vm_ssh_create_failed,
+                                        MESSAGES.vm.ssh_create_failed,
                                         name = vm_name,
                                         error = create_err.to_string()
                                     )
@@ -261,7 +261,7 @@ fn connect_ssh(
                     && error_str.contains("exited with code 1")
                     && !error_str.contains("No such"))
             {
-                vm_println!("{}", msg!(MESSAGES.vm_ssh_not_running, name = vm_name));
+                vm_println!("{}", msg!(MESSAGES.vm.ssh_not_running, name = vm_name));
 
                 // Handle interactive prompt
                 if let Some(retry_result) = handle_ssh_start_prompt(
@@ -278,10 +278,10 @@ fn connect_ssh(
             } else if error_str.contains("connection lost")
                 || error_str.contains("connection failed")
             {
-                vm_println!("{}", MESSAGES.vm_ssh_connection_lost);
+                vm_println!("{}", MESSAGES.vm.ssh_connection_lost);
             } else {
                 // For other errors, show the actual error but clean up the message
-                vm_println!("{}", MESSAGES.vm_ssh_session_ended);
+                vm_println!("{}", MESSAGES.vm.ssh_session_ended);
             }
         }
     }
@@ -403,7 +403,7 @@ pub fn handle_exec(
     vm_println!(
         "{}",
         msg!(
-            MESSAGES.vm_exec_header,
+            MESSAGES.vm.exec_header,
             name = vm_name,
             command = &cmd_display
         )
@@ -413,14 +413,14 @@ pub fn handle_exec(
 
     match &result {
         Ok(()) => {
-            vm_println!("{}", MESSAGES.vm_exec_separator);
-            vm_println!("{}", MESSAGES.vm_exec_success);
+            vm_println!("{}", MESSAGES.vm.exec_separator);
+            vm_println!("{}", MESSAGES.vm.exec_success);
         }
         Err(e) => {
-            vm_println!("{}", MESSAGES.vm_exec_separator);
+            vm_println!("{}", MESSAGES.vm.exec_separator);
             vm_println!(
                 "{}",
-                msg!(MESSAGES.vm_exec_troubleshooting, error = e.to_string())
+                msg!(MESSAGES.vm.exec_troubleshooting, error = e.to_string())
             );
         }
     }

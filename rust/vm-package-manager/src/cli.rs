@@ -119,7 +119,7 @@ pub fn execute(args: Args) -> Result<()> {
                 vm_println!(
                     "{}",
                     msg!(
-                        MESSAGES.pkg_manager_linked,
+                        MESSAGES.service.pkg_manager_linked,
                         package = &package,
                         r#type = format!("{:?}", package_type)
                     )
@@ -127,7 +127,7 @@ pub fn execute(args: Args) -> Result<()> {
             } else {
                 vm_println!(
                     "{}",
-                    msg!(MESSAGES.pkg_manager_not_linked, package = &package)
+                    msg!(MESSAGES.service.pkg_manager_not_linked, package = &package)
                 );
             }
         }

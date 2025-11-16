@@ -179,7 +179,7 @@ pub async fn handle_create(
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.vm_create_header_instance,
+                MESSAGES.vm.create_header_instance,
                 instance = instance_name,
                 name = vm_name
             )
@@ -191,7 +191,7 @@ pub async fn handle_create(
             vm_println!(
                 "{}",
                 msg!(
-                    MESSAGES.vm_create_force_recreating_instance,
+                    MESSAGES.vm.create_force_recreating_instance,
                     name = instance_name
                 )
             );
@@ -209,7 +209,7 @@ pub async fn handle_create(
             vm_println!(
                 "{}",
                 msg!(
-                    MESSAGES.vm_create_multiinstance_warning,
+                    MESSAGES.vm.create_multiinstance_warning,
                     instance = instance_name,
                     provider = provider.name()
                 )
@@ -221,7 +221,7 @@ pub async fn handle_create(
             warn!("Forcing recreation of VM '{}'", vm_name);
             vm_println!(
                 "{}",
-                msg!(MESSAGES.vm_create_force_recreating, name = vm_name)
+                msg!(MESSAGES.vm.create_force_recreating, name = vm_name)
             );
 
             if let Err(err) = provider.destroy(None) {
@@ -230,8 +230,8 @@ pub async fn handle_create(
         }
     }
 
-    vm_println!("{}", msg!(MESSAGES.vm_create_header, name = vm_name));
-    vm_println!("{}", MESSAGES.vm_create_progress);
+    vm_println!("{}", msg!(MESSAGES.vm.create_header, name = vm_name));
+    vm_println!("{}", MESSAGES.vm.create_progress);
 
     // Register VM services BEFORE creating container so docker-compose can inject env vars
     // Skip service registration for snapshot builds (they're just base images, no running services needed)
@@ -242,7 +242,7 @@ pub async fn handle_create(
     };
 
     if save_as.is_none() {
-        vm_println!("{}", MESSAGES.common_configuring_services);
+        vm_println!("{}", MESSAGES.common.configuring_services);
         register_vm_services_helper(&vm_instance_name, &config, &global_config).await?;
     } else {
         debug!("Skipping service registration for snapshot build");
@@ -268,7 +268,7 @@ pub async fn handle_create(
 
     match create_result {
         Ok(()) => {
-            vm_println!("{}", MESSAGES.vm_create_success);
+            vm_println!("{}", MESSAGES.vm.create_success);
 
             let container_name = if let Some(instance_name) = &instance {
                 format!("{vm_name}-{instance_name}")
@@ -278,8 +278,8 @@ pub async fn handle_create(
             vm_println!(
                 "{}",
                 msg!(
-                    MESSAGES.vm_create_info_block,
-                    status = MESSAGES.common_status_running,
+                    MESSAGES.vm.create_info_block,
+                    status = MESSAGES.common.status_running,
                     container = &container_name
                 )
             );
@@ -301,7 +301,7 @@ pub async fn handle_create(
                     vm_println!(
                         "{}",
                         msg!(
-                            MESSAGES.common_resources_label,
+                            MESSAGES.common.resources_label,
                             cpus = cpu_str,
                             memory = mem_str
                         )
@@ -321,7 +321,7 @@ pub async fn handle_create(
                 vm_println!(
                     "{}",
                     msg!(
-                        MESSAGES.common_services_label,
+                        MESSAGES.common.services_label,
                         services = services.join(", ")
                     )
                 );
@@ -333,7 +333,7 @@ pub async fn handle_create(
                     vm_println!(
                         "{}",
                         msg!(
-                            MESSAGES.common_ports_label,
+                            MESSAGES.common.ports_label,
                             start = range[0].to_string(),
                             end = range[1].to_string()
                         )
@@ -349,7 +349,7 @@ pub async fn handle_create(
                 vm_println!("  • Run commands: vm exec 'npm install'");
                 vm_println!("  • View status:  vm status");
             } else {
-                vm_println!("{}", MESSAGES.common_connect_hint);
+                vm_println!("{}", MESSAGES.common.connect_hint);
             }
 
             // Handle --save-as flag (save container as global snapshot)
@@ -539,7 +539,7 @@ pub async fn handle_create(
             vm_println!(
                 "{}",
                 msg!(
-                    MESSAGES.vm_create_troubleshooting,
+                    MESSAGES.vm.create_troubleshooting,
                     name = vm_name,
                     error = e.to_string()
                 )

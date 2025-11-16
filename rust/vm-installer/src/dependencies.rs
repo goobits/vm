@@ -2,7 +2,7 @@ use vm_core::{error::Result, vm_error, vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 
 pub fn check() -> Result<()> {
-    vm_println!("{}", MESSAGES.installer_checking_dependencies);
+    vm_println!("{}", MESSAGES.service.installer_checking_dependencies);
     use std::process::Command;
 
     let cargo_check = Command::new("cargo").arg("--version").output();

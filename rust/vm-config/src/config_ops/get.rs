@@ -50,9 +50,9 @@ pub fn get(field: Option<&str>, global: bool) -> Result<()> {
             }
         }
         None => {
-            vm_println!("{}", MESSAGES.config_current_configuration);
+            vm_println!("{}", MESSAGES.config.current_configuration);
             vm_println!("{}", serde_yaml::to_string(&yaml_value)?);
-            vm_println!("{}", MESSAGES.config_modify_hint);
+            vm_println!("{}", MESSAGES.config.modify_hint);
         }
     }
 

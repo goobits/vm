@@ -13,22 +13,22 @@ pub fn handle_plugin_list() -> Result<()> {
     let plugins = discover_plugins()?;
 
     if plugins.is_empty() {
-        vm_println!("{}", MESSAGES.plugin_list_empty);
+        vm_println!("{}", MESSAGES.plugin.list_empty);
         return Ok(());
     }
 
-    vm_println!("{}", MESSAGES.plugin_list_header);
+    vm_println!("{}", MESSAGES.plugin.list_header);
 
     let preset_plugins = get_preset_plugins(&plugins);
     let service_plugins = get_service_plugins(&plugins);
 
     if !preset_plugins.is_empty() {
-        vm_println!("{}", MESSAGES.plugin_list_presets_header);
+        vm_println!("{}", MESSAGES.plugin.list_presets_header);
         for plugin in preset_plugins {
             vm_println!(
                 "{}",
                 msg!(
-                    MESSAGES.plugin_list_item,
+                    MESSAGES.plugin.list_item,
                     name = &plugin.info.name,
                     version = &plugin.info.version
                 )
@@ -36,13 +36,13 @@ pub fn handle_plugin_list() -> Result<()> {
             if let Some(desc) = &plugin.info.description {
                 vm_println!(
                     "{}",
-                    msg!(MESSAGES.plugin_list_item_with_desc, description = desc)
+                    msg!(MESSAGES.plugin.list_item_with_desc, description = desc)
                 );
             }
             if let Some(author) = &plugin.info.author {
                 vm_println!(
                     "{}",
-                    msg!(MESSAGES.plugin_list_item_with_author, author = author)
+                    msg!(MESSAGES.plugin.list_item_with_author, author = author)
                 );
             }
             vm_println!();
@@ -50,12 +50,12 @@ pub fn handle_plugin_list() -> Result<()> {
     }
 
     if !service_plugins.is_empty() {
-        vm_println!("{}", MESSAGES.plugin_list_services_header);
+        vm_println!("{}", MESSAGES.plugin.list_services_header);
         for plugin in service_plugins {
             vm_println!(
                 "{}",
                 msg!(
-                    MESSAGES.plugin_list_item,
+                    MESSAGES.plugin.list_item,
                     name = &plugin.info.name,
                     version = &plugin.info.version
                 )
@@ -63,13 +63,13 @@ pub fn handle_plugin_list() -> Result<()> {
             if let Some(desc) = &plugin.info.description {
                 vm_println!(
                     "{}",
-                    msg!(MESSAGES.plugin_list_item_with_desc, description = desc)
+                    msg!(MESSAGES.plugin.list_item_with_desc, description = desc)
                 );
             }
             if let Some(author) = &plugin.info.author {
                 vm_println!(
                     "{}",
-                    msg!(MESSAGES.plugin_list_item_with_author, author = author)
+                    msg!(MESSAGES.plugin.list_item_with_author, author = author)
                 );
             }
             vm_println!();
@@ -89,16 +89,16 @@ pub fn handle_plugin_info(plugin_name: &str) -> Result<()> {
 
     vm_println!(
         "{}",
-        msg!(MESSAGES.plugin_info_name, name = &plugin.info.name)
+        msg!(MESSAGES.plugin.info_name, name = &plugin.info.name)
     );
     vm_println!(
         "{}",
-        msg!(MESSAGES.plugin_info_version, version = &plugin.info.version)
+        msg!(MESSAGES.plugin.info_version, version = &plugin.info.version)
     );
     vm_println!(
         "{}",
         msg!(
-            MESSAGES.plugin_info_type,
+            MESSAGES.plugin.info_type,
             plugin_type = format!("{:?}", plugin.info.plugin_type)
         )
     );
@@ -106,19 +106,19 @@ pub fn handle_plugin_info(plugin_name: &str) -> Result<()> {
     if let Some(desc) = &plugin.info.description {
         vm_println!(
             "{}",
-            msg!(MESSAGES.plugin_info_description, description = desc)
+            msg!(MESSAGES.plugin.info_description, description = desc)
         );
     }
 
     if let Some(author) = &plugin.info.author {
-        vm_println!("{}", msg!(MESSAGES.plugin_info_author, author = author));
+        vm_println!("{}", msg!(MESSAGES.plugin.info_author, author = author));
     }
 
     vm_println!();
     vm_println!(
         "{}",
         msg!(
-            MESSAGES.plugin_info_content_file,
+            MESSAGES.plugin.info_content_file,
             file = plugin.content_file.display().to_string()
         )
     );
@@ -127,12 +127,12 @@ pub fn handle_plugin_info(plugin_name: &str) -> Result<()> {
     match plugin.info.plugin_type {
         PluginType::Preset => {
             if let Ok(content) = vm_plugin::load_preset_content(plugin) {
-                vm_println!("{}", MESSAGES.plugin_info_preset_details_header);
+                vm_println!("{}", MESSAGES.plugin.info_preset_details_header);
                 if !content.packages.is_empty() {
                     vm_println!(
                         "{}",
                         msg!(
-                            MESSAGES.plugin_info_packages,
+                            MESSAGES.plugin.info_packages,
                             packages = content.packages.join(", ")
                         )
                     );
@@ -141,7 +141,7 @@ pub fn handle_plugin_info(plugin_name: &str) -> Result<()> {
                     vm_println!(
                         "{}",
                         msg!(
-                            MESSAGES.plugin_info_npm_packages,
+                            MESSAGES.plugin.info_npm_packages,
                             packages = content.npm_packages.join(", ")
                         )
                     );
@@ -150,7 +150,7 @@ pub fn handle_plugin_info(plugin_name: &str) -> Result<()> {
                     vm_println!(
                         "{}",
                         msg!(
-                            MESSAGES.plugin_info_pip_packages,
+                            MESSAGES.plugin.info_pip_packages,
                             packages = content.pip_packages.join(", ")
                         )
                     );
@@ -159,7 +159,7 @@ pub fn handle_plugin_info(plugin_name: &str) -> Result<()> {
                     vm_println!(
                         "{}",
                         msg!(
-                            MESSAGES.plugin_info_cargo_packages,
+                            MESSAGES.plugin.info_cargo_packages,
                             packages = content.cargo_packages.join(", ")
                         )
                     );
@@ -168,7 +168,7 @@ pub fn handle_plugin_info(plugin_name: &str) -> Result<()> {
                     vm_println!(
                         "{}",
                         msg!(
-                            MESSAGES.plugin_info_services,
+                            MESSAGES.plugin.info_services,
                             services = content.services.join(", ")
                         )
                     );
@@ -177,22 +177,22 @@ pub fn handle_plugin_info(plugin_name: &str) -> Result<()> {
         }
         PluginType::Service => {
             if let Ok(content) = vm_plugin::load_service_content(plugin) {
-                vm_println!("{}", MESSAGES.plugin_info_service_details_header);
+                vm_println!("{}", MESSAGES.plugin.info_service_details_header);
                 vm_println!(
                     "{}",
-                    msg!(MESSAGES.plugin_info_image, image = &content.image)
+                    msg!(MESSAGES.plugin.info_image, image = &content.image)
                 );
                 if !content.ports.is_empty() {
                     vm_println!(
                         "{}",
-                        msg!(MESSAGES.plugin_info_ports, ports = content.ports.join(", "))
+                        msg!(MESSAGES.plugin.info_ports, ports = content.ports.join(", "))
                     );
                 }
                 if !content.volumes.is_empty() {
                     vm_println!(
                         "{}",
                         msg!(
-                            MESSAGES.plugin_info_volumes,
+                            MESSAGES.plugin.info_volumes,
                             volumes = content.volumes.join(", ")
                         )
                     );
@@ -245,16 +245,16 @@ pub fn handle_plugin_install(source_path: &str) -> Result<()> {
     };
 
     // Validate plugin before installation
-    vm_println!("{}", MESSAGES.plugin_install_validating);
+    vm_println!("{}", MESSAGES.plugin.install_validating);
     let validation_result = vm_plugin::validate_plugin(&temp_plugin)?;
 
     if !validation_result.is_valid {
-        vm_println!("{}", MESSAGES.plugin_install_validation_failed);
+        vm_println!("{}", MESSAGES.plugin.install_validation_failed);
         for error in &validation_result.errors {
             vm_println!(
                 "{}",
                 msg!(
-                    MESSAGES.plugin_install_validation_error,
+                    MESSAGES.plugin.install_validation_error,
                     field = &error.field,
                     message = &error.message
                 )
@@ -263,7 +263,7 @@ pub fn handle_plugin_install(source_path: &str) -> Result<()> {
                 vm_println!(
                     "{}",
                     msg!(
-                        MESSAGES.plugin_install_validation_error_with_suggestion,
+                        MESSAGES.plugin.install_validation_error_with_suggestion,
                         suggestion = suggestion
                     )
                 );
@@ -277,11 +277,11 @@ pub fn handle_plugin_install(source_path: &str) -> Result<()> {
     }
 
     if !validation_result.warnings.is_empty() {
-        vm_println!("{}", MESSAGES.plugin_install_warnings_header);
+        vm_println!("{}", MESSAGES.plugin.install_warnings_header);
         for warning in &validation_result.warnings {
             vm_println!(
                 "{}",
-                msg!(MESSAGES.plugin_install_warning_item, warning = warning)
+                msg!(MESSAGES.plugin.install_warning_item, warning = warning)
             );
         }
         vm_println!();
@@ -327,7 +327,7 @@ pub fn handle_plugin_install(source_path: &str) -> Result<()> {
     vm_println!(
         "{}",
         msg!(
-            MESSAGES.plugin_install_success,
+            MESSAGES.plugin.install_success,
             r#type = plugin_type_str,
             name = &info.name,
             version = &info.version
@@ -350,14 +350,14 @@ pub fn handle_plugin_remove(plugin_name: &str) -> Result<()> {
         fs::remove_dir_all(&preset_path).context("Failed to remove plugin directory")?;
         vm_println!(
             "{}",
-            msg!(MESSAGES.plugin_remove_success_preset, name = plugin_name)
+            msg!(MESSAGES.plugin.remove_success_preset, name = plugin_name)
         );
         Ok(())
     } else if service_path.exists() {
         fs::remove_dir_all(&service_path).context("Failed to remove plugin directory")?;
         vm_println!(
             "{}",
-            msg!(MESSAGES.plugin_remove_success_service, name = plugin_name)
+            msg!(MESSAGES.plugin.remove_success_service, name = plugin_name)
         );
         Ok(())
     } else {
@@ -375,20 +375,20 @@ pub fn handle_plugin_validate(plugin_name: &str) -> Result<()> {
 
     vm_println!(
         "{}",
-        msg!(MESSAGES.plugin_validate_header, name = &plugin.info.name)
+        msg!(MESSAGES.plugin.validate_header, name = &plugin.info.name)
     );
 
     let result = validate_plugin_with_context(plugin)?;
 
     if result.is_valid {
-        vm_println!("{}", MESSAGES.plugin_validate_passed);
+        vm_println!("{}", MESSAGES.plugin.validate_passed);
 
         if !result.warnings.is_empty() {
-            vm_println!("{}", MESSAGES.plugin_validate_warnings_header);
+            vm_println!("{}", MESSAGES.plugin.validate_warnings_header);
             for warning in &result.warnings {
                 vm_println!(
                     "{}",
-                    msg!(MESSAGES.plugin_validate_warning_item, warning = warning)
+                    msg!(MESSAGES.plugin.validate_warning_item, warning = warning)
                 );
             }
             vm_println!();
@@ -396,18 +396,18 @@ pub fn handle_plugin_validate(plugin_name: &str) -> Result<()> {
 
         vm_println!(
             "{}",
-            msg!(MESSAGES.plugin_validate_ready, name = &plugin.info.name)
+            msg!(MESSAGES.plugin.validate_ready, name = &plugin.info.name)
         );
     } else {
-        vm_println!("{}", MESSAGES.plugin_validate_failed);
+        vm_println!("{}", MESSAGES.plugin.validate_failed);
 
         if !result.errors.is_empty() {
-            vm_println!("{}", MESSAGES.plugin_validate_errors_header);
+            vm_println!("{}", MESSAGES.plugin.validate_errors_header);
             for error in &result.errors {
                 vm_println!(
                     "{}",
                     msg!(
-                        MESSAGES.plugin_validate_error_item,
+                        MESSAGES.plugin.validate_error_item,
                         field = &error.field,
                         message = &error.message
                     )
@@ -416,7 +416,7 @@ pub fn handle_plugin_validate(plugin_name: &str) -> Result<()> {
                     vm_println!(
                         "{}",
                         msg!(
-                            MESSAGES.plugin_validate_error_suggestion,
+                            MESSAGES.plugin.validate_error_suggestion,
                             suggestion = suggestion
                         )
                     );
@@ -426,11 +426,11 @@ pub fn handle_plugin_validate(plugin_name: &str) -> Result<()> {
         }
 
         if !result.warnings.is_empty() {
-            vm_println!("{}", MESSAGES.plugin_validate_warnings_header);
+            vm_println!("{}", MESSAGES.plugin.validate_warnings_header);
             for warning in &result.warnings {
                 vm_println!(
                     "{}",
-                    msg!(MESSAGES.plugin_validate_warning_item, warning = warning)
+                    msg!(MESSAGES.plugin.validate_warning_item, warning = warning)
                 );
             }
             vm_println!();

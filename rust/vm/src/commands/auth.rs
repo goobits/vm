@@ -48,21 +48,21 @@ async fn handle_status(global_config: &GlobalConfig) -> VmResult<()> {
     let registry = get_service_registry();
     let service_manager = get_service_manager();
 
-    vm_println!("{}", MESSAGES.vm_auth_status_header);
+    vm_println!("{}", MESSAGES.vm.auth_status_header);
 
     // Get service status from service manager
     if let Some(service_state) = service_manager.get_service_status("auth_proxy") {
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.vm_auth_reference_count,
+                MESSAGES.vm.auth_reference_count,
                 count = service_state.reference_count.to_string()
             )
         );
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.vm_auth_registered_vms,
+                MESSAGES.vm.auth_registered_vms,
                 vms = format!("{:?}", service_state.registered_vms)
             )
         );
@@ -74,7 +74,7 @@ async fn handle_status(global_config: &GlobalConfig) -> VmResult<()> {
         );
         vm_println!("{}", status_line);
     } else {
-        vm_println!("{}", MESSAGES.vm_auth_not_managed);
+        vm_println!("{}", MESSAGES.vm.auth_not_managed);
     }
 
     // Check actual server status for verification
@@ -82,15 +82,15 @@ async fn handle_status(global_config: &GlobalConfig) -> VmResult<()> {
         "http://127.0.0.1:{}",
         global_config.services.auth_proxy.port
     );
-    vm_println!("{}", msg!(MESSAGES.vm_auth_server_url, url = &server_url));
+    vm_println!("{}", msg!(MESSAGES.vm.auth_server_url, url = &server_url));
 
     if check_server_running(global_config.services.auth_proxy.port).await {
-        vm_println!("{}", MESSAGES.vm_auth_health_ok);
+        vm_println!("{}", MESSAGES.vm.auth_health_ok);
     } else {
-        vm_println!("{}", MESSAGES.vm_auth_health_failed);
+        vm_println!("{}", MESSAGES.vm.auth_health_failed);
     }
 
-    vm_println!("{}", MESSAGES.vm_auth_auto_managed_info);
+    vm_println!("{}", MESSAGES.vm.auth_auto_managed_info);
 
     Ok(())
 }
@@ -113,13 +113,13 @@ async fn handle_add(
         .await
         .map_err(VmError::from)?;
 
-    vm_println!("{}", msg!(MESSAGES.vm_auth_adding_secret, name = name));
+    vm_println!("{}", msg!(MESSAGES.vm.auth_adding_secret, name = name));
 
     vm_auth_proxy::add_secret(&server_url, name, value, scope, description)
         .await
         .map_err(VmError::from)?;
 
-    vm_success!("{}", MESSAGES.vm_auth_secret_added);
+    vm_success!("{}", MESSAGES.vm.auth_secret_added);
     Ok(())
 }
 
@@ -154,13 +154,13 @@ async fn handle_remove(name: &str, force: bool, global_config: &GlobalConfig) ->
         .await
         .map_err(VmError::from)?;
 
-    vm_println!("{}", msg!(MESSAGES.vm_auth_removing_secret, name = name));
+    vm_println!("{}", msg!(MESSAGES.vm.auth_removing_secret, name = name));
 
     vm_auth_proxy::remove_secret(&server_url, name, force)
         .await
         .map_err(VmError::from)?;
 
-    vm_success!("{}", MESSAGES.vm_auth_secret_removed);
+    vm_success!("{}", MESSAGES.vm.auth_secret_removed);
     Ok(())
 }
 
@@ -176,7 +176,7 @@ async fn handle_interactive(global_config: &GlobalConfig) -> VmResult<()> {
         .await
         .map_err(VmError::from)?;
 
-    vm_println!("{}", MESSAGES.vm_auth_interactive_header);
+    vm_println!("{}", MESSAGES.vm.auth_interactive_header);
 
     use dialoguer::{Input, Password, Select};
 
@@ -242,7 +242,7 @@ async fn handle_interactive(global_config: &GlobalConfig) -> VmResult<()> {
 
     vm_success!(
         "{}",
-        msg!(MESSAGES.vm_auth_interactive_success, name = &name)
+        msg!(MESSAGES.vm.auth_interactive_success, name = &name)
     );
     Ok(())
 }

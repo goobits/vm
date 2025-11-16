@@ -203,8 +203,11 @@ impl TartProvider {
             let list_str = String::from_utf8_lossy(&output.stdout);
             if list_str.contains(vm_name) {
                 ProgressReporter::task(&main_phase, "VM already exists.");
-                info!("{}", msg!(MESSAGES.provider_tart_vm_exists, name = vm_name));
-                info!("{}", MESSAGES.provider_tart_recreate_hint);
+                info!(
+                    "{}",
+                    msg!(MESSAGES.service.provider_tart_vm_exists, name = vm_name)
+                );
+                info!("{}", MESSAGES.service.provider_tart_recreate_hint);
                 ProgressReporter::finish_phase(&main_phase, "Skipped creation.");
                 return Ok(());
             }
@@ -308,8 +311,8 @@ impl TartProvider {
 
         ProgressReporter::finish_phase(&main_phase, "Environment ready.");
 
-        info!("{}", MESSAGES.provider_tart_created_success);
-        info!("{}", MESSAGES.provider_tart_connect_hint);
+        info!("{}", MESSAGES.service.provider_tart_created_success);
+        info!("{}", MESSAGES.service.provider_tart_connect_hint);
         Ok(())
     }
 }
@@ -417,16 +420,22 @@ impl Provider for TartProvider {
         if !Path::new(&log_path).exists() {
             let error_msg = format!("Log file not found at: {}", log_path);
             error!("{}", error_msg);
-            info!("{}", MESSAGES.provider_logs_unavailable);
+            info!("{}", MESSAGES.service.provider_logs_unavailable);
             info!(
                 "{}",
-                msg!(MESSAGES.provider_logs_expected_location, name = vm_name)
+                msg!(
+                    MESSAGES.service.provider_logs_expected_location,
+                    name = vm_name
+                )
             );
             return Err(VmError::Internal(error_msg));
         }
 
-        info!("{}", msg!(MESSAGES.provider_logs_showing, path = &log_path));
-        info!("{}", MESSAGES.press_ctrl_c_to_stop);
+        info!(
+            "{}",
+            msg!(MESSAGES.service.provider_logs_showing, path = &log_path)
+        );
+        info!("{}", MESSAGES.common.press_ctrl_c_to_stop);
 
         // Use tail -f to follow the log file
         stream_command("tail", &["-f", &log_path])
@@ -510,7 +519,10 @@ impl Provider for TartProvider {
                         return Ok(());
                     }
                 }
-                info!("{}", msg!(MESSAGES.provider_vm_not_found, name = vm_name));
+                info!(
+                    "{}",
+                    msg!(MESSAGES.service.provider_vm_not_found, name = vm_name)
+                );
                 Ok(())
             }
             None => {
@@ -586,7 +598,7 @@ impl Provider for TartProvider {
 
         provisioner.provision(&self.config)?;
 
-        info!("{}", MESSAGES.vm_apply_success);
+        info!("{}", MESSAGES.vm.apply_success);
         Ok(())
     }
 

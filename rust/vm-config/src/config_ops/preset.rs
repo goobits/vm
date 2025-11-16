@@ -22,7 +22,7 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
 
     if list {
         let presets = detector.list_presets()?;
-        vm_println!("{}", MESSAGES.config_available_presets);
+        vm_println!("{}", MESSAGES.config.available_presets);
         for preset in presets {
             let description = detector
                 .get_preset_description(&preset)
@@ -32,7 +32,7 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
         }
         vm_println!(
             "{}",
-            msg!(MESSAGES.config_apply_preset_hint, name = "<name>")
+            msg!(MESSAGES.config.apply_preset_hint, name = "<name>")
         );
         return Ok(());
     }
@@ -42,7 +42,7 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
         let yaml = serde_yaml::to_string(&preset_config)?;
         vm_println!("📋 Preset '{}' configuration:\n", name);
         vm_println!("{}", yaml);
-        vm_println!("{}", msg!(MESSAGES.config_apply_preset_hint, name = name));
+        vm_println!("{}", msg!(MESSAGES.config.apply_preset_hint, name = name));
         return Ok(());
     }
 
@@ -124,7 +124,7 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
     vm_success!(
         "{}",
         msg!(
-            MESSAGES.config_preset_applied,
+            MESSAGES.config.preset_applied,
             preset = preset_names,
             path = scope
         )
@@ -132,13 +132,13 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
 
     let preset_list: Vec<&str> = preset_names.split(',').map(|s| s.trim()).collect();
     if preset_list.len() > 1 {
-        vm_println!("{}", MESSAGES.config_applied_presets);
+        vm_println!("{}", MESSAGES.config.applied_presets);
         for preset in preset_list {
             vm_println!("    • {}", preset);
         }
     }
 
-    vm_println!("{}", MESSAGES.config_restart_hint);
+    vm_println!("{}", MESSAGES.config.restart_hint);
     Ok(())
 }
 

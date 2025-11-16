@@ -21,7 +21,7 @@ pub fn ensure_path(bin_dir: &Path) -> Result<()> {
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.installer_path_already_configured,
+                MESSAGES.service.installer_path_already_configured,
                 path = bin_dir.display().to_string()
             )
         );
@@ -31,7 +31,7 @@ pub fn ensure_path(bin_dir: &Path) -> Result<()> {
     vm_println!(
         "{}",
         msg!(
-            MESSAGES.installer_path_not_configured,
+            MESSAGES.service.installer_path_not_configured,
             path = bin_dir.display().to_string()
         )
     );
@@ -57,7 +57,7 @@ pub fn ensure_path(bin_dir: &Path) -> Result<()> {
             profile_path.display()
         );
     } else {
-        vm_println!("{}", msg!(MESSAGES.installer_manual_path_hint));
+        vm_println!("{}", msg!(MESSAGES.service.installer_manual_path_hint));
         vm_println!("  export PATH=\"{}:$PATH\"", bin_dir.display());
     }
 

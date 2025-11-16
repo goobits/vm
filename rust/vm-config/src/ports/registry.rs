@@ -165,9 +165,9 @@ impl PortRegistry {
     /// Lists all registered project port ranges to stdout.
     pub fn list(&self) {
         if self.entries.is_empty() {
-            vm_println!("{}", MESSAGES.ports_no_ranges);
+            vm_println!("{}", MESSAGES.service.ports_no_ranges);
         } else {
-            vm_println!("{}", MESSAGES.ports_registered_ranges);
+            vm_println!("{}", MESSAGES.service.ports_registered_ranges);
             vm_println!();
 
             // Sort entries by project name for consistent output
@@ -178,7 +178,7 @@ impl PortRegistry {
                 vm_println!(
                     "{}",
                     msg!(
-                        MESSAGES.ports_range_entry,
+                        MESSAGES.service.ports_range_entry,
                         project = project_name,
                         range = &entry.range,
                         path = &entry.path

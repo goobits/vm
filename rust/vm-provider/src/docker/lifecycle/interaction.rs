@@ -60,7 +60,7 @@ impl<'a> LifecycleOperations<'a> {
             vm_println!(
                 "{}",
                 msg!(
-                    MESSAGES.docker_ssh_info,
+                    MESSAGES.service.docker_ssh_info,
                     user = project_user,
                     path = target_dir.as_ref(),
                     shell = shell

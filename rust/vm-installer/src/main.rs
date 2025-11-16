@@ -26,7 +26,7 @@ fn run() -> Result<()> {
     let _guard = init_subscriber();
     let args = Args::parse();
 
-    vm_println!("{}", MESSAGES.installer_installing);
+    vm_println!("{}", MESSAGES.service.installer_installing);
 
     // 1. Check dependencies (like cargo)
     dependencies::check()?;
@@ -35,7 +35,7 @@ fn run() -> Result<()> {
     install(args.clean)?;
 
     vm_success!("Installation complete!");
-    vm_println!("{}", MESSAGES.installer_complete);
-    vm_println!("{}", MESSAGES.installer_help_hint);
+    vm_println!("{}", MESSAGES.service.installer_complete);
+    vm_println!("{}", MESSAGES.service.installer_help_hint);
     Ok(())
 }

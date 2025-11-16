@@ -104,7 +104,10 @@ impl PackageInstaller {
         // Check for linked package first (unless forcing registry install)
         if !force_registry {
             if let Some(linked_path) = self.detector.get_linked_path(package, manager) {
-                vm_println!("{}", msg!(MESSAGES.pkg_linked_package, name = package));
+                vm_println!(
+                    "{}",
+                    msg!(MESSAGES.service.pkg_linked_package, name = package)
+                );
                 return self.install_linked(package, manager, &linked_path);
             }
         }
@@ -144,7 +147,7 @@ impl PackageInstaller {
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.pkg_installing_local_cargo,
+                MESSAGES.service.pkg_installing_local_cargo,
                 path = path.display().to_string()
             )
         );
@@ -194,7 +197,10 @@ impl PackageInstaller {
     fn install_npm_linked(&self, package: &str, path: &Path) -> Result<()> {
         vm_println!(
             "{}",
-            msg!(MESSAGES.pkg_linking_npm, path = path.display().to_string())
+            msg!(
+                MESSAGES.service.pkg_linking_npm,
+                path = path.display().to_string()
+            )
         );
 
         // Change to package directory first
@@ -253,18 +259,18 @@ impl PackageInstaller {
     fn install_pip_linked(&self, package: &str, path: &Path) -> Result<()> {
         // Check if it's a pipx environment
         if LinkDetector::is_pipx_environment(path) {
-            vm_println!("{}", MESSAGES.pkg_pipx_detected);
+            vm_println!("{}", MESSAGES.service.pkg_pipx_detected);
             return self.create_pipx_wrappers(package, path);
         }
 
         // Check if it's a Python project
         if LinkDetector::is_python_project(path) {
-            vm_println!("{}", MESSAGES.pkg_python_editable);
+            vm_println!("{}", MESSAGES.service.pkg_python_editable);
             return Self::install_pip_editable(package, path);
         }
 
         // Fallback to editable install
-        vm_println!("{}", MESSAGES.pkg_installing_editable);
+        vm_println!("{}", MESSAGES.service.pkg_installing_editable);
         Self::install_pip_editable(package, path)
     }
 
@@ -284,7 +290,7 @@ impl PackageInstaller {
             }
             Err(_) => {
                 // Pipx not available or other error, try pip
-                vm_println!("{}", MESSAGES.pkg_pipx_not_available);
+                vm_println!("{}", MESSAGES.service.pkg_pipx_not_available);
             }
         }
 
@@ -357,7 +363,7 @@ impl PackageInstaller {
     fn create_pipx_wrappers(&self, package: &str, path: &Path) -> Result<()> {
         let bin_dir = path.join("bin");
         if !bin_dir.exists() {
-            vm_println!("{}", MESSAGES.pkg_no_bin_directory);
+            vm_println!("{}", MESSAGES.service.pkg_no_bin_directory);
             return Ok(());
         }
 
@@ -367,7 +373,7 @@ impl PackageInstaller {
         vm_println!(
             "{}",
             msg!(
-                MESSAGES.pkg_creating_wrappers,
+                MESSAGES.service.pkg_creating_wrappers,
                 path = local_bin.display().to_string()
             )
         );
@@ -392,12 +398,15 @@ impl PackageInstaller {
                 let wrapper_path = local_bin.join(script_name);
                 Self::create_wrapper_script(&wrapper_path, &script_path, path)?;
 
-                vm_println!("{}", msg!(MESSAGES.pkg_wrapper_created, name = script_name));
+                vm_println!(
+                    "{}",
+                    msg!(MESSAGES.service.pkg_wrapper_created, name = script_name)
+                );
             }
         }
 
         vm_success!("Wrapper scripts created for pipx package: {}", package);
-        vm_println!("{}", MESSAGES.pkg_restart_shell);
+        vm_println!("{}", MESSAGES.service.pkg_restart_shell);
         Ok(())
     }
 
@@ -476,11 +485,11 @@ exec python3 "$SCRIPT_PATH" "$@"
         let linked = self.detector.list_linked(manager);
 
         if linked.is_empty() {
-            vm_println!("{}", MESSAGES.pkg_no_linked_packages);
+            vm_println!("{}", MESSAGES.service.pkg_no_linked_packages);
             return;
         }
 
-        vm_println!("{}", MESSAGES.pkg_linked_packages_header);
+        vm_println!("{}", MESSAGES.service.pkg_linked_packages_header);
         let mut current_manager = None;
 
         for (mgr, package) in linked {

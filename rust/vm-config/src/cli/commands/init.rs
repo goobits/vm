@@ -54,12 +54,12 @@ pub fn execute(
 
     // Check if vm.yaml already exists
     if target_path.exists() {
-        info!("{}", MESSAGES.init_welcome);
+        info!("{}", MESSAGES.service.init_welcome);
         info!("");
-        info!("{}", MESSAGES.init_already_exists);
+        info!("{}", MESSAGES.service.init_already_exists);
         info!("   📁 {}", target_path.display());
         info!("");
-        info!("{}", MESSAGES.init_options_hint);
+        info!("{}", MESSAGES.service.init_options_hint);
         info!("   rm vm.yaml && vm init           # Start fresh");
         info!("   vm init --file other.yaml      # Create elsewhere");
         info!("   vm create                       # Use existing config");
@@ -239,7 +239,7 @@ pub fn execute(
     };
 
     // Clean success output
-    info!("{}", MESSAGES.init_welcome);
+    info!("{}", MESSAGES.service.init_welcome);
     info!("");
     info!("✓ Initializing project: {}", sanitized_name);
     info!("✓ Port range allocated: {}", port_display);
@@ -262,8 +262,8 @@ pub fn execute(
 
     info!("✓ Configuration created: vm.yaml");
     info!("");
-    info!("{}", MESSAGES.init_success);
-    info!("{}", MESSAGES.init_next_steps);
+    info!("{}", MESSAGES.service.init_success);
+    info!("{}", MESSAGES.service.init_next_steps);
     info!("   vm create    # Launch your development environment");
     info!("   vm --help    # View all available commands");
     info!("");

@@ -42,7 +42,7 @@ pub fn unset(field: &str, global: bool) -> Result<()> {
     vm_success!(
         "{}",
         msg!(
-            MESSAGES.config_unset_success,
+            MESSAGES.config.unset_success,
             field = field,
             path = config_path.display().to_string()
         )
