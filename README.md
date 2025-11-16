@@ -2,7 +2,7 @@
 
 ![Build Status](https://img.shields.io/github/actions/workflow/status/goobits/vm/ci.yml?branch=main&style=for-the-badge)
 ![License](https://img.shields.io/github/license/goobits/vm?style=for-the-badge)
-![Crates.io](https://img.shields.io/crates/v/goobits-vm?style=for-the-badge)
+<!-- ![Crates.io](https://img.shields.io/crates/v/goobits-vm?style=for-the-badge) - Uncomment after publishing to crates.io -->
 ![Codecov](https://img.shields.io/codecov/c/github/goobits/vm?style=for-the-badge)
 
 Create development environments that automatically configure themselves based on your project type. Zero configuration required for most projects.

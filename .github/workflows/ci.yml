@@ -1,12 +1,13 @@
 name: Continuous Integration
 
-# Note: Auto-run on push disabled to reduce email spam.
-# Tests are run locally via pre-push hook instead.
-# To manually trigger: Actions tab → Continuous Integration → Run workflow
+# Runs automatically on push to main and pull requests
+# Also supports manual triggering via Actions tab
 on:
-  workflow_dispatch:  # Manual trigger only
+  push:
+    branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:  # Manual trigger option
 
 jobs:
   test:
