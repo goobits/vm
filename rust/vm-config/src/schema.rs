@@ -25,38 +25,102 @@ static VM_SCHEMA_CACHE: Lazy<HashMap<String, SchemaType>> = Lazy::new(build_vm_s
 static GLOBAL_SCHEMA_CACHE: Lazy<HashMap<String, SchemaType>> =
     Lazy::new(build_global_schema_cache);
 
+/// Helper macro to add string fields to schema cache
+macro_rules! add_strings {
+    ($cache:expr, $($field:expr),+ $(,)?) => {
+        $(
+            $cache.insert($field.to_string(), SchemaType::String);
+        )+
+    };
+}
+
+/// Helper macro to add boolean fields to schema cache
+macro_rules! add_booleans {
+    ($cache:expr, $($field:expr),+ $(,)?) => {
+        $(
+            $cache.insert($field.to_string(), SchemaType::Boolean);
+        )+
+    };
+}
+
+/// Helper macro to add integer fields to schema cache
+macro_rules! add_integers {
+    ($cache:expr, $($field:expr),+ $(,)?) => {
+        $(
+            $cache.insert($field.to_string(), SchemaType::Integer);
+        )+
+    };
+}
+
+/// Helper macro to add string array fields to schema cache
+macro_rules! add_string_arrays {
+    ($cache:expr, $($field:expr),+ $(,)?) => {
+        $(
+            $cache.insert($field.to_string(), SchemaType::Array {
+                item_type: Box::new(SchemaType::String),
+            });
+        )+
+    };
+}
+
+/// Add common service fields (enabled and port) for multiple services
+fn add_service_entries(cache: &mut HashMap<String, SchemaType>, services: &[&str]) {
+    for service in services {
+        cache.insert(format!("services.{}.enabled", service), SchemaType::Boolean);
+        cache.insert(format!("services.{}.port", service), SchemaType::Integer);
+    }
+}
+
+/// Add database service fields (user, password, database)
+fn add_database_service_fields(cache: &mut HashMap<String, SchemaType>, service: &str) {
+    let fields = ["user", "password", "database"];
+    for field in fields {
+        cache.insert(
+            format!("services.{}.{}", service, field),
+            SchemaType::String,
+        );
+    }
+}
+
 /// Build the VM schema cache from embedded schema
 fn build_vm_schema_cache() -> HashMap<String, SchemaType> {
     let mut cache = HashMap::new();
 
-    // Simple scalar types
-    cache.insert("version".to_string(), SchemaType::String);
-    cache.insert("os".to_string(), SchemaType::String);
-    cache.insert("provider".to_string(), SchemaType::String);
-
-    // Project fields
-    cache.insert("project.name".to_string(), SchemaType::String);
-    cache.insert("project.hostname".to_string(), SchemaType::String);
-    cache.insert("project.workspace_path".to_string(), SchemaType::String);
-    cache.insert("project.env_template_path".to_string(), SchemaType::String);
-    cache.insert("project.backup_pattern".to_string(), SchemaType::String);
+    // Simple scalar types and project fields
+    add_strings!(
+        cache,
+        "version",
+        "os",
+        "provider",
+        "project.name",
+        "project.hostname",
+        "project.workspace_path",
+        "project.env_template_path",
+        "project.backup_pattern"
+    );
 
     // VM fields
-    cache.insert("vm.box".to_string(), SchemaType::String);
-    cache.insert("vm.memory".to_string(), SchemaType::String); // Supports: 1024, "1gb", "50%", "unlimited"
-    cache.insert("vm.cpus".to_string(), SchemaType::String); // Supports: 4, "50%", "unlimited"
-    cache.insert("vm.user".to_string(), SchemaType::String);
-    cache.insert("vm.port_binding".to_string(), SchemaType::String);
-    cache.insert("vm.gui".to_string(), SchemaType::Boolean);
-    cache.insert("vm.timezone".to_string(), SchemaType::String);
-    cache.insert("vm.swap".to_string(), SchemaType::String); // Supports: 1024, "1gb", "50%", "unlimited"
-    cache.insert("vm.swappiness".to_string(), SchemaType::Integer);
+    add_strings!(
+        cache,
+        "vm.box",
+        "vm.memory",
+        "vm.cpus",
+        "vm.user",
+        "vm.port_binding",
+        "vm.timezone",
+        "vm.swap"
+    );
+    add_booleans!(cache, "vm.gui");
+    add_integers!(cache, "vm.swappiness");
 
     // Version fields
-    cache.insert("versions.node".to_string(), SchemaType::String);
-    cache.insert("versions.nvm".to_string(), SchemaType::String);
-    cache.insert("versions.pnpm".to_string(), SchemaType::String);
-    cache.insert("versions.python".to_string(), SchemaType::String);
+    add_strings!(
+        cache,
+        "versions.node",
+        "versions.nvm",
+        "versions.pnpm",
+        "versions.python"
+    );
 
     // Port fields
     cache.insert(
@@ -67,143 +131,86 @@ fn build_vm_schema_cache() -> HashMap<String, SchemaType> {
     );
 
     // Tart fields
-    cache.insert("tart.image".to_string(), SchemaType::String);
-    cache.insert("tart.guest_os".to_string(), SchemaType::String);
-    cache.insert("tart.disk_size".to_string(), SchemaType::String); // Supports: 40, "40gb", "50%"
-    cache.insert("tart.rosetta".to_string(), SchemaType::Boolean);
-    cache.insert("tart.ssh_user".to_string(), SchemaType::String);
-    cache.insert("tart.install_docker".to_string(), SchemaType::Boolean);
-    cache.insert("tart.storage_path".to_string(), SchemaType::String);
+    add_strings!(
+        cache,
+        "tart.image",
+        "tart.guest_os",
+        "tart.disk_size",
+        "tart.ssh_user",
+        "tart.storage_path"
+    );
+    add_booleans!(cache, "tart.rosetta", "tart.install_docker");
 
     // Service fields (common pattern)
-    for service in &[
-        "postgresql",
-        "redis",
-        "mongodb",
-        "mysql",
-        "docker",
-        "headless_browser",
-        "audio",
-        "gpu",
-    ] {
-        cache.insert(format!("services.{}.enabled", service), SchemaType::Boolean);
-        cache.insert(format!("services.{}.port", service), SchemaType::Integer);
-    }
-
-    // PostgreSQL/MySQL specific
-    cache.insert("services.postgresql.user".to_string(), SchemaType::String);
-    cache.insert(
-        "services.postgresql.password".to_string(),
-        SchemaType::String,
-    );
-    cache.insert(
-        "services.postgresql.database".to_string(),
-        SchemaType::String,
-    );
-    cache.insert("services.mysql.user".to_string(), SchemaType::String);
-    cache.insert("services.mysql.password".to_string(), SchemaType::String);
-    cache.insert("services.mysql.database".to_string(), SchemaType::String);
-
-    // Docker service specific
-    cache.insert("services.docker.buildx".to_string(), SchemaType::Boolean);
-
-    // Headless browser specific
-    cache.insert(
-        "services.headless_browser.display".to_string(),
-        SchemaType::String,
-    );
-    cache.insert(
-        "services.headless_browser.executable_path".to_string(),
-        SchemaType::String,
+    add_service_entries(
+        &mut cache,
+        &[
+            "postgresql",
+            "redis",
+            "mongodb",
+            "mysql",
+            "docker",
+            "headless_browser",
+            "audio",
+            "gpu",
+        ],
     );
 
-    // Audio service specific
-    cache.insert("services.audio.driver".to_string(), SchemaType::String);
-    cache.insert(
-        "services.audio.share_microphone".to_string(),
-        SchemaType::Boolean,
-    );
+    // Database-specific fields
+    add_database_service_fields(&mut cache, "postgresql");
+    add_database_service_fields(&mut cache, "mysql");
 
-    // GPU service specific
-    cache.insert("services.gpu.type".to_string(), SchemaType::String);
-    cache.insert("services.gpu.memory_mb".to_string(), SchemaType::Integer);
+    // Service-specific fields
+    add_booleans!(
+        cache,
+        "services.docker.buildx",
+        "services.audio.share_microphone"
+    );
+    add_strings!(
+        cache,
+        "services.headless_browser.display",
+        "services.headless_browser.executable_path",
+        "services.audio.driver",
+        "services.gpu.type"
+    );
+    add_integers!(cache, "services.gpu.memory_mb");
 
     // Terminal fields
-    cache.insert("terminal.emoji".to_string(), SchemaType::String);
-    cache.insert("terminal.username".to_string(), SchemaType::String);
-    cache.insert("terminal.theme".to_string(), SchemaType::String);
-    cache.insert("terminal.show_git_branch".to_string(), SchemaType::Boolean);
-    cache.insert("terminal.show_timestamp".to_string(), SchemaType::Boolean);
+    add_strings!(
+        cache,
+        "terminal.emoji",
+        "terminal.username",
+        "terminal.theme"
+    );
+    add_booleans!(cache, "terminal.show_git_branch", "terminal.show_timestamp");
 
     // Package arrays
-    cache.insert(
-        "apt_packages".to_string(),
-        SchemaType::Array {
-            item_type: Box::new(SchemaType::String),
-        },
-    );
-    cache.insert(
-        "npm_packages".to_string(),
-        SchemaType::Array {
-            item_type: Box::new(SchemaType::String),
-        },
-    );
-    cache.insert(
-        "cargo_packages".to_string(),
-        SchemaType::Array {
-            item_type: Box::new(SchemaType::String),
-        },
-    );
-    cache.insert(
-        "pip_packages".to_string(),
-        SchemaType::Array {
-            item_type: Box::new(SchemaType::String),
-        },
+    add_string_arrays!(
+        cache,
+        "apt_packages",
+        "npm_packages",
+        "cargo_packages",
+        "pip_packages"
     );
 
-    // Object types (key-value maps)
+    // Object types
     cache.insert("aliases".to_string(), SchemaType::Object);
     cache.insert("environment".to_string(), SchemaType::Object);
 
-    // Host synchronization (v2.0)
-    cache.insert("host_sync.git_config".to_string(), SchemaType::Boolean);
-    cache.insert("host_sync.ssh_agent".to_string(), SchemaType::Boolean);
-    cache.insert("host_sync.ssh_config".to_string(), SchemaType::Boolean);
-    cache.insert(
-        "host_sync.dotfiles".to_string(),
-        SchemaType::Array {
-            item_type: Box::new(SchemaType::String),
-        },
+    // Host synchronization
+    add_booleans!(
+        cache,
+        "host_sync.git_config",
+        "host_sync.ssh_agent",
+        "host_sync.ssh_config",
+        "host_sync.ai_tools",
+        "host_sync.package_links.npm",
+        "host_sync.package_links.pip",
+        "host_sync.package_links.cargo",
+        "host_sync.worktrees.enabled"
     );
-    cache.insert("host_sync.ai_tools".to_string(), SchemaType::Boolean); // Can also be object
-    cache.insert(
-        "host_sync.package_links.npm".to_string(),
-        SchemaType::Boolean,
-    );
-    cache.insert(
-        "host_sync.package_links.pip".to_string(),
-        SchemaType::Boolean,
-    );
-    cache.insert(
-        "host_sync.package_links.cargo".to_string(),
-        SchemaType::Boolean,
-    );
-    cache.insert(
-        "host_sync.worktrees.enabled".to_string(),
-        SchemaType::Boolean,
-    );
-    cache.insert(
-        "host_sync.worktrees.base_path".to_string(),
-        SchemaType::String,
-    );
-
-    // Networking
-    cache.insert(
-        "networking.networks".to_string(),
-        SchemaType::Array {
-            item_type: Box::new(SchemaType::String),
-        },
-    );
+    add_strings!(cache, "host_sync.worktrees.base_path");
+    add_string_arrays!(cache, "host_sync.dotfiles", "networking.networks");
 
     cache
 }
@@ -212,89 +219,60 @@ fn build_vm_schema_cache() -> HashMap<String, SchemaType> {
 fn build_global_schema_cache() -> HashMap<String, SchemaType> {
     let mut cache = HashMap::new();
 
-    // Services
-    cache.insert(
-        "services.docker_registry.enabled".to_string(),
-        SchemaType::Boolean,
+    // Docker registry service
+    add_booleans!(
+        cache,
+        "services.docker_registry.enabled",
+        "services.docker_registry.enable_lru_eviction",
+        "services.docker_registry.enable_auto_restart"
     );
-    cache.insert(
-        "services.docker_registry.port".to_string(),
-        SchemaType::Integer,
-    );
-    cache.insert(
-        "services.docker_registry.max_cache_size_gb".to_string(),
-        SchemaType::Integer,
-    );
-    cache.insert(
-        "services.docker_registry.max_image_age_days".to_string(),
-        SchemaType::Integer,
-    );
-    cache.insert(
-        "services.docker_registry.cleanup_interval_hours".to_string(),
-        SchemaType::Integer,
-    );
-    cache.insert(
-        "services.docker_registry.enable_lru_eviction".to_string(),
-        SchemaType::Boolean,
-    );
-    cache.insert(
-        "services.docker_registry.enable_auto_restart".to_string(),
-        SchemaType::Boolean,
-    );
-    cache.insert(
-        "services.docker_registry.health_check_interval_minutes".to_string(),
-        SchemaType::Integer,
+    add_integers!(
+        cache,
+        "services.docker_registry.port",
+        "services.docker_registry.max_cache_size_gb",
+        "services.docker_registry.max_image_age_days",
+        "services.docker_registry.cleanup_interval_hours",
+        "services.docker_registry.health_check_interval_minutes"
     );
 
-    cache.insert(
-        "services.auth_proxy.enabled".to_string(),
-        SchemaType::Boolean,
-    );
-    cache.insert("services.auth_proxy.port".to_string(), SchemaType::Integer);
-    cache.insert(
-        "services.auth_proxy.token_expiry_hours".to_string(),
-        SchemaType::Integer,
+    // Auth proxy service
+    add_booleans!(cache, "services.auth_proxy.enabled");
+    add_integers!(
+        cache,
+        "services.auth_proxy.port",
+        "services.auth_proxy.token_expiry_hours"
     );
 
-    cache.insert(
-        "services.package_registry.enabled".to_string(),
-        SchemaType::Boolean,
-    );
-    cache.insert(
-        "services.package_registry.port".to_string(),
-        SchemaType::Integer,
-    );
-    cache.insert(
-        "services.package_registry.max_storage_gb".to_string(),
-        SchemaType::Integer,
+    // Package registry service
+    add_booleans!(cache, "services.package_registry.enabled");
+    add_integers!(
+        cache,
+        "services.package_registry.port",
+        "services.package_registry.max_storage_gb"
     );
 
     // Defaults
-    cache.insert("defaults.provider".to_string(), SchemaType::String);
-    cache.insert("defaults.memory".to_string(), SchemaType::Integer);
-    cache.insert("defaults.cpus".to_string(), SchemaType::Integer);
-    cache.insert("defaults.user".to_string(), SchemaType::String);
-    cache.insert("defaults.terminal.theme".to_string(), SchemaType::String);
-    cache.insert("defaults.terminal.shell".to_string(), SchemaType::String);
+    add_strings!(
+        cache,
+        "defaults.provider",
+        "defaults.user",
+        "defaults.terminal.theme",
+        "defaults.terminal.shell"
+    );
+    add_integers!(cache, "defaults.memory", "defaults.cpus");
 
     // Features
-    cache.insert(
-        "features.auto_detect_presets".to_string(),
-        SchemaType::Boolean,
-    );
-    cache.insert(
-        "features.auto_port_allocation".to_string(),
-        SchemaType::Boolean,
-    );
-    cache.insert("features.telemetry".to_string(), SchemaType::Boolean);
-    cache.insert(
-        "features.update_notifications".to_string(),
-        SchemaType::Boolean,
+    add_booleans!(
+        cache,
+        "features.auto_detect_presets",
+        "features.auto_port_allocation",
+        "features.telemetry",
+        "features.update_notifications"
     );
 
     // Worktrees
-    cache.insert("worktrees.enabled".to_string(), SchemaType::Boolean);
-    cache.insert("worktrees.base_path".to_string(), SchemaType::String);
+    add_booleans!(cache, "worktrees.enabled");
+    add_strings!(cache, "worktrees.base_path");
 
     cache
 }

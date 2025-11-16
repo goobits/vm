@@ -126,56 +126,85 @@ fn flatten_yaml_to_shell(prefix: &str, value: &Value, exports: &mut Vec<String>)
     }
 }
 
-/// Flatten VmConfig directly to shell exports without serialization overhead
-fn flatten_config_to_shell(prefix: &str, config: &VmConfig, exports: &mut Vec<String>) {
-    let add_export = |exports: &mut Vec<String>, key: &str, value: &str| {
-        let sanitized_key = key.replace('-', "_");
-        let full_key = if prefix.is_empty() {
-            sanitized_key
-        } else {
-            format!("{prefix}_{sanitized_key}")
-        };
-        let escaped = value
-            .replace('\\', "\\\\")
-            .replace('"', "\\\"")
-            .replace('$', "\\$")
-            .replace('`', "\\`");
-        exports.push(format!("export {full_key}=\"{escaped}\""));
-    };
+/// Escape shell special characters in a value
+fn escape_shell_value(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('$', "\\$")
+        .replace('`', "\\`")
+}
 
-    let add_export_num = |exports: &mut Vec<String>, key: &str, value: &str| {
-        let sanitized_key = key.replace('-', "_");
-        let full_key = if prefix.is_empty() {
-            sanitized_key
-        } else {
-            format!("{prefix}_{sanitized_key}")
-        };
-        exports.push(format!("export {full_key}={value}"));
-    };
+/// Build a full shell variable name from prefix and key
+fn build_shell_var_name(prefix: &str, key: &str) -> String {
+    let sanitized_key = key.replace('-', "_");
+    if prefix.is_empty() {
+        sanitized_key
+    } else {
+        format!("{prefix}_{sanitized_key}")
+    }
+}
 
-    let add_export_bool = |exports: &mut Vec<String>, key: &str, value: bool| {
-        add_export_num(exports, key, &value.to_string());
-    };
+/// Add a string export to the exports list
+fn add_string_export(exports: &mut Vec<String>, prefix: &str, key: &str, value: &str) {
+    let full_key = build_shell_var_name(prefix, key);
+    let escaped = escape_shell_value(value);
+    exports.push(format!("export {full_key}=\"{escaped}\""));
+}
 
-    // Handle all VmConfig fields
+/// Add a numeric export to the exports list
+fn add_numeric_export(exports: &mut Vec<String>, prefix: &str, key: &str, value: &str) {
+    let full_key = build_shell_var_name(prefix, key);
+    exports.push(format!("export {full_key}={value}"));
+}
+
+/// Add a boolean export to the exports list
+fn add_boolean_export(exports: &mut Vec<String>, prefix: &str, key: &str, value: bool) {
+    add_numeric_export(exports, prefix, key, &value.to_string());
+}
+
+/// Export optional string fields from VmConfig
+fn export_optional_strings(exports: &mut Vec<String>, prefix: &str, config: &VmConfig) {
     if let Some(ref schema) = config.schema {
-        add_export(exports, "schema", schema);
+        add_string_export(exports, prefix, "schema", schema);
     }
     if let Some(ref version) = config.version {
-        add_export(exports, "version", version);
+        add_string_export(exports, prefix, "version", version);
     }
     if let Some(ref provider) = config.provider {
-        add_export(exports, "provider", provider);
+        add_string_export(exports, prefix, "provider", provider);
     }
     if let Some(ref os) = config.os {
-        add_export(exports, "os", os);
+        add_string_export(exports, prefix, "os", os);
     }
+}
+
+/// Export package arrays from VmConfig
+fn export_package_arrays(exports: &mut Vec<String>, prefix: &str, config: &VmConfig) {
+    for (i, package) in config.apt_packages.iter().enumerate() {
+        add_string_export(exports, prefix, &format!("apt_packages_{i}"), package);
+    }
+    for (i, package) in config.npm_packages.iter().enumerate() {
+        add_string_export(exports, prefix, &format!("npm_packages_{i}"), package);
+    }
+    for (i, package) in config.pip_packages.iter().enumerate() {
+        add_string_export(exports, prefix, &format!("pip_packages_{i}"), package);
+    }
+    for (i, package) in config.cargo_packages.iter().enumerate() {
+        add_string_export(exports, prefix, &format!("cargo_packages_{i}"), package);
+    }
+}
+
+/// Flatten VmConfig directly to shell exports without serialization overhead
+fn flatten_config_to_shell(prefix: &str, config: &VmConfig, exports: &mut Vec<String>) {
+    // Export optional string fields
+    export_optional_strings(exports, prefix, config);
 
     // Handle port range
     if let Some(range) = &config.ports.range {
         if range.len() == 2 {
-            add_export_num(exports, "port_range_start", &range[0].to_string());
-            add_export_num(exports, "port_range_end", &range[1].to_string());
+            add_numeric_export(exports, prefix, "port_range_start", &range[0].to_string());
+            add_numeric_export(exports, prefix, "port_range_end", &range[1].to_string());
         }
     }
 
@@ -183,52 +212,33 @@ fn flatten_config_to_shell(prefix: &str, config: &VmConfig, exports: &mut Vec<St
     for (service_name, service_config) in &config.services {
         if let Some(port) = service_config.port {
             let port_key = format!("service_port_{}", service_name.replace('-', "_"));
-            add_export_num(exports, &port_key, &port.to_string());
+            add_numeric_export(exports, prefix, &port_key, &port.to_string());
         }
     }
 
-    // Handle aliases map
+    // Handle aliases and environment maps
     for (alias_name, alias_value) in &config.aliases {
         let alias_key = format!("aliases_{}", alias_name.replace('-', "_"));
-        add_export(exports, &alias_key, alias_value);
+        add_string_export(exports, prefix, &alias_key, alias_value);
     }
-
-    // Handle environment map
     for (env_name, env_value) in &config.environment {
         let env_key = format!("environment_{}", env_name.replace('-', "_"));
-        add_export(exports, &env_key, env_value);
+        add_string_export(exports, prefix, &env_key, env_value);
     }
 
-    // Handle package arrays
-    for (i, package) in config.apt_packages.iter().enumerate() {
-        add_export(exports, &format!("apt_packages_{i}"), package);
-    }
-    for (i, package) in config.npm_packages.iter().enumerate() {
-        add_export(exports, &format!("npm_packages_{i}"), package);
-    }
-    for (i, package) in config.pip_packages.iter().enumerate() {
-        add_export(exports, &format!("pip_packages_{i}"), package);
-    }
-    for (i, package) in config.cargo_packages.iter().enumerate() {
-        add_export(exports, &format!("cargo_packages_{i}"), package);
-    }
+    // Export package arrays
+    export_package_arrays(exports, prefix, config);
 
-    // Handle boolean flags
     // AI sync - export individual tool flags if configured
     if let Some(ai_sync) = &config
         .host_sync
         .as_ref()
         .and_then(|hs| hs.ai_tools.as_ref())
     {
-        add_export_bool(exports, "claude_sync", ai_sync.is_claude_enabled());
-        add_export_bool(exports, "gemini_sync", ai_sync.is_gemini_enabled());
-        add_export_bool(exports, "codex_sync", ai_sync.is_codex_enabled());
-        add_export_bool(exports, "cursor_sync", ai_sync.is_cursor_enabled());
-        add_export_bool(exports, "aider_sync", ai_sync.is_aider_enabled());
+        add_boolean_export(exports, prefix, "claude_sync", ai_sync.is_claude_enabled());
+        add_boolean_export(exports, prefix, "gemini_sync", ai_sync.is_gemini_enabled());
+        add_boolean_export(exports, prefix, "codex_sync", ai_sync.is_codex_enabled());
+        add_boolean_export(exports, prefix, "cursor_sync", ai_sync.is_cursor_enabled());
+        add_boolean_export(exports, prefix, "aider_sync", ai_sync.is_aider_enabled());
     }
-
-    // For complex nested structures (project, vm, services, etc.),
-    // we'd need to implement similar flattening logic, but the current implementation
-    // handles the most common cases. The remaining complex structures can fall back
-    // to the Value-based approach if needed.
 }
