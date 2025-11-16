@@ -27,29 +27,13 @@ use tokio::time::sleep;
 use tracing::{debug, info, warn};
 
 use crate::error::VmError;
+use crate::services::{
+    auth_proxy::AuthProxyService, docker_registry::DockerRegistryService, mongodb::MongodbService,
+    mysql::MysqlService, package_registry::PackageRegistryService, postgresql::PostgresqlService,
+    redis::RedisService, ManagedService,
+};
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::{vm_println, vm_success, vm_warning};
-
-/// Get a password from the secrets store, or generate a new one if it doesn't exist.
-async fn get_or_generate_password(service_name: &str) -> Result<String> {
-    let secrets_dir = vm_core::user_paths::secrets_dir()?;
-    tokio::fs::create_dir_all(&secrets_dir).await?;
-    let secret_file = secrets_dir.join(format!("{}.env", service_name));
-
-    if secret_file.exists() {
-        let password = tokio::fs::read_to_string(secret_file).await?;
-        Ok(password.trim().to_string())
-    } else {
-        let password = crate::utils::generate_random_password(16);
-        tokio::fs::write(&secret_file, &password).await?;
-        vm_println!(
-            "💡 Generated new password for {} and saved to {:?}",
-            service_name,
-            secret_file
-        );
-        Ok(password)
-    }
-}
 
 /// Represents the current state of a managed service
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -67,25 +51,49 @@ pub struct ServiceState {
 }
 
 /// Central service lifecycle manager with reference counting
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ServiceManager {
     /// Service state map protected by mutex for thread safety
     state: Arc<Mutex<HashMap<String, ServiceState>>>,
     /// Path to persistent state file
     state_file: PathBuf,
     /// Shutdown handles for services that support graceful shutdown
+    #[allow(dead_code)]
     shutdown_handles: Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
+    /// Service implementations
+    services: Arc<Mutex<HashMap<String, Arc<dyn ManagedService>>>>,
 }
 
 impl ServiceManager {
     /// Create a new ServiceManager instance
     pub fn new() -> Result<Self> {
         let state_file = vm_core::user_paths::services_state_path()?;
+        let shutdown_handles = Arc::new(Mutex::new(HashMap::new()));
+
+        // Initialize all service implementations
+        let mut services: HashMap<String, Arc<dyn ManagedService>> = HashMap::new();
+        services.insert(
+            "auth_proxy".to_string(),
+            Arc::new(AuthProxyService::new(shutdown_handles.clone())),
+        );
+        services.insert(
+            "docker_registry".to_string(),
+            Arc::new(DockerRegistryService),
+        );
+        services.insert(
+            "package_registry".to_string(),
+            Arc::new(PackageRegistryService::new(shutdown_handles.clone())),
+        );
+        services.insert("postgresql".to_string(), Arc::new(PostgresqlService));
+        services.insert("redis".to_string(), Arc::new(RedisService));
+        services.insert("mongodb".to_string(), Arc::new(MongodbService));
+        services.insert("mysql".to_string(), Arc::new(MysqlService));
 
         let manager = Self {
             state: Arc::new(Mutex::new(HashMap::new())),
             state_file,
-            shutdown_handles: Arc::new(Mutex::new(HashMap::new())),
+            shutdown_handles,
+            services: Arc::new(Mutex::new(services)),
         };
 
         // Load existing state if available
@@ -298,41 +306,25 @@ impl ServiceManager {
     async fn start_service(&self, service_name: &str, global_config: &GlobalConfig) -> Result<()> {
         info!("Starting service: {}", service_name);
 
-        let port = self.get_service_port(service_name, global_config);
+        // Get the service implementation (clone Arc before dropping lock)
+        let service_impl = {
+            let services_guard = self.services.lock().map_err(|e| {
+                VmError::general(
+                    std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+                    "Services mutex was poisoned",
+                )
+            })?;
+            services_guard
+                .get(service_name)
+                .ok_or_else(|| anyhow::anyhow!("Unknown service: {service_name}"))?
+                .clone()
+        };
 
-        match service_name {
-            "auth_proxy" => {
-                vm_println!("🚀 Starting auth proxy on port {}...", port);
-                self.start_auth_proxy(port).await?;
-            }
-            "docker_registry" => {
-                vm_println!("🚀 Starting Docker registry on port {}...", port);
-                self.start_docker_registry(port).await?;
-            }
-            "package_registry" => {
-                vm_println!("🚀 Starting package registry on port {}...", port);
-                self.start_package_registry(port).await?;
-            }
-            "postgresql" => {
-                vm_println!("🚀 Starting PostgreSQL on port {}...", port);
-                self.start_postgres(global_config).await?;
-            }
-            "redis" => {
-                vm_println!("🚀 Starting Redis on port {}...", port);
-                self.start_redis(global_config).await?;
-            }
-            "mongodb" => {
-                vm_println!("🚀 Starting MongoDB on port {}...", port);
-                self.start_mongodb(global_config).await?;
-            }
-            "mysql" => {
-                vm_println!("🚀 Starting MySQL on port {}...", port);
-                self.start_mysql(global_config).await?;
-            }
-            _ => {
-                return Err(anyhow::anyhow!("Unknown service: {service_name}"));
-            }
-        }
+        let port = self.get_service_port(service_name, global_config);
+        vm_println!("🚀 Starting {} on port {}...", service_impl.name(), port);
+
+        // Use trait dispatch to start the service (lock is dropped)
+        service_impl.start(global_config).await?;
 
         // Update state
         {
@@ -369,39 +361,24 @@ impl ServiceManager {
     async fn stop_service(&self, service_name: &str) -> Result<()> {
         info!("Stopping service: {}", service_name);
 
-        match service_name {
-            "auth_proxy" => {
-                vm_println!("🛑 Stopping auth proxy...");
-                self.stop_auth_proxy().await?;
-            }
-            "docker_registry" => {
-                vm_println!("🛑 Stopping Docker registry...");
-                self.stop_docker_registry().await?;
-            }
-            "package_registry" => {
-                vm_println!("🛑 Stopping package registry...");
-                self.stop_package_registry().await?;
-            }
-            "postgresql" => {
-                vm_println!("🛑 Stopping PostgreSQL...");
-                self.stop_postgres().await?;
-            }
-            "redis" => {
-                vm_println!("🛑 Stopping Redis...");
-                self.stop_redis().await?;
-            }
-            "mongodb" => {
-                vm_println!("🛑 Stopping MongoDB...");
-                self.stop_mongodb().await?;
-            }
-            "mysql" => {
-                vm_println!("🛑 Stopping MySQL...");
-                self.stop_mysql().await?;
-            }
-            _ => {
-                return Err(anyhow::anyhow!("Unknown service: {service_name}"));
-            }
-        }
+        // Get the service implementation (clone Arc before dropping lock)
+        let service_impl = {
+            let services_guard = self.services.lock().map_err(|e| {
+                VmError::general(
+                    std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+                    "Services mutex was poisoned",
+                )
+            })?;
+            services_guard
+                .get(service_name)
+                .ok_or_else(|| anyhow::anyhow!("Unknown service: {service_name}"))?
+                .clone()
+        };
+
+        vm_println!("🛑 Stopping {}...", service_impl.name());
+
+        // Use trait dispatch to stop the service (lock is dropped)
+        service_impl.stop().await?;
 
         // Update state
         {
@@ -423,430 +400,29 @@ impl ServiceManager {
 
     /// Get the port for a service from global configuration
     fn get_service_port(&self, service_name: &str, global_config: &GlobalConfig) -> u16 {
-        match service_name {
-            "auth_proxy" => global_config.services.auth_proxy.port,
-            "docker_registry" => global_config.services.docker_registry.port,
-            "package_registry" => global_config.services.package_registry.port,
-            "postgresql" => global_config.services.postgresql.port,
-            "redis" => global_config.services.redis.port,
-            "mongodb" => global_config.services.mongodb.port,
-            "mysql" => global_config.services.mysql.port,
-            _ => 0,
-        }
+        self.services
+            .lock()
+            .ok()
+            .and_then(|guard| guard.get(service_name).map(|s| s.get_port(global_config)))
+            .unwrap_or(0)
     }
 
     /// Check if a service is healthy
     async fn check_service_health(&self, service_name: &str, global_config: &GlobalConfig) -> bool {
-        let port = self.get_service_port(service_name, global_config);
-        let endpoint = match service_name {
-            "auth_proxy" => format!("http://localhost:{port}/health"),
-            "docker_registry" => format!("http://localhost:{port}/v2/"),
-            "package_registry" => format!("http://localhost:{port}/health"),
-            "postgresql" | "redis" | "mongodb" | "mysql" => {
-                // For database services, a TCP connection is a reliable health check
-                return tokio::net::TcpStream::connect(format!("127.0.0.1:{port}"))
-                    .await
-                    .is_ok();
+        // Get the service implementation (clone Arc before dropping lock)
+        let service_impl = {
+            let services_guard = match self.services.lock() {
+                Ok(guard) => guard,
+                Err(_) => return false,
+            };
+            match services_guard.get(service_name) {
+                Some(service) => service.clone(),
+                None => return false,
             }
-            _ => return false,
         };
 
-        // Use reqwest to check health for HTTP-based services
-        match reqwest::get(&endpoint).await {
-            Ok(response) => response.status().is_success(),
-            Err(_) => false,
-        }
-    }
-
-    /// Start auth proxy service
-    async fn start_auth_proxy(&self, port: u16) -> Result<()> {
-        use vm_auth_proxy;
-
-        let data_dir = vm_auth_proxy::storage::get_auth_data_dir()
-            .context("Failed to get auth data directory")?;
-
-        // Create shutdown channel
-        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
-
-        // Store shutdown handle for later use
-        {
-            let mut handles = self.shutdown_handles.lock().map_err(|e| {
-                VmError::general(
-                    std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
-                    "Shutdown handles mutex was poisoned",
-                )
-            })?;
-            handles.insert("auth_proxy".to_string(), shutdown_tx);
-        }
-
-        // Spawn server with shutdown capability
-        tokio::spawn(async move {
-            if let Err(e) = vm_auth_proxy::run_server_with_shutdown(
-                "127.0.0.1".to_string(),
-                port,
-                data_dir,
-                Some(shutdown_rx),
-            )
-            .await
-            {
-                warn!("Auth proxy exited with error: {}", e);
-            }
-        });
-
-        Ok(())
-    }
-
-    /// Stop auth proxy service
-    async fn stop_auth_proxy(&self) -> Result<()> {
-        debug!("Auth proxy stop requested");
-
-        // Get shutdown handle
-        let shutdown_tx = {
-            let mut handles = self.shutdown_handles.lock().map_err(|e| {
-                VmError::general(
-                    std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
-                    "Shutdown handles mutex was poisoned",
-                )
-            })?;
-            handles.remove("auth_proxy")
-        };
-
-        if let Some(shutdown_tx) = shutdown_tx {
-            // Send shutdown signal
-            if shutdown_tx.send(()).is_err() {
-                warn!(
-                    "Failed to send shutdown signal to auth proxy (receiver may have been dropped)"
-                );
-            } else {
-                info!("Shutdown signal sent to auth proxy");
-
-                // Give the server a brief moment to shut down gracefully
-                // Reduced from 1000ms to 200ms for faster stops
-                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-            }
-        } else {
-            warn!("No shutdown handle found for auth proxy - it may not be running or was started externally");
-        }
-
-        Ok(())
-    }
-
-    /// Start Docker registry service
-    async fn start_docker_registry(&self, port: u16) -> Result<()> {
-        use vm_docker_registry::{
-            self, auto_manager::start_auto_manager, docker_config::configure_docker_daemon,
-            server::start_registry_with_config, RegistryConfig,
-        };
-
-        // Create custom registry config with the specified port
-        let config = RegistryConfig {
-            registry_port: port,
-            ..Default::default()
-        };
-
-        // Start the registry service with custom config
-        tokio::spawn(async move {
-            if let Err(e) = start_registry_with_config(&config).await {
-                warn!("Docker registry exited with error: {}", e);
-            }
-        });
-
-        // Wait a moment for the service to be available
-        tokio::time::sleep(Duration::from_secs(2)).await;
-
-        // Configure the Docker daemon with the correct registry URL
-        let registry_url = format!("http://127.0.0.1:{port}");
-        if let Err(e) = configure_docker_daemon(&registry_url).await {
-            warn!("Failed to auto-configure Docker daemon: {}", e);
-        }
-
-        // Start the auto-manager background task
-        if let Err(e) = start_auto_manager() {
-            warn!("Failed to start registry auto-manager: {}", e);
-        }
-
-        Ok(())
-    }
-
-    /// Stop Docker registry service
-    async fn stop_docker_registry(&self) -> Result<()> {
-        use vm_docker_registry;
-        vm_docker_registry::stop_registry().await
-    }
-
-    /// Start package registry service
-    async fn start_package_registry(&self, port: u16) -> Result<()> {
-        use vm_package_server;
-
-        let data_dir = vm_core::project::get_package_data_dir()?;
-
-        // Create shutdown channel
-        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
-
-        // Store shutdown handle for later use
-        {
-            let mut handles = self.shutdown_handles.lock().map_err(|e| {
-                VmError::general(
-                    std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
-                    "Shutdown handles mutex was poisoned",
-                )
-            })?;
-            handles.insert("package_registry".to_string(), shutdown_tx);
-        }
-
-        // Spawn server with shutdown capability
-        tokio::spawn(async move {
-            if let Err(e) = vm_package_server::server::run_server_with_shutdown(
-                "0.0.0.0".to_string(),
-                port,
-                data_dir,
-                Some(shutdown_rx),
-            )
-            .await
-            {
-                warn!("Package registry exited with error: {}", e);
-            }
-        });
-
-        Ok(())
-    }
-
-    /// Stop package registry service
-    async fn stop_package_registry(&self) -> Result<()> {
-        debug!("Package registry stop requested");
-
-        // Get shutdown handle
-        let shutdown_tx = {
-            let mut handles = self.shutdown_handles.lock().map_err(|e| {
-                VmError::general(
-                    std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
-                    "Shutdown handles mutex was poisoned",
-                )
-            })?;
-            handles.remove("package_registry")
-        };
-
-        if let Some(shutdown_tx) = shutdown_tx {
-            // Send shutdown signal
-            if shutdown_tx.send(()).is_err() {
-                warn!("Failed to send shutdown signal to package registry (receiver may have been dropped)");
-            } else {
-                info!("Shutdown signal sent to package registry");
-
-                // Give the server a brief moment to shut down gracefully
-                // Reduced from 1000ms to 200ms for faster stops
-                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-            }
-        } else {
-            warn!("No shutdown handle found for package registry - it may not be running or was started externally");
-        }
-
-        Ok(())
-    }
-
-    /// Start PostgreSQL service
-    async fn start_postgres(&self, global_config: &GlobalConfig) -> Result<()> {
-        let settings = &global_config.services.postgresql;
-        let container_name = "vm-postgres-global";
-
-        // Expand tilde in data_dir
-        let data_dir = shellexpand::tilde(&settings.data_dir).to_string();
-        tokio::fs::create_dir_all(&data_dir).await?;
-
-        let password = get_or_generate_password("postgresql").await?;
-
-        let mut cmd = tokio::process::Command::new("docker");
-        cmd.arg("run")
-            .arg("-d")
-            .arg("--name")
-            .arg(container_name)
-            .arg("-p")
-            .arg(format!("{}:5432", settings.port))
-            .arg("-v")
-            .arg(format!("{data_dir}:/var/lib/postgresql/data"))
-            .arg("-e")
-            .arg(format!("POSTGRES_PASSWORD={}", password))
-            .arg(format!("postgres:{}", settings.version));
-
-        let status = cmd.status().await?;
-        if !status.success() {
-            return Err(anyhow::anyhow!("Failed to start PostgreSQL container"));
-        }
-
-        Ok(())
-    }
-
-    /// Stop PostgreSQL service
-    async fn stop_postgres(&self) -> Result<()> {
-        let container_name = "vm-postgres-global";
-
-        // Stop the container
-        let mut stop_cmd = tokio::process::Command::new("docker");
-        stop_cmd.arg("stop").arg(container_name);
-        if !stop_cmd.status().await?.success() {
-            warn!("Failed to stop PostgreSQL container, it may not have been running.");
-        }
-
-        // Remove the container
-        let mut rm_cmd = tokio::process::Command::new("docker");
-        rm_cmd.arg("rm").arg(container_name);
-        if !rm_cmd.status().await?.success() {
-            warn!("Failed to remove PostgreSQL container.");
-        }
-
-        Ok(())
-    }
-
-    /// Start Redis service
-    async fn start_redis(&self, global_config: &GlobalConfig) -> Result<()> {
-        let settings = &global_config.services.redis;
-        let container_name = "vm-redis-global";
-
-        let data_dir = shellexpand::tilde(&settings.data_dir).to_string();
-        tokio::fs::create_dir_all(&data_dir).await?;
-
-        let password = get_or_generate_password("redis").await?;
-
-        let mut cmd = tokio::process::Command::new("docker");
-        cmd.arg("run")
-            .arg("-d")
-            .arg("--name")
-            .arg(container_name)
-            .arg("-p")
-            .arg(format!("{}:6379", settings.port))
-            .arg("-v")
-            .arg(format!("{data_dir}:/data"))
-            .arg(format!("redis:{}", settings.version))
-            .arg("--requirepass")
-            .arg(password);
-
-        let status = cmd.status().await?;
-        if !status.success() {
-            return Err(anyhow::anyhow!("Failed to start Redis container"));
-        }
-
-        Ok(())
-    }
-
-    /// Stop Redis service
-    async fn stop_redis(&self) -> Result<()> {
-        let container_name = "vm-redis-global";
-
-        let mut stop_cmd = tokio::process::Command::new("docker");
-        stop_cmd.arg("stop").arg(container_name);
-        if !stop_cmd.status().await?.success() {
-            warn!("Failed to stop Redis container, it may not have been running.");
-        }
-
-        let mut rm_cmd = tokio::process::Command::new("docker");
-        rm_cmd.arg("rm").arg(container_name);
-        if !rm_cmd.status().await?.success() {
-            warn!("Failed to remove Redis container.");
-        }
-
-        Ok(())
-    }
-
-    /// Start MongoDB service
-    async fn start_mongodb(&self, global_config: &GlobalConfig) -> Result<()> {
-        let settings = &global_config.services.mongodb;
-        let container_name = "vm-mongodb-global";
-
-        let data_dir = shellexpand::tilde(&settings.data_dir).to_string();
-        tokio::fs::create_dir_all(&data_dir).await?;
-
-        let password = get_or_generate_password("mongodb").await?;
-
-        let mut cmd = tokio::process::Command::new("docker");
-        cmd.arg("run")
-            .arg("-d")
-            .arg("--name")
-            .arg(container_name)
-            .arg("-p")
-            .arg(format!("{}:27017", settings.port))
-            .arg("-v")
-            .arg(format!("{data_dir}:/data/db"))
-            .arg("-e")
-            .arg("MONGO_INITDB_ROOT_USERNAME=root")
-            .arg("-e")
-            .arg(format!("MONGO_INITDB_ROOT_PASSWORD={}", password))
-            .arg(format!("mongo:{}", settings.version));
-
-        let status = cmd.status().await?;
-        if !status.success() {
-            return Err(anyhow::anyhow!("Failed to start MongoDB container"));
-        }
-
-        Ok(())
-    }
-
-    /// Stop MongoDB service
-    async fn stop_mongodb(&self) -> Result<()> {
-        let container_name = "vm-mongodb-global";
-
-        let mut stop_cmd = tokio::process::Command::new("docker");
-        stop_cmd.arg("stop").arg(container_name);
-        if !stop_cmd.status().await?.success() {
-            warn!("Failed to stop MongoDB container, it may not have been running.");
-        }
-
-        let mut rm_cmd = tokio::process::Command::new("docker");
-        rm_cmd.arg("rm").arg(container_name);
-        if !rm_cmd.status().await?.success() {
-            warn!("Failed to remove MongoDB container.");
-        }
-
-        Ok(())
-    }
-
-    /// Start MySQL service
-    async fn start_mysql(&self, global_config: &GlobalConfig) -> Result<()> {
-        let settings = &global_config.services.mysql;
-        let container_name = "vm-mysql-global";
-
-        let data_dir = shellexpand::tilde(&settings.data_dir).to_string();
-        tokio::fs::create_dir_all(&data_dir).await?;
-
-        let password = get_or_generate_password("mysql").await?;
-
-        let mut cmd = tokio::process::Command::new("docker");
-        cmd.arg("run")
-            .arg("-d")
-            .arg("--name")
-            .arg(container_name)
-            .arg("-p")
-            .arg(format!("{}:3306", settings.port))
-            .arg("-v")
-            .arg(format!("{data_dir}:/var/lib/mysql"))
-            .arg("-e")
-            .arg(format!("MYSQL_ROOT_PASSWORD={}", password))
-            .arg(format!("mysql:{}", settings.version));
-
-        let status = cmd.status().await?;
-        if !status.success() {
-            return Err(anyhow::anyhow!("Failed to start MySQL container"));
-        }
-
-        Ok(())
-    }
-
-    /// Stop MySQL service
-    async fn stop_mysql(&self) -> Result<()> {
-        let container_name = "vm-mysql-global";
-
-        let mut stop_cmd = tokio::process::Command::new("docker");
-        stop_cmd.arg("stop").arg(container_name);
-        if !stop_cmd.status().await?.success() {
-            warn!("Failed to stop MySQL container, it may not have been running.");
-        }
-
-        let mut rm_cmd = tokio::process::Command::new("docker");
-        rm_cmd.arg("rm").arg(container_name);
-        if !rm_cmd.status().await?.success() {
-            warn!("Failed to remove MySQL container.");
-        }
-
-        Ok(())
+        // Use trait dispatch to check service health (lock is dropped)
+        service_impl.check_health(global_config).await
     }
 
     /// Save service state to disk

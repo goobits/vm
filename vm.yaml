@@ -6,15 +6,11 @@ project:
   name: vm
   workspace_path: /workspace
 vm:
+  box: '@vibe-box'
   cpus: unlimited
   gui: false
   memory: unlimited
   port_binding: 0.0.0.0
-  timezone: America/Los_Angeles
-  user: developer
-versions:
-  node: '22'
-  python: '3.11'
 ports:
   _range: [3120, 3129]
 services:
@@ -23,25 +19,12 @@ services:
     port: 3129
   redis:
     enabled: true
-apt_packages:
-  - tree
-  - ripgrep
-  - unzip
-  - htop
-npm_packages:
-  - '@anthropic-ai/claude-code'
-  - '@google/gemini-cli'
-  - '@openai/codex'
 terminal:
   emoji: 🚀
   show_git_branch: true
   show_timestamp: false
   theme: dracula
   username: vm-dev
-aliases:
-  claudeyolo: claude --dangerously-skip-permissions
-  codexyolo: codex --dangerously-bypass-approvals-and-sandbox
-  geminiyolo: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --approval-mode=yolo
 host_sync:
   git_config: true
   ai_tools: true

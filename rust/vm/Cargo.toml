@@ -17,6 +17,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = { workspace = true }
+async-trait = "0.1"
 clap = { workspace = true }
 clap_complete = { workspace = true }
 shellexpand = "3.1.0"
