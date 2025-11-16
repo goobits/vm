@@ -109,8 +109,16 @@ pub async fn handle_create(
     description: Option<&str>,
     quiesce: bool,
     project_override: Option<&str>,
+    from_dockerfile: Option<&std::path::Path>,
+    build_args: &[String],
 ) -> VmResult<()> {
     let manager = SnapshotManager::new()?;
+
+    // Handle --from-dockerfile mode
+    if let Some(dockerfile_path) = from_dockerfile {
+        return handle_create_from_dockerfile(name, description, dockerfile_path, build_args).await;
+    }
+
     let project_name = project_override
         .map(|s| s.to_string())
         .unwrap_or_else(|| get_project_name(config));
@@ -344,4 +352,117 @@ fn calculate_directory_size(path: &std::path::Path) -> VmResult<u64> {
     }
 
     Ok(total)
+}
+
+/// Handle snapshot creation from a Dockerfile
+async fn handle_create_from_dockerfile(
+    name: &str,
+    description: Option<&str>,
+    dockerfile_path: &std::path::Path,
+    build_args: &[String],
+) -> VmResult<()> {
+    // Validate Dockerfile exists
+    if !dockerfile_path.exists() {
+        return Err(VmError::validation(
+            format!("Dockerfile not found: {}", dockerfile_path.display()),
+            None::<String>,
+        ));
+    }
+
+    // Determine if this is a global snapshot (@name) or project-specific (name)
+    let is_global = name.starts_with('@');
+    let snapshot_name = if is_global {
+        name.trim_start_matches('@')
+    } else {
+        name
+    };
+
+    // Build the image tag
+    let image_tag = if is_global {
+        format!("vm-snapshot/global/{}:latest", snapshot_name)
+    } else {
+        // Get current project name
+        let project_name = std::env::current_dir()
+            .ok()
+            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
+            .unwrap_or_else(|| "default".to_string());
+        format!("vm-snapshot/{}/{}:latest", project_name, snapshot_name)
+    };
+
+    vm_core::vm_println!("Building snapshot '{}' from Dockerfile...", name);
+    if let Some(desc) = description {
+        vm_core::vm_println!("Description: {}", desc);
+    }
+
+    // Parse build arguments from Vec<String> into HashMap
+    let mut build_args_map = std::collections::HashMap::new();
+    for arg in build_args {
+        if let Some((key, value)) = arg.split_once('=') {
+            build_args_map.insert(key.to_string(), value.to_string());
+        } else {
+            return Err(VmError::validation(
+                format!("Invalid build arg format '{}'. Expected KEY=VALUE", arg),
+                None::<String>,
+            ));
+        }
+    }
+
+    // Determine build context (parent directory of Dockerfile or current directory)
+    let context_dir = dockerfile_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+
+    vm_core::vm_println!("Build context: {}", context_dir.display());
+    vm_core::vm_println!("Dockerfile: {}", dockerfile_path.display());
+    if !build_args_map.is_empty() {
+        vm_core::vm_println!("Build arguments: {:?}", build_args_map);
+    }
+
+    // Build the Docker image using the existing build_custom_image function
+    // We need to import the function from vm-provider
+    use vm_core::command_stream::stream_command_visible;
+
+    let mut args = vec![
+        "build".to_string(),
+        "-f".to_string(),
+        dockerfile_path.to_string_lossy().to_string(),
+        "-t".to_string(),
+        image_tag.clone(),
+    ];
+
+    // Add build arguments
+    for (key, value) in &build_args_map {
+        args.push("--build-arg".to_string());
+        args.push(format!("{}={}", key, value));
+    }
+
+    args.push(context_dir.to_string_lossy().to_string());
+
+    // Stream the build output
+    stream_command_visible("docker", &args).map_err(|e| {
+        VmError::general(
+            e,
+            format!(
+                "Failed to build Docker image from {}",
+                dockerfile_path.display()
+            ),
+        )
+    })?;
+
+    vm_core::vm_success!(
+        "Snapshot '{}' created successfully with tag '{}'",
+        name,
+        image_tag
+    );
+    vm_core::vm_println!("");
+    vm_core::vm_println!("You can now use this snapshot in vm.yaml:");
+    if is_global {
+        vm_core::vm_println!("  vm:");
+        vm_core::vm_println!("    box: {}", name);
+    } else {
+        vm_core::vm_println!("  vm:");
+        vm_core::vm_println!("    box: @{}", snapshot_name);
+    }
+
+    Ok(())
 }

@@ -345,6 +345,12 @@ pub enum SnapshotSubcommand {
         /// Project name (auto-detected if omitted)
         #[arg(long)]
         project: Option<String>,
+        /// Build snapshot directly from a Dockerfile
+        #[arg(long, value_name = "PATH")]
+        from_dockerfile: Option<PathBuf>,
+        /// Build arguments for Dockerfile (repeatable: --build-arg KEY=VALUE)
+        #[arg(long, value_name = "KEY=VALUE")]
+        build_arg: Vec<String>,
     },
     /// List available snapshots
     List {
