@@ -7,6 +7,7 @@ use axum::{
 };
 use tracing::{error, warn};
 
+use crate::registry::PackageRegistry;
 use crate::{AppError, AppResult, AppState};
 
 /// Format file size in human-readable format
@@ -115,8 +116,7 @@ pub struct PackageFile {
 /// Render the home page with package statistics and recent packages
 pub async fn home(State(state): State<Arc<AppState>>) -> AppResult<Html<String>> {
     // Fetch package counts with fallback to 0 on error
-    #[allow(deprecated)]
-    let pypi_count = match crate::pypi::count_packages(&state).await {
+    let pypi_count = match state.pypi_registry.count_packages(&state).await {
         Ok(count) => count,
         Err(e) => {
             warn!("Failed to get PyPI package count: {}", e);
@@ -124,7 +124,7 @@ pub async fn home(State(state): State<Arc<AppState>>) -> AppResult<Html<String>>
         }
     };
 
-    let npm_count = match crate::npm::count_packages(&state).await {
+    let npm_count = match state.npm_registry.count_packages(&state).await {
         Ok(count) => count,
         Err(e) => {
             warn!("Failed to get npm package count: {}", e);
@@ -177,9 +177,8 @@ pub async fn list_packages(
     State(state): State<Arc<AppState>>,
 ) -> AppResult<Html<String>> {
     let packages = match pkg_type.as_str() {
-        #[allow(deprecated)]
-        "pypi" => crate::pypi::list_all_packages(&state).await?,
-        "npm" => crate::npm::list_all_packages(&state).await?,
+        "pypi" => state.pypi_registry.list_all_packages(&state).await?,
+        "npm" => state.npm_registry.list_all_packages(&state).await?,
         "cargo" => crate::cargo::list_all_crates(&state).await?,
         _ => return Err(AppError::NotFound("Invalid package type".to_string())),
     };
@@ -197,6 +196,9 @@ pub async fn pypi_package_detail(
     Path(pkg_name): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> AppResult<Html<String>> {
+    // Note: PyPI's get_package_versions returns Vec<(version, Vec<(filename, sha256, size)>)>
+    // which is different from the trait's signature. Keep using the old function for now.
+    #[allow(deprecated)]
     let versions = crate::pypi::get_package_versions(&state, &pkg_name).await?;
 
     let template = PyPiDetailTemplate {
@@ -229,7 +231,11 @@ pub async fn npm_package_detail(
     Path(pkg_name): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> AppResult<Html<String>> {
-    let versions = crate::npm::get_package_versions(&state, &pkg_name).await?;
+    // Use the trait method
+    let versions = state
+        .npm_registry
+        .get_package_versions(&state, &pkg_name)
+        .await?;
 
     let template = NpmDetailTemplate {
         package_name: pkg_name,
@@ -291,7 +297,7 @@ async fn get_recent_packages(state: &AppState) -> AppResult<Vec<RecentPackage>> 
     let mut recent = Vec::new();
 
     // Fetch recent PyPI packages with proper error handling
-    match crate::pypi::get_recent_packages(state, 5).await {
+    match state.pypi_registry.get_recent_packages(state, 5).await {
         Ok(pypi_packages) => {
             for (name, version) in pypi_packages {
                 recent.push(RecentPackage {
@@ -308,7 +314,7 @@ async fn get_recent_packages(state: &AppState) -> AppResult<Vec<RecentPackage>> 
     }
 
     // Fetch recent npm packages with proper error handling
-    match crate::npm::get_recent_packages(state, 5).await {
+    match state.npm_registry.get_recent_packages(state, 5).await {
         Ok(npm_packages) => {
             for (name, version) in npm_packages {
                 recent.push(RecentPackage {

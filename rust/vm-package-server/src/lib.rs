@@ -42,6 +42,7 @@ pub mod local_storage;
 pub mod npm;
 pub mod package_utils;
 pub mod pypi;
+pub mod registry;
 pub mod server;
 pub mod state;
 pub mod storage;
@@ -106,6 +107,8 @@ pub mod test_utils {
             server_addr: "http://localhost:3080".to_string(),
             upstream_client,
             config,
+            npm_registry: crate::registry::NpmRegistry::new(),
+            pypi_registry: crate::registry::PypiRegistry::new(),
         });
         (state, temp_dir)
     }
@@ -128,6 +131,8 @@ pub mod test_utils {
             server_addr: "http://localhost:3080".to_string(),
             upstream_client,
             config,
+            npm_registry: crate::registry::NpmRegistry::new(),
+            pypi_registry: crate::registry::PypiRegistry::new(),
         });
         (state, temp_dir)
     }
@@ -152,6 +157,8 @@ pub mod test_utils {
             server_addr: "http://localhost:3080".to_string(),
             upstream_client,
             config,
+            npm_registry: crate::registry::NpmRegistry::new(),
+            pypi_registry: crate::registry::PypiRegistry::new(),
         });
         (state, temp_dir)
     }

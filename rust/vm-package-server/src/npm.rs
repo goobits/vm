@@ -17,6 +17,8 @@ use crate::{
 
 /// Counts the total number of unique NPM packages in the repository.
 ///
+/// **DEPRECATED**: Use `state.npm_registry.count_packages()` instead (via PackageRegistry trait).
+///
 /// Scans the NPM metadata directory for .json files and returns the count of unique packages.
 /// Each .json file represents one package's metadata.
 ///
@@ -36,7 +38,10 @@ use crate::{
 /// # Ok(())
 /// # }
 /// ```
-#[allow(dead_code)]
+#[deprecated(
+    since = "4.3.0",
+    note = "Use state.npm_registry.count_packages() instead"
+)]
 pub async fn count_packages(state: &AppState) -> AppResult<usize> {
     package_utils::count_packages_by_pattern(
         &state.data_dir,
@@ -50,6 +55,8 @@ pub async fn count_packages(state: &AppState) -> AppResult<usize> {
 }
 
 /// Returns a sorted list of all NPM package names in the repository.
+///
+/// **DEPRECATED**: Use `state.npm_registry.list_all_packages()` instead (via PackageRegistry trait).
 ///
 /// Scans the NPM metadata directory for .json files, extracts package names,
 /// and returns them in alphabetical order.
@@ -72,7 +79,10 @@ pub async fn count_packages(state: &AppState) -> AppResult<usize> {
 /// # Ok(())
 /// # }
 /// ```
-#[allow(dead_code)]
+#[deprecated(
+    since = "4.3.0",
+    note = "Use state.npm_registry.list_all_packages() instead"
+)]
 pub async fn list_all_packages(state: &AppState) -> AppResult<Vec<String>> {
     package_utils::list_packages_by_pattern(
         &state.data_dir,
@@ -86,6 +96,12 @@ pub async fn list_all_packages(state: &AppState) -> AppResult<Vec<String>> {
 }
 
 /// Get package versions with tarball info and file sizes
+///
+/// **DEPRECATED**: Use `state.npm_registry.get_package_versions()` instead (via PackageRegistry trait).
+#[deprecated(
+    since = "4.3.0",
+    note = "Use state.npm_registry.get_package_versions() instead"
+)]
 pub async fn get_package_versions(
     state: &AppState,
     package_name: &str,
@@ -130,6 +146,12 @@ pub async fn get_package_versions(
 }
 
 /// Get recent packages
+///
+/// **DEPRECATED**: Use `state.npm_registry.get_recent_packages()` instead (via PackageRegistry trait).
+#[deprecated(
+    since = "4.3.0",
+    note = "Use state.npm_registry.get_recent_packages() instead"
+)]
 pub async fn get_recent_packages(
     state: &AppState,
     limit: usize,
@@ -527,6 +549,8 @@ mod tests {
             server_addr: "http://localhost:8080".to_string(),
             upstream_client: Arc::new(UpstreamClient::disabled()),
             config,
+            npm_registry: crate::registry::NpmRegistry::new(),
+            pypi_registry: crate::registry::PypiRegistry::new(),
         });
 
         (state, temp_dir)

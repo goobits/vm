@@ -129,6 +129,9 @@ pub enum AppError {
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
 
+    #[error("Not implemented: {0}")]
+    NotImplemented(String),
+
     #[error(transparent)]
     Anyhow(#[from] anyhow::Error),
 }
@@ -146,6 +149,7 @@ impl AppError {
             AppError::UploadError(_) => ErrorCode::UploadError,
             AppError::InternalError(_) => ErrorCode::InternalError,
             AppError::Unauthorized(_) => ErrorCode::AuthError,
+            AppError::NotImplemented(_) => ErrorCode::InternalError,
             AppError::Io(_) | AppError::Anyhow(_) => ErrorCode::InternalError,
         }
     }

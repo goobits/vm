@@ -27,6 +27,8 @@ mod cargo_tests {
             server_addr: "http://localhost:8080".to_string(),
             upstream_client: Arc::new(UpstreamClient::disabled()),
             config,
+            npm_registry: crate::registry::NpmRegistry::new(),
+            pypi_registry: crate::registry::PypiRegistry::new(),
         });
 
         (state, temp_dir)

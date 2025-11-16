@@ -55,6 +55,8 @@ pub async fn create_test_setup() -> Result<TestSetup> {
         server_addr: "http://localhost:8080".to_string(),
         upstream_client,
         config,
+        npm_registry: vm_package_server::registry::NpmRegistry::new(),
+        pypi_registry: vm_package_server::registry::PypiRegistry::new(),
     });
 
     // Find available port for testing

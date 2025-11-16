@@ -25,6 +25,7 @@ use crate::{
     cargo,
     config::Config,
     npm, pypi,
+    registry::{NpmRegistry, PypiRegistry},
     state::AppState,
     upstream::{UpstreamClient, UpstreamConfig},
 };
@@ -92,6 +93,8 @@ async fn run_server_internal(
         server_addr,
         upstream_client,
         config,
+        npm_registry: NpmRegistry::new(),
+        pypi_registry: PypiRegistry::new(),
     };
 
     let app = Router::new()

@@ -254,6 +254,13 @@ pub async fn list_all_packages(state: &AppState) -> AppResult<Vec<String>> {
 }
 
 /// Get package versions with their files, hashes, and sizes
+///
+/// **DEPRECATED**: Use `state.pypi_registry.get_package_versions()` instead (via PackageRegistry trait).
+/// Note: This function returns a different structure than the trait (nested Vec for multiple files per version).
+#[deprecated(
+    since = "4.3.0",
+    note = "Use state.pypi_registry.get_package_versions() instead"
+)]
 pub async fn get_package_versions(
     state: &AppState,
     package_name: &str,
@@ -308,6 +315,12 @@ pub async fn get_package_versions(
 }
 
 /// Get recent packages (returns up to `limit` most recent packages)
+///
+/// **DEPRECATED**: Use `state.pypi_registry.get_recent_packages()` instead (via PackageRegistry trait).
+#[deprecated(
+    since = "4.3.0",
+    note = "Use state.pypi_registry.get_recent_packages() instead"
+)]
 pub async fn get_recent_packages(
     state: &AppState,
     limit: usize,
@@ -559,6 +572,8 @@ mod tests {
             server_addr: "http://127.0.0.1:3080".to_string(),
             upstream_client: Arc::new(UpstreamClient::disabled()),
             config,
+            npm_registry: crate::registry::NpmRegistry::new(),
+            pypi_registry: crate::registry::PypiRegistry::new(),
         });
 
         (state, temp_dir)

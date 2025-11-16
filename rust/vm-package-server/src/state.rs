@@ -18,6 +18,7 @@
 //! use vm_package_server::state::AppState;
 //! use vm_package_server::upstream::{UpstreamClient, UpstreamConfig};
 //! use vm_package_server::config::Config;
+//! use vm_package_server::registry::{NpmRegistry, PypiRegistry};
 //!
 //! let upstream_config = UpstreamConfig::default();
 //! let upstream_client = Arc::new(UpstreamClient::new(upstream_config)?);
@@ -28,11 +29,14 @@
 //!     server_addr: "http://localhost:3080".to_string(),
 //!     upstream_client,
 //!     config,
+//!     npm_registry: NpmRegistry::new(),
+//!     pypi_registry: PypiRegistry::new(),
 //! });
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
 use crate::config::Config;
+use crate::registry::{NpmRegistry, PypiRegistry};
 use crate::upstream::UpstreamClient;
 use serde::Serialize;
 use std::path::PathBuf;
@@ -55,6 +59,8 @@ use std::sync::Arc;
 /// * `server_addr` - Full server address (scheme://host:port) used for generating URLs
 /// * `upstream_client` - HTTP client for communicating with upstream registries
 /// * `config` - Application configuration including security settings
+/// * `npm_registry` - NPM registry implementation using the PackageRegistry trait
+/// * `pypi_registry` - PyPI registry implementation using the PackageRegistry trait
 #[derive(Clone)]
 pub struct AppState {
     /// Base directory path where all package files are stored
@@ -65,6 +71,10 @@ pub struct AppState {
     pub upstream_client: Arc<UpstreamClient>,
     /// Application configuration
     pub config: Arc<Config>,
+    /// NPM registry implementation
+    pub npm_registry: NpmRegistry,
+    /// PyPI registry implementation
+    pub pypi_registry: PypiRegistry,
 }
 
 /// Standardized success response for API consistency.
