@@ -78,6 +78,8 @@ pub mod preflight;
 
 #[cfg(feature = "docker")]
 pub mod docker;
+#[cfg(feature = "docker")]
+pub mod podman;
 #[cfg(feature = "tart")]
 pub mod tart;
 #[cfg(feature = "vagrant")]
@@ -475,6 +477,8 @@ pub fn get_provider(config: VmConfig) -> Result<Box<dyn Provider>> {
     match provider_name {
         #[cfg(feature = "docker")]
         "docker" => Ok(Box::new(docker::DockerProvider::new(config)?)),
+        #[cfg(feature = "docker")]
+        "podman" => Ok(Box::new(podman::PodmanProvider::new(config)?)),
         #[cfg(feature = "vagrant")]
         "vagrant" => Ok(Box::new(vagrant::VagrantProvider::new(config)?)),
         #[cfg(feature = "tart")]
@@ -516,6 +520,23 @@ mod tests {
             Ok(provider) => assert_eq!(provider.name(), "docker"),
             Err(error) => {
                 // If docker is not available, we should get a dependency error
+                assert!(error.to_string().contains("Dependency not found"));
+            }
+        }
+    }
+
+    #[test]
+    fn test_get_provider_explicit_podman() {
+        let config = VmConfig {
+            provider: Some("podman".into()),
+            ..Default::default()
+        };
+        let result = get_provider(config);
+        // Test that we try to create podman provider
+        match result {
+            Ok(provider) => assert_eq!(provider.name(), "podman"),
+            Err(error) => {
+                // If podman is not available, we should get a dependency error
                 assert!(error.to_string().contains("Dependency not found"));
             }
         }

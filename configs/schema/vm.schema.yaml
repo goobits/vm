@@ -24,9 +24,10 @@ properties:
     enum:
       - vagrant
       - docker
+      - podman
       - tart
     default: docker
-    description: The virtualization provider to use. Docker provides lightweight containers (default), Vagrant provides full VM isolation, Tart provides native VMs on Apple Silicon.
+    description: The virtualization provider to use. Docker provides lightweight containers (default), Podman provides rootless containers with Docker compatibility, Vagrant provides full VM isolation, Tart provides native VMs on Apple Silicon.
   project:
     type: object
     description: Project-specific settings
