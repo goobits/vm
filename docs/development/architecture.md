@@ -41,7 +41,7 @@ See [rust/ARCHITECTURE.md](../../rust/ARCHITECTURE.md) for comprehensive crate d
 | `vm-messages` | Foundation | User-facing message templates |
 | `vm-cli` | Application | Message template variable substitution via `msg!` macro and `MessageBuilder` |
 | `vm-config` | Configuration | Config parsing, validation, detection |
-| `vm-provider` | Provider | VM provider abstraction (Docker/Vagrant/Tart) |
+| `vm-provider` | Provider | VM provider abstraction (Docker/Podman/Tart) |
 | `vm-temp` | Provider | Temporary VM management |
 | `vm-platform` | Utility | Cross-platform system abstractions |
 | `vm-package-manager` | Utility | Package manager integration |

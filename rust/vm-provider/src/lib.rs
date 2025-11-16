@@ -1,7 +1,7 @@
 //! VM provider abstraction library.
 //!
 //! This library provides a unified interface for working with different VM providers
-//! such as Docker, Vagrant, and Tart. It defines core traits and factory functions
+//! such as Docker, Podman, and Tart. It defines core traits and factory functions
 //! for provider instantiation and management.
 
 // Standard library
@@ -233,7 +233,7 @@ pub trait TempProvider {
 /// The core trait for all VM providers.
 /// This defines the contract for creating, managing, and interacting with a VM.
 pub trait Provider {
-    /// Get the name of the provider (e.g., "docker", "vagrant").
+    /// Get the name of the provider (e.g., "docker", "podman", "tart").
     fn name(&self) -> &'static str;
 
     /// Create a new VM instance.

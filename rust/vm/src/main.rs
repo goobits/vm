@@ -1,7 +1,7 @@
 //! VM Management Tool
 //!
 //! A fast, portable, and modern command-line tool for managing virtual machines across
-//! multiple providers (Docker, Vagrant, Tart). Provides a unified interface for creating,
+//! multiple providers (Docker, Podman, Tart). Provides a unified interface for creating,
 //! starting, stopping, and managing development environments.
 
 // Standard library

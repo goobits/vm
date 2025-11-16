@@ -187,7 +187,7 @@ Complete field reference organized by category.
 | `project.env_template_path` | string | null | Path to .env template for validation |
 | `project.backup_pattern` | string | *backup*.sql.gz | Pattern for auto-restore |
 | **VM Resources** ||||
-| `vm.box` | string | ubuntu:24.04 | Base image (Docker/OCI) or box (Vagrant) |
+| `vm.box` | string | ubuntu:24.04 | Base image (Docker/Podman/OCI) |
 | `vm.memory` | int/string | 4096 | RAM in MB, or "2gb", "50%", "unlimited" |
 | `vm.cpus` | int/string | 2 | CPU cores, or "50%", "unlimited" |
 | `vm.swap` | int/string | 2048 | Swap in MB, or "1gb", "50%", "unlimited" |
@@ -196,7 +196,7 @@ Complete field reference organized by category.
 | `vm.port_binding` | string | 127.0.0.1 | Bind address ("0.0.0.0" for network) |
 | **Operating System** ||||
 | `os` | string | ubuntu | ubuntu, macos, debian, alpine, linux, auto |
-| `provider` | string | auto | docker, vagrant, tart (auto-detected from OS) |
+| `provider` | string | auto | docker, podman, tart (auto-detected from OS) |
 | **Language Versions** ||||
 | `versions.node` | string | latest | Node.js version |
 | `versions.npm` | string | auto | npm version (usually auto-installed with Node) |
@@ -239,7 +239,7 @@ project:
 
 ```yaml
 vm:
-  box: ubuntu:24.04         # Docker image or Vagrant box
+  box: ubuntu:24.04         # Docker or Podman image
   memory: 4096              # RAM: 4096 (MB), "2gb", "50%", "unlimited"
   cpus: 2                   # CPUs: 2, "50%", "unlimited"
   swap: 2048                # Swap memory in MB
@@ -254,7 +254,7 @@ vm:
 os: ubuntu                  # ubuntu, macos, debian, alpine, auto
 
 # Advanced mode (explicit provider)
-provider: docker            # docker, vagrant, tart
+provider: docker            # docker, podman, tart
 ```
 
 ### Language Versions
@@ -616,11 +616,11 @@ docker logs vm-package-server      # Package registry logs
 The `os` field provides automatic provider selection and optimized settings:
 
 ```yaml
-os: ubuntu   # Docker/Vagrant, 4GB RAM, full dev stack
+os: ubuntu   # Docker/Podman, 4GB RAM, full dev stack
 os: macos    # Tart on Apple Silicon, 8GB RAM
-os: debian   # Docker/Vagrant, 2GB RAM, lightweight
+os: debian   # Docker/Podman, 2GB RAM, lightweight
 os: alpine   # Docker only, 1GB RAM, minimal
-os: linux    # Docker/Vagrant, 4GB RAM, generic Linux
+os: linux    # Docker/Podman, 4GB RAM, generic Linux
 os: auto     # Auto-detect from project files
 ```
 
@@ -629,7 +629,7 @@ os: auto     # Auto-detect from project files
 **Auto-detection**: The system automatically selects the best provider:
 - **Apple Silicon Mac + `os: macos`** → Tart provider
 - **Apple Silicon Mac + `os: ubuntu`** → Docker provider
-- **Intel/AMD + any OS** → Docker or Vagrant based on availability
+- **Intel/AMD + any OS** → Docker or Podman based on availability
 
 ### Tart Provider (Apple Silicon)
 
@@ -678,9 +678,6 @@ vm:
   box: ./Dockerfile          # Build from local Dockerfile
   box: supercool.dockerfile  # Build from named Dockerfile
 
-# Vagrant provider
-vm:
-  box: ubuntu/focal64        # Vagrant Cloud box
   box: hashicorp/bionic64    # Vagrant Cloud box
 
 # Tart provider (macOS)
@@ -714,7 +711,6 @@ The provider determines how to interpret the `box` string:
 - **Starts with `@`** → Snapshot (all providers)
 - **Starts with `./`, `../`, `/`** → Dockerfile path (Docker only)
 - **Ends with `.dockerfile`** → Dockerfile (Docker only)
-- **Contains `/` in Vagrant format** → Vagrant box
 - **Registry format** → Docker/Tart image
 - **Everything else** → Image name
 
@@ -1459,11 +1455,11 @@ vm snapshot restore my-configured-env
 
 **VM (Virtual Machine / Development Environment)**
 - Your isolated development environment
-- Implemented as a Docker container (default), Vagrant virtual machine, or Tart VM depending on your provider
+- Implemented as a Docker container (default), Podman container, or Tart VM depending on your provider
 - Throughout documentation, "VM" refers to all provider types unless specifically noted
 
 **Provider**
-- The backend technology that runs your VM: Docker, Vagrant, or Tart
+- The backend technology that runs your VM: Dockerpodman, or Tart
 - Docker provides lightweight containers (fast, shared kernel)
 - Vagrant provides full virtual machines (complete isolation, any OS)
 - Tart provides macOS virtual machines on Apple Silicon

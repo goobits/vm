@@ -21,12 +21,12 @@
         set_fact:
             is_docker_container: "{{ dockerenv_stat.stat.exists }}"
 
-      - name: Check for merged configuration from Vagrant
+      - name: Check for merged configuration file
         stat:
             path: '/tmp/vm-config.json'
         register: config_file_stat
 
-      - name: Load merged configuration from Vagrant
+      - name: Load merged configuration
         set_fact:
             project_config: "{{ lookup('file', '/tmp/vm-config.json') | from_json }}"
         when: config_file_stat.stat.exists
@@ -329,13 +329,13 @@
             - service_item.value.port is defined
             - service_item.value.port is not none
 
-      - name: Allow configured ports from Vagrant host
+      - name: Allow configured ports from host
         ufw:
             rule: allow
             port: "{{ service_item.value.port }}"
             proto: tcp
             from_ip: 10.0.2.2
-            comment: "Allow {{ service_item.key }} port from Vagrant host"
+            comment: "Allow {{ service_item.key }} port from host (NAT gateway)"
         loop: "{{ project_config.services | dict2items }}"
         loop_control:
             loop_var: service_item

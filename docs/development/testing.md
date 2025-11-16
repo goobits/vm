@@ -63,7 +63,7 @@ rust/
 **Currently implemented via Rust integration tests** that cover:
 - VM lifecycle operations (creation, destruction, status)
 - Command execution and shell integration
-- Provider-specific workflows (Docker, Vagrant, Tart)
+- Provider-specific workflows (Docker, Podman, Tart)
 - Configuration validation across complete workflows
 
 ## Running All Tests

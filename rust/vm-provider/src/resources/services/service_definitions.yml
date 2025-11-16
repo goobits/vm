@@ -15,11 +15,11 @@ common_patterns: &common_patterns
   # Common user group management pattern
   user_group_commands: &user_group_commands
     docker_group: &docker_group_cmd
-      "usermod -a -G docker {{ 'developer' if is_docker_container else project_config.ssh_user | default('vagrant') }}"
+      "usermod -a -G docker {{ 'developer' if is_docker_container else project_config.ssh_user | default('developer') }}"
     audio_group: &audio_group_cmd
-      "usermod -a -G audio {{ 'developer' if is_docker_container else project_config.ssh_user | default('vagrant') }}"
+      "usermod -a -G audio {{ 'developer' if is_docker_container else project_config.ssh_user | default('developer') }}"
     video_group: &video_group_cmd
-      "usermod -a -G video,render {{ 'developer' if is_docker_container else project_config.ssh_user | default('vagrant') }}"
+      "usermod -a -G video,render {{ 'developer' if is_docker_container else project_config.ssh_user | default('developer') }}"
 
   # Common database setup patterns
   database_patterns: &database_patterns

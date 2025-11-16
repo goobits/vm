@@ -8,7 +8,7 @@ Goobits VM is built using a **layered architecture** designed around the princip
 
 - **Separation of Concerns**: Each crate has a single, well-defined responsibility
 - **Dependency Flow Control**: Dependencies flow in one direction, preventing circular dependencies
-- **Provider Abstraction**: Multiple VM providers (Docker, Vagrant, Tart) through a unified interface
+- **Provider Abstraction**: Multiple VM providers (Docker, Podman, Tart) through a unified interface
 - **Error Consistency**: Unified error handling across all components
 - **Testability**: Modular design enables comprehensive testing at all levels
 
@@ -62,7 +62,7 @@ Goobits VM is built using a **layered architecture** designed around the princip
 **Responsibilities**:
 - `Provider` trait defining the contract for all VM providers
 - `TempProvider` trait for temporary VM operations
-- Docker, Vagrant, and Tart provider implementations
+- Docker, Podman, and Tart provider implementations
 - VM lifecycle management (create, start, stop, destroy)
 - Enhanced status reporting with real-time metrics
 - Service health monitoring and port mapping

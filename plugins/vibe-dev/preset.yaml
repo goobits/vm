@@ -9,7 +9,7 @@ vm_box: '@vibe-box'
 # Package declarations (installed if not already present in snapshot)
 # For Docker with @vibe-box: smart checks skip these (already installed)
 # For Docker without snapshot: installs from scratch
-# For Vagrant/Tart: installs as normal
+# For Tart: installs as normal
 packages:
   - tree
   - ripgrep

@@ -1,6 +1,6 @@
 # Claude Development Notes
 
-VM Tool is a Rust-based development environment manager that provides isolated, reproducible environments via Docker, Vagrant, or Tart. This guide covers building from source, testing, and the development workflow.
+VM Tool is a Rust-based development environment manager that provides isolated, reproducible environments via Dockerpodman, or Tart. This guide covers building from source, testing, and the development workflow.
 
 **Before you start:**
 - Review the [Architecture Guide](architecture.md) to understand system design

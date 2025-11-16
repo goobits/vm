@@ -75,7 +75,6 @@ vm destroy && vm create
 
 # Check if services are running
 docker ps -a  # For Docker provider
-vagrant status  # For Vagrant provider
 
 # Check available resources
 docker system df  # Disk space
@@ -152,57 +151,6 @@ docker port <container_name>
 
 # Restart with fresh container
 vm destroy && vm create
-```
-
-## Vagrant Issues
-
-### VirtualBox Conflicts
-```bash
-# Disable Hyper-V (Windows)
-bcdedit /set hypervisorlaunchtype off
-# Reboot required
-
-# Check VirtualBox installation
-VBoxManage --version
-
-# Update VirtualBox if version conflicts exist
-```
-
-### VM Creation Timeouts
-```bash
-# Increase timeout in vm.yaml
-vm:
-  timeout: 600  # 10 minutes
-
-# Check available disk space
-df -h
-
-# Check available memory
-free -h
-```
-
-### SSH Connection Issues
-```bash
-# Check SSH key permissions
-ls -la ~/.ssh/
-
-# Regenerate SSH keys if needed
-ssh-keygen -t rsa -b 4096
-
-# Check Vagrant SSH config
-vagrant ssh-config
-```
-
-### Box Download Failures
-```bash
-# Clear Vagrant cache
-rm -rf ~/.vagrant.d/boxes/*
-
-# Try different box mirror
-vagrant box add bento/ubuntu-24.04 --provider virtualbox --force
-
-# Check network connectivity
-ping -c 4 vagrantcloud.com
 ```
 
 ## Tart Issues (Apple Silicon)
@@ -372,8 +320,6 @@ df -h  # Check for mount issues
 # Restart file sync (Docker). Get container name from `vm status`.
 docker restart <container_name>
 
-# Restart file sync (Vagrant)
-vagrant reload
 ```
 
 ### Permission Errors
@@ -395,9 +341,6 @@ vm exec "mount | grep workspace"
 mounts:
   - "./:/workspace:cached"
 
-# For Vagrant, ensure guest additions are installed
-vagrant plugin install vagrant-vbguest
-vagrant reload
 ```
 
 ## Debugging Mode
@@ -410,7 +353,7 @@ LOG_LEVEL=DEBUG vm create
 # Shell script debugging
 VM_DEBUG=true vm create
 
-# Docker/Vagrant verbose output
+# Docker/Podman verbose output
 VM_VERBOSE=true vm create
 ```
 
@@ -442,7 +385,6 @@ vm status --verbose
 
 # Access VM directly. Get container name from `vm status`.
 docker exec -it <container_name> /bin/bash  # Docker
-vagrant ssh  # Vagrant
 
 # Check running processes
 vm exec "ps aux"
@@ -470,7 +412,6 @@ vm exec "docker logs redis"  # If using Docker services
 echo "=== System Info ==="
 uname -a
 docker --version
-vagrant --version 2>/dev/null || echo "Vagrant not installed"
 tart --version 2>/dev/null || echo "Tart not installed"
 
 echo "=== VM Status ==="
@@ -492,7 +433,7 @@ vm create  # Start fresh
 ### Report Issues
 When reporting issues, include:
 1. Operating system and version
-2. Provider being used (Docker/Vagrant/Tart)
+2. Provider being used (Docker/Podman/Tart)
 3. VM configuration (vm.yaml)
 4. Error messages and logs
 5. Steps to reproduce
@@ -697,7 +638,6 @@ vm:
 ```bash
 # Pre-pull base images
 docker pull ubuntu:22.04
-vagrant box add bento/ubuntu-24.04
 
 # Use minimal configurations for testing
 echo "os: alpine" > test.yaml
