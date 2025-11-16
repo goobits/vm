@@ -113,6 +113,7 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
         } else {
             None
         },
+        called_init, // Don't warn if we just created the config
     );
 
     let config_yaml = serde_yaml::to_string(&minimal_config)?;
@@ -157,11 +158,15 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
 ///
 /// Bug fix: If `original_base_config` is provided (existing vm.yaml), preserve user
 /// customizations even if they're "non-standard" (packages, versions, aliases, etc.)
+///
+/// The `suppress_warning` flag prevents showing the customization warning when we just
+/// created the config via init (avoids confusing UX).
 fn create_minimal_preset_config(
     merged: &VmConfig,
     preset_names: &str,
     preset: Option<&VmConfig>,
     original_base_config: Option<&VmConfig>,
+    suppress_warning: bool,
 ) -> VmConfig {
     use crate::config::VmSettings;
 
@@ -258,8 +263,8 @@ fn create_minimal_preset_config(
             has_customizations = true;
         }
 
-        // Warn user about preserved customizations
-        if has_customizations {
+        // Warn user about preserved customizations (but not if we just created the config)
+        if has_customizations && !suppress_warning {
             vm_println!("");
             vm_println!("⚠️  Note: Your vm.yaml contains customizations that are typically defined in presets:");
             if original.versions.is_some() {
