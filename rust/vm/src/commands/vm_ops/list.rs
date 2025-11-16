@@ -79,7 +79,7 @@ pub(super) fn get_all_instances() -> VmResult<Vec<InstanceInfo>> {
     use vm_provider::get_provider;
 
     let mut all_instances = Vec::new();
-    let providers = ["docker", "tart", "vagrant"];
+    let providers = ["docker", "podman", "tart"];
 
     for provider_name in providers {
         // Try to create each provider

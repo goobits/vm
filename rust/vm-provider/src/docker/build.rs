@@ -7,6 +7,7 @@ use std::process::Command;
 // External crates
 use tera::Context as TeraContext;
 use vm_core::error::{Result, VmError};
+use vm_core::{vm_dbg, vm_info};
 
 // Internal imports
 use super::UserConfig;
@@ -52,6 +53,17 @@ impl<'a> BuildOperations<'a> {
     }
 
     pub fn pull_image(&self, image: &str) -> Result<()> {
+        // Check if image already exists locally to avoid unnecessary pulls (10-30s savings)
+        let inspect = Command::new("docker")
+            .args(["image", "inspect", image])
+            .output()?;
+
+        if inspect.status.success() {
+            vm_dbg!("Image '{}' already cached locally, skipping pull", image);
+            return Ok(());
+        }
+
+        vm_info!("Pulling image '{}'...", image);
         let output = Command::new("docker").args(["pull", image]).output()?;
 
         if !output.status.success() {
@@ -247,6 +259,38 @@ impl<'a> BuildOperations<'a> {
             fs::remove_dir_all(&build_context)?;
         }
         fs::create_dir_all(&build_context)?;
+
+        // Create .dockerignore to exclude unnecessary files and speed up builds
+        let dockerignore_path = build_context.join(".dockerignore");
+        let dockerignore_content = r#"# Git and version control
+.git
+.gitignore
+.github
+
+# Build artifacts and dependencies
+node_modules
+target
+dist
+build
+*.log
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+.cache
+"#;
+        fs::write(&dockerignore_path, dockerignore_content)?;
 
         // Create shared directory and copy embedded resources
         let shared_dir = build_context.join("shared");

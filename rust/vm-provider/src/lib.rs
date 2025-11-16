@@ -82,8 +82,6 @@ pub mod docker;
 pub mod podman;
 #[cfg(feature = "tart")]
 pub mod tart;
-#[cfg(feature = "vagrant")]
-mod vagrant;
 
 // When the `test-helpers` feature is enabled, include the mock provider.
 #[cfg(feature = "test-helpers")]
@@ -103,9 +101,6 @@ pub enum BoxConfig {
         context: PathBuf,
         args: Option<HashMap<String, String>>,
     },
-
-    /// Vagrant box from Vagrant Cloud (e.g., "ubuntu/focal64")
-    VagrantBox(String),
 
     /// Tart OCI image (e.g., "ghcr.io/cirruslabs/ubuntu:latest")
     TartImage(String),
@@ -192,46 +187,6 @@ impl BoxConfig {
                     args: args.clone().map(|m| m.into_iter().collect()),
                 })
             }
-        }
-    }
-
-    /// Parse a BoxSpec for Vagrant provider
-    ///
-    /// # Detection Rules
-    /// - Starts with `@` → Snapshot
-    /// - Must contain `/` (user/box format) → Vagrant box
-    /// - Build variant → Error (not supported)
-    pub fn parse_for_vagrant(spec: &BoxSpec) -> Result<Self> {
-        match spec {
-            BoxSpec::String(s) => {
-                // Snapshot
-                if let Some(name) = s.strip_prefix('@') {
-                    return Ok(BoxConfig::Snapshot(name.to_string()));
-                }
-
-                // Vagrant box (validate format: must be "user/boxname" with content on both sides)
-                if !s.contains('/') {
-                    return Err(VmError::Config(format!(
-                        "Vagrant box must be in 'user/boxname' format, got: {}",
-                        s
-                    )));
-                }
-
-                // Ensure there's content before and after the first/last slash
-                // This allows for nested paths like "company/team/box" while rejecting "/box" or "user/"
-                if s.starts_with('/') || s.ends_with('/') {
-                    return Err(VmError::Config(format!(
-                        "Vagrant box must be in 'user/boxname' format with non-empty user and box name, got: {}",
-                        s
-                    )));
-                }
-
-                Ok(BoxConfig::VagrantBox(s.to_string()))
-            }
-
-            BoxSpec::Build { .. } => Err(VmError::Config(
-                "Vagrant provider does not support Dockerfile builds".to_string(),
-            )),
         }
     }
 
@@ -479,8 +434,6 @@ pub fn get_provider(config: VmConfig) -> Result<Box<dyn Provider>> {
         "docker" => Ok(Box::new(docker::DockerProvider::new(config)?)),
         #[cfg(feature = "docker")]
         "podman" => Ok(Box::new(podman::PodmanProvider::new(config)?)),
-        #[cfg(feature = "vagrant")]
-        "vagrant" => Ok(Box::new(vagrant::VagrantProvider::new(config)?)),
         #[cfg(feature = "tart")]
         "tart" => Ok(Box::new(tart::TartProvider::new(config)?)),
         _ => Err(VmError::Provider(format!(

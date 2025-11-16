@@ -19,8 +19,7 @@ pub fn validate_box_spec(config: &VmConfig, provider: &str) -> Vec<String> {
     };
 
     match provider {
-        "docker" => validate_docker_box_spec(&box_spec, &mut errors),
-        "vagrant" => validate_vagrant_box_spec(&box_spec, &mut errors),
+        "docker" | "podman" => validate_docker_box_spec(&box_spec, &mut errors),
         "tart" => validate_tart_box_spec(&box_spec, &mut errors),
         _ => {}
     }
@@ -33,20 +32,6 @@ fn validate_docker_box_spec(box_spec: &BoxSpec, errors: &mut Vec<String>) {
         let path = std::path::Path::new(dockerfile);
         if !path.exists() {
             errors.push(format!("Dockerfile not found: {}", dockerfile));
-        }
-    }
-}
-
-fn validate_vagrant_box_spec(box_spec: &BoxSpec, errors: &mut Vec<String>) {
-    if matches!(box_spec, BoxSpec::Build { .. }) {
-        errors.push("Vagrant does not support Dockerfile builds".to_string());
-    }
-    if let BoxSpec::String(s) = box_spec {
-        if !s.starts_with('@') && !s.contains('/') {
-            errors.push(format!(
-                "Vagrant box must be in 'user/box' format, got: {}",
-                s
-            ));
         }
     }
 }
@@ -144,7 +129,7 @@ impl ConfigValidator {
     fn validate_provider(&self) -> Result<()> {
         if let Some(provider) = &self.config.provider {
             match provider.as_str() {
-                "docker" | "vagrant" | "tart" => Ok(()),
+                "docker" | "podman" | "tart" => Ok(()),
                 _ => Err(vm_core::error::VmError::Config(format!(
                     "Invalid provider: {provider}"
                 ))),

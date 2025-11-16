@@ -90,7 +90,7 @@ impl Mount {
 pub struct TempVmState {
     /// Container/VM name for provider operations
     pub container_name: String,
-    /// VM provider being used (docker, tart, vagrant, etc.)
+    /// VM provider being used (docker, tart, podman, etc.)
     pub provider: String,
     /// List of mounted directories
     pub mounts: Vec<Mount>,

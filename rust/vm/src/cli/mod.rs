@@ -555,7 +555,7 @@ pub enum Command {
         /// Show instances from all providers (already default behavior)
         #[arg(long)]
         all_providers: bool,
-        /// Filter by specific provider (docker, tart, vagrant)
+        /// Filter by specific provider (docker, tart, podman)
         #[arg(long)]
         provider: Option<String>,
         /// Show detailed information

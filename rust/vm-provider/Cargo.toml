@@ -30,7 +30,6 @@ indexmap = { workspace = true }
 [features]
 default = ["docker"]
 docker = []
-vagrant = []
 tart = []
 structured-output = []
 test-helpers = ["vm-config/test-helpers"]

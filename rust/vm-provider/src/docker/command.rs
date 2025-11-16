@@ -131,6 +131,11 @@ impl DockerCommand {
     fn build_command(self) -> Result<Command> {
         let mut cmd = Command::new("docker");
 
+        // Enable BuildKit for all Docker commands to leverage parallel builds and cache mounts
+        cmd.env("DOCKER_BUILDKIT", "1");
+        cmd.env("COMPOSE_DOCKER_CLI_BUILD", "1");
+        cmd.env("BUILDKIT_PROGRESS", "plain");
+
         if let Some(subcmd) = self.subcommand {
             cmd.arg(subcmd);
         }

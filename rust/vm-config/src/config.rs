@@ -1021,9 +1021,9 @@ impl VmConfig {
 
         if let Some(provider) = &self.provider {
             #[cfg(feature = "test-helpers")]
-            let valid_providers = ["docker", "podman", "vagrant", "tart", "mock"];
+            let valid_providers = ["docker", "podman", "tart", "mock"];
             #[cfg(not(feature = "test-helpers"))]
-            let valid_providers = ["docker", "podman", "vagrant", "tart"];
+            let valid_providers = ["docker", "podman", "tart"];
 
             if !valid_providers.contains(&provider.as_str()) {
                 errors.push(format!(

@@ -19,7 +19,7 @@ pub struct InstanceInfo {
     pub id: String,
     /// Current status (running, stopped, etc.)
     pub status: String,
-    /// Provider type (docker, tart, vagrant)
+    /// Provider type (docker, tart, podman)
     pub provider: String,
     /// Associated project name, if any
     pub project: Option<String>,
@@ -164,25 +164,6 @@ pub fn create_tart_instance_info(
     }
 }
 
-/// Helper to create InstanceInfo for Vagrant machines
-pub fn create_vagrant_instance_info(
-    name: &str,
-    status: &str,
-    project_name: &str,
-    created_at: Option<&str>,
-    uptime: Option<&str>,
-) -> InstanceInfo {
-    InstanceInfo {
-        name: name.to_string(),
-        id: format!("{project_name}:{name}"), // Combine project and machine name
-        status: status.to_string(),
-        provider: "vagrant".to_string(),
-        project: Some(project_name.to_string()),
-        uptime: uptime.map(|s| s.to_string()),
-        created_at: created_at.map(|s| s.to_string()),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -278,18 +259,6 @@ mod tests {
         assert_eq!(info.id, "myproject-staging");
         assert_eq!(info.status, "running");
         assert_eq!(info.provider, "tart");
-        assert_eq!(info.project, Some("myproject".to_string()));
-        assert_eq!(info.uptime, None);
-        assert_eq!(info.created_at, None);
-    }
-
-    #[test]
-    fn test_create_vagrant_instance_info() {
-        let info = create_vagrant_instance_info("web", "running", "myproject", None, None);
-        assert_eq!(info.name, "web");
-        assert_eq!(info.id, "myproject:web");
-        assert_eq!(info.status, "running");
-        assert_eq!(info.provider, "vagrant");
         assert_eq!(info.project, Some("myproject".to_string()));
         assert_eq!(info.uptime, None);
         assert_eq!(info.created_at, None);
