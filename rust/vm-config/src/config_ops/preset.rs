@@ -3,9 +3,7 @@ use serde_yaml_ng as serde_yaml;
 
 // Internal imports
 use crate::config::VmConfig;
-use crate::config_ops::io::{
-    find_or_create_local_config, get_or_create_global_config_path, read_config_or_init,
-};
+use crate::config_ops::io::{find_or_create_local_config, get_or_create_global_config_path};
 use crate::config_ops::port_placeholders::load_preset_with_placeholders;
 use crate::merge::ConfigMerger;
 use crate::paths;
@@ -54,8 +52,12 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
         find_or_create_local_config()?
     };
 
+    // Track if config already existed (for Bug #2 - preserve user customizations)
+    let config_existed = config_path.exists();
+    let mut called_init = false;
+
     let base_config = if global {
-        if config_path.exists() {
+        if config_existed {
             let content = std::fs::read_to_string(&config_path)?;
             let source_desc = format!("{}", config_path.display());
             CoreOperations::parse_yaml_with_diagnostics(&content, &source_desc)?
@@ -63,10 +65,22 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
             VmConfig::default()
         }
     } else {
-        read_config_or_init(&config_path, true)?
+        // Bug #1 fix: If no vm.yaml exists, run full init first (reuse vm init logic)
+        if !config_existed {
+            vm_println!("⚠️  No vm.yaml found. Initializing project first...");
+            vm_println!("");
+            crate::cli::init_config_file(Some(config_path.clone()), None, None)?;
+            vm_println!("");
+            called_init = true;
+        }
+        // Now load the config (either existing or just created by init)
+        VmConfig::from_file(&config_path)?
     };
 
     let preset_iter = preset_names.split(',').map(|s| s.trim());
+
+    // Clone base_config to track original user customizations
+    let original_base_config = base_config.clone();
     let mut merged_config = base_config;
     let mut last_preset_config: Option<VmConfig> = None;
 
@@ -87,9 +101,19 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
     }
 
     // Create minimal config with only project-specific fields
+    // Bug #2 fix: Preserve user customizations if config existed OR we just called init
+    // If we just called init, preserve what it created (don't wastefully strip it)
     // Everything else (packages, versions, aliases, host_sync, etc.) comes from preset/defaults at runtime
-    let minimal_config =
-        create_minimal_preset_config(&merged_config, preset_names, last_preset_config.as_ref());
+    let minimal_config = create_minimal_preset_config(
+        &merged_config,
+        preset_names,
+        last_preset_config.as_ref(),
+        if config_existed || called_init {
+            Some(&original_base_config)
+        } else {
+            None
+        },
+    );
 
     let config_yaml = serde_yaml::to_string(&minimal_config)?;
     let config_value = CoreOperations::parse_yaml_with_diagnostics(&config_yaml, "merged config")?;
@@ -130,10 +154,14 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
 ///
 /// Everything else (packages, versions, aliases, host_sync, os, etc.)
 /// comes from the preset/defaults at runtime and shouldn't be written to vm.yaml.
+///
+/// Bug fix: If `original_base_config` is provided (existing vm.yaml), preserve user
+/// customizations even if they're "non-standard" (packages, versions, aliases, etc.)
 fn create_minimal_preset_config(
     merged: &VmConfig,
     preset_names: &str,
     preset: Option<&VmConfig>,
+    original_base_config: Option<&VmConfig>,
 ) -> VmConfig {
     use crate::config::VmSettings;
 
@@ -153,7 +181,8 @@ fn create_minimal_preset_config(
         }
     }
 
-    VmConfig {
+    // Start with minimal config
+    let mut minimal = VmConfig {
         preset: Some(preset_names.to_string()),
         version: merged.version.clone(),
         provider: merged.provider.clone(), // Required field for validation
@@ -163,5 +192,106 @@ fn create_minimal_preset_config(
         services: merged.services.clone(),
         terminal: merged.terminal.clone(),
         ..Default::default()
+    };
+
+    // Bug #2 fix: Preserve user customizations if they existed before
+    if let Some(original) = original_base_config {
+        let mut has_customizations = false;
+
+        // Preserve versions if user had them
+        if original.versions.is_some() {
+            minimal.versions = merged.versions.clone();
+            has_customizations = true;
+        }
+
+        // Preserve apt packages if user had them
+        if !original.apt_packages.is_empty() {
+            minimal.apt_packages = merged.apt_packages.clone();
+            has_customizations = true;
+        }
+
+        // Preserve npm packages if user had them
+        if !original.npm_packages.is_empty() {
+            minimal.npm_packages = merged.npm_packages.clone();
+            has_customizations = true;
+        }
+
+        // Preserve pip packages if user had them
+        if !original.pip_packages.is_empty() {
+            minimal.pip_packages = merged.pip_packages.clone();
+            has_customizations = true;
+        }
+
+        // Preserve cargo packages if user had them
+        if !original.cargo_packages.is_empty() {
+            minimal.cargo_packages = merged.cargo_packages.clone();
+            has_customizations = true;
+        }
+
+        // Preserve aliases if user had them
+        if !original.aliases.is_empty() {
+            minimal.aliases = merged.aliases.clone();
+            has_customizations = true;
+        }
+
+        // Preserve environment if user had it
+        if !original.environment.is_empty() {
+            minimal.environment = merged.environment.clone();
+            has_customizations = true;
+        }
+
+        // Preserve host_sync if user had it
+        if original.host_sync.is_some() {
+            minimal.host_sync = merged.host_sync.clone();
+            has_customizations = true;
+        }
+
+        // Preserve os if user had it
+        if original.os.is_some() {
+            minimal.os = merged.os.clone();
+            has_customizations = true;
+        }
+
+        // Preserve networking if user had it
+        if original.networking.is_some() {
+            minimal.networking = merged.networking.clone();
+            has_customizations = true;
+        }
+
+        // Warn user about preserved customizations
+        if has_customizations {
+            vm_println!("");
+            vm_println!("⚠️  Note: Your vm.yaml contains customizations that are typically defined in presets:");
+            if original.versions.is_some() {
+                vm_println!("   - versions (node, python, etc.)");
+            }
+            if !original.apt_packages.is_empty()
+                || !original.npm_packages.is_empty()
+                || !original.pip_packages.is_empty()
+                || !original.cargo_packages.is_empty()
+            {
+                vm_println!("   - packages (apt, npm, pip, cargo)");
+            }
+            if !original.aliases.is_empty() {
+                vm_println!("   - aliases");
+            }
+            if !original.environment.is_empty() {
+                vm_println!("   - environment variables");
+            }
+            if original.host_sync.is_some() {
+                vm_println!("   - host_sync settings");
+            }
+            if original.networking.is_some() {
+                vm_println!("   - networking config");
+            }
+            vm_println!("");
+            vm_println!("These have been preserved, but consider:");
+            vm_println!("   • Moving global preferences to ~/.vm/config.yaml");
+            vm_println!("   • Creating a custom preset for reusable configurations");
+            vm_println!("   • See: https://github.com/goobits/vm#presets");
+            vm_println!("");
+        }
     }
+
+    minimal
 }
