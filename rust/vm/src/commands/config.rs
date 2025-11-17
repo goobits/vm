@@ -22,8 +22,34 @@ fn handle_validate_command() -> VmResult<()> {
         .map_err(|e| VmError::validation(e.to_string(), None::<String>))?;
 
     if report.has_errors() {
-        vm_println!("Configuration validation failed:");
+        vm_println!("❌ Configuration validation failed:");
         vm_println!("{}", report);
+
+        // Offer to apply suggested fixes
+        if report.has_fixes() {
+            vm_println!("");
+            vm_println!("💡 Would you like to apply these fixes automatically?");
+
+            use dialoguer::Confirm;
+            if Confirm::new()
+                .with_prompt("Apply suggested fixes?")
+                .default(false)
+                .interact()
+                .unwrap_or(false)
+            {
+                vm_println!("");
+                for fix in &report.suggested_fixes {
+                    match ConfigOps::set(&fix.field, &fix.value, false, false) {
+                        Ok(_) => vm_success!("Applied: {} = {}", fix.field, fix.value),
+                        Err(e) => warn!("Failed to apply fix for {}: {}", fix.field, e),
+                    }
+                }
+                vm_println!("");
+                vm_success!("Fixes applied! Run 'vm config validate' again to verify.");
+                return Ok(());
+            }
+        }
+
         // Return a generic error to ensure non-zero exit code
         return Err(VmError::validation(
             "Validation found errors.".to_string(),

@@ -65,6 +65,36 @@ fn apply_preset_to_config(
     preset_names: &str,
     global: bool,
 ) -> Result<()> {
+    // Validate all presets exist BEFORE attempting to initialize/modify config
+    let preset_list: Vec<&str> = preset_names.split(',').map(|s| s.trim()).collect();
+    let available_presets = detector.list_presets()?;
+    let mut missing_presets = Vec::new();
+
+    for preset_name in &preset_list {
+        if !available_presets.contains(&preset_name.to_string()) {
+            missing_presets.push(*preset_name);
+        }
+    }
+
+    if !missing_presets.is_empty() {
+        vm_println!("❌ Preset(s) not found: {}", missing_presets.join(", "));
+        vm_println!("");
+        vm_println!("📦 Available presets:");
+        for preset in available_presets {
+            let description = detector
+                .get_preset_description(&preset)
+                .map(|d| format!(" - {d}"))
+                .unwrap_or_default();
+            vm_println!("  • {}{}", preset, description);
+        }
+        vm_println!("");
+        vm_println!("💡 Apply with: vm config preset <name>");
+        return Err(VmError::Config(format!(
+            "Preset(s) not found: {}",
+            missing_presets.join(", ")
+        )));
+    }
+
     let config_path = if global {
         get_or_create_global_config_path()?
     } else {

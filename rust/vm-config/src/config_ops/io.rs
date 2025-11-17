@@ -80,6 +80,10 @@ pub fn get_or_create_global_config_path() -> Result<PathBuf> {
 }
 
 pub fn find_local_config() -> Result<PathBuf> {
+    find_local_config_impl(true)
+}
+
+fn find_local_config_impl(print_error: bool) -> Result<PathBuf> {
     let current_dir = std::env::current_dir()?;
     let mut dir = current_dir.as_path();
 
@@ -95,14 +99,17 @@ pub fn find_local_config() -> Result<PathBuf> {
         }
     }
 
-    vm_error!("No vm.yaml found in current directory or parent directories");
+    if print_error {
+        vm_error!("No vm.yaml found in current directory or parent directories");
+    }
     Err(vm_core::error::VmError::Config(
         "No vm.yaml configuration found in current directory or parent directories. Create one with: vm init".to_string()
     ))
 }
 
 pub fn find_or_create_local_config() -> Result<PathBuf> {
-    if let Ok(path) = find_local_config() {
+    // Don't print error messages - we expect the config might not exist
+    if let Ok(path) = find_local_config_impl(false) {
         return Ok(path);
     }
     let current_dir = std::env::current_dir()?;

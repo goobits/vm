@@ -9,12 +9,21 @@ use sysinfo::System;
 // Internal imports
 use crate::config::VmConfig;
 
+/// A suggested fix for a validation error
+#[derive(Debug, Clone)]
+pub struct SuggestedFix {
+    pub field: String,
+    pub value: String,
+    pub description: String,
+}
+
 /// A report containing the results of a configuration validation check.
 #[derive(Default, Debug)]
 pub struct ValidationReport {
     pub errors: Vec<String>,
     pub warnings: Vec<String>,
     pub info: Vec<String>,
+    pub suggested_fixes: Vec<SuggestedFix>,
 }
 
 impl ValidationReport {
@@ -33,22 +42,39 @@ impl ValidationReport {
         self.info.push(msg);
     }
 
+    /// Adds a suggested fix to the report.
+    pub fn add_fix(&mut self, fix: SuggestedFix) {
+        self.suggested_fixes.push(fix);
+    }
+
     /// Returns `true` if the report contains any errors.
     pub fn has_errors(&self) -> bool {
         !self.errors.is_empty()
+    }
+
+    /// Returns `true` if the report has suggested fixes.
+    pub fn has_fixes(&self) -> bool {
+        !self.suggested_fixes.is_empty()
     }
 }
 
 impl fmt::Display for ValidationReport {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for error in &self.errors {
-            writeln!(f, "❌ {error}")?;
+            writeln!(f, "  ❌ {error}")?;
         }
         for warning in &self.warnings {
-            writeln!(f, "⚠️  {warning}")?;
+            writeln!(f, "  ⚠️  {warning}")?;
         }
         for info in &self.info {
-            writeln!(f, "ℹ️  {info}")?;
+            writeln!(f, "  ℹ️  {info}")?;
+        }
+        if !self.suggested_fixes.is_empty() {
+            writeln!(f)?;
+            writeln!(f, "💡 Suggested fixes:")?;
+            for fix in &self.suggested_fixes {
+                writeln!(f, "  • {} → {}: {}", fix.field, fix.value, fix.description)?;
+            }
         }
         Ok(())
     }
@@ -208,6 +234,43 @@ impl ConfigValidator {
             .and_then(|vm| vm.port_binding.as_deref())
             .unwrap_or("127.0.0.1");
 
+        // Get port range for suggestions
+        let port_range = config.ports.range.as_ref().and_then(|r| {
+            if r.len() == 2 {
+                Some((r[0], r[1]))
+            } else {
+                None
+            }
+        });
+
+        // Collect already-used ports
+        let mut used_ports: Vec<u16> = config.services.values().filter_map(|s| s.port).collect();
+        used_ports.sort_unstable();
+
+        // Check for enabled services without assigned ports
+        for (service_name, service) in &config.services {
+            if service.enabled && service.port.is_none() {
+                report.add_error(format!(
+                    "Service '{}' is enabled but has no port specified",
+                    service_name
+                ));
+
+                // Suggest next available port from range
+                if let Some((start, end)) = port_range {
+                    if let Some(suggested_port) = (start..=end).find(|p| !used_ports.contains(p)) {
+                        report.add_fix(SuggestedFix {
+                            field: format!("services.{}.port", service_name),
+                            value: suggested_port.to_string(),
+                            description: format!("Assign available port to {}", service_name),
+                        });
+                        used_ports.push(suggested_port);
+                        used_ports.sort_unstable();
+                    }
+                }
+            }
+        }
+
+        // Check for port conflicts
         for service in config.services.values() {
             if let Some(port) = service.port {
                 let addr = format!("{binding_ip}:{port}");
