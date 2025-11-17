@@ -66,6 +66,7 @@
           <th>Name</th>
           <th>Template</th>
           <th>Status</th>
+          <th>Connection</th>
           <th>Created</th>
           <th>TTL</th>
           <th>Actions</th>
@@ -88,6 +89,29 @@
               <span class="status status-{workspace.status}">
                 {workspace.status}
               </span>
+            </td>
+            <td>
+              {#if workspace.provider_id}
+                <div class="text-xs text-gray-600">
+                  <div>Provider: {workspace.provider_id.slice(0, 12)}...</div>
+                  {#if workspace.connection_info}
+                    {#if workspace.connection_info.container_id}
+                      <div class="mt-1">Container: {workspace.connection_info.container_id.slice(0, 12)}...</div>
+                    {/if}
+                    {#if workspace.status === 'running' && workspace.connection_info.ssh_command}
+                      <a
+                        href="vscode://open?url={encodeURIComponent('vm://' + workspace.name)}"
+                        class="btn-connect"
+                        title={workspace.connection_info.ssh_command}
+                      >
+                        Open in Claude Code
+                      </a>
+                    {/if}
+                  {/if}
+                </div>
+              {:else}
+                <span class="text-xs text-gray-400">-</span>
+              {/if}
             </td>
             <td class="text-sm">{formatDate(workspace.created_at)}</td>
             <td>{formatTTL(workspace.ttl_seconds)}</td>
@@ -236,5 +260,30 @@
   .btn-delete:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .btn-connect {
+    display: inline-block;
+    margin-top: 0.5rem;
+    background-color: #2563eb;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background-color 0.2s;
+  }
+
+  .btn-connect:hover {
+    background-color: #1d4ed8;
+  }
+
+  .text-gray-600 {
+    color: #4b5563;
+  }
+
+  .text-gray-400 {
+    color: #9ca3af;
   }
 </style>
