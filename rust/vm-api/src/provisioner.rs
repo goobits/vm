@@ -1,7 +1,7 @@
 use serde_json::json;
 use sqlx::SqlitePool;
 use tokio::time::{interval, Duration};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use vm_config::config::VmConfig;
 use vm_orchestrator::{Workspace, WorkspaceOrchestrator, WorkspaceStatus};
 use vm_provider::get_provider;
@@ -116,46 +116,54 @@ async fn provision_workspace(workspace: &Workspace) -> anyhow::Result<(String, s
 }
 
 fn build_vm_config(workspace: &Workspace) -> anyhow::Result<VmConfig> {
-    // Build minimal config from workspace metadata
+    // Build config from workspace metadata
     let mut config = VmConfig::default();
 
     // Set project name
-    if let Some(ref mut project) = config.project {
-        project.name = Some(workspace.name.clone());
-    } else {
-        config.project = Some(vm_config::config::ProjectConfig {
-            name: Some(workspace.name.clone()),
-            ..Default::default()
-        });
-    }
+    config.project = Some(vm_config::config::ProjectConfig {
+        name: Some(workspace.name.clone()),
+        ..Default::default()
+    });
 
+    // Apply template-based defaults
+    // TODO: Use PresetDetector to load full preset configs once we have repo cloning
+    // For now, apply basic template defaults manually
     if let Some(template) = &workspace.template {
-        // Apply template defaults
-        match template.as_str() {
-            "nodejs" => {
-                if config.versions.is_none() {
-                    config.versions = Some(Default::default());
-                }
-                if let Some(ref mut versions) = config.versions {
-                    versions.node = Some("20".to_string());
-                }
-            }
-            "python" => {
-                if config.versions.is_none() {
-                    config.versions = Some(Default::default());
-                }
-                if let Some(ref mut versions) = config.versions {
-                    versions.python = Some("3.11".to_string());
-                }
-            }
-            "rust" => {
-                // Rust defaults
-            }
-            _ => {}
-        }
+        info!("Applying template '{}' for workspace {}", template, workspace.name);
+        apply_template_defaults(&mut config, template);
     }
 
+    // Always set the provider
     config.provider = Some(workspace.provider.clone());
 
     Ok(config)
+}
+
+/// Apply template defaults to config
+/// This is a simplified version. Full implementation should use vm_config::preset::PresetDetector
+fn apply_template_defaults(config: &mut VmConfig, template: &str) {
+    match template {
+        "nodejs" | "node" => {
+            if config.versions.is_none() {
+                config.versions = Some(Default::default());
+            }
+            if let Some(ref mut versions) = config.versions {
+                versions.node = Some("20".to_string());
+            }
+        }
+        "python" | "py" => {
+            if config.versions.is_none() {
+                config.versions = Some(Default::default());
+            }
+            if let Some(ref mut versions) = config.versions {
+                versions.python = Some("3.11".to_string());
+            }
+        }
+        "rust" => {
+            // Rust typically doesn't need version config (uses rustup)
+        }
+        _ => {
+            warn!("Unknown template '{}', using defaults", template);
+        }
+    }
 }
