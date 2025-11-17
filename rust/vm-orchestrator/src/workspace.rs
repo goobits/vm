@@ -41,7 +41,7 @@ pub enum WorkspaceStatus {
     Failed,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateWorkspaceRequest {
     pub name: String,
     pub owner: String,
@@ -280,9 +280,58 @@ impl WorkspaceOrchestrator {
 
         Ok(id)
     }
+
+    /// Get a single operation by ID
+    pub async fn get_operation(&self, id: &str) -> Result<crate::operation::Operation> {
+        let row = sqlx::query_as::<_, OperationRow>("SELECT * FROM operations WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?
+            .ok_or_else(|| OrchestratorError::NotFound(id.to_string()))?;
+
+        Ok(row.into())
+    }
+
+    /// Get all operations with optional filters
+    pub async fn get_operations(
+        &self,
+        workspace_id: Option<String>,
+        operation_type: Option<crate::operation::OperationType>,
+        status: Option<crate::operation::OperationStatus>,
+    ) -> Result<Vec<crate::operation::Operation>> {
+        let mut query = "SELECT * FROM operations WHERE 1=1".to_string();
+
+        if workspace_id.is_some() {
+            query.push_str(" AND workspace_id = ?");
+        }
+        if operation_type.is_some() {
+            query.push_str(" AND operation_type = ?");
+        }
+        if status.is_some() {
+            query.push_str(" AND status = ?");
+        }
+
+        query.push_str(" ORDER BY started_at DESC");
+
+        let mut q = sqlx::query_as::<_, OperationRow>(&query);
+
+        if let Some(wid) = &workspace_id {
+            q = q.bind(wid);
+        }
+        if let Some(ot) = &operation_type {
+            q = q.bind(ot);
+        }
+        if let Some(s) = &status {
+            q = q.bind(s);
+        }
+
+        let rows = q.fetch_all(&self.pool).await?;
+
+        Ok(rows.into_iter().map(|row| row.into()).collect())
+    }
 }
 
-// Internal row type for sqlx
+// Internal row types for sqlx
 #[derive(sqlx::FromRow)]
 struct WorkspaceRow {
     id: String,
@@ -300,6 +349,17 @@ struct WorkspaceRow {
     provider_id: Option<String>,
     connection_info: Option<String>,
     error_message: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+struct OperationRow {
+    id: String,
+    workspace_id: String,
+    operation_type: crate::operation::OperationType,
+    status: crate::operation::OperationStatus,
+    started_at: i64,
+    completed_at: Option<i64>,
+    error: Option<String>,
 }
 
 impl From<WorkspaceRow> for Workspace {
@@ -328,6 +388,22 @@ impl From<WorkspaceRow> for Workspace {
     }
 }
 
+
+impl From<OperationRow> for crate::operation::Operation {
+    fn from(row: OperationRow) -> Self {
+        Self {
+            id: row.id,
+            workspace_id: row.workspace_id,
+            operation_type: row.operation_type,
+            status: row.status,
+            started_at: DateTime::from_timestamp(row.started_at, 0).unwrap(),
+            completed_at: row
+                .completed_at
+                .and_then(|ts| DateTime::from_timestamp(ts, 0)),
+            error: row.error,
+        }
+    }
+}
 // Serialize DateTime as RFC 3339 / ISO 8601 string
 fn serialize_datetime<S>(dt: &DateTime<Utc>, serializer: S) -> std::result::Result<S::Ok, S::Error>
 where
