@@ -2,13 +2,15 @@
   import type { Workspace } from '$lib/types/workspace';
   import { listWorkspaces, deleteWorkspace, startWorkspace, stopWorkspace, restartWorkspace } from '$lib/api/workspaces';
   import SnapshotManager from './SnapshotManager.svelte';
+  import OperationsHistory from './OperationsHistory.svelte';
   import { onMount } from 'svelte';
 
   let workspaces: Workspace[] = [];
   let loading = true;
   let error: string | null = null;
   let actionInProgress: Record<string, boolean> = {};
-  let expandedWorkspaces: Record<string, boolean> = {};
+  let expandedSnapshots: Record<string, boolean> = {};
+  let expandedOperations: Record<string, boolean> = {};
 
   async function loadWorkspaces() {
     try {
@@ -85,7 +87,11 @@
   }
 
   function toggleSnapshots(id: string) {
-    expandedWorkspaces = { ...expandedWorkspaces, [id]: !expandedWorkspaces[id] };
+    expandedSnapshots = { ...expandedSnapshots, [id]: !expandedSnapshots[id] };
+  }
+
+  function toggleOperations(id: string) {
+    expandedOperations = { ...expandedOperations, [id]: !expandedOperations[id] };
   }
 
   async function copyToClipboard(text: string, label: string) {
@@ -250,10 +256,16 @@
                   </button>
                 {/if}
                 <button
+                  class="btn-activity"
+                  on:click={() => toggleOperations(workspace.id)}
+                >
+                  {expandedOperations[workspace.id] ? 'Hide Activity' : 'Activity'}
+                </button>
+                <button
                   class="btn-snapshots"
                   on:click={() => toggleSnapshots(workspace.id)}
                 >
-                  {expandedWorkspaces[workspace.id] ? 'Hide Snapshots' : 'Snapshots'}
+                  {expandedSnapshots[workspace.id] ? 'Hide Snapshots' : 'Snapshots'}
                 </button>
                 <button
                   class="btn-delete"
@@ -265,7 +277,14 @@
               </div>
             </td>
           </tr>
-          {#if expandedWorkspaces[workspace.id]}
+          {#if expandedOperations[workspace.id]}
+            <tr class="operations-row">
+              <td colspan="7">
+                <OperationsHistory workspaceId={workspace.id} />
+              </td>
+            </tr>
+          {/if}
+          {#if expandedSnapshots[workspace.id]}
             <tr class="snapshot-row">
               <td colspan="7">
                 <SnapshotManager workspaceId={workspace.id} />
@@ -552,6 +571,22 @@
     background-color: #2563eb;
   }
 
+  .btn-activity {
+    background-color: #06b6d4;
+    color: white;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+
+  .btn-activity:hover {
+    background-color: #0891b2;
+  }
+
   .btn-snapshots {
     background-color: #8b5cf6;
     color: white;
@@ -573,6 +608,15 @@
   .btn-restart:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .operations-row td {
+    background-color: #f0fdfa;
+    padding: 0 !important;
+  }
+
+  .operations-row :global(.operations-history) {
+    margin: 1rem;
   }
 
   .snapshot-row td {
