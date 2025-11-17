@@ -88,6 +88,15 @@
     expandedWorkspaces = { ...expandedWorkspaces, [id]: !expandedWorkspaces[id] };
   }
 
+  async function copyToClipboard(text: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      alert(`${label} copied to clipboard!`);
+    } catch (e) {
+      alert(`Failed to copy ${label}: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    }
+  }
+
   onMount(() => {
     loadWorkspaces();
     // Auto-refresh every 10 seconds
@@ -138,21 +147,73 @@
             </td>
             <td>
               {#if workspace.provider_id}
-                <div class="text-xs text-gray-600">
-                  <div>Provider: {workspace.provider_id.slice(0, 12)}...</div>
+                <div class="connection-info">
                   {#if workspace.connection_info}
+                    <!-- Container ID with copy button -->
                     {#if workspace.connection_info.container_id}
-                      <div class="mt-1">Container: {workspace.connection_info.container_id.slice(0, 12)}...</div>
+                      <div class="info-row">
+                        <span class="info-label">Container:</span>
+                        <code class="info-value" title={workspace.connection_info.container_id}>
+                          {workspace.connection_info.container_id.slice(0, 12)}
+                        </code>
+                        <button
+                          class="btn-copy"
+                          on:click={() => copyToClipboard(workspace.connection_info.container_id, 'Container ID')}
+                          title="Copy container ID"
+                        >
+                          📋
+                        </button>
+                      </div>
                     {/if}
+
+                    <!-- SSH Command with copy button -->
+                    {#if workspace.connection_info.ssh_command}
+                      <div class="info-row">
+                        <span class="info-label">SSH:</span>
+                        <code class="info-value" title={workspace.connection_info.ssh_command}>
+                          {workspace.connection_info.ssh_command}
+                        </code>
+                        <button
+                          class="btn-copy"
+                          on:click={() => copyToClipboard(workspace.connection_info.ssh_command, 'SSH command')}
+                          title="Copy SSH command"
+                        >
+                          📋
+                        </button>
+                      </div>
+                    {/if}
+
+                    <!-- Connection Status Badge -->
+                    {#if workspace.status === 'running'}
+                      <div class="info-row">
+                        <span class="connection-badge connection-active">● Connected</span>
+                      </div>
+                    {:else if workspace.status === 'stopped'}
+                      <div class="info-row">
+                        <span class="connection-badge connection-inactive">○ Disconnected</span>
+                      </div>
+                    {:else if workspace.status === 'creating'}
+                      <div class="info-row">
+                        <span class="connection-badge connection-pending">◌ Provisioning...</span>
+                      </div>
+                    {/if}
+
+                    <!-- Quick Actions -->
                     {#if workspace.status === 'running' && workspace.connection_info.ssh_command}
-                      <a
-                        href="vscode://open?url={encodeURIComponent('vm://' + workspace.name)}"
-                        class="btn-connect"
-                        title={workspace.connection_info.ssh_command}
-                      >
-                        Open in Claude Code
-                      </a>
+                      <div class="quick-actions">
+                        <a
+                          href="vscode://open?url={encodeURIComponent('vm://' + workspace.name)}"
+                          class="btn-connect"
+                          title="Open workspace in Claude Code"
+                        >
+                          🔗 Open in Claude Code
+                        </a>
+                      </div>
                     {/if}
+                  {:else}
+                    <div class="info-row">
+                      <span class="text-xs text-gray-400">No connection info</span>
+                    </div>
                   {/if}
                 </div>
               {:else}
@@ -350,10 +411,9 @@
 
   .btn-connect {
     display: inline-block;
-    margin-top: 0.5rem;
     background-color: #2563eb;
     color: white;
-    padding: 0.25rem 0.5rem;
+    padding: 0.375rem 0.75rem;
     border-radius: 0.25rem;
     font-size: 0.75rem;
     font-weight: 500;
@@ -363,6 +423,80 @@
 
   .btn-connect:hover {
     background-color: #1d4ed8;
+  }
+
+  .connection-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .info-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .info-label {
+    color: #6b7280;
+    font-weight: 500;
+    min-width: 70px;
+  }
+
+  .info-value {
+    background-color: #f3f4f6;
+    color: #374151;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-size: 0.7rem;
+  }
+
+  .btn-copy {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.125rem 0.25rem;
+    font-size: 1rem;
+    opacity: 0.6;
+    transition: opacity 0.2s, transform 0.1s;
+  }
+
+  .btn-copy:hover {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+
+  .btn-copy:active {
+    transform: scale(0.95);
+  }
+
+  .connection-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+  }
+
+  .connection-active {
+    background-color: #d1fae5;
+    color: #065f46;
+  }
+
+  .connection-inactive {
+    background-color: #f3f4f6;
+    color: #6b7280;
+  }
+
+  .connection-pending {
+    background-color: #fef3c7;
+    color: #92400e;
+  }
+
+  .quick-actions {
+    margin-top: 0.25rem;
   }
 
   .text-gray-600 {
