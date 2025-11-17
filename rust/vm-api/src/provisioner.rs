@@ -6,11 +6,14 @@ use vm_config::config::VmConfig;
 use vm_orchestrator::{Workspace, WorkspaceOrchestrator, WorkspaceStatus};
 use vm_provider::get_provider;
 
-pub async fn start_provisioner_task(pool: SqlitePool) {
+pub async fn start_provisioner_task(pool: SqlitePool, interval_secs: u64) {
     let orchestrator = WorkspaceOrchestrator::new(pool);
-    let mut interval = interval(Duration::from_secs(10)); // Check every 10 seconds
+    let mut interval = interval(Duration::from_secs(interval_secs));
 
-    info!("Provisioner task running (checks every 10 seconds)");
+    info!(
+        "Provisioner task running (checks every {} seconds)",
+        interval_secs
+    );
 
     loop {
         interval.tick().await;

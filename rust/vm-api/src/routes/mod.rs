@@ -10,11 +10,12 @@ pub async fn create_app(pool: SqlitePool) -> anyhow::Result<Router> {
     let state = AppState::new(pool);
 
     let app = Router::new()
-        .merge(health::routes())
-        .merge(workspaces::routes())
-        .with_state(state)
-        .layer(middleware::from_fn(auth_middleware))
-        .layer(TraceLayer::new_for_http());
+        .merge(health::routes()) // Health routes don't need auth
+        .merge(
+            workspaces::routes().layer(middleware::from_fn(auth_middleware)), // Auth only for workspaces
+        )
+        .layer(TraceLayer::new_for_http())
+        .with_state(state);
 
     Ok(app)
 }

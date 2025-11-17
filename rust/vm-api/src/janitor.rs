@@ -3,11 +3,14 @@ use tokio::time::{interval, Duration};
 use tracing::{error, info};
 use vm_orchestrator::WorkspaceOrchestrator;
 
-pub async fn start_janitor_task(pool: SqlitePool) {
+pub async fn start_janitor_task(pool: SqlitePool, interval_secs: u64) {
     let orchestrator = WorkspaceOrchestrator::new(pool);
-    let mut interval = interval(Duration::from_secs(300)); // Every 5 minutes
+    let mut interval = interval(Duration::from_secs(interval_secs));
 
-    info!("Janitor task running (checks every 5 minutes)");
+    info!(
+        "Janitor task running (checks every {} seconds)",
+        interval_secs
+    );
 
     loop {
         interval.tick().await;

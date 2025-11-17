@@ -13,10 +13,19 @@ pub struct Workspace {
     pub template: Option<String>,
     pub provider: String,
     pub status: WorkspaceStatus,
+
+    #[serde(serialize_with = "serialize_datetime")]
     pub created_at: DateTime<Utc>,
+
+    #[serde(serialize_with = "serialize_datetime")]
     pub updated_at: DateTime<Utc>,
+
     pub ttl_seconds: Option<i64>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(serialize_with = "serialize_optional_datetime")]
     pub expires_at: Option<DateTime<Utc>>,
+
     pub metadata: Option<serde_json::Value>,
     pub provider_id: Option<String>,
     pub connection_info: Option<serde_json::Value>,
@@ -56,6 +65,11 @@ pub struct WorkspaceOrchestrator {
 impl WorkspaceOrchestrator {
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
+    }
+
+    /// Get a reference to the database pool
+    pub fn pool(&self) -> &SqlitePool {
+        &self.pool
     }
 
     /// Create a new workspace
@@ -311,5 +325,26 @@ impl From<WorkspaceRow> for Workspace {
                 .and_then(|s| serde_json::from_str(&s).ok()),
             error_message: row.error_message,
         }
+    }
+}
+
+// Serialize DateTime as RFC 3339 / ISO 8601 string
+fn serialize_datetime<S>(dt: &DateTime<Utc>, serializer: S) -> std::result::Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(&dt.to_rfc3339())
+}
+
+fn serialize_optional_datetime<S>(
+    dt: &Option<DateTime<Utc>>,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match dt {
+        Some(dt) => serializer.serialize_str(&dt.to_rfc3339()),
+        None => serializer.serialize_none(),
     }
 }

@@ -1,7 +1,6 @@
 use anyhow::Result;
-use std::path::PathBuf;
 use tracing::info;
-use vm_api::{create_app, start_janitor_task, start_provisioner_task};
+use vm_api::{create_app, start_janitor_task, start_provisioner_task, Config};
 use vm_orchestrator::db::{backup_database, create_pool, run_migrations};
 
 #[tokio::main]
@@ -13,49 +12,58 @@ async fn main() -> Result<()> {
 
     info!("Starting vm-api service...");
 
+    // Load configuration
+    let config = Config::from_env();
+    info!(
+        "Configuration loaded: bind_addr={}, db_path={}",
+        config.bind_addr,
+        config.db_path.display()
+    );
+
     // Database setup
-    let db_path = get_db_path();
+    let db_path = &config.db_path;
     info!("Database path: {}", db_path.display());
 
     // Backup before migrations
     if db_path.exists() {
-        let backup_path = backup_database(&db_path)?;
+        let backup_path = backup_database(db_path)?;
         info!("Database backed up to: {}", backup_path.display());
     }
 
     // Create pool and run migrations
-    let pool = create_pool(&db_path).await?;
+    let pool = create_pool(db_path).await?;
     info!("Running database migrations...");
     run_migrations(&pool).await?;
     info!("Migrations complete");
 
     // Start janitor task
-    tokio::spawn(start_janitor_task(pool.clone()));
-    info!("Janitor task started");
+    tokio::spawn(start_janitor_task(
+        pool.clone(),
+        config.janitor_interval_secs,
+    ));
+    info!(
+        "Janitor task started (interval: {}s)",
+        config.janitor_interval_secs
+    );
 
     // Start provisioner task
-    tokio::spawn(start_provisioner_task(pool.clone()));
-    info!("Provisioner task started");
+    tokio::spawn(start_provisioner_task(
+        pool.clone(),
+        config.provisioner_interval_secs,
+    ));
+    info!(
+        "Provisioner task started (interval: {}s)",
+        config.provisioner_interval_secs
+    );
 
     // Create app
     let app = create_app(pool).await?;
 
     // Start server
-    let addr = "0.0.0.0:3000";
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    info!("Listening on http://{}", addr);
+    let listener = tokio::net::TcpListener::bind(&config.bind_addr).await?;
+    info!("Listening on http://{}", config.bind_addr);
 
     axum::serve(listener, app).await?;
 
     Ok(())
-}
-
-fn get_db_path() -> PathBuf {
-    if cfg!(windows) {
-        let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-        PathBuf::from(appdata).join("vm").join("api").join("vm.db")
-    } else {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        PathBuf::from(home).join(".vm").join("api").join("vm.db")
-    }
 }
