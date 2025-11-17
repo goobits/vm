@@ -23,7 +23,22 @@ Develop a new set of UI components within the existing `site/` Svelte/Vite proje
 - [ ] Show operation history (create, rebuild, snapshot) using `GET /api/v1/operations`.
 - [ ] Add a primary navigation link (“Workspaces”) in the site header that routes to `/app`.
 
-## Success Criteria
+## Phase 1 Acceptance Criteria
+
+**Must have (ship in 4-6 weeks):**
+- [ ] `/app` route loads behind auth and lists all workspaces owned by the logged-in user.
+- [ ] Auto-refresh (or manual refresh button) so status badges update at least every 10 seconds.
+- [ ] “Create Workspace” drawer with template selection + TTL; successful creates append to the list.
+- [ ] Delete action with confirmation (removes workspace via API and updates the table).
+- [ ] Status badges for `creating`, `running`, `stopped`, `failed` plus creation timestamp display.
+
+**Explicitly deferred to later phases:**
+- Interactive shell (Phase 3).
+- Log streaming and lifecycle controls (Phase 2).
+- Snapshot list/create/restore (Phase 2).
+- Shared/team visibility (Phase 2+) once RBAC is defined.
+
+## Success Criteria (Overall Vision)
 
 - The new UI is accessible in the browser at a dedicated route.
 - Users can view/filter a list of all current `vm` workspaces and see their lifecycle/TTL status update in real time.
