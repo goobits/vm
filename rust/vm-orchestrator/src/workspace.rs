@@ -421,6 +421,93 @@ impl WorkspaceOrchestrator {
 
         Ok(())
     }
+
+    /// Start a stopped workspace
+    pub async fn start_workspace(&self, id: &str) -> Result<Workspace> {
+        let workspace = self.get_workspace(id).await?;
+
+        // Record operation
+        self.record_operation(
+            id,
+            crate::operation::OperationType::Start,
+            crate::operation::OperationStatus::Success,
+        )
+        .await?;
+
+        // Update status to creating (will be updated by provisioner once started)
+        self.update_workspace_status(id, WorkspaceStatus::Creating, None, None, None)
+            .await?;
+
+        // TODO: Implement actual provider start logic in provisioner
+        // For now, just update status to running
+        self.update_workspace_status(
+            id,
+            WorkspaceStatus::Running,
+            workspace.provider_id.clone(),
+            workspace.connection_info.clone(),
+            None,
+        )
+        .await?;
+
+        self.get_workspace(id).await
+    }
+
+    /// Stop a running workspace
+    pub async fn stop_workspace(&self, id: &str) -> Result<Workspace> {
+        let workspace = self.get_workspace(id).await?;
+
+        // Record operation
+        self.record_operation(
+            id,
+            crate::operation::OperationType::Stop,
+            crate::operation::OperationStatus::Success,
+        )
+        .await?;
+
+        // Update status to stopped
+        self.update_workspace_status(
+            id,
+            WorkspaceStatus::Stopped,
+            workspace.provider_id.clone(),
+            None, // Clear connection info when stopped
+            None,
+        )
+        .await?;
+
+        // TODO: Implement actual provider stop logic
+
+        self.get_workspace(id).await
+    }
+
+    /// Restart a workspace
+    pub async fn restart_workspace(&self, id: &str) -> Result<Workspace> {
+        let workspace = self.get_workspace(id).await?;
+
+        // Record operation
+        self.record_operation(
+            id,
+            crate::operation::OperationType::Restart,
+            crate::operation::OperationStatus::Success,
+        )
+        .await?;
+
+        // Update status to creating (will be updated once restarted)
+        self.update_workspace_status(id, WorkspaceStatus::Creating, None, None, None)
+            .await?;
+
+        // TODO: Implement actual provider restart logic in provisioner
+        // For now, just update status back to running
+        self.update_workspace_status(
+            id,
+            WorkspaceStatus::Running,
+            workspace.provider_id.clone(),
+            workspace.connection_info.clone(),
+            None,
+        )
+        .await?;
+
+        self.get_workspace(id).await
+    }
 }
 
 // Internal row types for sqlx

@@ -1,7 +1,7 @@
 use crate::{auth::AuthenticatedUser, error::ApiResult, state::AppState};
 use axum::{
     extract::{Path, State},
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use vm_orchestrator::{CreateWorkspaceRequest, Workspace, WorkspaceFilters};
@@ -16,6 +16,9 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/workspaces/{id}",
             get(get_workspace).delete(delete_workspace),
         )
+        .route("/api/v1/workspaces/{id}/start", post(start_workspace))
+        .route("/api/v1/workspaces/{id}/stop", post(stop_workspace))
+        .route("/api/v1/workspaces/{id}/restart", post(restart_workspace))
 }
 
 async fn create_workspace(
@@ -61,4 +64,28 @@ async fn delete_workspace(
     state.orchestrator.delete_workspace(&id).await?;
 
     Ok(Json(serde_json::json!({ "message": "Workspace deleted" })))
+}
+
+async fn start_workspace(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Workspace>> {
+    let workspace = state.orchestrator.start_workspace(&id).await?;
+    Ok(Json(workspace))
+}
+
+async fn stop_workspace(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Workspace>> {
+    let workspace = state.orchestrator.stop_workspace(&id).await?;
+    Ok(Json(workspace))
+}
+
+async fn restart_workspace(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Workspace>> {
+    let workspace = state.orchestrator.restart_workspace(&id).await?;
+    Ok(Json(workspace))
 }

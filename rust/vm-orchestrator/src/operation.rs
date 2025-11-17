@@ -19,6 +19,7 @@ pub enum OperationType {
     Delete,
     Start,
     Stop,
+    Restart,
     Rebuild,
 }
 
