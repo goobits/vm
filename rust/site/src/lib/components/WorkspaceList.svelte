@@ -26,49 +26,49 @@
     }
 
     try {
-      actionInProgress[id] = true;
+      actionInProgress = { ...actionInProgress, [id]: true };
       await deleteWorkspace(id);
       await loadWorkspaces(); // Refresh list
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Failed to delete workspace');
     } finally {
-      actionInProgress[id] = false;
+      actionInProgress = { ...actionInProgress, [id]: false };
     }
   }
 
   async function handleStart(id: string) {
     try {
-      actionInProgress[id] = true;
+      actionInProgress = { ...actionInProgress, [id]: true };
       await startWorkspace(id);
       await loadWorkspaces(); // Refresh list
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Failed to start workspace');
     } finally {
-      actionInProgress[id] = false;
+      actionInProgress = { ...actionInProgress, [id]: false };
     }
   }
 
   async function handleStop(id: string) {
     try {
-      actionInProgress[id] = true;
+      actionInProgress = { ...actionInProgress, [id]: true };
       await stopWorkspace(id);
       await loadWorkspaces(); // Refresh list
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Failed to stop workspace');
     } finally {
-      actionInProgress[id] = false;
+      actionInProgress = { ...actionInProgress, [id]: false };
     }
   }
 
   async function handleRestart(id: string) {
     try {
-      actionInProgress[id] = true;
+      actionInProgress = { ...actionInProgress, [id]: true };
       await restartWorkspace(id);
       await loadWorkspaces(); // Refresh list
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Failed to restart workspace');
     } finally {
-      actionInProgress[id] = false;
+      actionInProgress = { ...actionInProgress, [id]: false };
     }
   }
 
