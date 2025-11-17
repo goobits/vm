@@ -1,11 +1,11 @@
-use crate::{error::ApiResult, state::AppState};
+use crate::{auth::AuthenticatedUser, error::ApiResult, state::AppState};
 use axum::{
     extract::{Path, Query, State},
     routing::get,
     Json, Router,
 };
 use serde::Deserialize;
-use vm_orchestrator::{Operation, OperationStatus, OperationType};
+use vm_orchestrator::{Operation, OperationStatus, OperationType, WorkspaceFilters};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -24,7 +24,13 @@ struct OperationsQuery {
 async fn list_operations(
     State(state): State<AppState>,
     Query(query): Query<OperationsQuery>,
+    axum::Extension(user): axum::Extension<AuthenticatedUser>,
 ) -> ApiResult<Json<Vec<Operation>>> {
+    // If workspace_id is provided, verify user owns it
+    if let Some(ref workspace_id) = query.workspace_id {
+        crate::auth::check_workspace_owner(&state.orchestrator, workspace_id, &user).await?;
+    }
+
     // Parse operation_type from string
     let operation_type = query
         .operation_type
@@ -35,10 +41,27 @@ async fn list_operations(
         .status
         .and_then(|s| serde_json::from_str::<OperationStatus>(&format!("\"{}\"", s)).ok());
 
-    let operations = state
+    // Get operations
+    let mut operations = state
         .orchestrator
-        .get_operations(query.workspace_id, operation_type, status)
+        .get_operations(query.workspace_id.clone(), operation_type, status)
         .await?;
+
+    // If no workspace_id was specified, filter to only show operations for user's workspaces
+    if query.workspace_id.is_none() {
+        let user_workspaces = state
+            .orchestrator
+            .list_workspaces(WorkspaceFilters {
+                owner: Some(user.username.clone()),
+                status: None,
+            })
+            .await?;
+
+        let user_workspace_ids: std::collections::HashSet<_> =
+            user_workspaces.iter().map(|w| w.id.clone()).collect();
+
+        operations.retain(|op| user_workspace_ids.contains(&op.workspace_id));
+    }
 
     Ok(Json(operations))
 }
@@ -46,8 +69,12 @@ async fn list_operations(
 async fn get_operation(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    axum::Extension(user): axum::Extension<AuthenticatedUser>,
 ) -> ApiResult<Json<Operation>> {
     let operation = state.orchestrator.get_operation(&id).await?;
+
+    // Verify user owns the workspace associated with this operation
+    crate::auth::check_workspace_owner(&state.orchestrator, &operation.workspace_id, &user).await?;
 
     Ok(Json(operation))
 }
