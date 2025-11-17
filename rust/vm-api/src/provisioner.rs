@@ -41,6 +41,28 @@ async fn process_pending_workspaces(orchestrator: &WorkspaceOrchestrator) -> any
         let orchestrator_clone = orchestrator.clone();
 
         tokio::task::spawn(async move {
+            // Find the create operation for this workspace
+            let operation_id = orchestrator_clone
+                .get_operations(
+                    Some(workspace_clone.id.clone()),
+                    Some(vm_orchestrator::operation::OperationType::Create),
+                    None,
+                )
+                .await
+                .ok()
+                .and_then(|ops| ops.first().map(|op| op.id.clone()));
+
+            // Update operation to running
+            if let Some(ref op_id) = operation_id {
+                let _ = orchestrator_clone
+                    .update_operation_status(
+                        op_id,
+                        vm_orchestrator::operation::OperationStatus::Running,
+                        None,
+                    )
+                    .await;
+            }
+
             match provision_workspace(&workspace_clone).await {
                 Ok((provider_id, connection_info)) => {
                     info!("Successfully provisioned workspace: {}", workspace_clone.id);
@@ -55,6 +77,17 @@ async fn process_pending_workspaces(orchestrator: &WorkspaceOrchestrator) -> any
                         )
                         .await
                         .ok();
+
+                    // Update operation to success
+                    if let Some(ref op_id) = operation_id {
+                        let _ = orchestrator_clone
+                            .update_operation_status(
+                                op_id,
+                                vm_orchestrator::operation::OperationStatus::Success,
+                                None,
+                            )
+                            .await;
+                    }
                 }
                 Err(e) => {
                     error!(
@@ -72,6 +105,17 @@ async fn process_pending_workspaces(orchestrator: &WorkspaceOrchestrator) -> any
                         )
                         .await
                         .ok();
+
+                    // Update operation to failed
+                    if let Some(ref op_id) = operation_id {
+                        let _ = orchestrator_clone
+                            .update_operation_status(
+                                op_id,
+                                vm_orchestrator::operation::OperationStatus::Failed,
+                                Some(e.to_string()),
+                            )
+                            .await;
+                    }
                 }
             }
         });
@@ -129,7 +173,10 @@ fn build_vm_config(workspace: &Workspace) -> anyhow::Result<VmConfig> {
     // TODO: Use PresetDetector to load full preset configs once we have repo cloning
     // For now, apply basic template defaults manually
     if let Some(template) = &workspace.template {
-        info!("Applying template '{}' for workspace {}", template, workspace.name);
+        info!(
+            "Applying template '{}' for workspace {}",
+            template, workspace.name
+        );
         apply_template_defaults(&mut config, template);
     }
 
