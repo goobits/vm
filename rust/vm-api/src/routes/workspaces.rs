@@ -13,7 +13,7 @@ pub fn routes() -> Router<AppState> {
             get(list_workspaces).post(create_workspace),
         )
         .route(
-            "/api/v1/workspaces/:id",
+            "/api/v1/workspaces/{id}",
             get(get_workspace).delete(delete_workspace),
         )
 }

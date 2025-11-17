@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::path::PathBuf;
 use tracing::info;
-use vm_api::{create_app, start_janitor_task};
+use vm_api::{create_app, start_janitor_task, start_provisioner_task};
 use vm_orchestrator::db::{backup_database, create_pool, run_migrations};
 
 #[tokio::main]
@@ -32,6 +32,10 @@ async fn main() -> Result<()> {
     // Start janitor task
     tokio::spawn(start_janitor_task(pool.clone()));
     info!("Janitor task started");
+
+    // Start provisioner task
+    tokio::spawn(start_provisioner_task(pool.clone()));
+    info!("Provisioner task started");
 
     // Create app
     let app = create_app(pool).await?;

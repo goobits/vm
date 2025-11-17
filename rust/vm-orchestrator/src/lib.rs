@@ -11,4 +11,6 @@ pub mod workspace;
 
 pub use error::{OrchestratorError, Result};
 pub use operation::{Operation, OperationStatus, OperationType};
-pub use workspace::{CreateWorkspaceRequest, Workspace, WorkspaceFilters, WorkspaceOrchestrator};
+pub use workspace::{
+    CreateWorkspaceRequest, Workspace, WorkspaceFilters, WorkspaceOrchestrator, WorkspaceStatus,
+};

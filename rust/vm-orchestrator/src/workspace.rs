@@ -18,6 +18,9 @@ pub struct Workspace {
     pub ttl_seconds: Option<i64>,
     pub expires_at: Option<DateTime<Utc>>,
     pub metadata: Option<serde_json::Value>,
+    pub provider_id: Option<String>,
+    pub connection_info: Option<serde_json::Value>,
+    pub error_message: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
@@ -85,6 +88,14 @@ impl WorkspaceOrchestrator {
         .execute(&self.pool)
         .await?;
 
+        // Record the create operation
+        self.record_operation(
+            &id,
+            crate::operation::OperationType::Create,
+            crate::operation::OperationStatus::Pending,
+        )
+        .await?;
+
         self.get_workspace(&id).await
     }
 
@@ -126,8 +137,44 @@ impl WorkspaceOrchestrator {
         Ok(row.into())
     }
 
-    /// Delete a workspace
+    /// Delete a workspace and destroy its VM
     pub async fn delete_workspace(&self, id: &str) -> Result<()> {
+        // Get workspace first to get provider_id
+        let workspace = self.get_workspace(id).await?;
+
+        // Record delete operation
+        self.record_operation(
+            id,
+            crate::operation::OperationType::Delete,
+            crate::operation::OperationStatus::Running,
+        )
+        .await
+        .ok();
+
+        // If it has a provider_id, destroy the VM
+        if let Some(provider_id) = workspace.provider_id {
+            tracing::info!("Destroying VM for workspace {}: {}", id, provider_id);
+
+            let provider_name = workspace.provider.clone();
+            tokio::task::spawn_blocking(move || {
+                let config = vm_config::config::VmConfig {
+                    provider: Some(provider_name.clone()),
+                    project: Some(vm_config::config::ProjectConfig {
+                        name: Some(provider_id.clone()),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                };
+
+                if let Ok(provider) = vm_provider::get_provider(config) {
+                    provider.destroy(Some(&provider_id)).ok(); // Best effort
+                }
+            })
+            .await
+            .ok();
+        }
+
+        // Delete from database
         let result = sqlx::query("DELETE FROM workspaces WHERE id = ?")
             .bind(id)
             .execute(&self.pool)
@@ -153,6 +200,72 @@ impl WorkspaceOrchestrator {
 
         Ok(rows.into_iter().map(|row| row.into()).collect())
     }
+
+    /// Update workspace status and related fields
+    pub async fn update_workspace_status(
+        &self,
+        id: &str,
+        status: WorkspaceStatus,
+        provider_id: Option<String>,
+        connection_info: Option<serde_json::Value>,
+        error_message: Option<String>,
+    ) -> Result<()> {
+        let now = Utc::now().timestamp();
+
+        sqlx::query(
+            "UPDATE workspaces
+             SET status = ?, updated_at = ?, provider_id = ?, connection_info = ?, error_message = ?
+             WHERE id = ?",
+        )
+        .bind(status)
+        .bind(now)
+        .bind(provider_id)
+        .bind(connection_info.map(|v| serde_json::to_string(&v).unwrap()))
+        .bind(error_message)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get all workspaces with a specific status
+    pub async fn get_workspaces_by_status(
+        &self,
+        status: WorkspaceStatus,
+    ) -> Result<Vec<Workspace>> {
+        let rows = sqlx::query_as::<_, WorkspaceRow>("SELECT * FROM workspaces WHERE status = ?")
+            .bind(status)
+            .fetch_all(&self.pool)
+            .await?;
+
+        Ok(rows.into_iter().map(|row| row.into()).collect())
+    }
+
+    /// Record an operation for tracking
+    pub async fn record_operation(
+        &self,
+        workspace_id: &str,
+        operation_type: crate::operation::OperationType,
+        status: crate::operation::OperationStatus,
+    ) -> Result<String> {
+        let id = Uuid::new_v4().to_string();
+        let now = Utc::now().timestamp();
+
+        sqlx::query(
+            "INSERT INTO operations (id, workspace_id, operation_type, status, started_at)
+             VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(&id)
+        .bind(workspace_id)
+        .bind(operation_type)
+        .bind(status)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(id)
+    }
 }
 
 // Internal row type for sqlx
@@ -170,6 +283,9 @@ struct WorkspaceRow {
     ttl_seconds: Option<i64>,
     expires_at: Option<i64>,
     metadata: Option<String>,
+    provider_id: Option<String>,
+    connection_info: Option<String>,
+    error_message: Option<String>,
 }
 
 impl From<WorkspaceRow> for Workspace {
@@ -189,6 +305,11 @@ impl From<WorkspaceRow> for Workspace {
                 .expires_at
                 .and_then(|ts| DateTime::from_timestamp(ts, 0)),
             metadata: row.metadata.and_then(|s| serde_json::from_str(&s).ok()),
+            provider_id: row.provider_id,
+            connection_info: row
+                .connection_info
+                .and_then(|s| serde_json::from_str(&s).ok()),
+            error_message: row.error_message,
         }
     }
 }

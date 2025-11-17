@@ -4132,8 +4132,10 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "vm-config",
  "vm-core",
  "vm-orchestrator",
+ "vm-provider",
 ]
 
 [[package]]
