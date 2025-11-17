@@ -4,6 +4,7 @@ const API_BASE = '/api/v1';
 
 async function handleResponse<T>(response: Response): Promise<T> {
   if (response.status === 401) {
+    // Redirect to login (in Phase 2, this will be OAuth flow)
     window.location.href = '/login';
     throw new Error('Unauthorized');
   }
@@ -16,16 +17,11 @@ async function handleResponse<T>(response: Response): Promise<T> {
   return response.json();
 }
 
-function authHeaders(extra: Record<string, string> = {}) {
-  return {
-    'x-user': 'testuser', // Phase 1 mock auth
-    ...extra,
-  };
-}
-
 export async function listWorkspaces(): Promise<Workspace[]> {
   const response = await fetch(`${API_BASE}/workspaces`, {
-    headers: authHeaders(),
+    headers: {
+      'x-user': 'testuser', // Phase 1: mock auth
+    },
   });
 
   return handleResponse(response);
@@ -34,7 +30,10 @@ export async function listWorkspaces(): Promise<Workspace[]> {
 export async function createWorkspace(req: CreateWorkspaceRequest): Promise<Workspace> {
   const response = await fetch(`${API_BASE}/workspaces`, {
     method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user': 'testuser', // Phase 1: mock auth
+    },
     body: JSON.stringify(req),
   });
 
@@ -44,7 +43,9 @@ export async function createWorkspace(req: CreateWorkspaceRequest): Promise<Work
 export async function deleteWorkspace(id: string): Promise<void> {
   const response = await fetch(`${API_BASE}/workspaces/${id}`, {
     method: 'DELETE',
-    headers: authHeaders(),
+    headers: {
+      'x-user': 'testuser', // Phase 1: mock auth
+    },
   });
 
   if (response.status === 401) {
@@ -60,23 +61,32 @@ export async function deleteWorkspace(id: string): Promise<void> {
 export async function startWorkspace(id: string): Promise<Workspace> {
   const response = await fetch(`${API_BASE}/workspaces/${id}/start`, {
     method: 'POST',
-    headers: authHeaders(),
+    headers: {
+      'x-user': 'testuser', // Phase 1: mock auth
+    },
   });
+
   return handleResponse(response);
 }
 
 export async function stopWorkspace(id: string): Promise<Workspace> {
   const response = await fetch(`${API_BASE}/workspaces/${id}/stop`, {
     method: 'POST',
-    headers: authHeaders(),
+    headers: {
+      'x-user': 'testuser', // Phase 1: mock auth
+    },
   });
+
   return handleResponse(response);
 }
 
 export async function restartWorkspace(id: string): Promise<Workspace> {
   const response = await fetch(`${API_BASE}/workspaces/${id}/restart`, {
     method: 'POST',
-    headers: authHeaders(),
+    headers: {
+      'x-user': 'testuser', // Phase 1: mock auth
+    },
   });
+
   return handleResponse(response);
 }
