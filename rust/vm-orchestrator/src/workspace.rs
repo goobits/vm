@@ -297,6 +297,33 @@ impl WorkspaceOrchestrator {
         Ok(id)
     }
 
+    /// Update operation status
+    pub async fn update_operation_status(
+        &self,
+        operation_id: &str,
+        status: crate::operation::OperationStatus,
+        error: Option<String>,
+    ) -> Result<()> {
+        let completed_at = if matches!(
+            status,
+            crate::operation::OperationStatus::Success | crate::operation::OperationStatus::Failed
+        ) {
+            Some(Utc::now().timestamp())
+        } else {
+            None
+        };
+
+        sqlx::query("UPDATE operations SET status = ?, completed_at = ?, error = ? WHERE id = ?")
+            .bind(status)
+            .bind(completed_at)
+            .bind(error)
+            .bind(operation_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
     /// Get a single operation by ID
     pub async fn get_operation(&self, id: &str) -> Result<crate::operation::Operation> {
         let row = sqlx::query_as::<_, OperationRow>("SELECT * FROM operations WHERE id = ?")
@@ -426,28 +453,108 @@ impl WorkspaceOrchestrator {
     pub async fn start_workspace(&self, id: &str) -> Result<Workspace> {
         let workspace = self.get_workspace(id).await?;
 
-        // Record operation
-        self.record_operation(
-            id,
-            crate::operation::OperationType::Start,
-            crate::operation::OperationStatus::Success,
-        )
-        .await?;
+        // Validate workspace has provider_id
+        let provider_id = workspace.provider_id.clone().ok_or_else(|| {
+            OrchestratorError::InvalidState("Workspace has no provider_id".to_string())
+        })?;
 
-        // Update status to creating (will be updated by provisioner once started)
-        self.update_workspace_status(id, WorkspaceStatus::Creating, None, None, None)
+        // Record operation as pending
+        let operation_id = self
+            .record_operation(
+                id,
+                crate::operation::OperationType::Start,
+                crate::operation::OperationStatus::Pending,
+            )
             .await?;
 
-        // TODO: Implement actual provider start logic in provisioner
-        // For now, just update status to running
-        self.update_workspace_status(
-            id,
-            WorkspaceStatus::Running,
-            workspace.provider_id.clone(),
-            workspace.connection_info.clone(),
-            None,
-        )
-        .await?;
+        // Spawn task to perform actual start
+        let orchestrator = self.clone();
+        let workspace_id = id.to_string();
+        let workspace_clone = workspace.clone();
+        let saved_provider_id = workspace.provider_id.clone();
+        let saved_connection_info = workspace.connection_info.clone();
+
+        tokio::task::spawn(async move {
+            // Update operation to running
+            let _ = orchestrator
+                .update_operation_status(
+                    &operation_id,
+                    crate::operation::OperationStatus::Running,
+                    None,
+                )
+                .await;
+
+            // Call provider start in blocking context
+            let result = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+                let config = build_workspace_config(&workspace_clone)?;
+                let provider = vm_provider::get_provider(config)?;
+                provider.start(Some(&provider_id))?;
+                Ok(())
+            })
+            .await;
+
+            match result {
+                Ok(Ok(())) => {
+                    // Success - update workspace and operation
+                    let _ = orchestrator
+                        .update_workspace_status(
+                            &workspace_id,
+                            WorkspaceStatus::Running,
+                            saved_provider_id.clone(),
+                            saved_connection_info.clone(),
+                            None,
+                        )
+                        .await;
+                    let _ = orchestrator
+                        .update_operation_status(
+                            &operation_id,
+                            crate::operation::OperationStatus::Success,
+                            None,
+                        )
+                        .await;
+                }
+                Ok(Err(e)) => {
+                    // Provider error
+                    let error_msg = e.to_string();
+                    let _ = orchestrator
+                        .update_workspace_status(
+                            &workspace_id,
+                            WorkspaceStatus::Failed,
+                            saved_provider_id.clone(),
+                            None,
+                            Some(error_msg.clone()),
+                        )
+                        .await;
+                    let _ = orchestrator
+                        .update_operation_status(
+                            &operation_id,
+                            crate::operation::OperationStatus::Failed,
+                            Some(error_msg),
+                        )
+                        .await;
+                }
+                Err(e) => {
+                    // Task join error
+                    let error_msg = format!("Task failed: {}", e);
+                    let _ = orchestrator
+                        .update_workspace_status(
+                            &workspace_id,
+                            WorkspaceStatus::Failed,
+                            saved_provider_id.clone(),
+                            None,
+                            Some(error_msg.clone()),
+                        )
+                        .await;
+                    let _ = orchestrator
+                        .update_operation_status(
+                            &operation_id,
+                            crate::operation::OperationStatus::Failed,
+                            Some(error_msg),
+                        )
+                        .await;
+                }
+            }
+        });
 
         self.get_workspace(id).await
     }
@@ -456,25 +563,89 @@ impl WorkspaceOrchestrator {
     pub async fn stop_workspace(&self, id: &str) -> Result<Workspace> {
         let workspace = self.get_workspace(id).await?;
 
-        // Record operation
-        self.record_operation(
-            id,
-            crate::operation::OperationType::Stop,
-            crate::operation::OperationStatus::Success,
-        )
-        .await?;
+        // Validate workspace has provider_id
+        let provider_id = workspace.provider_id.clone().ok_or_else(|| {
+            OrchestratorError::InvalidState("Workspace has no provider_id".to_string())
+        })?;
 
-        // Update status to stopped
-        self.update_workspace_status(
-            id,
-            WorkspaceStatus::Stopped,
-            workspace.provider_id.clone(),
-            None, // Clear connection info when stopped
-            None,
-        )
-        .await?;
+        // Record operation as pending
+        let operation_id = self
+            .record_operation(
+                id,
+                crate::operation::OperationType::Stop,
+                crate::operation::OperationStatus::Pending,
+            )
+            .await?;
 
-        // TODO: Implement actual provider stop logic
+        // Spawn task to perform actual stop
+        let orchestrator = self.clone();
+        let workspace_id = id.to_string();
+        let workspace_clone = workspace.clone();
+        let saved_provider_id = workspace.provider_id.clone();
+
+        tokio::task::spawn(async move {
+            // Update operation to running
+            let _ = orchestrator
+                .update_operation_status(
+                    &operation_id,
+                    crate::operation::OperationStatus::Running,
+                    None,
+                )
+                .await;
+
+            // Call provider stop in blocking context
+            let result = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+                let config = build_workspace_config(&workspace_clone)?;
+                let provider = vm_provider::get_provider(config)?;
+                provider.stop(Some(&provider_id))?;
+                Ok(())
+            })
+            .await;
+
+            match result {
+                Ok(Ok(())) => {
+                    // Success - update workspace and operation
+                    let _ = orchestrator
+                        .update_workspace_status(
+                            &workspace_id,
+                            WorkspaceStatus::Stopped,
+                            saved_provider_id.clone(),
+                            None, // Clear connection info when stopped
+                            None,
+                        )
+                        .await;
+                    let _ = orchestrator
+                        .update_operation_status(
+                            &operation_id,
+                            crate::operation::OperationStatus::Success,
+                            None,
+                        )
+                        .await;
+                }
+                Ok(Err(e)) => {
+                    // Provider error - update operation only (don't mark workspace as failed)
+                    let error_msg = e.to_string();
+                    let _ = orchestrator
+                        .update_operation_status(
+                            &operation_id,
+                            crate::operation::OperationStatus::Failed,
+                            Some(error_msg),
+                        )
+                        .await;
+                }
+                Err(e) => {
+                    // Task join error - update operation only
+                    let error_msg = format!("Task failed: {}", e);
+                    let _ = orchestrator
+                        .update_operation_status(
+                            &operation_id,
+                            crate::operation::OperationStatus::Failed,
+                            Some(error_msg),
+                        )
+                        .await;
+                }
+            }
+        });
 
         self.get_workspace(id).await
     }
@@ -483,31 +654,126 @@ impl WorkspaceOrchestrator {
     pub async fn restart_workspace(&self, id: &str) -> Result<Workspace> {
         let workspace = self.get_workspace(id).await?;
 
-        // Record operation
-        self.record_operation(
-            id,
-            crate::operation::OperationType::Restart,
-            crate::operation::OperationStatus::Success,
-        )
-        .await?;
+        // Validate workspace has provider_id
+        let provider_id = workspace.provider_id.clone().ok_or_else(|| {
+            OrchestratorError::InvalidState("Workspace has no provider_id".to_string())
+        })?;
 
-        // Update status to creating (will be updated once restarted)
-        self.update_workspace_status(id, WorkspaceStatus::Creating, None, None, None)
+        // Record operation as pending
+        let operation_id = self
+            .record_operation(
+                id,
+                crate::operation::OperationType::Restart,
+                crate::operation::OperationStatus::Pending,
+            )
             .await?;
 
-        // TODO: Implement actual provider restart logic in provisioner
-        // For now, just update status back to running
-        self.update_workspace_status(
-            id,
-            WorkspaceStatus::Running,
-            workspace.provider_id.clone(),
-            workspace.connection_info.clone(),
-            None,
-        )
-        .await?;
+        // Spawn task to perform actual restart
+        let orchestrator = self.clone();
+        let workspace_id = id.to_string();
+        let workspace_clone = workspace.clone();
+        let saved_provider_id = workspace.provider_id.clone();
+        let saved_connection_info = workspace.connection_info.clone();
+
+        tokio::task::spawn(async move {
+            // Update operation to running
+            let _ = orchestrator
+                .update_operation_status(
+                    &operation_id,
+                    crate::operation::OperationStatus::Running,
+                    None,
+                )
+                .await;
+
+            // Call provider stop then start in blocking context
+            let result = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+                let config = build_workspace_config(&workspace_clone)?;
+                let provider = vm_provider::get_provider(config)?;
+                provider.stop(Some(&provider_id))?;
+                provider.start(Some(&provider_id))?;
+                Ok(())
+            })
+            .await;
+
+            match result {
+                Ok(Ok(())) => {
+                    // Success - update workspace and operation
+                    let _ = orchestrator
+                        .update_workspace_status(
+                            &workspace_id,
+                            WorkspaceStatus::Running,
+                            saved_provider_id.clone(),
+                            saved_connection_info.clone(),
+                            None,
+                        )
+                        .await;
+                    let _ = orchestrator
+                        .update_operation_status(
+                            &operation_id,
+                            crate::operation::OperationStatus::Success,
+                            None,
+                        )
+                        .await;
+                }
+                Ok(Err(e)) => {
+                    // Provider error
+                    let error_msg = e.to_string();
+                    let _ = orchestrator
+                        .update_workspace_status(
+                            &workspace_id,
+                            WorkspaceStatus::Failed,
+                            saved_provider_id.clone(),
+                            None,
+                            Some(error_msg.clone()),
+                        )
+                        .await;
+                    let _ = orchestrator
+                        .update_operation_status(
+                            &operation_id,
+                            crate::operation::OperationStatus::Failed,
+                            Some(error_msg),
+                        )
+                        .await;
+                }
+                Err(e) => {
+                    // Task join error
+                    let error_msg = format!("Task failed: {}", e);
+                    let _ = orchestrator
+                        .update_workspace_status(
+                            &workspace_id,
+                            WorkspaceStatus::Failed,
+                            saved_provider_id.clone(),
+                            None,
+                            Some(error_msg.clone()),
+                        )
+                        .await;
+                    let _ = orchestrator
+                        .update_operation_status(
+                            &operation_id,
+                            crate::operation::OperationStatus::Failed,
+                            Some(error_msg),
+                        )
+                        .await;
+                }
+            }
+        });
 
         self.get_workspace(id).await
     }
+}
+
+/// Build a VmConfig from workspace metadata for provider operations
+fn build_workspace_config(workspace: &Workspace) -> anyhow::Result<vm_config::config::VmConfig> {
+    let mut config = vm_config::config::VmConfig::default();
+
+    config.project = Some(vm_config::config::ProjectConfig {
+        name: Some(workspace.name.clone()),
+        ..Default::default()
+    });
+
+    config.provider = Some(workspace.provider.clone());
+
+    Ok(config)
 }
 
 // Internal row types for sqlx

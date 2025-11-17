@@ -16,6 +16,9 @@ pub enum OrchestratorError {
     #[error("Invalid input: {0}")]
     InvalidInput(String),
 
+    #[error("Invalid state: {0}")]
+    InvalidState(String),
+
     #[error("Provider error: {0}")]
     Provider(#[from] anyhow::Error),
 
