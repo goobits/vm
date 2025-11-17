@@ -493,6 +493,140 @@ impl Provider for DockerProvider {
         Ok(instances)
     }
 
+    fn snapshot(&self, request: &crate::SnapshotRequest) -> Result<()> {
+        let lifecycle = self.lifecycle_ops();
+        let target_container = lifecycle.resolve_target_container(None)?;
+
+        tracing::info!(
+            "Creating snapshot '{}' for container '{}'",
+            request.snapshot_name,
+            target_container
+        );
+
+        // Step 1: Commit the container to an image
+        let image_tag = format!("vm-snapshot:{}", request.snapshot_name);
+
+        let mut commit_args = vec![
+            "commit".to_string(),
+            target_container.clone(),
+            image_tag.clone(),
+        ];
+
+        if let Some(desc) = &request.description {
+            commit_args.insert(1, "--message".to_string());
+            commit_args.insert(2, desc.clone());
+        }
+
+        let commit_output = std::process::Command::new("docker")
+            .args(&commit_args)
+            .output()
+            .map_err(|e| VmError::Internal(format!("Failed to commit container: {e}")))?;
+
+        if !commit_output.status.success() {
+            return Err(VmError::Internal(format!(
+                "Failed to commit container: {}",
+                String::from_utf8_lossy(&commit_output.stderr)
+            )));
+        }
+
+        tracing::info!("Container committed to image '{}'", image_tag);
+
+        // Step 2: Save the image to a tar file
+        let snapshot_dir = std::path::PathBuf::from("/tmp/vm-snapshots");
+        std::fs::create_dir_all(&snapshot_dir)
+            .map_err(|e| VmError::Internal(format!("Failed to create snapshot directory: {e}")))?;
+
+        let snapshot_path = snapshot_dir.join(format!("{}.tar", request.snapshot_name));
+
+        let save_output = std::process::Command::new("docker")
+            .args(["save", "-o", snapshot_path.to_str().unwrap(), &image_tag])
+            .output()
+            .map_err(|e| VmError::Internal(format!("Failed to save image: {e}")))?;
+
+        if !save_output.status.success() {
+            return Err(VmError::Internal(format!(
+                "Failed to save image: {}",
+                String::from_utf8_lossy(&save_output.stderr)
+            )));
+        }
+
+        tracing::info!("Snapshot saved to {:?}", snapshot_path);
+
+        Ok(())
+    }
+
+    fn restore_snapshot(&self, request: &crate::SnapshotRestoreRequest) -> Result<()> {
+        tracing::info!(
+            "Restoring snapshot '{}' from {:?}",
+            request.snapshot_name,
+            request.snapshot_path
+        );
+
+        // Step 1: Load the image from tar file
+        let load_output = std::process::Command::new("docker")
+            .args(["load", "-i", request.snapshot_path.to_str().unwrap()])
+            .output()
+            .map_err(|e| VmError::Internal(format!("Failed to load snapshot: {e}")))?;
+
+        if !load_output.status.success() {
+            return Err(VmError::Internal(format!(
+                "Failed to load snapshot: {}",
+                String::from_utf8_lossy(&load_output.stderr)
+            )));
+        }
+
+        let image_tag = format!("vm-snapshot:{}", request.snapshot_name);
+        tracing::info!("Loaded image '{}'", image_tag);
+
+        // Step 2: Stop the current container if it exists
+        let lifecycle = self.lifecycle_ops();
+        if let Ok(target_container) = lifecycle.resolve_target_container(None) {
+            tracing::info!("Stopping current container '{}'", target_container);
+            let _ = lifecycle.stop_container(None); // Best effort
+
+            if request.force {
+                tracing::info!("Removing current container '{}'", target_container);
+                let _ = lifecycle.destroy_container(None); // Best effort
+            }
+        }
+
+        // Step 3: Create new container from snapshot image
+        // Get the project name for the new container
+        let project_name = self
+            .config
+            .project
+            .as_ref()
+            .and_then(|p| p.name.as_deref())
+            .unwrap_or("default");
+
+        let container_name = format!("{}-restored", project_name);
+
+        let run_output = std::process::Command::new("docker")
+            .args(["run", "-d", "--name", &container_name, &image_tag])
+            .output()
+            .map_err(|e| {
+                VmError::Internal(format!("Failed to create container from snapshot: {e}"))
+            })?;
+
+        if !run_output.status.success() {
+            return Err(VmError::Internal(format!(
+                "Failed to create container from snapshot: {}",
+                String::from_utf8_lossy(&run_output.stderr)
+            )));
+        }
+
+        let container_id = String::from_utf8_lossy(&run_output.stdout)
+            .trim()
+            .to_string();
+        tracing::info!(
+            "Created new container '{}' ({})",
+            container_name,
+            container_id
+        );
+
+        Ok(())
+    }
+
     fn clone_box(&self) -> Box<dyn Provider> {
         Box::new(self.clone())
     }

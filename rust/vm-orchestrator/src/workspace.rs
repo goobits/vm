@@ -394,6 +394,13 @@ impl WorkspaceOrchestrator {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now();
 
+        // Get workspace to verify it exists and has a provider_id
+        let workspace = self.get_workspace(workspace_id).await?;
+        let _provider_id = workspace.provider_id.clone().ok_or_else(|| {
+            OrchestratorError::InvalidState("Workspace has no provider_id".to_string())
+        })?;
+
+        // Insert snapshot record first
         sqlx::query(
             r#"
             INSERT INTO snapshots (id, workspace_id, name, created_at, size_bytes, metadata)
@@ -404,10 +411,104 @@ impl WorkspaceOrchestrator {
         .bind(workspace_id)
         .bind(&req.name)
         .bind(now.timestamp())
-        .bind(0) // Size will be updated by provider
-        .bind(None::<String>) // Metadata will be added later
+        .bind(0) // Size will be updated after snapshot is created
+        .bind(None::<String>)
         .execute(&self.pool)
         .await?;
+
+        // Record operation as pending
+        let operation_id = self
+            .record_operation(
+                workspace_id,
+                crate::operation::OperationType::Snapshot,
+                crate::operation::OperationStatus::Pending,
+            )
+            .await?;
+
+        // Spawn background task to create actual snapshot
+        let orchestrator = self.clone();
+        let snapshot_id = id.clone();
+        let snapshot_name = req.name.clone();
+        let workspace_clone = workspace.clone();
+
+        tokio::task::spawn(async move {
+            // Update operation to running
+            let _ = orchestrator
+                .update_operation_status(
+                    &operation_id,
+                    crate::operation::OperationStatus::Running,
+                    None,
+                )
+                .await;
+
+            // Call provider snapshot in blocking context
+            let snapshot_name_clone = snapshot_name.clone();
+            let result = tokio::task::spawn_blocking(move || -> anyhow::Result<i64> {
+                let config = build_workspace_config(&workspace_clone)?;
+                let provider = vm_provider::get_provider(config)?;
+
+                // Create snapshot request
+                let snapshot_request = vm_provider::SnapshotRequest {
+                    snapshot_name: snapshot_name_clone.clone(),
+                    description: Some("Snapshot created via orchestrator".to_string()),
+                    quiesce: false,
+                };
+
+                provider.snapshot(&snapshot_request)?;
+
+                // Get the snapshot file size
+                let snapshot_path = std::path::PathBuf::from("/tmp/vm-snapshots")
+                    .join(format!("{}.tar", snapshot_name_clone));
+
+                let size = std::fs::metadata(&snapshot_path)
+                    .map(|m| m.len() as i64)
+                    .unwrap_or(0);
+
+                Ok(size)
+            })
+            .await;
+
+            match result {
+                Ok(Ok(size_bytes)) => {
+                    // Success - update snapshot with real size
+                    let _ = sqlx::query("UPDATE snapshots SET size_bytes = ? WHERE id = ?")
+                        .bind(size_bytes)
+                        .bind(&snapshot_id)
+                        .execute(orchestrator.pool())
+                        .await;
+
+                    let _ = orchestrator
+                        .update_operation_status(
+                            &operation_id,
+                            crate::operation::OperationStatus::Success,
+                            None,
+                        )
+                        .await;
+                }
+                Ok(Err(e)) => {
+                    // Provider error
+                    let error_msg = e.to_string();
+                    let _ = orchestrator
+                        .update_operation_status(
+                            &operation_id,
+                            crate::operation::OperationStatus::Failed,
+                            Some(error_msg),
+                        )
+                        .await;
+                }
+                Err(e) => {
+                    // Task join error
+                    let error_msg = format!("Task failed: {}", e);
+                    let _ = orchestrator
+                        .update_operation_status(
+                            &operation_id,
+                            crate::operation::OperationStatus::Failed,
+                            Some(error_msg),
+                        )
+                        .await;
+                }
+            }
+        });
 
         Ok(Snapshot {
             id,
@@ -422,7 +523,7 @@ impl WorkspaceOrchestrator {
     /// Restore a workspace from a snapshot
     pub async fn restore_snapshot(&self, workspace_id: &str, snapshot_id: &str) -> Result<()> {
         // Verify snapshot exists and belongs to this workspace
-        let _ = sqlx::query_as::<_, SnapshotRow>(
+        let snapshot_row = sqlx::query_as::<_, SnapshotRow>(
             "SELECT * FROM snapshots WHERE id = ? AND workspace_id = ?",
         )
         .bind(snapshot_id)
@@ -436,6 +537,20 @@ impl WorkspaceOrchestrator {
             ))
         })?;
 
+        let snapshot: Snapshot = snapshot_row.into();
+
+        // Get workspace
+        let workspace = self.get_workspace(workspace_id).await?;
+
+        // Record operation as pending
+        let operation_id = self
+            .record_operation(
+                workspace_id,
+                crate::operation::OperationType::SnapshotRestore,
+                crate::operation::OperationStatus::Pending,
+            )
+            .await?;
+
         // Update workspace status to indicate restore in progress
         self.update_workspace_status(
             workspace_id,
@@ -445,6 +560,115 @@ impl WorkspaceOrchestrator {
             Some("Restoring from snapshot".to_string()),
         )
         .await?;
+
+        // Spawn background task to restore snapshot
+        let orchestrator = self.clone();
+        let workspace_id_clone = workspace_id.to_string();
+        let workspace_clone = workspace.clone();
+        let snapshot_name = snapshot.name.clone();
+
+        tokio::task::spawn(async move {
+            // Update operation to running
+            let _ = orchestrator
+                .update_operation_status(
+                    &operation_id,
+                    crate::operation::OperationStatus::Running,
+                    None,
+                )
+                .await;
+
+            // Call provider restore in blocking context
+            let snapshot_name_clone = snapshot_name.clone();
+            let result = tokio::task::spawn_blocking(move || -> anyhow::Result<String> {
+                let config = build_workspace_config(&workspace_clone)?;
+                let provider = vm_provider::get_provider(config)?;
+
+                // Create restore request
+                let snapshot_path = std::path::PathBuf::from("/tmp/vm-snapshots")
+                    .join(format!("{}.tar", snapshot_name_clone));
+
+                let restore_request = vm_provider::SnapshotRestoreRequest {
+                    snapshot_name: snapshot_name_clone.clone(),
+                    snapshot_path,
+                    force: true,
+                };
+
+                provider.restore_snapshot(&restore_request)?;
+
+                // Get the new container name/ID
+                // For now, we'll use the workspace name + "-restored" as the provider_id
+                let project_name = workspace_clone.name.clone();
+                let new_provider_id = format!("{}-restored", project_name);
+
+                Ok(new_provider_id)
+            })
+            .await;
+
+            match result {
+                Ok(Ok(new_provider_id)) => {
+                    // Success - update workspace with new provider_id and mark as running
+                    let _ = orchestrator
+                        .update_workspace_status(
+                            &workspace_id_clone,
+                            WorkspaceStatus::Running,
+                            Some(new_provider_id),
+                            None, // Connection info would need to be regenerated
+                            None,
+                        )
+                        .await;
+
+                    let _ = orchestrator
+                        .update_operation_status(
+                            &operation_id,
+                            crate::operation::OperationStatus::Success,
+                            None,
+                        )
+                        .await;
+                }
+                Ok(Err(e)) => {
+                    // Provider error
+                    let error_msg = e.to_string();
+                    let _ = orchestrator
+                        .update_workspace_status(
+                            &workspace_id_clone,
+                            WorkspaceStatus::Failed,
+                            None,
+                            None,
+                            Some(error_msg.clone()),
+                        )
+                        .await;
+
+                    let _ = orchestrator
+                        .update_operation_status(
+                            &operation_id,
+                            crate::operation::OperationStatus::Failed,
+                            Some(error_msg),
+                        )
+                        .await;
+                }
+                Err(e) => {
+                    // Task join error
+                    let error_msg = format!("Task failed: {}", e);
+                    let _ = orchestrator
+                        .update_workspace_status(
+                            &workspace_id_clone,
+                            WorkspaceStatus::Failed,
+                            None,
+                            None,
+                            Some(error_msg.clone()),
+                        )
+                        .await;
+
+                    let _ = orchestrator
+                        .update_operation_status(
+                            &operation_id,
+                            crate::operation::OperationStatus::Failed,
+                            Some(error_msg),
+                        )
+                        .await;
+                }
+            }
+        });
 
         Ok(())
     }

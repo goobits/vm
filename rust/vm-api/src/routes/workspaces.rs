@@ -1,4 +1,8 @@
-use crate::{auth::AuthenticatedUser, error::ApiResult, state::AppState};
+use crate::{
+    auth::{check_workspace_owner, AuthenticatedUser},
+    error::ApiResult,
+    state::AppState,
+};
 use axum::{
     extract::{Path, State},
     routing::{get, post},
@@ -51,7 +55,11 @@ async fn list_workspaces(
 async fn get_workspace(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    axum::Extension(user): axum::Extension<AuthenticatedUser>,
 ) -> ApiResult<Json<Workspace>> {
+    // Check ownership
+    check_workspace_owner(&state.orchestrator, &id, &user).await?;
+
     let workspace = state.orchestrator.get_workspace(&id).await?;
 
     Ok(Json(workspace))
@@ -60,7 +68,11 @@ async fn get_workspace(
 async fn delete_workspace(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    axum::Extension(user): axum::Extension<AuthenticatedUser>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    // Check ownership
+    check_workspace_owner(&state.orchestrator, &id, &user).await?;
+
     state.orchestrator.delete_workspace(&id).await?;
 
     Ok(Json(serde_json::json!({ "message": "Workspace deleted" })))
@@ -69,7 +81,11 @@ async fn delete_workspace(
 async fn start_workspace(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    axum::Extension(user): axum::Extension<AuthenticatedUser>,
 ) -> ApiResult<Json<Workspace>> {
+    // Check ownership
+    check_workspace_owner(&state.orchestrator, &id, &user).await?;
+
     let workspace = state.orchestrator.start_workspace(&id).await?;
     Ok(Json(workspace))
 }
@@ -77,7 +93,11 @@ async fn start_workspace(
 async fn stop_workspace(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    axum::Extension(user): axum::Extension<AuthenticatedUser>,
 ) -> ApiResult<Json<Workspace>> {
+    // Check ownership
+    check_workspace_owner(&state.orchestrator, &id, &user).await?;
+
     let workspace = state.orchestrator.stop_workspace(&id).await?;
     Ok(Json(workspace))
 }
@@ -85,7 +105,11 @@ async fn stop_workspace(
 async fn restart_workspace(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    axum::Extension(user): axum::Extension<AuthenticatedUser>,
 ) -> ApiResult<Json<Workspace>> {
+    // Check ownership
+    check_workspace_owner(&state.orchestrator, &id, &user).await?;
+
     let workspace = state.orchestrator.restart_workspace(&id).await?;
     Ok(Json(workspace))
 }

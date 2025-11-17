@@ -1,4 +1,8 @@
-use crate::{error::ApiResult, state::AppState};
+use crate::{
+    auth::{check_workspace_owner, AuthenticatedUser},
+    error::ApiResult,
+    state::AppState,
+};
 use axum::{
     extract::{Path, State},
     routing::{get, post},
@@ -22,7 +26,11 @@ pub fn routes() -> Router<AppState> {
 async fn list_snapshots(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
+    axum::Extension(user): axum::Extension<AuthenticatedUser>,
 ) -> ApiResult<Json<Vec<Snapshot>>> {
+    // Check ownership
+    check_workspace_owner(&state.orchestrator, &workspace_id, &user).await?;
+
     let snapshots = state.orchestrator.list_snapshots(&workspace_id).await?;
     Ok(Json(snapshots))
 }
@@ -31,8 +39,12 @@ async fn list_snapshots(
 async fn create_snapshot(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
+    axum::Extension(user): axum::Extension<AuthenticatedUser>,
     Json(req): Json<CreateSnapshotRequest>,
 ) -> ApiResult<Json<Snapshot>> {
+    // Check ownership
+    check_workspace_owner(&state.orchestrator, &workspace_id, &user).await?;
+
     let snapshot = state
         .orchestrator
         .create_snapshot(&workspace_id, req)
@@ -44,7 +56,11 @@ async fn create_snapshot(
 async fn restore_snapshot(
     State(state): State<AppState>,
     Path((workspace_id, snapshot_id)): Path<(String, String)>,
+    axum::Extension(user): axum::Extension<AuthenticatedUser>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    // Check ownership
+    check_workspace_owner(&state.orchestrator, &workspace_id, &user).await?;
+
     state
         .orchestrator
         .restore_snapshot(&workspace_id, &snapshot_id)

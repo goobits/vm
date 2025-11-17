@@ -21,6 +21,8 @@ pub enum OperationType {
     Stop,
     Restart,
     Rebuild,
+    Snapshot,
+    SnapshotRestore,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
