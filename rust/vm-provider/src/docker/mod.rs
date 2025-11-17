@@ -566,6 +566,26 @@ impl Provider for DockerProvider {
             request.snapshot_path
         );
 
+        // Verify snapshot file exists
+        if !request.snapshot_path.exists() {
+            return Err(VmError::Internal(format!(
+                "Snapshot file not found: {}",
+                request.snapshot_path.display()
+            )));
+        }
+
+        // Verify snapshot file is not empty
+        let metadata = fs::metadata(&request.snapshot_path).map_err(|e| {
+            VmError::Internal(format!("Failed to read snapshot file metadata: {}", e))
+        })?;
+
+        if metadata.len() == 0 {
+            return Err(VmError::Internal(format!(
+                "Snapshot file is empty: {}",
+                request.snapshot_path.display()
+            )));
+        }
+
         // Step 1: Load the image from tar file
         let snapshot_path_str = request
             .snapshot_path
