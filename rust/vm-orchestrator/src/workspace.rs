@@ -388,7 +388,6 @@ impl From<WorkspaceRow> for Workspace {
     }
 }
 
-
 impl From<OperationRow> for crate::operation::Operation {
     fn from(row: OperationRow) -> Self {
         Self {
