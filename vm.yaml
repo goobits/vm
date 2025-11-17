@@ -17,8 +17,6 @@ services:
   postgresql:
     enabled: true
     port: 3129
-  redis:
-    enabled: true
 terminal:
   emoji: 🚀
   show_git_branch: true

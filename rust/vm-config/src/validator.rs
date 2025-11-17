@@ -249,25 +249,30 @@ impl ConfigValidator {
 
         // Check for enabled services without assigned ports
         for (service_name, service) in &config.services {
-            if service.enabled && service.port.is_none() {
-                report.add_error(format!(
-                    "Service '{}' is enabled but has no port specified",
-                    service_name
-                ));
-
-                // Suggest next available port from range
-                if let Some((start, end)) = port_range {
-                    if let Some(suggested_port) = (start..=end).find(|p| !used_ports.contains(p)) {
-                        report.add_fix(SuggestedFix {
-                            field: format!("services.{}.port", service_name),
-                            value: suggested_port.to_string(),
-                            description: format!("Assign available port to {}", service_name),
-                        });
-                        used_ports.push(suggested_port);
-                        used_ports.sort_unstable();
-                    }
-                }
+            if !service.enabled || service.port.is_some() {
+                continue;
             }
+
+            report.add_error(format!(
+                "Service '{}' is enabled but has no port specified",
+                service_name
+            ));
+
+            // Suggest next available port from range
+            let Some((start, end)) = port_range else {
+                continue;
+            };
+            let Some(suggested_port) = (start..=end).find(|p| !used_ports.contains(p)) else {
+                continue;
+            };
+
+            report.add_fix(SuggestedFix {
+                field: format!("services.{}.port", service_name),
+                value: suggested_port.to_string(),
+                description: format!("Assign available port to {}", service_name),
+            });
+            used_ports.push(suggested_port);
+            used_ports.sort_unstable();
         }
 
         // Check for port conflicts

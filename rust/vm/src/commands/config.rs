@@ -39,7 +39,8 @@ fn handle_validate_command() -> VmResult<()> {
             {
                 vm_println!("");
                 for fix in &report.suggested_fixes {
-                    match ConfigOps::set(&fix.field, &fix.value, false, false) {
+                    let values = vec![fix.value.clone()];
+                    match ConfigOps::set(&fix.field, &values, false, false) {
                         Ok(_) => vm_success!("Applied: {} = {}", fix.field, fix.value),
                         Err(e) => warn!("Failed to apply fix for {}: {}", fix.field, e),
                     }
