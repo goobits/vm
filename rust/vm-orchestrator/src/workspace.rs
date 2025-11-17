@@ -45,6 +45,7 @@ pub struct WorkspaceFilters {
     pub status: Option<WorkspaceStatus>,
 }
 
+#[derive(Clone)]
 pub struct WorkspaceOrchestrator {
     pool: SqlitePool,
 }

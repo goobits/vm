@@ -14,7 +14,7 @@ members = [
     "version-sync",
     "vm-package-server",
     "vm-auth-proxy",
-    "vm-docker-registry", "vm-logging", "vm-orchestrator",
+    "vm-docker-registry", "vm-logging", "vm-orchestrator", "vm-api",
 ]
 exclude = [
     "vm-package-server/tests/__fixtures__",
