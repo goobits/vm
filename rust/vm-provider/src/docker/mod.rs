@@ -538,8 +538,12 @@ impl Provider for DockerProvider {
 
         let snapshot_path = snapshot_dir.join(format!("{}.tar", request.snapshot_name));
 
+        let snapshot_path_str = snapshot_path
+            .to_str()
+            .ok_or_else(|| VmError::Internal("Invalid UTF-8 in snapshot path".to_string()))?;
+
         let save_output = std::process::Command::new("docker")
-            .args(["save", "-o", snapshot_path.to_str().unwrap(), &image_tag])
+            .args(["save", "-o", snapshot_path_str, &image_tag])
             .output()
             .map_err(|e| VmError::Internal(format!("Failed to save image: {e}")))?;
 
@@ -563,8 +567,13 @@ impl Provider for DockerProvider {
         );
 
         // Step 1: Load the image from tar file
+        let snapshot_path_str = request
+            .snapshot_path
+            .to_str()
+            .ok_or_else(|| VmError::Internal("Invalid UTF-8 in snapshot path".to_string()))?;
+
         let load_output = std::process::Command::new("docker")
-            .args(["load", "-i", request.snapshot_path.to_str().unwrap()])
+            .args(["load", "-i", snapshot_path_str])
             .output()
             .map_err(|e| VmError::Internal(format!("Failed to load snapshot: {e}")))?;
 

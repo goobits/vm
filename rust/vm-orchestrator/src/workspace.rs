@@ -250,7 +250,9 @@ impl WorkspaceOrchestrator {
         .bind(status)
         .bind(now)
         .bind(provider_id)
-        .bind(connection_info.map(|v| serde_json::to_string(&v).unwrap()))
+        .bind(
+            connection_info.map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "{}".to_string())),
+        )
         .bind(error_message)
         .bind(id)
         .execute(&self.pool)
@@ -1051,8 +1053,8 @@ impl From<WorkspaceRow> for Workspace {
             template: row.template,
             provider: row.provider,
             status: row.status,
-            created_at: DateTime::from_timestamp(row.created_at, 0).unwrap(),
-            updated_at: DateTime::from_timestamp(row.updated_at, 0).unwrap(),
+            created_at: DateTime::from_timestamp(row.created_at, 0).unwrap_or(DateTime::UNIX_EPOCH),
+            updated_at: DateTime::from_timestamp(row.updated_at, 0).unwrap_or(DateTime::UNIX_EPOCH),
             ttl_seconds: row.ttl_seconds,
             expires_at: row
                 .expires_at
@@ -1074,7 +1076,7 @@ impl From<OperationRow> for crate::operation::Operation {
             workspace_id: row.workspace_id,
             operation_type: row.operation_type,
             status: row.status,
-            started_at: DateTime::from_timestamp(row.started_at, 0).unwrap(),
+            started_at: DateTime::from_timestamp(row.started_at, 0).unwrap_or(DateTime::UNIX_EPOCH),
             completed_at: row
                 .completed_at
                 .and_then(|ts| DateTime::from_timestamp(ts, 0)),
@@ -1089,7 +1091,7 @@ impl From<SnapshotRow> for Snapshot {
             id: row.id,
             workspace_id: row.workspace_id,
             name: row.name,
-            created_at: DateTime::from_timestamp(row.created_at, 0).unwrap(),
+            created_at: DateTime::from_timestamp(row.created_at, 0).unwrap_or(DateTime::UNIX_EPOCH),
             size_bytes: row.size_bytes,
             metadata: row.metadata.and_then(|s| serde_json::from_str(&s).ok()),
         }
