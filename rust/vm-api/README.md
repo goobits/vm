@@ -38,12 +38,19 @@ curl -H "x-user: myusername" http://localhost:3000/api/v1/workspaces
 
 ## Endpoints
 
+### Health
 - `GET /health` - Service health check
 - `GET /health/ready` - Readiness check (includes DB connectivity)
-- `GET /api/v1/workspaces` - List workspaces
+
+### Workspaces
+- `GET /api/v1/workspaces` - List workspaces for authenticated user
 - `POST /api/v1/workspaces` - Create workspace
-- `GET /api/v1/workspaces/{id}` - Get workspace
+- `GET /api/v1/workspaces/{id}` - Get workspace details
 - `DELETE /api/v1/workspaces/{id}` - Delete workspace
+
+### Operations
+- `GET /api/v1/operations` - List operations (supports filters: workspace_id, type, status)
+- `GET /api/v1/operations/{id}` - Get operation details
 
 ## Background Tasks
 
@@ -53,4 +60,53 @@ curl -H "x-user: myusername" http://localhost:3000/api/v1/workspaces
 ## Database
 
 SQLite database with automatic migrations on startup.
-Backup created before each migration at: `{db_path}.backup.{timestamp}`
+
+### Automatic Migrations
+
+The service automatically runs database migrations on startup:
+
+1. **Backup**: Before running migrations, the database is automatically backed up
+2. **Migration**: Migrations are applied using sqlx migrations
+3. **Verification**: The service logs successful migration completion
+
+Backup files are created at: `{db_path}.backup.{timestamp}`
+
+### Manual Database Management
+
+#### Viewing Backup Files
+
+```bash
+# List backups
+ls -lh ~/.vm/api/*.backup.*
+
+# Most recent backup
+ls -t ~/.vm/api/*.backup.* | head -1
+```
+
+#### Restoring from Backup
+
+If you need to roll back a migration:
+
+```bash
+# 1. Stop the vm-api service
+pkill vm-api
+
+# 2. Restore from backup
+cp ~/.vm/api/vm.db.backup.{timestamp} ~/.vm/api/vm.db
+
+# 3. Restart the service
+vm-api
+```
+
+#### Migration Safety
+
+- Backups are created automatically before each migration
+- Backups are timestamped (Unix timestamp)
+- Migrations are idempotent and safe to run multiple times
+- Schema changes are tested in integration tests before deployment
+
+### Database Location
+
+Default: `~/.vm/api/vm.db`
+
+Override with: `VM_API_DB_PATH` environment variable
