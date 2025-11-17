@@ -1,12 +1,14 @@
 <script lang="ts">
   import type { Workspace } from '$lib/types/workspace';
   import { listWorkspaces, deleteWorkspace, startWorkspace, stopWorkspace, restartWorkspace } from '$lib/api/workspaces';
+  import SnapshotManager from './SnapshotManager.svelte';
   import { onMount } from 'svelte';
 
   let workspaces: Workspace[] = [];
   let loading = true;
   let error: string | null = null;
   let actionInProgress: Record<string, boolean> = {};
+  let expandedWorkspaces: Record<string, boolean> = {};
 
   async function loadWorkspaces() {
     try {
@@ -80,6 +82,10 @@
     if (!seconds) return 'None';
     const hours = Math.floor(seconds / 3600);
     return `${hours}h`;
+  }
+
+  function toggleSnapshots(id: string) {
+    expandedWorkspaces = { ...expandedWorkspaces, [id]: !expandedWorkspaces[id] };
   }
 
   onMount(() => {
@@ -183,6 +189,12 @@
                   </button>
                 {/if}
                 <button
+                  class="btn-snapshots"
+                  on:click={() => toggleSnapshots(workspace.id)}
+                >
+                  {expandedWorkspaces[workspace.id] ? 'Hide Snapshots' : 'Snapshots'}
+                </button>
+                <button
                   class="btn-delete"
                   on:click={() => handleDelete(workspace.id)}
                   disabled={actionInProgress[workspace.id]}
@@ -192,6 +204,13 @@
               </div>
             </td>
           </tr>
+          {#if expandedWorkspaces[workspace.id]}
+            <tr class="snapshot-row">
+              <td colspan="7">
+                <SnapshotManager workspaceId={workspace.id} />
+              </td>
+            </tr>
+          {/if}
         {/each}
       </tbody>
     </table>
@@ -399,10 +418,35 @@
     background-color: #2563eb;
   }
 
+  .btn-snapshots {
+    background-color: #8b5cf6;
+    color: white;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+
+  .btn-snapshots:hover {
+    background-color: #7c3aed;
+  }
+
   .btn-start:disabled,
   .btn-stop:disabled,
   .btn-restart:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .snapshot-row td {
+    background-color: #f9fafb;
+    padding: 0 !important;
+  }
+
+  .snapshot-row :global(.snapshot-manager) {
+    margin: 1rem;
   }
 </style>

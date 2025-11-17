@@ -12,6 +12,13 @@ export interface Workspace {
   updated_at: string;
   ttl_seconds?: number;
   expires_at?: string;
+  provider_id?: string;
+  connection_info?: {
+    container_id?: string;
+    status?: string;
+    ssh_command?: string;
+  };
+  error_message?: string;
   metadata?: Record<string, unknown>;
 }
 

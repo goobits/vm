@@ -581,40 +581,52 @@ impl WorkspaceOrchestrator {
 
             // Call provider restore in blocking context
             let snapshot_name_clone = snapshot_name.clone();
-            let result = tokio::task::spawn_blocking(move || -> anyhow::Result<String> {
-                let config = build_workspace_config(&workspace_clone)?;
-                let provider = vm_provider::get_provider(config)?;
+            let result = tokio::task::spawn_blocking(
+                move || -> anyhow::Result<(String, serde_json::Value)> {
+                    let config = build_workspace_config(&workspace_clone)?;
+                    let provider = vm_provider::get_provider(config)?;
 
-                // Create restore request
-                let snapshot_path = std::path::PathBuf::from("/tmp/vm-snapshots")
-                    .join(format!("{}.tar", snapshot_name_clone));
+                    // Create restore request
+                    let snapshot_path = std::path::PathBuf::from("/tmp/vm-snapshots")
+                        .join(format!("{}.tar", snapshot_name_clone));
 
-                let restore_request = vm_provider::SnapshotRestoreRequest {
-                    snapshot_name: snapshot_name_clone.clone(),
-                    snapshot_path,
-                    force: true,
-                };
+                    let restore_request = vm_provider::SnapshotRestoreRequest {
+                        snapshot_name: snapshot_name_clone.clone(),
+                        snapshot_path,
+                        force: true,
+                    };
 
-                provider.restore_snapshot(&restore_request)?;
+                    provider.restore_snapshot(&restore_request)?;
 
-                // Get the new container name/ID
-                // For now, we'll use the workspace name + "-restored" as the provider_id
-                let project_name = workspace_clone.name.clone();
-                let new_provider_id = format!("{}-restored", project_name);
+                    // Get the actual container info from provider
+                    let project_name = workspace_clone.name.clone();
+                    let instances = provider.list_instances()?;
+                    let instance_info = instances
+                        .into_iter()
+                        .find(|i| i.name == project_name || i.name.starts_with(&project_name))
+                        .ok_or_else(|| anyhow::anyhow!("Instance not found after restore"))?;
 
-                Ok(new_provider_id)
-            })
+                    // Build connection_info JSON
+                    let connection_info = serde_json::json!({
+                        "container_id": instance_info.id.clone(),
+                        "status": instance_info.status,
+                        "ssh_command": format!("vm ssh {}", project_name),
+                    });
+
+                    Ok((instance_info.id, connection_info))
+                },
+            )
             .await;
 
             match result {
-                Ok(Ok(new_provider_id)) => {
-                    // Success - update workspace with new provider_id and mark as running
+                Ok(Ok((provider_id, connection_info))) => {
+                    // Success - update workspace with new provider_id and connection_info
                     let _ = orchestrator
                         .update_workspace_status(
                             &workspace_id_clone,
                             WorkspaceStatus::Running,
-                            Some(new_provider_id),
-                            None, // Connection info would need to be regenerated
+                            Some(provider_id),
+                            Some(connection_info),
                             None,
                         )
                         .await;
@@ -698,7 +710,6 @@ impl WorkspaceOrchestrator {
         let workspace_id = id.to_string();
         let workspace_clone = workspace.clone();
         let saved_provider_id = workspace.provider_id.clone();
-        let saved_connection_info = workspace.connection_info.clone();
 
         tokio::task::spawn(async move {
             // Update operation to running
@@ -711,23 +722,40 @@ impl WorkspaceOrchestrator {
                 .await;
 
             // Call provider start in blocking context
-            let result = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-                let config = build_workspace_config(&workspace_clone)?;
-                let provider = vm_provider::get_provider(config)?;
-                provider.start(Some(&provider_id))?;
-                Ok(())
-            })
-            .await;
+            let result =
+                tokio::task::spawn_blocking(move || -> anyhow::Result<serde_json::Value> {
+                    let config = build_workspace_config(&workspace_clone)?;
+                    let provider = vm_provider::get_provider(config)?;
+                    provider.start(Some(&provider_id))?;
+
+                    // Get fresh connection info from provider
+                    let project_name = workspace_clone.name.clone();
+                    let instances = provider.list_instances()?;
+                    let instance_info = instances
+                        .into_iter()
+                        .find(|i| i.name == project_name || i.id == provider_id)
+                        .ok_or_else(|| anyhow::anyhow!("Instance not found after start"))?;
+
+                    // Build connection_info JSON
+                    let connection_info = serde_json::json!({
+                        "container_id": instance_info.id,
+                        "status": instance_info.status,
+                        "ssh_command": format!("vm ssh {}", project_name),
+                    });
+
+                    Ok(connection_info)
+                })
+                .await;
 
             match result {
-                Ok(Ok(())) => {
-                    // Success - update workspace and operation
+                Ok(Ok(connection_info)) => {
+                    // Success - update workspace with fresh connection info
                     let _ = orchestrator
                         .update_workspace_status(
                             &workspace_id,
                             WorkspaceStatus::Running,
                             saved_provider_id.clone(),
-                            saved_connection_info.clone(),
+                            Some(connection_info),
                             None,
                         )
                         .await;
@@ -899,7 +927,6 @@ impl WorkspaceOrchestrator {
         let workspace_id = id.to_string();
         let workspace_clone = workspace.clone();
         let saved_provider_id = workspace.provider_id.clone();
-        let saved_connection_info = workspace.connection_info.clone();
 
         tokio::task::spawn(async move {
             // Update operation to running
@@ -912,24 +939,41 @@ impl WorkspaceOrchestrator {
                 .await;
 
             // Call provider stop then start in blocking context
-            let result = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-                let config = build_workspace_config(&workspace_clone)?;
-                let provider = vm_provider::get_provider(config)?;
-                provider.stop(Some(&provider_id))?;
-                provider.start(Some(&provider_id))?;
-                Ok(())
-            })
-            .await;
+            let result =
+                tokio::task::spawn_blocking(move || -> anyhow::Result<serde_json::Value> {
+                    let config = build_workspace_config(&workspace_clone)?;
+                    let provider = vm_provider::get_provider(config)?;
+                    provider.stop(Some(&provider_id))?;
+                    provider.start(Some(&provider_id))?;
+
+                    // Get fresh connection info from provider
+                    let project_name = workspace_clone.name.clone();
+                    let instances = provider.list_instances()?;
+                    let instance_info = instances
+                        .into_iter()
+                        .find(|i| i.name == project_name || i.id == provider_id)
+                        .ok_or_else(|| anyhow::anyhow!("Instance not found after restart"))?;
+
+                    // Build connection_info JSON
+                    let connection_info = serde_json::json!({
+                        "container_id": instance_info.id,
+                        "status": instance_info.status,
+                        "ssh_command": format!("vm ssh {}", project_name),
+                    });
+
+                    Ok(connection_info)
+                })
+                .await;
 
             match result {
-                Ok(Ok(())) => {
-                    // Success - update workspace and operation
+                Ok(Ok(connection_info)) => {
+                    // Success - update workspace with fresh connection info
                     let _ = orchestrator
                         .update_workspace_status(
                             &workspace_id,
                             WorkspaceStatus::Running,
                             saved_provider_id.clone(),
-                            saved_connection_info.clone(),
+                            Some(connection_info),
                             None,
                         )
                         .await;
