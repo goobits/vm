@@ -1,5 +1,6 @@
 pub mod health;
 pub mod operations;
+pub mod snapshots;
 pub mod workspaces;
 
 use crate::{auth::auth_middleware, state::AppState};
@@ -15,7 +16,8 @@ pub async fn create_app(pool: SqlitePool) -> anyhow::Result<Router> {
         .merge(
             workspaces::routes()
                 .merge(operations::routes())
-                .layer(middleware::from_fn(auth_middleware)), // Auth for workspaces and operations
+                .merge(snapshots::routes())
+                .layer(middleware::from_fn(auth_middleware)), // Auth for workspaces, operations, and snapshots
         )
         .layer(TraceLayer::new_for_http())
         .with_state(state);

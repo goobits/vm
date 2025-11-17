@@ -51,6 +51,22 @@ pub struct CreateWorkspaceRequest {
     pub ttl_seconds: Option<i64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Snapshot {
+    pub id: String,
+    pub workspace_id: String,
+    pub name: String,
+    #[serde(serialize_with = "serialize_datetime")]
+    pub created_at: DateTime<Utc>,
+    pub size_bytes: i64,
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateSnapshotRequest {
+    pub name: String,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct WorkspaceFilters {
     pub owner: Option<String>,
@@ -329,6 +345,82 @@ impl WorkspaceOrchestrator {
 
         Ok(rows.into_iter().map(|row| row.into()).collect())
     }
+
+    /// List all snapshots for a workspace
+    pub async fn list_snapshots(&self, workspace_id: &str) -> Result<Vec<Snapshot>> {
+        let rows = sqlx::query_as::<_, SnapshotRow>(
+            "SELECT * FROM snapshots WHERE workspace_id = ? ORDER BY created_at DESC",
+        )
+        .bind(workspace_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.into_iter().map(|row| row.into()).collect())
+    }
+
+    /// Create a new snapshot of a workspace
+    pub async fn create_snapshot(
+        &self,
+        workspace_id: &str,
+        req: CreateSnapshotRequest,
+    ) -> Result<Snapshot> {
+        let id = Uuid::new_v4().to_string();
+        let now = Utc::now();
+
+        sqlx::query(
+            r#"
+            INSERT INTO snapshots (id, workspace_id, name, created_at, size_bytes, metadata)
+            VALUES (?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(&id)
+        .bind(workspace_id)
+        .bind(&req.name)
+        .bind(now.timestamp())
+        .bind(0) // Size will be updated by provider
+        .bind(None::<String>) // Metadata will be added later
+        .execute(&self.pool)
+        .await?;
+
+        Ok(Snapshot {
+            id,
+            workspace_id: workspace_id.to_string(),
+            name: req.name,
+            created_at: now,
+            size_bytes: 0,
+            metadata: None,
+        })
+    }
+
+    /// Restore a workspace from a snapshot
+    pub async fn restore_snapshot(&self, workspace_id: &str, snapshot_id: &str) -> Result<()> {
+        // Verify snapshot exists and belongs to this workspace
+        let _ = sqlx::query_as::<_, SnapshotRow>(
+            "SELECT * FROM snapshots WHERE id = ? AND workspace_id = ?",
+        )
+        .bind(snapshot_id)
+        .bind(workspace_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|_| {
+            OrchestratorError::NotFound(format!(
+                "Snapshot {} not found for workspace {}",
+                snapshot_id, workspace_id
+            ))
+        })?;
+
+        // Update workspace status to indicate restore in progress
+        self.update_workspace_status(
+            workspace_id,
+            WorkspaceStatus::Creating,
+            None,
+            None,
+            Some("Restoring from snapshot".to_string()),
+        )
+        .await?;
+
+        Ok(())
+    }
 }
 
 // Internal row types for sqlx
@@ -360,6 +452,16 @@ struct OperationRow {
     started_at: i64,
     completed_at: Option<i64>,
     error: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+struct SnapshotRow {
+    id: String,
+    workspace_id: String,
+    name: String,
+    created_at: i64,
+    size_bytes: i64,
+    metadata: Option<String>,
 }
 
 impl From<WorkspaceRow> for Workspace {
@@ -400,6 +502,19 @@ impl From<OperationRow> for crate::operation::Operation {
                 .completed_at
                 .and_then(|ts| DateTime::from_timestamp(ts, 0)),
             error: row.error,
+        }
+    }
+}
+
+impl From<SnapshotRow> for Snapshot {
+    fn from(row: SnapshotRow) -> Self {
+        Self {
+            id: row.id,
+            workspace_id: row.workspace_id,
+            name: row.name,
+            created_at: DateTime::from_timestamp(row.created_at, 0).unwrap(),
+            size_bytes: row.size_bytes,
+            metadata: row.metadata.and_then(|s| serde_json::from_str(&s).ok()),
         }
     }
 }
