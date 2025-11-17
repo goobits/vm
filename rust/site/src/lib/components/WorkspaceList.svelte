@@ -1,11 +1,12 @@
 <script lang="ts">
   import type { Workspace } from '$lib/types/workspace';
-  import { listWorkspaces, deleteWorkspace } from '$lib/api/workspaces';
+  import { listWorkspaces, deleteWorkspace, startWorkspace, stopWorkspace, restartWorkspace } from '$lib/api/workspaces';
   import { onMount } from 'svelte';
 
   let workspaces: Workspace[] = [];
   let loading = true;
   let error: string | null = null;
+  let actionInProgress: Record<string, boolean> = {};
 
   async function loadWorkspaces() {
     try {
@@ -25,10 +26,49 @@
     }
 
     try {
+      actionInProgress[id] = true;
       await deleteWorkspace(id);
       await loadWorkspaces(); // Refresh list
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Failed to delete workspace');
+    } finally {
+      actionInProgress[id] = false;
+    }
+  }
+
+  async function handleStart(id: string) {
+    try {
+      actionInProgress[id] = true;
+      await startWorkspace(id);
+      await loadWorkspaces(); // Refresh list
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Failed to start workspace');
+    } finally {
+      actionInProgress[id] = false;
+    }
+  }
+
+  async function handleStop(id: string) {
+    try {
+      actionInProgress[id] = true;
+      await stopWorkspace(id);
+      await loadWorkspaces(); // Refresh list
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Failed to stop workspace');
+    } finally {
+      actionInProgress[id] = false;
+    }
+  }
+
+  async function handleRestart(id: string) {
+    try {
+      actionInProgress[id] = true;
+      await restartWorkspace(id);
+      await loadWorkspaces(); // Refresh list
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Failed to restart workspace');
+    } finally {
+      actionInProgress[id] = false;
     }
   }
 
@@ -116,13 +156,40 @@
             <td class="text-sm">{formatDate(workspace.created_at)}</td>
             <td>{formatTTL(workspace.ttl_seconds)}</td>
             <td>
-              <button
-                class="btn-delete"
-                on:click={() => handleDelete(workspace.id)}
-                disabled={loading}
-              >
-                Delete
-              </button>
+              <div class="actions">
+                {#if workspace.status === 'stopped'}
+                  <button
+                    class="btn-start"
+                    on:click={() => handleStart(workspace.id)}
+                    disabled={actionInProgress[workspace.id]}
+                  >
+                    {actionInProgress[workspace.id] ? 'Starting...' : 'Start'}
+                  </button>
+                {/if}
+                {#if workspace.status === 'running'}
+                  <button
+                    class="btn-stop"
+                    on:click={() => handleStop(workspace.id)}
+                    disabled={actionInProgress[workspace.id]}
+                  >
+                    {actionInProgress[workspace.id] ? 'Stopping...' : 'Stop'}
+                  </button>
+                  <button
+                    class="btn-restart"
+                    on:click={() => handleRestart(workspace.id)}
+                    disabled={actionInProgress[workspace.id]}
+                  >
+                    {actionInProgress[workspace.id] ? 'Restarting...' : 'Restart'}
+                  </button>
+                {/if}
+                <button
+                  class="btn-delete"
+                  on:click={() => handleDelete(workspace.id)}
+                  disabled={actionInProgress[workspace.id]}
+                >
+                  {actionInProgress[workspace.id] ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
             </td>
           </tr>
         {/each}
@@ -285,5 +352,57 @@
 
   .text-gray-400 {
     color: #9ca3af;
+  }
+
+  .actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .btn-start,
+  .btn-stop,
+  .btn-restart {
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+
+  .btn-start {
+    background-color: #10b981;
+    color: white;
+  }
+
+  .btn-start:hover:not(:disabled) {
+    background-color: #059669;
+  }
+
+  .btn-stop {
+    background-color: #f59e0b;
+    color: white;
+  }
+
+  .btn-stop:hover:not(:disabled) {
+    background-color: #d97706;
+  }
+
+  .btn-restart {
+    background-color: #3b82f6;
+    color: white;
+  }
+
+  .btn-restart:hover:not(:disabled) {
+    background-color: #2563eb;
+  }
+
+  .btn-start:disabled,
+  .btn-stop:disabled,
+  .btn-restart:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 </style>

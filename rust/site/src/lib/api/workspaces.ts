@@ -57,3 +57,36 @@ export async function deleteWorkspace(id: string): Promise<void> {
     throw new Error(`Failed to delete workspace: ${response.statusText}`);
   }
 }
+
+export async function startWorkspace(id: string): Promise<Workspace> {
+  const response = await fetch(`${API_BASE}/workspaces/${id}/start`, {
+    method: 'POST',
+    headers: {
+      'x-user': 'testuser', // Phase 1: mock auth
+    },
+  });
+
+  return handleResponse(response);
+}
+
+export async function stopWorkspace(id: string): Promise<Workspace> {
+  const response = await fetch(`${API_BASE}/workspaces/${id}/stop`, {
+    method: 'POST',
+    headers: {
+      'x-user': 'testuser', // Phase 1: mock auth
+    },
+  });
+
+  return handleResponse(response);
+}
+
+export async function restartWorkspace(id: string): Promise<Workspace> {
+  const response = await fetch(`${API_BASE}/workspaces/${id}/restart`, {
+    method: 'POST',
+    headers: {
+      'x-user': 'testuser', // Phase 1: mock auth
+    },
+  });
+
+  return handleResponse(response);
+}
