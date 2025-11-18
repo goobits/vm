@@ -1,28 +1,8 @@
 # Vibe Development Preset
-# Uses pre-built @vibe-box snapshot when available (Docker provider)
-# Falls back to installing packages from scratch for first-time users or other providers
-# (Node.js, Python, Rust, Playwright, AI CLI tools, common utilities)
+# Uses pre-built @vibe-box snapshot (contains all tools pre-installed)
 
-# Reference pre-built vibe-box snapshot (Docker fast path when available)
+# Reference pre-built vibe-box snapshot
 vm_box: '@vibe-box'
-
-# Package declarations (installed if not already present in snapshot)
-# For Docker with @vibe-box: smart checks skip these (already installed)
-# For Docker without snapshot: installs from scratch
-# For Tart: installs as normal
-packages:
-  - tree
-  - ripgrep
-  - unzip
-  - htop
-
-npm_packages:
-  - '@anthropic-ai/claude-code'
-  - '@google/gemini-cli'
-  - '@openai/codex'
-
-pip_packages:
-  - anthropic
 
 # Shell aliases for quick AI tool access
 aliases:
@@ -34,3 +14,8 @@ aliases:
 host_sync:
   git_config: true
   ai_tools: true  # Enable all AI tools (claude, gemini, codex, cursor, aider)
+
+# Network configuration
+networking:
+  networks:
+    - spacebase

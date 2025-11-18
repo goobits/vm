@@ -131,6 +131,24 @@ impl PresetDetector {
                 ..Default::default()
             });
 
+            // Deserialize networking from YAML value if present
+            let networking = content
+                .networking
+                .as_ref()
+                .and_then(|v| serde_yaml_ng::from_value(v.clone()).ok());
+
+            // Deserialize host_sync from YAML value if present
+            let host_sync = content
+                .host_sync
+                .as_ref()
+                .and_then(|v| serde_yaml_ng::from_value(v.clone()).ok());
+
+            // Deserialize terminal from YAML value if present
+            let terminal = content
+                .terminal
+                .as_ref()
+                .and_then(|v| serde_yaml_ng::from_value(v.clone()).ok());
+
             let config = VmConfig {
                 apt_packages: content.packages,
                 npm_packages: content.npm_packages,
@@ -140,6 +158,9 @@ impl PresetDetector {
                 aliases,
                 services,
                 vm,
+                networking,
+                host_sync,
+                terminal,
                 ..Default::default()
             };
 
@@ -149,7 +170,7 @@ impl PresetDetector {
         Ok(None)
     }
 
-    /// Get list of available presets
+    /// Get list of available presets (provision presets only, excludes box presets)
     pub fn list_presets(&self) -> Result<Vec<String>> {
         let mut presets = Vec::new();
 
@@ -158,7 +179,7 @@ impl PresetDetector {
             presets.push(name.to_string());
         }
 
-        // Add plugin presets
+        // Add plugin presets (filter out box presets)
         if let Ok(plugin_presets) = self.get_plugin_presets() {
             for name in plugin_presets {
                 if !presets.contains(&name) {
@@ -193,7 +214,7 @@ impl PresetDetector {
         Ok(presets)
     }
 
-    /// Get list of presets from plugins
+    /// Get list of presets from plugins (provision presets only, excludes box presets)
     fn get_plugin_presets(&self) -> Result<Vec<String>> {
         let plugins = match vm_plugin::discover_plugins() {
             Ok(p) => p,
@@ -202,10 +223,68 @@ impl PresetDetector {
 
         let preset_names = vm_plugin::get_preset_plugins(&plugins)
             .into_iter()
+            .filter(|p| {
+                // Filter out box presets - only include provision presets
+                if let Some(category) = &p.info.preset_category {
+                    category != &vm_plugin::PresetCategory::Box
+                } else {
+                    // If category not specified, check preset content
+                    if let Ok(content) = vm_plugin::load_preset_content(p) {
+                        content.category != vm_plugin::PresetCategory::Box
+                    } else {
+                        true // Include if we can't determine category
+                    }
+                }
+            })
             .map(|p| p.info.name.clone())
             .collect();
 
         Ok(preset_names)
+    }
+
+    /// Get list of all available presets (including both box and provision presets)
+    pub fn list_all_presets(&self) -> Result<Vec<String>> {
+        let mut presets = Vec::new();
+
+        // Add embedded presets
+        for name in crate::embedded_presets::get_preset_names() {
+            presets.push(name.to_string());
+        }
+
+        // Add ALL plugin presets (no filtering)
+        if let Ok(plugins) = vm_plugin::discover_plugins() {
+            for plugin in vm_plugin::get_preset_plugins(&plugins) {
+                let name = plugin.info.name.clone();
+                if !presets.contains(&name) {
+                    presets.push(name);
+                }
+            }
+        }
+
+        // Add file system presets (if presets dir exists)
+        if self.presets_dir.exists() {
+            let pattern = self
+                .presets_dir
+                .join("*.yaml")
+                .to_string_lossy()
+                .to_string();
+            for path in glob(&pattern)
+                .map_err(|e| VmError::Filesystem(format!("Glob pattern error: {e}")))?
+                .flatten()
+            {
+                let Some(stem) = path.file_stem() else {
+                    continue;
+                };
+
+                let name = stem.to_string_lossy().to_string();
+                if !presets.contains(&name) {
+                    presets.push(name);
+                }
+            }
+        }
+
+        presets.sort();
+        Ok(presets)
     }
 
     /// Get description for a preset (from plugin or embedded)

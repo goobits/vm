@@ -137,9 +137,15 @@ RUN if id -u ${PROJECT_USER} >/dev/null 2>&1; then \
 # Install NVM with proper permissions
 # Note: install -d runs as root and creates directory with specified ownership
 # This handles snapshots where /home/developer may have different UID/GID
-RUN --mount=type=cache,target=/home/${PROJECT_USER}/.nvm/.cache,uid=${PROJECT_UID},gid=${PROJECT_GID} \
+RUN --mount=type=cache,target=/home/${PROJECT_USER}/.nvm/.cache \
+    # Remove any existing .nvm from snapshot to avoid UID conflicts \
+    rm -rf /home/${PROJECT_USER}/.nvm && \
     mkdir -p /home/${PROJECT_USER}/.nvm && \
     chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER}/.nvm && \
+    # Fix cache permissions if they exist from a different UID \
+    if [ -d "/home/${PROJECT_USER}/.nvm/.cache" ]; then \
+        chown -R ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER}/.nvm/.cache 2>/dev/null || true; \
+    fi && \
     su - ${PROJECT_USER} -c 'if [ ! -s "$HOME/.nvm/nvm.sh" ]; then curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/'${NVM_VERSION}'/install.sh" | bash; fi && export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && (nvm list | grep -q "v'${NODE_VERSION}'" || nvm install '${NODE_VERSION}') && nvm use '${NODE_VERSION}' && nvm alias default '${NODE_VERSION}' && corepack enable && corepack prepare pnpm@'${PNPM_VERSION}' --activate'
 
 # --- Git Configuration ---
@@ -153,10 +159,14 @@ RUN if [ -n "${GIT_USER_NAME}" ]; then git config --global user.name "${GIT_USER
     if [ -n "${GIT_CORE_EDITOR}" ]; then git config --global core.editor "${GIT_CORE_EDITOR}"; fi && \
     if [ -n "${GIT_CORE_EXCLUDESFILE_CONTENT}" ]; then echo "${GIT_CORE_EXCLUDESFILE_CONTENT}" > /home/${PROJECT_USER}/.gitignore_global && git config --global core.excludesfile /home/${PROJECT_USER}/.gitignore_global; fi
 
-RUN --mount=type=cache,target=/home/${PROJECT_USER}/.rustup,uid=${PROJECT_UID},gid=${PROJECT_GID} \
+RUN --mount=type=cache,target=/home/${PROJECT_USER}/.rustup \
     if [ -n "${CARGO_PACKAGES}" ]; then \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_VERSION} --no-modify-path; \
-fi
+        # Fix cache permissions if they exist from a different UID \
+        if [ -d "/home/${PROJECT_USER}/.rustup" ]; then \
+            find "/home/${PROJECT_USER}/.rustup" ! -user ${PROJECT_UID} -exec chown ${PROJECT_UID}:${PROJECT_GID} {} + 2>/dev/null || true; \
+        fi && \
+        su - ${PROJECT_USER} -c 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_VERSION} --no-modify-path'; \
+    fi
 
 RUN if [ -n "${PIPX_PACKAGES}" ]; then \
     python3 -m pip install --user --break-system-packages pipx; \
@@ -331,13 +341,17 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
             echo "All APT packages already installed"; \
         fi; \
     fi
-USER ${PROJECT_USER}
 
 # NPM Package Installation
-RUN --mount=type=cache,target=/home/${PROJECT_USER}/.npm,uid=${PROJECT_UID},gid=${PROJECT_GID} \
+# Note: Run as root first to fix cache permissions, then switch to user for npm install
+RUN --mount=type=cache,target=/home/${PROJECT_USER}/.npm \
     if [ -n "${NPM_PACKAGES}" ]; then \
         echo "Checking NPM packages: ${NPM_PACKAGES}"; \
-        . "$NVM_DIR/nvm.sh" && \
+        # Fix cache permissions if they exist from a different UID \
+        if [ -d "/home/${PROJECT_USER}/.npm" ]; then \
+            find "/home/${PROJECT_USER}/.npm" ! -user ${PROJECT_UID} -exec chown ${PROJECT_UID}:${PROJECT_GID} {} + 2>/dev/null || true; \
+        fi && \
+        su - ${PROJECT_USER} -c '. "$NVM_DIR/nvm.sh" && \
         for pkg in ${NPM_PACKAGES}; do \
             if ! npm list -g --depth=0 "$pkg" >/dev/null 2>&1; then \
                 echo "Installing $pkg..."; \
@@ -345,29 +359,43 @@ RUN --mount=type=cache,target=/home/${PROJECT_USER}/.npm,uid=${PROJECT_UID},gid=
             else \
                 echo "Skipping $pkg (already installed)"; \
             fi; \
-        done; \
+        done'; \
     fi
+USER ${PROJECT_USER}
 
 # Python Package Installation
-RUN --mount=type=cache,target=/home/${PROJECT_USER}/.cache/pip,uid=${PROJECT_UID},gid=${PROJECT_GID} \
+# Note: Run as root first to fix cache permissions, then switch to user for pip install
+RUN --mount=type=cache,target=/home/${PROJECT_USER}/.cache/pip \
     if [ -n "${PIP_PACKAGES}" ]; then \
         echo "Checking Python packages: ${PIP_PACKAGES}"; \
-        for pkg in ${PIP_PACKAGES}; do \
+        # Fix cache permissions if they exist from a different UID \
+        if [ -d "/home/${PROJECT_USER}/.cache/pip" ]; then \
+            find "/home/${PROJECT_USER}/.cache/pip" ! -user ${PROJECT_UID} -exec chown ${PROJECT_UID}:${PROJECT_GID} {} + 2>/dev/null || true; \
+        fi && \
+        su - ${PROJECT_USER} -c 'for pkg in ${PIP_PACKAGES}; do \
             if ! pip3 show "$pkg" >/dev/null 2>&1; then \
                 echo "Installing $pkg..."; \
                 pip3 install --user --break-system-packages "$pkg"; \
             else \
                 echo "Skipping $pkg (already installed)"; \
             fi; \
-        done; \
+        done'; \
     fi
 
 # Cargo Package Installation
-RUN --mount=type=cache,target=/home/${PROJECT_USER}/.cargo/registry,uid=${PROJECT_UID},gid=${PROJECT_GID} \
-    --mount=type=cache,target=/home/${PROJECT_USER}/.cargo/git,uid=${PROJECT_UID},gid=${PROJECT_GID} \
+# Note: Run as root first to fix cache permissions, then switch to user for cargo install
+RUN --mount=type=cache,target=/home/${PROJECT_USER}/.cargo/registry \
+    --mount=type=cache,target=/home/${PROJECT_USER}/.cargo/git \
     if [ -n "${CARGO_PACKAGES}" ]; then \
         echo "Installing Cargo packages: ${CARGO_PACKAGES}"; \
-        . "$HOME/.cargo/env" && \
+        # Fix cache permissions if they exist from a different UID \
+        if [ -d "/home/${PROJECT_USER}/.cargo/registry" ]; then \
+            find "/home/${PROJECT_USER}/.cargo/registry" ! -user ${PROJECT_UID} -exec chown ${PROJECT_UID}:${PROJECT_GID} {} + 2>/dev/null || true; \
+        fi && \
+        if [ -d "/home/${PROJECT_USER}/.cargo/git" ]; then \
+            find "/home/${PROJECT_USER}/.cargo/git" ! -user ${PROJECT_UID} -exec chown ${PROJECT_UID}:${PROJECT_GID} {} + 2>/dev/null || true; \
+        fi && \
+        su - ${PROJECT_USER} -c '. "$HOME/.cargo/env" && \
         for pkg in ${CARGO_PACKAGES}; do \
             if ! cargo install --list | grep -q "^${pkg} "; then \
                 echo "Installing ${pkg}..."; \

@@ -3,3 +3,4 @@ version: 1.0.0
 description: Vibe Development - Enhanced workflow with Claude integration
 author: VM Tool Team
 plugin_type: preset
+preset_category: box

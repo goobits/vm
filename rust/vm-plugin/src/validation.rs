@@ -559,6 +559,7 @@ mod tests {
             description: Some("Test plugin".to_string()),
             author: Some("Test Author".to_string()),
             plugin_type: PluginType::Preset,
+            preset_category: None,
         };
 
         let info_content = serde_yaml_ng::to_string(&info)?;

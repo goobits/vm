@@ -157,8 +157,9 @@ pub fn init_config_file(
     file_path: Option<PathBuf>,
     services: Option<String>,
     ports: Option<u16>,
+    preset: Option<String>,
 ) -> Result<()> {
-    commands::init::execute(file_path, services, ports)
+    commands::init::execute(file_path, services, ports, preset)
 }
 
 /// Execute a CLI command with the provided arguments.
@@ -235,7 +236,7 @@ fn execute_project_command(cmd: ProjectCmd) -> Result<()> {
             file,
             services,
             ports,
-        } => ProjectOpsGroup::execute_init(file, services, ports),
+        } => ProjectOpsGroup::execute_init(file, services, ports, None),
         ProjectCmd::Preset {
             dir,
             presets_dir,

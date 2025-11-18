@@ -15,7 +15,9 @@ use vm_messages::messages::MESSAGES;
 // Local module imports
 use crate::config::VmConfig;
 use crate::ports::{PortRange, PortRegistry};
+use crate::preset::PresetDetector;
 use crate::yaml::core::CoreOperations;
+use vm_plugin::PresetCategory;
 
 // Compile regex patterns once at initialization for better performance
 static INVALID_CHARS_RE: OnceLock<Regex> = OnceLock::new();
@@ -39,6 +41,7 @@ pub fn execute(
     file_path: Option<PathBuf>,
     services: Option<String>,
     ports: Option<u16>,
+    preset: Option<String>,
 ) -> Result<()> {
     // Determine target path
     let target_path = determine_target_path(file_path)?;
@@ -54,7 +57,13 @@ pub fn execute(
     let sanitized_name = sanitize_project_name(&current_dir)?;
 
     // Load and customize config
-    let mut config = build_initial_config(&sanitized_name)?;
+    let mut config = if let Some(preset_name) = preset {
+        // Initialize with preset
+        build_config_from_preset(&sanitized_name, &preset_name)?
+    } else {
+        // Use default initialization
+        build_initial_config(&sanitized_name)?
+    };
 
     // Allocate and register ports
     allocate_and_register_ports(&mut config, &sanitized_name, &current_dir)?;
@@ -195,6 +204,147 @@ fn build_initial_config(sanitized_name: &str) -> Result<VmConfig> {
     }
 
     Ok(config)
+}
+
+/// Build config from a preset
+fn build_config_from_preset(sanitized_name: &str, preset_name: &str) -> Result<VmConfig> {
+    use crate::paths;
+    use crate::preset::PresetDetector;
+
+    // Load the preset
+    let presets_dir = paths::get_presets_dir();
+    let project_dir = std::env::current_dir()?;
+    let detector = PresetDetector::new(project_dir, presets_dir);
+
+    // Check if preset exists (using list_all_presets to include box presets)
+    let available_presets = detector.list_all_presets()?;
+    if !available_presets.contains(&preset_name.to_string()) {
+        return Err(VmError::Config(format!(
+            "Preset '{}' not found. Available presets: {}",
+            preset_name,
+            available_presets.join(", ")
+        )));
+    }
+
+    // Get preset category
+    let preset_category = get_preset_category(&detector, preset_name)?;
+
+    match preset_category {
+        PresetCategory::Box => {
+            // For box presets, create minimal config with just box reference
+            info!("🎁 Using box preset '{}'", preset_name);
+            build_minimal_box_config(sanitized_name, preset_name, &detector)
+        }
+        PresetCategory::Provision => {
+            // For provision presets, merge packages and services
+            info!("📦 Using provision preset '{}'", preset_name);
+            build_config_with_provision_preset(sanitized_name, preset_name, &detector)
+        }
+    }
+}
+
+/// Get the category of a preset
+fn get_preset_category(detector: &PresetDetector, preset_name: &str) -> Result<PresetCategory> {
+    // Try to get category from plugin metadata
+    if let Ok(plugins) = vm_plugin::discover_plugins() {
+        for plugin in plugins {
+            if plugin.info.plugin_type == vm_plugin::PluginType::Preset
+                && plugin.info.name == preset_name
+            {
+                // Check if plugin info has preset_category
+                if let Some(category) = &plugin.info.preset_category {
+                    return Ok(category.clone());
+                }
+                // If not specified in plugin metadata, try preset content
+                if let Ok(content) = vm_plugin::load_preset_content(&plugin) {
+                    return Ok(content.category.clone());
+                }
+            }
+        }
+    }
+
+    // Fallback: if preset has vm_box field, assume it's a box preset
+    let preset_config = detector.load_preset(preset_name)?;
+    if preset_config
+        .vm
+        .as_ref()
+        .and_then(|vm| vm.r#box.as_ref())
+        .is_some()
+    {
+        Ok(PresetCategory::Box)
+    } else {
+        Ok(PresetCategory::Provision)
+    }
+}
+
+/// Build minimal config for box preset
+fn build_minimal_box_config(
+    sanitized_name: &str,
+    preset_name: &str,
+    detector: &PresetDetector,
+) -> Result<VmConfig> {
+    // Load preset to get box reference
+    let preset_config = detector.load_preset(preset_name)?;
+
+    // Start with default config
+    let mut config = build_initial_config(sanitized_name)?;
+
+    // Copy only the box reference from preset
+    if let Some(preset_vm) = preset_config.vm {
+        if let Some(box_spec) = preset_vm.r#box {
+            if config.vm.is_none() {
+                config.vm = Some(crate::config::VmSettings::default());
+            }
+            if let Some(vm_settings) = config.vm.as_mut() {
+                vm_settings.r#box = Some(box_spec);
+            }
+        }
+    }
+
+    // Merge preset configuration (networking, aliases, terminal, host_sync, etc.)
+    // Don't merge: packages, versions (they're in the box)
+    if let Some(networking) = preset_config.networking {
+        config.networking = Some(networking);
+    }
+    if !preset_config.aliases.is_empty() {
+        config.aliases = preset_config.aliases;
+    }
+    if let Some(terminal) = preset_config.terminal {
+        config.terminal = Some(terminal);
+    }
+    if let Some(host_sync) = preset_config.host_sync {
+        config.host_sync = Some(host_sync);
+    }
+
+    // Clear packages/versions - they come from the box/preset at runtime
+    config.versions = None;
+    config.apt_packages.clear();
+    config.npm_packages.clear();
+    config.pip_packages.clear();
+    config.cargo_packages.clear();
+
+    Ok(config)
+}
+
+/// Build config with provision preset merged in
+fn build_config_with_provision_preset(
+    sanitized_name: &str,
+    preset_name: &str,
+    detector: &PresetDetector,
+) -> Result<VmConfig> {
+    use crate::merge::ConfigMerger;
+
+    // Start with default config
+    let base_config = build_initial_config(sanitized_name)?;
+
+    // Load and merge preset
+    let preset_config = detector.load_preset(preset_name)?;
+    let mut merged_config = ConfigMerger::new(base_config).merge(preset_config)?;
+
+    // Set preset reference
+    merged_config.preset = Some(preset_name.to_string());
+
+    Ok(merged_config)
 }
 
 /// Allocate and register ports for the project

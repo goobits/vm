@@ -120,7 +120,7 @@ fn apply_preset_to_config(
         if !config_existed {
             vm_println!("⚠️  No vm.yaml found. Initializing project first...");
             vm_println!("");
-            crate::cli::init_config_file(Some(config_path.clone()), None, None)?;
+            crate::cli::init_config_file(Some(config_path.clone()), None, None, None)?;
             vm_println!("");
             called_init = true;
         }

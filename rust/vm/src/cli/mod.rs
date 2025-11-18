@@ -477,6 +477,9 @@ pub enum Command {
         /// Starting port for service allocation (allocates sequential ports)
         #[arg(long)]
         ports: Option<u16>,
+
+        /// Preset to use for initialization (e.g., vibe, nodejs, python, rust)
+        preset: Option<String>,
     },
     /// Run health checks and diagnostics
     #[command(about = "Check system dependencies, configuration, and service health")]
@@ -733,9 +736,15 @@ mod tests {
             "docker,redis",
         ]);
         match args.command {
-            Command::Init { file, services, .. } => {
+            Command::Init {
+                file,
+                services,
+                preset,
+                ..
+            } => {
                 assert_eq!(file, Some(std::path::PathBuf::from("/tmp/vm.yaml")));
                 assert_eq!(services, Some("docker,redis".to_string()));
+                assert_eq!(preset, None);
             }
             _ => panic!("Expected Command::Init"),
         }

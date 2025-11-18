@@ -34,7 +34,8 @@ impl ProjectOpsGroup {
         file: Option<PathBuf>,
         services: Option<String>,
         ports: Option<u16>,
+        preset: Option<String>,
     ) -> Result<()> {
-        commands::init::execute(file, services, ports)
+        commands::init::execute(file, services, ports, preset)
     }
 }

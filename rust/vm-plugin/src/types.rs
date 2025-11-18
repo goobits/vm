@@ -1,6 +1,15 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// Preset category type
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum PresetCategory {
+    Box,
+    #[default]
+    Provision,
+}
+
 /// Plugin metadata (stored in plugin.yaml)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginInfo {
@@ -9,6 +18,8 @@ pub struct PluginInfo {
     pub description: Option<String>,
     pub author: Option<String>,
     pub plugin_type: PluginType,
+    #[serde(default)]
+    pub preset_category: Option<PresetCategory>,
 }
 
 /// Plugin type discriminator
@@ -55,6 +66,18 @@ pub struct PresetContent {
 
     #[serde(default)]
     pub provision: Vec<String>,
+
+    #[serde(default)]
+    pub category: PresetCategory,
+
+    #[serde(default)]
+    pub networking: Option<serde_yaml_ng::Value>,
+
+    #[serde(default)]
+    pub host_sync: Option<serde_yaml_ng::Value>,
+
+    #[serde(default)]
+    pub terminal: Option<serde_yaml_ng::Value>,
 }
 
 /// Service content (stored in service.yaml)
@@ -177,5 +200,42 @@ depends_on:
 
         assert!(preset_yaml.contains("preset"));
         assert!(service_yaml.contains("service"));
+    }
+
+    #[test]
+    fn test_deserialize_preset_with_networking_host_sync_terminal() {
+        let yaml = r#"
+packages:
+  - curl
+networking:
+  networks:
+    - spacebase
+host_sync:
+  git_config: true
+  ai_tools: true
+terminal:
+  shell: /bin/zsh
+  theme: dracula
+"#;
+        let content: PresetContent = serde_yaml_ng::from_str(yaml)
+            .expect("should deserialize preset content with new fields");
+        assert_eq!(content.packages.len(), 1);
+        assert!(content.networking.is_some());
+        assert!(content.host_sync.is_some());
+        assert!(content.terminal.is_some());
+
+        // Verify networking structure
+        let networking = content.networking.unwrap();
+        assert!(networking.get("networks").is_some());
+
+        // Verify host_sync structure
+        let host_sync = content.host_sync.unwrap();
+        assert!(host_sync.get("git_config").is_some());
+        assert!(host_sync.get("ai_tools").is_some());
+
+        // Verify terminal structure
+        let terminal = content.terminal.unwrap();
+        assert!(terminal.get("shell").is_some());
+        assert!(terminal.get("theme").is_some());
     }
 }

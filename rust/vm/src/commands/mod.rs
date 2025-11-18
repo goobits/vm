@@ -51,9 +51,11 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             file,
             services,
             ports,
+            preset,
         } => {
             debug!("Handling init command");
-            init::handle_init(file.clone(), services.clone(), *ports).map_err(VmError::from)
+            init::handle_init(file.clone(), services.clone(), *ports, preset.clone())
+                .map_err(VmError::from)
         }
         Command::Config { command } => {
             debug!("Calling ConfigOps methods directly");
