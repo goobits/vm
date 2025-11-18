@@ -1,5 +1,6 @@
 // External crates
 use serde_yaml_ng as serde_yaml;
+use tracing::instrument;
 
 // Internal imports
 use crate::config::VmConfig;
@@ -33,7 +34,7 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
 
 /// List all available presets
 fn list_presets(detector: &PresetDetector) -> Result<()> {
-    let presets = detector.list_presets()?;
+    let presets = detector.list_presets_cached()?;
     vm_println!("{}", MESSAGES.config.available_presets);
     for preset in presets {
         let description = detector
@@ -51,7 +52,7 @@ fn list_presets(detector: &PresetDetector) -> Result<()> {
 
 /// Show a specific preset configuration
 fn show_preset(detector: &PresetDetector, name: &str) -> Result<()> {
-    let preset_config = detector.load_preset(name)?;
+    let preset_config = detector.load_preset_cached(name)?;
     let yaml = serde_yaml::to_string(&preset_config)?;
     vm_println!("📋 Preset '{}' configuration:\n", name);
     vm_println!("{}", yaml);
@@ -60,6 +61,7 @@ fn show_preset(detector: &PresetDetector, name: &str) -> Result<()> {
 }
 
 /// Apply preset(s) to configuration
+#[instrument(skip(detector), fields(preset_names = %preset_names, global = %global))]
 fn apply_preset_to_config(
     detector: &PresetDetector,
     preset_names: &str,
@@ -67,7 +69,7 @@ fn apply_preset_to_config(
 ) -> Result<()> {
     // Validate all presets exist BEFORE attempting to initialize/modify config
     let preset_list: Vec<&str> = preset_names.split(',').map(|s| s.trim()).collect();
-    let available_presets = detector.list_presets()?;
+    let available_presets = detector.list_presets_cached()?;
     let mut missing_presets = Vec::new();
 
     for preset_name in &preset_list {

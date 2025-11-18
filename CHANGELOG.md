@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.4.1] - 2025-11-18
+
+### Added
+
+- **Comprehensive API & Web UI Documentation**
+  - Complete quickstart guide with curl examples and UI walkthrough
+  - Updated proposal files with implementation status and usage instructions
+  - Step-by-step local development setup guide
+  - Production deployment instructions
+
+- **Two-Tier Preset System**: Clean separation between box and provision presets
+  - Box presets: Pre-built snapshots (e.g., `@vibe-box`) for instant provisioning
+  - Provision presets: Runtime package installation for customization
+  - `PresetCategory` enum distinguishes preset types
+  - `vm config preset --list`: Only shows provision presets (filters out box presets)
+  - `vm init <preset>`: Accepts both box and provision presets
+  - Box preset initialization creates minimal vm.yaml with box reference only
+  - No duplicate package declarations when using box presets
+
+### Fixed
+
+- **Port Configuration**: Aligned with vm.yaml exposed port range (3120-3129)
+  - API service now defaults to port 3121 (was 3000)
+  - Web UI on port 3120 with automatic proxy to API on 3121
+  - Both services accessible from host machine (bound to 0.0.0.0)
+
+- **Preset Discovery**: Box presets properly filtered from config operations
+  - Prevents confusion when listing available provision presets
+  - Box presets remain available for `vm init` command
+
+### Changed
+
+- API and Web UI documentation consolidated in `proposals/` directory
+- Vibe preset marked as `preset_category: box` for proper classification
+- Preset content enhanced with networking, host_sync, and terminal fields
+
 ## [4.4.0] - 2025-11-17
 
 ### Added

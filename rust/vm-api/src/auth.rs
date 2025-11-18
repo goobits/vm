@@ -1,5 +1,6 @@
 use crate::error::ApiError;
 use axum::{extract::Request, http::StatusCode, middleware::Next, response::Response};
+use tracing::instrument;
 use vm_orchestrator::WorkspaceOrchestrator;
 
 #[derive(Clone, Debug)]
@@ -45,6 +46,7 @@ pub async fn auth_middleware(mut req: Request, next: Next) -> Result<Response, S
 /// Returns Ok if the user owns the workspace, otherwise returns:
 /// - ApiError::NotFound if the workspace doesn't exist
 /// - ApiError::Forbidden if the workspace exists but the user is not the owner
+#[instrument(skip(orchestrator), fields(workspace_id = %workspace_id, user = %user.username))]
 pub async fn check_workspace_owner(
     orchestrator: &WorkspaceOrchestrator,
     workspace_id: &str,

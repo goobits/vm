@@ -89,7 +89,7 @@ pub(crate) fn load_preset_with_placeholders(
             });
 
             if plugin_preset.is_some() {
-                let original_config = detector.load_preset(preset_name)?;
+                let original_config = detector.load_preset_cached(preset_name)?;
                 let Some(port_range_str) = port_range_str else {
                     return Ok(original_config);
                 };
@@ -102,7 +102,7 @@ pub(crate) fn load_preset_with_placeholders(
         if let Some(content) = crate::embedded_presets::get_preset_content(preset_name) {
             content.to_string()
         } else {
-            let original_config = detector.load_preset(preset_name)?;
+            let original_config = detector.load_preset_cached(preset_name)?;
 
             let Some(port_range_str) = port_range_str else {
                 return Ok(original_config);

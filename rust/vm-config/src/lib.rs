@@ -8,6 +8,22 @@
 //! - Configuration merging and preset management
 //! - CLI utilities for configuration initialization
 //! - Resource management utilities
+//!
+//! ## Preset System
+//!
+//! The configuration system supports two types of presets:
+//!
+//! ### Box Presets
+//!
+//! Pre-built Docker images with all tooling pre-installed. Used via `vm init <preset>`.
+//! Creates minimal `vm.yaml` with just the box reference.
+//!
+//! ### Provision Presets
+//!
+//! Package manifests installed at runtime. Used via `vm config preset <preset>`.
+//! Merges package lists into existing `vm.yaml`.
+//!
+//! Preset loading and discovery is handled internally by the `preset` module.
 
 pub mod cli;
 pub mod config;
@@ -20,7 +36,8 @@ pub mod loader;
 pub mod merge;
 mod paths; // Internal only
 pub mod ports;
-mod preset; // Internal only
+pub mod preset; // Made public for integration tests - used internally by config_ops and cli
+pub mod preset_cache; // Preset caching layer
 pub mod resources; // VM resource suggestions
 pub mod schema; // Schema-aware type detection
 pub mod validate;

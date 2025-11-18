@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 use regex::Regex;
 use serde_yaml::Value;
 use serde_yaml_ng as serde_yaml;
-use tracing::{error, info, warn};
+use tracing::{error, info, instrument, warn};
 use vm_core::error::{Result, VmError};
 
 // Internal crate imports
@@ -37,6 +37,7 @@ fn get_consecutive_hyphens_regex() -> &'static Regex {
     })
 }
 
+#[instrument(skip(file_path, services, ports, preset))]
 pub fn execute(
     file_path: Option<PathBuf>,
     services: Option<String>,
@@ -206,8 +207,12 @@ fn build_initial_config(sanitized_name: &str) -> Result<VmConfig> {
     Ok(config)
 }
 
-/// Build config from a preset
-fn build_config_from_preset(sanitized_name: &str, preset_name: &str) -> Result<VmConfig> {
+/// Build config from a preset (internal helper)
+#[instrument(fields(sanitized_name = %sanitized_name, preset_name = %preset_name))]
+pub(crate) fn build_config_from_preset(
+    sanitized_name: &str,
+    preset_name: &str,
+) -> Result<VmConfig> {
     use crate::paths;
     use crate::preset::PresetDetector;
 
@@ -243,8 +248,12 @@ fn build_config_from_preset(sanitized_name: &str, preset_name: &str) -> Result<V
     }
 }
 
-/// Get the category of a preset
-fn get_preset_category(detector: &PresetDetector, preset_name: &str) -> Result<PresetCategory> {
+/// Get the category of a preset (internal helper)
+#[instrument(skip(detector), fields(preset_name = %preset_name))]
+pub(crate) fn get_preset_category(
+    detector: &PresetDetector,
+    preset_name: &str,
+) -> Result<PresetCategory> {
     // Try to get category from plugin metadata
     if let Ok(plugins) = vm_plugin::discover_plugins() {
         for plugin in plugins {
@@ -264,7 +273,7 @@ fn get_preset_category(detector: &PresetDetector, preset_name: &str) -> Result<P
     }
 
     // Fallback: if preset has vm_box field, assume it's a box preset
-    let preset_config = detector.load_preset(preset_name)?;
+    let preset_config = detector.load_preset_cached(preset_name)?;
     if preset_config
         .vm
         .as_ref()
@@ -277,14 +286,15 @@ fn get_preset_category(detector: &PresetDetector, preset_name: &str) -> Result<P
     }
 }
 
-/// Build minimal config for box preset
-fn build_minimal_box_config(
+/// Build minimal config for box preset (internal helper)
+#[instrument(fields(sanitized_name = %sanitized_name, preset_name = %preset_name), skip(detector))]
+pub(crate) fn build_minimal_box_config(
     sanitized_name: &str,
     preset_name: &str,
     detector: &PresetDetector,
 ) -> Result<VmConfig> {
     // Load preset to get box reference
-    let preset_config = detector.load_preset(preset_name)?;
+    let preset_config = detector.load_preset_cached(preset_name)?;
 
     // Start with default config
     let mut config = build_initial_config(sanitized_name)?;
@@ -326,8 +336,9 @@ fn build_minimal_box_config(
     Ok(config)
 }
 
-/// Build config with provision preset merged in
-fn build_config_with_provision_preset(
+/// Build config with provision preset merged in (internal helper)
+#[instrument(fields(sanitized_name = %sanitized_name, preset_name = %preset_name), skip(detector))]
+pub(crate) fn build_config_with_provision_preset(
     sanitized_name: &str,
     preset_name: &str,
     detector: &PresetDetector,
@@ -338,7 +349,7 @@ fn build_config_with_provision_preset(
     let base_config = build_initial_config(sanitized_name)?;
 
     // Load and merge preset
-    let preset_config = detector.load_preset(preset_name)?;
+    let preset_config = detector.load_preset_cached(preset_name)?;
     let mut merged_config = ConfigMerger::new(base_config).merge(preset_config)?;
 
     // Set preset reference

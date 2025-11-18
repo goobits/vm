@@ -8,6 +8,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use tracing::instrument;
 use vm_orchestrator::workspace::{CreateSnapshotRequest, Snapshot};
 
 pub fn routes() -> Router<AppState> {
@@ -23,6 +24,7 @@ pub fn routes() -> Router<AppState> {
 }
 
 /// List all snapshots for a workspace
+#[instrument(skip(state), fields(user = %user.username, workspace_id = %workspace_id))]
 async fn list_snapshots(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
@@ -36,6 +38,7 @@ async fn list_snapshots(
 }
 
 /// Create a new snapshot
+#[instrument(skip(state), fields(user = %user.username, workspace_id = %workspace_id, snapshot_name = %req.name))]
 async fn create_snapshot(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
@@ -53,6 +56,7 @@ async fn create_snapshot(
 }
 
 /// Restore a workspace from a snapshot
+#[instrument(skip(state), fields(user = %user.username, workspace_id = %workspace_id, snapshot_id = %snapshot_id))]
 async fn restore_snapshot(
     State(state): State<AppState>,
     Path((workspace_id, snapshot_id)): Path<(String, String)>,

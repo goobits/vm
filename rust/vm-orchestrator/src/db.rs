@@ -1,8 +1,10 @@
 use crate::error::Result;
 use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
 use std::path::Path;
+use tracing::instrument;
 
 /// Initialize database connection pool
+#[instrument(fields(db_path = %db_path.display()))]
 pub async fn create_pool(db_path: &Path) -> Result<SqlitePool> {
     // Ensure parent directory exists
     if let Some(parent) = db_path.parent() {
@@ -19,6 +21,7 @@ pub async fn create_pool(db_path: &Path) -> Result<SqlitePool> {
 }
 
 /// Run database migrations
+#[instrument(skip(pool))]
 pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     sqlx::migrate!("./migrations").run(pool).await?;
 

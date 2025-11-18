@@ -8,6 +8,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use tracing::instrument;
 use vm_orchestrator::{CreateWorkspaceRequest, Workspace, WorkspaceFilters};
 
 pub fn routes() -> Router<AppState> {
@@ -25,6 +26,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/workspaces/{id}/restart", post(restart_workspace))
 }
 
+#[instrument(skip(state), fields(user = %user.username, workspace_name = %req.name))]
 async fn create_workspace(
     State(state): State<AppState>,
     axum::Extension(user): axum::Extension<AuthenticatedUser>,
@@ -38,6 +40,7 @@ async fn create_workspace(
     Ok(Json(workspace))
 }
 
+#[instrument(skip(state), fields(user = %user.username))]
 async fn list_workspaces(
     State(state): State<AppState>,
     axum::Extension(user): axum::Extension<AuthenticatedUser>,
@@ -52,6 +55,7 @@ async fn list_workspaces(
     Ok(Json(workspaces))
 }
 
+#[instrument(skip(state), fields(user = %user.username, workspace_id = %id))]
 async fn get_workspace(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -65,6 +69,7 @@ async fn get_workspace(
     Ok(Json(workspace))
 }
 
+#[instrument(skip(state), fields(user = %user.username, workspace_id = %id))]
 async fn delete_workspace(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -78,6 +83,7 @@ async fn delete_workspace(
     Ok(Json(serde_json::json!({ "message": "Workspace deleted" })))
 }
 
+#[instrument(skip(state), fields(user = %user.username, workspace_id = %id))]
 async fn start_workspace(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -90,6 +96,7 @@ async fn start_workspace(
     Ok(Json(workspace))
 }
 
+#[instrument(skip(state), fields(user = %user.username, workspace_id = %id))]
 async fn stop_workspace(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -102,6 +109,7 @@ async fn stop_workspace(
     Ok(Json(workspace))
 }
 
+#[instrument(skip(state), fields(user = %user.username, workspace_id = %id))]
 async fn restart_workspace(
     State(state): State<AppState>,
     Path(id): Path<String>,

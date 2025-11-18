@@ -1,6 +1,6 @@
 use sqlx::SqlitePool;
 use tokio::time::{interval, Duration};
-use tracing::{error, info};
+use tracing::{error, info, instrument};
 use vm_orchestrator::WorkspaceOrchestrator;
 
 pub async fn start_janitor_task(pool: SqlitePool, interval_secs: u64) {
@@ -21,6 +21,7 @@ pub async fn start_janitor_task(pool: SqlitePool, interval_secs: u64) {
     }
 }
 
+#[instrument(skip(orchestrator))]
 async fn cleanup_expired_workspaces(orchestrator: &WorkspaceOrchestrator) -> anyhow::Result<()> {
     let expired = orchestrator.get_expired_workspaces().await?;
 

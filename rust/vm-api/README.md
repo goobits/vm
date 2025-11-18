@@ -6,10 +6,12 @@ REST API service for managing hosted workspaces.
 
 The service can be configured via environment variables:
 
-- `VM_API_BIND` - Bind address (default: `0.0.0.0:3000`)
+- `VM_API_BIND` - Bind address (default: `0.0.0.0:3121`)
 - `VM_API_DB_PATH` - SQLite database path (default: `~/.vm/api/vm.db`)
 - `VM_API_JANITOR_INTERVAL` - Janitor interval in seconds (default: `300`)
 - `VM_API_PROVISIONER_INTERVAL` - Provisioner check interval in seconds (default: `10`)
+
+**Note**: Port 3121 is within the vm.yaml exposed port range (3120-3129). Port 3120 is used by the web UI.
 
 ## Running Locally
 
@@ -33,7 +35,7 @@ The proxy should set `X-VM-User` header after GitHub OAuth verification.
 
 For local development, use `x-user` header:
 ```bash
-curl -H "x-user: myusername" http://localhost:3000/api/v1/workspaces
+curl -H "x-user: myusername" http://localhost:3121/api/v1/workspaces
 ```
 
 ## Endpoints

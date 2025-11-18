@@ -1,10 +1,12 @@
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
+use tracing::instrument;
 
 use crate::types::{Plugin, PluginInfo, PluginType, PresetContent, ServiceContent};
 
 /// Discovers plugins from the plugins directory
+#[instrument]
 pub fn discover_plugins() -> Result<Vec<Plugin>> {
     let plugins_dir = vm_platform::platform::vm_state_dir()
         .unwrap_or_else(|_| PathBuf::from(".vm"))
@@ -14,6 +16,7 @@ pub fn discover_plugins() -> Result<Vec<Plugin>> {
 }
 
 /// Discovers plugins in a specific directory (for testing)
+#[instrument(fields(plugins_dir = %plugins_dir.display()))]
 pub fn discover_plugins_in_directory(plugins_dir: &Path) -> Result<Vec<Plugin>> {
     let mut plugins = Vec::new();
 
@@ -114,6 +117,7 @@ pub fn get_service_plugins(plugins: &[Plugin]) -> Vec<&Plugin> {
 }
 
 /// Load preset content from a plugin
+#[instrument(skip(plugin), fields(plugin_name = %plugin.info.name))]
 pub fn load_preset_content(plugin: &Plugin) -> Result<PresetContent> {
     if plugin.info.plugin_type != PluginType::Preset {
         anyhow::bail!("Plugin {} is not a preset plugin", plugin.info.name);

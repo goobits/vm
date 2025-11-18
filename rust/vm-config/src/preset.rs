@@ -4,6 +4,7 @@ use glob::glob;
 use serde::{Deserialize, Serialize};
 use serde_yaml_ng as serde_yaml;
 use std::path::PathBuf;
+use tracing::instrument;
 use vm_core::error::{Result, VmError};
 use vm_core::vm_error;
 
@@ -25,12 +26,23 @@ pub struct PresetFile {
 }
 
 /// Preset detection and loading
+///
+/// Manages preset discovery from multiple sources:
+/// - Plugin presets from `~/.vm/plugins/presets/`
+/// - Embedded presets (base, tart-*, etc.)
+/// - Filesystem presets from `~/.vm/presets/`
 pub struct PresetDetector {
     project_dir: PathBuf,
     presets_dir: PathBuf,
 }
 
 impl PresetDetector {
+    /// Creates a new preset detector
+    ///
+    /// # Arguments
+    ///
+    /// * `project_dir` - Directory to scan for project-specific detection
+    /// * `presets_dir` - Directory containing filesystem-based preset files
     pub fn new(project_dir: PathBuf, presets_dir: PathBuf) -> Self {
         Self {
             project_dir,
@@ -38,13 +50,38 @@ impl PresetDetector {
         }
     }
 
-    /// Detect the appropriate preset based on project files
+    /// Detects the appropriate preset based on project files
+    ///
+    /// Scans the project directory for technology indicators (package.json, Cargo.toml, etc.)
+    /// and returns the name of a matching preset.
+    ///
+    /// # Returns
+    ///
+    /// Some(preset_name) if a matching preset is found, None otherwise
     pub fn detect(&self) -> Option<String> {
         // Use vm-detector's comprehensive detection logic
         detect_preset_for_project(&self.project_dir)
     }
 
-    /// Load a preset configuration by name
+    /// Loads a preset configuration by name
+    ///
+    /// Searches for presets in order:
+    /// 1. Plugin presets (user-installed)
+    /// 2. Embedded presets (system defaults)
+    /// 3. Filesystem presets (custom YAML files)
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the preset to load
+    ///
+    /// # Returns
+    ///
+    /// VmConfig with the preset's configuration
+    ///
+    /// # Errors
+    ///
+    /// Returns error if preset is not found or cannot be parsed
+    #[instrument(skip(self), fields(name = %name))]
     pub fn load_preset(&self, name: &str) -> Result<VmConfig> {
         // Try plugin presets first (user-facing presets)
         if let Some(config) = self.load_plugin_preset(name)? {
@@ -79,6 +116,7 @@ impl PresetDetector {
     }
 
     /// Load a preset from plugins
+    #[instrument(skip(self), fields(name = %name))]
     fn load_plugin_preset(&self, name: &str) -> Result<Option<VmConfig>> {
         let plugins = match vm_plugin::discover_plugins() {
             Ok(p) => p,
@@ -170,7 +208,16 @@ impl PresetDetector {
         Ok(None)
     }
 
-    /// Get list of available presets (provision presets only, excludes box presets)
+    /// Lists available provision presets (excludes box presets)
+    ///
+    /// This is used by `vm config preset` to show presets that can be merged
+    /// into existing configurations. Box presets are excluded because they
+    /// are only used during `vm init`.
+    ///
+    /// # Returns
+    ///
+    /// Sorted vector of provision preset names
+    #[instrument(skip(self))]
     pub fn list_presets(&self) -> Result<Vec<String>> {
         let mut presets = Vec::new();
 
@@ -215,7 +262,7 @@ impl PresetDetector {
     }
 
     /// Get list of presets from plugins (provision presets only, excludes box presets)
-    fn get_plugin_presets(&self) -> Result<Vec<String>> {
+    pub(crate) fn get_plugin_presets(&self) -> Result<Vec<String>> {
         let plugins = match vm_plugin::discover_plugins() {
             Ok(p) => p,
             Err(_) => return Ok(Vec::new()), // No plugins available
@@ -242,7 +289,15 @@ impl PresetDetector {
         Ok(preset_names)
     }
 
-    /// Get list of all available presets (including both box and provision presets)
+    /// Lists all available presets including both box and provision types.
+    ///
+    /// This is used by `vm init` to validate preset names.
+    /// For filtering to provision-only presets, use [`list_presets`](Self::list_presets).
+    ///
+    /// # Returns
+    ///
+    /// Sorted vector of preset names from all sources (plugins, embedded, filesystem).
+    #[instrument(skip(self))]
     pub fn list_all_presets(&self) -> Result<Vec<String>> {
         let mut presets = Vec::new();
 
@@ -287,7 +342,16 @@ impl PresetDetector {
         Ok(presets)
     }
 
-    /// Get description for a preset (from plugin or embedded)
+    /// Gets description for a preset (from plugin or embedded)
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the preset
+    ///
+    /// # Returns
+    ///
+    /// Some(description) if found, None otherwise
+    #[instrument(skip(self), fields(name = %name))]
     pub fn get_preset_description(&self, name: &str) -> Option<String> {
         // Try plugins first
         if let Ok(plugins) = vm_plugin::discover_plugins() {
@@ -308,6 +372,23 @@ impl PresetDetector {
             "tart-ubuntu" => Some("Ubuntu Linux VM for Tart provider".to_string()),
             _ => None,
         }
+    }
+
+    /// Load a preset with caching enabled
+    ///
+    /// This is the preferred method for repeated preset loading.
+    /// Falls back to non-cached `load_preset` if caching is disabled.
+    #[instrument(skip(self), fields(name = %name))]
+    pub fn load_preset_cached(&self, name: &str) -> Result<VmConfig> {
+        crate::preset_cache::load_preset_cached(self, name)
+    }
+
+    /// List presets with caching enabled
+    ///
+    /// This is the preferred method for repeated preset listing.
+    #[instrument(skip(self))]
+    pub fn list_presets_cached(&self) -> Result<Vec<String>> {
+        crate::preset_cache::list_presets_cached(self)
     }
 }
 

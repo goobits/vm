@@ -17,7 +17,7 @@ pub struct Config {
 }
 
 fn default_bind_addr() -> String {
-    std::env::var("VM_API_BIND").unwrap_or_else(|_| "0.0.0.0:3000".to_string())
+    std::env::var("VM_API_BIND").unwrap_or_else(|_| "0.0.0.0:3121".to_string())
 }
 
 fn default_db_path() -> PathBuf {

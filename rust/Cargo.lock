@@ -4192,6 +4192,7 @@ dependencies = [
  "sysinfo",
  "tempfile",
  "tracing",
+ "tracing-subscriber",
  "vm-cli",
  "vm-core",
  "vm-logging",
@@ -4363,6 +4364,7 @@ dependencies = [
  "serde",
  "serde_yaml_ng",
  "tempfile",
+ "tracing",
  "vm-platform",
 ]
 

@@ -7,26 +7,29 @@ project:
   workspace_path: /workspace
 vm:
   box: '@vibe-box'
-  cpus: unlimited
+  cpus: 6
   gui: false
-  memory: unlimited
-  port_binding: 0.0.0.0
+  memory: 8192
+  port_binding: 127.0.0.1
+  swap: 2048
+  swappiness: 60
+  timezone: auto
+  user: developer
 ports:
   _range: [3120, 3129]
-services:
-  postgresql:
-    enabled: true
-    port: 3129
 terminal:
   emoji: 🚀
   show_git_branch: true
   show_timestamp: false
   theme: dracula
   username: vm-dev
+aliases:
+  codexyolo: codex --dangerously-bypass-approvals-and-sandbox
+  geminiyolo: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --approval-mode=yolo
+  claudeyolo: claude --dangerously-skip-permissions
 host_sync:
   git_config: true
   ai_tools: true
 networking:
   networks:
-  - jules
   - spacebase

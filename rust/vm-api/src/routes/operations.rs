@@ -5,6 +5,7 @@ use axum::{
     Json, Router,
 };
 use serde::Deserialize;
+use tracing::instrument;
 use vm_orchestrator::{Operation, OperationStatus, OperationType, WorkspaceFilters};
 
 pub fn routes() -> Router<AppState> {
@@ -21,6 +22,7 @@ struct OperationsQuery {
     status: Option<String>,
 }
 
+#[instrument(skip(state), fields(user = %user.username, workspace_id = ?query.workspace_id))]
 async fn list_operations(
     State(state): State<AppState>,
     Query(query): Query<OperationsQuery>,
@@ -66,6 +68,7 @@ async fn list_operations(
     Ok(Json(operations))
 }
 
+#[instrument(skip(state), fields(user = %user.username, operation_id = %id))]
 async fn get_operation(
     State(state): State<AppState>,
     Path(id): Path<String>,

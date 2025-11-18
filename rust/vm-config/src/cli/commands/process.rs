@@ -34,7 +34,7 @@ pub fn execute(
     let preset_config = if user_config.as_ref().map_or(true, |c| c.is_partial()) {
         let detector = PresetDetector::new(project_dir, presets_dir);
         if let Some(preset_name) = detector.detect() {
-            Some(detector.load_preset(&preset_name)?)
+            Some(detector.load_preset_cached(&preset_name)?)
         } else {
             None
         }

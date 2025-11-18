@@ -1,7 +1,7 @@
 use serde_json::json;
 use sqlx::SqlitePool;
 use tokio::time::{interval, Duration};
-use tracing::{error, info, warn};
+use tracing::{error, info, instrument, warn};
 use vm_config::config::VmConfig;
 use vm_orchestrator::{Workspace, WorkspaceOrchestrator, WorkspaceStatus};
 use vm_provider::get_provider;
@@ -24,6 +24,7 @@ pub async fn start_provisioner_task(pool: SqlitePool, interval_secs: u64) {
     }
 }
 
+#[instrument(skip(orchestrator))]
 async fn process_pending_workspaces(orchestrator: &WorkspaceOrchestrator) -> anyhow::Result<()> {
     // Get all workspaces with status="creating"
     let creating = orchestrator
@@ -124,6 +125,7 @@ async fn process_pending_workspaces(orchestrator: &WorkspaceOrchestrator) -> any
     Ok(())
 }
 
+#[instrument(skip(workspace), fields(workspace_id = %workspace.id, workspace_name = %workspace.name))]
 async fn provision_workspace(workspace: &Workspace) -> anyhow::Result<(String, serde_json::Value)> {
     // Build minimal VmConfig for this workspace
     let config = build_vm_config(workspace)?;
@@ -159,6 +161,7 @@ async fn provision_workspace(workspace: &Workspace) -> anyhow::Result<(String, s
     Ok((instance_info.id, connection_info))
 }
 
+#[instrument(skip(workspace), fields(workspace_id = %workspace.id, template = ?workspace.template))]
 fn build_vm_config(workspace: &Workspace) -> anyhow::Result<VmConfig> {
     // Build config from workspace metadata
     let mut config = VmConfig::default();

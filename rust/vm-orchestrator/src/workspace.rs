@@ -2,6 +2,7 @@ use crate::error::{OrchestratorError, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
+use tracing::instrument;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,6 +90,7 @@ impl WorkspaceOrchestrator {
     }
 
     /// Create a new workspace
+    #[instrument(skip(self), fields(name = %req.name, owner = %req.owner, provider = ?req.provider))]
     pub async fn create_workspace(&self, req: CreateWorkspaceRequest) -> Result<Workspace> {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now();
@@ -130,6 +132,7 @@ impl WorkspaceOrchestrator {
     }
 
     /// List workspaces with optional filters
+    #[instrument(skip(self), fields(owner = ?filters.owner, status = ?filters.status))]
     pub async fn list_workspaces(&self, filters: WorkspaceFilters) -> Result<Vec<Workspace>> {
         let mut query = "SELECT * FROM workspaces WHERE 1=1".to_string();
 
@@ -157,6 +160,7 @@ impl WorkspaceOrchestrator {
     }
 
     /// Get a single workspace by ID
+    #[instrument(skip(self), fields(workspace_id = %id))]
     pub async fn get_workspace(&self, id: &str) -> Result<Workspace> {
         let row = sqlx::query_as::<_, WorkspaceRow>("SELECT * FROM workspaces WHERE id = ?")
             .bind(id)
@@ -168,6 +172,7 @@ impl WorkspaceOrchestrator {
     }
 
     /// Delete a workspace and destroy its VM
+    #[instrument(skip(self), fields(workspace_id = %id))]
     pub async fn delete_workspace(&self, id: &str) -> Result<()> {
         // Get workspace first to get provider_id
         let workspace = self.get_workspace(id).await?;
@@ -218,6 +223,7 @@ impl WorkspaceOrchestrator {
     }
 
     /// Get workspaces that have expired (for janitor cleanup)
+    #[instrument(skip(self))]
     pub async fn get_expired_workspaces(&self) -> Result<Vec<Workspace>> {
         let now = Utc::now().timestamp();
 
@@ -232,6 +238,7 @@ impl WorkspaceOrchestrator {
     }
 
     /// Update workspace status and related fields
+    #[instrument(skip(self), fields(workspace_id = %id, status = ?status))]
     pub async fn update_workspace_status(
         &self,
         id: &str,
@@ -262,6 +269,7 @@ impl WorkspaceOrchestrator {
     }
 
     /// Get all workspaces with a specific status
+    #[instrument(skip(self), fields(status = ?status))]
     pub async fn get_workspaces_by_status(
         &self,
         status: WorkspaceStatus,
@@ -275,6 +283,7 @@ impl WorkspaceOrchestrator {
     }
 
     /// Record an operation for tracking
+    #[instrument(skip(self), fields(workspace_id = %workspace_id, operation_type = ?operation_type, status = ?status))]
     pub async fn record_operation(
         &self,
         workspace_id: &str,
@@ -300,6 +309,7 @@ impl WorkspaceOrchestrator {
     }
 
     /// Update operation status
+    #[instrument(skip(self), fields(operation_id = %operation_id, status = ?status))]
     pub async fn update_operation_status(
         &self,
         operation_id: &str,
@@ -327,6 +337,7 @@ impl WorkspaceOrchestrator {
     }
 
     /// Get a single operation by ID
+    #[instrument(skip(self), fields(operation_id = %id))]
     pub async fn get_operation(&self, id: &str) -> Result<crate::operation::Operation> {
         let row = sqlx::query_as::<_, OperationRow>("SELECT * FROM operations WHERE id = ?")
             .bind(id)
@@ -338,6 +349,7 @@ impl WorkspaceOrchestrator {
     }
 
     /// Get all operations with optional filters
+    #[instrument(skip(self), fields(workspace_id = ?workspace_id, operation_type = ?operation_type, status = ?status))]
     pub async fn get_operations(
         &self,
         workspace_id: Option<String>,
@@ -376,6 +388,7 @@ impl WorkspaceOrchestrator {
     }
 
     /// List all snapshots for a workspace
+    #[instrument(skip(self), fields(workspace_id = %workspace_id))]
     pub async fn list_snapshots(&self, workspace_id: &str) -> Result<Vec<Snapshot>> {
         let rows = sqlx::query_as::<_, SnapshotRow>(
             "SELECT * FROM snapshots WHERE workspace_id = ? ORDER BY created_at DESC",
@@ -388,6 +401,7 @@ impl WorkspaceOrchestrator {
     }
 
     /// Create a new snapshot of a workspace
+    #[instrument(skip(self), fields(workspace_id = %workspace_id, snapshot_name = %req.name))]
     pub async fn create_snapshot(
         &self,
         workspace_id: &str,
@@ -523,6 +537,7 @@ impl WorkspaceOrchestrator {
     }
 
     /// Restore a workspace from a snapshot
+    #[instrument(skip(self), fields(workspace_id = %workspace_id, snapshot_id = %snapshot_id))]
     pub async fn restore_snapshot(&self, workspace_id: &str, snapshot_id: &str) -> Result<()> {
         // Verify snapshot exists and belongs to this workspace
         let snapshot_row = sqlx::query_as::<_, SnapshotRow>(
@@ -688,6 +703,7 @@ impl WorkspaceOrchestrator {
     }
 
     /// Start a stopped workspace
+    #[instrument(skip(self), fields(workspace_id = %id))]
     pub async fn start_workspace(&self, id: &str) -> Result<Workspace> {
         let workspace = self.get_workspace(id).await?;
 
@@ -814,6 +830,7 @@ impl WorkspaceOrchestrator {
     }
 
     /// Stop a running workspace
+    #[instrument(skip(self), fields(workspace_id = %id))]
     pub async fn stop_workspace(&self, id: &str) -> Result<Workspace> {
         let workspace = self.get_workspace(id).await?;
 
@@ -905,6 +922,7 @@ impl WorkspaceOrchestrator {
     }
 
     /// Restart a workspace
+    #[instrument(skip(self), fields(workspace_id = %id))]
     pub async fn restart_workspace(&self, id: &str) -> Result<Workspace> {
         let workspace = self.get_workspace(id).await?;
 

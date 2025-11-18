@@ -137,15 +137,9 @@ RUN if id -u ${PROJECT_USER} >/dev/null 2>&1; then \
 # Install NVM with proper permissions
 # Note: install -d runs as root and creates directory with specified ownership
 # This handles snapshots where /home/developer may have different UID/GID
-RUN --mount=type=cache,target=/home/${PROJECT_USER}/.nvm/.cache \
-    # Remove any existing .nvm from snapshot to avoid UID conflicts \
-    rm -rf /home/${PROJECT_USER}/.nvm && \
+RUN --mount=type=cache,target=/home/${PROJECT_USER}/.nvm/.cache,uid=${PROJECT_UID},gid=${PROJECT_GID} \
     mkdir -p /home/${PROJECT_USER}/.nvm && \
     chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER}/.nvm && \
-    # Fix cache permissions if they exist from a different UID \
-    if [ -d "/home/${PROJECT_USER}/.nvm/.cache" ]; then \
-        chown -R ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER}/.nvm/.cache 2>/dev/null || true; \
-    fi && \
     su - ${PROJECT_USER} -c 'if [ ! -s "$HOME/.nvm/nvm.sh" ]; then curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/'${NVM_VERSION}'/install.sh" | bash; fi && export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && (nvm list | grep -q "v'${NODE_VERSION}'" || nvm install '${NODE_VERSION}') && nvm use '${NODE_VERSION}' && nvm alias default '${NODE_VERSION}' && corepack enable && corepack prepare pnpm@'${PNPM_VERSION}' --activate'
 
 # --- Git Configuration ---

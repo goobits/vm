@@ -44,7 +44,7 @@ pub fn execute(
     let detector = PresetDetector::new(dir, presets_dir);
 
     if list {
-        let presets = detector.list_presets()?;
+        let presets = detector.list_presets_cached()?;
         info!("Available presets:");
         for preset in presets {
             info!("  - {}", preset);
@@ -57,7 +57,7 @@ pub fn execute(
     } else {
         match detector.detect() {
             Some(preset_name) => {
-                let preset = detector.load_preset(&preset_name)?;
+                let preset = detector.load_preset_cached(&preset_name)?;
                 output_config(&preset, &OutputFormat::Yaml)?;
             }
             None => {
