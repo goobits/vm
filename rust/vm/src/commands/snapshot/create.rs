@@ -107,6 +107,7 @@ fn get_project_name(config: &AppConfig) -> String {
 }
 
 /// Handle snapshot creation
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_create(
     config: &AppConfig,
     name: &str,
@@ -114,13 +115,16 @@ pub async fn handle_create(
     quiesce: bool,
     project_override: Option<&str>,
     from_dockerfile: Option<&std::path::Path>,
+    build_context: Option<&std::path::Path>,
     build_args: &[String],
 ) -> VmResult<()> {
     let manager = SnapshotManager::new()?;
 
     // Handle --from-dockerfile mode
     if let Some(dockerfile_path) = from_dockerfile {
-        return handle_create_from_dockerfile(name, description, dockerfile_path, build_args).await;
+        let ctx = build_context.unwrap_or_else(|| std::path::Path::new("."));
+        return handle_create_from_dockerfile(name, description, dockerfile_path, ctx, build_args)
+            .await;
     }
 
     let project_name = project_override
@@ -385,6 +389,7 @@ async fn handle_create_from_dockerfile(
     name: &str,
     description: Option<&str>,
     dockerfile_path: &std::path::Path,
+    build_context: &std::path::Path,
     build_args: &[String],
 ) -> VmResult<()> {
     // Validate Dockerfile exists
@@ -433,10 +438,8 @@ async fn handle_create_from_dockerfile(
         }
     }
 
-    // Determine build context (parent directory of Dockerfile or current directory)
-    let context_dir = dockerfile_path
-        .parent()
-        .unwrap_or_else(|| std::path::Path::new("."));
+    // Use provided build context
+    let context_dir = build_context;
 
     vm_core::vm_println!("Build context: {}", context_dir.display());
     vm_core::vm_println!("Dockerfile: {}", dockerfile_path.display());

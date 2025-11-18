@@ -348,6 +348,9 @@ pub enum SnapshotSubcommand {
         /// Build snapshot directly from a Dockerfile
         #[arg(long, value_name = "PATH")]
         from_dockerfile: Option<PathBuf>,
+        /// Build context directory for Dockerfile (defaults to current directory)
+        #[arg(long, value_name = "PATH", default_value = ".")]
+        build_context: Option<PathBuf>,
         /// Build arguments for Dockerfile (repeatable: --build-arg KEY=VALUE)
         #[arg(long, value_name = "KEY=VALUE")]
         build_arg: Vec<String>,
