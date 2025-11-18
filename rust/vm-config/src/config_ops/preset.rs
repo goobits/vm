@@ -3,7 +3,7 @@ use serde_yaml_ng as serde_yaml;
 
 // Internal imports
 use crate::config::VmConfig;
-use crate::config_ops::io::{find_or_create_local_config, get_or_create_global_config_path};
+use crate::config_ops::io::get_or_create_global_config_path;
 use crate::config_ops::port_placeholders::load_preset_with_placeholders;
 use crate::merge::ConfigMerger;
 use crate::paths;
@@ -98,7 +98,9 @@ fn apply_preset_to_config(
     let config_path = if global {
         get_or_create_global_config_path()?
     } else {
-        find_or_create_local_config()?
+        // For preset command, only look in current directory, not parent directories
+        // This ensures we create vm.yaml in the current project, not modify a parent config
+        std::env::current_dir()?.join("vm.yaml")
     };
 
     // Track if config already existed (for Bug #2 - preserve user customizations)
