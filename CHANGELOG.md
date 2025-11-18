@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.4.0] - 2025-11-17
+
+### Added
+
+- **VM Orchestrator Web UI (Phase 2)**: Complete web-based workspace management interface
+  - Real-time workspace dashboard with status monitoring
+  - Lifecycle controls (start/stop/restart) with visual feedback
+  - Operations/activity tracking with auto-refresh (3-second polling)
+  - Connection metadata display with one-click copy (SSH commands, container IDs)
+  - Status badges (Connected, Disconnected, Provisioning) with color coding
+  - "Open in Claude Code" quick action for running workspaces
+  - Auto-refresh behavior (workspace list: 10s, active operations: 3s)
+
+- **Snapshot Management UI**: Visual interface for workspace state preservation
+  - Create snapshots with descriptive names
+  - Restore snapshots with confirmation dialogs
+  - Snapshot list with creation timestamps and sizes
+  - Real-time operation status during snapshot create/restore
+  - Snapshots stored in `/tmp/vm-snapshots/` with `.tar` format
+
+- **CLI Configuration Autofix**: Interactive validation with automatic fixes
+  - Validation errors now show specific details (e.g., "Service 'redis' is enabled but has no port specified")
+  - Suggested fixes with available port assignments from configured range
+  - Interactive prompt: "Apply suggested fixes?" with confirmation
+  - Uses existing port range to intelligently assign available ports
+  - Example: `services.redis.port → 3128: Assign available port to redis`
+
+- **Comprehensive Documentation**
+  - QUICKSTART.md guide covering all UI features and common workflows
+  - Database migration documentation for vm-orchestrator
+  - Integration test suite for vm-api and orchestrator
+
+### Fixed
+
+- **Critical Security**: Added owner authorization to operations routes
+  - Operations now properly check workspace ownership before execution
+  - Prevents unauthorized users from controlling other users' workspaces
+
+- **CLI Preset Command**: Fixed directory handling for `vm config preset`
+  - Now creates `vm.yaml` in current directory (not parent directories)
+  - Validates presets exist before attempting initialization
+  - Shows helpful "Preset not found" error with list of available presets
+  - No longer searches parent directories (~/projects/ or ~/) for existing configs
+
+- **Snapshot Operations**: Fixed actual disk state handling
+  - Snapshots now properly capture and restore container filesystem state
+  - Validate snapshot file exists before attempting restore
+  - Proper error handling instead of unwrap() panics
+
+- **UI Reactivity**: Fixed Svelte 5 reactivity for action buttons
+  - Used object reassignment pattern for proper state updates
+  - Prevents stale UI state during lifecycle operations
+  - Action buttons now properly show loading states
+
+- **Backend Operations**
+  - Provisioner now updates operation status during workspace creation
+  - Lifecycle operations (start/stop/restart) properly call vm-provider
+  - Connection info regenerated after start/restart operations
+  - Timestamp serialization fixed for consistent ISO 8601 format
+
+### Changed
+
+- UI source location consolidated to `/workspace/site/` (removed duplicate in `rust/site/`)
+- Validation error messages now provide actionable guidance with field paths
+
 ## [4.3.0] - 2025-11-16
 
 ### Performance
