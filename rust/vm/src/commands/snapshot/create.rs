@@ -478,10 +478,92 @@ async fn handle_create_from_dockerfile(
         )
     })?;
 
+    // Create snapshot directory and save metadata
+    let manager = SnapshotManager::new()?;
+    let project_name = std::env::current_dir()
+        .ok()
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
+        .unwrap_or_else(|| "default".to_string());
+
+    let project_scope = if is_global {
+        None
+    } else {
+        Some(project_name.as_str())
+    };
+
+    let snapshot_dir = manager.get_snapshot_dir(project_scope, snapshot_name);
+    let images_dir = snapshot_dir.join("images");
+
+    // Create directories
+    tokio::fs::create_dir_all(&snapshot_dir)
+        .await
+        .map_err(|e| VmError::filesystem(e, snapshot_dir.to_string_lossy(), "create_dir_all"))?;
+    tokio::fs::create_dir_all(&images_dir)
+        .await
+        .map_err(|e| VmError::filesystem(e, images_dir.to_string_lossy(), "create_dir_all"))?;
+
+    // Save the image to tar file
+    vm_core::vm_println!("Saving snapshot to disk...");
+    let image_file = "base.tar";
+    let image_path = images_dir.join(image_file);
+    let image_path_str = image_path.to_str().ok_or_else(|| {
+        VmError::general(
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid UTF-8 in path"),
+            format!(
+                "Snapshot path contains invalid UTF-8 characters: {}",
+                image_path.display()
+            ),
+        )
+    })?;
+
+    execute_docker(&["save", &image_tag, "-o", image_path_str]).await?;
+
+    // Get image digest
+    let digest_output = execute_docker(&["inspect", "--format={{.Id}}", &image_tag]).await?;
+    let digest = if digest_output.is_empty() {
+        None
+    } else {
+        Some(digest_output)
+    };
+
+    // Calculate total size
+    let total_size_bytes = calculate_directory_size(&snapshot_dir)?;
+
+    // Build and save metadata
+    let project_dir =
+        std::env::current_dir().map_err(|e| VmError::filesystem(e, "current_dir", "get"))?;
+
+    let metadata = SnapshotMetadata {
+        name: snapshot_name.to_string(),
+        created_at: Utc::now(),
+        description: description.map(|s| s.to_string()),
+        project_name: if is_global {
+            "global".to_string()
+        } else {
+            project_name.clone()
+        },
+        project_dir: project_dir.to_string_lossy().to_string(),
+        git_commit: None,
+        git_dirty: false,
+        git_branch: None,
+        services: vec![ServiceSnapshot {
+            name: "base".to_string(),
+            image_tag: image_tag.clone(),
+            image_file: image_file.to_string(),
+            image_digest: digest,
+        }],
+        volumes: vec![],
+        compose_file: String::new(),
+        vm_config_file: String::new(),
+        total_size_bytes,
+    };
+
+    metadata.save(snapshot_dir.join("metadata.json"))?;
+
     vm_core::vm_success!(
-        "Snapshot '{}' created successfully with tag '{}'",
+        "Snapshot '{}' created successfully ({:.2} MB)",
         name,
-        image_tag
+        total_size_bytes as f64 / (1024.0 * 1024.0)
     );
     vm_core::vm_println!("");
     vm_core::vm_println!("You can now use this snapshot in vm.yaml:");
