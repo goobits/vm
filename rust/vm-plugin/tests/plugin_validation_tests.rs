@@ -27,6 +27,7 @@ fn create_test_plugin(
         description: Some(format!("A test {} plugin.", type_str)),
         author: Some("Test".to_string()),
         plugin_type,
+        preset_category: None,
     };
     fs::write(
         plugin_dir.join("plugin.yaml"),
