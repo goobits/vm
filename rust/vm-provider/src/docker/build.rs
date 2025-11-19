@@ -153,13 +153,13 @@ impl<'a> BuildOperations<'a> {
                         ))
                     })?
                     .join("snapshots")
-                    .join("default")
+                    .join("global")
                     .join(name);
 
                 if !snapshot_dir.exists() {
                     return Err(VmError::Config(format!(
-                        "Snapshot '@{}' not found. Import it first with:\n  vm snapshot import <file>",
-                        name
+                        "Snapshot '@{}' not found. Create or import it first:\n  vm snapshot create @{} --from-dockerfile <dockerfile>\n  vm snapshot import <file>",
+                        name, name
                     )));
                 }
 

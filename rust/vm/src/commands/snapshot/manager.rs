@@ -26,7 +26,7 @@ impl SnapshotManager {
     pub fn get_snapshot_dir(&self, project: Option<&str>, name: &str) -> PathBuf {
         match project {
             Some(proj) => self.snapshots_dir.join(proj).join(name),
-            None => self.snapshots_dir.join("default").join(name),
+            None => self.snapshots_dir.join("global").join(name),
         }
     }
 
