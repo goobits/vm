@@ -334,6 +334,80 @@ vm uninstall             # Uninstall vm from the system
 
 ---
 
+## ⚡ Performance & Troubleshooting
+
+### Environment Variables for Optimization
+
+The VM tool supports several environment variables to optimize performance and debug slow operations:
+
+**`VM_FAST_PROVISION=1`** — Experimental fast provisioning mode
+Enables 10x faster shell configuration generation using template substitution instead of Jinja2 rendering. Reduces `.zshrc` generation from ~8-12s to ~0.5-1s.
+
+```bash
+# Enable fast provisioning (experimental)
+VM_FAST_PROVISION=1 vm create myproject
+
+# Expected speedup: 42s → 30-33s total creation time
+```
+
+**`ANSIBLE_PROFILE=1`** — Show per-task timing
+Enables Ansible's `profile_tasks` callback to identify provisioning bottlenecks. Shows execution time for each configuration task.
+
+```bash
+# Profile provisioning to see which tasks are slow
+ANSIBLE_PROFILE=1 vm create myproject
+
+# Output shows timing for each task:
+# TASK [Generate .zshrc] ************** 8.23s
+# TASK [Install Node.js] ************** 12.45s
+# ...
+```
+
+**`ANSIBLE_TIMEOUT=600`** — Override provisioning timeout
+Changes the default 300-second (5-minute) timeout for Ansible provisioning. Useful for slow networks or complex configurations.
+
+```bash
+# Increase timeout for slow operations
+ANSIBLE_TIMEOUT=600 vm create myproject
+
+# When timeout occurs, you'll see:
+# Command timed out after 300s: docker exec ...
+# To debug, try running manually:
+#   docker exec container ansible-playbook ...
+```
+
+### Troubleshooting Slow VM Creation
+
+If VM creation is taking longer than expected (>60s):
+
+1. **Profile provisioning** to identify bottlenecks:
+   ```bash
+   ANSIBLE_PROFILE=1 vm create myproject
+   ```
+
+2. **Try fast provisioning mode** (experimental):
+   ```bash
+   VM_FAST_PROVISION=1 vm create myproject
+   ```
+
+3. **Check Docker performance**:
+   ```bash
+   docker info  # Verify Docker is healthy
+   docker system df  # Check disk space
+   ```
+
+4. **Increase timeout** if provisioning is being cut short:
+   ```bash
+   ANSIBLE_TIMEOUT=600 vm create myproject
+   ```
+
+If issues persist, run `vm doctor` for comprehensive health checks or file an issue with the output of:
+```bash
+ANSIBLE_PROFILE=1 vm create myproject --verbose
+```
+
+---
+
 ## 🏗️ Architecture & Development
 
 ### Testing
