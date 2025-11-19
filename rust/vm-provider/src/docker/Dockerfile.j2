@@ -397,7 +397,7 @@ RUN --mount=type=cache,target=/home/${PROJECT_USER}/.cargo/registry \
             else \
                 echo "Skipping ${pkg} (already installed)"; \
             fi; \
-        done; \
+        done'; \
     fi
 
 # --- Finalization ---
