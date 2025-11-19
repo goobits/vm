@@ -408,15 +408,41 @@ async fn handle_create_from_dockerfile(
         name
     };
 
+    // Get project name once and reuse it
+    let project_name = std::env::current_dir()
+        .ok()
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
+        .unwrap_or_else(|| "default".to_string());
+
+    let project_scope = if is_global {
+        None
+    } else {
+        Some(project_name.as_str())
+    };
+
+    // Check if snapshot already exists
+    let manager = SnapshotManager::new()?;
+    if manager.snapshot_exists(project_scope, snapshot_name) {
+        let scope_desc = if is_global {
+            "global".to_string()
+        } else {
+            format!("project '{}'", project_name)
+        };
+        return Err(VmError::validation(
+            format!(
+                "Snapshot '{}' already exists for {}. Delete it first with:\n  vm snapshot delete {}",
+                snapshot_name,
+                scope_desc,
+                name
+            ),
+            None::<String>,
+        ));
+    }
+
     // Build the image tag
     let image_tag = if is_global {
         format!("vm-snapshot/global/{}:latest", snapshot_name)
     } else {
-        // Get current project name
-        let project_name = std::env::current_dir()
-            .ok()
-            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
-            .unwrap_or_else(|| "default".to_string());
         format!("vm-snapshot/{}/{}:latest", project_name, snapshot_name)
     };
 
@@ -479,17 +505,7 @@ async fn handle_create_from_dockerfile(
     })?;
 
     // Create snapshot directory and save metadata
-    let manager = SnapshotManager::new()?;
-    let project_name = std::env::current_dir()
-        .ok()
-        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
-        .unwrap_or_else(|| "default".to_string());
-
-    let project_scope = if is_global {
-        None
-    } else {
-        Some(project_name.as_str())
-    };
+    // (manager and project_scope already created earlier for duplicate check)
 
     let snapshot_dir = manager.get_snapshot_dir(project_scope, snapshot_name);
     let images_dir = snapshot_dir.join("images");
