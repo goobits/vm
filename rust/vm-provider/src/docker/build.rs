@@ -144,13 +144,16 @@ impl<'a> BuildOperations<'a> {
 
                 vm_println!("Loading base image from snapshot '@{}'...", name);
 
-                // Check if snapshot exists in user data directory (platform-specific)
-                let snapshot_dir = vm_core::user_paths::user_data_dir()
+                // Check if snapshot exists in user config directory (platform-specific)
+                let snapshot_dir = vm_core::user_paths::user_config_dir()
                     .map_err(|e| {
-                        VmError::Internal(format!("Could not determine user data directory: {}", e))
+                        VmError::Internal(format!(
+                            "Could not determine user config directory: {}",
+                            e
+                        ))
                     })?
                     .join("snapshots")
-                    .join("global")
+                    .join("default")
                     .join(name);
 
                 if !snapshot_dir.exists() {
