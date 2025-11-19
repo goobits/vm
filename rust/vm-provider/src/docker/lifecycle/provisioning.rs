@@ -92,10 +92,12 @@ impl<'a> LifecycleOperations<'a> {
 
     /// Wait for container to become ready (synchronous wrapper)
     fn wait_for_container_ready(container_name: &str) -> Result<()> {
-        // Create a new tokio runtime to run async code in sync context
-        let rt = tokio::runtime::Runtime::new()
-            .map_err(|e| VmError::Internal(format!("Failed to create async runtime: {}", e)))?;
-        rt.block_on(Self::wait_for_container_ready_async(container_name))
+        // Use block_in_place to call async code from sync context within an existing runtime
+        // This avoids creating a nested runtime which would panic
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current()
+                .block_on(Self::wait_for_container_ready_async(container_name))
+        })
     }
 
     /// Re-provision existing container (public API)

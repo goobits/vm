@@ -112,9 +112,21 @@ impl SnapshotManager {
 }
 
 /// Handle the list subcommand
-pub async fn handle_list(project: Option<&str>) -> VmResult<()> {
+pub async fn handle_list(project: Option<&str>, snapshot_type: Option<&str>) -> VmResult<()> {
     let manager = SnapshotManager::new()?;
-    let snapshots = manager.list_snapshots(project)?;
+    let mut snapshots = manager.list_snapshots(project)?;
+
+    // Filter by type if specified
+    if let Some(filter_type) = snapshot_type {
+        snapshots.retain(|snapshot| {
+            let is_base = snapshot.project_name == "global";
+            match filter_type {
+                "base" => is_base,
+                "project" => !is_base,
+                _ => true,
+            }
+        });
+    }
 
     if snapshots.is_empty() {
         vm_core::vm_println!("No snapshots found.");
@@ -124,7 +136,14 @@ pub async fn handle_list(project: Option<&str>) -> VmResult<()> {
     vm_core::vm_println!("\nAvailable snapshots:\n");
 
     for snapshot in snapshots {
-        vm_core::vm_println!("  {} ({})", snapshot.name, snapshot.project_name);
+        // Determine snapshot type (base or project)
+        let snapshot_type = if snapshot.project_name == "global" {
+            "base"
+        } else {
+            "project"
+        };
+
+        vm_core::vm_println!("  {} ({})", snapshot.name, snapshot_type);
         vm_core::vm_println!(
             "    Created: {}",
             snapshot.created_at.format("%Y-%m-%d %H:%M:%S UTC")
@@ -132,6 +151,10 @@ pub async fn handle_list(project: Option<&str>) -> VmResult<()> {
 
         if let Some(desc) = &snapshot.description {
             vm_core::vm_println!("    Description: {}", desc);
+        }
+
+        if snapshot_type == "project" {
+            vm_core::vm_println!("    Project: {}", snapshot.project_name);
         }
 
         if let Some(branch) = &snapshot.git_branch {

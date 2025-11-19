@@ -116,13 +116,14 @@ impl<'a> LifecycleOperations<'a> {
                 &format!("cd \"$VM_TARGET_DIR\" && exec {shell}"),
             ],
         )
+        .unchecked() // Allow all exit codes - we'll handle them below
         .run();
 
         match result {
             Ok(output) => {
                 // Handle exit codes gracefully
                 match output.status.code() {
-                    Some(0) | Some(2) => Ok(()), // Normal exit or shell builtin exit
+                    Some(0) | Some(1) | Some(2) => Ok(()), // Normal exit, last command failed, or shell builtin exit
                     Some(127) => Ok(()), // Command not found (happens when user types non-existent command then exits)
                     Some(130) => Ok(()), // Ctrl-C interrupt - treat as normal exit
                     _ => {

@@ -127,33 +127,55 @@ pub async fn handle_create(
             .await;
     }
 
+    // Determine if this is a global snapshot (@name) or project-specific (name)
+    let is_global = name.starts_with('@');
+    let snapshot_name = if is_global {
+        name.trim_start_matches('@')
+    } else {
+        name
+    };
+
+    // Get project name and determine scope
     let project_name = project_override
         .map(|s| s.to_string())
         .unwrap_or_else(|| get_project_name(config));
 
+    let project_scope = if is_global {
+        None
+    } else {
+        Some(project_name.as_str())
+    };
+
     // Check if snapshot already exists
-    if manager.snapshot_exists(Some(&project_name), name) {
+    if manager.snapshot_exists(project_scope, snapshot_name) {
+        let scope_desc = if is_global {
+            "global".to_string()
+        } else {
+            format!("project '{}'", project_name)
+        };
         return Err(VmError::validation(
             format!(
-                "Snapshot '{}' already exists for project '{}'",
-                name, project_name
+                "Snapshot '{}' already exists for {}",
+                snapshot_name, scope_desc
             ),
             None::<String>,
         ));
     }
 
-    vm_core::vm_println!(
-        "Creating snapshot '{}' for project '{}'...",
-        name,
-        project_name
-    );
+    let display_scope = if is_global {
+        "globally".to_string()
+    } else {
+        format!("for project '{}'", project_name)
+    };
+
+    vm_core::vm_println!("Creating snapshot '{}' {}...", snapshot_name, display_scope);
 
     // Get project directory
     let project_dir =
         std::env::current_dir().map_err(|e| VmError::filesystem(e, "current_dir", "get"))?;
 
     // Create snapshot directory structure
-    let snapshot_dir = manager.get_snapshot_dir(Some(&project_name), name);
+    let snapshot_dir = manager.get_snapshot_dir(project_scope, snapshot_name);
     let images_dir = snapshot_dir.join("images");
     let volumes_dir = snapshot_dir.join("volumes");
     let compose_dir = snapshot_dir.join("compose");
@@ -184,7 +206,7 @@ pub async fn handle_create(
     let snapshot_futures = service_names.iter().map(|service| {
         let service = service.clone();
         let project_name = project_name.clone();
-        let name = name.to_string();
+        let snapshot_name = snapshot_name.to_string();
         let images_dir = images_dir.clone();
         let project_dir = project_dir.clone();
 
@@ -200,7 +222,7 @@ pub async fn handle_create(
             }
 
             // Create image from container
-            let image_tag = format!("vm-snapshot/{}/{}:{}", project_name, service, name);
+            let image_tag = format!("vm-snapshot/{}/{}:{}", project_name, service, snapshot_name);
             execute_docker(&["commit", &container_id, &image_tag]).await?;
 
             // Save image to tar file
@@ -346,10 +368,14 @@ pub async fn handle_create(
 
     // Build and save metadata
     let metadata = SnapshotMetadata {
-        name: name.to_string(),
+        name: snapshot_name.to_string(),
         created_at: Utc::now(),
         description: description.map(|s| s.to_string()),
-        project_name: project_name.clone(),
+        project_name: if is_global {
+            "global".to_string()
+        } else {
+            project_name.clone()
+        },
         project_dir: project_dir.to_string_lossy().to_string(),
         git_commit,
         git_dirty,

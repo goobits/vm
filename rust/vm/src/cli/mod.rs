@@ -360,6 +360,9 @@ pub enum SnapshotSubcommand {
         /// Filter by project name
         #[arg(long)]
         project: Option<String>,
+        /// Filter by snapshot type (base or project)
+        #[arg(long, value_parser = ["base", "project"])]
+        r#type: Option<String>,
     },
     /// Restore VM from a snapshot
     Restore {

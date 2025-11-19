@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **VM Creation Panic**: Fixed Tokio runtime panic (exit code 134) when creating VMs
+  - Replaced nested `Runtime::new()` with `tokio::task::block_in_place()` to use existing runtime
+  - Fixes "Cannot start a runtime from within a runtime" error
+  - VM creation now completes cleanly without panic
+
+- **Terminal Configuration Not Applied**: Custom terminal config (emoji, username, git branch, theme, aliases) now works correctly
+  - Root cause: Tokio panic was interrupting Ansible provisioning
+  - Fix ensures Ansible completes successfully and applies full `.zshrc` configuration
+  - Users now get custom prompt, NVM, shell history, syntax highlighting, and aliases
+
+- **Snapshot Directory Mismatch**: Fixed `@` prefix handling for global snapshots
+  - Regular `vm snapshot create @name` now correctly strips `@` and uses global scope
+  - Global snapshots stored in `snapshots/global/name` (not `snapshots/default/@name`)
+  - Consistent behavior between Dockerfile and regular snapshot creation paths
+
+- **SSH Exit False Warnings**: Fixed "Session ended unexpectedly" on clean exit
+  - Added `.unchecked()` to duct command to allow all exit codes through
+  - Exit code 1 (last command failed) now treated as normal
+  - Clean exits show "👋 Disconnected" instead of error warning
+
+### Added
+
+- **Snapshot List Enhancements**: Completed PROPOSED_CLI.md implementation
+  - Added `--type base|project` filter flag to `vm snapshot list`
+  - Shows TYPE column displaying "base" or "project" instead of project name
+  - Displays explicit "Project: <name>" line for project snapshots
+  - Clearer distinction between global and project-specific snapshots
+
 ## [4.4.1] - 2025-11-18
 
 ### Added

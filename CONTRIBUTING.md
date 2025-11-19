@@ -40,7 +40,7 @@ This will run the following checks in order:
 
 1. **Code Formatting** (`make fmt`)
 2. **Linting** (`make clippy`)
-3. **Dependency Audit** (`make deny`)
+3. **Dependency Audit** (`make audit`)
 4. **Tests** (`make test`)
 
 ### Individual Quality Checks
@@ -64,7 +64,7 @@ The current deny list includes:
 - `clippy::unnecessary_wraps`
 
 # Check dependencies for security advisories, license compliance, and bans
-make deny
+make audit
 
 # Run all tests
 make test

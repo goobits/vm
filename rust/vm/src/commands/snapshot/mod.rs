@@ -52,7 +52,9 @@ pub async fn handle_snapshot(
             )
             .await
         }
-        SnapshotSubcommand::List { project } => manager::handle_list(project.as_deref()).await,
+        SnapshotSubcommand::List { project, r#type } => {
+            manager::handle_list(project.as_deref(), r#type.as_deref()).await
+        }
         SnapshotSubcommand::Restore {
             name,
             project,

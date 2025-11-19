@@ -12,6 +12,29 @@ Goobits VM is built using a **layered architecture** designed around the princip
 - **Error Consistency**: Unified error handling across all components
 - **Testability**: Modular design enables comprehensive testing at all levels
 
+## Crate Quick Reference
+
+| Layer | Crate | Primary Responsibility | Quick Checks |
+| --- | --- | --- | --- |
+| Foundation | `vm-core` | Shared error types, FS utilities, platform helpers | `cargo test -p vm-core` |
+| Foundation | `vm-messages` | Localized CLI copy and help text | `cargo test -p vm-messages` |
+| Foundation | `vm-logging` | Tracing subscriber + log routing setup used by every binary | `cargo test -p vm-logging` |
+| Configuration | `vm-config` | Configuration schema, detectors, CLI helpers | `cargo test -p vm-config` |
+| Configuration | `vm-plugin` | Plugin discovery, validation, and preset/service loading | `cargo test -p vm-plugin` |
+| Provider | `vm-provider` | Provider traits plus Docker/Podman/Tart implementations | `cargo test -p vm-provider` |
+| Provider | `vm-temp` | Temporary VM lifecycle, mount management, CLI glue | `cargo test -p vm-temp` |
+| Application | `vm` | Main CLI orchestration and commands | `cargo test -p vm` / `cargo run -p vm -- --help` |
+| Application | `vm-cli` | Message builder and `msg!` macro for formatted output | `cargo test -p vm-cli` |
+| Application | `vm-installer` | Self-installation flow for distributing the CLI | `cargo run -p vm-installer -- --help` |
+| Service | `vm-package-server` | Local multi-registry artifact service | `cargo test -p vm-package-server` / `cargo run -p vm-package-server -- --help` |
+| Service | `vm-auth-proxy` | Authentication proxy that fronts API/services | `cargo run -p vm-auth-proxy -- --help` |
+| Service | `vm-docker-registry` | Auto-managed Docker registry cache | `cargo test -p vm-docker-registry` |
+| Service | `vm-api` | REST API entrypoint for hosted workspaces | `cargo run -p vm-api -- --help` |
+| Service | `vm-orchestrator` | Workspace orchestration logic shared by services | `cargo test -p vm-orchestrator` |
+| Utility | `vm-package-manager` | Unified installer for npm/pip/cargo tooling | `cargo run -p vm-package-manager -- --help` |
+| Utility | `vm-platform` | OS detection, system integration, resource probing | `cargo test -p vm-platform` |
+| Tooling | `version-sync` | Keeps version numbers aligned across manifests | `cargo run -p version-sync -- check` |
+
 ## Crate Architecture
 
 ### Foundation Layer

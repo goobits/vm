@@ -1,20 +1,36 @@
 [workspace]
 members = [
+    # Foundation Layer
     "vm-core",
+    "vm-messages",
+    "vm-logging",
+
+    # Configuration Layer
     "vm-config",
-    "vm-package-manager",
-    "vm-platform",
     "vm-plugin",
+
+    # Utility Layer
+    "vm-platform",
+    "vm-package-manager",
+
+    # Provider Layer
     "vm-provider",
     "vm-temp",
+
+    # Application Layer
     "vm",
-    "vm-installer",
-    "vm-messages",
     "vm-cli",
-    "version-sync",
+    "vm-installer",
+
+    # Service Layer
     "vm-package-server",
     "vm-auth-proxy",
-    "vm-docker-registry", "vm-logging", "vm-orchestrator", "vm-api",
+    "vm-docker-registry",
+    "vm-orchestrator",
+    "vm-api",
+
+    # Tooling
+    "version-sync",
 ]
 exclude = [
     "vm-package-server/tests/__fixtures__",
