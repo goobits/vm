@@ -391,6 +391,13 @@ impl From<vm_core::error::VmError> for VmError {
                 source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, msg.clone())),
                 context: format!("Internal error: {msg}"),
             },
+            vm_core::error::VmError::Timeout(msg) => VmError::General {
+                source: Box::new(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    msg.clone(),
+                )),
+                context: format!("Command timeout: {msg}"),
+            },
             vm_core::error::VmError::Filesystem(msg) => VmError::FileSystem {
                 source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, msg.clone())),
                 path: "unknown".to_string(),

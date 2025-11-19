@@ -2,13 +2,19 @@
 use super::LifecycleOperations;
 use crate::context::ProviderContext;
 use crate::progress::{AnsibleProgressParser, ProgressParser};
-use vm_core::command_stream::{stream_command_with_progress, ProgressParser as CoreProgressParser};
+use vm_core::command_stream::{
+    stream_command_with_progress_and_timeout, ProgressParser as CoreProgressParser,
+};
 use vm_core::error::{Result, VmError};
 use vm_core::vm_error;
 
 use super::{
     ANSIBLE_PLAYBOOK_PATH, CONTAINER_READINESS_MAX_ATTEMPTS, CONTAINER_READINESS_SLEEP_SECONDS,
 };
+
+// Default timeout for Ansible provisioning (5 minutes)
+// Can be overridden via environment variable ANSIBLE_TIMEOUT
+const DEFAULT_ANSIBLE_TIMEOUT_SECS: u64 = 300;
 
 /// Adapter to convert AnsibleProgressParser to CoreProgressParser trait
 struct AnsibleParserAdapter(AnsibleProgressParser);
@@ -34,20 +40,39 @@ impl<'a> LifecycleOperations<'a> {
             )
         };
 
-        stream_command_with_progress(
+        // Allow timeout override via environment variable for debugging
+        let timeout_secs = std::env::var("ANSIBLE_TIMEOUT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_ANSIBLE_TIMEOUT_SECS);
+
+        // Enable timing instrumentation if ANSIBLE_PROFILE is set
+        let enable_profiling = std::env::var("ANSIBLE_PROFILE").is_ok();
+        let ansible_cmd = if enable_profiling {
+            format!(
+                "ANSIBLE_CALLBACKS_ENABLED=profile_tasks ansible-playbook -i localhost, -c local {} {}",
+                ANSIBLE_PLAYBOOK_PATH,
+                context.ansible_verbosity()
+            )
+        } else {
+            format!(
+                "ansible-playbook -i localhost, -c local {} {}",
+                ANSIBLE_PLAYBOOK_PATH,
+                context.ansible_verbosity()
+            )
+        };
+
+        stream_command_with_progress_and_timeout(
             "docker",
             &[
                 "exec",
                 container_name,
                 "bash",
                 "-c",
-                &format!(
-                    "ansible-playbook -i localhost, -c local {} {}",
-                    ANSIBLE_PLAYBOOK_PATH,
-                    context.ansible_verbosity()
-                ),
+                &ansible_cmd,
             ],
             parser,
+            Some(timeout_secs),
         )
         .map_err(|e| {
             VmError::Internal(format!(

@@ -22,6 +22,7 @@ use std::sync::OnceLock;
 
 // External crates
 use tera::Tera;
+use uuid::Uuid;
 use vm_core::error::{Result, VmError};
 
 // Internal imports
@@ -121,17 +122,18 @@ impl DockerProvider {
 
         let project_dir = std::env::current_dir()?;
 
-        // Create a persistent project-specific directory for docker-compose files
+        // Create a unique instance-specific directory for docker-compose files
+        // Using UUID prevents stale config reuse and concurrent instance collisions
         let project_name = config
             .project
             .as_ref()
             .and_then(|p| p.name.as_deref())
             .unwrap_or("vm-project");
 
-        let temp_dir = std::env::temp_dir().join(format!("vm-{project_name}"));
-        fs::create_dir_all(&temp_dir).map_err(|e| {
-            VmError::Internal(format!("Failed to create project-specific directory: {e}"))
-        })?;
+        let instance_id = Uuid::new_v4();
+        let temp_dir = std::env::temp_dir().join(format!("vm-{}-{}", project_name, instance_id));
+        fs::create_dir_all(&temp_dir)
+            .map_err(|e| VmError::Internal(format!("Failed to create instance directory: {e}")))?;
 
         Ok(Self {
             config,

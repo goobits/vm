@@ -1,9 +1,11 @@
 // Standard library
 use std::ffi::OsStr;
 use std::io::{BufRead, BufReader};
+use std::thread;
+use std::time::Duration;
 
 // External crates
-use crate::error::Result;
+use crate::error::{Result, VmError};
 use duct::cmd;
 use tracing::info;
 use which::which;
@@ -31,14 +33,113 @@ fn with_buildkit<A: AsRef<OsStr>>(command: &str, args: &[A]) -> duct::Expression
     cmd_builder
 }
 
+/// Helper to log stdout lines
+fn log_stdout_lines(stdout: &[u8]) {
+    if let Ok(stdout_str) = String::from_utf8(stdout.to_vec()) {
+        for line in stdout_str.lines() {
+            info!("{}", line);
+        }
+    }
+}
+
+/// Helper to parse stdout lines with optional parser
+fn parse_stdout_lines(stdout: &[u8], parser: &mut Option<Box<dyn ProgressParser>>) {
+    if let Ok(stdout_str) = String::from_utf8(stdout.to_vec()) {
+        for line in stdout_str.lines() {
+            if let Some(ref mut p) = parser {
+                p.parse_line(line);
+            } else {
+                info!("{}", line);
+            }
+        }
+    }
+}
+
 /// The original simple command streamer for backward compatibility.
 pub fn stream_command<A: AsRef<OsStr>>(command: &str, args: &[A]) -> Result<()> {
-    let reader = with_buildkit(command, args).stderr_to_stdout().reader()?;
-    let lines = BufReader::new(reader).lines();
-    for line in lines {
-        info!("{}", line?);
+    stream_command_with_timeout(command, args, None)
+}
+
+/// Stream command output with optional timeout (in seconds).
+/// If timeout is None, command runs indefinitely.
+/// If timeout is exceeded, returns VmError with the full command for debugging.
+pub fn stream_command_with_timeout<A: AsRef<OsStr>>(
+    command: &str,
+    args: &[A],
+    timeout_secs: Option<u64>,
+) -> Result<()> {
+    let full_command = format!(
+        "{} {}",
+        command,
+        args.iter()
+            .map(|a| a.as_ref().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+
+    match timeout_secs {
+        None => {
+            // No timeout - original behavior with streaming
+            let reader = with_buildkit(command, args).stderr_to_stdout().reader()?;
+            let lines = BufReader::new(reader).lines();
+            for line in lines {
+                info!("{}", line?);
+            }
+            Ok(())
+        }
+        Some(secs) => {
+            // With timeout - use unchecked() to access stderr/stdout
+            let handle = with_buildkit(command, args)
+                .stderr_to_stdout()
+                .stdout_capture()
+                .unchecked()
+                .start()
+                .map_err(|e| {
+                    VmError::Internal(format!("Failed to start command '{}': {}", full_command, e))
+                })?;
+
+            // Wait for process with timeout
+            let start = std::time::Instant::now();
+            let timeout = Duration::from_secs(secs);
+
+            loop {
+                if start.elapsed() >= timeout {
+                    // Kill the process
+                    let _ = handle.kill();
+                    return Err(VmError::Timeout(format!(
+                        "Command timed out after {}s: {}\n\nTo debug, try running manually:\n  {}",
+                        secs, full_command, full_command
+                    )));
+                }
+
+                match handle.try_wait() {
+                    Ok(Some(output)) => {
+                        // Process finished - log output
+                        log_stdout_lines(&output.stdout);
+
+                        if !output.status.success() {
+                            return Err(VmError::Internal(format!(
+                                "Command failed with exit code {:?}: {}",
+                                output.status.code(),
+                                full_command
+                            )));
+                        }
+                        return Ok(());
+                    }
+                    Ok(None) => {
+                        // Still running, sleep briefly
+                        thread::sleep(Duration::from_millis(100));
+                    }
+                    Err(e) => {
+                        return Err(VmError::Internal(format!(
+                            "Error waiting for command '{}': {}",
+                            full_command, e
+                        )));
+                    }
+                }
+            }
+        }
     }
-    Ok(())
 }
 
 /// Stream command output directly to stdout, bypassing the logging system.
@@ -56,25 +157,102 @@ pub fn stream_command_visible<A: AsRef<OsStr>>(command: &str, args: &[A]) -> Res
 pub fn stream_command_with_progress<A: AsRef<OsStr>>(
     command: &str,
     args: &[A],
-    mut parser: Option<Box<dyn ProgressParser>>,
+    parser: Option<Box<dyn ProgressParser>>,
 ) -> Result<()> {
-    let reader = with_buildkit(command, args).stderr_to_stdout().reader()?;
-    let lines = BufReader::new(reader).lines();
+    stream_command_with_progress_and_timeout(command, args, parser, None)
+}
 
-    for line in lines {
-        let line = line?;
-        if let Some(ref mut p) = parser {
-            p.parse_line(&line);
-        } else {
-            info!("{}", line);
+/// Stream command output with optional progress parsing and timeout
+pub fn stream_command_with_progress_and_timeout<A: AsRef<OsStr>>(
+    command: &str,
+    args: &[A],
+    mut parser: Option<Box<dyn ProgressParser>>,
+    timeout_secs: Option<u64>,
+) -> Result<()> {
+    let full_command = format!(
+        "{} {}",
+        command,
+        args.iter()
+            .map(|a| a.as_ref().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+
+    match timeout_secs {
+        None => {
+            // No timeout - original behavior
+            let reader = with_buildkit(command, args).stderr_to_stdout().reader()?;
+            let lines = BufReader::new(reader).lines();
+
+            for line in lines {
+                let line = line?;
+                if let Some(ref mut p) = parser {
+                    p.parse_line(&line);
+                } else {
+                    info!("{}", line);
+                }
+            }
+
+            if let Some(p) = parser {
+                p.finish();
+            }
+
+            Ok(())
+        }
+        Some(secs) => {
+            // With timeout
+            let handle = with_buildkit(command, args)
+                .stderr_to_stdout()
+                .stdout_capture()
+                .unchecked()
+                .start()
+                .map_err(|e| {
+                    VmError::Internal(format!("Failed to start command '{}': {}", full_command, e))
+                })?;
+
+            let start = std::time::Instant::now();
+            let timeout = Duration::from_secs(secs);
+
+            loop {
+                if start.elapsed() >= timeout {
+                    let _ = handle.kill();
+                    return Err(VmError::Timeout(format!(
+                        "Command timed out after {}s: {}\n\nTo debug, try running manually:\n  {}",
+                        secs, full_command, full_command
+                    )));
+                }
+
+                match handle.try_wait() {
+                    Ok(Some(output)) => {
+                        // Process finished - parse output
+                        parse_stdout_lines(&output.stdout, &mut parser);
+
+                        if let Some(p) = parser {
+                            p.finish();
+                        }
+
+                        if !output.status.success() {
+                            return Err(VmError::Internal(format!(
+                                "Command failed with exit code {:?}: {}",
+                                output.status.code(),
+                                full_command
+                            )));
+                        }
+                        return Ok(());
+                    }
+                    Ok(None) => {
+                        thread::sleep(Duration::from_millis(100));
+                    }
+                    Err(e) => {
+                        return Err(VmError::Internal(format!(
+                            "Error waiting for command '{}': {}",
+                            full_command, e
+                        )));
+                    }
+                }
+            }
         }
     }
-
-    if let Some(p) = parser {
-        p.finish();
-    }
-
-    Ok(())
 }
 
 /// Checks if a command-line tool is available in the system's PATH.

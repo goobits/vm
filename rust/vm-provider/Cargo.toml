@@ -22,10 +22,10 @@ chrono = { workspace = true }
 rayon = { workspace = true }
 shellexpand = { workspace = true }
 tokio = { workspace = true, features = ["time", "rt"] }
+uuid = { version = "1.8.0", features = ["v4"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-uuid = { version = "1.8.0", features = ["v4"] }
 indexmap = { workspace = true }
 
 [features]

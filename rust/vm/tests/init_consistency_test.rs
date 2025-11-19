@@ -187,10 +187,7 @@ fn test_init_outputs_host_sync_git_config_true() -> Result<()> {
     );
 
     if let Some(host_sync) = config.host_sync {
-        assert_eq!(
-            host_sync.git_config, true,
-            "host_sync.git_config should be true"
-        );
+        assert!(host_sync.git_config, "host_sync.git_config should be true");
     }
 
     Ok(())

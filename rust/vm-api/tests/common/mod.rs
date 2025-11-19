@@ -7,7 +7,6 @@
 
 use axum::Router;
 use sqlx::SqlitePool;
-use vm_api::AppState;
 use vm_orchestrator::{CreateWorkspaceRequest, Workspace};
 
 /// Helper to create an in-memory test database with migrations

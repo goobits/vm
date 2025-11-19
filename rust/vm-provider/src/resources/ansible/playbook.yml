@@ -372,7 +372,50 @@
             shell: /usr/bin/zsh
         ignore_errors: yes
 
-      - name: Generate .zshrc from template
+      # Fast provisioning: Use pre-baked template with sed substitution (10x faster)
+      # Enable with VM_FAST_PROVISION=1 environment variable
+      - name: Generate .zshrc from fast template (experimental)
+        shell: |
+            cp /app/shared/templates/zshrc.template /home/{{ project_user }}/.zshrc
+            sed -i 's|__VM_PROJECT_NAME__|{{ project_name }}|g' /home/{{ project_user }}/.zshrc
+            sed -i 's|__VM_TERMINAL_EMOJI__|{{ terminal_emoji }}|g' /home/{{ project_user }}/.zshrc
+            sed -i 's|__VM_TERMINAL_USERNAME__|{{ terminal_username }}|g' /home/{{ project_user }}/.zshrc
+            sed -i 's|__VM_WORKSPACE_PATH__|{{ project_path }}|g' /home/{{ project_user }}/.zshrc
+            sed -i 's|__VM_COLOR_FOREGROUND__|{{ terminal_colors.foreground }}|g' /home/{{ project_user }}/.zshrc
+            sed -i 's|__VM_COLOR_RED__|{{ terminal_colors.red }}|g' /home/{{ project_user }}/.zshrc
+            sed -i 's|__VM_COLOR_GREEN__|{{ terminal_colors.green }}|g' /home/{{ project_user }}/.zshrc
+            sed -i 's|__VM_COLOR_YELLOW__|{{ terminal_colors.yellow }}|g' /home/{{ project_user }}/.zshrc
+            sed -i 's|__VM_COLOR_BLUE__|{{ terminal_colors.blue }}|g' /home/{{ project_user }}/.zshrc
+            sed -i 's|__VM_COLOR_MAGENTA__|{{ terminal_colors.magenta }}|g' /home/{{ project_user }}/.zshrc
+            sed -i 's|__VM_COLOR_CYAN__|{{ terminal_colors.cyan }}|g' /home/{{ project_user }}/.zshrc
+            sed -i 's|__VM_COLOR_BRIGHT_BLACK__|{{ terminal_colors.bright_black }}|g' /home/{{ project_user }}/.zshrc
+            {% if show_git_branch %}
+            sed -i 's|^__SHOW_GIT_BRANCH__||g' /home/{{ project_user }}/.zshrc
+            {% else %}
+            sed -i '/^__SHOW_GIT_BRANCH__/d' /home/{{ project_user }}/.zshrc
+            {% endif %}
+            {% if show_timestamp %}
+            sed -i 's|^__SHOW_TIMESTAMP__||g' /home/{{ project_user }}/.zshrc
+            {% else %}
+            sed -i '/^__SHOW_TIMESTAMP__/d' /home/{{ project_user }}/.zshrc
+            {% endif %}
+            {% if cargo_packages_required %}
+            sed -i 's|^__HAS_CARGO__||g' /home/{{ project_user }}/.zshrc
+            {% else %}
+            sed -i '/^__HAS_CARGO__/d' /home/{{ project_user }}/.zshrc
+            {% endif %}
+            {% if pip_packages_required %}
+            sed -i 's|^__HAS_PIP__||g' /home/{{ project_user }}/.zshrc
+            {% else %}
+            sed -i '/^__HAS_PIP__/d' /home/{{ project_user }}/.zshrc
+            {% endif %}
+            chown {{ project_user }}:{{ project_user }} /home/{{ project_user }}/.zshrc
+            chmod 0644 /home/{{ project_user }}/.zshrc
+        become_user: root
+        when: "lookup('env', 'VM_FAST_PROVISION') == '1'"
+        no_log: true
+
+      - name: Generate .zshrc from template (traditional)
         template:
             src: /app/shared/templates/zshrc.j2
             dest: '/home/{{ project_user }}/.zshrc'
@@ -380,6 +423,7 @@
             group: '{{ project_user }}'
             mode: '0644'
         become_user: root
+        when: "lookup('env', 'VM_FAST_PROVISION') != '1'"
         no_log: true
 
       - name: Install Node.js

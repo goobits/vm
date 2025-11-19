@@ -10,7 +10,6 @@ use vm_core::{
     error::{Result, VmError},
 };
 
-#[cfg(target_os = "macos")]
 use vm_core::vm_warning;
 
 impl<'a> LifecycleOperations<'a> {
@@ -77,6 +76,17 @@ impl<'a> LifecycleOperations<'a> {
                 }
                 #[cfg(not(target_os = "macos"))]
                 MacOSAudioManager::cleanup();
+            }
+        }
+
+        // Clean up the temporary instance directory to prevent disk leaks
+        if self.temp_dir.exists() {
+            if let Err(e) = std::fs::remove_dir_all(self.temp_dir) {
+                vm_warning!(
+                    "Failed to remove temp directory {}: {}",
+                    self.temp_dir.display(),
+                    e
+                );
             }
         }
 

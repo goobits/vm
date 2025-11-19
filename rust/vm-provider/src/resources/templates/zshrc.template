@@ -1,0 +1,97 @@
+# __VM_PROJECT_NAME__ Development Environment Shell Configuration
+
+# NVM Configuration (handles npm global packages in PATH)
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+
+# Shell History Directory Initialization
+# Ensure history directory exists and is writable before shell uses it
+_SHELL_HISTORY_DIR="$HOME/.shell_history"
+if [ ! -d "$_SHELL_HISTORY_DIR" ]; then
+  mkdir -p "$_SHELL_HISTORY_DIR" 2>/dev/null || true
+fi
+if [ ! -w "$_SHELL_HISTORY_DIR" ]; then
+  chmod u+w "$_SHELL_HISTORY_DIR" 2>/dev/null || true
+fi
+unset _SHELL_HISTORY_DIR
+
+# Shell History Configuration
+export HISTSIZE=50000
+export SAVEHIST=50000
+export HISTFILE="$HOME/.shell_history/zsh_history"
+setopt INC_APPEND_HISTORY      # Append to history immediately
+setopt SHARE_HISTORY            # Share history across sessions
+setopt HIST_IGNORE_DUPS         # Ignore duplicate commands
+setopt HIST_FIND_NO_DUPS        # Do not show duplicates in search
+
+# Locale Settings
+export LANG=en_US.UTF-8
+export LANGUAGE=en_US:en
+export LC_ALL=en_US.UTF-8
+export LC_CTYPE=en_US.UTF-8
+
+# Prevent Python from creating __pycache__ directories
+export PYTHONDONTWRITEBYTECODE=1
+
+# Custom Prompt Configuration
+function git_branch_name() {
+__SHOW_GIT_BRANCH__  git branch 2>/dev/null | grep '^*' | cut -c3- | sed 's/^/ (/' | sed 's/$/)/'
+__SHOW_GIT_BRANCH__}
+
+function format_timestamp() {
+__SHOW_TIMESTAMP__  echo " [$(date '+%H:%M:%S')]"
+__SHOW_TIMESTAMP__}
+
+# Set custom prompt: emoji username current-folder (branch) [timestamp] >
+setopt PROMPT_SUBST
+PROMPT='__VM_TERMINAL_EMOJI__ __VM_TERMINAL_USERNAME__ %c$(git_branch_name)$(format_timestamp) > '
+
+# Terminal Color Configuration
+export TERM=xterm-256color
+export LS_COLORS='di=1;34:ln=1;36:so=1;35:pi=1;33:ex=1;32:bd=1;33:cd=1;33:su=0;41:sg=0;46:tw=0;42:ow=0;43:'
+
+# Enable colored output for common commands
+alias ls='ls --color=auto'
+alias grep='grep --color=auto'
+alias fgrep='fgrep --color=auto'
+alias egrep='egrep --color=auto'
+alias diff='diff --color=auto'
+
+# ZSH Syntax Highlighting
+if [[ -r /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]]; then
+  source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+  ZSH_HIGHLIGHT_HIGHLIGHTERS=(main brackets pattern cursor)
+
+  # Apply theme colors (Dracula by default)
+  ZSH_HIGHLIGHT_STYLES[default]='fg=__VM_COLOR_FOREGROUND__'
+  ZSH_HIGHLIGHT_STYLES[unknown-token]='fg=__VM_COLOR_RED__'
+  ZSH_HIGHLIGHT_STYLES[reserved-word]='fg=__VM_COLOR_MAGENTA__'
+  ZSH_HIGHLIGHT_STYLES[command]='fg=__VM_COLOR_GREEN__'
+  ZSH_HIGHLIGHT_STYLES[builtin]='fg=__VM_COLOR_GREEN__'
+  ZSH_HIGHLIGHT_STYLES[function]='fg=__VM_COLOR_GREEN__'
+  ZSH_HIGHLIGHT_STYLES[alias]='fg=__VM_COLOR_GREEN__'
+  ZSH_HIGHLIGHT_STYLES[path]='fg=__VM_COLOR_FOREGROUND__'
+  ZSH_HIGHLIGHT_STYLES[globbing]='fg=__VM_COLOR_MAGENTA__'
+  ZSH_HIGHLIGHT_STYLES[single-quoted-argument]='fg=__VM_COLOR_YELLOW__'
+  ZSH_HIGHLIGHT_STYLES[double-quoted-argument]='fg=__VM_COLOR_YELLOW__'
+  ZSH_HIGHLIGHT_STYLES[back-quoted-argument]='fg=__VM_COLOR_CYAN__'
+  ZSH_HIGHLIGHT_STYLES[comment]='fg=__VM_COLOR_BRIGHT_BLACK__'
+fi
+
+__HAS_CARGO__# Rust Environment
+__HAS_CARGO__export PATH="$HOME/.cargo/bin:$PATH"
+__HAS_CARGO__
+
+# User binaries (pipx, pip --user, manual installs, etc.)
+export PATH="$HOME/.local/bin:$PATH"
+
+__HAS_PIP__# Python/pyenv Environment (if available)
+__HAS_PIP__export PYENV_ROOT="$HOME/.pyenv"
+__HAS_PIP__export PATH="$PYENV_ROOT/bin:$PATH"
+__HAS_PIP__if command -v pyenv >/dev/null 2>&1; then
+__HAS_PIP__  eval "$(pyenv init -)"
+__HAS_PIP__fi
+
+# Project-specific environment variables
+cd __VM_WORKSPACE_PATH__ 2>/dev/null || true

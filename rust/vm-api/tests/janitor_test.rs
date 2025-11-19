@@ -5,7 +5,7 @@
 
 use chrono::Utc;
 use sqlx::SqlitePool;
-use vm_orchestrator::{CreateWorkspaceRequest, WorkspaceOrchestrator, WorkspaceStatus};
+use vm_orchestrator::{CreateWorkspaceRequest, WorkspaceOrchestrator};
 
 /// Helper to create an in-memory test database with migrations
 async fn create_test_db() -> SqlitePool {

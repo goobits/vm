@@ -16,6 +16,6 @@ tempfile = { workspace = true }
 pathdiff = { workspace = true }
 sysinfo = { workspace = true }
 rand = { workspace = true }
-tokio = { workspace = true, features = ["fs"] }
+tokio = { workspace = true, features = ["fs", "time", "rt", "sync"] }
 vm-messages = { path = "../vm-messages" }
 vm-platform = { path = "../vm-platform" }

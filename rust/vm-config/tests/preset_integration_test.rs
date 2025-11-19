@@ -222,14 +222,15 @@ fn test_init_with_box_preset() -> Result<()> {
     let vibe_config = detector.load_preset("vibe")?;
 
     // Build minimal config as vm init would for a box preset
-    let mut config = VmConfig::default();
-
     // Set project name from directory
-    config.project = Some(ProjectConfig {
-        name: Some("test-project".to_string()),
-        hostname: Some("dev.test-project.local".to_string()),
+    let mut config = VmConfig {
+        project: Some(ProjectConfig {
+            name: Some("test-project".to_string()),
+            hostname: Some("dev.test-project.local".to_string()),
+            ..Default::default()
+        }),
         ..Default::default()
-    });
+    };
 
     // Copy box reference from preset
     if let Some(preset_vm) = vibe_config.vm {
@@ -284,10 +285,7 @@ fn test_init_with_box_preset() -> Result<()> {
         host_sync.ai_tools.is_some(),
         "host_sync.ai_tools should be set"
     );
-    assert_eq!(
-        host_sync.git_config, true,
-        "host_sync.git_config should be true"
-    );
+    assert!(host_sync.git_config, "host_sync.git_config should be true");
 
     // 4. Should NOT contain 'preset' field (box presets are not provision presets)
     assert!(
@@ -648,8 +646,10 @@ fn test_box_preset_networking_merge() -> Result<()> {
     let detector = fixture.create_detector();
     let vibe_config = detector.load_preset("vibe")?;
 
-    let mut config = VmConfig::default();
-    config.networking = vibe_config.networking;
+    let config = VmConfig {
+        networking: vibe_config.networking,
+        ..Default::default()
+    };
 
     // Assert: Verify networking configuration
     assert!(
@@ -767,8 +767,10 @@ fn test_box_preset_aliases_preserved() -> Result<()> {
     let detector = fixture.create_detector();
     let vibe_config = detector.load_preset("vibe")?;
 
-    let mut config = VmConfig::default();
-    config.aliases = vibe_config.aliases;
+    let config = VmConfig {
+        aliases: vibe_config.aliases,
+        ..Default::default()
+    };
 
     // Assert: Verify aliases are present
     assert!(
