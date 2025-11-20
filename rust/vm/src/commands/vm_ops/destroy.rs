@@ -102,29 +102,37 @@ pub async fn handle_destroy(
         // Check status to show current state
         let is_running = provider.status(container).is_ok();
 
-        let service_manager = get_service_manager();
-        if let Some(pg_state) = service_manager.get_service_status("postgresql") {
-            if pg_state.is_running && pg_state.reference_count == 1 {
-                let db_name = format!("{}_dev", vm_name.replace('-', "_"));
-                let db_size = match execute_psql_command(&format!(
-                    "SELECT pg_size_pretty(pg_database_size('{db_name}'))"
-                ))
-                .await
-                {
-                    Ok(size) => size.trim().to_string(),
-                    Err(_) => "N/A".to_string(),
-                };
-
-                vm_println!("⚠️  Destroying VM '{}'", vm_name);
-                vm_println!();
-                vm_println!("📊 Database: Your PostgreSQL data will persist");
-                vm_println!("   Location: ~/.vm/data/postgres");
-                vm_println!("   Database: {} ({})", db_name, db_size);
-                vm_println!();
-                vm_println!("💡 Tip: Create a backup first");
-                vm_println!("   vm db backup {}", db_name);
-                vm_println!();
+        let service_manager_result = get_service_manager();
+        let pg_service_check = if let Ok(sm) = service_manager_result {
+            if let Some(pg_state) = sm.get_service_status("postgresql") {
+                pg_state.is_running && pg_state.reference_count == 1
+            } else {
+                false
             }
+        } else {
+            false
+        };
+
+        if pg_service_check {
+            let db_name = format!("{}_dev", vm_name.replace('-', "_"));
+            let db_size = match execute_psql_command(&format!(
+                "SELECT pg_size_pretty(pg_database_size('{db_name}'))"
+            ))
+            .await
+            {
+                Ok(size) => size.trim().to_string(),
+                Err(_) => "N/A".to_string(),
+            };
+
+            vm_println!("⚠️  Destroying VM '{}'", vm_name);
+            vm_println!();
+            vm_println!("📊 Database: Your PostgreSQL data will persist");
+            vm_println!("   Location: ~/.vm/data/postgres");
+            vm_println!("   Database: {} ({})", db_name, db_size);
+            vm_println!();
+            vm_println!("💡 Tip: Create a backup first");
+            vm_println!("   vm db backup {}", db_name);
+            vm_println!();
         }
 
         vm_println!("{}", msg!(MESSAGES.vm.destroy_confirm, name = vm_name));

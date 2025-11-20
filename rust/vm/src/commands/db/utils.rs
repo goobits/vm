@@ -4,7 +4,12 @@ use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
 
 pub async fn execute_psql_command(command: &str) -> VmResult<String> {
-    let service_manager = get_service_manager();
+    let service_manager = get_service_manager().map_err(|e| {
+        VmError::general(
+            std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+            "Service manager not initialized",
+        )
+    })?;
     let pg_state = service_manager.get_service_status("postgresql");
 
     if !pg_state.is_some_and(|s| s.is_running) {

@@ -3,23 +3,8 @@
 //! Tests that the provisioner picks up "creating" workspaces and provisions them.
 //! Docker-dependent tests are marked with #[ignore].
 
-use sqlx::SqlitePool;
+use vm_orchestrator::test_utils::create_test_db;
 use vm_orchestrator::{CreateWorkspaceRequest, WorkspaceOrchestrator, WorkspaceStatus};
-
-/// Helper to create an in-memory test database with migrations
-async fn create_test_db() -> SqlitePool {
-    let pool = SqlitePool::connect("sqlite::memory:")
-        .await
-        .expect("Failed to create in-memory database");
-
-    // Run migrations from vm-orchestrator
-    sqlx::migrate!("../vm-orchestrator/migrations")
-        .run(&pool)
-        .await
-        .expect("Failed to run migrations");
-
-    pool
-}
 
 #[tokio::test]
 async fn test_provisioner_picks_up_creating_workspaces() {

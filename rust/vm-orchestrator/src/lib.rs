@@ -7,6 +7,8 @@
 pub mod db;
 pub mod error;
 pub mod operation;
+#[cfg(feature = "test-utils")]
+pub mod test_utils;
 pub mod workspace;
 
 pub use error::{OrchestratorError, Result};

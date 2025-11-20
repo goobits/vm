@@ -46,12 +46,18 @@ pub async fn handle_auth_command(
 /// Show auth proxy status with service manager information
 async fn handle_status(global_config: &GlobalConfig) -> VmResult<()> {
     let registry = get_service_registry();
-    let service_manager = get_service_manager();
+    let service_manager_result = get_service_manager();
 
     vm_println!("{}", MESSAGES.vm.auth_status_header);
 
     // Get service status from service manager
-    if let Some(service_state) = service_manager.get_service_status("auth_proxy") {
+    let service_status_opt = if let Ok(sm) = service_manager_result {
+        sm.get_service_status("auth_proxy")
+    } else {
+        None
+    };
+
+    if let Some(service_state) = service_status_opt {
         vm_println!(
             "{}",
             msg!(

@@ -27,7 +27,15 @@ pub(super) async fn register_vm_services_helper(
     vm_config: &VmConfig,
     global_config: &GlobalConfig,
 ) -> VmResult<()> {
-    if let Err(e) = get_service_manager()
+    let service_manager = match get_service_manager() {
+        Ok(sm) => sm,
+        Err(e) => {
+            warn!("Failed to get service manager: {}", e);
+            return Ok(());
+        }
+    };
+
+    if let Err(e) = service_manager
         .register_vm_services(vm_name, vm_config, global_config)
         .await
     {
@@ -51,7 +59,15 @@ pub(super) async fn unregister_vm_services_helper(
     vm_name: &str,
     global_config: &GlobalConfig,
 ) -> VmResult<()> {
-    if let Err(e) = get_service_manager()
+    let service_manager = match get_service_manager() {
+        Ok(sm) => sm,
+        Err(e) => {
+            warn!("Failed to get service manager: {}", e);
+            return Ok(());
+        }
+    };
+
+    if let Err(e) = service_manager
         .unregister_vm_services(vm_name, global_config)
         .await
     {
