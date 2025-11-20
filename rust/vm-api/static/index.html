@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en" class="theme-dark scheme-default" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VM API Dashboard</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+
+    <!-- Import @goobits/themes CSS -->
+    <link rel="stylesheet" href="/themes/base/reset.css">
+    <link rel="stylesheet" href="/themes/base/design-tokens.css">
+    <link rel="stylesheet" href="/themes/base/fx-tokens.css">
+    <link rel="stylesheet" href="/themes/presets/default.css">
+
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 2rem;
+            transition: background-color 300ms ease, color 300ms ease;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* Header Styles */
+        header {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-primary);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        h1 {
+            color: var(--text-primary);
+            font-size: 2rem;
+            font-weight: 700;
+            margin: 0;
+        }
+
+        .theme-toggle {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            color: var(--text-primary);
+            font-size: 1.5rem;
+            transition: all 200ms ease;
+        }
+
+        .theme-toggle:hover {
+            transform: var(--fx-hover-transform);
+            box-shadow: var(--shadow-md);
+            background: var(--bg-primary);
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .info-item {
+            background: var(--bg-tertiary);
+            padding: 1rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-primary);
+        }
+
+        .info-label {
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .info-value {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        /* Card Styles */
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-primary);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: var(--shadow-sm);
+            transition: all var(--card-transition);
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 2px solid var(--color-primary-500);
+            font-weight: 600;
+        }
+
+        /* Endpoint Grid */
+        .endpoints {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+
+        .endpoint-card {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
+            border-radius: 8px;
+            padding: 1.25rem;
+            transition: all 200ms ease;
+        }
+
+        .endpoint-card:hover {
+            transform: var(--card-hover-transform);
+            box-shadow: var(--card-hover-shadow);
+            border-color: var(--color-primary-500);
+        }
+
+        .endpoint-method {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            margin-right: 0.75rem;
+        }
+
+        .method-get {
+            background: var(--color-success-500);
+            color: var(--color-text-on-primary);
+        }
+
+        .method-post {
+            background: var(--color-primary-500);
+            color: var(--color-text-on-primary);
+        }
+
+        .method-delete {
+            background: var(--color-error-500);
+            color: var(--color-text-on-primary);
+        }
+
+        .endpoint-path {
+            font-family: 'Monaco', 'Courier New', monospace;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            word-break: break-all;
+        }
+
+        .endpoint-desc {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+        }
+
+        /* Button Styles */
+        .try-button {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            background: var(--color-primary-500);
+            color: var(--color-text-on-primary);
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.875rem;
+            transition: all 200ms ease;
+            margin-top: 0.75rem;
+            border: none;
+            cursor: pointer;
+        }
+
+        .try-button:hover {
+            background: var(--color-primary-600);
+            transform: var(--button-hover-transform);
+            box-shadow: var(--button-hover-shadow);
+        }
+
+        /* Auth Note */
+        .auth-note {
+            background: var(--color-warning-50);
+            border-left: 4px solid var(--color-warning-500);
+            padding: 1rem;
+            border-radius: 4px;
+            color: var(--color-warning-900);
+            margin-top: 1.5rem;
+        }
+
+        [data-theme="dark"] .auth-note {
+            background: var(--color-warning-950);
+            color: var(--color-warning-100);
+            border-left-color: var(--color-warning-400);
+        }
+
+        .auth-note strong {
+            color: var(--color-warning-700);
+        }
+
+        [data-theme="dark"] .auth-note strong {
+            color: var(--color-warning-300);
+        }
+
+        /* Status Indicators */
+        .status-ok {
+            color: var(--color-success-500);
+        }
+
+        .status-error {
+            color: var(--color-error-500);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-top">
+                <h1>VM API Dashboard</h1>
+                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+                    <span id="theme-icon">🌙</span>
+                </button>
+            </div>
+            <p class="subtitle">Workspace orchestration and management API</p>
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="info-label">Version</div>
+                    <div class="info-value" id="api-version">Loading...</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Status</div>
+                    <div class="info-value" id="api-status">Loading...</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Database</div>
+                    <div class="info-value" id="db-status">Loading...</div>
+                </div>
+            </div>
+        </header>
+
+        <div class="card">
+            <h2 class="section-title">Health Endpoints</h2>
+            <div class="endpoints">
+                <div class="endpoint-card">
+                    <div>
+                        <span class="endpoint-method method-get">GET</span>
+                        <span class="endpoint-path">/health</span>
+                    </div>
+                    <p class="endpoint-desc">Basic health check</p>
+                    <a href="http://127.0.0.1:3121/health" class="try-button" target="_blank">Try it</a>
+                </div>
+                <div class="endpoint-card">
+                    <div>
+                        <span class="endpoint-method method-get">GET</span>
+                        <span class="endpoint-path">/health/ready</span>
+                    </div>
+                    <p class="endpoint-desc">Readiness check with database status</p>
+                    <a href="http://127.0.0.1:3121/health/ready" class="try-button" target="_blank">Try it</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 class="section-title">Workspace Management</h2>
+            <div class="endpoints">
+                <div class="endpoint-card">
+                    <div>
+                        <span class="endpoint-method method-get">GET</span>
+                        <span class="endpoint-path">/api/v1/workspaces</span>
+                    </div>
+                    <p class="endpoint-desc">List all workspaces for authenticated user</p>
+                </div>
+                <div class="endpoint-card">
+                    <div>
+                        <span class="endpoint-method method-post">POST</span>
+                        <span class="endpoint-path">/api/v1/workspaces</span>
+                    </div>
+                    <p class="endpoint-desc">Create a new workspace</p>
+                </div>
+                <div class="endpoint-card">
+                    <div>
+                        <span class="endpoint-method method-get">GET</span>
+                        <span class="endpoint-path">/api/v1/workspaces/{id}</span>
+                    </div>
+                    <p class="endpoint-desc">Get workspace details</p>
+                </div>
+                <div class="endpoint-card">
+                    <div>
+                        <span class="endpoint-method method-delete">DELETE</span>
+                        <span class="endpoint-path">/api/v1/workspaces/{id}</span>
+                    </div>
+                    <p class="endpoint-desc">Delete a workspace</p>
+                </div>
+                <div class="endpoint-card">
+                    <div>
+                        <span class="endpoint-method method-post">POST</span>
+                        <span class="endpoint-path">/api/v1/workspaces/{id}/start</span>
+                    </div>
+                    <p class="endpoint-desc">Start a workspace</p>
+                </div>
+                <div class="endpoint-card">
+                    <div>
+                        <span class="endpoint-method method-post">POST</span>
+                        <span class="endpoint-path">/api/v1/workspaces/{id}/stop</span>
+                    </div>
+                    <p class="endpoint-desc">Stop a workspace</p>
+                </div>
+                <div class="endpoint-card">
+                    <div>
+                        <span class="endpoint-method method-post">POST</span>
+                        <span class="endpoint-path">/api/v1/workspaces/{id}/restart</span>
+                    </div>
+                    <p class="endpoint-desc">Restart a workspace</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 class="section-title">Snapshot Management</h2>
+            <div class="endpoints">
+                <div class="endpoint-card">
+                    <div>
+                        <span class="endpoint-method method-get">GET</span>
+                        <span class="endpoint-path">/api/v1/workspaces/{id}/snapshots</span>
+                    </div>
+                    <p class="endpoint-desc">List all snapshots for a workspace</p>
+                </div>
+                <div class="endpoint-card">
+                    <div>
+                        <span class="endpoint-method method-post">POST</span>
+                        <span class="endpoint-path">/api/v1/workspaces/{id}/snapshots</span>
+                    </div>
+                    <p class="endpoint-desc">Create a new snapshot</p>
+                </div>
+                <div class="endpoint-card">
+                    <div>
+                        <span class="endpoint-method method-post">POST</span>
+                        <span class="endpoint-path">/api/v1/workspaces/{id}/snapshots/{snapshot_id}/restore</span>
+                    </div>
+                    <p class="endpoint-desc">Restore workspace from snapshot</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 class="section-title">Operations</h2>
+            <div class="endpoints">
+                <div class="endpoint-card">
+                    <div>
+                        <span class="endpoint-method method-get">GET</span>
+                        <span class="endpoint-path">/api/v1/operations</span>
+                    </div>
+                    <p class="endpoint-desc">List operations with optional filters (workspace_id, type, status)</p>
+                </div>
+                <div class="endpoint-card">
+                    <div>
+                        <span class="endpoint-method method-get">GET</span>
+                        <span class="endpoint-path">/api/v1/operations/{id}</span>
+                    </div>
+                    <p class="endpoint-desc">Get operation details</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="auth-note">
+            <strong>Authentication Required:</strong> All API endpoints except /health require authentication via Bearer token in the Authorization header.
+        </div>
+    </div>
+
+    <script>
+        // Theme Management
+        function toggleTheme() {
+            const html = document.documentElement;
+            const icon = document.getElementById('theme-icon');
+            const currentTheme = html.getAttribute('data-theme');
+
+            if (currentTheme === 'dark') {
+                html.classList.remove('theme-dark');
+                html.classList.add('theme-light');
+                html.setAttribute('data-theme', 'light');
+                icon.textContent = '☀️';
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.classList.remove('theme-light');
+                html.classList.add('theme-dark');
+                html.setAttribute('data-theme', 'dark');
+                icon.textContent = '🌙';
+                localStorage.setItem('theme', 'dark');
+            }
+        }
+
+        // Load saved theme preference
+        function loadThemePreference() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            const html = document.documentElement;
+            const icon = document.getElementById('theme-icon');
+
+            if (savedTheme === 'light') {
+                html.classList.remove('theme-dark');
+                html.classList.add('theme-light');
+                html.setAttribute('data-theme', 'light');
+                icon.textContent = '☀️';
+            } else {
+                html.classList.remove('theme-light');
+                html.classList.add('theme-dark');
+                html.setAttribute('data-theme', 'dark');
+                icon.textContent = '🌙';
+            }
+        }
+
+        // Fetch health status on page load
+        async function updateHealthStatus() {
+            try {
+                const response = await fetch('http://127.0.0.1:3121/health/ready');
+                const data = await response.json();
+
+                document.getElementById('api-version').textContent = data.version;
+
+                const statusEl = document.getElementById('api-status');
+                const isReady = data.status === 'ready';
+                statusEl.textContent = isReady ? 'Ready' : 'Not Ready';
+                statusEl.className = 'info-value ' + (isReady ? 'status-ok' : 'status-error');
+
+                const dbEl = document.getElementById('db-status');
+                const isConnected = data.database === 'connected';
+                dbEl.textContent = isConnected ? 'Connected' : 'Disconnected';
+                dbEl.className = 'info-value ' + (isConnected ? 'status-ok' : 'status-error');
+            } catch (error) {
+                console.error('Failed to fetch health status:', error);
+                const statusEl = document.getElementById('api-status');
+                statusEl.textContent = 'Error';
+                statusEl.className = 'info-value status-error';
+            }
+        }
+
+        // Initialize
+        loadThemePreference();
+        updateHealthStatus();
+
+        // Refresh every 30 seconds
+        setInterval(updateHealthStatus, 30000);
+    </script>
+</body>
+</html>

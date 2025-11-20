@@ -1,0 +1,786 @@
+/**
+ * Design Tokens - Comprehensive Theme System
+ * 
+ * Complete design system matching the fractalterm theme specification
+ * with all colors, states, layouts, and interactive properties.
+ */
+
+/* Import FX system */
+@import './fx-tokens.css';
+
+:root {
+    /* ========================================
+   * COLORS - LIGHT THEME (DEFAULT)
+   * ======================================== */
+
+    /* Background Colors */
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8fafc;
+    --bg-tertiary: #f1f5f9;
+    --color-background: var(--bg-secondary);
+    --color-background-secondary: var(--bg-tertiary);
+    --color-background-tertiary: #e2e8f0;
+    --color-surface: var(--bg-primary);
+    --color-surface-elevated: var(--bg-primary);
+    --color-surface-variant: var(--bg-tertiary);
+
+    /* Card Gradient System */
+    --card-gradient-overlay: linear-gradient(
+        to bottom,
+        transparent 0%,
+        transparent 70%,
+        rgba(255, 255, 255, 0.4) 85%,
+        rgba(255, 255, 255, 0.8) 100%
+    );
+
+    /* Text Colors */
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-tertiary: #64748b;
+    --color-text-primary: var(--text-primary);
+    --color-text-secondary: var(--text-secondary);
+    --color-text-tertiary: var(--text-tertiary);
+    --color-text-inverse: #ffffff;
+    --color-text-disabled: #9ca3af;
+
+    /* Border Colors */
+    --border-primary: #e2e8f0;
+    --border-secondary: #cbd5e1;
+    --color-border: var(--border-primary);
+    --color-border-strong: var(--border-secondary);
+    --color-border-subtle: #f1f5f9;
+
+    /* Overlay Colors */
+    --color-overlay-dark: rgba(0, 0, 0, 0.5);
+    --color-overlay-darker: rgba(0, 0, 0, 0.7);
+
+    /* Text on colored backgrounds */
+    --color-text-on-primary: #ffffff;
+    --color-text-on-dark: #ffffff;
+
+    /* ========================================
+   * BRAND COLORS
+   * ======================================== */
+
+    --brand-gradient-start: #007aff;
+    --brand-gradient-end: #5856d6;
+    --brand-gradient: linear-gradient(
+        135deg,
+        var(--brand-gradient-start),
+        var(--brand-gradient-end)
+    );
+
+    /* Primary Colors (Brand-based) */
+    --color-primary-50: #eff6ff;
+    --color-primary-100: #dbeafe;
+    --color-primary-200: #bfdbfe;
+    --color-primary-300: #93c5fd;
+    --color-primary-400: #60a5fa;
+    --color-primary-500: var(--brand-gradient-start);
+    --color-primary-600: #2563eb;
+    --color-primary-700: #1d4ed8;
+    --color-primary-800: #1e40af;
+    --color-primary-900: #1e3a8a;
+    --color-primary-950: #172554;
+
+    /* ========================================
+   * STATUS COLORS - LIGHT THEME
+   * ======================================== */
+
+    --success: #059669;
+    --success-bg: #ecfdf5;
+    --success-border: #10b981;
+    --color-success-50: #ecfdf5;
+    --color-success-100: #d1fae5;
+    --color-success-200: #a7f3d0;
+    --color-success-300: #6ee7b7;
+    --color-success-400: #34d399;
+    --color-success-500: var(--success);
+    --color-success-600: var(--success-border);
+    --color-success-700: #047857;
+    --color-success-800: #065f46;
+    --color-success-900: #064e3b;
+    --color-success-950: #022c22;
+
+    --error: #dc2626;
+    --error-bg: #fef2f2;
+    --error-border: #ef4444;
+    --color-error-50: #fef2f2;
+    --color-error-100: #fee2e2;
+    --color-error-200: #fecaca;
+    --color-error-300: #fca5a5;
+    --color-error-400: #f87171;
+    --color-error-500: var(--error);
+    --color-error-600: var(--error-border);
+    --color-error-700: #b91c1c;
+    --color-error-800: #991b1b;
+    --color-error-900: #7f1d1d;
+    --color-error-950: #450a0a;
+
+    --warning: #d97706;
+    --warning-bg: #fffbeb;
+    --warning-border: #f59e0b;
+    --color-warning-50: #fffbeb;
+    --color-warning-100: #fef3c7;
+    --color-warning-200: #fed7aa;
+    --color-warning-300: #fdba74;
+    --color-warning-400: #fb923c;
+    --color-warning-500: var(--warning);
+    --color-warning-600: var(--warning-border);
+    --color-warning-700: #b45309;
+    --color-warning-800: #92400e;
+    --color-warning-900: #78350f;
+    --color-warning-950: #451a03;
+
+    --info: #2563eb;
+    --info-bg: #eff6ff;
+    --info-border: #3b82f6;
+    --color-info-50: #eff6ff;
+    --color-info-100: #dbeafe;
+    --color-info-200: #bfdbfe;
+    --color-info-300: #93c5fd;
+    --color-info-400: #60a5fa;
+    --color-info-500: var(--info);
+    --color-info-600: var(--info-border);
+    --color-info-700: #1d4ed8;
+    --color-info-800: #1e40af;
+    --color-info-900: #1e3a8a;
+    --color-info-950: #172554;
+
+    /* Secondary Colors (Gray-based for neutral actions) */
+    --color-secondary-50: #f8fafc;
+    --color-secondary-100: #f1f5f9;
+    --color-secondary-200: #e2e8f0;
+    --color-secondary-300: #cbd5e1;
+    --color-secondary-400: #94a3b8;
+    --color-secondary-500: #64748b;
+    --color-secondary-600: #475569;
+    --color-secondary-700: #334155;
+    --color-secondary-800: #1e293b;
+    --color-secondary-900: #0f172a;
+    --color-secondary-950: #020617;
+
+    /* RGB Color Variables for rgba() usage - Light Theme */
+    --color-primary-900-rgb: 30, 58, 138;
+    --color-primary-800-rgb: 30, 64, 175;
+    --color-success-900-rgb: 6, 78, 59;
+    --color-success-800-rgb: 6, 95, 70;
+    --color-warning-900-rgb: 120, 53, 15;
+    --color-warning-800-rgb: 146, 64, 14;
+    --color-error-900-rgb: 127, 29, 29;
+    --color-error-800-rgb: 153, 27, 27;
+    --color-surface-variant-rgb: 241, 245, 249;
+
+    /* ========================================
+   * INTERACTIVE STATES - LIGHT
+   * ======================================== */
+
+    --hover-overlay: rgba(0, 0, 0, 0.05);
+    --active-overlay: rgba(0, 0, 0, 0.1);
+    --focus-ring: 0 0 0 2px var(--brand-gradient-start);
+
+    /* ========================================
+   * SHADOWS - LIGHT THEME
+   * ======================================== */
+
+    --shadow-xs: 0 1px 1px 0 rgba(0, 0, 0, 0.03);
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-base: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    --shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.05);
+    --shadow-none: 0 0 #0000;
+
+    /* ========================================
+   * BORDER RADIUS
+   * ======================================== */
+
+    --radius-sm: 0.25rem;
+    --radius-md: 0.375rem;
+    --radius-base: var(--radius-md);
+    --radius-lg: 0.5rem;
+    --radius-xl: 0.75rem;
+    --radius-2xl: 1rem;
+    --radius-3xl: 1.5rem;
+    --radius-full: 9999px;
+    --radius-none: 0;
+
+    /* ========================================
+   * SPACING SYSTEM
+   * ======================================== */
+
+    --space-xs: 0.25rem;
+    --space-sm: 0.5rem;
+    --space-md: 1rem;
+    --space-lg: 1.5rem;
+    --space-xl: 2rem;
+    --space-2xl: 3rem;
+
+    /* Extended Spacing Scale */
+    --space-0: 0;
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.25rem;
+    --space-6: 1.5rem;
+    --space-7: 1.75rem;
+    --space-8: 2rem;
+    --space-10: 2.5rem;
+    --space-12: 3rem;
+    --space-16: 4rem;
+    --space-20: 5rem;
+    --space-24: 6rem;
+    --space-32: 8rem;
+    --space-40: 10rem;
+    --space-48: 12rem;
+    --space-56: 14rem;
+    --space-64: 16rem;
+
+    /* ========================================
+   * TYPOGRAPHY SYSTEM
+   * ======================================== */
+
+    /* Three-Tier Font System */
+    --font-family-logotype:
+        -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui,
+        'Helvetica Neue', Helvetica, Arial, sans-serif;
+    --font-family-headertype:
+        -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui,
+        'Helvetica Neue', Helvetica, Arial, sans-serif;
+    --font-family-bodytype:
+        system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-family-mono:
+        ui-monospace, SFMono-Regular, 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
+
+    /* Font Sizes */
+    --font-size-xs: 0.75rem;
+    --font-size-sm: 0.875rem;
+    --font-size-base: 1rem;
+    --font-size-lg: 1.125rem;
+    --font-size-xl: 1.25rem;
+    --font-size-2xl: 1.5rem;
+    --font-size-3xl: 1.875rem;
+    --font-size-4xl: 2.25rem;
+    --font-size-5xl: 3rem;
+    --font-size-6xl: 3.75rem;
+    --font-size-7xl: 4.5rem;
+    --font-size-8xl: 6rem;
+    --font-size-9xl: 8rem;
+
+    /* Font Weights */
+    --font-weight-thin: 100;
+    --font-weight-extralight: 200;
+    --font-weight-light: 300;
+    --font-weight-normal: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+    --font-weight-bold: 700;
+    --font-weight-extrabold: 800;
+    --font-weight-black: 900;
+
+    /* Line Heights */
+    --line-height-tight: 1.25;
+    --line-height-normal: 1.5;
+    --line-height-relaxed: 1.625;
+    --line-height-none: 1;
+    --line-height-snug: 1.375;
+    --line-height-loose: 2;
+
+    /* ========================================
+   * LAYOUT DIMENSIONS
+   * ======================================== */
+
+    --header-height: 4rem;
+    --sidebar-width: 20rem;
+    --input-height: 2.5rem;
+    --button-height: 2.5rem;
+    --max-width-xs: 20rem;
+    --max-width-sm: 24rem;
+    --max-width-md: 28rem;
+    --max-width-lg: 32rem;
+    --max-width-xl: 36rem;
+    --max-width-2xl: 42rem;
+    --max-width-3xl: 48rem;
+    --max-width-4xl: 56rem;
+    --max-width-5xl: 64rem;
+    --max-width-6xl: 72rem;
+    --max-width-7xl: 80rem;
+    --max-width-full: 100%;
+
+    /* ========================================
+   * BREAKPOINTS
+   * ======================================== */
+
+    --breakpoint-sm: 480px;
+    --breakpoint-md: 768px;
+    --breakpoint-lg: 1024px;
+    --breakpoint-xl: 1280px;
+    --breakpoint-2xl: 1536px;
+
+    /* ========================================
+   * Z-INDEX SCALE
+   * ======================================== */
+
+    --z-hide: -1;
+    --z-auto: auto;
+    --z-base: 0;
+    --z-docked: 10;
+    --z-header: 50;
+    --z-dropdown: 1000;
+    --z-sticky: 1100;
+    --z-banner: 1200;
+    --z-overlay: 1300;
+    --z-modal: 10000;
+    --z-popover: 1500;
+    --z-skiplink: 1600;
+    --z-toast: 50000;
+    --z-tooltip: 1800;
+
+    /* ========================================
+   * TRANSITIONS & ANIMATIONS
+   * ======================================== */
+
+    --transition-fast: 0.15s;
+    --transition-normal: 0.2s;
+    --transition-slow: 0.3s;
+    --ease-in-out-cubic: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
+    --ease-elastic: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    --ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
+
+    /* Animation duration variables */
+    --duration-75: 75ms;
+    --duration-100: 100ms;
+    --duration-150: 150ms;
+    --duration-200: 200ms;
+    --duration-250: 250ms;
+    --duration-300: 300ms;
+    --duration-500: 500ms;
+    --duration-700: 700ms;
+    --duration-1000: 1000ms;
+
+    /* Menu flash animation */
+    --duration-flash: 250ms;
+    --menu-close-delay: 300ms;
+
+    --ease-linear: linear;
+    --ease-in: cubic-bezier(0.4, 0, 1, 1);
+    --ease-out: cubic-bezier(0, 0, 0.2, 1);
+    --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* Common Transitions */
+    --transition-colors:
+        color var(--transition-fast) var(--ease-in-out-cubic),
+        background-color var(--transition-fast) var(--ease-in-out-cubic),
+        border-color var(--transition-fast) var(--ease-in-out-cubic),
+        text-decoration-color var(--transition-fast) var(--ease-in-out-cubic),
+        fill var(--transition-fast) var(--ease-in-out-cubic),
+        stroke var(--transition-fast) var(--ease-in-out-cubic);
+    --transition-opacity: opacity var(--transition-fast) var(--ease-in-out-cubic);
+    --transition-shadow: box-shadow var(--transition-fast) var(--ease-in-out-cubic);
+    --transition-transform: transform var(--transition-fast) var(--ease-in-out-cubic);
+    --transition-all: all var(--transition-fast) var(--ease-in-out-cubic);
+
+    /* ========================================
+   * INTERACTIVE PROPERTIES
+   * ======================================== */
+
+    --focus-ring-width: 2px;
+    --focus-ring-offset: 2px;
+    --hover-brightness: 1.1;
+    --active-scale: 0.98;
+    --disabled-opacity: 0.5;
+
+    /* ========================================
+   * ICON SIZES - Unified System
+   * ======================================== */
+
+    --icon-xs: 0.75rem; /* 12px - compact/inline */
+    --icon-sm: 1rem; /* 16px - standard UI */
+    --icon-md: 1.25rem; /* 20px - medium emphasis */
+    --icon-lg: 1.5rem; /* 24px - headers/prominent */
+    --icon-xl: 2rem; /* 32px - hero sections */
+    --icon-2xl: 3rem; /* 48px - branding/splash */
+
+    /* ========================================
+   * NEUTRAL COLORS (Enhanced Grays)
+   * ======================================== */
+
+    --color-white: #ffffff;
+    --color-black: #000000;
+    --color-gray-50: #f9fafb;
+    --color-gray-100: #f3f4f6;
+    --color-gray-200: #e5e7eb;
+    --color-gray-300: #d1d5db;
+    --color-gray-400: #9ca3af;
+    --color-gray-500: #6b7280;
+    --color-gray-600: #4b5563;
+    --color-gray-700: #374151;
+    --color-gray-750: #2d3748;
+    --color-gray-800: #1f2937;
+    --color-gray-900: #111827;
+    --color-gray-950: #0d1117;
+}
+
+/* ========================================
+ * THEME SYSTEM - CLASS-BASED THEMING
+ * ======================================== */
+
+/* Smooth theme transitions - applied to root for global effect */
+:root {
+    transition: var(--transition-colors);
+}
+
+/* Scheme styles are now imported directly in +layout.svelte for guaranteed loading */
+
+/* ========================================
+ * SCHEME SYSTEM PREPARATION
+ * ======================================== */
+
+/* Base CSS custom properties that schemes can override */
+:root {
+    /* Scheme-overridable colors */
+    --scheme-accent-primary: var(--color-primary-500);
+    --scheme-accent-secondary: var(--color-primary-600);
+    --scheme-accent-glow: var(--color-primary-400);
+
+    /* Scheme-specific animation variables */
+    --scheme-hover-transform: none;
+    --scheme-focus-effect: var(--focus-ring);
+    --scheme-special-gradient: var(--brand-gradient);
+}
+
+/* Prevent transitions during page load to avoid FOUC */
+.theme-loading * {
+    transition: none !important;
+}
+
+/* Disable transitions during theme switching for instant change */
+.theme-switching,
+.theme-switching * {
+    transition: none !important;
+}
+
+/* ========================================
+ * LIGHT THEME (EXPLICIT CLASS)
+ * ======================================== */
+
+.theme-light,
+.theme-system-light {
+    /* Light theme uses root definitions - no overrides needed */
+}
+
+/* ========================================
+ * SYSTEM THEME BASE CLASS
+ * ======================================== */
+
+.theme-system {
+    /* Base system theme - uses media queries for fallback styling */
+}
+
+/* ========================================
+ * DARK THEME
+ * ======================================== */
+
+.theme-dark,
+.theme-system-dark {
+    /* Background Colors */
+    --bg-primary: #0a0a0a;
+    --bg-secondary: #141414;
+    --bg-tertiary: #1a1a1a;
+    --color-background: var(--bg-primary);
+    --color-background-secondary: var(--bg-secondary);
+    --color-background-tertiary: var(--bg-tertiary);
+    --color-surface: var(--bg-tertiary);
+    --color-surface-elevated: #222222;
+    --color-surface-variant: var(--bg-secondary);
+
+    /* Card Gradient System - Dark */
+    --card-gradient-overlay: linear-gradient(
+        to bottom,
+        transparent 0%,
+        transparent 70%,
+        rgba(26, 26, 26, 0.4) 85%,
+        rgba(26, 26, 26, 0.8) 100%
+    );
+
+    /* Text Colors */
+    --text-primary: #f0f0f0;
+    --text-secondary: #b0b0b0;
+    --text-tertiary: #909090;
+    --color-text-primary: var(--text-primary);
+    --color-text-secondary: var(--text-secondary);
+    --color-text-tertiary: var(--text-tertiary);
+    --color-text-inverse: #0a0a0a;
+    --color-text-disabled: var(--color-gray-600);
+
+    /* Border Colors */
+    --border-primary: rgba(255, 255, 255, 0.06);
+    --border-secondary: rgba(255, 255, 255, 0.1);
+    --color-border: var(--border-primary);
+    --color-border-strong: var(--border-secondary);
+    --color-border-subtle: rgba(255, 255, 255, 0.03);
+
+    /* Status Colors - Dark */
+    --success: #32d74b;
+    --success-bg: rgba(50, 215, 75, 0.15);
+    --success-border: #32d74b;
+    --error: #ff453a;
+    --error-bg: rgba(255, 69, 58, 0.15);
+    --error-border: #ff453a;
+    --warning: #ffd60a;
+    --warning-bg: rgba(255, 214, 10, 0.15);
+    --warning-border: #ffd60a;
+    --info: #007aff;
+    --info-bg: rgba(0, 122, 255, 0.15);
+    --info-border: #007aff;
+
+    /* Complete Success Color Scale for Dark Mode */
+    --color-success-50: #052e16;
+    --color-success-100: #14532d;
+    --color-success-200: #166534;
+    --color-success-300: #15803d;
+    --color-success-400: #16a34a;
+    --color-success-500: #22c55e;
+    --color-success-600: #32d74b;
+    --color-success-700: #4ade80;
+    --color-success-800: #6ee7b7;
+    --color-success-900: #a7f3d0;
+    --color-success-950: #d1fae5;
+
+    /* Complete Error Color Scale for Dark Mode */
+    --color-error-50: #450a0a;
+    --color-error-100: #7f1d1d;
+    --color-error-200: #991b1b;
+    --color-error-300: #b91c1c;
+    --color-error-400: #dc2626;
+    --color-error-500: #ef4444;
+    --color-error-600: #ff453a;
+    --color-error-700: #f87171;
+    --color-error-800: #fca5a5;
+    --color-error-900: #fecaca;
+    --color-error-950: #fee2e2;
+
+    /* Complete Warning Color Scale for Dark Mode */
+    --color-warning-50: #451a03;
+    --color-warning-100: #78350f;
+    --color-warning-200: #92400e;
+    --color-warning-300: #b45309;
+    --color-warning-400: #d97706;
+    --color-warning-500: #f59e0b;
+    --color-warning-600: #ffd60a;
+    --color-warning-700: #fbbf24;
+    --color-warning-800: #fcd34d;
+    --color-warning-900: #fde68a;
+    --color-warning-950: #fef3c7;
+
+    /* Complete Info Color Scale for Dark Mode */
+    --color-info-50: #172554;
+    --color-info-100: #1e3a8a;
+    --color-info-200: #1e40af;
+    --color-info-300: #1d4ed8;
+    --color-info-400: #2563eb;
+    --color-info-500: #3b82f6;
+    --color-info-600: #007aff;
+    --color-info-700: #60a5fa;
+    --color-info-800: #93c5fd;
+    --color-info-900: #bfdbfe;
+    --color-info-950: #dbeafe;
+
+    /* Secondary Colors - Dark Theme (reversed for dark UI) */
+    --color-secondary-50: #020617;
+    --color-secondary-100: #0f172a;
+    --color-secondary-200: #1e293b;
+    --color-secondary-300: #334155;
+    --color-secondary-400: #475569;
+    --color-secondary-500: #64748b;
+    --color-secondary-600: #94a3b8;
+    --color-secondary-700: #cbd5e1;
+    --color-secondary-800: #e2e8f0;
+    --color-secondary-900: #f1f5f9;
+    --color-secondary-950: #f8fafc;
+
+    /* RGB Color Variables for rgba() usage - Dark Theme */
+    --color-primary-900-rgb: 30, 58, 138;
+    --color-primary-800-rgb: 30, 64, 175;
+    --color-success-900-rgb: 253, 230, 138;
+    --color-success-800-rgb: 252, 211, 77;
+    --color-warning-900-rgb: 253, 230, 138;
+    --color-warning-800-rgb: 252, 211, 77;
+    --color-error-900-rgb: 239, 68, 68;
+    --color-error-800-rgb: 248, 113, 113;
+    --color-surface-variant-rgb: 20, 20, 20;
+
+    /* Interactive States - Dark */
+    --hover-overlay: rgba(0, 122, 255, 0.05);
+    --active-overlay: rgba(0, 122, 255, 0.1);
+    --focus-ring: 0 0 0 2px var(--brand-gradient-start);
+
+    /* Shadows - Dark */
+    --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.8);
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.9);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.8), 0 2px 4px -1px rgba(0, 0, 0, 0.6);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.9), 0 4px 6px -2px rgba(0, 0, 0, 0.7);
+
+    /* Complete Primary Color Scale for Dark Mode */
+    --color-primary-50: #1e293b;
+    --color-primary-100: #334155;
+    --color-primary-200: #475569;
+    --color-primary-300: #64748b;
+    --color-primary-400: #60a5fa;
+    --color-primary-500: var(--brand-gradient-start);
+    --color-primary-600: #2563eb;
+    --color-primary-700: #1d4ed8;
+    --color-primary-800: #1e40af;
+    --color-primary-900: #1e3a8a;
+    --color-primary-950: #172554;
+
+    /* Extended Color Palettes for Dark Mode - Only Used Variants */
+    --color-blue-200: #93c5fd;
+    --color-blue-50: #1e293b;
+    --color-blue-400: #60a5fa;
+    --color-blue-600: #2563eb;
+    --color-blue-700: #1d4ed8;
+    --color-blue-800: #1e40af;
+
+    --color-green-50: #052e16;
+    --color-green-200: #166534;
+    --color-green-700: #15803d;
+    --color-green-950: #052e16;
+
+    --color-purple-50: #2d1b69;
+    --color-purple-200: #ddd6fe;
+    --color-purple-400: #a78bfa;
+    --color-purple-500: #8b5cf6;
+    --color-purple-600: #7c3aed;
+    --color-purple-800: #5b21b6;
+
+    --color-pink-400: #f472b6;
+    --color-pink-600: #db2777;
+
+    --color-slate-50: #0f172a;
+    --color-slate-100: #334155;
+    --color-slate-200: #475569;
+    --color-slate-800: #1e293b;
+}
+
+/* ========================================
+ * SYSTEM THEME - Uses resolved classes
+ * ======================================== */
+
+/* System light theme - inherits from root/light theme */
+.theme-system-light {
+    /* Light theme uses root definitions - no overrides needed */
+}
+
+/* System dark theme - same as dark theme */
+.theme-system-dark {
+    /* Inherit all dark theme variables from .theme-dark */
+    /* Just reference the dark theme to avoid duplication */
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not(.theme-light):not(.theme-dark):not(.theme-system-light):not(.theme-system-dark) {
+        /* Background Colors */
+        --bg-primary: #0a0a0a;
+        --bg-secondary: #141414;
+        --bg-tertiary: #1a1a1a;
+        --color-background: var(--bg-primary);
+        --color-background-secondary: var(--bg-secondary);
+        --color-background-tertiary: var(--bg-tertiary);
+        --color-surface: var(--bg-primary);
+        --color-surface-elevated: var(--bg-secondary);
+        --color-surface-variant: var(--bg-tertiary);
+
+        /* Text Colors */
+        --text-primary: #f0f0f0;
+        --text-secondary: #b0b0b0;
+        --text-tertiary: #909090;
+        --color-text-primary: var(--text-primary);
+        --color-text-secondary: var(--text-secondary);
+        --color-text-tertiary: var(--text-tertiary);
+        --color-text-inverse: #0a0a0a;
+        --color-text-disabled: var(--color-gray-600);
+
+        /* Border Colors */
+        --border-primary: rgba(255, 255, 255, 0.06);
+        --border-secondary: rgba(255, 255, 255, 0.1);
+        --color-border: var(--border-primary);
+        --color-border-strong: var(--border-secondary);
+        --color-border-subtle: rgba(255, 255, 255, 0.03);
+
+        /* Status Colors - Dark */
+        --success: #32d74b;
+        --success-bg: rgba(50, 215, 75, 0.15);
+        --success-border: #32d74b;
+        --error: #ff453a;
+        --error-bg: rgba(255, 69, 58, 0.15);
+        --error-border: #ff453a;
+        --warning: #ffd60a;
+        --warning-bg: rgba(255, 214, 10, 0.15);
+        --warning-border: #ffd60a;
+        --info: #007aff;
+        --info-bg: rgba(0, 122, 255, 0.15);
+        --info-border: #007aff;
+
+        /* Status color scales inherit from .theme-dark */
+
+        /* Interactive States - Dark */
+        --hover-overlay: rgba(0, 122, 255, 0.05);
+        --active-overlay: rgba(0, 122, 255, 0.1);
+
+        /* Shadows - Dark */
+        --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.8);
+        --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.9);
+        --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.8), 0 2px 4px -1px rgba(0, 0, 0, 0.6);
+        --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.9), 0 4px 6px -2px rgba(0, 0, 0, 0.7);
+
+        /* Primary and extended colors inherit from .theme-dark */
+    }
+}
+
+/* ========================================
+ * HIGH CONTRAST MODE
+ * ======================================== */
+
+@media (prefers-contrast: high) {
+    :root {
+        --color-border: var(--color-gray-900);
+        --color-border-strong: var(--color-black);
+        --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.2);
+        --shadow-base: 0 1px 3px 0 rgb(0 0 0 / 0.3), 0 1px 2px -1px rgb(0 0 0 / 0.3);
+        --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+    }
+}
+
+/* ========================================
+ * REDUCED MOTION
+ * ======================================== */
+
+@media (prefers-reduced-motion: reduce) {
+    :root {
+        --transition-fast: 0ms;
+        --transition-normal: 0ms;
+        --transition-slow: 0ms;
+        --duration-75: 0ms;
+        --duration-100: 0ms;
+        --duration-150: 0ms;
+        --duration-200: 0ms;
+        --duration-250: 0ms;
+        --duration-300: 0ms;
+        --duration-500: 0ms;
+        --duration-700: 0ms;
+        --duration-1000: 0ms;
+        --duration-flash: 0ms;
+        --menu-close-delay: 0ms;
+
+        --transition-colors: none;
+        --transition-opacity: none;
+        --transition-shadow: none;
+        --transition-transform: none;
+        --transition-all: none;
+    }
+}

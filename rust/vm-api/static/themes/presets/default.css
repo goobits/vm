@@ -1,0 +1,84 @@
+/**
+ * Default Theme Scheme
+ *
+ * This file is intentionally minimal - the default scheme uses the base
+ * design tokens without any overrides. This file exists for consistency
+ * and to provide a clear extension point if needed.
+ *
+ * IMPORTANT: Import base tokens before this file:
+ *   import '@goobits/themes/themes/base/reset.css';
+ *   import '@goobits/themes/themes/base/design-tokens.css';
+ *   import '@goobits/themes/themes/base/fx-tokens.css';
+ *   import '@goobits/themes/themes/presets/default.css';
+ */
+
+.scheme-default {
+    /* Default scheme uses base design tokens - no overrides needed */
+    /* This class exists for consistency and potential future customization */
+
+    /* ========================================
+   * DEFAULT SCHEME - SUBTLE FX DEFINITIONS
+   * ======================================== */
+
+    /* Subtle hover effects */
+    --fx-hover-transform: translateY(-2px);
+    --fx-hover-lift: -3px;
+    --fx-hover-scale: 1;
+    --fx-hover-glow: none;
+    --fx-hover-shadow: var(--shadow-md);
+    --fx-hover-filter: none;
+    --fx-hover-duration: 200ms;
+    --fx-hover-easing: ease-out;
+
+    /* Professional focus effects */
+    --fx-focus-ring: 0 0 0 3px rgba(var(--color-primary-500-rgb, 59, 130, 246), 0.3);
+    --fx-focus-glow: none;
+    --fx-focus-transform: none;
+
+    /* Subtle click effects */
+    --fx-click-transform: scale(0.98);
+    --fx-click-bounce: none;
+
+    /* Minimal ambient effects */
+    --fx-ambient-float: none;
+    --fx-ambient-pulse: none;
+    --fx-ambient-shimmer: none;
+
+    /* No special effects for default theme */
+    --fx-magical-glow: none;
+    --fx-magical-sparkle: none;
+    --fx-energy-field: none;
+
+    /* ========================================
+   * PROMPT CARD THEME VARIABLES (DEFAULT)
+   * ======================================== */
+
+    /* Card ambient animations - disabled for professional look */
+    --card-ambient-animation: none;
+    --card-transition: 200ms ease;
+
+    /* Card hover effects - subtle and professional */
+    --card-hover-transform: translateY(-2px);
+    --card-hover-shadow: var(--shadow-lg);
+    --card-hover-filter: none;
+    --card-hover-border-color: var(--color-border);
+
+    /* Card glow overlay - disabled */
+    --card-glow-overlay-bg: none;
+    --card-glow-overlay-opacity-idle: 0;
+    --card-glow-overlay-opacity-hover: 0;
+    --card-glow-overlay-transition: none;
+
+    /* Rotating spark border - disabled */
+    --card-spark-border-display: none;
+    --card-spark-border-color: transparent;
+
+    /* Button hover effects - subtle */
+    --button-hover-transform: none;
+    --button-hover-shadow: var(--shadow-md);
+
+    /* Feature flags - all disabled */
+    --enable-card-float: 0;
+    --enable-magical-glow: 0;
+    --enable-sparkles: 0;
+}

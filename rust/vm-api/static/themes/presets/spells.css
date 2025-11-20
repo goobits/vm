@@ -1,0 +1,328 @@
+/**
+ * Spells (Grimoire) Theme Scheme
+ *
+ * A magical purple-themed scheme extracted from the spells route.
+ * Designed to work with both light and dark base themes but optimized for dark.
+ *
+ * IMPORTANT: Import base tokens before this file:
+ *   import '@goobits/themes/themes/base/reset.css';
+ *   import '@goobits/themes/themes/base/design-tokens.css';
+ *   import '@goobits/themes/themes/base/fx-tokens.css';
+ *   import '@goobits/themes/themes/presets/spells.css';
+ */
+
+html.scheme-spells {
+    /* ========================================
+   * SPELLS SCHEME - LIGHT VARIANT
+   * ======================================== */
+
+    /* Primary magical purple palette */
+    --accent-primary: #7c3aed;
+    --accent-glow: #a78bfa;
+    --accent-secondary: #8b5cf6;
+
+    /* Override brand colors for magical theme */
+    --brand-gradient-start: #7c3aed;
+    --brand-gradient-end: #a78bfa;
+    --brand-gradient: linear-gradient(
+        135deg,
+        var(--brand-gradient-start),
+        var(--brand-gradient-end)
+    );
+
+    /* Primary color scale - magical purple */
+    --color-primary-50: #faf5ff;
+    --color-primary-100: #f3e8ff;
+    --color-primary-200: #e9d5ff;
+    --color-primary-300: #d8b4fe;
+    --color-primary-400: #c084fc;
+    --color-primary-500: #a855f7;
+    --color-primary-600: #9333ea;
+    --color-primary-700: #7c3aed;
+    --color-primary-800: #6b21a8;
+    --color-primary-900: #581c87;
+    --color-primary-950: #3b0764;
+
+    /* Enhanced magical colors */
+    --color-magic-orb: var(--accent-glow);
+    --color-magic-border: rgba(124, 58, 237, 0.3);
+    --color-magic-glow: rgba(167, 139, 250, 0.4);
+
+    /* Light mode specific overrides */
+    --bg-card: #faf5ff;
+    --border-primary: rgba(124, 58, 237, 0.2);
+    --hover-overlay: rgba(124, 58, 237, 0.05);
+    --active-overlay: rgba(124, 58, 237, 0.1);
+
+    /* ========================================
+   * SPELLS SCHEME - FX DEFINITIONS (LIGHT)
+   * ======================================== */
+
+    /* Magical hover effects */
+    --fx-hover-transform: translateY(-4px) scale(1.02);
+    --fx-hover-lift: -8px;
+    --fx-hover-scale: 1.02;
+    --fx-hover-glow: 0 20px 40px rgba(124, 58, 237, 0.3);
+    --fx-hover-shadow: 0 8px 32px rgba(124, 58, 237, 0.2);
+    --fx-hover-filter: drop-shadow(0 0 8px rgba(124, 58, 237, 0.4));
+    --fx-hover-duration: 400ms;
+    --fx-hover-easing: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+    /* Magical focus effects */
+    --fx-focus-ring: 0 0 0 3px rgba(124, 58, 237, 0.4), 0 0 20px rgba(124, 58, 237, 0.2);
+    --fx-focus-glow: 0 0 15px rgba(167, 139, 250, 0.5);
+    --fx-focus-transform: translateY(-2px);
+
+    /* Magical click effects */
+    --fx-click-transform: scale(0.95) rotate(1deg);
+    --fx-click-bounce: fx-magical-bounce 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+    /* Ambient magical effects */
+    --fx-ambient-float: magical-float 4s ease-in-out infinite;
+    --fx-ambient-pulse: magical-pulse 2s ease-in-out infinite alternate;
+    --fx-ambient-shimmer: linear-gradient(90deg, transparent, rgba(124, 58, 237, 0.1), transparent);
+
+    /* Special magical effects */
+    --fx-magical-glow: radial-gradient(circle, rgba(124, 58, 237, 0.1) 0%, transparent 70%);
+    --fx-magical-sparkle: magical-sparkle 1s ease-in-out infinite;
+    --fx-energy-field: 0 0 30px rgba(124, 58, 237, 0.3);
+}
+
+/* Magical keyframe animations */
+@keyframes magical-float {
+    0%,
+    100% {
+        transform: translateY(0px) rotate(0deg);
+    }
+    33% {
+        transform: translateY(-5px) rotate(0.5deg);
+    }
+    66% {
+        transform: translateY(-2px) rotate(-0.5deg);
+    }
+}
+
+@keyframes magical-pulse {
+    0% {
+        box-shadow: 0 0 5px rgba(124, 58, 237, 0.3);
+        filter: drop-shadow(0 0 3px rgba(124, 58, 237, 0.2));
+    }
+    100% {
+        box-shadow: 0 0 20px rgba(124, 58, 237, 0.6);
+        filter: drop-shadow(0 0 10px rgba(124, 58, 237, 0.5));
+    }
+}
+
+@keyframes fx-magical-bounce {
+    0% {
+        transform: scale(1) rotate(0deg);
+    }
+    50% {
+        transform: scale(1.05) rotate(2deg);
+    }
+    100% {
+        transform: scale(1) rotate(0deg);
+    }
+}
+
+@keyframes magical-sparkle {
+    0%,
+    100% {
+        opacity: 0.7;
+        transform: scale(1) rotate(0deg);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.1) rotate(5deg);
+    }
+}
+
+/* ========================================
+ * SPELLS SCHEME - DARK VARIANT
+ * ======================================== */
+
+html.theme-dark.scheme-spells,
+html.theme-system-dark.scheme-spells {
+    /* Dark magical background with subtle purple tint */
+    --bg-primary: #0a0a0f;
+    --bg-secondary: #13131f;
+    --bg-tertiary: #1a1a2e;
+    --color-background: var(--bg-primary);
+    --color-background-secondary: var(--bg-secondary);
+    --color-background-tertiary: var(--bg-tertiary);
+    --color-surface: var(--bg-tertiary);
+    --color-surface-elevated: #1f1f35;
+    --color-surface-variant: var(--bg-secondary);
+
+    /* Enhanced magical text colors */
+    --text-primary: #e0e0ff;
+    --text-secondary: #9090b0;
+    --text-tertiary: #7070a0;
+    --color-text-primary: var(--text-primary);
+    --color-text-secondary: var(--text-secondary);
+    --color-text-tertiary: var(--text-tertiary);
+
+    /* Magical border and glow effects */
+    --border-primary: rgba(124, 58, 237, 0.3);
+    --border-secondary: rgba(167, 139, 250, 0.4);
+    --color-border: var(--border-primary);
+    --color-border-strong: var(--border-secondary);
+    --color-border-subtle: rgba(124, 58, 237, 0.1);
+
+    /* Enhanced magical interactive states */
+    --hover-overlay: rgba(124, 58, 237, 0.1);
+    --active-overlay: rgba(124, 58, 237, 0.2);
+    --focus-ring: 0 0 0 2px var(--accent-glow);
+
+    /* Magical card effects */
+    --bg-card: var(--bg-tertiary);
+    --card-gradient-overlay: linear-gradient(
+        to bottom,
+        transparent 0%,
+        transparent 70%,
+        rgba(124, 58, 237, 0.1) 85%,
+        rgba(167, 139, 250, 0.2) 100%
+    );
+
+    /* Enhanced shadows with magical glow */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.9);
+    --shadow-base: 0 1px 3px 0 rgba(0, 0, 0, 0.8), 0 1px 2px -1px rgba(124, 58, 237, 0.1);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.8), 0 2px 4px -1px rgba(124, 58, 237, 0.2);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.9), 0 4px 6px -2px rgba(124, 58, 237, 0.3);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.9), 0 8px 10px -6px rgba(124, 58, 237, 0.4);
+
+    /* Magical success/error colors that work with purple theme */
+    --success: #10b981;
+    --success-bg: rgba(16, 185, 129, 0.15);
+    --error: #ef4444;
+    --error-bg: rgba(239, 68, 68, 0.15);
+    --warning: #f59e0b;
+    --warning-bg: rgba(245, 158, 11, 0.15);
+}
+
+/* ========================================
+ * SPELLS SCHEME - COMPONENT ENHANCEMENTS
+ * ======================================== */
+
+html.scheme-spells {
+    /* Enhanced button styles for magical theme */
+    --button-magical-gradient: linear-gradient(135deg, var(--accent-primary), var(--accent-glow));
+    --button-magical-hover: linear-gradient(135deg, var(--accent-glow), #c084fc);
+
+    /* Magical form elements */
+    --input-magical-border: var(--border-primary);
+    --input-magical-focus: 0 0 0 2px var(--accent-glow), 0 0 20px rgba(124, 58, 237, 0.3);
+
+    /* Magical animations */
+    --animation-magical-float: magical-float 3s ease-in-out infinite;
+    --animation-magical-glow: magical-glow 2s ease-in-out infinite alternate;
+
+    /* ========================================
+   * PROMPT CARD THEME VARIABLES (SPELLS)
+   * ======================================== */
+
+    /* Card ambient animations - disabled to prevent motion sickness */
+    --card-ambient-animation: none;
+    --card-transition: 0.3s ease;
+
+    /* Card hover effects */
+    --card-hover-transform: none;
+    --card-hover-shadow: 0 0 30px 10px rgba(124, 58, 237, 0.3), 0 10px 25px rgba(124, 58, 237, 0.2);
+    --card-hover-filter: brightness(1.05);
+    --card-hover-border-color: hsl(270 97% 72%);
+
+    /* Card glow overlay */
+    --card-glow-overlay-bg: radial-gradient(
+        circle at center,
+        rgba(124, 58, 237, 0.1) 0%,
+        transparent 70%
+    );
+    --card-glow-overlay-opacity-idle: 0;
+    --card-glow-overlay-opacity-hover: 1;
+    --card-glow-overlay-transition: opacity 400ms;
+
+    /* Rotating spark border */
+    --card-spark-border-display: block;
+    --card-spark-border-color: hsl(270 97% 72%);
+
+    /* Button hover effects */
+    --button-hover-transform: translateY(-2px);
+    --button-hover-shadow: 0 0 20px rgba(124, 58, 237, 0.5);
+
+    /* Feature flags */
+    --enable-card-float: 1;
+    --enable-magical-glow: 1;
+    --enable-sparkles: 1;
+}
+
+/* ========================================
+ * SPELLS SCHEME - MAGICAL ANIMATIONS
+ * ======================================== */
+
+@keyframes magical-float {
+    0%,
+    100% {
+        transform: translateY(0px);
+    }
+    50% {
+        transform: translateY(-5px);
+    }
+}
+
+@keyframes magical-glow {
+    0% {
+        box-shadow: 0 0 5px var(--accent-glow);
+        filter: drop-shadow(0 0 5px var(--accent-glow));
+    }
+    100% {
+        box-shadow: 0 0 20px var(--accent-glow);
+        filter: drop-shadow(0 0 10px var(--accent-glow));
+    }
+}
+
+@keyframes magical-shimmer {
+    0% {
+        background-position: -200% center;
+    }
+    100% {
+        background-position: 200% center;
+    }
+}
+
+/* ========================================
+ * SPELLS SCHEME - UTILITY CLASSES
+ * ======================================== */
+
+html.scheme-spells .magical-orb {
+    background: var(--accent-glow);
+    box-shadow: 0 0 10px var(--accent-glow);
+}
+
+html.scheme-spells .magical-border {
+    border: 1px solid var(--border-primary);
+}
+
+html.scheme-spells .magical-glow {
+    box-shadow: 0 0 30px rgba(124, 58, 237, 0.3);
+}
+
+html.scheme-spells .magical-text {
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-glow));
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+html.scheme-spells .floating {
+    animation: var(--animation-magical-float);
+}
+
+html.scheme-spells .glowing {
+    animation: var(--animation-magical-glow);
+}
+
+html.scheme-spells .shimmer {
+    background: linear-gradient(90deg, transparent, var(--accent-glow), transparent);
+    background-size: 200% 100%;
+    animation: magical-shimmer 2s infinite;
+}

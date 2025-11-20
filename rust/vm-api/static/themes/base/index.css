@@ -1,0 +1,18 @@
+/**
+ * Base Theme Tokens
+ *
+ * Foundation styles that all theme presets build upon.
+ * Includes reset, design tokens, and FX system.
+ *
+ * Import this if you're building a completely custom theme.
+ * For quick start, use the main themes/index.css instead.
+ */
+
+/* CSS Reset */
+@import './reset.css';
+
+/* Design System Tokens */
+@import './design-tokens.css';
+
+/* FX (Effects) System */
+@import './fx-tokens.css';

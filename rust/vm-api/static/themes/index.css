@@ -1,0 +1,19 @@
+/**
+ * @goobits/themes - Complete Theme System
+ *
+ * This is the recommended entry point for most applications.
+ * Includes base tokens + default theme preset.
+ *
+ * Usage:
+ *   import '@goobits/themes/themes';
+ *
+ * For custom themes, import only the base:
+ *   import '@goobits/themes/themes/base';
+ *
+ * For specific presets:
+ *   import '@goobits/themes/themes/presets/default.css';
+ *   import '@goobits/themes/themes/presets/spells.css';
+ */
+
+/* Import complete default theme (includes base + default preset) */
+@import './presets/default.css';

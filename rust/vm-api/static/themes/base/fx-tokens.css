@@ -1,0 +1,131 @@
+/**
+ * FX (Effects) Design Tokens
+ * 
+ * Core vocabulary for theme-specific interactive effects.
+ * Each theme scheme can override these to define its visual personality.
+ */
+
+:root {
+    /* ========================================
+   * HOVER EFFECTS
+   * ======================================== */
+
+    /* Transform effects */
+    --fx-hover-transform: none;
+    --fx-hover-lift: 0px;
+    --fx-hover-scale: 1;
+    --fx-hover-rotate: 0deg;
+
+    /* Visual effects */
+    --fx-hover-glow: none;
+    --fx-hover-shadow: none;
+    --fx-hover-filter: none;
+    --fx-hover-backdrop: none;
+
+    /* Transition properties */
+    --fx-hover-duration: 200ms;
+    --fx-hover-easing: ease-out;
+
+    /* ========================================
+   * FOCUS EFFECTS
+   * ======================================== */
+
+    --fx-focus-ring: none;
+    --fx-focus-glow: none;
+    --fx-focus-transform: none;
+    --fx-focus-duration: 150ms;
+
+    /* ========================================
+   * CLICK/ACTIVE EFFECTS
+   * ======================================== */
+
+    --fx-click-transform: none;
+    --fx-click-bounce: none;
+    --fx-click-ripple: none;
+    --fx-click-duration: 100ms;
+
+    /* ========================================
+   * AMBIENT EFFECTS
+   * ======================================== */
+
+    --fx-ambient-float: none;
+    --fx-ambient-pulse: none;
+    --fx-ambient-shimmer: none;
+    --fx-ambient-particles: none;
+    --fx-ambient-duration: 3s;
+
+    /* ========================================
+   * SPECIAL EFFECTS
+   * ======================================== */
+
+    --fx-magical-glow: none;
+    --fx-magical-sparkle: none;
+    --fx-magical-trail: none;
+    --fx-energy-field: none;
+
+    /* ========================================
+   * COMPOSITE EFFECTS
+   * ======================================== */
+
+    /* Combined hover effect */
+    --fx-interactive-hover: var(--fx-hover-transform) var(--fx-hover-duration)
+        var(--fx-hover-easing);
+
+    /* Combined focus effect */
+    --fx-interactive-focus: var(--fx-focus-transform) var(--fx-focus-duration) ease-out;
+
+    /* Combined click effect */
+    --fx-interactive-click: var(--fx-click-transform) var(--fx-click-duration)
+        cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* ========================================
+ * FX UTILITY KEYFRAMES
+ * ======================================== */
+
+/* Base float animation - overridden by themes */
+@keyframes fx-float {
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(var(--fx-hover-lift, -2px));
+    }
+}
+
+/* Base pulse animation */
+@keyframes fx-pulse {
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.8;
+        transform: scale(1.05);
+    }
+}
+
+/* Base shimmer animation */
+@keyframes fx-shimmer {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+/* Base bounce animation */
+@keyframes fx-bounce {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(0.95);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
