@@ -43,7 +43,8 @@ impl<'a> LifecycleOperations<'a> {
         self.check_docker_build_requirements();
 
         // Pre-flight validation: Check for orphaned service containers
-        self.check_for_orphaned_containers()?;
+        // Pass instance_name to avoid flagging the target instance container as orphaned
+        self.check_for_orphaned_containers(instance_name)?;
 
         // Check platform support for worktrees (Windows native not supported)
         #[cfg(target_os = "windows")]
@@ -518,27 +519,39 @@ impl<'a> LifecycleOperations<'a> {
     /// container creation fails partway through. This pre-flight check warns users
     /// early and provides actionable guidance.
     ///
-    /// Uses Docker to find ALL containers matching the project prefix, automatically
-    /// detecting PostgreSQL, Redis, MongoDB, or any future service without code changes.
-    fn check_for_orphaned_containers(&self) -> Result<()> {
+    /// IMPORTANT: This only flags known SERVICE containers, not instance containers.
+    /// Multiple instances (myproject-foo, myproject-bar) are intentional and should coexist.
+    ///
+    /// Uses Docker to find service containers matching known patterns from template.yml:
+    /// - PostgreSQL: {project}-postgres (explicit container_name)
+    /// - Redis: {project}-redis-1 (Compose default, if added to template)
+    /// - MongoDB: {project}-mongodb-1 (Compose default, if added to template)
+    fn check_for_orphaned_containers(&self, _instance_name: Option<&str>) -> Result<()> {
         let project_name = self.project_name();
 
-        // Query Docker for all containers matching this project's naming pattern
-        // This catches service containers regardless of naming convention (explicit or Compose defaults)
+        // Query Docker for all containers to find orphaned services
         let all_containers = DockerOps::list_containers(true, "{{.Names}}")?;
 
-        let main_container_name = self.container_name();
-        let project_prefix = format!("{}-", project_name);
+        // Known service container patterns from template.yml
+        // These are flagged as orphaned if they exist (regardless of current config)
+        // Instance containers (myproject-dev, myproject-foo) are NOT flagged
+        let service_patterns = [
+            format!("{}-postgres", project_name), // PostgreSQL (explicit container_name)
+            format!("{}-redis-1", project_name),  // Redis (Compose default)
+            format!("{}-mongodb-1", project_name), // MongoDB (Compose default)
+        ];
 
-        let orphaned: Vec<String> = all_containers
-            .lines()
-            .map(str::trim)
-            .filter(|name| {
-                // Match project prefix but exclude the main container
-                name.starts_with(&project_prefix) && *name != main_container_name
-            })
-            .map(String::from)
-            .collect();
+        let mut orphaned = Vec::new();
+
+        for container_name in all_containers.lines().map(str::trim) {
+            // Only flag known service containers, not instance containers
+            if service_patterns
+                .iter()
+                .any(|pattern| container_name == pattern)
+            {
+                orphaned.push(container_name.to_string());
+            }
+        }
 
         // If orphaned containers found, warn user with actionable guidance
         if !orphaned.is_empty() {
