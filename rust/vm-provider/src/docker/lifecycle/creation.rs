@@ -166,25 +166,23 @@ impl<'a> LifecycleOperations<'a> {
             if error_msg.contains("is already in use") || error_msg.contains("Conflict") {
                 eprintln!("\n⚠️  Container name conflict detected");
                 eprintln!("   This usually means a previous creation failed partway through,");
-                eprintln!("   leaving orphaned service containers (postgres, redis, etc.)");
-                eprintln!("\n💡 Options:");
-                eprintln!("   1. Clean up and retry:");
-                eprintln!("      vm destroy --force && vm create");
-                eprintln!("   2. Inspect the existing container:");
-                eprintln!("      docker logs {}", container_name);
-                eprintln!("      docker inspect {}", container_name);
-                eprintln!("   3. Manual cleanup:");
+                eprintln!("   leaving orphaned containers from this project.");
+                eprintln!("\n💡 Recommended fix:");
+                eprintln!("      vm destroy --force");
+                eprintln!("      vm create");
+                eprintln!("\n   Or inspect what's running:");
                 eprintln!("      docker ps -a | grep {}", self.project_name());
+                eprintln!("\n   Then manually remove conflicting containers:");
                 eprintln!("      docker rm -f <container-name>");
                 eprintln!();
 
                 VmError::Internal(format!(
-                    "Container name conflict. Previous creation may have failed. Clean up first or use --force.\n\nOriginal error: {}",
+                    "Container name conflict. Previous creation may have failed. Clean up first.\n\nOriginal error: {}",
                     error_msg
                 ))
             } else {
                 VmError::Internal(format!(
-                    "Failed to start container '{}'. Container may have failed to start properly: {}",
+                    "Failed to start container '{}': {}",
                     container_name,
                     e
                 ))
@@ -340,10 +338,36 @@ impl<'a> LifecycleOperations<'a> {
         // Step 5: Start containers
         let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+
         stream_command_visible("docker", &args_refs).map_err(|e| {
-            VmError::Internal(format!(
-                "Failed to start container '{container_name}'. Container may have failed to start properly: {e}"
-            ))
+            let error_msg = e.to_string();
+
+            // Detect container name conflicts (orphaned containers from failed creation)
+            // Note: Error messages from Docker Compose are relatively stable, but this is a heuristic.
+            // The pre-flight check (check_for_orphaned_containers) should catch most cases earlier.
+            // This is a fallback for edge cases or if the pre-flight check misses something.
+            if error_msg.contains("is already in use") || error_msg.contains("Conflict") {
+                eprintln!("\n⚠️  Container name conflict detected");
+                eprintln!("   This usually means a previous creation failed partway through,");
+                eprintln!("   leaving orphaned containers from this project.");
+                eprintln!("\n💡 Recommended fix:");
+                eprintln!("      vm destroy --force");
+                eprintln!("      vm create --instance {}", instance_name);
+                eprintln!("\n   Or inspect what's running:");
+                eprintln!("      docker ps -a | grep {}", self.project_name());
+                eprintln!("\n   Then manually remove conflicting containers:");
+                eprintln!("      docker rm -f <container-name>");
+                eprintln!();
+
+                VmError::Internal(format!(
+                    "Container name conflict. Previous creation may have failed. Clean up first.\n\nOriginal error: {}",
+                    error_msg
+                ))
+            } else {
+                VmError::Internal(format!(
+                    "Failed to start container '{container_name}': {e}"
+                ))
+            }
         })?;
 
         self.provision_container_with_instance_and_context(instance_name, context)?;
@@ -606,25 +630,18 @@ impl<'a> LifecycleOperations<'a> {
         let project_name = self.project_name();
         let mut orphaned = Vec::new();
 
-        // Map of service names to their container naming patterns
-        // Currently only PostgreSQL creates a separate container (template.yml:214)
-        // Redis/MongoDB may be added in the future
-        let service_containers = [
-            ("postgresql", format!("{}-postgres", project_name)),
-            ("redis", format!("{}-redis", project_name)),
-            ("mongodb", format!("{}-mongodb", project_name)),
-        ];
-
-        // Check each enabled service for orphaned containers
-        for (service_name, container_name) in &service_containers {
-            if self
-                .config
-                .services
-                .get(*service_name)
-                .is_some_and(|s| s.enabled)
-                && DockerOps::container_exists(container_name).unwrap_or(false)
-            {
-                orphaned.push(container_name.clone());
+        // Check for PostgreSQL container (only service with explicit container_name in template.yml:214)
+        // Note: Redis/MongoDB use Compose default naming (<project>-<service>-1) when added to template,
+        // but currently only PostgreSQL is defined as a separate service container.
+        if self
+            .config
+            .services
+            .get("postgresql")
+            .is_some_and(|s| s.enabled)
+        {
+            let postgres_name = format!("{}-postgres", project_name);
+            if DockerOps::container_exists(&postgres_name).unwrap_or(false) {
+                orphaned.push(postgres_name);
             }
         }
 
