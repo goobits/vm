@@ -164,11 +164,13 @@ USER ${USER_NAME}
 RUN . $NVM_DIR/nvm.sh && npm install -g \
     @anthropic-ai/claude-code \
     @google/gemini-cli \
+    @openai/codex \
     playwright \
     prettier \
     eslint \
     typescript \
     ts-node \
+    tsx \
     nodemon \
     npm-check-updates
 
@@ -197,6 +199,7 @@ RUN mkdir -p /workspace && \
 # Set up bash aliases from vm.yaml and environment
 RUN echo 'alias claudeyolo="claude --dangerously-skip-permissions"' >> /home/${USER_NAME}/.bashrc && \
     echo 'alias geminiyolo="GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini"' >> /home/${USER_NAME}/.bashrc && \
+    echo 'alias codexyolo="codex --dangerously-bypass-approvals-and-sandbox"' >> /home/${USER_NAME}/.bashrc && \
     echo 'export PATH="$PATH:/home/${USER_NAME}/.local/bin:/root/.cargo/bin"' >> /home/${USER_NAME}/.bashrc && \
     echo 'export CARGO_HOME="/root/.cargo"' >> /home/${USER_NAME}/.bashrc && \
     echo 'export RUSTUP_HOME="/root/.rustup"' >> /home/${USER_NAME}/.bashrc
