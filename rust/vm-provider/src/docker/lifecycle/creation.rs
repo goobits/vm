@@ -28,183 +28,14 @@ impl<'a> LifecycleOperations<'a> {
 
     #[must_use = "container creation results should be handled"]
     pub fn create_container_with_context(&self, context: &ProviderContext) -> Result<()> {
-        self.check_daemon_is_running()?;
-        self.handle_potential_issues();
-        self.check_docker_build_requirements();
-
-        // Pre-flight validation: Check for orphaned service containers
-        self.check_for_orphaned_containers()?;
-
-        // Check platform support for worktrees (Windows native not supported)
-        #[cfg(target_os = "windows")]
-        {
-            if self
-                .config
-                .host_sync
-                .as_ref()
-                .and_then(|hs| hs.worktrees.as_ref())
-                .is_some_and(|w| w.enabled)
-                || context
-                    .global_config
-                    .as_ref()
-                    .is_some_and(|g| g.worktrees.enabled)
-            {
-                // Check if running in WSL
-                let is_wsl = std::path::Path::new("/proc/version").exists()
-                    && std::fs::read_to_string("/proc/version")
-                        .ok()
-                        .map_or(false, |v| v.to_lowercase().contains("microsoft"));
-
-                if !is_wsl {
-                    return Err(VmError::Config(
-                        "Git worktrees require WSL2 on Windows.\n\
-                         Native Windows paths (C:\\) cannot be translated to Linux container paths.\n\
-                         \n\
-                         Solutions:\n\
-                         1. Install WSL2: https://aka.ms/wsl2 (recommended)\n\
-                         2. Disable worktrees: vm config set worktrees.enabled false\n\
-                         \n\
-                         Note: Windows native support planned for future release (Git 2.48+)."
-                            .into(),
-                    ));
-                }
-
-                info!("✓ WSL2 detected - worktrees will work correctly");
-            }
-        }
-
-        // Check if container already exists
-        let container_name = self.container_name();
-        let container_exists = DockerOps::container_exists(&container_name)
-            .map_err(|e| warn!("Failed to check existing containers (continuing): {}", e))
-            .unwrap_or(false);
-
-        if container_exists {
-            return self.handle_existing_container();
-        }
-
-        // Only setup audio if it's enabled in the configuration
-        if let Some(audio_service) = self.config.services.get("audio") {
-            if audio_service.enabled {
-                #[cfg(target_os = "macos")]
-                if let Err(e) = MacOSAudioManager::setup() {
-                    warn!("Audio setup failed: {}", e);
-                }
-                #[cfg(not(target_os = "macos"))]
-                MacOSAudioManager::setup();
-            }
-        }
-
-        let _vm_name = self
-            .config
-            .project
-            .as_ref()
-            .and_then(|p| p.name.as_ref())
-            .map(|s| s.as_str())
-            .unwrap_or("vm-project");
-
-        // Messages are now handled at the command level for consistency
-
-        // Step 1: Filter pipx-managed packages from pip_packages
-        let modified_config = self.prepare_config_for_build()?;
-
-        // Step 2: Prepare build context with embedded resources
-        let build_ops = BuildOperations::new(&modified_config, self.temp_dir);
-        let (build_context, base_image) = build_ops.prepare_build_context()?;
-
-        // Step 2.5: Ensure Docker networks exist (create them if needed)
-        if let Some(networking) = &modified_config.networking {
-            if !networking.networks.is_empty() {
-                info!("Ensuring Docker networks exist: {:?}", networking.networks);
-                DockerOps::ensure_networks_exist(&networking.networks)?;
-            }
-        }
-
-        // Step 3: Generate docker-compose.yml with build context and modified config
-        let compose_ops = ComposeOperations::new(&modified_config, self.temp_dir, self.project_dir);
-        let compose_path = compose_ops.write_docker_compose(&build_context, context)?;
-
-        // Step 3: Gather build arguments for packages
-        let build_args = build_ops.gather_build_args(&base_image);
-
-        // Step 4: Build with all package arguments
-        let base_compose_args = ComposeCommand::build_args(&compose_path, "build", &[])?;
-
-        // Combine compose args with dynamic build args
-        let mut all_args = Vec::with_capacity(base_compose_args.len() + build_args.len());
-        all_args.extend(base_compose_args.iter().map(|s| s.as_str()));
-        all_args.extend(build_args.iter().map(|s| s.as_str()));
-
-        // Debug logging for Docker build troubleshooting
-        vm_dbg!("Docker build command: docker {}", all_args.join(" "));
-        vm_dbg!("Build context directory: {}", build_context.display());
-        if let Ok(entries) = fs::read_dir(&build_context) {
-            let file_count = entries.count();
-            vm_dbg!("Build context contains {} files/directories", file_count);
-        }
-
-        stream_command_visible("docker", &all_args).map_err(|e| {
-            VmError::Internal(format!(
-                "Docker build failed for project '{}'. Check that Docker is running and build context is valid: {}",
-                self.project_name(),
-                e
-            ))
-        })?;
-
-        // Step 5: Start containers
-        let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
-        let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        let container_name = self.container_name();
-
-        stream_command_visible("docker", &args_refs).map_err(|e| {
-            let error_msg = e.to_string();
-
-            // Detect container name conflicts (orphaned containers from failed creation)
-            // Note: Error messages from Docker Compose are relatively stable, but this is a heuristic.
-            // The pre-flight check (check_for_orphaned_containers) should catch most cases earlier.
-            // This is a fallback for edge cases or if the pre-flight check misses something.
-            if error_msg.contains("is already in use") || error_msg.contains("Conflict") {
-                eprintln!("\n⚠️  Container name conflict detected");
-                eprintln!("   This usually means a previous creation failed partway through,");
-                eprintln!("   leaving orphaned containers from this project.");
-                eprintln!("\n💡 Recommended fix:");
-                eprintln!("      vm destroy --force");
-                eprintln!("      vm create");
-                eprintln!("\n   Or inspect what's running:");
-                eprintln!("      docker ps -a | grep {}", self.project_name());
-                eprintln!("\n   Then manually remove conflicting containers:");
-                eprintln!("      docker rm -f <container-name>");
-                eprintln!();
-
-                VmError::Internal(format!(
-                    "Container name conflict. Previous creation may have failed. Clean up first.\n\nOriginal error: {}",
-                    error_msg
-                ))
-            } else {
-                VmError::Internal(format!(
-                    "Failed to start container '{}': {}",
-                    container_name,
-                    e
-                ))
-            }
-        })?;
-
-        self.provision_container_with_context(context)?;
-
-        Ok(())
+        self.create_container_impl(None, context)
     }
 
-    /// Create a container with a specific instance name
-    #[must_use = "container creation results should be handled"]
-    pub fn create_container_with_instance(&self, instance_name: &str) -> Result<()> {
-        self.create_container_with_instance_and_context(instance_name, &ProviderContext::default())
-    }
-
-    /// Create a container with a specific instance name and context
-    #[must_use = "container creation results should be handled"]
-    pub fn create_container_with_instance_and_context(
+    /// Unified container creation implementation for both default and instance paths.
+    /// This eliminates 165 lines of duplication between the two code paths.
+    fn create_container_impl(
         &self,
-        instance_name: &str,
+        instance_name: Option<&str>,
         context: &ProviderContext,
     ) -> Result<()> {
         self.check_daemon_is_running()?;
@@ -252,14 +83,20 @@ impl<'a> LifecycleOperations<'a> {
             }
         }
 
-        // Check if container already exists (with custom instance name)
-        let container_name = self.container_name_with_instance(instance_name);
+        // Check if container already exists
+        let container_name = match instance_name {
+            Some(name) => self.container_name_with_instance(name),
+            None => self.container_name(),
+        };
         let container_exists = DockerOps::container_exists(&container_name)
             .map_err(|e| warn!("Failed to check existing containers (continuing): {}", e))
             .unwrap_or(false);
 
         if container_exists {
-            return self.handle_existing_container_with_instance(instance_name);
+            return match instance_name {
+                Some(name) => self.handle_existing_container_with_instance(name),
+                None => self.handle_existing_container(),
+            };
         }
 
         // Only setup audio if it's enabled in the configuration
@@ -299,13 +136,14 @@ impl<'a> LifecycleOperations<'a> {
             }
         }
 
-        // Step 3: Generate docker-compose.yml with custom instance name
+        // Step 3: Generate docker-compose.yml with build context and modified config
         let compose_ops = ComposeOperations::new(&modified_config, self.temp_dir, self.project_dir);
-        let compose_path = compose_ops.write_docker_compose_with_instance(
-            &build_context,
-            instance_name,
-            context,
-        )?;
+        let compose_path = match instance_name {
+            Some(name) => {
+                compose_ops.write_docker_compose_with_instance(&build_context, name, context)?
+            }
+            None => compose_ops.write_docker_compose(&build_context, context)?,
+        };
 
         // Step 3: Gather build arguments for packages
         let build_args = build_ops.gather_build_args(&base_image);
@@ -327,12 +165,19 @@ impl<'a> LifecycleOperations<'a> {
         }
 
         stream_command_visible("docker", &all_args).map_err(|e| {
-            VmError::Internal(format!(
-                "Docker build failed for project '{}' instance '{}'. Check that Docker is running and build context is valid: {}",
-                self.project_name(),
-                instance_name,
-                e
-            ))
+            match instance_name {
+                Some(name) => VmError::Internal(format!(
+                    "Docker build failed for project '{}' instance '{}'. Check that Docker is running and build context is valid: {}",
+                    self.project_name(),
+                    name,
+                    e
+                )),
+                None => VmError::Internal(format!(
+                    "Docker build failed for project '{}'. Check that Docker is running and build context is valid: {}",
+                    self.project_name(),
+                    e
+                )),
+            }
         })?;
 
         // Step 5: Start containers
@@ -352,7 +197,11 @@ impl<'a> LifecycleOperations<'a> {
                 eprintln!("   leaving orphaned containers from this project.");
                 eprintln!("\n💡 Recommended fix:");
                 eprintln!("      vm destroy --force");
-                eprintln!("      vm create --instance {}", instance_name);
+                if let Some(name) = instance_name {
+                    eprintln!("      vm create --instance {}", name);
+                } else {
+                    eprintln!("      vm create");
+                }
                 eprintln!("\n   Or inspect what's running:");
                 eprintln!("      docker ps -a | grep {}", self.project_name());
                 eprintln!("\n   Then manually remove conflicting containers:");
@@ -365,14 +214,36 @@ impl<'a> LifecycleOperations<'a> {
                 ))
             } else {
                 VmError::Internal(format!(
-                    "Failed to start container '{container_name}': {e}"
+                    "Failed to start container '{}': {}",
+                    container_name,
+                    e
                 ))
             }
         })?;
 
-        self.provision_container_with_instance_and_context(instance_name, context)?;
+        // Provision the container
+        match instance_name {
+            Some(name) => self.provision_container_with_instance_and_context(name, context)?,
+            None => self.provision_container_with_context(context)?,
+        }
 
         Ok(())
+    }
+
+    /// Create a container with a specific instance name
+    #[must_use = "container creation results should be handled"]
+    pub fn create_container_with_instance(&self, instance_name: &str) -> Result<()> {
+        self.create_container_with_instance_and_context(instance_name, &ProviderContext::default())
+    }
+
+    /// Create a container with a specific instance name and context
+    #[must_use = "container creation results should be handled"]
+    pub fn create_container_with_instance_and_context(
+        &self,
+        instance_name: &str,
+        context: &ProviderContext,
+    ) -> Result<()> {
+        self.create_container_impl(Some(instance_name), context)
     }
 
     #[must_use = "existing container handling results should be checked"]
