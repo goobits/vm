@@ -8,8 +8,8 @@
       - '!all'  # Skip all facts by default
       - '!min'  # Skip minimal fact gathering
       - 'user'  # Only gather user facts (for ansible_user_uid, user_id)
-      - 'packages'  # Only gather package facts (for apt package checks)
   # Reduces fact gathering from ~3-5s to ~1-2s
+  # Note: packages facts are gathered via package_facts module when needed (line 489)
   vars:
       # Default values, will be overridden by config
       default_user: "{{ lookup('env', 'PROJECT_USER') | default('developer') }}"

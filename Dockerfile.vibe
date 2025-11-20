@@ -133,8 +133,9 @@ RUN apt-get update && apt-get install -y \
       # Install pip via get-pip.py (works for all Python versions)
       && curl -sS https://bootstrap.pypa.io/get-pip.py | ${PYTHON_STABLE}
 
-# Install Ansible (compatible with installed Python version)
-RUN pip3 install --no-cache-dir ansible
+# Install Ansible (pinned to last stable version before 2.19 breaking changes)
+# Version 2.17.6 is the last stable release before 2.19 removed 'packages' gather_subset
+RUN pip3 install --no-cache-dir ansible==2.17.6
 
 # Install Rust and Cargo as developer user (latest stable)
 USER ${USER_NAME}

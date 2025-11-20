@@ -232,10 +232,23 @@ pub fn stream_command_with_progress_and_timeout<A: AsRef<OsStr>>(
                         }
 
                         if !output.status.success() {
+                            // Capture the actual output for error reporting
+                            let stdout_str = String::from_utf8_lossy(&output.stdout);
+                            // Show last 50 lines of output for context
+                            let error_context: Vec<&str> = stdout_str
+                                .lines()
+                                .rev()
+                                .take(50)
+                                .collect::<Vec<_>>()
+                                .into_iter()
+                                .rev()
+                                .collect();
+
                             return Err(VmError::Internal(format!(
-                                "Command failed with exit code {:?}: {}",
+                                "Command failed with exit code {:?}: {}\n\nOutput (last 50 lines):\n{}",
                                 output.status.code(),
-                                full_command
+                                full_command,
+                                error_context.join("\n")
                             )));
                         }
                         return Ok(());
