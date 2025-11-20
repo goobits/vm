@@ -95,7 +95,12 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
         ProgressReporter::task(&phase, "Generating updated docker-compose.yml...");
 
         let temp_config = self.prepare_temp_config()?;
-        let compose_ops = ComposeOperations::new(&temp_config, self.temp_dir, self.project_dir);
+        let compose_ops = ComposeOperations::new(
+            &temp_config,
+            self.temp_dir,
+            self.project_dir,
+            self.executable,
+        );
         let content = compose_ops.render_docker_compose_with_mounts(state)?;
         let compose_path = self.temp_dir.join("docker-compose.yml");
         fs::write(&compose_path, content.as_bytes())?;
@@ -114,12 +119,7 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
 
     fn check_container_health(&self, container_name: &str) -> Result<bool> {
         for _ in 0..CONTAINER_READINESS_MAX_ATTEMPTS {
-            if stream_command(
-                self.executable,
-                &["exec", container_name, "echo", "ready"],
-            )
-            .is_ok()
-            {
+            if stream_command(self.executable, &["exec", container_name, "echo", "ready"]).is_ok() {
                 return Ok(true);
             }
             std::thread::sleep(std::time::Duration::from_secs(

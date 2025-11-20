@@ -30,7 +30,12 @@ impl<'a> LifecycleOperations<'a> {
         let build_ops = BuildOperations::new(self.config, self.temp_dir);
         let (build_context, _base_image) = build_ops.prepare_build_context()?;
 
-        let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
+        let compose_ops = ComposeOperations::new(
+            self.config,
+            self.temp_dir,
+            self.project_dir,
+            self.executable,
+        );
         compose_ops.write_docker_compose(&build_context, context)?;
 
         // Use compose to start (handles both stopped containers and fresh starts)
@@ -110,7 +115,12 @@ impl<'a> LifecycleOperations<'a> {
         let build_ops = BuildOperations::new(self.config, self.temp_dir);
         let (build_context, _base_image) = build_ops.prepare_build_context()?;
 
-        let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
+        let compose_ops = ComposeOperations::new(
+            self.config,
+            self.temp_dir,
+            self.project_dir,
+            self.executable,
+        );
         compose_ops.write_docker_compose(&build_context, context)?;
 
         // Stop the container first

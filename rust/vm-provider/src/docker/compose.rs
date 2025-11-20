@@ -22,6 +22,7 @@ pub struct ComposeOperations<'a> {
     pub config: &'a VmConfig,
     pub temp_dir: &'a PathBuf,
     pub project_dir: &'a PathBuf,
+    pub executable: &'a str,
 }
 
 /// Context for building host package information
@@ -138,11 +139,17 @@ fn process_dotfiles(config: &VmConfig, username: &str) -> Vec<(String, String)> 
 }
 
 impl<'a> ComposeOperations<'a> {
-    pub fn new(config: &'a VmConfig, temp_dir: &'a PathBuf, project_dir: &'a PathBuf) -> Self {
+    pub fn new(
+        config: &'a VmConfig,
+        temp_dir: &'a PathBuf,
+        project_dir: &'a PathBuf,
+        executable: &'a str,
+    ) -> Self {
         Self {
             config,
             temp_dir,
             project_dir,
+            executable,
         }
     }
 
@@ -600,11 +607,6 @@ impl<'a> ComposeOperations<'a> {
     }
 
     pub fn start_with_compose(&self, context: &ProviderContext) -> Result<()> {
-        // IMPORTANT: This method assumes "docker" executable for now because ComposeOperations
-        // doesn't know about the configured executable yet.
-        // TODO: Propagate executable from DockerProvider -> LifecycleOperations -> ComposeOperations
-        let executable = "docker";
-
         let compose_path = self.temp_dir.join("docker-compose.yml");
         if !compose_path.exists() {
             // Fallback: prepare build context and generate compose file
@@ -623,7 +625,7 @@ impl<'a> ComposeOperations<'a> {
             .unwrap_or_else(|| "vm-project-dev".to_string());
 
         let container_exists =
-            DockerOps::container_exists(Some(executable), &container_name).unwrap_or(false);
+            DockerOps::container_exists(Some(self.executable), &container_name).unwrap_or(false);
 
         // Use 'start' if container exists, 'up -d' if it doesn't
         let (command, extra_args) = if container_exists {
@@ -635,7 +637,7 @@ impl<'a> ComposeOperations<'a> {
         let args = ComposeCommand::build_args(&compose_path, command, &extra_args)?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         // Use visible streaming for docker-compose up to show build progress
-        stream_command_visible(executable, &args_refs).map_err(|e| {
+        stream_command_visible(self.executable, &args_refs).map_err(|e| {
             VmError::Internal(format!(
                 "Failed to start container using docker-compose: {e}"
             ))
@@ -644,13 +646,11 @@ impl<'a> ComposeOperations<'a> {
 
     #[allow(dead_code)]
     pub fn stop_with_compose(&self) -> Result<()> {
-        let executable = "docker"; // TODO: Make configurable
-
         let compose_path = self.temp_dir.join("docker-compose.yml");
         if compose_path.exists() {
             let args = ComposeCommand::build_args(&compose_path, "stop", &[])?;
             let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-            stream_command(executable, &args_refs).map_err(|e| {
+            stream_command(self.executable, &args_refs).map_err(|e| {
                 VmError::Internal(format!(
                     "Failed to stop container using docker-compose: {e}"
                 ))
@@ -665,8 +665,6 @@ impl<'a> ComposeOperations<'a> {
 
     #[allow(dead_code)]
     pub fn destroy_with_compose(&self) -> Result<()> {
-        let executable = "docker"; // TODO: Make configurable
-
         let compose_path = self.temp_dir.join("docker-compose.yml");
         if !compose_path.exists() {
             return Err(VmError::Internal(format!(
@@ -676,7 +674,7 @@ impl<'a> ComposeOperations<'a> {
         }
         let args = ComposeCommand::build_args(&compose_path, "down", &["--volumes"])?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        stream_command(executable, &args_refs)
+        stream_command(self.executable, &args_refs)
             .map_err(|e| VmError::Internal(format!("Failed to destroy container: {e}")))
     }
 
@@ -774,7 +772,7 @@ mod tests {
         let context = ProviderContext::default().with_config(global_config);
 
         // Create ComposeOperations
-        let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir);
+        let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir, "docker");
 
         // Render docker-compose
         let result = compose_ops.render_docker_compose(&build_dir, &context);
@@ -846,7 +844,7 @@ mod tests {
         let context = ProviderContext::default().with_config(global_config);
 
         // Create ComposeOperations
-        let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir);
+        let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir, "docker");
 
         // Render docker-compose
         let result = compose_ops.render_docker_compose(&build_dir, &context);
@@ -887,7 +885,7 @@ mod tests {
         let context = ProviderContext::default();
 
         // Create ComposeOperations
-        let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir);
+        let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir, "docker");
 
         // Render docker-compose
         let result = compose_ops.render_docker_compose(&build_dir, &context);
@@ -938,7 +936,7 @@ mod tests {
 
         // First call: Write compose file WITHOUT registry config
         let context_without_registry = ProviderContext::with_verbose(false);
-        let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir);
+        let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir, "docker");
 
         // Create build context manually (without pulling images)
         let build_context = temp_path.join("build_context");
@@ -1025,7 +1023,7 @@ mod tests {
         let context_with_registry =
             ProviderContext::with_verbose(false).with_config(global_config.clone());
 
-        let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir);
+        let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir, "docker");
 
         // Create build context manually (without pulling images)
         let build_context = temp_path.join("build_context");
@@ -1070,7 +1068,7 @@ mod tests {
         let (_temp_dir, project_dir, temp_path) = setup_test_env();
         let config = VmConfig::default();
         let context = ProviderContext::default();
-        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir);
+        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir, "docker");
 
         let rendered = compose_ops
             .render_docker_compose(&project_dir, &context)
@@ -1091,7 +1089,7 @@ mod tests {
         let mut global_config = GlobalConfig::default();
         global_config.worktrees.enabled = true;
         let context = ProviderContext::default().with_config(global_config);
-        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir);
+        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir, "docker");
 
         let rendered = compose_ops
             .render_docker_compose(&project_dir, &context)
@@ -1120,7 +1118,7 @@ mod tests {
             ..Default::default()
         };
         let context = ProviderContext::default();
-        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir);
+        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir, "docker");
 
         let rendered = compose_ops
             .render_docker_compose(&project_dir, &context)
@@ -1150,7 +1148,7 @@ mod tests {
         let mut global_config = GlobalConfig::default();
         global_config.worktrees.enabled = false;
         let context = ProviderContext::default().with_config(global_config);
-        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir);
+        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir, "docker");
 
         let rendered = compose_ops
             .render_docker_compose(&project_dir, &context)
@@ -1177,7 +1175,7 @@ mod tests {
             ..Default::default()
         };
         let context = ProviderContext::default();
-        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir);
+        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir, "docker");
 
         let rendered = compose_ops
             .render_docker_compose(&project_dir, &context)
@@ -1204,7 +1202,7 @@ mod tests {
             ..Default::default()
         };
         let context = ProviderContext::default().with_config(global_config);
-        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir);
+        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir, "docker");
 
         let rendered = compose_ops
             .render_docker_compose(&project_dir, &context)
@@ -1238,7 +1236,7 @@ mod tests {
             ..Default::default()
         };
         let context = ProviderContext::default().with_config(global_config);
-        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir);
+        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir, "docker");
 
         let rendered = compose_ops
             .render_docker_compose(&project_dir, &context)

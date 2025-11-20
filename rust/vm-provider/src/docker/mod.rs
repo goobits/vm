@@ -120,7 +120,10 @@ impl DockerProvider {
         let executable = executable.unwrap_or("docker".to_string());
 
         if !is_tool_installed(&executable) {
-            return Err(VmError::Dependency(format!("{} is not installed", executable).into()));
+            return Err(VmError::Dependency(format!(
+                "{} is not installed",
+                executable
+            )));
         }
 
         let project_dir = std::env::current_dir()?;
@@ -357,7 +360,11 @@ impl Provider for DockerProvider {
             destination.to_string()
         };
 
-        DockerOps::copy(Some(&self.executable), &resolved_source, &resolved_destination)
+        DockerOps::copy(
+            Some(&self.executable),
+            &resolved_source,
+            &resolved_destination,
+        )
     }
 
     fn status(&self, container: Option<&str>) -> Result<()> {

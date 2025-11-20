@@ -138,7 +138,12 @@ impl<'a> LifecycleOperations<'a> {
         }
 
         // Step 3: Generate docker-compose.yml with build context and modified config
-        let compose_ops = ComposeOperations::new(&modified_config, self.temp_dir, self.project_dir);
+        let compose_ops = ComposeOperations::new(
+            &modified_config,
+            self.temp_dir,
+            self.project_dir,
+            self.executable,
+        );
         let compose_path = match instance_name {
             Some(name) => {
                 compose_ops.write_docker_compose_with_instance(&build_context, name, context)?
@@ -529,8 +534,6 @@ impl<'a> LifecycleOperations<'a> {
     /// - Redis: {project}-redis-1 (Compose default, if added to template)
     /// - MongoDB: {project}-mongodb-1 (Compose default, if added to template)
     fn check_for_orphaned_containers(&self, _instance_name: Option<&str>) -> Result<()> {
-        let project_name = self.project_name();
-
         // Query Docker for all containers to find orphaned services
         let all_containers = DockerOps::list_containers(Some(self.executable), true, "{{.Names}}")?;
 
@@ -539,7 +542,12 @@ impl<'a> LifecycleOperations<'a> {
         // but still exists as a container, it might not be caught here.
         // However, checking all possible legacy names is brittle.
         // For now, we check the services enabled in the current config.
-        let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
+        let compose_ops = ComposeOperations::new(
+            self.config,
+            self.temp_dir,
+            self.project_dir,
+            self.executable,
+        );
         let service_patterns = compose_ops.get_expected_service_containers();
 
         let mut orphaned = Vec::new();
