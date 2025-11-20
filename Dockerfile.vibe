@@ -85,10 +85,6 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Create user early so we can install tools for them
-ARG USER_NAME=developer
-ARG USER_UID=1000
-ARG USER_GID=1000
-
 RUN groupadd -g ${USER_GID} ${USER_NAME} || true && \
     useradd -m -u ${USER_UID} -g ${USER_GID} -s /bin/bash ${USER_NAME}
 

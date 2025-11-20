@@ -33,15 +33,6 @@ fn with_buildkit<A: AsRef<OsStr>>(command: &str, args: &[A]) -> duct::Expression
     cmd_builder
 }
 
-/// Helper to log stdout lines
-fn log_stdout_lines(stdout: &[u8]) {
-    if let Ok(stdout_str) = String::from_utf8(stdout.to_vec()) {
-        for line in stdout_str.lines() {
-            info!("{}", line);
-        }
-    }
-}
-
 /// Helper to parse stdout lines with optional parser
 fn parse_stdout_lines(stdout: &[u8], parser: &mut Option<Box<dyn ProgressParser>>) {
     if let Ok(stdout_str) = String::from_utf8(stdout.to_vec()) {
@@ -68,91 +59,9 @@ pub fn stream_command_with_timeout<A: AsRef<OsStr>>(
     args: &[A],
     timeout_secs: Option<u64>,
 ) -> Result<()> {
-    let full_command = format!(
-        "{} {}",
-        command,
-        args.iter()
-            .map(|a| a.as_ref().to_string_lossy())
-            .collect::<Vec<_>>()
-            .join(" ")
-    );
-
-    match timeout_secs {
-        None => {
-            // No timeout - original behavior with streaming
-            let reader = with_buildkit(command, args).stderr_to_stdout().reader()?;
-            let lines = BufReader::new(reader).lines();
-            for line in lines {
-                info!("{}", line?);
-            }
-            Ok(())
-        }
-        Some(secs) => {
-            // With timeout - use unchecked() to access stderr/stdout
-            let handle = with_buildkit(command, args)
-                .stderr_to_stdout()
-                .stdout_capture()
-                .unchecked()
-                .start()
-                .map_err(|e| {
-                    VmError::Internal(format!("Failed to start command '{}': {}", full_command, e))
-                })?;
-
-            // Wait for process with timeout
-            let start = std::time::Instant::now();
-            let timeout = Duration::from_secs(secs);
-
-            loop {
-                if start.elapsed() >= timeout {
-                    // Kill the process
-                    let _ = handle.kill();
-                    return Err(VmError::Timeout(format!(
-                        "Command timed out after {}s: {}\n\nTo debug, try running manually:\n  {}",
-                        secs, full_command, full_command
-                    )));
-                }
-
-                match handle.try_wait() {
-                    Ok(Some(output)) => {
-                        // Process finished - log output
-                        log_stdout_lines(&output.stdout);
-
-                        if !output.status.success() {
-                            // Capture the actual output for error reporting (includes stderr via stderr_to_stdout)
-                            let stdout_str = String::from_utf8_lossy(&output.stdout);
-                            // Show last 50 lines of output for context
-                            let error_context: Vec<&str> = stdout_str
-                                .lines()
-                                .rev()
-                                .take(50)
-                                .collect::<Vec<_>>()
-                                .into_iter()
-                                .rev()
-                                .collect();
-
-                            return Err(VmError::Internal(format!(
-                                "Command failed with exit code {:?}: {}\n\nOutput (last 50 lines):\n{}",
-                                output.status.code(),
-                                full_command,
-                                error_context.join("\n")
-                            )));
-                        }
-                        return Ok(());
-                    }
-                    Ok(None) => {
-                        // Still running, sleep briefly
-                        thread::sleep(Duration::from_millis(100));
-                    }
-                    Err(e) => {
-                        return Err(VmError::Internal(format!(
-                            "Error waiting for command '{}': {}",
-                            full_command, e
-                        )));
-                    }
-                }
-            }
-        }
-    }
+    // Delegate to the progress variant with no parser
+    // This eliminates code duplication while keeping the same behavior
+    stream_command_with_progress_and_timeout(command, args, None, timeout_secs)
 }
 
 /// Stream command output directly to stdout, bypassing the logging system.

@@ -630,18 +630,27 @@ impl<'a> LifecycleOperations<'a> {
         let project_name = self.project_name();
         let mut orphaned = Vec::new();
 
-        // Check for PostgreSQL container (only service with explicit container_name in template.yml:214)
-        // Note: Redis/MongoDB use Compose default naming (<project>-<service>-1) when added to template,
-        // but currently only PostgreSQL is defined as a separate service container.
-        if self
-            .config
-            .services
-            .get("postgresql")
-            .is_some_and(|s| s.enabled)
-        {
-            let postgres_name = format!("{}-postgres", project_name);
-            if DockerOps::container_exists(&postgres_name).unwrap_or(false) {
-                orphaned.push(postgres_name);
+        // Iterate over enabled services and check for orphaned containers
+        // Container naming patterns must match template.yml definitions
+        for (service_name, service_config) in &self.config.services {
+            if !service_config.enabled {
+                continue;
+            }
+
+            // Map service names to their container naming patterns from template.yml
+            // Only PostgreSQL currently has an explicit container_name (template.yml:214)
+            // Future services should be added here as they're defined in the template
+            let container_name = match service_name.as_str() {
+                "postgresql" => Some(format!("{}-postgres", project_name)),
+                // Redis/MongoDB would use Compose defaults ({project}-{service}-1) unless
+                // template.yml is updated to give them explicit container_name like PostgreSQL
+                _ => None,
+            };
+
+            if let Some(name) = container_name {
+                if DockerOps::container_exists(&name).unwrap_or(false) {
+                    orphaned.push(name);
+                }
             }
         }
 
