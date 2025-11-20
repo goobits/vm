@@ -50,12 +50,18 @@ async fn handle_status(yes: bool, global_config: &GlobalConfig) -> VmResult<()> 
     start_server_if_needed(global_config, yes).await?;
 
     let registry = get_service_registry();
-    let service_manager = get_service_manager();
+    let service_manager_result = get_service_manager();
 
     vm_println!("{}", MESSAGES.vm.pkg_registry_status_header);
 
     // Get service status from service manager
-    if let Some(service_state) = service_manager.get_service_status("package_registry") {
+    let service_status_opt = if let Ok(sm) = service_manager_result {
+        sm.get_service_status("package_registry")
+    } else {
+        None
+    };
+
+    if let Some(service_state) = service_status_opt {
         vm_println!(
             "{}",
             msg!(

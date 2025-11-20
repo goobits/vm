@@ -483,8 +483,24 @@ impl Default for ServiceManager {
 /// Global service manager instance
 static GLOBAL_SERVICE_MANAGER: std::sync::OnceLock<ServiceManager> = std::sync::OnceLock::new();
 
+/// Initialize the global service manager
+///
+/// This should be called once at application startup.
+pub fn init_service_manager() -> Result<()> {
+    if GLOBAL_SERVICE_MANAGER.get().is_some() {
+        return Ok(());
+    }
+
+    let manager = ServiceManager::new()?;
+    let _ = GLOBAL_SERVICE_MANAGER.set(manager);
+    Ok(())
+}
+
 /// Get the global service manager instance
-pub fn get_service_manager() -> &'static ServiceManager {
-    GLOBAL_SERVICE_MANAGER
-        .get_or_init(|| ServiceManager::new().expect("Failed to initialize global service manager"))
+///
+/// Returns an error if the service manager has not been initialized.
+pub fn get_service_manager() -> Result<&'static ServiceManager> {
+    GLOBAL_SERVICE_MANAGER.get().ok_or_else(|| {
+        anyhow::anyhow!("Service manager not initialized. Call init_service_manager() first.")
+    })
 }
