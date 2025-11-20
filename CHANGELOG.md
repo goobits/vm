@@ -7,7 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.4.2] - 2025-11-19
+
+### Added
+
+- **Vibe Box Enhancements**: Added codex and tsx to global npm packages
+  - Added `@openai/codex` CLI for OpenAI Codex integration
+  - Added `tsx` for fast TypeScript execution
+  - Added `codexyolo` alias to Dockerfile.vibe bashrc
+
+### Changed
+
+- **Vibe Preset Cleanup**: Removed redundant aliases from vibe-dev preset
+  - Aliases (claudeyolo, geminiyolo, codexyolo) are now only defined in Docker image
+  - Eliminates duplication in generated vm.yaml files
+
 ### Fixed
+
+- **Docker Service Port Validation**: Skip port validation for Docker service
+  - Docker-in-Docker doesn't require port mapping (uses socket instead)
+  - Fixes "Service 'docker' is enabled but has no port specified" error
+  - Prevents validation errors when projects auto-detect Docker
 
 - **VM Creation Panic**: Fixed Tokio runtime panic (exit code 134) when creating VMs
   - Replaced nested `Runtime::new()` with `tokio::task::block_in_place()` to use existing runtime
