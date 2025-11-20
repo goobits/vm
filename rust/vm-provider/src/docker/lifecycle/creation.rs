@@ -160,6 +160,9 @@ impl<'a> LifecycleOperations<'a> {
             let error_msg = e.to_string();
 
             // Detect container name conflicts (orphaned containers from failed creation)
+            // Note: Error messages from Docker Compose are relatively stable, but this is a heuristic.
+            // The pre-flight check (check_for_orphaned_containers) should catch most cases earlier.
+            // This is a fallback for edge cases or if the pre-flight check misses something.
             if error_msg.contains("is already in use") || error_msg.contains("Conflict") {
                 eprintln!("\n⚠️  Container name conflict detected");
                 eprintln!("   This usually means a previous creation failed partway through,");
@@ -603,16 +606,25 @@ impl<'a> LifecycleOperations<'a> {
         let project_name = self.project_name();
         let mut orphaned = Vec::new();
 
-        // Check for PostgreSQL container
-        if self
-            .config
-            .services
-            .get("postgresql")
-            .is_some_and(|s| s.enabled)
-        {
-            let postgres_name = format!("{}-postgres", project_name);
-            if DockerOps::container_exists(&postgres_name).unwrap_or(false) {
-                orphaned.push(postgres_name);
+        // Map of service names to their container naming patterns
+        // Currently only PostgreSQL creates a separate container (template.yml:214)
+        // Redis/MongoDB may be added in the future
+        let service_containers = [
+            ("postgresql", format!("{}-postgres", project_name)),
+            ("redis", format!("{}-redis", project_name)),
+            ("mongodb", format!("{}-mongodb", project_name)),
+        ];
+
+        // Check each enabled service for orphaned containers
+        for (service_name, container_name) in &service_containers {
+            if self
+                .config
+                .services
+                .get(*service_name)
+                .is_some_and(|s| s.enabled)
+                && DockerOps::container_exists(container_name).unwrap_or(false)
+            {
+                orphaned.push(container_name.clone());
             }
         }
 
