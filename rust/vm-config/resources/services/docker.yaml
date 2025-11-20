@@ -1,5 +1,7 @@
 ---
 # Docker service configuration for vm init
+# Note: Docker-in-Docker doesn't require a port mapping.
+# The Docker daemon is accessed via socket (/var/run/docker.sock), not network.
 services:
   docker:
     enabled: false

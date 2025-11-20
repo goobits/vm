@@ -253,6 +253,12 @@ impl ConfigValidator {
                 continue;
             }
 
+            // Skip port validation for services that don't require network ports
+            // Docker-in-Docker is accessed via socket, not network
+            if service_name == "docker" {
+                continue;
+            }
+
             report.add_error(format!(
                 "Service '{}' is enabled but has no port specified",
                 service_name
