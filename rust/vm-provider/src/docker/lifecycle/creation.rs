@@ -188,13 +188,18 @@ impl<'a> LifecycleOperations<'a> {
             let error_msg = e.to_string();
 
             // Detect container name conflicts (orphaned containers from failed creation)
-            // Note: Error messages from Docker Compose are relatively stable, but this is a heuristic.
-            // The pre-flight check (check_for_orphaned_containers) should catch most cases earlier.
-            // This is a fallback for edge cases or if the pre-flight check misses something.
+            // Heuristic: Docker/Compose have used these error strings consistently for 5+ years.
+            // We show the full error regardless, so users aren't blind if the heuristic fails.
             if error_msg.contains("is already in use") || error_msg.contains("Conflict") {
                 eprintln!("\n⚠️  Container name conflict detected");
-                eprintln!("   This usually means a previous creation failed partway through,");
-                eprintln!("   leaving orphaned containers from this project.");
+                eprintln!("\n   Docker error:");
+                eprintln!("   {}", error_msg);  // Show actual error - contains conflicting container name
+
+                eprintln!("\n   This usually means a previous creation failed partway through.");
+
+                // Show what's actually running for this project
+                self.list_project_containers_for_user();
+
                 eprintln!("\n💡 Recommended fix:");
                 eprintln!("      vm destroy --force");
                 if let Some(name) = instance_name {
@@ -202,14 +207,10 @@ impl<'a> LifecycleOperations<'a> {
                 } else {
                     eprintln!("      vm create");
                 }
-                eprintln!("\n   Or inspect what's running:");
-                eprintln!("      docker ps -a | grep {}", self.project_name());
-                eprintln!("\n   Then manually remove conflicting containers:");
-                eprintln!("      docker rm -f <container-name>");
                 eprintln!();
 
                 VmError::Internal(format!(
-                    "Container name conflict. Previous creation may have failed. Clean up first.\n\nOriginal error: {}",
+                    "Container name conflict detected. See error details above.\n\nOriginal error: {}",
                     error_msg
                 ))
             } else {
@@ -492,31 +493,52 @@ impl<'a> LifecycleOperations<'a> {
         Ok(())
     }
 
+    /// Helper to list all containers for this project (used in error messages).
+    fn list_project_containers_for_user(&self) {
+        if let Ok(containers) = DockerOps::list_containers(true, "{{.Names}}") {
+            let project_prefix = format!("{}-", self.project_name());
+            let project_containers: Vec<&str> = containers
+                .lines()
+                .map(str::trim)
+                .filter(|name| name.starts_with(&project_prefix))
+                .collect();
+
+            if !project_containers.is_empty() {
+                eprintln!("\n   Existing containers for {}:", self.project_name());
+                for container in project_containers {
+                    eprintln!("   • {}", container);
+                }
+            }
+        }
+    }
+
     /// Check for orphaned service containers from previous failed creation attempts.
     ///
     /// Service containers (postgresql, redis, etc.) may be left running if the main
     /// container creation fails partway through. This pre-flight check warns users
     /// early and provides actionable guidance.
     ///
-    /// NOTE: Currently only detects PostgreSQL because it's the only service with an
-    /// explicit container_name in template.yml:214. Redis/MongoDB use Compose defaults
-    /// ({project}-{service}-1) and aren't yet defined in the template.
+    /// Uses Docker to find ALL containers matching the project prefix, automatically
+    /// detecting PostgreSQL, Redis, MongoDB, or any future service without code changes.
     fn check_for_orphaned_containers(&self) -> Result<()> {
         let project_name = self.project_name();
-        let mut orphaned = Vec::new();
 
-        // Check for PostgreSQL container (only service with explicit container_name in template.yml:214)
-        if self
-            .config
-            .services
-            .get("postgresql")
-            .is_some_and(|s| s.enabled)
-        {
-            let postgres_name = format!("{}-postgres", project_name);
-            if DockerOps::container_exists(&postgres_name).unwrap_or(false) {
-                orphaned.push(postgres_name);
-            }
-        }
+        // Query Docker for all containers matching this project's naming pattern
+        // This catches service containers regardless of naming convention (explicit or Compose defaults)
+        let all_containers = DockerOps::list_containers(true, "{{.Names}}")?;
+
+        let main_container_name = self.container_name();
+        let project_prefix = format!("{}-", project_name);
+
+        let orphaned: Vec<String> = all_containers
+            .lines()
+            .map(str::trim)
+            .filter(|name| {
+                // Match project prefix but exclude the main container
+                name.starts_with(&project_prefix) && *name != main_container_name
+            })
+            .map(String::from)
+            .collect();
 
         // If orphaned containers found, warn user with actionable guidance
         if !orphaned.is_empty() {
