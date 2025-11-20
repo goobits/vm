@@ -112,12 +112,15 @@ pub struct DockerProvider {
     config: VmConfig,
     _project_dir: PathBuf, // The root of the user's project
     temp_dir: PathBuf, // Persistent project-specific directory for generated files like docker-compose.yml
+    executable: String,
 }
 
 impl DockerProvider {
-    pub fn new(config: VmConfig) -> Result<Self> {
-        if !is_tool_installed("docker") {
-            return Err(VmError::Dependency("Docker".into()));
+    pub fn new(config: VmConfig, executable: Option<String>) -> Result<Self> {
+        let executable = executable.unwrap_or("docker".to_string());
+
+        if !is_tool_installed(&executable) {
+            return Err(VmError::Dependency(format!("{} is not installed", executable).into()));
         }
 
         let project_dir = std::env::current_dir()?;
@@ -139,12 +142,18 @@ impl DockerProvider {
             config,
             _project_dir: project_dir,
             temp_dir,
+            executable,
         })
     }
 
     /// Helper to create LifecycleOperations instance
     fn lifecycle_ops(&self) -> LifecycleOperations<'_> {
-        LifecycleOperations::new(&self.config, &self.temp_dir, &self._project_dir)
+        LifecycleOperations::new(
+            &self.config,
+            &self.temp_dir,
+            &self._project_dir,
+            &self.executable,
+        )
     }
 }
 
@@ -348,7 +357,7 @@ impl Provider for DockerProvider {
             destination.to_string()
         };
 
-        DockerOps::copy(&resolved_source, &resolved_destination)
+        DockerOps::copy(Some(&self.executable), &resolved_source, &resolved_destination)
     }
 
     fn status(&self, container: Option<&str>) -> Result<()> {
@@ -425,7 +434,7 @@ impl Provider for DockerProvider {
 
     fn get_container_mounts(&self, container_name: &str) -> Result<Vec<String>> {
         let target_container = self.resolve_instance_name(Some(container_name))?;
-        DockerOps::get_container_mounts(&target_container)
+        DockerOps::get_container_mounts(Some(&self.executable), &target_container)
     }
 
     fn as_temp_provider(&self) -> Option<&dyn TempProvider> {

@@ -14,7 +14,7 @@ impl<'a> LifecycleOperations<'a> {
     #[must_use = "container listing results should be handled"]
     pub fn list_containers_with_stats(&self) -> Result<()> {
         // Get container info
-        let ps_output = DockerCommand::new()
+        let ps_output = DockerCommand::new(Some(self.executable))
             .subcommand("ps")
             .arg("-a")
             .arg("--format")
@@ -30,7 +30,7 @@ impl<'a> LifecycleOperations<'a> {
         }
 
         // Get stats for running containers
-        let stats_output = DockerCommand::new()
+        let stats_output = DockerCommand::new(Some(self.executable))
             .subcommand("stats")
             .arg("--no-stream")
             .arg("--format")

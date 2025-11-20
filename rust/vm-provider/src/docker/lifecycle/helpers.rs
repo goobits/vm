@@ -67,7 +67,7 @@ impl<'a> LifecycleOperations<'a> {
 
     #[must_use = "Docker daemon status should be checked"]
     pub(super) fn check_daemon_is_running(&self) -> Result<()> {
-        crate::docker::DockerOps::check_daemon_running()
+        crate::docker::DockerOps::check_daemon_running(Some(self.executable))
             .map_err(|_| VmError::Internal("Docker daemon is not running".to_string()))
     }
 
@@ -156,7 +156,11 @@ impl<'a> LifecycleOperations<'a> {
         }
 
         // Check Docker daemon status more thoroughly
-        if DockerCommand::new().subcommand("ps").execute().is_err() {
+        if DockerCommand::new(Some(self.executable))
+            .subcommand("ps")
+            .execute()
+            .is_err()
+        {
             vm_error_with_details!(
                 "Docker daemon may not be responding properly",
                 &["Try: docker system prune -f", "Or: restart Docker Desktop"]
@@ -172,10 +176,14 @@ impl<'a> LifecycleOperations<'a> {
     #[must_use = "container resolution results should be checked"]
     pub(super) fn resolve_container_name(&self, partial_name: &str) -> Result<String> {
         // Get list of all containers
-        let output = std::process::Command::new("docker")
+        let output = std::process::Command::new(self.executable)
             .args(["ps", "-a", "--format", "{{.Names}}\t{{.ID}}"])
             .output()
-            .map_err(|e| VmError::Internal(format!("Failed to list containers for name resolution. Docker may not be running or accessible: {e}")))?;
+            .map_err(|e| {
+                VmError::Internal(format!(
+                    "Failed to list containers for name resolution. Docker may not be running or accessible: {e}"
+                ))
+            })?;
 
         if !output.status.success() {
             return Err(VmError::Internal(

@@ -89,7 +89,7 @@ impl<'a> LifecycleOperations<'a> {
             Some(name) => self.container_name_with_instance(name),
             None => self.container_name(),
         };
-        let container_exists = DockerOps::container_exists(&container_name)
+        let container_exists = DockerOps::container_exists(Some(self.executable), &container_name)
             .map_err(|e| warn!("Failed to check existing containers (continuing): {}", e))
             .unwrap_or(false);
 
@@ -133,7 +133,7 @@ impl<'a> LifecycleOperations<'a> {
         if let Some(networking) = &modified_config.networking {
             if !networking.networks.is_empty() {
                 info!("Ensuring Docker networks exist: {:?}", networking.networks);
-                DockerOps::ensure_networks_exist(&networking.networks)?;
+                DockerOps::ensure_networks_exist(Some(self.executable), &networking.networks)?;
             }
         }
 
@@ -165,7 +165,7 @@ impl<'a> LifecycleOperations<'a> {
             vm_dbg!("Build context contains {} files/directories", file_count);
         }
 
-        stream_command_visible("docker", &all_args).map_err(|e| {
+        stream_command_visible(self.executable, &all_args).map_err(|e| {
             match instance_name {
                 Some(name) => VmError::Internal(format!(
                     "Docker build failed for project '{}' instance '{}'. Check that Docker is running and build context is valid: {}",
@@ -185,7 +185,7 @@ impl<'a> LifecycleOperations<'a> {
         let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
-        stream_command_visible("docker", &args_refs).map_err(|e| {
+        stream_command_visible(self.executable, &args_refs).map_err(|e| {
             let error_msg = e.to_string();
 
             // Detect container name conflicts (orphaned containers from failed creation)
@@ -253,7 +253,7 @@ impl<'a> LifecycleOperations<'a> {
         let container_name = self.container_name();
 
         // Check if it's running
-        let is_running = DockerOps::is_container_running(&container_name)
+        let is_running = DockerOps::is_container_running(Some(self.executable), &container_name)
             .map_err(|e| warn!("Failed to check running containers (continuing): {}", e))
             .unwrap_or(false);
 
@@ -321,7 +321,7 @@ impl<'a> LifecycleOperations<'a> {
         let container_name = self.container_name_with_instance(instance_name);
 
         // Check if it's running
-        let is_running = DockerOps::is_container_running(&container_name)
+        let is_running = DockerOps::is_container_running(Some(self.executable), &container_name)
             .map_err(|e| warn!("Failed to check running containers (continuing): {}", e))
             .unwrap_or(false);
 
@@ -484,7 +484,7 @@ impl<'a> LifecycleOperations<'a> {
         })?;
         let source = BuildOperations::path_to_string(&temp_config_path)?;
         let destination = format!("{}:{}", self.container_name(), super::TEMP_CONFIG_PATH);
-        let copy_result = DockerOps::copy(source, &destination);
+        let copy_result = DockerOps::copy(Some(self.executable), source, &destination);
         if copy_result.is_err() {
             return Err(VmError::Internal(format!(
                 "Failed to copy VM configuration to container '{}'. Container may not be running or accessible",
@@ -496,7 +496,9 @@ impl<'a> LifecycleOperations<'a> {
 
     /// Helper to list all containers for this project (used in error messages).
     fn list_project_containers_for_user(&self) {
-        if let Ok(containers) = DockerOps::list_containers(true, "{{.Names}}") {
+        if let Ok(containers) =
+            DockerOps::list_containers(Some(self.executable), true, "{{.Names}}")
+        {
             let project_prefix = format!("{}-", self.project_name());
             let project_containers: Vec<&str> = containers
                 .lines()
@@ -530,16 +532,15 @@ impl<'a> LifecycleOperations<'a> {
         let project_name = self.project_name();
 
         // Query Docker for all containers to find orphaned services
-        let all_containers = DockerOps::list_containers(true, "{{.Names}}")?;
+        let all_containers = DockerOps::list_containers(Some(self.executable), true, "{{.Names}}")?;
 
-        // Known service container patterns from template.yml
-        // These are flagged as orphaned if they exist (regardless of current config)
-        // Instance containers (myproject-dev, myproject-foo) are NOT flagged
-        let service_patterns = [
-            format!("{}-postgres", project_name), // PostgreSQL (explicit container_name)
-            format!("{}-redis-1", project_name),  // Redis (Compose default)
-            format!("{}-mongodb-1", project_name), // MongoDB (Compose default)
-        ];
+        // Use ComposeOperations to get expected service names based on current config
+        // Note: This uses the current config, so if a service was removed from config
+        // but still exists as a container, it might not be caught here.
+        // However, checking all possible legacy names is brittle.
+        // For now, we check the services enabled in the current config.
+        let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
+        let service_patterns = compose_ops.get_expected_service_containers();
 
         let mut orphaned = Vec::new();
 

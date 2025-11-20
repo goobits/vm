@@ -600,6 +600,11 @@ impl<'a> ComposeOperations<'a> {
     }
 
     pub fn start_with_compose(&self, context: &ProviderContext) -> Result<()> {
+        // IMPORTANT: This method assumes "docker" executable for now because ComposeOperations
+        // doesn't know about the configured executable yet.
+        // TODO: Propagate executable from DockerProvider -> LifecycleOperations -> ComposeOperations
+        let executable = "docker";
+
         let compose_path = self.temp_dir.join("docker-compose.yml");
         if !compose_path.exists() {
             // Fallback: prepare build context and generate compose file
@@ -617,7 +622,8 @@ impl<'a> ComposeOperations<'a> {
             .map(|s| format!("{s}-dev"))
             .unwrap_or_else(|| "vm-project-dev".to_string());
 
-        let container_exists = DockerOps::container_exists(&container_name).unwrap_or(false);
+        let container_exists =
+            DockerOps::container_exists(Some(executable), &container_name).unwrap_or(false);
 
         // Use 'start' if container exists, 'up -d' if it doesn't
         let (command, extra_args) = if container_exists {
@@ -629,7 +635,7 @@ impl<'a> ComposeOperations<'a> {
         let args = ComposeCommand::build_args(&compose_path, command, &extra_args)?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         // Use visible streaming for docker-compose up to show build progress
-        stream_command_visible("docker", &args_refs).map_err(|e| {
+        stream_command_visible(executable, &args_refs).map_err(|e| {
             VmError::Internal(format!(
                 "Failed to start container using docker-compose: {e}"
             ))
@@ -638,11 +644,13 @@ impl<'a> ComposeOperations<'a> {
 
     #[allow(dead_code)]
     pub fn stop_with_compose(&self) -> Result<()> {
+        let executable = "docker"; // TODO: Make configurable
+
         let compose_path = self.temp_dir.join("docker-compose.yml");
         if compose_path.exists() {
             let args = ComposeCommand::build_args(&compose_path, "stop", &[])?;
             let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-            stream_command("docker", &args_refs).map_err(|e| {
+            stream_command(executable, &args_refs).map_err(|e| {
                 VmError::Internal(format!(
                     "Failed to stop container using docker-compose: {e}"
                 ))
@@ -657,6 +665,8 @@ impl<'a> ComposeOperations<'a> {
 
     #[allow(dead_code)]
     pub fn destroy_with_compose(&self) -> Result<()> {
+        let executable = "docker"; // TODO: Make configurable
+
         let compose_path = self.temp_dir.join("docker-compose.yml");
         if !compose_path.exists() {
             return Err(VmError::Internal(format!(
@@ -666,8 +676,50 @@ impl<'a> ComposeOperations<'a> {
         }
         let args = ComposeCommand::build_args(&compose_path, "down", &["--volumes"])?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        stream_command("docker", &args_refs)
+        stream_command(executable, &args_refs)
             .map_err(|e| VmError::Internal(format!("Failed to destroy container: {e}")))
+    }
+
+    /// Get list of expected service container names based on configuration.
+    ///
+    /// Returns a list of container names that are expected to be created by docker-compose
+    /// for the enabled services. Used for orphan detection.
+    pub fn get_expected_service_containers(&self) -> Vec<String> {
+        let project_name = self
+            .config
+            .project
+            .as_ref()
+            .and_then(|p| p.name.as_deref())
+            .unwrap_or("vm-project");
+
+        let mut expected = Vec::new();
+
+        // Postgres (explicit container name in template)
+        if self
+            .config
+            .services
+            .get("postgresql")
+            .is_some_and(|s| s.enabled)
+        {
+            expected.push(format!("{}-postgres", project_name));
+        }
+
+        // Redis (Compose default name)
+        if self.config.services.get("redis").is_some_and(|s| s.enabled) {
+            expected.push(format!("{}-redis-1", project_name));
+        }
+
+        // MongoDB (Compose default name)
+        if self
+            .config
+            .services
+            .get("mongodb")
+            .is_some_and(|s| s.enabled)
+        {
+            expected.push(format!("{}-mongodb-1", project_name));
+        }
+
+        expected
     }
 }
 

@@ -22,6 +22,7 @@ struct Mount {
 /// proper argument validation, error handling, and logging.
 #[derive(Debug, Clone)]
 pub struct DockerCommand {
+    executable: String,
     subcommand: Option<String>,
     args: Vec<String>,
     #[allow(dead_code)] // Will be used for output capture in monitoring features
@@ -30,8 +31,9 @@ pub struct DockerCommand {
 
 impl DockerCommand {
     /// Create a new Docker command builder.
-    pub fn new() -> Self {
+    pub fn new(executable: Option<&str>) -> Self {
         Self {
+            executable: executable.unwrap_or("docker").to_string(),
             subcommand: None,
             args: Vec::new(),
             capture_output: false,
@@ -129,7 +131,7 @@ impl DockerCommand {
 
     /// Build the underlying Command object.
     fn build_command(self) -> Result<Command> {
-        let mut cmd = Command::new("docker");
+        let mut cmd = Command::new(&self.executable);
 
         // Enable BuildKit for all Docker commands to leverage parallel builds and cache mounts
         cmd.env("DOCKER_BUILDKIT", "1");
@@ -148,7 +150,7 @@ impl DockerCommand {
 
 impl Default for DockerCommand {
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }
 
@@ -160,8 +162,8 @@ pub struct DockerOps;
 
 impl DockerOps {
     /// Check if Docker daemon is running by executing 'docker info'.
-    pub fn check_daemon_running() -> Result<()> {
-        DockerCommand::new()
+    pub fn check_daemon_running(executable: Option<&str>) -> Result<()> {
+        DockerCommand::new(executable)
             .subcommand("info")
             .execute()
             .map_err(|e| {
@@ -176,8 +178,12 @@ impl DockerOps {
     /// # Arguments
     /// * `all` - Include stopped containers (uses -a flag)
     /// * `format` - Docker format string (e.g., "{{.Names}}")
-    pub fn list_containers(all: bool, format: &str) -> Result<String> {
-        let mut cmd = DockerCommand::new().subcommand("ps");
+    pub fn list_containers(
+        executable: Option<&str>,
+        all: bool,
+        format: &str,
+    ) -> Result<String> {
+        let mut cmd = DockerCommand::new(executable).subcommand("ps");
 
         if all {
             cmd = cmd.arg("-a");
@@ -187,14 +193,20 @@ impl DockerOps {
     }
 
     /// Check if a container exists by name.
-    pub fn container_exists(container_name: &str) -> Result<bool> {
-        let output = Self::list_containers(true, "{{.Names}}")?;
+    pub fn container_exists(
+        executable: Option<&str>,
+        container_name: &str,
+    ) -> Result<bool> {
+        let output = Self::list_containers(executable, true, "{{.Names}}")?;
         Ok(output.lines().any(|line| line.trim() == container_name))
     }
 
     /// Check if a container is currently running.
-    pub fn is_container_running(container_name: &str) -> Result<bool> {
-        let output = Self::list_containers(false, "{{.Names}}")?;
+    pub fn is_container_running(
+        executable: Option<&str>,
+        container_name: &str,
+    ) -> Result<bool> {
+        let output = Self::list_containers(executable, false, "{{.Names}}")?;
         Ok(output.lines().any(|line| line.trim() == container_name))
     }
 
@@ -204,8 +216,14 @@ impl DockerOps {
     /// * `container_name` - Name of the container
     /// * `command_args` - Command and arguments to execute
     #[allow(dead_code)] // Utility function for debugging and manual operations
-    pub fn exec_in_container(container_name: &str, command_args: &[&str]) -> Result<()> {
-        let mut cmd = DockerCommand::new().subcommand("exec").arg(container_name);
+    pub fn exec_in_container(
+        executable: Option<&str>,
+        container_name: &str,
+        command_args: &[&str],
+    ) -> Result<()> {
+        let mut cmd = DockerCommand::new(executable)
+            .subcommand("exec")
+            .arg(container_name);
 
         for arg in command_args {
             cmd = cmd.arg(*arg);
@@ -217,10 +235,13 @@ impl DockerOps {
     /// Execute a command inside a container and capture output.
     #[allow(dead_code)] // Will be used for interactive diagnostics
     pub fn exec_in_container_with_output(
+        executable: Option<&str>,
         container_name: &str,
         command_args: &[&str],
     ) -> Result<String> {
-        let mut cmd = DockerCommand::new().subcommand("exec").arg(container_name);
+        let mut cmd = DockerCommand::new(executable)
+            .subcommand("exec")
+            .arg(container_name);
 
         for arg in command_args {
             cmd = cmd.arg(*arg);
@@ -234,8 +255,8 @@ impl DockerOps {
     /// # Arguments
     /// * `source` - Source path (container:path or local path)
     /// * `destination` - Destination path (container:path or local path)
-    pub fn copy(source: &str, destination: &str) -> Result<()> {
-        DockerCommand::new()
+    pub fn copy(executable: Option<&str>, source: &str, destination: &str) -> Result<()> {
+        DockerCommand::new(executable)
             .subcommand("cp")
             .arg(source)
             .arg(destination)
@@ -244,8 +265,8 @@ impl DockerOps {
 
     /// Get container statistics with specified format.
     #[allow(dead_code)] // Will be used for resource monitoring
-    pub fn stats(container_name: &str, format: &str) -> Result<String> {
-        DockerCommand::new()
+    pub fn stats(executable: Option<&str>, container_name: &str, format: &str) -> Result<String> {
+        DockerCommand::new(executable)
             .subcommand("stats")
             .arg("--no-stream")
             .arg("--format")
@@ -256,8 +277,8 @@ impl DockerOps {
 
     /// Start a container by name.
     #[allow(dead_code)] // Will be used for lifecycle management
-    pub fn start_container(container_name: &str) -> Result<()> {
-        DockerCommand::new()
+    pub fn start_container(executable: Option<&str>, container_name: &str) -> Result<()> {
+        DockerCommand::new(executable)
             .subcommand("start")
             .arg(container_name)
             .execute()
@@ -265,8 +286,8 @@ impl DockerOps {
 
     /// Stop a container by name.
     #[allow(dead_code)] // Will be used for lifecycle management
-    pub fn stop_container(container_name: &str) -> Result<()> {
-        DockerCommand::new()
+    pub fn stop_container(executable: Option<&str>, container_name: &str) -> Result<()> {
+        DockerCommand::new(executable)
             .subcommand("stop")
             .arg(container_name)
             .execute()
@@ -274,8 +295,12 @@ impl DockerOps {
 
     /// Remove a container by name (with force flag).
     #[allow(dead_code)] // Will be used for cleanup operations
-    pub fn remove_container(container_name: &str, force: bool) -> Result<()> {
-        let mut cmd = DockerCommand::new().subcommand("rm");
+    pub fn remove_container(
+        executable: Option<&str>,
+        container_name: &str,
+        force: bool,
+    ) -> Result<()> {
+        let mut cmd = DockerCommand::new(executable).subcommand("rm");
 
         if force {
             cmd = cmd.arg("-f");
@@ -285,8 +310,8 @@ impl DockerOps {
     }
 
     /// Test container readiness by executing a simple command.
-    pub fn test_container_readiness(container_name: &str) -> bool {
-        DockerCommand::new()
+    pub fn test_container_readiness(executable: Option<&str>, container_name: &str) -> bool {
+        DockerCommand::new(executable)
             .subcommand("exec")
             .arg(container_name)
             .arg("echo")
@@ -296,8 +321,11 @@ impl DockerOps {
     }
 
     /// Get a list of host paths mounted into the container.
-    pub fn get_container_mounts(container_name: &str) -> Result<Vec<String>> {
-        let output = DockerCommand::new()
+    pub fn get_container_mounts(
+        executable: Option<&str>,
+        container_name: &str,
+    ) -> Result<Vec<String>> {
+        let output = DockerCommand::new(executable)
             .subcommand("inspect")
             .arg("--format")
             .arg("{{json .Mounts}}")
@@ -311,8 +339,8 @@ impl DockerOps {
     }
 
     /// Check if a Docker network exists by name.
-    pub fn network_exists(network_name: &str) -> Result<bool> {
-        let output = DockerCommand::new()
+    pub fn network_exists(executable: Option<&str>, network_name: &str) -> Result<bool> {
+        let output = DockerCommand::new(executable)
             .subcommand("network")
             .arg("ls")
             .arg("--format")
@@ -323,10 +351,10 @@ impl DockerOps {
     }
 
     /// Create a Docker network with the specified name.
-    pub fn create_network(network_name: &str) -> Result<()> {
+    pub fn create_network(executable: Option<&str>, network_name: &str) -> Result<()> {
         vm_dbg!("Creating Docker network: {}", network_name);
 
-        DockerCommand::new()
+        DockerCommand::new(executable)
             .subcommand("network")
             .arg("create")
             .arg(network_name)
@@ -340,11 +368,14 @@ impl DockerOps {
     }
 
     /// Ensure all specified networks exist, creating them if necessary.
-    pub fn ensure_networks_exist(networks: &[String]) -> Result<()> {
+    pub fn ensure_networks_exist(
+        executable: Option<&str>,
+        networks: &[String],
+    ) -> Result<()> {
         for network in networks {
-            if !Self::network_exists(network)? {
+            if !Self::network_exists(executable, network)? {
                 vm_dbg!("Network '{}' does not exist, creating it...", network);
-                Self::create_network(network)?;
+                Self::create_network(executable, network)?;
             } else {
                 vm_dbg!("Network '{}' already exists", network);
             }
@@ -356,8 +387,8 @@ impl DockerOps {
     ///
     /// # Arguments
     /// * `image_name` - Name of the image (e.g., "supercool:latest")
-    pub fn image_exists(image_name: &str) -> Result<bool> {
-        let output = DockerCommand::new()
+    pub fn image_exists(executable: Option<&str>, image_name: &str) -> Result<bool> {
+        let output = DockerCommand::new(executable)
             .subcommand("images")
             .arg("--format")
             .arg("{{.Repository}}:{{.Tag}}")
@@ -369,11 +400,13 @@ impl DockerOps {
     /// Build a custom Docker image from a Dockerfile.
     ///
     /// # Arguments
+    /// * `executable` - The docker executable to use (e.g. "docker" or "podman")
     /// * `dockerfile_path` - Path to the Dockerfile
     /// * `image_name` - Tag for the built image (e.g., "supercool:latest")
     /// * `context_dir` - Build context directory (usually parent of Dockerfile)
     /// * `build_args` - Optional build arguments to pass to docker build (--build-arg KEY=VALUE)
     pub fn build_custom_image(
+        executable: Option<&str>,
         dockerfile_path: &std::path::Path,
         image_name: &str,
         context_dir: &std::path::Path,
@@ -382,10 +415,13 @@ impl DockerOps {
         use vm_core::command_stream::stream_command_visible;
         use vm_core::vm_info;
 
+        let exec_name = executable.unwrap_or("docker");
+
         vm_info!(
-            "Building custom base image '{}' from {:?}...",
+            "Building custom base image '{}' from {:?} using {}...",
             image_name,
-            dockerfile_path
+            dockerfile_path,
+            exec_name
         );
         vm_info!("This may take 5-15 minutes on first build...");
 
@@ -408,7 +444,7 @@ impl DockerOps {
         args.push(context_dir.to_string_lossy().to_string());
 
         // Stream the build output directly to the user
-        stream_command_visible("docker", &args)?;
+        stream_command_visible(exec_name, &args)?;
 
         vm_info!("✓ Successfully built custom base image '{}'", image_name);
         Ok(())
@@ -421,7 +457,7 @@ mod tests {
 
     #[test]
     fn test_docker_command_builder() {
-        let cmd = DockerCommand::new()
+        let cmd = DockerCommand::new(None)
             .subcommand("ps")
             .arg("-a")
             .arg("--format")
@@ -435,7 +471,7 @@ mod tests {
 
     #[test]
     fn test_docker_command_chaining() {
-        let cmd = DockerCommand::new()
+        let cmd = DockerCommand::new(None)
             .subcommand("exec")
             .arg("container")
             .arg("echo")

@@ -32,6 +32,7 @@ pub struct LifecycleOperations<'a> {
     pub config: &'a VmConfig,
     pub temp_dir: &'a std::path::PathBuf,
     pub project_dir: &'a std::path::PathBuf,
+    pub executable: &'a str,
 }
 
 impl<'a> LifecycleOperations<'a> {
@@ -40,11 +41,13 @@ impl<'a> LifecycleOperations<'a> {
         config: &'a VmConfig,
         temp_dir: &'a std::path::PathBuf,
         project_dir: &'a std::path::PathBuf,
+        executable: &'a str,
     ) -> Self {
         Self {
             config,
             temp_dir,
             project_dir,
+            executable,
         }
     }
 }
@@ -58,7 +61,7 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
 
         if self.is_container_running(&state.container_name)? {
             ProgressReporter::task(&main_phase, "Stopping container...");
-            stream_command("docker", &["stop", &state.container_name])?;
+            stream_command(self.executable, &["stop", &state.container_name])?;
         }
 
         ProgressReporter::task(&main_phase, "Recreating container with new mounts...");
@@ -68,7 +71,7 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
         let compose_path = self.temp_dir.join("docker-compose.yml");
         let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        stream_command("docker", &args_refs)?;
+        stream_command(self.executable, &args_refs)?;
 
         ProgressReporter::task(&main_phase, "Checking container health...");
         if !self.check_container_health(&state.container_name)? {
@@ -98,7 +101,7 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
         fs::write(&compose_path, content.as_bytes())?;
 
         ProgressReporter::task(&phase, "Removing old container...");
-        if let Err(e) = stream_command("docker", &["rm", "-f", &state.container_name]) {
+        if let Err(e) = stream_command(self.executable, &["rm", "-f", &state.container_name]) {
             eprintln!(
                 "Warning: Failed to remove old container {}: {}",
                 &state.container_name, e
@@ -111,7 +114,12 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
 
     fn check_container_health(&self, container_name: &str) -> Result<bool> {
         for _ in 0..CONTAINER_READINESS_MAX_ATTEMPTS {
-            if stream_command("docker", &["exec", container_name, "echo", "ready"]).is_ok() {
+            if stream_command(
+                self.executable,
+                &["exec", container_name, "echo", "ready"],
+            )
+            .is_ok()
+            {
                 return Ok(true);
             }
             std::thread::sleep(std::time::Duration::from_secs(
@@ -122,7 +130,7 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
     }
 
     fn is_container_running(&self, container_name: &str) -> Result<bool> {
-        let output = std::process::Command::new("docker")
+        let output = std::process::Command::new(self.executable)
             .args(["inspect", "--format", "{{.State.Status}}", container_name])
             .output()?;
         if !output.status.success() {

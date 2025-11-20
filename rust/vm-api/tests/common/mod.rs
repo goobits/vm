@@ -139,6 +139,83 @@ pub fn auth_headers_with_email<'a>(username: &'a str, email: &'a str) -> Vec<(&'
     vec![("x-user", username), ("x-vm-email", email)]
 }
 
+/// TestClient to encapsulate API interaction logic
+pub struct TestClient {
+    pub app: Router,
+}
+
+impl TestClient {
+    /// Create a new TestClient
+    pub async fn new(pool: SqlitePool) -> Self {
+        let app = create_test_app(pool).await;
+        Self { app }
+    }
+
+    /// Create a new TestClient with a new in-memory DB
+    pub async fn new_with_db() -> (Self, SqlitePool) {
+        let pool = create_test_db().await;
+        let client = Self::new(pool.clone()).await;
+        (client, pool)
+    }
+
+    /// Send a request to the API
+    pub async fn send_request(&self, request: axum::http::Request<axum::body::Body>) -> axum::http::Response<axum::body::Body> {
+        // Clone the app to allow reuse (Router is cheap to clone)
+        use tower::ServiceExt;
+        self.app.clone().oneshot(request).await.unwrap()
+    }
+
+    /// Post JSON to an endpoint
+    pub async fn post<T: serde::Serialize>(&self, uri: &str, body: &T, headers: Option<Vec<(&str, &str)>>) -> axum::http::Response<axum::body::Body> {
+        let req_body = serde_json::to_string(body).expect("Failed to serialize request body");
+        let mut builder = axum::http::Request::builder()
+            .method("POST")
+            .uri(uri)
+            .header("content-type", "application/json");
+
+        if let Some(h) = headers {
+            for (k, v) in h {
+                builder = builder.header(k, v);
+            }
+        }
+
+        let request = builder.body(axum::body::Body::from(req_body)).unwrap();
+        self.send_request(request).await
+    }
+
+    /// Get request to an endpoint
+    pub async fn get(&self, uri: &str, headers: Option<Vec<(&str, &str)>>) -> axum::http::Response<axum::body::Body> {
+        let mut builder = axum::http::Request::builder()
+            .method("GET")
+            .uri(uri);
+
+        if let Some(h) = headers {
+            for (k, v) in h {
+                builder = builder.header(k, v);
+            }
+        }
+
+        let request = builder.body(axum::body::Body::empty()).unwrap();
+        self.send_request(request).await
+    }
+
+    /// Delete request to an endpoint
+    pub async fn delete(&self, uri: &str, headers: Option<Vec<(&str, &str)>>) -> axum::http::Response<axum::body::Body> {
+        let mut builder = axum::http::Request::builder()
+            .method("DELETE")
+            .uri(uri);
+
+        if let Some(h) = headers {
+            for (k, v) in h {
+                builder = builder.header(k, v);
+            }
+        }
+
+        let request = builder.body(axum::body::Body::empty()).unwrap();
+        self.send_request(request).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

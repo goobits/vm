@@ -199,8 +199,11 @@ impl TartProvider {
         ProgressReporter::task(&main_phase, "Checking if VM exists...");
         let list_output = std::process::Command::new("tart").args(["list"]).output();
 
-        if let Ok(output) = list_output {
+        let mut existing_vms = Vec::new();
+        if let Ok(output) = &list_output {
             let list_str = String::from_utf8_lossy(&output.stdout);
+            existing_vms = list_str.lines().map(|s| s.to_string()).collect();
+
             if list_str.contains(vm_name) {
                 ProgressReporter::task(&main_phase, "VM already exists.");
                 info!(
@@ -213,6 +216,27 @@ impl TartProvider {
             }
         }
         ProgressReporter::task(&main_phase, "VM not found, proceeding with creation.");
+
+        // Check for orphaned VMs (same project, different instance/suffix)
+        let project_prefix = format!("{}-", extract_project_name(&self.config));
+        let orphans: Vec<String> = existing_vms
+            .into_iter()
+            .filter(|name| name.starts_with(&project_prefix) && name != vm_name)
+            .collect();
+
+        if !orphans.is_empty() {
+            warn!("Found potential orphaned VMs from previous runs/instances");
+            eprintln!("\n⚠️  Warning: Other VMs for this project detected");
+            eprintln!("   These VMs might be from other instances or previous runs:\n");
+            for orphan in &orphans {
+                eprintln!("   • {}", orphan);
+            }
+            eprintln!("\n💡 If these are leftovers, you can clean them up with:");
+            for orphan in &orphans {
+                eprintln!("      tart delete {}", orphan);
+            }
+            eprintln!();
+        }
 
         // Get image from config using new BoxConfig system
         let image = self.get_tart_image(config)?;
