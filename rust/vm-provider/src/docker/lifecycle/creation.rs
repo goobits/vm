@@ -626,31 +626,24 @@ impl<'a> LifecycleOperations<'a> {
     /// Service containers (postgresql, redis, etc.) may be left running if the main
     /// container creation fails partway through. This pre-flight check warns users
     /// early and provides actionable guidance.
+    ///
+    /// NOTE: Currently only detects PostgreSQL because it's the only service with an
+    /// explicit container_name in template.yml:214. Redis/MongoDB use Compose defaults
+    /// ({project}-{service}-1) and aren't yet defined in the template.
     fn check_for_orphaned_containers(&self) -> Result<()> {
         let project_name = self.project_name();
         let mut orphaned = Vec::new();
 
-        // Iterate over enabled services and check for orphaned containers
-        // Container naming patterns must match template.yml definitions
-        for (service_name, service_config) in &self.config.services {
-            if !service_config.enabled {
-                continue;
-            }
-
-            // Map service names to their container naming patterns from template.yml
-            // Only PostgreSQL currently has an explicit container_name (template.yml:214)
-            // Future services should be added here as they're defined in the template
-            let container_name = match service_name.as_str() {
-                "postgresql" => Some(format!("{}-postgres", project_name)),
-                // Redis/MongoDB would use Compose defaults ({project}-{service}-1) unless
-                // template.yml is updated to give them explicit container_name like PostgreSQL
-                _ => None,
-            };
-
-            if let Some(name) = container_name {
-                if DockerOps::container_exists(&name).unwrap_or(false) {
-                    orphaned.push(name);
-                }
+        // Check for PostgreSQL container (only service with explicit container_name in template.yml:214)
+        if self
+            .config
+            .services
+            .get("postgresql")
+            .is_some_and(|s| s.enabled)
+        {
+            let postgres_name = format!("{}-postgres", project_name);
+            if DockerOps::container_exists(&postgres_name).unwrap_or(false) {
+                orphaned.push(postgres_name);
             }
         }
 
