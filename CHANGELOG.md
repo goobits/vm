@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.4.3] - 2025-11-19
+
+### Added
+
+- **Pre-flight Validation for Orphaned Containers**: Detect orphaned service containers before VM creation
+  - Checks for orphaned PostgreSQL containers from previous failed creation attempts
+  - Warns users early with actionable cleanup guidance (`vm destroy --force`)
+  - Prevents cryptic "container name already in use" errors during creation
+  - Shows specific container names and manual cleanup commands
+
+### Improved
+
+- **Container Conflict Detection**: Enhanced error messages when container name conflicts occur
+  - Detects "is already in use" or "Conflict" errors during `docker compose up`
+  - Provides clear guidance with three options: auto-cleanup, inspect, or manual cleanup
+  - Shows specific docker commands for debugging and manual intervention
+  - Makes it easier to recover from partial creation failures
+
 ## [4.4.2] - 2025-11-19
 
 ### Added

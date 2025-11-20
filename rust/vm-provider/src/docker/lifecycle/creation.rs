@@ -32,6 +32,9 @@ impl<'a> LifecycleOperations<'a> {
         self.handle_potential_issues();
         self.check_docker_build_requirements();
 
+        // Pre-flight validation: Check for orphaned service containers
+        self.check_for_orphaned_containers()?;
+
         // Check platform support for worktrees (Windows native not supported)
         #[cfg(target_os = "windows")]
         {
@@ -151,12 +154,38 @@ impl<'a> LifecycleOperations<'a> {
         // Step 5: Start containers
         let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        let container_name = self.container_name();
+
         stream_command_visible("docker", &args_refs).map_err(|e| {
-            VmError::Internal(format!(
-                "Failed to start container '{}'. Container may have failed to start properly: {}",
-                self.container_name(),
-                e
-            ))
+            let error_msg = e.to_string();
+
+            // Detect container name conflicts (orphaned containers from failed creation)
+            if error_msg.contains("is already in use") || error_msg.contains("Conflict") {
+                eprintln!("\n⚠️  Container name conflict detected");
+                eprintln!("   This usually means a previous creation failed partway through,");
+                eprintln!("   leaving orphaned service containers (postgres, redis, etc.)");
+                eprintln!("\n💡 Options:");
+                eprintln!("   1. Clean up and retry:");
+                eprintln!("      vm destroy --force && vm create");
+                eprintln!("   2. Inspect the existing container:");
+                eprintln!("      docker logs {}", container_name);
+                eprintln!("      docker inspect {}", container_name);
+                eprintln!("   3. Manual cleanup:");
+                eprintln!("      docker ps -a | grep {}", self.project_name());
+                eprintln!("      docker rm -f <container-name>");
+                eprintln!();
+
+                VmError::Internal(format!(
+                    "Container name conflict. Previous creation may have failed. Clean up first or use --force.\n\nOriginal error: {}",
+                    error_msg
+                ))
+            } else {
+                VmError::Internal(format!(
+                    "Failed to start container '{}'. Container may have failed to start properly: {}",
+                    container_name,
+                    e
+                ))
+            }
         })?;
 
         self.provision_container_with_context(context)?;
@@ -180,6 +209,9 @@ impl<'a> LifecycleOperations<'a> {
         self.check_daemon_is_running()?;
         self.handle_potential_issues();
         self.check_docker_build_requirements();
+
+        // Pre-flight validation: Check for orphaned service containers
+        self.check_for_orphaned_containers()?;
 
         // Check platform support for worktrees (Windows native not supported)
         #[cfg(target_os = "windows")]
@@ -559,6 +591,56 @@ impl<'a> LifecycleOperations<'a> {
                 self.container_name()
             )));
         }
+        Ok(())
+    }
+
+    /// Check for orphaned service containers from previous failed creation attempts.
+    ///
+    /// Service containers (postgresql, redis, etc.) may be left running if the main
+    /// container creation fails partway through. This pre-flight check warns users
+    /// early and provides actionable guidance.
+    fn check_for_orphaned_containers(&self) -> Result<()> {
+        let project_name = self.project_name();
+        let mut orphaned = Vec::new();
+
+        // Check for PostgreSQL container
+        if self
+            .config
+            .services
+            .get("postgresql")
+            .is_some_and(|s| s.enabled)
+        {
+            let postgres_name = format!("{}-postgres", project_name);
+            if DockerOps::container_exists(&postgres_name).unwrap_or(false) {
+                orphaned.push(postgres_name);
+            }
+        }
+
+        // If orphaned containers found, warn user with actionable guidance
+        if !orphaned.is_empty() {
+            warn!("Found orphaned service containers from previous failed creation");
+            eprintln!("\n⚠️  Warning: Orphaned service containers detected");
+            eprintln!("   Previous VM creation may have failed partway through,");
+            eprintln!("   leaving these service containers running:\n");
+            for container in &orphaned {
+                eprintln!("   • {}", container);
+            }
+            eprintln!("\n💡 These containers may cause name conflicts during creation.");
+            eprintln!("   To clean up and proceed:");
+            eprintln!("      vm destroy --force");
+            eprintln!("      vm create\n");
+            eprintln!("   Or manually remove them:");
+            for container in &orphaned {
+                eprintln!("      docker rm -f {}", container);
+            }
+            eprintln!();
+
+            return Err(VmError::Internal(format!(
+                "Orphaned service containers found: {}. Clean them up first to avoid conflicts.",
+                orphaned.join(", ")
+            )));
+        }
+
         Ok(())
     }
 }
