@@ -6,6 +6,7 @@ use axum::{
 };
 use serde::Deserialize;
 use tracing::instrument;
+use utoipa::IntoParams;
 use vm_orchestrator::{Operation, OperationStatus, OperationType, WorkspaceFilters};
 
 pub fn routes() -> Router<AppState> {
@@ -14,16 +15,26 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/operations/{id}", get(get_operation))
 }
 
-#[derive(Debug, Deserialize)]
-struct OperationsQuery {
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct OperationsQuery {
     workspace_id: Option<String>,
     #[serde(rename = "type")]
     operation_type: Option<String>,
     status: Option<String>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/operations",
+    params(
+        OperationsQuery
+    ),
+    responses(
+        (status = 200, description = "List operations", body = Vec<Operation>)
+    )
+)]
 #[instrument(skip(state), fields(user = %user.username, workspace_id = ?query.workspace_id))]
-async fn list_operations(
+pub async fn list_operations(
     State(state): State<AppState>,
     Query(query): Query<OperationsQuery>,
     axum::Extension(user): axum::Extension<AuthenticatedUser>,
@@ -68,8 +79,18 @@ async fn list_operations(
     Ok(Json(operations))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/operations/{id}",
+    params(
+        ("id" = String, Path, description = "Operation ID")
+    ),
+    responses(
+        (status = 200, description = "Get operation details", body = Operation)
+    )
+)]
 #[instrument(skip(state), fields(user = %user.username, operation_id = %id))]
-async fn get_operation(
+pub async fn get_operation(
     State(state): State<AppState>,
     Path(id): Path<String>,
     axum::Extension(user): axum::Extension<AuthenticatedUser>,

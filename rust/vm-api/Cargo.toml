@@ -36,6 +36,8 @@ vm-core = { path = "../vm-core", version = "4.3.0" }
 vm-orchestrator = { path = "../vm-orchestrator", version = "4.3.0", features = ["test-utils"] }
 vm-config = { path = "../vm-config", version = "4.3.0" }
 vm-provider = { path = "../vm-provider", version = "4.3.0" }
+utoipa = { version = "5.3.1", features = ["axum_extras", "uuid", "chrono"] }
+utoipa-swagger-ui = { version = "9.0.0", features = ["axum"] }
 
 [dev-dependencies]
 axum-test = "16"

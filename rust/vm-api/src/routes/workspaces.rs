@@ -26,8 +26,16 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/workspaces/{id}/restart", post(restart_workspace))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/workspaces",
+    request_body = CreateWorkspaceRequest,
+    responses(
+        (status = 200, description = "Create a new workspace", body = Workspace)
+    )
+)]
 #[instrument(skip(state), fields(user = %user.username, workspace_name = %req.name))]
-async fn create_workspace(
+pub async fn create_workspace(
     State(state): State<AppState>,
     axum::Extension(user): axum::Extension<AuthenticatedUser>,
     Json(mut req): Json<CreateWorkspaceRequest>,
@@ -40,8 +48,15 @@ async fn create_workspace(
     Ok(Json(workspace))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/workspaces",
+    responses(
+        (status = 200, description = "List workspaces", body = Vec<Workspace>)
+    )
+)]
 #[instrument(skip(state), fields(user = %user.username))]
-async fn list_workspaces(
+pub async fn list_workspaces(
     State(state): State<AppState>,
     axum::Extension(user): axum::Extension<AuthenticatedUser>,
 ) -> ApiResult<Json<Vec<Workspace>>> {
@@ -55,8 +70,18 @@ async fn list_workspaces(
     Ok(Json(workspaces))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/workspaces/{id}",
+    params(
+        ("id" = String, Path, description = "Workspace ID")
+    ),
+    responses(
+        (status = 200, description = "Get workspace details", body = Workspace)
+    )
+)]
 #[instrument(skip(state), fields(user = %user.username, workspace_id = %id))]
-async fn get_workspace(
+pub async fn get_workspace(
     State(state): State<AppState>,
     Path(id): Path<String>,
     axum::Extension(user): axum::Extension<AuthenticatedUser>,
@@ -69,8 +94,18 @@ async fn get_workspace(
     Ok(Json(workspace))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/v1/workspaces/{id}",
+    params(
+        ("id" = String, Path, description = "Workspace ID")
+    ),
+    responses(
+        (status = 200, description = "Delete workspace", body = serde_json::Value)
+    )
+)]
 #[instrument(skip(state), fields(user = %user.username, workspace_id = %id))]
-async fn delete_workspace(
+pub async fn delete_workspace(
     State(state): State<AppState>,
     Path(id): Path<String>,
     axum::Extension(user): axum::Extension<AuthenticatedUser>,
@@ -83,8 +118,18 @@ async fn delete_workspace(
     Ok(Json(serde_json::json!({ "message": "Workspace deleted" })))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/workspaces/{id}/start",
+    params(
+        ("id" = String, Path, description = "Workspace ID")
+    ),
+    responses(
+        (status = 200, description = "Start workspace", body = Workspace)
+    )
+)]
 #[instrument(skip(state), fields(user = %user.username, workspace_id = %id))]
-async fn start_workspace(
+pub async fn start_workspace(
     State(state): State<AppState>,
     Path(id): Path<String>,
     axum::Extension(user): axum::Extension<AuthenticatedUser>,
@@ -96,8 +141,18 @@ async fn start_workspace(
     Ok(Json(workspace))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/workspaces/{id}/stop",
+    params(
+        ("id" = String, Path, description = "Workspace ID")
+    ),
+    responses(
+        (status = 200, description = "Stop workspace", body = Workspace)
+    )
+)]
 #[instrument(skip(state), fields(user = %user.username, workspace_id = %id))]
-async fn stop_workspace(
+pub async fn stop_workspace(
     State(state): State<AppState>,
     Path(id): Path<String>,
     axum::Extension(user): axum::Extension<AuthenticatedUser>,
@@ -109,8 +164,18 @@ async fn stop_workspace(
     Ok(Json(workspace))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/workspaces/{id}/restart",
+    params(
+        ("id" = String, Path, description = "Workspace ID")
+    ),
+    responses(
+        (status = 200, description = "Restart workspace", body = Workspace)
+    )
+)]
 #[instrument(skip(state), fields(user = %user.username, workspace_id = %id))]
-async fn restart_workspace(
+pub async fn restart_workspace(
     State(state): State<AppState>,
     Path(id): Path<String>,
     axum::Extension(user): axum::Extension<AuthenticatedUser>,
