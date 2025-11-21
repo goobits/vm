@@ -553,29 +553,22 @@ impl<'a> LifecycleOperations<'a> {
             }
         }
 
-        // If orphaned containers found, warn user with actionable guidance
+        // If orphaned containers found, warn but continue so data can be preserved
         if !orphaned.is_empty() {
-            warn!("Found orphaned service containers from previous failed creation");
-            eprintln!("\n⚠️  Warning: Orphaned service containers detected");
-            eprintln!("   Previous VM creation may have failed partway through,");
-            eprintln!("   leaving these service containers running:\n");
+            warn!(
+                "Found existing service containers; continuing to reuse them: {}",
+                orphaned.join(", ")
+            );
+            eprintln!("\n⚠️  Existing service containers detected (will reuse data):\n");
             for container in &orphaned {
                 eprintln!("   • {}", container);
             }
-            eprintln!("\n💡 These containers may cause name conflicts during creation.");
-            eprintln!("   To clean up and proceed:");
-            eprintln!("      vm destroy --force");
-            eprintln!("      vm create\n");
-            eprintln!("   Or manually remove them:");
+            eprintln!("\n💡 We'll reuse these to preserve your data.");
+            eprintln!("   If you want a fresh database, remove them first:");
             for container in &orphaned {
                 eprintln!("      docker rm -f {}", container);
             }
-            eprintln!();
-
-            return Err(VmError::Internal(format!(
-                "Orphaned service containers found: {}. Clean them up first to avoid conflicts.",
-                orphaned.join(", ")
-            )));
+            eprintln!("   Or run: vm destroy --force\n");
         }
 
         Ok(())
