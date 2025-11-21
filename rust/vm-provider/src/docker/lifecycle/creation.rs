@@ -229,23 +229,30 @@ impl<'a> LifecycleOperations<'a> {
         // 1. Start existing service containers directly to avoid compose name conflicts
         let expected_services = compose_ops.get_expected_service_containers();
         for service in &expected_services {
-            if DockerOps::container_exists(Some(self.executable), service).unwrap_or(false) {
-                // Start the container if it exists (idempotent if already running)
-                if let Err(e) = DockerOps::start_container(Some(self.executable), service) {
-                    warn!(
-                        "Failed to start existing service container '{}': {}",
-                        service, e
-                    );
-                } else {
-                    info!("✓ Started existing service: {}", service);
-                }
+            if !DockerOps::container_exists(Some(self.executable), service).unwrap_or(false) {
+                continue;
+            }
+
+            // Only start if not running to avoid noisy errors
+            let running =
+                DockerOps::is_container_running(Some(self.executable), service).unwrap_or(false);
+            if running {
+                continue;
+            }
+
+            if let Err(e) = DockerOps::start_container(Some(self.executable), service) {
+                warn!(
+                    "Failed to start existing service container '{}': {}",
+                    service, e
+                );
+            } else {
+                info!("✓ Started existing service: {}", service);
             }
         }
 
         // 2. Start dev container without dependencies
-        let dev_service_name = format!("{}-dev", self.project_name());
         // Use --no-deps to prevent compose from trying to recreate linked services
-        let up_flags = vec!["-d", "--no-deps", "--no-recreate", &dev_service_name];
+        let up_flags = vec!["-d", "--no-deps", "--no-recreate", container_name];
         let args = ComposeCommand::build_args(compose_path, "up", &up_flags)?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
