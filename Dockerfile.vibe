@@ -193,13 +193,15 @@ WORKDIR /workspace
 RUN mkdir -p /workspace && \
     chown -R ${USER_NAME}:${USER_NAME} /workspace
 
-# Set up bash aliases from vm.yaml and environment
-RUN echo 'alias claudeyolo="claude --dangerously-skip-permissions"' >> /home/${USER_NAME}/.bashrc && \
-    echo 'alias geminiyolo="GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini"' >> /home/${USER_NAME}/.bashrc && \
-    echo 'alias codexyolo="codex --dangerously-bypass-approvals-and-sandbox"' >> /home/${USER_NAME}/.bashrc && \
-    echo 'export PATH="$PATH:/home/${USER_NAME}/.local/bin:/root/.cargo/bin"' >> /home/${USER_NAME}/.bashrc && \
-    echo 'export CARGO_HOME="/root/.cargo"' >> /home/${USER_NAME}/.bashrc && \
-    echo 'export RUSTUP_HOME="/root/.rustup"' >> /home/${USER_NAME}/.bashrc
+# Set up aliases/env for both bash and zsh shells
+RUN for rc in /home/${USER_NAME}/.bashrc /home/${USER_NAME}/.zshrc; do \
+        echo 'alias claudeyolo="claude --dangerously-skip-permissions"' >> "$rc"; \
+        echo 'alias geminiyolo="GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini"' >> "$rc"; \
+        echo 'alias codexyolo="codex --dangerously-bypass-approvals-and-sandbox"' >> "$rc"; \
+        echo 'export PATH="$PATH:/home/${USER_NAME}/.local/bin:/root/.cargo/bin"' >> "$rc"; \
+        echo 'export CARGO_HOME="/root/.cargo"' >> "$rc"; \
+        echo 'export RUSTUP_HOME="/root/.rustup"' >> "$rc"; \
+    done
 
 # Set timezone
 ENV TZ=America/Los_Angeles
