@@ -216,11 +216,6 @@ RUN chmod +x /etc/profile.d/vm-worktree-repair.sh && \
     echo '. /etc/profile.d/vm-worktree-repair.sh' >> /home/${PROJECT_USER}/.bashrc && \
     echo '. /etc/profile.d/vm-worktree-repair.sh' >> /home/${PROJECT_USER}/.zshrc
 
-# --- Bash-only Guard for .bashrc ---
-# Add early return at the TOP of .bashrc if not running in bash
-# This prevents zsh from executing bash-specific commands in the stock .bashrc
-RUN sed -i '1i# Early return if not running in bash (prevents zsh errors)\n[ -z "$BASH_VERSION" ] && return\n' /home/${PROJECT_USER}/.bashrc
-
 # --- Git Worktree Helper Configuration ---
 # Set VM_WORKTREES environment variable and create vm-worktree command
 RUN echo 'export VM_WORKTREES={{ worktrees_base_dir }}' >> /etc/bash.bashrc && \
