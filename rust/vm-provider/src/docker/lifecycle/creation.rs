@@ -44,7 +44,7 @@ impl<'a> LifecycleOperations<'a> {
 
         // Pre-flight validation: Check for orphaned service containers
         // Pass instance_name to avoid flagging the target instance container as orphaned
-        self.check_for_orphaned_containers(instance_name)?;
+        self.check_for_orphaned_containers(instance_name, context)?;
 
         // Check platform support for worktrees (Windows native not supported)
         #[cfg(target_os = "windows")]
@@ -533,7 +533,7 @@ impl<'a> LifecycleOperations<'a> {
     /// - PostgreSQL: {project}-postgres (explicit container_name)
     /// - Redis: {project}-redis-1 (Compose default, if added to template)
     /// - MongoDB: {project}-mongodb-1 (Compose default, if added to template)
-    fn check_for_orphaned_containers(&self, _instance_name: Option<&str>) -> Result<()> {
+    fn check_for_orphaned_containers(&self, _instance_name: Option<&str>, context: &ProviderContext) -> Result<()> {
         // Query Docker for all containers to find orphaned services
         let all_containers = DockerOps::list_containers(Some(self.executable), true, "{{.Names}}")?;
 
@@ -562,22 +562,33 @@ impl<'a> LifecycleOperations<'a> {
             }
         }
 
-        // If orphaned containers found, warn but continue so data can be preserved
+        // If orphaned containers found, handle based on preserve_services flag
         if !orphaned.is_empty() {
-            warn!(
-                "Found existing service containers; continuing to reuse them: {}",
-                orphaned.join(", ")
-            );
-            eprintln!("\n⚠️  Existing service containers detected (will reuse data):\n");
-            for container in &orphaned {
-                eprintln!("   • {}", container);
+            if context.preserve_services {
+                // Default behavior: warn and continue to preserve data
+                warn!(
+                    "Found existing service containers; continuing to reuse them: {}",
+                    orphaned.join(", ")
+                );
+                eprintln!("\n⚠️  Existing service containers detected (will reuse data):\n");
+                for container in &orphaned {
+                    eprintln!("   • {}", container);
+                }
+                eprintln!("\n💡 We'll reuse these to preserve your data.");
+                eprintln!("   If you want a fresh database, remove them first:");
+                for container in &orphaned {
+                    eprintln!("      docker rm -f {}", container);
+                }
+                eprintln!("   Or run: vm destroy --force\n");
+            } else {
+                // preserve_services=false: error on existing service containers
+                let container_list = orphaned.join(", ");
+                return Err(VmError::Provider(format!(
+                    "Found existing service containers that would conflict: {}. \
+                    Use 'vm destroy --force' to remove them, or use '--preserve-services' to reuse them.",
+                    container_list
+                )));
             }
-            eprintln!("\n💡 We'll reuse these to preserve your data.");
-            eprintln!("   If you want a fresh database, remove them first:");
-            for container in &orphaned {
-                eprintln!("      docker rm -f {}", container);
-            }
-            eprintln!("   Or run: vm destroy --force\n");
         }
 
         Ok(())

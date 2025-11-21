@@ -513,6 +513,9 @@ pub enum Command {
         /// Build directly from a Dockerfile (overrides vm.yaml box config)
         #[arg(long, value_name = "PATH")]
         from_dockerfile: Option<PathBuf>,
+        /// Reuse existing service containers (postgres, redis, etc.) instead of creating new ones
+        #[arg(long, default_value = "true")]
+        preserve_services: bool,
     },
     /// Start your environment
     Start {
@@ -557,6 +560,9 @@ pub enum Command {
         /// Match pattern for instance names (e.g., "*-dev")
         #[arg(long)]
         pattern: Option<String>,
+        /// Reuse existing service containers (postgres, redis, etc.) instead of creating new ones
+        #[arg(long, default_value = "true")]
+        preserve_services: bool,
     },
 
     /// See all your environments
@@ -773,12 +779,14 @@ mod tests {
                 verbose,
                 save_as,
                 from_dockerfile,
+                preserve_services,
             } => {
                 assert!(force);
                 assert_eq!(instance, Some("test-vm".to_string()));
                 assert!(verbose);
                 assert_eq!(save_as, None);
                 assert_eq!(from_dockerfile, None);
+                assert!(preserve_services);
             }
             _ => panic!("Expected Command::Create"),
         }
@@ -798,6 +806,7 @@ mod tests {
             Command::Create {
                 save_as,
                 from_dockerfile,
+                preserve_services,
                 ..
             } => {
                 assert_eq!(save_as, Some("@vibe-base".to_string()));
@@ -805,6 +814,7 @@ mod tests {
                     from_dockerfile,
                     Some(std::path::PathBuf::from("./Dockerfile.vibe"))
                 );
+                assert!(preserve_services);
             }
             _ => panic!("Expected Command::Create"),
         }

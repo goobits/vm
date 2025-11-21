@@ -314,6 +314,7 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             verbose,
             save_as,
             from_dockerfile,
+            preserve_services,
         } => {
             vm_ops::handle_create(
                 provider,
@@ -324,6 +325,7 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
                 verbose,
                 save_as,
                 from_dockerfile,
+                preserve_services,
             )
             .await
         }
@@ -386,6 +388,7 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             all,
             provider: provider_filter,
             pattern,
+            preserve_services,
         } => {
             vm_ops::handle_destroy_enhanced(
                 provider,
@@ -397,6 +400,7 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
                 &all,
                 provider_filter.as_deref(),
                 pattern.as_deref(),
+                preserve_services,
             )
             .await
         }

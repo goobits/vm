@@ -678,11 +678,28 @@ impl<'a> ComposeOperations<'a> {
             .map_err(|e| VmError::Internal(format!("Failed to destroy container: {e}")))
     }
 
-    /// Get list of expected service container names based on configuration.
+    /// Get list of expected service container names by parsing the generated docker-compose.yml.
     ///
     /// Returns a list of container names that are expected to be created by docker-compose
     /// for the enabled services. Used for orphan detection.
     pub fn get_expected_service_containers(&self) -> Vec<String> {
+        let compose_path = self.temp_dir.join("docker-compose.yml");
+        if !compose_path.exists() {
+            return Vec::new();
+        }
+
+        let Ok(content) = fs::read_to_string(&compose_path) else {
+            return Vec::new();
+        };
+
+        let Ok(yaml) = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&content) else {
+            return Vec::new();
+        };
+
+        let Some(services) = yaml.get("services").and_then(|v| v.as_mapping()) else {
+            return Vec::new();
+        };
+
         let project_name = self
             .config
             .project
@@ -692,29 +709,26 @@ impl<'a> ComposeOperations<'a> {
 
         let mut expected = Vec::new();
 
-        // Postgres (explicit container name in template)
-        if self
-            .config
-            .services
-            .get("postgresql")
-            .is_some_and(|s| s.enabled)
-        {
-            expected.push(format!("{}-postgres", project_name));
-        }
+        for (service_name, service_config) in services {
+            let Some(service_name_str) = service_name.as_str() else {
+                continue;
+            };
 
-        // Redis (Compose default name)
-        if self.config.services.get("redis").is_some_and(|s| s.enabled) {
-            expected.push(format!("{}-redis-1", project_name));
-        }
+            // Skip the main dev container
+            if service_name_str.ends_with("-dev") {
+                continue;
+            }
 
-        // MongoDB (Compose default name)
-        if self
-            .config
-            .services
-            .get("mongodb")
-            .is_some_and(|s| s.enabled)
-        {
-            expected.push(format!("{}-mongodb-1", project_name));
+            // Check for explicit container_name
+            if let Some(container_name) = service_config
+                .get("container_name")
+                .and_then(|v| v.as_str())
+            {
+                expected.push(container_name.to_string());
+            } else {
+                // Use Compose default: {project}_{service}_1
+                expected.push(format!("{}_{}_1", project_name, service_name_str));
+            }
         }
 
         expected

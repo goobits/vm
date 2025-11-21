@@ -15,6 +15,8 @@ pub struct ProviderContext {
     pub global_config: Option<GlobalConfig>,
     /// Skip Ansible provisioning (used for snapshot builds)
     pub skip_provisioning: bool,
+    /// Reuse existing service containers instead of failing
+    pub preserve_services: bool,
 }
 
 impl ProviderContext {
@@ -40,6 +42,12 @@ impl ProviderContext {
     /// Skip Ansible provisioning (for snapshot builds from Dockerfiles)
     pub fn skip_provisioning(mut self) -> Self {
         self.skip_provisioning = true;
+        self
+    }
+
+    /// Set whether to preserve/reuse existing service containers
+    pub fn preserve_services(mut self, preserve: bool) -> Self {
+        self.preserve_services = preserve;
         self
     }
 

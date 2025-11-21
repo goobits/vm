@@ -219,6 +219,7 @@ pub async fn handle_destroy_enhanced(
     all: &bool,
     provider_filter: Option<&str>,
     pattern: Option<&str>,
+    _preserve_services: bool,
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "destroy");
     let _enter = span.enter();

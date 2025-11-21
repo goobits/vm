@@ -386,3 +386,263 @@ fn test_shared_redis_lifecycle_integration() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_service_container_reuse_warning() -> Result<()> {
+    if !is_docker_running() {
+        println!("Skipping test: Docker is not running or not available.");
+        return Ok(());
+    }
+
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let temp_dir = TempDir::new()?;
+    let home_dir = temp_dir.path();
+    let project_dir = home_dir.join("test-project-reuse");
+    std::fs::create_dir_all(&project_dir)?;
+
+    let vm_binary = assert_cmd::cargo::cargo_bin!("vm");
+
+    // 1. Enable shared postgresql globally
+    let output = Command::new(vm_binary)
+        .args(["config", "set", "services.postgresql.enabled", "true"])
+        .current_dir(&project_dir)
+        .env("HOME", home_dir)
+        .output()?;
+    assert!(
+        output.status.success(),
+        "Failed to enable postgresql service. Stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // 2. Create a VM. This should start the postgres service.
+    let output = Command::new(vm_binary)
+        .args(["create"])
+        .current_dir(&project_dir)
+        .env("HOME", home_dir)
+        .env("VM_NO_PROMPT", "true")
+        .output()?;
+    assert!(
+        output.status.success(),
+        "vm create failed. stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // 3. Get the postgres container ID
+    let ps_output = Command::new("docker")
+        .args([
+            "inspect",
+            "--format",
+            "{{.Id}}",
+            "vm-postgres-global",
+        ])
+        .output()?;
+    let container_id_before = String::from_utf8_lossy(&ps_output.stdout).trim().to_string();
+    assert!(
+        !container_id_before.is_empty(),
+        "Failed to get postgres container ID"
+    );
+
+    // 4. Destroy the VM with preserve_services (default behavior)
+    let output = Command::new(vm_binary)
+        .args(["destroy", "--yes"])
+        .current_dir(&project_dir)
+        .env("HOME", home_dir)
+        .output()?;
+    assert!(
+        output.status.success(),
+        "vm destroy failed. stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // 5. Create the VM again - should reuse existing postgres container
+    let output = Command::new(vm_binary)
+        .args(["create"])
+        .current_dir(&project_dir)
+        .env("HOME", home_dir)
+        .env("VM_NO_PROMPT", "true")
+        .output()?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "vm create (second time) failed. stdout: {}, stderr: {}",
+        stdout,
+        stderr
+    );
+
+    // 6. Verify warning message about reusing service containers
+    assert!(
+        stderr.contains("Existing service containers detected") || stderr.contains("reuse"),
+        "Expected warning about reusing service containers. stderr: {}",
+        stderr
+    );
+
+    // 7. Verify same postgres container ID (container was reused, not recreated)
+    let ps_output_after = Command::new("docker")
+        .args([
+            "inspect",
+            "--format",
+            "{{.Id}}",
+            "vm-postgres-global",
+        ])
+        .output()?;
+    let container_id_after = String::from_utf8_lossy(&ps_output_after.stdout)
+        .trim()
+        .to_string();
+    assert_eq!(
+        container_id_before, container_id_after,
+        "Container ID changed - container was recreated instead of reused"
+    );
+
+    // Cleanup
+    let _ = Command::new(vm_binary)
+        .args(["destroy", "--yes"])
+        .current_dir(&project_dir)
+        .env("HOME", home_dir)
+        .output();
+
+    Ok(())
+}
+
+#[test]
+fn test_multi_instance_with_shared_services() -> Result<()> {
+    if !is_docker_running() {
+        println!("Skipping test: Docker is not running or not available.");
+        return Ok(());
+    }
+
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let temp_dir = TempDir::new()?;
+    let home_dir = temp_dir.path();
+    let project_dir = home_dir.join("test-project-multi");
+    std::fs::create_dir_all(&project_dir)?;
+
+    let vm_binary = assert_cmd::cargo::cargo_bin!("vm");
+
+    // 1. Enable shared postgresql globally
+    let output = Command::new(vm_binary)
+        .args(["config", "set", "services.postgresql.enabled", "true"])
+        .current_dir(&project_dir)
+        .env("HOME", home_dir)
+        .output()?;
+    assert!(
+        output.status.success(),
+        "Failed to enable postgresql service. Stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // 2. Create first instance with postgres
+    let output = Command::new(vm_binary)
+        .args(["create", "--instance", "dev1"])
+        .current_dir(&project_dir)
+        .env("HOME", home_dir)
+        .env("VM_NO_PROMPT", "true")
+        .output()?;
+    assert!(
+        output.status.success(),
+        "Failed to create first instance. stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // 3. Verify postgres container exists
+    let ps_output = Command::new("docker")
+        .args(["ps", "--filter", "name=vm-postgres-global", "--format", "{{.Names}}"])
+        .output()?;
+    let ps_stdout = String::from_utf8_lossy(&ps_output.stdout);
+    assert!(
+        ps_stdout.contains("vm-postgres-global"),
+        "Postgres container not found after first instance. Output: {}",
+        ps_stdout
+    );
+
+    // 4. Create second instance (should share same postgres)
+    let output = Command::new(vm_binary)
+        .args(["create", "--instance", "dev2"])
+        .current_dir(&project_dir)
+        .env("HOME", home_dir)
+        .env("VM_NO_PROMPT", "true")
+        .output()?;
+    assert!(
+        output.status.success(),
+        "Failed to create second instance. stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // 5. Verify both instances exist
+    let ps_instances = Command::new("docker")
+        .args(["ps", "--format", "{{.Names}}"])
+        .output()?;
+    let instances_stdout = String::from_utf8_lossy(&ps_instances.stdout);
+    assert!(
+        instances_stdout.contains("dev1"),
+        "First instance not found. Output: {}",
+        instances_stdout
+    );
+    assert!(
+        instances_stdout.contains("dev2"),
+        "Second instance not found. Output: {}",
+        instances_stdout
+    );
+
+    // 6. Verify only ONE postgres container exists (shared)
+    let ps_postgres_count = Command::new("docker")
+        .args([
+            "ps",
+            "--filter",
+            "name=vm-postgres-global",
+            "--format",
+            "{{.Names}}",
+        ])
+        .output()?;
+    let postgres_output = String::from_utf8_lossy(&ps_postgres_count.stdout);
+    let postgres_lines: Vec<&str> = postgres_output
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+    assert_eq!(
+        postgres_lines.len(),
+        1,
+        "Expected exactly 1 postgres container, found: {}. Output: {:?}",
+        postgres_lines.len(),
+        postgres_lines
+    );
+
+    // 7. Destroy first instance
+    let output = Command::new(vm_binary)
+        .args(["destroy", "--yes", "--instance", "dev1"])
+        .current_dir(&project_dir)
+        .env("HOME", home_dir)
+        .output()?;
+    assert!(
+        output.status.success(),
+        "Failed to destroy first instance. stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // 8. Verify postgres still exists (used by second instance)
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let ps_postgres_after = Command::new("docker")
+        .args(["ps", "--filter", "name=vm-postgres-global", "--format", "{{.Names}}"])
+        .output()?;
+    let postgres_after_stdout = String::from_utf8_lossy(&ps_postgres_after.stdout);
+    assert!(
+        postgres_after_stdout.contains("vm-postgres-global"),
+        "Postgres container should still exist after destroying first instance. Output: {}",
+        postgres_after_stdout
+    );
+
+    // Cleanup
+    let _ = Command::new(vm_binary)
+        .args(["destroy", "--yes", "--instance", "dev2"])
+        .current_dir(&project_dir)
+        .env("HOME", home_dir)
+        .output();
+
+    Ok(())
+}

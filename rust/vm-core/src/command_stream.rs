@@ -33,18 +33,6 @@ fn with_buildkit<A: AsRef<OsStr>>(command: &str, args: &[A]) -> duct::Expression
     cmd_builder
 }
 
-/// Helper to parse stdout lines with optional parser
-fn parse_stdout_lines(stdout: &[u8], parser: &mut Option<Box<dyn ProgressParser>>) {
-    if let Ok(stdout_str) = String::from_utf8(stdout.to_vec()) {
-        for line in stdout_str.lines() {
-            if let Some(ref mut p) = parser {
-                p.parse_line(line);
-            } else {
-                info!("{}", line);
-            }
-        }
-    }
-}
 
 /// The original simple command streamer for backward compatibility.
 pub fn stream_command<A: AsRef<OsStr>>(command: &str, args: &[A]) -> Result<()> {
@@ -122,69 +110,120 @@ pub fn stream_command_with_progress_and_timeout<A: AsRef<OsStr>>(
             Ok(())
         }
         Some(secs) => {
-            // With timeout
-            let handle = with_buildkit(command, args)
-                .stderr_to_stdout()
-                .stdout_capture()
-                .unchecked()
-                .start()
-                .map_err(|e| {
-                    VmError::Internal(format!("Failed to start command '{}': {}", full_command, e))
-                })?;
+            // With timeout - stream output in real-time using a thread
+            use std::sync::{Arc, Mutex};
 
             let start = std::time::Instant::now();
             let timeout = Duration::from_secs(secs);
 
+            // Convert args to owned strings for thread safety
+            let command_owned = command.to_string();
+            let args_owned: Vec<String> = args
+                .iter()
+                .map(|a| a.as_ref().to_string_lossy().to_string())
+                .collect();
+
+            // Shared state for collecting output and tracking completion
+            let output_lines = Arc::new(Mutex::new(Vec::new()));
+            let output_lines_clone = Arc::clone(&output_lines);
+
+            // Spawn thread to stream output
+            let parser_arc = Arc::new(Mutex::new(parser));
+            let parser_clone = Arc::clone(&parser_arc);
+
+            let handle = thread::spawn(move || {
+                let reader = with_buildkit(&command_owned, &args_owned)
+                    .stderr_to_stdout()
+                    .reader()?;
+                let lines = BufReader::new(reader).lines();
+
+                for line in lines {
+                    let line = line?;
+
+                    // Store for error reporting
+                    if let Ok(mut buf) = output_lines_clone.lock() {
+                        buf.push(line.clone());
+                    }
+
+                    // Parse/log the line
+                    if let Ok(mut p) = parser_clone.lock() {
+                        if let Some(ref mut parser) = *p {
+                            parser.parse_line(&line);
+                        } else {
+                            info!("{}", line);
+                        }
+                    }
+                }
+
+                Ok::<(), std::io::Error>(())
+            });
+
+            // Monitor for timeout
             loop {
                 if start.elapsed() >= timeout {
-                    let _ = handle.kill();
+                    // Show last 50 lines for context
+                    let error_context: Vec<String> = if let Ok(buf) = output_lines.lock() {
+                        buf.iter()
+                            .rev()
+                            .take(50)
+                            .cloned()
+                            .collect::<Vec<_>>()
+                            .into_iter()
+                            .rev()
+                            .collect()
+                    } else {
+                        Vec::new()
+                    };
+
                     return Err(VmError::Timeout(format!(
-                        "Command timed out after {}s: {}\n\nTo debug, try running manually:\n  {}",
-                        secs, full_command, full_command
+                        "Command timed out after {}s: {}\n\nOutput (last 50 lines):\n{}\n\nTo debug, try running manually:\n  {}",
+                        secs, full_command, error_context.join("\n"), full_command
                     )));
                 }
 
-                match handle.try_wait() {
-                    Ok(Some(output)) => {
-                        // Process finished - parse output
-                        parse_stdout_lines(&output.stdout, &mut parser);
-
-                        if let Some(p) = parser {
-                            p.finish();
+                // Check if thread finished
+                if handle.is_finished() {
+                    match handle.join() {
+                        Ok(Ok(())) => {
+                            // Success - finish parser
+                            if let Ok(mut p) = parser_arc.lock() {
+                                if let Some(parser) = p.take() {
+                                    parser.finish();
+                                }
+                            }
+                            return Ok(());
                         }
-
-                        if !output.status.success() {
-                            // Capture the actual output for error reporting
-                            let stdout_str = String::from_utf8_lossy(&output.stdout);
-                            // Show last 50 lines of output for context
-                            let error_context: Vec<&str> = stdout_str
-                                .lines()
-                                .rev()
-                                .take(50)
-                                .collect::<Vec<_>>()
-                                .into_iter()
-                                .rev()
-                                .collect();
+                        Ok(Err(_e)) => {
+                            // IO error - show context
+                            let error_context: Vec<String> = if let Ok(buf) = output_lines.lock() {
+                                buf.iter()
+                                    .rev()
+                                    .take(50)
+                                    .cloned()
+                                    .collect::<Vec<_>>()
+                                    .into_iter()
+                                    .rev()
+                                    .collect()
+                            } else {
+                                Vec::new()
+                            };
 
                             return Err(VmError::Internal(format!(
-                                "Command failed with exit code {:?}: {}\n\nOutput (last 50 lines):\n{}",
-                                output.status.code(),
+                                "Command failed: {}\n\nOutput (last 50 lines):\n{}",
                                 full_command,
                                 error_context.join("\n")
                             )));
                         }
-                        return Ok(());
-                    }
-                    Ok(None) => {
-                        thread::sleep(Duration::from_millis(100));
-                    }
-                    Err(e) => {
-                        return Err(VmError::Internal(format!(
-                            "Error waiting for command '{}': {}",
-                            full_command, e
-                        )));
+                        Err(_) => {
+                            return Err(VmError::Internal(format!(
+                                "Thread panicked while running command: {}",
+                                full_command
+                            )));
+                        }
                     }
                 }
+
+                thread::sleep(Duration::from_millis(100));
             }
         }
     }
