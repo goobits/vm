@@ -11,7 +11,7 @@ use vm_cli::msg;
 use vm_config::{config::MemoryLimit, config::VmConfig, validator::ConfigValidator, GlobalConfig};
 use vm_core::{get_cpu_core_count, get_total_memory_gb, vm_error, vm_println};
 use vm_messages::messages::MESSAGES;
-use vm_provider::{Provider, ProviderContext};
+use vm_provider::{docker::DockerOps, Provider, ProviderContext};
 
 use super::helpers::register_vm_services_helper;
 
@@ -158,6 +158,24 @@ pub async fn handle_create(
         .and_then(|p| p.name.as_ref())
         .map(|s| s.as_str())
         .unwrap_or("vm-project");
+
+    // Fast exit if container already exists (unless --force)
+    if !force {
+        let existing_container = format!("{vm_name}-dev");
+        if DockerOps::container_exists(None, &existing_container).unwrap_or(false) {
+            let running =
+                DockerOps::is_container_running(None, &existing_container).unwrap_or(false);
+            vm_println!(
+                "⚠️  Container '{}' already exists{}.",
+                existing_container,
+                if running { " and is running" } else { "" }
+            );
+            vm_println!(
+                "   Use 'vm ssh' to connect, 'vm start' to start, or 'vm destroy' to recreate."
+            );
+            return Ok(());
+        }
+    }
 
     let is_first_vm = !Path::new(".vm").exists();
     if is_first_vm {
