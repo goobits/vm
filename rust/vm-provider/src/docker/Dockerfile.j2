@@ -237,6 +237,11 @@ RUN mkdir -p /home/${PROJECT_USER}/.shell_history && \
 USER ${PROJECT_USER}
 
 # Note: Zsh history is now configured in zshrc.j2 template
+# Ensure bash-only config exits early when sourced by zsh
+RUN if ! grep -q "BASH_VERSION" /home/${PROJECT_USER}/.bashrc 2>/dev/null; then \
+        echo '[ -z "$BASH_VERSION" ] && return' | cat - /home/${PROJECT_USER}/.bashrc > /home/${PROJECT_USER}/.bashrc.tmp && \
+        mv /home/${PROJECT_USER}/.bashrc.tmp /home/${PROJECT_USER}/.bashrc; \
+    fi
 
 # Configure Bash history (guard bash-specific commands for zsh compatibility)
 RUN echo '' >> /home/${PROJECT_USER}/.bashrc && \
