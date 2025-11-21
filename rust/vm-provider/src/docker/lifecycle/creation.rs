@@ -14,7 +14,7 @@ use crate::{
 use vm_cli::msg;
 use vm_config::config::VmConfig;
 use vm_core::{
-    command_stream::{stream_command, stream_command_visible},
+    command_stream::stream_command_visible,
     error::{Result, VmError},
     vm_dbg,
 };
@@ -189,88 +189,25 @@ impl<'a> LifecycleOperations<'a> {
         })?;
 
         // Step 6: Start containers
-        // If orphaned service containers exist, only create the dev container to avoid name conflicts
-        // Service containers will be started separately after checking they're running
-        let up_args = if has_orphaned_services {
-            // Only create the dev container, don't touch existing service containers
-            vec!["-d", &container_name]
-        } else {
-            // No orphans, create all containers normally
-            vec!["-d"]
-        };
-        let args = ComposeCommand::build_args(&compose_path, "up", &up_args)?;
-        let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-
-        stream_command_visible(self.executable, &args_refs).map_err(|e| {
-            let error_msg = e.to_string();
-
-            // Detect container name conflicts (orphaned containers from failed creation)
-            // Heuristic: Docker/Compose have used these error strings consistently for 5+ years.
-            // We show the full error regardless, so users aren't blind if the heuristic fails.
-            if error_msg.contains("is already in use") || error_msg.contains("Conflict") {
-                eprintln!("\n⚠️  Container name conflict detected");
-                eprintln!("\n   Docker error:");
-                eprintln!("   {}", error_msg);  // Show actual error - contains conflicting container name
-
-                eprintln!("\n   This usually means a previous creation failed partway through.");
-
-                // Show what's actually running for this project
-                self.list_project_containers_for_user();
-
-                eprintln!("\n💡 Recommended fix:");
-                eprintln!("      vm destroy --force");
-                if let Some(name) = instance_name {
-                    eprintln!("      vm create --instance {}", name);
-                } else {
-                    eprintln!("      vm create");
-                }
-                eprintln!();
-
-                VmError::Internal(format!(
-                    "Container name conflict detected. See error details above.\n\nOriginal error: {}",
-                    error_msg
-                ))
-            } else {
-                VmError::Internal(format!(
-                    "Failed to start container '{}': {}",
-                    container_name,
-                    e
-                ))
-            }
-        })?;
-
-        // If we reused orphaned service containers, ensure they're running
+        // Use --no-recreate if orphaned service containers exist to reuse them
         if has_orphaned_services {
-            let compose_ops = ComposeOperations::new(
-                &modified_config,
-                self.temp_dir,
-                self.project_dir,
-                self.executable,
-            );
-            let expected_services = compose_ops.get_expected_service_containers();
+            self.start_orphaned_services_and_dev_container(
+                &compose_ops,
+                &compose_path,
+                &container_name,
+            )?;
+        } else {
+            // Standard start - let compose manage dependencies
+            let up_flags = vec!["-d"];
+            let args = ComposeCommand::build_args(&compose_path, "up", &up_flags)?;
+            let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
-            for service_name in expected_services {
-                // Skip if container doesn't exist
-                let exists = DockerOps::container_exists(Some(self.executable), &service_name)
-                    .unwrap_or(false);
-                if !exists {
-                    continue;
-                }
+            stream_command_visible(self.executable, &args_refs).map_err(|e| {
+                let error_msg = e.to_string();
 
-                // Skip if already running
-                let is_running =
-                    DockerOps::is_container_running(Some(self.executable), &service_name)
-                        .unwrap_or(false);
-                if is_running {
-                    continue;
-                }
-
-                // Start the stopped service container
-                info!("Starting existing service container: {}", service_name);
-                if let Err(e) = stream_command(self.executable, &["start", &service_name]) {
-                    warn!("Failed to start service container {}: {}", service_name, e);
-                }
-            }
+                // Detect container name conflicts (orphaned containers from failed creation)
+                self.handle_compose_start_error(e, error_msg, instance_name)
+            })?;
         }
 
         // Provision the container
@@ -280,6 +217,81 @@ impl<'a> LifecycleOperations<'a> {
         }
 
         Ok(())
+    }
+
+    /// Helper to start orphaned services and dev container avoiding conflicts
+    fn start_orphaned_services_and_dev_container(
+        &self,
+        compose_ops: &ComposeOperations,
+        compose_path: &std::path::Path,
+        container_name: &str,
+    ) -> Result<()> {
+        // 1. Start existing service containers directly to avoid compose name conflicts
+        let expected_services = compose_ops.get_expected_service_containers();
+        for service in &expected_services {
+            if DockerOps::container_exists(Some(self.executable), service).unwrap_or(false) {
+                // Start the container if it exists (idempotent if already running)
+                if let Err(e) = DockerOps::start_container(Some(self.executable), service) {
+                    warn!(
+                        "Failed to start existing service container '{}': {}",
+                        service, e
+                    );
+                } else {
+                    info!("✓ Started existing service: {}", service);
+                }
+            }
+        }
+
+        // 2. Start dev container without dependencies
+        let dev_service_name = format!("{}-dev", self.project_name());
+        // Use --no-deps to prevent compose from trying to recreate linked services
+        let up_flags = vec!["-d", "--no-deps", "--no-recreate", &dev_service_name];
+        let args = ComposeCommand::build_args(compose_path, "up", &up_flags)?;
+        let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+
+        stream_command_visible(self.executable, &args_refs).map_err(|e| {
+            VmError::Internal(format!(
+                "Failed to start dev container '{}' (reusing services): {}",
+                container_name, e
+            ))
+        })
+    }
+
+    /// Helper to handle compose start errors with user-friendly guidance
+    fn handle_compose_start_error(
+        &self,
+        error: VmError,
+        error_msg: String,
+        instance_name: Option<&str>,
+    ) -> VmError {
+        // Heuristic: Docker/Compose have used these error strings consistently for 5+ years.
+        // We show the full error regardless, so users aren't blind if the heuristic fails.
+        if error_msg.contains("is already in use") || error_msg.contains("Conflict") {
+            eprintln!("\n⚠️  Container name conflict detected");
+            eprintln!("\n   Docker error:");
+            eprintln!("   {}", error_msg); // Show actual error - contains conflicting container name
+
+            eprintln!("\n   This usually means a previous creation failed partway through.");
+
+            // Show what's actually running for this project
+            self.list_project_containers_for_user();
+
+            eprintln!("\n💡 Recommended fix:");
+            eprintln!("      vm destroy --force");
+            if let Some(name) = instance_name {
+                eprintln!("      vm create --instance {}", name);
+            } else {
+                eprintln!("      vm create");
+            }
+            eprintln!();
+
+            VmError::Internal(format!(
+                "Container name conflict detected. See error details above.\n\nOriginal error: {}",
+                error_msg
+            ))
+        } else {
+            error
+        }
     }
 
     /// Create a container with a specific instance name
