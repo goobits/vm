@@ -11,9 +11,8 @@ _SHELL_HISTORY_DIR="$HOME/.shell_history"
 if [ ! -d "$_SHELL_HISTORY_DIR" ]; then
   mkdir -p "$_SHELL_HISTORY_DIR" 2>/dev/null || true
 fi
-if [ ! -w "$_SHELL_HISTORY_DIR" ]; then
-  chmod u+w "$_SHELL_HISTORY_DIR" 2>/dev/null || true
-fi
+chown "$(id -u)":"$(id -g)" "$_SHELL_HISTORY_DIR" 2>/dev/null || true
+chmod u+w "$_SHELL_HISTORY_DIR" 2>/dev/null || true
 unset _SHELL_HISTORY_DIR
 
 # Shell History Configuration
@@ -61,6 +60,9 @@ alias grep='grep --color=auto'
 alias fgrep='fgrep --color=auto'
 alias egrep='egrep --color=auto'
 alias diff='diff --color=auto'
+alias claudeyolo='claude --dangerously-skip-permissions'
+alias geminiyolo='GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini'
+alias codexyolo='codex --dangerously-bypass-approvals-and-sandbox'
 
 # ZSH Syntax Highlighting
 if [[ -r /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]]; then
