@@ -24,8 +24,18 @@ pub fn routes() -> Router<AppState> {
 }
 
 /// List all snapshots for a workspace
+#[utoipa::path(
+    get,
+    path = "/api/v1/workspaces/{id}/snapshots",
+    params(
+        ("id" = String, Path, description = "Workspace ID")
+    ),
+    responses(
+        (status = 200, description = "List snapshots", body = Vec<Snapshot>)
+    )
+)]
 #[instrument(skip(state), fields(user = %user.username, workspace_id = %workspace_id))]
-async fn list_snapshots(
+pub async fn list_snapshots(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
     axum::Extension(user): axum::Extension<AuthenticatedUser>,
@@ -38,8 +48,19 @@ async fn list_snapshots(
 }
 
 /// Create a new snapshot
+#[utoipa::path(
+    post,
+    path = "/api/v1/workspaces/{id}/snapshots",
+    params(
+        ("id" = String, Path, description = "Workspace ID")
+    ),
+    request_body = CreateSnapshotRequest,
+    responses(
+        (status = 200, description = "Create snapshot", body = Snapshot)
+    )
+)]
 #[instrument(skip(state), fields(user = %user.username, workspace_id = %workspace_id, snapshot_name = %req.name))]
-async fn create_snapshot(
+pub async fn create_snapshot(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
     axum::Extension(user): axum::Extension<AuthenticatedUser>,
@@ -56,8 +77,19 @@ async fn create_snapshot(
 }
 
 /// Restore a workspace from a snapshot
+#[utoipa::path(
+    post,
+    path = "/api/v1/workspaces/{id}/snapshots/{snapshot_id}/restore",
+    params(
+        ("id" = String, Path, description = "Workspace ID"),
+        ("snapshot_id" = String, Path, description = "Snapshot ID")
+    ),
+    responses(
+        (status = 200, description = "Restore snapshot", body = serde_json::Value)
+    )
+)]
 #[instrument(skip(state), fields(user = %user.username, workspace_id = %workspace_id, snapshot_id = %snapshot_id))]
-async fn restore_snapshot(
+pub async fn restore_snapshot(
     State(state): State<AppState>,
     Path((workspace_id, snapshot_id)): Path<(String, String)>,
     axum::Extension(user): axum::Extension<AuthenticatedUser>,

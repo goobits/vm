@@ -31,6 +31,7 @@ tracing = "0.1"
 vm-core = { path = "../vm-core", version = "4.3.0" }
 vm-config = { path = "../vm-config", version = "4.3.0" }
 vm-provider = { path = "../vm-provider", version = "4.3.0" }
+utoipa = { version = "5.4.0", features = ["uuid", "chrono"] }
 
 [features]
 test-utils = []

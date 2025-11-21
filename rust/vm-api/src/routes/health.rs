@@ -8,7 +8,14 @@ pub fn routes() -> Router<AppState> {
         .route("/health/ready", get(readiness_check))
 }
 
-async fn health_check() -> Json<Value> {
+#[utoipa::path(
+    get,
+    path = "/health",
+    responses(
+        (status = 200, description = "Health check", body = Value)
+    )
+)]
+pub async fn health_check() -> Json<Value> {
     Json(json!({
         "status": "ok",
         "service": "vm-api",
@@ -16,7 +23,14 @@ async fn health_check() -> Json<Value> {
     }))
 }
 
-async fn readiness_check(State(state): State<AppState>) -> Json<Value> {
+#[utoipa::path(
+    get,
+    path = "/health/ready",
+    responses(
+        (status = 200, description = "Readiness check", body = Value)
+    )
+)]
+pub async fn readiness_check(State(state): State<AppState>) -> Json<Value> {
     // Check database connectivity
     let db_ok = sqlx::query("SELECT 1")
         .fetch_one(state.orchestrator.pool())

@@ -3,9 +3,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use tracing::instrument;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Workspace {
     pub id: String,
     pub name: String,
@@ -16,15 +17,18 @@ pub struct Workspace {
     pub status: WorkspaceStatus,
 
     #[serde(serialize_with = "serialize_datetime")]
+    #[schema(value_type = String, format = Date)]
     pub created_at: DateTime<Utc>,
 
     #[serde(serialize_with = "serialize_datetime")]
+    #[schema(value_type = String, format = Date)]
     pub updated_at: DateTime<Utc>,
 
     pub ttl_seconds: Option<i64>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(serialize_with = "serialize_optional_datetime")]
+    #[schema(value_type = Option<String>, format = Date)]
     pub expires_at: Option<DateTime<Utc>>,
 
     pub metadata: Option<serde_json::Value>,
@@ -33,7 +37,7 @@ pub struct Workspace {
     pub error_message: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, ToSchema)]
 #[sqlx(rename_all = "lowercase")]
 pub enum WorkspaceStatus {
     Creating,
@@ -42,7 +46,7 @@ pub enum WorkspaceStatus {
     Failed,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateWorkspaceRequest {
     pub name: String,
     pub owner: String,
@@ -52,23 +56,24 @@ pub struct CreateWorkspaceRequest {
     pub ttl_seconds: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Snapshot {
     pub id: String,
     pub workspace_id: String,
     pub name: String,
     #[serde(serialize_with = "serialize_datetime")]
+    #[schema(value_type = String, format = Date)]
     pub created_at: DateTime<Utc>,
     pub size_bytes: i64,
     pub metadata: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateSnapshotRequest {
     pub name: String,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, ToSchema)]
 pub struct WorkspaceFilters {
     pub owner: Option<String>,
     pub status: Option<WorkspaceStatus>,
