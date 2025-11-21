@@ -34,7 +34,7 @@ pub mod global_config;
 pub mod limit_parser; // Shared limit parsing logic
 pub mod loader;
 pub mod merge;
-mod paths; // Internal only
+pub mod paths;
 pub mod ports;
 pub mod preset; // Made public for integration tests - used internally by config_ops and cli
 pub mod preset_cache; // Preset caching layer
@@ -54,7 +54,9 @@ mod global_config_tests;
 mod config_tests;
 
 // Re-export commonly needed path utilities
-pub use paths::{get_current_gid, get_current_uid, get_tool_dir, resolve_tool_path};
+pub use paths::{
+    get_current_gid, get_current_uid, get_presets_dir, get_tool_dir, resolve_tool_path,
+};
 
 // Re-export config operations for use by main vm binary
 pub use config_ops::{load_global_config, ConfigOps};

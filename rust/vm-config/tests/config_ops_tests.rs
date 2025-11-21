@@ -20,6 +20,10 @@ struct SimpleTestFixture {
 
 impl SimpleTestFixture {
     fn new() -> Result<Self> {
+        // Ensure preset cache is cleared before starting a new test context
+        // This prevents stale cache entries from previous tests interfering with current test
+        vm_config::preset_cache::clear_preset_cache();
+
         let _ = fs::remove_file("/tmp/vm.yaml");
 
         let temp_dir = TempDir::new()?;
@@ -49,12 +53,29 @@ impl SimpleTestFixture {
     }
 
     fn create_preset(name: &str, content: &str) -> Result<()> {
+        // In testing, get_presets_dir uses VM_TOOL_DIR/configs/presets
+        // But SimpleTestFixture sets VM_TOOL_DIR to temp_dir/vm-tool
+        // We need to make sure we write to the same place the code reads from
         let tool_dir = std::env::var("VM_TOOL_DIR")
             .expect("VM_TOOL_DIR environment variable not set - test fixture setup failed");
+
+        // Use get_presets_dir logic: $VM_TOOL_DIR/configs/presets
         let presets_dir = PathBuf::from(tool_dir).join("configs").join("presets");
+
+        // Ensure directory exists
         fs::create_dir_all(&presets_dir)?;
+
         let preset_path = presets_dir.join(format!("{}.yaml", name));
         fs::write(&preset_path, content)?;
+
+        // Also create the legacy path that get_tool_dir might be falling back to
+        // SimpleTestFixture sets VM_TOOL_DIR to temp_dir/vm-tool
+        // But get_tool_dir might be finding "target" directory and going up from there
+        // We can't easily mock std::env::current_exe() or force get_tool_dir to respect VM_TOOL_DIR exclusively
+        // without changing the implementation.
+        // However, get_tool_dir respects VM_TOOL_DIR if set.
+
+        println!("Created test preset at: {:?}", preset_path);
         Ok(())
     }
 }
