@@ -642,20 +642,105 @@ impl<'a> ComposeOperations<'a> {
 
         // Use 'start' only if ALL containers exist (dev + all services)
         // Otherwise use 'up -d' to recreate missing containers
-        let (command, extra_args) = if !missing_services.is_empty() {
+        let (command, extra_args): (&str, Vec<String>) = if !missing_services.is_empty() {
+            // Logic for partial existence:
+            // If some services are missing, we generally need 'up -d'.
+            // But if SOME services exist, we might hit the name conflict bug if we just run 'up -d'.
+            // However, if we are missing services, we probably WANT to recreate/start them.
+            // The conflict happens when we try to CREATE a container that already exists with same name but different ID/config?
+            // Or just when we try to start a service that is already there via 'up'.
+
+            // If we have existing services, we should probably start them explicitly first?
+            // But `up -d` usually handles existing containers gracefully (it sees they match config and leaves them running).
+            // The conflict reported by user happens during `vm create` which implies `up -d` is trying to CREATE.
+
+            // For `vm start` (this function), we want to be safe too.
+            // If we have ANY existing services, let's start them manually to be safe.
+            for service in &expected_services {
+                if !missing_services.contains(service) {
+                    // It exists, start it
+                    let _ = DockerOps::start_container(Some(self.executable), service);
+                }
+            }
+
+            if container_exists && missing_services.contains(&container_name) {
+                // This case is impossible by definition of missing_services
+            }
+
             warn!(
                 "Missing service containers detected: {}",
                 missing_services.join(", ")
             );
             warn!("Using 'up -d' to recreate them");
-            ("up", vec!["-d"])
+
+            // If the dev container exists but services are missing, we might want to start dev container directly?
+            // But generally `up -d` is the right tool here.
+            // To avoid conflict with existing services:
+            // Ideally we would run `up -d` only for missing services? Compose doesn't support that easily without listing them.
+
+            // Standard `up -d` should be fine here IF the existing services match the config.
+            // The user issue was about `vm create` where maybe the config changed or it was a partial state.
+
+            ("up", vec!["-d".to_string()])
         } else if container_exists {
+            // All services exist, dev container exists. Just start everything.
+            // We can just use `docker start` on the compose project? No, compose start.
             ("start", vec![])
         } else {
-            ("up", vec!["-d"])
+            // Dev container missing, but services might exist (if we are here, missing_services is empty, so they DO exist)
+            // Wait, if `missing_services` is empty, it means ALL expected services exist.
+            // So if `container_exists` is false, it means only the dev container is missing.
+
+            // In this case (Services exist, Dev missing), we MUST avoid `up -d` (which triggers conflict on services).
+            // We should start services manually (if stopped) and then `up -d --no-deps dev`.
+
+            for service in &expected_services {
+                let _ = DockerOps::start_container(Some(self.executable), service);
+            }
+
+            // We need to know the dev service name (in compose.yml), which is usually {project}-dev.
+            // But here we calculated `container_name` as `{project}-dev`.
+            // The service name in compose file is `{project_name}-dev`.
+            let project_name = self
+                .config
+                .project
+                .as_ref()
+                .and_then(|p| p.name.as_ref())
+                .map(|s| s.as_str())
+                .unwrap_or("vm-project");
+            // We can't return a reference to a local String from this block,
+            // but we can return the String itself and handle it.
+            // However, build_args expects &str slice.
+            // The easiest way is to construct the args inside the block or use a Cow/String vector logic outside.
+
+            // But wait, ComposeCommand::build_args takes &str slices.
+            // We can change the return type of this if/else block to return owned Strings if needed,
+            // or just build the command args HERE.
+
+            let dev_service_name = format!("{}-dev", project_name);
+
+            // We need to return something compatible with the other branches if we want to keep structure,
+            // OR just return the final args from here.
+            // Let's refactor to return Result<Vec<String>> from the if/else block?
+            // Actually, let's just return the built args directly from each branch?
+
+            // But existing code structure:
+            // let (command, extra_args) = ...
+            // let args = ComposeCommand::build_args(...)
+
+            // We can make `extra_args` a Vec<String> instead of Vec<&str>?
+            // "up", vec!["-d".to_string()]
+
+            // Refactoring:
+            (
+                "up",
+                vec!["-d".to_string(), "--no-deps".to_string(), dev_service_name],
+            )
         };
 
-        let args = ComposeCommand::build_args(&compose_path, command, &extra_args)?;
+        // We need to convert Vec<String> to Vec<&str> for build_args
+        let extra_args_refs: Vec<&str> = extra_args.iter().map(|s| s.as_str()).collect();
+        let args = ComposeCommand::build_args(&compose_path, command, &extra_args_refs)?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         // Use visible streaming for docker-compose up to show build progress
         stream_command_visible(self.executable, &args_refs).map_err(|e| {
