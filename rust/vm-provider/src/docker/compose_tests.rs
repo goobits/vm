@@ -43,6 +43,7 @@ mod tests {
             &vm_config,
             &temp_dir.path().to_path_buf(),
             &project_dir,
+            "docker",
         );
 
         // Render docker-compose
@@ -118,6 +119,7 @@ mod tests {
             &vm_config,
             &temp_dir.path().to_path_buf(),
             &project_dir,
+            "docker",
         );
 
         // Render docker-compose
@@ -162,6 +164,7 @@ mod tests {
             &vm_config,
             &temp_dir.path().to_path_buf(),
             &project_dir,
+            "docker",
         );
 
         // Render docker-compose

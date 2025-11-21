@@ -434,7 +434,7 @@ pub fn get_provider(config: VmConfig) -> Result<Box<dyn Provider>> {
 
     match provider_name {
         #[cfg(feature = "docker")]
-        "docker" => Ok(Box::new(docker::DockerProvider::new(config)?)),
+        "docker" => Ok(Box::new(docker::DockerProvider::new(config, None)?)),
         #[cfg(feature = "docker")]
         "podman" => Ok(Box::new(podman::PodmanProvider::new(config)?)),
         #[cfg(feature = "tart")]

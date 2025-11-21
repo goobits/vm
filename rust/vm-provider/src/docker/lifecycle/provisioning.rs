@@ -30,7 +30,11 @@ impl CoreProgressParser for AnsibleParserAdapter {
 
 impl<'a> LifecycleOperations<'a> {
     /// Run Ansible provisioning on a container
-    fn run_ansible_provisioning(container_name: &str, context: &ProviderContext) -> Result<()> {
+    fn run_ansible_provisioning(
+        executable: &str,
+        container_name: &str,
+        context: &ProviderContext,
+    ) -> Result<()> {
         let parser = if context.is_verbose() {
             None
         } else {
@@ -63,14 +67,8 @@ impl<'a> LifecycleOperations<'a> {
         };
 
         stream_command_with_progress_and_timeout(
-            "docker",
-            &[
-                "exec",
-                container_name,
-                "bash",
-                "-c",
-                &ansible_cmd,
-            ],
+            executable,
+            &["exec", container_name, "bash", "-c", &ansible_cmd],
             parser,
             Some(timeout_secs),
         )
@@ -84,7 +82,7 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     /// Wait for container to become ready with exponential backoff
-    async fn wait_for_container_ready_async(container_name: &str) -> Result<()> {
+    async fn wait_for_container_ready_async(&self, container_name: &str) -> Result<()> {
         use tokio::time::{sleep, Duration, Instant};
 
         let start = Instant::now();
@@ -97,7 +95,10 @@ impl<'a> LifecycleOperations<'a> {
         let max_backoff = Duration::from_secs(1);
 
         loop {
-            if crate::docker::DockerOps::test_container_readiness(container_name) {
+            if crate::docker::DockerOps::test_container_readiness(
+                Some(self.executable),
+                container_name,
+            ) {
                 return Ok(());
             }
 
@@ -116,12 +117,12 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     /// Wait for container to become ready (synchronous wrapper)
-    fn wait_for_container_ready(container_name: &str) -> Result<()> {
+    fn wait_for_container_ready(&self, container_name: &str) -> Result<()> {
         // Use block_in_place to call async code from sync context within an existing runtime
         // This avoids creating a nested runtime which would panic
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current()
-                .block_on(Self::wait_for_container_ready_async(container_name))
+                .block_on(self.wait_for_container_ready_async(container_name))
         })
     }
 
@@ -157,11 +158,11 @@ impl<'a> LifecycleOperations<'a> {
         }
 
         // Step 6: Wait for readiness and run ansible (configuration only)
-        Self::wait_for_container_ready(&self.container_name())?;
+        self.wait_for_container_ready(&self.container_name())?;
 
         self.prepare_and_copy_config()?;
 
-        Self::run_ansible_provisioning(&self.container_name(), context)
+        Self::run_ansible_provisioning(self.executable, &self.container_name(), context)
     }
 
     /// Provision container with custom instance name and context
@@ -178,10 +179,10 @@ impl<'a> LifecycleOperations<'a> {
         let container_name = self.container_name_with_instance(instance_name);
 
         // Step 6: Wait for readiness and run ansible (configuration only)
-        Self::wait_for_container_ready(&container_name)?;
+        self.wait_for_container_ready(&container_name)?;
 
         self.prepare_and_copy_config()?;
 
-        Self::run_ansible_provisioning(&container_name, context)
+        Self::run_ansible_provisioning(self.executable, &container_name, context)
     }
 }

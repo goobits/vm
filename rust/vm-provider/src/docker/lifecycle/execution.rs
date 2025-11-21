@@ -16,7 +16,7 @@ impl<'a> LifecycleOperations<'a> {
     #[must_use = "container start results should be handled"]
     pub fn start_container(&self, container: Option<&str>) -> Result<()> {
         let target_container = self.resolve_target_container(container)?;
-        stream_command("docker", &["start", &target_container])
+        stream_command(self.executable, &["start", &target_container])
     }
 
     /// Start container with context-aware docker-compose regeneration
@@ -30,7 +30,12 @@ impl<'a> LifecycleOperations<'a> {
         let build_ops = BuildOperations::new(self.config, self.temp_dir);
         let (build_context, _base_image) = build_ops.prepare_build_context()?;
 
-        let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
+        let compose_ops = ComposeOperations::new(
+            self.config,
+            self.temp_dir,
+            self.project_dir,
+            self.executable,
+        );
         compose_ops.write_docker_compose(&build_context, context)?;
 
         // Use compose to start (handles both stopped containers and fresh starts)
@@ -44,7 +49,7 @@ impl<'a> LifecycleOperations<'a> {
         // Development VMs should respond quickly to SIGTERM
         // If they don't stop gracefully in 1 second, Docker will force kill
         // This is safe for dev environments where data persistence isn't critical
-        duct::cmd("docker", &["stop", "-t", "1", &target_container])
+        duct::cmd(self.executable, &["stop", "-t", "1", &target_container])
             .run()
             .map_err(|e| {
                 VmError::Internal(format!(
@@ -59,13 +64,13 @@ impl<'a> LifecycleOperations<'a> {
         let target_container = self.resolve_target_container(container)?;
 
         // Check if container exists before attempting destruction
-        if !DockerOps::container_exists(&target_container).unwrap_or(false) {
+        if !DockerOps::container_exists(Some(self.executable), &target_container).unwrap_or(false) {
             return Err(VmError::Internal(format!(
                 "Container '{target_container}' does not exist"
             )));
         }
 
-        let result = stream_command("docker", &["rm", "-f", &target_container]);
+        let result = stream_command(self.executable, &["rm", "-f", &target_container]);
 
         // Only cleanup audio if it was enabled in the configuration
         if let Some(audio_service) = self.config.services.get("audio") {
@@ -110,7 +115,12 @@ impl<'a> LifecycleOperations<'a> {
         let build_ops = BuildOperations::new(self.config, self.temp_dir);
         let (build_context, _base_image) = build_ops.prepare_build_context()?;
 
-        let compose_ops = ComposeOperations::new(self.config, self.temp_dir, self.project_dir);
+        let compose_ops = ComposeOperations::new(
+            self.config,
+            self.temp_dir,
+            self.project_dir,
+            self.executable,
+        );
         compose_ops.write_docker_compose(&build_context, context)?;
 
         // Stop the container first
@@ -133,7 +143,7 @@ impl<'a> LifecycleOperations<'a> {
                 }
             }
         };
-        stream_command("docker", &["kill", &target_container]).map_err(|e| {
+        stream_command(self.executable, &["kill", &target_container]).map_err(|e| {
             VmError::Internal(format!("Failed to kill container '{}'. Container may not exist or Docker may be unresponsive: {}", &target_container, e))
         })
     }

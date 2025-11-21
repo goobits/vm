@@ -14,8 +14,7 @@ use vm_orchestrator::{CreateWorkspaceRequest, Workspace};
 
 #[tokio::test]
 async fn test_create_workspace_endpoint() {
-    let pool = common::create_test_db().await;
-    let app = common::create_test_app(pool).await;
+    let (client, _) = common::TestClient::new_with_db().await;
 
     let req_body = CreateWorkspaceRequest {
         name: "test-workspace".to_string(),
@@ -26,15 +25,13 @@ async fn test_create_workspace_endpoint() {
         ttl_seconds: Some(3600),
     };
 
-    let request = Request::builder()
-        .method("POST")
-        .uri("/api/v1/workspaces")
-        .header("content-type", "application/json")
-        .header("x-user", "testuser")
-        .body(Body::from(serde_json::to_string(&req_body).unwrap()))
-        .unwrap();
-
-    let response = app.oneshot(request).await.unwrap();
+    let response = client
+        .post(
+            "/api/v1/workspaces",
+            &req_body,
+            Some(common::auth_headers("testuser")),
+        )
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -47,8 +44,7 @@ async fn test_create_workspace_endpoint() {
 
 #[tokio::test]
 async fn test_create_workspace_without_auth_fails() {
-    let pool = common::create_test_db().await;
-    let app = common::create_test_app(pool).await;
+    let (client, _) = common::TestClient::new_with_db().await;
 
     let req_body = CreateWorkspaceRequest {
         name: "test-workspace".to_string(),
@@ -59,15 +55,7 @@ async fn test_create_workspace_without_auth_fails() {
         ttl_seconds: None,
     };
 
-    let request = Request::builder()
-        .method("POST")
-        .uri("/api/v1/workspaces")
-        .header("content-type", "application/json")
-        // No x-user header
-        .body(Body::from(serde_json::to_string(&req_body).unwrap()))
-        .unwrap();
-
-    let response = app.oneshot(request).await.unwrap();
+    let response = client.post("/api/v1/workspaces", &req_body, None).await;
 
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
@@ -80,17 +68,12 @@ async fn test_list_workspaces_endpoint() {
     common::fixture_workspaces_for_user(&pool, "alice", 3).await;
     common::fixture_workspaces_for_user(&pool, "bob", 2).await;
 
-    let app = common::create_test_app(pool).await;
+    let client = common::TestClient::new(pool).await;
 
     // List workspaces for alice
-    let request = Request::builder()
-        .method("GET")
-        .uri("/api/v1/workspaces")
-        .header("x-user", "alice")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.oneshot(request).await.unwrap();
+    let response = client
+        .get("/api/v1/workspaces", Some(common::auth_headers("alice")))
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -108,17 +91,12 @@ async fn test_list_workspaces_filters_by_owner() {
     common::fixture_workspaces_for_user(&pool, "alice", 3).await;
     common::fixture_workspaces_for_user(&pool, "bob", 2).await;
 
-    let app = common::create_test_app(pool).await;
+    let client = common::TestClient::new(pool).await;
 
     // List workspaces for bob
-    let request = Request::builder()
-        .method("GET")
-        .uri("/api/v1/workspaces")
-        .header("x-user", "bob")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.oneshot(request).await.unwrap();
+    let response = client
+        .get("/api/v1/workspaces", Some(common::auth_headers("bob")))
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -134,16 +112,14 @@ async fn test_get_workspace_endpoint() {
     let pool = common::create_test_db().await;
     let workspace = common::fixture_workspace(&pool, "test-workspace", "testuser").await;
 
-    let app = common::create_test_app(pool).await;
+    let client = common::TestClient::new(pool).await;
 
-    let request = Request::builder()
-        .method("GET")
-        .uri(format!("/api/v1/workspaces/{}", workspace.id))
-        .header("x-user", "testuser")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.oneshot(request).await.unwrap();
+    let response = client
+        .get(
+            &format!("/api/v1/workspaces/{}", workspace.id),
+            Some(common::auth_headers("testuser")),
+        )
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -155,17 +131,14 @@ async fn test_get_workspace_endpoint() {
 
 #[tokio::test]
 async fn test_get_nonexistent_workspace_returns_404() {
-    let pool = common::create_test_db().await;
-    let app = common::create_test_app(pool).await;
+    let (client, _) = common::TestClient::new_with_db().await;
 
-    let request = Request::builder()
-        .method("GET")
-        .uri("/api/v1/workspaces/nonexistent-id")
-        .header("x-user", "testuser")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.oneshot(request).await.unwrap();
+    let response = client
+        .get(
+            "/api/v1/workspaces/nonexistent-id",
+            Some(common::auth_headers("testuser")),
+        )
+        .await;
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
@@ -175,16 +148,14 @@ async fn test_delete_workspace_endpoint() {
     let pool = common::create_test_db().await;
     let workspace = common::fixture_workspace(&pool, "test-workspace", "testuser").await;
 
-    let app = common::create_test_app(pool.clone()).await;
+    let client = common::TestClient::new(pool.clone()).await;
 
-    let request = Request::builder()
-        .method("DELETE")
-        .uri(format!("/api/v1/workspaces/{}", workspace.id))
-        .header("x-user", "testuser")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.oneshot(request).await.unwrap();
+    let response = client
+        .delete(
+            &format!("/api/v1/workspaces/{}", workspace.id),
+            Some(common::auth_headers("testuser")),
+        )
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -199,25 +170,21 @@ async fn test_delete_workspace_endpoint() {
 
 #[tokio::test]
 async fn test_delete_nonexistent_workspace_returns_404() {
-    let pool = common::create_test_db().await;
-    let app = common::create_test_app(pool).await;
+    let (client, _) = common::TestClient::new_with_db().await;
 
-    let request = Request::builder()
-        .method("DELETE")
-        .uri("/api/v1/workspaces/nonexistent-id")
-        .header("x-user", "testuser")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.oneshot(request).await.unwrap();
+    let response = client
+        .delete(
+            "/api/v1/workspaces/nonexistent-id",
+            Some(common::auth_headers("testuser")),
+        )
+        .await;
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
 async fn test_create_workspace_with_all_fields() {
-    let pool = common::create_test_db().await;
-    let app = common::create_test_app(pool).await;
+    let (client, _) = common::TestClient::new_with_db().await;
 
     let req_body = CreateWorkspaceRequest {
         name: "full-workspace".to_string(),
@@ -228,15 +195,13 @@ async fn test_create_workspace_with_all_fields() {
         ttl_seconds: Some(7200),
     };
 
-    let request = Request::builder()
-        .method("POST")
-        .uri("/api/v1/workspaces")
-        .header("content-type", "application/json")
-        .header("x-user", "alice")
-        .body(Body::from(serde_json::to_string(&req_body).unwrap()))
-        .unwrap();
-
-    let response = app.oneshot(request).await.unwrap();
+    let response = client
+        .post(
+            "/api/v1/workspaces",
+            &req_body,
+            Some(common::auth_headers("alice")),
+        )
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -256,8 +221,7 @@ async fn test_create_workspace_with_all_fields() {
 
 #[tokio::test]
 async fn test_create_workspace_minimal_fields() {
-    let pool = common::create_test_db().await;
-    let app = common::create_test_app(pool).await;
+    let (client, _) = common::TestClient::new_with_db().await;
 
     let req_body = CreateWorkspaceRequest {
         name: "minimal".to_string(),
@@ -268,15 +232,13 @@ async fn test_create_workspace_minimal_fields() {
         ttl_seconds: None,
     };
 
-    let request = Request::builder()
-        .method("POST")
-        .uri("/api/v1/workspaces")
-        .header("content-type", "application/json")
-        .header("x-user", "bob")
-        .body(Body::from(serde_json::to_string(&req_body).unwrap()))
-        .unwrap();
-
-    let response = app.oneshot(request).await.unwrap();
+    let response = client
+        .post(
+            "/api/v1/workspaces",
+            &req_body,
+            Some(common::auth_headers("bob")),
+        )
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -293,17 +255,11 @@ async fn test_create_workspace_minimal_fields() {
 
 #[tokio::test]
 async fn test_list_empty_workspaces() {
-    let pool = common::create_test_db().await;
-    let app = common::create_test_app(pool).await;
+    let (client, _) = common::TestClient::new_with_db().await;
 
-    let request = Request::builder()
-        .method("GET")
-        .uri("/api/v1/workspaces")
-        .header("x-user", "newuser")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.oneshot(request).await.unwrap();
+    let response = client
+        .get("/api/v1/workspaces", Some(common::auth_headers("newuser")))
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -314,8 +270,7 @@ async fn test_list_empty_workspaces() {
 
 #[tokio::test]
 async fn test_create_multiple_workspaces_for_same_user() {
-    let pool = common::create_test_db().await;
-    let app = common::create_test_app(pool).await;
+    let (client, _) = common::TestClient::new_with_db().await;
 
     // Create first workspace
     let req_body1 = CreateWorkspaceRequest {
@@ -327,15 +282,13 @@ async fn test_create_multiple_workspaces_for_same_user() {
         ttl_seconds: None,
     };
 
-    let request1 = Request::builder()
-        .method("POST")
-        .uri("/api/v1/workspaces")
-        .header("content-type", "application/json")
-        .header("x-user", "alice")
-        .body(Body::from(serde_json::to_string(&req_body1).unwrap()))
-        .unwrap();
-
-    let response1 = app.clone().oneshot(request1).await.unwrap();
+    let response1 = client
+        .post(
+            "/api/v1/workspaces",
+            &req_body1,
+            Some(common::auth_headers("alice")),
+        )
+        .await;
     assert_eq!(response1.status(), StatusCode::OK);
 
     // Create second workspace
@@ -348,26 +301,19 @@ async fn test_create_multiple_workspaces_for_same_user() {
         ttl_seconds: None,
     };
 
-    let request2 = Request::builder()
-        .method("POST")
-        .uri("/api/v1/workspaces")
-        .header("content-type", "application/json")
-        .header("x-user", "alice")
-        .body(Body::from(serde_json::to_string(&req_body2).unwrap()))
-        .unwrap();
-
-    let response2 = app.clone().oneshot(request2).await.unwrap();
+    let response2 = client
+        .post(
+            "/api/v1/workspaces",
+            &req_body2,
+            Some(common::auth_headers("alice")),
+        )
+        .await;
     assert_eq!(response2.status(), StatusCode::OK);
 
     // List workspaces - should see both
-    let request3 = Request::builder()
-        .method("GET")
-        .uri("/api/v1/workspaces")
-        .header("x-user", "alice")
-        .body(Body::empty())
-        .unwrap();
-
-    let response3 = app.oneshot(request3).await.unwrap();
+    let response3 = client
+        .get("/api/v1/workspaces", Some(common::auth_headers("alice")))
+        .await;
     assert_eq!(response3.status(), StatusCode::OK);
 
     let workspaces: Vec<Workspace> = common::extract_json_body(response3).await;
@@ -379,16 +325,14 @@ async fn test_workspace_json_serialization() {
     let pool = common::create_test_db().await;
     let workspace = common::fixture_workspace_with_ttl(&pool, "test", "testuser", 3600).await;
 
-    let app = common::create_test_app(pool).await;
+    let client = common::TestClient::new(pool).await;
 
-    let request = Request::builder()
-        .method("GET")
-        .uri(format!("/api/v1/workspaces/{}", workspace.id))
-        .header("x-user", "testuser")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.oneshot(request).await.unwrap();
+    let response = client
+        .get(
+            &format!("/api/v1/workspaces/{}", workspace.id),
+            Some(common::auth_headers("testuser")),
+        )
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -410,8 +354,7 @@ async fn test_workspace_json_serialization() {
 
 #[tokio::test]
 async fn test_invalid_json_returns_400() {
-    let pool = common::create_test_db().await;
-    let app = common::create_test_app(pool).await;
+    let (client, _) = common::TestClient::new_with_db().await;
 
     let request = Request::builder()
         .method("POST")
@@ -421,7 +364,7 @@ async fn test_invalid_json_returns_400() {
         .body(Body::from("invalid json"))
         .unwrap();
 
-    let response = app.oneshot(request).await.unwrap();
+    let response = client.send_request(request).await;
 
     // Axum returns 422 for invalid JSON
     assert!(
@@ -432,16 +375,9 @@ async fn test_invalid_json_returns_400() {
 
 #[tokio::test]
 async fn test_health_endpoint() {
-    let pool = common::create_test_db().await;
-    let app = common::create_test_app(pool).await;
+    let (client, _) = common::TestClient::new_with_db().await;
 
-    let request = Request::builder()
-        .method("GET")
-        .uri("/health")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.oneshot(request).await.unwrap();
+    let response = client.get("/health", None).await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -452,16 +388,9 @@ async fn test_health_endpoint() {
 
 #[tokio::test]
 async fn test_readiness_endpoint() {
-    let pool = common::create_test_db().await;
-    let app = common::create_test_app(pool).await;
+    let (client, _) = common::TestClient::new_with_db().await;
 
-    let request = Request::builder()
-        .method("GET")
-        .uri("/health/ready")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.oneshot(request).await.unwrap();
+    let response = client.get("/health/ready", None).await;
 
     assert_eq!(response.status(), StatusCode::OK);
 

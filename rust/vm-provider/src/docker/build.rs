@@ -134,7 +134,7 @@ impl<'a> BuildOperations<'a> {
                 let image_name = self.get_custom_image_name();
 
                 // Pass build args from BoxSpec::Build variant
-                DockerOps::build_custom_image(path, &image_name, context, args.as_ref())?;
+                DockerOps::build_custom_image(None, path, &image_name, context, args.as_ref())?;
 
                 image_name
             }

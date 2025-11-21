@@ -49,7 +49,7 @@ impl PodmanProvider {
         docker_config.provider = Some("docker".to_string());
 
         // Create the underlying Docker provider
-        let docker_provider = DockerProvider::new(docker_config)?;
+        let docker_provider = DockerProvider::new(docker_config, Some("podman".to_string()))?;
 
         Ok(Self { docker_provider })
     }
