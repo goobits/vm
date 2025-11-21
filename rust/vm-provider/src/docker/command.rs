@@ -178,11 +178,7 @@ impl DockerOps {
     /// # Arguments
     /// * `all` - Include stopped containers (uses -a flag)
     /// * `format` - Docker format string (e.g., "{{.Names}}")
-    pub fn list_containers(
-        executable: Option<&str>,
-        all: bool,
-        format: &str,
-    ) -> Result<String> {
+    pub fn list_containers(executable: Option<&str>, all: bool, format: &str) -> Result<String> {
         let mut cmd = DockerCommand::new(executable).subcommand("ps");
 
         if all {
@@ -193,19 +189,13 @@ impl DockerOps {
     }
 
     /// Check if a container exists by name.
-    pub fn container_exists(
-        executable: Option<&str>,
-        container_name: &str,
-    ) -> Result<bool> {
+    pub fn container_exists(executable: Option<&str>, container_name: &str) -> Result<bool> {
         let output = Self::list_containers(executable, true, "{{.Names}}")?;
         Ok(output.lines().any(|line| line.trim() == container_name))
     }
 
     /// Check if a container is currently running.
-    pub fn is_container_running(
-        executable: Option<&str>,
-        container_name: &str,
-    ) -> Result<bool> {
+    pub fn is_container_running(executable: Option<&str>, container_name: &str) -> Result<bool> {
         let output = Self::list_containers(executable, false, "{{.Names}}")?;
         Ok(output.lines().any(|line| line.trim() == container_name))
     }
@@ -368,10 +358,7 @@ impl DockerOps {
     }
 
     /// Ensure all specified networks exist, creating them if necessary.
-    pub fn ensure_networks_exist(
-        executable: Option<&str>,
-        networks: &[String],
-    ) -> Result<()> {
+    pub fn ensure_networks_exist(executable: Option<&str>, networks: &[String]) -> Result<()> {
         for network in networks {
             if !Self::network_exists(executable, network)? {
                 vm_dbg!("Network '{}' does not exist, creating it...", network);

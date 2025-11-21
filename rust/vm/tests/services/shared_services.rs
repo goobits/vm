@@ -430,14 +430,11 @@ fn test_service_container_reuse_warning() -> Result<()> {
 
     // 3. Get the postgres container ID
     let ps_output = Command::new("docker")
-        .args([
-            "inspect",
-            "--format",
-            "{{.Id}}",
-            "vm-postgres-global",
-        ])
+        .args(["inspect", "--format", "{{.Id}}", "vm-postgres-global"])
         .output()?;
-    let container_id_before = String::from_utf8_lossy(&ps_output.stdout).trim().to_string();
+    let container_id_before = String::from_utf8_lossy(&ps_output.stdout)
+        .trim()
+        .to_string();
     assert!(
         !container_id_before.is_empty(),
         "Failed to get postgres container ID"
@@ -482,12 +479,7 @@ fn test_service_container_reuse_warning() -> Result<()> {
 
     // 7. Verify same postgres container ID (container was reused, not recreated)
     let ps_output_after = Command::new("docker")
-        .args([
-            "inspect",
-            "--format",
-            "{{.Id}}",
-            "vm-postgres-global",
-        ])
+        .args(["inspect", "--format", "{{.Id}}", "vm-postgres-global"])
         .output()?;
     let container_id_after = String::from_utf8_lossy(&ps_output_after.stdout)
         .trim()
@@ -550,7 +542,13 @@ fn test_multi_instance_with_shared_services() -> Result<()> {
 
     // 3. Verify postgres container exists
     let ps_output = Command::new("docker")
-        .args(["ps", "--filter", "name=vm-postgres-global", "--format", "{{.Names}}"])
+        .args([
+            "ps",
+            "--filter",
+            "name=vm-postgres-global",
+            "--format",
+            "{{.Names}}",
+        ])
         .output()?;
     let ps_stdout = String::from_utf8_lossy(&ps_output.stdout);
     assert!(
@@ -628,7 +626,13 @@ fn test_multi_instance_with_shared_services() -> Result<()> {
     // 8. Verify postgres still exists (used by second instance)
     std::thread::sleep(std::time::Duration::from_millis(500));
     let ps_postgres_after = Command::new("docker")
-        .args(["ps", "--filter", "name=vm-postgres-global", "--format", "{{.Names}}"])
+        .args([
+            "ps",
+            "--filter",
+            "name=vm-postgres-global",
+            "--format",
+            "{{.Names}}",
+        ])
         .output()?;
     let postgres_after_stdout = String::from_utf8_lossy(&ps_postgres_after.stdout);
     assert!(

@@ -42,10 +42,6 @@ impl<'a> LifecycleOperations<'a> {
         self.handle_potential_issues();
         self.check_docker_build_requirements();
 
-        // Pre-flight validation: Check for orphaned service containers
-        // Pass instance_name to avoid flagging the target instance container as orphaned
-        self.check_for_orphaned_containers(instance_name, context)?;
-
         // Check platform support for worktrees (Windows native not supported)
         #[cfg(target_os = "windows")]
         {
@@ -151,10 +147,15 @@ impl<'a> LifecycleOperations<'a> {
             None => compose_ops.write_docker_compose(&build_context, context)?,
         };
 
-        // Step 3: Gather build arguments for packages
+        // Pre-flight validation: Check for orphaned service containers
+        // Now that docker-compose.yml exists, we can check for conflicts
+        // Pass instance_name to avoid flagging the target instance container as orphaned
+        self.check_for_orphaned_containers(instance_name, context)?;
+
+        // Step 4: Gather build arguments for packages
         let build_args = build_ops.gather_build_args(&base_image);
 
-        // Step 4: Build with all package arguments
+        // Step 5: Build with all package arguments
         let base_compose_args = ComposeCommand::build_args(&compose_path, "build", &[])?;
 
         // Combine compose args with dynamic build args
@@ -186,7 +187,7 @@ impl<'a> LifecycleOperations<'a> {
             }
         })?;
 
-        // Step 5: Start containers
+        // Step 6: Start containers
         let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
@@ -533,7 +534,11 @@ impl<'a> LifecycleOperations<'a> {
     /// - PostgreSQL: {project}-postgres (explicit container_name)
     /// - Redis: {project}-redis-1 (Compose default, if added to template)
     /// - MongoDB: {project}-mongodb-1 (Compose default, if added to template)
-    fn check_for_orphaned_containers(&self, _instance_name: Option<&str>, context: &ProviderContext) -> Result<()> {
+    fn check_for_orphaned_containers(
+        &self,
+        _instance_name: Option<&str>,
+        context: &ProviderContext,
+    ) -> Result<()> {
         // Query Docker for all containers to find orphaned services
         let all_containers = DockerOps::list_containers(Some(self.executable), true, "{{.Names}}")?;
 

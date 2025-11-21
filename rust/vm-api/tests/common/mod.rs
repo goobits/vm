@@ -159,14 +159,22 @@ impl TestClient {
     }
 
     /// Send a request to the API
-    pub async fn send_request(&self, request: axum::http::Request<axum::body::Body>) -> axum::http::Response<axum::body::Body> {
+    pub async fn send_request(
+        &self,
+        request: axum::http::Request<axum::body::Body>,
+    ) -> axum::http::Response<axum::body::Body> {
         // Clone the app to allow reuse (Router is cheap to clone)
         use tower::ServiceExt;
         self.app.clone().oneshot(request).await.unwrap()
     }
 
     /// Post JSON to an endpoint
-    pub async fn post<T: serde::Serialize>(&self, uri: &str, body: &T, headers: Option<Vec<(&str, &str)>>) -> axum::http::Response<axum::body::Body> {
+    pub async fn post<T: serde::Serialize>(
+        &self,
+        uri: &str,
+        body: &T,
+        headers: Option<Vec<(&str, &str)>>,
+    ) -> axum::http::Response<axum::body::Body> {
         let req_body = serde_json::to_string(body).expect("Failed to serialize request body");
         let mut builder = axum::http::Request::builder()
             .method("POST")
@@ -184,10 +192,12 @@ impl TestClient {
     }
 
     /// Get request to an endpoint
-    pub async fn get(&self, uri: &str, headers: Option<Vec<(&str, &str)>>) -> axum::http::Response<axum::body::Body> {
-        let mut builder = axum::http::Request::builder()
-            .method("GET")
-            .uri(uri);
+    pub async fn get(
+        &self,
+        uri: &str,
+        headers: Option<Vec<(&str, &str)>>,
+    ) -> axum::http::Response<axum::body::Body> {
+        let mut builder = axum::http::Request::builder().method("GET").uri(uri);
 
         if let Some(h) = headers {
             for (k, v) in h {
@@ -200,10 +210,12 @@ impl TestClient {
     }
 
     /// Delete request to an endpoint
-    pub async fn delete(&self, uri: &str, headers: Option<Vec<(&str, &str)>>) -> axum::http::Response<axum::body::Body> {
-        let mut builder = axum::http::Request::builder()
-            .method("DELETE")
-            .uri(uri);
+    pub async fn delete(
+        &self,
+        uri: &str,
+        headers: Option<Vec<(&str, &str)>>,
+    ) -> axum::http::Response<axum::body::Body> {
+        let mut builder = axum::http::Request::builder().method("DELETE").uri(uri);
 
         if let Some(h) = headers {
             for (k, v) in h {
