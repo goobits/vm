@@ -100,6 +100,8 @@ RUN groupadd -g ${USER_GID} ${USER_NAME} || true && \
 FROM base AS node-builder
 
 ARG USER_NAME=developer
+ARG USER_UID=1000
+ARG USER_GID=1000
 ARG NVM_VERSION=v0.40.3
 ARG NODE_VERSION=22
 

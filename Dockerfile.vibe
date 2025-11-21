@@ -189,6 +189,20 @@ RUN pip3 install --no-cache-dir \
 # Set up working directory
 WORKDIR /workspace
 
+# Ensure shell history directory exists and is owned by the developer user
+RUN mkdir -p /home/${USER_NAME}/.shell_history && \
+    chown ${USER_UID}:${USER_GID} /home/${USER_NAME}/.shell_history && \
+    chmod 700 /home/${USER_NAME}/.shell_history
+
+# Fix shell history permissions dynamically (handles UID/GID remapping at runtime)
+RUN cat <<'EOF' >/etc/profile.d/vm-shell-history.sh
+mkdir -p "$HOME/.shell_history"
+if [ -d "$HOME/.shell_history" ]; then
+    chown "$(id -u)":"$(id -g)" "$HOME/.shell_history" 2>/dev/null || true
+    chmod 700 "$HOME/.shell_history" 2>/dev/null || true
+fi
+EOF
+
 # Set workspace ownership (user already created above)
 RUN mkdir -p /workspace && \
     chown -R ${USER_NAME}:${USER_NAME} /workspace
@@ -202,6 +216,10 @@ RUN for rc in /home/${USER_NAME}/.bashrc /home/${USER_NAME}/.zshrc; do \
         echo 'export CARGO_HOME="/root/.cargo"' >> "$rc"; \
         echo 'export RUSTUP_HOME="/root/.rustup"' >> "$rc"; \
     done
+
+# Ensure aliases survive vm shell template regeneration
+RUN echo 'alias claudeyolo="claude --dangerously-skip-permissions"' >> /etc/zsh/zshrc && \
+    echo 'alias claudeyolo="claude --dangerously-skip-permissions"' >> /etc/bash.bashrc
 
 # Set timezone
 ENV TZ=America/Los_Angeles
