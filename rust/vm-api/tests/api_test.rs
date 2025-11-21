@@ -9,7 +9,6 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use tower::ServiceExt; // for `oneshot`
 use vm_orchestrator::{CreateWorkspaceRequest, Workspace};
 
 #[tokio::test]
