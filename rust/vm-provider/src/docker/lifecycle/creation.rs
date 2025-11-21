@@ -150,7 +150,8 @@ impl<'a> LifecycleOperations<'a> {
         // Pre-flight validation: Check for orphaned service containers
         // Now that docker-compose.yml exists, we can check for conflicts
         // Pass instance_name to avoid flagging the target instance container as orphaned
-        self.check_for_orphaned_containers(instance_name, context)?;
+        // Returns true if orphaned service containers were found (need --no-recreate)
+        let has_orphaned_services = self.check_for_orphaned_containers(instance_name, context)?;
 
         // Step 4: Gather build arguments for packages
         let build_args = build_ops.gather_build_args(&base_image);
@@ -188,7 +189,13 @@ impl<'a> LifecycleOperations<'a> {
         })?;
 
         // Step 6: Start containers
-        let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
+        // Use --no-recreate if orphaned service containers exist to reuse them
+        let up_flags = if has_orphaned_services {
+            vec!["-d", "--no-recreate"]
+        } else {
+            vec!["-d"]
+        };
+        let args = ComposeCommand::build_args(&compose_path, "up", &up_flags)?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
         stream_command_visible(self.executable, &args_refs).map_err(|e| {
@@ -538,7 +545,7 @@ impl<'a> LifecycleOperations<'a> {
         &self,
         _instance_name: Option<&str>,
         context: &ProviderContext,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         // Query Docker for all containers to find orphaned services
         let all_containers = DockerOps::list_containers(Some(self.executable), true, "{{.Names}}")?;
 
@@ -585,6 +592,8 @@ impl<'a> LifecycleOperations<'a> {
                     eprintln!("      docker rm -f {}", container);
                 }
                 eprintln!("   Or run: vm destroy --force\n");
+                // Return true to indicate we found orphans and need --no-recreate
+                return Ok(true);
             } else {
                 // preserve_services=false: error on existing service containers
                 let container_list = orphaned.join(", ");
@@ -596,6 +605,7 @@ impl<'a> LifecycleOperations<'a> {
             }
         }
 
-        Ok(())
+        // No orphaned containers found
+        Ok(false)
     }
 }
