@@ -122,11 +122,13 @@ RUN --mount=type=cache,target=/home/${USER_NAME}/.npm,uid=${USER_UID},gid=${USER
     . $NVM_DIR/nvm.sh && npm install -g \
     @anthropic-ai/claude-code \
     @google/gemini-cli \
+    @openai/codex \
     playwright \
     prettier \
     eslint \
     typescript \
     ts-node \
+    tsx \
     nodemon \
     npm-check-updates
 
@@ -165,7 +167,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Install Python packages with cache mount for pip
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip3 install --no-cache-dir \
-    ansible \
+    ansible==2.17.6 \
     playwright \
     pytest \
     pytest-playwright
@@ -249,6 +251,7 @@ RUN mkdir -p /workspace && \
 RUN for rc in /home/${USER_NAME}/.bashrc /home/${USER_NAME}/.zshrc; do \
         echo 'alias claudeyolo="claude --dangerously-skip-permissions"' >> "$rc"; \
         echo 'alias geminiyolo="GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini"' >> "$rc"; \
+        echo 'alias codexyolo="codex --dangerously-bypass-approvals-and-sandbox"' >> "$rc"; \
         echo 'export PATH="$PATH:/home/${USER_NAME}/.local/bin:/root/.cargo/bin"' >> "$rc"; \
         echo 'export CARGO_HOME="/root/.cargo"' >> "$rc"; \
         echo 'export RUSTUP_HOME="/root/.rustup"' >> "$rc"; \
