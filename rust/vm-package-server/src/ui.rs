@@ -196,28 +196,37 @@ pub async fn pypi_package_detail(
     Path(pkg_name): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> AppResult<Html<String>> {
-    // Note: PyPI's get_package_versions returns Vec<(version, Vec<(filename, sha256, size)>)>
-    // which is different from the trait's signature. Keep using the old function for now.
-    #[allow(deprecated)]
-    let versions = crate::pypi::get_package_versions(&state, &pkg_name).await?;
+    // Use the trait method
+    let versions = state
+        .pypi_registry
+        .get_package_versions(&state, &pkg_name)
+        .await?;
+
+    // Group files by version
+    use std::collections::HashMap;
+    let mut version_map: HashMap<String, Vec<PackageFile>> = HashMap::new();
+
+    for (version, filename, sha256, size) in versions {
+        version_map.entry(version).or_default().push(PackageFile {
+            filename,
+            sha256,
+            size,
+            size_formatted: format_size(size),
+        });
+    }
+
+    // Convert map to sorted vector of PyPiVersion
+    let mut pypi_versions: Vec<PyPiVersion> = version_map
+        .into_iter()
+        .map(|(version, files)| PyPiVersion { version, files })
+        .collect();
+
+    // Sort versions in reverse order
+    pypi_versions.sort_by(|a, b| b.version.cmp(&a.version));
 
     let template = PyPiDetailTemplate {
         package_name: pkg_name,
-        versions: versions
-            .into_iter()
-            .map(|(version, files)| PyPiVersion {
-                version,
-                files: files
-                    .into_iter()
-                    .map(|(filename, sha256, size)| PackageFile {
-                        filename,
-                        sha256,
-                        size,
-                        size_formatted: format_size(size),
-                    })
-                    .collect(),
-            })
-            .collect(),
+        versions: pypi_versions,
     };
 
     Ok(Html(template.render().map_err(|e| {

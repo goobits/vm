@@ -20,7 +20,6 @@ use serde::Deserialize;
 use tokio::net::TcpListener;
 use tracing::{error, info, warn};
 
-use crate::validation;
 use crate::{
     cargo,
     config::Config,
@@ -29,6 +28,7 @@ use crate::{
     state::AppState,
     upstream::{UpstreamClient, UpstreamConfig},
 };
+use vm_core::validation as core_validation;
 
 pub async fn run_server_background(host: String, port: u16, data_dir: PathBuf) -> Result<()> {
     run_server_with_shutdown(host, port, data_dir, None).await
@@ -55,14 +55,14 @@ async fn run_server_internal(
 ) -> Result<()> {
     info!("🚀 Starting Goobits Package Server...");
 
-    if let Err(e) = validation::validate_hostname(&host) {
+    if let Err(e) = core_validation::validate_hostname(&host) {
         error!(host = %host, error = %e, "❌ Invalid host parameter: {}", e);
-        std::process::exit(1);
+        anyhow::bail!("Invalid host parameter: {}", e);
     }
 
-    if let Err(e) = validation::validate_docker_port(port) {
+    if let Err(e) = crate::validation::validate_docker_port(port) {
         error!(port = %port, error = %e, "❌ Invalid port parameter: {}", e);
-        std::process::exit(1);
+        anyhow::bail!("Invalid port parameter: {}", e);
     }
 
     let abs_data_dir = match std::fs::canonicalize(&data_dir) {
@@ -73,7 +73,7 @@ async fn run_server_internal(
                 Ok(current) => current.join(&data_dir),
                 Err(e) => {
                     error!(error = %e, "❌ Failed to get current directory: {}", e);
-                    std::process::exit(1);
+                    anyhow::bail!("Failed to get current directory: {}", e);
                 }
             }
         }

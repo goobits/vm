@@ -48,6 +48,9 @@ pub enum VmError {
     #[error("Migration error: {0}")]
     Migration(String),
 
+    #[error("Validation error: {0}")]
+    Validation(String),
+
     #[error("Other error: {0}")]
     Other(#[from] anyhow::Error),
 }

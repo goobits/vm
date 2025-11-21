@@ -3,8 +3,6 @@
 //! This module provides commands for managing VM lifecycle including
 //! start, stop, restart, and provisioning operations.
 
-use std::process::Command;
-
 use tracing::{debug, info_span, warn};
 
 use crate::error::{VmError, VmResult};
@@ -37,62 +35,44 @@ pub async fn handle_start(
 
     let container_name = format!("{vm_name}-dev");
 
-    // Check if container exists and whether it is already running
-    let container_status = Command::new("docker")
-        .args(["inspect", "--format", "{{.State.Status}}", &container_name])
+    // Check if container exists and is running
+    // We need to check using Docker directly since provider.status() just shows status
+    let container_exists = std::process::Command::new("docker")
+        .args(["ps", "-a", "--format", "{{.Names}}"])
         .output()
         .ok()
         .and_then(|output| {
-            if output.status.success() {
-                Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+            let names = String::from_utf8_lossy(&output.stdout);
+            if names.lines().any(|name| name.trim() == container_name) {
+                Some(())
             } else {
                 None
             }
-        });
+        })
+        .is_some();
 
-    if let Some(status) = container_status {
-        if status == "running" {
+    if container_exists {
+        // Check if it's actually running
+        let is_running = std::process::Command::new("docker")
+            .args(["inspect", "--format", "{{.State.Status}}", &container_name])
+            .output()
+            .ok()
+            .and_then(|output| {
+                let status = String::from_utf8_lossy(&output.stdout);
+                if status.trim() == "running" {
+                    Some(())
+                } else {
+                    None
+                }
+            })
+            .is_some();
+
+        if is_running {
             vm_println!(
                 "{}",
                 msg!(MESSAGES.vm.start_already_running, name = vm_name)
             );
             return Ok(());
-        } else {
-            // Attempt to start existing stopped container instead of failing with a compose conflict
-            vm_println!(
-                "💡 Found existing container '{}' (status: {}), attempting to start it...",
-                container_name,
-                status
-            );
-            let start_status = Command::new("docker")
-                .args(["start", &container_name])
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false);
-
-            if start_status {
-                vm_println!("{}", msg!(MESSAGES.vm.start_header, name = vm_name));
-                vm_println!("{}", MESSAGES.vm.start_success);
-                vm_println!(
-                    "{}",
-                    msg!(
-                        MESSAGES.vm.start_info_block,
-                        status = MESSAGES.common.status_running,
-                        container = &container_name
-                    )
-                );
-
-                // Register services after starting the existing container
-                vm_println!("{}", MESSAGES.common.configuring_services);
-                register_vm_services_helper(&container_name, &config, &global_config).await?;
-                vm_println!("{}", MESSAGES.common.connect_hint);
-                return Ok(());
-            } else {
-                vm_println!(
-                    "⚠️  Found existing container '{}' but failed to start it. Will attempt full start.",
-                    container_name
-                );
-            }
         }
     }
 

@@ -3,6 +3,9 @@ use sqlx::SqlitePool;
 use tokio::time::{interval, Duration};
 use tracing::{error, info, instrument, warn};
 use vm_config::config::VmConfig;
+use vm_config::merge::ConfigMerger;
+use vm_config::paths::get_presets_dir;
+use vm_config::preset::PresetDetector;
 use vm_orchestrator::{Workspace, WorkspaceOrchestrator, WorkspaceStatus};
 use vm_provider::get_provider;
 
@@ -172,15 +175,39 @@ fn build_vm_config(workspace: &Workspace) -> anyhow::Result<VmConfig> {
         ..Default::default()
     });
 
-    // Apply template-based defaults
-    // TODO: Use PresetDetector to load full preset configs once we have repo cloning
-    // For now, apply basic template defaults manually
+    // Apply template-based defaults using PresetDetector
     if let Some(template) = &workspace.template {
         info!(
             "Applying template '{}' for workspace {}",
             template, workspace.name
         );
-        apply_template_defaults(&mut config, template);
+
+        // Initialize PresetDetector with dummy project path (not used for explicit load)
+        // and correct presets directory
+        let presets_dir = get_presets_dir();
+        let detector = PresetDetector::new(std::path::PathBuf::from("."), presets_dir);
+
+        // Attempt to load the preset
+        match detector.load_preset(template) {
+            Ok(preset_config) => {
+                // Merge preset config into the base config
+                match ConfigMerger::new(config.clone()).merge(preset_config) {
+                    Ok(merged) => config = merged,
+                    Err(e) => {
+                        warn!("Failed to merge preset '{}' into config: {}", template, e);
+                        // Fallback to basic defaults if merge fails
+                        apply_basic_template_defaults(&mut config, template);
+                    }
+                }
+            }
+            Err(e) => {
+                warn!(
+                    "Failed to load preset '{}': {}. Using basic defaults.",
+                    template, e
+                );
+                apply_basic_template_defaults(&mut config, template);
+            }
+        }
     }
 
     // Always set the provider
@@ -189,9 +216,8 @@ fn build_vm_config(workspace: &Workspace) -> anyhow::Result<VmConfig> {
     Ok(config)
 }
 
-/// Apply template defaults to config
-/// This is a simplified version. Full implementation should use vm_config::preset::PresetDetector
-fn apply_template_defaults(config: &mut VmConfig, template: &str) {
+/// Apply basic template defaults to config as fallback
+fn apply_basic_template_defaults(config: &mut VmConfig, template: &str) {
     match template {
         "nodejs" | "node" => {
             if config.versions.is_none() {

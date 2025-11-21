@@ -104,7 +104,7 @@ impl PresetDetector {
                 name,
                 preset_path
             );
-            return Err(VmError::Config("Preset not found".to_string()));
+            return Err(VmError::Config(format!("Preset not found: {}", name)));
         }
 
         let content = std::fs::read_to_string(&preset_path)?;
@@ -402,7 +402,14 @@ mod tests {
     fn test_preset_detection() {
         let temp_dir = TempDir::new().expect("should create temp dir");
         let project_dir = temp_dir.path().to_path_buf();
-        let presets_dir = crate::paths::get_presets_dir();
+
+        // In unit tests under "cargo test --workspace", environment variables set in other tests
+        // might bleed or interact. But `get_presets_dir()` reads `VM_TOOL_DIR`.
+        // If `VM_TOOL_DIR` is set to a temp dir by another test, `get_presets_dir()` will return that.
+        // It's safer to use a temp dir for presets in this test too if we were testing loading.
+        // But here we are testing `detect()`, which only uses `project_dir`.
+        // `presets_dir` is passed to `new()` but not used by `detect()`.
+        let presets_dir = temp_dir.path().join("presets");
 
         // Create Django indicators
         fs::write(project_dir.join("manage.py"), "").expect("should write manage.py");
@@ -417,7 +424,7 @@ mod tests {
     fn test_react_detection() {
         let temp_dir = TempDir::new().expect("should create temp dir");
         let project_dir = temp_dir.path().to_path_buf();
-        let presets_dir = crate::paths::get_presets_dir();
+        let presets_dir = temp_dir.path().join("presets");
 
         // Create package.json with React
         let package_json = r#"{

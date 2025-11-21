@@ -94,9 +94,9 @@ pub mod test_utils {
 
         // Create required directories
         std::fs::create_dir_all(data_dir.join("npm/tarballs"))
-            .expect("Failed to create npm tarballs dir");
+            .unwrap_or_else(|e| panic!("Failed to create npm tarballs dir: {}", e));
         std::fs::create_dir_all(data_dir.join("npm/metadata"))
-            .expect("Failed to create npm metadata dir");
+            .unwrap_or_else(|e| panic!("Failed to create npm metadata dir: {}", e));
 
         // Use disabled client to avoid TLS/Keychain prompts
         let upstream_client = Arc::new(UpstreamClient::disabled());
@@ -120,7 +120,7 @@ pub mod test_utils {
 
         // Create required directories
         std::fs::create_dir_all(data_dir.join("pypi/packages"))
-            .expect("Failed to create pypi packages dir");
+            .unwrap_or_else(|e| panic!("Failed to create pypi packages dir: {}", e));
 
         // Use disabled client to avoid TLS/Keychain prompts
         let upstream_client = Arc::new(UpstreamClient::disabled());
@@ -144,9 +144,9 @@ pub mod test_utils {
 
         // Create required directories
         std::fs::create_dir_all(data_dir.join("cargo/crates"))
-            .expect("Failed to create cargo crates dir");
+            .unwrap_or_else(|e| panic!("Failed to create cargo crates dir: {}", e));
         std::fs::create_dir_all(data_dir.join("cargo/index"))
-            .expect("Failed to create cargo index dir");
+            .unwrap_or_else(|e| panic!("Failed to create cargo index dir: {}", e));
 
         // Use disabled client to avoid TLS/Keychain prompts
         let upstream_client = Arc::new(UpstreamClient::disabled());
@@ -185,95 +185,9 @@ mod security_tests {
     use super::*;
 
     /// **PRIORITY 1 - Critical Security Tests for Server Address Validation**
-    /// Tests for server address validation functions (imported from main.rs logic)
+    /// Tests for server address validation functions (using centralized logic in vm-core)
     mod server_address_validation_tests {
-        // Note: These would test the functions from main.rs if they were public
-        // For now, we'll create test versions of the validation logic
-
-        fn test_validate_server_address(server_ip: &str) -> bool {
-            use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-
-            // Check basic length constraints
-            if server_ip.is_empty() || server_ip.len() > 253 {
-                return false;
-            }
-
-            // Check for null bytes or control characters
-            if server_ip.contains('\0') || server_ip.chars().any(|c| c.is_control()) {
-                return false;
-            }
-
-            // Try to parse as IP address first
-            if server_ip.parse::<IpAddr>().is_ok() {
-                return true;
-            }
-
-            // Try to parse IPv4 specifically
-            if server_ip.parse::<Ipv4Addr>().is_ok() {
-                return true;
-            }
-
-            // Try to parse IPv6 specifically (handles bracketed format)
-            let ipv6_candidate = if server_ip.starts_with('[') && server_ip.ends_with(']') {
-                &server_ip[1..server_ip.len() - 1]
-            } else {
-                server_ip
-            };
-            if ipv6_candidate.parse::<Ipv6Addr>().is_ok() {
-                return true;
-            }
-
-            // Check if it looks like an IPv4 address (all labels are numeric)
-            let labels: Vec<&str> = server_ip.split('.').collect();
-            if labels.len() >= 2
-                && labels
-                    .iter()
-                    .all(|label| !label.is_empty() && label.chars().all(|c| c.is_ascii_digit()))
-            {
-                // Looks like IPv4-style (all numeric labels), but we already know it's invalid (parsing failed above)
-                return false;
-            }
-
-            // Validate as hostname (DNS name)
-            test_validate_hostname(server_ip)
-        }
-
-        fn test_validate_hostname(hostname: &str) -> bool {
-            // Basic length check (DNS hostname max is 253 characters)
-            if hostname.is_empty() || hostname.len() > 253 {
-                return false;
-            }
-
-            // Cannot start or end with a dot
-            if hostname.starts_with('.') || hostname.ends_with('.') {
-                return false;
-            }
-
-            // Split into labels and validate each
-            let labels: Vec<&str> = hostname.split('.').collect();
-            if labels.is_empty() {
-                return false;
-            }
-
-            for label in labels {
-                // Each label must be 1-63 characters
-                if label.is_empty() || label.len() > 63 {
-                    return false;
-                }
-
-                // Cannot start or end with hyphen
-                if label.starts_with('-') || label.ends_with('-') {
-                    return false;
-                }
-
-                // Must contain only alphanumeric characters and hyphens
-                if !label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
-                    return false;
-                }
-            }
-
-            true
-        }
+        use vm_core::validation::validate_server_address;
 
         #[test]
         fn test_valid_ipv4_addresses() {
@@ -290,7 +204,7 @@ mod security_tests {
 
             for addr in &valid_ipv4_addresses {
                 assert!(
-                    test_validate_server_address(addr),
+                    validate_server_address(addr).is_ok(),
                     "Valid IPv4 address '{}' should pass validation",
                     addr
                 );
@@ -312,7 +226,7 @@ mod security_tests {
 
             for addr in &valid_ipv6_addresses {
                 assert!(
-                    test_validate_server_address(addr),
+                    validate_server_address(addr).is_ok(),
                     "Valid IPv6 address '{}' should pass validation",
                     addr
                 );
@@ -334,7 +248,7 @@ mod security_tests {
 
             for hostname in &valid_hostnames {
                 assert!(
-                    test_validate_server_address(hostname),
+                    validate_server_address(hostname).is_ok(),
                     "Valid hostname '{}' should pass validation",
                     hostname
                 );
@@ -356,7 +270,7 @@ mod security_tests {
 
             for addr in &invalid_ips {
                 assert!(
-                    !test_validate_server_address(addr),
+                    validate_server_address(addr).is_err(),
                     "Invalid IP address '{}' should be rejected",
                     addr
                 );
@@ -380,7 +294,7 @@ mod security_tests {
 
             for attack in &injection_attacks {
                 assert!(
-                    !test_validate_server_address(attack),
+                    validate_server_address(attack).is_err(),
                     "Injection attack '{}' should be blocked",
                     attack
                 );
@@ -408,7 +322,7 @@ mod security_tests {
 
             for hostname in &invalid_hostnames {
                 assert!(
-                    !test_validate_server_address(hostname),
+                    validate_server_address(hostname).is_err(),
                     "Invalid hostname '{}' should be rejected",
                     hostname
                 );
@@ -430,7 +344,7 @@ mod security_tests {
 
             for attack in &control_char_attacks {
                 assert!(
-                    !test_validate_server_address(attack),
+                    validate_server_address(attack).is_err(),
                     "Control character injection '{}' should be blocked",
                     attack.escape_debug()
                 );
@@ -449,7 +363,7 @@ mod security_tests {
 
             for attack in &null_byte_attacks {
                 assert!(
-                    !test_validate_server_address(attack),
+                    validate_server_address(attack).is_err(),
                     "Null byte injection should be blocked: {:?}",
                     attack
                 );
@@ -469,26 +383,26 @@ mod security_tests {
             );
             assert_eq!(max_valid_hostname.len(), 253);
             assert!(
-                test_validate_server_address(&max_valid_hostname),
+                validate_server_address(&max_valid_hostname).is_ok(),
                 "Hostname with 253 characters should be valid"
             );
 
             let too_long_hostname = "a".repeat(254);
             assert!(
-                !test_validate_server_address(&too_long_hostname),
+                validate_server_address(&too_long_hostname).is_err(),
                 "Hostname with 254 characters should be invalid"
             );
 
             // Test label length limits
             let max_valid_label = format!("{}.com", "a".repeat(63));
             assert!(
-                test_validate_server_address(&max_valid_label),
+                validate_server_address(&max_valid_label).is_ok(),
                 "Hostname with 63-character label should be valid"
             );
 
             let too_long_label = format!("{}.com", "a".repeat(64));
             assert!(
-                !test_validate_server_address(&too_long_label),
+                validate_server_address(&too_long_label).is_err(),
                 "Hostname with 64-character label should be invalid"
             );
         }
