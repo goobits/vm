@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 // External crates
 use tera::Context as TeraContext;
+use tracing::warn;
 use vm_core::error::{Result, VmError};
 
 // Internal imports
@@ -627,8 +628,28 @@ impl<'a> ComposeOperations<'a> {
         let container_exists =
             DockerOps::container_exists(Some(self.executable), &container_name).unwrap_or(false);
 
-        // Use 'start' if container exists, 'up -d' if it doesn't
-        let (command, extra_args) = if container_exists {
+        // Check if all expected service containers exist
+        let expected_services = self.get_expected_service_containers();
+        let mut missing_services = Vec::new();
+
+        for service_name in &expected_services {
+            let service_exists =
+                DockerOps::container_exists(Some(self.executable), service_name).unwrap_or(false);
+            if !service_exists {
+                missing_services.push(service_name.clone());
+            }
+        }
+
+        // Use 'start' only if ALL containers exist (dev + all services)
+        // Otherwise use 'up -d' to recreate missing containers
+        let (command, extra_args) = if !missing_services.is_empty() {
+            warn!(
+                "Missing service containers detected: {}",
+                missing_services.join(", ")
+            );
+            warn!("Using 'up -d' to recreate them");
+            ("up", vec!["-d"])
+        } else if container_exists {
             ("start", vec![])
         } else {
             ("up", vec!["-d"])

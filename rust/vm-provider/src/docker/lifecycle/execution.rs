@@ -5,6 +5,7 @@ use crate::{
     context::ProviderContext,
     docker::{build::BuildOperations, compose::ComposeOperations, DockerOps},
 };
+use tracing::{info, warn};
 use vm_core::{
     command_stream::stream_command,
     error::{Result, VmError},
@@ -61,6 +62,14 @@ impl<'a> LifecycleOperations<'a> {
 
     #[must_use = "container destruction results should be handled"]
     pub fn destroy_container(&self, container: Option<&str>) -> Result<()> {
+        self.destroy_container_with_context(container, &ProviderContext::default())
+    }
+
+    pub fn destroy_container_with_context(
+        &self,
+        container: Option<&str>,
+        context: &ProviderContext,
+    ) -> Result<()> {
         let target_container = self.resolve_target_container(container)?;
 
         // Check if container exists before attempting destruction
@@ -70,7 +79,37 @@ impl<'a> LifecycleOperations<'a> {
             )));
         }
 
+        // Remove the main dev container
         let result = stream_command(self.executable, &["rm", "-f", &target_container]);
+
+        // Optionally remove service containers based on context
+        if !context.preserve_services {
+            info!("Removing service containers (--preserve-services=false)");
+            let compose_ops = ComposeOperations::new(
+                self.config,
+                self.temp_dir,
+                self.project_dir,
+                self.executable,
+            );
+            let expected_services = compose_ops.get_expected_service_containers();
+
+            for service_name in expected_services {
+                let exists = DockerOps::container_exists(Some(self.executable), &service_name)
+                    .unwrap_or(false);
+                if !exists {
+                    continue;
+                }
+
+                info!("Removing service container: {}", service_name);
+                if let Err(e) =
+                    DockerOps::remove_container(Some(self.executable), &service_name, true)
+                {
+                    warn!("Failed to remove service container {}: {}", service_name, e);
+                }
+            }
+        } else {
+            info!("Preserving service containers (--preserve-services=true)");
+        }
 
         // Only cleanup audio if it was enabled in the configuration
         if let Some(audio_service) = self.config.services.get("audio") {

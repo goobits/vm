@@ -14,7 +14,7 @@ use vm_cli::msg;
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::{vm_error, vm_println};
 use vm_messages::messages::MESSAGES;
-use vm_provider::{InstanceInfo, Provider};
+use vm_provider::{InstanceInfo, Provider, ProviderContext};
 
 use super::helpers::unregister_vm_services_helper;
 use super::list::{get_all_instances, get_instances_from_provider};
@@ -47,6 +47,7 @@ pub async fn handle_destroy(
     global_config: GlobalConfig,
     force: bool,
     no_backup: bool,
+    preserve_services: bool,
 ) -> VmResult<()> {
     // Get VM name from config for confirmation prompt
     let vm_name = config
@@ -164,7 +165,10 @@ pub async fn handle_destroy(
         debug!("Destroy confirmation: response='yes', proceeding with destruction");
         vm_println!("{}", MESSAGES.vm.destroy_progress);
 
-        match provider.destroy(container) {
+        // Build context with preserve_services flag
+        let context = ProviderContext::default().preserve_services(preserve_services);
+
+        match provider.destroy_with_context(container, &context) {
             Ok(()) => {
                 // Backup database services if configured (run in background)
                 if !no_backup {
@@ -219,7 +223,7 @@ pub async fn handle_destroy_enhanced(
     all: &bool,
     provider_filter: Option<&str>,
     pattern: Option<&str>,
-    _preserve_services: bool,
+    preserve_services: bool,
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "destroy");
     let _enter = span.enter();
@@ -237,6 +241,7 @@ pub async fn handle_destroy_enhanced(
         global_config,
         *force,
         *no_backup,
+        preserve_services,
     )
     .await
 }

@@ -295,8 +295,16 @@ impl Provider for DockerProvider {
     }
 
     fn destroy(&self, container: Option<&str>) -> Result<()> {
+        self.destroy_with_context(container, &ProviderContext::default())
+    }
+
+    fn destroy_with_context(
+        &self,
+        container: Option<&str>,
+        context: &ProviderContext,
+    ) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
-        lifecycle.destroy_container(container)
+        lifecycle.destroy_container_with_context(container, context)
     }
 
     fn ssh(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {

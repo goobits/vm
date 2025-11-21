@@ -274,7 +274,20 @@ pub trait Provider {
     fn stop(&self, container: Option<&str>) -> Result<()>;
 
     /// Destroy a VM, removing all associated resources.
-    fn destroy(&self, container: Option<&str>) -> Result<()>;
+    fn destroy(&self, container: Option<&str>) -> Result<()> {
+        self.destroy_with_context(container, &ProviderContext::default())
+    }
+
+    /// Destroy a VM with context (e.g., preserve_services flag).
+    fn destroy_with_context(
+        &self,
+        container: Option<&str>,
+        context: &ProviderContext,
+    ) -> Result<()> {
+        // Default implementation ignores context for backward compatibility
+        let _ = context;
+        self.destroy(container)
+    }
 
     /// Open an interactive shell (SSH) into the VM.
     fn ssh(&self, container: Option<&str>, relative_path: &Path) -> Result<()>;
