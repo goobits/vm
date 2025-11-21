@@ -14,7 +14,7 @@ use crate::{
 use vm_cli::msg;
 use vm_config::config::VmConfig;
 use vm_core::{
-    command_stream::stream_command_visible,
+    command_stream::{stream_command, stream_command_visible},
     error::{Result, VmError},
     vm_dbg,
 };
@@ -189,13 +189,16 @@ impl<'a> LifecycleOperations<'a> {
         })?;
 
         // Step 6: Start containers
-        // Use --no-recreate if orphaned service containers exist to reuse them
-        let up_flags = if has_orphaned_services {
-            vec!["-d", "--no-recreate"]
+        // If orphaned service containers exist, only create the dev container to avoid name conflicts
+        // Service containers will be started separately after checking they're running
+        let up_args = if has_orphaned_services {
+            // Only create the dev container, don't touch existing service containers
+            vec!["-d", &container_name]
         } else {
+            // No orphans, create all containers normally
             vec!["-d"]
         };
-        let args = ComposeCommand::build_args(&compose_path, "up", &up_flags)?;
+        let args = ComposeCommand::build_args(&compose_path, "up", &up_args)?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
         stream_command_visible(self.executable, &args_refs).map_err(|e| {
@@ -235,6 +238,40 @@ impl<'a> LifecycleOperations<'a> {
                 ))
             }
         })?;
+
+        // If we reused orphaned service containers, ensure they're running
+        if has_orphaned_services {
+            let compose_ops = ComposeOperations::new(
+                &modified_config,
+                self.temp_dir,
+                self.project_dir,
+                self.executable,
+            );
+            let expected_services = compose_ops.get_expected_service_containers();
+
+            for service_name in expected_services {
+                // Skip if container doesn't exist
+                let exists = DockerOps::container_exists(Some(self.executable), &service_name)
+                    .unwrap_or(false);
+                if !exists {
+                    continue;
+                }
+
+                // Skip if already running
+                let is_running =
+                    DockerOps::is_container_running(Some(self.executable), &service_name)
+                        .unwrap_or(false);
+                if is_running {
+                    continue;
+                }
+
+                // Start the stopped service container
+                info!("Starting existing service container: {}", service_name);
+                if let Err(e) = stream_command(self.executable, &["start", &service_name]) {
+                    warn!("Failed to start service container {}: {}", service_name, e);
+                }
+            }
+        }
 
         // Provision the container
         match instance_name {

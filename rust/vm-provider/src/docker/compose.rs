@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 // External crates
 use tera::Context as TeraContext;
-use tracing::warn;
+use tracing::{info, warn};
 use vm_core::error::{Result, VmError};
 
 // Internal imports
@@ -631,38 +631,76 @@ impl<'a> ComposeOperations<'a> {
         // Check if all expected service containers exist
         let expected_services = self.get_expected_service_containers();
         let mut missing_services = Vec::new();
+        let mut existing_services = Vec::new();
 
         for service_name in &expected_services {
             let service_exists =
                 DockerOps::container_exists(Some(self.executable), service_name).unwrap_or(false);
             if !service_exists {
                 missing_services.push(service_name.clone());
+            } else {
+                existing_services.push(service_name.clone());
             }
         }
 
-        // Use 'start' only if ALL containers exist (dev + all services)
-        // Otherwise use 'up -d' to recreate missing containers
-        let (command, extra_args) = if !missing_services.is_empty() {
+        // Determine the appropriate compose command and arguments
+        let (command, extra_args) = if !container_exists && !existing_services.is_empty() {
+            // Dev container missing but service containers exist - only create dev to avoid conflicts
+            warn!(
+                "Dev container missing but {} service container(s) exist",
+                existing_services.len()
+            );
+            warn!(
+                "Using 'up -d {}' to create only dev container",
+                container_name
+            );
+            ("up", vec!["-d".to_string(), container_name.clone()])
+        } else if !missing_services.is_empty() {
+            // Some services are missing - recreate them
             warn!(
                 "Missing service containers detected: {}",
                 missing_services.join(", ")
             );
             warn!("Using 'up -d' to recreate them");
-            ("up", vec!["-d"])
+            ("up", vec!["-d".to_string()])
         } else if container_exists {
+            // All containers exist - just start them
             ("start", vec![])
         } else {
-            ("up", vec!["-d"])
+            // No containers exist - create all
+            ("up", vec!["-d".to_string()])
         };
 
-        let args = ComposeCommand::build_args(&compose_path, command, &extra_args)?;
+        let extra_args_refs: Vec<&str> = extra_args.iter().map(|s| s.as_str()).collect();
+        let args = ComposeCommand::build_args(&compose_path, command, &extra_args_refs)?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         // Use visible streaming for docker-compose up to show build progress
         stream_command_visible(self.executable, &args_refs).map_err(|e| {
             VmError::Internal(format!(
                 "Failed to start container using docker-compose: {e}"
             ))
-        })
+        })?;
+
+        // If we only created the dev container, ensure existing service containers are running
+        if !container_exists && !existing_services.is_empty() {
+            use vm_core::command_stream::stream_command;
+            for service_name in &existing_services {
+                let is_running =
+                    DockerOps::is_container_running(Some(self.executable), service_name)
+                        .unwrap_or(false);
+
+                if is_running {
+                    continue;
+                }
+
+                info!("Starting existing service container: {}", service_name);
+                if let Err(e) = stream_command(self.executable, &["start", service_name]) {
+                    warn!("Failed to start service container {}: {}", service_name, e);
+                }
+            }
+        }
+
+        Ok(())
     }
 
     #[allow(dead_code)]
