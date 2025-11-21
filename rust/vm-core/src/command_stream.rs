@@ -1,6 +1,7 @@
 // Standard library
 use std::ffi::OsStr;
 use std::io::{BufRead, BufReader};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -32,7 +33,6 @@ fn with_buildkit<A: AsRef<OsStr>>(command: &str, args: &[A]) -> duct::Expression
 
     cmd_builder
 }
-
 
 /// The original simple command streamer for backward compatibility.
 pub fn stream_command<A: AsRef<OsStr>>(command: &str, args: &[A]) -> Result<()> {
@@ -111,8 +111,6 @@ pub fn stream_command_with_progress_and_timeout<A: AsRef<OsStr>>(
         }
         Some(secs) => {
             // With timeout - stream output in real-time using a thread
-            use std::sync::{Arc, Mutex};
-
             let start = std::time::Instant::now();
             let timeout = Duration::from_secs(secs);
 
@@ -146,13 +144,7 @@ pub fn stream_command_with_progress_and_timeout<A: AsRef<OsStr>>(
                     }
 
                     // Parse/log the line
-                    if let Ok(mut p) = parser_clone.lock() {
-                        if let Some(ref mut parser) = *p {
-                            parser.parse_line(&line);
-                        } else {
-                            info!("{}", line);
-                        }
-                    }
+                    parse_or_log_line(&parser_clone, &line);
                 }
 
                 Ok::<(), std::io::Error>(())
@@ -161,20 +153,7 @@ pub fn stream_command_with_progress_and_timeout<A: AsRef<OsStr>>(
             // Monitor for timeout
             loop {
                 if start.elapsed() >= timeout {
-                    // Show last 50 lines for context
-                    let error_context: Vec<String> = if let Ok(buf) = output_lines.lock() {
-                        buf.iter()
-                            .rev()
-                            .take(50)
-                            .cloned()
-                            .collect::<Vec<_>>()
-                            .into_iter()
-                            .rev()
-                            .collect()
-                    } else {
-                        Vec::new()
-                    };
-
+                    let error_context = get_last_n_lines(&output_lines, 50);
                     return Err(VmError::Timeout(format!(
                         "Command timed out after {}s: {}\n\nOutput (last 50 lines):\n{}\n\nTo debug, try running manually:\n  {}",
                         secs, full_command, error_context.join("\n"), full_command
@@ -186,28 +165,12 @@ pub fn stream_command_with_progress_and_timeout<A: AsRef<OsStr>>(
                     match handle.join() {
                         Ok(Ok(())) => {
                             // Success - finish parser
-                            if let Ok(mut p) = parser_arc.lock() {
-                                if let Some(parser) = p.take() {
-                                    parser.finish();
-                                }
-                            }
+                            finish_parser(&parser_arc);
                             return Ok(());
                         }
                         Ok(Err(_e)) => {
                             // IO error - show context
-                            let error_context: Vec<String> = if let Ok(buf) = output_lines.lock() {
-                                buf.iter()
-                                    .rev()
-                                    .take(50)
-                                    .cloned()
-                                    .collect::<Vec<_>>()
-                                    .into_iter()
-                                    .rev()
-                                    .collect()
-                            } else {
-                                Vec::new()
-                            };
-
+                            let error_context = get_last_n_lines(&output_lines, 50);
                             return Err(VmError::Internal(format!(
                                 "Command failed: {}\n\nOutput (last 50 lines):\n{}",
                                 full_command,
@@ -232,4 +195,43 @@ pub fn stream_command_with_progress_and_timeout<A: AsRef<OsStr>>(
 /// Checks if a command-line tool is available in the system's PATH.
 pub fn is_tool_installed(tool_name: &str) -> bool {
     which(tool_name).is_ok()
+}
+
+/// Helper to parse or log a line based on parser availability
+fn parse_or_log_line(parser_arc: &Arc<Mutex<Option<Box<dyn ProgressParser>>>>, line: &str) {
+    let Ok(mut p) = parser_arc.lock() else {
+        return;
+    };
+
+    match p.as_mut() {
+        Some(parser) => parser.parse_line(line),
+        None => info!("{}", line),
+    }
+}
+
+/// Helper to finish the parser if available
+fn finish_parser(parser_arc: &Arc<Mutex<Option<Box<dyn ProgressParser>>>>) {
+    let Ok(mut p) = parser_arc.lock() else {
+        return;
+    };
+
+    if let Some(parser) = p.take() {
+        parser.finish();
+    }
+}
+
+/// Helper to get the last N lines from the output buffer
+fn get_last_n_lines(output_lines: &Arc<Mutex<Vec<String>>>, n: usize) -> Vec<String> {
+    let Ok(buf) = output_lines.lock() else {
+        return Vec::new();
+    };
+
+    buf.iter()
+        .rev()
+        .take(n)
+        .cloned()
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect()
 }
