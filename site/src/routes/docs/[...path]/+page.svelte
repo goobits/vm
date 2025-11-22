@@ -1,72 +1,27 @@
 <script lang="ts">
+	import { DocsLayout } from '@goobits/docs-engine/components';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
+
+	// Get navigation from layout data
+	const navigation = $derived((data as any).navigation || []);
 </script>
 
 <svelte:head>
-	<title>{data.title} | VM Tool Documentation</title>
+	<title>{data.title} | VM Documentation</title>
+	{#if data.frontmatter?.description}
+		<meta name="description" content={data.frontmatter.description} />
+	{/if}
 </svelte:head>
 
-<article class="prose">
-	{@html data.content}
-</article>
-
-<style>
-	.prose {
-		max-width: 65ch;
-		margin: 2rem auto;
-		padding: 0 2rem;
-		font-family: system-ui, -apple-system, sans-serif;
-		line-height: 1.6;
-		color: #333;
-	}
-
-	.prose :global(h1) {
-		font-size: 2.5rem;
-		margin-top: 0;
-		margin-bottom: 1rem;
-	}
-
-	.prose :global(h2) {
-		font-size: 1.8rem;
-		margin-top: 2rem;
-		margin-bottom: 1rem;
-		border-bottom: 1px solid #eee;
-		padding-bottom: 0.3rem;
-	}
-
-	.prose :global(h3) {
-		font-size: 1.4rem;
-		margin-top: 1.5rem;
-		margin-bottom: 0.8rem;
-	}
-
-	.prose :global(code) {
-		background: #f5f5f5;
-		padding: 0.2em 0.4em;
-		border-radius: 3px;
-		font-size: 0.9em;
-	}
-
-	.prose :global(pre) {
-		background: #f5f5f5;
-		padding: 1rem;
-		border-radius: 5px;
-		overflow-x: auto;
-	}
-
-	.prose :global(pre code) {
-		background: none;
-		padding: 0;
-	}
-
-	.prose :global(a) {
-		color: #0066cc;
-		text-decoration: none;
-	}
-
-	.prose :global(a:hover) {
-		text-decoration: underline;
-	}
-</style>
+<DocsLayout
+	content={data.content}
+	title={data.title}
+	{navigation}
+	currentPath={data.currentPath}
+	theme="dracula"
+	footer={{
+		text: 'VM Documentation'
+	}}
+/>

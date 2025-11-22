@@ -1,47 +1,78 @@
 import { error } from '@sveltejs/kit';
 import { readFile, stat } from 'fs/promises';
 import { join } from 'path';
-import { marked } from 'marked';
 import type { PageServerLoad } from './$types';
+import { extractFrontmatter } from '@goobits/docs-engine/utils';
+import { marked } from 'marked';
 
-const DOCS_DIR = join(process.cwd(), '..', 'docs');
+const DOCS_ROOT = join(process.cwd(), '..', 'docs');
 
-// Configure marked for better rendering
-// Note: Full docs-engine plugin support (mermaid, callouts, tabs) requires
-// build-time processing with mdsvex. For now, we use runtime markdown parsing.
+// Configure marked for GFM
 marked.setOptions({
 	gfm: true,
-	breaks: false,
-	pedantic: false
+	breaks: false
 });
 
 export const load: PageServerLoad = async ({ params }) => {
 	try {
 		// Handle root path and normalize
-		const pathParts = params.path ? params.path.split('/').filter(Boolean) : [];
+		const pathParts = params.path ? params.path.split('/').filter(Boolean) : ['README'];
 
 		// Try with .md extension
-		const filePath = join(DOCS_DIR, ...pathParts) + '.md';
+		let filePath = join(DOCS_ROOT, ...pathParts) + '.md';
+		let foundFile = false;
 
 		// Check if file exists
-		const stats = await stat(filePath);
+		try {
+			const stats = await stat(filePath);
+			if (stats.isFile()) {
+				foundFile = true;
+			}
+		} catch {
+			// File doesn't exist, try index.md
+		}
 
-		if (!stats.isFile()) {
-			error(404, 'Not found');
+		if (!foundFile) {
+			// Try index.md in directory
+			const indexPath = join(DOCS_ROOT, ...pathParts, 'index.md');
+			try {
+				const stats = await stat(indexPath);
+				if (stats.isFile()) {
+					filePath = indexPath;
+					foundFile = true;
+				}
+			} catch {
+				// Not found
+			}
+		}
+
+		if (!foundFile) {
+			error(404, 'Documentation page not found');
 		}
 
 		// Read markdown content
 		const markdownContent = await readFile(filePath, 'utf-8');
 
-		// Parse markdown to HTML
-		const htmlContent = marked(markdownContent);
+		// Extract frontmatter and body (note: returns 'body' not 'content')
+		const { frontmatter, body } = extractFrontmatter(markdownContent);
+
+		// Convert markdown to HTML
+		const content = await marked(body || markdownContent);
+
+		// Build current path for navigation highlighting
+		const currentPath = '/docs/' + (params.path || '');
 
 		return {
-			content: htmlContent,
+			content,
+			title: frontmatter?.title || extractTitle(body || markdownContent),
 			path: params.path || 'index',
-			title: extractTitle(markdownContent)
+			currentPath,
+			frontmatter
 		};
 	} catch (err) {
+		if ((err as any)?.status === 404) {
+			throw err;
+		}
 		console.error('Error loading docs:', err);
 		error(404, 'Documentation page not found');
 	}
