@@ -12,7 +12,7 @@ use tracing::debug;
 use crate::error::{VmError, VmResult};
 use crate::state::{count_active_ssh_sessions, VmState};
 use vm_cli::msg;
-use vm_config::{config::VmConfig, detect_worktrees};
+use vm_config::{config::VmConfig, detect_worktrees, ConfigLoader};
 use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
 use vm_provider::{Provider, ProviderContext};
@@ -148,7 +148,30 @@ fn connect_ssh(
         return handle_exec(provider, container, cmd, config);
     }
 
-    let relative_path = path.unwrap_or_else(|| PathBuf::from("."));
+    // Determine the relative path:
+    // 1. If user explicitly provided --path, use that
+    // 2. Otherwise, auto-detect based on current directory relative to vm.yaml location
+    // 3. Fall back to "." if detection fails
+    let relative_path = match path {
+        Some(p) => p,
+        None => {
+            // Auto-detect: calculate relative path from config location to current directory
+            let loader = ConfigLoader::new();
+            match loader.relative_path_from_config() {
+                Ok(Some(detected_path)) => {
+                    debug!(
+                        "Auto-detected relative path from config: '{}'",
+                        detected_path.display()
+                    );
+                    detected_path
+                }
+                Ok(None) | Err(_) => {
+                    debug!("Could not detect relative path, defaulting to workspace root");
+                    PathBuf::from(".")
+                }
+            }
+        }
+    };
     let workspace_path = config
         .project
         .as_ref()

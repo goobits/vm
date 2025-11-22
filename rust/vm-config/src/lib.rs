@@ -68,6 +68,9 @@ pub use global_config::GlobalConfig;
 pub use cli::init_config_file;
 pub use detector::detect_worktrees;
 
+// Re-export ConfigLoader for relative path detection
+pub use loader::ConfigLoader;
+
 use std::path::PathBuf;
 use vm_core::error::Result;
 use vm_core::error::VmError;
