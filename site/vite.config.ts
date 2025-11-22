@@ -11,8 +11,8 @@ export default defineConfig(({ mode }) => {
 	return {
 		plugins: [sveltekit()],
 		optimizeDeps: {
-			// Exclude docs-engine components from pre-bundling since they use $lib alias
-			exclude: ['@goobits/docs-engine']
+			// Exclude packages that use $lib alias from pre-bundling
+			exclude: ['@goobits/docs-engine', '@goobits/themes']
 		},
 		server: {
 			port,

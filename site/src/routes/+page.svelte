@@ -1,8 +1,12 @@
 <script lang="ts">
+	import { ThemeToggle } from '@goobits/themes/svelte';
 </script>
 
 <div class="container">
-	<h1>🚀 VM Tool Documentation</h1>
+	<header class="header">
+		<h1>VM Tool Documentation</h1>
+		<ThemeToggle />
+	</header>
 	<p>Create development environments that automatically configure themselves.</p>
 
 	<nav class="docs-nav">
@@ -34,20 +38,27 @@
 		font-family: system-ui, -apple-system, sans-serif;
 	}
 
+	.header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 0.5rem;
+	}
+
 	h1 {
 		font-size: 3rem;
-		margin-bottom: 0.5rem;
-		color: #1a1a1a;
+		margin: 0;
+		color: var(--color-text);
 	}
 
 	p {
 		font-size: 1.2rem;
-		color: #666;
+		color: var(--color-text-secondary);
 		margin-bottom: 3rem;
 	}
 
 	.docs-nav {
-		background: #f5f5f5;
+		background: var(--color-surface);
 		padding: 2rem;
 		border-radius: 8px;
 	}
@@ -55,6 +66,7 @@
 	.docs-nav h2 {
 		margin-top: 0;
 		font-size: 1.5rem;
+		color: var(--color-text);
 	}
 
 	.docs-nav ul {
@@ -68,7 +80,7 @@
 	}
 
 	.docs-nav a {
-		color: #0066cc;
+		color: var(--color-primary);
 		text-decoration: none;
 		font-size: 1.1rem;
 	}
