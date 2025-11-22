@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.5.2] - 2025-11-21
+
+### Added
+- Centralized validation module in vm-core for server address validation (RFC 1123 hostnames, IPv4/IPv6, injection prevention)
+- Fast exit in `vm create` when container already exists (unless --force)
+- Container reuse for PostgreSQL and Redis services - avoids recreating existing containers
+- Mismatch warnings when existing service containers have different port/image config
+
+### Fixed
+- Zsh shell history permission errors when directory was created by root
+- Missing aliases (claudeyolo, geminiyolo, codexyolo) in zsh shells - now embedded in templates
+
+### Changed
+- Security tests in vm-package-server now use shared validation module (DRY refactor)
+- Improved preset loading in provisioner with proper PresetDetector fallback
+- Better test isolation with preset cache clearing between tests
+
+## [4.5.1] - 2025-10-09
+
+### Fixed
+- Container name borrowing in lifecycle operations
+
 ## [4.5.0] - 2025-01-20
 
 ### Added
@@ -110,7 +132,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Earlier releases. See git history for details.
 
-[Unreleased]: https://github.com/goobits/vm/compare/v4.5.0...HEAD
+[Unreleased]: https://github.com/goobits/vm/compare/v4.5.2...HEAD
+[4.5.2]: https://github.com/goobits/vm/compare/v4.5.1...v4.5.2
+[4.5.1]: https://github.com/goobits/vm/compare/v4.5.0...v4.5.1
 [4.5.0]: https://github.com/goobits/vm/compare/v4.4.3...v4.5.0
 [4.4.3]: https://github.com/goobits/vm/compare/v4.4.2...v4.4.3
 [4.4.2]: https://github.com/goobits/vm/compare/v4.4.1...v4.4.2
