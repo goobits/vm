@@ -6,6 +6,7 @@ use std::process::Command;
 
 // External crates
 use tera::Context as TeraContext;
+use vm_core::command_stream::stream_command_visible;
 use vm_core::error::{Result, VmError};
 use vm_core::{vm_dbg, vm_info};
 
@@ -230,20 +231,17 @@ impl<'a> BuildOperations<'a> {
                         )));
                     }
 
-                    let load_output = Command::new("docker")
-                        .args(["load", "-i", Self::path_to_string(&image_file_path)?])
-                        .output()
-                        .map_err(|e| {
-                            VmError::Internal(format!("Failed to load Docker image: {}", e))
-                        })?;
-
-                    if !load_output.status.success() {
-                        let stderr = String::from_utf8_lossy(&load_output.stderr);
-                        return Err(VmError::Internal(format!(
+                    // Stream output so user sees docker load progress
+                    stream_command_visible(
+                        "docker",
+                        &["load", "-i", Self::path_to_string(&image_file_path)?],
+                    )
+                    .map_err(|e| {
+                        VmError::Internal(format!(
                             "Failed to load Docker image from snapshot: {}",
-                            stderr
-                        )));
-                    }
+                            e
+                        ))
+                    })?;
 
                     vm_println!("  ✓ Image loaded successfully");
                 }
