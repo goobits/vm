@@ -5,25 +5,28 @@ use super::metadata::SnapshotMetadata;
 use crate::error::{VmError, VmResult};
 use futures::stream::{self, StreamExt};
 use std::path::Path;
+use std::process::Stdio;
 use vm_core::{vm_println, vm_success, vm_warning};
 
-/// Execute docker command and return output
-async fn execute_docker(args: &[&str]) -> VmResult<String> {
-    let output = tokio::process::Command::new("docker")
+/// Execute docker command with streaming output (for long-running commands like docker load)
+/// Output is streamed directly to the terminal so users see "Loaded image: ..." messages
+async fn execute_docker_streaming(args: &[&str]) -> VmResult<()> {
+    let status = tokio::process::Command::new("docker")
         .args(args)
-        .output()
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
         .await
         .map_err(|e| VmError::general(e, "Failed to execute docker command"))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+    if !status.success() {
         return Err(VmError::general(
             std::io::Error::new(std::io::ErrorKind::Other, "Docker command failed"),
-            format!("Command failed: {}", stderr),
+            format!("Command 'docker {}' failed", args.join(" ")),
         ));
     }
 
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    Ok(())
 }
 
 /// Handle snapshot import
@@ -191,8 +194,8 @@ pub async fn handle_import(
                         ),
                     )
                 })?;
-                let load_args = ["load", "-i", image_path_str];
-                execute_docker(&load_args).await?;
+                // Stream output so users see "Loaded image: ..." progress
+                execute_docker_streaming(&["load", "-i", image_path_str]).await?;
                 Ok(())
             }
         });

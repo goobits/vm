@@ -6,6 +6,7 @@ use crate::error::{VmError, VmResult};
 use chrono::Utc;
 use futures::stream::{self, StreamExt};
 use rayon::prelude::*;
+use std::process::Stdio;
 use vm_config::AppConfig;
 use walkdir::WalkDir;
 
@@ -30,7 +31,7 @@ async fn execute_docker_compose(args: &[&str], project_dir: &std::path::Path) ->
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-/// Execute docker command and return output
+/// Execute docker command and return output (for commands that need captured output)
 async fn execute_docker(args: &[&str]) -> VmResult<String> {
     let output = tokio::process::Command::new("docker")
         .args(args)
@@ -47,6 +48,27 @@ async fn execute_docker(args: &[&str]) -> VmResult<String> {
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Execute docker command with streaming output (for long-running commands)
+/// Output is streamed directly to the terminal so users see progress
+async fn execute_docker_streaming(args: &[&str]) -> VmResult<()> {
+    let status = tokio::process::Command::new("docker")
+        .args(args)
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+        .await
+        .map_err(|e| VmError::general(e, "Failed to execute docker command"))?;
+
+    if !status.success() {
+        return Err(VmError::general(
+            std::io::Error::new(std::io::ErrorKind::Other, "Docker command failed"),
+            format!("Command 'docker {}' failed", args.join(" ")),
+        ));
+    }
+
+    Ok(())
 }
 
 /// Get git repository information
@@ -544,7 +566,7 @@ async fn handle_create_from_dockerfile(
         .await
         .map_err(|e| VmError::filesystem(e, images_dir.to_string_lossy(), "create_dir_all"))?;
 
-    // Save the image to tar file
+    // Save the image to tar file (streaming output so user sees progress)
     vm_core::vm_println!("Saving snapshot to disk...");
     let image_file = "base.tar";
     let image_path = images_dir.join(image_file);
@@ -558,7 +580,7 @@ async fn handle_create_from_dockerfile(
         )
     })?;
 
-    execute_docker(&["save", &image_tag, "-o", image_path_str]).await?;
+    execute_docker_streaming(&["save", &image_tag, "-o", image_path_str]).await?;
 
     // Get image digest
     let digest_output = execute_docker(&["inspect", "--format={{.Id}}", &image_tag]).await?;

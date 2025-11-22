@@ -5,6 +5,7 @@ use super::metadata::SnapshotMetadata;
 use crate::error::{VmError, VmResult};
 use futures::stream::{self, StreamExt};
 use std::path::Path;
+use std::process::Stdio;
 use vm_config::AppConfig;
 
 /// Execute docker compose command
@@ -27,10 +28,31 @@ async fn execute_docker_compose(args: &[&str], project_dir: &Path) -> VmResult<(
     Ok(())
 }
 
-/// Execute docker command
+/// Execute docker command (for quick commands like volume create/rm)
 async fn execute_docker(args: &[&str]) -> VmResult<()> {
     let status = tokio::process::Command::new("docker")
         .args(args)
+        .status()
+        .await
+        .map_err(|e| VmError::general(e, "Failed to execute docker command"))?;
+
+    if !status.success() {
+        return Err(VmError::general(
+            std::io::Error::new(std::io::ErrorKind::Other, "Docker command failed"),
+            format!("Command 'docker {}' failed", args.join(" ")),
+        ));
+    }
+
+    Ok(())
+}
+
+/// Execute docker command with streaming output (for long-running commands)
+/// Output is streamed directly to the terminal so users see progress
+async fn execute_docker_streaming(args: &[&str]) -> VmResult<()> {
+    let status = tokio::process::Command::new("docker")
+        .args(args)
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
         .status()
         .await
         .map_err(|e| VmError::general(e, "Failed to execute docker command"))?;
@@ -156,7 +178,8 @@ pub async fn handle_restore(
                     &restore_cmd,
                 ];
 
-                execute_docker(&run_args).await?;
+                // Stream output so users see decompression progress
+                execute_docker_streaming(&run_args).await?;
                 Ok::<_, VmError>(())
             }
         });
@@ -197,7 +220,8 @@ pub async fn handle_restore(
                         ),
                     )
                 })?;
-                execute_docker(&["load", "-i", image_path_str]).await?;
+                // Stream output so users see "Loaded image: ..." progress
+                execute_docker_streaming(&["load", "-i", image_path_str]).await?;
                 Ok::<_, VmError>(())
             }
         });
