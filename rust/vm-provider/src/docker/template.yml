@@ -54,24 +54,24 @@ services:
       # Shell history persistence (survives container recreation)
       - {{ project_name }}_shell_history:/home/{{ project_user }}/.shell_history:rw
       {% if claude_sync_enabled %}
-      # Claude AI data persistence
-      - {{ home_dir }}/.claude/vms/{{ project_name }}:/home/{{ project_user }}/.claude:rw
+      # Claude AI data persistence (stored in ~/.vm/ai-sync/ to avoid polluting ~/.claude/)
+      - {{ home_dir }}/.vm/ai-sync/claude/{{ project_name }}:/home/{{ project_user }}/.claude:rw
       {% endif %}
       {% if gemini_sync_enabled %}
       # Gemini CLI data persistence
-      - {{ home_dir }}/.gemini/vms/{{ project_name }}:/home/{{ project_user }}/.gemini:rw
+      - {{ home_dir }}/.vm/ai-sync/gemini/{{ project_name }}:/home/{{ project_user }}/.gemini:rw
       {% endif %}
       {% if codex_sync_enabled %}
       # OpenAI Codex data persistence
-      - {{ home_dir }}/.codex/vms/{{ project_name }}:/home/{{ project_user }}/.codex:rw
+      - {{ home_dir }}/.vm/ai-sync/codex/{{ project_name }}:/home/{{ project_user }}/.codex:rw
       {% endif %}
       {% if cursor_sync_enabled %}
       # Cursor AI data persistence
-      - {{ home_dir }}/.cursor/vms/{{ project_name }}:/home/{{ project_user }}/.cursor:rw
+      - {{ home_dir }}/.vm/ai-sync/cursor/{{ project_name }}:/home/{{ project_user }}/.cursor:rw
       {% endif %}
       {% if aider_sync_enabled %}
       # Aider AI data persistence
-      - {{ home_dir }}/.aider/vms/{{ project_name }}:/home/{{ project_user }}/.aider:rw
+      - {{ home_dir }}/.vm/ai-sync/aider/{{ project_name }}:/home/{{ project_user }}/.aider:rw
       {% endif %}
       {% if is_macos %}
       # macOS specific volume for audio
