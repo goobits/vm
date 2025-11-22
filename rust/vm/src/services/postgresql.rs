@@ -1,7 +1,7 @@
 //! PostgreSQL Service Implementation
 
 use anyhow::Result;
-use tracing::warn;
+use tracing::{info, warn};
 use vm_config::GlobalConfig;
 
 use super::{get_or_generate_password, ManagedService};
@@ -33,6 +33,48 @@ impl ManagedService for PostgresqlService {
         tokio::fs::create_dir_all(&data_dir).await?;
 
         let password = get_or_generate_password("postgresql").await?;
+
+        // Reuse existing container if present
+        if container_exists(container_name).await? {
+            // If configuration mismatches, stop and recreate to avoid conflicts
+            if let Some(reason) =
+                check_service_mismatch(container_name, "postgres", settings.port, &settings.version)
+                    .await?
+            {
+                warn!(
+                    "Existing PostgreSQL container '{}' mismatches config ({}). Recreating it...",
+                    container_name, reason
+                );
+                let _ = tokio::process::Command::new("docker")
+                    .args(["rm", "-f", container_name])
+                    .status()
+                    .await;
+            } else {
+                if container_running(container_name).await? {
+                    info!(
+                        "PostgreSQL service already running ({}) - reusing",
+                        container_name
+                    );
+                    return Ok(());
+                }
+
+                info!(
+                    "Starting existing PostgreSQL service container: {}",
+                    container_name
+                );
+                let status = tokio::process::Command::new("docker")
+                    .arg("start")
+                    .arg(container_name)
+                    .status()
+                    .await?;
+                if status.success() {
+                    return Ok(());
+                } else {
+                    warn!("Failed to start existing PostgreSQL container, recreating it...");
+                    // fall through to recreate
+                }
+            }
+        }
 
         let mut cmd = tokio::process::Command::new("docker");
         cmd.arg("run")
@@ -90,4 +132,83 @@ impl ManagedService for PostgresqlService {
     fn get_port(&self, global_config: &GlobalConfig) -> u16 {
         global_config.services.postgresql.port
     }
+}
+
+// Helper: check if a container exists
+async fn container_exists(name: &str) -> Result<bool> {
+    let output = tokio::process::Command::new("docker")
+        .args([
+            "ps",
+            "-a",
+            "--format",
+            "{{.Names}}",
+            "--filter",
+            &format!("name=^{name}$"),
+        ])
+        .output()
+        .await?;
+    let names = String::from_utf8_lossy(&output.stdout);
+    Ok(names.lines().any(|n| n.trim() == name))
+}
+
+// Helper: check if container is running
+async fn container_running(name: &str) -> Result<bool> {
+    let output = tokio::process::Command::new("docker")
+        .args(["inspect", "-f", "{{.State.Running}}", name])
+        .output()
+        .await?;
+    if !output.status.success() {
+        return Ok(false);
+    }
+    let state = String::from_utf8_lossy(&output.stdout);
+    Ok(state.trim() == "true")
+}
+
+// Return Some(reason) when existing container doesn't match desired config (port or image tag)
+async fn check_service_mismatch(
+    name: &str,
+    image_base: &str,
+    desired_port: u16,
+    desired_version: &str,
+) -> Result<Option<String>> {
+    let mut reasons = Vec::new();
+
+    // Check port mapping
+    if let Ok(output) = tokio::process::Command::new("docker")
+        .args(["inspect", "-f", "{{json .NetworkSettings.Ports}}", name])
+        .output()
+        .await
+    {
+        if output.status.success() {
+            let ports = String::from_utf8_lossy(&output.stdout);
+            if !ports.contains(&format!("{desired_port}/tcp")) {
+                reasons.push(format!(
+                    "ports {} vs desired {}/tcp",
+                    ports.trim(),
+                    desired_port
+                ));
+            }
+        }
+    }
+
+    // Check image tag
+    if let Ok(output) = tokio::process::Command::new("docker")
+        .args(["inspect", "-f", "{{.Config.Image}}", name])
+        .output()
+        .await
+    {
+        if output.status.success() {
+            let image = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let desired_image = format!("{image_base}:{desired_version}");
+            if image != desired_image {
+                reasons.push(format!("image {} vs desired {}", image, desired_image));
+            }
+        }
+    }
+
+    Ok(if reasons.is_empty() {
+        None
+    } else {
+        Some(reasons.join("; "))
+    })
 }
