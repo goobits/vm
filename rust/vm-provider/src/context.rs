@@ -17,6 +17,8 @@ pub struct ProviderContext {
     pub skip_provisioning: bool,
     /// Reuse existing service containers instead of failing
     pub preserve_services: bool,
+    /// Using a pre-provisioned snapshot as base image
+    pub is_snapshot: bool,
 }
 
 impl ProviderContext {
@@ -48,6 +50,12 @@ impl ProviderContext {
     /// Set whether to preserve/reuse existing service containers
     pub fn preserve_services(mut self, preserve: bool) -> Self {
         self.preserve_services = preserve;
+        self
+    }
+
+    /// Set whether using a pre-provisioned snapshot as base image
+    pub fn with_snapshot(mut self, is_snapshot: bool) -> Self {
+        self.is_snapshot = is_snapshot;
         self
     }
 

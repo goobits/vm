@@ -52,17 +52,23 @@ impl<'a> LifecycleOperations<'a> {
 
         // Enable timing instrumentation if ANSIBLE_PROFILE is set
         let enable_profiling = std::env::var("ANSIBLE_PROFILE").is_ok();
+
+        // Pass snapshot status to Ansible to skip redundant base system tasks
+        let extra_vars = format!("--extra-vars 'base_preprovisioned={}'", context.is_snapshot);
+
         let ansible_cmd = if enable_profiling {
             format!(
-                "ANSIBLE_CALLBACKS_ENABLED=profile_tasks ansible-playbook -i localhost, -c local {} {}",
+                "ANSIBLE_CALLBACKS_ENABLED=profile_tasks ansible-playbook -i localhost, -c local {} {} {}",
                 ANSIBLE_PLAYBOOK_PATH,
-                context.ansible_verbosity()
+                context.ansible_verbosity(),
+                extra_vars
             )
         } else {
             format!(
-                "ansible-playbook -i localhost, -c local {} {}",
+                "ansible-playbook -i localhost, -c local {} {} {}",
                 ANSIBLE_PLAYBOOK_PATH,
-                context.ansible_verbosity()
+                context.ansible_verbosity(),
+                extra_vars
             )
         };
 

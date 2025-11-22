@@ -100,13 +100,16 @@ impl<'a> BuildOperations<'a> {
 
     /// Prepare build context with embedded resources and generated Dockerfile
     ///
-    /// Returns a tuple of (build_context_path, base_image_name)
-    pub fn prepare_build_context(&self) -> Result<(PathBuf, String)> {
+    /// Returns a tuple of (build_context_path, base_image_name, is_snapshot)
+    pub fn prepare_build_context(&self) -> Result<(PathBuf, String, bool)> {
         use super::command::DockerOps;
         use vm_core::vm_info;
 
         // Get box configuration
         let box_config = self.get_box_config()?;
+
+        // Track if we're using a pre-provisioned snapshot
+        let is_snapshot = matches!(&box_config, BoxConfig::Snapshot(_));
 
         // Handle different box types
         let base_image = match &box_config {
@@ -319,7 +322,7 @@ Thumbs.db
         let worktree_script_path = build_context.join("vm-worktree.sh");
         fs::write(&worktree_script_path, worktree_script)?;
 
-        Ok((build_context, base_image))
+        Ok((build_context, base_image, is_snapshot))
     }
 
     /// Generate Dockerfile from template with build args

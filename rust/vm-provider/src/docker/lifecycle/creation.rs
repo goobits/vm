@@ -123,7 +123,7 @@ impl<'a> LifecycleOperations<'a> {
 
         // Step 2: Prepare build context with embedded resources
         let build_ops = BuildOperations::new(&modified_config, self.temp_dir);
-        let (build_context, base_image) = build_ops.prepare_build_context()?;
+        let (build_context, base_image, is_snapshot) = build_ops.prepare_build_context()?;
 
         // Step 2.5: Ensure Docker networks exist (create them if needed)
         if let Some(networking) = &modified_config.networking {
@@ -210,10 +210,13 @@ impl<'a> LifecycleOperations<'a> {
             })?;
         }
 
-        // Provision the container
+        // Provision the container with snapshot awareness
+        let provision_context = context.clone().with_snapshot(is_snapshot);
         match instance_name {
-            Some(name) => self.provision_container_with_instance_and_context(name, context)?,
-            None => self.provision_container_with_context(context)?,
+            Some(name) => {
+                self.provision_container_with_instance_and_context(name, &provision_context)?
+            }
+            None => self.provision_container_with_context(&provision_context)?,
         }
 
         Ok(())

@@ -16,6 +16,9 @@
       default_workspace: '/workspace'
       # Use global temp directory to avoid user permission issues
       ansible_remote_tmp: '/tmp'
+      # Snapshot mode - skip base system tasks when using pre-provisioned snapshot
+      # This variable is passed via --extra-vars from vm tool
+      base_preprovisioned: "{{ base_preprovisioned | default(false) | bool }}"
 
   # Load and process configuration
   pre_tasks:
@@ -223,6 +226,7 @@
         delay: 10
         register: locale_install
         until: locale_install is succeeded
+        when: not base_preprovisioned
 
       - name: Install base system packages
         apt:
@@ -247,12 +251,14 @@
         delay: 10
         register: base_packages_install
         until: base_packages_install is succeeded
+        when: not base_preprovisioned
 
-      # Locale configuration
+      # Locale configuration (skip if pre-provisioned in snapshot)
       - name: Generate en_US.UTF-8 locale
         locale_gen:
             name: en_US.UTF-8
             state: present
+        when: not base_preprovisioned
 
       - name: Set system locale
         copy:
@@ -264,14 +270,18 @@
                 LC_CTYPE=en_US.UTF-8
             mode: '0644'
         no_log: true
+        when: not base_preprovisioned
 
       # Timezone configuration (unified method for both VM and container)
+      # Skip if pre-provisioned - timezone is set in Dockerfile
       - name: Set system timezone
         shell: |
             ln -sf /usr/share/zoneinfo/{{ project_config.vm.timezone | default('UTC') }} /etc/localtime
             echo "{{ project_config.vm.timezone | default('UTC') }}" > /etc/timezone
+        when: not base_preprovisioned
 
       # Setup supervisor for Docker containers (AFTER it's installed)
+      # Skip if pre-provisioned - supervisor is configured in snapshot
       - name: Setup supervisor for Docker containers
         block:
           - name: Create supervisor directories with proper permissions
@@ -310,7 +320,7 @@
 
                 [include]
                 files = /etc/supervisor/conf.d/*.conf
-        when: is_docker_container
+        when: is_docker_container and not base_preprovisioned
 
       # Security setup - Configure rules first, enable last
       - name: Allow SSH (critical - must be first)
@@ -372,12 +382,13 @@
         become_user: '{{ project_user }}'
         when: "{{ nodejs_required and not nvm_present.stat.exists | bool }}"
 
-      # Change default shell to zsh
+      # Change default shell to zsh (skip if pre-provisioned in snapshot)
       - name: Change user shell to zsh
         user:
             name: '{{ project_user }}'
             shell: /usr/bin/zsh
         ignore_errors: yes
+        when: not base_preprovisioned
 
       # Fast provisioning: Use pre-baked template with sed substitution (10x faster)
       # Enable with VM_FAST_PROVISION=1 environment variable
@@ -545,6 +556,7 @@
           executable: pip3
         become_user: '{{ project_user }}'
         ignore_errors: yes
+        when: not base_preprovisioned
 
 
       - name: Install pnpm via npm as fallback
