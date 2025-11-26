@@ -1,36 +1,60 @@
 {
+	"cleanupPeriodDays": 30,
+	"env": {
+		"DISABLE_ERROR_REPORTING": "true",
+		"DISABLE_TELEMETRY": "true",
+		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "true",
+		"BASH_DEFAULT_TIMEOUT_MS": "30000",
+		"MCP_TOOL_TIMEOUT": "300000"
+	},
+	"includeCoAuthoredBy": true,
 	"permissions": {
 		"allow": [
 			"Read(/workspace/**)",
 			"Write(/workspace/**)",
 			"Edit(/workspace/**)",
 			"MultiEdit(/workspace/**)",
-			"Bash",
 			"WebSearch",
 			"WebFetch",
 			"Grep(/workspace/**)",
 			"Glob(/workspace/**)",
-			"LS(/workspace/**)"
+			"LS(/workspace/**)",
+			"Bash(git:*)",
+			"Bash(pnpm:*)",
+			"Bash(npm:*)",
+			"Bash(node:*)",
+			"Bash(npx:*)",
+			"Bash(ls:*)",
+			"Bash(pwd)",
+			"Bash(which:*)",
+			"Bash(cat:*)",
+			"Bash(head:*)",
+			"Bash(tail:*)",
+			"Bash(mkdir:*)",
+			"Bash(cp:*)",
+			"Bash(mv:*)",
+			"Bash(rm:*)"
 		],
 		"deny": [
+			"Bash(rm -rf /*)",
+			"Bash(git push --force:*)",
+			"Bash(git reset:*)",
+			"Bash(git revert:*)",
+			"Bash(git stash:*)",
+			"Bash(git checkout -- :*)",
+			"Bash(git checkout .:*)",
+			"Bash(git restore:*)",
+			"Bash(git clean:*)",
+			"Bash(git cherry-pick:*)",
+			"Bash(git rebase:*)",
 			"Bash(reboot)",
-			"Bash(shutdown *)",
+			"Bash(shutdown:*)",
 			"Bash(poweroff)",
 			"Bash(halt)",
-			"Bash(init 0)",
-			"Bash(init 6)",
-			"Bash(systemctl reboot)",
-			"Bash(systemctl poweroff)",
-			"Bash(systemctl halt)"
+			"Bash(init:*)",
+			"Bash(systemctl reboot:*)",
+			"Bash(systemctl poweroff:*)",
+			"Bash(systemctl halt:*)"
 		]
-	},
-	"includeCoAuthoredBy": false,
-	"cleanupPeriodDays": 30,
-	"env": {
-		"DISABLE_ERROR_REPORTING": "false",
-		"DISABLE_TELEMETRY": "false",
-		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "false",
-		"BASH_DEFAULT_TIMEOUT_MS": "30000",
-		"MCP_TOOL_TIMEOUT": "300000"
 	}
 }
