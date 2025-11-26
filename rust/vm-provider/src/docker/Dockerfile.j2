@@ -179,6 +179,10 @@ RUN mkdir -p /app/shared/ansible /app/shared/services /app/shared/templates /app
 COPY --chown=${PROJECT_UID}:${PROJECT_GID} shared /app/shared
 
 # --- Cargo Registry Configuration ---
+# Fix home directory ownership (needed when building from snapshots with different UID)
+# The snapshot may have files owned by a different UID - fix common dotfiles before modifying them
+RUN chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER}/.zshrc /home/${PROJECT_USER}/.bashrc /home/${PROJECT_USER}/.profile 2>/dev/null || true && \
+    chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER} 2>/dev/null || true
 USER ${PROJECT_USER}
 RUN echo '' >> /home/${PROJECT_USER}/.zshrc && \
     echo '# --- VM CARGO REGISTRY CONFIGURATION ---' >> /home/${PROJECT_USER}/.zshrc && \
@@ -234,6 +238,8 @@ RUN mkdir -p /home/${PROJECT_USER}/.shell_history && \
     chmod 700 /home/${PROJECT_USER}/.shell_history
 
 # Switch back to project user for configuration
+# Ensure dotfiles are owned by user (may have been created/modified by root above, or snapshot has wrong ownership)
+RUN chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER}/.zshrc /home/${PROJECT_USER}/.bashrc /home/${PROJECT_USER}/.profile 2>/dev/null || true
 USER ${PROJECT_USER}
 
 # Note: Zsh history is now configured in zshrc.j2 template
