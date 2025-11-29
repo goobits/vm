@@ -1,5 +1,6 @@
 //! VM snapshot management
 pub mod create;
+pub mod docker;
 pub mod export;
 pub mod import;
 pub mod manager;

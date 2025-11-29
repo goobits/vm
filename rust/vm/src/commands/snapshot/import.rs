@@ -1,33 +1,12 @@
 //! Snapshot import functionality
 
+use super::docker::execute_docker_streaming;
 use super::manager::SnapshotManager;
 use super::metadata::SnapshotMetadata;
 use crate::error::{VmError, VmResult};
 use futures::stream::{self, StreamExt};
 use std::path::Path;
-use std::process::Stdio;
 use vm_core::{vm_println, vm_success, vm_warning};
-
-/// Execute docker command with streaming output (for long-running commands like docker load)
-/// Output is streamed directly to the terminal so users see "Loaded image: ..." messages
-async fn execute_docker_streaming(args: &[&str]) -> VmResult<()> {
-    let status = tokio::process::Command::new("docker")
-        .args(args)
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .await
-        .map_err(|e| VmError::general(e, "Failed to execute docker command"))?;
-
-    if !status.success() {
-        return Err(VmError::general(
-            std::io::Error::new(std::io::ErrorKind::Other, "Docker command failed"),
-            format!("Command 'docker {}' failed", args.join(" ")),
-        ));
-    }
-
-    Ok(())
-}
 
 /// Handle snapshot import
 pub async fn handle_import(

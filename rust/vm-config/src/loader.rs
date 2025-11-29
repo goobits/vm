@@ -68,8 +68,13 @@ impl ConfigLoader {
             }
         };
 
+        // Canonicalize both paths to handle symlinks consistently
+        // If canonicalization fails (e.g., path doesn't exist), fall back to original paths
+        let canonical_current = fs::canonicalize(&current_dir).unwrap_or(current_dir);
+        let canonical_config_dir = fs::canonicalize(&config_dir).unwrap_or(config_dir);
+
         // Calculate relative path from config dir to current dir
-        match current_dir.strip_prefix(&config_dir) {
+        match canonical_current.strip_prefix(&canonical_config_dir) {
             Ok(relative) => {
                 if relative.as_os_str().is_empty() {
                     // We're in the config directory itself

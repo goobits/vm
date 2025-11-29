@@ -165,8 +165,15 @@ fn connect_ssh(
                     );
                     detected_path
                 }
-                Ok(None) | Err(_) => {
-                    debug!("Could not detect relative path, defaulting to workspace root");
+                Ok(None) => {
+                    debug!("Could not detect relative path (no config found or cwd outside project), defaulting to workspace root");
+                    PathBuf::from(".")
+                }
+                Err(e) => {
+                    debug!(
+                        "Failed to detect relative path: {}. Defaulting to workspace root",
+                        e
+                    );
                     PathBuf::from(".")
                 }
             }

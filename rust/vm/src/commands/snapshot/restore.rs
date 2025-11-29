@@ -1,71 +1,11 @@
 //! Snapshot restoration functionality
 
+use super::docker::{execute_docker, execute_docker_compose_status, execute_docker_streaming};
 use super::manager::SnapshotManager;
 use super::metadata::SnapshotMetadata;
 use crate::error::{VmError, VmResult};
 use futures::stream::{self, StreamExt};
-use std::path::Path;
-use std::process::Stdio;
 use vm_config::AppConfig;
-
-/// Execute docker compose command
-async fn execute_docker_compose(args: &[&str], project_dir: &Path) -> VmResult<()> {
-    let status = tokio::process::Command::new("docker")
-        .arg("compose")
-        .args(args)
-        .current_dir(project_dir)
-        .status()
-        .await
-        .map_err(|e| VmError::general(e, "Failed to execute docker compose command"))?;
-
-    if !status.success() {
-        return Err(VmError::general(
-            std::io::Error::new(std::io::ErrorKind::Other, "Docker compose command failed"),
-            format!("Command 'docker compose {}' failed", args.join(" ")),
-        ));
-    }
-
-    Ok(())
-}
-
-/// Execute docker command (for quick commands like volume create/rm)
-async fn execute_docker(args: &[&str]) -> VmResult<()> {
-    let status = tokio::process::Command::new("docker")
-        .args(args)
-        .status()
-        .await
-        .map_err(|e| VmError::general(e, "Failed to execute docker command"))?;
-
-    if !status.success() {
-        return Err(VmError::general(
-            std::io::Error::new(std::io::ErrorKind::Other, "Docker command failed"),
-            format!("Command 'docker {}' failed", args.join(" ")),
-        ));
-    }
-
-    Ok(())
-}
-
-/// Execute docker command with streaming output (for long-running commands)
-/// Output is streamed directly to the terminal so users see progress
-async fn execute_docker_streaming(args: &[&str]) -> VmResult<()> {
-    let status = tokio::process::Command::new("docker")
-        .args(args)
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .await
-        .map_err(|e| VmError::general(e, "Failed to execute docker command"))?;
-
-    if !status.success() {
-        return Err(VmError::general(
-            std::io::Error::new(std::io::ErrorKind::Other, "Docker command failed"),
-            format!("Command 'docker {}' failed", args.join(" ")),
-        ));
-    }
-
-    Ok(())
-}
 
 /// Get project name from config
 fn get_project_name(config: &AppConfig) -> String {
@@ -128,7 +68,7 @@ pub async fn handle_restore(
 
     // Stop current compose environment
     vm_core::vm_println!("Stopping current environment...");
-    execute_docker_compose(&["down"], &project_dir).await?;
+    execute_docker_compose_status(&["down"], &project_dir).await?;
 
     // Restore volumes
     if !metadata.volumes.is_empty() {
@@ -149,12 +89,14 @@ pub async fn handle_restore(
 
                 // Remove existing volume if force is set
                 if force {
-                    // Ignore errors if volume doesn't exist
+                    // Try to remove volume, but don't fail if it doesn't exist or is in use
+                    // If in use, we'll try to restore anyway (will overwrite contents)
                     let _ = execute_docker(&["volume", "rm", &full_volume_name]).await;
                 }
 
-                // Create volume
-                execute_docker(&["volume", "create", &full_volume_name]).await?;
+                // Create volume - ignore "already exists" error since we'll restore over it
+                // This handles both the case where rm failed (volume in use) and force=false
+                let _ = execute_docker(&["volume", "create", &full_volume_name]).await;
 
                 // Restore volume data with zstd decompression (3-5x faster than gzip)
                 // Support both .tar.zst (new) and .tar.gz (legacy) formats
@@ -264,7 +206,7 @@ pub async fn handle_restore(
 
     // Start compose environment
     vm_core::vm_println!("Starting restored environment...");
-    execute_docker_compose(&["up", "-d"], &project_dir).await?;
+    execute_docker_compose_status(&["up", "-d"], &project_dir).await?;
 
     vm_core::vm_success!("Snapshot '{}' restored successfully", name);
 

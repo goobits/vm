@@ -1,30 +1,12 @@
 //! Snapshot export functionality
 
+use super::docker::execute_docker_with_output;
 use super::manager::SnapshotManager;
 use super::metadata::SnapshotMetadata;
 use crate::error::{VmError, VmResult};
 use futures::stream::{self, StreamExt};
 use std::path::Path;
 use vm_core::{vm_error, vm_println, vm_success};
-
-/// Execute docker command and return output
-async fn execute_docker(args: &[&str]) -> VmResult<String> {
-    let output = tokio::process::Command::new("docker")
-        .args(args)
-        .output()
-        .await
-        .map_err(|e| VmError::general(e, "Failed to execute docker command"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(VmError::general(
-            std::io::Error::new(std::io::ErrorKind::Other, "Docker command failed"),
-            format!("Command failed: {}", stderr),
-        ));
-    }
-
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
 
 /// Handle snapshot export
 pub async fn handle_export(
@@ -133,7 +115,7 @@ pub async fn handle_export(
 
             // Check if image exists
             let current_digest =
-                execute_docker(&["image", "inspect", "--format={{.Id}}", &image_tag])
+                execute_docker_with_output(&["image", "inspect", "--format={{.Id}}", &image_tag])
                     .await
                     .ok();
 
@@ -171,7 +153,7 @@ pub async fn handle_export(
                 image_path_str,
             ];
 
-            execute_docker(&save_args).await?;
+            execute_docker_with_output(&save_args).await?;
             Ok(())
         }
     });

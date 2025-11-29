@@ -29,6 +29,40 @@ impl CoreProgressParser for AnsibleParserAdapter {
 }
 
 impl<'a> LifecycleOperations<'a> {
+    /// Fix home directory ownership for snapshot-based containers (one-time, fast)
+    /// Snapshots may have files owned by a different UID than the container user
+    /// This fixes ownership of key dotdirs so tools like nvm, cargo, etc. work
+    fn fix_home_ownership(executable: &str, container_name: &str) -> Result<()> {
+        use std::process::Command;
+
+        // Run as root, fix ownership of home dir and key dotdirs (not /workspace)
+        // This is scoped and fast - only touches the home tree, not bind mounts
+        let fix_cmd = "chown -R developer:developer \
+            /home/developer \
+            /home/developer/.nvm \
+            /home/developer/.cargo \
+            /home/developer/.rustup \
+            /home/developer/.cache \
+            /home/developer/.config \
+            /home/developer/.local \
+            2>/dev/null || true";
+
+        let output = Command::new(executable)
+            .args(["exec", "-u", "root", container_name, "bash", "-c", fix_cmd])
+            .output()
+            .map_err(|e| VmError::Internal(format!("Failed to fix home ownership: {e}")))?;
+
+        if !output.status.success() {
+            // Non-fatal - log warning but continue
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if !stderr.is_empty() {
+                eprintln!("⚠️  Warning: Home ownership fix had issues: {}", stderr);
+            }
+        }
+
+        Ok(())
+    }
+
     /// Run Ansible provisioning on a container
     fn run_ansible_provisioning(
         executable: &str,
@@ -72,9 +106,17 @@ impl<'a> LifecycleOperations<'a> {
             )
         };
 
+        // Use a throwaway HOME under /tmp to avoid touching /home/developer (which may have wrong UID from snapshots)
+        // This is much faster than chown -R on the entire home directory
+        let ansible_cmd_with_fix = format!(
+            "mkdir -p /tmp/ansible-home /tmp/ansible-local /tmp/ansible-remote && \
+             HOME=/tmp/ansible-home ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote {}",
+            ansible_cmd
+        );
+
         stream_command_with_progress_and_timeout(
             executable,
-            &["exec", container_name, "bash", "-c", &ansible_cmd],
+            &["exec", container_name, "bash", "-c", &ansible_cmd_with_fix],
             parser,
             Some(timeout_secs),
         )
@@ -163,12 +205,18 @@ impl<'a> LifecycleOperations<'a> {
             return Ok(());
         }
 
+        let container_name = self.container_name();
+
         // Step 6: Wait for readiness and run ansible (configuration only)
-        self.wait_for_container_ready(&self.container_name())?;
+        self.wait_for_container_ready(&container_name)?;
+
+        // Fix home directory ownership for snapshot-based containers (one-time, fast)
+        // This ensures tools like nvm, cargo work regardless of host UID
+        Self::fix_home_ownership(self.executable, &container_name)?;
 
         self.prepare_and_copy_config()?;
 
-        Self::run_ansible_provisioning(self.executable, &self.container_name(), context)
+        Self::run_ansible_provisioning(self.executable, &container_name, context)
     }
 
     /// Provision container with custom instance name and context
@@ -186,6 +234,10 @@ impl<'a> LifecycleOperations<'a> {
 
         // Step 6: Wait for readiness and run ansible (configuration only)
         self.wait_for_container_ready(&container_name)?;
+
+        // Fix home directory ownership for snapshot-based containers (one-time, fast)
+        // This ensures tools like nvm, cargo work regardless of host UID
+        Self::fix_home_ownership(self.executable, &container_name)?;
 
         self.prepare_and_copy_config()?;
 

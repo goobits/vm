@@ -1,75 +1,14 @@
 //! Snapshot creation functionality
 
+use super::docker::{execute_docker_compose, execute_docker_streaming, execute_docker_with_output};
 use super::manager::SnapshotManager;
 use super::metadata::{ServiceSnapshot, SnapshotMetadata, VolumeSnapshot};
 use crate::error::{VmError, VmResult};
 use chrono::Utc;
 use futures::stream::{self, StreamExt};
 use rayon::prelude::*;
-use std::process::Stdio;
 use vm_config::AppConfig;
 use walkdir::WalkDir;
-
-/// Execute docker compose command and return output
-async fn execute_docker_compose(args: &[&str], project_dir: &std::path::Path) -> VmResult<String> {
-    let output = tokio::process::Command::new("docker")
-        .arg("compose")
-        .args(args)
-        .current_dir(project_dir)
-        .output()
-        .await
-        .map_err(|e| VmError::general(e, "Failed to execute docker compose command"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(VmError::general(
-            std::io::Error::new(std::io::ErrorKind::Other, "Docker compose command failed"),
-            format!("Command failed: {}", stderr),
-        ));
-    }
-
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-/// Execute docker command and return output (for commands that need captured output)
-async fn execute_docker(args: &[&str]) -> VmResult<String> {
-    let output = tokio::process::Command::new("docker")
-        .args(args)
-        .output()
-        .await
-        .map_err(|e| VmError::general(e, "Failed to execute docker command"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(VmError::general(
-            std::io::Error::new(std::io::ErrorKind::Other, "Docker command failed"),
-            format!("Command failed: {}", stderr),
-        ));
-    }
-
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-/// Execute docker command with streaming output (for long-running commands)
-/// Output is streamed directly to the terminal so users see progress
-async fn execute_docker_streaming(args: &[&str]) -> VmResult<()> {
-    let status = tokio::process::Command::new("docker")
-        .args(args)
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .await
-        .map_err(|e| VmError::general(e, "Failed to execute docker command"))?;
-
-    if !status.success() {
-        return Err(VmError::general(
-            std::io::Error::new(std::io::ErrorKind::Other, "Docker command failed"),
-            format!("Command 'docker {}' failed", args.join(" ")),
-        ));
-    }
-
-    Ok(())
-}
 
 /// Get git repository information
 /// Optimized to use a single git command instead of 3 separate spawns (3x faster)
@@ -245,7 +184,7 @@ pub async fn handle_create(
 
             // Create image from container
             let image_tag = format!("vm-snapshot/{}/{}:{}", project_name, service, snapshot_name);
-            execute_docker(&["commit", &container_id, &image_tag]).await?;
+            execute_docker_with_output(&["commit", &container_id, &image_tag]).await?;
 
             // Save image to tar file
             let image_file = format!("{}.tar", service);
@@ -259,11 +198,11 @@ pub async fn handle_create(
                     ),
                 )
             })?;
-            execute_docker(&["save", &image_tag, "-o", image_path_str]).await?;
+            execute_docker_with_output(&["save", &image_tag, "-o", image_path_str]).await?;
 
             // Get image digest
             let digest_output =
-                execute_docker(&["inspect", "--format={{.Id}}", &image_tag]).await?;
+                execute_docker_with_output(&["inspect", "--format={{.Id}}", &image_tag]).await?;
             let digest = if digest_output.is_empty() {
                 None
             } else {
@@ -336,7 +275,7 @@ pub async fn handle_create(
                 &format!("tar -c -C /data . | zstd -3 -T0 > /backup/{}", archive_file),
             ];
 
-            execute_docker(&run_args).await?;
+            execute_docker_with_output(&run_args).await?;
 
             // Get archive size (using async fs)
             let metadata = tokio::fs::metadata(&archive_path)
@@ -583,7 +522,8 @@ async fn handle_create_from_dockerfile(
     execute_docker_streaming(&["save", &image_tag, "-o", image_path_str]).await?;
 
     // Get image digest
-    let digest_output = execute_docker(&["inspect", "--format={{.Id}}", &image_tag]).await?;
+    let digest_output =
+        execute_docker_with_output(&["inspect", "--format={{.Id}}", &image_tag]).await?;
     let digest = if digest_output.is_empty() {
         None
     } else {

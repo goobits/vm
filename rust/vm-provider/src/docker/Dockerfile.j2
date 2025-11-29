@@ -179,12 +179,12 @@ RUN mkdir -p /app/shared/ansible /app/shared/services /app/shared/templates /app
 COPY --chown=${PROJECT_UID}:${PROJECT_GID} shared /app/shared
 
 # --- Cargo Registry Configuration ---
-# Fix home directory ownership (needed when building from snapshots with different UID)
+# Fix home directory ownership AND append config in a single layer (needed when building from snapshots with different UID)
 # The snapshot may have files owned by a different UID - fix common dotfiles before modifying them
+# Combining chown and echo in one RUN ensures chown actually runs (not cached separately from the write)
 RUN chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER}/.zshrc /home/${PROJECT_USER}/.bashrc /home/${PROJECT_USER}/.profile 2>/dev/null || true && \
-    chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER} 2>/dev/null || true
-USER ${PROJECT_USER}
-RUN echo '' >> /home/${PROJECT_USER}/.zshrc && \
+    chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER} 2>/dev/null || true && \
+    echo '' >> /home/${PROJECT_USER}/.zshrc && \
     echo '# --- VM CARGO REGISTRY CONFIGURATION ---' >> /home/${PROJECT_USER}/.zshrc && \
     echo 'if [ -n "$VM_CARGO_REGISTRY_HOST" ] && [ -n "$VM_CARGO_REGISTRY_PORT" ]; then' >> /home/${PROJECT_USER}/.zshrc && \
     echo '    mkdir -p ~/.cargo' >> /home/${PROJECT_USER}/.zshrc && \
@@ -237,12 +237,8 @@ RUN mkdir -p /home/${PROJECT_USER}/.shell_history && \
     chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER}/.shell_history && \
     chmod 700 /home/${PROJECT_USER}/.shell_history
 
-# Switch back to project user for configuration
-# Ensure dotfiles are owned by user (may have been created/modified by root above, or snapshot has wrong ownership)
-RUN chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER}/.zshrc /home/${PROJECT_USER}/.bashrc /home/${PROJECT_USER}/.profile 2>/dev/null || true
-USER ${PROJECT_USER}
-
 # Note: Zsh history is now configured in zshrc.j2 template
+# All dotfile modifications run as root to avoid permission issues with snapshots
 # Ensure bash-specific config exits early when sourced by zsh
 RUN if ! grep -q "BASH_VERSION" /home/${PROJECT_USER}/.bashrc 2>/dev/null; then \
         echo '[ -z "$BASH_VERSION" ] && return' | cat - /home/${PROJECT_USER}/.bashrc > /home/${PROJECT_USER}/.bashrc.tmp && \
@@ -309,6 +305,14 @@ RUN echo '' >> /home/${PROJECT_USER}/.zshrc && \
     echo '        PROMPT="%~ %# "' >> /home/${PROJECT_USER}/.zshrc && \
     echo '    fi' >> /home/${PROJECT_USER}/.zshrc && \
     echo '}' >> /home/${PROJECT_USER}/.zshrc
+
+# Fix home directory ownership after all modifications (runs as root)
+# For pre-provisioned snapshots: the home directory may be owned by snapshot's UID
+# We need to fix ownership of the home directory and common dotfiles/directories
+# that tools like ansible, npm, pip, etc. need to write to at runtime
+RUN chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER} && \
+    chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER}/.zshrc /home/${PROJECT_USER}/.bashrc /home/${PROJECT_USER}/.profile 2>/dev/null || true && \
+    chown -R ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER}/.cache /home/${PROJECT_USER}/.local /home/${PROJECT_USER}/.config 2>/dev/null || true
 
 # --- Package Installation ---
 # Moved to end for optimal layer caching (60% faster when only packages change)

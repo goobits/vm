@@ -14,8 +14,9 @@
       # Default values, will be overridden by config
       default_user: "{{ lookup('env', 'PROJECT_USER') | default('developer') }}"
       default_workspace: '/workspace'
-      # Use global temp directory to avoid user permission issues
+      # Use global temp directory to avoid user permission issues (for snapshots with different UID)
       ansible_remote_tmp: '/tmp'
+      ansible_async_dir: '/tmp/.ansible_async'
       # Snapshot mode - skip base system tasks when using pre-provisioned snapshot
       # This variable is passed via --extra-vars from vm tool
       base_preprovisioned: "{{ base_preprovisioned | default(false) | bool }}"
@@ -92,8 +93,12 @@
             show_timestamp: '{{ project_config.terminal.show_timestamp | default(false) }}'
             terminal_colors: "{{ terminal_themes[project_config.terminal.theme | default('dracula')].colors | default(terminal_themes.dracula.colors) }}"
             home_dir: "/home/{{ project_config.vm.user | default(default_user) }}"
+            # AI sync config: host_sync.ai_tools can be boolean (true=all enabled) or object {claude: bool, gemini: bool, ...}
+            claude_sync_enabled: "{{ (project_config.host_sync.ai_tools is defined and (project_config.host_sync.ai_tools == true or (project_config.host_sync.ai_tools is mapping and project_config.host_sync.ai_tools.claude | default(false)))) | bool }}"
+            gemini_sync_enabled: "{{ (project_config.host_sync.ai_tools is defined and (project_config.host_sync.ai_tools == true or (project_config.host_sync.ai_tools is mapping and project_config.host_sync.ai_tools.gemini | default(false)))) | bool }}"
             # Consolidated conditions for package manager installation requirements
-            nodejs_required: "{{ ((project_config.npm_packages is defined and project_config.npm_packages is not none and project_config.npm_packages | length > 0) or project_config.claude_sync | default(false) or project_config.gemini_sync | default(false)) | bool }}"
+            # Note: nodejs_required is computed inline to avoid cross-reference issues in set_fact
+            nodejs_required: "{{ ((project_config.npm_packages is defined and project_config.npm_packages is not none and project_config.npm_packages | length > 0) or (project_config.host_sync.ai_tools is defined and (project_config.host_sync.ai_tools == true or (project_config.host_sync.ai_tools is mapping and (project_config.host_sync.ai_tools.claude | default(false) or project_config.host_sync.ai_tools.gemini | default(false)))))) | bool }}"
             pip_packages_required: "{{ (project_config.pip_packages is defined and project_config.pip_packages | length > 0) | bool }}"
             cargo_packages_required: "{{ (project_config.cargo_packages is defined and project_config.cargo_packages | length > 0) | bool }}"
             apt_packages_required: "{{ (project_config.apt_packages is defined and project_config.apt_packages | length > 0) | bool }}"
@@ -211,10 +216,12 @@
         apt:
             update_cache: yes
             cache_valid_time: 3600
+        when: not base_preprovisioned
 
       # Install base system packages FIRST (before any configuration)
       - name: Wait for apt lock to be released
         shell: while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 1; done
+        when: not base_preprovisioned
 
       - name: Install locale packages
         apt:
@@ -255,9 +262,9 @@
 
       # Locale configuration (skip if pre-provisioned in snapshot)
       - name: Generate en_US.UTF-8 locale
-        locale_gen:
-            name: en_US.UTF-8
-            state: present
+        command: locale-gen en_US.UTF-8
+        args:
+            creates: /usr/lib/locale/en_US.utf8
         when: not base_preprovisioned
 
       - name: Set system locale
@@ -323,21 +330,13 @@
         when: is_docker_container and not base_preprovisioned
 
       # Security setup - Configure rules first, enable last
+      # Using shell commands instead of ufw module to avoid community.general dependency
       - name: Allow SSH (critical - must be first)
-        ufw:
-            rule: allow
-            port: 22
-            proto: tcp
-            comment: 'Allow SSH access'
+        shell: ufw allow 22/tcp comment 'Allow SSH access'
         when: not is_docker_container
 
       - name: Allow configured ports from localhost
-        ufw:
-            rule: allow
-            port: "{{ service_item.value.port }}"
-            proto: tcp
-            from_ip: 127.0.0.1
-            comment: "Allow {{ service_item.key }} port"
+        shell: ufw allow from 127.0.0.1 to any port {{ service_item.value.port }} proto tcp comment 'Allow {{ service_item.key }} port'
         loop: "{{ project_config.services | dict2items }}"
         loop_control:
             loop_var: service_item
@@ -347,12 +346,7 @@
             - service_item.value.port is not none
 
       - name: Allow configured ports from host
-        ufw:
-            rule: allow
-            port: "{{ service_item.value.port }}"
-            proto: tcp
-            from_ip: 10.0.2.2
-            comment: "Allow {{ service_item.key }} port from host (NAT gateway)"
+        shell: ufw allow from 10.0.2.2 to any port {{ service_item.value.port }} proto tcp comment 'Allow {{ service_item.key }} port from host (NAT gateway)'
         loop: "{{ project_config.services | dict2items }}"
         loop_control:
             loop_var: service_item
@@ -446,55 +440,55 @@
 
       - name: Install Node.js
         shell: |
-            source ~/.nvm/nvm.sh
+            source /home/{{ project_user }}/.nvm/nvm.sh
             nvm install {{ project_config.versions.node | default('22') }}
             nvm use {{ project_config.versions.node | default('22') }}
             nvm alias default {{ project_config.versions.node | default('22') }}
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
-        when: nodejs_required
+        when: nodejs_required and not base_preprovisioned
 
       - name: Update npm to latest version
         shell: |
-            source ~/.nvm/nvm.sh
+            source /home/{{ project_user }}/.nvm/nvm.sh
             npm install -g npm@{{ project_config.versions.npm | default('latest') }}
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
-        when: nodejs_required
+        when: nodejs_required and not base_preprovisioned
         ignore_errors: yes
 
       - name: Enable corepack for pnpm
         shell: |
-            source ~/.nvm/nvm.sh
+            source /home/{{ project_user }}/.nvm/nvm.sh
             corepack enable
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
-        when: nodejs_required
+        when: nodejs_required and not base_preprovisioned
 
       - name: Install pnpm via corepack
         shell: |
-            source ~/.nvm/nvm.sh
+            source /home/{{ project_user }}/.nvm/nvm.sh
             corepack prepare pnpm@{{ project_config.versions.pnpm | default('10.12.3') }} --activate
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
         register: corepack_result
-        when: nodejs_required
+        when: nodejs_required and not base_preprovisioned
         ignore_errors: yes
 
       - name: Install pnpm via npm if corepack failed
         shell: |
-            source ~/.nvm/nvm.sh
+            source /home/{{ project_user }}/.nvm/nvm.sh
             npm install -g pnpm@{{ project_config.versions.pnpm | default('10.12.3') }}
             echo "✅ Installed pnpm via npm as fallback"
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
         when:
-          - nodejs_required
+          - nodejs_required and not base_preprovisioned
           - corepack_result.failed | default(false)
 
       - name: Check installed apt packages
@@ -518,22 +512,22 @@
 
       - name: Install Claude Code CLI
         shell: |
-            source ~/.nvm/nvm.sh
+            source /home/{{ project_user }}/.nvm/nvm.sh
             npm install -g @anthropic-ai/claude-code
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
-        when: project_config.claude_sync | default(false)
+        when: claude_sync_enabled and not base_preprovisioned
         ignore_errors: yes
 
       - name: Install Gemini CLI
         shell: |
-            source ~/.nvm/nvm.sh
+            source /home/{{ project_user }}/.nvm/nvm.sh
             npm install -g @google/gemini-cli
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
-        when: project_config.gemini_sync | default(false)
+        when: gemini_sync_enabled and not base_preprovisioned
         ignore_errors: yes
 
       - name: Install container pipx packages
@@ -561,14 +555,14 @@
 
       - name: Install pnpm via npm as fallback
         shell: |
-            source ~/.nvm/nvm.sh
+            source /home/{{ project_user }}/.nvm/nvm.sh
             if ! which pnpm > /dev/null 2>&1; then
                 npm install -g pnpm@{{ project_config.versions.pnpm | default('10.12.3') }}
             fi
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
-        when: project_config.versions.pnpm is defined
+        when: project_config.versions.pnpm is defined and not base_preprovisioned
 
       # ================================================================================
       # CONDITIONAL PACKAGE MANAGER INSTALLATIONS
@@ -691,6 +685,7 @@
           - not (is_docker_container and service_item.key in ['postgresql', 'redis', 'mongodb'])  # These run as separate containers in Docker
 
       # Install database client tools for services that run as separate containers in Docker
+      # Skip for pre-provisioned snapshots (tools already installed)
       - name: Install PostgreSQL client tools for Docker
         apt:
           name:
@@ -698,6 +693,7 @@
           state: present
         when:
           - is_docker_container
+          - not base_preprovisioned
           - project_config.services.postgresql.enabled | default(false)
 
       - name: Install Redis client tools for Docker
@@ -707,6 +703,7 @@
           state: present
         when:
           - is_docker_container
+          - not base_preprovisioned
           - project_config.services.redis.enabled | default(false)
 
       - name: Install MongoDB client tools for Docker
@@ -716,9 +713,11 @@
           state: present
         when:
           - is_docker_container
+          - not base_preprovisioned
           - project_config.services.mongodb.enabled | default(false)
 
       # Handle Docker service separately (requires user group management)
+      # Skip for pre-provisioned snapshots
       - name: Install Docker
         apt:
             name:
@@ -729,14 +728,18 @@
         delay: 10
         register: docker_install
         until: docker_install is succeeded
-        when: project_config.services.docker.enabled | default(false)
+        when:
+          - project_config.services.docker.enabled | default(false)
+          - not base_preprovisioned
 
       - name: Add user to docker group
         user:
             name: '{{ project_user }}'
             groups: docker
             append: yes
-        when: project_config.services.docker.enabled | default(false)
+        when:
+          - project_config.services.docker.enabled | default(false)
+          - not base_preprovisioned
 
       # Handle special services that need additional configuration
       - name: Create Xvfb systemd service file
@@ -928,12 +931,12 @@
         become_user: '{{ project_user }}'
 
       # Enable UFW after all rules are configured
+      # Using shell command instead of ufw module to avoid community.general dependency
       - name: Enable UFW with default deny policy
-        ufw:
-            state: enabled
-            default: deny
-            direction: incoming
-            logging: on
+        shell: |
+            ufw default deny incoming
+            ufw logging on
+            ufw --force enable
         notify: restart ssh
         when: not is_docker_container
 
