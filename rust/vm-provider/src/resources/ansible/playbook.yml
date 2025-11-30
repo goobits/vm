@@ -20,6 +20,9 @@
       # Snapshot mode - skip base system tasks when using pre-provisioned snapshot
       # This variable is passed via --extra-vars from vm tool
       base_preprovisioned: "{{ base_preprovisioned | default(false) | bool }}"
+      # Force package refresh - bypass cache and reinstall packages (for security updates)
+      # This variable is passed via --extra-vars from vm tool (--refresh-packages flag)
+      refresh_packages: "{{ refresh_packages | default(false) | bool }}"
 
   # Load and process configuration
   pre_tasks:
@@ -212,11 +215,20 @@
             cat /tmp/hosts.new > /etc/hosts
         when: is_docker_container
 
+      # Update apt cache - using shell for Python 3.14 compatibility
       - name: Update apt cache
-        apt:
-            update_cache: yes
-            cache_valid_time: 3600
+        shell: |
+            # Only update if cache is older than 1 hour
+            if [ ! -f /var/lib/apt/lists/*Packages ] || \
+               [ $(find /var/lib/apt/lists -name '*Packages' -mmin +60 2>/dev/null | wc -l) -gt 0 ]; then
+                apt-get update -qq
+                echo "cache_updated"
+            else
+                echo "cache_fresh"
+            fi
         when: not base_preprovisioned
+        register: apt_cache_update
+        changed_when: "'cache_updated' in apt_cache_update.stdout"
 
       # Install base system packages FIRST (before any configuration)
       - name: Wait for apt lock to be released
@@ -224,41 +236,47 @@
         when: not base_preprovisioned
 
       - name: Install locale packages
-        apt:
-            name:
-                - locales
-                - locales-all
-            state: present
-        retries: 5
-        delay: 10
-        register: locale_install
-        until: locale_install is succeeded
+        shell: |
+            PACKAGES_NEEDED=""
+            for pkg in locales locales-all; do
+                if ! dpkg -l "$pkg" 2>/dev/null | grep -q "^ii"; then
+                    PACKAGES_NEEDED="$PACKAGES_NEEDED $pkg"
+                fi
+            done
+            if [ -n "$PACKAGES_NEEDED" ]; then
+                apt-get install -y $PACKAGES_NEEDED
+                echo "packages_installed"
+            else
+                echo "all_present"
+            fi
         when: not base_preprovisioned
+        register: locale_install
+        changed_when: "'packages_installed' in locale_install.stdout"
+        retries: 3
+        delay: 5
+        until: locale_install is succeeded
 
       - name: Install base system packages
-        apt:
-            name:
-                - curl
-                - wget
-                - git
-                - git-lfs
-                - build-essential
-                - python3-pip
-                - python3-dev
-                - python3-venv
-                - ufw
-                - fail2ban
-                - unattended-upgrades
-                - python3-psycopg2
-                - zsh
-                - zsh-syntax-highlighting
-                - supervisor
-            state: present
-        retries: 5
-        delay: 10
-        register: base_packages_install
-        until: base_packages_install is succeeded
+        shell: |
+            BASE_PACKAGES="curl wget git git-lfs build-essential python3-pip python3-dev python3-venv ufw fail2ban unattended-upgrades python3-psycopg2 zsh zsh-syntax-highlighting supervisor"
+            PACKAGES_NEEDED=""
+            for pkg in $BASE_PACKAGES; do
+                if ! dpkg -l "$pkg" 2>/dev/null | grep -q "^ii"; then
+                    PACKAGES_NEEDED="$PACKAGES_NEEDED $pkg"
+                fi
+            done
+            if [ -n "$PACKAGES_NEEDED" ]; then
+                apt-get install -y $PACKAGES_NEEDED
+                echo "packages_installed"
+            else
+                echo "all_present"
+            fi
         when: not base_preprovisioned
+        register: base_packages_install
+        changed_when: "'packages_installed' in base_packages_install.stdout"
+        retries: 3
+        delay: 5
+        until: base_packages_install is succeeded
 
       # Locale configuration (skip if pre-provisioned in snapshot)
       - name: Generate en_US.UTF-8 locale
@@ -491,44 +509,76 @@
           - nodejs_required and not base_preprovisioned
           - corepack_result.failed | default(false)
 
-      - name: Check installed apt packages
-        package_facts:
-            manager: apt
-        when: apt_packages_required
-
+      # Install additional APT packages - using shell for Python 3.14 compatibility
+      # Layered provisioning: works for both fresh builds and snapshots
+      # When refresh_packages is true, force reinstall for security updates
       - name: Install additional APT packages
-        apt:
-            name: "{{ item }}"
-            state: present
-        loop: "{{ project_config.apt_packages | default([]) }}"
-        retries: 5
-        delay: 10
+        shell: |
+            APT_PACKAGES="{{ project_config.apt_packages | default([]) | join(' ') }}"
+            REFRESH="{{ refresh_packages | string | lower }}"
+
+            if [ "$REFRESH" = "true" ]; then
+                # Force refresh: update cache and reinstall all packages
+                echo "Forcing package refresh..."
+                apt-get update -qq && apt-get install -y --reinstall $APT_PACKAGES
+                echo "packages_refreshed"
+            else
+                # Normal mode: only install missing packages
+                PACKAGES_TO_INSTALL=""
+                for pkg in $APT_PACKAGES; do
+                    if ! dpkg -l "$pkg" 2>/dev/null | grep -q "^ii"; then
+                        PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL $pkg"
+                    fi
+                done
+                if [ -n "$PACKAGES_TO_INSTALL" ]; then
+                    apt-get update -qq && apt-get install -y $PACKAGES_TO_INSTALL
+                    echo "packages_installed"
+                else
+                    echo "all_packages_present"
+                fi
+            fi
+        when: apt_packages_required
         register: apt_packages_install
+        changed_when: "'packages_installed' in apt_packages_install.stdout or 'packages_refreshed' in apt_packages_install.stdout"
+        retries: 3
+        delay: 5
         until: apt_packages_install is succeeded
-        when:
-          - apt_packages_required
-          - item not in ansible_facts.packages
 
 
+      # AI CLI tools - install even for snapshots if sync is enabled (layered provisioning)
       - name: Install Claude Code CLI
         shell: |
             source /home/{{ project_user }}/.nvm/nvm.sh
-            npm install -g @anthropic-ai/claude-code
+            # Skip if already installed
+            if npm list -g @anthropic-ai/claude-code >/dev/null 2>&1; then
+                echo "Claude Code CLI already installed"
+            else
+                npm install -g @anthropic-ai/claude-code
+            fi
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
-        when: claude_sync_enabled and not base_preprovisioned
+        when: claude_sync_enabled
         ignore_errors: yes
+        register: claude_install
+        changed_when: "'already installed' not in claude_install.stdout"
 
       - name: Install Gemini CLI
         shell: |
             source /home/{{ project_user }}/.nvm/nvm.sh
-            npm install -g @google/gemini-cli
+            # Skip if already installed
+            if npm list -g @google/gemini-cli >/dev/null 2>&1; then
+                echo "Gemini CLI already installed"
+            else
+                npm install -g @google/gemini-cli
+            fi
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
-        when: gemini_sync_enabled and not base_preprovisioned
+        when: gemini_sync_enabled
         ignore_errors: yes
+        register: gemini_install
+        changed_when: "'already installed' not in gemini_install.stdout"
 
       - name: Install container pipx packages
         shell: |
@@ -539,6 +589,7 @@
         when: project_config.container_pipx_packages is defined and project_config.container_pipx_packages | length > 0
         ignore_errors: yes
 
+      # Python build tools - only update for fresh builds (snapshots have them)
       - name: Ensure Python build tools are up-to-date
         pip:
           name:
@@ -552,17 +603,22 @@
         ignore_errors: yes
         when: not base_preprovisioned
 
-
+      # pnpm fallback - ensure pnpm is available (layered provisioning)
       - name: Install pnpm via npm as fallback
         shell: |
             source /home/{{ project_user }}/.nvm/nvm.sh
             if ! which pnpm > /dev/null 2>&1; then
                 npm install -g pnpm@{{ project_config.versions.pnpm | default('10.12.3') }}
+                echo "pnpm installed"
+            else
+                echo "pnpm already available"
             fi
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
-        when: project_config.versions.pnpm is defined and not base_preprovisioned
+        when: project_config.versions.pnpm is defined
+        register: pnpm_fallback
+        changed_when: "'pnpm installed' in pnpm_fallback.stdout"
 
       # ================================================================================
       # CONDITIONAL PACKAGE MANAGER INSTALLATIONS
@@ -604,23 +660,20 @@
 
 
       # Install pip and pipx if pip_packages is defined
-      - name: Check if pipx is installed
-        command: which pipx
-        register: pipx_check
-        failed_when: false
-        changed_when: false
-        when: pip_packages_required
-
+      # Using shell for Python 3.14 compatibility (layered provisioning)
       - name: Install pipx for Python package management
-        apt:
-            name: pipx
-            state: present
-        when:
-          - pip_packages_required
-          - pipx_check is defined and pipx_check.rc != 0
-        retries: 5
-        delay: 10
+        shell: |
+            if dpkg -l pipx 2>/dev/null | grep -q "^ii"; then
+                echo "pipx already installed"
+            else
+                apt-get update -qq && apt-get install -y pipx
+                echo "pipx installed"
+            fi
+        when: pip_packages_required
         register: pipx_install
+        changed_when: "'pipx installed' in pipx_install.stdout"
+        retries: 3
+        delay: 5
         until: pipx_install is succeeded
 
       - name: Ensure pipx PATH is configured
@@ -631,13 +684,18 @@
         ignore_errors: yes
 
       - name: Ensure pip is installed for Python libraries
-        apt:
-            name: python3-pip
-            state: present
+        shell: |
+            if dpkg -l python3-pip 2>/dev/null | grep -q "^ii"; then
+                echo "python3-pip already installed"
+            else
+                apt-get update -qq && apt-get install -y python3-pip
+                echo "python3-pip installed"
+            fi
         when: pip_packages_required
-        retries: 5
-        delay: 10
         register: pip_install_apt
+        changed_when: "'python3-pip installed' in pip_install_apt.stdout"
+        retries: 3
+        delay: 5
         until: pip_install_apt is succeeded
 
       # ================================================================================
@@ -685,52 +743,70 @@
           - not (is_docker_container and service_item.key in ['postgresql', 'redis', 'mongodb'])  # These run as separate containers in Docker
 
       # Install database client tools for services that run as separate containers in Docker
-      # Skip for pre-provisioned snapshots (tools already installed)
+      # Layered provisioning: install if not already present (works for both fresh and snapshot builds)
       - name: Install PostgreSQL client tools for Docker
-        apt:
-          name:
-            - postgresql-client
-          state: present
+        shell: |
+            if dpkg -l postgresql-client 2>/dev/null | grep -q "^ii"; then
+                echo "postgresql-client already installed"
+            else
+                apt-get update -qq && apt-get install -y postgresql-client
+                echo "postgresql-client installed"
+            fi
         when:
           - is_docker_container
-          - not base_preprovisioned
           - project_config.services.postgresql.enabled | default(false)
+        register: pg_client_install
+        changed_when: "'installed' in pg_client_install.stdout and 'already' not in pg_client_install.stdout"
 
       - name: Install Redis client tools for Docker
-        apt:
-          name:
-            - redis-tools
-          state: present
+        shell: |
+            if dpkg -l redis-tools 2>/dev/null | grep -q "^ii"; then
+                echo "redis-tools already installed"
+            else
+                apt-get update -qq && apt-get install -y redis-tools
+                echo "redis-tools installed"
+            fi
         when:
           - is_docker_container
-          - not base_preprovisioned
           - project_config.services.redis.enabled | default(false)
+        register: redis_client_install
+        changed_when: "'installed' in redis_client_install.stdout and 'already' not in redis_client_install.stdout"
 
       - name: Install MongoDB client tools for Docker
-        apt:
-          name:
-            - mongodb-clients
-          state: present
+        shell: |
+            if dpkg -l mongodb-clients 2>/dev/null | grep -q "^ii"; then
+                echo "mongodb-clients already installed"
+            else
+                apt-get update -qq && apt-get install -y mongodb-clients
+                echo "mongodb-clients installed"
+            fi
         when:
           - is_docker_container
-          - not base_preprovisioned
           - project_config.services.mongodb.enabled | default(false)
+        register: mongo_client_install
+        changed_when: "'installed' in mongo_client_install.stdout and 'already' not in mongo_client_install.stdout"
 
       # Handle Docker service separately (requires user group management)
-      # Skip for pre-provisioned snapshots
+      # Layered provisioning: install if not already present
       - name: Install Docker
-        apt:
-            name:
-                - docker.io
-                - docker-compose
-            state: present
-        retries: 5
-        delay: 10
-        register: docker_install
-        until: docker_install is succeeded
+        shell: |
+            PACKAGES_NEEDED=""
+            if ! dpkg -l docker.io 2>/dev/null | grep -q "^ii"; then
+                PACKAGES_NEEDED="$PACKAGES_NEEDED docker.io"
+            fi
+            if ! dpkg -l docker-compose 2>/dev/null | grep -q "^ii"; then
+                PACKAGES_NEEDED="$PACKAGES_NEEDED docker-compose"
+            fi
+            if [ -n "$PACKAGES_NEEDED" ]; then
+                apt-get update -qq && apt-get install -y $PACKAGES_NEEDED
+                echo "docker packages installed"
+            else
+                echo "docker packages already installed"
+            fi
         when:
           - project_config.services.docker.enabled | default(false)
-          - not base_preprovisioned
+        register: docker_install
+        changed_when: "'packages installed' in docker_install.stdout and 'already' not in docker_install.stdout"
 
       - name: Add user to docker group
         user:
@@ -739,7 +815,6 @@
             append: yes
         when:
           - project_config.services.docker.enabled | default(false)
-          - not base_preprovisioned
 
       # Handle special services that need additional configuration
       - name: Create Xvfb systemd service file

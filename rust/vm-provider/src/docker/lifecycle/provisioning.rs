@@ -30,22 +30,81 @@ impl CoreProgressParser for AnsibleParserAdapter {
 
 impl<'a> LifecycleOperations<'a> {
     /// Fix home directory ownership for snapshot-based containers (one-time, fast)
-    /// Snapshots may have files owned by a different UID than the container user
-    /// This fixes ownership of key dotdirs so tools like nvm, cargo, etc. work
+    ///
+    /// Centralized permission fix-up for layered provisioning:
+    /// - Snapshots may have files owned by a different UID than the container user
+    /// - This fixes ownership of all key directories that tools need to write to
+    /// - Called once after snapshot load, before Ansible provisioning
+    ///
+    /// Directories handled:
+    /// - Home directory and common dotfiles (.zshrc, .bashrc, .profile)
+    /// - NVM installation and cache (.nvm)
+    /// - Rust/Cargo installation and cache (.cargo, .rustup)
+    /// - Python/pip cache (.cache/pip, .local)
+    /// - NPM cache (.npm)
+    /// - General config directories (.config, .cache)
+    /// - Shell history (.shell_history)
     fn fix_home_ownership(executable: &str, container_name: &str) -> Result<()> {
         use std::process::Command;
 
-        // Run as root, fix ownership of home dir and key dotdirs (not /workspace)
-        // This is scoped and fast - only touches the home tree, not bind mounts
-        let fix_cmd = "chown -R developer:developer \
-            /home/developer \
-            /home/developer/.nvm \
-            /home/developer/.cargo \
-            /home/developer/.rustup \
-            /home/developer/.cache \
-            /home/developer/.config \
-            /home/developer/.local \
-            2>/dev/null || true";
+        // Comprehensive permission fix for all directories that may be affected
+        // by UID/GID mismatch between snapshot and current host
+        //
+        // This is the single authoritative place for permission fixes.
+        // When adding new cache directories, add them here.
+        let fix_cmd = r#"
+            # Fix home directory and common dotfiles
+            chown developer:developer /home/developer 2>/dev/null || true
+            chown developer:developer /home/developer/.zshrc /home/developer/.bashrc /home/developer/.profile 2>/dev/null || true
+
+            # Fix NVM (Node.js version manager)
+            if [ -d /home/developer/.nvm ]; then
+                chown -R developer:developer /home/developer/.nvm 2>/dev/null || true
+            fi
+
+            # Fix Cargo/Rust
+            if [ -d /home/developer/.cargo ]; then
+                chown -R developer:developer /home/developer/.cargo 2>/dev/null || true
+            fi
+            if [ -d /home/developer/.rustup ]; then
+                chown -R developer:developer /home/developer/.rustup 2>/dev/null || true
+            fi
+
+            # Fix NPM cache
+            if [ -d /home/developer/.npm ]; then
+                chown -R developer:developer /home/developer/.npm 2>/dev/null || true
+            fi
+
+            # Fix pip/Python cache
+            if [ -d /home/developer/.cache ]; then
+                chown -R developer:developer /home/developer/.cache 2>/dev/null || true
+            fi
+
+            # Fix local binaries and packages
+            if [ -d /home/developer/.local ]; then
+                chown -R developer:developer /home/developer/.local 2>/dev/null || true
+            fi
+
+            # Fix config directory
+            if [ -d /home/developer/.config ]; then
+                chown -R developer:developer /home/developer/.config 2>/dev/null || true
+            fi
+
+            # Fix shell history
+            if [ -d /home/developer/.shell_history ]; then
+                chown -R developer:developer /home/developer/.shell_history 2>/dev/null || true
+            fi
+
+            # Fix Claude and Gemini CLI directories
+            if [ -d /home/developer/.claude ]; then
+                chown -R developer:developer /home/developer/.claude 2>/dev/null || true
+            fi
+            if [ -d /home/developer/.gemini ]; then
+                chown -R developer:developer /home/developer/.gemini 2>/dev/null || true
+            fi
+
+            echo "Permissions fixed"
+        "#;
 
         let output = Command::new(executable)
             .args(["exec", "-u", "root", container_name, "bash", "-c", fix_cmd])
@@ -87,8 +146,13 @@ impl<'a> LifecycleOperations<'a> {
         // Enable timing instrumentation if ANSIBLE_PROFILE is set
         let enable_profiling = std::env::var("ANSIBLE_PROFILE").is_ok();
 
-        // Pass snapshot status to Ansible to skip redundant base system tasks
-        let extra_vars = format!("--extra-vars 'base_preprovisioned={}'", context.is_snapshot);
+        // Pass snapshot status and refresh flag to Ansible
+        // - base_preprovisioned: skip redundant base system tasks for snapshots
+        // - refresh_packages: force apt-get update and bypass installed package checks
+        let extra_vars = format!(
+            "--extra-vars 'base_preprovisioned={} refresh_packages={}'",
+            context.is_snapshot, context.refresh_packages
+        );
 
         let ansible_cmd = if enable_profiling {
             format!(

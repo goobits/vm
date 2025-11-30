@@ -99,6 +99,7 @@ pub async fn handle_create(
     save_as: Option<String>,
     from_dockerfile: Option<std::path::PathBuf>,
     preserve_services: bool,
+    refresh_packages: bool,
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "create");
     let _enter = span.enter();
@@ -271,7 +272,8 @@ pub async fn handle_create(
     // Skip provisioning for snapshot builds (Dockerfile already has everything)
     let mut context = ProviderContext::with_verbose(verbose)
         .with_config(global_config.clone())
-        .preserve_services(preserve_services);
+        .preserve_services(preserve_services)
+        .refresh_packages(refresh_packages);
     if save_as.is_some() {
         context = context.skip_provisioning();
     }

@@ -516,6 +516,9 @@ pub enum Command {
         /// Reuse existing service containers (postgres, redis, etc.) instead of creating new ones
         #[arg(long, default_value = "true")]
         preserve_services: bool,
+        /// Force refresh of all packages (bypasses cache, useful for security updates)
+        #[arg(long)]
+        refresh_packages: bool,
     },
     /// Start your environment
     Start {
@@ -780,6 +783,7 @@ mod tests {
                 save_as,
                 from_dockerfile,
                 preserve_services,
+                refresh_packages,
             } => {
                 assert!(force);
                 assert_eq!(instance, Some("test-vm".to_string()));
@@ -787,6 +791,7 @@ mod tests {
                 assert_eq!(save_as, None);
                 assert_eq!(from_dockerfile, None);
                 assert!(preserve_services);
+                assert!(!refresh_packages);
             }
             _ => panic!("Expected Command::Create"),
         }
@@ -807,6 +812,7 @@ mod tests {
                 save_as,
                 from_dockerfile,
                 preserve_services,
+                refresh_packages,
                 ..
             } => {
                 assert_eq!(save_as, Some("@vibe-base".to_string()));
@@ -815,6 +821,20 @@ mod tests {
                     Some(std::path::PathBuf::from("./Dockerfile.vibe"))
                 );
                 assert!(preserve_services);
+                assert!(!refresh_packages);
+            }
+            _ => panic!("Expected Command::Create"),
+        }
+    }
+
+    #[test]
+    fn test_create_with_refresh_packages_parsing() {
+        let args = Args::parse_from(["vm", "create", "--refresh-packages"]);
+        match args.command {
+            Command::Create {
+                refresh_packages, ..
+            } => {
+                assert!(refresh_packages);
             }
             _ => panic!("Expected Command::Create"),
         }

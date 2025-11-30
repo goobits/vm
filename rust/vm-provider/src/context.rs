@@ -19,6 +19,8 @@ pub struct ProviderContext {
     pub preserve_services: bool,
     /// Using a pre-provisioned snapshot as base image
     pub is_snapshot: bool,
+    /// Force refresh of all packages (bypasses cache for security updates)
+    pub refresh_packages: bool,
 }
 
 impl ProviderContext {
@@ -56,6 +58,12 @@ impl ProviderContext {
     /// Set whether using a pre-provisioned snapshot as base image
     pub fn with_snapshot(mut self, is_snapshot: bool) -> Self {
         self.is_snapshot = is_snapshot;
+        self
+    }
+
+    /// Set whether to force refresh all packages (bypasses cache)
+    pub fn refresh_packages(mut self, refresh: bool) -> Self {
+        self.refresh_packages = refresh;
         self
     }
 

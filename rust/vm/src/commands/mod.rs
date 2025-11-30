@@ -315,6 +315,7 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             save_as,
             from_dockerfile,
             preserve_services,
+            refresh_packages,
         } => {
             vm_ops::handle_create(
                 provider,
@@ -326,6 +327,7 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
                 save_as,
                 from_dockerfile,
                 preserve_services,
+                refresh_packages,
             )
             .await
         }
