@@ -26,6 +26,9 @@ ENV LANGUAGE=en_US:en
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get update && apt-get install -y \
+    # Tini: minimal init system for proper zombie process reaping
+    # Without this, zombie processes accumulate in containers
+    tini \
     # Locale support (must come first)
     locales \
     # Core utilities from vibe preset
@@ -70,11 +73,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     procps \
     net-tools \
     iputils-ping \
-    # For Playwright/Chromium dependencies
+    # For Playwright/Chromium dependencies (from official Playwright deps list)
     libnss3 \
     libnspr4 \
     libatk1.0-0 \
     libatk-bridge2.0-0 \
+    libatspi2.0-0 \
     libcups2 \
     libdrm2 \
     libdbus-1-3 \
@@ -87,6 +91,21 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     libasound2 \
     libpango-1.0-0 \
     libcairo2 \
+    libwayland-client0 \
+    libx11-6 \
+    libxcb1 \
+    libxext6 \
+    libglib2.0-0 \
+    # WebGL/WebGPU support - Mesa EGL/GL libraries for SwiftShader/SwANGLE backend
+    # Without these, Chromium cannot initialize its graphics subsystem for WebGL
+    libegl1 \
+    libgl1-mesa-dri \
+    libgles2-mesa \
+    # Vulkan support for WebGPU and SwANGLE (software Vulkan via llvmpipe)
+    libvulkan1 \
+    mesa-vulkan-drivers \
+    # Virtual framebuffer for headless display (required for some WebGL operations)
+    xvfb \
     && locale-gen en_US.UTF-8 \
     && update-locale LANG=en_US.UTF-8
 
@@ -266,7 +285,17 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 # Environment variables for development
 ENV NODE_ENV=development \
     PYTHONDONTWRITEBYTECODE=1 \
-    PLAYWRIGHT_BROWSERS_PATH=/home/${USER_NAME}/.cache/ms-playwright
+    PLAYWRIGHT_BROWSERS_PATH=/home/${USER_NAME}/.cache/ms-playwright \
+    # Virtual display for headless WebGL (xvfb runs on :99)
+    DISPLAY=:99 \
+    # Ensure Mesa uses llvmpipe for software rendering
+    LIBGL_ALWAYS_SOFTWARE=1
+
+# Set architecture-aware Vulkan ICD path at runtime
+# This handles both x86_64 and aarch64 builds
+RUN ARCH=$(uname -m) && \
+    echo "export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.${ARCH}.json" >> /etc/profile.d/vulkan-icd.sh && \
+    chmod +x /etc/profile.d/vulkan-icd.sh
 
 # Add labels for metadata
 LABEL org.opencontainers.image.title="Vibe Development Box - Optimized" \
@@ -286,6 +315,9 @@ SHELL ["/bin/bash", "-c"]
 # Healthcheck to ensure the container is ready
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD bash -c 'source ~/.nvm/nvm.sh && source ~/.cargo/env 2>/dev/null && command -v node && command -v python3 || exit 1'
+
+# Use tini as init to properly reap zombie processes
+ENTRYPOINT ["/usr/bin/tini", "--"]
 
 # Default command
 CMD ["/bin/bash"]
