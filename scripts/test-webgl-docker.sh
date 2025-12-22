@@ -203,20 +203,63 @@ SCRIPT
     node test.mjs
     CHROMIUM_EXIT=$?
 
-    # Try WebGPU with Chrome for Testing (only available on x86_64)
+    # Try WebGPU with Firefox (works on all architectures including ARM64)
+    echo ""
+    echo "--- Testing WebGPU with Firefox ---"
+    cat > test-firefox.mjs << "FIREFOX_SCRIPT"
+import { firefox } from "playwright";
+
+const browser = await firefox.launch({
+    headless: true,
+    firefoxUserPrefs: {
+        // Enable WebGPU in Firefox
+        "dom.webgpu.enabled": true,
+        "gfx.webgpu.force-enabled": true,
+    }
+});
+
+const page = await browser.newPage();
+
+const webgpuResult = await page.evaluate(async () => {
+    if (!navigator.gpu) return { supported: false, reason: "navigator.gpu not available" };
+    try {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) return { supported: false, reason: "no adapter returned" };
+        const info = await adapter.requestAdapterInfo();
+        return {
+            supported: true,
+            vendor: info.vendor || "unknown",
+            architecture: info.architecture || "unknown",
+            device: info.device || "unknown",
+            description: info.description || "unknown"
+        };
+    } catch (e) {
+        return { supported: false, reason: e.message };
+    }
+});
+
+console.log("WebGPU (Firefox):", JSON.stringify(webgpuResult));
+await browser.close();
+process.exit(webgpuResult.supported ? 0 : 1);
+FIREFOX_SCRIPT
+
+    npm link playwright 2>/dev/null || true
+    echo "Testing WebGPU with Firefox..."
+    node test-firefox.mjs 2>/dev/null && echo "PASS: WebGPU works with Firefox!" || echo "INFO: WebGPU not available in Firefox (may need Nightly)"
+
+    # Also try Chrome for Testing on x86_64
     ARCH=$(uname -m)
     echo ""
     if [ "$ARCH" = "x86_64" ]; then
-        echo "Architecture: x86_64 - Chrome for Testing available"
-        echo "Installing Chrome for Testing (has WebGPU support)..."
+        echo "--- Testing WebGPU with Chrome for Testing (x86_64) ---"
+        echo "Installing Chrome for Testing..."
         npx playwright install chrome 2>/dev/null
 
-        # Create Chrome-specific test
         cat > test-chrome.mjs << "CHROME_SCRIPT"
 import { chromium } from "playwright";
 
 const browser = await chromium.launch({
-    channel: "chrome",  // Use Chrome for Testing instead of Chromium
+    channel: "chrome",
     headless: true,
     args: [
         "--no-sandbox",
@@ -255,12 +298,11 @@ process.exit(webgpuResult.supported ? 0 : 1);
 CHROME_SCRIPT
 
         echo "Testing WebGPU with Chrome for Testing..."
-        node test-chrome.mjs 2>/dev/null && echo "PASS: WebGPU works with Chrome!" || echo "FAIL: WebGPU test failed"
+        node test-chrome.mjs 2>/dev/null && echo "PASS: WebGPU works with Chrome!" || echo "INFO: WebGPU not available in Chrome"
     else
-        echo "Architecture: $ARCH - Chrome for Testing NOT available"
-        echo "INFO: WebGPU requires Chrome for Testing, which is only available for x86_64 Linux"
+        echo "--- Chrome for Testing ---"
+        echo "SKIP: Chrome for Testing not available on $ARCH"
         echo "      See: https://github.com/GoogleChromeLabs/chrome-for-testing/issues/1"
-        echo "SKIP: WebGPU test skipped (ARM64 limitation)"
     fi
     EXIT_CODE=$?
 

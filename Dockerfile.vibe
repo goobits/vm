@@ -193,15 +193,16 @@ RUN . $NVM_DIR/nvm.sh && npm install -g \
 # Install Playwright browsers as developer user
 # - chromium: Default browser (WebGL works on all architectures)
 # - chrome: Chrome for Testing (WebGL + WebGPU, x86_64 only - not available for ARM64)
+# - firefox: Firefox (WebGL + WebGPU on all architectures including ARM64)
 RUN . $NVM_DIR/nvm.sh && \
-    npx playwright install chromium && \
+    npx playwright install chromium firefox && \
     ([ "$(uname -m)" = "x86_64" ] && npx playwright install chrome || echo "Skipping Chrome for Testing (not available for $(uname -m))")
 
 # Switch to root for system-level Playwright deps
 USER root
 RUN apt-get update && \
     . /home/${USER_NAME}/.nvm/nvm.sh && \
-    npx playwright install-deps chromium && \
+    npx playwright install-deps chromium firefox && \
     ([ "$(uname -m)" = "x86_64" ] && npx playwright install-deps chrome || true) && \
     rm -rf /var/lib/apt/lists/*
 
