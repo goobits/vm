@@ -154,8 +154,12 @@ RUN --mount=type=cache,target=/home/${USER_NAME}/.npm,uid=${USER_UID},gid=${USER
     npm-check-updates
 
 # Install Playwright browsers with cache mount for downloads
+# - chromium: Default browser (WebGL works on all architectures)
+# - chrome: Chrome for Testing (WebGL + WebGPU, x86_64 only - not available for ARM64)
 RUN --mount=type=cache,target=/home/${USER_NAME}/.cache/ms-playwright,uid=${USER_UID},gid=${USER_GID} \
-    . $NVM_DIR/nvm.sh && npx playwright install chromium
+    . $NVM_DIR/nvm.sh && \
+    npx playwright install chromium && \
+    ([ "$(uname -m)" = "x86_64" ] && npx playwright install chrome || echo "Skipping Chrome for Testing (not available for $(uname -m))")
 
 # =============================================================================
 # STAGE: python-builder - Install Python from deadsnakes
@@ -259,7 +263,9 @@ USER root
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get update && \
-    . /home/${USER_NAME}/.nvm/nvm.sh && npx playwright install-deps chromium
+    . /home/${USER_NAME}/.nvm/nvm.sh && \
+    npx playwright install-deps chromium && \
+    ([ "$(uname -m)" = "x86_64" ] && npx playwright install-deps chrome || true)
 
 # Set up working directory
 WORKDIR /workspace

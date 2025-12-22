@@ -55,11 +55,14 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Playwright with Chromium (latest stable)
-# This is the time-consuming step we're pre-caching
+# Install Playwright with Chromium + Chrome for Testing (latest stable)
+# - chromium: Default browser (WebGL works on all architectures)
+# - chrome: Chrome for Testing (WebGL + WebGPU, x86_64 only - not available for ARM64)
 RUN npm install -g playwright \
     && npx playwright install chromium \
-    && npx playwright install-deps chromium
+    && ([ "$(uname -m)" = "x86_64" ] && npx playwright install chrome || echo "Skipping Chrome (not available for $(uname -m))") \
+    && npx playwright install-deps chromium \
+    && ([ "$(uname -m)" = "x86_64" ] && npx playwright install-deps chrome || true)
 
 # Install common testing tools
 RUN npm install -g \
