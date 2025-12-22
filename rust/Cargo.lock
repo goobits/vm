@@ -297,9 +297,9 @@ dependencies = [
 
 [[package]]
 name = "axum"
-version = "0.8.7"
+version = "0.8.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b098575ebe77cb6d14fc7f32749631a6e44edbef6b796f89b020e99ba20d425"
+checksum = "8b52af3cb4058c895d37317bb27508dccc8e5f2d39454016b297bf4a400597b8"
 dependencies = [
  "axum-core 0.5.5",
  "base64",
@@ -409,7 +409,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d419a2aae56fdf2bca28b274fd3f57dbc5cb8f2143c1c8629c82dbc75992596"
 dependencies = [
  "anyhow",
- "axum 0.8.7",
+ "axum 0.8.8",
  "bytes",
  "bytesize 2.3.0",
  "cookie",
@@ -4170,7 +4170,7 @@ version = "9.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d047458f1b5b65237c2f6dc6db136945667f40a7668627b3490b9513a3d43a55"
 dependencies = [
- "axum 0.8.7",
+ "axum 0.8.8",
  "base64",
  "mime_guess",
  "regex",
@@ -4228,7 +4228,7 @@ name = "vm-api"
 version = "4.4.2"
 dependencies = [
  "anyhow",
- "axum 0.8.7",
+ "axum 0.8.8",
  "axum-test 16.4.1",
  "chrono",
  "serde",
@@ -4254,7 +4254,7 @@ version = "4.5.2"
 dependencies = [
  "aes-gcm",
  "anyhow",
- "axum 0.8.7",
+ "axum 0.8.8",
  "axum-test 18.2.1",
  "base64",
  "chrono",
@@ -4427,7 +4427,7 @@ dependencies = [
  "anyhow",
  "askama",
  "async-trait",
- "axum 0.8.7",
+ "axum 0.8.8",
  "axum-test 18.2.1",
  "base64",
  "bytes",
