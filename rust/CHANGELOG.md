@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.6.0] - 2025-12-23
+
+### Added
+
+- **WebGL/WebGPU Support**: GPU-accelerated graphics in Docker containers
+  - Mesa EGL/GL libraries (libegl1, libgl1-mesa-dri, libgles2-mesa) for SwiftShader WebGL backend
+  - Vulkan support (libvulkan1, mesa-vulkan-drivers) for WebGPU
+  - Firefox fallback for ARM64 WebGPU (native Chromium WebGPU unsupported on ARM64)
+  - Architecture-aware Vulkan ICD paths (x86_64 and aarch64)
+  - Virtual framebuffer (xvfb) with DISPLAY=:99 environment
+
+- **Humane CLI Improvements**: More intuitive command names and workflows
+  - `vm up` - Zero-to-code workflow (init → create → start → ssh in one command)
+  - `vm clean` - Prune orphaned Docker resources (containers, images, volumes, networks)
+  - `vm doctor --fix` - Automatic issue resolution (Docker daemon, socket permissions, SSH keys)
+  - Renamed `vm auth` → `vm secrets` for clearer mental model
+  - Renamed `vm port` → `vm tunnel` for simpler terminology
+  - Renamed `vm pkg` → `vm registry` for clarity
+
+- **Base Snapshot Management**: New `vm base` command for global snapshot management
+  - `vm base list` - List all global base snapshots
+  - `vm base create <name>` - Create @name snapshot
+  - `vm base delete <name>` - Delete @name snapshot
+  - `vm base restore <name>` - Restore from @name snapshot
+
+- **Layered Provisioning**: Install project-specific packages on top of pre-built snapshots
+  - Skip already-installed packages from base snapshot
+  - `--refresh-packages` flag to force package reinstall for security updates
+  - Performance: No custom packages ~0s, few packages ~10-30s, heavy customization ~1-2min
+
+- **Auto-detect SSH Path**: SSH into nested directories automatically
+  - Running `vm ssh` from packages/foo/src CDs into the same path inside VM
+  - No need to manually specify --path flag
+
+- **Claude Code Hardened Defaults**: Enhanced privacy and safety settings
+  - Telemetry and error reporting disabled by default
+  - Granular Bash command allowlist (replaces blanket allow)
+  - Git guardrails prevent destructive operations (force push, reset, rebase)
+  - Co-authored-by attribution for transparency
+
+- **Web UI Enhancements**
+  - Light/dark theme support with SSR-compatible zero-flash rendering
+  - @goobits/docs-engine integration for documentation
+  - @goobits/themes integration with ThemeProvider and ThemeToggle components
+
+### Changed
+
+- CLI command renames for better discoverability (see Added section)
+- AI sync directories moved from ~/.config/vm/ to ~/.vm/ai-sync/ to avoid config pollution
+
+### Fixed
+
+- Snapshot @ prefix handling: `vm snapshot restore @name` and `vm snapshot delete @name` now correctly find global snapshots
+- Pre-provisioned snapshots with different UIDs now work correctly
+- .zshrc permission denied errors when building from snapshots
+- Docker output streaming for long-running snapshot operations (no more silent hangs)
+- Docker load output streaming during snapshot loading
+
+### Performance
+
+- Skip redundant Ansible tasks when using snapshots (faster VM startup)
+- Layered provisioning dramatically reduces time for customized VMs
+
 ## [4.5.2] - 2025-11-21
 
 ### Added
@@ -132,7 +195,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Earlier releases. See git history for details.
 
-[Unreleased]: https://github.com/goobits/vm/compare/v4.5.2...HEAD
+[Unreleased]: https://github.com/goobits/vm/compare/v4.6.0...HEAD
+[4.6.0]: https://github.com/goobits/vm/compare/v4.5.2...v4.6.0
 [4.5.2]: https://github.com/goobits/vm/compare/v4.5.1...v4.5.2
 [4.5.1]: https://github.com/goobits/vm/compare/v4.5.0...v4.5.1
 [4.5.0]: https://github.com/goobits/vm/compare/v4.4.3...v4.5.0

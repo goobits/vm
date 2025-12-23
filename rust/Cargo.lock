@@ -1367,7 +1367,7 @@ dependencies = [
 
 [[package]]
 name = "goobits-vm"
-version = "4.5.2"
+version = "4.6.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -4208,7 +4208,7 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "version-sync"
-version = "4.5.2"
+version = "4.6.0"
 dependencies = [
  "clap",
  "regex",
@@ -4250,7 +4250,7 @@ dependencies = [
 
 [[package]]
 name = "vm-auth-proxy"
-version = "4.5.2"
+version = "4.6.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -4276,11 +4276,11 @@ dependencies = [
 
 [[package]]
 name = "vm-cli"
-version = "4.5.2"
+version = "4.6.0"
 
 [[package]]
 name = "vm-config"
-version = "4.5.2"
+version = "4.6.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -4312,7 +4312,7 @@ dependencies = [
 
 [[package]]
 name = "vm-core"
-version = "4.5.2"
+version = "4.6.0"
 dependencies = [
  "anyhow",
  "dirs 6.0.0",
@@ -4333,7 +4333,7 @@ dependencies = [
 
 [[package]]
 name = "vm-docker-registry"
-version = "4.5.2"
+version = "4.6.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4352,7 +4352,7 @@ dependencies = [
 
 [[package]]
 name = "vm-installer"
-version = "4.5.2"
+version = "4.6.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -4380,7 +4380,7 @@ dependencies = [
 
 [[package]]
 name = "vm-messages"
-version = "4.5.2"
+version = "4.6.0"
 
 [[package]]
 name = "vm-orchestrator"
@@ -4404,7 +4404,7 @@ dependencies = [
 
 [[package]]
 name = "vm-package-manager"
-version = "4.5.2"
+version = "4.6.0"
 dependencies = [
  "clap",
  "rayon",
@@ -4422,7 +4422,7 @@ dependencies = [
 
 [[package]]
 name = "vm-package-server"
-version = "4.5.2"
+version = "4.6.0"
 dependencies = [
  "anyhow",
  "askama",
@@ -4458,7 +4458,7 @@ dependencies = [
 
 [[package]]
 name = "vm-platform"
-version = "4.5.2"
+version = "4.6.0"
 dependencies = [
  "anyhow",
  "dirs 6.0.0",
@@ -4468,7 +4468,7 @@ dependencies = [
 
 [[package]]
 name = "vm-plugin"
-version = "4.5.2"
+version = "4.6.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -4480,7 +4480,7 @@ dependencies = [
 
 [[package]]
 name = "vm-provider"
-version = "4.5.2"
+version = "4.6.0"
 dependencies = [
  "chrono",
  "duct",
@@ -4506,7 +4506,7 @@ dependencies = [
 
 [[package]]
 name = "vm-temp"
-version = "4.5.2"
+version = "4.6.0"
 dependencies = [
  "clap",
  "fs2",
