@@ -215,22 +215,23 @@ pub enum PkgConfigAction {
 }
 
 #[derive(Debug, Clone, Subcommand)]
-pub enum PortSubcommand {
-    /// Forward a port dynamically using SSH tunneling
-    Forward {
+pub enum TunnelSubcommand {
+    /// Create a tunnel (e.g., vm tunnel 8080:3000)
+    #[command(name = "create", visible_alias = "forward")]
+    Create {
         /// Port mapping (e.g., 8080:3000 maps localhost:8080 to container:3000)
         mapping: String,
         /// Container name, ID, or project name
         #[arg()]
         container: Option<String>,
     },
-    /// List active port forwarding tunnels
+    /// List active tunnels
     List {
         /// Container name, ID, or project name
         #[arg()]
         container: Option<String>,
     },
-    /// Stop port forwarding tunnel(s)
+    /// Stop tunnel(s)
     Stop {
         /// Host port to stop (omit to stop all tunnels)
         port: Option<u16>,
@@ -244,8 +245,8 @@ pub enum PortSubcommand {
 }
 
 #[derive(Debug, Clone, Subcommand)]
-pub enum AuthSubcommand {
-    /// Check auth proxy status
+pub enum SecretsSubcommand {
+    /// Check secrets proxy status
     Status,
     /// Store a secret
     Add {
@@ -487,9 +488,30 @@ pub enum Command {
         /// Preset to use for initialization (e.g., vibe, nodejs, python, rust)
         preset: Option<String>,
     },
+    /// Zero to code in one command (init → create → start → ssh)
+    #[command(about = "Get from zero to coding in one command")]
+    Up {
+        /// Command to execute (if not provided, opens interactive shell)
+        #[arg(short = 'c', long)]
+        command: Option<String>,
+    },
+    /// Clean up unused Docker resources
+    #[command(about = "Prune orphaned volumes, images, and build cache")]
+    Clean {
+        /// Show what would be cleaned without removing
+        #[arg(long)]
+        dry_run: bool,
+        /// Show detailed information about items being cleaned
+        #[arg(long, short = 'v')]
+        verbose: bool,
+    },
     /// Run health checks and diagnostics
     #[command(about = "Check system dependencies, configuration, and service health")]
-    Doctor,
+    Doctor {
+        /// Attempt to automatically fix issues
+        #[arg(long)]
+        fix: bool,
+    },
     /// Update configuration settings
     Config {
         #[command(subcommand)]
@@ -604,10 +626,10 @@ pub enum Command {
         #[arg()]
         container: Option<String>,
     },
-    /// Manage dynamic port forwarding
-    Port {
+    /// Manage port tunnels to your environment
+    Tunnel {
         #[command(subcommand)]
-        command: PortSubcommand,
+        command: TunnelSubcommand,
     },
     /// Jump into your environment
     Ssh {
@@ -677,9 +699,9 @@ pub enum Command {
     },
 
     /// Manage secrets and credentials
-    Auth {
+    Secrets {
         #[command(subcommand)]
-        command: AuthSubcommand,
+        command: SecretsSubcommand,
     },
 
     /// Manage databases
@@ -737,7 +759,9 @@ pub enum Command {
 
 #[cfg(test)]
 mod tests {
-    use super::{Args, AuthSubcommand, Command, PkgSubcommand, PluginSubcommand, TempSubcommand};
+    use super::{
+        Args, Command, PkgSubcommand, PluginSubcommand, SecretsSubcommand, TempSubcommand,
+    };
     use clap::Parser;
 
     #[test]
@@ -892,16 +916,16 @@ mod tests {
     }
 
     #[test]
-    fn test_auth_list_command_parsing() {
-        let args = Args::parse_from(["vm", "auth", "list", "--show-values"]);
+    fn test_secrets_list_command_parsing() {
+        let args = Args::parse_from(["vm", "secrets", "list", "--show-values"]);
         match args.command {
-            Command::Auth { command } => match command {
-                AuthSubcommand::List { show_values } => {
+            Command::Secrets { command } => match command {
+                SecretsSubcommand::List { show_values } => {
                     assert!(show_values);
                 }
-                _ => panic!("Expected AuthSubcommand::List"),
+                _ => panic!("Expected SecretsSubcommand::List"),
             },
-            _ => panic!("Expected Command::Auth"),
+            _ => panic!("Expected Command::Secrets"),
         }
     }
 

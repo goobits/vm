@@ -3,7 +3,7 @@
 use crate::error::{VmError, VmResult};
 use tracing::debug;
 // Import the CLI types
-use crate::cli::{Args, Command, PluginSubcommand, PortSubcommand};
+use crate::cli::{Args, Command, PluginSubcommand, TunnelSubcommand};
 use std::path::Path;
 use vm_cli::msg;
 use vm_config::{
@@ -17,7 +17,7 @@ use vm_messages::messages::MESSAGES;
 use vm_provider::get_provider;
 
 // Individual command modules
-pub mod auth;
+pub mod clean;
 pub mod config;
 pub mod db;
 pub mod doctor;
@@ -26,10 +26,12 @@ pub mod init;
 pub mod pkg;
 pub mod plugin;
 pub mod plugin_new;
-pub mod port_forward;
+pub mod secrets;
 pub mod snapshot;
 pub mod temp;
+pub mod tunnel;
 pub mod uninstall;
+pub mod up;
 pub mod update;
 pub mod vm_ops;
 
@@ -43,9 +45,17 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
 
     // Handle commands that don't need a provider first
     match &args.command {
-        Command::Doctor => {
-            debug!("Handling doctor command");
-            doctor::run().map_err(VmError::from)
+        Command::Doctor { fix } => {
+            debug!("Handling doctor command with fix={}", fix);
+            doctor::run_with_fix(*fix).map_err(VmError::from)
+        }
+        Command::Up { command } => {
+            debug!("Handling up command");
+            up::handle_up(args.config.clone(), command.clone()).await
+        }
+        Command::Clean { dry_run, verbose } => {
+            debug!("Handling clean command");
+            clean::handle_clean(*dry_run, *verbose).await
         }
         Command::Init {
             file,
@@ -78,18 +88,18 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             };
             pkg::handle_pkg_command(command, global_config).await
         }
-        Command::Auth { command } => {
-            debug!("Calling auth proxy operations");
-            // For auth commands, use default GlobalConfig if no config file exists
+        Command::Secrets { command } => {
+            debug!("Calling secrets operations");
+            // For secrets commands, use default GlobalConfig if no config file exists
             let global_config = match AppConfig::load(args.config.clone()) {
                 Ok(app_config) => app_config.global,
                 Err(_) => {
                     // Use default GlobalConfig when no config file exists
-                    // This allows auth commands to work without a vm.yaml
+                    // This allows secrets commands to work without a vm.yaml
                     vm_config::GlobalConfig::default()
                 }
             };
-            auth::handle_auth_command(command, global_config).await
+            secrets::handle_secrets_command(command, global_config).await
         }
         Command::Plugin { command } => {
             debug!("Calling plugin operations");
@@ -445,25 +455,25 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             config,
             global_config.clone(),
         ),
-        Command::Port { command } => match command {
-            PortSubcommand::Forward { mapping, container } => port_forward::handle_port_forward(
+        Command::Tunnel { command } => match command {
+            TunnelSubcommand::Create { mapping, container } => tunnel::handle_tunnel(
                 provider,
                 mapping.as_str(),
                 container.as_deref(),
                 config,
                 global_config.clone(),
             ),
-            PortSubcommand::List { container } => port_forward::handle_port_list(
+            TunnelSubcommand::List { container } => tunnel::handle_tunnel_list(
                 provider,
                 container.as_deref(),
                 config,
                 global_config.clone(),
             ),
-            PortSubcommand::Stop {
+            TunnelSubcommand::Stop {
                 port,
                 container,
                 all,
-            } => port_forward::handle_port_stop(
+            } => tunnel::handle_tunnel_stop(
                 provider,
                 port.as_ref().copied(),
                 container.as_deref(),

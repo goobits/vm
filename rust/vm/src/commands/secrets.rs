@@ -1,10 +1,10 @@
-//! Auth proxy command handlers
+//! Secrets command handlers
 //!
-//! This module provides command handlers for the VM auth proxy functionality,
+//! This module provides command handlers for VM secrets management,
 //! integrating with the vm-auth-proxy library to provide secure secret storage
 //! and environment variable injection for VMs.
 
-use crate::cli::AuthSubcommand;
+use crate::cli::SecretsSubcommand;
 use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
 use crate::service_registry::get_service_registry;
@@ -15,14 +15,14 @@ use vm_messages::messages::MESSAGES;
 
 use vm_auth_proxy::{self, check_server_running, start_server_if_needed};
 
-/// Handle auth proxy commands
-pub async fn handle_auth_command(
-    command: &AuthSubcommand,
+/// Handle secrets commands
+pub async fn handle_secrets_command(
+    command: &SecretsSubcommand,
     global_config: GlobalConfig,
 ) -> VmResult<()> {
     match command {
-        AuthSubcommand::Status => handle_status(&global_config).await,
-        AuthSubcommand::Add {
+        SecretsSubcommand::Status => handle_status(&global_config).await,
+        SecretsSubcommand::Add {
             name,
             value,
             scope,
@@ -37,13 +37,15 @@ pub async fn handle_auth_command(
             )
             .await
         }
-        AuthSubcommand::List { show_values } => handle_list(*show_values, &global_config).await,
-        AuthSubcommand::Remove { name, force } => handle_remove(name, *force, &global_config).await,
-        AuthSubcommand::Interactive => handle_interactive(&global_config).await,
+        SecretsSubcommand::List { show_values } => handle_list(*show_values, &global_config).await,
+        SecretsSubcommand::Remove { name, force } => {
+            handle_remove(name, *force, &global_config).await
+        }
+        SecretsSubcommand::Interactive => handle_interactive(&global_config).await,
     }
 }
 
-/// Show auth proxy status with service manager information
+/// Show secrets proxy status with service manager information
 async fn handle_status(global_config: &GlobalConfig) -> VmResult<()> {
     let registry = get_service_registry();
     let service_manager_result = get_service_manager();
@@ -217,11 +219,10 @@ async fn handle_interactive(global_config: &GlobalConfig) -> VmResult<()> {
             Some(format!("project:{project_name}"))
         }
         2 => {
-            let instance_name: String =
-                Input::new()
-                    .with_prompt("Instance name")
-                    .interact_text()
-                    .map_err(|e| VmError::general(e, "Failed to read instance name"))?;
+            let instance_name: String = Input::new()
+                .with_prompt("Instance name")
+                .interact_text()
+                .map_err(|e| VmError::general(e, "Failed to read instance name"))?;
             Some(format!("instance:{instance_name}"))
         }
         _ => None,

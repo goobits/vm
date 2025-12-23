@@ -1,7 +1,8 @@
-//! Dynamic port forwarding with SSH tunneling
+//! Dynamic port tunneling with SSH
 //!
 //! This module provides ephemeral port forwarding using SSH local port forwarding.
 //! Tunnels are created on-demand and can be stopped independently.
+
 use crate::error::{VmError, VmResult};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -14,7 +15,7 @@ use vm_core::vm_println;
 use vm_platform::platform;
 use vm_provider::Provider;
 
-/// Information about an active port forwarding tunnel
+/// Information about an active tunnel
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TunnelInfo {
     pub host_port: u16,
@@ -79,7 +80,7 @@ impl TunnelManager {
         Ok(())
     }
 
-    /// Create a new port forwarding tunnel
+    /// Create a new tunnel
     pub fn create_tunnel(
         &self,
         host_port: u16,
@@ -99,7 +100,7 @@ impl TunnelManager {
 
         // Start relay container
         debug!(
-            "Creating port forward relay: localhost:{}->{}:{}",
+            "Creating tunnel: localhost:{}->{}:{}",
             host_port, container_name, container_port
         );
 
@@ -120,12 +121,12 @@ impl TunnelManager {
         self.save_tunnels(&tunnels)?;
 
         vm_println!(
-            "✓ Port forwarding active: localhost:{} → {}:{}",
+            "✓ Tunnel active: localhost:{} → {}:{}",
             host_port,
             container_name,
             container_port
         );
-        vm_println!("  Stop with: vm port stop {}", host_port);
+        vm_println!("  Stop with: vm tunnel stop {}", host_port);
 
         Ok(())
     }
@@ -156,7 +157,7 @@ impl TunnelManager {
             stop_relay_container(&tunnel.relay_container_id)?;
             self.save_tunnels(&tunnels)?;
             vm_println!(
-                "✓ Stopped port forwarding: localhost:{} → {}:{}",
+                "✓ Stopped tunnel: localhost:{} → {}:{}",
                 tunnel.host_port,
                 tunnel.container_name,
                 tunnel.container_port
@@ -212,20 +213,12 @@ impl TunnelManager {
 }
 
 /// Start a port forwarding relay using a sidecar container
-///
-/// Creates a lightweight Alpine container with socat that shares the network
-/// namespace of the target container and forwards traffic.
-/// Returns (container_id, container_name)
 fn start_relay_container(
     host_port: u16,
     container_port: u16,
     container_name: &str,
 ) -> VmResult<(String, String)> {
-    // Use a relay container with socat that shares the network namespace
-    // docker run -d --rm --network container:<name> -p <host>:<host> alpine/socat \
-    //   tcp-listen:<host>,fork,reuseaddr tcp-connect:localhost:<container>
-
-    let relay_name = format!("vm-port-forward-{}-{}", container_name, host_port);
+    let relay_name = format!("vm-tunnel-{}-{}", container_name, host_port);
     let network_arg = format!("--network=container:{}", container_name);
     let port_arg = format!("{}:{}", host_port, host_port);
     let listen_arg = format!("tcp-listen:{},fork,reuseaddr", host_port);
@@ -246,7 +239,7 @@ fn start_relay_container(
             &connect_arg,
         ])
         .output()
-        .map_err(|e| VmError::general(e, "Failed to start port forward relay".to_string()))?;
+        .map_err(|e| VmError::general(e, "Failed to start tunnel relay".to_string()))?;
 
     if !output.status.success() {
         let error = String::from_utf8_lossy(&output.stderr);
@@ -258,7 +251,7 @@ fn start_relay_container(
 
     let container_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
     debug!(
-        "Started port forward relay container: {} (ID: {})",
+        "Started tunnel relay container: {} (ID: {})",
         relay_name, container_id
     );
 
@@ -308,8 +301,8 @@ fn stop_relay_container(container_id: &str) -> VmResult<()> {
     Ok(())
 }
 
-/// Handle port forward command
-pub fn handle_port_forward(
+/// Handle tunnel command (create a new tunnel)
+pub fn handle_tunnel(
     provider: Box<dyn Provider>,
     mapping: &str,
     container: Option<&str>,
@@ -321,7 +314,7 @@ pub fn handle_port_forward(
     if parts.len() != 2 {
         return Err(VmError::validation(
             "Invalid port mapping format. Use: <host_port>:<container_port>".to_string(),
-            Some("Example: 8080:3000".to_string()),
+            Some("Example: vm tunnel 8080:3000".to_string()),
         ));
     }
 
@@ -354,8 +347,8 @@ pub fn handle_port_forward(
     manager.create_tunnel(host_port, container_port, container_name, provider.as_ref())
 }
 
-/// Handle port list command
-pub fn handle_port_list(
+/// Handle tunnel list command
+pub fn handle_tunnel_list(
     _provider: Box<dyn Provider>,
     container: Option<&str>,
     _config: VmConfig,
@@ -366,18 +359,15 @@ pub fn handle_port_list(
 
     if tunnels.is_empty() {
         if let Some(filter) = container {
-            vm_println!(
-                "No active port forwarding tunnels for container: {}",
-                filter
-            );
+            vm_println!("No active tunnels for container: {}", filter);
         } else {
-            vm_println!("No active port forwarding tunnels");
+            vm_println!("No active tunnels");
         }
-        vm_println!("\n💡 Create a tunnel with: vm port forward <host>:<container>");
+        vm_println!("\n💡 Create a tunnel with: vm tunnel <host>:<container>");
         return Ok(());
     }
 
-    vm_println!("🔀 Active Port Forwarding Tunnels\n");
+    vm_println!("🔀 Active Tunnels\n");
     for tunnel in tunnels {
         vm_println!(
             "  localhost:{} → {}:{}",
@@ -396,8 +386,8 @@ pub fn handle_port_list(
     Ok(())
 }
 
-/// Handle port stop command
-pub fn handle_port_stop(
+/// Handle tunnel stop command
+pub fn handle_tunnel_stop(
     _provider: Box<dyn Provider>,
     port: Option<u16>,
     container: Option<&str>,
@@ -421,7 +411,7 @@ pub fn handle_port_stop(
     } else {
         return Err(VmError::validation(
             "Must specify port number or use --all flag".to_string(),
-            Some("Example: vm port stop 8080 or vm port stop --all".to_string()),
+            Some("Example: vm tunnel stop 8080 or vm tunnel stop --all".to_string()),
         ));
     }
 
