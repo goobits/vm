@@ -1,10 +1,10 @@
-//! Package registry command handlers
+//! Private package registry command handlers
 //!
-//! This module provides command handlers for the VM package registry functionality,
+//! This module provides command handlers for the VM private registry functionality,
 //! integrating with the vm-package-server library to provide npm, pip, and cargo
 //! package caching and serving capabilities.
 
-use crate::cli::{PkgConfigAction, PkgSubcommand};
+use crate::cli::{RegistryConfigAction, RegistrySubcommand};
 use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
 use crate::service_registry::get_service_registry;
@@ -17,23 +17,25 @@ use vm_messages::messages::MESSAGES;
 
 use vm_package_server;
 
-/// Handle package registry commands
-pub async fn handle_pkg_command(
-    command: &PkgSubcommand,
+/// Handle registry commands
+pub async fn handle_registry_command(
+    command: &RegistrySubcommand,
     global_config: GlobalConfig,
 ) -> VmResult<()> {
     match command {
-        PkgSubcommand::Status { yes } => handle_status(*yes, &global_config).await,
-        PkgSubcommand::Add { r#type, yes } => {
+        RegistrySubcommand::Status { yes } => handle_status(*yes, &global_config).await,
+        RegistrySubcommand::Add { r#type, yes } => {
             handle_add(r#type.as_deref(), *yes, &global_config).await
         }
-        PkgSubcommand::Remove { force, yes } => handle_remove(*force, *yes, &global_config).await,
-        PkgSubcommand::List { yes } => handle_list(*yes, &global_config).await,
-        PkgSubcommand::Config { action } => handle_config(action, &global_config).await,
-        PkgSubcommand::Use { shell, port } => {
+        RegistrySubcommand::Remove { force, yes } => {
+            handle_remove(*force, *yes, &global_config).await
+        }
+        RegistrySubcommand::List { yes } => handle_list(*yes, &global_config).await,
+        RegistrySubcommand::Config { action } => handle_config(action, &global_config).await,
+        RegistrySubcommand::Use { shell, port } => {
             handle_use(shell.as_deref(), *port, &global_config).await
         }
-        PkgSubcommand::Serve { host, port, data } => {
+        RegistrySubcommand::Serve { host, port, data } => {
             handle_serve(host, *port, data, &global_config).await
         }
     }
@@ -156,10 +158,13 @@ async fn handle_list(yes: bool, global_config: &GlobalConfig) -> VmResult<()> {
 }
 
 /// Handle configuration commands
-async fn handle_config(action: &PkgConfigAction, global_config: &GlobalConfig) -> VmResult<()> {
+async fn handle_config(
+    action: &RegistryConfigAction,
+    global_config: &GlobalConfig,
+) -> VmResult<()> {
     let port = global_config.services.package_registry.port;
     match action {
-        PkgConfigAction::Show => {
+        RegistryConfigAction::Show => {
             vm_println!("{}", MESSAGES.vm.pkg_config_header);
             vm_println!(
                 "{}",
@@ -172,7 +177,7 @@ async fn handle_config(action: &PkgConfigAction, global_config: &GlobalConfig) -
             );
             Ok(())
         }
-        PkgConfigAction::Get { key } => {
+        RegistryConfigAction::Get { key } => {
             match key.as_str() {
                 "port" => vm_println!("{}", port),
                 "host" => vm_println!("0.0.0.0"),
@@ -181,7 +186,7 @@ async fn handle_config(action: &PkgConfigAction, global_config: &GlobalConfig) -
             }
             Ok(())
         }
-        PkgConfigAction::Set { key, value } => {
+        RegistryConfigAction::Set { key, value } => {
             vm_println!(
                 "{}",
                 msg!(MESSAGES.vm.pkg_config_setting, key = key, value = value)

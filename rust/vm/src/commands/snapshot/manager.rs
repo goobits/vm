@@ -182,15 +182,42 @@ pub async fn handle_list(project: Option<&str>, snapshot_type: Option<&str>) -> 
 pub async fn handle_delete(name: &str, project: Option<&str>, force: bool) -> VmResult<()> {
     let manager = SnapshotManager::new()?;
 
-    if !manager.snapshot_exists(project, name) {
+    // Determine if this is a global snapshot (@name) or project-specific (name)
+    let is_global = name.starts_with('@');
+    let snapshot_name = if is_global {
+        name.trim_start_matches('@')
+    } else {
+        name
+    };
+
+    // For global snapshots, use None as project scope (ignore any --project flag)
+    let project_scope = if is_global { None } else { project };
+
+    if !manager.snapshot_exists(project_scope, snapshot_name) {
+        let scope_desc = if is_global {
+            "global snapshots".to_string()
+        } else if let Some(proj) = project {
+            format!("project '{}'", proj)
+        } else {
+            "current project".to_string()
+        };
         return Err(VmError::validation(
-            format!("Snapshot '{}' not found", name),
+            format!("Snapshot '{}' not found in {}", snapshot_name, scope_desc),
             None::<String>,
         ));
     }
 
     if !force {
-        vm_core::vm_println!("This will permanently delete the snapshot '{}'.", name);
+        let scope_desc = if is_global {
+            " (global)".to_string()
+        } else {
+            String::new()
+        };
+        vm_core::vm_println!(
+            "This will permanently delete the snapshot '{}'{}.",
+            snapshot_name,
+            scope_desc
+        );
         print!("Are you sure you want to continue? (y/N) ");
         use std::io::{self, Write};
         io::stdout()
@@ -206,8 +233,8 @@ pub async fn handle_delete(name: &str, project: Option<&str>, force: bool) -> Vm
         }
     }
 
-    manager.delete_snapshot(project, name)?;
-    vm_core::vm_success!("Snapshot '{}' deleted successfully", name);
+    manager.delete_snapshot(project_scope, snapshot_name)?;
+    vm_core::vm_success!("Snapshot '{}' deleted successfully", snapshot_name);
 
     Ok(())
 }

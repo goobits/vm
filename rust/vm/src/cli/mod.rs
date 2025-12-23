@@ -136,14 +136,14 @@ pub enum TempSubcommand {
 }
 
 #[derive(Debug, Clone, Subcommand)]
-pub enum PkgSubcommand {
-    /// Check registry status
+pub enum RegistrySubcommand {
+    /// Check registry server status
     Status {
         /// Start server automatically without prompting
         #[arg(long, short = 'y')]
         yes: bool,
     },
-    /// Publish a package
+    /// Publish a package to the registry
     Add {
         /// Specify package type(s) to publish (python,npm,cargo)
         #[arg(long, short = 't')]
@@ -152,7 +152,7 @@ pub enum PkgSubcommand {
         #[arg(long, short = 'y')]
         yes: bool,
     },
-    /// Remove a package
+    /// Remove a package from the registry
     Remove {
         /// Skip confirmation prompts
         #[arg(long, short = 'f')]
@@ -161,7 +161,7 @@ pub enum PkgSubcommand {
         #[arg(long, short = 'y')]
         yes: bool,
     },
-    /// See all packages
+    /// List packages in the registry
     List {
         /// Start server automatically without prompting
         #[arg(long, short = 'y')]
@@ -170,18 +170,18 @@ pub enum PkgSubcommand {
     /// Manage registry settings
     Config {
         #[command(subcommand)]
-        action: PkgConfigAction,
+        action: RegistryConfigAction,
     },
-    /// Get shell configuration
+    /// Get shell configuration for using the registry
     Use {
         /// Shell type (bash, zsh, fish)
         #[arg(long)]
         shell: Option<String>,
-        /// Package server port
+        /// Registry server port
         #[arg(long, default_value = "3080")]
         port: u16,
     },
-    /// Start package server (internal use - for background process)
+    /// Start registry server (internal use - for background process)
     #[command(hide = true)]
     Serve {
         /// Host to bind to
@@ -197,7 +197,7 @@ pub enum PkgSubcommand {
 }
 
 #[derive(Debug, Clone, Subcommand)]
-pub enum PkgConfigAction {
+pub enum RegistryConfigAction {
     /// View all settings
     Show,
     /// Get a specific setting
@@ -412,6 +412,45 @@ pub enum SnapshotSubcommand {
         #[arg(long)]
         verify: bool,
         /// Overwrite existing snapshot with same name
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum BaseSubcommand {
+    /// List global base snapshots
+    List,
+    /// Create a new base snapshot (shorthand for `vm snapshot create @name`)
+    Create {
+        /// Base snapshot name (without @ prefix)
+        name: String,
+        /// Optional description
+        #[arg(long)]
+        description: Option<String>,
+        /// Build from a Dockerfile
+        #[arg(long, value_name = "PATH")]
+        from_dockerfile: Option<std::path::PathBuf>,
+        /// Build context directory for Dockerfile
+        #[arg(long, value_name = "PATH", default_value = ".")]
+        build_context: Option<std::path::PathBuf>,
+        /// Build arguments for Dockerfile
+        #[arg(long, value_name = "KEY=VALUE")]
+        build_arg: Vec<String>,
+    },
+    /// Delete a base snapshot (shorthand for `vm snapshot delete @name`)
+    Delete {
+        /// Base snapshot name (without @ prefix)
+        name: String,
+        /// Skip confirmation
+        #[arg(long)]
+        force: bool,
+    },
+    /// Restore from a base snapshot (shorthand for `vm snapshot restore @name`)
+    Restore {
+        /// Base snapshot name (without @ prefix)
+        name: String,
+        /// Force restore without confirmation
         #[arg(long)]
         force: bool,
     },
@@ -692,10 +731,10 @@ pub enum Command {
         command: TempSubcommand,
     },
 
-    /// Manage package registries
-    Pkg {
+    /// Manage private package registry
+    Registry {
         #[command(subcommand)]
-        command: PkgSubcommand,
+        command: RegistrySubcommand,
     },
 
     /// Manage secrets and credentials
@@ -714,6 +753,12 @@ pub enum Command {
     Snapshot {
         #[command(subcommand)]
         command: SnapshotSubcommand,
+    },
+
+    /// Manage global base snapshots (shorthand for vm snapshot with @prefix)
+    Base {
+        #[command(subcommand)]
+        command: BaseSubcommand,
     },
 
     /// Manage environment variables
@@ -760,7 +805,7 @@ pub enum Command {
 #[cfg(test)]
 mod tests {
     use super::{
-        Args, Command, PkgSubcommand, PluginSubcommand, SecretsSubcommand, TempSubcommand,
+        Args, Command, PluginSubcommand, RegistrySubcommand, SecretsSubcommand, TempSubcommand,
     };
     use clap::Parser;
 
@@ -902,16 +947,16 @@ mod tests {
 
     #[test]
     fn test_pkg_add_command_parsing() {
-        let args = Args::parse_from(["vm", "pkg", "add", "--type", "python", "-y"]);
+        let args = Args::parse_from(["vm", "registry", "add", "--type", "python", "-y"]);
         match args.command {
-            Command::Pkg { command } => match command {
-                PkgSubcommand::Add { r#type, yes } => {
+            Command::Registry { command } => match command {
+                RegistrySubcommand::Add { r#type, yes } => {
                     assert_eq!(r#type, Some("python".to_string()));
                     assert!(yes);
                 }
-                _ => panic!("Expected PkgSubcommand::Add"),
+                _ => panic!("Expected RegistrySubcommand::Add"),
             },
-            _ => panic!("Expected Command::Pkg"),
+            _ => panic!("Expected Command::Registry"),
         }
     }
 

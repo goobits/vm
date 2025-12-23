@@ -3,7 +3,7 @@
 use crate::error::{VmError, VmResult};
 use tracing::debug;
 // Import the CLI types
-use crate::cli::{Args, Command, PluginSubcommand, TunnelSubcommand};
+use crate::cli::{Args, BaseSubcommand, Command, PluginSubcommand, TunnelSubcommand};
 use std::path::Path;
 use vm_cli::msg;
 use vm_config::{
@@ -23,9 +23,9 @@ pub mod db;
 pub mod doctor;
 pub mod env;
 pub mod init;
-pub mod pkg;
 pub mod plugin;
 pub mod plugin_new;
+pub mod registry;
 pub mod secrets;
 pub mod snapshot;
 pub mod temp;
@@ -75,18 +75,18 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             debug!("Calling temp VM operations directly");
             temp::handle_temp_command(command, args.config)
         }
-        Command::Pkg { command } => {
-            debug!("Calling package registry operations");
-            // For pkg commands, use default GlobalConfig if no config file exists
+        Command::Registry { command } => {
+            debug!("Calling registry operations");
+            // For registry commands, use default GlobalConfig if no config file exists
             let global_config = match AppConfig::load(args.config.clone()) {
                 Ok(app_config) => app_config.global,
                 Err(_) => {
                     // Use default GlobalConfig when no config file exists
-                    // This allows pkg commands to work without a vm.yaml
+                    // This allows registry commands to work without a vm.yaml
                     vm_config::GlobalConfig::default()
                 }
             };
-            pkg::handle_pkg_command(command, global_config).await
+            registry::handle_registry_command(command, global_config).await
         }
         Command::Secrets { command } => {
             debug!("Calling secrets operations");
@@ -112,6 +112,10 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         Command::Snapshot { command } => {
             debug!("Calling snapshot operations");
             snapshot::handle_snapshot(command.clone(), args.config).await
+        }
+        Command::Base { command } => {
+            debug!("Calling base snapshot operations");
+            handle_base_command(command, args.config).await
         }
         Command::Env { command } => {
             debug!("Calling env operations");
@@ -538,6 +542,49 @@ fn handle_plugin_command(command: &PluginSubcommand) -> VmResult<()> {
             plugin::handle_plugin_validate(plugin_name).map_err(VmError::from)
         }
     }
+}
+
+/// Handle base snapshot commands (shorthand for vm snapshot with @prefix)
+async fn handle_base_command(
+    command: &BaseSubcommand,
+    config_path: Option<std::path::PathBuf>,
+) -> VmResult<()> {
+    use crate::cli::SnapshotSubcommand;
+
+    // Convert base commands to snapshot commands with @ prefix
+    let snapshot_command = match command {
+        BaseSubcommand::List => SnapshotSubcommand::List {
+            project: None,
+            r#type: Some("base".to_string()),
+        },
+        BaseSubcommand::Create {
+            name,
+            description,
+            from_dockerfile,
+            build_context,
+            build_arg,
+        } => SnapshotSubcommand::Create {
+            name: format!("@{}", name),
+            description: description.clone(),
+            quiesce: false,
+            project: None,
+            from_dockerfile: from_dockerfile.clone(),
+            build_context: build_context.clone(),
+            build_arg: build_arg.clone(),
+        },
+        BaseSubcommand::Delete { name, force } => SnapshotSubcommand::Delete {
+            name: format!("@{}", name),
+            project: None,
+            force: *force,
+        },
+        BaseSubcommand::Restore { name, force } => SnapshotSubcommand::Restore {
+            name: format!("@{}", name),
+            project: None,
+            force: *force,
+        },
+    };
+
+    snapshot::handle_snapshot(snapshot_command, config_path).await
 }
 
 fn handle_completion(shell: &str) -> VmResult<()> {

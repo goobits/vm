@@ -25,28 +25,46 @@ pub async fn handle_restore(
     force: bool,
 ) -> VmResult<()> {
     let manager = SnapshotManager::new()?;
+
+    // Determine if this is a global snapshot (@name) or project-specific (name)
+    let is_global = name.starts_with('@');
+    let snapshot_name = if is_global {
+        name.trim_start_matches('@')
+    } else {
+        name
+    };
+
     let project_name = project_override
         .map(|s| s.to_string())
         .unwrap_or_else(|| get_project_name(config));
 
+    // For global snapshots, use None as project scope
+    let project_scope = if is_global {
+        None
+    } else {
+        Some(project_name.as_str())
+    };
+
     // Load snapshot metadata
-    let snapshot_dir = manager.get_snapshot_dir(Some(&project_name), name);
+    let snapshot_dir = manager.get_snapshot_dir(project_scope, snapshot_name);
     let metadata_file = snapshot_dir.join("metadata.json");
 
     if !metadata_file.exists() {
+        let scope_desc = if is_global {
+            "global snapshots".to_string()
+        } else {
+            format!("project '{}'", project_name)
+        };
         return Err(VmError::validation(
-            format!(
-                "Snapshot '{}' not found for project '{}'",
-                name, project_name
-            ),
+            format!("Snapshot '{}' not found in {}", snapshot_name, scope_desc),
             None::<String>,
         ));
     }
 
     let metadata = SnapshotMetadata::load(&metadata_file)?;
 
-    // Verify project matches
-    if metadata.project_name != project_name && !force {
+    // Verify project matches (skip for global snapshots)
+    if !is_global && metadata.project_name != project_name && !force {
         return Err(VmError::validation(
             format!(
                 "Snapshot was created for project '{}' but current project is '{}'. Use --force to override.",
@@ -56,11 +74,12 @@ pub async fn handle_restore(
         ));
     }
 
-    vm_core::vm_println!(
-        "Restoring snapshot '{}' for project '{}'...",
-        name,
-        project_name
-    );
+    let scope_desc = if is_global {
+        "globally".to_string()
+    } else {
+        format!("for project '{}'", project_name)
+    };
+    vm_core::vm_println!("Restoring snapshot '{}' {}...", snapshot_name, scope_desc);
 
     // Get project directory
     let project_dir =
@@ -208,7 +227,7 @@ pub async fn handle_restore(
     vm_core::vm_println!("Starting restored environment...");
     execute_docker_compose_status(&["up", "-d"], &project_dir).await?;
 
-    vm_core::vm_success!("Snapshot '{}' restored successfully", name);
+    vm_core::vm_success!("Snapshot '{}' restored successfully", snapshot_name);
 
     // Show git info if available
     if let Some(branch) = &metadata.git_branch {

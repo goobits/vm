@@ -219,10 +219,11 @@ async fn handle_interactive(global_config: &GlobalConfig) -> VmResult<()> {
             Some(format!("project:{project_name}"))
         }
         2 => {
-            let instance_name: String = Input::new()
-                .with_prompt("Instance name")
-                .interact_text()
-                .map_err(|e| VmError::general(e, "Failed to read instance name"))?;
+            let instance_name: String =
+                Input::new()
+                    .with_prompt("Instance name")
+                    .interact_text()
+                    .map_err(|e| VmError::general(e, "Failed to read instance name"))?;
             Some(format!("instance:{instance_name}"))
         }
         _ => None,
