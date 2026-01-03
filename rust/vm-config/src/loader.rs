@@ -216,6 +216,7 @@ impl ConfigLoader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn test_preprocess_yaml_unquoted_snapshot() {
@@ -356,6 +357,7 @@ vm:
     }
 
     #[test]
+    #[serial]
     fn test_relative_path_from_config_in_nested_dir() {
         use std::io::Write;
         use tempfile::TempDir;
@@ -399,6 +401,7 @@ vm:
     }
 
     #[test]
+    #[serial]
     fn test_relative_path_from_config_at_root() {
         use std::io::Write;
         use tempfile::TempDir;
