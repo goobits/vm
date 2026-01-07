@@ -98,6 +98,13 @@ pub struct VmMessages {
     pub list_table_separator: &'static str,
 
     // ============================================================================
+    // VM Snapshot Messages
+    // ============================================================================
+    pub snapshot_list_empty: &'static str,
+    pub snapshot_list_table_header: &'static str,
+    pub snapshot_list_table_separator: &'static str,
+
+    // ============================================================================
     // VM SSH Messages
     // ============================================================================
     pub ssh_connecting: &'static str,
@@ -347,6 +354,11 @@ pub const VM_MESSAGES: VmMessages = VmMessages {
     list_empty_provider: "No VMs found for provider '{provider}'",
     list_table_header: "INSTANCE             PROVIDER   STATUS       ID                   UPTIME     PROJECT        ",
     list_table_separator: "─────────────────────────────────────────────────────────────────────────────────────────────────────",
+
+    // VM Snapshot
+    snapshot_list_empty: "No snapshots found.",
+    snapshot_list_table_header: "TYPE      NAME                 CREATED               SIZE       DESCRIPTION         ",
+    snapshot_list_table_separator: "────────────────────────────────────────────────────────────────────────────────────",
 
     // VM SSH
     ssh_connecting: "🔗 Connecting to '{name}'...",

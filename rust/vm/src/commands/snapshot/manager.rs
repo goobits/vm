@@ -129,11 +129,22 @@ pub async fn handle_list(project: Option<&str>, snapshot_type: Option<&str>) -> 
     }
 
     if snapshots.is_empty() {
-        vm_core::vm_println!("No snapshots found.");
+        vm_core::vm_println!("{}", vm_messages::messages::MESSAGES.vm.snapshot_list_empty);
         return Ok(());
     }
 
-    vm_core::vm_println!("\nAvailable snapshots:\n");
+    vm_core::vm_println!(
+        "\n{}\n",
+        vm_messages::messages::MESSAGES
+            .vm
+            .snapshot_list_table_header
+    );
+    vm_core::vm_println!(
+        "{}",
+        vm_messages::messages::MESSAGES
+            .vm
+            .snapshot_list_table_separator
+    );
 
     for snapshot in snapshots {
         // Determine snapshot type (base or project)
@@ -143,39 +154,30 @@ pub async fn handle_list(project: Option<&str>, snapshot_type: Option<&str>) -> 
             "project"
         };
 
-        vm_core::vm_println!("  {} ({})", snapshot.name, snapshot_type);
-        vm_core::vm_println!(
-            "    Created: {}",
-            snapshot.created_at.format("%Y-%m-%d %H:%M:%S UTC")
-        );
-
-        if let Some(desc) = &snapshot.description {
-            vm_core::vm_println!("    Description: {}", desc);
-        }
-
-        if snapshot_type == "project" {
-            vm_core::vm_println!("    Project: {}", snapshot.project_name);
-        }
-
-        if let Some(branch) = &snapshot.git_branch {
-            let dirty = if snapshot.git_dirty { " (dirty)" } else { "" };
-            vm_core::vm_println!(
-                "    Git: {} @ {}{}",
-                branch,
-                snapshot.git_commit.as_deref().unwrap_or("unknown"),
-                dirty
-            );
-        }
-
-        vm_core::vm_println!("    Services: {}", snapshot.services.len());
-        vm_core::vm_println!("    Volumes: {}", snapshot.volumes.len());
-
         let size_mb = snapshot.total_size_bytes as f64 / (1024.0 * 1024.0);
-        vm_core::vm_println!("    Size: {:.2} MB", size_mb);
-        vm_core::vm_println!();
+        let size_display = format!("{:.1} MB", size_mb);
+
+        vm_core::vm_println!(
+            "{:<9} {:<20} {:<21} {:>10} {:<20}",
+            snapshot_type,
+            truncate_string(&snapshot.name, 20),
+            snapshot.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+            size_display,
+            truncate_string(snapshot.description.as_deref().unwrap_or("--"), 20)
+        );
     }
 
+    vm_core::vm_println!("");
+
     Ok(())
+}
+
+fn truncate_string(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max_len - 3])
+    }
 }
 
 /// Handle the delete subcommand
