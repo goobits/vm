@@ -56,9 +56,9 @@ alias grep='grep --color=auto'
 alias fgrep='fgrep --color=auto'
 alias egrep='egrep --color=auto'
 alias diff='diff --color=auto'
-alias claudeyolo='claude --dangerously-skip-permissions'
-alias geminiyolo='GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini'
-alias codexyolo='codex --dangerously-bypass-approvals-and-sandbox'
+alias claudeyo='claude --dangerously-skip-permissions'
+alias geminiyo='GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo'
+alias codexyo='codex --dangerously-bypass-approvals-and-sandbox'
 
 # ZSH Syntax Highlighting
 if [[ -r /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]]; then

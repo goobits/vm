@@ -76,8 +76,17 @@ These flags can be used with any command.
 ### `vm create`
 Create and apply a new VM.
 ```bash
-vm create [--force]
+vm create [--force] [--instance <name>] [--verbose]
+          [--save-as <@name>] [--from-dockerfile <file>]
 ```
+
+**Options:**
+- `--force`: Recreate VM even if it exists
+- `--instance <name>`: Specify instance name (default: dev)
+- `--save-as <@name>`: Save resulting container as a global snapshot (e.g. `@vibe-base`)
+- `--from-dockerfile <file>`: Build directly from a Dockerfile (overrides vm.yaml)
+- `--refresh-packages`: Force update of all packages (bypassing cache)
+- `--preserve-services`: Reuse existing service containers (default: true)
 
 ### `vm start`
 Start a stopped VM.
@@ -488,14 +497,24 @@ Create, manage, and share VM snapshots.
 ### `vm snapshot create`
 Create a new snapshot of current VM state.
 ```bash
-vm snapshot create <name> [--project <name>]
+vm snapshot create <name> [--project <name>] [--quiesce]
+                          [--from-dockerfile <path>]
 ```
+
+**Options:**
+- `--quiesce`: Stop services before snapshotting for data consistency
+- `--from-dockerfile <path>`: Build snapshot directly from a Dockerfile
+- `--build-context <path>`: Directory context for Dockerfile build (default: ".")
+- `--build-arg <key=value>`: Build arguments for Dockerfile
 
 ### `vm snapshot list`
 List all available snapshots.
 ```bash
-vm snapshot list [--project <name>]
+vm snapshot list [--project <name>] [--type <base|project>]
 ```
+
+**Options:**
+- `--type <base|project>`: Filter by snapshot type (base images or project states)
 
 ### `vm snapshot restore`
 Restore VM to a snapshot.
@@ -567,6 +586,46 @@ vm snapshot import backup.tar.gz --force
 - Backup: Export snapshots before major changes
 - Migration: Move snapshots between machines
 - Distribution: Share pre-configured environments
+
+---
+
+## Base Snapshots (`vm base`)
+Manage global base snapshots (shorthand for `vm snapshot` with `@` prefix).
+
+### `vm base list`
+List all global base snapshots.
+```bash
+vm base list
+```
+
+### `vm base create`
+Create a new global base snapshot.
+```bash
+vm base create <name> [--from-dockerfile <file>]
+```
+
+Equivalent to `vm snapshot create @<name>`.
+
+**Options:**
+- `--from-dockerfile <file>`: Build from a Dockerfile
+- `--build-context <path>`: Build context directory
+- `--build-arg <key=value>`: Build arguments
+
+### `vm base restore`
+Restore a workspace from a base snapshot.
+```bash
+vm base restore <name>
+```
+
+Equivalent to `vm snapshot restore @<name>`.
+
+### `vm base delete`
+Delete a global base snapshot.
+```bash
+vm base delete <name>
+```
+
+Equivalent to `vm snapshot delete @<name>`.
 
 ---
 

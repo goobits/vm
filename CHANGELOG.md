@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Renamed yolo aliases to yo (claudeyo, geminiyo, codexyo) and updated Gemini to use `--yolo`
+- Made the optimized Vibe Dockerfile the default `Dockerfile.vibe`
+
 ## [4.6.0] - 2025-12-23
 
 ### Added
@@ -73,7 +78,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docker output streaming for long-running snapshot operations (no more silent hangs)
 - Docker load output streaming during snapshot loading
 - Zsh shell history permission errors when directory was created by root
-- Missing aliases (claudeyolo, geminiyolo, codexyolo) in zsh shells
+- Missing aliases (claudeyo, geminiyo, codexyo) in zsh shells
 
 ### Performance
 
@@ -105,12 +110,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Vibe Box Enhancements**: Added codex and tsx to global npm packages
   - Added `@openai/codex` CLI for OpenAI Codex integration
   - Added `tsx` for fast TypeScript execution
-  - Added `codexyolo` alias to Dockerfile.vibe bashrc
+  - Added `codexyo` alias to Dockerfile.vibe bashrc
 
 ### Changed
 
 - **Vibe Preset Cleanup**: Removed redundant aliases from vibe-dev preset
-  - Aliases (claudeyolo, geminiyolo, codexyolo) are now only defined in Docker image
+  - Aliases (claudeyo, geminiyo, codexyo) are now only defined in Docker image
   - Eliminates duplication in generated vm.yaml files
 
 ### Fixed
@@ -354,7 +359,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Vibe Preset Portability**: Restored declarative package lists for non-Docker scenarios
   - Works correctly for first-time Docker users (without @vibe-box snapshot)
   - Tart provider receives full package installation
-  - Shell aliases (claudeyolo, geminiyolo, codexyolo) render properly
+  - Shell aliases (claudeyo, geminiyo, codexyo) render properly
 
 - **Snapshot Detection**: Fixed false positives using type-safe check
   - Prevents treating images like `company/dev-box:latest` as snapshots

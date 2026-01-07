@@ -80,7 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Zsh shell history permission errors when directory was created by root
-- Missing aliases (claudeyolo, geminiyolo, codexyolo) in zsh shells - now embedded in templates
+- Missing aliases (claudeyo, geminiyo, codexyo) in zsh shells - now embedded in templates
 
 ### Changed
 - Security tests in vm-package-server now use shared validation module (DRY refactor)

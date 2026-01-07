@@ -23,10 +23,6 @@ terminal:
   show_timestamp: false
   theme: dracula
   username: vm-dev
-aliases:
-  codexyolo: codex --dangerously-bypass-approvals-and-sandbox
-  geminiyolo: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --approval-mode=yolo
-  claudeyolo: claude --dangerously-skip-permissions
 host_sync:
   git_config: true
   ai_tools: true
