@@ -16,6 +16,7 @@ members = [
     # Provider Layer
     "vm-provider",
     "vm-temp",
+    "vm-snapshot",
 
     # Application Layer
     "vm",

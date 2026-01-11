@@ -1,7 +1,7 @@
 //! Snapshot management and lifecycle operations
 
-use super::metadata::SnapshotMetadata;
-use crate::error::{VmError, VmResult};
+use crate::metadata::SnapshotMetadata;
+use vm_core::error::{VmError, Result};
 use std::path::PathBuf;
 
 /// Manages snapshot storage and lifecycle
@@ -11,7 +11,7 @@ pub struct SnapshotManager {
 
 impl SnapshotManager {
     /// Create a new snapshot manager
-    pub fn new() -> VmResult<Self> {
+    pub fn new() -> Result<Self> {
         let snapshots_dir = vm_core::user_paths::user_config_dir()?.join("snapshots");
 
         // Create snapshots directory if it doesn't exist
@@ -31,7 +31,7 @@ impl SnapshotManager {
     }
 
     /// List all snapshots, optionally filtered by project
-    pub fn list_snapshots(&self, project_filter: Option<&str>) -> VmResult<Vec<SnapshotMetadata>> {
+    pub fn list_snapshots(&self, project_filter: Option<&str>) -> Result<Vec<SnapshotMetadata>> {
         let mut snapshots = Vec::new();
 
         // Determine which directories to scan
@@ -87,7 +87,7 @@ impl SnapshotManager {
     }
 
     /// Delete a snapshot
-    pub fn delete_snapshot(&self, project: Option<&str>, name: &str) -> VmResult<()> {
+    pub fn delete_snapshot(&self, project: Option<&str>, name: &str) -> Result<()> {
         let snapshot_dir = self.get_snapshot_dir(project, name);
 
         if !snapshot_dir.exists() {
@@ -112,7 +112,7 @@ impl SnapshotManager {
 }
 
 /// Handle the list subcommand
-pub async fn handle_list(project: Option<&str>, snapshot_type: Option<&str>) -> VmResult<()> {
+pub async fn handle_list(project: Option<&str>, snapshot_type: Option<&str>) -> Result<()> {
     let manager = SnapshotManager::new()?;
     let mut snapshots = manager.list_snapshots(project)?;
 
@@ -181,7 +181,7 @@ fn truncate_string(s: &str, max_len: usize) -> String {
 }
 
 /// Handle the delete subcommand
-pub async fn handle_delete(name: &str, project: Option<&str>, force: bool) -> VmResult<()> {
+pub async fn handle_delete(name: &str, project: Option<&str>, force: bool) -> Result<()> {
     let manager = SnapshotManager::new()?;
 
     // Determine if this is a global snapshot (@name) or project-specific (name)

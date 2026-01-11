@@ -1,9 +1,10 @@
 //! Snapshot creation functionality
 
-use super::docker::{execute_docker_compose, execute_docker_streaming, execute_docker_with_output};
-use super::manager::SnapshotManager;
-use super::metadata::{ServiceSnapshot, SnapshotMetadata, VolumeSnapshot};
-use crate::error::{VmError, VmResult};
+use crate::docker::{execute_docker_compose, execute_docker_streaming, execute_docker_with_output};
+use crate::manager::SnapshotManager;
+use crate::metadata::{ServiceSnapshot, SnapshotMetadata, VolumeSnapshot};
+use crate::optimal_concurrency;
+use vm_core::error::{VmError, Result};
 use chrono::Utc;
 use futures::stream::{self, StreamExt};
 use rayon::prelude::*;
@@ -14,7 +15,7 @@ use walkdir::WalkDir;
 /// Optimized to use a single git command instead of 3 separate spawns (3x faster)
 async fn get_git_info(
     project_dir: &std::path::Path,
-) -> VmResult<(Option<String>, bool, Option<String>)> {
+) -> Result<(Option<String>, bool, Option<String>)> {
     // Use single git status command to get all info at once
     let output = tokio::process::Command::new("git")
         .args(["status", "--porcelain=v2", "--branch"])
@@ -79,7 +80,7 @@ pub async fn handle_create(
     build_context: Option<&std::path::Path>,
     build_args: &[String],
     force: bool,
-) -> VmResult<()> {
+) -> Result<()> {
     let manager = SnapshotManager::new()?;
 
     // Handle --from-dockerfile mode
@@ -233,11 +234,11 @@ pub async fn handle_create(
 
     // Snapshot services concurrently (CPU-adaptive concurrency)
     let services: Vec<ServiceSnapshot> = stream::iter(snapshot_futures)
-        .buffer_unordered(super::optimal_concurrency())
+        .buffer_unordered(optimal_concurrency())
         .collect::<Vec<_>>()
         .await
         .into_iter()
-        .collect::<VmResult<Vec<_>>>()?
+        .collect::<Result<Vec<_>>>()?
         .into_iter()
         .flatten()
         .collect();
@@ -305,11 +306,11 @@ pub async fn handle_create(
 
     // Backup volumes concurrently (CPU-adaptive concurrency)
     let volumes: Vec<VolumeSnapshot> = stream::iter(volume_futures)
-        .buffer_unordered(super::optimal_concurrency())
+        .buffer_unordered(optimal_concurrency())
         .collect::<Vec<_>>()
         .await
         .into_iter()
-        .collect::<VmResult<Vec<_>>>()?;
+        .collect::<Result<Vec<_>>>()?;
 
     // Copy configuration files
     vm_core::vm_println!("Copying configuration files...");
@@ -373,7 +374,7 @@ pub async fn handle_create(
 }
 
 /// Calculate total size of directory recursively using parallel iteration
-fn calculate_directory_size(path: &std::path::Path) -> VmResult<u64> {
+fn calculate_directory_size(path: &std::path::Path) -> Result<u64> {
     Ok(WalkDir::new(path)
         .into_iter()
         .par_bridge() // Parallel iteration with rayon
@@ -392,7 +393,7 @@ async fn handle_create_from_dockerfile(
     build_context: &std::path::Path,
     build_args: &[String],
     force: bool,
-) -> VmResult<()> {
+) -> Result<()> {
     // Validate Dockerfile exists
     if !dockerfile_path.exists() {
         return Err(VmError::validation(

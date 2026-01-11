@@ -41,6 +41,7 @@ vm-platform = { path = "../vm-platform" }
 vm-plugin = { path = "../vm-plugin" }
 vm-provider = { path = "../vm-provider" }
 vm-temp = { path = "../vm-temp" }
+vm-snapshot = { path = "../vm-snapshot" }
 vm-package-server = { path = "../vm-package-server" }
 vm-auth-proxy = { path = "../vm-auth-proxy" }
 vm-docker-registry = { path = "../vm-docker-registry" }

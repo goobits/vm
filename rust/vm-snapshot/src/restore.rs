@@ -1,9 +1,10 @@
 //! Snapshot restoration functionality
 
-use super::docker::{execute_docker, execute_docker_compose_status, execute_docker_streaming};
-use super::manager::SnapshotManager;
-use super::metadata::SnapshotMetadata;
-use crate::error::{VmError, VmResult};
+use crate::docker::{execute_docker, execute_docker_compose_status, execute_docker_streaming};
+use crate::manager::SnapshotManager;
+use crate::metadata::SnapshotMetadata;
+use crate::optimal_concurrency;
+use vm_core::error::{VmError, Result};
 use futures::stream::{self, StreamExt};
 use vm_config::AppConfig;
 
@@ -23,7 +24,7 @@ pub async fn handle_restore(
     name: &str,
     project_override: Option<&str>,
     force: bool,
-) -> VmResult<()> {
+) -> Result<()> {
     let manager = SnapshotManager::new()?;
 
     // Determine if this is a global snapshot (@name) or project-specific (name)
@@ -147,11 +148,11 @@ pub async fn handle_restore(
 
         // Restore volumes concurrently (CPU-adaptive concurrency)
         stream::iter(volume_futures)
-            .buffer_unordered(super::optimal_concurrency())
+            .buffer_unordered(optimal_concurrency())
             .collect::<Vec<_>>()
             .await
             .into_iter()
-            .collect::<VmResult<Vec<_>>>()?;
+            .collect::<Result<Vec<_>>>()?;
     }
 
     // Load images
@@ -189,11 +190,11 @@ pub async fn handle_restore(
 
         // Load images concurrently (CPU-adaptive concurrency)
         stream::iter(load_futures)
-            .buffer_unordered(super::optimal_concurrency())
+            .buffer_unordered(optimal_concurrency())
             .collect::<Vec<_>>()
             .await
             .into_iter()
-            .collect::<VmResult<Vec<_>>>()?;
+            .collect::<Result<Vec<_>>>()?;
     }
 
     // Restore configuration files

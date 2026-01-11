@@ -67,4 +67,28 @@ impl From<serde_json::Error> for VmError {
     }
 }
 
+impl VmError {
+    /// Create a validation error with an optional hint
+    pub fn validation<S: Into<String>, H: Into<String>>(msg: S, _hint: Option<H>) -> Self {
+        VmError::Validation(msg.into())
+    }
+
+    /// Create a filesystem error with path and operation context
+    pub fn filesystem<E: std::fmt::Display, P: std::fmt::Display>(
+        err: E,
+        path: P,
+        operation: &str,
+    ) -> Self {
+        VmError::Filesystem(format!("{} {}: {}", operation, path, err))
+    }
+
+    /// Create a general error wrapping another error with context
+    pub fn general<E: std::error::Error + Send + Sync + 'static, S: Into<String>>(
+        err: E,
+        msg: S,
+    ) -> Self {
+        VmError::Other(anyhow::Error::from(err).context(msg.into()))
+    }
+}
+
 pub type Result<T> = std::result::Result<T, VmError>;

@@ -1,6 +1,6 @@
 //! Snapshot metadata structures and persistence
 
-use crate::error::{VmError, VmResult};
+use vm_core::error::{VmError, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -62,7 +62,7 @@ pub struct VolumeSnapshot {
 
 impl SnapshotMetadata {
     /// Load metadata from JSON file
-    pub fn load<P: AsRef<Path>>(path: P) -> VmResult<Self> {
+    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
         let content = std::fs::read_to_string(path)
             .map_err(|e| VmError::filesystem(e, path.to_string_lossy(), "read"))?;
@@ -78,7 +78,7 @@ impl SnapshotMetadata {
     }
 
     /// Save metadata to JSON file
-    pub fn save<P: AsRef<Path>>(&self, path: P) -> VmResult<()> {
+    pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let path = path.as_ref();
         let content = serde_json::to_string_pretty(self)
             .map_err(|e| VmError::general(e, "Failed to serialize snapshot metadata"))?;

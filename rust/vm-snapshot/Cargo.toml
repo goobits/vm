@@ -1,0 +1,27 @@
+[package]
+name = "vm-snapshot"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Snapshot management for Goobits VM"
+
+[dependencies]
+chrono = { workspace = true }
+flate2 = "1.0"
+futures = "0.3"
+num_cpus = { workspace = true }
+rayon = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tar = "0.4"
+tempfile = "3"
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+walkdir = { workspace = true }
+
+vm-config = { path = "../vm-config" }
+vm-core = { path = "../vm-core" }
+vm-cli = { path = "../vm-cli" }
+vm-messages = { path = "../vm-messages" }

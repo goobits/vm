@@ -3,13 +3,13 @@
 //! This module provides common Docker command execution patterns to avoid
 //! code duplication across create, restore, import, and export modules.
 
-use crate::error::{VmError, VmResult};
+use vm_core::error::{VmError, Result};
 use std::path::Path;
 use std::process::Stdio;
 
 /// Execute docker command with streaming output (for long-running commands)
 /// Output is streamed directly to the terminal so users see progress
-pub async fn execute_docker_streaming(args: &[&str]) -> VmResult<()> {
+pub async fn execute_docker_streaming(args: &[&str]) -> Result<()> {
     let status = tokio::process::Command::new("docker")
         .args(args)
         .stdout(Stdio::inherit())
@@ -29,7 +29,7 @@ pub async fn execute_docker_streaming(args: &[&str]) -> VmResult<()> {
 }
 
 /// Execute docker command and return output (for commands that need captured output)
-pub async fn execute_docker_with_output(args: &[&str]) -> VmResult<String> {
+pub async fn execute_docker_with_output(args: &[&str]) -> Result<String> {
     let output = tokio::process::Command::new("docker")
         .args(args)
         .output()
@@ -48,7 +48,7 @@ pub async fn execute_docker_with_output(args: &[&str]) -> VmResult<String> {
 }
 
 /// Execute docker command without capturing output (for quick commands like volume create/rm)
-pub async fn execute_docker(args: &[&str]) -> VmResult<()> {
+pub async fn execute_docker(args: &[&str]) -> Result<()> {
     let status = tokio::process::Command::new("docker")
         .args(args)
         .status()
@@ -66,7 +66,7 @@ pub async fn execute_docker(args: &[&str]) -> VmResult<()> {
 }
 
 /// Execute docker compose command and return output
-pub async fn execute_docker_compose(args: &[&str], project_dir: &Path) -> VmResult<String> {
+pub async fn execute_docker_compose(args: &[&str], project_dir: &Path) -> Result<String> {
     let output = tokio::process::Command::new("docker")
         .arg("compose")
         .args(args)
@@ -87,7 +87,7 @@ pub async fn execute_docker_compose(args: &[&str], project_dir: &Path) -> VmResu
 }
 
 /// Execute docker compose command without capturing output
-pub async fn execute_docker_compose_status(args: &[&str], project_dir: &Path) -> VmResult<()> {
+pub async fn execute_docker_compose_status(args: &[&str], project_dir: &Path) -> Result<()> {
     let status = tokio::process::Command::new("docker")
         .arg("compose")
         .args(args)

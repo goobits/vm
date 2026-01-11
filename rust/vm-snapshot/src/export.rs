@@ -1,9 +1,10 @@
 //! Snapshot export functionality
 
-use super::docker::execute_docker_with_output;
-use super::manager::SnapshotManager;
-use super::metadata::SnapshotMetadata;
-use crate::error::{VmError, VmResult};
+use crate::docker::execute_docker_with_output;
+use crate::manager::SnapshotManager;
+use crate::metadata::SnapshotMetadata;
+use crate::optimal_concurrency;
+use vm_core::error::{VmError, Result};
 use futures::stream::{self, StreamExt};
 use std::path::Path;
 use vm_core::{vm_error, vm_println, vm_success};
@@ -14,7 +15,7 @@ pub async fn handle_export(
     output_path: Option<&Path>,
     compress_level: u8,
     project_override: Option<&str>,
-) -> VmResult<()> {
+) -> Result<()> {
     let manager = SnapshotManager::new()?;
 
     // Parse snapshot name to determine if it's global (@name) or project-specific
@@ -160,11 +161,11 @@ pub async fn handle_export(
 
     // Export images concurrently (CPU-adaptive concurrency)
     stream::iter(export_futures)
-        .buffer_unordered(super::optimal_concurrency())
+        .buffer_unordered(optimal_concurrency())
         .collect::<Vec<_>>()
         .await
         .into_iter()
-        .collect::<VmResult<Vec<_>>>()?;
+        .collect::<Result<Vec<_>>>()?;
 
     // Copy metadata.json
     let metadata_dest = export_build_dir.join("metadata.json");
@@ -225,7 +226,7 @@ pub async fn handle_export(
 }
 
 /// Recursively copy a directory
-async fn copy_dir_all(src: &Path, dst: &Path) -> VmResult<()> {
+async fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
     tokio::fs::create_dir_all(dst)
         .await
         .map_err(|e| VmError::filesystem(e, dst.display().to_string(), "create_dir_all"))?;

@@ -1405,6 +1405,7 @@ dependencies = [
  "vm-platform",
  "vm-plugin",
  "vm-provider",
+ "vm-snapshot",
  "vm-temp",
  "walkdir",
 ]
@@ -4543,6 +4544,29 @@ dependencies = [
  "vm-core",
  "vm-messages",
  "vm-platform",
+]
+
+[[package]]
+name = "vm-snapshot"
+version = "4.6.0"
+dependencies = [
+ "chrono",
+ "flate2",
+ "futures",
+ "num_cpus",
+ "rayon",
+ "serde",
+ "serde_json",
+ "tar",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
+ "vm-cli",
+ "vm-config",
+ "vm-core",
+ "vm-messages",
+ "walkdir",
 ]
 
 [[package]]

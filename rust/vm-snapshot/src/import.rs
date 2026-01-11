@@ -1,9 +1,10 @@
 //! Snapshot import functionality
 
-use super::docker::execute_docker_streaming;
-use super::manager::SnapshotManager;
-use super::metadata::SnapshotMetadata;
-use crate::error::{VmError, VmResult};
+use crate::docker::execute_docker_streaming;
+use crate::manager::SnapshotManager;
+use crate::metadata::SnapshotMetadata;
+use crate::optimal_concurrency;
+use vm_core::error::{VmError, Result};
 use futures::stream::{self, StreamExt};
 use std::path::Path;
 use vm_core::{vm_println, vm_success, vm_warning};
@@ -14,7 +15,7 @@ pub async fn handle_import(
     name_override: Option<&str>,
     verify: bool,
     force: bool,
-) -> VmResult<()> {
+) -> Result<()> {
     let manager = SnapshotManager::new()?;
 
     if !file_path.exists() {
@@ -181,11 +182,11 @@ pub async fn handle_import(
 
         // Load images concurrently (CPU-adaptive concurrency)
         stream::iter(load_futures)
-            .buffer_unordered(super::optimal_concurrency())
+            .buffer_unordered(optimal_concurrency())
             .collect::<Vec<_>>()
             .await
             .into_iter()
-            .collect::<VmResult<Vec<_>>>()?;
+            .collect::<Result<Vec<_>>>()?;
     }
 
     // Create snapshot directory
@@ -229,7 +230,7 @@ pub async fn handle_import(
 }
 
 /// Recursively copy a directory
-async fn copy_dir_all(src: &Path, dst: &Path) -> VmResult<()> {
+async fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
     tokio::fs::create_dir_all(dst)
         .await
         .map_err(|e| VmError::filesystem(e, dst.display().to_string(), "create_dir_all"))?;
