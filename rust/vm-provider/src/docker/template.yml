@@ -73,14 +73,35 @@ services:
       # Aider AI data persistence
       - {{ home_dir }}/.vm/ai-sync/aider/{{ project_name }}:/home/{{ project_user }}/.aider:rw
       {% endif %}
+      {% if config.services.audio | default(value=false) %}
+      # Audio: PulseAudio socket
       {% if is_macos %}
-      # macOS specific volume for audio
       - /tmp/pulseaudio.socket:/tmp/pulseaudio.socket
+      {% else %}
+      - /run/user/{{ project_uid }}/pulse:/run/user/{{ project_uid }}/pulse:ro
+      {% endif %}
       {% endif %}
       # Host package mounts for development
       {% if host_mounts %}{% for mount in host_mounts %}- {{ mount.0 }}:{{ mount.1 }}:ro
       {% endfor %}{% endif %}
       # Container is now self-contained - no VM tool mount needed
+    {% if config.services.gpu | default(value=false) or config.services.audio | default(value=false) %}
+    devices:
+      {% if config.services.gpu | default(value=false) %}
+      - /dev/dri:/dev/dri
+      {% endif %}
+      {% if config.services.audio | default(value=false) %}
+      - /dev/snd:/dev/snd
+      {% endif %}
+    group_add:
+      {% if config.services.gpu | default(value=false) %}
+      - video
+      - render
+      {% endif %}
+      {% if config.services.audio | default(value=false) %}
+      - audio
+      {% endif %}
+    {% endif %}
     {% if config.ports.mappings or config.ports._range -%}
     ports:
       # Explicit port mappings from vm.yaml
@@ -121,8 +142,12 @@ services:
       # SSH agent socket for forwarding
       - SSH_AUTH_SOCK=/ssh-agent
       {% endif %}
+      {% if config.services.audio | default(value=false) %}
       {% if is_macos %}
       - PULSE_SERVER=unix:/tmp/pulseaudio.socket
+      {% else %}
+      - PULSE_SERVER=unix:/run/user/{{ project_uid }}/pulse/native
+      {% endif %}
       {% endif %}
       {% if config.services.postgresql.enabled | default(value=false) %}
       - DATABASE_URL=postgresql://{{ config.services.postgresql.user | default(value="postgres") }}:{{ postgresql_password | default(value="postgres") }}@postgres:5432/{{ config.services.postgresql.database | default(value=project_name ~ "_dev") }}

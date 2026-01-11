@@ -42,18 +42,6 @@ fn validate_tart_box_spec(box_spec: &BoxSpec, errors: &mut Vec<String>) {
     }
 }
 
-/// Validate GPU type for GPU service
-fn validate_gpu_type(gpu_type: &Option<String>) -> Result<()> {
-    if let Some(gpu_type) = gpu_type {
-        if !matches!(gpu_type.as_str(), "nvidia" | "amd" | "intel" | "auto") {
-            return Err(vm_core::error::VmError::Config(format!(
-                "Invalid GPU type: {gpu_type}"
-            )));
-        }
-    }
-    Ok(())
-}
-
 /// Checks if a given host port is available to bind to.
 fn check_port_available(port: u16, binding: &str) -> Result<()> {
     let addr = format!("{binding}:{port}");
@@ -279,10 +267,6 @@ impl ConfigValidator {
                         "Invalid port: port 0 is reserved".to_string(),
                     ));
                 }
-            }
-
-            if name == "gpu" && service.enabled {
-                validate_gpu_type(&service.r#type)?;
             }
         }
 

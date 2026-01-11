@@ -163,8 +163,6 @@ fn add_service_schema_fields(cache: &mut HashMap<String, SchemaType>) {
             "mysql",
             "docker",
             "headless_browser",
-            "audio",
-            "gpu",
         ],
     );
 
@@ -172,20 +170,16 @@ fn add_service_schema_fields(cache: &mut HashMap<String, SchemaType>) {
     add_database_service_fields(cache, "postgresql");
     add_database_service_fields(cache, "mysql");
 
+    // Simple boolean services (gpu/audio passthrough)
+    add_booleans!(cache, "services.gpu", "services.audio");
+
     // Service-specific fields
-    add_booleans!(
-        cache,
-        "services.docker.buildx",
-        "services.audio.share_microphone"
-    );
+    add_booleans!(cache, "services.docker.buildx");
     add_strings!(
         cache,
         "services.headless_browser.display",
-        "services.headless_browser.executable_path",
-        "services.audio.driver",
-        "services.gpu.type"
+        "services.headless_browser.executable_path"
     );
-    add_integers!(cache, "services.gpu.memory_mb");
 }
 
 /// Add terminal, package, and host sync schema fields
