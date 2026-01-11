@@ -1,126 +1,55 @@
 # syntax=docker/dockerfile:1.4
-# Vibe Development Environment Dockerfile - OPTIMIZED
-# Multi-stage build with BuildKit cache mounts for faster build times
-# Build with: DOCKER_BUILDKIT=1 docker build -t vibe-box -f Dockerfile.vibe .
+# Vibe Development Environment - Multi-stage build with BuildKit cache mounts
 
 # =============================================================================
-# STAGE: base - OS setup + locale + common tools
+# STAGE: base
 # =============================================================================
 FROM ubuntu:22.04 AS base
 
-# Build arguments for flexibility
 ARG USER_NAME=developer
 ARG USER_UID=1000
 ARG USER_GID=1000
 
-# Avoid prompts from apt
 ENV DEBIAN_FRONTEND=noninteractive
-
-# Set locale to prevent warnings
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 ENV LANGUAGE=en_US:en
 
-# Install system packages + build essentials + common dev tools
-# Using BuildKit cache mounts to speed up repeated builds
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get update && apt-get install -y \
-    # Tini: minimal init system for proper zombie process reaping
-    # Without this, zombie processes accumulate in containers
+    # Init system (prevents zombie processes)
     tini \
-    # Locale support (must come first)
+    # Locale
     locales \
-    # Core utilities from vibe preset
-    tree \
-    ripgrep \
-    unzip \
-    htop \
-    # Essential tools
-    curl \
-    wget \
-    git \
-    git-lfs \
-    ca-certificates \
-    gnupg \
-    # Process management
-    supervisor \
-    sudo \
-    # Security tools
-    ufw \
-    fail2ban \
-    unattended-upgrades \
+    # Core tools
+    tree ripgrep unzip htop curl wget git git-lfs ca-certificates gnupg \
+    # Process/system
+    supervisor sudo ufw fail2ban unattended-upgrades \
     # Shell
-    zsh \
-    zsh-syntax-highlighting \
-    # Python packages
-    python3-pip \
-    python3-dev \
-    python3-venv \
-    python3-psycopg2 \
-    # Build essentials for native modules
-    build-essential \
-    gcc \
-    g++ \
-    make \
-    pkg-config \
-    libssl-dev \
-    # Common dev utilities
-    jq \
-    vim \
-    nano \
-    tmux \
-    procps \
-    net-tools \
-    iputils-ping \
-    # For Playwright/Chromium dependencies (from official Playwright deps list)
-    libnss3 \
-    libnspr4 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libatspi2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libdbus-1-3 \
-    libxkbcommon0 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libasound2 \
-    libpango-1.0-0 \
-    libcairo2 \
-    # Additional Playwright deps (reported missing by playwright install)
-    libxcursor1 \
-    libgtk-3-0 \
-    libpangocairo-1.0-0 \
-    libcairo-gobject2 \
-    libgdk-pixbuf-2.0-0 \
-    libwayland-client0 \
-    libx11-6 \
-    libxcb1 \
-    libxext6 \
-    libglib2.0-0 \
-    # WebGL/WebGPU support - Mesa EGL/GL libraries for SwiftShader/SwANGLE backend
-    # Without these, Chromium cannot initialize its graphics subsystem for WebGL
-    libegl1 \
-    libgl1-mesa-dri \
-    libgles2-mesa \
-    # Vulkan support for WebGPU and SwANGLE (software Vulkan via llvmpipe)
-    libvulkan1 \
-    mesa-vulkan-drivers \
-    # Virtual framebuffer for headless display (required for some WebGL operations)
-    xvfb \
+    zsh zsh-syntax-highlighting \
+    # Python base (psycopg2 binary deps only - Python 3.11 installed in final stage)
+    libpq-dev \
+    # Build tools
+    build-essential gcc g++ make pkg-config libssl-dev \
+    # Dev utilities
+    jq vim nano tmux procps net-tools iputils-ping \
+    # Playwright/Chromium deps
+    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 \
+    libcups2 libdrm2 libdbus-1-3 libxkbcommon0 libxcomposite1 libxdamage1 \
+    libxfixes3 libxrandr2 libgbm1 libasound2 libpango-1.0-0 libcairo2 \
+    libxcursor1 libgtk-3-0 libpangocairo-1.0-0 libcairo-gobject2 \
+    libgdk-pixbuf-2.0-0 libwayland-client0 libx11-6 libxcb1 libxext6 libglib2.0-0 \
+    # WebGL/Vulkan (software rendering)
+    libegl1 libgl1-mesa-dri libgles2-mesa libvulkan1 mesa-vulkan-drivers xvfb \
     && locale-gen en_US.UTF-8 \
     && update-locale LANG=en_US.UTF-8
 
-# Create user early so we can install tools for them
 RUN groupadd -g ${USER_GID} ${USER_NAME} || true && \
     useradd -m -u ${USER_UID} -g ${USER_GID} -s /bin/bash ${USER_NAME}
 
 # =============================================================================
-# STAGE: node-builder - Install Node.js via NVM
+# STAGE: node-builder
 # =============================================================================
 FROM base AS node-builder
 
@@ -133,81 +62,28 @@ ARG NODE_VERSION=22
 USER ${USER_NAME}
 ENV NVM_DIR="/home/${USER_NAME}/.nvm"
 
-# Create NVM directory first to ensure correct permissions
 RUN mkdir -p $NVM_DIR
 
-# Install NVM and Node.js - BuildKit cache mount speeds up repeated builds
 RUN --mount=type=cache,target=/home/${USER_NAME}/.nvm/.cache,uid=${USER_UID},gid=${USER_GID} \
     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash && \
     . $NVM_DIR/nvm.sh && \
     nvm install ${NODE_VERSION} && \
     nvm use ${NODE_VERSION} && \
-    nvm alias default ${NODE_VERSION} && \
-    echo "Node.js version: $(node --version)" && \
-    echo "npm version: $(npm --version)"
+    nvm alias default ${NODE_VERSION}
 
-# Install NPM packages globally with cache mount for faster subsequent builds
 RUN --mount=type=cache,target=/home/${USER_NAME}/.npm,uid=${USER_UID},gid=${USER_GID} \
     . $NVM_DIR/nvm.sh && npm install -g \
-    @anthropic-ai/claude-code \
-    @google/gemini-cli \
-    @openai/codex \
-    playwright \
-    prettier \
-    eslint \
-    typescript \
-    ts-node \
-    tsx \
-    nodemon \
-    npm-check-updates
+    @anthropic-ai/claude-code @google/gemini-cli @openai/codex \
+    playwright prettier eslint typescript ts-node tsx nodemon npm-check-updates
 
-# Install Playwright browsers with cache mount for downloads
-# - chromium: Default browser (WebGL works on all architectures)
-# - chrome: Chrome for Testing (WebGL + WebGPU, x86_64 only - not available for ARM64)
-# - firefox: Firefox (WebGL + WebGPU on all architectures including ARM64)
+# Chrome for Testing only available on x86_64
 RUN --mount=type=cache,target=/home/${USER_NAME}/.cache/ms-playwright,uid=${USER_UID},gid=${USER_GID} \
     . $NVM_DIR/nvm.sh && \
     npx playwright install chromium firefox && \
-    ([ "$(uname -m)" = "x86_64" ] && npx playwright install chrome || echo "Skipping Chrome for Testing (not available for $(uname -m))")
+    ([ "$(uname -m)" = "x86_64" ] && npx playwright install chrome || true)
 
 # =============================================================================
-# STAGE: python-builder - Install Python from deadsnakes
-# =============================================================================
-FROM base AS python-builder
-
-ARG USER_NAME=developer
-
-# Install Python (latest stable from deadsnakes)
-# Using cache mounts for apt operations
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get update && apt-get install -y \
-    software-properties-common \
-    && add-apt-repository ppa:deadsnakes/ppa \
-    && apt-get update \
-    # Find latest stable Python (3.10-3.14 range, excludes 3.15+ nightly)
-    && PYTHON_STABLE=$(apt-cache search 'python3\.[0-9]+$' | grep -oP 'python3\.1[0-4]' | sort -V | tail -1) \
-    && echo "Installing Python: ${PYTHON_STABLE}" \
-    && apt-get install -y \
-    ${PYTHON_STABLE} \
-    ${PYTHON_STABLE}-venv \
-    ${PYTHON_STABLE}-dev \
-    # Set as default
-    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/${PYTHON_STABLE} 1 \
-    && ln -sf /usr/bin/python3 /usr/bin/python \
-    # Install pip via get-pip.py (works for all Python versions)
-    && curl -sS https://bootstrap.pypa.io/get-pip.py | ${PYTHON_STABLE}
-
-# Install Python packages with cache mount for pip
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip3 install --no-cache-dir --root-user-action=ignore \
-    ansible-core==2.17.6 \
-    playwright \
-    pytest \
-    pytest-playwright
-
-# =============================================================================
-# STAGE: rust-builder - Install Rust toolchain
+# STAGE: rust-builder
 # =============================================================================
 FROM base AS rust-builder
 
@@ -217,60 +93,50 @@ ARG USER_GID=1000
 
 USER ${USER_NAME}
 
-# Create Cargo directories first to ensure correct permissions
 RUN mkdir -p /home/${USER_NAME}/.cargo /home/${USER_NAME}/.cargo/git /home/${USER_NAME}/.cargo/registry
 
-# Install Rust and Cargo with cache mount for downloads
 RUN --mount=type=cache,target=/home/${USER_NAME}/.cargo/registry,uid=${USER_UID},gid=${USER_GID} \
     --mount=type=cache,target=/home/${USER_NAME}/.cargo/git,uid=${USER_UID},gid=${USER_GID} \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile default \
-    && . $HOME/.cargo/env \
-    && rustup component add rustfmt clippy rust-analyzer \
-    && echo "Rust version: $(rustc --version)" \
-    && echo "Cargo version: $(cargo --version)"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile default && \
+    . $HOME/.cargo/env && \
+    rustup component add rustfmt clippy rust-analyzer
 
-# Install common Cargo tools with cache mount
 RUN --mount=type=cache,target=/home/${USER_NAME}/.cargo/registry,uid=${USER_UID},gid=${USER_GID} \
     --mount=type=cache,target=/home/${USER_NAME}/.cargo/git,uid=${USER_UID},gid=${USER_GID} \
-    . $HOME/.cargo/env && cargo install \
-    cargo-watch \
-    cargo-edit \
-    cargo-audit \
-    cargo-outdated
+    . $HOME/.cargo/env && cargo install cargo-watch cargo-edit cargo-audit cargo-outdated
 
 # =============================================================================
-# STAGE: final - Combine all stages
+# STAGE: final
 # =============================================================================
 FROM base AS final
 
 ARG USER_NAME=developer
 ARG NODE_VERSION=22
 
-# Copy Node.js from node-builder stage
 COPY --from=node-builder --chown=${USER_NAME}:${USER_NAME} /home/${USER_NAME}/.nvm /home/${USER_NAME}/.nvm
 
-# Copy Python from python-builder stage
-COPY --from=python-builder /usr/bin/python3* /usr/bin/
-COPY --from=python-builder /usr/lib/python3* /usr/lib/
-COPY --from=python-builder /usr/local/lib/python3* /usr/local/lib/
-COPY --from=python-builder /usr/local/bin/pip* /usr/local/bin/
-COPY --from=python-builder /usr/local/bin/ansible* /usr/local/bin/
-COPY --from=python-builder /usr/local/bin/playwright /usr/local/bin/
-COPY --from=python-builder /usr/local/bin/pytest /usr/local/bin/
+# Python 3.11 via deadsnakes (don't copy between stages - breaks stdlib)
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && \
+    apt-get install -y software-properties-common && \
+    add-apt-repository -y ppa:deadsnakes/ppa && \
+    apt-get update && \
+    apt-get install -y python3.11 python3.11-venv python3.11-dev && \
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 && \
+    curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11 && \
+    pip3 install --no-cache-dir --root-user-action=ignore \
+    ansible-core==2.17.6 playwright pytest pytest-playwright psycopg2-binary
 
-# Copy Rust from rust-builder stage
 COPY --from=rust-builder --chown=${USER_NAME}:${USER_NAME} /home/${USER_NAME}/.cargo /home/${USER_NAME}/.cargo
 COPY --from=rust-builder --chown=${USER_NAME}:${USER_NAME} /home/${USER_NAME}/.rustup /home/${USER_NAME}/.rustup
 
-# Set environment variables for all tools
 ENV NVM_DIR="/home/${USER_NAME}/.nvm"
 ENV PATH="${NVM_DIR}/versions/node/v${NODE_VERSION}/bin:${PATH}"
 ENV PATH="/home/${USER_NAME}/.cargo/bin:${PATH}"
 ENV CARGO_HOME="/home/${USER_NAME}/.cargo"
 ENV RUSTUP_HOME="/home/${USER_NAME}/.rustup"
 
-# Install Playwright system dependencies (final step)
-# This needs to be in final stage since it depends on Node.js being available
 USER root
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
@@ -279,63 +145,41 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     npx playwright install-deps chromium firefox && \
     ([ "$(uname -m)" = "x86_64" ] && npx playwright install-deps chrome || true)
 
-# Set up working directory
 WORKDIR /workspace
+RUN mkdir -p /workspace && chown -R ${USER_NAME}:${USER_NAME} /workspace
 
-# Set workspace ownership
-RUN mkdir -p /workspace && \
-    chown -R ${USER_NAME}:${USER_NAME} /workspace
-
-# Set up aliases/env for both bash and zsh shells
+# Shell aliases for AI tools
 RUN for rc in /home/${USER_NAME}/.bashrc /home/${USER_NAME}/.zshrc; do \
         echo 'alias claudeyo="claude --dangerously-skip-permissions"' >> "$rc"; \
         echo 'alias geminiyo="GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo"' >> "$rc"; \
         echo 'alias codexyo="codex --dangerously-bypass-approvals-and-sandbox"' >> "$rc"; \
-        echo 'export PATH="$PATH:/home/${USER_NAME}/.local/bin:/root/.cargo/bin"' >> "$rc"; \
-        echo 'export CARGO_HOME="/root/.cargo"' >> "$rc"; \
-        echo 'export RUSTUP_HOME="/root/.rustup"' >> "$rc"; \
+        echo 'export PATH="$PATH:/home/'${USER_NAME}'/.local/bin"' >> "$rc"; \
     done
 
-# Set timezone
 ENV TZ=America/Los_Angeles
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# Environment variables for development
 ENV NODE_ENV=development \
     PYTHONDONTWRITEBYTECODE=1 \
     PLAYWRIGHT_BROWSERS_PATH=/home/${USER_NAME}/.cache/ms-playwright \
-    # Virtual display for headless WebGL (xvfb runs on :99)
     DISPLAY=:99 \
-    # Ensure Mesa uses llvmpipe for software rendering
     LIBGL_ALWAYS_SOFTWARE=1
 
-# Set architecture-aware Vulkan ICD path at runtime
-# This handles both x86_64 and aarch64 builds
+# Vulkan ICD path (arch-aware)
 RUN ARCH=$(uname -m) && \
     echo "export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.${ARCH}.json" >> /etc/profile.d/vulkan-icd.sh && \
     chmod +x /etc/profile.d/vulkan-icd.sh
 
-# Add labels for metadata
-LABEL org.opencontainers.image.title="Vibe Development Box - Optimized" \
-      org.opencontainers.image.description="Optimized multi-stage image with latest stable Node.js, Python, Rust, Playwright, and AI CLI tools" \
-      org.opencontainers.image.version="1.1" \
+LABEL org.opencontainers.image.title="Vibe Development Box" \
+      org.opencontainers.image.version="1.2" \
       com.vm-tool.preset="vibe" \
-      com.vm-tool.snapshot-name="vibe-box" \
-      com.vm-tool.auto-update="true" \
-      com.vm-tool.optimized="true"
+      com.vm-tool.snapshot-name="vibe-box"
 
-# Switch to developer user
 USER ${USER_NAME}
-
-# Set default shell to bash
 SHELL ["/bin/bash", "-c"]
 
-# Healthcheck to ensure the container is ready
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD bash -c 'source ~/.nvm/nvm.sh && source ~/.cargo/env 2>/dev/null && command -v node && command -v python3 || exit 1'
 
-# Use tini as init to properly reap zombie processes
 ENTRYPOINT ["/usr/bin/tini", "--"]
-
-# Default command
 CMD ["/bin/bash"]
