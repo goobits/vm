@@ -642,30 +642,13 @@ impl<'a> ComposeOperations<'a> {
             })
             .collect();
 
-        let all_services_exist =
-            !expected_services.is_empty() && expected_services.len() == existing_services.len();
-
-        // Decide start strategy:
-        // - dev + services exist -> compose start
-        // - services exist but dev missing -> start services, then up -d --no-deps dev
-        // - otherwise -> up -d (create/recreate as needed)
-        let (command, extra_args): (&str, Vec<String>) = if container_exists && all_services_exist {
-            ("start", vec![])
-        } else if !container_exists && all_services_exist {
-            for service in &existing_services {
-                let _ = DockerOps::start_container(Some(self.executable), service);
-            }
-            (
-                "up",
-                vec![
-                    "-d".to_string(),
-                    "--no-deps".to_string(),
-                    container_name.clone(),
-                ],
-            )
-        } else {
-            ("up", vec!["-d".to_string()])
-        };
+        // Always use `up -d` - it's idempotent and handles all cases:
+        // - Creates containers that don't exist (removed)
+        // - Starts stopped containers
+        // - Does nothing for already running containers
+        // Previous logic used `docker compose start` which fails for removed containers
+        let _ = (container_exists, existing_services); // silence unused warnings
+        let (command, extra_args): (&str, Vec<String>) = ("up", vec!["-d".to_string()]);
         // We need to convert Vec<String> to Vec<&str> for build_args
         let extra_args_refs: Vec<&str> = extra_args.iter().map(|s| s.as_str()).collect();
         let args = ComposeCommand::build_args(&compose_path, command, &extra_args_refs)?;
