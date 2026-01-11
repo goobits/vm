@@ -441,4 +441,71 @@ mod tests {
         assert_eq!(defaults["services"]["docker"]["enabled"], false); // From defaults
         assert_eq!(defaults["services"]["redis"]["enabled"], true); // From preset
     }
+
+    #[test]
+    fn test_apply_profile_merges_correctly() {
+        use crate::config::{ProjectConfig, VmSettings};
+        use indexmap::IndexMap;
+
+        // Create base config with a profile
+        let mut base = VmConfig::default();
+        base.provider = Some("docker".to_string());
+        base.project = Some(ProjectConfig {
+            name: Some("test-project".to_string()),
+            ..Default::default()
+        });
+        base.vm = Some(VmSettings {
+            memory: Some(crate::config::MemoryLimit::Limited(2048)),
+            cpus: Some(crate::config::CpuLimit::Limited(2)),
+            ..Default::default()
+        });
+
+        // Create a tart profile
+        let mut tart_profile = VmConfig::default();
+        tart_profile.provider = Some("tart".to_string());
+        tart_profile.vm = Some(VmSettings {
+            memory: Some(crate::config::MemoryLimit::Limited(16384)),
+            ..Default::default()
+        });
+
+        let mut profiles = IndexMap::new();
+        profiles.insert("tart".to_string(), tart_profile);
+        base.profiles = Some(profiles);
+
+        // Apply the profile
+        let result = apply_profile(base, "tart").unwrap();
+
+        // Verify provider is overridden
+        assert_eq!(result.provider, Some("tart".to_string()));
+
+        // Verify memory is overridden but cpus is preserved from base
+        let vm = result.vm.unwrap();
+        assert_eq!(vm.memory, Some(crate::config::MemoryLimit::Limited(16384)));
+        assert_eq!(vm.cpus, Some(crate::config::CpuLimit::Limited(2)));
+
+        // Verify project name is preserved from base
+        assert_eq!(
+            result.project.unwrap().name,
+            Some("test-project".to_string())
+        );
+    }
+
+    #[test]
+    fn test_apply_profile_not_found() {
+        let base = VmConfig::default();
+        let result = apply_profile(base, "nonexistent");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Profile 'nonexistent' not found"));
+    }
+
+    #[test]
+    fn test_apply_profile_no_profiles_defined() {
+        let mut base = VmConfig::default();
+        base.profiles = None;
+        let result = apply_profile(base, "any");
+        assert!(result.is_err());
+    }
 }

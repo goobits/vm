@@ -64,8 +64,9 @@ fn handle_validate_command() -> VmResult<()> {
 }
 
 /// Handle the `vm config show` command.
-fn handle_show_command() -> VmResult<()> {
-    let config = VmConfig::load(None)?;
+fn handle_show_command(profile: Option<String>) -> VmResult<()> {
+    let app_config = vm_config::AppConfig::load(None, profile)?;
+    let config = app_config.vm;
 
     if let Some(source) = &config.source_path {
         vm_println!("Config source: {}", source.display());
@@ -81,10 +82,14 @@ fn handle_show_command() -> VmResult<()> {
 }
 
 /// Handle configuration management commands
-pub fn handle_config_command(command: &ConfigSubcommand, dry_run: bool) -> VmResult<()> {
+pub fn handle_config_command(
+    command: &ConfigSubcommand,
+    dry_run: bool,
+    profile: Option<String>,
+) -> VmResult<()> {
     match command {
         ConfigSubcommand::Validate => handle_validate_command(),
-        ConfigSubcommand::Show => handle_show_command(),
+        ConfigSubcommand::Show => handle_show_command(profile),
         ConfigSubcommand::Set {
             field,
             values,
