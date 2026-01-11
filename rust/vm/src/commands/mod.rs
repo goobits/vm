@@ -51,7 +51,7 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         }
         Command::Up { command } => {
             debug!("Handling up command");
-            up::handle_up(args.config.clone(), command.clone()).await
+            up::handle_up(args.config.clone(), command.clone(), args.profile.clone()).await
         }
         Command::Clean { dry_run, verbose } => {
             debug!("Handling clean command");
@@ -78,7 +78,7 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         Command::Registry { command } => {
             debug!("Calling registry operations");
             // For registry commands, use default GlobalConfig if no config file exists
-            let global_config = match AppConfig::load(args.config.clone()) {
+            let global_config = match AppConfig::load(args.config.clone(), args.profile.clone()) {
                 Ok(app_config) => app_config.global,
                 Err(_) => {
                     // Use default GlobalConfig when no config file exists
@@ -91,7 +91,7 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         Command::Secrets { command } => {
             debug!("Calling secrets operations");
             // For secrets commands, use default GlobalConfig if no config file exists
-            let global_config = match AppConfig::load(args.config.clone()) {
+            let global_config = match AppConfig::load(args.config.clone(), args.profile.clone()) {
                 Ok(app_config) => app_config.global,
                 Err(_) => {
                     // Use default GlobalConfig when no config file exists
@@ -111,15 +111,15 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         }
         Command::Snapshot { command } => {
             debug!("Calling snapshot operations");
-            snapshot::handle_snapshot(command.clone(), args.config).await
+            snapshot::handle_snapshot(command.clone(), args.config, args.profile.clone()).await
         }
         Command::Base { command } => {
             debug!("Calling base snapshot operations");
-            handle_base_command(command, args.config).await
+            handle_base_command(command, args.config, args.profile.clone()).await
         }
         Command::Env { command } => {
             debug!("Calling env operations");
-            env::handle_env_command(command, args.config)
+            env::handle_env_command(command, args.config, args.profile)
         }
         Command::Completion { shell } => {
             debug!("Generating shell completions for: {}", shell);
@@ -163,7 +163,7 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
         Command::Ssh {
             container, command, ..
         } => {
-            let app_config = AppConfig::load(args.config.clone())?;
+            let app_config = AppConfig::load(args.config.clone(), args.profile.clone())?;
             let project_name = app_config
                 .vm
                 .project
@@ -180,7 +180,7 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
         Command::Exec {
             container, command, ..
         } => {
-            let app_config = AppConfig::load(args.config.clone())?;
+            let app_config = AppConfig::load(args.config.clone(), args.profile.clone())?;
             let project_name = app_config
                 .vm
                 .project
@@ -205,9 +205,12 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
 
 async fn handle_provider_command(args: Args) -> VmResult<()> {
     // Load configuration
-    debug!("Loading configuration: config_file={:?}", args.config);
+    debug!(
+        "Loading configuration: config_file={:?}, profile={:?}",
+        args.config, args.profile
+    );
 
-    let app_config = match AppConfig::load(args.config.clone()) {
+    let app_config = match AppConfig::load(args.config.clone(), args.profile.clone()) {
         Ok(config) => config,
         Err(e) => {
             let error_str = e.to_string();
@@ -235,7 +238,7 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
                     vm_println!("✓ Generated vm.yaml");
 
                     // Reload the AppConfig
-                    AppConfig::load(args.config)?
+                    AppConfig::load(args.config, args.profile)?
                 } else {
                     vm_println!("{}", MESSAGES.config.not_found);
                     vm_println!("{}", MESSAGES.config.not_found_hint);
@@ -548,6 +551,7 @@ fn handle_plugin_command(command: &PluginSubcommand) -> VmResult<()> {
 async fn handle_base_command(
     command: &BaseSubcommand,
     config_path: Option<std::path::PathBuf>,
+    profile: Option<String>,
 ) -> VmResult<()> {
     use crate::cli::SnapshotSubcommand;
 
@@ -586,7 +590,7 @@ async fn handle_base_command(
         },
     };
 
-    snapshot::handle_snapshot(snapshot_command, config_path).await
+    snapshot::handle_snapshot(snapshot_command, config_path, profile).await
 }
 
 fn handle_completion(shell: &str) -> VmResult<()> {

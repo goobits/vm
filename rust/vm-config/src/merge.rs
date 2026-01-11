@@ -211,6 +211,36 @@ pub fn merge_configs(
     merger.merge_all(overlays)
 }
 
+/// Apply a named profile to the base configuration.
+///
+/// Looks up the specified profile name in the `profiles` map of the base configuration
+/// and merges it on top of the base. If the profile is not found, returns an error.
+///
+/// # Arguments
+/// * `base` - The base configuration containing the profiles
+/// * `profile_name` - The name of the profile to apply
+///
+/// # Returns
+/// A new `VmConfig` with the profile applied
+pub fn apply_profile(base: VmConfig, profile_name: &str) -> Result<VmConfig> {
+    let profile = base
+        .profiles
+        .as_ref()
+        .and_then(|p| p.get(profile_name))
+        .cloned();
+
+    match profile {
+        Some(profile_config) => {
+            // Create a merger with the base config and merge the profile on top
+            ConfigMerger::new(base).merge(profile_config)
+        }
+        None => Err(vm_core::error::VmError::Config(format!(
+            "Profile '{}' not found in configuration",
+            profile_name
+        ))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

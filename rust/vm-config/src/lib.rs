@@ -93,13 +93,18 @@ impl AppConfig {
     /// 3. Applies defaults and presets
     /// 4. Merges configurations in proper precedence order
     /// 5. Handles backward compatibility for deprecated fields
-    pub fn load(config_path: Option<PathBuf>) -> Result<Self> {
+    pub fn load(config_path: Option<PathBuf>, profile: Option<String>) -> Result<Self> {
         // Load global configuration
         let global = GlobalConfig::load()
             .map_err(|e| VmError::Config(format!("Failed to load global configuration: {e}")))?;
 
         // Load VM configuration with all merging logic
         let mut vm = config::VmConfig::load(config_path.clone())?;
+
+        // Apply profile if specified
+        if let Some(profile_name) = profile {
+            vm = merge::apply_profile(vm, &profile_name)?;
+        }
 
         // Handle host integrations
         let should_copy_git = vm

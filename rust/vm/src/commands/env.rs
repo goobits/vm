@@ -9,8 +9,12 @@ use vm_config::AppConfig;
 use vm_core::vm_println;
 
 /// Handle environment variable commands
-pub fn handle_env_command(command: &EnvSubcommand, config_path: Option<PathBuf>) -> VmResult<()> {
-    let app_config = AppConfig::load(config_path)?;
+pub fn handle_env_command(
+    command: &EnvSubcommand,
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+) -> VmResult<()> {
+    let app_config = AppConfig::load(config_path, profile)?;
 
     match command {
         EnvSubcommand::Validate { all } => handle_validate(&app_config, *all),

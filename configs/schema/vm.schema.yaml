@@ -533,6 +533,11 @@ properties:
             examples:
               - ~/worktrees
               - ~/dev/worktrees
+  profiles:
+    type: object
+    description: "Profile configuration merging over the base config"
+    additionalProperties:
+      type: object
 required:
   - project
 additionalProperties: false

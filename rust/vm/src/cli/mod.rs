@@ -21,6 +21,10 @@ pub struct Args {
     #[arg(short, long, global = true)]
     pub config: Option<PathBuf>,
 
+    /// Select a configuration profile to apply
+    #[arg(long, global = true)]
+    pub profile: Option<String>,
+
     /// Show what would be executed without running
     #[arg(long, global = true)]
     pub dry_run: bool,

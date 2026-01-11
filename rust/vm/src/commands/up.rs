@@ -27,6 +27,7 @@ use vm_provider::get_provider;
 pub async fn handle_up(
     config_path: Option<std::path::PathBuf>,
     command: Option<String>,
+    profile: Option<String>,
 ) -> VmResult<()> {
     debug!("Handling vm up command");
 
@@ -42,7 +43,7 @@ pub async fn handle_up(
     }
 
     // Stage 2: Load configuration
-    let app_config = match AppConfig::load(config_path.clone()) {
+    let app_config = match AppConfig::load(config_path.clone(), profile.clone()) {
         Ok(config) => config,
         Err(e) => {
             let error_str = e.to_string();
@@ -64,7 +65,7 @@ pub async fn handle_up(
                     ..Default::default()
                 };
                 default_vm_config.write_to_file(&config_file)?;
-                AppConfig::load(config_path)?
+                AppConfig::load(config_path, profile)?
             } else {
                 return Err(VmError::from(e));
             }

@@ -171,7 +171,11 @@ pub struct VmConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub security: Option<SecurityConfig>,
 
-    // 12. Extra/Custom
+    // 12. Profiles
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profiles: Option<IndexMap<String, VmConfig>>,
+
+    // 13. Extra/Custom
     #[serde(flatten)]
     pub extra_config: IndexMap<String, serde_json::Value>,
 

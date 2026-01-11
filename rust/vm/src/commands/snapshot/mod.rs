@@ -12,8 +12,9 @@ pub use vm_snapshot::metadata;
 pub async fn handle_snapshot(
     command: SnapshotSubcommand,
     config_path: Option<PathBuf>,
+    profile: Option<String>,
 ) -> VmResult<()> {
-    let app_config = AppConfig::load(config_path)?;
+    let app_config = AppConfig::load(config_path, profile)?;
 
     match command {
         SnapshotSubcommand::Create {
