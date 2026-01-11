@@ -44,8 +44,8 @@ npm_packages:
   - eslint
 cargo_packages: []
 aliases:
-  claudeyo: claude --dangerously-skip-permissions
-  geminiyo: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo
+  yoclaude: claude --dangerously-skip-permissions
+  yogemini: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo
 environment:
   NODE_ENV: development
   DISPLAY: :99

@@ -150,9 +150,9 @@ RUN mkdir -p /workspace && chown -R ${USER_NAME}:${USER_NAME} /workspace
 
 # Shell aliases for AI tools
 RUN for rc in /home/${USER_NAME}/.bashrc /home/${USER_NAME}/.zshrc; do \
-        echo 'alias claudeyo="claude --dangerously-skip-permissions"' >> "$rc"; \
-        echo 'alias geminiyo="GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo"' >> "$rc"; \
-        echo 'alias codexyo="codex --dangerously-bypass-approvals-and-sandbox"' >> "$rc"; \
+        echo 'alias yoclaude="claude --dangerously-skip-permissions"' >> "$rc"; \
+        echo 'alias yogemini="GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo"' >> "$rc"; \
+        echo 'alias yocodex="codex --dangerously-bypass-approvals-and-sandbox"' >> "$rc"; \
         echo 'export PATH="$PATH:/home/'${USER_NAME}'/.local/bin"' >> "$rc"; \
     done
 

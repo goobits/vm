@@ -47,8 +47,8 @@ npm_packages:
   - eslint
 cargo_packages: []
 aliases:
-  claudeyo: claude --dangerously-skip-permissions
-  geminiyo: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo
+  yoclaude: claude --dangerously-skip-permissions
+  yogemini: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo
   hello: echo 'Hello from alias'
   ll: ls -la
   testcmd: echo 'Test command executed'

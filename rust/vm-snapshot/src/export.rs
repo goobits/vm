@@ -4,9 +4,9 @@ use crate::docker::execute_docker_with_output;
 use crate::manager::SnapshotManager;
 use crate::metadata::SnapshotMetadata;
 use crate::optimal_concurrency;
-use vm_core::error::{VmError, Result};
 use futures::stream::{self, StreamExt};
 use std::path::Path;
+use vm_core::error::{Result, VmError};
 use vm_core::{vm_error, vm_println, vm_success};
 
 /// Handle snapshot export

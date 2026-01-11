@@ -463,8 +463,8 @@ properties:
     type: object
     description: Custom shell aliases
     default:
-      claudeyo: claude --dangerously-skip-permissions
-      geminiyo: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo
+      yoclaude: claude --dangerously-skip-permissions
+      yogemini: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo
     additionalProperties:
       type: string
     examples:

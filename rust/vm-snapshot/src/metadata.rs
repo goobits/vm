@@ -1,9 +1,9 @@
 //! Snapshot metadata structures and persistence
 
-use vm_core::error::{VmError, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use vm_core::error::{Result, VmError};
 
 /// Complete snapshot metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]

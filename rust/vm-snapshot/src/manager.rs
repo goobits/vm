@@ -1,8 +1,8 @@
 //! Snapshot management and lifecycle operations
 
 use crate::metadata::SnapshotMetadata;
-use vm_core::error::{VmError, Result};
 use std::path::PathBuf;
+use vm_core::error::{Result, VmError};
 
 /// Manages snapshot storage and lifecycle
 pub struct SnapshotManager {

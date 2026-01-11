@@ -3,9 +3,9 @@
 //! This module provides common Docker command execution patterns to avoid
 //! code duplication across create, restore, import, and export modules.
 
-use vm_core::error::{VmError, Result};
 use std::path::Path;
 use std::process::Stdio;
+use vm_core::error::{Result, VmError};
 
 /// Execute docker command with streaming output (for long-running commands)
 /// Output is streamed directly to the terminal so users see progress
