@@ -563,6 +563,7 @@ async fn handle_base_command(
             from_dockerfile,
             build_context,
             build_arg,
+            force,
         } => SnapshotSubcommand::Create {
             name: format!("@{}", name),
             description: description.clone(),
@@ -571,6 +572,7 @@ async fn handle_base_command(
             from_dockerfile: from_dockerfile.clone(),
             build_context: build_context.clone(),
             build_arg: build_arg.clone(),
+            force: *force,
         },
         BaseSubcommand::Delete { name, force } => SnapshotSubcommand::Delete {
             name: format!("@{}", name),

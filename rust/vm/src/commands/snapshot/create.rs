@@ -78,14 +78,22 @@ pub async fn handle_create(
     from_dockerfile: Option<&std::path::Path>,
     build_context: Option<&std::path::Path>,
     build_args: &[String],
+    force: bool,
 ) -> VmResult<()> {
     let manager = SnapshotManager::new()?;
 
     // Handle --from-dockerfile mode
     if let Some(dockerfile_path) = from_dockerfile {
         let ctx = build_context.unwrap_or_else(|| std::path::Path::new("."));
-        return handle_create_from_dockerfile(name, description, dockerfile_path, ctx, build_args)
-            .await;
+        return handle_create_from_dockerfile(
+            name,
+            description,
+            dockerfile_path,
+            ctx,
+            build_args,
+            force,
+        )
+        .await;
     }
 
     // Determine if this is a global snapshot (@name) or project-specific (name)
@@ -109,18 +117,23 @@ pub async fn handle_create(
 
     // Check if snapshot already exists
     if manager.snapshot_exists(project_scope, snapshot_name) {
-        let scope_desc = if is_global {
-            "global".to_string()
+        if force {
+            vm_core::vm_println!("Removing existing snapshot '{}'...", snapshot_name);
+            manager.delete_snapshot(project_scope, snapshot_name)?;
         } else {
-            format!("project '{}'", project_name)
-        };
-        return Err(VmError::validation(
-            format!(
-                "Snapshot '{}' already exists for {}",
-                snapshot_name, scope_desc
-            ),
-            None::<String>,
-        ));
+            let scope_desc = if is_global {
+                "global".to_string()
+            } else {
+                format!("project '{}'", project_name)
+            };
+            return Err(VmError::validation(
+                format!(
+                    "Snapshot '{}' already exists for {}. Use --force to overwrite.",
+                    snapshot_name, scope_desc
+                ),
+                None::<String>,
+            ));
+        }
     }
 
     let display_scope = if is_global {
@@ -378,6 +391,7 @@ async fn handle_create_from_dockerfile(
     dockerfile_path: &std::path::Path,
     build_context: &std::path::Path,
     build_args: &[String],
+    force: bool,
 ) -> VmResult<()> {
     // Validate Dockerfile exists
     if !dockerfile_path.exists() {
@@ -410,20 +424,23 @@ async fn handle_create_from_dockerfile(
     // Check if snapshot already exists
     let manager = SnapshotManager::new()?;
     if manager.snapshot_exists(project_scope, snapshot_name) {
-        let scope_desc = if is_global {
-            "global".to_string()
+        if force {
+            vm_core::vm_println!("Removing existing snapshot '{}'...", snapshot_name);
+            manager.delete_snapshot(project_scope, snapshot_name)?;
         } else {
-            format!("project '{}'", project_name)
-        };
-        return Err(VmError::validation(
-            format!(
-                "Snapshot '{}' already exists for {}. Delete it first with:\n  vm snapshot delete {}",
-                snapshot_name,
-                scope_desc,
-                name
-            ),
-            None::<String>,
-        ));
+            let scope_desc = if is_global {
+                "global".to_string()
+            } else {
+                format!("project '{}'", project_name)
+            };
+            return Err(VmError::validation(
+                format!(
+                    "Snapshot '{}' already exists for {}. Use --force to overwrite.",
+                    snapshot_name, scope_desc
+                ),
+                None::<String>,
+            ));
+        }
     }
 
     // Build the image tag

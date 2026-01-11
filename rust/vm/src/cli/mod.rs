@@ -355,6 +355,9 @@ pub enum SnapshotSubcommand {
         /// Build arguments for Dockerfile (repeatable: --build-arg KEY=VALUE)
         #[arg(long, value_name = "KEY=VALUE")]
         build_arg: Vec<String>,
+        /// Overwrite existing snapshot with same name
+        #[arg(long)]
+        force: bool,
     },
     /// List available snapshots
     List {
@@ -437,6 +440,9 @@ pub enum BaseSubcommand {
         /// Build arguments for Dockerfile
         #[arg(long, value_name = "KEY=VALUE")]
         build_arg: Vec<String>,
+        /// Overwrite existing snapshot with same name
+        #[arg(long)]
+        force: bool,
     },
     /// Delete a base snapshot (shorthand for `vm snapshot delete @name`)
     Delete {

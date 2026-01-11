@@ -40,6 +40,7 @@ pub async fn handle_snapshot(
             from_dockerfile,
             build_context,
             build_arg,
+            force,
         } => {
             create::handle_create(
                 &app_config,
@@ -50,6 +51,7 @@ pub async fn handle_snapshot(
                 from_dockerfile.as_deref(),
                 build_context.as_deref(),
                 &build_arg,
+                force,
             )
             .await
         }
