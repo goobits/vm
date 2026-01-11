@@ -127,9 +127,11 @@ ARG NODE_VERSION=22
 USER ${USER_NAME}
 ENV NVM_DIR="/home/${USER_NAME}/.nvm"
 
+# Create NVM directory first to ensure correct permissions
+RUN mkdir -p $NVM_DIR
+
 # Install NVM and Node.js - BuildKit cache mount speeds up repeated builds
 RUN --mount=type=cache,target=/home/${USER_NAME}/.nvm/.cache,uid=${USER_UID},gid=${USER_GID} \
-    mkdir -p $NVM_DIR && \
     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash && \
     . $NVM_DIR/nvm.sh && \
     nvm install ${NODE_VERSION} && \
@@ -208,6 +210,9 @@ ARG USER_UID=1000
 ARG USER_GID=1000
 
 USER ${USER_NAME}
+
+# Create Cargo directories first to ensure correct permissions
+RUN mkdir -p /home/${USER_NAME}/.cargo /home/${USER_NAME}/.cargo/git /home/${USER_NAME}/.cargo/registry
 
 # Install Rust and Cargo with cache mount for downloads
 RUN --mount=type=cache,target=/home/${USER_NAME}/.cargo/registry,uid=${USER_UID},gid=${USER_GID} \
