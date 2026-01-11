@@ -339,6 +339,10 @@ properties:
         type: boolean
         default: false
         description: Enable GPU passthrough (/dev/dri for Intel/AMD/nouveau)
+      video:
+        type: boolean
+        default: false
+        description: Enable webcam passthrough (/dev/video* for CV/ML)
   terminal:
     type: object
     description: Terminal customization options

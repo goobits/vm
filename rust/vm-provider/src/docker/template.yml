@@ -85,13 +85,17 @@ services:
       {% if host_mounts %}{% for mount in host_mounts %}- {{ mount.0 }}:{{ mount.1 }}:ro
       {% endfor %}{% endif %}
       # Container is now self-contained - no VM tool mount needed
-    {% if config.services.gpu | default(value=false) or config.services.audio | default(value=false) %}
+    {% if config.services.gpu | default(value=false) or config.services.audio | default(value=false) or config.services.video | default(value=false) %}
     devices:
       {% if config.services.gpu | default(value=false) %}
       - /dev/dri:/dev/dri
       {% endif %}
       {% if config.services.audio | default(value=false) %}
       - /dev/snd:/dev/snd
+      {% endif %}
+      {% if config.services.video | default(value=false) %}
+      - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
       {% endif %}
     group_add:
       {% if config.services.gpu | default(value=false) %}
@@ -100,6 +104,9 @@ services:
       {% endif %}
       {% if config.services.audio | default(value=false) %}
       - audio
+      {% endif %}
+      {% if config.services.video | default(value=false) %}
+      - video
       {% endif %}
     {% endif %}
     {% if config.ports.mappings or config.ports._range -%}

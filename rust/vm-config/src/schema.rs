@@ -170,8 +170,8 @@ fn add_service_schema_fields(cache: &mut HashMap<String, SchemaType>) {
     add_database_service_fields(cache, "postgresql");
     add_database_service_fields(cache, "mysql");
 
-    // Simple boolean services (gpu/audio passthrough)
-    add_booleans!(cache, "services.gpu", "services.audio");
+    // Simple boolean services (gpu/audio/video passthrough)
+    add_booleans!(cache, "services.gpu", "services.audio", "services.video");
 
     // Service-specific fields
     add_booleans!(cache, "services.docker.buildx");
