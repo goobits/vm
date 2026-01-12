@@ -117,8 +117,13 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
     let target_dir = project_root.join(format!("target-{platform}"));
 
     let mut cmd = Command::new("cargo");
-    cmd.args(["build", "--release", "--bin", "vm"])
-        .env("CARGO_TARGET_DIR", &target_dir)
+    cmd.args(["build", "--release", "--bin", "vm"]);
+
+    // Enable Tart provider on macOS (Apple Silicon VMs)
+    #[cfg(target_os = "macos")]
+    cmd.args(["--features", "tart"]);
+
+    cmd.env("CARGO_TARGET_DIR", &target_dir)
         .env("CARGO_TERM_PROGRESS_WHEN", "always") // Force progress display
         .env("CARGO_TERM_PROGRESS_WIDTH", "80") // Set reasonable width
         .env("CARGO_TERM_COLOR", "always") // Enable colors
