@@ -40,7 +40,7 @@ impl TartProvider {
     }
 
     fn is_instance_running(&self, instance_name: &str) -> Result<bool> {
-        let output = cmd!("tart", "list", "--json").read()?;
+        let output = cmd!("tart", "list", "--format", "json").read()?;
         let vms: Vec<serde_json::Value> = serde_json::from_str(&output)?;
         Ok(vms
             .into_iter()
@@ -49,7 +49,7 @@ impl TartProvider {
 
     fn collect_metrics(&self, instance: &str) -> Result<CollectedMetrics> {
         let metrics_script = include_str!("scripts/collect_metrics.sh");
-        let output = cmd!("tart", "ssh", instance, "--", "sh", "-c", metrics_script)
+        let output = cmd!("tart", "exec", instance, "--", "sh", "-c", metrics_script)
             .stderr_capture()
             .read()
             .map_err(|e| VmError::Provider(format!("SSH command failed: {}", e)))?;
@@ -408,12 +408,12 @@ impl Provider for TartProvider {
 
         info!("Opening SSH session in directory: {}", target_path);
 
-        // Use `tart ssh` with explicit cd command
+        // Use `tart exec` with explicit cd command
         let ssh_command = format!("cd '{}' && exec $SHELL -l", target_path);
 
         cmd!(
             "tart",
-            "ssh",
+            "exec",
             &instance_name,
             "--",
             "sh",
@@ -421,14 +421,14 @@ impl Provider for TartProvider {
             &ssh_command
         )
         .run()
-        .map_err(|e| VmError::Provider(format!("SSH failed: {}", e)))?;
+        .map_err(|e| VmError::Provider(format!("Exec failed: {}", e)))?;
 
         Ok(())
     }
 
     fn exec(&self, container: Option<&str>, cmd: &[String]) -> Result<()> {
         let vm_name = self.vm_name_with_instance(container)?;
-        let mut args = vec!["ssh", &vm_name, "--"];
+        let mut args = vec!["exec", &vm_name, "--"];
         let cmd_strs: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
         args.extend_from_slice(&cmd_strs);
         stream_command("tart", &args)
@@ -490,7 +490,7 @@ impl Provider for TartProvider {
             (source, destination, true)
         };
 
-        // Use scp-like approach via tart ssh
+        // Use scp-like approach via tart exec
         if is_upload {
             // Upload: local -> VM
             let copy_cmd = format!("cat > '{}'", remote_path.replace('\'', "'\"'\"'"));
@@ -498,7 +498,7 @@ impl Provider for TartProvider {
                 "sh",
                 "-c",
                 format!(
-                    "cat '{}' | tart ssh {} -- sh -c \"{}\"",
+                    "cat '{}' | tart exec {} -- sh -c \"{}\"",
                     local_path.replace('\'', "'\"'\"'"),
                     vm_name,
                     copy_cmd
@@ -510,7 +510,7 @@ impl Provider for TartProvider {
         } else {
             // Download: VM -> local
             let copy_cmd = format!("cat '{}'", remote_path.replace('\'', "'\"'\"'"));
-            let result = cmd!("tart", "ssh", &vm_name, "--", "sh", "-c", &copy_cmd)
+            let result = cmd!("tart", "exec", &vm_name, "--", "sh", "-c", &copy_cmd)
                 .stdout_capture()
                 .run()
                 .map_err(|e| VmError::Provider(format!("Failed to read file from VM: {}", e)))?;
@@ -693,7 +693,7 @@ impl TartProvider {
 
         let output = cmd!(
             "tart",
-            "ssh",
+            "exec",
             &instance_name,
             "--",
             "sh",
@@ -735,7 +735,7 @@ impl TempProvider for TartProvider {
             return Ok(false);
         }
 
-        let ssh_test = cmd!("tart", "ssh", container_name, "--", "echo", "healthy")
+        let ssh_test = cmd!("tart", "exec", container_name, "--", "echo", "healthy")
             .stderr_null()
             .stdout_null()
             .run();

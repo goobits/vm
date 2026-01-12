@@ -43,7 +43,7 @@ impl TartProvisioner {
         info!("Waiting for SSH to be ready...");
 
         for _attempt in 1..=30 {
-            let result = cmd!("tart", "ssh", &self.instance_name, "--", "echo", "ready")
+            let result = cmd!("tart", "exec", &self.instance_name, "--", "echo", "ready")
                 .stderr_null()
                 .stdout_null()
                 .run();
@@ -288,7 +288,7 @@ impl TartProvisioner {
     fn ssh_exec(&self, command: &str) -> Result<String> {
         let output = cmd!(
             "tart",
-            "ssh",
+            "exec",
             &self.instance_name,
             "--",
             "bash",
