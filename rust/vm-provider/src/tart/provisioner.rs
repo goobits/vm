@@ -43,7 +43,7 @@ impl TartProvisioner {
         info!("Waiting for SSH to be ready...");
 
         for _attempt in 1..=30 {
-            let result = cmd!("tart", "exec", &self.instance_name, "--", "echo", "ready")
+            let result = cmd!("tart", "exec", &self.instance_name, "echo", "ready")
                 .stderr_null()
                 .stdout_null()
                 .run();
@@ -286,17 +286,9 @@ impl TartProvisioner {
     }
 
     fn ssh_exec(&self, command: &str) -> Result<String> {
-        let output = cmd!(
-            "tart",
-            "exec",
-            &self.instance_name,
-            "--",
-            "bash",
-            "-c",
-            command
-        )
-        .read()
-        .map_err(|e| VmError::Provider(format!("SSH command failed: {}", e)))?;
+        let output = cmd!("tart", "exec", &self.instance_name, "bash", "-c", command)
+            .read()
+            .map_err(|e| VmError::Provider(format!("Exec command failed: {}", e)))?;
 
         Ok(output)
     }
