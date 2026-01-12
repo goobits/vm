@@ -114,8 +114,8 @@ impl<'a> InstanceResolver for TartInstanceManager<'a> {
                 self.find_matching_vm(name)
             }
             None => {
-                // Default to project-dev pattern
-                Ok(self.project_instance_name("dev"))
+                // For Tart, default to just project name (no -dev suffix like Docker)
+                Ok(self.project_name().to_string())
             }
         }
     }
@@ -125,7 +125,8 @@ impl<'a> InstanceResolver for TartInstanceManager<'a> {
     }
 
     fn default_instance_name(&self) -> String {
-        self.project_instance_name("dev")
+        // Tart uses project name directly, no -dev suffix
+        self.project_name().to_string()
     }
 }
 
