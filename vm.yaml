@@ -34,6 +34,7 @@ profiles:
   tart:
     provider: tart
     vm:
+      box: ghcr.io/cirruslabs/ubuntu:latest
       memory: 16384
       cpus: 8
     tart:
