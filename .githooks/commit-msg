@@ -1,0 +1,111 @@
+#!/bin/bash
+#
+# Commit message hook for VM project
+# Validates commit message format and quality
+#
+# This hook enforces:
+# 1. Conventional commit format (type: description)
+# 2. Appropriate commit message length
+# 3. Descriptive commit messages
+# 4. Proper capitalization and punctuation
+#
+# To bypass this hook temporarily: git commit --no-verify
+#
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Get the commit message file
+commit_msg_file="$1"
+commit_msg=$(cat "$commit_msg_file")
+
+# Skip validation for merge commits, revert commits, etc.
+if [[ $commit_msg =~ ^(Merge|Revert|fixup!|squash!) ]]; then
+    exit 0
+fi
+
+echo -e "${BLUE}📝 Validating commit message...${NC}"
+
+# Define valid commit types based on project patterns
+valid_types="feat|fix|docs|style|refactor|test|chore|perf|ci|build"
+
+# Check conventional commit format
+if ! echo "$commit_msg" | grep -qE "^($valid_types)(\(.+\))?: .+"; then
+    echo -e "${RED}❌ Invalid commit message format!${NC}"
+    echo -e "${YELLOW}Expected format: type(scope): description${NC}"
+    echo -e "${YELLOW}Valid types: feat, fix, docs, style, refactor, test, chore, perf, ci, build${NC}"
+    echo -e "${YELLOW}Examples:${NC}"
+    echo -e "${YELLOW}  feat: add new VM configuration option${NC}"
+    echo -e "${YELLOW}  fix(vm-config): resolve port allocation issue${NC}"
+    echo -e "${YELLOW}  docs: update installation guide${NC}"
+    echo -e "${YELLOW}  refactor(vm-provider): simplify container lifecycle${NC}"
+    echo -e "\n${YELLOW}Your message:${NC}"
+    echo -e "${RED}$commit_msg${NC}"
+    exit 1
+fi
+
+# Extract the first line (subject) only
+subject=$(echo "$commit_msg" | head -n1)
+
+# Extract the description part (after "type(scope): ")
+description=$(echo "$subject" | sed -E 's/^[^:]+: //')
+
+# Check description length
+desc_length=${#description}
+if [ $desc_length -lt 10 ]; then
+    echo -e "${RED}❌ Commit description too short ($desc_length chars)!${NC}"
+    echo -e "${YELLOW}Please provide a more descriptive message (at least 10 characters)${NC}"
+    echo -e "\n${YELLOW}Your description: '$description'${NC}"
+    exit 1
+fi
+
+if [ $desc_length -gt 72 ]; then
+    echo -e "${YELLOW}⚠️  Commit description is long ($desc_length chars)${NC}"
+    echo -e "${YELLOW}Consider keeping the first line under 72 characters${NC}"
+fi
+
+# Check that description doesn't end with period
+if [[ $description =~ \.$ ]]; then
+    echo -e "${YELLOW}⚠️  Description shouldn't end with a period${NC}"
+    echo -e "${YELLOW}Consider removing the trailing period${NC}"
+fi
+
+# Check that description starts with lowercase (conventional commits style)
+if [[ $description =~ ^[A-Z] ]]; then
+    echo -e "${YELLOW}⚠️  Description should start with lowercase${NC}"
+    echo -e "${YELLOW}Convention: 'fix: resolve issue' not 'fix: Resolve issue'${NC}"
+fi
+
+# Check for common non-descriptive words
+if echo "$description" | grep -qiE "^(update|fix|change|modify|improve|add)$"; then
+    echo -e "${YELLOW}⚠️  Consider being more specific${NC}"
+    echo -e "${YELLOW}Instead of just 'fix', describe what was fixed${NC}"
+    echo -e "${YELLOW}Instead of just 'update', describe what was updated${NC}"
+fi
+
+# Check total commit message length (including body)
+total_lines=$(echo "$commit_msg" | wc -l)
+if [ $total_lines -gt 1 ]; then
+    # Multi-line commit, check for blank line after subject
+    second_line=$(echo "$commit_msg" | sed -n '2p')
+    if [ -n "$second_line" ]; then
+        echo -e "${YELLOW}⚠️  Missing blank line after subject${NC}"
+        echo -e "${YELLOW}Multi-line commits should have a blank line after the subject${NC}"
+    fi
+fi
+
+echo -e "${GREEN}✅ Commit message format is good${NC}"
+
+# If this is a breaking change, remind about documentation
+if echo "$commit_msg" | grep -qE "(BREAKING|breaking|!:)"; then
+    echo -e "${YELLOW}⚠️  Breaking change detected!${NC}"
+    echo -e "${YELLOW}Don't forget to update MIGRATION.md and documentation${NC}"
+fi
+
+exit 0

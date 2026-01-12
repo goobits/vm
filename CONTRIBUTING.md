@@ -17,6 +17,9 @@ Thank you for your interest in contributing to the VM Tool project! This documen
 git clone <repository-url>
 cd vm
 
+# Enable git hooks (one-time setup)
+git config core.hooksPath .githooks
+
 # Install dependencies
 cd rust
 cargo build --workspace
@@ -24,6 +27,8 @@ cargo build --workspace
 # Install cargo-deny (one-time setup)
 cargo install cargo-deny
 ```
+
+The git hooks run `cargo fmt` and `cargo clippy` on commit to catch issues early.
 
 ## Quality Gates
 
