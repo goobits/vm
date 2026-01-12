@@ -39,12 +39,22 @@ impl TartProvider {
         Ok(Self { config })
     }
 
-    fn is_instance_running(&self, instance_name: &str) -> Result<bool> {
+    fn get_instance_state(&self, instance_name: &str) -> Result<Option<String>> {
         let output = cmd!("tart", "list", "--format", "json").read()?;
         let vms: Vec<serde_json::Value> = serde_json::from_str(&output)?;
-        Ok(vms
-            .into_iter()
-            .any(|vm| vm["name"] == instance_name && vm["state"] == "running"))
+        for vm in vms {
+            if vm["name"] == instance_name {
+                return Ok(vm["state"].as_str().map(|state| state.to_string()));
+            }
+        }
+        Ok(None)
+    }
+
+    fn is_instance_running(&self, instance_name: &str) -> Result<bool> {
+        Ok(matches!(
+            self.get_instance_state(instance_name)?.as_deref(),
+            Some("running")
+        ))
     }
 
     fn collect_metrics(&self, instance: &str) -> Result<CollectedMetrics> {
@@ -560,7 +570,14 @@ impl Provider for TartProvider {
     fn get_status_report(&self, container: Option<&str>) -> Result<VmStatusReport> {
         let instance_name = self.resolve_instance_name(container)?;
 
-        if !self.is_instance_running(&instance_name)? {
+        let Some(state) = self.get_instance_state(&instance_name)? else {
+            return Err(VmError::Internal(format!(
+                "Tart VM '{}' not found",
+                instance_name
+            )));
+        };
+
+        if state != "running" {
             return Ok(VmStatusReport {
                 name: instance_name.clone(),
                 provider: "tart".into(),
