@@ -447,30 +447,34 @@ mod tests {
         use crate::config::{ProjectConfig, VmSettings};
         use indexmap::IndexMap;
 
-        // Create base config with a profile
-        let mut base = VmConfig::default();
-        base.provider = Some("docker".to_string());
-        base.project = Some(ProjectConfig {
-            name: Some("test-project".to_string()),
-            ..Default::default()
-        });
-        base.vm = Some(VmSettings {
-            memory: Some(crate::config::MemoryLimit::Limited(2048)),
-            cpus: Some(crate::config::CpuLimit::Limited(2)),
-            ..Default::default()
-        });
-
         // Create a tart profile
-        let mut tart_profile = VmConfig::default();
-        tart_profile.provider = Some("tart".to_string());
-        tart_profile.vm = Some(VmSettings {
-            memory: Some(crate::config::MemoryLimit::Limited(16384)),
+        let tart_profile = VmConfig {
+            provider: Some("tart".to_string()),
+            vm: Some(VmSettings {
+                memory: Some(crate::config::MemoryLimit::Limited(16384)),
+                ..Default::default()
+            }),
             ..Default::default()
-        });
+        };
 
         let mut profiles = IndexMap::new();
         profiles.insert("tart".to_string(), tart_profile);
-        base.profiles = Some(profiles);
+
+        // Create base config with a profile
+        let base = VmConfig {
+            provider: Some("docker".to_string()),
+            project: Some(ProjectConfig {
+                name: Some("test-project".to_string()),
+                ..Default::default()
+            }),
+            vm: Some(VmSettings {
+                memory: Some(crate::config::MemoryLimit::Limited(2048)),
+                cpus: Some(crate::config::CpuLimit::Limited(2)),
+                ..Default::default()
+            }),
+            profiles: Some(profiles),
+            ..Default::default()
+        };
 
         // Apply the profile
         let result = apply_profile(base, "tart").unwrap();
@@ -503,8 +507,10 @@ mod tests {
 
     #[test]
     fn test_apply_profile_no_profiles_defined() {
-        let mut base = VmConfig::default();
-        base.profiles = None;
+        let base = VmConfig {
+            profiles: None,
+            ..Default::default()
+        };
         let result = apply_profile(base, "any");
         assert!(result.is_err());
     }
