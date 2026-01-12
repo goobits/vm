@@ -29,3 +29,13 @@ host_sync:
 networking:
   networks:
   - spacebase
+
+profiles:
+  tart:
+    provider: tart
+    vm:
+      memory: 16384
+      cpus: 8
+    tart:
+      image: ghcr.io/cirruslabs/ubuntu:latest
+      rosetta: true
