@@ -33,41 +33,9 @@ pub async fn handle_start(
         .map(|s| s.as_str())
         .unwrap_or("vm-project");
 
-    let container_name = format!("{vm_name}-dev");
-
-    // Check if container exists and is running
-    // We need to check using Docker directly since provider.status() just shows status
-    let container_exists = std::process::Command::new("docker")
-        .args(["ps", "-a", "--format", "{{.Names}}"])
-        .output()
-        .ok()
-        .and_then(|output| {
-            let names = String::from_utf8_lossy(&output.stdout);
-            if names.lines().any(|name| name.trim() == container_name) {
-                Some(())
-            } else {
-                None
-            }
-        })
-        .is_some();
-
-    if container_exists {
-        // Check if it's actually running
-        let is_running = std::process::Command::new("docker")
-            .args(["inspect", "--format", "{{.State.Status}}", &container_name])
-            .output()
-            .ok()
-            .and_then(|output| {
-                let status = String::from_utf8_lossy(&output.stdout);
-                if status.trim() == "running" {
-                    Some(())
-                } else {
-                    None
-                }
-            })
-            .is_some();
-
-        if is_running {
+    // Check if VM is already running using the provider abstraction
+    if let Ok(report) = provider.get_status_report(container) {
+        if report.is_running {
             vm_println!(
                 "{}",
                 msg!(MESSAGES.vm.start_already_running, name = vm_name)
@@ -75,6 +43,12 @@ pub async fn handle_start(
             return Ok(());
         }
     }
+
+    // Get display name for the VM/container
+    let container_name = provider
+        .get_status_report(container)
+        .map(|r| r.name)
+        .unwrap_or_else(|_| format!("{vm_name}-dev"));
 
     vm_println!("{}", msg!(MESSAGES.vm.start_header, name = vm_name));
 
