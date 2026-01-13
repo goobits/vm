@@ -27,6 +27,9 @@ properties:
       - tart
     default: docker
     description: The virtualization provider to use. Docker provides lightweight containers (default), Podman provides rootless containers with Docker compatibility, Tart provides native VMs on Apple Silicon.
+  default_profile:
+    type: string
+    description: Default profile to apply when no --profile is provided.
   project:
     type: object
     description: Project-specific settings

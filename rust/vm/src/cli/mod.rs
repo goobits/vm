@@ -92,6 +92,15 @@ pub enum ConfigSubcommand {
 }
 
 #[derive(Debug, Clone, Subcommand)]
+pub enum ProfileSubcommand {
+    /// Set the default profile for this project
+    SetDefault {
+        /// Profile name to use when no --profile is provided
+        name: String,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
 pub enum TempSubcommand {
     /// Create a temporary environment
     Create {
@@ -565,6 +574,11 @@ pub enum Command {
     Config {
         #[command(subcommand)]
         command: ConfigSubcommand,
+    },
+    /// Manage profiles
+    Profile {
+        #[command(subcommand)]
+        command: ProfileSubcommand,
     },
 
     /// Spin up a new development environment

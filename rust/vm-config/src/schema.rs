@@ -101,6 +101,7 @@ fn add_vm_schema_fields(cache: &mut HashMap<String, SchemaType>) {
         "version",
         "os",
         "provider",
+        "default_profile",
         "project.name",
         "project.hostname",
         "project.workspace_path",

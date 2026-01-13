@@ -8,7 +8,8 @@ use crate::{
 };
 use duct::cmd;
 use serde::Deserialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use tracing::{error, info, warn};
 use vm_cli::msg;
 use vm_config::config::VmConfig;
@@ -65,6 +66,50 @@ impl TartProvider {
             .map_err(|e| VmError::Provider(format!("SSH command failed: {}", e)))?;
 
         self.parse_metrics_json(&output)
+    }
+
+    fn host_workspace_path(&self) -> Result<PathBuf> {
+        if let Some(source) = &self.config.source_path {
+            let resolved = if source.is_absolute() {
+                source.clone()
+            } else {
+                std::env::current_dir()
+                    .map_err(|e| {
+                        VmError::Internal(format!("Failed to determine host workspace path: {e}"))
+                    })?
+                    .join(source)
+            };
+
+            if resolved.is_dir() {
+                return Ok(resolved);
+            }
+
+            if let Some(parent) = resolved.parent() {
+                return Ok(parent.to_path_buf());
+            }
+        }
+
+        std::env::current_dir()
+            .map_err(|e| VmError::Internal(format!("Failed to determine host workspace path: {e}")))
+    }
+
+    fn start_vm_background(&self, vm_name: &str) -> Result<()> {
+        let host_path = self.host_workspace_path()?;
+        let dir_arg = format!("workspace:{}:tag=workspace", host_path.display());
+        let cmd = format!(
+            "nohup tart run --no-graphics --dir '{}' '{}' >/tmp/vm-tart.log 2>&1 &",
+            dir_arg, vm_name
+        );
+
+        std::process::Command::new("sh")
+            .args(["-c", &cmd])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| VmError::Provider(format!("Failed to start Tart VM: {}", e)))?;
+
+        Ok(())
     }
 
     fn parse_metrics_json(&self, raw: &str) -> Result<CollectedMetrics> {
@@ -319,9 +364,9 @@ impl TartProvider {
             }
         }
 
-        // Start VM
+        // Start VM (non-blocking)
         ProgressReporter::task(&main_phase, "Starting VM...");
-        let start_result = stream_command("tart", &["run", "--no-graphics", vm_name]);
+        let start_result = self.start_vm_background(vm_name);
         if start_result.is_err() {
             ProgressReporter::task(&main_phase, "VM start failed.");
             ProgressReporter::finish_phase(&main_phase, "Creation failed.");
@@ -384,7 +429,7 @@ impl Provider for TartProvider {
 
     fn start(&self, container: Option<&str>) -> Result<()> {
         let vm_name = self.vm_name_with_instance(container)?;
-        stream_command("tart", &["run", "--no-graphics", &vm_name])
+        self.start_vm_background(&vm_name)
     }
 
     fn stop(&self, container: Option<&str>) -> Result<()> {

@@ -93,6 +93,26 @@ defaults:
 
 **Key Difference:** VM config controls individual project services, global config controls shared infrastructure services.
 
+## Profiles and Default Profile
+
+Use profiles to keep multiple provider setups in one `vm.yaml` and select one at runtime.
+
+```yaml
+default_profile: ubuntu
+
+profiles:
+  ubuntu:
+    provider: docker
+  mac:
+    provider: tart
+```
+
+Set the default from the CLI:
+
+```bash
+vm profile set-default ubuntu
+```
+
 ## Quick Start
 
 ### Simplest Setup (Recommended)

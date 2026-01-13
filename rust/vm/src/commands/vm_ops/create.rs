@@ -160,8 +160,8 @@ pub async fn handle_create(
         .map(|s| s.as_str())
         .unwrap_or("vm-project");
 
-    // Fast exit if container already exists (unless --force)
-    if !force {
+    // Fast exit for Docker/Podman only if container already exists (unless --force)
+    if !force && matches!(provider.name(), "docker" | "podman") {
         let existing_container = format!("{vm_name}-dev");
         if DockerOps::container_exists(None, &existing_container).unwrap_or(false) {
             let running =

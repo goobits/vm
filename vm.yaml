@@ -1,4 +1,5 @@
 version: '2.0'
+default_profile: ubuntu
 provider: docker
 os: auto
 project:
@@ -31,12 +32,13 @@ networking:
   - spacebase
 
 profiles:
-  tart:
+  ubuntu:
+    provider: docker
+  mac:
     provider: tart
     vm:
       box: ghcr.io/cirruslabs/ubuntu:latest
       memory: 16384
       cpus: 8
     tart:
-      image: ghcr.io/cirruslabs/ubuntu:latest
       rosetta: true

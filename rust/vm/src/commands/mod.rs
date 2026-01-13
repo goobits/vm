@@ -25,6 +25,7 @@ pub mod env;
 pub mod init;
 pub mod plugin;
 pub mod plugin_new;
+pub mod profile;
 pub mod registry;
 pub mod secrets;
 pub mod snapshot;
@@ -70,6 +71,10 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         Command::Config { command } => {
             debug!("Calling ConfigOps methods directly");
             config::handle_config_command(command, args.dry_run, args.profile.clone())
+        }
+        Command::Profile { command } => {
+            debug!("Handling profile command");
+            profile::handle_profile_command(command)
         }
         Command::Temp { command } => {
             debug!("Calling temp VM operations directly");

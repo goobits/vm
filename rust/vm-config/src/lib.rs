@@ -100,10 +100,13 @@ impl AppConfig {
 
         // Load VM configuration with all merging logic
         let mut vm = config::VmConfig::load(config_path.clone())?;
+        let source_path = vm.source_path.clone();
 
         // Apply profile if specified
-        if let Some(profile_name) = profile {
+        let profile_name = profile.or_else(|| vm.default_profile.clone());
+        if let Some(profile_name) = profile_name {
             vm = merge::apply_profile(vm, &profile_name)?;
+            vm.source_path = source_path;
         }
 
         // Handle host integrations

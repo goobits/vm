@@ -112,6 +112,9 @@ pub struct VmConfig {
     pub provider: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_profile: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub os: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]

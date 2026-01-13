@@ -25,10 +25,10 @@ impl<'a> TartInstanceManager<'a> {
         extract_project_name(self.config)
     }
 
-    /// Parse `tart list` output into InstanceInfo
+    /// Parse `tart list --format json` output into InstanceInfo
     pub fn parse_tart_list(&self) -> Result<Vec<InstanceInfo>> {
         let output = std::process::Command::new("tart")
-            .args(["list"])
+            .args(["list", "--format", "json"])
             .output()
             .map_err(|e| {
                 VmError::Internal(format!(
@@ -44,31 +44,39 @@ impl<'a> TartInstanceManager<'a> {
             ));
         }
 
-        let list_output = String::from_utf8_lossy(&output.stdout);
+        #[derive(serde::Deserialize)]
+        struct TartListEntry {
+            #[serde(rename = "Name")]
+            name: String,
+            #[serde(rename = "State")]
+            state: String,
+            #[serde(rename = "Source")]
+            source: String,
+        }
+
+        let entries: Vec<TartListEntry> = serde_json::from_slice(&output.stdout).map_err(|e| {
+            VmError::Internal(format!("Failed to parse Tart list JSON output: {e}"))
+        })?;
         let mut instances = Vec::new();
         let project_prefix = format!("{}-", self.project_name());
 
-        // Parse Tart list output format:
-        // NAME         STATUS     ARCH     CPU     MEMORY
-        // myproject-dev running   arm64    2       4GB
-        for line in list_output.lines().skip(1) {
-            // Skip header line
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 2 {
-                let name = parts[0];
-                let status = parts[1];
+        for entry in entries {
+            if entry.source != "local" {
+                continue;
+            }
 
-                // Only include VMs that belong to this project
-                if name.starts_with(&project_prefix) || name == self.project_name() {
-                    // Try to get additional metadata for this VM
-                    let (created_at, uptime) = self.get_vm_metadata(name);
-                    instances.push(create_tart_instance_info(
-                        name,
-                        status,
-                        created_at.as_deref(),
-                        uptime.as_deref(),
-                    ));
-                }
+            let name = entry.name;
+            let status = entry.state;
+
+            // Only include VMs that belong to this project
+            if name.starts_with(&project_prefix) || name == self.project_name() {
+                let (created_at, uptime) = self.get_vm_metadata(&name);
+                instances.push(create_tart_instance_info(
+                    &name,
+                    &status,
+                    created_at.as_deref(),
+                    uptime.as_deref(),
+                ));
             }
         }
 

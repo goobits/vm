@@ -23,13 +23,16 @@ impl TartProvisioner {
         // 1. Wait for VM to be ready
         self.wait_for_ssh()?;
 
-        // 2. Detect framework and install dependencies
+        // 2. Ensure workspace share is mounted
+        self.ensure_workspace_mount()?;
+
+        // 3. Detect framework and install dependencies
         self.provision_framework_dependencies(config)?;
 
-        // 3. Run custom provision scripts if present
+        // 4. Run custom provision scripts if present
         self.run_custom_provision_scripts(config)?;
 
-        // 4. Start services
+        // 5. Start services
         self.start_services(config)?;
 
         info!("Provisioning completed successfully");
@@ -59,6 +62,18 @@ impl TartProvisioner {
         Err(VmError::Provider(
             "SSH not ready after 60 seconds".to_string(),
         ))
+    }
+
+    fn ensure_workspace_mount(&self) -> Result<()> {
+        let mount_cmd = format!(
+            "if ! mount | grep -q \"on {dir} \"; then \
+            if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=\"\"; fi; \
+            $SUDO mkdir -p {dir} && $SUDO mount -t virtiofs workspace {dir}; \
+            fi",
+            dir = self.project_dir
+        );
+
+        self.ssh_exec(&mount_cmd).map(|_| ())
     }
 
     fn provision_framework_dependencies(&self, config: &VmConfig) -> Result<()> {
