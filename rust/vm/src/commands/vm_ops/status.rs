@@ -5,6 +5,7 @@
 
 use tracing::debug;
 
+use super::list::handle_list_enhanced;
 use crate::error::VmResult;
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::vm_println;
@@ -17,6 +18,10 @@ pub fn handle_status(
     config: VmConfig,
     _global_config: GlobalConfig,
 ) -> VmResult<()> {
+    if container.is_none() {
+        return handle_list_enhanced(None);
+    }
+
     // Get VM name from config
     let vm_name = config
         .project
@@ -85,7 +90,7 @@ fn display_status_dashboard(report: &VmStatusReport) {
     if report.is_running {
         vm_println!("\n💡 Connect: vm ssh");
     } else {
-        vm_println!("\n💡 Start: vm start");
+        vm_println!("\n💡 Start: vm up");
     }
 }
 
@@ -94,7 +99,7 @@ fn display_basic_stopped_status(vm_name: &str, provider_name: &str) {
     vm_println!("🖥️  {} ({})", vm_name, provider_name);
     vm_println!("   🔴 Stopped");
     vm_println!("   📦 Container not found");
-    vm_println!("\n💡 Start: vm start");
+    vm_println!("\n💡 Start: vm up");
 }
 
 /// Check if resource data is available and meaningful

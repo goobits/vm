@@ -529,29 +529,17 @@ pub enum PluginSubcommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum Command {
-    /// Create a new configuration file
-    Init {
-        /// Custom VM configuration file path
-        #[arg(short, long)]
-        file: Option<PathBuf>,
-
-        /// Services to enable (comma-separated: postgresql,redis,mongodb,docker)
-        #[arg(long)]
-        services: Option<String>,
-
-        /// Starting port for service allocation (allocates sequential ports)
-        #[arg(long)]
-        ports: Option<u16>,
-
-        /// Preset to use for initialization (e.g., vibe, nodejs, python, rust)
-        preset: Option<String>,
-    },
     /// Zero to code in one command (init → create → start → ssh)
     #[command(about = "Get from zero to coding in one command")]
     Up {
         /// Command to execute (if not provided, opens interactive shell)
         #[arg(short = 'c', long)]
         command: Option<String>,
+    },
+    /// Stop your environment
+    Down {
+        /// Container name or ID to stop (if not provided, stops current project VM gracefully)
+        container: Option<String>,
     },
     /// Clean up unused Docker resources
     #[command(about = "Prune orphaned volumes, images, and build cache")]
@@ -581,56 +569,6 @@ pub enum Command {
         command: ProfileSubcommand,
     },
 
-    /// Spin up a new development environment
-    Create {
-        /// Force creation even if VM already exists
-        #[arg(long)]
-        force: bool,
-        /// Instance name (defaults to 'dev' for multi-instance providers)
-        #[arg(long)]
-        instance: Option<String>,
-        /// Show detailed output including all Ansible tasks
-        #[arg(long)]
-        verbose: bool,
-        /// Save as global snapshot (e.g., @vibe-base) for reuse across projects
-        #[arg(long, value_name = "@NAME")]
-        save_as: Option<String>,
-        /// Build directly from a Dockerfile (overrides vm.yaml box config)
-        #[arg(long, value_name = "PATH")]
-        from_dockerfile: Option<PathBuf>,
-        /// Reuse existing service containers (postgres, redis, etc.) instead of creating new ones
-        #[arg(long, default_value = "true")]
-        preserve_services: bool,
-        /// Force refresh of all packages (bypasses cache, useful for security updates)
-        #[arg(long)]
-        refresh_packages: bool,
-    },
-    /// Start your environment
-    Start {
-        /// Container name, ID, or project name to start
-        #[arg()]
-        container: Option<String>,
-        /// Do not wait for the VM to confirm running
-        #[arg(long)]
-        no_wait: bool,
-    },
-    /// Stop your environment
-    Stop {
-        /// Container name or ID to stop (if not provided, stops current project VM gracefully)
-        container: Option<String>,
-    },
-    /// Restart your environment
-    Restart {
-        /// Container name, ID, or project name to restart
-        #[arg()]
-        container: Option<String>,
-    },
-    /// Apply configuration changes to your environment
-    Apply {
-        /// Container name, ID, or project name to apply changes to
-        #[arg()]
-        container: Option<String>,
-    },
     /// Delete an environment
     Destroy {
         /// Container name, ID, or project name to destroy
@@ -656,19 +594,7 @@ pub enum Command {
         preserve_services: bool,
     },
 
-    /// See all your environments
-    List {
-        /// Show instances from all providers (already default behavior)
-        #[arg(long)]
-        all_providers: bool,
-        /// Filter by specific provider (docker, tart, podman)
-        #[arg(long)]
-        provider: Option<String>,
-        /// Show detailed information
-        #[arg(long)]
-        verbose: bool,
-    },
-    /// Check environment status
+    /// Check environment status (defaults to listing all environments)
     Status {
         /// Container name, ID, or project name
         #[arg()]
@@ -837,114 +763,24 @@ mod tests {
     use clap::Parser;
 
     #[test]
-    fn test_init_command_parsing() {
-        let args = Args::parse_from([
-            "vm",
-            "init",
-            "--file",
-            "/tmp/vm.yaml",
-            "--services",
-            "docker,redis",
-        ]);
+    fn test_up_command_parsing() {
+        let args = Args::parse_from(["vm", "up", "-c", "echo hi"]);
         match args.command {
-            Command::Init {
-                file,
-                services,
-                preset,
-                ..
-            } => {
-                assert_eq!(file, Some(std::path::PathBuf::from("/tmp/vm.yaml")));
-                assert_eq!(services, Some("docker,redis".to_string()));
-                assert_eq!(preset, None);
+            Command::Up { command } => {
+                assert_eq!(command, Some("echo hi".to_string()));
             }
-            _ => panic!("Expected Command::Init"),
+            _ => panic!("Expected Command::Up"),
         }
     }
 
     #[test]
-    fn test_create_command_parsing() {
-        let args = Args::parse_from([
-            "vm",
-            "create",
-            "--force",
-            "--instance",
-            "test-vm",
-            "--verbose",
-        ]);
+    fn test_down_command_parsing() {
+        let args = Args::parse_from(["vm", "down", "my-container"]);
         match args.command {
-            Command::Create {
-                force,
-                instance,
-                verbose,
-                save_as,
-                from_dockerfile,
-                preserve_services,
-                refresh_packages,
-            } => {
-                assert!(force);
-                assert_eq!(instance, Some("test-vm".to_string()));
-                assert!(verbose);
-                assert_eq!(save_as, None);
-                assert_eq!(from_dockerfile, None);
-                assert!(preserve_services);
-                assert!(!refresh_packages);
-            }
-            _ => panic!("Expected Command::Create"),
-        }
-    }
-
-    #[test]
-    fn test_create_with_save_as_parsing() {
-        let args = Args::parse_from([
-            "vm",
-            "create",
-            "--save-as",
-            "@vibe-base",
-            "--from-dockerfile",
-            "./Dockerfile.vibe",
-        ]);
-        match args.command {
-            Command::Create {
-                save_as,
-                from_dockerfile,
-                preserve_services,
-                refresh_packages,
-                ..
-            } => {
-                assert_eq!(save_as, Some("@vibe-base".to_string()));
-                assert_eq!(
-                    from_dockerfile,
-                    Some(std::path::PathBuf::from("./Dockerfile.vibe"))
-                );
-                assert!(preserve_services);
-                assert!(!refresh_packages);
-            }
-            _ => panic!("Expected Command::Create"),
-        }
-    }
-
-    #[test]
-    fn test_create_with_refresh_packages_parsing() {
-        let args = Args::parse_from(["vm", "create", "--refresh-packages"]);
-        match args.command {
-            Command::Create {
-                refresh_packages, ..
-            } => {
-                assert!(refresh_packages);
-            }
-            _ => panic!("Expected Command::Create"),
-        }
-    }
-
-    #[test]
-    fn test_start_command_parsing() {
-        let args = Args::parse_from(["vm", "start", "my-container"]);
-        match args.command {
-            Command::Start { container, no_wait } => {
+            Command::Down { container } => {
                 assert_eq!(container, Some("my-container".to_string()));
-                assert!(!no_wait);
             }
-            _ => panic!("Expected Command::Start"),
+            _ => panic!("Expected Command::Down"),
         }
     }
 

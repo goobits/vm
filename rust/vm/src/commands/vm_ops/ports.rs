@@ -46,7 +46,7 @@ pub fn handle_ports(
         Ok(report) => {
             if !report.is_running {
                 vm_println!("❌ Container is not running");
-                vm_println!("   Start it with: vm start\n");
+                vm_println!("   Start it with: vm up\n");
                 return Ok(());
             }
 

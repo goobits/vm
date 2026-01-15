@@ -1,7 +1,7 @@
 //! VM lifecycle command handlers
 //!
 //! This module provides commands for managing VM lifecycle including
-//! start, stop, restart, and provisioning operations.
+//! start and stop operations.
 
 use tracing::{debug, info_span, warn};
 
@@ -271,88 +271,6 @@ pub async fn handle_stop(
                     Err(VmError::from(e))
                 }
             }
-        }
-    }
-}
-
-/// Handle VM restart
-pub async fn handle_restart(
-    provider: Box<dyn Provider>,
-    container: Option<&str>,
-    config: VmConfig,
-    global_config: GlobalConfig,
-) -> VmResult<()> {
-    let span = info_span!("vm_operation", operation = "restart");
-    let _enter = span.enter();
-    debug!("Restarting VM");
-
-    let vm_name = config
-        .project
-        .as_ref()
-        .and_then(|p| p.name.as_ref())
-        .map(|s| s.as_str())
-        .unwrap_or("vm-project");
-
-    vm_println!("{}", msg!(MESSAGES.vm.restart_header, name = vm_name));
-
-    // Use provider.restart_with_context() for the actual VM restart, then handle services
-    let context = ProviderContext::with_verbose(false).with_config(global_config.clone());
-    match provider.restart_with_context(container, &context) {
-        Ok(()) => {
-            // After successful restart, register services
-            let vm_instance_name = format!("{vm_name}-dev");
-            vm_println!("{}", MESSAGES.common.configuring_services);
-            register_vm_services_helper(&vm_instance_name, &config, &global_config).await?;
-        }
-        Err(e) => {
-            vm_println!(
-                "{}",
-                msg!(
-                    MESSAGES.vm.restart_troubleshooting,
-                    name = vm_name,
-                    error = e.to_string()
-                )
-            );
-            return Err(VmError::from(e));
-        }
-    }
-
-    vm_println!("{}", MESSAGES.vm.restart_success);
-    Ok(())
-}
-
-/// Apply configuration changes to VM
-pub fn handle_apply(
-    provider: Box<dyn Provider>,
-    container: Option<&str>,
-    config: VmConfig,
-) -> VmResult<()> {
-    let span = info_span!("vm_operation", operation = "apply");
-    let _enter = span.enter();
-    debug!("Applying configuration changes to VM");
-
-    let vm_name = config
-        .project
-        .as_ref()
-        .and_then(|p| p.name.as_ref())
-        .map(|s| s.as_str())
-        .unwrap_or("vm-project");
-
-    vm_println!("{}", msg!(MESSAGES.vm.apply_header, name = vm_name));
-    vm_println!("{}", MESSAGES.vm.apply_progress);
-
-    match provider.provision(container) {
-        Ok(()) => {
-            vm_println!("{}", MESSAGES.vm.apply_success);
-            vm_println!("{}", MESSAGES.vm.apply_hint);
-            Ok(())
-        }
-        Err(e) => {
-            vm_println!(
-                "{}",
-                msg!(MESSAGES.vm.apply_troubleshooting, error = e.to_string())
-            );
-            Err(VmError::from(e))
         }
     }
 }

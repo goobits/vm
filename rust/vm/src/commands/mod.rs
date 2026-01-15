@@ -4,14 +4,8 @@ use crate::error::{VmError, VmResult};
 use tracing::debug;
 // Import the CLI types
 use crate::cli::{Args, BaseSubcommand, Command, PluginSubcommand, TunnelSubcommand};
-use std::path::Path;
 use vm_cli::msg;
-use vm_config::{
-    config::{PortsConfig, ProjectConfig, VmConfig},
-    detector::detect_project_name,
-    resources::detect_resource_defaults,
-    AppConfig,
-};
+use vm_config::AppConfig;
 use vm_core::{vm_error, vm_println};
 use vm_messages::messages::MESSAGES;
 use vm_provider::get_provider;
@@ -57,16 +51,6 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         Command::Clean { dry_run, verbose } => {
             debug!("Handling clean command");
             clean::handle_clean(*dry_run, *verbose).await
-        }
-        Command::Init {
-            file,
-            services,
-            ports,
-            preset,
-        } => {
-            debug!("Handling init command");
-            init::handle_init(file.clone(), services.clone(), *ports, preset.clone())
-                .map_err(VmError::from)
         }
         Command::Config { command } => {
             debug!("Calling ConfigOps methods directly");
@@ -139,12 +123,7 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
 
 async fn handle_dry_run(args: &Args) -> VmResult<()> {
     match &args.command {
-        Command::Create { .. }
-        | Command::Start { .. }
-        | Command::Stop { .. }
-        | Command::Restart { .. }
-        | Command::Destroy { .. }
-        | Command::Apply { .. } => {
+        Command::Down { .. } | Command::Destroy { .. } => {
             vm_println!("{}", MESSAGES.vm.dry_run_header);
             vm_println!(
                 "{}",
@@ -209,6 +188,10 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
 }
 
 async fn handle_provider_command(args: Args) -> VmResult<()> {
+    if matches!(args.command, Command::Status { container: None }) {
+        return vm_ops::handle_list_enhanced(None);
+    }
+
     // Load configuration
     debug!(
         "Loading configuration: config_file={:?}, profile={:?}",
@@ -220,80 +203,17 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
         Err(e) => {
             let error_str = e.to_string();
             if error_str.contains("No vm.yaml found") {
-                if matches!(args.command, Command::Create { .. }) {
-                    vm_println!("📝 No vm.yaml found, generating a default configuration...");
-
-                    let resources = detect_resource_defaults();
-                    let default_vm_config = VmConfig {
-                        provider: Some("docker".to_string()),
-                        project: Some(ProjectConfig {
-                            name: Some(detect_project_name()?),
-                            ..Default::default()
-                        }),
-                        vm: Some(vm_config::config::VmSettings {
-                            memory: Some(vm_config::config::MemoryLimit::Limited(resources.memory)),
-                            cpus: Some(vm_config::config::CpuLimit::Limited(resources.cpus)),
-                            ..Default::default()
-                        }),
-                        ..Default::default()
-                    };
-
-                    let config_path = Path::new("vm.yaml");
-                    default_vm_config.write_to_file(config_path)?;
-                    vm_println!("✓ Generated vm.yaml");
-
-                    // Reload the AppConfig
-                    AppConfig::load(args.config, args.profile)?
-                } else {
-                    vm_println!("{}", MESSAGES.config.not_found);
-                    vm_println!("{}", MESSAGES.config.not_found_hint);
-                    return Err(VmError::from(e));
-                }
+                vm_println!("{}", MESSAGES.config.not_found);
+                vm_println!("{}", MESSAGES.config.not_found_hint);
+                return Err(VmError::from(e));
             } else {
                 return Err(VmError::from(e));
             }
         }
     };
     // Extract VM config and global config
-    let mut config = app_config.vm;
+    let config = app_config.vm;
     let global_config = app_config.global;
-
-    // For snapshot builds, modify config BEFORE creating provider to avoid container name conflicts
-    if let Command::Create {
-        save_as: Some(ref save_as),
-        from_dockerfile: Some(ref dockerfile_path),
-        ..
-    } = args.command
-    {
-        use vm_core::vm_println;
-
-        vm_println!("Building from Dockerfile: {}", dockerfile_path.display());
-
-        // Override box configuration
-        let mut vm_settings = config.vm.take().unwrap_or_default();
-        vm_settings.r#box = Some(vm_config::config::BoxSpec::String(
-            dockerfile_path.to_string_lossy().to_string(),
-        ));
-        config.vm = Some(vm_settings);
-
-        // Use temporary project name to avoid conflicts with existing VMs
-        let clean_name = save_as.strip_prefix('@').unwrap_or(save_as);
-        let temp_project_name = format!("{}-build", clean_name);
-
-        vm_println!(
-            "Using temporary project name '{}' for snapshot build",
-            temp_project_name
-        );
-
-        let mut project_config = config.project.take().unwrap_or_default();
-        project_config.name = Some(temp_project_name);
-        config.project = Some(project_config);
-
-        // Snapshot builds should not expose project ports or services (avoid host conflicts)
-        config.ports = PortsConfig::default();
-        // Disable services for snapshot builds to keep base images lightweight
-        config.services.clear();
-    }
 
     debug!(
         "Loaded configuration: provider={:?}, project_name={:?}",
@@ -302,10 +222,7 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
     );
 
     // Validate configuration before proceeding
-    // We skip the port availability check for all commands except `create`
-    // to avoid errors when a container is already running.
-    let skip_port_check = !matches!(args.command, Command::Create { .. });
-    let validation_errors = config.validate(skip_port_check);
+    let validation_errors = config.validate(true);
     if !validation_errors.is_empty() {
         vm_error!("{}", MESSAGES.common.validation_failed);
         for error in &validation_errors {
@@ -330,40 +247,7 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
     // Execute the command with friendly error handling
     debug!("Executing command: {:?}", args.command);
     let result = match args.command {
-        Command::Create {
-            force,
-            instance,
-            verbose,
-            save_as,
-            from_dockerfile,
-            preserve_services,
-            refresh_packages,
-        } => {
-            vm_ops::handle_create(
-                provider,
-                config.clone(),
-                global_config.clone(),
-                force,
-                instance,
-                verbose,
-                save_as,
-                from_dockerfile,
-                preserve_services,
-                refresh_packages,
-            )
-            .await
-        }
-        Command::Start { container, no_wait } => {
-            vm_ops::handle_start(
-                provider,
-                container.as_deref(),
-                config.clone(),
-                global_config.clone(),
-                no_wait,
-            )
-            .await
-        }
-        Command::Stop { container } => {
+        Command::Down { container } => {
             vm_ops::handle_stop(
                 provider,
                 container.as_deref(),
@@ -372,28 +256,6 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             )
             .await
         }
-        Command::Restart { container } => {
-            vm_ops::handle_restart(
-                provider,
-                container.as_deref(),
-                config.clone(),
-                global_config.clone(),
-            )
-            .await
-        }
-        Command::Apply { container } => {
-            vm_ops::handle_apply(provider, container.as_deref(), config.clone())
-        }
-        Command::List {
-            all_providers,
-            provider: provider_filter,
-            verbose,
-        } => vm_ops::handle_list_enhanced(
-            provider,
-            &all_providers,
-            provider_filter.as_deref(),
-            &verbose,
-        ),
         Command::Update { version, force } => {
             update::handle_update(version.as_deref(), force)?;
             Ok(())

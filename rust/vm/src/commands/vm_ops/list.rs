@@ -9,15 +9,10 @@ use crate::error::VmResult;
 use vm_cli::msg;
 use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
-use vm_provider::{InstanceInfo, Provider};
+use vm_provider::InstanceInfo;
 
 /// Handle VM listing with enhanced filtering options
-pub fn handle_list_enhanced(
-    _provider: Box<dyn Provider>,
-    _all_providers: &bool,
-    provider_filter: Option<&str>,
-    _verbose: &bool,
-) -> VmResult<()> {
+pub fn handle_list_enhanced(provider_filter: Option<&str>) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "list");
     let _enter = span.enter();
     debug!(
@@ -65,12 +60,6 @@ pub fn handle_list_enhanced(
     }
 
     Ok(())
-}
-
-/// Legacy handle_list for backward compatibility
-#[allow(dead_code)]
-pub fn handle_list(provider: Box<dyn Provider>) -> VmResult<()> {
-    handle_list_enhanced(provider, &true, None, &false)
 }
 
 // Helper function to get instances from all available providers

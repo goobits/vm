@@ -172,7 +172,7 @@ pub async fn handle_create(
                 if running { " and is running" } else { "" }
             );
             vm_println!(
-                "   Use 'vm ssh' to connect, 'vm start' to start, or 'vm destroy' to recreate."
+                "   Use 'vm ssh' to connect, 'vm up' to start, or 'vm destroy' to recreate."
             );
             return Ok(());
         }
@@ -181,7 +181,7 @@ pub async fn handle_create(
     let is_first_vm = !Path::new(".vm").exists();
     if is_first_vm {
         vm_println!("👋 Creating your first VM for this project\n");
-        vm_println!("💡 Tip: Run 'vm init' first to customize resources");
+        vm_println!("💡 Tip: Edit vm.yaml to customize resources");
         vm_println!("⏱️  This may take 2-3 minutes...\n");
     }
 
