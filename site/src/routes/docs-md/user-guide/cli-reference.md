@@ -6,15 +6,13 @@ All `vm` commands with usage examples and expected output. Use this as a referen
 
 | Task | Command |
 |------|---------|
-| Create VM | `vm create` |
-| Start VM | `vm start` |
-| Stop VM | `vm stop` |
+| Create/start VM | `vm up` |
+| Stop VM | `vm down` |
 | Connect to VM | `vm ssh` |
-| Check status | `vm status` |
+| Check status | `vm status [<vm>]` |
 | View logs | `vm logs [-f]` |
-| Wait for services | `vm wait [--service <name>]` |
+| Wait for services | `vm up --wait` |
 | Destroy VM | `vm destroy` |
-| List VMs | `vm list` |
 | Run command | `vm exec <command>` |
 | **Snapshots** | |
 | Create snapshot | `vm snapshot create <name>` |
@@ -22,17 +20,12 @@ All `vm` commands with usage examples and expected output. Use this as a referen
 | Export snapshot | `vm snapshot export <name>` |
 | Import snapshot | `vm snapshot import <file>` |
 | **Configuration** | |
-| Initialize config | `vm init` |
 | Validate config | `vm config validate` |
 | Apply preset | `vm config preset <name>` |
-| **Environment** | |
-| Validate .env | `vm env validate` |
-| Show env diff | `vm env diff` |
 | **Port Management** | |
-| Show ports | `vm ports` |
-| Forward port | `vm port forward <host>:<container>` |
-| List tunnels | `vm port list` |
-| Stop tunnel | `vm port stop [port]` |
+| Forward port | `vm tunnel create <host>:<container>` |
+| List tunnels | `vm tunnel list` |
+| Stop tunnel | `vm tunnel stop [port]` |
 | **Database** | |
 | Backup database | `vm db backup <name>` |
 | Restore database | `vm db restore <backup> <db>` |
@@ -48,7 +41,6 @@ All `vm` commands with usage examples and expected output. Use this as a referen
 - [Core Commands](#core-commands)
 - [Configuration (`vm config`)](#configuration-vm-config)
 - [Port Management](#port-management)
-- [Environment Variables (`vm env`)](#environment-variables-vm-env)
 - [Temporary VMs (`vm temp`)](#temporary-vms-vm-temp)
 - [Plugins (`vm plugin`)](#plugins-vm-plugin)
 - [Snapshots (`vm snapshot`)](#snapshots-vm-snapshot)
@@ -73,46 +65,32 @@ These flags can be used with any command.
 
 ## Core Commands
 
-### `vm create`
-Create and apply a new VM.
+### `vm up`
+Create/configure/start an environment and open a shell.
 ```bash
-vm create [--force]
+vm up [-c <command>] [--wait]
 ```
 
-### `vm start`
-Start a stopped VM.
-```bash
-vm start
-```
+**Options:**
+- `-c, --command <command>`: Run a command instead of opening a shell
+- `--wait`: Wait for services to be ready before continuing
 
-### `vm stop`
+### `vm down`
 Stop a running VM.
 ```bash
-vm stop
+vm down [<container>]
 ```
 
-### `vm restart`
-Restart a VM.
+### `vm status`
+List all VMs, or show details for a single VM.
 ```bash
-vm restart
-```
-
-### `vm apply`
-Re-run the applying process on an existing VM.
-```bash
-vm apply
+vm status [<container>]
 ```
 
 ### `vm destroy`
 Destroy a VM and all its associated resources.
 ```bash
 vm destroy [--no-backup] [--force]
-```
-
-### `vm status`
-Show the status and health of a VM.
-```bash
-vm status
 ```
 
 ### `vm ssh`
@@ -166,49 +144,8 @@ vm copy my-vm:/remote/file.txt /local/file.txt
 vm copy ./local.txt /workspace/remote.txt
 ```
 
-### `vm list`
-List all available VMs.
-```bash
-vm list
-```
-
-### `vm wait`
-Wait for services to become ready before proceeding.
-```bash
-vm wait [--service <name>] [--timeout <seconds>]
-```
-
-**Wait for all services:**
-```bash
-vm wait
-```
-
-**Wait for specific service:**
-```bash
-vm wait --service postgresql
-vm wait --service redis --timeout 60
-```
-
-**Options:**
-- `--service <name>` - Wait for specific service (postgresql, redis, mongodb, mysql)
-- `--timeout <seconds>` - Maximum wait time in seconds (default: 120)
-- `--container <name>` - Target specific container
-
-**Use cases:**
-- CI/CD pipelines: Wait for database before running migrations
-- Scripts: Ensure services are ready before executing commands
-- Development: Verify services started correctly after `vm create`
-
----
-
 ## Configuration (`vm config`)
 Manage `vm.yaml` configuration.
-
-### `vm init`
-Initialize a new `vm.yaml` configuration file.
-```bash
-vm init
-```
 
 ### `vm config validate`
 Validate the current configuration.
@@ -246,6 +183,13 @@ Apply a configuration preset.
 vm config preset <name>
 ```
 
+### `vm config profile`
+List or set the default profile.
+```bash
+vm config profile list
+vm config profile set <name>
+```
+
 ### `vm config ports`
 Manage port configuration and resolve conflicts.
 ```bash
@@ -262,64 +206,50 @@ vm config clear
 
 ## Port Management
 
-### `vm ports`
-Show all listening ports and services in the VM.
+Ports are summarized in `vm status <vm>`.
+
+### `vm tunnel create`
+Create a dynamic port forwarding tunnel without permanent configuration.
 ```bash
-vm ports [container]
-```
-
-Displays which services are listening on which ports inside the container.
-
-**Example output:**
-```
-Port   Service        Status
-3000   frontend       listening
-5432   postgresql     listening
-6379   redis          listening
-```
-
-### `vm port forward`
-Create dynamic port forwarding tunnel without permanent configuration.
-```bash
-vm port forward <mapping> [container]
+vm tunnel create <mapping> [container]
 ```
 
 **Forward localhost port to container port:**
 ```bash
-vm port forward 8080:3000
+vm tunnel create 8080:3000
 ```
 
 Makes container port 3000 accessible at localhost:8080 on your host machine.
 
 **Forward to specific container:**
 ```bash
-vm port forward 9229:9229 myapp-dev
+vm tunnel create 9229:9229 myapp-dev
 ```
 
 Useful for debugging or temporary access to services.
 
-### `vm port list`
+### `vm tunnel list`
 List all active port forwarding tunnels.
 ```bash
-vm port list [container]
+vm tunnel list [container]
 ```
 
 Shows which ports are currently being forwarded and to which containers.
 
-### `vm port stop`
+### `vm tunnel stop`
 Stop port forwarding tunnel(s).
 ```bash
-vm port stop [port] [container] [--all]
+vm tunnel stop [port] [container] [--all]
 ```
 
 **Stop specific port:**
 ```bash
-vm port stop 8080
+vm tunnel stop 8080
 ```
 
 **Stop all tunnels:**
 ```bash
-vm port stop --all
+vm tunnel stop --all
 ```
 
 **Use cases:**
@@ -332,59 +262,8 @@ See [Dynamic Port Forwarding](configuration.md#dynamic-port-forwarding) in confi
 
 ---
 
-## Environment Variables (`vm env`)
-Manage environment variables and validate against templates.
-
-Requires `project.env_template_path` configured in vm.yaml.
-
-### `vm env validate`
-Validate .env file against template.
-```bash
-vm env validate [--all]
-```
-
-**Basic validation:**
-```bash
-vm env validate
-```
-
-Shows missing variables that need to be set.
-
-**Show all variables:**
-```bash
-vm env validate --all
-```
-
-Shows missing, extra, and present variables.
-
-### `vm env diff`
-Show differences between .env and template.
-```bash
-vm env diff
-```
-
-Displays side-by-side comparison of template vs actual values.
-
-### `vm env list`
-List all environment variables from .env.
-```bash
-vm env list [--show-values]
-```
-
-**List variable names:**
-```bash
-vm env list
-```
-
-**Show values (masked):**
-```bash
-vm env list --show-values
-```
-
-**Use cases:**
-- Onboarding: Verify team members have all required environment variables
-- CI/CD: Validate environment configuration before deployment
-- Development: Check which environment variables are currently configured
+## Environment Variables
+Manage environment variables via your `.env` file and application tooling.
 
 ---
 
@@ -488,14 +367,24 @@ Create, manage, and share VM snapshots.
 ### `vm snapshot create`
 Create a new snapshot of current VM state.
 ```bash
-vm snapshot create <name> [--project <name>]
+vm snapshot create <name> [--project <name>] [--quiesce]
+                          [--from-dockerfile <path>]
 ```
+
+**Options:**
+- `--quiesce`: Stop services before snapshotting for data consistency
+- `--from-dockerfile <path>`: Build snapshot directly from a Dockerfile
+- `--build-context <path>`: Directory context for Dockerfile build (default: ".")
+- `--build-arg <key=value>`: Build arguments for Dockerfile
 
 ### `vm snapshot list`
 List all available snapshots.
 ```bash
-vm snapshot list [--project <name>]
+vm snapshot list [--project <name>] [--type <base|project>]
 ```
+
+**Options:**
+- `--type <base|project>`: Filter by snapshot type (base images or project states)
 
 ### `vm snapshot restore`
 Restore VM to a snapshot.
@@ -567,6 +456,9 @@ vm snapshot import backup.tar.gz --force
 - Backup: Export snapshots before major changes
 - Migration: Move snapshots between machines
 - Distribution: Share pre-configured environments
+
+---
+Global snapshots use the `@name` convention (for example, `vm snapshot create @vibe-base`).
 
 ---
 
@@ -737,7 +629,7 @@ vm pkg remove <name>
 ### `vm doctor`
 Run comprehensive health checks.
 ```bash
-vm doctor
+vm doctor [--fix] [--clean]
 ```
 
 ### `vm update`

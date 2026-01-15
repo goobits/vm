@@ -93,12 +93,6 @@ Destroy a VM and all its associated resources.
 vm destroy [--no-backup] [--force]
 ```
 
-### `vm status`
-Show the status and health of a VM.
-```bash
-vm status
-```
-
 ### `vm ssh`
 Connect to a VM via SSH.
 ```bash

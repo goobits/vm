@@ -184,7 +184,7 @@ Complete field reference organized by category.
 | `project.name` | string | directory name | VM/container name and shell prompt |
 | `project.hostname` | string | required | VM/container hostname |
 | `project.workspace_path` | string | /workspace | Mount path inside container |
-| `project.env_template_path` | string | null | Path to .env template for validation |
+| `project.env_template_path` | string | null | Optional template for .env tooling |
 | `project.backup_pattern` | string | *backup*.sql.gz | Pattern for auto-restore |
 | **VM Resources** ||||
 | `vm.box` | string | ubuntu:24.04 | Base image (Docker/OCI) or box (Vagrant) |
@@ -232,7 +232,7 @@ project:
   name: my-app              # VM name and shell prompt
   hostname: dev.local       # Container hostname (required)
   workspace_path: /workspace
-  env_template_path: .env.template  # For vm env validate
+  env_template_path: .env.template  # Optional template for .env tooling
 ```
 
 ### VM Resources
