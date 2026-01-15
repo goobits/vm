@@ -308,13 +308,9 @@ pub enum BoxSpec {
 /// Virtual machine resource and system configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct VmSettings {
-    /// NEW: Unified box configuration (replaces box_name)
+    /// Unified box configuration (image, Dockerfile, or snapshot)
     #[serde(skip_serializing_if = "Option::is_none", rename = "box")]
     pub r#box: Option<BoxSpec>,
-
-    /// DEPRECATED: Use box instead. Kept for backwards compatibility.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub box_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -338,11 +334,9 @@ pub struct VmSettings {
 }
 
 impl VmSettings {
-    /// Get box specification, preferring new `box` field and falling back to deprecated `box_name`
+    /// Get box specification from `box` field.
     pub fn get_box_spec(&self) -> Option<BoxSpec> {
-        self.r#box
-            .clone()
-            .or_else(|| self.box_name.as_ref().map(|s| BoxSpec::String(s.clone())))
+        self.r#box.clone()
     }
 }
 
