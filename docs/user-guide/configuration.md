@@ -110,7 +110,7 @@ profiles:
 Set the default from the CLI:
 
 ```bash
-vm profile set-default ubuntu
+vm config profile set ubuntu
 ```
 
 ## Quick Start
@@ -252,7 +252,7 @@ project:
   name: my-app              # VM name and shell prompt
   hostname: dev.local       # Container hostname (required)
   workspace_path: /workspace
-  env_template_path: .env.template  # For vm env validate
+  env_template_path: .env.template  # Optional template for .env tooling
 ```
 
 ### VM Resources
