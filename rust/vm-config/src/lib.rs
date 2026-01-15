@@ -92,7 +92,6 @@ impl AppConfig {
     /// 2. Loads VM config from provided path or auto-discovers
     /// 3. Applies defaults and presets
     /// 4. Merges configurations in proper precedence order
-    /// 5. Handles backward compatibility for deprecated fields
     pub fn load(config_path: Option<PathBuf>, profile: Option<String>) -> Result<Self> {
         // Load global configuration
         let global = GlobalConfig::load()
@@ -127,24 +126,6 @@ impl AppConfig {
             }
         }
 
-        // Handle backward compatibility: if deprecated fields are in vm.yaml,
-        // warn and apply them to the runtime global config (but don't save)
-        let mut runtime_global = global.clone();
-        Self::handle_deprecated_fields_raw(config_path, &mut runtime_global)?;
-
-        Ok(Self {
-            global: runtime_global,
-            vm,
-        })
-    }
-
-    /// Handle deprecated fields for backward compatibility (deprecated fields removed in v2.0.0+)
-    pub fn handle_deprecated_fields_raw(
-        _vm_yaml_path: Option<PathBuf>,
-        _global: &mut GlobalConfig,
-    ) -> Result<()> {
-        // All deprecated vm.yaml service flags have been removed in v2.0.0+
-        // Services are now configured purely through global config (~/.vm/config.yaml)
-        Ok(())
+        Ok(Self { global, vm })
     }
 }

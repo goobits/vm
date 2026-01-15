@@ -140,49 +140,6 @@ box:
     }
 
     #[test]
-    fn test_backwards_compat_box_name() {
-        let yaml = "box_name: ubuntu:24.04";
-        let vm: VmSettings = serde_yaml_ng::from_str(yaml).unwrap();
-        let box_spec = vm.get_box_spec().unwrap();
-        assert_eq!(box_spec, BoxSpec::String("ubuntu:24.04".to_string()));
-    }
-
-    #[test]
-    fn test_backwards_compat_box_name_node() {
-        let yaml = "box_name: node:20-alpine";
-        let vm: VmSettings = serde_yaml_ng::from_str(yaml).unwrap();
-        let box_spec = vm.get_box_spec().unwrap();
-        assert_eq!(box_spec, BoxSpec::String("node:20-alpine".to_string()));
-    }
-
-    #[test]
-    fn test_box_takes_precedence_over_box_name() {
-        let yaml = r#"
-box: node:20
-box_name: ubuntu:24.04
-"#;
-        let vm: VmSettings = serde_yaml_ng::from_str(yaml).unwrap();
-        let box_spec = vm.get_box_spec().unwrap();
-        assert_eq!(box_spec, BoxSpec::String("node:20".to_string()));
-    }
-
-    #[test]
-    fn test_box_build_takes_precedence_over_box_name() {
-        let yaml = r#"
-box:
-  dockerfile: ./Dockerfile
-  context: .
-box_name: ubuntu:24.04
-"#;
-        let vm: VmSettings = serde_yaml_ng::from_str(yaml).unwrap();
-        let box_spec = vm.get_box_spec().unwrap();
-        assert!(matches!(box_spec, BoxSpec::Build { .. }));
-        if let BoxSpec::Build { dockerfile, .. } = box_spec {
-            assert_eq!(dockerfile, "./Dockerfile");
-        }
-    }
-
-    #[test]
     fn test_get_box_spec_returns_none_when_both_missing() {
         let yaml = r#"
 user: myuser
@@ -321,7 +278,6 @@ memory: 4096
     fn test_vm_settings_get_box_spec_prefers_box() {
         let vm = VmSettings {
             r#box: Some(BoxSpec::String("node:20".to_string())),
-            box_name: Some("ubuntu:24.04".to_string()),
             ..Default::default()
         };
 
@@ -330,22 +286,9 @@ memory: 4096
     }
 
     #[test]
-    fn test_vm_settings_get_box_spec_falls_back_to_box_name() {
-        let vm = VmSettings {
-            r#box: None,
-            box_name: Some("ubuntu:24.04".to_string()),
-            ..Default::default()
-        };
-
-        let spec = vm.get_box_spec().unwrap();
-        assert_eq!(spec, BoxSpec::String("ubuntu:24.04".to_string()));
-    }
-
-    #[test]
     fn test_vm_settings_get_box_spec_returns_none() {
         let vm = VmSettings {
             r#box: None,
-            box_name: None,
             ..Default::default()
         };
 

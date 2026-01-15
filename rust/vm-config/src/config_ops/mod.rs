@@ -8,7 +8,6 @@
 // Internal module declarations
 mod get;
 mod io;
-mod migrate;
 mod preset;
 mod set;
 mod unset;
@@ -54,10 +53,5 @@ impl ConfigOps {
     /// Apply preset(s) to configuration.
     pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) -> Result<()> {
         preset::preset(preset_names, global, list, show)
-    }
-
-    /// Migrate old configuration files to new locations.
-    pub fn migrate() -> Result<()> {
-        migrate::migrate_config_files()
     }
 }

@@ -36,9 +36,4 @@ impl ConfigOpsGroup {
     pub fn execute_export(file: Option<PathBuf>) -> Result<()> {
         commands::dump::execute_export(file)
     }
-
-    /// Execute migrate command
-    pub fn execute_migrate() -> Result<()> {
-        commands::config_ops::execute_migrate()
-    }
 }

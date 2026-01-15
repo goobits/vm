@@ -7,7 +7,7 @@ pub mod formatter;
 pub mod query_ops;
 pub mod transform_ops;
 
-// Re-export the main operations struct for backwards compatibility
+// Re-export the main operations struct
 pub use array_ops::ArrayOperations;
 pub use core::CoreOperations;
 pub use field_ops::FieldOperations;
