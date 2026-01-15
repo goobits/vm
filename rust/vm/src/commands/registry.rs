@@ -337,7 +337,7 @@ async fn start_server_if_needed(global_config: &GlobalConfig, yes: bool) -> VmRe
                 return Ok(());
             }
         } else {
-            // Couldn't get version, assume server is good (backward compatibility)
+            // Couldn't get version, assume server is good
             return Ok(());
         }
     }

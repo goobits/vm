@@ -793,7 +793,6 @@ The provider determines how to interpret the `box` string:
 - **Registry format** → Docker/Tart image
 - **Everything else** → Image name
 
-**Migration note**: If you're updating from an older version, `box_name` has been renamed to `box`. The functionality is identical—simply update your field name in `vm.yaml`.
 
 ## Language Runtimes
 

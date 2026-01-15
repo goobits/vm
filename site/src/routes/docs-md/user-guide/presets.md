@@ -201,7 +201,7 @@ vm create
 
 ### Legacy Method (File-based)
 
-For backward compatibility, you can still add presets in `configs/presets/`:
+You can add presets in `configs/presets/`:
 ```yaml
 # configs/presets/custom.yaml
 preset:
