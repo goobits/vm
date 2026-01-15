@@ -353,12 +353,13 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             )
             .await
         }
-        Command::Start { container } => {
+        Command::Start { container, no_wait } => {
             vm_ops::handle_start(
                 provider,
                 container.as_deref(),
                 config.clone(),
                 global_config.clone(),
+                no_wait,
             )
             .await
         }

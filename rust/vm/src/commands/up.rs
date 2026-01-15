@@ -101,6 +101,7 @@ pub async fn handle_up(
                 None,
                 config.clone(),
                 global_config.clone(),
+                false,
             )
             .await?;
         }

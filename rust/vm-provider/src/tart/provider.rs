@@ -44,8 +44,8 @@ impl TartProvider {
         let output = cmd!("tart", "list", "--format", "json").read()?;
         let vms: Vec<serde_json::Value> = serde_json::from_str(&output)?;
         for vm in vms {
-            if vm["name"] == instance_name {
-                return Ok(vm["state"].as_str().map(|state| state.to_string()));
+            if vm["Name"] == instance_name {
+                return Ok(vm["State"].as_str().map(|state| state.to_string()));
             }
         }
         Ok(None)
@@ -93,12 +93,27 @@ impl TartProvider {
             .map_err(|e| VmError::Internal(format!("Failed to determine host workspace path: {e}")))
     }
 
+    fn shell_escape_single_quotes(input: &str) -> String {
+        input.replace('\'', "'\"'\"'")
+    }
+
+    fn sanitize_log_name(input: &str) -> String {
+        input
+            .chars()
+            .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+            .collect()
+    }
+
     fn start_vm_background(&self, vm_name: &str) -> Result<()> {
         let host_path = self.host_workspace_path()?;
         let dir_arg = format!("workspace:{}:tag=workspace", host_path.display());
+        let dir_arg = Self::shell_escape_single_quotes(&dir_arg);
+        let log_path = format!("/tmp/vm-tart-{}.log", Self::sanitize_log_name(vm_name));
+        let vm_name = Self::shell_escape_single_quotes(vm_name);
+        let log_path = Self::shell_escape_single_quotes(&log_path);
         let cmd = format!(
-            "nohup tart run --no-graphics --dir '{}' '{}' >/tmp/vm-tart.log 2>&1 &",
-            dir_arg, vm_name
+            "nohup tart run --no-graphics --dir '{}' '{}' >'{}' 2>&1 &",
+            dir_arg, vm_name, log_path
         );
 
         std::process::Command::new("sh")

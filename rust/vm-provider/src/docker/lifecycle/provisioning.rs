@@ -102,6 +102,15 @@ impl<'a> LifecycleOperations<'a> {
             if [ -d /home/developer/.gemini ]; then
                 chown -R developer:developer /home/developer/.gemini 2>/dev/null || true
             fi
+            if [ -d /home/developer/.codex ]; then
+                chown -R developer:developer /home/developer/.codex 2>/dev/null || true
+            fi
+            if [ -d /home/developer/.cursor ]; then
+                chown -R developer:developer /home/developer/.cursor 2>/dev/null || true
+            fi
+            if [ -d /home/developer/.aider ]; then
+                chown -R developer:developer /home/developer/.aider 2>/dev/null || true
+            fi
 
             echo "Permissions fixed"
         "#;

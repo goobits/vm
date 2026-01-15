@@ -610,6 +610,9 @@ pub enum Command {
         /// Container name, ID, or project name to start
         #[arg()]
         container: Option<String>,
+        /// Do not wait for the VM to confirm running
+        #[arg(long)]
+        no_wait: bool,
     },
     /// Stop your environment
     Stop {
@@ -937,8 +940,9 @@ mod tests {
     fn test_start_command_parsing() {
         let args = Args::parse_from(["vm", "start", "my-container"]);
         match args.command {
-            Command::Start { container } => {
+            Command::Start { container, no_wait } => {
                 assert_eq!(container, Some("my-container".to_string()));
+                assert!(!no_wait);
             }
             _ => panic!("Expected Command::Start"),
         }

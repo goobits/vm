@@ -20,6 +20,7 @@ pub async fn handle_start(
     container: Option<&str>,
     config: VmConfig,
     global_config: GlobalConfig,
+    no_wait: bool,
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "start");
     let _enter = span.enter();
@@ -55,6 +56,36 @@ pub async fn handle_start(
     let context = ProviderContext::with_verbose(false).with_config(global_config.clone());
     match provider.start_with_context(container, &context) {
         Ok(()) => {
+            if provider.name() == "tart"
+                && !no_wait
+                && !wait_for_tart_running(&*provider, container)
+            {
+                let log_path = format!(
+                    "/tmp/vm-tart-{}.log",
+                    sanitize_log_name(container.unwrap_or("unknown"))
+                );
+                let log_tail = std::fs::read_to_string(&log_path)
+                    .ok()
+                    .map(|c| tail_lines(&c, 40))
+                    .filter(|t| !t.is_empty());
+
+                match log_tail {
+                    Some(tail) => {
+                        vm_println!("⚠️  Tart failed to start (from {}):\n{}", log_path, tail)
+                    }
+                    None => vm_println!("⚠️  Tart failed to start. See {}", log_path),
+                }
+
+                return Err(VmError::provider(
+                    std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "Tart VM did not reach running state",
+                    ),
+                    provider.name(),
+                    "Start failed",
+                ));
+            }
+
             vm_println!("{}", MESSAGES.vm.start_success);
 
             // Show VM details
@@ -133,6 +164,35 @@ pub async fn handle_start(
             Err(VmError::from(e))
         }
     }
+}
+
+fn wait_for_tart_running(provider: &dyn Provider, container: Option<&str>) -> bool {
+    use std::thread;
+    use std::time::Duration;
+
+    for _ in 0..5 {
+        thread::sleep(Duration::from_secs(1));
+        if let Ok(report) = provider.get_status_report(container) {
+            if report.is_running {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+fn tail_lines(contents: &str, max_lines: usize) -> String {
+    let lines: Vec<&str> = contents.lines().collect();
+    let start = lines.len().saturating_sub(max_lines);
+    lines[start..].join("\n")
+}
+
+fn sanitize_log_name(input: &str) -> String {
+    input
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+        .collect()
 }
 
 /// Handle VM stop - graceful stop for current project or force kill specific container

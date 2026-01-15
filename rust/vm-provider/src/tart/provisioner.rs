@@ -64,13 +64,19 @@ impl TartProvisioner {
         ))
     }
 
+    fn shell_escape_single_quotes(input: &str) -> String {
+        input.replace('\'', "'\"'\"'")
+    }
+
     fn ensure_workspace_mount(&self) -> Result<()> {
+        let dir_escaped = Self::shell_escape_single_quotes(&self.project_dir);
         let mount_cmd = format!(
-            "if ! mount | grep -q \"on {dir} \"; then \
+            "dir='{dir}'; \
+            if ! mount | grep -F \"on $dir \"; then \
             if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=\"\"; fi; \
-            $SUDO mkdir -p {dir} && $SUDO mount -t virtiofs workspace {dir}; \
+            $SUDO mkdir -p \"$dir\" && $SUDO mount -t virtiofs workspace \"$dir\"; \
             fi",
-            dir = self.project_dir
+            dir = dir_escaped
         );
 
         self.ssh_exec(&mount_cmd).map(|_| ())

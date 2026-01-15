@@ -2,6 +2,7 @@
 use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 // External crates
 use tera::Context as TeraContext;
@@ -39,10 +40,68 @@ fn extract_path_mount(path_string: &String) -> Option<(&str, &str)> {
         .and_then(|name| path.to_str().map(|path_str| (path_str, name)))
 }
 
+/// Resolve the real user's home directory when running under sudo.
+fn resolve_home_dir() -> Option<PathBuf> {
+    if let Ok(sudo_user) = std::env::var("SUDO_USER") {
+        if !sudo_user.is_empty() && sudo_user != "root" {
+            if let Some(home) = home_dir_from_passwd(&sudo_user) {
+                return Some(home);
+            }
+        }
+    }
+
+    std::env::var("HOME").ok().map(PathBuf::from)
+}
+
+/// Look up a user's home directory from /etc/passwd.
+fn home_dir_from_passwd(user: &str) -> Option<PathBuf> {
+    let contents = fs::read_to_string("/etc/passwd").ok()?;
+
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        let mut parts = line.split(':');
+        let name = parts.next()?;
+        if name != user {
+            continue;
+        }
+
+        let _passwd = parts.next()?;
+        let _uid = parts.next()?;
+        let _gid = parts.next()?;
+        let _gecos = parts.next()?;
+        let home = parts.next()?;
+
+        if !home.is_empty() {
+            return Some(PathBuf::from(home));
+        }
+    }
+
+    None
+}
+
+/// Ensure files created under sudo are owned by the real user.
+fn maybe_chown_path_to_sudo_user(path: &Path) {
+    #[cfg(unix)]
+    {
+        let (Ok(uid), Ok(gid)) = (std::env::var("SUDO_UID"), std::env::var("SUDO_GID")) else {
+            return;
+        };
+        let owner = format!("{uid}:{gid}");
+        let _ = Command::new("chown")
+            .args(["-R", &owner, path.to_string_lossy().as_ref()])
+            .status();
+    }
+}
+
 /// Helper function to get SSH config path if it exists
 fn get_ssh_config_path() -> Option<String> {
-    let home = std::env::var("HOME").ok()?;
-    let ssh_config_path = format!("{}/.ssh/config", home);
+    let home = resolve_home_dir()?;
+    let ssh_config_path = home.join(".ssh").join("config");
+    let ssh_config_path = ssh_config_path.to_string_lossy().to_string();
     if std::path::Path::new(&ssh_config_path).exists() {
         Some(ssh_config_path)
     } else {
@@ -85,10 +144,11 @@ fn configure_ssh_agent(config: &VmConfig, tera_context: &mut TeraContext) {
 /// Expand tilde (~) in path to home directory (zero-copy for paths without tilde)
 fn expand_tilde(path: &str) -> Option<Cow<'_, str>> {
     if path.starts_with("~/") {
-        let home = std::env::var("HOME").ok()?;
+        let home = resolve_home_dir()?;
+        let home = home.to_string_lossy();
         Some(Cow::Owned(path.replacen("~", &home, 1)))
     } else if path == "~" {
-        std::env::var("HOME").ok().map(Cow::Owned)
+        resolve_home_dir().map(|home| Cow::Owned(home.to_string_lossy().to_string()))
     } else {
         Some(Cow::Borrowed(path))
     }
@@ -164,8 +224,9 @@ impl<'a> ComposeOperations<'a> {
             return Ok(()); // No AI sync configured
         };
 
-        let home = std::env::var("HOME")
-            .map_err(|_| VmError::Internal("HOME environment variable not set".to_string()))?;
+        let home = resolve_home_dir()
+            .ok_or_else(|| VmError::Internal("HOME environment variable not set".to_string()))?;
+        let home = home.to_string_lossy();
 
         let project_name = self
             .config
@@ -182,6 +243,7 @@ impl<'a> ComposeOperations<'a> {
             fs::create_dir_all(&claude_dir).map_err(|e| {
                 VmError::Internal(format!("Failed to create Claude sync directory: {}", e))
             })?;
+            maybe_chown_path_to_sudo_user(Path::new(&claude_dir));
         }
 
         // Gemini sync (default: true)
@@ -190,6 +252,7 @@ impl<'a> ComposeOperations<'a> {
             fs::create_dir_all(&gemini_dir).map_err(|e| {
                 VmError::Internal(format!("Failed to create Gemini sync directory: {}", e))
             })?;
+            maybe_chown_path_to_sudo_user(Path::new(&gemini_dir));
         }
 
         // Codex sync (default: false, opt-in)
@@ -198,6 +261,7 @@ impl<'a> ComposeOperations<'a> {
             fs::create_dir_all(&codex_dir).map_err(|e| {
                 VmError::Internal(format!("Failed to create Codex sync directory: {}", e))
             })?;
+            maybe_chown_path_to_sudo_user(Path::new(&codex_dir));
         }
 
         // Cursor sync (default: false, opt-in)
@@ -206,6 +270,7 @@ impl<'a> ComposeOperations<'a> {
             fs::create_dir_all(&cursor_dir).map_err(|e| {
                 VmError::Internal(format!("Failed to create Cursor sync directory: {}", e))
             })?;
+            maybe_chown_path_to_sudo_user(Path::new(&cursor_dir));
         }
 
         // Aider sync (default: false, opt-in)
@@ -214,6 +279,7 @@ impl<'a> ComposeOperations<'a> {
             fs::create_dir_all(&aider_dir).map_err(|e| {
                 VmError::Internal(format!("Failed to create Aider sync directory: {}", e))
             })?;
+            maybe_chown_path_to_sudo_user(Path::new(&aider_dir));
         }
 
         Ok(())
@@ -505,7 +571,9 @@ impl<'a> ComposeOperations<'a> {
         }
 
         // Get home directory for template (needed for AI tools sync)
-        let home_dir = std::env::var("HOME").unwrap_or_else(|_| "/home/developer".to_string());
+        let home_dir = resolve_home_dir()
+            .map(|home| home.to_string_lossy().to_string())
+            .unwrap_or_else(|| "/home/developer".to_string());
         tera_context.insert("home_dir", &home_dir);
 
         // Git worktrees volume

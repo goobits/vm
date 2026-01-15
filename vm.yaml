@@ -1,5 +1,4 @@
 version: '2.0'
-default_profile: ubuntu
 provider: docker
 os: auto
 project:
@@ -27,10 +26,10 @@ terminal:
 host_sync:
   git_config: true
   ai_tools: true
+default_profile: ubuntu
 networking:
   networks:
   - spacebase
-
 profiles:
   ubuntu:
     provider: docker
