@@ -316,7 +316,7 @@ VM Tool automatically discovers plugins in:
 **Discovery order:**
 1. Plugins (user-installed, highest priority)
 2. Embedded presets (system presets like `base`, `tart-*`)
-3. File-based presets (legacy `configs/presets/`)
+3. File-based presets (`configs/presets/`)
 
 This means plugins override embedded presets with the same name.
 
@@ -532,7 +532,7 @@ Yes. Plugin presets have higher priority than embedded presets. If you install a
 
 User plugins: `~/.vm/plugins/`
 Embedded presets: Built into the vm binary
-File-based presets: `configs/presets/` (legacy)
+File-based presets: `configs/presets/`
 
 ### Can I share plugins?
 

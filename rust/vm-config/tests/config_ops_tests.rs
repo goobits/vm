@@ -68,7 +68,7 @@ impl SimpleTestFixture {
         let preset_path = presets_dir.join(format!("{}.yaml", name));
         fs::write(&preset_path, content)?;
 
-        // Also create the legacy path that get_tool_dir might be falling back to
+        // Also create the fallback path that get_tool_dir might be falling back to
         // SimpleTestFixture sets VM_TOOL_DIR to temp_dir/vm-tool
         // But get_tool_dir might be finding "target" directory and going up from there
         // We can't easily mock std::env::current_exe() or force get_tool_dir to respect VM_TOOL_DIR exclusively

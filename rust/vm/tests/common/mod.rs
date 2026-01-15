@@ -6,7 +6,7 @@ use std::path::PathBuf;
 ///
 /// This function tries multiple sources in order:
 /// 1. `CARGO_BIN_EXE_vm` environment variable (set by `cargo test`)
-/// 2. Fallback to `/workspace/.build/target/debug/vm` (legacy path)
+/// 2. Fallback to `/workspace/.build/target/debug/vm` (fallback path)
 ///
 /// If the binary cannot be found, returns an error with a helpful message.
 pub fn binary_path() -> Result<PathBuf> {
@@ -18,7 +18,7 @@ pub fn binary_path() -> Result<PathBuf> {
         }
     }
 
-    // Second try: fallback to legacy build path
+    // Second try: fallback build path
     let fallback = PathBuf::from("/workspace/.build/target/debug/vm");
     if fallback.exists() {
         return Ok(fallback);

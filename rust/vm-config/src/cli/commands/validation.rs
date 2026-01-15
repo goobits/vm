@@ -42,8 +42,7 @@ use vm_core::error::VmError;
 
 #[must_use = "configuration loading results should be used"]
 pub fn load_and_merge_config(_file: Option<PathBuf>) -> Result<VmConfig> {
-    // The `file` argument is now ignored, as the new loader handles discovery.
-    // It's kept for API compatibility for now.
+    // The `file` argument is ignored because the loader handles discovery.
     ConfigLoader::new()
         .load()
         .map_err(|e| VmError::Config(e.to_string()))

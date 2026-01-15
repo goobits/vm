@@ -93,7 +93,7 @@ impl ToolDetector {
     /// ## Detected Databases
     /// - **postgresql** - PostgreSQL database (checks for `psql` client)
     /// - **mysql** - MySQL database (checks for `mysql` client)
-    /// - **mongodb** - MongoDB database (checks for `mongosh` or legacy `mongo` client)
+    /// - **mongodb** - MongoDB database (checks for `mongosh` or `mongo` client)
     /// - **redis** - Redis key-value store (checks for `redis-cli` client)
     ///
     /// # Returns

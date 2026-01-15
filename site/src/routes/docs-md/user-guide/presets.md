@@ -199,7 +199,7 @@ vm config preset my-preset
 vm create
 ```
 
-### Legacy Method (File-based)
+### File-based presets
 
 You can add presets in `configs/presets/`:
 ```yaml

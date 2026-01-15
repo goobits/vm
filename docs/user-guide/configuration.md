@@ -2,7 +2,7 @@
 
 Complete reference for configuring your VM development environment with YAML.
 
-> Migration Notice: The legacy `examples/` directory workflow has been replaced by VM snapshots. See [VM Snapshots](#vm-snapshots) for the modern approach. Run `vm --version` to check your current version.
+> Migration Notice: The `examples/` directory workflow has been replaced by VM snapshots. See [VM Snapshots](#vm-snapshots) for the modern approach. Run `vm --version` to check your current version.
 
 ## Quick Reference
 

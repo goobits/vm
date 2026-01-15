@@ -145,7 +145,7 @@ vm/tests/
 ├── vm_ops/
 │   ├── create_destroy_tests.rs # Core vm up/destroy lifecycle tests
 │   └── ...                     # Other vm ops tests (lifecycle, features, etc.)
-└── *.rs                        # Standalone or legacy test files
+└── *.rs                        # Standalone or older test files
 ```
 
 ### VM Operations Integration Tests (NEW)
