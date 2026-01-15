@@ -4,7 +4,7 @@ use anyhow::Context;
 use std::path::PathBuf;
 use tracing::{debug, warn};
 
-use crate::cli::ConfigSubcommand;
+use crate::cli::{ConfigProfileSubcommand, ConfigSubcommand};
 use crate::error::{VmError, VmResult};
 use serde_yaml_ng as serde_yaml;
 use vm_cli::msg;
@@ -81,6 +81,55 @@ fn handle_show_command(profile: Option<String>) -> VmResult<()> {
     Ok(())
 }
 
+fn handle_profile_list() -> VmResult<()> {
+    let config = VmConfig::load(None)?;
+    let profiles = match config.profiles {
+        Some(profiles) if !profiles.is_empty() => profiles,
+        _ => {
+            vm_println!("No profiles defined in vm.yaml.");
+            return Ok(());
+        }
+    };
+
+    let mut names: Vec<String> = profiles.keys().cloned().collect();
+    names.sort();
+
+    let default_profile = config.default_profile.as_deref();
+
+    vm_println!("Profiles:");
+    for name in names {
+        if Some(name.as_str()) == default_profile {
+            vm_println!("  * {}", name);
+        } else {
+            vm_println!("  - {}", name);
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_profile_set(name: &str) -> VmResult<()> {
+    let config = VmConfig::load(None).map_err(VmError::from)?;
+    let has_profile = config
+        .profiles
+        .as_ref()
+        .map(|profiles| profiles.contains_key(name))
+        .unwrap_or(false);
+
+    if !has_profile {
+        return Err(VmError::config(
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Profile '{}' not found in vm.yaml", name),
+            ),
+            "Invalid default profile",
+        ));
+    }
+
+    let values = vec![name.to_string()];
+    ConfigOps::set("default_profile", &values, false, false).map_err(VmError::from)
+}
+
 /// Handle configuration management commands
 pub fn handle_config_command(
     command: &ConfigSubcommand,
@@ -109,6 +158,10 @@ pub fn handle_config_command(
                 Ok(ConfigOps::preset(preset_names, *global, false, None)?)
             }
             _ => Ok(()),
+        },
+        ConfigSubcommand::Profile { command } => match command {
+            ConfigProfileSubcommand::List => handle_profile_list(),
+            ConfigProfileSubcommand::Set { name } => handle_profile_set(name),
         },
         ConfigSubcommand::Ports { fix } => handle_ports_command(*fix),
         ConfigSubcommand::Clear { global } => Ok(ConfigOps::clear(*global)?),

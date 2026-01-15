@@ -28,6 +28,7 @@ pub async fn handle_up(
     config_path: Option<std::path::PathBuf>,
     command: Option<String>,
     profile: Option<String>,
+    wait: bool,
 ) -> VmResult<()> {
     debug!("Handling vm up command");
 
@@ -122,6 +123,18 @@ pub async fn handle_up(
             )
             .await?;
         }
+    }
+
+    if wait {
+        let provider = get_provider(config.clone()).map_err(VmError::from)?;
+        vm_ops::handle_wait(
+            provider,
+            None,
+            None,
+            60,
+            config.clone(),
+            global_config.clone(),
+        )?;
     }
 
     // Stage 4: SSH in or execute command

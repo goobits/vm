@@ -86,6 +86,12 @@ fn display_status_dashboard(report: &VmStatusReport) {
         display_service_health(&report.services);
     }
 
+    if report.is_running {
+        if let Some(ports_summary) = format_ports_summary(&report.services) {
+            vm_println!("\n🔌 Ports: {}", ports_summary);
+        }
+    }
+
     // Connection hint
     if report.is_running {
         vm_println!("\n💡 Connect: vm ssh");
@@ -199,6 +205,30 @@ fn display_service_health(services: &[vm_provider::ServiceStatus]) {
         if let Some(password) = password {
             vm_println!("     └── 🔑 {}", password);
         }
+    }
+}
+
+fn format_ports_summary(services: &[vm_provider::ServiceStatus]) -> Option<String> {
+    use std::collections::BTreeSet;
+
+    let mut ports = BTreeSet::new();
+    for service in services {
+        if let Some(container_port) = service.port {
+            let display = match service.host_port {
+                Some(host_port) if host_port != container_port => {
+                    format!("localhost:{host_port}->{container_port}")
+                }
+                Some(host_port) => format!("localhost:{host_port}"),
+                None => container_port.to_string(),
+            };
+            ports.insert(display);
+        }
+    }
+
+    if ports.is_empty() {
+        None
+    } else {
+        Some(ports.into_iter().collect::<Vec<_>>().join(", "))
     }
 }
 

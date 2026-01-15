@@ -3,7 +3,7 @@
 use crate::error::{VmError, VmResult};
 use tracing::debug;
 // Import the CLI types
-use crate::cli::{Args, BaseSubcommand, Command, PluginSubcommand, TunnelSubcommand};
+use crate::cli::{Args, Command, PluginSubcommand, TunnelSubcommand};
 use vm_cli::msg;
 use vm_config::AppConfig;
 use vm_core::{vm_error, vm_println};
@@ -15,11 +15,9 @@ pub mod clean;
 pub mod config;
 pub mod db;
 pub mod doctor;
-pub mod env;
 pub mod init;
 pub mod plugin;
 pub mod plugin_new;
-pub mod profile;
 pub mod registry;
 pub mod secrets;
 pub mod snapshot;
@@ -40,25 +38,26 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
 
     // Handle commands that don't need a provider first
     match &args.command {
-        Command::Doctor { fix } => {
-            debug!("Handling doctor command with fix={}", fix);
+        Command::Doctor { fix, clean } => {
+            debug!("Handling doctor command with fix={}, clean={}", fix, clean);
+            if *clean {
+                clean::handle_clean(false, false).await?;
+            }
             doctor::run_with_fix(*fix).map_err(VmError::from)
         }
-        Command::Up { command } => {
+        Command::Up { command, wait } => {
             debug!("Handling up command");
-            up::handle_up(args.config.clone(), command.clone(), args.profile.clone()).await
-        }
-        Command::Clean { dry_run, verbose } => {
-            debug!("Handling clean command");
-            clean::handle_clean(*dry_run, *verbose).await
+            up::handle_up(
+                args.config.clone(),
+                command.clone(),
+                args.profile.clone(),
+                *wait,
+            )
+            .await
         }
         Command::Config { command } => {
             debug!("Calling ConfigOps methods directly");
             config::handle_config_command(command, args.dry_run, args.profile.clone())
-        }
-        Command::Profile { command } => {
-            debug!("Handling profile command");
-            profile::handle_profile_command(command)
         }
         Command::Temp { command } => {
             debug!("Calling temp VM operations directly");
@@ -101,14 +100,6 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         Command::Snapshot { command } => {
             debug!("Calling snapshot operations");
             snapshot::handle_snapshot(command.clone(), args.config, args.profile.clone()).await
-        }
-        Command::Base { command } => {
-            debug!("Calling base snapshot operations");
-            handle_base_command(command, args.config, args.profile.clone()).await
-        }
-        Command::Env { command } => {
-            debug!("Calling env operations");
-            env::handle_env_command(command, args.config, args.profile)
         }
         Command::Completion { shell } => {
             debug!("Generating shell completions for: {}", shell);
@@ -312,24 +303,6 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             config,
             global_config.clone(),
         ),
-        Command::Wait {
-            container,
-            service,
-            timeout,
-        } => vm_ops::handle_wait(
-            provider,
-            container.as_deref(),
-            service.as_deref(),
-            timeout,
-            config,
-            global_config.clone(),
-        ),
-        Command::Ports { container } => vm_ops::handle_ports(
-            provider,
-            container.as_deref(),
-            config,
-            global_config.clone(),
-        ),
         Command::Tunnel { command } => match command {
             TunnelSubcommand::Create { mapping, container } => tunnel::handle_tunnel(
                 provider,
@@ -413,52 +386,6 @@ fn handle_plugin_command(command: &PluginSubcommand) -> VmResult<()> {
             plugin::handle_plugin_validate(plugin_name).map_err(VmError::from)
         }
     }
-}
-
-/// Handle base snapshot commands (shorthand for vm snapshot with @prefix)
-async fn handle_base_command(
-    command: &BaseSubcommand,
-    config_path: Option<std::path::PathBuf>,
-    profile: Option<String>,
-) -> VmResult<()> {
-    use crate::cli::SnapshotSubcommand;
-
-    // Convert base commands to snapshot commands with @ prefix
-    let snapshot_command = match command {
-        BaseSubcommand::List => SnapshotSubcommand::List {
-            project: None,
-            r#type: Some("base".to_string()),
-        },
-        BaseSubcommand::Create {
-            name,
-            description,
-            from_dockerfile,
-            build_context,
-            build_arg,
-            force,
-        } => SnapshotSubcommand::Create {
-            name: format!("@{}", name),
-            description: description.clone(),
-            quiesce: false,
-            project: None,
-            from_dockerfile: from_dockerfile.clone(),
-            build_context: build_context.clone(),
-            build_arg: build_arg.clone(),
-            force: *force,
-        },
-        BaseSubcommand::Delete { name, force } => SnapshotSubcommand::Delete {
-            name: format!("@{}", name),
-            project: None,
-            force: *force,
-        },
-        BaseSubcommand::Restore { name, force } => SnapshotSubcommand::Restore {
-            name: format!("@{}", name),
-            project: None,
-            force: *force,
-        },
-    };
-
-    snapshot::handle_snapshot(snapshot_command, config_path, profile).await
 }
 
 fn handle_completion(shell: &str) -> VmResult<()> {

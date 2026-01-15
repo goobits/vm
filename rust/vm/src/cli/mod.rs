@@ -18,7 +18,7 @@ pub struct Args {
     pub command: Command,
 
     /// Path to a custom VM configuration file
-    #[arg(short, long, global = true)]
+    #[arg(long, global = true)]
     pub config: Option<PathBuf>,
 
     /// Select a configuration profile to apply
@@ -77,6 +77,11 @@ pub enum ConfigSubcommand {
         #[arg(long)]
         show: Option<String>,
     },
+    /// Manage configuration profiles
+    Profile {
+        #[command(subcommand)]
+        command: ConfigProfileSubcommand,
+    },
     /// Fix port conflicts
     Ports {
         /// Fix port conflicts automatically
@@ -92,9 +97,11 @@ pub enum ConfigSubcommand {
 }
 
 #[derive(Debug, Clone, Subcommand)]
-pub enum ProfileSubcommand {
+pub enum ConfigProfileSubcommand {
+    /// List available profiles for this project
+    List,
     /// Set the default profile for this project
-    SetDefault {
+    Set {
         /// Profile name to use when no --profile is provided
         name: String,
     },
@@ -434,66 +441,6 @@ pub enum SnapshotSubcommand {
 }
 
 #[derive(Debug, Clone, Subcommand)]
-pub enum BaseSubcommand {
-    /// List global base snapshots
-    List,
-    /// Create a new base snapshot (shorthand for `vm snapshot create @name`)
-    Create {
-        /// Base snapshot name (without @ prefix)
-        name: String,
-        /// Optional description
-        #[arg(long)]
-        description: Option<String>,
-        /// Build from a Dockerfile
-        #[arg(long, value_name = "PATH")]
-        from_dockerfile: Option<std::path::PathBuf>,
-        /// Build context directory for Dockerfile
-        #[arg(long, value_name = "PATH", default_value = ".")]
-        build_context: Option<std::path::PathBuf>,
-        /// Build arguments for Dockerfile
-        #[arg(long, value_name = "KEY=VALUE")]
-        build_arg: Vec<String>,
-        /// Overwrite existing snapshot with same name
-        #[arg(long)]
-        force: bool,
-    },
-    /// Delete a base snapshot (shorthand for `vm snapshot delete @name`)
-    Delete {
-        /// Base snapshot name (without @ prefix)
-        name: String,
-        /// Skip confirmation
-        #[arg(long)]
-        force: bool,
-    },
-    /// Restore from a base snapshot (shorthand for `vm snapshot restore @name`)
-    Restore {
-        /// Base snapshot name (without @ prefix)
-        name: String,
-        /// Force restore without confirmation
-        #[arg(long)]
-        force: bool,
-    },
-}
-
-#[derive(Debug, Clone, Subcommand)]
-pub enum EnvSubcommand {
-    /// Validate .env against template
-    Validate {
-        /// Show all variables (not just missing ones)
-        #[arg(long)]
-        all: bool,
-    },
-    /// Show differences between .env and template
-    Diff,
-    /// List all environment variables from .env
-    List {
-        /// Show variable values (masked by default)
-        #[arg(long)]
-        show_values: bool,
-    },
-}
-
-#[derive(Debug, Clone, Subcommand)]
 pub enum PluginSubcommand {
     /// See installed plugins
     List,
@@ -535,21 +482,14 @@ pub enum Command {
         /// Command to execute (if not provided, opens interactive shell)
         #[arg(short = 'c', long)]
         command: Option<String>,
+        /// Wait for services to be ready before continuing
+        #[arg(long)]
+        wait: bool,
     },
     /// Stop your environment
     Down {
         /// Container name or ID to stop (if not provided, stops current project VM gracefully)
         container: Option<String>,
-    },
-    /// Clean up unused Docker resources
-    #[command(about = "Prune orphaned volumes, images, and build cache")]
-    Clean {
-        /// Show what would be cleaned without removing
-        #[arg(long)]
-        dry_run: bool,
-        /// Show detailed information about items being cleaned
-        #[arg(long, short = 'v')]
-        verbose: bool,
     },
     /// Run health checks and diagnostics
     #[command(about = "Check system dependencies, configuration, and service health")]
@@ -557,18 +497,15 @@ pub enum Command {
         /// Attempt to automatically fix issues
         #[arg(long)]
         fix: bool,
+        /// Clean up unused resources
+        #[arg(long)]
+        clean: bool,
     },
     /// Update configuration settings
     Config {
         #[command(subcommand)]
         command: ConfigSubcommand,
     },
-    /// Manage profiles
-    Profile {
-        #[command(subcommand)]
-        command: ProfileSubcommand,
-    },
-
     /// Delete an environment
     Destroy {
         /// Container name, ID, or project name to destroy
@@ -596,24 +533,6 @@ pub enum Command {
 
     /// Check environment status (defaults to listing all environments)
     Status {
-        /// Container name, ID, or project name
-        #[arg()]
-        container: Option<String>,
-    },
-    /// Wait for services to be ready
-    Wait {
-        /// Container name, ID, or project name
-        #[arg()]
-        container: Option<String>,
-        /// Service to wait for (postgres, redis, mongodb). If omitted, waits for all services.
-        #[arg()]
-        service: Option<String>,
-        /// Timeout in seconds (default: 60)
-        #[arg(long, default_value = "60")]
-        timeout: u64,
-    },
-    /// Show ports and listening services
-    Ports {
         /// Container name, ID, or project name
         #[arg()]
         container: Option<String>,
@@ -708,18 +627,6 @@ pub enum Command {
         command: SnapshotSubcommand,
     },
 
-    /// Manage global base snapshots (shorthand for vm snapshot with @prefix)
-    Base {
-        #[command(subcommand)]
-        command: BaseSubcommand,
-    },
-
-    /// Manage environment variables
-    Env {
-        #[command(subcommand)]
-        command: EnvSubcommand,
-    },
-
     /// Extend with plugins
     Plugin {
         #[command(subcommand)]
@@ -764,10 +671,11 @@ mod tests {
 
     #[test]
     fn test_up_command_parsing() {
-        let args = Args::parse_from(["vm", "up", "-c", "echo hi"]);
+        let args = Args::parse_from(["vm", "up", "-c", "echo hi", "--wait"]);
         match args.command {
-            Command::Up { command } => {
+            Command::Up { command, wait } => {
                 assert_eq!(command, Some("echo hi".to_string()));
+                assert!(wait);
             }
             _ => panic!("Expected Command::Up"),
         }
