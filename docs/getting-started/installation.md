@@ -107,7 +107,7 @@ brew install cirruslabs/cli/tart
 tart --version
 
 # That's it! Use with:
-# echo "os: macos" > vm.yaml && vm create
+# echo "os: macos" > vm.yaml && vm up
 ```
 
 ## Ubuntu/Debian Installation
@@ -161,7 +161,7 @@ VBoxManage --version
 
 # Test VM tool
 vm --help
-vm create  # Should work with defaults
+vm up  # Should work with defaults
 ```
 
 ## Environment Variables
@@ -172,7 +172,7 @@ Override VM tool directory detection for custom installations:
 ```bash
 # Set custom VM tool directory (useful for development or non-standard installations)
 export VM_TOOL_DIR=/path/to/vm/installation
-vm create
+vm up
 
 # Add to shell profile for permanent setting
 echo 'export VM_TOOL_DIR=/path/to/vm' >> ~/.bashrc
@@ -261,7 +261,7 @@ Add-Content $PROFILE ". $PROFILE\..\vm-completion.ps1"
 :::
 
 :::tip Test Completion
-After setup, verify it works: Type `vm cr` and press Tab → it should complete to `vm create`
+After setup, verify it works: Type `vm u` and press Tab → it should complete to `vm up`
 :::
 
 ## Updating

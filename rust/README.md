@@ -71,14 +71,14 @@ The service runs on port 3000 by default. See [vm-api/README.md](vm-api/README.m
 # Install the CLI
 cargo install --path vm
 
-# Create a workspace
-vm create my-workspace --template nodejs
+# Create and start a workspace
+vm up
 
 # List workspaces
-vm list
+vm status
 
 # Connect to a workspace
-vm ssh my-workspace
+vm ssh
 ```
 
 ## Development

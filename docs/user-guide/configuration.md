@@ -180,7 +180,7 @@ The `vm` command automatically searches for `vm.yaml` configuration:
 3. **Grandparent directory**: `../../vm.yaml`
 4. **Auto defaults with presets**: If no config found, uses built-in defaults enhanced by automatic preset detection
 
-This means you can run `vm create` from anywhere in your project tree! The tool will also analyze your project files to automatically apply appropriate presets.
+This means you can run `vm up` from anywhere in your project tree! The tool will also analyze your project files to automatically apply appropriate presets.
 
 ### IDE Support
 
@@ -959,7 +959,7 @@ git worktree add ../feature-branch
 
 # Navigate and create VM
 cd ../feature-branch
-vm create
+vm up
 
 # Auto-detected and mounted
 vm ssh  # Will detect and offer to mount new worktree
@@ -1296,7 +1296,7 @@ pip show my-library  # Shows editable install location
 
 **Troubleshooting:**
 - Ensure packages are linked before creating the VM
-- Use `vm apply` to refresh mounts after changing links on host
+- Use `vm up` to refresh mounts after changing links on host
 - Check `vm status` to see which packages are mounted
 
 ### Dynamic Port Forwarding
@@ -1455,7 +1455,7 @@ vm snapshot create feature-x-wip
 
 # Switch to urgent bugfix
 git checkout hotfix-branch
-vm destroy && vm create
+vm destroy && vm up
 # Work on hotfix...
 
 # Back to feature work
@@ -1492,7 +1492,7 @@ snapshots:
 ```bash
 # Copy example configuration
 cp examples/nextjs-app/vm.yaml ./
-vm create
+vm up
 # Manually set up packages, databases, etc.
 ```
 
@@ -1505,8 +1505,8 @@ vm create
 **New Workflow:**
 ```bash
 # Initial setup (once)
-vm init
-vm create
+vm up
+vm up
 # Install packages, configure databases, etc.
 
 # Save working state

@@ -6,15 +6,13 @@ All `vm` commands with usage examples and expected output. Use this as a referen
 
 | Task | Command |
 |------|---------|
-| Create VM | `vm create` |
-| Start VM | `vm start` |
-| Stop VM | `vm stop` |
+| Create/start VM | `vm up` |
+| Stop VM | `vm down` |
 | Connect to VM | `vm ssh` |
-| Check status | `vm status` |
+| Check status | `vm status [<vm>]` |
 | View logs | `vm logs [-f]` |
 | Wait for services | `vm wait [--service <name>]` |
 | Destroy VM | `vm destroy` |
-| List VMs | `vm list` |
 | Run command | `vm exec <command>` |
 | **Snapshots** | |
 | Create snapshot | `vm snapshot create <name>` |
@@ -22,7 +20,6 @@ All `vm` commands with usage examples and expected output. Use this as a referen
 | Export snapshot | `vm snapshot export <name>` |
 | Import snapshot | `vm snapshot import <file>` |
 | **Configuration** | |
-| Initialize config | `vm init` |
 | Validate config | `vm config validate` |
 | Apply preset | `vm config preset <name>` |
 | **Environment** | |
@@ -73,43 +70,25 @@ These flags can be used with any command.
 
 ## Core Commands
 
-### `vm create`
-Create and apply a new VM.
+### `vm up`
+Create/configure/start an environment and open a shell.
 ```bash
-vm create [--force] [--instance <name>] [--verbose]
-          [--save-as <@name>] [--from-dockerfile <file>]
+vm up [-c <command>]
 ```
 
 **Options:**
-- `--force`: Recreate VM even if it exists
-- `--instance <name>`: Specify instance name (default: dev)
-- `--save-as <@name>`: Save resulting container as a global snapshot (e.g. `@vibe-base`)
-- `--from-dockerfile <file>`: Build directly from a Dockerfile (overrides vm.yaml)
-- `--refresh-packages`: Force update of all packages (bypassing cache)
-- `--preserve-services`: Reuse existing service containers (default: true)
+- `-c, --command <command>`: Run a command instead of opening a shell
 
-### `vm start`
-Start a stopped VM.
-```bash
-vm start
-```
-
-### `vm stop`
+### `vm down`
 Stop a running VM.
 ```bash
-vm stop
+vm down [<container>]
 ```
 
-### `vm restart`
-Restart a VM.
+### `vm status`
+List all VMs, or show details for a single VM.
 ```bash
-vm restart
-```
-
-### `vm apply`
-Re-run the applying process on an existing VM.
-```bash
-vm apply
+vm status [<container>]
 ```
 
 ### `vm destroy`
@@ -175,12 +154,6 @@ vm copy my-vm:/remote/file.txt /local/file.txt
 vm copy ./local.txt /workspace/remote.txt
 ```
 
-### `vm list`
-List all available VMs.
-```bash
-vm list
-```
-
 ### `vm wait`
 Wait for services to become ready before proceeding.
 ```bash
@@ -206,18 +179,12 @@ vm wait --service redis --timeout 60
 **Use cases:**
 - CI/CD pipelines: Wait for database before running migrations
 - Scripts: Ensure services are ready before executing commands
-- Development: Verify services started correctly after `vm create`
+- Development: Verify services started correctly after `vm up`
 
 ---
 
 ## Configuration (`vm config`)
 Manage `vm.yaml` configuration.
-
-### `vm init`
-Initialize a new `vm.yaml` configuration file.
-```bash
-vm init
-```
 
 ### `vm config validate`
 Validate the current configuration.

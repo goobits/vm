@@ -20,17 +20,17 @@ flowchart TD
     ProviderCheck -->|Yes| SpaceCheck
 
     SpaceCheck -->|No| CleanSpace[docker system prune<br/>-a --volumes]
-    SpaceCheck -->|Yes| Reset[vm destroy && vm create]
+    SpaceCheck -->|Yes| Reset[vm destroy && vm up]
 
-    CantConnect -->|No| StartVM[vm start]
+    CantConnect -->|No| StartVM[vm up]
     CantConnect -->|Yes| SSHCheck{SSH<br/>working?}
 
     SSHCheck -->|No| SSHDebug[vm ssh -v<br/>Check verbose output]
-    SSHCheck -->|Yes| RestartVM[vm stop && vm start]
+    SSHCheck -->|Yes| RestartVM[vm down && vm up]
 
     ServiceIssue -->|PostgreSQL| PG[vm logs -s postgresql<br/>Check database logs]
     ServiceIssue -->|Redis| Redis[vm exec redis-cli ping]
-    ServiceIssue -->|Other| ServiceRestart[vm apply]
+    ServiceIssue -->|Other| ServiceRestart[vm up]
 
     PortIssue --> FindProcess{Kill the<br/>process?}
     FindProcess -->|Yes| KillIt[kill -9 PID]
@@ -61,7 +61,7 @@ flowchart TD
 :::danger Universal Fix
 90% of issues are solved by resetting your environment. Try this first:
 ```bash
-vm destroy && vm create
+vm destroy && vm up
 ```
 Your database backups are created automatically, so your data is safe!
 :::
@@ -71,7 +71,7 @@ Your database backups are created automatically, so your data is safe!
 ### VM Won't Start
 ```bash
 # Try the universal fix first
-vm destroy && vm create
+vm destroy && vm up
 
 # Check if services are running
 docker ps -a  # For Docker provider
@@ -87,7 +87,7 @@ docker system prune  # Clean up
 vm status
 
 # Try restarting
-vm stop && vm start
+vm down && vm up
 
 # Check SSH configuration
 vm ssh -v  # Verbose SSH output
@@ -101,7 +101,7 @@ netstat -tulpn | grep :3000
 
 # Update your configuration
 # Edit vm.yaml and change conflicting ports
-vm destroy && vm create
+vm destroy && vm up
 ```
 
 ## Docker Issues
@@ -150,7 +150,7 @@ docker logs <container_name>
 docker port <container_name>
 
 # Restart with fresh container
-vm destroy && vm create
+vm destroy && vm up
 ```
 
 ## Tart Issues (Apple Silicon)
@@ -198,7 +198,7 @@ yaml-lint vm.yaml  # If you have yamllint installed
 
 # Use minimal config to test
 echo "os: ubuntu" > vm.yaml
-vm create
+vm up
 ```
 
 ### Preset Detection Problems
@@ -210,7 +210,7 @@ vm config preset nodejs
 vm config preset django
 
 # Check detection logic
-LOG_LEVEL=DEBUG vm create
+LOG_LEVEL=DEBUG vm up
 ```
 
 ### Service Configuration Issues
@@ -224,7 +224,7 @@ vm exec "systemctl status postgresql"
 vm exec "systemctl status redis"
 
 # Restart services
-vm apply  # Re-run applying scripts
+vm up  # Re-run applying scripts
 ```
 
 ## Database Issues
@@ -266,7 +266,7 @@ project:
   backup_pattern: "*backup*.sql.gz"
 
 # Recreate VM (backups auto-restore)
-vm destroy && vm create
+vm destroy && vm up
 ```
 
 ## Network Issues
@@ -293,7 +293,7 @@ vm:
   port_binding: "0.0.0.0"  # Instead of 127.0.0.1
 
 # Recreate VM
-vm destroy && vm create
+vm destroy && vm up
 ```
 
 ### DNS Resolution Issues
@@ -348,28 +348,28 @@ mounts:
 ### Enable Debug Output
 ```bash
 # Verbose VM tool output
-LOG_LEVEL=DEBUG vm create
+LOG_LEVEL=DEBUG vm up
 
 # Shell script debugging
-VM_DEBUG=true vm create
+VM_DEBUG=true vm up
 
 # Docker/Podman verbose output
-VM_VERBOSE=true vm create
+VM_VERBOSE=true vm up
 ```
 
 ### VM Tool Path Configuration
 ```bash
 # Set custom VM tool installation directory
 export VM_TOOL_DIR=/path/to/vm/installation
-vm create
+vm up
 
 # Check current VM tool directory detection
-VM_TOOL_DIR=/custom/path vm create  # Will use custom path
-vm create  # Will auto-detect from binary location
+VM_TOOL_DIR=/custom/path vm up  # Will use custom path
+vm up  # Will auto-detect from binary location
 
 # Troubleshoot vm-tool mount issues in Docker
 export VM_TOOL_DIR=/Users/username/projects/vm
-vm destroy && vm create
+vm destroy && vm up
 ```
 
 **VM_TOOL_DIR Environment Variable:**
@@ -427,7 +427,7 @@ cat vm.yaml
 vm destroy
 docker system prune -a  # Docker cleanup
 rm -rf .vm/  # Remove local VM data
-vm create  # Start fresh
+vm up  # Start fresh
 ```
 
 ### Report Issues
@@ -453,12 +453,12 @@ vm -v status
 
 # Persistent debug logging
 export VM_DEBUG=1
-vm create
+vm up
 vm status
 
 # Rust logging (for developers)
 export RUST_LOG=debug
-vm create
+vm up
 ```
 
 **Log levels:**
@@ -538,7 +538,7 @@ Identify bottlenecks:
 
 ```bash
 # Time VM creation
-time vm create
+time vm up
 
 # Profile docker operations
 docker stats

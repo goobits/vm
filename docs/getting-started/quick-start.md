@@ -6,7 +6,7 @@ Get your isolated development environment running in under 5 minutes.
 
 ```mermaid
 flowchart LR
-    Start([📦 Clone & Build]) --> Create[🚀 vm create]
+    Start([📦 Clone & Build]) --> Create[🚀 vm up]
     Create --> Detect{🔍 Auto-detect<br/>Project Type}
     Detect -->|package.json| Node[⚡ Node.js]
     Detect -->|requirements.txt| Python[🐍 Python]
@@ -37,7 +37,7 @@ cd vm
 ./install.sh --build-from-source
 
 # 2. Create environment (auto-detects your project)
-vm create
+vm up
 
 # 3. Enter your development environment
 vm ssh
@@ -64,7 +64,7 @@ If detection doesn't match your setup, create a `vm.yaml` file in your project r
 ```bash
 # React/Vue/Angular projects
 cd my-frontend-app
-vm create                    # → Node.js, npm, dev server ready
+vm up                    # → Node.js, npm, dev server ready
 vm ssh
 npm run dev                  # Runs on auto-configured ports
 ```
@@ -73,7 +73,7 @@ npm run dev                  # Runs on auto-configured ports
 ```bash
 # Django/Flask/Rails projects
 cd my-api-project
-vm create                    # → Python/Ruby + PostgreSQL + Redis
+vm up                    # → Python/Ruby + PostgreSQL + Redis
 vm ssh
 python manage.py runserver   # Database already configured
 ```
@@ -105,15 +105,14 @@ ports:
 
 ```bash
 # Daily workflow
-vm create        # Create and configure VM
-vm ssh           # Enter the VM
-vm stop          # Stop VM (keeps data)
-vm start         # Resume stopped VM
-vm destroy       # Delete completely
+vm up          # Create/configure/start and SSH
+vm ssh         # Enter the VM
+vm down        # Stop VM (keeps data)
+vm up          # Resume stopped VM
+vm destroy     # Delete completely
 
 # Quick info
-vm status        # Check if running
-vm list          # Show all VMs
+vm status      # List all VMs (or `vm status <vm>` for detail)
 vm logs          # View service logs
 ```
 
@@ -132,12 +131,12 @@ vm temp destroy                  # Clean up when done
 :::danger Quick Fix
 90% of issues are solved by resetting your environment:
 ```bash
-vm destroy && vm create
+vm destroy && vm up
 ```
 :::
 
 :::tip Getting Unstuck
-- **Not working?** Try `vm destroy && vm create` to reset
+- **Not working?** Try `vm destroy && vm up` to reset
 - **Missing features?** Check the [Presets Guide](../user-guide/presets.md) for available configurations
 - **Custom setup?** See the [Configuration Guide](../user-guide/configuration.md)
 - **All commands?** View the [CLI Reference](../user-guide/cli-reference.md)

@@ -13,7 +13,7 @@ Run databases on the host instead of inside each VM - reducing memory usage by 8
 | Aspect             | Per-VM Database (Default) | Shared Service            |
 | ------------------ | ------------------------- | ------------------------- |
 | **Memory Usage**   | High (e.g., 200MB × N VMs) | Low (e.g., 200MB × 1)     |
-| **Startup Time**   | Added delay to `vm create`  | ~5s once (for first VM)   |
+| **Startup Time**   | Added delay to `vm up`  | ~5s once (for first VM)   |
 | **Data Persistence** | Lost on `vm destroy`        | Persistent across VMs     |
 | **Data Location**  | Scattered inside VMs      | Centralized in `~/.vm/data` |
 | **Port Management**  | Potential for conflicts   | Single, managed port      |

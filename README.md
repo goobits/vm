@@ -117,29 +117,15 @@ cd vm
 ./install.sh --build-from-source
 ```
 
-**2. Initialize Your Project**
-Navigate to your project's directory and run `vm init` to generate a `vm.yaml` file. The tool will auto-detect your project type and suggest a configuration.
+**2. Initialize and Start**
+Navigate to your project's directory and run `vm up` to generate a `vm.yaml` file (if needed) and start the environment. The tool auto-detects your project type and suggests a configuration.
 ```bash
 cd /path/to/your-project
-vm init
+vm up
 ```
 
-**3. Create and Connect to Your Environment**
-Once you're ready, create the environment and SSH into it.
-```bash
-# Create your environment — it detects your project automatically
-vm create
-
-# Jump into your development environment
-vm ssh
-```
-
-**Multiple environments per project:**
-```bash
-vm create --instance dev     # Creates myproject-dev
-vm create --instance prod    # Creates myproject-prod
-vm ssh myproject-dev         # Connect to specific instance
-```
+**3. Connect to Your Environment**
+`vm up` drops you into an interactive shell automatically. Use `vm ssh` later to reconnect.
 
 ```yaml
 # Optional: vm.yaml for custom configuration
@@ -163,9 +149,9 @@ project:
 **Smart Project Detection** — The system analyzes your codebase and automatically configures the right tools:
 
 ```bash
-cd my-react-app && vm create     # → Node.js + npm + dev tools
-cd my-django-api && vm create    # → Python + PostgreSQL + Redis
-cd fullstack-app && vm create    # → Multiple presets combined
+cd my-react-app && vm up     # → Node.js + npm + dev tools
+cd my-django-api && vm up    # → Python + PostgreSQL + Redis
+cd fullstack-app && vm up    # → Multiple presets combined
 ```
 
 Choose your provider explicitly:
@@ -186,9 +172,8 @@ project:
 ### Core Workflow
 The essential commands you'll use daily:
 ```bash
-vm create              # Create and configure a new environment
-vm start               # Start an existing environment
-vm stop                # Stop an environment (preserves all data)
+vm up                  # Create/configure/start and SSH
+vm down                # Stop an environment (preserves all data)
 vm destroy             # Delete an environment completely
 vm ssh                 # Jump into your environment (auto-detects new worktrees)
 vm exec "npm install"  # Execute a command inside your environment
@@ -197,17 +182,13 @@ vm exec "npm install"  # Execute a command inside your environment
 ### Environment Management
 Commands for managing and monitoring your environments:
 ```bash
-vm list                # List all environments with their status
-vm status              # Show the status and health of an environment
+vm status              # List all environments (or `vm status <env>` for detail)
 vm logs                # View the logs for an environment
-vm apply               # Re-apply configuration to running environment
-vm restart             # Restart an environment
 ```
 
 ### Configuration (`vm config`)
 Manage your `vm.yaml` configuration from the command line:
 ```bash
-vm init                # Create a new vm.yaml configuration file
 vm config validate     # Validate the current configuration
 vm config show         # Show the loaded configuration
 vm config set <k> <v>  # Set a configuration value
@@ -244,22 +225,17 @@ vm pkg remove my-pkg   # Remove a package from the registry
 
 ### Core Commands
 ```bash
-vm create                # Create and provision a new VM
-vm start                 # Start a stopped VM
-vm stop                  # Stop a running VM
-vm restart               # Restart a VM
-vm apply                 # Re-apply configuration to running VM
+vm up                    # Create/configure/start and SSH
+vm down                  # Stop a running VM
 vm destroy               # Destroy a VM
-vm status                # Show VM status and health
+vm status                # List all VMs (or `vm status <vm>` for detail)
 vm ssh                   # Connect to a VM via SSH
 vm exec <command>        # Execute a command inside a VM
 vm logs                  # View VM logs
-vm list                  # List all VMs
 ```
 
 ### Configuration (`vm config`)
 ```bash
-vm init                  # Initialize a new vm.yaml configuration file
 vm config validate       # Validate the VM configuration
 vm config show           # Show the loaded configuration
 vm config get [field]    # Get a configuration value
@@ -345,7 +321,7 @@ Enables 10x faster shell configuration generation using template substitution in
 
 ```bash
 # Enable fast provisioning (experimental)
-VM_FAST_PROVISION=1 vm create myproject
+VM_FAST_PROVISION=1 vm up
 
 # Expected speedup: 42s → 30-33s total creation time
 ```
@@ -355,7 +331,7 @@ Enables Ansible's `profile_tasks` callback to identify provisioning bottlenecks.
 
 ```bash
 # Profile provisioning to see which tasks are slow
-ANSIBLE_PROFILE=1 vm create myproject
+ANSIBLE_PROFILE=1 vm up
 
 # Output shows timing for each task:
 # TASK [Generate .zshrc] ************** 8.23s
@@ -368,7 +344,7 @@ Changes the default 300-second (5-minute) timeout for Ansible provisioning. Usef
 
 ```bash
 # Increase timeout for slow operations
-ANSIBLE_TIMEOUT=600 vm create myproject
+ANSIBLE_TIMEOUT=600 vm up
 
 # When timeout occurs, you'll see:
 # Command timed out after 300s: docker exec ...
@@ -382,12 +358,12 @@ If VM creation is taking longer than expected (>60s):
 
 1. **Profile provisioning** to identify bottlenecks:
    ```bash
-   ANSIBLE_PROFILE=1 vm create myproject
+   ANSIBLE_PROFILE=1 vm up
    ```
 
 2. **Try fast provisioning mode** (experimental):
    ```bash
-   VM_FAST_PROVISION=1 vm create myproject
+   VM_FAST_PROVISION=1 vm up
    ```
 
 3. **Check Docker performance**:
@@ -398,12 +374,12 @@ If VM creation is taking longer than expected (>60s):
 
 4. **Increase timeout** if provisioning is being cut short:
    ```bash
-   ANSIBLE_TIMEOUT=600 vm create myproject
+   ANSIBLE_TIMEOUT=600 vm up
    ```
 
 If issues persist, run `vm doctor` for comprehensive health checks or file an issue with the output of:
 ```bash
-ANSIBLE_PROFILE=1 vm create myproject --verbose
+ANSIBLE_PROFILE=1 vm up
 ```
 
 ---
