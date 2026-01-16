@@ -32,7 +32,7 @@ Create development environments that automatically configure themselves based on
 
 **Dotfiles Sync** — Selectively mount your configuration files (`~/.vimrc`, `~/.tmux.conf`, etc.) into VMs with `host_sync.dotfiles` for a consistent development environment without manual copying.
 
-**Dynamic Port Forwarding** — On-demand port tunneling with `vm port forward 8080:3000` for debugging and testing. No port conflicts between VMs, automatic cleanup, perfect for ephemeral debugging sessions.
+**Dynamic Port Forwarding** — On-demand port tunneling with `vm tunnel create 8080:3000` for debugging and testing. No port conflicts between VMs, automatic cleanup, perfect for ephemeral debugging sessions.
 
 **VM Snapshots** — Save and restore complete development environment state with `vm snapshot create/restore`. Capture containers, volumes, and configs for safe experimentation, context switching, and team collaboration.
 

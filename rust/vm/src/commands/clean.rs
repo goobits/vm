@@ -1,4 +1,4 @@
-//! VM Clean command - Prune orphaned resources
+//! Cleanup operation for pruning orphaned resources.
 //!
 //! This command cleans up unused Docker resources:
 //! - Dangling volumes
@@ -23,7 +23,7 @@ pub struct CleanupResults {
     pub build_cache_mb: u64,
 }
 
-/// Handle the `vm clean` command
+/// Handle cleanup for `vm doctor --clean`
 pub async fn handle_clean(dry_run: bool, verbose: bool) -> VmResult<()> {
     if dry_run {
         vm_println!("🔍 Dry run mode - showing what would be cleaned\n");

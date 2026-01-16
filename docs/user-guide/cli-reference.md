@@ -253,7 +253,7 @@ vm tunnel stop --all
 ```
 
 **Use cases:**
-- Debugging: Forward debugger port temporarily (`vm port forward 9229:9229`)
+- Debugging: Forward debugger port temporarily (`vm tunnel create 9229:9229`)
 - Testing: Access internal service without permanent port config
 - Conflict resolution: Tunnel to alternate host port when default is busy
 - Temporary access: Forward database port for one-time query

@@ -2,7 +2,7 @@
 //!
 //! This module provides command handlers for all VM operations including:
 //! - Creation and destruction
-//! - Lifecycle management (start, stop, restart)
+//! - Lifecycle management (start, stop)
 //! - Interaction (SSH, exec, logs)
 //! - Status and listing
 

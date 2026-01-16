@@ -1231,19 +1231,19 @@ Forward ports on-demand without permanent configuration. Perfect for debugging, 
 
 ```bash
 # Forward localhost:8080 to container port 3000
-vm port forward 8080:3000
+vm tunnel create 8080:3000
 
 # Forward to a specific container
-vm port forward 8080:3000 myapp-dev
+vm tunnel create 8080:3000 myapp-dev
 
 # List active port forwarding tunnels
-vm port list
+vm tunnel list
 
 # Stop a specific tunnel
-vm port stop 8080
+vm tunnel stop 8080
 
 # Stop all tunnels
-vm port stop --all
+vm tunnel stop --all
 ```
 
 **What it does:**
@@ -1261,19 +1261,19 @@ vm ssh
 node --inspect=0.0.0.0:9229 app.js
 
 # In another terminal, forward the debugger port
-vm port forward 9229:9229
+vm tunnel create 9229:9229
 
 # Attach VS Code debugger to localhost:9229
 # When done debugging:
-vm port stop 9229
+vm tunnel stop 9229
 ```
 
 **Testing multiple environments:**
 ```bash
 # Each VM can use the same internal port
-vm port forward 3000:3000 myapp-dev      # localhost:3000 → dev:3000
-vm port forward 3001:3000 myapp-staging  # localhost:3001 → staging:3000
-vm port forward 3002:3000 myapp-prod     # localhost:3002 → prod:3000
+vm tunnel create 3000:3000 myapp-dev      # localhost:3000 → dev:3000
+vm tunnel create 3001:3000 myapp-staging  # localhost:3001 → staging:3000
+vm tunnel create 3002:3000 myapp-prod     # localhost:3002 → prod:3000
 
 # Test all three simultaneously
 curl localhost:3000  # hits dev
@@ -1284,13 +1284,13 @@ curl localhost:3002  # hits prod
 **Temporary services:**
 ```bash
 # Forward a database for local inspection
-vm port forward 5432:5432
+vm tunnel create 5432:5432
 
 # Use with local tools
 psql -h localhost -p 5432 -U postgres
 
 # Clean up when done
-vm port stop 5432
+vm tunnel stop 5432
 ```
 
 **How it works:**
@@ -1301,7 +1301,7 @@ vm port stop 5432
 
 **Viewing active tunnels:**
 ```bash
-vm port list
+vm tunnel list
 ```
 ```
 🔀 Active Port Forwarding Tunnels
@@ -1322,7 +1322,7 @@ vm port list
 
 **vs. Permanent Ports:**
 
-| Feature | Dynamic (`vm port forward`) | Permanent (`ports:` in vm.yaml) |
+| Feature | Dynamic (`vm tunnel create`) | Permanent (`ports:` in vm.yaml) |
 |---------|---------------------------|--------------------------------|
 | Configuration | Command-line, temporary | vm.yaml, permanent |
 | Use case | Debugging, testing | Production services |
