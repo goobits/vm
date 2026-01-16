@@ -1,6 +1,6 @@
 # Presets
 
-Skip manual configuration - VM auto-detects your project type and applies optimized defaults. When you run `vm create` without a config file, the tool analyzes your project files and selects the appropriate preset.
+Skip manual configuration - VM auto-detects your project type and applies optimized defaults. When you run `vm up` without a config file, the tool analyzes your project files and selects the appropriate preset.
 
 ## Available Presets
 
@@ -109,7 +109,7 @@ vm config preset --list
 ### Automatic Detection
 ```bash
 # Analyzes project files and applies appropriate preset
-vm create
+vm up
 ```
 
 ### Apply Specific Preset
@@ -196,7 +196,7 @@ environment:
 Then use it:
 ```bash
 vm config preset my-preset
-vm create
+vm up
 ```
 
 ### File-based presets
