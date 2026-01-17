@@ -17,26 +17,21 @@ Full-featured development environment with precompiled `@vibe-box` snapshot
 vm config preset vibe
 ```
 
+### vibe-tart (Mac users)
+Same as vibe but with Docker/Tart profiles for switching providers
+- Default: Docker with `@vibe-box`
+- Profile `tart`: Native Tart VM on Apple Silicon
+- Switch with `vm --profile tart up`
+
+```bash
+vm config preset vibe-tart
+```
+
 ### base
 Minimal development environment
 - Basic shell utilities and git
 - Standard ports configuration
-- Minimal resource allocation
-
-### tart-linux
-Linux VMs on Apple Silicon (Tart provider)
-- Optimized for ARM64
-- Linux-specific configurations
-
-### tart-macos
-macOS VMs on Apple Silicon (Tart provider)
-- Native macOS virtualization
-- macOS-specific tools
-
-### tart-ubuntu
-Ubuntu VMs on Apple Silicon (Tart provider)
-- Ubuntu-optimized settings
-- ARM64 Ubuntu configuration
+- Build your own from scratch
 
 **To list all available presets**:
 ```bash

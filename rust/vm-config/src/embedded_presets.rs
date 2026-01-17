@@ -6,16 +6,8 @@ pub fn get_embedded_presets() -> HashMap<&'static str, &'static str> {
 
     presets.insert("base", include_str!("../../../configs/presets/base.yaml"));
     presets.insert(
-        "tart-linux",
-        include_str!("../../../configs/presets/tart-linux.yaml"),
-    );
-    presets.insert(
-        "tart-macos",
-        include_str!("../../../configs/presets/tart-macos.yaml"),
-    );
-    presets.insert(
-        "tart-ubuntu",
-        include_str!("../../../configs/presets/tart-ubuntu.yaml"),
+        "vibe-tart",
+        include_str!("../../../configs/presets/vibe-tart.yaml"),
     );
 
     presets

@@ -367,9 +367,7 @@ impl PresetDetector {
         // Fall back to embedded preset descriptions
         match name {
             "base" => Some("Generic development preset with basic tools".to_string()),
-            "tart-linux" => Some("Ubuntu Linux VM for development on Apple Silicon".to_string()),
-            "tart-macos" => Some("macOS VM for development on Apple Silicon".to_string()),
-            "tart-ubuntu" => Some("Ubuntu Linux VM for Tart provider".to_string()),
+            "vibe-tart" => Some("Vibe Development with Docker/Tart profiles for Mac".to_string()),
             _ => None,
         }
     }

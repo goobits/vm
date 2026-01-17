@@ -1,0 +1,47 @@
+---
+preset:
+  name: vibe-tart
+  description: "Vibe Development with Docker/Tart profiles for Mac"
+
+provider: docker
+
+vm:
+  box: '@vibe-box'
+  cpus: 6
+  memory: 8192
+  swap: 2048
+  user: developer
+
+project:
+  workspace_path: /workspace
+
+host_sync:
+  git_config: true
+  ai_tools: true
+
+networking:
+  networks:
+    - spacebase
+
+terminal:
+  theme: dracula
+  show_git_branch: true
+  emoji: 🚀
+
+default_profile: docker
+
+profiles:
+  docker:
+    provider: docker
+  tart:
+    provider: tart
+    vm:
+      box: ghcr.io/cirruslabs/ubuntu:latest
+      memory: 16384
+      cpus: 8
+    tart:
+      rosetta: true
+      guest_os: linux
+      disk_size: 50
+      ssh_user: ubuntu
+      install_docker: true
