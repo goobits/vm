@@ -1,5 +1,0 @@
-name: kubernetes
-version: 1.0.0
-description: Kubernetes Development - Tools for Kubernetes development and deployment
-author: VM Tool Team
-plugin_type: preset

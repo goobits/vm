@@ -201,16 +201,16 @@ echo "os: ubuntu" > vm.yaml
 vm up
 ```
 
-### Preset Detection Problems
+### Preset Problems
 ```bash
-# Apply a preset manually if detection fails
-vm config preset nodejs
+# Apply the vibe preset for full-featured development
+vm config preset vibe
 
-# Apply specific preset manually
-vm config preset django
+# Apply minimal base preset
+vm config preset base
 
-# Check detection logic
-LOG_LEVEL=DEBUG vm up
+# Check available presets
+vm config preset --list
 ```
 
 ### Service Configuration Issues

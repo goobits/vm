@@ -4,100 +4,39 @@ Skip manual configuration - VM auto-detects your project type and applies optimi
 
 ## Available Presets
 
+### vibe (Recommended)
+Full-featured development environment with precompiled `@vibe-box` snapshot
+- All common languages: Node.js, Python, Ruby, Rust, Go
+- AI coding tools: Claude Code, Gemini CLI
+- Docker, Kubernetes tools
+- Database clients
+- Standard development utilities
+- Host sync for git config and AI tools
+
+```bash
+vm config preset vibe
+```
+
 ### base
-Core development environment with essential tools
+Minimal development environment
 - Basic shell utilities and git
 - Standard ports configuration
 - Minimal resource allocation
 
-### django
-Python/Django web development
-- Python 3.x runtime
-- PostgreSQL & Redis services
-- Django development tools
-- Ports: 8000, 5432, 6379
-
-### docker
-Container-based development
-- Docker & docker-compose
-- Container orchestration tools
-- Kubernetes support (optional)
-
-### kubernetes
-Kubernetes development and testing
-- kubectl, helm, minikube
-- Container runtime
-- Kubernetes dashboard
-
-### next
-Next.js applications
-- Node.js & npm packages
-- Next.js optimizations
-- React development tools
-- Ports: 3000, 3001
-
-### nodejs
-Node.js/JavaScript development
-- Node.js & npm/pnpm
-- Common build tools
-- Ports: 3000, 3001, 8080
-
-### python
-Python development environment
-- Python 3.x with pip
-- Virtual environment tools
-- Common Python packages
-
-### rails
-Ruby on Rails development
-- Ruby runtime with rbenv
-- Rails framework
-- PostgreSQL & Redis
-- Ports: 3000, 5432, 6379
-
-### react
-React frontend development
-- Node.js & npm packages
-- Vite, webpack dev server
-- React testing tools
-- Ports: 3000, 3001, 5173
-
-### rust
-Rust development environment
-- Rust toolchain & cargo
-- Development tools
-- Common crates
-
-
-### vibe
-Vibe web framework
-- Crystal language support
-- Vibe-specific tooling
-
 ### tart-linux
-Linux VMs on Apple Silicon (Tart)
+Linux VMs on Apple Silicon (Tart provider)
 - Optimized for ARM64
 - Linux-specific configurations
 
 ### tart-macos
-macOS VMs on Apple Silicon (Tart)
+macOS VMs on Apple Silicon (Tart provider)
 - Native macOS virtualization
 - macOS-specific tools
 
 ### tart-ubuntu
-Ubuntu VMs on Apple Silicon (Tart)
+Ubuntu VMs on Apple Silicon (Tart provider)
 - Ubuntu-optimized settings
 - ARM64 Ubuntu configuration
-
-## Preset Naming Convention
-
-**Plugin Directory Name** ≠ **Preset Name**
-
-- Directory: `plugins/nextjs-dev/` → Preset: `next`
-- Directory: `plugins/nodejs-dev/` → Preset: `nodejs`
-- Directory: `plugins/k8s-dev/` → Preset: `kubernetes`
-
-The `-dev` suffix is automatically removed during installation.
 
 **To list all available presets**:
 ```bash
@@ -114,27 +53,18 @@ vm up
 
 ### Apply Specific Preset
 ```bash
-vm config preset django
-vm config preset react
+vm config preset vibe
+vm config preset base
 ```
 
 ## How It Works
 
-1. **Detection**: Scans for framework-specific files:
-   - `package.json` → nodejs/react/next
-   - `requirements.txt` → python
-   - `Gemfile` → rails
-   - `manage.py` → django
-   - `Dockerfile` → docker
-   - `Cargo.toml` → rust
-   - Kubernetes manifests → kubernetes
-
-2. **Application**: Merges preset configuration with your `vm.yaml`
+1. **Application**: Merges preset configuration with your `vm.yaml`
    - Your settings take precedence
    - Presets fill in missing values
    - Services and tools are additive
 
-3. **Validation**: Ensures compatibility and resolves conflicts
+2. **Validation**: Ensures compatibility and resolves conflicts
 
 ## Customization
 

@@ -1,5 +1,0 @@
-name: rust
-version: 1.0.0
-description: Rust Development - Systems programming with Cargo and Rust toolchain
-author: VM Tool Team
-plugin_type: preset

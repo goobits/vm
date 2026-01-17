@@ -11,10 +11,10 @@ Extend VM with custom presets and services that integrate seamlessly with the co
 vm plugin list
 
 # View plugin details
-vm plugin info nodejs
+vm plugin info vibe
 
 # Use a plugin preset
-vm config preset nodejs
+vm config preset vibe
 vm up
 ```
 
@@ -69,7 +69,7 @@ Service plugins define background services that can run in VMs:
 ```
 ~/.vm/plugins/
 ├── presets/
-│   ├── nodejs/
+│   ├── vibe/
 │   │   ├── plugin.yaml    # Plugin metadata
 │   │   ├── preset.yaml    # Preset configuration
 │   │   └── README.md      # Documentation
@@ -255,39 +255,35 @@ Output:
 Installed plugins:
 
 Presets:
-  nodejs (v1.0.0)
-    Node.js Development - Optimized for JavaScript/TypeScript projects
-    Author: VM Tool Team
-
-  django (v1.0.0)
-    Django Development - Python web framework with PostgreSQL and Redis
+  vibe (v1.0.0)
+    Vibe Development - Enhanced workflow with Claude integration
     Author: VM Tool Team
 ```
 
 ### View Plugin Details
 
 ```bash
-vm plugin info nodejs
+vm plugin info vibe
 ```
 
 Output:
 ```
-Plugin: nodejs
+Plugin: vibe
 
   Version: 1.0.0
   Type: preset
   Author: VM Tool Team
   License: MIT
-  Description: Node.js Development - Optimized for JavaScript/TypeScript projects
+  Description: Vibe Development - Enhanced workflow with Claude integration
   Minimum VM Version: >=0.1.0
 
-  Location: /home/user/.vm/plugins/presets/nodejs
+  Location: /home/user/.vm/plugins/presets/vibe
 ```
 
 ### Remove Plugin
 
 ```bash
-vm plugin remove nodejs
+vm plugin remove my-preset
 ```
 
 ### Validate Plugin
@@ -327,8 +323,8 @@ This means plugins override embedded presets with the same name.
 ### Naming Conventions
 
 - Use lowercase with hyphens: `my-awesome-preset`
-- Be descriptive: `react-typescript` not `rt`
-- Avoid generic names: `nodejs-backend` not `backend`
+- Be descriptive: `my-fullstack-env` not `env`
+- Avoid overly generic names
 
 ### Versioning
 
@@ -465,9 +461,9 @@ plugin_type: preset
 homepage: https://github.com/jane/vm-plugin-fullstack-js
 license: MIT
 tags:
-  - javascript
+  - development
   - fullstack
-  - nodejs
+  - ai-tools
 ```
 
 **preset.yaml:**
@@ -526,7 +522,7 @@ service:
 
 ### Can plugins override embedded presets?
 
-Yes. Plugin presets have higher priority than embedded presets. If you install a plugin named "nodejs", it will override the embedded nodejs preset.
+Yes. Plugin presets have higher priority than embedded presets. If you install a plugin with the same name as an embedded preset, the plugin version takes precedence.
 
 ### Where are plugins stored?
 
@@ -573,7 +569,7 @@ Future versions may support plugin inheritance:
 
 ```yaml
 # Advanced feature (not yet implemented)
-extends: nodejs
+extends: base
 npm_packages:
   - additional-package
 ```
@@ -585,8 +581,7 @@ Future versions may support plugin dependencies:
 ```yaml
 # Advanced feature (not yet implemented)
 depends_on:
-  - nodejs
-  - docker
+  - base
 ```
 
 ### Plugin Registry (Future)

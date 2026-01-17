@@ -1,5 +1,0 @@
-name: django
-version: 1.0.0
-description: Django Development - Python web framework with PostgreSQL and Redis
-author: VM Tool Team
-plugin_type: preset
