@@ -69,6 +69,7 @@ out/
 
 # Build artifacts (moved to .build/)
 .build/
+target/
 rust/target/
 rust/target*/
 rust/**/target/
