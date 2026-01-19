@@ -658,7 +658,7 @@ impl<'a> LifecycleOperations<'a> {
                 let container_list = orphaned.join(", ");
                 return Err(VmError::Provider(format!(
                     "Found existing service containers that would conflict: {}. \
-                    Use 'vm destroy --force' to remove them, or use '--preserve-services' to reuse them.",
+                    Use 'vm destroy --force --remove-services' to remove them, or use '--preserve-services' to reuse them.",
                     container_list
                 )));
             }

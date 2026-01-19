@@ -90,7 +90,7 @@ vm status [<container>]
 ### `vm destroy`
 Destroy a VM and all its associated resources.
 ```bash
-vm destroy [--no-backup] [--force]
+vm destroy [--no-backup] [--force] [--remove-services]
 ```
 
 ### `vm ssh`

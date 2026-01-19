@@ -267,7 +267,9 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             provider: provider_filter,
             pattern,
             preserve_services,
+            remove_services,
         } => {
+            let effective_preserve_services = preserve_services && !remove_services;
             vm_ops::handle_destroy_enhanced(
                 provider,
                 container.as_deref(),
@@ -278,7 +280,7 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
                 &all,
                 provider_filter.as_deref(),
                 pattern.as_deref(),
-                preserve_services,
+                effective_preserve_services,
             )
             .await
         }

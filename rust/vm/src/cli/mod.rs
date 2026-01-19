@@ -529,6 +529,9 @@ pub enum Command {
         /// Reuse existing service containers (postgres, redis, etc.) instead of creating new ones
         #[arg(long, default_value = "true")]
         preserve_services: bool,
+        /// Remove service containers (postgres, redis, etc.) instead of preserving them
+        #[arg(long)]
+        remove_services: bool,
     },
 
     /// Check environment status (defaults to listing all environments)
