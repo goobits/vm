@@ -95,6 +95,7 @@ pub async fn handle_destroy(
         return Ok(());
     }
 
+    let mut preserve_services = preserve_services;
     let should_destroy = if force {
         debug!("Force flag set - skipping confirmation prompt");
         vm_println!("{}", msg!(MESSAGES.vm.destroy_force, name = vm_name));
@@ -149,7 +150,12 @@ pub async fn handle_destroy(
                 container = &target_container
             )
         );
-        print!("{}", MESSAGES.vm.destroy_confirm_prompt);
+        vm_println!("Choose an option:");
+        vm_println!("  a) Destroy and preserve services");
+        vm_println!("  b) Destroy and remove services");
+        vm_println!("  c) Cancel");
+        let default_option = if preserve_services { "a" } else { "b" };
+        print!("Select [a/b/c] (default: {}): ", default_option);
         io::stdout()
             .flush()
             .map_err(|e| VmError::general(e, "Failed to flush stdout"))?;
@@ -158,7 +164,24 @@ pub async fn handle_destroy(
         io::stdin()
             .read_line(&mut response)
             .map_err(|e| VmError::general(e, "Failed to read user input"))?;
-        response.trim().to_lowercase() == "y"
+        let choice = response.trim().to_lowercase();
+        let choice = if choice.is_empty() {
+            default_option.to_string()
+        } else {
+            choice
+        };
+        match choice.as_str() {
+            "a" | "preserve" => {
+                preserve_services = true;
+                true
+            }
+            "b" | "remove" => {
+                preserve_services = false;
+                true
+            }
+            "c" | "cancel" => false,
+            _ => false,
+        }
     };
 
     if should_destroy {
