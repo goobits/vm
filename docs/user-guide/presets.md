@@ -1,6 +1,6 @@
 # Presets
 
-Skip manual configuration - VM auto-detects your project type and applies optimized defaults. When you run `vm up` without a config file, the tool analyzes your project files and selects the appropriate preset.
+Skip manual configuration - VM auto-detects your project type and applies optimized defaults. When you run `vm start` without a config file, the tool analyzes your project files and selects the appropriate preset.
 
 ## Available Presets
 
@@ -21,7 +21,7 @@ vm config preset vibe
 Same as vibe but with Docker/Tart profiles for switching providers
 - Default: Docker with `@vibe-box`
 - Profile `tart`: Native Tart VM on Apple Silicon
-- Switch with `vm --profile tart up`
+- Switch with `vm --profile tart start`
 
 ```bash
 vm config preset vibe-tart
@@ -43,7 +43,7 @@ vm config preset --list
 ### Automatic Detection
 ```bash
 # Analyzes project files and applies appropriate preset
-vm up
+vm start
 ```
 
 ### Apply Specific Preset
@@ -121,7 +121,7 @@ environment:
 Then use it:
 ```bash
 vm config preset my-preset
-vm up
+vm start
 ```
 
 ### File-based presets

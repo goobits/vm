@@ -20,17 +20,17 @@ flowchart TD
     ProviderCheck -->|Yes| SpaceCheck
 
     SpaceCheck -->|No| CleanSpace[docker system prune<br/>-a --volumes]
-    SpaceCheck -->|Yes| Reset[vm destroy && vm up]
+    SpaceCheck -->|Yes| Reset[vm destroy && vm start]
 
-    CantConnect -->|No| StartVM[vm up]
+    CantConnect -->|No| StartVM[vm start]
     CantConnect -->|Yes| SSHCheck{SSH<br/>working?}
 
     SSHCheck -->|No| SSHDebug[vm ssh -v<br/>Check verbose output]
-    SSHCheck -->|Yes| RestartVM[vm down && vm up]
+    SSHCheck -->|Yes| RestartVM[vm stop && vm start]
 
     ServiceIssue -->|PostgreSQL| PG[vm logs -s postgresql<br/>Check database logs]
     ServiceIssue -->|Redis| Redis[vm exec redis-cli ping]
-    ServiceIssue -->|Other| ServiceRestart[vm up]
+    ServiceIssue -->|Other| ServiceRestart[vm start]
 
     PortIssue --> FindProcess{Kill the<br/>process?}
     FindProcess -->|Yes| KillIt[kill -9 PID]
@@ -61,7 +61,7 @@ flowchart TD
 :::danger Universal Fix
 90% of issues are solved by resetting your environment. Try this first:
 ```bash
-vm destroy && vm up
+vm destroy && vm start
 ```
 Your database backups are created automatically, so your data is safe!
 :::
@@ -71,7 +71,7 @@ Your database backups are created automatically, so your data is safe!
 ### VM Won't Start
 ```bash
 # Try the universal fix first
-vm destroy && vm up
+vm destroy && vm start
 
 # Check if services are running
 docker ps -a  # For Docker provider
@@ -87,7 +87,7 @@ docker system prune  # Clean up
 vm status
 
 # Try restarting
-vm down && vm up
+vm stop && vm start
 
 # Check SSH configuration
 vm ssh -v  # Verbose SSH output
@@ -101,7 +101,7 @@ netstat -tulpn | grep :3000
 
 # Update your configuration
 # Edit vm.yaml and change conflicting ports
-vm destroy && vm up
+vm destroy && vm start
 ```
 
 ## Docker Issues
@@ -150,7 +150,7 @@ docker logs <container_name>
 docker port <container_name>
 
 # Restart with fresh container
-vm destroy && vm up
+vm destroy && vm start
 ```
 
 ## Tart Issues (Apple Silicon)
@@ -198,7 +198,7 @@ yaml-lint vm.yaml  # If you have yamllint installed
 
 # Use minimal config to test
 echo "os: ubuntu" > vm.yaml
-vm up
+vm start
 ```
 
 ### Preset Problems
@@ -224,7 +224,7 @@ vm exec "systemctl status postgresql"
 vm exec "systemctl status redis"
 
 # Restart services
-vm up  # Re-run applying scripts
+vm start  # Re-run applying scripts
 ```
 
 ## Database Issues
@@ -266,7 +266,7 @@ project:
   backup_pattern: "*backup*.sql.gz"
 
 # Recreate VM (backups auto-restore)
-vm destroy && vm up
+vm destroy && vm start
 ```
 
 ## Network Issues
@@ -293,7 +293,7 @@ vm:
   port_binding: "0.0.0.0"  # Instead of 127.0.0.1
 
 # Recreate VM
-vm destroy && vm up
+vm destroy && vm start
 ```
 
 ### DNS Resolution Issues
@@ -348,28 +348,28 @@ mounts:
 ### Enable Debug Output
 ```bash
 # Verbose VM tool output
-LOG_LEVEL=DEBUG vm up
+LOG_LEVEL=DEBUG vm start
 
 # Shell script debugging
-VM_DEBUG=true vm up
+VM_DEBUG=true vm start
 
 # Docker/Podman verbose output
-VM_VERBOSE=true vm up
+VM_VERBOSE=true vm start
 ```
 
 ### VM Tool Path Configuration
 ```bash
 # Set custom VM tool installation directory
 export VM_TOOL_DIR=/path/to/vm/installation
-vm up
+vm start
 
 # Check current VM tool directory detection
-VM_TOOL_DIR=/custom/path vm up  # Will use custom path
-vm up  # Will auto-detect from binary location
+VM_TOOL_DIR=/custom/path vm start  # Will use custom path
+vm start  # Will auto-detect from binary location
 
 # Troubleshoot vm-tool mount issues in Docker
 export VM_TOOL_DIR=/Users/username/projects/vm
-vm destroy && vm up
+vm destroy && vm start
 ```
 
 **VM_TOOL_DIR Environment Variable:**
@@ -427,7 +427,7 @@ cat vm.yaml
 vm destroy
 docker system prune -a  # Docker cleanup
 rm -rf .vm/  # Remove local VM data
-vm up  # Start fresh
+vm start  # Start fresh
 ```
 
 ### Report Issues
@@ -453,12 +453,12 @@ vm -v status
 
 # Persistent debug logging
 export VM_DEBUG=1
-vm up
+vm start
 vm status
 
 # Rust logging (for developers)
 export RUST_LOG=debug
-vm up
+vm start
 ```
 
 **Log levels:**
@@ -538,7 +538,7 @@ Identify bottlenecks:
 
 ```bash
 # Time VM creation
-time vm up
+time vm start
 
 # Profile docker operations
 docker stats

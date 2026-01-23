@@ -9,11 +9,13 @@
 // Module declarations
 mod create;
 mod destroy;
+mod fleet;
 mod helpers;
 mod interaction;
 mod lifecycle;
 mod list;
 mod status;
+mod targets;
 mod wait;
 
 // Re-export all public handlers for external use
@@ -25,4 +27,5 @@ pub use status::handle_status;
 pub use wait::handle_wait;
 
 pub use destroy::handle_destroy_enhanced;
+pub use fleet::handle_fleet_command;
 pub use list::handle_list_enhanced;

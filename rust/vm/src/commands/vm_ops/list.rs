@@ -5,6 +5,7 @@
 
 use tracing::{debug, info_span};
 
+use crate::commands::vm_ops::targets::{get_all_instances, get_instances_from_provider};
 use crate::error::VmResult;
 use vm_cli::msg;
 use vm_core::vm_println;
@@ -39,12 +40,18 @@ pub fn handle_list_enhanced(provider_filter: Option<&str>) -> VmResult<()> {
         return Ok(());
     }
 
+    render_instance_table(all_instances);
+
+    Ok(())
+}
+
+pub fn render_instance_table(instances: Vec<InstanceInfo>) {
     // Rich dashboard table (always displayed)
     vm_println!("{}", MESSAGES.vm.list_table_header);
     vm_println!("{}", MESSAGES.vm.list_table_separator);
 
     // Sort instances by provider then name for consistent output
-    let mut sorted_instances = all_instances;
+    let mut sorted_instances = instances;
     sorted_instances.sort_by(|a, b| a.provider.cmp(&b.provider).then(a.name.cmp(&b.name)));
 
     for instance in sorted_instances {
@@ -57,89 +64,6 @@ pub fn handle_list_enhanced(provider_filter: Option<&str>) -> VmResult<()> {
             format_uptime(&instance.uptime),
             instance.project.as_deref().unwrap_or("--")
         );
-    }
-
-    Ok(())
-}
-
-// Helper function to get instances from all available providers
-pub(super) fn get_all_instances() -> VmResult<Vec<InstanceInfo>> {
-    use vm_config::config::VmConfig;
-    use vm_provider::get_provider;
-
-    let mut all_instances = Vec::new();
-    let providers = ["docker", "podman", "tart"];
-
-    for provider_name in providers {
-        // Try to create each provider
-        let config = VmConfig {
-            provider: Some(provider_name.to_string()),
-            ..Default::default()
-        };
-
-        match get_provider(config) {
-            Ok(provider) => {
-                // Get instances from this provider
-                match provider.list_instances() {
-                    Ok(instances) => {
-                        debug!(
-                            "Found {} instances from {} provider",
-                            instances.len(),
-                            provider_name
-                        );
-                        all_instances.extend(instances);
-                    }
-                    Err(e) => {
-                        debug!(
-                            "Failed to list instances from {} provider: {}",
-                            provider_name, e
-                        );
-                        // Continue with other providers
-                    }
-                }
-            }
-            Err(e) => {
-                debug!("Provider {} not available: {}", provider_name, e);
-                // Continue with other providers - this is expected if they're not installed
-            }
-        }
-    }
-
-    Ok(all_instances)
-}
-
-// Helper function to get instances from a specific provider
-pub(super) fn get_instances_from_provider(provider_name: &str) -> VmResult<Vec<InstanceInfo>> {
-    use vm_config::config::VmConfig;
-    use vm_provider::get_provider;
-
-    let config = VmConfig {
-        provider: Some(provider_name.to_string()),
-        ..Default::default()
-    };
-
-    match get_provider(config) {
-        Ok(provider) => match provider.list_instances() {
-            Ok(instances) => {
-                debug!(
-                    "Found {} instances from {} provider",
-                    instances.len(),
-                    provider_name
-                );
-                Ok(instances)
-            }
-            Err(e) => {
-                debug!(
-                    "Failed to list instances from {} provider: {}",
-                    provider_name, e
-                );
-                Ok(Vec::new())
-            }
-        },
-        Err(e) => {
-            debug!("Provider {} not available: {}", provider_name, e);
-            Ok(Vec::new())
-        }
     }
 }
 

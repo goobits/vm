@@ -6,7 +6,7 @@ Get your isolated development environment running in under 5 minutes.
 
 ```mermaid
 flowchart LR
-    Start([📦 Clone & Build]) --> Create[🚀 vm up]
+    Start([📦 Clone & Build]) --> Create[🚀 vm start]
     Create --> Detect{🔍 Auto-detect<br/>Project Type}
     Detect -->|package.json| Node[⚡ Node.js]
     Detect -->|requirements.txt| Python[🐍 Python]
@@ -37,7 +37,7 @@ cd vm
 ./install.sh --build-from-source
 
 # 2. Create environment (auto-detects your project)
-vm up
+vm start
 
 # 3. Enter your development environment
 vm ssh
@@ -64,7 +64,7 @@ If detection doesn't match your setup, create a `vm.yaml` file in your project r
 ```bash
 # React/Vue/Angular projects
 cd my-frontend-app
-vm up                    # → Node.js, npm, dev server ready
+vm start                    # → Node.js, npm, dev server ready
 vm ssh
 npm run dev                  # Runs on auto-configured ports
 ```
@@ -73,7 +73,7 @@ npm run dev                  # Runs on auto-configured ports
 ```bash
 # Django/Flask/Rails projects
 cd my-api-project
-vm up                    # → Python/Ruby + PostgreSQL + Redis
+vm start                    # → Python/Ruby + PostgreSQL + Redis
 vm ssh
 python manage.py runserver   # Database already configured
 ```
@@ -105,10 +105,10 @@ ports:
 
 ```bash
 # Daily workflow
-vm up          # Create/configure/start and SSH
+vm start          # Create/configure/start and SSH
 vm ssh         # Enter the VM
-vm down        # Stop VM (keeps data)
-vm up          # Resume stopped VM
+vm stop        # Stop VM (keeps data)
+vm start          # Resume stopped VM
 vm destroy     # Delete completely
 
 # Quick info
@@ -131,12 +131,12 @@ vm temp destroy                  # Clean up when done
 :::danger Quick Fix
 90% of issues are solved by resetting your environment:
 ```bash
-vm destroy && vm up
+vm destroy && vm start
 ```
 :::
 
 :::tip Getting Unstuck
-- **Not working?** Try `vm destroy && vm up` to reset
+- **Not working?** Try `vm destroy && vm start` to reset
 - **Missing features?** Check the [Presets Guide](../user-guide/presets.md) for available configurations
 - **Custom setup?** See the [Configuration Guide](../user-guide/configuration.md)
 - **All commands?** View the [CLI Reference](../user-guide/cli-reference.md)

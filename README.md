@@ -118,14 +118,14 @@ cd vm
 ```
 
 **2. Initialize and Start**
-Navigate to your project's directory and run `vm up` to generate a `vm.yaml` file (if needed) and start the environment. The tool auto-detects your project type and suggests a configuration.
+Navigate to your project's directory and run `vm start` to generate a `vm.yaml` file (if needed) and start the environment. The tool auto-detects your project type and suggests a configuration.
 ```bash
 cd /path/to/your-project
-vm up
+vm start
 ```
 
 **3. Connect to Your Environment**
-`vm up` drops you into an interactive shell automatically. Use `vm ssh` later to reconnect.
+`vm start` drops you into an interactive shell automatically. Use `vm ssh` later to reconnect.
 
 ```yaml
 # Optional: vm.yaml for custom configuration
@@ -149,9 +149,9 @@ project:
 **Smart Project Detection** — The system analyzes your codebase and automatically configures the right tools:
 
 ```bash
-cd my-react-app && vm up     # → Node.js + npm + dev tools
-cd my-django-api && vm up    # → Python + PostgreSQL + Redis
-cd fullstack-app && vm up    # → Multiple presets combined
+cd my-react-app && vm start     # → Node.js + npm + dev tools
+cd my-django-api && vm start    # → Python + PostgreSQL + Redis
+cd fullstack-app && vm start    # → Multiple presets combined
 ```
 
 Choose your provider explicitly:
@@ -172,11 +172,11 @@ project:
 ### Core Workflow
 The essential commands you'll use daily:
 ```bash
-vm up                  # Create/configure/start and SSH
-vm down                # Stop an environment (preserves all data)
-vm destroy             # Delete an environment completely
-vm ssh                 # Jump into your environment (auto-detects new worktrees)
-vm exec "npm install"  # Execute a command inside your environment
+vm start                  # Create/configure/start and SSH
+vm stop                   # Stop an environment (preserves all data)
+vm destroy                # Delete an environment completely
+vm ssh                    # Jump into your environment (auto-detects new worktrees)
+vm exec "npm install"     # Execute a command inside your environment
 ```
 
 ### Environment Management
@@ -184,6 +184,16 @@ Commands for managing and monitoring your environments:
 ```bash
 vm status              # List all environments (or `vm status <env>` for detail)
 vm logs                # View the logs for an environment
+```
+
+### Fleet (`vm fleet`)
+Bulk operations across multiple VMs:
+```bash
+vm fleet list                                # List instances across providers
+vm fleet exec -- npm install -g @tool/name   # Run a command everywhere
+vm fleet start --provider tart               # Start all Tart VMs
+vm fleet stop --pattern "*-dev"              # Stop matching VMs
+vm fleet copy ~/.npmrc /home/developer/.npmrc
 ```
 
 ### Configuration (`vm config`)
@@ -225,8 +235,8 @@ vm pkg remove my-pkg   # Remove a package from the registry
 
 ### Core Commands
 ```bash
-vm up                    # Create/configure/start and SSH
-vm down                  # Stop a running VM
+vm start                    # Create/configure/start and SSH
+vm stop                  # Stop a running VM
 vm destroy               # Destroy a VM
 vm status                # List all VMs (or `vm status <vm>` for detail)
 vm ssh                   # Connect to a VM via SSH
@@ -321,7 +331,7 @@ Enables 10x faster shell configuration generation using template substitution in
 
 ```bash
 # Enable fast provisioning (experimental)
-VM_FAST_PROVISION=1 vm up
+VM_FAST_PROVISION=1 vm start
 
 # Expected speedup: 42s → 30-33s total creation time
 ```
@@ -331,7 +341,7 @@ Enables Ansible's `profile_tasks` callback to identify provisioning bottlenecks.
 
 ```bash
 # Profile provisioning to see which tasks are slow
-ANSIBLE_PROFILE=1 vm up
+ANSIBLE_PROFILE=1 vm start
 
 # Output shows timing for each task:
 # TASK [Generate .zshrc] ************** 8.23s
@@ -344,7 +354,7 @@ Changes the default 300-second (5-minute) timeout for Ansible provisioning. Usef
 
 ```bash
 # Increase timeout for slow operations
-ANSIBLE_TIMEOUT=600 vm up
+ANSIBLE_TIMEOUT=600 vm start
 
 # When timeout occurs, you'll see:
 # Command timed out after 300s: docker exec ...
@@ -358,12 +368,12 @@ If VM creation is taking longer than expected (>60s):
 
 1. **Profile provisioning** to identify bottlenecks:
    ```bash
-   ANSIBLE_PROFILE=1 vm up
+   ANSIBLE_PROFILE=1 vm start
    ```
 
 2. **Try fast provisioning mode** (experimental):
    ```bash
-   VM_FAST_PROVISION=1 vm up
+   VM_FAST_PROVISION=1 vm start
    ```
 
 3. **Check Docker performance**:
@@ -374,12 +384,12 @@ If VM creation is taking longer than expected (>60s):
 
 4. **Increase timeout** if provisioning is being cut short:
    ```bash
-   ANSIBLE_TIMEOUT=600 vm up
+   ANSIBLE_TIMEOUT=600 vm start
    ```
 
 If issues persist, run `vm doctor` for comprehensive health checks or file an issue with the output of:
 ```bash
-ANSIBLE_PROFILE=1 vm up
+ANSIBLE_PROFILE=1 vm start
 ```
 
 ---

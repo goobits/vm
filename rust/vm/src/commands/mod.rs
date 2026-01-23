@@ -5,7 +5,7 @@ use tracing::debug;
 // Import the CLI types
 use crate::cli::{Args, Command, PluginSubcommand, TunnelSubcommand};
 use vm_cli::msg;
-use vm_config::AppConfig;
+use vm_config::{config::BoxSpec, AppConfig};
 use vm_core::{vm_error, vm_println};
 use vm_messages::messages::MESSAGES;
 use vm_provider::get_provider;
@@ -21,10 +21,10 @@ pub mod plugin_new;
 pub mod registry;
 pub mod secrets;
 pub mod snapshot;
+pub mod start;
 pub mod temp;
 pub mod tunnel;
 pub mod uninstall;
-pub mod up;
 pub mod update;
 pub mod vm_ops;
 
@@ -45,15 +45,19 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             }
             doctor::run_with_fix(*fix).map_err(VmError::from)
         }
-        Command::Up { command, wait } => {
-            debug!("Handling up command");
-            up::handle_up(
+        Command::Start { command, wait } => {
+            debug!("Handling start command");
+            start::handle_start(
                 args.config.clone(),
                 command.clone(),
                 args.profile.clone(),
                 *wait,
             )
             .await
+        }
+        Command::Fleet { command } => {
+            debug!("Handling fleet command");
+            vm_ops::handle_fleet_command(command, false).await
         }
         Command::Config { command } => {
             debug!("Calling ConfigOps methods directly");
@@ -114,7 +118,7 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
 
 async fn handle_dry_run(args: &Args) -> VmResult<()> {
     match &args.command {
-        Command::Down { .. } | Command::Destroy { .. } => {
+        Command::Create { .. } | Command::Stop { .. } | Command::Destroy { .. } => {
             vm_println!("{}", MESSAGES.vm.dry_run_header);
             vm_println!(
                 "{}",
@@ -169,6 +173,7 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
             );
             Ok(())
         }
+        Command::Fleet { command } => vm_ops::handle_fleet_command(command, true).await,
         _ => {
             // Non-provider commands proceed normally
             let mut args_copy = args.clone();
@@ -203,8 +208,49 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
         }
     };
     // Extract VM config and global config
-    let config = app_config.vm;
+    let mut config = app_config.vm;
     let global_config = app_config.global;
+
+    if let Command::Create {
+        from_dockerfile,
+        save_as,
+        ..
+    } = &args.command
+    {
+        if let Some(dockerfile_path) = from_dockerfile {
+            if matches!(config.provider.as_deref(), Some("tart")) {
+                return Err(VmError::validation(
+                    "Dockerfile builds are not supported for the Tart provider.".to_string(),
+                    None::<String>,
+                ));
+            }
+
+            let mut vm_settings = config.vm.take().unwrap_or_default();
+            vm_settings.r#box = Some(BoxSpec::String(
+                dockerfile_path.to_string_lossy().to_string(),
+            ));
+            config.vm = Some(vm_settings);
+        }
+
+        if save_as.is_some() && from_dockerfile.is_some() {
+            let raw_name = save_as
+                .as_deref()
+                .unwrap_or("snapshot")
+                .trim_start_matches('@');
+            let mut safe_name: String = raw_name
+                .chars()
+                .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+                .collect();
+            safe_name = safe_name.trim_matches('-').to_string();
+            if safe_name.is_empty() {
+                safe_name = "snapshot".to_string();
+            }
+
+            let mut project = config.project.take().unwrap_or_default();
+            project.name = Some(format!("snapshot-{}", safe_name));
+            config.project = Some(project);
+        }
+    }
 
     debug!(
         "Loaded configuration: provider={:?}, project_name={:?}",
@@ -238,7 +284,29 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
     // Execute the command with friendly error handling
     debug!("Executing command: {:?}", args.command);
     let result = match args.command {
-        Command::Down { container } => {
+        Command::Create {
+            force,
+            instance,
+            verbose,
+            save_as,
+            from_dockerfile,
+            refresh_packages,
+        } => {
+            vm_ops::handle_create(
+                provider,
+                config,
+                global_config.clone(),
+                force,
+                instance,
+                verbose,
+                save_as,
+                from_dockerfile,
+                true,
+                refresh_packages,
+            )
+            .await
+        }
+        Command::Stop { container } => {
             vm_ops::handle_stop(
                 provider,
                 container.as_deref(),

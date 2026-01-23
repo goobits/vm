@@ -107,6 +107,69 @@ pub enum ConfigProfileSubcommand {
     },
 }
 
+#[derive(Debug, Clone, clap::Args)]
+pub struct FleetTargetArgs {
+    /// Provider filter (docker, podman, tart)
+    #[arg(long)]
+    pub provider: Option<String>,
+    /// Match pattern for instance names (e.g., "*-dev")
+    #[arg(long)]
+    pub pattern: Option<String>,
+    /// Only include running instances
+    #[arg(long)]
+    pub running: bool,
+    /// Only include stopped instances
+    #[arg(long)]
+    pub stopped: bool,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum FleetSubcommand {
+    /// List instances across providers
+    List {
+        #[command(flatten)]
+        targets: FleetTargetArgs,
+    },
+    /// Show status for instances across providers
+    Status {
+        #[command(flatten)]
+        targets: FleetTargetArgs,
+    },
+    /// Run a command across instances
+    #[command(trailing_var_arg = true)]
+    Exec {
+        #[command(flatten)]
+        targets: FleetTargetArgs,
+        /// Command to execute inside each VM
+        #[arg(required = true, num_args = 1..)]
+        command: Vec<String>,
+    },
+    /// Copy files to/from instances
+    Copy {
+        #[command(flatten)]
+        targets: FleetTargetArgs,
+        /// Source path (local file or <container>:/path)
+        source: String,
+        /// Destination path (local file or <container>:/path)
+        destination: String,
+    },
+    /// Start instances
+    Start {
+        #[command(flatten)]
+        targets: FleetTargetArgs,
+    },
+    /// Stop instances
+    Stop {
+        #[command(flatten)]
+        targets: FleetTargetArgs,
+    },
+    /// Restart instances
+    Restart {
+        #[command(flatten)]
+        targets: FleetTargetArgs,
+    },
+}
+
 #[derive(Debug, Clone, Subcommand)]
 pub enum TempSubcommand {
     /// Create a temporary environment
@@ -476,9 +539,30 @@ pub enum PluginSubcommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum Command {
+    /// Create/configure/start your environment
+    Create {
+        /// Force recreation even if it already exists
+        #[arg(long)]
+        force: bool,
+        /// Create a named instance (multi-instance providers only)
+        #[arg(long)]
+        instance: Option<String>,
+        /// Show verbose provisioning output
+        #[arg(long)]
+        verbose: bool,
+        /// Save as a snapshot name (with --from-dockerfile)
+        #[arg(long)]
+        save_as: Option<String>,
+        /// Build from a Dockerfile (used with --save-as)
+        #[arg(long, value_name = "PATH")]
+        from_dockerfile: Option<PathBuf>,
+        /// Reinstall packages even if already present
+        #[arg(long)]
+        refresh_packages: bool,
+    },
     /// Zero to code in one command (init → create → start → ssh)
     #[command(about = "Get from zero to coding in one command")]
-    Up {
+    Start {
         /// Command to execute (if not provided, opens interactive shell)
         #[arg(short = 'c', long)]
         command: Option<String>,
@@ -487,7 +571,7 @@ pub enum Command {
         wait: bool,
     },
     /// Stop your environment
-    Down {
+    Stop {
         /// Container name or ID to stop (if not provided, stops current project VM gracefully)
         container: Option<String>,
     },
@@ -606,7 +690,8 @@ pub enum Command {
         command: TempSubcommand,
     },
 
-    /// Manage private package registry
+    /// Manage package registries
+    #[command(name = "pkg", visible_alias = "registry")]
     Registry {
         #[command(subcommand)]
         command: RegistrySubcommand,
@@ -634,6 +719,12 @@ pub enum Command {
     Plugin {
         #[command(subcommand)]
         command: PluginSubcommand,
+    },
+
+    /// Bulk operations across multiple VMs
+    Fleet {
+        #[command(subcommand)]
+        command: FleetSubcommand,
     },
 
     /// Generate shell completion scripts
@@ -673,25 +764,25 @@ mod tests {
     use clap::Parser;
 
     #[test]
-    fn test_up_command_parsing() {
-        let args = Args::parse_from(["vm", "up", "-c", "echo hi", "--wait"]);
+    fn test_start_command_parsing() {
+        let args = Args::parse_from(["vm", "start", "-c", "echo hi", "--wait"]);
         match args.command {
-            Command::Up { command, wait } => {
+            Command::Start { command, wait } => {
                 assert_eq!(command, Some("echo hi".to_string()));
                 assert!(wait);
             }
-            _ => panic!("Expected Command::Up"),
+            _ => panic!("Expected Command::Start"),
         }
     }
 
     #[test]
-    fn test_down_command_parsing() {
-        let args = Args::parse_from(["vm", "down", "my-container"]);
+    fn test_stop_command_parsing() {
+        let args = Args::parse_from(["vm", "stop", "my-container"]);
         match args.command {
-            Command::Down { container } => {
+            Command::Stop { container } => {
                 assert_eq!(container, Some("my-container".to_string()));
             }
-            _ => panic!("Expected Command::Down"),
+            _ => panic!("Expected Command::Stop"),
         }
     }
 
@@ -722,7 +813,7 @@ mod tests {
 
     #[test]
     fn test_pkg_add_command_parsing() {
-        let args = Args::parse_from(["vm", "registry", "add", "--type", "python", "-y"]);
+        let args = Args::parse_from(["vm", "pkg", "add", "--type", "python", "-y"]);
         match args.command {
             Command::Registry { command } => match command {
                 RegistrySubcommand::Add { r#type, yes } => {

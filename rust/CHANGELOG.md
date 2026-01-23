@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Virtual framebuffer (xvfb) with DISPLAY=:99 environment
 
 - **Humane CLI Improvements**: More intuitive command names and workflows
-  - `vm up` - Zero-to-code workflow (init → create → start → ssh in one command)
+  - `vm start` - Zero-to-code workflow (init → create → start → ssh in one command)
   - `vm clean` - Prune orphaned Docker resources (containers, images, volumes, networks)
   - `vm doctor --fix` - Automatic issue resolution (Docker daemon, socket permissions, SSH keys)
   - Renamed `vm auth` → `vm secrets` for clearer mental model

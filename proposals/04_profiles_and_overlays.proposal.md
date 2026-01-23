@@ -5,7 +5,7 @@
 **Objective:** Enable multiple runtime configurations (e.g., `docker` vs `tart`, `dev` vs `ci`) within a single `vm.yaml` using a DRY, inheritance-based profile system.
 
 ## TL;DR
-Introduce a `profiles` key in `vm.yaml`. Users define a **base configuration** (shared settings) and named **profiles** (overrides). The CLI merges specific profiles over the base at runtime via `vm up --profile <name>`.
+Introduce a `profiles` key in `vm.yaml`. Users define a **base configuration** (shared settings) and named **profiles** (overrides). The CLI merges specific profiles over the base at runtime via `vm start --profile <name>`.
 
 ## Tree Diff (Implementation Scope)
 
@@ -41,14 +41,14 @@ services:
 
 # --- PROFILES (Specific Implementations) ---
 profiles:
-  # Usage: vm up (Default if "default" exists, else Base)
+  # Usage: vm start (Default if "default" exists, else Base)
   default:
     provider: docker
     vm:
       memory: 4096
       cpus: 4
 
-  # Usage: vm up --profile tart (or -p tart)
+  # Usage: vm start --profile tart (or -p tart)
   tart:
     provider: tart
     vm:

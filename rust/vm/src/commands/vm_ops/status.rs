@@ -96,7 +96,7 @@ fn display_status_dashboard(report: &VmStatusReport) {
     if report.is_running {
         vm_println!("\n💡 Connect: vm ssh");
     } else {
-        vm_println!("\n💡 Start: vm up");
+        vm_println!("\n💡 Start: vm start");
     }
 }
 
@@ -105,7 +105,7 @@ fn display_basic_stopped_status(vm_name: &str, provider_name: &str) {
     vm_println!("🖥️  {} ({})", vm_name, provider_name);
     vm_println!("   🔴 Stopped");
     vm_println!("   📦 Container not found");
-    vm_println!("\n💡 Start: vm up");
+    vm_println!("\n💡 Start: vm start");
 }
 
 /// Check if resource data is available and meaningful

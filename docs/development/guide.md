@@ -143,7 +143,7 @@ vm/tests/
 ├── services/
 │   └── shared_services.rs      # Multi-VM service sharing
 ├── vm_ops/
-│   ├── create_destroy_tests.rs # Core vm up/destroy lifecycle tests
+│   ├── create_destroy_tests.rs # Core vm start/destroy lifecycle tests
 │   └── ...                     # Other vm ops tests (lifecycle, features, etc.)
 └── *.rs                        # Standalone or older test files
 ```
@@ -236,7 +236,7 @@ The `ServiceManager` (`rust/vm/src/service_manager.rs`) is responsible for manag
 
 1.  **Reference Counting**: The manager tracks how many VMs are using each service. A service is started when the first VM needs it and stopped when the last VM using it is destroyed.
 2.  **State Persistence**: The state of all services (e.g., reference count, running status, port) is saved to `~/.vm/state/services.json`. This ensures that the state is preserved across CLI commands and system reboots.
-3.  **Automatic Lifecycle**: `vm up` calls `register_vm_services`, and `vm destroy` calls `unregister_vm_services` to automatically manage the reference counts.
+3.  **Automatic Lifecycle**: `vm start` calls `register_vm_services`, and `vm destroy` calls `unregister_vm_services` to automatically manage the reference counts.
 
 ### Adding a New Service (Step-by-Step)
 

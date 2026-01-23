@@ -1,4 +1,4 @@
-//! VM Up command - Zero to code in one command
+//! VM Start command - Zero to code in one command
 //!
 //! This command orchestrates: init → create → start → ssh
 //! It's idempotent - safe to run multiple times.
@@ -16,7 +16,7 @@ use vm_config::{
 use vm_core::{vm_println, vm_success};
 use vm_provider::get_provider;
 
-/// Handle the `vm up` command
+/// Handle the `vm start` command
 ///
 /// This command provides a single entry point to go from nothing to a running
 /// VM with an SSH session. It handles:
@@ -24,13 +24,13 @@ use vm_provider::get_provider;
 /// 2. Creating the VM if it doesn't exist
 /// 3. Starting the VM if it's stopped
 /// 4. Opening an SSH session (or executing a command)
-pub async fn handle_up(
+pub async fn handle_start(
     config_path: Option<std::path::PathBuf>,
     command: Option<String>,
     profile: Option<String>,
     wait: bool,
 ) -> VmResult<()> {
-    debug!("Handling vm up command");
+    debug!("Handling vm start command");
 
     // Stage 1: Check if vm.yaml exists, create if not
     let config_file = config_path

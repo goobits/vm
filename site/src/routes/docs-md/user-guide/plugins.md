@@ -15,7 +15,7 @@ vm plugin info vibe
 
 # Use a plugin preset
 vm config preset vibe
-vm up
+vm start
 ```
 
 ### Creating a New Plugin
@@ -175,7 +175,7 @@ vm plugin validate awesome-stack
 # Test in a new project
 cd /tmp/test-project
 vm config preset awesome-stack
-vm up
+vm start
 vm ssh
 ```
 
@@ -349,7 +349,7 @@ Before publishing:
 1. Validate syntax: `vm plugin validate <name>`
 2. Test installation: `vm plugin install .`
 3. Test preset application: `vm config preset <name>`
-4. Test VM creation: `vm up`
+4. Test VM creation: `vm start`
 5. Verify packages installed: `vm ssh` then check
 
 ---

@@ -72,7 +72,7 @@ The service runs on port 3000 by default. See [vm-api/README.md](vm-api/README.m
 cargo install --path vm
 
 # Create and start a workspace
-vm up
+vm start
 
 # List workspaces
 vm status

@@ -6,14 +6,15 @@ All `vm` commands with usage examples and expected output. Use this as a referen
 
 | Task | Command |
 |------|---------|
-| Create/start VM | `vm up` |
-| Stop VM | `vm down` |
+| Create/start VM | `vm start` |
+| Stop VM | `vm stop` |
 | Connect to VM | `vm ssh` |
 | Check status | `vm status [<vm>]` |
 | View logs | `vm logs [-f]` |
-| Wait for services | `vm up --wait` |
+| Wait for services | `vm start --wait` |
 | Destroy VM | `vm destroy` |
 | Run command | `vm exec <command>` |
+| Fleet list | `vm fleet list` |
 | **Snapshots** | |
 | Create snapshot | `vm snapshot create <name>` |
 | Restore snapshot | `vm snapshot restore <name>` |
@@ -39,6 +40,7 @@ All `vm` commands with usage examples and expected output. Use this as a referen
 ## Table of Contents
 - [Global Options](#global-options)
 - [Core Commands](#core-commands)
+- [Fleet (`vm fleet`)](#fleet-vm-fleet)
 - [Configuration (`vm config`)](#configuration-vm-config)
 - [Port Management](#port-management)
 - [Temporary VMs (`vm temp`)](#temporary-vms-vm-temp)
@@ -65,20 +67,20 @@ These flags can be used with any command.
 
 ## Core Commands
 
-### `vm up`
+### `vm start`
 Create/configure/start an environment and open a shell.
 ```bash
-vm up [-c <command>] [--wait]
+vm start [-c <command>] [--wait]
 ```
 
 **Options:**
 - `-c, --command <command>`: Run a command instead of opening a shell
 - `--wait`: Wait for services to be ready before continuing
 
-### `vm down`
+### `vm stop`
 Stop a running VM.
 ```bash
-vm down [<container>]
+vm stop [<container>]
 ```
 
 ### `vm status`
@@ -118,6 +120,54 @@ vm logs -n 100       # Show last 100 lines
 ```bash
 vm logs -f           # Follow dev container logs
 vm logs --follow
+```
+
+---
+
+## Fleet (`vm fleet`)
+
+Bulk operations across multiple VMs and providers.
+
+### `vm fleet list`
+List instances across providers.
+```bash
+vm fleet list [--provider <name>] [--pattern <glob>] [--running] [--stopped]
+```
+
+### `vm fleet status`
+Show status for instances across providers.
+```bash
+vm fleet status [--provider <name>] [--pattern <glob>] [--running] [--stopped]
+```
+
+### `vm fleet exec`
+Run a command across instances.
+```bash
+vm fleet exec [--provider <name>] [--pattern <glob>] -- <command>
+```
+
+### `vm fleet copy`
+Copy files to/from instances.
+```bash
+vm fleet copy [--provider <name>] [--pattern <glob>] <source> <dest>
+```
+
+### `vm fleet start`
+Start instances.
+```bash
+vm fleet start [--provider <name>] [--pattern <glob>]
+```
+
+### `vm fleet stop`
+Stop instances.
+```bash
+vm fleet stop [--provider <name>] [--pattern <glob>]
+```
+
+### `vm fleet restart`
+Restart instances.
+```bash
+vm fleet restart [--provider <name>] [--pattern <glob>]
 ```
 
 **View logs for specific service**:

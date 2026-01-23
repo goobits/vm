@@ -172,7 +172,7 @@ pub async fn handle_create(
                 if running { " and is running" } else { "" }
             );
             vm_println!(
-                "   Use 'vm ssh' to connect, 'vm up' to start, or 'vm destroy' to recreate."
+                "   Use 'vm ssh' to connect, 'vm start' to start, or 'vm destroy' to recreate."
             );
             return Ok(());
         }

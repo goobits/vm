@@ -71,7 +71,7 @@ pub fn handle_wait(
                 // Check if container is running
                 if !report.is_running {
                     vm_println!("❌ Container is not running");
-                    vm_println!("   Start it with: vm up");
+                    vm_println!("   Start it with: vm start");
                     return Err(VmError::general(
                         std::io::Error::new(std::io::ErrorKind::NotFound, "Container not running"),
                         "Container must be running to wait for services".to_string(),

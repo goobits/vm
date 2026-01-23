@@ -17,7 +17,7 @@ use vm_messages::messages::MESSAGES;
 use vm_provider::{InstanceInfo, Provider, ProviderContext};
 
 use super::helpers::unregister_vm_services_helper;
-use super::list::{get_all_instances, get_instances_from_provider};
+use super::targets::{get_all_instances, get_instances_from_provider, match_pattern};
 
 /// Helper function to backup database services configured with backup_on_destroy
 async fn backup_databases(config: &VmConfig, vm_name: &str, global_config: &GlobalConfig) {
@@ -401,26 +401,4 @@ fn destroy_single_instance(instance: &InstanceInfo) -> VmResult<()> {
 
     let provider = get_provider(config)?;
     Ok(provider.destroy(Some(&instance.name))?)
-}
-
-/// Simple pattern matching for instance names
-fn match_pattern(name: &str, pattern: &str) -> bool {
-    if pattern.contains('*') {
-        // Simple wildcard matching
-        if pattern == "*" {
-            true
-        } else if pattern.starts_with('*') && pattern.ends_with('*') {
-            let middle = &pattern[1..pattern.len() - 1];
-            name.contains(middle)
-        } else if let Some(suffix) = pattern.strip_prefix('*') {
-            name.ends_with(suffix)
-        } else if let Some(prefix) = pattern.strip_suffix('*') {
-            name.starts_with(prefix)
-        } else {
-            // Pattern has * in the middle - basic implementation
-            name == pattern
-        }
-    } else {
-        name == pattern
-    }
 }
