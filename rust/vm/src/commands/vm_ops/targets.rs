@@ -12,6 +12,8 @@ pub fn resolve_targets(
     running: bool,
     stopped: bool,
 ) -> VmResult<Vec<InstanceInfo>> {
+    let running = if running || stopped { running } else { true };
+
     let instances = if let Some(provider_name) = provider_filter {
         get_instances_from_provider(provider_name)?
     } else {
