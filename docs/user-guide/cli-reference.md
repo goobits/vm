@@ -129,43 +129,43 @@ vm logs --follow
 Bulk operations across multiple VMs and providers.
 
 ### `vm fleet list`
-List instances across providers.
+List instances across providers (defaults to running only).
 ```bash
 vm fleet list [--provider <name>] [--pattern <glob>] [--running] [--stopped]
 ```
 
 ### `vm fleet status`
-Show status for instances across providers.
+Show status for instances across providers (defaults to running only).
 ```bash
 vm fleet status [--provider <name>] [--pattern <glob>] [--running] [--stopped]
 ```
 
 ### `vm fleet exec`
-Run a command across instances.
+Run a command across instances (defaults to running only).
 ```bash
 vm fleet exec [--provider <name>] [--pattern <glob>] -- <command>
 ```
 
 ### `vm fleet copy`
-Copy files to/from instances.
+Copy files to/from instances (defaults to running only).
 ```bash
 vm fleet copy [--provider <name>] [--pattern <glob>] <source> <dest>
 ```
 
 ### `vm fleet start`
-Start instances.
+Start instances (defaults to running only).
 ```bash
 vm fleet start [--provider <name>] [--pattern <glob>]
 ```
 
 ### `vm fleet stop`
-Stop instances.
+Stop instances (defaults to running only).
 ```bash
 vm fleet stop [--provider <name>] [--pattern <glob>]
 ```
 
 ### `vm fleet restart`
-Restart instances.
+Restart instances (defaults to running only).
 ```bash
 vm fleet restart [--provider <name>] [--pattern <glob>]
 ```
