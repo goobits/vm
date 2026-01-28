@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::process;
 use tracing::{error, info};
 use vm_core::error::Result;
@@ -91,14 +92,9 @@ impl VersionSync {
             vm_core::error::VmError::Internal(format!("Failed to read {}: {}", path.display(), e))
         })?;
 
-        let version_regex = Regex::new(r#"version\s*[:=]\s*"?([^"\s]+)"?"#).unwrap_or_else(|_| {
-            // Fallback to a simpler pattern if the main one fails
-            Regex::new(r#"version.+?([0-9]+\.[0-9]+\.[0-9]+)"#).unwrap_or_else(|_| {
-                // Last resort - use a simple fallback that cannot fail
-                Regex::new(r"").unwrap_or_else(|_| {
-                    panic!("Critical: Even empty regex pattern is failing - regex engine corrupted")
-                })
-            })
+        static VERSION_REGEX: OnceLock<Regex> = OnceLock::new();
+        let version_regex = VERSION_REGEX.get_or_init(|| {
+            Regex::new(r#"version\s*[:=]\s*"?([^"\s]+)"?"#).expect("Invalid regex")
         });
 
         if let Some(captures) = version_regex.captures(&content) {
@@ -118,17 +114,13 @@ impl VersionSync {
             vm_core::error::VmError::Internal(format!("Failed to read {}: {}", path.display(), e))
         })?;
 
-        let version_regex = Regex::new(r#"version\s*=\s*"[^"]+""#).unwrap_or_else(|_| {
-            // Fallback to simple pattern that cannot fail
-            Regex::new(r"").unwrap_or_else(|_| {
-                panic!("Critical: Even empty regex pattern is failing - regex engine corrupted")
-            })
+        static VERSION_REGEX: OnceLock<Regex> = OnceLock::new();
+        let version_regex = VERSION_REGEX.get_or_init(|| {
+            Regex::new(r#"version\s*=\s*"[^"]+""#).expect("Invalid regex")
         });
-        let yaml_version_regex = Regex::new(r#"version:\s*"?[^"\s]+"?"#).unwrap_or_else(|_| {
-            // Fallback to simple pattern that cannot fail
-            Regex::new(r"").unwrap_or_else(|_| {
-                panic!("Critical: Even empty regex pattern is failing - regex engine corrupted")
-            })
+        static YAML_VERSION_REGEX: OnceLock<Regex> = OnceLock::new();
+        let yaml_version_regex = YAML_VERSION_REGEX.get_or_init(|| {
+            Regex::new(r#"version:\s*"?[^"\s]+"?"#).expect("Invalid regex")
         });
 
         let updated = if version_regex.is_match(&content) {
