@@ -2,6 +2,7 @@ use rayon::prelude::*;
 use regex::Regex;
 use std::collections::HashSet;
 use std::process::Command;
+use std::sync::OnceLock;
 use vm_core::error::{Result, VmError};
 use vm_core::vm_error;
 
@@ -46,8 +47,10 @@ fn parse_cargo_install_list(output: &str) -> Result<Vec<(String, String)>> {
 
     // Regex to match cargo install list format:
     // package_name v1.0.0 (/path/to/source):
-    let re = Regex::new(r"^([a-zA-Z0-9_-]+)\s+[^\(]*\(([^)]+)\):$")
-        .map_err(|e| VmError::Internal(format!("Failed to compile regex: {e}")))?;
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| {
+        Regex::new(r"^([a-zA-Z0-9_-]+)\s+[^\(]*\(([^)]+)\):$").expect("Failed to compile regex")
+    });
 
     for line in output.lines() {
         if let Some(captures) = re.captures(line) {
