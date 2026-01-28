@@ -1,6 +1,7 @@
 use crate::config::{BoxSpec, VmConfig};
 use regex::Regex;
 use std::collections::HashSet;
+use std::sync::OnceLock;
 use std::net::TcpListener;
 use std::path::PathBuf;
 use tracing::warn;
@@ -143,8 +144,10 @@ impl ConfigValidator {
     fn validate_project(&self) -> Result<()> {
         if let Some(project) = &self.config.project {
             if let Some(name) = &project.name {
-                let name_regex = Regex::new(r"^[a-zA-Z0-9\-_]+$")
-                    .map_err(|e| VmError::Config(format!("Invalid regex pattern: {e}")))?;
+                static NAME_REGEX: OnceLock<Regex> = OnceLock::new();
+                let name_regex = NAME_REGEX.get_or_init(|| {
+                    Regex::new(r"^[a-zA-Z0-9\-_]+$").expect("Invalid regex pattern")
+                });
                 if !name_regex.is_match(name) {
                     vm_error!(
                         "Invalid project name: {}. Must contain only alphanumeric characters, dashes, and underscores",
@@ -157,8 +160,10 @@ impl ConfigValidator {
             }
 
             if let Some(hostname) = &project.hostname {
-                let hostname_regex = Regex::new(r"^[a-zA-Z0-9\-\.]+$")
-                    .map_err(|e| VmError::Config(format!("Invalid regex pattern: {e}")))?;
+                static HOSTNAME_REGEX: OnceLock<Regex> = OnceLock::new();
+                let hostname_regex = HOSTNAME_REGEX.get_or_init(|| {
+                    Regex::new(r"^[a-zA-Z0-9\-\.]+$").expect("Invalid regex pattern")
+                });
                 if !hostname_regex.is_match(hostname) {
                     vm_error!("Invalid hostname: {}. Must be a valid hostname", hostname);
                     return Err(vm_core::error::VmError::Config(
@@ -298,20 +303,23 @@ impl ConfigValidator {
     }
 
     fn is_valid_version(version: &str) -> bool {
+        static VERSION_REGEX: OnceLock<Regex> = OnceLock::new();
         version == "latest"
             || version == "lts"
             || version.parse::<u32>().is_ok()
-            || Regex::new(r"^\d+\.\d+(\.\d+)?$")
-                .map(|regex| regex.is_match(version))
-                .unwrap_or(false)
+            || VERSION_REGEX
+                .get_or_init(|| Regex::new(r"^\d+\.\d+(\.\d+)?$").expect("Invalid regex pattern"))
+                .is_match(version)
     }
 
     fn validate_networking(&self) -> Result<()> {
         if let Some(networking) = &self.config.networking {
             // Docker network names must contain only alphanumeric, hyphens, underscores, and periods
             // and cannot start with a period or hyphen
-            let network_regex = Regex::new(r"^[a-zA-Z0-9_][a-zA-Z0-9_\-\.]*$")
-                .map_err(|e| VmError::Config(format!("Invalid regex pattern: {e}")))?;
+            static NETWORK_REGEX: OnceLock<Regex> = OnceLock::new();
+            let network_regex = NETWORK_REGEX.get_or_init(|| {
+                Regex::new(r"^[a-zA-Z0-9_][a-zA-Z0-9_\-\.]*$").expect("Invalid regex pattern")
+            });
 
             for network_name in &networking.networks {
                 // Docker network names must be 1-64 characters
