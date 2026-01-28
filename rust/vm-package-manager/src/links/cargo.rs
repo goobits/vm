@@ -25,12 +25,10 @@ pub fn detect_cargo_packages(packages: &[String]) -> Result<Vec<(String, String)
         .par_iter()
         .filter_map(|(pkg_name, pkg_path)| {
             // Check if this package is in our requested list
-            for requested_pkg in &package_set {
-                if pkg_name == *requested_pkg {
-                    // Verify the path exists and looks like a source directory
-                    if std::path::Path::new(pkg_path).exists() && pkg_path.contains('/') {
-                        return Some((pkg_name.clone(), pkg_path.clone()));
-                    }
+            if package_set.contains(pkg_name) {
+                // Verify the path exists and looks like a source directory
+                if std::path::Path::new(pkg_path).exists() && pkg_path.contains('/') {
+                    return Some((pkg_name.clone(), pkg_path.clone()));
                 }
             }
             None
