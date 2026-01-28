@@ -236,23 +236,41 @@ async fn health_handler() -> impl IntoResponse {
 
 async fn list_packages_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     // Pass data directory directly to avoid thread-unsafe directory changes
-    let result = crate::local_storage::list_local_packages(&state.data_dir);
+    let data_dir = state.data_dir.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        crate::local_storage::list_local_packages(&data_dir)
+    })
+    .await;
 
     match result {
-        Ok(packages) => {
-            let json = serde_json::to_string(&packages).unwrap_or_else(|_| "{}".to_string());
-            let mut headers = HeaderMap::new();
-            headers.insert(
-                header::CONTENT_TYPE,
-                "application/json"
-                    .parse()
-                    .expect("static header value is valid"),
-            );
-            (StatusCode::OK, headers, json)
-        }
+        Ok(inner_result) => match inner_result {
+            Ok(packages) => {
+                let json = serde_json::to_string(&packages).unwrap_or_else(|_| "{}".to_string());
+                let mut headers = HeaderMap::new();
+                headers.insert(
+                    header::CONTENT_TYPE,
+                    "application/json"
+                        .parse()
+                        .expect("static header value is valid"),
+                );
+                (StatusCode::OK, headers, json)
+            }
+            Err(e) => {
+                error!("Failed to list packages: {}", e);
+                let error_response = format!(r#"{{"error": "{e}"}}"#);
+                let mut headers = HeaderMap::new();
+                headers.insert(
+                    header::CONTENT_TYPE,
+                    "application/json"
+                        .parse()
+                        .expect("static header value is valid"),
+                );
+                (StatusCode::INTERNAL_SERVER_ERROR, headers, error_response)
+            }
+        },
         Err(e) => {
-            error!("Failed to list packages: {}", e);
-            let error_response = format!(r#"{{"error": "{e}"}}"#);
+            error!("Task join error: {}", e);
+            let error_response = format!(r#"{{"error": "Internal Server Error"}}"#);
             let mut headers = HeaderMap::new();
             headers.insert(
                 header::CONTENT_TYPE,
