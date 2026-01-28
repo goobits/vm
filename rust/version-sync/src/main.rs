@@ -92,21 +92,27 @@ impl VersionSync {
             vm_core::error::VmError::Internal(format!("Failed to read {}: {}", path.display(), e))
         })?;
 
-        static VERSION_REGEX: OnceLock<Regex> = OnceLock::new();
-        let version_regex = VERSION_REGEX.get_or_init(|| {
-            Regex::new(r#"version\s*[:=]\s*"?([^"\s]+)"?"#).expect("Invalid regex")
+        static VERSION_REGEXES: OnceLock<Vec<Regex>> = OnceLock::new();
+        let version_regexes = VERSION_REGEXES.get_or_init(|| {
+            vec![
+                Regex::new(r#"version\s*[:=]\s*"?([^"\s]+)"?"#).expect("Invalid regex"),
+                // Fallback for space-separated versions or looser patterns
+                Regex::new(r#"version.+?([0-9]+\.[0-9]+\.[0-9]+)"#).expect("Invalid regex"),
+            ]
         });
 
-        if let Some(captures) = version_regex.captures(&content) {
-            let current_version = captures.get(1).map(|m| m.as_str()).unwrap_or("unknown");
-            if current_version == self.package_version {
-                Ok(FileVersionStatus::Synced)
-            } else {
-                Ok(FileVersionStatus::OutOfSync(current_version.to_string()))
+        for regex in version_regexes {
+            if let Some(captures) = regex.captures(&content) {
+                let current_version = captures.get(1).map(|m| m.as_str()).unwrap_or("unknown");
+                if current_version == self.package_version {
+                    return Ok(FileVersionStatus::Synced);
+                } else {
+                    return Ok(FileVersionStatus::OutOfSync(current_version.to_string()));
+                }
             }
-        } else {
-            Ok(FileVersionStatus::NoVersion)
         }
+
+        Ok(FileVersionStatus::NoVersion)
     }
 
     fn update_file_version(&self, path: &Path) -> Result<bool> {
