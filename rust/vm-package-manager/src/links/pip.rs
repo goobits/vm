@@ -5,9 +5,6 @@ use std::process::Command;
 use vm_core::error::{Result, VmError};
 
 pub fn detect_pip_packages(packages: &[String]) -> Vec<(String, String)> {
-    let package_set: HashSet<&String> = packages.iter().collect();
-    let mut results = Vec::new();
-
     // Try different pip commands in parallel
     let pip_commands = vec!["pip", "pip3", "python3", "python"];
 
@@ -18,19 +15,34 @@ pub fn detect_pip_packages(packages: &[String]) -> Vec<(String, String)> {
         .collect();
 
     // Process detections and match against requested packages
+    find_matching_packages(detections, packages)
+}
+
+fn find_matching_packages(
+    detections: Vec<(String, String)>,
+    requested_packages: &[String],
+) -> Vec<(String, String)> {
+    // Pre-process requested packages: normalize them (lower case, dashes to underscores)
+    // We store the normalized name in a Set for O(1) lookup.
+    let normalized_requests: HashSet<String> = requested_packages
+        .iter()
+        .map(|pkg| pkg.to_lowercase().replace('-', "_"))
+        .collect();
+
+    let mut results = Vec::new();
     let mut found_packages = HashSet::new();
+
     for (package_name, location) in detections {
         if found_packages.contains(&package_name) {
             continue; // Skip if already found
         }
 
-        // Check if this package matches any requested packages (case-insensitive, handle dashes/underscores)
-        for requested_pkg in &package_set {
-            if package_matches(&package_name, requested_pkg) {
-                results.push((package_name.clone(), location.clone()));
-                found_packages.insert(package_name.clone());
-                break;
-            }
+        // Normalize detection name
+        let normalized_name = package_name.to_lowercase().replace('-', "_");
+
+        if normalized_requests.contains(&normalized_name) {
+            results.push((package_name.clone(), location.clone()));
+            found_packages.insert(package_name.clone());
         }
     }
 
@@ -76,18 +88,34 @@ fn get_editable_packages_for_command(cmd: &str) -> Result<Vec<(String, String)>>
     Ok(packages)
 }
 
-fn package_matches(package_name: &str, requested_name: &str) -> bool {
-    // Convert to lowercase for comparison
-    let name_lower = package_name.to_lowercase();
-    let req_lower = requested_name.to_lowercase();
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    // Normalize dashes/underscores
-    let name_normalized = name_lower.replace('-', "_");
-    let req_normalized = req_lower.replace('-', "_");
+    #[test]
+    fn test_matching_correctness() {
+        // Requested packages: "requests", "My-Package", "Data_Science"
+        let requested = vec![
+            "requests".to_string(),
+            "My-Package".to_string(),
+            "Data_Science".to_string(),
+        ];
 
-    // Check various combinations
-    name_lower == req_lower
-        || name_lower == req_normalized
-        || name_normalized == req_lower
-        || name_normalized == req_normalized
+        // Detected packages
+        let detections = vec![
+            ("requests".to_string(), "/lib/requests".to_string()),     // Exact match
+            ("my_package".to_string(), "/lib/my_package".to_string()), // Case + dash/underscore mismatch
+            ("data-science".to_string(), "/lib/data-science".to_string()), // Case + underscore/dash mismatch
+            ("other".to_string(), "/lib/other".to_string()),           // No match
+        ];
+
+        let results = find_matching_packages(detections, &requested);
+
+        assert_eq!(results.len(), 3);
+        let found_names: HashSet<String> = results.into_iter().map(|(n, _)| n).collect();
+        assert!(found_names.contains("requests"));
+        assert!(found_names.contains("my_package"));
+        assert!(found_names.contains("data-science"));
+    }
+
 }
