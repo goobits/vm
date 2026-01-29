@@ -270,7 +270,7 @@ async fn list_packages_handler(State(state): State<Arc<AppState>>) -> impl IntoR
         },
         Err(e) => {
             error!("Task join error: {}", e);
-            let error_response = format!(r#"{{"error": "Internal Server Error"}}"#);
+            let error_response = r#"{"error": "Internal Server Error"}"#.to_string();
             let mut headers = HeaderMap::new();
             headers.insert(
                 header::CONTENT_TYPE,
