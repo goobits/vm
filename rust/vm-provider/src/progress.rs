@@ -2,7 +2,7 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use regex::Regex;
 use std::collections::HashMap;
 use std::io::{self, Write};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use tracing::info;
 use vm_cli::msg;
@@ -21,12 +21,13 @@ pub trait ProgressParser: Send + Sync {
 
 // --- Docker-specific Progress Parser --- //
 
+static STEP_REGEX: OnceLock<Regex> = OnceLock::new();
+static LAYER_PULL_REGEX: OnceLock<Regex> = OnceLock::new();
+
 /// A progress parser specifically for `docker build` output.
 pub struct DockerProgressParser {
     mp: Arc<MultiProgress>,
     main_bar: ProgressBar,
-    step_regex: Regex,
-    layer_pull_regex: Regex,
     total_steps: u32,
     current_step: u32,
     layer_bars: HashMap<String, ProgressBar>,
@@ -48,10 +49,6 @@ impl DockerProgressParser {
         Self {
             mp,
             main_bar,
-            step_regex: Regex::new(r"Step (\d+)/(\d+)")
-                .expect("Hardcoded Docker step regex pattern should always compile"),
-            layer_pull_regex: Regex::new(r"([a-f0-9]{12}): Pulling fs layer")
-                .expect("Hardcoded Docker layer pull regex pattern should always compile"),
             total_steps: 0,
             current_step: 0,
             layer_bars: HashMap::new(),
@@ -67,7 +64,12 @@ impl Default for DockerProgressParser {
 
 impl ProgressParser for DockerProgressParser {
     fn parse_line(&mut self, line: &str) {
-        if let Some(caps) = self.step_regex.captures(line) {
+        let step_re = STEP_REGEX.get_or_init(|| {
+            Regex::new(r"Step (\d+)/(\d+)")
+                .expect("Hardcoded Docker step regex pattern should always compile")
+        });
+
+        if let Some(caps) = step_re.captures(line) {
             let step: u32 = caps
                 .get(1)
                 .and_then(|m| m.as_str().parse().ok())
@@ -85,7 +87,12 @@ impl ProgressParser for DockerProgressParser {
             self.main_bar.set_message(line.trim().to_string());
         }
 
-        if let Some(caps) = self.layer_pull_regex.captures(line) {
+        let layer_re = LAYER_PULL_REGEX.get_or_init(|| {
+            Regex::new(r"([a-f0-9]{12}): Pulling fs layer")
+                .expect("Hardcoded Docker layer pull regex pattern should always compile")
+        });
+
+        if let Some(caps) = layer_re.captures(line) {
             if let Some(layer_id_match) = caps.get(1) {
                 let layer_id = layer_id_match.as_str().to_string();
                 if !self.layer_bars.contains_key(&layer_id) {
