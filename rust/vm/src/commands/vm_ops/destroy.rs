@@ -5,6 +5,7 @@
 
 use std::io::{self, Write};
 
+use dialoguer::{theme::ColorfulTheme, Select};
 use tracing::{debug, info_span};
 
 use crate::commands::db::utils::execute_psql_command;
@@ -150,36 +151,30 @@ pub async fn handle_destroy(
                 container = &target_container
             )
         );
-        vm_println!("Choose an option:");
-        vm_println!("  a) Destroy and preserve services");
-        vm_println!("  b) Destroy and remove services");
-        vm_println!("  c) Cancel");
-        let default_option = if preserve_services { "a" } else { "b" };
-        print!("Select [a/b/c] (default: {}): ", default_option);
-        io::stdout()
-            .flush()
-            .map_err(|e| VmError::general(e, "Failed to flush stdout"))?;
+        let options = &[
+            "Destroy and preserve services",
+            "Destroy and remove services",
+            "Cancel",
+        ];
+        let default_idx = if preserve_services { 0 } else { 1 };
 
-        let mut response = String::new();
-        io::stdin()
-            .read_line(&mut response)
-            .map_err(|e| VmError::general(e, "Failed to read user input"))?;
-        let choice = response.trim().to_lowercase();
-        let choice = if choice.is_empty() {
-            default_option.to_string()
-        } else {
-            choice
-        };
-        match choice.as_str() {
-            "a" | "preserve" => {
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Choose an option")
+            .items(options)
+            .default(default_idx)
+            .interact()
+            .map_err(|e| VmError::general(e, "Failed to read user selection"))?;
+
+        match selection {
+            0 => {
                 preserve_services = true;
                 true
             }
-            "b" | "remove" => {
+            1 => {
                 preserve_services = false;
                 true
             }
-            "c" | "cancel" => false,
+            2 => false,
             _ => false,
         }
     };

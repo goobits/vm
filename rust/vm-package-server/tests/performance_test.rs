@@ -1,7 +1,7 @@
+use reqwest::Client;
 use std::time::{Duration, Instant};
 use tokio::net::TcpListener;
 use vm_package_server::run_server_with_shutdown;
-use reqwest::Client;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[ignore]
@@ -37,7 +37,7 @@ async fn test_blocking_io_performance() {
     let data_dir_clone = data_dir.clone();
 
     println!("Starting server on port {}...", port);
-    let server_handle = tokio::spawn(async move {
+    let _server_handle = tokio::spawn(async move {
         run_server_with_shutdown("127.0.0.1".to_string(), port, data_dir_clone, Some(rx)).await
     });
 
@@ -47,7 +47,12 @@ async fn test_blocking_io_performance() {
 
     let mut retries = 0;
     loop {
-        if client.get(format!("{}/status", base_url)).send().await.is_ok() {
+        if client
+            .get(format!("{}/status", base_url))
+            .send()
+            .await
+            .is_ok()
+        {
             break;
         }
         if retries > 50 {
@@ -81,7 +86,10 @@ async fn test_blocking_io_performance() {
         let client = reqwest::blocking::Client::new();
         let start = Instant::now();
         // This request will hang if the server thread is blocked
-        let resp = client.get(health_url).send().expect("Failed to send health check");
+        let resp = client
+            .get(health_url)
+            .send()
+            .expect("Failed to send health check");
         let duration = start.elapsed();
         (resp.status(), duration)
     });
@@ -99,10 +107,16 @@ async fn test_blocking_io_performance() {
     println!("List packages took: {:?}", slow_duration);
 
     if slow_duration < Duration::from_millis(100) {
-        println!("Warning: Listing packages was too fast ({:?}) to measure blocking effectively.", slow_duration);
+        println!(
+            "Warning: Listing packages was too fast ({:?}) to measure blocking effectively.",
+            slow_duration
+        );
     }
 
-    assert!(duration < Duration::from_millis(500),
-            "Health check took too long: {:?}. Blocked by list_packages ({:?}).",
-            duration, slow_duration);
+    assert!(
+        duration < Duration::from_millis(500),
+        "Health check took too long: {:?}. Blocked by list_packages ({:?}).",
+        duration,
+        slow_duration
+    );
 }

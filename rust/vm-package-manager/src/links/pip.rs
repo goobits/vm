@@ -103,10 +103,10 @@ mod tests {
 
         // Detected packages
         let detections = vec![
-            ("requests".to_string(), "/lib/requests".to_string()),     // Exact match
+            ("requests".to_string(), "/lib/requests".to_string()), // Exact match
             ("my_package".to_string(), "/lib/my_package".to_string()), // Case + dash/underscore mismatch
             ("data-science".to_string(), "/lib/data-science".to_string()), // Case + underscore/dash mismatch
-            ("other".to_string(), "/lib/other".to_string()),           // No match
+            ("other".to_string(), "/lib/other".to_string()),               // No match
         ];
 
         let results = find_matching_packages(detections, &requested);
@@ -117,5 +117,4 @@ mod tests {
         assert!(found_names.contains("my_package"));
         assert!(found_names.contains("data-science"));
     }
-
 }

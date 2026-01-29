@@ -237,10 +237,9 @@ async fn health_handler() -> impl IntoResponse {
 async fn list_packages_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     // Pass data directory directly to avoid thread-unsafe directory changes
     let data_dir = state.data_dir.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        crate::local_storage::list_local_packages(&data_dir)
-    })
-    .await;
+    let result =
+        tokio::task::spawn_blocking(move || crate::local_storage::list_local_packages(&data_dir))
+            .await;
 
     match result {
         Ok(inner_result) => match inner_result {

@@ -142,7 +142,10 @@ impl ConfigValidator {
     fn validate_project(&self) -> Result<()> {
         if let Some(project) = &self.config.project {
             if let Some(name) = &project.name {
-                let is_valid = !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+                let is_valid = !name.is_empty()
+                    && name
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
                 if !is_valid {
                     vm_error!(
                         "Invalid project name: {}. Must contain only alphanumeric characters, dashes, and underscores",
@@ -155,7 +158,10 @@ impl ConfigValidator {
             }
 
             if let Some(hostname) = &project.hostname {
-                let is_valid = !hostname.is_empty() && hostname.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.');
+                let is_valid = !hostname.is_empty()
+                    && hostname
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.');
                 if !is_valid {
                     vm_error!("Invalid hostname: {}. Must be a valid hostname", hostname);
                     return Err(vm_core::error::VmError::Config(
@@ -299,18 +305,19 @@ impl ConfigValidator {
             return true;
         }
 
-        let mut parts = version.split('.');
-        let mut count = 0;
+        let parts: Vec<&str> = version.split('.').collect();
 
-        while let Some(part) = parts.next() {
-            count += 1;
-            if count > 3 { return false; } // Max 3 parts
+        if parts.len() < 2 || parts.len() > 3 {
+            return false; // Must have 2-3 parts (X.Y or X.Y.Z)
+        }
+
+        for part in parts {
             if part.is_empty() || !part.chars().all(|c| c.is_ascii_digit()) {
                 return false;
             }
         }
 
-        count >= 2 // Min 2 parts (X.Y)
+        true
     }
 
     fn validate_networking(&self) -> Result<()> {
@@ -332,11 +339,15 @@ impl ConfigValidator {
                 // and cannot start with a period or hyphen
                 // Regex was: ^[a-zA-Z0-9_][a-zA-Z0-9_\-\.]*$
 
-                let first_char_valid = network_name.chars().next()
+                let first_char_valid = network_name
+                    .chars()
+                    .next()
                     .map(|c| c.is_ascii_alphanumeric() || c == '_')
                     .unwrap_or(false);
 
-                let rest_valid = network_name.chars().skip(1)
+                let rest_valid = network_name
+                    .chars()
+                    .skip(1)
                     .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.');
 
                 if !first_char_valid || !rest_valid {

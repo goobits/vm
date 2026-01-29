@@ -710,13 +710,16 @@ impl<'a> ComposeOperations<'a> {
             })
             .collect();
 
-        // Always use `up -d` - it's idempotent and handles all cases:
+        // Always use `up -d --force-recreate` - handles all cases including orphaned containers:
         // - Creates containers that don't exist (removed)
         // - Starts stopped containers
-        // - Does nothing for already running containers
+        // - Recreates containers with name conflicts (orphaned from previous runs)
+        // - Does nothing problematic for already running containers (recreates cleanly)
         // Previous logic used `docker compose start` which fails for removed containers
+        // Added --force-recreate to handle "container name already in use" conflicts
         let _ = (container_exists, existing_services); // silence unused warnings
-        let (command, extra_args): (&str, Vec<String>) = ("up", vec!["-d".to_string()]);
+        let (command, extra_args): (&str, Vec<String>) =
+            ("up", vec!["-d".to_string(), "--force-recreate".to_string()]);
         // We need to convert Vec<String> to Vec<&str> for build_args
         let extra_args_refs: Vec<&str> = extra_args.iter().map(|s| s.as_str()).collect();
         let args = ComposeCommand::build_args(&compose_path, command, &extra_args_refs)?;
