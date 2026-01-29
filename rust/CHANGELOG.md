@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.7.0] - 2026-01-29
+
+### Added
+
+- **Fleet Commands**: Manage multiple VMs at once
+  - `vm fleet start/stop/status` for bulk operations
+  - Default targets running instances
+
+- **Tart Provider Improvements**: Better macOS VM support
+  - Tart profile in vm.yaml configuration
+  - Fixed exec command syntax for current Tart CLI
+
+- **Destroy UX Improvements**
+  - Interactive arrow-key selector replaces ABC text prompts
+  - `--remove-services` flag for explicit service cleanup
+
+### Fixed
+
+- **Container Conflicts**: `vm start` now handles orphaned containers with `--force-recreate`
+- Tart VM name resolution (uses project name without `-dev` suffix)
+- Tart status reporting returns proper errors when VM not found
+- Sudo home directory resolution and shell escaping
+- Startup verification reliability
+
+### Changed
+
+- Simplified presets to: `vibe`, `vibe-tart`, and `base` (removed language/framework presets)
+- Removed deprecated CLI commands: `env`, `profile`, `migration`
+- Removed deprecated `box_name` config field
+
+### Performance
+
+- Regex compilation optimized with `OnceLock` across codebase:
+  - DockerProgressParser, VersionSync, config validation
+  - Cargo/pip package detection and parsing
+- Package listing uses `spawn_blocking` to avoid blocking event loop
+- HashSet lookup for pip package matching
+- Manual parsing replaces regex in config validation
+
 ## [4.6.0] - 2025-12-23
 
 ### Added
@@ -195,7 +234,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Earlier releases. See git history for details.
 
-[Unreleased]: https://github.com/goobits/vm/compare/v4.6.0...HEAD
+[Unreleased]: https://github.com/goobits/vm/compare/v4.7.0...HEAD
+[4.7.0]: https://github.com/goobits/vm/compare/v4.6.0...v4.7.0
 [4.6.0]: https://github.com/goobits/vm/compare/v4.5.2...v4.6.0
 [4.5.2]: https://github.com/goobits/vm/compare/v4.5.1...v4.5.2
 [4.5.1]: https://github.com/goobits/vm/compare/v4.5.0...v4.5.1
