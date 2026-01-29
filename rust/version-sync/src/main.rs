@@ -2,7 +2,6 @@ use clap::{Parser, Subcommand};
 use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 use std::process;
 use tracing::{error, info};
 use vm_core::error::Result;
@@ -26,6 +25,9 @@ enum Command {
 struct VersionSync {
     project_root: PathBuf,
     package_version: String,
+    check_regexes: Vec<Regex>,
+    update_regex_toml: Regex,
+    update_regex_yaml: Regex,
 }
 
 impl VersionSync {
@@ -33,9 +35,21 @@ impl VersionSync {
         let project_root = Self::find_project_root()?;
         let package_version = Self::read_package_version(&project_root)?;
 
+        let check_regexes = vec![
+            Regex::new(r#"version\s*[:=]\s*"?([^"\s]+)"?"#).expect("Invalid regex"),
+            // Fallback for space-separated versions or looser patterns
+            Regex::new(r#"version.+?([0-9]+\.[0-9]+\.[0-9]+)"#).expect("Invalid regex"),
+        ];
+
+        let update_regex_toml = Regex::new(r#"version\s*=\s*"[^"]+""#).expect("Invalid regex");
+        let update_regex_yaml = Regex::new(r#"version:\s*"?[^"\s]+"?"#).expect("Invalid regex");
+
         Ok(Self {
             project_root,
             package_version,
+            check_regexes,
+            update_regex_toml,
+            update_regex_yaml,
         })
     }
 
@@ -92,16 +106,7 @@ impl VersionSync {
             vm_core::error::VmError::Internal(format!("Failed to read {}: {}", path.display(), e))
         })?;
 
-        static VERSION_REGEXES: OnceLock<Vec<Regex>> = OnceLock::new();
-        let version_regexes = VERSION_REGEXES.get_or_init(|| {
-            vec![
-                Regex::new(r#"version\s*[:=]\s*"?([^"\s]+)"?"#).expect("Invalid regex"),
-                // Fallback for space-separated versions or looser patterns
-                Regex::new(r#"version.+?([0-9]+\.[0-9]+\.[0-9]+)"#).expect("Invalid regex"),
-            ]
-        });
-
-        for regex in version_regexes {
+        for regex in &self.check_regexes {
             if let Some(captures) = regex.captures(&content) {
                 let current_version = captures.get(1).map(|m| m.as_str()).unwrap_or("unknown");
                 if current_version == self.package_version {
@@ -120,22 +125,13 @@ impl VersionSync {
             vm_core::error::VmError::Internal(format!("Failed to read {}: {}", path.display(), e))
         })?;
 
-        static VERSION_REGEX: OnceLock<Regex> = OnceLock::new();
-        let version_regex = VERSION_REGEX.get_or_init(|| {
-            Regex::new(r#"version\s*=\s*"[^"]+""#).expect("Invalid regex")
-        });
-        static YAML_VERSION_REGEX: OnceLock<Regex> = OnceLock::new();
-        let yaml_version_regex = YAML_VERSION_REGEX.get_or_init(|| {
-            Regex::new(r#"version:\s*"?[^"\s]+"?"#).expect("Invalid regex")
-        });
-
-        let updated = if version_regex.is_match(&content) {
-            version_regex.replace_all(
+        let updated = if self.update_regex_toml.is_match(&content) {
+            self.update_regex_toml.replace_all(
                 &content,
                 &format!(r#"version = "{}""#, self.package_version),
             )
         } else {
-            yaml_version_regex
+            self.update_regex_yaml
                 .replace_all(&content, &format!(r#"version: "{}""#, self.package_version))
         };
 
