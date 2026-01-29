@@ -1,7 +1,5 @@
 use crate::config::{BoxSpec, VmConfig};
-use regex::Regex;
 use std::collections::HashSet;
-use std::sync::OnceLock;
 use std::net::TcpListener;
 use std::path::PathBuf;
 use tracing::warn;
@@ -144,11 +142,8 @@ impl ConfigValidator {
     fn validate_project(&self) -> Result<()> {
         if let Some(project) = &self.config.project {
             if let Some(name) = &project.name {
-                static NAME_REGEX: OnceLock<Regex> = OnceLock::new();
-                let name_regex = NAME_REGEX.get_or_init(|| {
-                    Regex::new(r"^[a-zA-Z0-9\-_]+$").expect("Invalid regex pattern")
-                });
-                if !name_regex.is_match(name) {
+                let is_valid = !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+                if !is_valid {
                     vm_error!(
                         "Invalid project name: {}. Must contain only alphanumeric characters, dashes, and underscores",
                         name
@@ -160,11 +155,8 @@ impl ConfigValidator {
             }
 
             if let Some(hostname) = &project.hostname {
-                static HOSTNAME_REGEX: OnceLock<Regex> = OnceLock::new();
-                let hostname_regex = HOSTNAME_REGEX.get_or_init(|| {
-                    Regex::new(r"^[a-zA-Z0-9\-\.]+$").expect("Invalid regex pattern")
-                });
-                if !hostname_regex.is_match(hostname) {
+                let is_valid = !hostname.is_empty() && hostname.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.');
+                if !is_valid {
                     vm_error!("Invalid hostname: {}. Must be a valid hostname", hostname);
                     return Err(vm_core::error::VmError::Config(
                         "Invalid hostname".to_string(),
@@ -303,24 +295,26 @@ impl ConfigValidator {
     }
 
     fn is_valid_version(version: &str) -> bool {
-        static VERSION_REGEX: OnceLock<Regex> = OnceLock::new();
-        version == "latest"
-            || version == "lts"
-            || version.parse::<u32>().is_ok()
-            || VERSION_REGEX
-                .get_or_init(|| Regex::new(r"^\d+\.\d+(\.\d+)?$").expect("Invalid regex pattern"))
-                .is_match(version)
+        if version == "latest" || version == "lts" || version.parse::<u32>().is_ok() {
+            return true;
+        }
+
+        let mut parts = version.split('.');
+        let mut count = 0;
+
+        while let Some(part) = parts.next() {
+            count += 1;
+            if count > 3 { return false; } // Max 3 parts
+            if part.is_empty() || !part.chars().all(|c| c.is_ascii_digit()) {
+                return false;
+            }
+        }
+
+        count >= 2 // Min 2 parts (X.Y)
     }
 
     fn validate_networking(&self) -> Result<()> {
         if let Some(networking) = &self.config.networking {
-            // Docker network names must contain only alphanumeric, hyphens, underscores, and periods
-            // and cannot start with a period or hyphen
-            static NETWORK_REGEX: OnceLock<Regex> = OnceLock::new();
-            let network_regex = NETWORK_REGEX.get_or_init(|| {
-                Regex::new(r"^[a-zA-Z0-9_][a-zA-Z0-9_\-\.]*$").expect("Invalid regex pattern")
-            });
-
             for network_name in &networking.networks {
                 // Docker network names must be 1-64 characters
                 if network_name.is_empty() || network_name.len() > 64 {
@@ -334,7 +328,18 @@ impl ConfigValidator {
                     )));
                 }
 
-                if !network_regex.is_match(network_name) {
+                // Docker network names must contain only alphanumeric, hyphens, underscores, and periods
+                // and cannot start with a period or hyphen
+                // Regex was: ^[a-zA-Z0-9_][a-zA-Z0-9_\-\.]*$
+
+                let first_char_valid = network_name.chars().next()
+                    .map(|c| c.is_ascii_alphanumeric() || c == '_')
+                    .unwrap_or(false);
+
+                let rest_valid = network_name.chars().skip(1)
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.');
+
+                if !first_char_valid || !rest_valid {
                     vm_error!(
                         "Invalid network name '{}': must start with alphanumeric or underscore, and contain only alphanumeric, hyphens, underscores, and periods",
                         network_name
