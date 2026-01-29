@@ -112,12 +112,22 @@ impl SnapshotManager {
 }
 
 /// Handle the list subcommand
-pub async fn handle_list(project: Option<&str>, snapshot_type: Option<&str>) -> Result<()> {
+pub async fn handle_list(
+    project: Option<&str>,
+    snapshot_type: Option<&str>,
+    default_global_only: bool,
+) -> Result<()> {
     let manager = SnapshotManager::new()?;
     let mut snapshots = manager.list_snapshots(project)?;
 
     // Filter by type if specified
-    if let Some(filter_type) = snapshot_type {
+    let filter_type = if snapshot_type.is_none() && project.is_none() && default_global_only {
+        Some("base")
+    } else {
+        snapshot_type
+    };
+
+    if let Some(filter_type) = filter_type {
         snapshots.retain(|snapshot| {
             let is_base = snapshot.project_name == "global";
             match filter_type {

@@ -402,25 +402,9 @@ async fn handle_create_from_dockerfile(
         ));
     }
 
-    // Determine if this is a global snapshot (@name) or project-specific (name)
-    let is_global = name.starts_with('@');
-    let snapshot_name = if is_global {
-        name.trim_start_matches('@')
-    } else {
-        name
-    };
-
-    // Get project name once and reuse it
-    let project_name = std::env::current_dir()
-        .ok()
-        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
-        .unwrap_or_else(|| "default".to_string());
-
-    let project_scope = if is_global {
-        None
-    } else {
-        Some(project_name.as_str())
-    };
+    // Dockerfile snapshots are always global base images.
+    let snapshot_name = name.trim_start_matches('@');
+    let project_scope = None;
 
     // Check if snapshot already exists
     let manager = SnapshotManager::new()?;
@@ -429,11 +413,7 @@ async fn handle_create_from_dockerfile(
             vm_core::vm_println!("Removing existing snapshot '{}'...", snapshot_name);
             manager.delete_snapshot(project_scope, snapshot_name)?;
         } else {
-            let scope_desc = if is_global {
-                "global".to_string()
-            } else {
-                format!("project '{}'", project_name)
-            };
+            let scope_desc = "global".to_string();
             return Err(VmError::validation(
                 format!(
                     "Snapshot '{}' already exists for {}. Use --force to overwrite.",
@@ -445,11 +425,7 @@ async fn handle_create_from_dockerfile(
     }
 
     // Build the image tag
-    let image_tag = if is_global {
-        format!("vm-snapshot/global/{}:latest", snapshot_name)
-    } else {
-        format!("vm-snapshot/{}/{}:latest", project_name, snapshot_name)
-    };
+    let image_tag = format!("vm-snapshot/global/{}:latest", snapshot_name);
 
     vm_core::vm_println!("Building snapshot '{}' from Dockerfile...", name);
     if let Some(desc) = description {
@@ -559,11 +535,7 @@ async fn handle_create_from_dockerfile(
         name: snapshot_name.to_string(),
         created_at: Utc::now(),
         description: description.map(|s| s.to_string()),
-        project_name: if is_global {
-            "global".to_string()
-        } else {
-            project_name.clone()
-        },
+        project_name: "global".to_string(),
         project_dir: project_dir.to_string_lossy().to_string(),
         git_commit: None,
         git_dirty: false,
@@ -589,13 +561,8 @@ async fn handle_create_from_dockerfile(
     );
     vm_core::vm_println!("");
     vm_core::vm_println!("You can now use this snapshot in vm.yaml:");
-    if is_global {
-        vm_core::vm_println!("  vm:");
-        vm_core::vm_println!("    box: {}", name);
-    } else {
-        vm_core::vm_println!("  vm:");
-        vm_core::vm_println!("    box: @{}", snapshot_name);
-    }
+    vm_core::vm_println!("  vm:");
+    vm_core::vm_println!("    box: @{}", snapshot_name);
 
     Ok(())
 }

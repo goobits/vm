@@ -429,7 +429,7 @@ pub enum SnapshotSubcommand {
         /// Project name (auto-detected if omitted)
         #[arg(long)]
         project: Option<String>,
-        /// Build snapshot directly from a Dockerfile
+        /// Build snapshot directly from a Dockerfile (always global)
         #[arg(long, value_name = "PATH")]
         from_dockerfile: Option<PathBuf>,
         /// Build context directory for Dockerfile (defaults to current directory)
