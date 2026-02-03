@@ -38,4 +38,4 @@ base64 = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-axum-test = "18.1"
+axum-test = "18.2"
