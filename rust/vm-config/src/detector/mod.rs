@@ -37,6 +37,7 @@ use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::Path;
+use tracing::warn;
 use vm_core::error::{Result, VmError};
 use vm_core::file_system::{has_any_dir, has_any_file, has_file, has_file_containing};
 
@@ -327,19 +328,59 @@ pub fn detect_worktrees() -> Result<Vec<String>> {
 
     let mut worktree_paths = Vec::new();
     for entry in fs::read_dir(worktrees_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            let gitdir_path = path.join("gitdir");
-            if gitdir_path.is_file() {
-                let gitdir_content = fs::read_to_string(gitdir_path)?;
-                let worktree_path = std::path::PathBuf::from(gitdir_content.trim());
-                if let Some(parent_path) = worktree_path.parent() {
-                    let absolute_path = workspace_root.join(parent_path).canonicalize()?;
-                    worktree_paths.push(absolute_path.to_string_lossy().into_owned());
-                }
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(e) => {
+                warn!("Skipping unreadable worktree entry: {e}");
+                continue;
             }
+        };
+
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
         }
+
+        let gitdir_path = path.join("gitdir");
+        if !gitdir_path.is_file() {
+            continue;
+        }
+
+        let gitdir_content = match fs::read_to_string(&gitdir_path) {
+            Ok(content) => content,
+            Err(e) => {
+                warn!(
+                    "Skipping worktree with unreadable gitdir file '{}': {e}",
+                    gitdir_path.display()
+                );
+                continue;
+            }
+        };
+
+        let worktree_path = std::path::PathBuf::from(gitdir_content.trim());
+        let parent_path = match worktree_path.parent() {
+            Some(parent) => parent,
+            None => {
+                warn!(
+                    "Skipping worktree with invalid gitdir path '{}'",
+                    worktree_path.display()
+                );
+                continue;
+            }
+        };
+
+        let absolute_path = match workspace_root.join(parent_path).canonicalize() {
+            Ok(absolute_path) => absolute_path,
+            Err(e) => {
+                warn!(
+                    "Skipping worktree with invalid path '{}': {e}",
+                    parent_path.display()
+                );
+                continue;
+            }
+        };
+
+        worktree_paths.push(absolute_path.to_string_lossy().into_owned());
     }
 
     Ok(worktree_paths)

@@ -353,9 +353,10 @@ impl From<anyhow::Error> for VmError {
 /// Convert from std::io::Error to VmError
 impl From<std::io::Error> for VmError {
     fn from(err: std::io::Error) -> Self {
+        let context = err.to_string();
         VmError::General {
             source: Box::new(err),
-            context: "I/O error occurred".to_string(),
+            context,
         }
     }
 }
