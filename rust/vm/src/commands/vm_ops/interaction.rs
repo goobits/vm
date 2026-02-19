@@ -246,7 +246,9 @@ fn connect_ssh(
                         vm_println!("{}", msg!(MESSAGES.vm.ssh_creating, name = vm_name));
 
                         #[allow(clippy::excessive_nesting)]
-                        match provider.create() {
+                        match provider.create_with_context(
+                            &ProviderContext::default().preserve_services(true),
+                        ) {
                             Ok(()) => {
                                 vm_println!(
                                     "{}",

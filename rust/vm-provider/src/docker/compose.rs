@@ -697,34 +697,38 @@ impl<'a> ComposeOperations<'a> {
         let container_exists =
             DockerOps::container_exists(Some(self.executable), &container_name).unwrap_or(false);
 
-        // Check which service containers already exist
-        let expected_services = self.get_expected_service_containers();
-        let existing_services: Vec<String> = expected_services
-            .iter()
-            .filter_map(|svc| {
-                if DockerOps::container_exists(Some(self.executable), svc).unwrap_or(false) {
-                    Some(svc.clone())
-                } else {
-                    None
+        // If the dev container exists, start it directly to avoid compose name conflicts
+        // with preserved service containers (e.g., postgres).
+        if container_exists {
+            // Start any existing service containers (if stopped).
+            let expected_services = self.get_expected_service_containers();
+            for service in expected_services {
+                if !DockerOps::container_exists(Some(self.executable), &service).unwrap_or(false) {
+                    continue;
                 }
-            })
-            .collect();
+                let running = DockerOps::is_container_running(Some(self.executable), &service)
+                    .unwrap_or(false);
+                if running {
+                    continue;
+                }
+                DockerOps::start_container(Some(self.executable), &service)?;
+            }
 
-        // Always use `up -d --force-recreate` - handles all cases including orphaned containers:
-        // - Creates containers that don't exist (removed)
-        // - Starts stopped containers
-        // - Recreates containers with name conflicts (orphaned from previous runs)
-        // - Does nothing problematic for already running containers (recreates cleanly)
-        // Previous logic used `docker compose start` which fails for removed containers
-        // Added --force-recreate to handle "container name already in use" conflicts
-        let _ = (container_exists, existing_services); // silence unused warnings
-        let (command, extra_args): (&str, Vec<String>) =
-            ("up", vec!["-d".to_string(), "--force-recreate".to_string()]);
-        // We need to convert Vec<String> to Vec<&str> for build_args
+            // Start the dev container if it's not already running.
+            let dev_running =
+                DockerOps::is_container_running(Some(self.executable), &container_name)
+                    .unwrap_or(false);
+            if !dev_running {
+                DockerOps::start_container(Some(self.executable), &container_name)?;
+            }
+            return Ok(());
+        }
+
+        // No existing dev container. Fall back to compose up to create/start everything.
+        let (command, extra_args): (&str, Vec<String>) = ("up", vec!["-d".to_string()]);
         let extra_args_refs: Vec<&str> = extra_args.iter().map(|s| s.as_str()).collect();
         let args = ComposeCommand::build_args(&compose_path, command, &extra_args_refs)?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        // Use visible streaming for docker-compose up to show build progress
         stream_command_visible(self.executable, &args_refs).map_err(|e| {
             VmError::Internal(format!(
                 "Failed to start container using docker-compose: {e}"
