@@ -3,7 +3,7 @@ use super::LifecycleOperations;
 use crate::{
     audio::MacOSAudioManager,
     context::ProviderContext,
-    docker::{build::BuildOperations, compose::ComposeOperations, DockerOps},
+    docker::{compose::ComposeOperations, DockerOps},
 };
 use tracing::{info, warn};
 use vm_core::{
@@ -27,17 +27,7 @@ impl<'a> LifecycleOperations<'a> {
         _container: Option<&str>,
         context: &ProviderContext,
     ) -> Result<()> {
-        // Regenerate docker-compose.yml with latest global config
-        let build_ops = BuildOperations::new(self.config, self.temp_dir);
-        let (build_context, _base_image, _is_snapshot) = build_ops.prepare_build_context()?;
-
-        let compose_ops = ComposeOperations::new(
-            self.config,
-            self.temp_dir,
-            self.project_dir,
-            self.executable,
-        );
-        compose_ops.write_docker_compose(&build_context, context)?;
+        let compose_ops = self.regenerate_compose_with_context(context)?;
 
         // Use compose to start (handles both stopped containers and fresh starts)
         compose_ops.start_with_compose(context)
@@ -150,17 +140,7 @@ impl<'a> LifecycleOperations<'a> {
         container: Option<&str>,
         context: &ProviderContext,
     ) -> Result<()> {
-        // Regenerate docker-compose.yml with latest global config
-        let build_ops = BuildOperations::new(self.config, self.temp_dir);
-        let (build_context, _base_image, _is_snapshot) = build_ops.prepare_build_context()?;
-
-        let compose_ops = ComposeOperations::new(
-            self.config,
-            self.temp_dir,
-            self.project_dir,
-            self.executable,
-        );
-        compose_ops.write_docker_compose(&build_context, context)?;
+        let compose_ops = self.regenerate_compose_with_context(context)?;
 
         // Stop the container first
         self.stop_container(container)?;

@@ -1,6 +1,10 @@
 //! Helper utilities for lifecycle operations
 use super::LifecycleOperations;
 use crate::docker::command::DockerCommand;
+use crate::{
+    context::ProviderContext,
+    docker::{build::BuildOperations, compose::ComposeOperations},
+};
 use vm_core::error::{Result, VmError};
 use vm_core::vm_error_with_details;
 
@@ -258,5 +262,23 @@ impl<'a> LifecycleOperations<'a> {
                 Ok(matches[0].clone())
             }
         }
+    }
+
+    /// Regenerate docker-compose file with the latest context and return compose ops.
+    pub(super) fn regenerate_compose_with_context(
+        &self,
+        context: &ProviderContext,
+    ) -> Result<ComposeOperations<'a>> {
+        let build_ops = BuildOperations::new(self.config, self.temp_dir);
+        let (build_context, _base_image, _is_snapshot) = build_ops.prepare_build_context()?;
+
+        let compose_ops = ComposeOperations::new(
+            self.config,
+            self.temp_dir,
+            self.project_dir,
+            self.executable,
+        );
+        compose_ops.write_docker_compose(&build_context, context)?;
+        Ok(compose_ops)
     }
 }

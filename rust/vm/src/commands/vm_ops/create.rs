@@ -13,7 +13,7 @@ use vm_core::{get_cpu_core_count, get_total_memory_gb, vm_error, vm_println};
 use vm_messages::messages::MESSAGES;
 use vm_provider::{docker::DockerOps, Provider, ProviderContext};
 
-use super::helpers::register_vm_services_helper;
+use super::helpers::{print_vm_runtime_details, register_vm_services_helper};
 
 /// Auto-adjust resource allocation based on system availability
 fn auto_adjust_resources(config: &mut VmConfig) -> VmResult<()> {
@@ -307,62 +307,7 @@ pub async fn handle_create(
                 )
             );
 
-            // Show resources if available
-            if let Some(cpus) = config.vm.as_ref().and_then(|vm| vm.cpus.as_ref()) {
-                if let Some(memory) = config.vm.as_ref().and_then(|vm| vm.memory.as_ref()) {
-                    // Format CPU display
-                    let cpu_str = match cpus.to_count() {
-                        Some(count) => count.to_string(),
-                        None => "unlimited".to_string(),
-                    };
-                    // Format memory display
-                    let mem_str = match memory.to_mb() {
-                        Some(mb) if mb >= 1024 => format!("{}GB", mb / 1024),
-                        Some(mb) => format!("{mb}MB"),
-                        None => "unlimited".to_string(),
-                    };
-                    vm_println!(
-                        "{}",
-                        msg!(
-                            MESSAGES.common.resources_label,
-                            cpus = cpu_str,
-                            memory = mem_str
-                        )
-                    );
-                }
-            }
-
-            // Show services if any are configured
-            let services: Vec<String> = config
-                .services
-                .iter()
-                .filter(|(_, svc)| svc.enabled)
-                .map(|(name, _)| name.clone())
-                .collect();
-
-            if !services.is_empty() {
-                vm_println!(
-                    "{}",
-                    msg!(
-                        MESSAGES.common.services_label,
-                        services = services.join(", ")
-                    )
-                );
-            }
-
-            // Show port range
-            if let Some(range) = &config.ports.range {
-                if range.len() == 2 {
-                    vm_println!(
-                        "{}",
-                        msg!(
-                            MESSAGES.common.ports_label,
-                            start = range[0].to_string(),
-                            end = range[1].to_string()
-                        )
-                    );
-                }
-            }
+            print_vm_runtime_details(&config, true);
 
             // Services were already registered before container creation
             if is_first_vm {

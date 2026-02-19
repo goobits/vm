@@ -85,3 +85,62 @@ pub(super) async fn unregister_vm_services_helper(
     }
     Ok(())
 }
+
+/// Print VM resource/services/ports details in a consistent format.
+pub(super) fn print_vm_runtime_details(config: &VmConfig, include_ports: bool) {
+    // Show resources if available
+    if let Some(cpus) = config.vm.as_ref().and_then(|vm| vm.cpus.as_ref()) {
+        if let Some(memory) = config.vm.as_ref().and_then(|vm| vm.memory.as_ref()) {
+            let cpu_str = match cpus.to_count() {
+                Some(count) => count.to_string(),
+                None => "unlimited".to_string(),
+            };
+            let mem_str = match memory.to_mb() {
+                Some(mb) if mb >= 1024 => format!("{}GB", mb / 1024),
+                Some(mb) => format!("{mb}MB"),
+                None => "unlimited".to_string(),
+            };
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.common.resources_label,
+                    cpus = cpu_str,
+                    memory = mem_str
+                )
+            );
+        }
+    }
+
+    // Show services if any are configured
+    let services: Vec<String> = config
+        .services
+        .iter()
+        .filter(|(_, svc)| svc.enabled)
+        .map(|(name, _)| name.clone())
+        .collect();
+
+    if !services.is_empty() {
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.common.services_label,
+                services = services.join(", ")
+            )
+        );
+    }
+
+    if include_ports {
+        if let Some(range) = &config.ports.range {
+            if range.len() == 2 {
+                vm_println!(
+                    "{}",
+                    msg!(
+                        MESSAGES.common.ports_label,
+                        start = range[0].to_string(),
+                        end = range[1].to_string()
+                    )
+                );
+            }
+        }
+    }
+}
