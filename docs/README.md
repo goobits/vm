@@ -2,6 +2,8 @@
 
 Complete documentation for the VM development environment tool.
 
+Source of truth: all documentation is authored under `docs/`.
+
 ---
 
 ## New User? Start Here

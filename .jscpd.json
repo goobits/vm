@@ -5,6 +5,7 @@
     "**/target/**",
     "**/node_modules/**",
     "**/.git/**",
+    "**/.svelte-kit/**",
     "**/dist/**",
     "**/build/**",
     "**/*.lock",

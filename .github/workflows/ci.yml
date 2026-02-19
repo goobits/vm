@@ -79,4 +79,4 @@ jobs:
         run: cargo deny check advisories
 
       - name: Check for duplicates
-        run: jscpd rust/ --min-lines 10 --min-tokens 50 --ignore "**/*.json,**/Cargo.lock,**/target/**"
+        run: jscpd -c .jscpd.json rust/

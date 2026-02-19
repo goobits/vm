@@ -11,7 +11,7 @@ echo -e "${GREEN}Running duplicate code detection and complexity analysis...${NC
 
 # Run jscpd (duplicate detection)
 echo -e "${YELLOW}=== jscpd: Duplicate Code Detection ===${NC}"
-jscpd rust/
+jscpd -c .jscpd.json rust/
 echo ""
 
 # Run rust-code-analysis (complexity metrics)
