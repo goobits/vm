@@ -47,7 +47,7 @@ impl<'a> LifecycleOperations<'a> {
         // Check if container is running before showing connection details
         // Use a quick docker inspect to check status (suppress errors)
         let status_check = duct::cmd(
-            "docker",
+            self.executable,
             &["inspect", "--format", "{{.State.Running}}", &container_name],
         )
         .stderr_null()
@@ -69,7 +69,7 @@ impl<'a> LifecycleOperations<'a> {
         }
 
         // First check if container exists to provide better error messages
-        let container_exists = duct::cmd("docker", &["inspect", &container_name])
+        let container_exists = duct::cmd(self.executable, &["inspect", &container_name])
             .stdout_null()
             .stderr_null()
             .run()
@@ -101,7 +101,7 @@ impl<'a> LifecycleOperations<'a> {
 
         // Container is running, proceed with exec
         let result = duct::cmd(
-            "docker",
+            self.executable,
             &[
                 "exec",
                 tty_flag,
@@ -253,7 +253,7 @@ impl<'a> LifecycleOperations<'a> {
         };
 
         // Check if container exists
-        let check = std::process::Command::new("docker")
+        let check = std::process::Command::new(self.executable)
             .args(["inspect", container])
             .output();
 

@@ -3,6 +3,7 @@
 use tracing::debug;
 
 use crate::error::VmResult;
+use vm_core::error::VmError;
 use vm_provider::InstanceInfo;
 
 /// Resolve instances across providers with optional filtering.
@@ -54,6 +55,7 @@ pub fn get_all_instances() -> VmResult<Vec<InstanceInfo>> {
     use vm_provider::get_provider;
 
     let mut all_instances = Vec::new();
+    let mut provider_errors = Vec::new();
     let providers = ["docker", "podman", "tart"];
 
     for provider_name in providers {
@@ -77,12 +79,21 @@ pub fn get_all_instances() -> VmResult<Vec<InstanceInfo>> {
                         "Failed to list instances from {} provider: {}",
                         provider_name, e
                     );
+                    provider_errors.push(format!("{provider_name}: {e}"));
                 }
             },
             Err(e) => {
                 debug!("Provider {} not available: {}", provider_name, e);
             }
         }
+    }
+
+    if all_instances.is_empty() && !provider_errors.is_empty() {
+        return Err(VmError::Internal(format!(
+            "Failed to list VM instances from any provider:\n{}",
+            provider_errors.join("\n")
+        ))
+        .into());
     }
 
     Ok(all_instances)
@@ -113,12 +124,20 @@ pub fn get_instances_from_provider(provider_name: &str) -> VmResult<Vec<Instance
                     "Failed to list instances from {} provider: {}",
                     provider_name, e
                 );
-                Ok(Vec::new())
+                Err(VmError::Internal(format!(
+                    "Failed to list instances from provider '{}': {}",
+                    provider_name, e
+                ))
+                .into())
             }
         },
         Err(e) => {
             debug!("Provider {} not available: {}", provider_name, e);
-            Ok(Vec::new())
+            Err(VmError::Internal(format!(
+                "Provider '{}' is not available: {}",
+                provider_name, e
+            ))
+            .into())
         }
     }
 }

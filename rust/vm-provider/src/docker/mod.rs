@@ -469,7 +469,7 @@ impl Provider for DockerProvider {
         use crate::common::instance::create_docker_instance_info;
 
         // Use label-based filtering to find all vm-managed containers
-        let output = std::process::Command::new("docker")
+        let output = std::process::Command::new(&self.executable)
             .args([
                 "ps",
                 "-a",
@@ -479,11 +479,17 @@ impl Provider for DockerProvider {
                 "{{.Names}}\t{{.ID}}\t{{.Status}}\t{{.CreatedAt}}\t{{.RunningFor}}\t{{.Label \"com.vm.project\"}}",
             ])
             .output()
-            .map_err(|e| VmError::Internal(format!("Failed to list containers with vm label: {e}")))?;
+            .map_err(|e| {
+                VmError::Internal(format!(
+                    "Failed to list containers with vm label using '{}': {}",
+                    self.executable, e
+                ))
+            })?;
 
         if !output.status.success() {
             return Err(VmError::Internal(format!(
-                "Docker container listing failed: {}",
+                "Docker container listing failed using '{}': {}",
+                self.executable,
                 String::from_utf8_lossy(&output.stderr)
             )));
         }

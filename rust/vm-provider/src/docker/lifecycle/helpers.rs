@@ -185,14 +185,25 @@ impl<'a> LifecycleOperations<'a> {
             .output()
             .map_err(|e| {
                 VmError::Internal(format!(
-                    "Failed to list containers for name resolution. Docker may not be running or accessible: {e}"
+                    "Failed to list containers for name resolution using '{}': {}",
+                    self.executable, e
                 ))
             })?;
 
         if !output.status.success() {
-            return Err(VmError::Internal(
-                "Docker container listing failed during name resolution. Check Docker daemon status".to_string()
-            ));
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let details = if !stderr.is_empty() {
+                stderr
+            } else if !stdout.is_empty() {
+                stdout
+            } else {
+                "command returned no output".to_string()
+            };
+            return Err(VmError::Internal(format!(
+                "Container listing failed during name resolution with '{} ps -a --format ...': {}",
+                self.executable, details
+            )));
         }
 
         let containers_output = String::from_utf8_lossy(&output.stdout);
