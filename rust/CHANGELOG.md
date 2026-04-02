@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.7.1] - 2026-04-02
+
+### Fixed
+
+- Dockerfile snapshot operations now default to global snapshots, avoiding project-scoped mismatches
+- VM startup handles stale Git worktrees more cleanly and surfaces underlying I/O errors
+- Docker provider errors include clearer diagnostics when listing containers and related resources fails
+
+### Changed
+
+- Reduced duplicate `vm status` output and unnecessary compose regeneration during status checks
+
 ## [4.7.0] - 2026-01-29
 
 ### Added
@@ -234,7 +246,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Earlier releases. See git history for details.
 
-[Unreleased]: https://github.com/goobits/vm/compare/v4.7.0...HEAD
+[Unreleased]: https://github.com/goobits/vm/compare/v4.7.1...HEAD
+[4.7.1]: https://github.com/goobits/vm/compare/v4.7.0...v4.7.1
 [4.7.0]: https://github.com/goobits/vm/compare/v4.6.0...v4.7.0
 [4.6.0]: https://github.com/goobits/vm/compare/v4.5.2...v4.6.0
 [4.5.2]: https://github.com/goobits/vm/compare/v4.5.1...v4.5.2

@@ -1,4 +1,5 @@
 {
+  "version": "4.7.1",
   "devDependencies": {
     "@playwright/test": "^1.56.1"
   }
