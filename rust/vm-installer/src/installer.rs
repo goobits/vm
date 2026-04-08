@@ -1,6 +1,8 @@
 // Standard library
 use std::env;
 use std::fs;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -28,6 +30,154 @@ pub fn install(clean: bool) -> Result<()> {
     create_symlink(&source_binary, &bin_dir)?;
     install_plugins(&project_root)?;
     platform::ensure_path(&bin_dir)?;
+    install_shell_completion(&bin_dir)?;
+
+    Ok(())
+}
+
+fn install_shell_completion(bin_dir: &Path) -> Result<()> {
+    let shell = env::var("SHELL").unwrap_or_default();
+    let shell_name = shell.split('/').next_back().unwrap_or_default();
+
+    if shell_name.is_empty() {
+        vm_warning!("Shell completion not installed: could not detect current shell");
+        return Ok(());
+    }
+
+    let vm_binary = bin_dir.join(vm_platform::platform::executable_name("vm"));
+    if !vm_binary.exists() {
+        vm_warning!(
+            "Shell completion not installed: VM binary not found at {}",
+            vm_binary.display()
+        );
+        return Ok(());
+    }
+
+    let home_dir = user_paths::home_dir()?;
+
+    let completion_setup = match shell_name {
+        "bash" => Some((
+            "bash",
+            home_dir.join(".vm-completion.bash"),
+            Some(home_dir.join(".bashrc")),
+            Some("source ~/.vm-completion.bash"),
+        )),
+        "zsh" => Some((
+            "zsh",
+            home_dir.join(".vm-completion.zsh"),
+            Some(home_dir.join(".zshrc")),
+            Some("source ~/.vm-completion.zsh"),
+        )),
+        "fish" => Some((
+            "fish",
+            home_dir.join(".config/fish/completions/vm.fish"),
+            None,
+            None,
+        )),
+        "pwsh" | "powershell" => {
+            let profile_path = user_paths::documents_dir()?
+                .join("PowerShell")
+                .join("Microsoft.PowerShell_profile.ps1");
+            Some((
+                "powershell",
+                profile_path.with_file_name("vm-completion.ps1"),
+                Some(profile_path),
+                Some(". \"$HOME/Documents/PowerShell/vm-completion.ps1\""),
+            ))
+        }
+        _ => None,
+    };
+
+    let Some((completion_shell, completion_path, profile_path, source_line)) = completion_setup
+    else {
+        vm_warning!(
+            "Shell completion not installed automatically for unsupported shell '{}'",
+            shell_name
+        );
+        return Ok(());
+    };
+
+    if let Some(parent) = completion_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| {
+            vm_core::error::VmError::Internal(format!(
+                "Failed to create completion directory {}: {e}",
+                parent.display()
+            ))
+        })?;
+    }
+
+    let completion_file = fs::File::create(&completion_path).map_err(|e| {
+        vm_core::error::VmError::Internal(format!(
+            "Failed to create completion file {}: {e}",
+            completion_path.display()
+        ))
+    })?;
+
+    let status = Command::new(&vm_binary)
+        .args(["internal-completion", completion_shell])
+        .stdout(Stdio::from(completion_file))
+        .stderr(Stdio::inherit())
+        .status()
+        .map_err(|e| {
+            vm_core::error::VmError::Internal(format!(
+                "Failed to generate shell completion for {}: {e}",
+                completion_shell
+            ))
+        })?;
+
+    if !status.success() {
+        vm_warning!(
+            "Shell completion generation exited with code {}",
+            status.code().unwrap_or(-1)
+        );
+        return Ok(());
+    }
+
+    if let (Some(profile_path), Some(source_line)) = (profile_path, source_line) {
+        append_line_if_missing(&profile_path, source_line)?;
+    }
+
+    vm_success!(
+        "Shell completion installed for {} at {}",
+        shell_name,
+        completion_path.display()
+    );
+
+    Ok(())
+}
+
+fn append_line_if_missing(profile_path: &Path, line: &str) -> Result<()> {
+    if let Some(parent) = profile_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| {
+            vm_core::error::VmError::Internal(format!(
+                "Failed to create shell profile directory {}: {e}",
+                parent.display()
+            ))
+        })?;
+    }
+
+    let existing = fs::read_to_string(profile_path).unwrap_or_default();
+    if existing.contains(line) {
+        return Ok(());
+    }
+
+    let mut file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(profile_path)
+        .map_err(|e| {
+            vm_core::error::VmError::Internal(format!(
+                "Failed to open shell profile {}: {e}",
+                profile_path.display()
+            ))
+        })?;
+
+    writeln!(file, "\n# Added by VM tool installer\n{line}").map_err(|e| {
+        vm_core::error::VmError::Internal(format!(
+            "Failed to update shell profile {}: {e}",
+            profile_path.display()
+        ))
+    })?;
 
     Ok(())
 }
@@ -451,5 +601,18 @@ mod tests {
 
         // Test that the target directory path is constructed correctly
         assert!(target_dir.to_string_lossy().contains(platform));
+    }
+
+    #[test]
+    fn test_append_line_if_missing_is_idempotent() {
+        let temp_dir = tempdir().expect("Failed to create temp directory");
+        let profile = temp_dir.path().join(".bashrc");
+        let line = "source ~/.vm-completion.bash";
+
+        append_line_if_missing(&profile, line).expect("Should append source line");
+        append_line_if_missing(&profile, line).expect("Should avoid duplicate source line");
+
+        let content = fs::read_to_string(&profile).expect("Should read profile");
+        assert_eq!(content.matches(line).count(), 1);
     }
 }

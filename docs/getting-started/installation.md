@@ -206,59 +206,7 @@ echo 'export VM_TOOL_DIR=/path/to/vm' >> ~/.zshrc
 
 ## Shell Completion
 
-Enable tab completion for the `vm` command in your shell.
-
-:::tabs
-
-== Bash
-
-```bash
-# Generate completion script
-vm completion bash > ~/.vm-completion.bash
-
-# Add to your ~/.bashrc
-echo 'source ~/.vm-completion.bash' >> ~/.bashrc
-
-# Reload shell
-source ~/.bashrc
-```
-
-== Zsh
-
-```bash
-# Generate completion script
-vm completion zsh > ~/.vm-completion.zsh
-
-# Add to your ~/.zshrc
-echo 'source ~/.vm-completion.zsh' >> ~/.zshrc
-
-# Reload shell
-source ~/.zshrc
-```
-
-== Fish
-
-```bash
-# Generate and install completion
-vm completion fish > ~/.config/fish/completions/vm.fish
-
-# Fish will automatically load completions on next shell start
-```
-
-== PowerShell
-
-```powershell
-# Generate completion script
-vm completion powershell > $PROFILE\..\vm-completion.ps1
-
-# Add to your PowerShell profile
-Add-Content $PROFILE ". $PROFILE\..\vm-completion.ps1"
-
-# Reload profile
-. $PROFILE
-```
-
-:::
+The installer attempts to install tab completion automatically for your current shell. For `bash` and `zsh`, it also updates your shell profile to source the generated completion file.
 
 :::tip Test Completion
 After setup, verify it works: Type `vm st` and press Tab → it should complete to `vm start`

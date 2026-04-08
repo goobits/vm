@@ -105,9 +105,9 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             debug!("Calling snapshot operations");
             snapshot::handle_snapshot(command.clone(), args.config, args.profile.clone()).await
         }
-        Command::Completion { shell } => {
+        Command::InternalCompletion { shell } => {
             debug!("Generating shell completions for: {}", shell);
-            handle_completion(shell)
+            handle_internal_completion(shell)
         }
         _ => {
             // Provider-based commands
@@ -458,7 +458,7 @@ fn handle_plugin_command(command: &PluginSubcommand) -> VmResult<()> {
     }
 }
 
-fn handle_completion(shell: &str) -> VmResult<()> {
+fn handle_internal_completion(shell: &str) -> VmResult<()> {
     use clap::CommandFactory;
     use clap_complete::{generate, shells};
     use std::io;

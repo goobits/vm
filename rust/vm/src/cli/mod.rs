@@ -727,8 +727,8 @@ pub enum Command {
         command: FleetSubcommand,
     },
 
-    /// Generate shell completion scripts
-    Completion {
+    #[command(hide = true)]
+    InternalCompletion {
         /// Shell type (bash, zsh, fish, powershell)
         shell: String,
     },

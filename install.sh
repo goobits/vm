@@ -920,6 +920,73 @@ configure_path_safely() {
     return 0
 }
 
+install_shell_completion() {
+    local vm_binary=""
+    local completion_path=""
+    local source_line=""
+
+    log_info "Installing shell completion for $SHELL_TYPE..."
+
+    if command_exists vm; then
+        vm_binary="$(command -v vm)"
+    elif [[ -x "$HOME/.local/bin/vm" ]]; then
+        vm_binary="$HOME/.local/bin/vm"
+    fi
+
+    if [[ -z "$vm_binary" ]]; then
+        log_warning "Skipping shell completion installation: vm binary not found"
+        return 0
+    fi
+
+    case "$SHELL_TYPE" in
+        bash)
+            completion_path="$HOME/.vm-completion.bash"
+            source_line="source ~/.vm-completion.bash"
+            ;;
+        zsh)
+            completion_path="$HOME/.vm-completion.zsh"
+            source_line="source ~/.vm-completion.zsh"
+            ;;
+        fish)
+            completion_path="$HOME/.config/fish/completions/vm.fish"
+            ;;
+        *)
+            log_warning "Skipping shell completion installation for unsupported shell: $SHELL_TYPE"
+            return 0
+            ;;
+    esac
+
+    mkdir -p "$(dirname "$completion_path")" || {
+        log_warning "Failed to create completion directory for $completion_path"
+        return 0
+    }
+
+    if ! "$vm_binary" internal-completion "$SHELL_TYPE" > "$completion_path"; then
+        log_warning "Failed to generate shell completion for $SHELL_TYPE"
+        return 0
+    fi
+
+    if [[ -n "$source_line" ]]; then
+        if [[ ! -f "$SHELL_CONFIG" ]]; then
+            touch "$SHELL_CONFIG" || {
+                log_warning "Failed to update $SHELL_CONFIG with completion source line"
+                return 0
+            }
+        fi
+
+        if ! grep -Fq "$source_line" "$SHELL_CONFIG" 2>/dev/null; then
+            {
+                echo ""
+                echo "# Added by VM installer v$SCRIPT_VERSION"
+                echo "$source_line"
+            } >> "$SHELL_CONFIG"
+        fi
+    fi
+
+    log_success "Shell completion installed at $completion_path"
+    return 0
+}
+
 # ============================================================================
 # VM Installation Functions
 # ============================================================================
@@ -1243,13 +1310,17 @@ main() {
     configure_path_safely
     echo ""
 
-    # Step 4: Verify installation
+    # Step 4: Install shell completion
+    install_shell_completion
+    echo ""
+
+    # Step 5: Verify installation
     if ! verify_installation; then
         log_warning "Installation completed with warnings"
         log_info "Please check the log file: $LOG_FILE"
     fi
 
-    # Step 5: Success message
+    # Step 6: Success message
     echo ""
     echo -e "${GREEN}═══════════════════════════════════════════${NC}"
     echo -e "${GREEN}🎉 Installation completed successfully!${NC}"

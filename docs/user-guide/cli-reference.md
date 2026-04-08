@@ -33,7 +33,6 @@ All `vm` commands with usage examples and expected output. Use this as a referen
 | **System** | |
 | Health check | `vm doctor` |
 | Update vm tool | `vm update` |
-| Generate completion | `vm completion <shell>` |
 
 ---
 
