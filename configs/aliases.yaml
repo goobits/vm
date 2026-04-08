@@ -48,7 +48,7 @@ npm_packages:
 cargo_packages: []
 aliases:
   yoclaude: claude --dangerously-skip-permissions
-  yogemini: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo
+  yogemini: NO_BROWSER=true GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo
   hello: echo 'Hello from alias'
   ll: ls -la
   testcmd: echo 'Test command executed'

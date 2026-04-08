@@ -50,7 +50,7 @@ npm_packages:
 cargo_packages: []
 aliases:
   yoclaude: claude --dangerously-skip-permissions
-  yogemini: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo
+  yogemini: NO_BROWSER=true GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo
 environment:
   NODE_ENV: development
   DISPLAY: :99

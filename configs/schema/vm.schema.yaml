@@ -436,7 +436,7 @@ properties:
     description: Custom shell aliases
     default:
       yoclaude: claude --dangerously-skip-permissions
-      yogemini: GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo
+      yogemini: NO_BROWSER=true GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo
     additionalProperties:
       type: string
     examples:
