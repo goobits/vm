@@ -10,6 +10,14 @@ use vm_core::{vm_error, vm_println};
 use vm_messages::messages::MESSAGES;
 use vm_provider::get_provider;
 
+const ZSH_COMPLETION_PRELUDE: &str = r#"# Ensure compdef is available when this file is sourced directly from .zshrc.
+if [[ -n ${ZSH_VERSION:-} && -z ${functions[compdef]+x} ]]; then
+  autoload -Uz compinit
+  compinit -i
+fi
+
+"#;
+
 // Individual command modules
 pub mod clean;
 pub mod config;
@@ -461,25 +469,27 @@ fn handle_plugin_command(command: &PluginSubcommand) -> VmResult<()> {
 fn handle_internal_completion(shell: &str) -> VmResult<()> {
     use clap::CommandFactory;
     use clap_complete::{generate, shells};
-    use std::io;
+    use std::io::{self, Write};
 
     let mut cmd = crate::cli::Args::command();
+    let mut stdout = io::stdout();
 
     match shell.to_lowercase().as_str() {
         "bash" => {
-            generate(shells::Bash, &mut cmd, "vm", &mut io::stdout());
+            generate(shells::Bash, &mut cmd, "vm", &mut stdout);
             Ok(())
         }
         "zsh" => {
-            generate(shells::Zsh, &mut cmd, "vm", &mut io::stdout());
+            stdout.write_all(ZSH_COMPLETION_PRELUDE.as_bytes())?;
+            generate(shells::Zsh, &mut cmd, "vm", &mut stdout);
             Ok(())
         }
         "fish" => {
-            generate(shells::Fish, &mut cmd, "vm", &mut io::stdout());
+            generate(shells::Fish, &mut cmd, "vm", &mut stdout);
             Ok(())
         }
         "powershell" => {
-            generate(shells::PowerShell, &mut cmd, "vm", &mut io::stdout());
+            generate(shells::PowerShell, &mut cmd, "vm", &mut stdout);
             Ok(())
         }
         _ => {
@@ -495,5 +505,17 @@ fn handle_internal_completion(shell: &str) -> VmResult<()> {
                 ),
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ZSH_COMPLETION_PRELUDE;
+
+    #[test]
+    fn zsh_completion_prelude_initializes_compdef_for_direct_sourcing() {
+        assert!(ZSH_COMPLETION_PRELUDE.contains("${functions[compdef]+x}"));
+        assert!(ZSH_COMPLETION_PRELUDE.contains("autoload -Uz compinit"));
+        assert!(ZSH_COMPLETION_PRELUDE.contains("compinit -i"));
     }
 }

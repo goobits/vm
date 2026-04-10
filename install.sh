@@ -927,10 +927,12 @@ install_shell_completion() {
 
     log_info "Installing shell completion for $SHELL_TYPE..."
 
-    if command_exists vm; then
-        vm_binary="$(command -v vm)"
-    elif [[ -x "$HOME/.local/bin/vm" ]]; then
+    if [[ -x "$HOME/.local/bin/vm" ]]; then
         vm_binary="$HOME/.local/bin/vm"
+    elif [[ -x "$HOME/.cargo/bin/vm" ]]; then
+        vm_binary="$HOME/.cargo/bin/vm"
+    elif command_exists vm; then
+        vm_binary="$(command -v vm)"
     fi
 
     if [[ -z "$vm_binary" ]]; then
@@ -964,6 +966,24 @@ install_shell_completion() {
     if ! "$vm_binary" internal-completion "$SHELL_TYPE" > "$completion_path"; then
         log_warning "Failed to generate shell completion for $SHELL_TYPE"
         return 0
+    fi
+
+    if [[ "$SHELL_TYPE" == "zsh" ]] && ! grep -Fq '${functions[compdef]+x}' "$completion_path" 2>/dev/null; then
+        local completion_tmp
+        completion_tmp=$(mktemp) || {
+            log_warning "Failed to create temporary zsh completion file"
+            return 0
+        }
+        {
+            echo "# Ensure compdef is available when this file is sourced directly from .zshrc."
+            echo 'if [[ -n ${ZSH_VERSION:-} && -z ${functions[compdef]+x} ]]; then'
+            echo "  autoload -Uz compinit"
+            echo "  compinit -i"
+            echo "fi"
+            echo ""
+            cat "$completion_path"
+        } > "$completion_tmp" && mv "$completion_tmp" "$completion_path"
+        rm -f "$completion_tmp"
     fi
 
     if [[ -n "$source_line" ]]; then
