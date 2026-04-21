@@ -87,6 +87,8 @@
         set_fact:
             project_name: "{{ project_config.project.name | default('project') }}"
             project_user: '{{ project_config.vm.user | default(default_user) }}'
+            project_uid: '{{ lookup("env", "HOST_UID") | default(ansible_user_uid, true) }}'
+            project_gid: '{{ lookup("env", "HOST_GID") | default(ansible_user_gid, true) }}'
             project_path: '{{ project_config.project.workspace_path | default(default_workspace) }}'
             project_hostname: "{{ project_config.project.hostname | default('dev.' + (project_config.project.name | default('project')) + '.local') }}"
             terminal_emoji: "{{ project_config.terminal.emoji | default('🚀') }}"
@@ -114,8 +116,8 @@
       - name: Ensure project user exists with correct UID/GID
         user:
             name: '{{ project_user }}'
-            uid: '{{ lookup("env", "HOST_UID") | default(ansible_user_uid, true) }}'
-            gid: '{{ lookup("env", "HOST_GID") | default(ansible_user_gid, true) }}'
+            uid: '{{ project_uid }}'
+            gid: '{{ project_gid }}'
             home: '/home/{{ project_user }}'
             shell: /bin/bash
             create_home: yes
@@ -128,8 +130,8 @@
         file:
             path: '/home/{{ project_user }}'
             state: directory
-            owner: '{{ project_user }}'
-            group: '{{ project_user }}'
+            owner: '{{ project_uid }}'
+            group: '{{ project_gid }}'
             mode: '0755'
         become: yes
         when: ansible_facts['user_id'] == 0
@@ -137,8 +139,8 @@
       - name: Fix home directory permissions
         file:
             path: '/home/{{ project_user }}'
-            owner: '{{ project_user }}'
-            group: '{{ project_user }}'
+            owner: '{{ project_uid }}'
+            group: '{{ project_gid }}'
             recurse: yes
         when: ansible_facts['user_id'] == 0
         become: yes
@@ -385,14 +387,14 @@
             dest: /tmp/install_nvm.sh
             mode: '0755'
         become_user: '{{ project_user }}'
-        when: "{{ nodejs_required and not nvm_present.stat.exists | bool }}"
+        when: nodejs_required and not nvm_present.stat.exists | bool
 
       - name: Install NVM
         shell: /tmp/install_nvm.sh
         args:
             creates: '/home/{{ project_user }}/.nvm/nvm.sh'
         become_user: '{{ project_user }}'
-        when: "{{ nodejs_required and not nvm_present.stat.exists | bool }}"
+        when: nodejs_required and not nvm_present.stat.exists | bool
 
       # Change default shell to zsh (skip if pre-provisioned in snapshot)
       - name: Change user shell to zsh
@@ -439,22 +441,20 @@
             {% else %}
             sed -i '/^__HAS_PIP__/d' /home/{{ project_user }}/.zshrc
             {% endif %}
-            chown {{ project_user }}:{{ project_user }} /home/{{ project_user }}/.zshrc
+            chown {{ project_uid }}:{{ project_gid }} /home/{{ project_user }}/.zshrc
             chmod 0644 /home/{{ project_user }}/.zshrc
         become_user: root
         when: "lookup('env', 'VM_FAST_PROVISION') == '1'"
-        no_log: true
 
       - name: Generate .zshrc from template (traditional)
         template:
             src: /app/shared/templates/zshrc.j2
             dest: '/home/{{ project_user }}/.zshrc'
-            owner: '{{ project_user }}'
-            group: '{{ project_user }}'
+            owner: '{{ project_uid }}'
+            group: '{{ project_gid }}'
             mode: '0644'
         become_user: root
         when: "lookup('env', 'VM_FAST_PROVISION') != '1'"
-        no_log: true
 
       - name: Install Node.js
         shell: |

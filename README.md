@@ -114,7 +114,7 @@ cargo install goobits-vm  # Installs 'vm' binary
 # Clone the repository and run the install script
 git clone https://github.com/goobits/vm.git
 cd vm
-./install.sh --build-from-source
+./install.sh
 ```
 
 **2. Initialize and Start**

@@ -4,7 +4,9 @@ use vm_cli::msg;
 use vm_core::{vm_error, vm_println, vm_success, vm_warning};
 use vm_messages::messages::MESSAGES;
 
-pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> {
+const CARGO_PACKAGE_NAME: &str = "goobits-vm";
+
+pub fn handle_update(version: Option<&str>, _force: bool) -> Result<(), VmError> {
     // Get current version
     let current_version = env!("CARGO_PKG_VERSION");
 
@@ -30,13 +32,19 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
         .map(|path| path.contains(".cargo"))
         .unwrap_or(false);
 
-    if is_cargo_install && version.is_none() && !force {
-        // For cargo installs without specific version, use cargo
+    if is_cargo_install {
+        // Cargo installs should update through cargo so the installed package stays consistent.
         vm_println!("{}", MESSAGES.vm.update_via_cargo);
 
-        let output = Command::new("cargo")
-            .args(["install", "vm", "--force"])
-            .output()?;
+        let mut cargo_args = vec!["install".to_string(), CARGO_PACKAGE_NAME.to_string()];
+        if let Some(version) = version {
+            cargo_args.push("--version".to_string());
+            cargo_args.push(normalize_cargo_version(version));
+        }
+        cargo_args.push("--locked".to_string());
+        cargo_args.push("--force".to_string());
+
+        let output = Command::new("cargo").args(&cargo_args).output()?;
 
         if output.status.success() {
             vm_success!("{}", MESSAGES.vm.update_cargo_success);
@@ -218,6 +226,10 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
     }
 
     Ok(())
+}
+
+fn normalize_cargo_version(version: &str) -> String {
+    version.strip_prefix('v').unwrap_or(version).to_string()
 }
 
 fn detect_target() -> String {

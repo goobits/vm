@@ -1,6 +1,7 @@
 //! Container provisioning orchestration
 use super::LifecycleOperations;
 use crate::context::ProviderContext;
+use crate::docker::UserConfig;
 use crate::progress::{AnsibleProgressParser, ProgressParser};
 use vm_core::command_stream::{
     stream_command_with_progress_and_timeout, ProgressParser as CoreProgressParser,
@@ -44,79 +45,90 @@ impl<'a> LifecycleOperations<'a> {
     /// - NPM cache (.npm)
     /// - General config directories (.config, .cache)
     /// - Shell history (.shell_history)
-    fn fix_home_ownership(executable: &str, container_name: &str) -> Result<()> {
+    fn fix_home_ownership(
+        executable: &str,
+        container_name: &str,
+        user_config: &UserConfig,
+    ) -> Result<()> {
         use std::process::Command;
+
+        let home_dir = format!("/home/{}", user_config.username);
 
         // Comprehensive permission fix for all directories that may be affected
         // by UID/GID mismatch between snapshot and current host
         //
         // This is the single authoritative place for permission fixes.
         // When adding new cache directories, add them here.
-        let fix_cmd = r#"
+        let fix_cmd = format!(
+            r#"
             # Fix home directory and common dotfiles
-            chown developer:developer /home/developer 2>/dev/null || true
-            chown developer:developer /home/developer/.zshrc /home/developer/.bashrc /home/developer/.profile 2>/dev/null || true
+            chown {uid}:{gid} {home} 2>/dev/null || true
+            chown {uid}:{gid} {home}/.zshrc {home}/.bashrc {home}/.profile 2>/dev/null || true
 
             # Fix NVM (Node.js version manager)
-            if [ -d /home/developer/.nvm ]; then
-                chown -R developer:developer /home/developer/.nvm 2>/dev/null || true
+            if [ -d {home}/.nvm ]; then
+                chown -R {uid}:{gid} {home}/.nvm 2>/dev/null || true
             fi
 
             # Fix Cargo/Rust
-            if [ -d /home/developer/.cargo ]; then
-                chown -R developer:developer /home/developer/.cargo 2>/dev/null || true
+            if [ -d {home}/.cargo ]; then
+                chown -R {uid}:{gid} {home}/.cargo 2>/dev/null || true
             fi
-            if [ -d /home/developer/.rustup ]; then
-                chown -R developer:developer /home/developer/.rustup 2>/dev/null || true
+            if [ -d {home}/.rustup ]; then
+                chown -R {uid}:{gid} {home}/.rustup 2>/dev/null || true
             fi
 
             # Fix NPM cache
-            if [ -d /home/developer/.npm ]; then
-                chown -R developer:developer /home/developer/.npm 2>/dev/null || true
+            if [ -d {home}/.npm ]; then
+                chown -R {uid}:{gid} {home}/.npm 2>/dev/null || true
             fi
 
             # Fix pip/Python cache
-            if [ -d /home/developer/.cache ]; then
-                chown -R developer:developer /home/developer/.cache 2>/dev/null || true
+            if [ -d {home}/.cache ]; then
+                chown -R {uid}:{gid} {home}/.cache 2>/dev/null || true
             fi
 
             # Fix local binaries and packages
-            if [ -d /home/developer/.local ]; then
-                chown -R developer:developer /home/developer/.local 2>/dev/null || true
+            if [ -d {home}/.local ]; then
+                chown -R {uid}:{gid} {home}/.local 2>/dev/null || true
             fi
 
             # Fix config directory
-            if [ -d /home/developer/.config ]; then
-                chown -R developer:developer /home/developer/.config 2>/dev/null || true
+            if [ -d {home}/.config ]; then
+                chown -R {uid}:{gid} {home}/.config 2>/dev/null || true
             fi
 
             # Fix shell history
-            if [ -d /home/developer/.shell_history ]; then
-                chown -R developer:developer /home/developer/.shell_history 2>/dev/null || true
+            if [ -d {home}/.shell_history ]; then
+                chown -R {uid}:{gid} {home}/.shell_history 2>/dev/null || true
             fi
 
             # Fix Claude and Gemini CLI directories
-            if [ -d /home/developer/.claude ]; then
-                chown -R developer:developer /home/developer/.claude 2>/dev/null || true
+            if [ -d {home}/.claude ]; then
+                chown -R {uid}:{gid} {home}/.claude 2>/dev/null || true
             fi
-            if [ -d /home/developer/.gemini ]; then
-                chown -R developer:developer /home/developer/.gemini 2>/dev/null || true
+            if [ -d {home}/.gemini ]; then
+                chown -R {uid}:{gid} {home}/.gemini 2>/dev/null || true
             fi
-            if [ -d /home/developer/.codex ]; then
-                chown -R developer:developer /home/developer/.codex 2>/dev/null || true
+            if [ -d {home}/.codex ]; then
+                chown -R {uid}:{gid} {home}/.codex 2>/dev/null || true
             fi
-            if [ -d /home/developer/.cursor ]; then
-                chown -R developer:developer /home/developer/.cursor 2>/dev/null || true
+            if [ -d {home}/.cursor ]; then
+                chown -R {uid}:{gid} {home}/.cursor 2>/dev/null || true
             fi
-            if [ -d /home/developer/.aider ]; then
-                chown -R developer:developer /home/developer/.aider 2>/dev/null || true
+            if [ -d {home}/.aider ]; then
+                chown -R {uid}:{gid} {home}/.aider 2>/dev/null || true
             fi
 
             echo "Permissions fixed"
-        "#;
+        "#,
+            uid = user_config.uid,
+            gid = user_config.gid,
+            home = home_dir,
+        );
 
         let output = Command::new(executable)
-            .args(["exec", "-u", "root", container_name, "bash", "-c", fix_cmd])
+            .args(["exec", "-u", "root", container_name, "bash", "-c", &fix_cmd])
             .output()
             .map_err(|e| VmError::Internal(format!("Failed to fix home ownership: {e}")))?;
 
@@ -285,7 +297,8 @@ impl<'a> LifecycleOperations<'a> {
 
         // Fix home directory ownership for snapshot-based containers (one-time, fast)
         // This ensures tools like nvm, cargo work regardless of host UID
-        Self::fix_home_ownership(self.executable, &container_name)?;
+        let user_config = UserConfig::from_vm_config(self.config);
+        Self::fix_home_ownership(self.executable, &container_name, &user_config)?;
 
         self.prepare_and_copy_config()?;
 
@@ -310,7 +323,8 @@ impl<'a> LifecycleOperations<'a> {
 
         // Fix home directory ownership for snapshot-based containers (one-time, fast)
         // This ensures tools like nvm, cargo work regardless of host UID
-        Self::fix_home_ownership(self.executable, &container_name)?;
+        let user_config = UserConfig::from_vm_config(self.config);
+        Self::fix_home_ownership(self.executable, &container_name, &user_config)?;
 
         self.prepare_and_copy_config()?;
 

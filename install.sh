@@ -61,8 +61,7 @@ SHELL_CONFIG=""
 SHELL_TYPE=""  # bash, zsh, fish, etc.
 
 # Installation options (parsed from arguments)
-INSTALL_MODE="binary"  # binary or source
-INSTALL_VERSION="latest"
+INSTALL_MODE="source"
 INSTALLER_ARGS=()
 
 # ============================================================================
@@ -255,231 +254,6 @@ detect_shell_config() {
     esac
 
     log_success "Shell: $CURRENT_SHELL (config: $(basename "$SHELL_CONFIG"))"
-}
-
-# ============================================================================
-# Binary Download and Installation
-# ============================================================================
-
-download_and_verify_binary() {
-    local download_url="$1"
-    local output_file="$2"
-    local checksum_url="$3"
-
-    log_info "Downloading binary from $download_url..."
-
-    if ! timeout "$TIMEOUT_SECONDS" curl \
-        --proto '=https' \
-        --tlsv1.2 \
-        --silent \
-        --show-error \
-        --fail \
-        --location \
-        --output "$output_file" \
-        "$download_url"; then
-
-        handle_error $ERR_NETWORK_TIMEOUT \
-            "Failed to download binary" \
-            "Check your internet connection and try again"
-    fi
-
-    # Verify checksum if available
-    if [[ -n "$checksum_url" ]]; then
-        log_info "Downloading and verifying checksum..."
-
-        local checksum_file
-        checksum_file=$(mktemp)
-        trap "rm -f '$checksum_file'" EXIT
-
-        if timeout "$TIMEOUT_SECONDS" curl \
-            --proto '=https' \
-            --tlsv1.2 \
-            --silent \
-            --fail \
-            --location \
-            --output "$checksum_file" \
-            "$checksum_url"; then
-
-            # Extract expected hash for our file
-            local expected_hash
-            local filename
-            filename=$(basename "$output_file")
-            expected_hash=$(grep "$filename" "$checksum_file" 2>/dev/null | cut -d' ' -f1)
-
-            if [[ -n "$expected_hash" ]]; then
-                # Calculate actual hash
-                local actual_hash
-                if command_exists sha256sum; then
-                    actual_hash=$(sha256sum "$output_file" | cut -d' ' -f1)
-                elif command_exists shasum; then
-                    actual_hash=$(shasum -a 256 "$output_file" | cut -d' ' -f1)
-                elif command_exists openssl; then
-                    actual_hash=$(openssl dgst -sha256 "$output_file" | cut -d' ' -f2)
-                fi
-
-                if [[ "$expected_hash" == "$actual_hash" ]]; then
-                    log_success "SHA256 checksum verification passed"
-                else
-                    handle_error $ERR_VERIFICATION_FAILED \
-                        "Checksum verification failed" \
-                        "The download may be corrupted"
-                fi
-            else
-                log_warning "Could not find checksum for $filename in checksum file"
-            fi
-        else
-            log_warning "Could not download checksum file, skipping verification"
-        fi
-
-        trap - EXIT
-        rm -f "$checksum_file"
-    fi
-
-    # Verify file size
-    local file_size
-    file_size=$(stat -f%z "$output_file" 2>/dev/null || stat -c%s "$output_file" 2>/dev/null || echo "0")
-
-    if [[ "$file_size" -lt 1000000 ]]; then  # Expect at least 1MB
-        handle_error $ERR_VERIFICATION_FAILED \
-            "Downloaded file too small ($file_size bytes)" \
-            "The download may have failed"
-    fi
-
-    log_success "Binary downloaded successfully ($file_size bytes)"
-}
-
-install_from_release() {
-    log_info "Installing pre-compiled binary from GitHub release..."
-
-    # Determine target triple for download
-    local target_arch
-    case "$ARCH" in
-        x86_64) target_arch="x86_64" ;;
-        aarch64|arm64) target_arch="aarch64" ;;
-        *) handle_error $ERR_PLATFORM_DETECT "Unsupported architecture: $ARCH" ;;
-    esac
-
-    local target_os
-    case "$OS_TYPE" in
-        macos) target_os="apple-darwin" ;;
-        *) target_os="unknown-linux-gnu" ;;  # Assuming Linux for others
-    esac
-
-    local target_triple="${target_arch}-${target_os}"
-    log_info "Detected target: $target_triple"
-
-    # Fetch release info from GitHub API
-    local api_url
-    if [[ "$INSTALL_VERSION" == "latest" ]]; then
-        api_url="https://api.github.com/repos/${REPO_URL#*github.com/}/releases/latest"
-    else
-        api_url="https://api.github.com/repos/${REPO_URL#*github.com/}/releases/tags/${INSTALL_VERSION}"
-    fi
-
-    log_info "Fetching release info from GitHub..."
-
-    local release_info
-    release_info=$(mktemp)
-    trap "rm -f '$release_info'" EXIT
-
-    if ! timeout "$TIMEOUT_SECONDS" curl \
-        --proto '=https' \
-        --tlsv1.2 \
-        --silent \
-        --fail \
-        --location \
-        --header "Accept: application/vnd.github.v3+json" \
-        --output "$release_info" \
-        "$api_url"; then
-
-        # Simple, clean error for missing releases
-        echo ""
-        echo -e "${RED}❌ No pre-built binary available${NC}"
-        echo ""
-        echo -e "${BLUE}Run this instead:${NC}"
-        echo -e "  ${GREEN}./install.sh --build-from-source${NC}"
-        echo ""
-        exit $ERR_NETWORK_TIMEOUT
-    fi
-
-    # Extract download URL for our platform
-    local asset_url
-    local checksum_url
-
-    # For compressed archives (.tar.gz or .zip)
-    if [[ "$OS_TYPE" == "macos" ]] || [[ "$target_os" == "unknown-linux-gnu" ]]; then
-        # Unix systems use tar.gz
-        asset_url=$(grep "browser_download_url.*vm-${target_triple}\.tar\.gz" "$release_info" | head -1 | cut -d '"' -f 4)
-        checksum_url=$(grep "browser_download_url.*vm-${target_triple}\.tar\.gz\.sha256" "$release_info" | head -1 | cut -d '"' -f 4)
-    else
-        # Windows would use .zip
-        asset_url=$(grep "browser_download_url.*vm-${target_triple}\.zip" "$release_info" | head -1 | cut -d '"' -f 4)
-        checksum_url=$(grep "browser_download_url.*vm-${target_triple}\.zip\.sha256" "$release_info" | head -1 | cut -d '"' -f 4)
-    fi
-
-    if [[ -z "$asset_url" ]]; then
-        handle_error $ERR_NETWORK_TIMEOUT \
-            "Could not find a download URL for platform: $target_triple" \
-            "Check available releases at ${REPO_URL}/releases"
-    fi
-
-    # Download binary archive
-    local temp_archive
-    temp_archive=$(mktemp)
-    trap "rm -f '$temp_archive' '$release_info'" EXIT
-
-    download_and_verify_binary "$asset_url" "$temp_archive" "$checksum_url"
-
-    # Extract binary
-    log_info "Extracting binary..."
-    local temp_dir
-    temp_dir=$(mktemp -d)
-    trap "rm -rf '$temp_dir' '$temp_archive' '$release_info'" EXIT
-
-    if [[ "$asset_url" == *.tar.gz ]]; then
-        tar -xzf "$temp_archive" -C "$temp_dir" || handle_error $ERR_INSTALL_FAILED \
-            "Failed to extract archive" \
-            "Archive may be corrupted"
-    elif [[ "$asset_url" == *.zip ]]; then
-        unzip -q "$temp_archive" -d "$temp_dir" || handle_error $ERR_INSTALL_FAILED \
-            "Failed to extract archive" \
-            "Archive may be corrupted"
-    fi
-
-    # Find the vm binary
-    local vm_binary="$temp_dir/vm-${target_triple}"
-    if [[ ! -f "$vm_binary" ]]; then
-        # Try without the triple suffix
-        vm_binary="$temp_dir/vm"
-    fi
-
-    if [[ ! -f "$vm_binary" ]]; then
-        handle_error $ERR_INSTALL_FAILED \
-            "Binary not found in archive" \
-            "Archive structure may be unexpected"
-    fi
-
-    # Install the binary
-    local install_dir="$HOME/.cargo/bin"
-
-    # Create install directory if it doesn't exist
-    mkdir -p "$install_dir" || handle_error $ERR_PERMISSION_DENIED \
-        "Failed to create install directory" \
-        "Check permissions for $install_dir"
-
-    log_info "Installing to $install_dir/vm..."
-    mv "$vm_binary" "$install_dir/vm" || handle_error $ERR_INSTALL_FAILED \
-        "Failed to install binary" \
-        "Check permissions for $install_dir"
-
-    chmod +x "$install_dir/vm" || handle_error $ERR_PERMISSION_DENIED \
-        "Failed to make binary executable" \
-        "Check file permissions"
-
-    trap - EXIT
-    rm -rf "$temp_dir" "$temp_archive" "$release_info"
-
-    log_success "vm installed successfully to $install_dir/vm"
 }
 
 # ============================================================================
@@ -1193,11 +967,7 @@ verify_installation() {
 
     # Check 5: Installation mode
     ((checks_total++))
-    if [[ "$INSTALL_MODE" == "binary" ]]; then
-        log_success "Installed from pre-compiled binary"
-    else
-        log_success "Built from source"
-    fi
+    log_success "Built from source"
     ((checks_passed++))
 
     # Report results
@@ -1219,17 +989,20 @@ verify_installation() {
 # ============================================================================
 
 parse_arguments() {
-    for arg in "$@"; do
-        case "$arg" in
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
             --build-from-source)
-                INSTALL_MODE="source"
-                log_info "Will build from source instead of downloading binary"
+                log_info "Building from source (default mode)"
                 ;;
             --version)
-                # Get next argument as version
-                shift
-                INSTALL_VERSION="${1:-latest}"
-                log_info "Will install version: $INSTALL_VERSION"
+                local requested_version="${2:-}"
+                if [[ -z "$requested_version" ]] || [[ "$requested_version" == --* ]]; then
+                    echo "error: --version requires an argument" >&2
+                    exit $ERR_INSTALL_FAILED
+                fi
+                echo "error: versioned installs are not supported by this source installer." >&2
+                echo "use 'cargo install goobits-vm --version ${requested_version#v} --locked' or check out tag '$requested_version' and rerun ./install.sh." >&2
+                exit $ERR_INSTALL_FAILED
                 ;;
             --help|-h)
                 show_help
@@ -1240,9 +1013,10 @@ parse_arguments() {
                 exit 0
                 ;;
             *)
-                INSTALLER_ARGS+=("$arg")
+                INSTALLER_ARGS+=("$1")
                 ;;
         esac
+        shift
     done
 }
 
@@ -1254,8 +1028,7 @@ Usage:
   $SCRIPT_NAME [OPTIONS]
 
 Options:
-  --version VERSION      Install specific version (default: latest)
-  --build-from-source    Build from source instead of downloading binary
+  --build-from-source    Legacy alias; source install is the default
   --help, -h             Show this help message
   -v                     Show installer version information
 
@@ -1263,13 +1036,10 @@ Environment Variables:
   CARGO_HOME             Override installation directory (default: ~/.cargo)
 
 Examples:
-  # Install latest version
+  # Install from source
   ./$SCRIPT_NAME
 
-  # Install specific version
-  ./$SCRIPT_NAME --version v1.2.3
-
-  # Build from source (requires Rust)
+  # Legacy source-install alias
   ./$SCRIPT_NAME --build-from-source
 
 For more information, visit: $REPO_URL
@@ -1305,7 +1075,7 @@ main() {
     check_docker_is_running
     echo ""
 
-    # Step 3: Always build from source
+    # Step 3: Build from source
     log_info "Building from source..."
 
     # Install Rust if needed

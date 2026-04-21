@@ -259,3 +259,24 @@ fn test_zshrc_template_and_fast_template_have_similar_structure() {
         );
     }
 }
+
+#[test]
+fn test_zshrc_template_avoids_optional_service_dereferences() {
+    let jinja_template = vm_provider::ZSHRC_TEMPLATE;
+
+    let unsafe_paths = [
+        "project_config.services.redis.port",
+        "project_config.services.mongodb.port",
+        "project_config.services.mysql.port",
+        "project_config.services.headless_browser.display",
+        "project_config.services.headless_browser.executable_path",
+    ];
+
+    for path in &unsafe_paths {
+        assert!(
+            !jinja_template.contains(path),
+            "Jinja template should not directly dereference optional service path: {}",
+            path
+        );
+    }
+}
