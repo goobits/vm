@@ -114,6 +114,9 @@ vm config preset vibe-tart
 # set profiles.tart.vm.box to vibe-tart-base in vm.yaml
 # and start with:
 vm --profile tart start
+
+# Or run the combined validation helper:
+./scripts/validate-vibe-providers.sh
 ```
 
 ## Ubuntu/Debian Installation

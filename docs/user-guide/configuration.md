@@ -757,6 +757,12 @@ profiles:
       box: vibe-tart-base
 ```
 
+To validate the shared Docker/Tart workflow in the current project:
+
+```bash
+./scripts/validate-vibe-providers.sh
+```
+
 ### Box Configuration
 
 The `vm.box` field specifies what to use as the base environment. It works across all providers with smart detection:

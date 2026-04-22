@@ -30,6 +30,9 @@ vm config preset vibe-tart
 # Optional but recommended on Apple Silicon:
 ./scripts/build-vibe-tart-base.sh
 # then set profiles.tart.vm.box to vibe-tart-base in vm.yaml
+
+# Validate both providers from the same repo:
+./scripts/validate-vibe-providers.sh
 ```
 
 ### base
