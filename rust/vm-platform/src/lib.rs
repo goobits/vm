@@ -87,11 +87,39 @@ pub mod platform {
 mod tests {
     use super::*;
     use std::env;
+    use std::sync::{Mutex, MutexGuard};
     use tempfile::TempDir;
+
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
+
+    struct EnvGuard {
+        _guard: MutexGuard<'static, ()>,
+        home: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn new() -> Self {
+            Self {
+                _guard: TEST_MUTEX
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()),
+                home: env::var("HOME").ok(),
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.home {
+                Some(original) => env::set_var("HOME", original),
+                None => env::remove_var("HOME"),
+            }
+        }
+    }
 
     #[test]
     fn test_platform_respects_home_env() {
-        let original_home = env::var("HOME").ok();
+        let _guard = EnvGuard::new();
 
         // Create a temporary directory for testing
         let temp_dir = TempDir::new().expect("should create temp dir");
@@ -108,11 +136,5 @@ mod tests {
         // Test that home_dir() returns the test HOME
         let home = platform::home_dir().expect("should get home dir");
         assert_eq!(home, test_home);
-
-        // Restore original HOME
-        match original_home {
-            Some(original) => env::set_var("HOME", original),
-            None => env::remove_var("HOME"),
-        }
     }
 }

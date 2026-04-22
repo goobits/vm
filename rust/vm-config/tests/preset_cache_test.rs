@@ -1,3 +1,4 @@
+use serial_test::serial;
 use std::path::PathBuf;
 use tempfile::TempDir;
 use vm_config::preset::PresetDetector;
@@ -15,6 +16,7 @@ fn setup_detector() -> (TempDir, PresetDetector) {
 }
 
 #[test]
+#[serial]
 fn test_preset_caching_basic() {
     clear_preset_cache();
 
@@ -45,6 +47,7 @@ fn test_preset_caching_basic() {
 }
 
 #[test]
+#[serial]
 fn test_list_presets_caching() {
     clear_preset_cache();
 
@@ -69,6 +72,7 @@ fn test_list_presets_caching() {
 }
 
 #[test]
+#[serial]
 fn test_cache_invalidation() {
     clear_preset_cache();
 
@@ -94,6 +98,7 @@ fn test_cache_invalidation() {
 }
 
 #[test]
+#[serial]
 fn test_multiple_presets_cached() {
     clear_preset_cache();
 
@@ -120,6 +125,7 @@ fn test_multiple_presets_cached() {
 }
 
 #[test]
+#[serial]
 fn test_cache_clear_functionality() {
     clear_preset_cache();
     let stats = get_cache_stats();
@@ -128,6 +134,7 @@ fn test_cache_clear_functionality() {
 }
 
 #[test]
+#[serial]
 fn test_cache_with_detector_methods() {
     clear_preset_cache();
 

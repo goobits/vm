@@ -67,16 +67,10 @@ fn test_vm_auth_help_excludes_start_stop() -> Result<()> {
 }
 
 #[test]
-fn test_vm_registry_help_excludes_start_stop() -> Result<()> {
+fn test_main_help_excludes_manual_registry_management() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
 
     let fixture = CliTestFixture::new()?;
-
-    // Test that registry command no longer exists (auto-managed design)
-    let output = fixture.run_vm_command(&["registry", "--help"]);
-
-    // The registry command should no longer exist at all
-    assert!(output.is_err() || !output.unwrap().status.success());
 
     // Verify that the main help doesn't include registry commands
     let help_output = fixture.run_vm_command(&["--help"])?;
@@ -177,7 +171,6 @@ fn test_registry_start_command_no_longer_exists() -> Result<()> {
     Ok(())
 }
 
-#[test]
 fn is_docker_running() -> bool {
     Command::new("docker")
         .arg("info")

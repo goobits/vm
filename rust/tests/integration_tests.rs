@@ -1,6 +1,7 @@
 // Standard library
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{Mutex, MutexGuard};
 
 // External crates
 use anyhow::Result;
@@ -12,18 +13,25 @@ use vm_config::detector::{detect_project_type, format_detected_types};
 use vm_config::ports::{PortRegistry, PortRange};
 use vm_temp::{StateManager, TempVmState};
 
+static TEST_MUTEX: Mutex<()> = Mutex::new(());
+
 /// Cross-crate integration test fixture
 struct CrossCrateTestFixture {
+    _guard: MutexGuard<'static, ()>,
     _temp_dir: TempDir,
     test_dir: PathBuf,
     project_dir: PathBuf,
     config_dir: PathBuf,
     original_home: Option<String>,
     original_vm_tool_dir: Option<String>,
+    original_cwd: PathBuf,
 }
 
 impl CrossCrateTestFixture {
     fn new() -> Result<Self> {
+        let guard = TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let temp_dir = TempDir::new()?;
         let test_dir = temp_dir.path().to_path_buf();
         let project_dir = test_dir.join("project");
@@ -35,17 +43,20 @@ impl CrossCrateTestFixture {
         // Save and set environment variables
         let original_home = std::env::var("HOME").ok();
         let original_vm_tool_dir = std::env::var("VM_TOOL_DIR").ok();
+        let original_cwd = std::env::current_dir()?;
 
         std::env::set_var("HOME", &test_dir);
         std::env::set_var("VM_TOOL_DIR", &test_dir);
 
         Ok(Self {
+            _guard: guard,
             _temp_dir: temp_dir,
             test_dir,
             project_dir,
             config_dir,
             original_home,
             original_vm_tool_dir,
+            original_cwd,
         })
     }
 
@@ -76,6 +87,8 @@ impl CrossCrateTestFixture {
 
 impl Drop for CrossCrateTestFixture {
     fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.original_cwd);
+
         // Restore environment variables
         if let Some(home) = &self.original_home {
             std::env::set_var("HOME", home);

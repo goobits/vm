@@ -45,21 +45,6 @@ impl RegistryTestFixture {
         let stderr = String::from_utf8_lossy(&output.stderr);
         format!("{}{}", stdout, stderr)
     }
-
-    fn is_registry_running(&self) -> bool {
-        Command::new("curl")
-            .args([
-                "-s",
-                "-o",
-                "/dev/null",
-                "-w",
-                "%{http_code}",
-                "http://localhost:3080/health",
-            ])
-            .output()
-            .map(|output| output.stdout == b"200")
-            .unwrap_or(false)
-    }
 }
 
 #[test]
@@ -163,18 +148,15 @@ fn test_registry_auto_managed_design() -> Result<()> {
     assert!(output.is_err() || !output.unwrap().status.success());
 
     let output = fixture.run_registry_command(&["status"]);
-    match output {
-        Ok(output) => {
-            if output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                assert!(
-                    stdout.contains("automatically managed")
-                        || stdout.contains("service manager")
-                        || stdout.contains("Package Registry Status")
-                );
-            }
+    if let Ok(output) = output {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(
+                stdout.contains("automatically managed")
+                    || stdout.contains("service manager")
+                    || stdout.contains("Package Registry Status")
+            );
         }
-        Err(_) => {}
     }
 
     Ok(())

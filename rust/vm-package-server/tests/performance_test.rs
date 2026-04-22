@@ -37,7 +37,7 @@ async fn test_blocking_io_performance() {
     let data_dir_clone = data_dir.clone();
 
     println!("Starting server on port {}...", port);
-    let _server_handle = tokio::spawn(async move {
+    let server_handle = tokio::spawn(async move {
         run_server_with_shutdown("127.0.0.1".to_string(), port, data_dir_clone, Some(rx)).await
     });
 
@@ -100,6 +100,7 @@ async fn test_blocking_io_performance() {
 
     // 4. Cleanup
     tx.send(()).unwrap();
+    let _ = server_handle.await;
 
     // 5. Assertions
     println!("Health check took: {:?}", duration);

@@ -152,7 +152,47 @@ pub fn detect_platform_string() -> String {
 mod tests {
     use super::*;
     use std::env;
+    use std::sync::{Mutex, MutexGuard};
     use tempfile::tempdir;
+
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
+
+    struct EnvGuard {
+        _guard: MutexGuard<'static, ()>,
+        home: Option<String>,
+        shell: Option<String>,
+        path: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn new() -> Self {
+            Self {
+                _guard: TEST_MUTEX
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()),
+                home: env::var("HOME").ok(),
+                shell: env::var("SHELL").ok(),
+                path: env::var("PATH").ok(),
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.home {
+                Some(home) => env::set_var("HOME", home),
+                None => env::remove_var("HOME"),
+            }
+            match &self.shell {
+                Some(shell) => env::set_var("SHELL", shell),
+                None => env::remove_var("SHELL"),
+            }
+            match &self.path {
+                Some(path) => env::set_var("PATH", path),
+                None => env::remove_var("PATH"),
+            }
+        }
+    }
 
     #[test]
     fn test_detect_platform_string() {
@@ -176,6 +216,8 @@ mod tests {
 
     #[test]
     fn test_get_shell_profile_detection() {
+        let _guard = EnvGuard::new();
+
         // Test bash detection
         env::set_var("SHELL", "/bin/bash");
         let result = get_shell_profile().expect("Should detect shell profile");
@@ -236,6 +278,7 @@ mod tests {
 
     #[test]
     fn test_ensure_path_logic() {
+        let _guard = EnvGuard::new();
         let temp_dir = tempdir().expect("Failed to create temp directory");
         let bin_dir = temp_dir.path().join("bin");
         std::fs::create_dir_all(&bin_dir).expect("Failed to create bin directory");
@@ -255,17 +298,14 @@ mod tests {
         let path_var = env::var("PATH").unwrap_or_default();
         let is_in_path = path_var.split(':').any(|p| Path::new(p) == bin_dir);
         assert!(!is_in_path);
-
-        // Restore original PATH
-        env::set_var("PATH", &current_path);
     }
 
     #[test]
     fn test_shell_profile_path_validation() {
+        let _guard = EnvGuard::new();
         let temp_dir = tempdir().expect("Failed to create temp directory");
 
         // Test that shell profile detection returns proper paths
-        let original_home = env::var("HOME").ok();
         env::set_var("HOME", temp_dir.path());
 
         env::set_var("SHELL", "/bin/bash");
@@ -285,11 +325,5 @@ mod tests {
         assert!(result.is_some());
         let fish_path = result.expect("should have fish path");
         assert_eq!(fish_path, temp_dir.path().join(".config/fish/config.fish"));
-
-        // Restore original HOME
-        match original_home {
-            Some(home) => env::set_var("HOME", home),
-            None => env::remove_var("HOME"),
-        }
     }
 }

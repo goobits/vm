@@ -3,30 +3,60 @@ use std::fs;
 #[cfg(feature = "integration")]
 use std::path::{Path, PathBuf};
 #[cfg(feature = "integration")]
+use std::sync::{Mutex, MutexGuard};
+#[cfg(feature = "integration")]
 use tempfile::TempDir;
 
 #[cfg(feature = "integration")]
+static TEST_MUTEX: Mutex<()> = Mutex::new(());
+
+#[cfg(feature = "integration")]
 struct TestFixture {
+    _guard: MutexGuard<'static, ()>,
     _temp_dir: TempDir,
     home_dir: PathBuf,
     bin_dir: PathBuf,
+    original_home: Option<String>,
+    original_shell: Option<String>,
 }
 
 #[cfg(feature = "integration")]
 impl TestFixture {
     fn new() -> Self {
+        let guard = TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let temp_dir = TempDir::new().unwrap();
         let home_dir = temp_dir.path().join("home");
         let bin_dir = home_dir.join(".local/bin");
         fs::create_dir_all(&bin_dir).unwrap();
+        let original_home = std::env::var("HOME").ok();
+        let original_shell = std::env::var("SHELL").ok();
 
         // Set the HOME env var to our temp dir
         std::env::set_var("HOME", &home_dir);
 
         Self {
+            _guard: guard,
             _temp_dir: temp_dir,
             home_dir,
             bin_dir,
+            original_home,
+            original_shell,
+        }
+    }
+}
+
+#[cfg(feature = "integration")]
+impl Drop for TestFixture {
+    fn drop(&mut self) {
+        match &self.original_home {
+            Some(home) => std::env::set_var("HOME", home),
+            None => std::env::remove_var("HOME"),
+        }
+        match &self.original_shell {
+            Some(shell) => std::env::set_var("SHELL", shell),
+            None => std::env::remove_var("SHELL"),
         }
     }
 }

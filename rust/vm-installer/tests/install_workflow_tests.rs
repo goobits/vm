@@ -3,6 +3,8 @@ use std::fs;
 #[cfg(feature = "integration")]
 use std::path::PathBuf;
 #[cfg(feature = "integration")]
+use std::sync::{Mutex, MutexGuard};
+#[cfg(feature = "integration")]
 use tempfile::TempDir;
 #[cfg(feature = "integration")]
 use vm_core::user_paths;
@@ -10,16 +12,27 @@ use vm_core::user_paths;
 use vm_platform::platform::executable_name;
 
 #[cfg(feature = "integration")]
+static TEST_MUTEX: Mutex<()> = Mutex::new(());
+
+#[cfg(feature = "integration")]
 struct TestFixture {
+    _guard: MutexGuard<'static, ()>,
     _temp_dir: TempDir,
     project_root: PathBuf,
+    original_home: Option<String>,
+    original_cwd: PathBuf,
 }
 
 #[cfg(feature = "integration")]
 impl TestFixture {
     fn new() -> Self {
+        let guard = TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let temp_dir = TempDir::new().unwrap();
         let project_root = temp_dir.path().join("test-project");
+        let original_home = std::env::var("HOME").ok();
+        let original_cwd = std::env::current_dir().unwrap();
 
         // Set up a fake project root that the installer can find
         let rust_dir = project_root.join("rust");
@@ -37,8 +50,22 @@ impl TestFixture {
         std::env::set_var("HOME", temp_dir.path());
 
         Self {
+            _guard: guard,
             _temp_dir: temp_dir,
             project_root,
+            original_home,
+            original_cwd,
+        }
+    }
+}
+
+#[cfg(feature = "integration")]
+impl Drop for TestFixture {
+    fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.original_cwd);
+        match &self.original_home {
+            Some(home) => std::env::set_var("HOME", home),
+            None => std::env::remove_var("HOME"),
         }
     }
 }

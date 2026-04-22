@@ -379,7 +379,7 @@ mod tests {
     use std::net::TcpListener;
     use std::time::Duration;
     use tempfile::TempDir;
-    use tokio::task;
+    use tokio::task::{self, JoinHandle};
     use tracing::error;
 
     fn find_available_port() -> anyhow::Result<u16> {
@@ -389,7 +389,35 @@ mod tests {
         Ok(port)
     }
 
-    async fn start_test_server() -> (u16, tempfile::TempDir, String) {
+    struct TestServer {
+        port: u16,
+        _temp_dir: TempDir,
+        auth_token: String,
+        handle: Option<JoinHandle<()>>,
+    }
+
+    impl TestServer {
+        fn url(&self) -> String {
+            format!("http://127.0.0.1:{}", self.port)
+        }
+
+        async fn shutdown(mut self) {
+            if let Some(handle) = self.handle.take() {
+                handle.abort();
+                let _ = handle.await;
+            }
+        }
+    }
+
+    impl Drop for TestServer {
+        fn drop(&mut self) {
+            if let Some(handle) = &self.handle {
+                handle.abort();
+            }
+        }
+    }
+
+    async fn start_test_server() -> TestServer {
         let temp_dir = TempDir::new().expect("should create temp dir");
         let port = find_available_port().expect("Failed to find available port");
 
@@ -402,14 +430,19 @@ mod tests {
             .to_string();
 
         let data_dir = temp_dir.path().to_path_buf();
-        task::spawn(async move {
+        let handle = task::spawn(async move {
             let _ = run_server("127.0.0.1".to_string(), port, data_dir).await;
         });
 
         // Wait for server to start
         tokio::time::sleep(Duration::from_millis(500)).await;
 
-        (port, temp_dir, auth_token)
+        TestServer {
+            port,
+            _temp_dir: temp_dir,
+            auth_token,
+            handle: Some(handle),
+        }
     }
 
     /// Helper function for tests that adds a secret with provided auth token
@@ -475,17 +508,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_server_health_check() {
-        let (port, _temp_dir, _auth_token) = start_test_server().await;
+        let server = start_test_server().await;
 
         // Check if server is running
-        let running = check_server_running(port).await;
+        let running = check_server_running(server.port).await;
         assert!(running);
+        server.shutdown().await;
     }
 
     #[tokio::test]
     async fn test_add_and_list_secrets() {
-        let (port, _temp_dir, auth_token) = start_test_server().await;
-        let server_url = format!("http://127.0.0.1:{}", port);
+        let server = start_test_server().await;
+        let server_url = server.url();
 
         // Add a secret
         let result = add_secret_with_token(
@@ -494,7 +528,7 @@ mod tests {
             "test_value",
             None,
             Some("Test secret"),
-            &auth_token,
+            &server.auth_token,
         )
         .await;
         if let Err(e) = &result {
@@ -503,10 +537,11 @@ mod tests {
         assert!(result.is_ok());
 
         // List secrets
-        let result = list_secrets_with_token(&server_url, &auth_token).await;
+        let result = list_secrets_with_token(&server_url, &server.auth_token).await;
         if let Err(e) = &result {
             error!("list_secrets failed: {}", e);
         }
         assert!(result.is_ok());
+        server.shutdown().await;
     }
 }

@@ -318,6 +318,43 @@ fn validate_import_contents(
     Ok(())
 }
 
+/// Recursively copy a directory
+async fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
+    tokio::fs::create_dir_all(dst)
+        .await
+        .map_err(|e| VmError::filesystem(e, dst.display().to_string(), "create_dir_all"))?;
+
+    let mut entries = tokio::fs::read_dir(src)
+        .await
+        .map_err(|e| VmError::filesystem(e, src.display().to_string(), "read_dir"))?;
+
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .map_err(|e| VmError::general(e, "Failed to read directory entry"))?
+    {
+        let path = entry.path();
+        let file_name = entry.file_name();
+
+        // Skip the root directory itself
+        if file_name == "snapshot" {
+            continue;
+        }
+
+        let dest_path = dst.join(&file_name);
+
+        if path.is_dir() {
+            Box::pin(copy_dir_all(&path, &dest_path)).await?;
+        } else {
+            tokio::fs::copy(&path, &dest_path)
+                .await
+                .map_err(|e| VmError::filesystem(e, dest_path.display().to_string(), "copy"))?;
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -373,41 +410,4 @@ mod tests {
         let err = validate_import_contents(&manifest, &metadata, tempdir.path()).unwrap_err();
         assert!(err.to_string().contains("base.tar"));
     }
-}
-
-/// Recursively copy a directory
-async fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
-    tokio::fs::create_dir_all(dst)
-        .await
-        .map_err(|e| VmError::filesystem(e, dst.display().to_string(), "create_dir_all"))?;
-
-    let mut entries = tokio::fs::read_dir(src)
-        .await
-        .map_err(|e| VmError::filesystem(e, src.display().to_string(), "read_dir"))?;
-
-    while let Some(entry) = entries
-        .next_entry()
-        .await
-        .map_err(|e| VmError::general(e, "Failed to read directory entry"))?
-    {
-        let path = entry.path();
-        let file_name = entry.file_name();
-
-        // Skip the root directory itself
-        if file_name == "snapshot" {
-            continue;
-        }
-
-        let dest_path = dst.join(&file_name);
-
-        if path.is_dir() {
-            Box::pin(copy_dir_all(&path, &dest_path)).await?;
-        } else {
-            tokio::fs::copy(&path, &dest_path)
-                .await
-                .map_err(|e| VmError::filesystem(e, dest_path.display().to_string(), "copy"))?;
-        }
-    }
-
-    Ok(())
 }

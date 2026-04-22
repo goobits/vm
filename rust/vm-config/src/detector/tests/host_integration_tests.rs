@@ -1,18 +1,26 @@
 use crate::detector::{git, os};
 use std::env;
+use std::sync::{Mutex, MutexGuard};
 use tempfile::TempDir;
 
+static TEST_MUTEX: Mutex<()> = Mutex::new(());
+
 struct HomeGuard {
+    _guard: MutexGuard<'static, ()>,
     _temp_dir: TempDir,
     original_home: Option<String>,
 }
 
 impl HomeGuard {
     fn new() -> Self {
+        let guard = TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let temp_dir = TempDir::new().unwrap();
         let original_home = env::var("HOME").ok();
         env::set_var("HOME", temp_dir.path());
         Self {
+            _guard: guard,
             _temp_dir: temp_dir,
             original_home,
         }

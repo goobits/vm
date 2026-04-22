@@ -16,6 +16,7 @@ struct SimpleTestFixture {
     test_dir: PathBuf,
     original_home: Option<String>,
     original_vm_tool_dir: Option<String>,
+    original_cwd: PathBuf,
 }
 
 impl SimpleTestFixture {
@@ -32,6 +33,7 @@ impl SimpleTestFixture {
         // Save original environment variables
         let original_home = std::env::var("HOME").ok();
         let original_vm_tool_dir = std::env::var("VM_TOOL_DIR").ok();
+        let original_cwd = std::env::current_dir()?;
 
         // Set environment variables to use our temp directory
         std::env::set_var("HOME", &test_dir);
@@ -44,6 +46,7 @@ impl SimpleTestFixture {
             test_dir,
             original_home,
             original_vm_tool_dir,
+            original_cwd,
         })
     }
 
@@ -82,6 +85,8 @@ impl SimpleTestFixture {
 
 impl Drop for SimpleTestFixture {
     fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.original_cwd);
+
         // Restore original environment variables
         match &self.original_home {
             Some(home) => std::env::set_var("HOME", home),

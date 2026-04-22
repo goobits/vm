@@ -328,37 +328,40 @@ mod tests {
     use std::path::PathBuf;
     use vm_config::config::{ProjectConfig, VmConfig};
 
-    fn test_ops() -> LifecycleOperations<'static> {
-        let config = Box::leak(Box::new(VmConfig {
+    fn with_test_ops(assertions: impl FnOnce(&LifecycleOperations<'_>)) {
+        let config = VmConfig {
             project: Some(ProjectConfig {
                 name: Some("demo".to_string()),
                 ..Default::default()
             }),
             ..Default::default()
-        }));
-        let temp_dir = Box::leak(Box::new(PathBuf::from("/tmp/demo")));
-        let project_dir = Box::leak(Box::new(PathBuf::from("/workspace/demo")));
-        LifecycleOperations::new(config, temp_dir, project_dir, "docker")
+        };
+        let temp_dir = PathBuf::from("/tmp/demo");
+        let project_dir = PathBuf::from("/workspace/demo");
+        let ops = LifecycleOperations::new(&config, &temp_dir, &project_dir, "docker");
+        assertions(&ops);
     }
 
     #[test]
     fn resolves_default_target_to_none_instance() {
-        let ops = test_ops();
-        assert_eq!(ops.resolve_instance_name_for_target(None).unwrap(), None);
-        assert_eq!(
-            ops.resolve_instance_name_for_target(Some("demo-dev"))
-                .unwrap(),
-            None
-        );
+        with_test_ops(|ops| {
+            assert_eq!(ops.resolve_instance_name_for_target(None).unwrap(), None);
+            assert_eq!(
+                ops.resolve_instance_name_for_target(Some("demo-dev"))
+                    .unwrap(),
+                None
+            );
+        });
     }
 
     #[test]
     fn resolves_instance_target_suffix() {
-        let ops = test_ops();
-        assert_eq!(
-            ops.resolve_instance_name_for_target(Some("demo-preview"))
-                .unwrap(),
-            Some("preview".to_string())
-        );
+        with_test_ops(|ops| {
+            assert_eq!(
+                ops.resolve_instance_name_for_target(Some("demo-preview"))
+                    .unwrap(),
+                Some("preview".to_string())
+            );
+        });
     }
 }
