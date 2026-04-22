@@ -401,8 +401,8 @@ properties:
     type: array
     description: Global npm packages to install
     default:
-      - "@anthropic-ai/claude-code"
       - "@google/gemini-cli"
+      - "@openai/codex"
       - npm-check-updates
       - prettier
       - eslint
@@ -437,6 +437,7 @@ properties:
     default:
       yoclaude: claude --dangerously-skip-permissions
       yogemini: NO_BROWSER=true GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo
+      yocodex: codex --dangerously-bypass-approvals-and-sandbox
     additionalProperties:
       type: string
     examples:

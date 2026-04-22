@@ -8,12 +8,12 @@ fn test_duplicate_key_detection() {
 version: "2.0"
 provider: docker
 npm_packages:
-  - '@anthropic-ai/claude-code'
-  - '@google/gemini-cli'
-npm_packages:
-  - '@anthropic-ai/claude-code'
   - '@google/gemini-cli'
   - '@openai/codex'
+npm_packages:
+  - '@google/gemini-cli'
+  - '@openai/codex'
+  - prettier
 "#;
 
     let result: Result<serde_yaml_ng::Value, _> =
@@ -38,9 +38,9 @@ fn test_valid_yaml_parses_successfully() {
 version: "2.0"
 provider: docker
 npm_packages:
-  - '@anthropic-ai/claude-code'
   - '@google/gemini-cli'
   - '@openai/codex'
+  - prettier
 "#;
 
     let result: Result<serde_yaml_ng::Value, _> =

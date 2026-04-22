@@ -8,7 +8,7 @@ description = "Snapshot management for Goobits VM"
 
 [dependencies]
 chrono = { workspace = true }
-flate2 = "1.0"
+flate2 = "1.1"
 futures = "0.3"
 num_cpus = { workspace = true }
 rayon = { workspace = true }

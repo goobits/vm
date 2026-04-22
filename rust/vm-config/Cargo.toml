@@ -47,7 +47,7 @@ test-helpers = []
 
 [dev-dependencies]
 tempfile = { workspace = true }
-assert_cmd = "2.0"
-predicates = "3.0"
+assert_cmd = "2.2"
+predicates = "3.1"
 tracing-subscriber = { workspace = true }
-serial_test = "3.2"
+serial_test = "3.4"

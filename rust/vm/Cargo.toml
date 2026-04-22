@@ -20,7 +20,7 @@ anyhow = { workspace = true }
 async-trait = "0.1"
 clap = { workspace = true }
 clap_complete = { workspace = true }
-shellexpand = "3.1.0"
+shellexpand = "3.1.2"
 dirs = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -45,13 +45,13 @@ vm-snapshot = { path = "../vm-snapshot" }
 vm-package-server = { path = "../vm-package-server" }
 vm-auth-proxy = { path = "../vm-auth-proxy" }
 vm-docker-registry = { path = "../vm-docker-registry" }
-futures = "0.3.31"
-chrono = "0.4.42"
+futures = "0.3.32"
+chrono = "0.4.44"
 rand = { workspace = true }
 rayon = { workspace = true }
 walkdir = { workspace = true }
 num_cpus = { workspace = true }
-flate2 = "1.0"
+flate2 = "1.1"
 tar = "0.4"
 
 [features]
@@ -64,5 +64,5 @@ tart = ["vm-provider/tart"]
 ignored = []
 
 [dev-dependencies]
-assert_cmd = "2.0"
-predicates = "3.0"
+assert_cmd = "2.2"
+predicates = "3.1"

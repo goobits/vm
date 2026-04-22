@@ -372,7 +372,7 @@ services:
 
 ### Development Environment
 
-> **Pre-installed packages**: The VM includes these npm packages by default: `@anthropic-ai/claude-code`, `@google/gemini-cli`, `npm-check-updates`, `prettier`, and `eslint`. Add additional packages below, or set `npm_packages: []` to start with a minimal environment.
+> **Pre-installed tools**: The VM includes Claude Code via Anthropic's native installer, plus these npm packages by default: `@google/gemini-cli`, `@openai/codex`, `npm-check-updates`, `prettier`, and `eslint`. Add additional npm packages below, or set `npm_packages: []` to start with a minimal environment.
 
 ```yaml
 npm_packages:

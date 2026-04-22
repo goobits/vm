@@ -2,20 +2,24 @@
  * Theme Configuration for VM Tool Website
  * Uses @goobits/themes for light/dark theme support
  */
-import type { ThemeConfig } from '@goobits/themes/core';
+import { createThemeConfig } from '@goobits/themes/core';
 
-export const themeConfig: ThemeConfig = {
-	defaultTheme: 'system',
-	defaultScheme: 'default',
+export const themeConfig = createThemeConfig({
 	schemes: {
 		default: {
-			name: 'Default',
-			description: 'Clean, modern theme'
+			name: 'default',
+			displayName: 'Default',
+			description: 'Clean, modern theme',
+			preview: {
+				primary: '#2563eb',
+				accent: '#0f766e',
+				background: '#ffffff'
+			}
 		}
 	},
 	// Route-specific theme overrides (optional)
-	routeOverrides: {
+	routeThemes: {
 		// Example: force dark theme on docs pages
 		// '/docs': { theme: 'dark' }
 	}
-};
+});

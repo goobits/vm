@@ -10,8 +10,8 @@ Enhanced workflow environment with AI assistant integration and modern shell too
 - `unzip` - A utility for extracting and viewing files in ZIP archives.
 - `htop` - An interactive process viewer.
 
-### NPM Packages
-- `@anthropic-ai/claude-code` - Command-line interface for Anthropic's Claude.
+### AI Tools
+- `claude` - Claude Code installed via Anthropic's native installer (`https://claude.ai/install.sh`).
 - `@google/gemini-cli` - Command-line interface for Google's Gemini.
 - `@openai/codex` - Command-line interface for OpenAI's Codex.
 
@@ -61,7 +61,7 @@ packages:
    ```bash
    # Ensure your API key is set as an environment variable
    export ANTHROPIC_API_KEY="your-key"
-   vm exec "claude-code 'Translate this to French: Hello, world!'"
+   vm exec "claude 'Translate this to French: Hello, world!'"
    ```
 
 2. **Searching for text in your codebase**

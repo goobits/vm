@@ -5,12 +5,14 @@
   import OperationsHistory from './OperationsHistory.svelte';
   import { onMount } from 'svelte';
 
-  let workspaces: Workspace[] = [];
-  let loading = true;
-  let error: string | null = null;
-  let actionInProgress: Record<string, boolean> = {};
-  let expandedSnapshots: Record<string, boolean> = {};
-  let expandedOperations: Record<string, boolean> = {};
+  let { onRefresh = $bindable<(() => void) | undefined>() } = $props();
+
+  let workspaces = $state<Workspace[]>([]);
+  let loading = $state(true);
+  let error = $state<string | null>(null);
+  let actionInProgress = $state<Record<string, boolean>>({});
+  let expandedSnapshots = $state<Record<string, boolean>>({});
+  let expandedOperations = $state<Record<string, boolean>>({});
 
   async function loadWorkspaces() {
     try {
@@ -104,6 +106,7 @@
   }
 
   onMount(() => {
+    onRefresh = loadWorkspaces;
     loadWorkspaces();
     // Auto-refresh every 10 seconds
     const interval = setInterval(loadWorkspaces, 10000);
@@ -164,7 +167,7 @@
                         </code>
                         <button
                           class="btn-copy"
-                          on:click={() => copyToClipboard(workspace.connection_info.container_id, 'Container ID')}
+                          onclick={() => copyToClipboard(workspace.connection_info!.container_id!, 'Container ID')}
                           title="Copy container ID"
                         >
                           📋
@@ -181,7 +184,7 @@
                         </code>
                         <button
                           class="btn-copy"
-                          on:click={() => copyToClipboard(workspace.connection_info.ssh_command, 'SSH command')}
+                          onclick={() => copyToClipboard(workspace.connection_info!.ssh_command!, 'SSH command')}
                           title="Copy SSH command"
                         >
                           📋
@@ -233,7 +236,7 @@
                 {#if workspace.status === 'stopped'}
                   <button
                     class="btn-start"
-                    on:click={() => handleStart(workspace.id)}
+                    onclick={() => handleStart(workspace.id)}
                     disabled={actionInProgress[workspace.id]}
                   >
                     {actionInProgress[workspace.id] ? 'Starting...' : 'Start'}
@@ -242,14 +245,14 @@
                 {#if workspace.status === 'running'}
                   <button
                     class="btn-stop"
-                    on:click={() => handleStop(workspace.id)}
+                    onclick={() => handleStop(workspace.id)}
                     disabled={actionInProgress[workspace.id]}
                   >
                     {actionInProgress[workspace.id] ? 'Stopping...' : 'Stop'}
                   </button>
                   <button
                     class="btn-restart"
-                    on:click={() => handleRestart(workspace.id)}
+                    onclick={() => handleRestart(workspace.id)}
                     disabled={actionInProgress[workspace.id]}
                   >
                     {actionInProgress[workspace.id] ? 'Restarting...' : 'Restart'}
@@ -257,19 +260,19 @@
                 {/if}
                 <button
                   class="btn-activity"
-                  on:click={() => toggleOperations(workspace.id)}
+                  onclick={() => toggleOperations(workspace.id)}
                 >
                   {expandedOperations[workspace.id] ? 'Hide Activity' : 'Activity'}
                 </button>
                 <button
                   class="btn-snapshots"
-                  on:click={() => toggleSnapshots(workspace.id)}
+                  onclick={() => toggleSnapshots(workspace.id)}
                 >
                   {expandedSnapshots[workspace.id] ? 'Hide Snapshots' : 'Snapshots'}
                 </button>
                 <button
                   class="btn-delete"
-                  on:click={() => handleDelete(workspace.id)}
+                  onclick={() => handleDelete(workspace.id)}
                   disabled={actionInProgress[workspace.id]}
                 >
                   {actionInProgress[workspace.id] ? 'Deleting...' : 'Delete'}

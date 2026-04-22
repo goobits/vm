@@ -1,7 +1,7 @@
 <script lang="ts">
 	import favicon from '$lib/assets/favicon.svg';
-	import '@goobits/docs-engine/styles';
-	import '@goobits/themes/themes';
+	import '@goobits/docs-engine/styles/index.css';
+	import '@goobits/themes/themes/bundle.css';
 	import { ThemeProvider } from '@goobits/themes/svelte';
 	import { themeConfig } from '$lib/config/theme';
 	import type { LayoutData } from './$types';

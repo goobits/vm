@@ -40,8 +40,8 @@ services:
     display: :99
     executable_path: /usr/bin/chromium-browser
 npm_packages:
-  - '@anthropic-ai/claude-code'
   - '@google/gemini-cli'
+  - '@openai/codex'
   - npm-check-updates
   - prettier
   - eslint
@@ -49,6 +49,7 @@ cargo_packages: []
 aliases:
   yoclaude: claude --dangerously-skip-permissions
   yogemini: NO_BROWSER=true GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo
+  yocodex: codex --dangerously-bypass-approvals-and-sandbox
   hello: echo 'Hello from alias'
   ll: ls -la
   testcmd: echo 'Test command executed'
@@ -65,3 +66,4 @@ terminal:
   theme: dracula
 claude_sync: true
 gemini_sync: true
+codex_sync: true

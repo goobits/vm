@@ -474,12 +474,12 @@
       # AI CLI tools - install even for snapshots if sync is enabled (layered provisioning)
       - name: Install Claude Code CLI
         shell: |
-            source /home/{{ project_user }}/.nvm/nvm.sh
-            # Skip if already installed
-            if npm list -g @anthropic-ai/claude-code >/dev/null 2>&1; then
-                echo "Claude Code CLI already installed"
+            if command -v claude >/dev/null 2>&1; then
+                claude update
+                echo "Claude Code CLI updated"
             else
-                npm install -g @anthropic-ai/claude-code
+                curl -fsSL https://claude.ai/install.sh | bash
+                echo "Claude Code CLI installed"
             fi
         args:
             executable: /bin/bash
@@ -487,7 +487,7 @@
         when: claude_sync_enabled
         ignore_errors: yes
         register: claude_install
-        changed_when: "'already installed' not in claude_install.stdout"
+        changed_when: "'installed' in claude_install.stdout or 'updated' in claude_install.stdout"
 
       - name: Install Gemini CLI
         shell: |

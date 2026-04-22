@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { DocsLayout } from '@goobits/docs-engine/components';
+	import DocsLayout from '@goobits/docs-engine/components/DocsLayout.svelte';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();

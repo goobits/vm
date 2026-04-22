@@ -73,8 +73,10 @@ RUN --mount=type=cache,target=/home/${USER_NAME}/.nvm/.cache,uid=${USER_UID},gid
 
 RUN --mount=type=cache,target=/home/${USER_NAME}/.npm,uid=${USER_UID},gid=${USER_GID} \
     . $NVM_DIR/nvm.sh && npm install -g \
-    @anthropic-ai/claude-code @google/gemini-cli @openai/codex \
+    @google/gemini-cli @openai/codex \
     playwright prettier eslint typescript ts-node tsx nodemon npm-check-updates
+
+RUN curl -fsSL https://claude.ai/install.sh | bash
 
 # Chrome for Testing only available on x86_64
 RUN --mount=type=cache,target=/home/${USER_NAME}/.cache/ms-playwright,uid=${USER_UID},gid=${USER_GID} \
@@ -125,8 +127,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get install -y python3.11 python3.11-venv python3.11-dev && \
     update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 && \
     curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11 && \
-    pip3 install --no-cache-dir --root-user-action=ignore \
-    ansible-core==2.17.6 playwright pytest pytest-playwright psycopg2-binary
+    python3.11 -m pip install --no-cache-dir --root-user-action=ignore --upgrade \
+    pip==26.0.1 setuptools==82.0.1 wheel==0.47.0 && \
+    python3.11 -m pip install --no-cache-dir --root-user-action=ignore \
+    ansible-core==2.19.9 playwright==1.58.0 pytest==9.0.3 pytest-playwright==0.7.2 psycopg2-binary==2.9.12
 
 COPY --from=rust-builder --chown=${USER_NAME}:${USER_NAME} /home/${USER_NAME}/.cargo /home/${USER_NAME}/.cargo
 COPY --from=rust-builder --chown=${USER_NAME}:${USER_NAME} /home/${USER_NAME}/.rustup /home/${USER_NAME}/.rustup
