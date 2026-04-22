@@ -72,7 +72,7 @@ pub mod progress;
 pub mod resources;
 
 // Re-export template constants for testing
-pub use resources::{ZSHRC_FAST_TEMPLATE, ZSHRC_TEMPLATE};
+pub use resources::ZSHRC_TEMPLATE;
 pub mod security;
 pub mod temp_models;
 

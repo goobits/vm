@@ -323,7 +323,7 @@ pub async fn handle_create(
             // Handle --save-as flag (save container as global snapshot)
             if let Some(snapshot_name) = &save_as {
                 use crate::commands::snapshot::{
-                    manager::SnapshotManager,
+                    manager::{SnapshotManager, SnapshotScope},
                     metadata::{ServiceSnapshot, SnapshotMetadata},
                 };
 
@@ -346,7 +346,8 @@ pub async fn handle_create(
 
                 // Create snapshot manager and directory
                 let manager = SnapshotManager::new()?;
-                let snapshot_dir = manager.get_snapshot_dir(Some("global"), clean_name);
+                let snapshot_dir = manager.get_snapshot_dir(SnapshotScope::Global, clean_name);
+                let executable = config.provider.as_deref().unwrap_or("docker");
 
                 if snapshot_dir.exists() {
                     vm_println!(
@@ -369,7 +370,7 @@ pub async fn handle_create(
 
                 // Clone container_name since it was moved earlier
                 let container_name_clone = container_name.clone();
-                let commit_output = tokio::process::Command::new("docker")
+                let commit_output = tokio::process::Command::new(executable)
                     .args(["commit", &container_name_clone, &image_tag])
                     .output()
                     .await
@@ -401,7 +402,7 @@ pub async fn handle_create(
                     )
                 })?;
 
-                let save_output = tokio::process::Command::new("docker")
+                let save_output = tokio::process::Command::new(executable)
                     .args(["save", &image_tag, "-o", image_path_str])
                     .output()
                     .await
@@ -416,7 +417,7 @@ pub async fn handle_create(
                 }
 
                 // Get image digest
-                let digest_output = tokio::process::Command::new("docker")
+                let digest_output = tokio::process::Command::new(executable)
                     .args(["inspect", "--format={{.Id}}", &image_tag])
                     .output()
                     .await
@@ -487,13 +488,13 @@ pub async fn handle_create(
                 };
 
                 // Stop container
-                let _ = tokio::process::Command::new("docker")
+                let _ = tokio::process::Command::new(executable)
                     .args(["stop", &cleanup_container_name])
                     .output()
                     .await;
 
                 // Remove container
-                let _ = tokio::process::Command::new("docker")
+                let _ = tokio::process::Command::new(executable)
                     .args(["rm", &cleanup_container_name])
                     .output()
                     .await;

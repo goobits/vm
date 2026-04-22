@@ -15,6 +15,7 @@ pub async fn handle_snapshot(
     profile: Option<String>,
 ) -> VmResult<()> {
     let app_config = AppConfig::load(config_path, profile)?;
+    let executable = app_config.vm.provider.as_deref().unwrap_or("docker");
 
     match command {
         SnapshotSubcommand::Create {
@@ -29,6 +30,7 @@ pub async fn handle_snapshot(
         } => {
             vm_snapshot::create::handle_create(
                 &app_config,
+                executable,
                 &name,
                 description.as_deref(),
                 quiesce,
@@ -48,8 +50,14 @@ pub async fn handle_snapshot(
             project,
             force,
         } => {
-            vm_snapshot::restore::handle_restore(&app_config, &name, project.as_deref(), force)
-                .await?;
+            vm_snapshot::restore::handle_restore(
+                &app_config,
+                executable,
+                &name,
+                project.as_deref(),
+                force,
+            )
+            .await?;
         }
         SnapshotSubcommand::Delete {
             name,
@@ -65,6 +73,7 @@ pub async fn handle_snapshot(
             project,
         } => {
             vm_snapshot::export::handle_export(
+                executable,
                 &name,
                 output.as_deref(),
                 compress,
@@ -78,7 +87,8 @@ pub async fn handle_snapshot(
             verify,
             force,
         } => {
-            vm_snapshot::import::handle_import(&file, name.as_deref(), verify, force).await?;
+            vm_snapshot::import::handle_import(executable, &file, name.as_deref(), verify, force)
+                .await?;
         }
     }
 

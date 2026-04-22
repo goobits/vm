@@ -11,7 +11,7 @@ pub mod metadata;
 pub mod restore;
 
 // Re-export key types
-pub use manager::SnapshotManager;
+pub use manager::{SnapshotManager, SnapshotScope};
 pub use metadata::{ServiceSnapshot, SnapshotMetadata, VolumeSnapshot};
 
 /// Calculate optimal concurrency limit based on available CPU count

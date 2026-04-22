@@ -36,22 +36,22 @@ pub async fn handle_start(
         .map(|s| s.as_str())
         .unwrap_or("vm-project");
 
-    // Check if VM is already running using the provider abstraction
-    if let Ok(report) = provider.get_status_report(container) {
-        if report.is_running {
-            vm_println!(
-                "{}",
-                msg!(MESSAGES.vm.start_already_running, name = vm_name)
-            );
-            return Ok(());
-        }
+    let initial_status = provider.get_status_report(container).ok();
+    if initial_status
+        .as_ref()
+        .is_some_and(|report| report.is_running)
+    {
+        vm_println!(
+            "{}",
+            msg!(MESSAGES.vm.start_already_running, name = vm_name)
+        );
+        return Ok(());
     }
 
     // Get display name for the VM/container
-    let container_name = provider
-        .get_status_report(container)
+    let container_name = initial_status
         .map(|r| r.name)
-        .unwrap_or_else(|_| format!("{vm_name}-dev"));
+        .unwrap_or_else(|| format!("{vm_name}-dev"));
 
     vm_println!("{}", msg!(MESSAGES.vm.start_header, name = vm_name));
 

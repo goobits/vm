@@ -19,7 +19,7 @@ fn test_gather_build_args_host_integration() {
     };
 
     let temp_path = temp_dir.path().to_path_buf();
-    let build_ops = BuildOperations::new(&config, &temp_path);
+    let build_ops = BuildOperations::new(&config, &temp_path, "docker");
     let args = build_ops.gather_build_args("ubuntu:24.04");
 
     assert!(args

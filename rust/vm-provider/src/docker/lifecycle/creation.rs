@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use std::fs;
 use std::io::IsTerminal;
 use std::io::{self, Write};
+use std::process::Command;
 use tracing::{error, info, warn};
 
 use super::LifecycleOperations;
@@ -21,6 +22,17 @@ use vm_core::{
 use vm_messages::messages::MESSAGES;
 
 impl<'a> LifecycleOperations<'a> {
+    fn config_matches_container(&self, container_name: &str, config_json: &str) -> bool {
+        let output = Command::new(self.executable)
+            .args(["exec", container_name, "cat", super::TEMP_CONFIG_PATH])
+            .output();
+
+        match output {
+            Ok(output) if output.status.success() => output.stdout == config_json.as_bytes(),
+            _ => false,
+        }
+    }
+
     #[must_use = "container creation results should be handled"]
     pub fn create_container(&self) -> Result<()> {
         self.create_container_with_context(&ProviderContext::default())
@@ -122,7 +134,7 @@ impl<'a> LifecycleOperations<'a> {
         let modified_config = self.prepare_config_for_build()?;
 
         // Step 2: Prepare build context with embedded resources
-        let build_ops = BuildOperations::new(&modified_config, self.temp_dir);
+        let build_ops = BuildOperations::new(&modified_config, self.temp_dir, self.executable);
         let (build_context, base_image, is_snapshot) = build_ops.prepare_build_context()?;
 
         // Step 2.5: Ensure Docker networks exist (create them if needed)
@@ -536,7 +548,7 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     #[must_use = "config preparation results should be checked"]
-    pub(super) fn prepare_and_copy_config(&self) -> Result<()> {
+    pub(super) fn prepare_and_copy_config(&self, container_name: &str) -> Result<()> {
         let container_pipx_packages = if let Some(pipx_json) = self.get_pipx_json()? {
             self.categorize_pipx_packages(&pipx_json)
         } else {
@@ -546,23 +558,36 @@ impl<'a> LifecycleOperations<'a> {
         let config_for_copy = self.prepare_config_for_copy(&container_pipx_packages)?;
 
         let config_json = config_for_copy.to_json()?;
+
+        if self.config_matches_container(container_name, &config_json) {
+            return Ok(());
+        }
+
         let temp_config_path = self.temp_dir.join("vm-config.json");
-        fs::write(&temp_config_path, config_json).map_err(|e| {
-            VmError::Internal(format!(
-                "Failed to write configuration to {}: {}",
-                temp_config_path.display(),
-                e
-            ))
-        })?;
+        let local_config_matches = fs::read_to_string(&temp_config_path)
+            .ok()
+            .is_some_and(|existing| existing == config_json);
+
+        if !local_config_matches {
+            fs::write(&temp_config_path, &config_json).map_err(|e| {
+                VmError::Internal(format!(
+                    "Failed to write configuration to {}: {}",
+                    temp_config_path.display(),
+                    e
+                ))
+            })?;
+        }
+
         let source = BuildOperations::path_to_string(&temp_config_path)?;
-        let destination = format!("{}:{}", self.container_name(), super::TEMP_CONFIG_PATH);
+        let destination = format!("{}:{}", container_name, super::TEMP_CONFIG_PATH);
         let copy_result = DockerOps::copy(Some(self.executable), source, &destination);
         if copy_result.is_err() {
             return Err(VmError::Internal(format!(
                 "Failed to copy VM configuration to container '{}'. Container may not be running or accessible",
-                self.container_name()
+                container_name
             )));
         }
+
         Ok(())
     }
 

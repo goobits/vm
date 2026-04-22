@@ -1,7 +1,7 @@
 //! Snapshot creation functionality
 
 use crate::docker::{execute_docker_compose, execute_docker_streaming, execute_docker_with_output};
-use crate::manager::SnapshotManager;
+use crate::manager::{SnapshotManager, SnapshotScope};
 use crate::metadata::{ServiceSnapshot, SnapshotMetadata, VolumeSnapshot};
 use crate::optimal_concurrency;
 use chrono::Utc;
@@ -72,6 +72,7 @@ fn get_project_name(config: &AppConfig) -> String {
 #[allow(clippy::too_many_arguments)]
 pub async fn handle_create(
     config: &AppConfig,
+    executable: &str,
     name: &str,
     description: Option<&str>,
     quiesce: bool,
@@ -87,6 +88,7 @@ pub async fn handle_create(
     if let Some(dockerfile_path) = from_dockerfile {
         let ctx = build_context.unwrap_or_else(|| std::path::Path::new("."));
         return handle_create_from_dockerfile(
+            executable,
             name,
             description,
             dockerfile_path,
@@ -98,31 +100,18 @@ pub async fn handle_create(
     }
 
     // Determine if this is a global snapshot (@name) or project-specific (name)
-    let is_global = name.starts_with('@');
-    let snapshot_name = if is_global {
-        name.trim_start_matches('@')
-    } else {
-        name
-    };
-
-    // Get project name and determine scope
     let project_name = project_override
         .map(|s| s.to_string())
         .unwrap_or_else(|| get_project_name(config));
-
-    let project_scope = if is_global {
-        None
-    } else {
-        Some(project_name.as_str())
-    };
+    let (scope, snapshot_name) = SnapshotScope::from_name(name, Some(project_name.as_str()));
 
     // Check if snapshot already exists
-    if manager.snapshot_exists(project_scope, snapshot_name) {
+    if manager.snapshot_exists(scope, snapshot_name) {
         if force {
             vm_core::vm_println!("Removing existing snapshot '{}'...", snapshot_name);
-            manager.delete_snapshot(project_scope, snapshot_name)?;
+            manager.delete_snapshot(scope, snapshot_name)?;
         } else {
-            let scope_desc = if is_global {
+            let scope_desc = if matches!(scope, SnapshotScope::Global) {
                 "global".to_string()
             } else {
                 format!("project '{}'", project_name)
@@ -137,7 +126,7 @@ pub async fn handle_create(
         }
     }
 
-    let display_scope = if is_global {
+    let display_scope = if matches!(scope, SnapshotScope::Global) {
         "globally".to_string()
     } else {
         format!("for project '{}'", project_name)
@@ -150,7 +139,7 @@ pub async fn handle_create(
         std::env::current_dir().map_err(|e| VmError::filesystem(e, "current_dir", "get"))?;
 
     // Create snapshot directory structure
-    let snapshot_dir = manager.get_snapshot_dir(project_scope, snapshot_name);
+    let snapshot_dir = manager.get_snapshot_dir(scope, snapshot_name);
     let images_dir = snapshot_dir.join("images");
     let volumes_dir = snapshot_dir.join("volumes");
     let compose_dir = snapshot_dir.join("compose");
@@ -164,12 +153,13 @@ pub async fn handle_create(
     // Quiesce containers if requested
     if quiesce {
         vm_core::vm_println!("Pausing containers for consistent snapshot...");
-        execute_docker_compose(&["pause"], &project_dir).await?;
+        execute_docker_compose(executable, &["pause"], &project_dir).await?;
     }
 
     // Discover services
     vm_core::vm_println!("Discovering services...");
-    let services_output = execute_docker_compose(&["ps", "--services"], &project_dir).await?;
+    let services_output =
+        execute_docker_compose(executable, &["ps", "--services"], &project_dir).await?;
     let service_names: Vec<String> = services_output
         .lines()
         .filter(|line| !line.is_empty())
@@ -190,7 +180,7 @@ pub async fn handle_create(
 
             // Get container ID for this service
             let container_id =
-                execute_docker_compose(&["ps", "-q", &service], &project_dir).await?;
+                execute_docker_compose(executable, &["ps", "-q", &service], &project_dir).await?;
             if container_id.is_empty() {
                 vm_core::vm_warning!("Service '{}' has no running container, skipping", service);
                 return Ok::<Option<ServiceSnapshot>, VmError>(None);
@@ -198,7 +188,7 @@ pub async fn handle_create(
 
             // Create image from container
             let image_tag = format!("vm-snapshot/{}/{}:{}", project_name, service, snapshot_name);
-            execute_docker_with_output(&["commit", &container_id, &image_tag]).await?;
+            execute_docker_with_output(executable, &["commit", &container_id, &image_tag]).await?;
 
             // Save image to tar file
             let image_file = format!("{}.tar", service);
@@ -212,11 +202,15 @@ pub async fn handle_create(
                     ),
                 )
             })?;
-            execute_docker_with_output(&["save", &image_tag, "-o", image_path_str]).await?;
+            execute_docker_with_output(executable, &["save", &image_tag, "-o", image_path_str])
+                .await?;
 
             // Get image digest
-            let digest_output =
-                execute_docker_with_output(&["inspect", "--format={{.Id}}", &image_tag]).await?;
+            let digest_output = execute_docker_with_output(
+                executable,
+                &["inspect", "--format={{.Id}}", &image_tag],
+            )
+            .await?;
             let digest = if digest_output.is_empty() {
                 None
             } else {
@@ -246,12 +240,13 @@ pub async fn handle_create(
     // Unpause containers if we paused them
     if quiesce {
         vm_core::vm_println!("Unpausing containers...");
-        execute_docker_compose(&["unpause"], &project_dir).await?;
+        execute_docker_compose(executable, &["unpause"], &project_dir).await?;
     }
 
     // Discover volumes
     vm_core::vm_println!("Discovering volumes...");
-    let volumes_output = execute_docker_compose(&["config", "--volumes"], &project_dir).await?;
+    let volumes_output =
+        execute_docker_compose(executable, &["config", "--volumes"], &project_dir).await?;
     let volume_names: Vec<String> = volumes_output
         .lines()
         .filter(|line| !line.is_empty())
@@ -289,7 +284,7 @@ pub async fn handle_create(
                 &format!("tar -c -C /data . | zstd -3 -T0 > /backup/{}", archive_file),
             ];
 
-            execute_docker_with_output(&run_args).await?;
+            execute_docker_with_output(executable, &run_args).await?;
 
             // Get archive size (using async fs)
             let metadata = tokio::fs::metadata(&archive_path)
@@ -346,11 +341,7 @@ pub async fn handle_create(
         name: snapshot_name.to_string(),
         created_at: Utc::now(),
         description: description.map(|s| s.to_string()),
-        project_name: if is_global {
-            "global".to_string()
-        } else {
-            project_name.clone()
-        },
+        project_name: scope.project_name().to_string(),
         project_dir: project_dir.to_string_lossy().to_string(),
         git_commit,
         git_dirty,
@@ -387,6 +378,7 @@ fn calculate_directory_size(path: &std::path::Path) -> Result<u64> {
 
 /// Handle snapshot creation from a Dockerfile
 async fn handle_create_from_dockerfile(
+    executable: &str,
     name: &str,
     description: Option<&str>,
     dockerfile_path: &std::path::Path,
@@ -404,14 +396,14 @@ async fn handle_create_from_dockerfile(
 
     // Dockerfile snapshots are always global base images.
     let snapshot_name = name.trim_start_matches('@');
-    let project_scope = None;
+    let scope = SnapshotScope::Global;
 
     // Check if snapshot already exists
     let manager = SnapshotManager::new()?;
-    if manager.snapshot_exists(project_scope, snapshot_name) {
+    if manager.snapshot_exists(scope, snapshot_name) {
         if force {
             vm_core::vm_println!("Removing existing snapshot '{}'...", snapshot_name);
-            manager.delete_snapshot(project_scope, snapshot_name)?;
+            manager.delete_snapshot(scope, snapshot_name)?;
         } else {
             let scope_desc = "global".to_string();
             return Err(VmError::validation(
@@ -475,7 +467,7 @@ async fn handle_create_from_dockerfile(
     args.push(context_dir.to_string_lossy().to_string());
 
     // Stream the build output
-    stream_command_visible("docker", &args).map_err(|e| {
+    stream_command_visible(executable, &args).map_err(|e| {
         VmError::general(
             e,
             format!(
@@ -488,7 +480,7 @@ async fn handle_create_from_dockerfile(
     // Create snapshot directory and save metadata
     // (manager and project_scope already created earlier for duplicate check)
 
-    let snapshot_dir = manager.get_snapshot_dir(project_scope, snapshot_name);
+    let snapshot_dir = manager.get_snapshot_dir(scope, snapshot_name);
     let images_dir = snapshot_dir.join("images");
 
     // Create directories
@@ -513,11 +505,12 @@ async fn handle_create_from_dockerfile(
         )
     })?;
 
-    execute_docker_streaming(&["save", &image_tag, "-o", image_path_str]).await?;
+    execute_docker_streaming(executable, &["save", &image_tag, "-o", image_path_str]).await?;
 
     // Get image digest
     let digest_output =
-        execute_docker_with_output(&["inspect", "--format={{.Id}}", &image_tag]).await?;
+        execute_docker_with_output(executable, &["inspect", "--format={{.Id}}", &image_tag])
+            .await?;
     let digest = if digest_output.is_empty() {
         None
     } else {

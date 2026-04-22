@@ -1,7 +1,7 @@
 //! Snapshot restoration functionality
 
 use crate::docker::{execute_docker, execute_docker_compose_status, execute_docker_streaming};
-use crate::manager::SnapshotManager;
+use crate::manager::{SnapshotManager, SnapshotScope};
 use crate::metadata::SnapshotMetadata;
 use crate::optimal_concurrency;
 use futures::stream::{self, StreamExt};
@@ -21,37 +21,24 @@ fn get_project_name(config: &AppConfig) -> String {
 /// Handle snapshot restoration
 pub async fn handle_restore(
     config: &AppConfig,
+    executable: &str,
     name: &str,
     project_override: Option<&str>,
     force: bool,
 ) -> Result<()> {
     let manager = SnapshotManager::new()?;
 
-    // Determine if this is a global snapshot (@name) or project-specific (name)
-    let is_global = name.starts_with('@');
-    let snapshot_name = if is_global {
-        name.trim_start_matches('@')
-    } else {
-        name
-    };
-
     let project_name = project_override
         .map(|s| s.to_string())
         .unwrap_or_else(|| get_project_name(config));
-
-    // For global snapshots, use None as project scope
-    let project_scope = if is_global {
-        None
-    } else {
-        Some(project_name.as_str())
-    };
+    let (scope, snapshot_name) = SnapshotScope::from_name(name, Some(project_name.as_str()));
 
     // Load snapshot metadata
-    let snapshot_dir = manager.get_snapshot_dir(project_scope, snapshot_name);
+    let snapshot_dir = manager.get_snapshot_dir(scope, snapshot_name);
     let metadata_file = snapshot_dir.join("metadata.json");
 
     if !metadata_file.exists() {
-        let scope_desc = if is_global {
+        let scope_desc = if matches!(scope, SnapshotScope::Global) {
             "global snapshots".to_string()
         } else {
             format!("project '{}'", project_name)
@@ -65,7 +52,7 @@ pub async fn handle_restore(
     let metadata = SnapshotMetadata::load(&metadata_file)?;
 
     // Verify project matches (skip for global snapshots)
-    if !is_global && metadata.project_name != project_name && !force {
+    if !matches!(scope, SnapshotScope::Global) && metadata.project_name != project_name && !force {
         return Err(VmError::validation(
             format!(
                 "Snapshot was created for project '{}' but current project is '{}'. Use --force to override.",
@@ -75,7 +62,7 @@ pub async fn handle_restore(
         ));
     }
 
-    let scope_desc = if is_global {
+    let scope_desc = if matches!(scope, SnapshotScope::Global) {
         "globally".to_string()
     } else {
         format!("for project '{}'", project_name)
@@ -88,7 +75,7 @@ pub async fn handle_restore(
 
     // Stop current compose environment
     vm_core::vm_println!("Stopping current environment...");
-    execute_docker_compose_status(&["down"], &project_dir).await?;
+    execute_docker_compose_status(executable, &["down"], &project_dir).await?;
 
     // Restore volumes
     if !metadata.volumes.is_empty() {
@@ -111,12 +98,12 @@ pub async fn handle_restore(
                 if force {
                     // Try to remove volume, but don't fail if it doesn't exist or is in use
                     // If in use, we'll try to restore anyway (will overwrite contents)
-                    let _ = execute_docker(&["volume", "rm", &full_volume_name]).await;
+                    let _ = execute_docker(executable, &["volume", "rm", &full_volume_name]).await;
                 }
 
                 // Create volume - ignore "already exists" error since we'll restore over it
                 // This handles both the case where rm failed (volume in use) and force=false
-                let _ = execute_docker(&["volume", "create", &full_volume_name]).await;
+                let _ = execute_docker(executable, &["volume", "create", &full_volume_name]).await;
 
                 // Restore volume data with zstd decompression (3-5x faster than gzip)
                 // Support both .tar.zst (new) and .tar.gz (legacy) formats
@@ -141,7 +128,7 @@ pub async fn handle_restore(
                 ];
 
                 // Stream output so users see decompression progress
-                execute_docker_streaming(&run_args).await?;
+                execute_docker_streaming(executable, &run_args).await?;
                 Ok::<_, VmError>(())
             }
         });
@@ -183,7 +170,7 @@ pub async fn handle_restore(
                     )
                 })?;
                 // Stream output so users see "Loaded image: ..." progress
-                execute_docker_streaming(&["load", "-i", image_path_str]).await?;
+                execute_docker_streaming(executable, &["load", "-i", image_path_str]).await?;
                 Ok::<_, VmError>(())
             }
         });
@@ -226,7 +213,7 @@ pub async fn handle_restore(
 
     // Start compose environment
     vm_core::vm_println!("Starting restored environment...");
-    execute_docker_compose_status(&["up", "-d"], &project_dir).await?;
+    execute_docker_compose_status(executable, &["up", "-d"], &project_dir).await?;
 
     vm_core::vm_success!("Snapshot '{}' restored successfully", snapshot_name);
 

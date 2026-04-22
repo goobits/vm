@@ -30,16 +30,20 @@ use crate::{context::ProviderContext, preflight, Provider, TempProvider, VmStatu
 use vm_config::config::VmConfig;
 use vm_core::command_stream::is_tool_installed;
 
-pub fn validate_docker_environment() -> Result<()> {
+pub fn validate_docker_environment(executable: &str) -> Result<()> {
     // Check 1: Docker installed
-    if !Command::new("docker").arg("--version").status()?.success() {
+    if !Command::new(executable)
+        .arg("--version")
+        .status()?
+        .success()
+    {
         return Err(VmError::DockerNotInstalled(
             "Install from: https://docs.docker.com/get-docker/".to_string(),
         ));
     }
 
     // Check 2: Docker daemon running
-    let output = Command::new("docker").arg("ps").output()?;
+    let output = Command::new(executable).arg("ps").output()?;
     if !output.status.success() {
         if String::from_utf8_lossy(&output.stderr).contains("permission denied") {
             return Err(VmError::DockerPermission(
@@ -256,7 +260,7 @@ impl Provider for DockerProvider {
     }
 
     fn create_with_context(&self, context: &ProviderContext) -> Result<()> {
-        validate_docker_environment()?;
+        validate_docker_environment(&self.executable)?;
         preflight::check_system_resources()?;
 
         let lifecycle = self.lifecycle_ops();
@@ -272,7 +276,7 @@ impl Provider for DockerProvider {
         instance_name: &str,
         context: &ProviderContext,
     ) -> Result<()> {
-        validate_docker_environment()?;
+        validate_docker_environment(&self.executable)?;
         preflight::check_system_resources()?;
 
         let lifecycle = self.lifecycle_ops();
@@ -381,7 +385,7 @@ impl Provider for DockerProvider {
         let lifecycle = self.lifecycle_ops();
         let target_container = lifecycle.resolve_target_container(container)?;
 
-        let output = std::process::Command::new("docker")
+        let output = std::process::Command::new(&self.executable)
             .args([
                 "inspect",
                 "--format",
@@ -549,7 +553,7 @@ impl Provider for DockerProvider {
             commit_args.insert(2, desc.clone());
         }
 
-        let commit_output = std::process::Command::new("docker")
+        let commit_output = std::process::Command::new(&self.executable)
             .args(&commit_args)
             .output()
             .map_err(|e| VmError::Internal(format!("Failed to commit container: {e}")))?;
@@ -574,7 +578,7 @@ impl Provider for DockerProvider {
             .to_str()
             .ok_or_else(|| VmError::Internal("Invalid UTF-8 in snapshot path".to_string()))?;
 
-        let save_output = std::process::Command::new("docker")
+        let save_output = std::process::Command::new(&self.executable)
             .args(["save", "-o", snapshot_path_str, &image_tag])
             .output()
             .map_err(|e| VmError::Internal(format!("Failed to save image: {e}")))?;
@@ -624,7 +628,7 @@ impl Provider for DockerProvider {
             .to_str()
             .ok_or_else(|| VmError::Internal("Invalid UTF-8 in snapshot path".to_string()))?;
 
-        let load_output = std::process::Command::new("docker")
+        let load_output = std::process::Command::new(&self.executable)
             .args(["load", "-i", snapshot_path_str])
             .output()
             .map_err(|e| VmError::Internal(format!("Failed to load snapshot: {e}")))?;
@@ -662,7 +666,7 @@ impl Provider for DockerProvider {
 
         let container_name = format!("{}-restored", project_name);
 
-        let run_output = std::process::Command::new("docker")
+        let run_output = std::process::Command::new(&self.executable)
             .args(["run", "-d", "--name", &container_name, &image_tag])
             .output()
             .map_err(|e| {

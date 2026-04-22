@@ -42,6 +42,23 @@ impl<'a> LifecycleOperations<'a> {
         }
     }
 
+    pub(super) fn resolve_instance_name_for_target(
+        &self,
+        container: Option<&str>,
+    ) -> Result<Option<String>> {
+        let target = self.resolve_target_container(container)?;
+        let default = self.container_name();
+        if target == default {
+            return Ok(None);
+        }
+
+        let prefix = format!("{}-", self.project_name());
+        Ok(target
+            .strip_prefix(&prefix)
+            .map(str::to_string)
+            .filter(|name| name != "dev"))
+    }
+
     /// Get sync directory path
     pub fn get_sync_directory(&self) -> String {
         self.config
@@ -278,10 +295,11 @@ impl<'a> LifecycleOperations<'a> {
     /// Regenerate docker-compose file with the latest context and return compose ops.
     pub(super) fn regenerate_compose_with_context(
         &self,
+        container: Option<&str>,
         context: &ProviderContext,
     ) -> Result<ComposeOperations<'a>> {
-        let build_ops = BuildOperations::new(self.config, self.temp_dir);
-        let (build_context, _base_image, _is_snapshot) = build_ops.prepare_build_context()?;
+        let build_ops = BuildOperations::new(self.config, self.temp_dir, self.executable);
+        let build_context = build_ops.prepare_compose_build_context()?;
 
         let compose_ops = ComposeOperations::new(
             self.config,
@@ -289,7 +307,15 @@ impl<'a> LifecycleOperations<'a> {
             self.project_dir,
             self.executable,
         );
-        compose_ops.write_docker_compose(&build_context, context)?;
+        if let Some(instance_name) = self.resolve_instance_name_for_target(container)? {
+            compose_ops.write_docker_compose_with_instance(
+                &build_context,
+                &instance_name,
+                context,
+            )?;
+        } else {
+            compose_ops.write_docker_compose(&build_context, context)?;
+        }
         Ok(compose_ops)
     }
 }

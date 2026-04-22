@@ -312,7 +312,7 @@ impl<'a> LifecycleOperations<'a> {
         let container_name = self.resolve_target_container(container)?;
 
         // Get basic container info via docker inspect
-        let inspect_output = std::process::Command::new("docker")
+        let inspect_output = std::process::Command::new(self.executable)
             .args(["inspect", &container_name])
             .output()
             .map_err(|e| VmError::Internal(format!("Failed to inspect container: {e}")))?;
@@ -359,7 +359,7 @@ impl<'a> LifecycleOperations<'a> {
 
         Ok(VmStatusReport {
             name: container_name,
-            provider: "docker".to_string(),
+            provider: self.executable.to_string(),
             container_id: Some(container_id),
             is_running,
             uptime,
@@ -401,7 +401,7 @@ impl<'a> LifecycleOperations<'a> {
 
     /// Get real-time resource usage from docker stats
     fn get_container_resources(&self, container_name: &str) -> Result<ResourceUsage> {
-        let stats_output = std::process::Command::new("docker")
+        let stats_output = std::process::Command::new(self.executable)
             .args([
                 "stats",
                 "--no-stream",
@@ -466,7 +466,7 @@ impl<'a> LifecycleOperations<'a> {
 
     /// Get disk usage from container using df command
     fn get_disk_usage(&self, container_name: &str) -> (Option<f64>, Option<f64>) {
-        let df_output = std::process::Command::new("docker")
+        let df_output = std::process::Command::new(self.executable)
             .args(["exec", container_name, "df", "-h", "/"])
             .output();
 
@@ -527,11 +527,24 @@ impl<'a> LifecycleOperations<'a> {
             let service_name = self.identify_service_by_port(port);
             let host_port = self.get_host_port(container_name, port);
             let service_status = match service_name.as_str() {
-                "postgresql" => {
-                    super::health::check_postgres_status(container_name, port, host_port)
-                }
-                "redis" => super::health::check_redis_status(container_name, port, host_port),
-                "mongodb" => super::health::check_mongodb_status(container_name, port, host_port),
+                "postgresql" => super::health::check_postgres_status(
+                    self.executable,
+                    container_name,
+                    port,
+                    host_port,
+                ),
+                "redis" => super::health::check_redis_status(
+                    self.executable,
+                    container_name,
+                    port,
+                    host_port,
+                ),
+                "mongodb" => super::health::check_mongodb_status(
+                    self.executable,
+                    container_name,
+                    port,
+                    host_port,
+                ),
                 _ => ServiceStatus {
                     name: service_name,
                     is_running: true, // Assume running if port is exposed
@@ -563,7 +576,7 @@ impl<'a> LifecycleOperations<'a> {
 
     /// Get the host port mapping for a container port
     fn get_host_port(&self, container_name: &str, container_port: u16) -> Option<u16> {
-        let port_output = std::process::Command::new("docker")
+        let port_output = std::process::Command::new(self.executable)
             .args(["port", container_name, &container_port.to_string()])
             .output()
             .ok()?;

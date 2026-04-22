@@ -4,6 +4,29 @@ use crate::metadata::SnapshotMetadata;
 use std::path::PathBuf;
 use vm_core::error::{Result, VmError};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SnapshotScope<'a> {
+    Global,
+    Project(&'a str),
+}
+
+impl<'a> SnapshotScope<'a> {
+    pub fn from_name(name: &'a str, default_project: Option<&'a str>) -> (Self, &'a str) {
+        if let Some(stripped) = name.strip_prefix('@') {
+            (Self::Global, stripped)
+        } else {
+            (default_project.map_or(Self::Global, Self::Project), name)
+        }
+    }
+
+    pub fn project_name(self) -> &'a str {
+        match self {
+            Self::Global => "global",
+            Self::Project(name) => name,
+        }
+    }
+}
+
 /// Manages snapshot storage and lifecycle
 pub struct SnapshotManager {
     snapshots_dir: PathBuf,
@@ -23,10 +46,10 @@ impl SnapshotManager {
     }
 
     /// Get the directory path for a specific snapshot
-    pub fn get_snapshot_dir(&self, project: Option<&str>, name: &str) -> PathBuf {
-        match project {
-            Some(proj) => self.snapshots_dir.join(proj).join(name),
-            None => self.snapshots_dir.join("global").join(name),
+    pub fn get_snapshot_dir(&self, scope: SnapshotScope<'_>, name: &str) -> PathBuf {
+        match scope {
+            SnapshotScope::Global => self.snapshots_dir.join("global").join(name),
+            SnapshotScope::Project(project) => self.snapshots_dir.join(project).join(name),
         }
     }
 
@@ -87,8 +110,8 @@ impl SnapshotManager {
     }
 
     /// Delete a snapshot
-    pub fn delete_snapshot(&self, project: Option<&str>, name: &str) -> Result<()> {
-        let snapshot_dir = self.get_snapshot_dir(project, name);
+    pub fn delete_snapshot(&self, scope: SnapshotScope<'_>, name: &str) -> Result<()> {
+        let snapshot_dir = self.get_snapshot_dir(scope, name);
 
         if !snapshot_dir.exists() {
             return Err(VmError::validation(
@@ -105,8 +128,8 @@ impl SnapshotManager {
     }
 
     /// Check if a snapshot exists
-    pub fn snapshot_exists(&self, project: Option<&str>, name: &str) -> bool {
-        let snapshot_dir = self.get_snapshot_dir(project, name);
+    pub fn snapshot_exists(&self, scope: SnapshotScope<'_>, name: &str) -> bool {
+        let snapshot_dir = self.get_snapshot_dir(scope, name);
         snapshot_dir.exists() && snapshot_dir.join("metadata.json").exists()
     }
 }
@@ -194,19 +217,10 @@ fn truncate_string(s: &str, max_len: usize) -> String {
 pub async fn handle_delete(name: &str, project: Option<&str>, force: bool) -> Result<()> {
     let manager = SnapshotManager::new()?;
 
-    // Determine if this is a global snapshot (@name) or project-specific (name)
-    let is_global = name.starts_with('@');
-    let snapshot_name = if is_global {
-        name.trim_start_matches('@')
-    } else {
-        name
-    };
+    let (scope, snapshot_name) = SnapshotScope::from_name(name, project);
 
-    // For global snapshots, use None as project scope (ignore any --project flag)
-    let project_scope = if is_global { None } else { project };
-
-    if !manager.snapshot_exists(project_scope, snapshot_name) {
-        let scope_desc = if is_global {
+    if !manager.snapshot_exists(scope, snapshot_name) {
+        let scope_desc = if matches!(scope, SnapshotScope::Global) {
             "global snapshots".to_string()
         } else if let Some(proj) = project {
             format!("project '{}'", proj)
@@ -220,7 +234,7 @@ pub async fn handle_delete(name: &str, project: Option<&str>, force: bool) -> Re
     }
 
     if !force {
-        let scope_desc = if is_global {
+        let scope_desc = if matches!(scope, SnapshotScope::Global) {
             " (global)".to_string()
         } else {
             String::new()
@@ -245,7 +259,7 @@ pub async fn handle_delete(name: &str, project: Option<&str>, force: bool) -> Re
         }
     }
 
-    manager.delete_snapshot(project_scope, snapshot_name)?;
+    manager.delete_snapshot(scope, snapshot_name)?;
     vm_core::vm_success!("Snapshot '{}' deleted successfully", snapshot_name);
 
     Ok(())

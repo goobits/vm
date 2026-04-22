@@ -11,19 +11,25 @@ use vm_core::error::{Result, VmError};
 use vm_core::{vm_dbg, vm_info};
 
 // Internal imports
-use super::UserConfig;
+use super::{DockerOps, UserConfig};
 use crate::resources;
 use crate::BoxConfig;
 use vm_config::config::VmConfig;
+use vm_snapshot::{SnapshotManager, SnapshotScope};
 
 pub struct BuildOperations<'a> {
     pub config: &'a VmConfig,
     pub temp_dir: &'a PathBuf,
+    pub executable: &'a str,
 }
 
 impl<'a> BuildOperations<'a> {
-    pub fn new(config: &'a VmConfig, temp_dir: &'a PathBuf) -> Self {
-        Self { config, temp_dir }
+    pub fn new(config: &'a VmConfig, temp_dir: &'a PathBuf, executable: &'a str) -> Self {
+        Self {
+            config,
+            temp_dir,
+            executable,
+        }
     }
 
     /// Get box configuration, parsing BoxSpec from vm.box field
@@ -55,7 +61,7 @@ impl<'a> BuildOperations<'a> {
 
     pub fn pull_image(&self, image: &str) -> Result<()> {
         // Check if image already exists locally to avoid unnecessary pulls (10-30s savings)
-        let inspect = Command::new("docker")
+        let inspect = Command::new(self.executable)
             .args(["image", "inspect", image])
             .output()?;
 
@@ -65,7 +71,9 @@ impl<'a> BuildOperations<'a> {
         }
 
         vm_info!("Pulling image '{}'...", image);
-        let output = Command::new("docker").args(["pull", image]).output()?;
+        let output = Command::new(self.executable)
+            .args(["pull", image])
+            .output()?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -103,7 +111,6 @@ impl<'a> BuildOperations<'a> {
     ///
     /// Returns a tuple of (build_context_path, base_image_name, is_snapshot)
     pub fn prepare_build_context(&self) -> Result<(PathBuf, String, bool)> {
-        use super::command::DockerOps;
         use vm_core::vm_info;
 
         // Get box configuration
@@ -138,7 +145,13 @@ impl<'a> BuildOperations<'a> {
                 let image_name = self.get_custom_image_name();
 
                 // Pass build args from BoxSpec::Build variant
-                DockerOps::build_custom_image(None, path, &image_name, context, args.as_ref())?;
+                DockerOps::build_custom_image(
+                    Some(self.executable),
+                    path,
+                    &image_name,
+                    context,
+                    args.as_ref(),
+                )?;
 
                 image_name
             }
@@ -148,17 +161,8 @@ impl<'a> BuildOperations<'a> {
 
                 vm_println!("Loading base image from snapshot '@{}'...", name);
 
-                // Check if snapshot exists in user config directory (platform-specific)
-                let snapshot_dir = vm_core::user_paths::user_config_dir()
-                    .map_err(|e| {
-                        VmError::Internal(format!(
-                            "Could not determine user config directory: {}",
-                            e
-                        ))
-                    })?
-                    .join("snapshots")
-                    .join("global")
-                    .join(name);
+                let manager = SnapshotManager::new()?;
+                let snapshot_dir = manager.get_snapshot_dir(SnapshotScope::Global, name);
 
                 if !snapshot_dir.exists() {
                     return Err(VmError::Config(format!(
@@ -200,7 +204,7 @@ impl<'a> BuildOperations<'a> {
                     })?;
 
                 // Check if image is already loaded
-                let image_exists = match Command::new("docker")
+                let image_exists = match Command::new(self.executable)
                     .args(["image", "inspect", image_tag])
                     .output()
                 {
@@ -233,7 +237,7 @@ impl<'a> BuildOperations<'a> {
 
                     // Stream output so user sees docker load progress
                     stream_command_visible(
-                        "docker",
+                        self.executable,
                         &["load", "-i", Self::path_to_string(&image_file_path)?],
                     )
                     .map_err(|e| {
@@ -255,17 +259,22 @@ impl<'a> BuildOperations<'a> {
             }
         };
 
-        // Now use base_image for the rest of the build process
+        let build_context = self.prepare_compose_build_context()?;
 
-        // Create temporary build context directory
-        let build_context = self.temp_dir.join("build_context");
-        if build_context.exists() {
-            fs::remove_dir_all(&build_context)?;
-        }
+        Ok((build_context, base_image, is_snapshot))
+    }
+
+    pub fn build_context_dir(&self) -> PathBuf {
+        self.temp_dir.join("build_context")
+    }
+
+    /// Prepare the reusable build context needed for compose/build.
+    ///
+    /// This avoids destructive rebuilds of the build context for start/restart flows.
+    pub fn prepare_compose_build_context(&self) -> Result<PathBuf> {
+        let build_context = self.build_context_dir();
         fs::create_dir_all(&build_context)?;
 
-        // Create .dockerignore to exclude unnecessary files and speed up builds
-        let dockerignore_path = build_context.join(".dockerignore");
         let dockerignore_content = r#"# Git and version control
 .git
 .gitignore
@@ -294,7 +303,7 @@ Thumbs.db
 *.bak
 .cache
 "#;
-        fs::write(&dockerignore_path, dockerignore_content)?;
+        Self::write_if_changed(&build_context.join(".dockerignore"), dockerignore_content)?;
 
         // Create shared directory and copy embedded resources
         let shared_dir = build_context.join("shared");
@@ -306,9 +315,9 @@ Thumbs.db
         // Generate Dockerfile from template
         // For custom Dockerfiles, generate a minimal wrapper that uses the pre-built image
         let dockerfile_path = build_context.join("Dockerfile.generated");
-        if matches!(box_config, BoxConfig::Dockerfile { .. }) {
+        if matches!(self.get_box_config()?, BoxConfig::Dockerfile { .. }) {
             // Custom Dockerfile case: Generate minimal Dockerfile that uses the pre-built image
-            self.generate_dockerfile_from_image(&dockerfile_path, &base_image)?;
+            self.generate_dockerfile_from_image(&dockerfile_path, &self.get_custom_image_name())?;
         } else {
             // Standard case: Generate full Dockerfile from template
             self.generate_dockerfile(&dockerfile_path)?;
@@ -318,9 +327,9 @@ Thumbs.db
         // The Dockerfile will COPY this into the container
         let worktree_script = include_str!("vm-worktree.sh");
         let worktree_script_path = build_context.join("vm-worktree.sh");
-        fs::write(&worktree_script_path, worktree_script)?;
+        Self::write_if_changed(&worktree_script_path, worktree_script)?;
 
-        Ok((build_context, base_image, is_snapshot))
+        Ok(build_context)
     }
 
     /// Generate Dockerfile from template with build args
@@ -350,7 +359,7 @@ Thumbs.db
         let content = tera
             .render("Dockerfile", &context)
             .map_err(|e| VmError::Internal(format!("Failed to render Dockerfile template: {e}")))?;
-        fs::write(output_path, content.as_bytes())?;
+        Self::write_if_changed(output_path, &content)?;
 
         Ok(())
     }
@@ -400,7 +409,7 @@ CMD ["tail", "-f", "/dev/null"]
             user = user_config.username,
         );
 
-        fs::write(output_path, content.as_bytes())?;
+        Self::write_if_changed(output_path, &content)?;
         Ok(())
     }
 
@@ -508,5 +517,12 @@ CMD ["tail", "-f", "/dev/null"]
     /// Centralizes the creation of UserConfig to avoid duplication and ensure consistency.
     fn get_user_config(&self) -> UserConfig {
         UserConfig::from_vm_config(self.config)
+    }
+
+    fn write_if_changed(path: &Path, content: &str) -> Result<()> {
+        match fs::read(path) {
+            Ok(existing) if existing == content.as_bytes() => Ok(()),
+            _ => fs::write(path, content).map_err(Into::into),
+        }
     }
 }

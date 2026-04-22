@@ -1,7 +1,7 @@
 //! Snapshot import functionality
 
 use crate::docker::execute_docker_streaming;
-use crate::manager::SnapshotManager;
+use crate::manager::{SnapshotManager, SnapshotScope};
 use crate::metadata::SnapshotMetadata;
 use crate::optimal_concurrency;
 use futures::stream::{self, StreamExt};
@@ -11,6 +11,7 @@ use vm_core::{vm_println, vm_success, vm_warning};
 
 /// Handle snapshot import
 pub async fn handle_import(
+    executable: &str,
     file_path: &Path,
     name_override: Option<&str>,
     verify: bool,
@@ -105,7 +106,13 @@ pub async fn handle_import(
     );
 
     // Check if snapshot already exists
-    if manager.snapshot_exists(Some(project_name), &snapshot_name) && !force {
+    let scope = if is_global {
+        SnapshotScope::Global
+    } else {
+        SnapshotScope::Project(project_name)
+    };
+
+    if manager.snapshot_exists(scope, &snapshot_name) && !force {
         return Err(VmError::validation(
             format!(
                 "Snapshot '{}' already exists for project '{}'. Use --force to overwrite.",
@@ -175,7 +182,7 @@ pub async fn handle_import(
                     )
                 })?;
                 // Stream output so users see "Loaded image: ..." progress
-                execute_docker_streaming(&["load", "-i", image_path_str]).await?;
+                execute_docker_streaming(executable, &["load", "-i", image_path_str]).await?;
                 Ok(())
             }
         });
@@ -190,7 +197,7 @@ pub async fn handle_import(
     }
 
     // Create snapshot directory
-    let snapshot_dir = manager.get_snapshot_dir(Some(project_name), &snapshot_name);
+    let snapshot_dir = manager.get_snapshot_dir(scope, &snapshot_name);
 
     if snapshot_dir.exists() && force {
         vm_println!("  Removing existing snapshot...");

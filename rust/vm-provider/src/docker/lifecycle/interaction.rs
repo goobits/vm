@@ -84,7 +84,7 @@ impl<'a> LifecycleOperations<'a> {
 
         // Check if container is actually running before trying to exec
         let container_running = duct::cmd(
-            "docker",
+            self.executable,
             &["inspect", "-f", "{{.State.Running}}", &container_name],
         )
         .stderr_null()
@@ -179,7 +179,7 @@ impl<'a> LifecycleOperations<'a> {
         ];
         let cmd_strs: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
         args.extend_from_slice(&cmd_strs);
-        stream_command("docker", &args)
+        stream_command(self.executable, &args)
     }
 
     #[must_use = "log display results should be handled"]
@@ -187,8 +187,11 @@ impl<'a> LifecycleOperations<'a> {
         // Show recent logs without following (-f) to avoid hanging indefinitely
         // Use --tail to show last 50 lines and add timestamps
         let target_container = self.resolve_target_container(container)?;
-        stream_command("docker", &["logs", "--tail", "50", "-t", &target_container])
-            .map_err(|e| VmError::Internal(format!("Failed to show logs: {e}")))
+        stream_command(
+            self.executable,
+            &["logs", "--tail", "50", "-t", &target_container],
+        )
+        .map_err(|e| VmError::Internal(format!("Failed to show logs: {e}")))
     }
 
     #[must_use = "log display results should be handled"]
@@ -233,7 +236,7 @@ impl<'a> LifecycleOperations<'a> {
             vm_println!("──────────────────────────────────────────\n");
         }
 
-        stream_command("docker", &args)
+        stream_command(self.executable, &args)
             .map_err(|e| VmError::Internal(format!("Failed to show logs: {e}")))
     }
 

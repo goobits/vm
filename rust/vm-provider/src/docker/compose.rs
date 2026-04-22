@@ -627,7 +627,7 @@ impl<'a> ComposeOperations<'a> {
         let content = self.render_docker_compose(build_context_dir, context)?;
 
         let path = self.temp_dir.join("docker-compose.yml");
-        fs::write(&path, content.as_bytes())?;
+        write_if_changed(&path, &content)?;
 
         Ok(path)
     }
@@ -646,7 +646,7 @@ impl<'a> ComposeOperations<'a> {
             self.render_docker_compose_with_instance(build_context_dir, instance_name, context)?;
 
         let path = self.temp_dir.join("docker-compose.yml");
-        fs::write(&path, content.as_bytes())?;
+        write_if_changed(&path, &content)?;
 
         Ok(path)
     }
@@ -677,15 +677,6 @@ impl<'a> ComposeOperations<'a> {
     }
 
     pub fn start_with_compose(&self, context: &ProviderContext) -> Result<()> {
-        let compose_path = self.temp_dir.join("docker-compose.yml");
-        if !compose_path.exists() {
-            // Fallback: prepare build context and generate compose file
-            let build_ops = BuildOperations::new(self.config, self.temp_dir);
-            let (build_context, _base_image, _is_snapshot) = build_ops.prepare_build_context()?;
-            self.write_docker_compose(&build_context, context)?;
-        }
-
-        // Check if the container already exists (stopped or running)
         let container_name = self
             .config
             .project
@@ -693,9 +684,24 @@ impl<'a> ComposeOperations<'a> {
             .and_then(|p| p.name.as_ref())
             .map(|s| format!("{s}-dev"))
             .unwrap_or_else(|| "vm-project-dev".to_string());
+        self.start_named_with_compose(&container_name, context)
+    }
+
+    pub fn start_named_with_compose(
+        &self,
+        container_name: &str,
+        context: &ProviderContext,
+    ) -> Result<()> {
+        let compose_path = self.temp_dir.join("docker-compose.yml");
+        if !compose_path.exists() {
+            // Fallback: prepare build context and generate compose file
+            let build_ops = BuildOperations::new(self.config, self.temp_dir, self.executable);
+            let build_context = build_ops.prepare_compose_build_context()?;
+            self.write_docker_compose(&build_context, context)?;
+        }
 
         let container_exists =
-            DockerOps::container_exists(Some(self.executable), &container_name).unwrap_or(false);
+            DockerOps::container_exists(Some(self.executable), container_name).unwrap_or(false);
 
         // If the dev container exists, start it directly to avoid compose name conflicts
         // with preserved service containers (e.g., postgres).
@@ -716,10 +722,10 @@ impl<'a> ComposeOperations<'a> {
 
             // Start the dev container if it's not already running.
             let dev_running =
-                DockerOps::is_container_running(Some(self.executable), &container_name)
+                DockerOps::is_container_running(Some(self.executable), container_name)
                     .unwrap_or(false);
             if !dev_running {
-                DockerOps::start_container(Some(self.executable), &container_name)?;
+                DockerOps::start_container(Some(self.executable), container_name)?;
             }
             return Ok(());
         }
@@ -824,6 +830,13 @@ impl<'a> ComposeOperations<'a> {
         }
 
         expected
+    }
+}
+
+fn write_if_changed(path: &Path, content: &str) -> Result<()> {
+    match fs::read(path) {
+        Ok(existing) if existing == content.as_bytes() => Ok(()),
+        _ => fs::write(path, content).map_err(Into::into),
     }
 }
 

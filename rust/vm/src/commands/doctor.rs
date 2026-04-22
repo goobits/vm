@@ -35,7 +35,7 @@ fn run_diagnostics(fix: bool) -> Result<()> {
 
     // Check Docker (critical)
     print!("  Docker environment... ");
-    match validate_docker_environment() {
+    match validate_docker_environment("docker") {
         Ok(_) => {
             println!("✓");
         }
@@ -293,7 +293,7 @@ fn try_start_docker() -> bool {
             if out.status.success() {
                 // Wait a moment for Docker to start
                 std::thread::sleep(std::time::Duration::from_secs(2));
-                return validate_docker_environment().is_ok();
+                return validate_docker_environment("docker").is_ok();
             }
         }
         false
@@ -308,7 +308,7 @@ fn try_start_docker() -> bool {
             if out.status.success() {
                 // Wait for Docker to start
                 std::thread::sleep(std::time::Duration::from_secs(5));
-                return validate_docker_environment().is_ok();
+                return validate_docker_environment("docker").is_ok();
             }
         }
         false

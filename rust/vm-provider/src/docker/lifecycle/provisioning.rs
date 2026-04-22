@@ -263,7 +263,7 @@ impl<'a> LifecycleOperations<'a> {
     pub fn provision_existing(&self, container: Option<&str>) -> Result<()> {
         let context = ProviderContext::default();
         let target_container = self.resolve_target_container(container)?;
-        let status_output = std::process::Command::new("docker")
+        let status_output = std::process::Command::new(self.executable)
             .args([
                 "inspect",
                 "--format",
@@ -297,10 +297,12 @@ impl<'a> LifecycleOperations<'a> {
 
         // Fix home directory ownership for snapshot-based containers (one-time, fast)
         // This ensures tools like nvm, cargo work regardless of host UID
-        let user_config = UserConfig::from_vm_config(self.config);
-        Self::fix_home_ownership(self.executable, &container_name, &user_config)?;
+        if context.is_snapshot {
+            let user_config = UserConfig::from_vm_config(self.config);
+            Self::fix_home_ownership(self.executable, &container_name, &user_config)?;
+        }
 
-        self.prepare_and_copy_config()?;
+        self.prepare_and_copy_config(&container_name)?;
 
         Self::run_ansible_provisioning(self.executable, &container_name, context)
     }
@@ -323,10 +325,12 @@ impl<'a> LifecycleOperations<'a> {
 
         // Fix home directory ownership for snapshot-based containers (one-time, fast)
         // This ensures tools like nvm, cargo work regardless of host UID
-        let user_config = UserConfig::from_vm_config(self.config);
-        Self::fix_home_ownership(self.executable, &container_name, &user_config)?;
+        if context.is_snapshot {
+            let user_config = UserConfig::from_vm_config(self.config);
+            Self::fix_home_ownership(self.executable, &container_name, &user_config)?;
+        }
 
-        self.prepare_and_copy_config()?;
+        self.prepare_and_copy_config(&container_name)?;
 
         Self::run_ansible_provisioning(self.executable, &container_name, context)
     }

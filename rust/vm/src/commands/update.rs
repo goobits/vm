@@ -9,6 +9,7 @@ const CARGO_PACKAGE_NAME: &str = "goobits-vm";
 pub fn handle_update(version: Option<&str>, _force: bool) -> Result<(), VmError> {
     // Get current version
     let current_version = env!("CARGO_PKG_VERSION");
+    let normalized_current_version = normalize_cargo_version(current_version);
 
     vm_println!(
         "{}",
@@ -34,6 +35,14 @@ pub fn handle_update(version: Option<&str>, _force: bool) -> Result<(), VmError>
 
     if is_cargo_install {
         // Cargo installs should update through cargo so the installed package stays consistent.
+        if version
+            .map(normalize_cargo_version)
+            .is_some_and(|requested| requested == normalized_current_version)
+        {
+            vm_println!("Already on requested cargo version v{}", current_version);
+            return Ok(());
+        }
+
         vm_println!("{}", MESSAGES.vm.update_via_cargo);
 
         let mut cargo_args = vec!["install".to_string(), CARGO_PACKAGE_NAME.to_string()];
@@ -107,6 +116,18 @@ pub fn handle_update(version: Option<&str>, _force: bool) -> Result<(), VmError>
 
         // Parse JSON to find download URL
         let release_json = String::from_utf8_lossy(&release_info.stdout);
+        let release_tag = extract_release_tag(&release_json).ok_or_else(|| {
+            VmError::general(
+                std::io::Error::new(std::io::ErrorKind::InvalidData, "Missing release tag"),
+                "Release metadata did not contain a tag_name".to_string(),
+            )
+        })?;
+        let normalized_release_tag = normalize_cargo_version(&release_tag);
+
+        if normalized_release_tag == normalized_current_version {
+            vm_println!("Already on latest binary release {}", release_tag);
+            return Ok(());
+        }
 
         // Find the asset URL for our platform
         let asset_pattern = format!("vm-{target}.tar.gz");
@@ -169,19 +190,17 @@ pub fn handle_update(version: Option<&str>, _force: bool) -> Result<(), VmError>
 
         // Find the vm binary
         let binary_name = format!("vm-{target}");
-        let temp_binary = temp_dir.join(&binary_name);
-
-        if !temp_binary.exists() {
-            // Try without the target suffix
-            let temp_binary = temp_dir.join("vm");
-            if !temp_binary.exists() {
-                vm_error!("{}", MESSAGES.vm.update_binary_not_found);
-                return Err(VmError::general(
-                    std::io::Error::new(std::io::ErrorKind::NotFound, "Binary not found"),
-                    "Could not find vm binary in extracted archive".to_string(),
-                ));
-            }
-        }
+        let temp_binary = if temp_dir.join(&binary_name).exists() {
+            temp_dir.join(&binary_name)
+        } else if temp_dir.join("vm").exists() {
+            temp_dir.join("vm")
+        } else {
+            vm_error!("{}", MESSAGES.vm.update_binary_not_found);
+            return Err(VmError::general(
+                std::io::Error::new(std::io::ErrorKind::NotFound, "Binary not found"),
+                "Could not find vm binary in extracted archive".to_string(),
+            ));
+        };
 
         // Get the current executable path
         let current_exe = std::env::current_exe()?;
@@ -230,6 +249,17 @@ pub fn handle_update(version: Option<&str>, _force: bool) -> Result<(), VmError>
 
 fn normalize_cargo_version(version: &str) -> String {
     version.strip_prefix('v').unwrap_or(version).to_string()
+}
+
+fn extract_release_tag(release_json: &str) -> Option<String> {
+    release_json.lines().find_map(|line| {
+        let trimmed = line.trim();
+        if trimmed.starts_with("\"tag_name\":") {
+            trimmed.split('"').nth(3).map(ToString::to_string)
+        } else {
+            None
+        }
+    })
 }
 
 fn detect_target() -> String {

@@ -1,7 +1,7 @@
 //! Snapshot export functionality
 
 use crate::docker::execute_docker_with_output;
-use crate::manager::SnapshotManager;
+use crate::manager::{SnapshotManager, SnapshotScope};
 use crate::metadata::SnapshotMetadata;
 use crate::optimal_concurrency;
 use futures::stream::{self, StreamExt};
@@ -11,6 +11,7 @@ use vm_core::{vm_error, vm_println, vm_success};
 
 /// Handle snapshot export
 pub async fn handle_export(
+    executable: &str,
     name: &str,
     output_path: Option<&Path>,
     compress_level: u8,
@@ -37,7 +38,13 @@ pub async fn handle_export(
     };
 
     // Check if snapshot exists
-    if !manager.snapshot_exists(Some(&project_name), clean_name) {
+    let scope = if is_global {
+        SnapshotScope::Global
+    } else {
+        SnapshotScope::Project(&project_name)
+    };
+
+    if !manager.snapshot_exists(scope, clean_name) {
         return Err(VmError::validation(
             format!(
                 "Snapshot '{}' not found for project '{}'",
@@ -54,7 +61,7 @@ pub async fn handle_export(
     );
 
     // Load snapshot metadata
-    let snapshot_dir = manager.get_snapshot_dir(Some(&project_name), clean_name);
+    let snapshot_dir = manager.get_snapshot_dir(scope, clean_name);
     let metadata_path = snapshot_dir.join("metadata.json");
     let metadata = SnapshotMetadata::load(&metadata_path)?;
 
@@ -116,7 +123,7 @@ pub async fn handle_export(
 
             // Check if image exists
             let current_digest =
-                execute_docker_with_output(&["image", "inspect", "--format={{.Id}}", &image_tag])
+                execute_docker_with_output(executable, &["image", "inspect", "--format={{.Id}}", &image_tag])
                     .await
                     .ok();
 
@@ -154,7 +161,7 @@ pub async fn handle_export(
                 image_path_str,
             ];
 
-            execute_docker_with_output(&save_args).await?;
+            execute_docker_with_output(executable, &save_args).await?;
             Ok(())
         }
     });

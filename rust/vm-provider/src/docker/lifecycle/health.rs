@@ -3,11 +3,12 @@ use crate::ServiceStatus;
 
 /// Check PostgreSQL service health using pg_isready
 pub(super) fn check_postgres_status(
+    executable: &str,
     container_name: &str,
     port: u16,
     host_port: Option<u16>,
 ) -> ServiceStatus {
-    let result = std::process::Command::new("docker")
+    let result = std::process::Command::new(executable)
         .args([
             "exec",
             container_name,
@@ -50,11 +51,12 @@ pub(super) fn check_postgres_status(
 
 /// Check Redis service health using redis-cli ping
 pub(super) fn check_redis_status(
+    executable: &str,
     container_name: &str,
     port: u16,
     host_port: Option<u16>,
 ) -> ServiceStatus {
-    let result = std::process::Command::new("docker")
+    let result = std::process::Command::new(executable)
         .args([
             "exec",
             container_name,
@@ -101,11 +103,12 @@ pub(super) fn check_redis_status(
 
 /// Check MongoDB service health using mongosh ping
 pub(super) fn check_mongodb_status(
+    executable: &str,
     container_name: &str,
     port: u16,
     host_port: Option<u16>,
 ) -> ServiceStatus {
-    let result = std::process::Command::new("docker")
+    let result = std::process::Command::new(executable)
         .args([
             "exec",
             container_name,

@@ -142,7 +142,9 @@
             owner: '{{ project_uid }}'
             group: '{{ project_gid }}'
             recurse: yes
-        when: ansible_facts['user_id'] == 0
+        when:
+          - ansible_facts['user_id'] == 0
+          - base_preprovisioned
         become: yes
         ignore_errors: yes  # Continue if some files can't be changed
 
@@ -404,49 +406,7 @@
         ignore_errors: yes
         when: not base_preprovisioned
 
-      # Fast provisioning: Use pre-baked template with sed substitution (10x faster)
-      # Enable with VM_FAST_PROVISION=1 environment variable
-      - name: Generate .zshrc from fast template (experimental)
-        shell: |
-            cp /app/shared/templates/zshrc.template /home/{{ project_user }}/.zshrc
-            sed -i 's|__VM_PROJECT_NAME__|{{ project_name }}|g' /home/{{ project_user }}/.zshrc
-            sed -i 's|__VM_TERMINAL_EMOJI__|{{ terminal_emoji }}|g' /home/{{ project_user }}/.zshrc
-            sed -i 's|__VM_TERMINAL_USERNAME__|{{ terminal_username }}|g' /home/{{ project_user }}/.zshrc
-            sed -i 's|__VM_WORKSPACE_PATH__|{{ project_path }}|g' /home/{{ project_user }}/.zshrc
-            sed -i 's|__VM_COLOR_FOREGROUND__|{{ terminal_colors.foreground }}|g' /home/{{ project_user }}/.zshrc
-            sed -i 's|__VM_COLOR_RED__|{{ terminal_colors.red }}|g' /home/{{ project_user }}/.zshrc
-            sed -i 's|__VM_COLOR_GREEN__|{{ terminal_colors.green }}|g' /home/{{ project_user }}/.zshrc
-            sed -i 's|__VM_COLOR_YELLOW__|{{ terminal_colors.yellow }}|g' /home/{{ project_user }}/.zshrc
-            sed -i 's|__VM_COLOR_BLUE__|{{ terminal_colors.blue }}|g' /home/{{ project_user }}/.zshrc
-            sed -i 's|__VM_COLOR_MAGENTA__|{{ terminal_colors.magenta }}|g' /home/{{ project_user }}/.zshrc
-            sed -i 's|__VM_COLOR_CYAN__|{{ terminal_colors.cyan }}|g' /home/{{ project_user }}/.zshrc
-            sed -i 's|__VM_COLOR_BRIGHT_BLACK__|{{ terminal_colors.bright_black }}|g' /home/{{ project_user }}/.zshrc
-            {% if show_git_branch %}
-            sed -i 's|^__SHOW_GIT_BRANCH__||g' /home/{{ project_user }}/.zshrc
-            {% else %}
-            sed -i '/^__SHOW_GIT_BRANCH__/d' /home/{{ project_user }}/.zshrc
-            {% endif %}
-            {% if show_timestamp %}
-            sed -i 's|^__SHOW_TIMESTAMP__||g' /home/{{ project_user }}/.zshrc
-            {% else %}
-            sed -i '/^__SHOW_TIMESTAMP__/d' /home/{{ project_user }}/.zshrc
-            {% endif %}
-            {% if cargo_packages_required %}
-            sed -i 's|^__HAS_CARGO__||g' /home/{{ project_user }}/.zshrc
-            {% else %}
-            sed -i '/^__HAS_CARGO__/d' /home/{{ project_user }}/.zshrc
-            {% endif %}
-            {% if pip_packages_required %}
-            sed -i 's|^__HAS_PIP__||g' /home/{{ project_user }}/.zshrc
-            {% else %}
-            sed -i '/^__HAS_PIP__/d' /home/{{ project_user }}/.zshrc
-            {% endif %}
-            chown {{ project_uid }}:{{ project_gid }} /home/{{ project_user }}/.zshrc
-            chmod 0644 /home/{{ project_user }}/.zshrc
-        become_user: root
-        when: "lookup('env', 'VM_FAST_PROVISION') == '1'"
-
-      - name: Generate .zshrc from template (traditional)
+      - name: Generate .zshrc from template
         template:
             src: /app/shared/templates/zshrc.j2
             dest: '/home/{{ project_user }}/.zshrc'
@@ -454,60 +414,26 @@
             group: '{{ project_gid }}'
             mode: '0644'
         become_user: root
-        when: "lookup('env', 'VM_FAST_PROVISION') != '1'"
 
-      - name: Install Node.js
+      - name: Configure Node.js toolchain
         shell: |
             source /home/{{ project_user }}/.nvm/nvm.sh
             nvm install {{ project_config.versions.node | default('22') }}
             nvm use {{ project_config.versions.node | default('22') }}
             nvm alias default {{ project_config.versions.node | default('22') }}
-        args:
-            executable: /bin/bash
-        become_user: '{{ project_user }}'
-        when: nodejs_required and not base_preprovisioned
-
-      - name: Update npm to latest version
-        shell: |
-            source /home/{{ project_user }}/.nvm/nvm.sh
             npm install -g npm@{{ project_config.versions.npm | default('latest') }}
-        args:
-            executable: /bin/bash
-        become_user: '{{ project_user }}'
-        when: nodejs_required and not base_preprovisioned
-        ignore_errors: yes
-
-      - name: Enable corepack for pnpm
-        shell: |
-            source /home/{{ project_user }}/.nvm/nvm.sh
             corepack enable
+            if corepack prepare pnpm@{{ project_config.versions.pnpm | default('10.12.3') }} --activate; then
+                echo "corepack_ok"
+            else
+                npm install -g pnpm@{{ project_config.versions.pnpm | default('10.12.3') }}
+                echo "corepack_fallback"
+            fi
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
-        when: nodejs_required and not base_preprovisioned
-
-      - name: Install pnpm via corepack
-        shell: |
-            source /home/{{ project_user }}/.nvm/nvm.sh
-            corepack prepare pnpm@{{ project_config.versions.pnpm | default('10.12.3') }} --activate
-        args:
-            executable: /bin/bash
-        become_user: '{{ project_user }}'
-        register: corepack_result
         when: nodejs_required and not base_preprovisioned
         ignore_errors: yes
-
-      - name: Install pnpm via npm if corepack failed
-        shell: |
-            source /home/{{ project_user }}/.nvm/nvm.sh
-            npm install -g pnpm@{{ project_config.versions.pnpm | default('10.12.3') }}
-            echo "✅ Installed pnpm via npm as fallback"
-        args:
-            executable: /bin/bash
-        become_user: '{{ project_user }}'
-        when:
-          - nodejs_required and not base_preprovisioned
-          - corepack_result.failed | default(false)
 
       # Install additional APT packages - using shell for Python 3.14 compatibility
       # Layered provisioning: works for both fresh builds and snapshots

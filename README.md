@@ -326,16 +326,6 @@ vm uninstall             # Uninstall vm from the system
 
 The VM tool supports several environment variables to optimize performance and debug slow operations:
 
-**`VM_FAST_PROVISION=1`** — Experimental fast provisioning mode
-Enables 10x faster shell configuration generation using template substitution instead of Jinja2 rendering. Reduces `.zshrc` generation from ~8-12s to ~0.5-1s.
-
-```bash
-# Enable fast provisioning (experimental)
-VM_FAST_PROVISION=1 vm start
-
-# Expected speedup: 42s → 30-33s total creation time
-```
-
 **`ANSIBLE_PROFILE=1`** — Show per-task timing
 Enables Ansible's `profile_tasks` callback to identify provisioning bottlenecks. Shows execution time for each configuration task.
 
@@ -371,18 +361,13 @@ If VM creation is taking longer than expected (>60s):
    ANSIBLE_PROFILE=1 vm start
    ```
 
-2. **Try fast provisioning mode** (experimental):
-   ```bash
-   VM_FAST_PROVISION=1 vm start
-   ```
-
-3. **Check Docker performance**:
+2. **Check Docker performance**:
    ```bash
    docker info  # Verify Docker is healthy
    docker system df  # Check disk space
    ```
 
-4. **Increase timeout** if provisioning is being cut short:
+3. **Increase timeout** if provisioning is being cut short:
    ```bash
    ANSIBLE_TIMEOUT=600 vm start
    ```

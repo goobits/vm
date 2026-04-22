@@ -61,7 +61,6 @@ SHELL_CONFIG=""
 SHELL_TYPE=""  # bash, zsh, fish, etc.
 
 # Installation options (parsed from arguments)
-INSTALL_MODE="source"
 INSTALLER_ARGS=()
 
 # ============================================================================
@@ -419,28 +418,6 @@ install_rust_secure() {
     rm -f "$temp_installer"
 
     return 0
-}
-
-# ============================================================================
-# Prerequisite Checks (Docker)
-# ============================================================================
-
-check_docker_is_running() {
-    log_info "Checking for Docker..."
-
-    if ! command_exists docker; then
-        handle_error $ERR_DEPENDENCY_MISSING \
-            "Docker is not installed" \
-            "Docker is required to create and manage development environments. Please install it from https://docs.docker.com/get-docker/ and try again."
-    fi
-
-    if ! timeout 10 docker ps &>/dev/null; then
-        handle_error $ERR_DEPENDENCY_MISSING \
-            "Docker is not running" \
-            "The Docker daemon is not responding. Please start the Docker service and run this script again."
-    fi
-
-    log_success "Docker is installed and running"
 }
 
 # ============================================================================
@@ -1055,12 +1032,12 @@ main() {
     echo "═══════════════════════════════════════════" > "$LOG_FILE"
     echo "VM Installation Log - $(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE"
     echo "Version: $SCRIPT_VERSION" >> "$LOG_FILE"
-    echo "Mode: $INSTALL_MODE" >> "$LOG_FILE"
+    echo "Mode: source" >> "$LOG_FILE"
     echo "═══════════════════════════════════════════" >> "$LOG_FILE"
 
     echo ""
     echo -e "${GREEN}${LOG_PREFIX} v$SCRIPT_VERSION${NC}"
-    echo -e "${BLUE}Installing from: ${INSTALL_MODE}${NC}"
+    echo -e "${BLUE}Installing from: source${NC}"
     echo ""
 
     # Step 1: Platform detection
@@ -1071,11 +1048,7 @@ main() {
     detect_shell_config
     echo ""
 
-    # Step 2: Prerequisite checks
-    check_docker_is_running
-    echo ""
-
-    # Step 3: Build from source
+    # Step 2: Build from source
     log_info "Building from source..."
 
     # Install Rust if needed

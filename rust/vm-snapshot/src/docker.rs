@@ -9,8 +9,8 @@ use vm_core::error::{Result, VmError};
 
 /// Execute docker command with streaming output (for long-running commands)
 /// Output is streamed directly to the terminal so users see progress
-pub async fn execute_docker_streaming(args: &[&str]) -> Result<()> {
-    let status = tokio::process::Command::new("docker")
+pub async fn execute_docker_streaming(executable: &str, args: &[&str]) -> Result<()> {
+    let status = tokio::process::Command::new(executable)
         .args(args)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
@@ -21,7 +21,7 @@ pub async fn execute_docker_streaming(args: &[&str]) -> Result<()> {
     if !status.success() {
         return Err(VmError::general(
             std::io::Error::new(std::io::ErrorKind::Other, "Docker command failed"),
-            format!("Command 'docker {}' failed", args.join(" ")),
+            format!("Command '{} {}' failed", executable, args.join(" ")),
         ));
     }
 
@@ -29,8 +29,8 @@ pub async fn execute_docker_streaming(args: &[&str]) -> Result<()> {
 }
 
 /// Execute docker command and return output (for commands that need captured output)
-pub async fn execute_docker_with_output(args: &[&str]) -> Result<String> {
-    let output = tokio::process::Command::new("docker")
+pub async fn execute_docker_with_output(executable: &str, args: &[&str]) -> Result<String> {
+    let output = tokio::process::Command::new(executable)
         .args(args)
         .output()
         .await
@@ -48,8 +48,8 @@ pub async fn execute_docker_with_output(args: &[&str]) -> Result<String> {
 }
 
 /// Execute docker command without capturing output (for quick commands like volume create/rm)
-pub async fn execute_docker(args: &[&str]) -> Result<()> {
-    let status = tokio::process::Command::new("docker")
+pub async fn execute_docker(executable: &str, args: &[&str]) -> Result<()> {
+    let status = tokio::process::Command::new(executable)
         .args(args)
         .status()
         .await
@@ -58,7 +58,7 @@ pub async fn execute_docker(args: &[&str]) -> Result<()> {
     if !status.success() {
         return Err(VmError::general(
             std::io::Error::new(std::io::ErrorKind::Other, "Docker command failed"),
-            format!("Command 'docker {}' failed", args.join(" ")),
+            format!("Command '{} {}' failed", executable, args.join(" ")),
         ));
     }
 
@@ -66,8 +66,12 @@ pub async fn execute_docker(args: &[&str]) -> Result<()> {
 }
 
 /// Execute docker compose command and return output
-pub async fn execute_docker_compose(args: &[&str], project_dir: &Path) -> Result<String> {
-    let output = tokio::process::Command::new("docker")
+pub async fn execute_docker_compose(
+    executable: &str,
+    args: &[&str],
+    project_dir: &Path,
+) -> Result<String> {
+    let output = tokio::process::Command::new(executable)
         .arg("compose")
         .args(args)
         .current_dir(project_dir)
@@ -87,8 +91,12 @@ pub async fn execute_docker_compose(args: &[&str], project_dir: &Path) -> Result
 }
 
 /// Execute docker compose command without capturing output
-pub async fn execute_docker_compose_status(args: &[&str], project_dir: &Path) -> Result<()> {
-    let status = tokio::process::Command::new("docker")
+pub async fn execute_docker_compose_status(
+    executable: &str,
+    args: &[&str],
+    project_dir: &Path,
+) -> Result<()> {
+    let status = tokio::process::Command::new(executable)
         .arg("compose")
         .args(args)
         .current_dir(project_dir)
@@ -99,7 +107,7 @@ pub async fn execute_docker_compose_status(args: &[&str], project_dir: &Path) ->
     if !status.success() {
         return Err(VmError::general(
             std::io::Error::new(std::io::ErrorKind::Other, "Docker compose command failed"),
-            format!("Command 'docker compose {}' failed", args.join(" ")),
+            format!("Command '{} compose {}' failed", executable, args.join(" ")),
         ));
     }
 
