@@ -4,6 +4,7 @@ set -euo pipefail
 
 REBUILD_DOCKER_BASE=false
 BUILD_TART_BASE=false
+PROVIDER="${PROVIDER:-all}"
 TART_BASE_NAME="${TART_BASE_NAME:-vibe-tart-base}"
 
 usage() {
@@ -11,19 +12,25 @@ usage() {
 Validate the shared Docker/Tart vibe workflow for the current project.
 
 Usage:
-  ./scripts/validate-vibe-providers.sh [--rebuild-docker-base] [--build-tart-base]
+  ./scripts/validate-vibe-providers.sh [--provider docker|tart|all] [--rebuild-docker-base] [--build-tart-base]
 
 Flags:
+  --provider docker|tart|all  Limit validation guidance to one provider (default: all)
   --rebuild-docker-base   Rebuild @vibe-box from Dockerfile.vibe before validation
   --build-tart-base       Build the local Tart vibe base before validation
 
 Environment:
+  PROVIDER                Provider focus for validation output (default: all)
   TART_BASE_NAME          Tart base name to write into guidance (default: vibe-tart-base)
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --provider)
+      PROVIDER="$2"
+      shift 2
+      ;;
     --rebuild-docker-base)
       REBUILD_DOCKER_BASE=true
       shift
@@ -43,6 +50,16 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+case "${PROVIDER}" in
+  docker|tart|all)
+    ;;
+  *)
+    echo "Invalid provider: ${PROVIDER}" >&2
+    usage >&2
+    exit 1
+    ;;
+esac
 
 require_tool() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -87,12 +104,25 @@ Validation setup is ready for this project.
 
 Run the provider smoke tests from this project directory:
 
+EOF
+
+if [[ "${PROVIDER}" == "docker" || "${PROVIDER}" == "all" ]]; then
+  cat <<'EOF'
   1. Docker default path
      time vm start
 
+EOF
+fi
+
+if [[ "${PROVIDER}" == "tart" || "${PROVIDER}" == "all" ]]; then
+  cat <<'EOF'
   2. Tart profile path
      time vm --profile tart start
 
+EOF
+fi
+
+cat <<'EOF'
 Suggested checks after each start:
 
   vm exec -- which claude

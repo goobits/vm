@@ -70,17 +70,22 @@ fn handle_validate(
             if rebuild_docker_base {
                 cmd.arg("--rebuild-docker-base");
             }
+            cmd.args(["--provider", "docker"]);
         }
         "tart" => {
-            cmd.arg("--build-tart-base");
+            if build_tart_base {
+                cmd.arg("--build-tart-base");
+            }
+            cmd.args(["--provider", "tart"]);
         }
         "all" => {
             if rebuild_docker_base {
                 cmd.arg("--rebuild-docker-base");
             }
-            if build_tart_base || !rebuild_docker_base {
+            if build_tart_base {
                 cmd.arg("--build-tart-base");
             }
+            cmd.args(["--provider", "all"]);
         }
         _ => unreachable!(),
     }
