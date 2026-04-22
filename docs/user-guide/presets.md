@@ -15,24 +15,28 @@ Full-featured development environment with precompiled `@vibe-box` snapshot
 
 ```bash
 vm config preset vibe
+
+# Rebuild the Docker base when needed:
+vm base build vibe --provider docker
 ```
 
 ### vibe-tart (Mac users)
 Same as vibe but with Docker/Tart profiles for switching providers
 - Default: Docker with `@vibe-box`
-- Profile `tart`: Native Tart VM on Apple Silicon
-- Best experience: build a local Tart-native `vibe` base and point the Tart profile at it
+- Profile `tart`: Native Tart VM on Apple Silicon with `vibe-tart-base`
 - Switch with `vm --profile tart start`
 
 ```bash
 vm config preset vibe-tart
 
-# Optional but recommended on Apple Silicon:
-./scripts/build-vibe-tart-base.sh
-# then set profiles.tart.vm.box to vibe-tart-base in vm.yaml
+# Rebuild the Docker base when needed:
+vm base build vibe --provider docker
+
+# Build the Tart base once:
+vm base build vibe --provider tart
 
 # Validate both providers from the same repo:
-./scripts/validate-vibe-providers.sh
+vm base validate vibe
 ```
 
 ### base

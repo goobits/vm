@@ -85,14 +85,6 @@ cat <<EOF
 
 Validation setup is ready for this project.
 
-If you built a Tart base, make sure your vm.yaml points the Tart profile at it:
-
-profiles:
-  tart:
-    provider: tart
-    vm:
-      box: ${TART_BASE_NAME}
-
 Run the provider smoke tests from this project directory:
 
   1. Docker default path
@@ -111,5 +103,8 @@ Suggested checks after each start:
   vm ssh
 
 If both paths work from the same repo and the expected tools are present, the shared vibe workflow is validated.
+
+This script is the backend for:
+  vm base validate vibe
 
 EOF

@@ -36,7 +36,7 @@ profiles:
   tart:
     provider: tart
     vm:
-      box: ghcr.io/cirruslabs/ubuntu:latest
+      box: vibe-tart-base
       memory: 16384
       cpus: 8
     tart:

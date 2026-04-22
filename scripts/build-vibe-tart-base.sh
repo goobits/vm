@@ -177,16 +177,13 @@ Next steps:
   1. Apply the mixed-provider preset in your project:
        vm config preset vibe-tart
 
-  2. Point the Tart profile at the local base by editing vm.yaml:
-       profiles:
-         tart:
-           vm:
-             box: ${BASE_NAME}
-
-  3. Start Tart from the same project directory:
+  2. Start Tart from the same project directory:
        vm --profile tart start
 
-  4. Keep Docker as the default path:
+  3. Keep Docker as the default path:
        vm start
+
+This script is the backend for:
+  vm base build vibe --provider tart
 
 EOF

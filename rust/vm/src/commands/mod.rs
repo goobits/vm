@@ -19,6 +19,7 @@ fi
 "#;
 
 // Individual command modules
+pub mod base;
 pub mod clean;
 pub mod config;
 pub mod db;
@@ -112,6 +113,10 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         Command::Snapshot { command } => {
             debug!("Calling snapshot operations");
             snapshot::handle_snapshot(command.clone(), args.config, args.profile.clone()).await
+        }
+        Command::Base { command } => {
+            debug!("Calling base workflow operations");
+            base::handle_base(command.clone()).await
         }
         Command::InternalCompletion { shell } => {
             debug!("Generating shell completions for: {}", shell);

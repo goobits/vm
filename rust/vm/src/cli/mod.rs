@@ -31,6 +31,32 @@ pub struct Args {
 }
 
 #[derive(Debug, Clone, Subcommand)]
+pub enum BaseSubcommand {
+    /// Build a provider-native base artifact for a preset
+    Build {
+        /// Base preset to build (currently: vibe)
+        preset: String,
+        /// Provider to build for
+        #[arg(long, value_parser = ["docker", "tart"])]
+        provider: String,
+    },
+    /// Validate the shared provider workflow for the current project
+    Validate {
+        /// Base preset to validate (currently: vibe)
+        preset: String,
+        /// Optional provider focus
+        #[arg(long, value_parser = ["docker", "tart", "all"], default_value = "all")]
+        provider: String,
+        /// Rebuild the Docker base first
+        #[arg(long)]
+        rebuild_docker_base: bool,
+        /// Build the Tart base first
+        #[arg(long)]
+        build_tart_base: bool,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
 pub enum ConfigSubcommand {
     /// Validate the current configuration
     Validate,
@@ -715,6 +741,12 @@ pub enum Command {
         command: SnapshotSubcommand,
     },
 
+    /// Build and validate provider-native base environments
+    Base {
+        #[command(subcommand)]
+        command: BaseSubcommand,
+    },
+
     /// Extend with plugins
     Plugin {
         #[command(subcommand)]
@@ -759,7 +791,8 @@ pub enum Command {
 #[cfg(test)]
 mod tests {
     use super::{
-        Args, Command, PluginSubcommand, RegistrySubcommand, SecretsSubcommand, TempSubcommand,
+        Args, BaseSubcommand, Command, PluginSubcommand, RegistrySubcommand, SecretsSubcommand,
+        TempSubcommand,
     };
     use clap::Parser;
 
@@ -885,6 +918,21 @@ mod tests {
         match args.command {
             Command::Status { .. } => { /* Correct command */ }
             _ => panic!("Expected Command::Status"),
+        }
+    }
+
+    #[test]
+    fn test_base_build_command_parsing() {
+        let args = Args::parse_from(["vm", "base", "build", "vibe", "--provider", "tart"]);
+        match args.command {
+            Command::Base { command } => match command {
+                BaseSubcommand::Build { preset, provider } => {
+                    assert_eq!(preset, "vibe");
+                    assert_eq!(provider, "tart");
+                }
+                _ => panic!("Expected BaseSubcommand::Build"),
+            },
+            _ => panic!("Expected Command::Base"),
         }
     }
 }

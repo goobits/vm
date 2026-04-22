@@ -744,10 +744,10 @@ tart:
 For the closest parity with Docker `vibe`, build a local Tart-native base first:
 
 ```bash
-./scripts/build-vibe-tart-base.sh
+vm base build vibe --provider tart
 ```
 
-Then point your Tart profile at that local image:
+The `vibe-tart` preset already expects the standard local Tart base name:
 
 ```yaml
 profiles:
@@ -760,7 +760,7 @@ profiles:
 To validate the shared Docker/Tart workflow in the current project:
 
 ```bash
-./scripts/validate-vibe-providers.sh
+vm base validate vibe
 ```
 
 ### Box Configuration

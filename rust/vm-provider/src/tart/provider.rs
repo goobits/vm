@@ -22,6 +22,7 @@ use vm_messages::messages::MESSAGES;
 
 // Constants for Tart provider
 const DEFAULT_TART_IMAGE: &str = "ghcr.io/cirruslabs/ubuntu:latest";
+const DEFAULT_TART_VIBE_BASE: &str = "vibe-tart-base";
 const TART_VM_LOG_PATH: &str = ".tart/vms";
 
 struct CollectedMetrics {
@@ -52,6 +53,12 @@ impl TartProvider {
             }
         }
         Ok(None)
+    }
+
+    fn tart_image_exists(&self, image_name: &str) -> Result<bool> {
+        let output = cmd!("tart", "list", "--format", "json").read()?;
+        let vms: Vec<serde_json::Value> = serde_json::from_str(&output)?;
+        Ok(vms.iter().any(|vm| vm["Name"].as_str() == Some(image_name)))
     }
 
     fn is_instance_running(&self, instance_name: &str) -> Result<bool> {
@@ -327,6 +334,13 @@ impl TartProvider {
 
         // Get image from config using new BoxConfig system
         let image = self.get_tart_image(config)?;
+
+        if image == DEFAULT_TART_VIBE_BASE && !self.tart_image_exists(&image)? {
+            return Err(VmError::Config(format!(
+                "Tart vibe base '{}' was not found. Run `vm base build vibe --provider tart` first.",
+                DEFAULT_TART_VIBE_BASE
+            )));
+        }
 
         // Clone the base image
         ProgressReporter::task(&main_phase, &format!("Cloning image '{}'...", image));
