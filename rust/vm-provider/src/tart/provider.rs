@@ -1,4 +1,7 @@
-use super::{instance::TartInstanceManager, provisioner::TartProvisioner};
+use super::{
+    host_sync::collect_host_sync_mounts, instance::TartInstanceManager,
+    provisioner::TartProvisioner,
+};
 use crate::{
     common::instance::{extract_project_name, InstanceInfo, InstanceResolver},
     context::ProviderContext,
@@ -106,14 +109,28 @@ impl TartProvider {
 
     fn start_vm_background(&self, vm_name: &str) -> Result<()> {
         let host_path = self.host_workspace_path()?;
-        let dir_arg = format!("workspace:{}:tag=workspace", host_path.display());
-        let dir_arg = Self::shell_escape_single_quotes(&dir_arg);
         let log_path = format!("/tmp/vm-tart-{}.log", Self::sanitize_log_name(vm_name));
         let vm_name = Self::shell_escape_single_quotes(vm_name);
         let log_path = Self::shell_escape_single_quotes(&log_path);
+        let mut dir_args = vec![format!("workspace:{}:tag=workspace", host_path.display())];
+        for mount in collect_host_sync_mounts(&self.config) {
+            dir_args.push(format!(
+                "{}:{}:tag={}",
+                mount.tag,
+                mount.host_path.display(),
+                mount.tag
+            ));
+        }
+
+        let escaped_dir_args: Vec<String> = dir_args
+            .iter()
+            .map(|arg| format!("--dir '{}'", Self::shell_escape_single_quotes(arg)))
+            .collect();
         let cmd = format!(
-            "nohup tart run --no-graphics --dir '{}' '{}' >'{}' 2>&1 &",
-            dir_arg, vm_name, log_path
+            "nohup tart run --no-graphics {} '{}' >'{}' 2>&1 &",
+            escaped_dir_args.join(" "),
+            vm_name,
+            log_path
         );
 
         std::process::Command::new("sh")
