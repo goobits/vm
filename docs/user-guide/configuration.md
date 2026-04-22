@@ -741,6 +741,22 @@ tart:
 
 **Requirements**: Apple Silicon Mac (M1/M2/M3/M4), Tart installed via `brew install cirruslabs/cli/tart`
 
+For the closest parity with Docker `vibe`, build a local Tart-native base first:
+
+```bash
+./scripts/build-vibe-tart-base.sh
+```
+
+Then point your Tart profile at that local image:
+
+```yaml
+profiles:
+  tart:
+    provider: tart
+    vm:
+      box: vibe-tart-base
+```
+
 ### Box Configuration
 
 The `vm.box` field specifies what to use as the base environment. It works across all providers with smart detection:

@@ -21,10 +21,15 @@ vm config preset vibe
 Same as vibe but with Docker/Tart profiles for switching providers
 - Default: Docker with `@vibe-box`
 - Profile `tart`: Native Tart VM on Apple Silicon
+- Best experience: build a local Tart-native `vibe` base and point the Tart profile at it
 - Switch with `vm --profile tart start`
 
 ```bash
 vm config preset vibe-tart
+
+# Optional but recommended on Apple Silicon:
+./scripts/build-vibe-tart-base.sh
+# then set profiles.tart.vm.box to vibe-tart-base in vm.yaml
 ```
 
 ### base
