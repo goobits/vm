@@ -4,7 +4,9 @@ use anyhow::Result;
 use tracing::{info, warn};
 use vm_config::GlobalConfig;
 
-use super::{get_or_generate_password, ManagedService};
+use super::{
+    container_runtime, default_container_runtime, get_or_generate_password, ManagedService,
+};
 
 /// PostgreSQL database service that implements the ManagedService trait
 pub struct PostgresqlService;
@@ -27,6 +29,7 @@ impl ManagedService for PostgresqlService {
     async fn start(&self, global_config: &GlobalConfig) -> Result<()> {
         let settings = &global_config.services.postgresql;
         let container_name = "vm-postgres-global";
+        let executable = container_runtime(global_config);
 
         // Expand tilde in data_dir
         let data_dir = shellexpand::tilde(&settings.data_dir).to_string();
@@ -35,22 +38,27 @@ impl ManagedService for PostgresqlService {
         let password = get_or_generate_password("postgresql").await?;
 
         // Reuse existing container if present
-        if container_exists(container_name).await? {
+        if container_exists(executable, container_name).await? {
             // If configuration mismatches, stop and recreate to avoid conflicts
-            if let Some(reason) =
-                check_service_mismatch(container_name, "postgres", settings.port, &settings.version)
-                    .await?
+            if let Some(reason) = check_service_mismatch(
+                executable,
+                container_name,
+                "postgres",
+                settings.port,
+                &settings.version,
+            )
+            .await?
             {
                 warn!(
                     "Existing PostgreSQL container '{}' mismatches config ({}). Recreating it...",
                     container_name, reason
                 );
-                let _ = tokio::process::Command::new("docker")
+                let _ = tokio::process::Command::new(executable)
                     .args(["rm", "-f", container_name])
                     .status()
                     .await;
             } else {
-                if container_running(container_name).await? {
+                if container_running(executable, container_name).await? {
                     info!(
                         "PostgreSQL service already running ({}) - reusing",
                         container_name
@@ -62,7 +70,7 @@ impl ManagedService for PostgresqlService {
                     "Starting existing PostgreSQL service container: {}",
                     container_name
                 );
-                let status = tokio::process::Command::new("docker")
+                let status = tokio::process::Command::new(executable)
                     .arg("start")
                     .arg(container_name)
                     .status()
@@ -76,7 +84,7 @@ impl ManagedService for PostgresqlService {
             }
         }
 
-        let mut cmd = tokio::process::Command::new("docker");
+        let mut cmd = tokio::process::Command::new(executable);
         cmd.arg("run")
             .arg("-d")
             .arg("--name")
@@ -99,16 +107,17 @@ impl ManagedService for PostgresqlService {
 
     async fn stop(&self) -> Result<()> {
         let container_name = "vm-postgres-global";
+        let executable = default_container_runtime();
 
         // Stop the container
-        let mut stop_cmd = tokio::process::Command::new("docker");
+        let mut stop_cmd = tokio::process::Command::new(&executable);
         stop_cmd.arg("stop").arg(container_name);
         if !stop_cmd.status().await?.success() {
             warn!("Failed to stop PostgreSQL container, it may not have been running.");
         }
 
         // Remove the container
-        let mut rm_cmd = tokio::process::Command::new("docker");
+        let mut rm_cmd = tokio::process::Command::new(&executable);
         rm_cmd.arg("rm").arg(container_name);
         if !rm_cmd.status().await?.success() {
             warn!("Failed to remove PostgreSQL container.");
@@ -135,8 +144,8 @@ impl ManagedService for PostgresqlService {
 }
 
 // Helper: check if a container exists
-async fn container_exists(name: &str) -> Result<bool> {
-    let output = tokio::process::Command::new("docker")
+async fn container_exists(executable: &str, name: &str) -> Result<bool> {
+    let output = tokio::process::Command::new(executable)
         .args([
             "ps",
             "-a",
@@ -152,8 +161,8 @@ async fn container_exists(name: &str) -> Result<bool> {
 }
 
 // Helper: check if container is running
-async fn container_running(name: &str) -> Result<bool> {
-    let output = tokio::process::Command::new("docker")
+async fn container_running(executable: &str, name: &str) -> Result<bool> {
+    let output = tokio::process::Command::new(executable)
         .args(["inspect", "-f", "{{.State.Running}}", name])
         .output()
         .await?;
@@ -166,6 +175,7 @@ async fn container_running(name: &str) -> Result<bool> {
 
 // Return Some(reason) when existing container doesn't match desired config (port or image tag)
 async fn check_service_mismatch(
+    executable: &str,
     name: &str,
     image_base: &str,
     desired_port: u16,
@@ -174,7 +184,7 @@ async fn check_service_mismatch(
     let mut reasons = Vec::new();
 
     // Check port mapping
-    if let Ok(output) = tokio::process::Command::new("docker")
+    if let Ok(output) = tokio::process::Command::new(executable)
         .args(["inspect", "-f", "{{json .NetworkSettings.Ports}}", name])
         .output()
         .await
@@ -192,7 +202,7 @@ async fn check_service_mismatch(
     }
 
     // Check image tag
-    if let Ok(output) = tokio::process::Command::new("docker")
+    if let Ok(output) = tokio::process::Command::new(executable)
         .args(["inspect", "-f", "{{.Config.Image}}", name])
         .output()
         .await

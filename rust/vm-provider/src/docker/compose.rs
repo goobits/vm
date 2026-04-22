@@ -697,7 +697,11 @@ impl<'a> ComposeOperations<'a> {
             // Fallback: prepare build context and generate compose file
             let build_ops = BuildOperations::new(self.config, self.temp_dir, self.executable);
             let build_context = build_ops.prepare_compose_build_context()?;
-            self.write_docker_compose(&build_context, context)?;
+            if let Some(instance_name) = self.instance_name_from_container(container_name) {
+                self.write_docker_compose_with_instance(&build_context, &instance_name, context)?;
+            } else {
+                self.write_docker_compose(&build_context, context)?;
+            }
         }
 
         let container_exists =
@@ -740,6 +744,23 @@ impl<'a> ComposeOperations<'a> {
                 "Failed to start container using docker-compose: {e}"
             ))
         })
+    }
+
+    fn instance_name_from_container(&self, container_name: &str) -> Option<String> {
+        let project_name = self
+            .config
+            .project
+            .as_ref()
+            .and_then(|p| p.name.as_deref())
+            .unwrap_or("vm-project");
+        let default_name = format!("{project_name}-dev");
+        if container_name == default_name {
+            return None;
+        }
+
+        container_name
+            .strip_prefix(&format!("{project_name}-"))
+            .map(str::to_string)
     }
 
     #[allow(dead_code)]

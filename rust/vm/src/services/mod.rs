@@ -40,3 +40,25 @@ pub async fn get_or_generate_password(service_name: &str) -> Result<String> {
         .await
         .map_err(|e| anyhow::anyhow!("Failed to get password: {}", e))
 }
+
+pub fn container_runtime(global_config: &GlobalConfig) -> &str {
+    global_config
+        .defaults
+        .provider
+        .as_deref()
+        .filter(|provider| matches!(*provider, "docker" | "podman"))
+        .unwrap_or("docker")
+}
+
+pub fn default_container_runtime() -> String {
+    vm_config::AppConfig::load(None, None)
+        .ok()
+        .and_then(|config| {
+            config
+                .vm
+                .provider
+                .or(config.global.defaults.provider)
+                .filter(|provider| matches!(provider.as_str(), "docker" | "podman"))
+        })
+        .unwrap_or_else(|| "docker".to_string())
+}

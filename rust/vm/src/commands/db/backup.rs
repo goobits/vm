@@ -19,7 +19,8 @@ fn get_backup_dir() -> VmResult<PathBuf> {
 
 /// Execute a command in the postgres docker container
 async fn execute_docker_command(args: &[&str], input: Option<Vec<u8>>) -> VmResult<Vec<u8>> {
-    let mut cmd = tokio::process::Command::new("docker");
+    let executable = detect_container_runtime();
+    let mut cmd = tokio::process::Command::new(&executable);
     cmd.arg("exec").arg("-i").arg("vm-postgres-global");
     cmd.args(args);
 
@@ -56,6 +57,19 @@ async fn execute_docker_command(args: &[&str], input: Option<Vec<u8>>) -> VmResu
             String::from_utf8_lossy(&output.stderr),
         ))
     }
+}
+
+fn detect_container_runtime() -> String {
+    vm_config::AppConfig::load(None, None)
+        .ok()
+        .and_then(|config| {
+            config
+                .vm
+                .provider
+                .or(config.global.defaults.provider)
+                .filter(|provider| matches!(provider.as_str(), "docker" | "podman"))
+        })
+        .unwrap_or_else(|| "docker".to_string())
 }
 
 /// Backup a database

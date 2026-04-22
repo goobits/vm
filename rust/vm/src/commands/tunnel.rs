@@ -29,11 +29,12 @@ pub struct TunnelInfo {
 /// Manages port forwarding tunnels state
 pub struct TunnelManager {
     state_file: PathBuf,
+    executable: String,
 }
 
 impl TunnelManager {
     /// Create a new tunnel manager
-    pub fn new() -> VmResult<Self> {
+    pub fn new(executable: impl Into<String>) -> VmResult<Self> {
         let config_dir = platform::user_config_dir().map_err(|e| {
             VmError::general(
                 std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
@@ -45,7 +46,10 @@ impl TunnelManager {
             .map_err(|e| VmError::general(e, "Failed to create tunnels directory".to_string()))?;
 
         let state_file = tunnel_dir.join("active.json");
-        Ok(Self { state_file })
+        Ok(Self {
+            state_file,
+            executable: executable.into(),
+        })
     }
 
     /// Load active tunnels from state file
@@ -63,7 +67,9 @@ impl TunnelManager {
         // Filter out tunnels with stopped containers
         let active_tunnels: HashMap<u16, TunnelInfo> = tunnels
             .into_iter()
-            .filter(|(_, tunnel)| is_container_running(&tunnel.relay_container_id))
+            .filter(|(_, tunnel)| {
+                is_container_running(&self.executable, &tunnel.relay_container_id)
+            })
             .collect();
 
         Ok(active_tunnels)
@@ -105,7 +111,7 @@ impl TunnelManager {
         );
 
         let (relay_container_id, relay_container_name) =
-            start_relay_container(host_port, container_port, container_name)?;
+            start_relay_container(&self.executable, host_port, container_port, container_name)?;
 
         // Store tunnel info
         let tunnel_info = TunnelInfo {
@@ -154,7 +160,7 @@ impl TunnelManager {
         let mut tunnels = self.load_tunnels()?;
 
         if let Some(tunnel) = tunnels.remove(&host_port) {
-            stop_relay_container(&tunnel.relay_container_id)?;
+            stop_relay_container(&self.executable, &tunnel.relay_container_id)?;
             self.save_tunnels(&tunnels)?;
             vm_println!(
                 "✓ Stopped tunnel: localhost:{} → {}:{}",
@@ -190,7 +196,7 @@ impl TunnelManager {
 
         for port in to_remove {
             if let Some(tunnel) = tunnels.remove(&port) {
-                if let Err(e) = stop_relay_container(&tunnel.relay_container_id) {
+                if let Err(e) = stop_relay_container(&self.executable, &tunnel.relay_container_id) {
                     warn!(
                         "Failed to stop relay container {}: {}",
                         tunnel.relay_container_id, e
@@ -214,6 +220,7 @@ impl TunnelManager {
 
 /// Start a port forwarding relay using a sidecar container
 fn start_relay_container(
+    executable: &str,
     host_port: u16,
     container_port: u16,
     container_name: &str,
@@ -224,7 +231,7 @@ fn start_relay_container(
     let listen_arg = format!("tcp-listen:{},fork,reuseaddr", host_port);
     let connect_arg = format!("tcp-connect:localhost:{}", container_port);
 
-    let output = StdCommand::new("docker")
+    let output = StdCommand::new(executable)
         .args([
             "run",
             "-d",
@@ -262,8 +269,8 @@ fn start_relay_container(
 }
 
 /// Check if a Docker container is running
-fn is_container_running(container_id: &str) -> bool {
-    StdCommand::new("docker")
+fn is_container_running(executable: &str, container_id: &str) -> bool {
+    StdCommand::new(executable)
         .args(["inspect", "-f", "{{.State.Running}}", container_id])
         .output()
         .ok()
@@ -279,8 +286,8 @@ fn is_container_running(container_id: &str) -> bool {
 }
 
 /// Stop a relay container
-fn stop_relay_container(container_id: &str) -> VmResult<()> {
-    let output = StdCommand::new("docker")
+fn stop_relay_container(executable: &str, container_id: &str) -> VmResult<()> {
+    let output = StdCommand::new(executable)
         .args(["stop", container_id])
         .output()
         .map_err(|e| {
@@ -343,7 +350,7 @@ pub fn handle_tunnel(
     });
 
     // Create tunnel
-    let manager = TunnelManager::new()?;
+    let manager = TunnelManager::new(runtime_executable(provider.as_ref()))?;
     manager.create_tunnel(host_port, container_port, container_name, provider.as_ref())
 }
 
@@ -354,7 +361,7 @@ pub fn handle_tunnel_list(
     _config: VmConfig,
     _global_config: GlobalConfig,
 ) -> VmResult<()> {
-    let manager = TunnelManager::new()?;
+    let manager = TunnelManager::new(runtime_executable(_provider.as_ref()))?;
     let tunnels = manager.list_tunnels(container)?;
 
     if tunnels.is_empty() {
@@ -395,7 +402,7 @@ pub fn handle_tunnel_stop(
     _config: VmConfig,
     _global_config: GlobalConfig,
 ) -> VmResult<()> {
-    let manager = TunnelManager::new()?;
+    let manager = TunnelManager::new(runtime_executable(_provider.as_ref()))?;
 
     if all || (port.is_none() && container.is_some()) {
         // Stop all tunnels (optionally filtered by container)
@@ -416,4 +423,11 @@ pub fn handle_tunnel_stop(
     }
 
     Ok(())
+}
+
+fn runtime_executable(provider: &dyn Provider) -> &str {
+    match provider.name() {
+        "podman" => "podman",
+        _ => "docker",
+    }
 }

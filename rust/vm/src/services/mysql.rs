@@ -4,7 +4,9 @@ use anyhow::Result;
 use tracing::warn;
 use vm_config::GlobalConfig;
 
-use super::{get_or_generate_password, ManagedService};
+use super::{
+    container_runtime, default_container_runtime, get_or_generate_password, ManagedService,
+};
 
 /// MySQL database service that implements the ManagedService trait
 pub struct MysqlService;
@@ -27,13 +29,14 @@ impl ManagedService for MysqlService {
     async fn start(&self, global_config: &GlobalConfig) -> Result<()> {
         let settings = &global_config.services.mysql;
         let container_name = "vm-mysql-global";
+        let executable = container_runtime(global_config);
 
         let data_dir = shellexpand::tilde(&settings.data_dir).to_string();
         tokio::fs::create_dir_all(&data_dir).await?;
 
         let password = get_or_generate_password("mysql").await?;
 
-        let mut cmd = tokio::process::Command::new("docker");
+        let mut cmd = tokio::process::Command::new(executable);
         cmd.arg("run")
             .arg("-d")
             .arg("--name")
@@ -56,14 +59,15 @@ impl ManagedService for MysqlService {
 
     async fn stop(&self) -> Result<()> {
         let container_name = "vm-mysql-global";
+        let executable = default_container_runtime();
 
-        let mut stop_cmd = tokio::process::Command::new("docker");
+        let mut stop_cmd = tokio::process::Command::new(&executable);
         stop_cmd.arg("stop").arg(container_name);
         if !stop_cmd.status().await?.success() {
             warn!("Failed to stop MySQL container, it may not have been running.");
         }
 
-        let mut rm_cmd = tokio::process::Command::new("docker");
+        let mut rm_cmd = tokio::process::Command::new(&executable);
         rm_cmd.arg("rm").arg(container_name);
         if !rm_cmd.status().await?.success() {
             warn!("Failed to remove MySQL container.");

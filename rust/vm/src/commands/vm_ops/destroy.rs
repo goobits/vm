@@ -73,9 +73,10 @@ pub async fn handle_destroy(
         provider.name(),
         force
     );
+    let executable = provider_runtime(provider.as_ref());
 
     // Check if container exists before showing confirmation
-    let container_exists = std::process::Command::new("docker")
+    let container_exists = std::process::Command::new(executable)
         .args(["inspect", &target_container])
         .output()
         .ok()
@@ -86,7 +87,7 @@ pub async fn handle_destroy(
         vm_println!("{}", MESSAGES.vm.destroy_cleanup_already_removed);
 
         // Clean up images even if container doesn't exist
-        let _ = std::process::Command::new("docker")
+        let _ = std::process::Command::new(executable)
             .args(["image", "rm", "-f", &format!("{vm_name}-image")])
             .output();
 
@@ -226,6 +227,13 @@ pub async fn handle_destroy(
             ),
             "User cancelled VM destruction",
         ))
+    }
+}
+
+fn provider_runtime(provider: &dyn Provider) -> &str {
+    match provider.name() {
+        "podman" => "podman",
+        _ => "docker",
     }
 }
 

@@ -24,13 +24,14 @@ impl<'a> LifecycleOperations<'a> {
     #[must_use = "container start results should be handled"]
     pub fn start_container_with_context(
         &self,
-        _container: Option<&str>,
+        container: Option<&str>,
         context: &ProviderContext,
     ) -> Result<()> {
-        let compose_ops = self.regenerate_compose_with_context(context)?;
+        let target_container = self.resolve_target_container(container)?;
+        let compose_ops = self.regenerate_compose_with_context(container, context)?;
 
         // Use compose to start (handles both stopped containers and fresh starts)
-        compose_ops.start_with_compose(context)
+        compose_ops.start_named_with_compose(&target_container, context)
     }
 
     #[must_use = "container stop results should be handled"]
@@ -140,13 +141,14 @@ impl<'a> LifecycleOperations<'a> {
         container: Option<&str>,
         context: &ProviderContext,
     ) -> Result<()> {
-        let compose_ops = self.regenerate_compose_with_context(context)?;
+        let target_container = self.resolve_target_container(container)?;
+        let compose_ops = self.regenerate_compose_with_context(container, context)?;
 
         // Stop the container first
         self.stop_container(container)?;
 
         // Use compose to start with updated configuration
-        compose_ops.start_with_compose(context)
+        compose_ops.start_named_with_compose(&target_container, context)
     }
 
     #[must_use = "container kill results should be handled"]

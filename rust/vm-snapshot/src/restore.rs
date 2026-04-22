@@ -50,6 +50,7 @@ pub async fn handle_restore(
     }
 
     let metadata = SnapshotMetadata::load(&metadata_file)?;
+    validate_snapshot_contents(&snapshot_dir, &metadata)?;
 
     // Verify project matches (skip for global snapshots)
     if !matches!(scope, SnapshotScope::Global) && metadata.project_name != project_name && !force {
@@ -230,6 +231,38 @@ pub async fn handle_restore(
             metadata.git_commit.as_deref().unwrap_or("unknown"),
             dirty
         );
+    }
+
+    Ok(())
+}
+
+fn validate_snapshot_contents(
+    snapshot_dir: &std::path::Path,
+    metadata: &SnapshotMetadata,
+) -> Result<()> {
+    let images_dir = snapshot_dir.join("images");
+    for service in &metadata.services {
+        let image_path = images_dir.join(&service.image_file);
+        if !image_path.exists() {
+            return Err(VmError::validation(
+                format!("Snapshot image file is missing: {}", image_path.display()),
+                None::<String>,
+            ));
+        }
+    }
+
+    let volumes_dir = snapshot_dir.join("volumes");
+    for volume in &metadata.volumes {
+        let archive_path = volumes_dir.join(&volume.archive_file);
+        if !archive_path.exists() {
+            return Err(VmError::validation(
+                format!(
+                    "Snapshot volume archive is missing: {}",
+                    archive_path.display()
+                ),
+                None::<String>,
+            ));
+        }
     }
 
     Ok(())

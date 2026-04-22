@@ -88,6 +88,11 @@ pub async fn handle_export(
         "version": "1.0",
         "snapshot_name": clean_name,
         "is_global": is_global,
+        "runtime": executable,
+        "platform": {
+            "os": std::env::consts::OS,
+            "arch": std::env::consts::ARCH,
+        },
         "created_at": metadata.created_at,
         "description": metadata.description,
         "project_name": metadata.project_name,

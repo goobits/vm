@@ -46,13 +46,15 @@ impl<'a> LifecycleOperations<'a> {
         &self,
         container: Option<&str>,
     ) -> Result<Option<String>> {
-        let target = self.resolve_target_container(container)?;
         let default = self.container_name();
-        if target == default {
-            return Ok(None);
-        }
-
         let prefix = format!("{}-", self.project_name());
+        let target = match container {
+            None => return Ok(None),
+            Some(name) if name == default => return Ok(None),
+            Some(name) if name.starts_with(&prefix) => name.to_string(),
+            Some(name) => self.resolve_target_container(Some(name))?,
+        };
+
         Ok(target
             .strip_prefix(&prefix)
             .map(str::to_string)
@@ -317,5 +319,46 @@ impl<'a> LifecycleOperations<'a> {
             compose_ops.write_docker_compose(&build_context, context)?;
         }
         Ok(compose_ops)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LifecycleOperations;
+    use std::path::PathBuf;
+    use vm_config::config::{ProjectConfig, VmConfig};
+
+    fn test_ops() -> LifecycleOperations<'static> {
+        let config = Box::leak(Box::new(VmConfig {
+            project: Some(ProjectConfig {
+                name: Some("demo".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }));
+        let temp_dir = Box::leak(Box::new(PathBuf::from("/tmp/demo")));
+        let project_dir = Box::leak(Box::new(PathBuf::from("/workspace/demo")));
+        LifecycleOperations::new(config, temp_dir, project_dir, "docker")
+    }
+
+    #[test]
+    fn resolves_default_target_to_none_instance() {
+        let ops = test_ops();
+        assert_eq!(ops.resolve_instance_name_for_target(None).unwrap(), None);
+        assert_eq!(
+            ops.resolve_instance_name_for_target(Some("demo-dev"))
+                .unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn resolves_instance_target_suffix() {
+        let ops = test_ops();
+        assert_eq!(
+            ops.resolve_instance_name_for_target(Some("demo-preview"))
+                .unwrap(),
+            Some("preview".to_string())
+        );
     }
 }

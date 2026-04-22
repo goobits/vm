@@ -25,6 +25,8 @@ pub struct CleanupResults {
 
 /// Handle cleanup for `vm doctor --clean`
 pub async fn handle_clean(dry_run: bool, verbose: bool) -> VmResult<()> {
+    let executable = detect_container_runtime();
+
     if dry_run {
         vm_println!("🔍 Dry run mode - showing what would be cleaned\n");
     } else {
@@ -32,11 +34,11 @@ pub async fn handle_clean(dry_run: bool, verbose: bool) -> VmResult<()> {
     }
 
     let results = CleanupResults {
-        volumes: clean_dangling_volumes(dry_run, verbose)?,
-        temp_containers: clean_stopped_temp_containers(dry_run, verbose)?,
+        volumes: clean_dangling_volumes(&executable, dry_run, verbose)?,
+        temp_containers: clean_stopped_temp_containers(&executable, dry_run, verbose)?,
         log_files: clean_old_logs(dry_run, verbose, 30)?,
-        dangling_images: clean_dangling_images(dry_run, verbose)?,
-        build_cache_mb: clean_build_cache(dry_run, verbose)?,
+        dangling_images: clean_dangling_images(&executable, dry_run, verbose)?,
+        build_cache_mb: clean_build_cache(&executable, dry_run, verbose)?,
     };
 
     // Print summary
@@ -46,10 +48,10 @@ pub async fn handle_clean(dry_run: bool, verbose: bool) -> VmResult<()> {
 }
 
 /// Clean dangling Docker volumes
-fn clean_dangling_volumes(dry_run: bool, verbose: bool) -> VmResult<u32> {
+fn clean_dangling_volumes(executable: &str, dry_run: bool, verbose: bool) -> VmResult<u32> {
     debug!("Cleaning dangling volumes");
 
-    let output = StdCommand::new("docker")
+    let output = StdCommand::new(executable)
         .args(["volume", "ls", "--filter", "dangling=true", "--quiet"])
         .output()
         .map_err(|e| VmError::general(e, "Failed to list dangling volumes"))?;
@@ -82,7 +84,7 @@ fn clean_dangling_volumes(dry_run: bool, verbose: bool) -> VmResult<u32> {
         }
     } else {
         for vol in &volumes {
-            let result = StdCommand::new("docker")
+            let result = StdCommand::new(executable)
                 .args(["volume", "rm", vol])
                 .output();
 
@@ -99,11 +101,11 @@ fn clean_dangling_volumes(dry_run: bool, verbose: bool) -> VmResult<u32> {
 }
 
 /// Clean stopped temp containers
-fn clean_stopped_temp_containers(dry_run: bool, verbose: bool) -> VmResult<u32> {
+fn clean_stopped_temp_containers(executable: &str, dry_run: bool, verbose: bool) -> VmResult<u32> {
     debug!("Cleaning stopped temp containers");
 
     // Look for containers with vm-temp label that are stopped
-    let output = StdCommand::new("docker")
+    let output = StdCommand::new(executable)
         .args([
             "ps",
             "-a",
@@ -156,7 +158,7 @@ fn clean_stopped_temp_containers(dry_run: bool, verbose: bool) -> VmResult<u32> 
         }
     } else {
         for (id, name) in &containers {
-            let result = StdCommand::new("docker").args(["rm", id]).output();
+            let result = StdCommand::new(executable).args(["rm", id]).output();
 
             if let Ok(out) = result {
                 if out.status.success() && verbose {
@@ -239,11 +241,11 @@ fn clean_old_logs(dry_run: bool, verbose: bool, days: u32) -> VmResult<u32> {
 }
 
 /// Clean dangling Docker images
-fn clean_dangling_images(dry_run: bool, verbose: bool) -> VmResult<u32> {
+fn clean_dangling_images(executable: &str, dry_run: bool, verbose: bool) -> VmResult<u32> {
     debug!("Cleaning dangling images");
 
     // Get count of dangling images
-    let output = StdCommand::new("docker")
+    let output = StdCommand::new(executable)
         .args(["image", "ls", "--filter", "dangling=true", "--quiet"])
         .output()
         .map_err(|e| VmError::general(e, "Failed to list dangling images"))?;
@@ -268,7 +270,7 @@ fn clean_dangling_images(dry_run: bool, verbose: bool) -> VmResult<u32> {
     if dry_run {
         vm_println!("  Images: Would remove {} dangling image(s)", count);
     } else {
-        let prune_output = StdCommand::new("docker")
+        let prune_output = StdCommand::new(executable)
             .args(["image", "prune", "-f"])
             .output();
 
@@ -283,11 +285,11 @@ fn clean_dangling_images(dry_run: bool, verbose: bool) -> VmResult<u32> {
 }
 
 /// Clean Docker build cache
-fn clean_build_cache(dry_run: bool, verbose: bool) -> VmResult<u64> {
+fn clean_build_cache(executable: &str, dry_run: bool, verbose: bool) -> VmResult<u64> {
     debug!("Cleaning build cache");
 
     // Get build cache size
-    let output = StdCommand::new("docker")
+    let output = StdCommand::new(executable)
         .args(["system", "df", "--format", "{{.Size}}"])
         .output()
         .map_err(|e| VmError::general(e, "Failed to get Docker system info"))?;
@@ -297,7 +299,7 @@ fn clean_build_cache(dry_run: bool, verbose: bool) -> VmResult<u64> {
     }
 
     // Parse build cache size (rough estimate from system df)
-    let df_output = StdCommand::new("docker")
+    let df_output = StdCommand::new(executable)
         .args([
             "builder",
             "du",
@@ -329,7 +331,7 @@ fn clean_build_cache(dry_run: bool, verbose: bool) -> VmResult<u64> {
     if dry_run {
         vm_println!("  Build cache: Would reclaim ~{} MB", cache_mb);
     } else {
-        let prune_output = StdCommand::new("docker")
+        let prune_output = StdCommand::new(executable)
             .args(["builder", "prune", "-f"])
             .output();
 
@@ -358,6 +360,19 @@ fn parse_size_to_mb(size_str: &str) -> u64 {
     } else {
         0
     }
+}
+
+fn detect_container_runtime() -> String {
+    vm_config::AppConfig::load(None, None)
+        .ok()
+        .and_then(|config| {
+            config
+                .vm
+                .provider
+                .or(config.global.defaults.provider)
+                .filter(|provider| matches!(provider.as_str(), "docker" | "podman"))
+        })
+        .unwrap_or_else(|| "docker".to_string())
 }
 
 /// Print cleanup summary

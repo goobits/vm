@@ -277,7 +277,8 @@ pub fn handle_ports_command(fix: bool) -> VmResult<()> {
     vm_println!("{}", MESSAGES.config.ports_checking);
 
     // Check for conflicts with running Docker containers
-    let conflicts = check_docker_port_conflicts(&current_range)?;
+    let executable = config.provider.as_deref().unwrap_or("docker");
+    let conflicts = check_docker_port_conflicts(executable, &current_range)?;
 
     if conflicts.is_empty() {
         vm_success!("✅ No port conflicts detected!");
@@ -346,13 +347,13 @@ struct PortConflict {
 }
 
 /// Check for conflicts between the given port range and running Docker containers
-fn check_docker_port_conflicts(range: &PortRange) -> VmResult<Vec<PortConflict>> {
+fn check_docker_port_conflicts(executable: &str, range: &PortRange) -> VmResult<Vec<PortConflict>> {
     use std::process::Command;
 
     let mut conflicts = Vec::new();
 
     // Run docker ps to get running containers with port mappings
-    let output = Command::new("docker")
+    let output = Command::new(executable)
         .args(["ps", "--format", "{{.Names}}:{{.Ports}}"])
         .output()
         .context("Failed to run docker ps command")?;

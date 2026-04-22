@@ -124,16 +124,7 @@ pub async fn handle_import(
 
     // Verify platform compatibility (warning only)
     if verify {
-        vm_println!("  Verifying platform compatibility...");
-        let current_arch = std::env::consts::ARCH;
-        let current_os = std::env::consts::OS;
-        vm_println!("    Current platform: {}/{}", current_os, current_arch);
-        // Note: We don't have platform info in manifest yet, but we can add it
-        // For now, just show a warning
-        vm_warning!(
-            "Platform verification requested but not yet implemented. \
-            Snapshot may not work on different architectures."
-        );
+        validate_manifest_platform(&manifest)?;
     }
 
     // Load snapshot metadata
@@ -146,6 +137,7 @@ pub async fn handle_import(
     }
 
     let metadata = SnapshotMetadata::load(&metadata_path)?;
+    validate_import_contents(&manifest, &metadata, &extract_dir)?;
 
     vm_println!("  Loading Docker images...");
 
@@ -234,6 +226,153 @@ pub async fn handle_import(
     }
 
     Ok(())
+}
+
+fn validate_manifest_platform(manifest: &serde_json::Value) -> Result<()> {
+    vm_println!("  Verifying platform compatibility...");
+    let current_arch = std::env::consts::ARCH;
+    let current_os = std::env::consts::OS;
+    vm_println!("    Current platform: {}/{}", current_os, current_arch);
+
+    let manifest_os = manifest
+        .get("platform")
+        .and_then(|platform| platform.get("os"))
+        .and_then(|value| value.as_str());
+    let manifest_arch = manifest
+        .get("platform")
+        .and_then(|platform| platform.get("arch"))
+        .and_then(|value| value.as_str());
+
+    if let (Some(manifest_os), Some(manifest_arch)) = (manifest_os, manifest_arch) {
+        if manifest_os != current_os || manifest_arch != current_arch {
+            return Err(VmError::validation(
+                format!(
+                    "Snapshot was exported for {}/{} but current platform is {}/{}",
+                    manifest_os, manifest_arch, current_os, current_arch
+                ),
+                Some(
+                    "Use a matching machine or re-export the snapshot on this platform".to_string(),
+                ),
+            ));
+        }
+    } else {
+        vm_warning!("Snapshot manifest does not include platform metadata; proceeding without a compatibility guarantee.");
+    }
+
+    Ok(())
+}
+
+fn validate_import_contents(
+    manifest: &serde_json::Value,
+    metadata: &SnapshotMetadata,
+    extract_dir: &Path,
+) -> Result<()> {
+    let is_global = manifest
+        .get("is_global")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+    let expected_project = if is_global {
+        "global"
+    } else {
+        manifest
+            .get("project_name")
+            .and_then(|value| value.as_str())
+            .unwrap_or("default")
+    };
+
+    if metadata.project_name != expected_project {
+        return Err(VmError::validation(
+            format!(
+                "Snapshot metadata project '{}' does not match manifest project '{}'",
+                metadata.project_name, expected_project
+            ),
+            None::<String>,
+        ));
+    }
+
+    let images_dir = extract_dir.join("images");
+    for service in &metadata.services {
+        let image_path = images_dir.join(&service.image_file);
+        if !image_path.exists() {
+            return Err(VmError::validation(
+                format!("Snapshot image file is missing: {}", image_path.display()),
+                None::<String>,
+            ));
+        }
+    }
+
+    let volumes_dir = extract_dir.join("volumes");
+    for volume in &metadata.volumes {
+        let archive_path = volumes_dir.join(&volume.archive_file);
+        if !archive_path.exists() {
+            return Err(VmError::validation(
+                format!(
+                    "Snapshot volume archive is missing: {}",
+                    archive_path.display()
+                ),
+                None::<String>,
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::metadata::{ServiceSnapshot, SnapshotMetadata, VolumeSnapshot};
+
+    #[test]
+    fn validate_manifest_platform_accepts_matching_platform() {
+        let manifest = serde_json::json!({
+            "platform": {
+                "os": std::env::consts::OS,
+                "arch": std::env::consts::ARCH
+            }
+        });
+
+        assert!(validate_manifest_platform(&manifest).is_ok());
+    }
+
+    #[test]
+    fn validate_import_contents_rejects_missing_image() {
+        let tempdir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tempdir.path().join("images")).unwrap();
+        std::fs::create_dir_all(tempdir.path().join("volumes")).unwrap();
+
+        let manifest = serde_json::json!({
+            "is_global": true,
+            "project_name": "global"
+        });
+        let metadata = SnapshotMetadata {
+            name: "demo".to_string(),
+            created_at: chrono::Utc::now(),
+            description: None,
+            project_name: "global".to_string(),
+            project_dir: ".".to_string(),
+            git_commit: None,
+            git_dirty: false,
+            git_branch: None,
+            services: vec![ServiceSnapshot {
+                name: "base".to_string(),
+                image_tag: "demo:latest".to_string(),
+                image_file: "base.tar".to_string(),
+                image_digest: None,
+            }],
+            volumes: vec![VolumeSnapshot {
+                name: "cache".to_string(),
+                archive_file: "cache.tar.zst".to_string(),
+                size_bytes: 1,
+            }],
+            compose_file: String::new(),
+            vm_config_file: String::new(),
+            total_size_bytes: 0,
+        };
+
+        let err = validate_import_contents(&manifest, &metadata, tempdir.path()).unwrap_err();
+        assert!(err.to_string().contains("base.tar"));
+    }
 }
 
 /// Recursively copy a directory
