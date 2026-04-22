@@ -7,17 +7,19 @@ services:
     build:
       context: {{ build_context_dir }}
       dockerfile: Dockerfile.generated
+      {% if build_user_args_enabled %}
       args:
         PROJECT_UID: {{ project_uid }}
         PROJECT_GID: {{ project_gid }}
         PROJECT_USER: {{ project_user }}
         # Enable BuildKit inline cache for 70% faster incremental builds
         BUILDKIT_INLINE_CACHE: "1"
+      {% endif %}
       # BuildKit layer caching for faster rebuilds (70-85% reduction)
       cache_from:
-        - {{ project_name }}:latest
+        - {{ image_tag }}
         - {{ project_name }}:buildcache
-    image: {{ project_name }}:latest
+    image: {{ image_tag }}
     labels:
       - "com.vm.managed=true"
       - "com.vm.project={{ project_name }}"

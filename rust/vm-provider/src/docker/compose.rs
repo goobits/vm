@@ -504,6 +504,7 @@ impl<'a> ComposeOperations<'a> {
         build_context_dir: &Path,
         instance_name: Option<&str>,
         context: &ProviderContext,
+        image_tag: Option<&str>,
     ) -> Result<String> {
         // Use shared template engine instead of creating new instance
         let tera = super::get_compose_tera();
@@ -537,6 +538,17 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("project_uid", &user_config.uid.to_string());
         tera_context.insert("project_gid", &user_config.gid.to_string());
         tera_context.insert("project_user", &user_config.username);
+        tera_context.insert(
+            "build_user_args_enabled",
+            &(!BuildOperations::new(self.config, self.temp_dir, self.executable)
+                .uses_preprovisioned_snapshot()),
+        );
+        tera_context.insert(
+            "image_tag",
+            &image_tag
+                .map(std::string::ToString::to_string)
+                .unwrap_or_else(|| format!("{final_project_name}:latest")),
+        );
         tera_context.insert("is_macos", &cfg!(target_os = "macos"));
         tera_context.insert("host_mounts", &pkg_context.host_mounts);
         tera_context.insert("host_env_vars", &pkg_context.host_env_vars);
@@ -613,7 +625,7 @@ impl<'a> ComposeOperations<'a> {
         build_context_dir: &Path,
         context: &ProviderContext,
     ) -> Result<String> {
-        self.render_docker_compose_internal(build_context_dir, None, context)
+        self.render_docker_compose_internal(build_context_dir, None, context, None)
     }
 
     pub fn write_docker_compose(
@@ -658,7 +670,46 @@ impl<'a> ComposeOperations<'a> {
         instance_name: &str,
         context: &ProviderContext,
     ) -> Result<String> {
-        self.render_docker_compose_internal(build_context_dir, Some(instance_name), context)
+        self.render_docker_compose_internal(build_context_dir, Some(instance_name), context, None)
+    }
+
+    pub fn write_docker_compose_with_image_tag(
+        &self,
+        build_context_dir: &Path,
+        context: &ProviderContext,
+        image_tag: &str,
+    ) -> Result<PathBuf> {
+        self.ensure_ai_sync_dirs()?;
+
+        let content =
+            self.render_docker_compose_internal(build_context_dir, None, context, Some(image_tag))?;
+
+        let path = self.temp_dir.join("docker-compose.yml");
+        write_if_changed(&path, &content)?;
+
+        Ok(path)
+    }
+
+    pub fn write_docker_compose_with_instance_and_image_tag(
+        &self,
+        build_context_dir: &Path,
+        instance_name: &str,
+        context: &ProviderContext,
+        image_tag: &str,
+    ) -> Result<PathBuf> {
+        self.ensure_ai_sync_dirs()?;
+
+        let content = self.render_docker_compose_internal(
+            build_context_dir,
+            Some(instance_name),
+            context,
+            Some(image_tag),
+        )?;
+
+        let path = self.temp_dir.join("docker-compose.yml");
+        write_if_changed(&path, &content)?;
+
+        Ok(path)
     }
 
     pub fn render_docker_compose_with_mounts(&self, state: &TempVmState) -> Result<String> {

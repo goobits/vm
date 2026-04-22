@@ -1,10 +1,12 @@
 // Standard library
 use std::env;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 // External crates
+use sha2::{Digest, Sha256};
 use tera::Context as TeraContext;
 use vm_core::command_stream::stream_command_visible;
 use vm_core::error::{Result, VmError};
@@ -426,10 +428,7 @@ CMD ["tail", "-f", "/dev/null"]
         // Detect if using a pre-provisioned snapshot to skip redundant base provisioning
         // Use explicit BoxConfig check instead of string matching to avoid false positives
         // (e.g., "company/dev-box:latest" should NOT be treated as a snapshot)
-        let is_snapshot = self
-            .get_box_config()
-            .map(|cfg| matches!(cfg, BoxConfig::Snapshot(_)))
-            .unwrap_or(false);
+        let is_snapshot = self.uses_preprovisioned_snapshot();
 
         args.push(format!("--build-arg=BASE_PREPROVISIONED={}", is_snapshot));
 
@@ -467,12 +466,15 @@ CMD ["tail", "-f", "/dev/null"]
             args.push(format!("--build-arg=CARGO_PACKAGES={packages}"));
         }
 
-        // Add user/group build args
-        let user_config = self.get_user_config();
-
-        args.push(format!("--build-arg=PROJECT_UID={}", user_config.uid));
-        args.push(format!("--build-arg=PROJECT_GID={}", user_config.gid));
-        args.push(format!("--build-arg=PROJECT_USER={}", user_config.username));
+        // Snapshot-based creates should maximize reuse of the pre-provisioned baseline.
+        // Avoid feeding host-specific identity values into the Docker build in that path,
+        // because they force unnecessary cache misses across machines/users.
+        if !is_snapshot {
+            let user_config = self.get_user_config();
+            args.push(format!("--build-arg=PROJECT_UID={}", user_config.uid));
+            args.push(format!("--build-arg=PROJECT_GID={}", user_config.gid));
+            args.push(format!("--build-arg=PROJECT_USER={}", user_config.username));
+        }
 
         // Add timezone build arg
         if let Some(timezone) = self
@@ -484,32 +486,104 @@ CMD ["tail", "-f", "/dev/null"]
             args.push(format!("--build-arg=TZ={}", timezone));
         }
 
-        // Add git config build args
-        if let Some(git_config) = &self.config.git_config {
-            if let Some(name) = &git_config.user_name {
-                args.push(format!("--build-arg=GIT_USER_NAME={}", name));
-            }
-            if let Some(email) = &git_config.user_email {
-                args.push(format!("--build-arg=GIT_USER_EMAIL={}", email));
-            }
-            if let Some(rebase) = &git_config.pull_rebase {
-                args.push(format!("--build-arg=GIT_PULL_REBASE={}", rebase));
-            }
-            if let Some(branch) = &git_config.init_default_branch {
-                args.push(format!("--build-arg=GIT_INIT_DEFAULT_BRANCH={}", branch));
-            }
-            if let Some(editor) = &git_config.core_editor {
-                args.push(format!("--build-arg=GIT_CORE_EDITOR={}", editor));
-            }
-            if let Some(content) = &git_config.core_excludesfile_content {
-                args.push(format!(
-                    "--build-arg=GIT_CORE_EXCLUDESFILE_CONTENT={}",
-                    content
-                ));
+        // Apply host Git identity at runtime for snapshot-based creates to preserve cache reuse.
+        if !is_snapshot {
+            if let Some(git_config) = &self.config.git_config {
+                if let Some(name) = &git_config.user_name {
+                    args.push(format!("--build-arg=GIT_USER_NAME={}", name));
+                }
+                if let Some(email) = &git_config.user_email {
+                    args.push(format!("--build-arg=GIT_USER_EMAIL={}", email));
+                }
+                if let Some(rebase) = &git_config.pull_rebase {
+                    args.push(format!("--build-arg=GIT_PULL_REBASE={}", rebase));
+                }
+                if let Some(branch) = &git_config.init_default_branch {
+                    args.push(format!("--build-arg=GIT_INIT_DEFAULT_BRANCH={}", branch));
+                }
+                if let Some(editor) = &git_config.core_editor {
+                    args.push(format!("--build-arg=GIT_CORE_EDITOR={}", editor));
+                }
+                if let Some(content) = &git_config.core_excludesfile_content {
+                    args.push(format!(
+                        "--build-arg=GIT_CORE_EXCLUDESFILE_CONTENT={}",
+                        content
+                    ));
+                }
             }
         }
 
         args
+    }
+
+    pub fn uses_preprovisioned_snapshot(&self) -> bool {
+        self.get_box_config()
+            .map(|cfg| matches!(cfg, BoxConfig::Snapshot(_)))
+            .unwrap_or(false)
+    }
+
+    pub fn image_exists(&self, image: &str) -> Result<bool> {
+        let inspect = Command::new(self.executable)
+            .args(["image", "inspect", image])
+            .output()?;
+        Ok(inspect.status.success())
+    }
+
+    pub fn derived_image_tag(&self, base_image: &str, build_context: &Path) -> Result<String> {
+        let mut hasher = Sha256::new();
+        hasher.update(base_image.as_bytes());
+        hasher.update([0]);
+
+        for arg in self.gather_build_args(base_image) {
+            hasher.update(arg.as_bytes());
+            hasher.update([0]);
+        }
+
+        self.hash_build_context(build_context, build_context, &mut hasher)?;
+
+        let digest = format!("{:x}", hasher.finalize());
+        let short_digest = &digest[..16];
+        Ok(format!("vm-derived:{short_digest}"))
+    }
+
+    fn hash_build_context(&self, root: &Path, path: &Path, hasher: &mut Sha256) -> Result<()> {
+        let metadata = fs::symlink_metadata(path)?;
+        let relative = path
+            .strip_prefix(root)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace('\\', "/");
+
+        if metadata.is_dir() {
+            hasher.update(b"dir:");
+            hasher.update(relative.as_bytes());
+            hasher.update([0]);
+
+            let mut entries: Vec<_> = fs::read_dir(path)?.collect::<std::result::Result<_, _>>()?;
+            entries.sort_by_key(|entry| entry.file_name());
+
+            for entry in entries {
+                self.hash_build_context(root, &entry.path(), hasher)?;
+            }
+            return Ok(());
+        }
+
+        hasher.update(b"file:");
+        hasher.update(relative.as_bytes());
+        hasher.update([0]);
+
+        let mut file = fs::File::open(path)?;
+        let mut buffer = [0_u8; 8192];
+        loop {
+            let bytes_read = file.read(&mut buffer)?;
+            if bytes_read == 0 {
+                break;
+            }
+            hasher.update(&buffer[..bytes_read]);
+        }
+        hasher.update([0]);
+
+        Ok(())
     }
 
     /// Get user configuration from VM config

@@ -152,11 +152,21 @@ impl<'a> LifecycleOperations<'a> {
             self.project_dir,
             self.executable,
         );
+        // Step 4: Gather build arguments for packages
+        let build_args = build_ops.gather_build_args(&base_image);
+        let image_tag = build_ops.derived_image_tag(&base_image, &build_context)?;
         let compose_path = match instance_name {
-            Some(name) => {
-                compose_ops.write_docker_compose_with_instance(&build_context, name, context)?
-            }
-            None => compose_ops.write_docker_compose(&build_context, context)?,
+            Some(name) => compose_ops.write_docker_compose_with_instance_and_image_tag(
+                &build_context,
+                name,
+                context,
+                &image_tag,
+            )?,
+            None => compose_ops.write_docker_compose_with_image_tag(
+                &build_context,
+                context,
+                &image_tag,
+            )?,
         };
 
         // Pre-flight validation: Check for orphaned service containers
@@ -165,40 +175,41 @@ impl<'a> LifecycleOperations<'a> {
         // Returns true if orphaned service containers were found (need --no-recreate)
         let has_orphaned_services = self.check_for_orphaned_containers(instance_name, context)?;
 
-        // Step 4: Gather build arguments for packages
-        let build_args = build_ops.gather_build_args(&base_image);
-
         // Step 5: Build with all package arguments
-        let base_compose_args = ComposeCommand::build_args(&compose_path, "build", &[])?;
+        if build_ops.image_exists(&image_tag)? {
+            vm_dbg!("Reusing cached derived image '{}'", image_tag);
+        } else {
+            let base_compose_args = ComposeCommand::build_args(&compose_path, "build", &[])?;
 
-        // Combine compose args with dynamic build args
-        let mut all_args = Vec::with_capacity(base_compose_args.len() + build_args.len());
-        all_args.extend(base_compose_args.iter().map(|s| s.as_str()));
-        all_args.extend(build_args.iter().map(|s| s.as_str()));
+            // Combine compose args with dynamic build args
+            let mut all_args = Vec::with_capacity(base_compose_args.len() + build_args.len());
+            all_args.extend(base_compose_args.iter().map(|s| s.as_str()));
+            all_args.extend(build_args.iter().map(|s| s.as_str()));
 
-        // Debug logging for Docker build troubleshooting
-        vm_dbg!("Docker build command: docker {}", all_args.join(" "));
-        vm_dbg!("Build context directory: {}", build_context.display());
-        if let Ok(entries) = fs::read_dir(&build_context) {
-            let file_count = entries.count();
-            vm_dbg!("Build context contains {} files/directories", file_count);
-        }
-
-        stream_command_visible(self.executable, &all_args).map_err(|e| {
-            match instance_name {
-                Some(name) => VmError::Internal(format!(
-                    "Docker build failed for project '{}' instance '{}'. Check that Docker is running and build context is valid: {}",
-                    self.project_name(),
-                    name,
-                    e
-                )),
-                None => VmError::Internal(format!(
-                    "Docker build failed for project '{}'. Check that Docker is running and build context is valid: {}",
-                    self.project_name(),
-                    e
-                )),
+            // Debug logging for Docker build troubleshooting
+            vm_dbg!("Docker build command: docker {}", all_args.join(" "));
+            vm_dbg!("Build context directory: {}", build_context.display());
+            if let Ok(entries) = fs::read_dir(&build_context) {
+                let file_count = entries.count();
+                vm_dbg!("Build context contains {} files/directories", file_count);
             }
-        })?;
+
+            stream_command_visible(self.executable, &all_args).map_err(|e| {
+                match instance_name {
+                    Some(name) => VmError::Internal(format!(
+                        "Docker build failed for project '{}' instance '{}'. Check that Docker is running and build context is valid: {}",
+                        self.project_name(),
+                        name,
+                        e
+                    )),
+                    None => VmError::Internal(format!(
+                        "Docker build failed for project '{}'. Check that Docker is running and build context is valid: {}",
+                        self.project_name(),
+                        e
+                    )),
+                }
+            })?;
+        }
 
         // Step 6: Start containers
         // Use --no-recreate if orphaned service containers exist to reuse them

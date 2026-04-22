@@ -475,8 +475,7 @@
       - name: Install Claude Code CLI
         shell: |
             if command -v claude >/dev/null 2>&1; then
-                claude update
-                echo "Claude Code CLI updated"
+                echo "Claude Code CLI already installed"
             else
                 curl -fsSL https://claude.ai/install.sh | bash
                 echo "Claude Code CLI installed"
@@ -487,7 +486,7 @@
         when: claude_sync_enabled
         ignore_errors: yes
         register: claude_install
-        changed_when: "'installed' in claude_install.stdout or 'updated' in claude_install.stdout"
+        changed_when: "'installed' in claude_install.stdout and 'already' not in claude_install.stdout"
 
       - name: Install Gemini CLI
         shell: |
@@ -927,6 +926,73 @@
             - not pnpm_lock.stat.exists
 
       # Git configuration
+      - name: Configure Git user name for snapshot-based boxes
+        command: git config --global user.name "{{ project_config.git_config.user_name }}"
+        become_user: '{{ project_user }}'
+        when:
+          - base_preprovisioned
+          - project_config.git_config is defined
+          - project_config.git_config.user_name is defined
+          - project_config.git_config.user_name is not none
+
+      - name: Configure Git user email for snapshot-based boxes
+        command: git config --global user.email "{{ project_config.git_config.user_email }}"
+        become_user: '{{ project_user }}'
+        when:
+          - base_preprovisioned
+          - project_config.git_config is defined
+          - project_config.git_config.user_email is defined
+          - project_config.git_config.user_email is not none
+
+      - name: Configure Git pull.rebase for snapshot-based boxes
+        command: git config --global pull.rebase "{{ project_config.git_config.pull_rebase }}"
+        become_user: '{{ project_user }}'
+        when:
+          - base_preprovisioned
+          - project_config.git_config is defined
+          - project_config.git_config.pull_rebase is defined
+          - project_config.git_config.pull_rebase is not none
+
+      - name: Configure Git default branch for snapshot-based boxes
+        command: git config --global init.defaultBranch "{{ project_config.git_config.init_default_branch }}"
+        become_user: '{{ project_user }}'
+        when:
+          - base_preprovisioned
+          - project_config.git_config is defined
+          - project_config.git_config.init_default_branch is defined
+          - project_config.git_config.init_default_branch is not none
+
+      - name: Configure Git editor for snapshot-based boxes
+        command: git config --global core.editor "{{ project_config.git_config.core_editor }}"
+        become_user: '{{ project_user }}'
+        when:
+          - base_preprovisioned
+          - project_config.git_config is defined
+          - project_config.git_config.core_editor is defined
+          - project_config.git_config.core_editor is not none
+
+      - name: Write global gitignore for snapshot-based boxes
+        copy:
+            dest: '/home/{{ project_user }}/.gitignore_global'
+            content: '{{ project_config.git_config.core_excludesfile_content }}'
+            owner: '{{ project_user }}'
+            mode: '0644'
+        when:
+          - base_preprovisioned
+          - project_config.git_config is defined
+          - project_config.git_config.core_excludesfile_content is defined
+          - project_config.git_config.core_excludesfile_content is not none
+        no_log: true
+
+      - name: Configure Git excludesfile for snapshot-based boxes
+        command: git config --global core.excludesfile "/home/{{ project_user }}/.gitignore_global"
+        become_user: '{{ project_user }}'
+        when:
+          - base_preprovisioned
+          - project_config.git_config is defined
+          - project_config.git_config.core_excludesfile_content is defined
+          - project_config.git_config.core_excludesfile_content is not none
+
       - name: Configure Git safe directory
         command: git config --global --add safe.directory {{ project_path }}
         become_user: '{{ project_user }}'
