@@ -691,7 +691,7 @@ pub enum Command {
     },
 
     /// Manage package registries
-    #[command(name = "pkg", visible_alias = "registry")]
+    #[command(name = "registry")]
     Registry {
         #[command(subcommand)]
         command: RegistrySubcommand,
@@ -812,8 +812,8 @@ mod tests {
     }
 
     #[test]
-    fn test_pkg_add_command_parsing() {
-        let args = Args::parse_from(["vm", "pkg", "add", "--type", "python", "-y"]);
+    fn test_registry_add_command_parsing() {
+        let args = Args::parse_from(["vm", "registry", "add", "--type", "python", "-y"]);
         match args.command {
             Command::Registry { command } => match command {
                 RegistrySubcommand::Add { r#type, yes } => {

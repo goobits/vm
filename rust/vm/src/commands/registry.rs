@@ -364,7 +364,7 @@ async fn start_server_if_needed(global_config: &GlobalConfig, yes: bool) -> VmRe
             // Use nohup to detach the process from the terminal
             let child = Command::new("nohup")
                 .arg(vm_bin)
-                .arg("pkg")
+                .arg("registry")
                 .arg("serve")
                 .arg("--host")
                 .arg("0.0.0.0")
@@ -400,7 +400,7 @@ async fn start_server_if_needed(global_config: &GlobalConfig, yes: bool) -> VmRe
             Command::new("cmd")
                 .args(["/C", "START", "/B"])
                 .arg(vm_bin)
-                .arg("pkg")
+                .arg("registry")
                 .arg("serve")
                 .arg("--host")
                 .arg("0.0.0.0")

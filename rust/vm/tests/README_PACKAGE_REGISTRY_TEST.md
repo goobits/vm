@@ -148,8 +148,8 @@ vm destroy --force
   - `test_package_registry_env_vars_injection`
   - `test_start_with_compose_regenerates_with_new_config`
 
-- **CLI Tests**: `vm/tests/pkg_cli_tests.rs`
-  - Tests `vm pkg registry` commands
+- **CLI Tests**: `vm/tests/cli/registry_commands.rs`
+  - Tests `vm registry` commands
 
 - **Integration Tests**: This file
   - `test_package_registry_feature` (Phase 2 validation)

@@ -75,7 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `vm doctor --fix` - Automatic issue resolution (Docker daemon, socket permissions, SSH keys)
   - Renamed `vm auth` → `vm secrets` for clearer mental model
   - Renamed `vm port` → `vm tunnel` for simpler terminology
-  - Renamed `vm pkg` → `vm registry` for clarity
+  - `vm registry` is now the canonical package registry command
 
 - **Base Snapshot Management**: New `vm base` command for global snapshot management
   - `vm base list` - List all global base snapshots

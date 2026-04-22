@@ -222,12 +222,12 @@ vm auth list               # List all stored secrets
 vm auth remove openai      # Remove a secret
 ```
 
-### Package Registry (`vm pkg`)
+### Package Registry (`vm registry`)
 Host your own private packages for `npm`, `pip`, and `cargo`:
 ```bash
-vm pkg add             # Publish a package from the current directory
-vm pkg list            # List all packages in the registry
-vm pkg remove my-pkg   # Remove a package from the registry
+vm registry add             # Publish a package from the current directory
+vm registry list            # List all packages in the registry
+vm registry remove my-pkg   # Remove a package from the registry
 ```
 
 ---
@@ -284,11 +284,11 @@ vm auth list               # List stored secrets
 vm auth remove <name>      # Remove a secret
 ```
 
-### Package Registry (`vm pkg`)
+### Package Registry (`vm registry`)
 ```bash
-vm pkg add [--type <t>]  # Publish a package from the current directory
-vm pkg list              # List all packages in the registry
-vm pkg remove <name>     # Remove a package from the registry
+vm registry add [--type <t>]  # Publish a package from the current directory
+vm registry list              # List all packages in the registry
+vm registry remove <name>     # Remove a package from the registry
 ```
 
 ### Database Management (`vm db`)

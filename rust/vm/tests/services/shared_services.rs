@@ -89,11 +89,11 @@ fn test_vm_registry_help_excludes_start_stop() -> Result<()> {
 }
 
 #[test]
-fn test_vm_pkg_help_excludes_start_stop() -> Result<()> {
+fn test_vm_registry_help_excludes_start_stop() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
 
     let fixture = CliTestFixture::new()?;
-    let output = fixture.run_vm_command(&["pkg", "--help"])?;
+    let output = fixture.run_vm_command(&["registry", "--help"])?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
@@ -133,26 +133,8 @@ fn test_vm_registry_status_shows_lifecycle_info() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
 
     let fixture = CliTestFixture::new()?;
-
-    // Test that registry status command no longer exists (auto-managed design)
-    let output = fixture.run_vm_command(&["registry", "status"]);
-
-    // The registry command should no longer exist at all
-    assert!(output.is_err() || !output.unwrap().status.success());
-
-    // Registry is now managed automatically by service manager
-    // Status can be checked via doctor command instead
-
-    Ok(())
-}
-
-#[test]
-fn test_vm_pkg_status_shows_lifecycle_info() -> Result<()> {
-    let _guard = TEST_MUTEX.lock().unwrap();
-
-    let fixture = CliTestFixture::new()?;
     // Use --yes flag to auto-start server without prompting
-    let output = fixture.run_vm_command(&["pkg", "status", "--yes"])?;
+    let output = fixture.run_vm_command(&["registry", "status", "--yes"])?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
@@ -196,21 +178,6 @@ fn test_registry_start_command_no_longer_exists() -> Result<()> {
 }
 
 #[test]
-fn test_pkg_start_command_no_longer_exists() -> Result<()> {
-    let _guard = TEST_MUTEX.lock().unwrap();
-
-    let fixture = CliTestFixture::new()?;
-    let output = fixture.run_vm_command(&["pkg", "start"])?;
-
-    // This should fail since start command no longer exists
-    assert!(!output.status.success());
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("unexpected argument") || stderr.contains("subcommand"));
-
-    Ok(())
-}
-
 fn is_docker_running() -> bool {
     Command::new("docker")
         .arg("info")
