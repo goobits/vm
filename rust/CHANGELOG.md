@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.8.0] - 2026-04-23
+
+### Added
+
+- **Provider-First Runtime Selection**: Choose Docker or Tart directly from the main CLI flow
+  - `vm start --provider tart` for one-off Tart usage from the same project
+  - `vm config set provider tart|docker` to persist the project default provider
+  - Provider selection now applies the matching provider profile automatically when available
+
+- **Unified Vibe Base Workflows**: Docker and Tart now use the same base-environment command model
+  - `vm base build vibe --provider docker`
+  - `vm base build vibe --provider tart`
+  - `vm base validate vibe` for shared provider validation
+
+### Changed
+
+- **Faster Docker Vibe Startup**: Snapshot-backed Docker boxes now avoid more unnecessary rebuild and provisioning work
+  - Reuses derived images more effectively for unchanged vibe inputs
+  - Removes per-create Claude update behavior
+  - Moves more host-specific setup out of image layers and into runtime configuration
+
+- **Stronger Tart Vibe Parity**: Tart now behaves much closer to Docker for the shared `vibe` workflow
+  - Tart-native vibe base build path with shared tooling expectations
+  - Better host sync for AI configs, dotfiles, and SSH config
+  - Cleaner Python provisioning via `pipx` and project virtual environments
+
 ## [4.7.1] - 2026-04-02
 
 ### Fixed
@@ -246,7 +272,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Earlier releases. See git history for details.
 
-[Unreleased]: https://github.com/goobits/vm/compare/v4.7.1...HEAD
+[Unreleased]: https://github.com/goobits/vm/compare/v4.8.0...HEAD
+[4.8.0]: https://github.com/goobits/vm/compare/v4.7.1...v4.8.0
 [4.7.1]: https://github.com/goobits/vm/compare/v4.7.0...v4.7.1
 [4.7.0]: https://github.com/goobits/vm/compare/v4.6.0...v4.7.0
 [4.6.0]: https://github.com/goobits/vm/compare/v4.5.2...v4.6.0

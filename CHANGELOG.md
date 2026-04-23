@@ -12,6 +12,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Renamed yolo aliases to yo (yoclaude, yogemini, yocodex) and updated Gemini to use `--yolo`
 - Made the optimized Vibe Dockerfile the default `Dockerfile.vibe`
 
+## [4.8.0] - 2026-04-23
+
+### Added
+
+- **Provider-First Runtime Selection**: Docker and Tart can now be chosen directly from the main workflow
+  - `vm start --provider tart`
+  - `vm config set provider tart|docker`
+  - Matching provider profiles are applied automatically when present
+
+- **Unified Vibe Base Workflows**: Docker and Tart now share the same base-environment commands
+  - `vm base build vibe --provider docker|tart`
+  - `vm base validate vibe`
+
+### Changed
+
+- **Faster Docker Vibe Startup**: Snapshot-based Docker creates reuse more of the derived image path and skip more per-create setup work
+
+- **Stronger Tart Vibe Parity**: Tart now has a cleaner vibe base build path, better host-sync behavior, and more Docker-like tooling/setup expectations
+
 ## [4.6.0] - 2025-12-23
 
 ### Added
