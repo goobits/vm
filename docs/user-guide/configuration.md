@@ -95,22 +95,33 @@ defaults:
 
 ## Profiles and Default Profile
 
-Use profiles to keep multiple provider setups in one `vm.yaml` and select one at runtime.
+Use profiles for real variants in one `vm.yaml`, such as `dev`, `heavy`, or `gpu`.
+For provider switching, prefer the first-class provider flow instead:
+
+```bash
+vm start --provider tart
+vm config set provider tart
+```
+
+Profiles still work when you want named variants with different settings:
 
 ```yaml
-default_profile: ubuntu
+default_profile: dev
 
 profiles:
-  ubuntu:
+  dev:
     provider: docker
-  mac:
-    provider: tart
+    vm:
+      memory: 4096
+  heavy:
+    vm:
+      memory: 16384
 ```
 
 Set the default from the CLI:
 
 ```bash
-vm config profile set ubuntu
+vm config profile set dev
 ```
 
 ## Quick Start

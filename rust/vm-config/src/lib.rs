@@ -249,4 +249,43 @@ profiles:
             Ok(())
         })
     }
+
+    #[test]
+    fn explicit_profile_takes_precedence_over_provider_override() -> Result<()> {
+        with_temp_home(|temp_dir| {
+            let config_path = temp_dir.path().join("vm.yaml");
+            std::fs::write(
+                &config_path,
+                r#"
+provider: docker
+default_profile: docker
+profiles:
+  docker:
+    provider: docker
+    vm:
+      box: "@vibe-box"
+  tart:
+    provider: tart
+    vm:
+      box: vibe-tart-base
+"#,
+            )?;
+
+            let app = AppConfig::load(
+                Some(config_path),
+                Some("docker".to_string()),
+                Some("tart".to_string()),
+            )?;
+            assert_eq!(app.vm.provider.as_deref(), Some("tart"));
+            assert_eq!(
+                app.vm
+                    .vm
+                    .as_ref()
+                    .and_then(|vm| vm.r#box.as_ref())
+                    .map(|b| serde_yaml_ng::to_string(b).unwrap().trim().to_string()),
+                Some("'@vibe-box'".to_string())
+            );
+            Ok(())
+        })
+    }
 }
