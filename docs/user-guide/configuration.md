@@ -757,6 +757,20 @@ profiles:
       box: vibe-tart-base
 ```
 
+With that preset, provider selection can be first-class instead of profile-first:
+
+```bash
+# Docker for this command
+vm start
+
+# Tart for this command
+vm start --provider tart
+
+# Save Tart as the project default
+vm config set provider tart
+vm start
+```
+
 To validate the shared Docker/Tart workflow in the current project:
 
 ```bash

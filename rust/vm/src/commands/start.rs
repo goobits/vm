@@ -28,6 +28,7 @@ pub async fn handle_start(
     config_path: Option<std::path::PathBuf>,
     command: Option<String>,
     profile: Option<String>,
+    provider_override: Option<String>,
     wait: bool,
 ) -> VmResult<()> {
     debug!("Handling vm start command");
@@ -44,7 +45,11 @@ pub async fn handle_start(
     }
 
     // Stage 2: Load configuration
-    let app_config = match AppConfig::load(config_path.clone(), profile.clone()) {
+    let app_config = match AppConfig::load(
+        config_path.clone(),
+        profile.clone(),
+        provider_override.clone(),
+    ) {
         Ok(config) => config,
         Err(e) => {
             let error_str = e.to_string();
@@ -53,7 +58,7 @@ pub async fn handle_start(
                 vm_println!("📝 Generating default configuration...");
                 let resources = detect_resource_defaults();
                 let default_vm_config = VmConfig {
-                    provider: Some("docker".to_string()),
+                    provider: provider_override.clone().or(Some("docker".to_string())),
                     project: Some(ProjectConfig {
                         name: Some(detect_project_name()?),
                         ..Default::default()
@@ -66,7 +71,7 @@ pub async fn handle_start(
                     ..Default::default()
                 };
                 default_vm_config.write_to_file(&config_file)?;
-                AppConfig::load(config_path, profile)?
+                AppConfig::load(config_path, profile, provider_override)?
             } else {
                 return Err(VmError::from(e));
             }

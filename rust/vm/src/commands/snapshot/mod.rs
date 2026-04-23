@@ -14,7 +14,7 @@ pub async fn handle_snapshot(
     config_path: Option<PathBuf>,
     profile: Option<String>,
 ) -> VmResult<()> {
-    let app_config = AppConfig::load(config_path, profile)?;
+    let app_config = AppConfig::load(config_path, profile, None)?;
     let executable = app_config.vm.provider.as_deref().unwrap_or("docker");
 
     match command {

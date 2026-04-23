@@ -147,6 +147,12 @@ impl ConfigLoader {
         bail!("No vm.yaml found in current directory or parent directories. Please run `vm init` or create a vm.yaml file.");
     }
 
+    /// Loads a `VmConfig` from an explicit path.
+    pub fn load_from_path(&self, path: &Path) -> Result<VmConfig> {
+        debug!("Loading config from explicit path: {}", path.display());
+        self.load_file(path)
+    }
+
     /// Finds a file by walking up the directory tree from the current directory.
     fn find_in_parent_dirs(&self, filename: &str) -> Result<Option<PathBuf>> {
         let current_dir = std::env::current_dir()?;

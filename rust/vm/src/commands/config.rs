@@ -65,7 +65,7 @@ fn handle_validate_command() -> VmResult<()> {
 
 /// Handle the `vm config show` command.
 fn handle_show_command(profile: Option<String>) -> VmResult<()> {
-    let app_config = vm_config::AppConfig::load(None, profile)?;
+    let app_config = vm_config::AppConfig::load(None, profile, None)?;
     let config = app_config.vm;
 
     if let Some(source) = &config.source_path {

@@ -111,8 +111,13 @@ vm base build vibe --provider tart
 
 # Then in your project:
 vm config preset vibe-tart
-# and start with:
-vm --profile tart start
+# and start with either provider:
+vm start
+vm start --provider tart
+
+# Or save Tart as the project default:
+vm config set provider tart
+vm start
 
 # Or run the combined validation helper:
 vm base validate vibe

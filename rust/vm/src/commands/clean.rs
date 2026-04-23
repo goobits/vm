@@ -363,7 +363,7 @@ fn parse_size_to_mb(size_str: &str) -> u64 {
 }
 
 fn detect_container_runtime() -> String {
-    vm_config::AppConfig::load(None, None)
+    vm_config::AppConfig::load(None, None, None)
         .ok()
         .and_then(|config| {
             config

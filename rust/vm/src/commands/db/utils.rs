@@ -49,7 +49,7 @@ pub async fn execute_psql_command(command: &str) -> VmResult<String> {
 }
 
 fn detect_container_runtime() -> String {
-    vm_config::AppConfig::load(None, None)
+    vm_config::AppConfig::load(None, None, None)
         .ok()
         .and_then(|config| {
             config

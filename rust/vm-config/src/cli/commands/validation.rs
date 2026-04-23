@@ -41,9 +41,13 @@ pub fn execute_check_file(file: PathBuf) -> Result<()> {
 use vm_core::error::VmError;
 
 #[must_use = "configuration loading results should be used"]
-pub fn load_and_merge_config(_file: Option<PathBuf>) -> Result<VmConfig> {
-    // The `file` argument is ignored because the loader handles discovery.
-    ConfigLoader::new()
-        .load()
-        .map_err(|e| VmError::Config(e.to_string()))
+pub fn load_and_merge_config(file: Option<PathBuf>) -> Result<VmConfig> {
+    let loader = ConfigLoader::new();
+    let result = if let Some(path) = file {
+        loader.load_from_path(&path)
+    } else {
+        loader.load()
+    };
+
+    result.map_err(|e| VmError::Config(e.to_string()))
 }

@@ -85,6 +85,29 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
+    fn resolve_profile_name(
+        vm: &config::VmConfig,
+        explicit_profile: Option<String>,
+        provider_override: Option<String>,
+    ) -> Option<String> {
+        if explicit_profile.is_some() {
+            return explicit_profile;
+        }
+
+        let effective_provider = provider_override.or_else(|| vm.provider.clone());
+        if let Some(provider_name) = effective_provider {
+            if vm
+                .profiles
+                .as_ref()
+                .is_some_and(|profiles| profiles.contains_key(&provider_name))
+            {
+                return Some(provider_name);
+            }
+        }
+
+        vm.default_profile.clone()
+    }
+
     /// Load complete configuration from standard locations
     ///
     /// This is the main entry point for loading all configuration. It:
@@ -92,7 +115,11 @@ impl AppConfig {
     /// 2. Loads VM config from provided path or auto-discovers
     /// 3. Applies defaults and presets
     /// 4. Merges configurations in proper precedence order
-    pub fn load(config_path: Option<PathBuf>, profile: Option<String>) -> Result<Self> {
+    pub fn load(
+        config_path: Option<PathBuf>,
+        profile: Option<String>,
+        provider_override: Option<String>,
+    ) -> Result<Self> {
         // Load global configuration
         let global = GlobalConfig::load()
             .map_err(|e| VmError::Config(format!("Failed to load global configuration: {e}")))?;
@@ -102,10 +129,15 @@ impl AppConfig {
         let source_path = vm.source_path.clone();
 
         // Apply profile if specified
-        let profile_name = profile.or_else(|| vm.default_profile.clone());
+        let profile_name =
+            Self::resolve_profile_name(&vm, profile.clone(), provider_override.clone());
         if let Some(profile_name) = profile_name {
             vm = merge::apply_profile(vm, &profile_name)?;
             vm.source_path = source_path;
+        }
+
+        if let Some(provider_name) = provider_override {
+            vm.provider = Some(provider_name);
         }
 
         // Handle host integrations
@@ -127,5 +159,94 @@ impl AppConfig {
         }
 
         Ok(Self { global, vm })
+    }
+}
+
+#[cfg(test)]
+mod app_config_tests {
+    use super::AppConfig;
+    use vm_core::error::Result;
+
+    fn with_temp_home<T>(test: impl FnOnce(&tempfile::TempDir) -> Result<T>) -> Result<T> {
+        let temp_dir = tempfile::TempDir::new()?;
+        let original_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", temp_dir.path());
+        let result = test(&temp_dir);
+        if let Some(home) = original_home {
+            std::env::set_var("HOME", home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+        result
+    }
+
+    #[test]
+    fn provider_override_uses_matching_profile_when_present() -> Result<()> {
+        with_temp_home(|temp_dir| {
+            let config_path = temp_dir.path().join("vm.yaml");
+            std::fs::write(
+                &config_path,
+                r#"
+provider: docker
+default_profile: docker
+profiles:
+  docker:
+    provider: docker
+    vm:
+      box: "@vibe-box"
+  tart:
+    provider: tart
+    vm:
+      box: vibe-tart-base
+"#,
+            )?;
+
+            let app = AppConfig::load(Some(config_path), None, Some("tart".to_string()))?;
+            assert_eq!(app.vm.provider.as_deref(), Some("tart"));
+            assert_eq!(
+                app.vm
+                    .vm
+                    .as_ref()
+                    .and_then(|vm| vm.r#box.as_ref())
+                    .map(|b| serde_yaml_ng::to_string(b).unwrap().trim().to_string()),
+                Some("vibe-tart-base".to_string())
+            );
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn configured_provider_uses_matching_profile_when_present() -> Result<()> {
+        with_temp_home(|temp_dir| {
+            let config_path = temp_dir.path().join("vm.yaml");
+            std::fs::write(
+                &config_path,
+                r#"
+provider: tart
+default_profile: docker
+profiles:
+  docker:
+    provider: docker
+    vm:
+      box: "@vibe-box"
+  tart:
+    provider: tart
+    vm:
+      box: vibe-tart-base
+"#,
+            )?;
+
+            let app = AppConfig::load(Some(config_path), None, None)?;
+            assert_eq!(app.vm.provider.as_deref(), Some("tart"));
+            assert_eq!(
+                app.vm
+                    .vm
+                    .as_ref()
+                    .and_then(|vm| vm.r#box.as_ref())
+                    .map(|b| serde_yaml_ng::to_string(b).unwrap().trim().to_string()),
+                Some("vibe-tart-base".to_string())
+            );
+            Ok(())
+        })
     }
 }

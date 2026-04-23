@@ -21,10 +21,11 @@ vm base build vibe --provider docker
 ```
 
 ### vibe-tart (Mac users)
-Same as vibe but with Docker/Tart profiles for switching providers
+Same as vibe but set up for switching providers cleanly
 - Default: Docker with `@vibe-box`
-- Profile `tart`: Native Tart VM on Apple Silicon with `vibe-tart-base`
-- Switch with `vm --profile tart start`
+- Tart: Native Tart VM on Apple Silicon with `vibe-tart-base`
+- One-off switch: `vm start --provider tart`
+- Saved project default: `vm config set provider tart`
 
 ```bash
 vm config preset vibe-tart
@@ -34,6 +35,14 @@ vm base build vibe --provider docker
 
 # Build the Tart base once:
 vm base build vibe --provider tart
+
+# Start with Docker or Tart from the same repo:
+vm start
+vm start --provider tart
+
+# Or persist Tart as the project default:
+vm config set provider tart
+vm start
 
 # Validate both providers from the same repo:
 vm base validate vibe

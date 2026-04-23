@@ -51,7 +51,7 @@ pub fn container_runtime(global_config: &GlobalConfig) -> &str {
 }
 
 pub fn default_container_runtime() -> String {
-    vm_config::AppConfig::load(None, None)
+    vm_config::AppConfig::load(None, None, None)
         .ok()
         .and_then(|config| {
             config

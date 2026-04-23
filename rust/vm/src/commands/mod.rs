@@ -60,6 +60,7 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
                 args.config.clone(),
                 command.clone(),
                 args.profile.clone(),
+                args.provider.clone(),
                 *wait,
             )
             .await
@@ -79,7 +80,11 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         Command::Registry { command } => {
             debug!("Calling registry operations");
             // For registry commands, use default GlobalConfig if no config file exists
-            let global_config = match AppConfig::load(args.config.clone(), args.profile.clone()) {
+            let global_config = match AppConfig::load(
+                args.config.clone(),
+                args.profile.clone(),
+                args.provider.clone(),
+            ) {
                 Ok(app_config) => app_config.global,
                 Err(_) => {
                     // Use default GlobalConfig when no config file exists
@@ -92,7 +97,11 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         Command::Secrets { command } => {
             debug!("Calling secrets operations");
             // For secrets commands, use default GlobalConfig if no config file exists
-            let global_config = match AppConfig::load(args.config.clone(), args.profile.clone()) {
+            let global_config = match AppConfig::load(
+                args.config.clone(),
+                args.profile.clone(),
+                args.provider.clone(),
+            ) {
                 Ok(app_config) => app_config.global,
                 Err(_) => {
                     // Use default GlobalConfig when no config file exists
@@ -155,7 +164,11 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
         Command::Ssh {
             container, command, ..
         } => {
-            let app_config = AppConfig::load(args.config.clone(), args.profile.clone())?;
+            let app_config = AppConfig::load(
+                args.config.clone(),
+                args.profile.clone(),
+                args.provider.clone(),
+            )?;
             let project_name = app_config
                 .vm
                 .project
@@ -172,7 +185,11 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
         Command::Exec {
             container, command, ..
         } => {
-            let app_config = AppConfig::load(args.config.clone(), args.profile.clone())?;
+            let app_config = AppConfig::load(
+                args.config.clone(),
+                args.profile.clone(),
+                args.provider.clone(),
+            )?;
             let project_name = app_config
                 .vm
                 .project
@@ -207,7 +224,11 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
         args.config, args.profile
     );
 
-    let app_config = match AppConfig::load(args.config.clone(), args.profile.clone()) {
+    let app_config = match AppConfig::load(
+        args.config.clone(),
+        args.profile.clone(),
+        args.provider.clone(),
+    ) {
         Ok(config) => config,
         Err(e) => {
             let error_str = e.to_string();
