@@ -108,6 +108,7 @@ tart exec "$BASE_NAME" bash -lc "
     lsof \
     nano \
     netcat-openbsd \
+    pipx \
     python3 \
     python3-dev \
     python3-pip \
@@ -141,8 +142,13 @@ tart exec "$BASE_NAME" bash -lc "
   nvm alias default ${NODE_VERSION}
   nvm use ${NODE_VERSION}
 
-  python3 -m pip install --upgrade pip
-  python3 -m pip install aider-chat git-filter-repo httpie tldr
+  export PATH=\"\$HOME/.local/bin:\$PATH\"
+  pipx ensurepath >/dev/null 2>&1 || true
+  for pkg in aider-chat git-filter-repo httpie tldr; do
+    if ! pipx list --short 2>/dev/null | grep -Fxq \"\$pkg\"; then
+      pipx install \"\$pkg\"
+    fi
+  done
 
   if [ ! -x \"\$HOME/.cargo/bin/cargo\" ]; then
     curl https://sh.rustup.rs -sSf | sh -s -- -y

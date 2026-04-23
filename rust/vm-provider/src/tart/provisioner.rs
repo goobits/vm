@@ -349,9 +349,11 @@ done"#
 
         if !config.pip_packages.is_empty() {
             self.ensure_python_runtime(config)?;
+            self.ensure_python_package_tooling()?;
             let packages = config.pip_packages.join(" ");
             self.ssh_exec(&format!(
-                "python3 -m pip install --upgrade pip && python3 -m pip install {}",
+                r#"export PATH="$HOME/.local/bin:$PATH"
+python3 -m pip install --user --break-system-packages {}"#,
                 packages
             ))?;
         }
@@ -404,8 +406,12 @@ fi"#,
 
         if ai_tools.is_aider_enabled() {
             self.ensure_python_runtime(config)?;
+            self.ensure_python_package_tooling()?;
             self.ssh_exec(
-                "if ! command -v aider >/dev/null 2>&1; then python3 -m pip install aider-chat; fi",
+                r#"export PATH="$HOME/.local/bin:$PATH"
+if ! command -v aider >/dev/null 2>&1; then
+  pipx install aider-chat
+fi"#,
             )?;
         }
 
@@ -518,8 +524,16 @@ fi"#,
     fn provision_python(&self, config: &VmConfig) -> Result<()> {
         info!("Installing Python dependencies");
         self.ensure_python_runtime(config)?;
+        self.ensure_python_package_tooling()?;
         self.ssh_exec(&format!(
-            "if [ -f {}/requirements.txt ]; then cd {} && python3 -m pip install -r requirements.txt; fi",
+            r#"if [ -f {}/requirements.txt ]; then
+  cd {}
+  if [ ! -d .venv ]; then
+    python3 -m venv .venv
+  fi
+  . .venv/bin/activate
+  pip install -r requirements.txt
+fi"#,
             self.project_dir, self.project_dir
         ))?;
         Ok(())
@@ -547,6 +561,17 @@ fi"#,
         );
 
         self.ssh_exec(&install_script)?;
+        Ok(())
+    }
+
+    fn ensure_python_package_tooling(&self) -> Result<()> {
+        self.ssh_exec(
+            r#"if ! command -v pipx >/dev/null 2>&1; then
+  sudo apt-get update && sudo apt-get install -y pipx python3-pip python3-venv
+fi
+export PATH="$HOME/.local/bin:$PATH"
+pipx ensurepath >/dev/null 2>&1 || true"#,
+        )?;
         Ok(())
     }
 
