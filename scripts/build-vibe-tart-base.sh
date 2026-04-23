@@ -2,8 +2,9 @@
 
 set -euo pipefail
 
-BASE_IMAGE="${BASE_IMAGE:-ghcr.io/cirruslabs/ubuntu:latest}"
-BASE_NAME="${BASE_NAME:-vibe-tart-base}"
+GUEST_OS="${GUEST_OS:-macos}"
+BASE_NAME="${BASE_NAME:-}"
+BASE_IMAGE="${BASE_IMAGE:-}"
 NODE_VERSION="${NODE_VERSION:-22}"
 NVM_VERSION="${NVM_VERSION:-v0.40.3}"
 WAIT_SECONDS="${WAIT_SECONDS:-120}"
@@ -13,11 +14,12 @@ usage() {
 Build a local Tart-native vibe base VM.
 
 Usage:
-  ./scripts/build-vibe-tart-base.sh [--name NAME] [--base-image IMAGE] [--node-version VERSION]
+  ./scripts/build-vibe-tart-base.sh [--guest-os macos|linux] [--name NAME] [--base-image IMAGE] [--node-version VERSION]
 
 Environment overrides:
-  BASE_NAME       Target Tart VM name (default: vibe-tart-base)
-  BASE_IMAGE      Source Tart image (default: ghcr.io/cirruslabs/ubuntu:latest)
+  GUEST_OS       Guest OS type to build (default: macos)
+  BASE_NAME       Target Tart VM name (default depends on guest OS)
+  BASE_IMAGE      Source Tart image (default depends on guest OS)
   NODE_VERSION    Default Node version to preinstall (default: 22)
   NVM_VERSION     NVM installer version (default: v0.40.3)
   WAIT_SECONDS    SSH readiness timeout in seconds (default: 120)
@@ -26,6 +28,10 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --guest-os)
+      GUEST_OS="$2"
+      shift 2
+      ;;
     --name)
       BASE_NAME="$2"
       shift 2
@@ -49,6 +55,21 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+case "$GUEST_OS" in
+  macos)
+    : "${BASE_IMAGE:=ghcr.io/cirruslabs/macos-sonoma-base:latest}"
+    : "${BASE_NAME:=vibe-tart-base}"
+    ;;
+  linux)
+    : "${BASE_IMAGE:=ghcr.io/cirruslabs/ubuntu:latest}"
+    : "${BASE_NAME:=vibe-tart-linux-base}"
+    ;;
+  *)
+    echo "Unsupported guest OS: ${GUEST_OS}. Use 'macos' or 'linux'." >&2
+    exit 1
+    ;;
+esac
 
 require_tool() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -88,89 +109,156 @@ until tart exec "$BASE_NAME" bash -lc 'echo ready' >/dev/null 2>&1; do
 done
 
 echo "[4/5] Installing vibe baseline into '${BASE_NAME}'..."
-tart exec "$BASE_NAME" bash -lc "
-  set -euo pipefail
-  export DEBIAN_FRONTEND=noninteractive
+if [[ "${GUEST_OS}" == "macos" ]]; then
+  tart exec "$BASE_NAME" bash -lc "
+    set -euo pipefail
 
-  sudo apt-get update
-  sudo apt-get install -y \
-    apt-transport-https \
-    build-essential \
-    ca-certificates \
-    curl \
-    dnsutils \
-    git \
-    git-lfs \
-    htop \
-    iputils-ping \
-    jq \
-    locales \
-    lsof \
-    nano \
-    netcat-openbsd \
-    pipx \
-    python3 \
-    python3-dev \
-    python3-pip \
-    python3-venv \
-    redis-tools \
-    ruby-full \
-    software-properties-common \
-    telnet \
-    tree \
-    unzip \
-    vim \
-    wget \
-    zip \
-    zsh \
-    zsh-syntax-highlighting
-
-  sudo locale-gen en_US.UTF-8
-  sudo update-locale LANG=en_US.UTF-8
-
-  if ! command -v docker >/dev/null 2>&1; then
-    curl -fsSL https://get.docker.com | sh
-    sudo usermod -aG docker \"\$USER\" || true
-  fi
-
-  if [ ! -s \"\$HOME/.nvm/nvm.sh\" ]; then
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash
-  fi
-  export NVM_DIR=\"\$HOME/.nvm\"
-  . \"\$NVM_DIR/nvm.sh\"
-  nvm install ${NODE_VERSION}
-  nvm alias default ${NODE_VERSION}
-  nvm use ${NODE_VERSION}
-
-  export PATH=\"\$HOME/.local/bin:\$PATH\"
-  pipx ensurepath >/dev/null 2>&1 || true
-  for pkg in aider-chat git-filter-repo httpie tldr; do
-    if ! pipx list --short 2>/dev/null | grep -Fxq \"\$pkg\"; then
-      pipx install \"\$pkg\"
+    if [ -x /opt/homebrew/bin/brew ]; then
+      eval \"\$(/opt/homebrew/bin/brew shellenv)\"
     fi
-  done
 
-  if [ ! -x \"\$HOME/.cargo/bin/cargo\" ]; then
-    curl https://sh.rustup.rs -sSf | sh -s -- -y
-  fi
-  export PATH=\"\$HOME/.cargo/bin:\$PATH\"
-  rustup default stable
+    brew update
+    brew install \
+      bash \
+      git \
+      git-lfs \
+      htop \
+      jq \
+      pipx \
+      tree \
+      wget \
+      zsh-syntax-highlighting || true
 
-  if ! command -v go >/dev/null 2>&1; then
-    sudo apt-get install -y golang-go
-  fi
+    export PATH=\"/opt/homebrew/bin:\$HOME/.local/bin:\$PATH\"
+    pipx ensurepath >/dev/null 2>&1 || true
 
-  if ! command -v claude >/dev/null 2>&1; then
-    curl -fsSL https://claude.ai/install.sh | bash
-  fi
+    if [ ! -s \"\$HOME/.nvm/nvm.sh\" ]; then
+      curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash
+    fi
+    export NVM_DIR=\"\$HOME/.nvm\"
+    . \"\$NVM_DIR/nvm.sh\"
+    nvm install ${NODE_VERSION}
+    nvm alias default ${NODE_VERSION}
+    nvm use ${NODE_VERSION}
 
-  npm install -g \
-    @google/gemini-cli \
-    @openai/codex \
-    eslint \
-    npm-check-updates \
-    prettier
-"
+    for pkg in git-filter-repo httpie tldr; do
+      if ! pipx list --short 2>/dev/null | grep -Fxq \"\$pkg\"; then
+        pipx install \"\$pkg\"
+      fi
+    done
+
+    if ! pipx list --short 2>/dev/null | grep -Fxq \"aider-chat\"; then
+      if ! pipx install aider-chat; then
+        echo \"Warning: failed to install aider-chat into the macOS Tart base; continuing without it\" >&2
+      fi
+    fi
+
+    if [ ! -x \"\$HOME/.cargo/bin/cargo\" ]; then
+      curl https://sh.rustup.rs -sSf | sh -s -- -y
+    fi
+    export PATH=\"\$HOME/.cargo/bin:\$PATH\"
+    rustup default stable
+
+    if ! command -v go >/dev/null 2>&1; then
+      brew install go
+    fi
+
+    if ! command -v claude >/dev/null 2>&1; then
+      curl -fsSL https://claude.ai/install.sh | bash
+    fi
+
+    npm install -g \
+      @google/gemini-cli \
+      @openai/codex \
+      eslint \
+      npm-check-updates \
+      prettier
+  "
+else
+  tart exec "$BASE_NAME" bash -lc "
+    set -euo pipefail
+    export DEBIAN_FRONTEND=noninteractive
+
+    sudo apt-get update
+    sudo apt-get install -y \
+      apt-transport-https \
+      build-essential \
+      ca-certificates \
+      curl \
+      dnsutils \
+      git \
+      git-lfs \
+      htop \
+      iputils-ping \
+      jq \
+      locales \
+      lsof \
+      nano \
+      netcat-openbsd \
+      pipx \
+      python3 \
+      python3-dev \
+      python3-pip \
+      python3-venv \
+      redis-tools \
+      ruby-full \
+      software-properties-common \
+      telnet \
+      tree \
+      unzip \
+      vim \
+      wget \
+      zip \
+      zsh \
+      zsh-syntax-highlighting
+
+    sudo locale-gen en_US.UTF-8
+    sudo update-locale LANG=en_US.UTF-8
+
+    if ! command -v docker >/dev/null 2>&1; then
+      curl -fsSL https://get.docker.com | sh
+      sudo usermod -aG docker \"\$USER\" || true
+    fi
+
+    if [ ! -s \"\$HOME/.nvm/nvm.sh\" ]; then
+      curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash
+    fi
+    export NVM_DIR=\"\$HOME/.nvm\"
+    . \"\$NVM_DIR/nvm.sh\"
+    nvm install ${NODE_VERSION}
+    nvm alias default ${NODE_VERSION}
+    nvm use ${NODE_VERSION}
+
+    export PATH=\"\$HOME/.local/bin:\$PATH\"
+    pipx ensurepath >/dev/null 2>&1 || true
+    for pkg in aider-chat git-filter-repo httpie tldr; do
+      if ! pipx list --short 2>/dev/null | grep -Fxq \"\$pkg\"; then
+        pipx install \"\$pkg\"
+      fi
+    done
+
+    if [ ! -x \"\$HOME/.cargo/bin/cargo\" ]; then
+      curl https://sh.rustup.rs -sSf | sh -s -- -y
+    fi
+    export PATH=\"\$HOME/.cargo/bin:\$PATH\"
+    rustup default stable
+
+    if ! command -v go >/dev/null 2>&1; then
+      sudo apt-get install -y golang-go
+    fi
+
+    if ! command -v claude >/dev/null 2>&1; then
+      curl -fsSL https://claude.ai/install.sh | bash
+    fi
+
+    npm install -g \
+      @google/gemini-cli \
+      @openai/codex \
+      eslint \
+      npm-check-updates \
+      prettier
+  "
+fi
 
 echo "[5/5] Stopping '${BASE_NAME}'..."
 tart stop "$BASE_NAME" >/dev/null
@@ -180,13 +268,15 @@ cat <<EOF
 Local Tart vibe base is ready: ${BASE_NAME}
 
 Next steps:
-  1. Apply the mixed-provider preset in your project:
-       vm config preset vibe-tart
+  1. Apply the shared vibe preset in your project:
+       vm config preset $( [[ "${GUEST_OS}" == "macos" ]] && echo "vibe-tart" || echo "vibe-tart-linux" )
 
-  2. Start Tart from the same project directory:
-       vm --profile tart start
+  2. Start either provider from the same project directory:
+       vm start
+       vm start --provider tart
 
-  3. Keep Docker as the default path:
+  3. Or save Tart as the project default:
+       vm config set provider tart
        vm start
 
 This script is the backend for:

@@ -9,7 +9,7 @@ TART_BASE_NAME="${TART_BASE_NAME:-vibe-tart-base}"
 
 usage() {
   cat <<'EOF'
-Validate the shared Docker/Tart vibe workflow for the current project.
+Validate the shared Docker plus macOS-Tart vibe workflow for the current project.
 
 Usage:
   ./scripts/validate-vibe-providers.sh [--provider docker|tart|all] [--rebuild-docker-base] [--build-tart-base]
@@ -17,7 +17,7 @@ Usage:
 Flags:
   --provider docker|tart|all  Limit validation guidance to one provider (default: all)
   --rebuild-docker-base   Rebuild @vibe-box from Dockerfile.vibe before validation
-  --build-tart-base       Build the local Tart vibe base before validation
+  --build-tart-base       Build the local macOS Tart vibe base before validation
 
 Environment:
   PROVIDER                Provider focus for validation output (default: all)
@@ -95,7 +95,7 @@ if [[ "${BUILD_TART_BASE}" == "true" ]]; then
 fi
 
 echo
-echo "==> Applying mixed-provider preset in current project"
+echo "==> Applying provider-ready vibe preset in current project"
 (cd "${PROJECT_DIR}" && vm config preset vibe-tart)
 
 cat <<EOF
@@ -116,8 +116,8 @@ fi
 
 if [[ "${PROVIDER}" == "tart" || "${PROVIDER}" == "all" ]]; then
   cat <<'EOF'
-  2. Tart profile path
-     time vm --profile tart start
+  2. Tart provider path
+     time vm start --provider tart
 
 EOF
 fi

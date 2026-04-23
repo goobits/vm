@@ -733,8 +733,8 @@ os: macos  # Automatically uses Tart on M1/M2/M3
 provider: tart
 tart:
   image: ghcr.io/cirruslabs/macos-sonoma-base:latest
-  guest_os: linux              # Guest OS type: linux or macos
-  rosetta: true                # Enable x86 emulation for Linux VMs
+  guest_os: macos              # Guest OS type: linux or macos
+  rosetta: false               # Enable x86 emulation for Linux VMs
   disk_size: 60                # Disk: 60 (GB), "60gb", "50%"
   ssh_user: admin              # SSH username (default: admin)
   install_docker: false        # Install Docker in the VM
@@ -758,7 +758,7 @@ For the closest parity with Docker `vibe`, build a local Tart-native base first:
 vm base build vibe --provider tart
 ```
 
-The `vibe-tart` preset already expects the standard local Tart base name:
+The `vibe-tart` preset expects the standard local macOS Tart base name:
 
 ```yaml
 profiles:
@@ -766,9 +766,24 @@ profiles:
     provider: tart
     vm:
       box: vibe-tart-base
+    tart:
+      guest_os: macos
 ```
 
-With that preset, provider selection can be first-class instead of profile-first:
+Use `vibe-tart-linux` only if you explicitly want a Linux VM on Tart:
+
+```yaml
+profiles:
+  tart:
+    provider: tart
+    vm:
+      box: vibe-tart-linux-base
+    tart:
+      guest_os: linux
+      install_docker: true
+```
+
+With the macOS-first `vibe-tart` preset, provider selection can be first-class instead of profile-first:
 
 ```bash
 # Docker for this command
@@ -808,8 +823,8 @@ vm:
 
 # Tart provider (macOS)
 vm:
-  box: ghcr.io/cirruslabs/ubuntu:latest       # OCI image
-  box: ghcr.io/cirruslabs/macos-ventura:latest # macOS VM
+  box: ghcr.io/cirruslabs/macos-sonoma-base:latest
+  box: ghcr.io/cirruslabs/ubuntu:latest       # Explicit Linux Tart VM
 
 # All providers
 vm:

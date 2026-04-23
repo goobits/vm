@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.8.1] - 2026-04-23
+
+### Changed
+
+- **Tart Defaults Now Match The Product Model**: `vibe-tart` now targets macOS guests by default instead of Ubuntu-on-Tart
+  - macOS Tart guests now use the correct workspace mount behavior and writable workspace path
+  - Linux-on-Tart remains available as the explicit `vibe-tart-linux` path
+  - `vm base build vibe --provider tart` now builds the standard macOS Tart base by default
+
+- **Shared Shell Experience Across Docker And Tart**: Tart now uses the same canonical `zsh` shell template as Docker
+  - Tart macOS guests now get the same prompt, theme, aliases, and shell defaults as Docker-backed `vibe`
+  - Tart shell overrides were reduced to runtime environment exports only, removing duplicate PATH, NVM, and alias setup
+
+### Fixed
+
+- **Tart Provider Reliability**: The Tart create/start flow now matches the provider-first workflow more closely
+  - `vibe-tart` now points at the correct macOS Tart base and SSH user by default
+  - Applying the `vibe-tart` preset preserves provider profiles and Tart-specific settings
+  - Prebaked Tart vibe bases no longer reinstall baseline AI CLIs during normal provisioning
+  - Tart failures now include better host log context for guest startup and provisioning issues
+
+- **Tart Base Build Robustness**: Building the default macOS Tart base is less brittle
+  - macOS Tart base builds no longer fail hard on optional `aider-chat` installation
+  - macOS Tart guest provisioning now uses the correct virtiofs mount flow instead of Linux-only mount commands
+
 ## [4.8.0] - 2026-04-23
 
 ### Added
@@ -272,7 +297,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Earlier releases. See git history for details.
 
-[Unreleased]: https://github.com/goobits/vm/compare/v4.8.0...HEAD
+[Unreleased]: https://github.com/goobits/vm/compare/v4.8.1...HEAD
+[4.8.1]: https://github.com/goobits/vm/compare/v4.8.0...v4.8.1
 [4.8.0]: https://github.com/goobits/vm/compare/v4.7.1...v4.8.0
 [4.7.1]: https://github.com/goobits/vm/compare/v4.7.0...v4.7.1
 [4.7.0]: https://github.com/goobits/vm/compare/v4.6.0...v4.7.0

@@ -1,10 +1,14 @@
 use super::host_sync::{
     collect_host_sync_mounts, expand_tilde, file_name, resolve_guest_home_path, resolve_home_dir,
 };
+use super::provider::tart_run_log_path;
+use crate::{THEMES_JSON, ZSHRC_TEMPLATE};
 use duct::cmd;
+use serde_json::json;
 use std::path::Path;
+use tera::{Context, Tera};
 use tracing::{info, warn};
-use vm_config::config::VmConfig;
+use vm_config::config::{BoxSpec, VmConfig};
 use vm_core::error::{Result, VmError};
 
 pub struct TartProvisioner {
@@ -37,6 +41,7 @@ impl TartProvisioner {
 
         // 4. Apply runtime configuration that should behave the same across providers
         self.apply_git_config(config)?;
+        self.apply_canonical_shell_config(config)?;
         self.apply_shell_overrides(config)?;
 
         // 5. Honor generic package lists from vm.yaml before framework-specific setup
@@ -77,9 +82,35 @@ impl TartProvisioner {
             thread::sleep(Duration::from_secs(2));
         }
 
-        Err(VmError::Provider(
-            "SSH not ready after 60 seconds".to_string(),
-        ))
+        let log_path = tart_run_log_path(&self.instance_name);
+        let log_tail = self.read_host_log_tail(&log_path, 40);
+
+        Err(VmError::Provider(format!(
+            "SSH not ready after 60 seconds. Tart run log: {}{}",
+            log_path, log_tail
+        )))
+    }
+
+    fn read_host_log_tail(&self, log_path: &str, max_lines: usize) -> String {
+        let Ok(content) = std::fs::read_to_string(log_path) else {
+            return String::new();
+        };
+
+        let tail = content
+            .lines()
+            .rev()
+            .take(max_lines)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        if tail.trim().is_empty() {
+            String::new()
+        } else {
+            format!("\nLast {} log lines:\n{}", max_lines, tail)
+        }
     }
 
     fn shell_escape_single_quotes(input: &str) -> String {
@@ -89,11 +120,18 @@ impl TartProvisioner {
     fn ensure_workspace_mount(&self) -> Result<()> {
         let dir_escaped = Self::shell_escape_single_quotes(&self.project_dir);
         let mount_cmd = format!(
-            "dir='{dir}'; \
-            if ! mount | grep -F \"on $dir \"; then \
-            if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=\"\"; fi; \
-            $SUDO mkdir -p \"$dir\" && $SUDO mount -t virtiofs workspace \"$dir\"; \
-            fi",
+            r#"dir='{dir}';
+if [ -x /sbin/mount_virtiofs ]; then
+  mkdir -p "$dir"
+  if ! /sbin/mount | grep -F "on $dir "; then
+    /sbin/mount_virtiofs workspace "$dir"
+  fi
+else
+  if ! mount | grep -F "on $dir "; then
+    if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
+    $SUDO mkdir -p "$dir" && $SUDO mount -t virtiofs workspace "$dir"
+  fi
+fi"#,
             dir = dir_escaped
         );
 
@@ -111,7 +149,18 @@ impl TartProvisioner {
             let guest_path = resolve_guest_home_path(&mount.guest_path);
             let tag = Self::shell_escape_single_quotes(&mount.tag);
             commands.push(format!(
-                "target=\"{guest_path}\"; if ! mount | grep -F \"on $target \"; then if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=\"\"; fi; $SUDO mkdir -p \"$target\" && $SUDO mount -t virtiofs '{tag}' \"$target\"; fi"
+                r#"target="{guest_path}";
+if [ -x /sbin/mount_virtiofs ]; then
+  mkdir -p "$target"
+  if ! /sbin/mount | grep -F "on $target "; then
+    /sbin/mount_virtiofs '{tag}' "$target"
+  fi
+else
+  if ! mount | grep -F "on $target "; then
+    if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
+    $SUDO mkdir -p "$target" && $SUDO mount -t virtiofs '{tag}' "$target"
+  fi
+fi"#
             ));
         }
 
@@ -294,15 +343,34 @@ impl TartProvisioner {
             r#"cat > "$HOME/.vm_shell_overrides" <<'EOF'
 {overrides}
 EOF
-for shell_rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
-  touch "$shell_rc"
-  if ! grep -Fq '. "$HOME/.vm_shell_overrides"' "$shell_rc"; then
-    printf '\n[ -f "$HOME/.vm_shell_overrides" ] && . "$HOME/.vm_shell_overrides"\n' >> "$shell_rc"
-  fi
-done"#
+touch "$HOME/.bashrc"
+if ! grep -Fq '. "$HOME/.vm_shell_overrides"' "$HOME/.bashrc"; then
+  printf '\n[ -f "$HOME/.vm_shell_overrides" ] && . "$HOME/.vm_shell_overrides"\n' >> "$HOME/.bashrc"
+fi"#
         );
 
         self.ssh_exec(&script)?;
+        Ok(())
+    }
+
+    fn apply_canonical_shell_config(&self, config: &VmConfig) -> Result<()> {
+        let rendered = Self::render_canonical_zshrc(config, &self.project_dir)?;
+        let escaped = Self::shell_escape_single_quotes(&rendered);
+
+        self.ssh_exec(&format!(
+            r#"cat > "$HOME/.zshrc" <<'EOF'
+{}
+EOF
+touch "$HOME/.bashrc"
+if ! grep -Fq '. "$HOME/.vm_shell_overrides"' "$HOME/.bashrc"; then
+  printf '\n[ -f "$HOME/.vm_shell_overrides" ] && . "$HOME/.vm_shell_overrides"\n' >> "$HOME/.bashrc"
+fi
+if command -v chsh >/dev/null 2>&1 && command -v zsh >/dev/null 2>&1; then
+  chsh -s "$(command -v zsh)" "$USER" >/dev/null 2>&1 || true
+fi"#,
+            escaped
+        ))?;
+
         Ok(())
     }
 
@@ -317,14 +385,6 @@ done"#
             ));
         }
 
-        for (name, command) in &config.aliases {
-            lines.push(format!(
-                "alias {}='{}'",
-                name,
-                Self::shell_escape_single_quotes(command)
-            ));
-        }
-
         if lines.is_empty() {
             None
         } else {
@@ -332,13 +392,80 @@ done"#
         }
     }
 
+    fn render_canonical_zshrc(config: &VmConfig, project_path: &str) -> Result<String> {
+        let mut tera = Tera::default();
+        tera.add_raw_template("zshrc", ZSHRC_TEMPLATE)
+            .map_err(|e| VmError::Internal(format!("Failed to load zshrc template: {e}")))?;
+
+        let themes: serde_json::Value = serde_json::from_str(THEMES_JSON)
+            .map_err(|e| VmError::Internal(format!("Failed to parse themes.json: {e}")))?;
+
+        let terminal = config.terminal.clone().unwrap_or_default();
+        let theme_name = terminal.theme.unwrap_or_else(|| "dracula".to_string());
+        let colors = themes
+            .get(&theme_name)
+            .and_then(|t| t.get("colors"))
+            .cloned()
+            .or_else(|| themes.get("dracula").and_then(|t| t.get("colors")).cloned())
+            .unwrap_or_else(|| {
+                json!({
+                    "foreground": "#f8f8f2",
+                    "background": "#282a36",
+                    "red": "#ff5555",
+                    "green": "#50fa7b",
+                    "yellow": "#f1fa8c",
+                    "blue": "#bd93f9",
+                    "magenta": "#ff79c6",
+                    "cyan": "#8be9fd",
+                    "bright_black": "#6272a4"
+                })
+            });
+
+        let project_name = config
+            .project
+            .as_ref()
+            .and_then(|p| p.name.clone())
+            .unwrap_or_else(|| Self::default_project_name(project_path));
+
+        let mut context = Context::new();
+        context.insert("project_name", &project_name);
+        context.insert("project_path", project_path);
+        context.insert(
+            "project_config",
+            &serde_json::to_value(config).unwrap_or_else(|_| json!({})),
+        );
+        context.insert(
+            "terminal_emoji",
+            &terminal.emoji.unwrap_or_else(|| "🚀".to_string()),
+        );
+        context.insert(
+            "terminal_username",
+            &terminal.username.unwrap_or_else(|| "dev".to_string()),
+        );
+        context.insert("show_git_branch", &terminal.show_git_branch.unwrap_or(true));
+        context.insert("show_timestamp", &terminal.show_timestamp.unwrap_or(false));
+        context.insert("terminal_colors", &colors);
+
+        tera.render("zshrc", &context)
+            .map_err(|e| VmError::Internal(format!("Failed to render zshrc template: {e}")))
+    }
+
     fn provision_generic_packages(&self, config: &VmConfig) -> Result<()> {
         if !config.apt_packages.is_empty() {
             let packages = config.apt_packages.join(" ");
-            self.ssh_exec(&format!(
-                "sudo apt-get update && sudo apt-get install -y {}",
-                packages
-            ))?;
+            if self.is_macos_guest(config) {
+                self.ensure_homebrew()?;
+                self.ssh_exec(&format!(
+                    "{}\nbrew install {}",
+                    Self::macos_brew_preamble(),
+                    packages
+                ))?;
+            } else {
+                self.ssh_exec(&format!(
+                    "sudo apt-get update && sudo apt-get install -y {}",
+                    packages
+                ))?;
+            }
         }
 
         if !config.npm_packages.is_empty() {
@@ -349,11 +476,17 @@ done"#
 
         if !config.pip_packages.is_empty() {
             self.ensure_python_runtime(config)?;
-            self.ensure_python_package_tooling()?;
+            self.ensure_python_package_tooling(config)?;
             let packages = config.pip_packages.join(" ");
             self.ssh_exec(&format!(
-                r#"export PATH="$HOME/.local/bin:$PATH"
-python3 -m pip install --user --break-system-packages {}"#,
+                r#"export PATH="{}"
+python3 -m pip install --user {} {}"#,
+                Self::user_bin_path(config),
+                if self.is_macos_guest(config) {
+                    ""
+                } else {
+                    "--break-system-packages"
+                },
                 packages
             ))?;
         }
@@ -379,6 +512,13 @@ cargo install {}"#,
         else {
             return Ok(());
         };
+
+        if Self::uses_prebaked_vibe_tart_base(config) {
+            info!(
+                "Skipping Tart AI CLI installation because the standard Tart vibe base should already include them"
+            );
+            return Ok(());
+        }
 
         if ai_tools.is_claude_enabled() {
             self.ssh_exec(
@@ -406,16 +546,28 @@ fi"#,
 
         if ai_tools.is_aider_enabled() {
             self.ensure_python_runtime(config)?;
-            self.ensure_python_package_tooling()?;
-            self.ssh_exec(
-                r#"export PATH="$HOME/.local/bin:$PATH"
+            self.ensure_python_package_tooling(config)?;
+            self.ssh_exec(&format!(
+                r#"export PATH="{}"
 if ! command -v aider >/dev/null 2>&1; then
   pipx install aider-chat
 fi"#,
-            )?;
+                Self::user_bin_path(config)
+            ))?;
         }
 
         Ok(())
+    }
+
+    fn uses_prebaked_vibe_tart_base(config: &VmConfig) -> bool {
+        matches!(
+            config
+                .vm
+                .as_ref()
+                .and_then(|vm| vm.get_box_spec()),
+            Some(BoxSpec::String(ref name))
+                if name == "vibe-tart-base" || name == "vibe-tart-linux-base"
+        )
     }
 
     fn install_docker_if_requested(&self, config: &VmConfig) -> Result<()> {
@@ -426,6 +578,12 @@ fi"#,
             .unwrap_or(false)
         {
             return Ok(());
+        }
+
+        if self.is_macos_guest(config) {
+            return Err(VmError::Config(
+                "tart.install_docker is only supported for Linux Tart guests".to_string(),
+            ));
         }
 
         self.ssh_exec(
@@ -524,7 +682,7 @@ fi"#,
     fn provision_python(&self, config: &VmConfig) -> Result<()> {
         info!("Installing Python dependencies");
         self.ensure_python_runtime(config)?;
-        self.ensure_python_package_tooling()?;
+        self.ensure_python_package_tooling(config)?;
         self.ssh_exec(&format!(
             r#"if [ -f {}/requirements.txt ]; then
   cd {}
@@ -564,25 +722,41 @@ fi"#,
         Ok(())
     }
 
-    fn ensure_python_package_tooling(&self) -> Result<()> {
-        self.ssh_exec(
+    fn ensure_python_package_tooling(&self, config: &VmConfig) -> Result<()> {
+        self.ssh_exec(&format!(
             r#"if ! command -v pipx >/dev/null 2>&1; then
-  sudo apt-get update && sudo apt-get install -y pipx python3-pip python3-venv
+  {}
 fi
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="{}"
 pipx ensurepath >/dev/null 2>&1 || true"#,
-        )?;
+            if self.is_macos_guest(config) {
+                format!("{}\nbrew install pipx", Self::macos_brew_preamble())
+            } else {
+                "sudo apt-get update && sudo apt-get install -y pipx python3-pip python3-venv"
+                    .to_string()
+            },
+            Self::user_bin_path(config)
+        ))?;
         Ok(())
     }
 
-    fn provision_ruby(&self, _config: &VmConfig) -> Result<()> {
+    fn provision_ruby(&self, config: &VmConfig) -> Result<()> {
         info!("Installing Ruby dependencies");
         self.ssh_exec(&format!(
-            r#"sudo apt-get update && sudo apt-get install -y ruby-full build-essential zlib1g-dev
+            r#"{} 
 if [ -f {}/Gemfile ]; then
   if ! command -v bundle >/dev/null 2>&1; then gem install bundler; fi
   cd {} && bundle install
 fi"#,
+            if self.is_macos_guest(config) {
+                format!(
+                    "{}\nif ! command -v ruby >/dev/null 2>&1; then brew install ruby; fi",
+                    Self::macos_brew_preamble()
+                )
+            } else {
+                "sudo apt-get update && sudo apt-get install -y ruby-full build-essential zlib1g-dev"
+                    .to_string()
+            },
             self.project_dir, self.project_dir
         ))?;
         Ok(())
@@ -601,16 +775,22 @@ fi"#,
         Ok(())
     }
 
-    fn provision_go(&self, _config: &VmConfig) -> Result<()> {
+    fn provision_go(&self, config: &VmConfig) -> Result<()> {
         info!("Installing Go dependencies");
         self.ssh_exec(&format!(
             r#"if ! command -v go >/dev/null 2>&1; then
-  sudo apt-get update && sudo apt-get install -y golang-go
+  {}
 fi
 if [ -f {}/go.mod ]; then
   cd {} && go mod download
 fi"#,
-            self.project_dir, self.project_dir
+            if self.is_macos_guest(config) {
+                format!("{}\nbrew install go", Self::macos_brew_preamble())
+            } else {
+                "sudo apt-get update && sudo apt-get install -y golang-go".to_string()
+            },
+            self.project_dir,
+            self.project_dir
         ))?;
         Ok(())
     }
@@ -626,10 +806,12 @@ rustup default stable"#,
         Ok(())
     }
 
-    /// Provisions selected databases.
-    /// Note: This assumes a Debian-based guest OS (like Ubuntu) because it uses `apt-get`.
-    /// This is a reasonable default as the default Tart image is Ubuntu-based.
+    /// Provisions selected databases using the guest's native package tooling.
     fn provision_databases(&self, config: &VmConfig) -> Result<()> {
+        if self.is_macos_guest(config) {
+            self.ensure_homebrew()?;
+        }
+
         // Check if postgres service is enabled
         if config
             .services
@@ -668,10 +850,16 @@ rustup default stable"#,
         info!("Installing PostgreSQL");
         self.ssh_exec(
             r#"
-            sudo apt-get update
-            sudo apt-get install -y postgresql postgresql-contrib
-            sudo systemctl enable postgresql
-            sudo systemctl start postgresql
+            if [ -x /opt/homebrew/bin/brew ]; then eval "$(/opt/homebrew/bin/brew shellenv)"; fi
+            if command -v brew >/dev/null 2>&1; then
+              brew install postgresql
+              brew services start postgresql || true
+            else
+              sudo apt-get update
+              sudo apt-get install -y postgresql postgresql-contrib
+              sudo systemctl enable postgresql
+              sudo systemctl start postgresql
+            fi
         "#,
         )?;
         Ok(())
@@ -681,10 +869,16 @@ rustup default stable"#,
         info!("Installing Redis");
         self.ssh_exec(
             r#"
-            sudo apt-get update
-            sudo apt-get install -y redis-server
-            sudo systemctl enable redis-server
-            sudo systemctl start redis-server
+            if [ -x /opt/homebrew/bin/brew ]; then eval "$(/opt/homebrew/bin/brew shellenv)"; fi
+            if command -v brew >/dev/null 2>&1; then
+              brew install redis
+              brew services start redis || true
+            else
+              sudo apt-get update
+              sudo apt-get install -y redis-server
+              sudo systemctl enable redis-server
+              sudo systemctl start redis-server
+            fi
         "#,
         )?;
         Ok(())
@@ -694,10 +888,17 @@ rustup default stable"#,
         info!("Installing MongoDB");
         self.ssh_exec(
             r#"
-            sudo apt-get update
-            sudo apt-get install -y mongodb
-            sudo systemctl enable mongodb
-            sudo systemctl start mongodb
+            if [ -x /opt/homebrew/bin/brew ]; then eval "$(/opt/homebrew/bin/brew shellenv)"; fi
+            if command -v brew >/dev/null 2>&1; then
+              brew tap mongodb/brew || true
+              brew install mongodb-community || true
+              brew services start mongodb-community || true
+            else
+              sudo apt-get update
+              sudo apt-get install -y mongodb
+              sudo systemctl enable mongodb
+              sudo systemctl start mongodb
+            fi
         "#,
         )?;
         Ok(())
@@ -741,28 +942,98 @@ rustup default stable"#,
 
         Ok(output)
     }
+
+    fn is_macos_guest(&self, config: &VmConfig) -> bool {
+        Self::guest_os(config) == "macos"
+    }
+
+    fn guest_os(config: &VmConfig) -> &'static str {
+        if matches!(
+            config.tart.as_ref().and_then(|t| t.guest_os.as_deref()),
+            Some("macos")
+        ) {
+            return "macos";
+        }
+
+        if matches!(
+            config.tart.as_ref().and_then(|t| t.guest_os.as_deref()),
+            Some("linux")
+        ) {
+            return "linux";
+        }
+
+        if let Some(BoxSpec::String(name)) = config.vm.as_ref().and_then(|vm| vm.get_box_spec()) {
+            if name == "vibe-tart-base" || name.contains("macos") {
+                return "macos";
+            }
+            if name == "vibe-tart-linux-base" || name.contains("ubuntu") || name.contains("debian")
+            {
+                return "linux";
+            }
+        }
+
+        if let Some(image) = config.tart.as_ref().and_then(|t| t.image.as_deref()) {
+            if image.contains("macos") {
+                return "macos";
+            }
+        }
+
+        "linux"
+    }
+
+    fn ensure_homebrew(&self) -> Result<()> {
+        self.ssh_exec(
+            r#"if [ -x /opt/homebrew/bin/brew ]; then
+  eval "$(/opt/homebrew/bin/brew shellenv)"
+fi
+if ! command -v brew >/dev/null 2>&1; then
+  echo "Homebrew is required for macOS Tart provisioning" >&2
+  exit 1
+fi"#,
+        )?;
+        Ok(())
+    }
+
+    fn user_bin_path(config: &VmConfig) -> &'static str {
+        if Self::guest_os(config) == "macos" {
+            "/opt/homebrew/bin:$HOME/.local/bin:$PATH"
+        } else {
+            "$HOME/.local/bin:$PATH"
+        }
+    }
+
+    fn macos_brew_preamble() -> &'static str {
+        r#"if [ -x /opt/homebrew/bin/brew ]; then
+  eval "$(/opt/homebrew/bin/brew shellenv)"
+fi"#
+    }
+
+    fn default_project_name(project_path: &str) -> String {
+        Path::new(project_path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
+            .unwrap_or("project")
+            .to_string()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::TartProvisioner;
     use indexmap::IndexMap;
-    use vm_config::config::VmConfig;
+    use vm_config::config::{BoxSpec, VmConfig, VmSettings};
 
     #[test]
-    fn render_shell_overrides_includes_exports_and_aliases() {
+    fn render_shell_overrides_includes_environment_exports() {
         let mut config = VmConfig::default();
         config
             .environment
             .insert("EDITOR".to_string(), "nvim".to_string());
-        config
-            .aliases
-            .insert("gs".to_string(), "git status".to_string());
 
         let rendered = TartProvisioner::render_shell_overrides(&config).unwrap();
 
         assert!(rendered.contains("export EDITOR='nvim'"));
-        assert!(rendered.contains("alias gs='git status'"));
     }
 
     #[test]
@@ -773,6 +1044,61 @@ mod tests {
             ..Default::default()
         };
 
-        assert!(TartProvisioner::render_shell_overrides(&config).is_none());
+        let rendered = TartProvisioner::render_shell_overrides(&config);
+        assert!(rendered.is_none());
+    }
+
+    #[test]
+    fn uses_vibe_tart_base_detects_standard_base() {
+        let config = VmConfig {
+            vm: Some(VmSettings {
+                r#box: Some(BoxSpec::String("vibe-tart-base".to_string())),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        assert!(TartProvisioner::uses_prebaked_vibe_tart_base(&config));
+    }
+
+    #[test]
+    fn uses_vibe_tart_base_ignores_other_boxes() {
+        let config = VmConfig {
+            vm: Some(VmSettings {
+                r#box: Some(BoxSpec::String(
+                    "ghcr.io/cirruslabs/ubuntu:latest".to_string(),
+                )),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        assert!(!TartProvisioner::uses_prebaked_vibe_tart_base(&config));
+    }
+
+    #[test]
+    fn guest_os_detects_vibe_tart_base_as_macos() {
+        let config = VmConfig {
+            vm: Some(VmSettings {
+                r#box: Some(BoxSpec::String("vibe-tart-base".to_string())),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        assert_eq!(TartProvisioner::guest_os(&config), "macos");
+    }
+
+    #[test]
+    fn guest_os_detects_linux_base_name() {
+        let config = VmConfig {
+            vm: Some(VmSettings {
+                r#box: Some(BoxSpec::String("vibe-tart-linux-base".to_string())),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        assert_eq!(TartProvisioner::guest_os(&config), "linux");
     }
 }

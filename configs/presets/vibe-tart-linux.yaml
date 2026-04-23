@@ -1,7 +1,7 @@
 ---
 preset:
-  name: vibe-tart
-  description: "Vibe Development with Docker plus native macOS Tart on Apple Silicon"
+  name: vibe-tart-linux
+  description: "Vibe Development with Docker plus an explicit Linux VM on Tart"
 
 provider: docker
 
@@ -35,14 +35,13 @@ profiles:
     provider: docker
   tart:
     provider: tart
-    project:
-      workspace_path: /Users/admin/workspace
     vm:
-      box: vibe-tart-base
+      box: vibe-tart-linux-base
       memory: 16384
       cpus: 8
     tart:
-      guest_os: macos
-      disk_size: 80
+      rosetta: true
+      guest_os: linux
+      disk_size: 50
       ssh_user: admin
-      install_docker: false
+      install_docker: true

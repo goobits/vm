@@ -389,6 +389,30 @@ services:
     }
 
     #[test]
+    fn test_vibe_tart_preset_preserves_provider_profiles() -> Result<()> {
+        let fixture = CliTestFixture::new()?;
+
+        let output = fixture.run_vm_command(&["config", "preset", "vibe-tart"])?;
+        assert!(
+            output.status.success(),
+            "Failed to apply vibe-tart preset: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let config_content = fixture.read_file("vm.yaml")?;
+        assert!(config_content.contains("preset: vibe-tart"));
+        assert!(config_content.contains("default_profile: docker"));
+        assert!(config_content.contains("profiles:"));
+        assert!(config_content.contains("tart:"));
+        assert!(config_content.contains("provider: tart"));
+        assert!(config_content.contains("box: vibe-tart-base"));
+        assert!(config_content.contains("guest_os: macos"));
+        assert!(config_content.contains("ssh_user: admin"));
+
+        Ok(())
+    }
+
+    #[test]
     fn test_config_error_handling() -> Result<()> {
         let fixture = CliTestFixture::new()?;
 

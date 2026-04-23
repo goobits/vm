@@ -12,6 +12,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Renamed yolo aliases to yo (yoclaude, yogemini, yocodex) and updated Gemini to use `--yolo`
 - Made the optimized Vibe Dockerfile the default `Dockerfile.vibe`
 
+## [4.8.1] - 2026-04-23
+
+### Changed
+
+- **Tart Defaults Now Match The Product Model**: `vibe-tart` is now macOS-first instead of Ubuntu-on-Tart
+  - macOS Tart guests now use the right workspace mount behavior and writable workspace path
+  - Linux-on-Tart remains available, but only as the explicit `vibe-tart-linux` path
+  - `vm base build vibe --provider tart` now builds the standard macOS Tart base by default
+
+- **Shared Shell Experience Across Docker And Tart**: Tart now uses the same canonical `zsh` shell template as Docker
+  - Tart macOS guests now get the same prompt, theme, aliases, and shell defaults as Docker-backed `vibe`
+  - Tart shell overrides were reduced to runtime environment exports only, removing duplicate PATH, NVM, and alias setup
+
+### Fixed
+
+- **Tart Provider Reliability**: The Tart create/start flow now lines up with the intended provider-first workflow
+  - `vibe-tart` now points at the correct macOS Tart base and SSH user by default
+  - Applying the `vibe-tart` preset preserves provider profiles and Tart-specific settings
+  - Prebaked Tart vibe bases no longer try to reinstall baseline AI CLIs during normal provisioning
+  - Tart error messages now surface better host log context when guest startup or provisioning fails
+
+- **Tart Base Build Robustness**: Building the default macOS Tart base is less brittle
+  - Tart base building no longer fails hard on optional macOS `aider-chat` installation
+  - macOS Tart guest provisioning now uses the correct virtiofs mount flow instead of Linux-only mount commands
 ## [4.8.0] - 2026-04-23
 
 ### Added

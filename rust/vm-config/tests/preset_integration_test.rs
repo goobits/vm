@@ -828,3 +828,80 @@ fn test_preset_description_retrieval() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_vibe_tart_preset_uses_admin_ssh_user() -> Result<()> {
+    let _guard = TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let fixture = PresetTestFixture::new()?;
+    let detector = fixture.create_detector();
+
+    let vibe_tart = detector.load_preset("vibe-tart")?;
+    let tart_profile = vibe_tart
+        .profiles
+        .as_ref()
+        .and_then(|profiles| profiles.get("tart"))
+        .expect("vibe-tart should define a tart profile");
+
+    assert_eq!(tart_profile.provider.as_deref(), Some("tart"));
+    assert_eq!(
+        tart_profile
+            .vm
+            .as_ref()
+            .and_then(|vm| vm.r#box.as_ref())
+            .map(|b| serde_yaml::to_string(b).unwrap().trim().to_string()),
+        Some("vibe-tart-base".to_string())
+    );
+    assert_eq!(
+        tart_profile
+            .tart
+            .as_ref()
+            .and_then(|tart| tart.guest_os.as_deref()),
+        Some("macos")
+    );
+    assert_eq!(
+        tart_profile
+            .tart
+            .as_ref()
+            .and_then(|tart| tart.ssh_user.as_deref()),
+        Some("admin")
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_vibe_tart_linux_preset_uses_linux_guest() -> Result<()> {
+    let _guard = TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let fixture = PresetTestFixture::new()?;
+    let detector = fixture.create_detector();
+
+    let vibe_tart = detector.load_preset("vibe-tart-linux")?;
+    let tart_profile = vibe_tart
+        .profiles
+        .as_ref()
+        .and_then(|profiles| profiles.get("tart"))
+        .expect("vibe-tart-linux should define a tart profile");
+
+    assert_eq!(tart_profile.provider.as_deref(), Some("tart"));
+    assert_eq!(
+        tart_profile
+            .vm
+            .as_ref()
+            .and_then(|vm| vm.r#box.as_ref())
+            .map(|b| serde_yaml::to_string(b).unwrap().trim().to_string()),
+        Some("vibe-tart-linux-base".to_string())
+    );
+    assert_eq!(
+        tart_profile
+            .tart
+            .as_ref()
+            .and_then(|tart| tart.guest_os.as_deref()),
+        Some("linux")
+    );
+
+    Ok(())
+}

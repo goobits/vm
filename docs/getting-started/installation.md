@@ -106,7 +106,7 @@ brew install cirruslabs/cli/tart
 # Verify installation
 tart --version
 
-# Recommended for Docker-like vibe parity:
+# Recommended for the native macOS Tart path:
 vm base build vibe --provider tart
 
 # Then in your project:
@@ -121,6 +121,11 @@ vm start
 
 # Or run the combined validation helper:
 vm base validate vibe
+
+# If you explicitly want Linux-on-Tart instead of macOS-on-Tart:
+./scripts/build-vibe-tart-base.sh --guest-os linux --name vibe-tart-linux-base
+vm config preset vibe-tart-linux
+vm start --provider tart
 ```
 
 ## Ubuntu/Debian Installation

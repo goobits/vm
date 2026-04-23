@@ -187,12 +187,12 @@ properties:
     properties:
       image:
         type: string
-        description: OCI image to use (e.g., ghcr.io/cirruslabs/ubuntu:latest)
+        description: OCI image to use (e.g., ghcr.io/cirruslabs/macos-sonoma-base:latest)
         examples:
-          - ghcr.io/cirruslabs/ubuntu:latest
-          - ghcr.io/cirruslabs/debian:latest
           - ghcr.io/cirruslabs/macos-sonoma-base:latest
           - ghcr.io/cirruslabs/macos-ventura-base:latest
+          - ghcr.io/cirruslabs/ubuntu:latest
+          - ghcr.io/cirruslabs/debian:latest
       guest_os:
         type: string
         enum:
@@ -217,7 +217,7 @@ properties:
       rosetta:
         type: boolean
         default: true
-        description: Enable Rosetta 2 for x86 emulation (Linux only)
+        description: Enable Rosetta 2 for x86 emulation (Linux guests only)
       ssh_user:
         type: string
         description: SSH username (defaults to admin for macOS, ubuntu for Linux)

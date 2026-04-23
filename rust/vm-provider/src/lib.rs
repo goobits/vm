@@ -72,6 +72,7 @@ pub mod progress;
 pub mod resources;
 
 // Re-export template constants for testing
+pub use resources::THEMES_JSON;
 pub use resources::ZSHRC_TEMPLATE;
 pub mod security;
 pub mod temp_models;
@@ -105,7 +106,7 @@ pub enum BoxConfig {
         args: Option<HashMap<String, String>>,
     },
 
-    /// Tart OCI image (e.g., "ghcr.io/cirruslabs/ubuntu:latest")
+    /// Tart OCI image (e.g., "ghcr.io/cirruslabs/macos-sonoma-base:latest")
     TartImage(String),
 
     /// Snapshot reference (universal across providers)

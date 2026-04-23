@@ -294,9 +294,9 @@ pub const VM_MESSAGES: VmMessages = VmMessages {
     create_info_block: "  Status:     {status}\n  Container:  {container}",
     create_multiinstance_warning: "ℹ️  Instance name '{instance}' specified but provider '{provider}' doesn't support multi-instance. Using default behavior.",
     create_ports_label: "  Ports:      {start}-{end}",
-    create_progress: "  ✓ Building Docker image\n  ✓ Setting up volumes\n  ✓ Configuring network\n  ✓ Starting container\n  ✓ Running initial provisioning",
+    create_progress: "  ✓ Preparing base environment\n  ✓ Setting up workspace\n  ✓ Configuring network\n  ✓ Starting environment\n  ✓ Running initial provisioning",
     create_success: "\n✅ Created successfully\n",
-    create_troubleshooting: "\n❌ Failed to create '{name}'\n   Error: {error}\n\n💡 Try:\n   • Check Docker status: docker ps\n   • View Docker logs: docker logs\n   • Retry with force: vm create --force",
+    create_troubleshooting: "\n❌ Failed to create '{name}'\n   Error: {error}\n\n💡 Try:\n   • Check provider status: vm status\n   • Retry with force: vm create --force\n   • Review provider-specific logs if available",
 
     // VM Destroy
     destroy_cancelled: "\n❌ Destruction cancelled",
@@ -313,7 +313,7 @@ pub const VM_MESSAGES: VmMessages = VmMessages {
     start_header: "🚀 Starting '{name}'...",
     start_info_block: "  Status:     {status}\n  Container:  {container}",
     start_success: "✅ Started successfully\n",
-    start_troubleshooting: "❌ Failed to start '{name}'\n   Error: {error}\n\n💡 Try:\n   • Check Docker status: docker ps\n   • View logs: docker logs {container}\n   • Recreate VM: vm create --force",
+    start_troubleshooting: "❌ Failed to start '{name}'\n   Error: {error}\n\n💡 Try:\n   • Check provider status: vm status\n   • Review provider-specific logs if available\n   • Recreate VM: vm create --force",
 
     // VM Stop
     stop_force_header: "⚠️  Force stopping container '{name}'...",
@@ -365,9 +365,9 @@ pub const VM_MESSAGES: VmMessages = VmMessages {
     ssh_disconnected: "\n👋 Disconnected from '{name}'\n💡 Reconnect with: vm ssh",
     ssh_vm_not_found: "\n🔍 VM '{name}' doesn't exist",
     ssh_create_prompt: "\nWould you like to create it now? (y/N): ",
-    ssh_creating: "\n🚀 Creating '{name}'...\n\n  ✓ Building Docker image\n  ✓ Setting up volumes\n  ✓ Configuring network\n  ✓ Starting container\n  ✓ Running initial provisioning",
+    ssh_creating: "\n🚀 Creating '{name}'...\n\n  ✓ Preparing base environment\n  ✓ Setting up workspace\n  ✓ Configuring network\n  ✓ Starting environment\n  ✓ Running initial provisioning",
     ssh_create_success: "\n✅ Created successfully\n\n🔗 Connecting to '{name}'...",
-    ssh_create_failed: "\n❌ Failed to create '{name}'\n   Error: {error}\n\n💡 Try:\n   • Check Docker: docker ps\n   • View logs: docker logs\n   • Manual create: vm create",
+    ssh_create_failed: "\n❌ Failed to create '{name}'\n   Error: {error}\n\n💡 Try:\n   • Check provider status: vm status\n   • Review provider-specific logs if available\n   • Manual create: vm create",
     ssh_not_running: "\n⚠️  VM '{name}' is not running",
     ssh_connection_lost: "\n⚠️  Lost connection to VM\n💡 Check if VM is running: vm status",
     ssh_session_ended: "\n⚠️  Session ended unexpectedly\n💡 Check VM status: vm status",
@@ -375,7 +375,7 @@ pub const VM_MESSAGES: VmMessages = VmMessages {
     ssh_start_prompt: "\nWould you like to start it now? (Y/n): ",
     ssh_start_aborted: "\n❌ SSH connection aborted\n💡 Start the VM manually with: vm start",
     ssh_starting: "\n🚀 Starting '{name}'...",
-    ssh_start_failed: "\n❌ Failed to start '{name}': {error}\n\n💡 Try:\n   • Check Docker status: docker ps\n   • View logs: docker logs {name}-dev\n   • Recreate VM: vm create --force",
+    ssh_start_failed: "\n❌ Failed to start '{name}': {error}\n\n💡 Try:\n   • Check provider status: vm status\n   • Review provider-specific logs if available\n   • Recreate VM: vm create --force",
     ssh_reconnecting: "✅ Started successfully\n\n🔗 Reconnecting to '{name}'...",
 
     // VM Destroy Enhanced (Cross-Provider)

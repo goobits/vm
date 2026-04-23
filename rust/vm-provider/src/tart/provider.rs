@@ -21,14 +21,26 @@ use vm_core::error::Result;
 use vm_messages::messages::MESSAGES;
 
 // Constants for Tart provider
-const DEFAULT_TART_IMAGE: &str = "ghcr.io/cirruslabs/ubuntu:latest";
+const DEFAULT_TART_IMAGE: &str = "ghcr.io/cirruslabs/macos-sonoma-base:latest";
 const DEFAULT_TART_VIBE_BASE: &str = "vibe-tart-base";
+const DEFAULT_TART_LINUX_VIBE_BASE: &str = "vibe-tart-linux-base";
 const TART_VM_LOG_PATH: &str = ".tart/vms";
 
 struct CollectedMetrics {
     resources: ResourceUsage,
     services: Vec<ServiceStatus>,
     uptime: Option<String>,
+}
+
+pub(crate) fn sanitize_log_name(input: &str) -> String {
+    input
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+        .collect()
+}
+
+pub(crate) fn tart_run_log_path(vm_name: &str) -> String {
+    format!("/tmp/vm-tart-{}.log", sanitize_log_name(vm_name))
 }
 
 #[derive(Clone)]
@@ -107,18 +119,12 @@ impl TartProvider {
         input.replace('\'', "'\"'\"'")
     }
 
-    fn sanitize_log_name(input: &str) -> String {
-        input
-            .chars()
-            .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
-            .collect()
-    }
-
     fn start_vm_background(&self, vm_name: &str) -> Result<()> {
         let host_path = self.host_workspace_path()?;
-        let log_path = format!("/tmp/vm-tart-{}.log", Self::sanitize_log_name(vm_name));
+        let raw_log_path = tart_run_log_path(vm_name);
+        info!("Tart run log for '{}': {}", vm_name, raw_log_path);
         let vm_name = Self::shell_escape_single_quotes(vm_name);
-        let log_path = Self::shell_escape_single_quotes(&log_path);
+        let log_path = Self::shell_escape_single_quotes(&raw_log_path);
         let mut dir_args = vec![format!("workspace:{}:tag=workspace", host_path.display())];
         for mount in collect_host_sync_mounts(&self.config) {
             dir_args.push(format!(
@@ -146,7 +152,12 @@ impl TartProvider {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-            .map_err(|e| VmError::Provider(format!("Failed to start Tart VM: {}", e)))?;
+            .map_err(|e| {
+                VmError::Provider(format!(
+                    "Failed to start Tart VM: {}. See {}",
+                    e, raw_log_path
+                ))
+            })?;
 
         Ok(())
     }
@@ -335,10 +346,12 @@ impl TartProvider {
         // Get image from config using new BoxConfig system
         let image = self.get_tart_image(config)?;
 
-        if image == DEFAULT_TART_VIBE_BASE && !self.tart_image_exists(&image)? {
+        if (image == DEFAULT_TART_VIBE_BASE || image == DEFAULT_TART_LINUX_VIBE_BASE)
+            && !self.tart_image_exists(&image)?
+        {
             return Err(VmError::Config(format!(
                 "Tart vibe base '{}' was not found. Run `vm base build vibe --provider tart` first.",
-                DEFAULT_TART_VIBE_BASE
+                image
             )));
         }
 
@@ -430,7 +443,11 @@ impl TartProvider {
             );
             // This is treated as a hard failure for create, as an un-provisioned VM is not useful.
             ProgressReporter::finish_phase(&main_phase, "Provisioning failed.");
-            return Err(e);
+            return Err(VmError::Provider(format!(
+                "{}. Tart run log: {}",
+                e,
+                tart_run_log_path(vm_name)
+            )));
         }
         ProgressReporter::task(&main_phase, "Initial provisioning complete.");
 

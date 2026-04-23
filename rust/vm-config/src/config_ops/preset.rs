@@ -228,11 +228,14 @@ fn create_minimal_preset_config(
         preset: Some(preset_names.to_string()),
         version: merged.version.clone(),
         provider: merged.provider.clone(),
+        default_profile: merged.default_profile.clone(),
+        tart: merged.tart.clone(),
         project: merged.project.clone(),
         vm,
         ports: merged.ports.clone(),
         services: merged.services.clone(),
         terminal: merged.terminal.clone(),
+        profiles: merged.profiles.clone(),
         apt_packages: merged.apt_packages.clone(),
         npm_packages: merged.npm_packages.clone(),
         pip_packages: merged.pip_packages.clone(),
@@ -335,6 +338,21 @@ fn preserve_user_customizations(
         has_customizations = true;
     }
 
+    if original.default_profile.is_some() {
+        minimal.default_profile = merged.default_profile.clone();
+        has_customizations = true;
+    }
+
+    if original.profiles.is_some() {
+        minimal.profiles = merged.profiles.clone();
+        has_customizations = true;
+    }
+
+    if original.tart.is_some() {
+        minimal.tart = merged.tart.clone();
+        has_customizations = true;
+    }
+
     has_customizations
 }
 
@@ -366,6 +384,12 @@ fn print_customization_warning(original: &VmConfig) {
     }
     if original.networking.is_some() {
         vm_println!("   - networking config");
+    }
+    if original.default_profile.is_some() || original.profiles.is_some() {
+        vm_println!("   - profile configuration");
+    }
+    if original.tart.is_some() {
+        vm_println!("   - tart provider settings");
     }
 
     vm_println!("");
