@@ -252,7 +252,42 @@ fn create_minimal_preset_config(
         }
     }
 
+    remove_legacy_vibe_terminal_emoji(&mut minimal, preset_names, original_base_config);
+
     minimal
+}
+
+fn remove_legacy_vibe_terminal_emoji(
+    minimal: &mut VmConfig,
+    preset_names: &str,
+    original_base_config: Option<&VmConfig>,
+) {
+    if !preset_names.split(',').any(|name| {
+        let trimmed = name.trim();
+        trimmed == "vibe-tart" || trimmed == "vibe-tart-linux"
+    }) {
+        return;
+    }
+
+    let original_emoji = original_base_config
+        .and_then(|config| config.terminal.as_ref())
+        .and_then(|terminal| terminal.emoji.as_deref());
+
+    if let Some(terminal) = minimal.terminal.as_mut() {
+        if terminal.emoji.as_deref() == Some("🚀") && original_emoji == Some("🚀") {
+            terminal.emoji = None;
+        }
+
+        if terminal.shell.is_none()
+            && terminal.theme.is_none()
+            && terminal.username.is_none()
+            && terminal.show_git_branch.is_none()
+            && terminal.show_timestamp.is_none()
+            && terminal.emoji.is_none()
+        {
+            minimal.terminal = None;
+        }
+    }
 }
 
 /// Build VM section with preset box if specified

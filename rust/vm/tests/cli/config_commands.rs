@@ -413,6 +413,37 @@ services:
     }
 
     #[test]
+    fn test_vibe_tart_preset_removes_legacy_terminal_emoji() -> Result<()> {
+        let fixture = CliTestFixture::new()?;
+
+        fs::write(
+            fixture.test_dir.join("vm.yaml"),
+            r#"version: "2.0"
+preset: vibe-tart
+provider: docker
+terminal:
+  theme: dracula
+  show_git_branch: true
+  emoji: 🚀
+"#,
+        )?;
+
+        let output = fixture.run_vm_command(&["config", "preset", "vibe-tart"])?;
+        assert!(
+            output.status.success(),
+            "Failed to reapply vibe-tart preset: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let config_content = fixture.read_file("vm.yaml")?;
+        assert!(!config_content.contains("emoji:"));
+        assert!(config_content.contains("theme: dracula"));
+        assert!(config_content.contains("show_git_branch: true"));
+
+        Ok(())
+    }
+
+    #[test]
     fn test_config_error_handling() -> Result<()> {
         let fixture = CliTestFixture::new()?;
 
