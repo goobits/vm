@@ -91,7 +91,7 @@
             project_gid: '{{ lookup("env", "HOST_GID") | default(ansible_user_gid, true) }}'
             project_path: '{{ project_config.project.workspace_path | default(default_workspace) }}'
             project_hostname: "{{ project_config.project.hostname | default('dev.' + (project_config.project.name | default('project')) + '.local') }}"
-            terminal_emoji: "{{ project_config.terminal.emoji | default('🚀') }}"
+            terminal_emoji: "{{ project_config.terminal.emoji | default('🐳') }}"
             terminal_username: "{{ project_config.terminal.username | default('dev') }}"
             terminal_theme_name: "{{ project_config.terminal.theme | default('dracula') }}"
             show_git_branch: '{{ project_config.terminal.show_git_branch | default(true) }}'

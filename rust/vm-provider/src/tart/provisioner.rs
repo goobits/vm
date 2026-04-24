@@ -435,7 +435,9 @@ fi"#,
         );
         context.insert(
             "terminal_emoji",
-            &terminal.emoji.unwrap_or_else(|| "🚀".to_string()),
+            &terminal
+                .emoji
+                .unwrap_or_else(|| Self::default_terminal_emoji(config).to_string()),
         );
         context.insert(
             "terminal_username",
@@ -1007,6 +1009,14 @@ fi"#,
 fi"#
     }
 
+    fn default_terminal_emoji(config: &VmConfig) -> &'static str {
+        match Self::guest_os(config) {
+            "macos" => "🍎",
+            "linux" => "🐧",
+            _ => "🚀",
+        }
+    }
+
     fn default_project_name(project_path: &str) -> String {
         Path::new(project_path)
             .file_name()
@@ -1108,6 +1118,10 @@ mod tests {
                 name: Some("vm".to_string()),
                 ..Default::default()
             }),
+            vm: Some(VmSettings {
+                r#box: Some(BoxSpec::String("vibe-tart-base".to_string())),
+                ..Default::default()
+            }),
             terminal: Some(TerminalConfig {
                 username: Some("vm-dev".to_string()),
                 theme: Some("dracula".to_string()),
@@ -1122,7 +1136,7 @@ mod tests {
         let rendered =
             TartProvisioner::render_canonical_zshrc(&config, "/Users/admin/workspace").unwrap();
 
-        assert!(rendered.contains("PROMPT='"));
+        assert!(rendered.contains("PROMPT='🍎 "));
         assert!(rendered.contains("alias gs='git status'"));
         assert!(rendered.contains("cd /Users/admin/workspace"));
     }

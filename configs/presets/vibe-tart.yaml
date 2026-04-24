@@ -26,7 +26,6 @@ networking:
 terminal:
   theme: dracula
   show_git_branch: true
-  emoji: 🚀
 
 default_profile: docker
 
