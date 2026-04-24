@@ -355,7 +355,6 @@ fi"#
 
     fn apply_canonical_shell_config(&self, config: &VmConfig) -> Result<()> {
         let rendered = Self::render_canonical_zshrc(config, &self.project_dir)?;
-        let escaped = Self::shell_escape_single_quotes(&rendered);
 
         self.ssh_exec(&format!(
             r#"cat > "$HOME/.zshrc" <<'EOF'
@@ -368,7 +367,7 @@ fi
 if command -v chsh >/dev/null 2>&1 && command -v zsh >/dev/null 2>&1; then
   chsh -s "$(command -v zsh)" "$USER" >/dev/null 2>&1 || true
 fi"#,
-            escaped
+            rendered
         ))?;
 
         Ok(())
@@ -1022,7 +1021,7 @@ fi"#
 mod tests {
     use super::TartProvisioner;
     use indexmap::IndexMap;
-    use vm_config::config::{BoxSpec, VmConfig, VmSettings};
+    use vm_config::config::{BoxSpec, ProjectConfig, TerminalConfig, VmConfig, VmSettings};
 
     #[test]
     fn render_shell_overrides_includes_environment_exports() {
@@ -1100,5 +1099,31 @@ mod tests {
         };
 
         assert_eq!(TartProvisioner::guest_os(&config), "linux");
+    }
+
+    #[test]
+    fn canonical_zshrc_renders_for_macos_tart() {
+        let mut config = VmConfig {
+            project: Some(ProjectConfig {
+                name: Some("vm".to_string()),
+                ..Default::default()
+            }),
+            terminal: Some(TerminalConfig {
+                username: Some("vm-dev".to_string()),
+                theme: Some("dracula".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        config
+            .aliases
+            .insert("gs".to_string(), "git status".to_string());
+
+        let rendered =
+            TartProvisioner::render_canonical_zshrc(&config, "/Users/admin/workspace").unwrap();
+
+        assert!(rendered.contains("PROMPT='"));
+        assert!(rendered.contains("alias gs='git status'"));
+        assert!(rendered.contains("cd /Users/admin/workspace"));
     }
 }

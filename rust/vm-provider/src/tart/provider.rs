@@ -539,8 +539,13 @@ impl Provider for TartProvider {
             "-c",
             &ssh_command
         )
+        .unchecked()
         .run()
-        .map_err(|e| VmError::Provider(format!("Exec failed: {}", e)))?;
+        .map_err(|e| VmError::Provider(format!("Exec failed: {}", e)))
+        .and_then(|output| match output.status.code() {
+            Some(0) | Some(1) | Some(2) | Some(127) | Some(130) => Ok(()),
+            _ => Err(VmError::Provider("SSH connection lost".to_string())),
+        })?;
 
         Ok(())
     }

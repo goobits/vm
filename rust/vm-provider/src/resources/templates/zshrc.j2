@@ -124,14 +124,18 @@ alias dps='docker ps'
 alias dimg='docker images'
 
 # Project-Specific Aliases
-{% for alias_name, alias_command in (project_config.aliases | default({})).items() %}
+{% if project_config.aliases is defined %}
+{% for alias_name, alias_command in project_config.aliases %}
 alias {{ alias_name }}='{{ alias_command }}'
 {% endfor %}
+{% endif %}
 
 # Port Information
-{% for service, port in (project_config.ports | default({})).items() %}
+{% if project_config.ports is defined %}
+{% for service, port in project_config.ports %}
 # {{ service }}: localhost:{{ port }}
 {% endfor %}
+{% endif %}
 
 # Auto-cd to workspace (respect VM_TARGET_DIR for subdirectory support)
 if [ -n "$VM_TARGET_DIR" ]; then
