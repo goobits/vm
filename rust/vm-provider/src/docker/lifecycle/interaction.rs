@@ -25,6 +25,7 @@ impl<'a> LifecycleOperations<'a> {
             .unwrap_or(super::helpers::DEFAULT_WORKSPACE_PATH);
         let user_config = UserConfig::from_vm_config(self.config);
         let project_user = &user_config.username;
+        let project_home = format!("/home/{project_user}");
         let shell = self
             .config
             .terminal
@@ -105,15 +106,20 @@ impl<'a> LifecycleOperations<'a> {
             &[
                 "exec",
                 tty_flag,
-                "-e",
-                &format!("VM_TARGET_DIR={target_dir}"),
                 &container_name,
                 "sudo",
-                "-u",
+                "-Hu",
                 project_user,
+                "env",
+                &format!("HOME={project_home}"),
+                &format!("USER={project_user}"),
+                &format!("LOGNAME={project_user}"),
+                &format!("SHELL={shell}"),
                 "sh",
-                "-c",
-                &format!("cd \"$VM_TARGET_DIR\" && exec {shell}"),
+                "-lc",
+                &format!(
+                    "export VM_TARGET_DIR=\"{target_dir}\" && cd \"$VM_TARGET_DIR\" && exec \"$SHELL\""
+                ),
             ],
         )
         .unchecked() // Allow all exit codes - we'll handle them below

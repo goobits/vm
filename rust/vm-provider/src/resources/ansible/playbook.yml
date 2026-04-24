@@ -146,7 +146,7 @@
             recurse: yes
         when:
           - ansible_facts['user_id'] == 0
-          - base_preprovisioned
+          - base_preprovisioned | bool
         become: yes
         ignore_errors: yes  # Continue if some files can't be changed
 
@@ -932,7 +932,7 @@
         command: git config --global user.name "{{ project_config.git_config.user_name }}"
         become_user: '{{ project_user }}'
         when:
-          - base_preprovisioned
+          - base_preprovisioned | bool
           - project_config.git_config is defined
           - project_config.git_config.user_name is defined
           - project_config.git_config.user_name is not none
@@ -941,7 +941,7 @@
         command: git config --global user.email "{{ project_config.git_config.user_email }}"
         become_user: '{{ project_user }}'
         when:
-          - base_preprovisioned
+          - base_preprovisioned | bool
           - project_config.git_config is defined
           - project_config.git_config.user_email is defined
           - project_config.git_config.user_email is not none
@@ -950,7 +950,7 @@
         command: git config --global pull.rebase "{{ project_config.git_config.pull_rebase }}"
         become_user: '{{ project_user }}'
         when:
-          - base_preprovisioned
+          - base_preprovisioned | bool
           - project_config.git_config is defined
           - project_config.git_config.pull_rebase is defined
           - project_config.git_config.pull_rebase is not none
@@ -959,7 +959,7 @@
         command: git config --global init.defaultBranch "{{ project_config.git_config.init_default_branch }}"
         become_user: '{{ project_user }}'
         when:
-          - base_preprovisioned
+          - base_preprovisioned | bool
           - project_config.git_config is defined
           - project_config.git_config.init_default_branch is defined
           - project_config.git_config.init_default_branch is not none
@@ -968,7 +968,7 @@
         command: git config --global core.editor "{{ project_config.git_config.core_editor }}"
         become_user: '{{ project_user }}'
         when:
-          - base_preprovisioned
+          - base_preprovisioned | bool
           - project_config.git_config is defined
           - project_config.git_config.core_editor is defined
           - project_config.git_config.core_editor is not none
@@ -980,7 +980,7 @@
             owner: '{{ project_user }}'
             mode: '0644'
         when:
-          - base_preprovisioned
+          - base_preprovisioned | bool
           - project_config.git_config is defined
           - project_config.git_config.core_excludesfile_content is defined
           - project_config.git_config.core_excludesfile_content is not none
@@ -990,7 +990,7 @@
         command: git config --global core.excludesfile "/home/{{ project_user }}/.gitignore_global"
         become_user: '{{ project_user }}'
         when:
-          - base_preprovisioned
+          - base_preprovisioned | bool
           - project_config.git_config is defined
           - project_config.git_config.core_excludesfile_content is defined
           - project_config.git_config.core_excludesfile_content is not none
