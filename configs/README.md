@@ -11,10 +11,7 @@ Framework and language presets that users can apply via `vm config preset <name>
 
 Available presets:
 - `base` - Minimal base configuration
-- `nodejs`, `python`, `rust` - Language-specific environments
-- `react`, `next`, `django`, `rails` - Framework-specific setups
-- `docker`, `kubernetes` - Container orchestration presets
-- `tart-*` - Platform-specific virtualization presets
+- `vibe-tart`, `vibe-tart-linux` - Mixed Docker/Tart presets
 
 ### `languages/`
 Language-specific package manager configurations (npm, pip, cargo).
@@ -49,4 +46,4 @@ When modifying files in this directory:
 
 ## Schema Validation
 
-All configurations are validated against schemas in `configs/schema/`. Use `vm validate` to check configuration files.
+All configurations are validated against schemas in `configs/schema/`. Use `vm config validate` to check configuration files.

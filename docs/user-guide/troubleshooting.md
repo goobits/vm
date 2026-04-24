@@ -25,7 +25,7 @@ flowchart TD
     CantConnect -->|No| StartVM[vm start]
     CantConnect -->|Yes| SSHCheck{SSH<br/>working?}
 
-    SSHCheck -->|No| SSHDebug[vm ssh -v<br/>Check verbose output]
+    SSHCheck -->|No| SSHDebug[vm status<br/>Check provider status]
     SSHCheck -->|Yes| RestartVM[vm stop && vm start]
 
     ServiceIssue -->|PostgreSQL| PG[vm logs -s postgresql<br/>Check database logs]
@@ -89,8 +89,8 @@ vm status
 # Try restarting
 vm stop && vm start
 
-# Check SSH configuration
-vm ssh -v  # Verbose SSH output
+# Reconnect after checking status
+vm ssh
 ```
 
 ### Port Conflicts
@@ -191,7 +191,7 @@ cat ~/.ssh/id_rsa.pub
 ### Invalid Configuration
 ```bash
 # Validate your configuration
-vm validate
+vm config validate
 
 # Check for syntax errors
 yaml-lint vm.yaml  # If you have yamllint installed

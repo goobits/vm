@@ -1,6 +1,6 @@
 # VM Documentation
 
-Complete documentation for the VM development environment tool.
+Documentation for the VM development environment tool.
 
 Source of truth: all documentation is authored under `docs/`.
 
@@ -10,7 +10,7 @@ Source of truth: all documentation is authored under `docs/`.
 
 **Quick Start** (5 min)
 [getting-started/quick-start.md](getting-started/quick-start.md)
-Get your first VM running with minimal setup.
+Get your first VM running.
 
 **Installation Guide** (15 min)
 [getting-started/installation.md](getting-started/installation.md)
@@ -18,7 +18,7 @@ Platform-specific installation, prerequisites, and troubleshooting.
 
 **Configuration Examples**
 [getting-started/examples.md](getting-started/examples.md)
-Real-world configurations for common project types.
+Configurations for common project types.
 
 ---
 
@@ -28,15 +28,15 @@ Real-world configurations for common project types.
 
 **Configuration Guide**
 [user-guide/configuration.md](user-guide/configuration.md)
-Complete reference for vm.yaml and global configuration.
+Reference for vm.yaml and global configuration.
 
 **CLI Reference**
 [user-guide/cli-reference.md](user-guide/cli-reference.md)
-All available commands with usage examples.
+Command reference with examples.
 
 **Troubleshooting**
 [user-guide/troubleshooting.md](user-guide/troubleshooting.md)
-Common issues and solutions organized by symptom.
+Common issues and fixes by symptom.
 
 ### Advanced Features
 
@@ -62,11 +62,11 @@ Set up your development environment and run tests.
 
 **Testing Quick Reference**
 [development/testing-quick-reference.md](development/testing-quick-reference.md)
-Quick commands for running tests.
+Quick test commands.
 
 **Comprehensive Testing Guide**
 [development/testing.md](development/testing.md)
-Complete testing documentation with strategies and best practices.
+Testing workflow and guidance.
 
 **Architecture**
 [development/architecture.md](development/architecture.md)

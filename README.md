@@ -14,33 +14,13 @@ Create development environments that automatically configure themselves based on
 
 ## ✨ Key Features
 
-**Smart Detection** — Automatically recognizes Next.js, React, Angular, Vue, Django, Flask, Rails, Node.js, Python, Rust, Go, PHP, Docker, and Kubernetes projects without manual configuration.
-
-**Multi-Instance Workflows** — Run multiple environments per project. Create `myproject-dev`, `myproject-staging`, and `myproject-prod` instances that operate independently.
-
-**Universal Container Management** — Reference containers by partial IDs, full names, or project names. All commands work consistently across Docker, Vagrant, and Tart providers.
-
-**Secure by Default** — Docker containers ship with hardened security settings and isolated networking. No exposure of sensitive data between environments.
-
-**Lightning Fast** — Most Docker environments spin up in under 60 seconds. Temporary VMs launch instantly with only the folders you need.
-
-**Intelligent File Sync** — Edit code locally with your favorite tools while execution happens in the VM. Changes appear immediately without manual copying.
-
-**Git Worktree Support** — Create worktrees from inside containers that work on host too! Use `vm-worktree add feature-x` for instant branch switching without leaving your container.
-
-**SSH Agent Forwarding** — Use your host SSH keys inside VMs without copying private keys. Enable with `host_sync.ssh_agent: true` for secure git operations and remote SSH access.
-
-**Dotfiles Sync** — Selectively mount your configuration files (`~/.vimrc`, `~/.tmux.conf`, etc.) into VMs with `host_sync.dotfiles` for a consistent development environment without manual copying.
-
-**Dynamic Port Forwarding** — On-demand port tunneling with `vm tunnel create 8080:3000` for debugging and testing. No port conflicts between VMs, automatic cleanup, perfect for ephemeral debugging sessions.
-
-**VM Snapshots** — Save and restore complete development environment state with `vm snapshot create/restore`. Capture containers, volumes, and configs for safe experimentation, context switching, and team collaboration.
-
-**Unified Box Configuration** — Single `box` field works across Docker, Vagrant, and Tart providers. Direct image references (`box: ubuntu:24.04`), Dockerfile builds (`box: ./Dockerfile`), or snapshot restore (`box: @my-snapshot`).
-
-**Zero-Config Presets** — Language runtimes, databases, and development tools install automatically based on your project structure.
-
-**Shared Database Services** — Optional, shared instances of PostgreSQL, Redis, and MongoDB that run on the host and are accessible to all VMs. This saves memory, speeds up startup, and persists data across VM rebuilds. See the [Shared Services User Guide](docs/user-guide/shared-services.md) for details.
+- Project detection for common web, backend, and systems stacks
+- Docker as the default fast path, Tart as the native macOS VM path on Apple Silicon
+- Shared box model across Docker, Podman, and Tart
+- Host sync for git config, AI tool config, SSH config, and selected dotfiles
+- Worktree-aware shells and reconnect flow
+- Snapshots for reusable base environments and restores
+- Optional shared PostgreSQL, Redis, and MongoDB services on the host
 
 ## Prerequisites
 
@@ -118,13 +98,21 @@ cd vm
 ```
 
 **2. Initialize and Start**
-Navigate to your project's directory and run `vm start` to generate a `vm.yaml` file (if needed) and start the environment. The tool auto-detects your project type and suggests a configuration.
+Navigate to your project's directory and run `vm start` to generate a `vm.yaml` file if needed and start the environment. The tool auto-detects your project type and suggests a configuration.
 ```bash
 cd /path/to/your-project
 vm start
 ```
 
-**3. Connect to Your Environment**
+**3. Use Tart on Apple Silicon when needed**
+If you want a native macOS VM instead of the default Docker path:
+
+```bash
+vm config preset vibe-tart
+vm base build vibe --provider tart
+vm start --provider tart
+```
+
 `vm start` drops you into an interactive shell automatically. Use `vm ssh` later to reconnect.
 
 ```yaml
@@ -142,11 +130,11 @@ project:
 
 ## 🛠️ Environment Types
 
-**Docker (Default)** — Lightweight containers using 1-4GB RAM. Perfect for most development workflows with fast startup times.
+**Docker (Default)** Lightweight containers using 1 to 4 GB RAM. Best for most development workflows.
 
-**Vagrant (Maximum Isolation)** — Full virtual machines for security-critical projects or when you need complete OS isolation.
+**Tart (Apple Silicon)** Native macOS VMs on Apple Silicon. Best when you want a real macOS guest.
 
-**Smart Project Detection** — The system analyzes your codebase and automatically configures the right tools:
+**Smart Project Detection** The system analyzes your codebase and configures the right tools:
 
 ```bash
 cd my-react-app && vm start     # → Node.js + npm + dev tools
@@ -156,12 +144,12 @@ cd fullstack-app && vm start    # → Multiple presets combined
 
 Choose your provider explicitly:
 ```yaml
-# vm.yaml for Vagrant isolation
+# vm.yaml for a Tart macOS VM
 vm:
-  box: ubuntu:24.04
-  memory: 8192
+  box: vibe-tart-base
+  memory: 16384
 
-provider: vagrant
+provider: tart
 
 project:
   name: my-project
@@ -172,10 +160,11 @@ project:
 ### Core Workflow
 The essential commands you'll use daily:
 ```bash
-vm start                  # Create/configure/start and SSH
+vm start                  # Create/configure/start and open a shell
+vm start --provider tart  # One-off native macOS Tart session
 vm stop                   # Stop an environment (preserves all data)
 vm destroy                # Delete an environment completely
-vm ssh                    # Jump into your environment (auto-detects new worktrees)
+vm ssh                    # Reconnect later
 vm exec "npm install"     # Execute a command inside your environment
 ```
 
@@ -202,7 +191,7 @@ Manage your `vm.yaml` configuration from the command line:
 vm config validate     # Validate the current configuration
 vm config show         # Show the loaded configuration
 vm config set <k> <v>  # Set a configuration value
-vm config preset django  # Apply the Django preset to your config
+vm config preset vibe  # Apply the standard development preset
 ```
 
 ### Temporary Environments (`vm temp`)
@@ -214,12 +203,12 @@ vm temp destroy        # Clean up the temporary environment
 vm temp list           # List all active temporary environments
 ```
 
-### Secrets Management (`vm auth`)
+### Secrets Management (`vm secrets`)
 Store and manage credentials securely across all your environments:
 ```bash
-vm auth add openai sk-xxx  # Store an API key
-vm auth list               # List all stored secrets
-vm auth remove openai      # Remove a secret
+vm secrets add openai sk-xxx  # Store an API key
+vm secrets list               # List all stored secrets
+vm secrets remove openai      # Remove a secret
 ```
 
 ### Package Registry (`vm registry`)
@@ -277,11 +266,11 @@ vm plugin new <name>     # Create a new plugin template
 vm plugin validate <name> # Validate a plugin's configuration
 ```
 
-### Secrets Management (`vm auth`)
+### Secrets Management (`vm secrets`)
 ```bash
-vm auth add <name> <value> # Store a secret
-vm auth list               # List stored secrets
-vm auth remove <name>      # Remove a secret
+vm secrets add <name> <value> # Store a secret
+vm secrets list               # List stored secrets
+vm secrets remove <name>      # Remove a secret
 ```
 
 ### Package Registry (`vm registry`)
@@ -326,7 +315,7 @@ vm uninstall             # Uninstall vm from the system
 
 The VM tool supports several environment variables to optimize performance and debug slow operations:
 
-**`ANSIBLE_PROFILE=1`** — Show per-task timing
+**`ANSIBLE_PROFILE=1`** - Show per-task timing
 Enables Ansible's `profile_tasks` callback to identify provisioning bottlenecks. Shows execution time for each configuration task.
 
 ```bash
@@ -339,7 +328,7 @@ ANSIBLE_PROFILE=1 vm start
 # ...
 ```
 
-**`ANSIBLE_TIMEOUT=600`** — Override provisioning timeout
+**`ANSIBLE_TIMEOUT=600`** - Override provisioning timeout
 Changes the default 300-second (5-minute) timeout for Ansible provisioning. Useful for slow networks or complex configurations.
 
 ```bash
@@ -402,7 +391,7 @@ The VM tool is built from multiple focused Rust crates:
 | `vm-messages` | Message templates | Centralized user-facing text and messages |
 | `vm-cli` | CLI formatting | Structured output, message building |
 | `vm-config` | Configuration management | Config parsing, validation, project detection |
-| `vm-provider` | Provider abstraction | Docker/Vagrant/Tart lifecycle management |
+| `vm-provider` | Provider abstraction | Docker/Podman/Tart lifecycle management |
 | `vm-temp` | Temporary VMs | Ephemeral environment management |
 | `vm-platform` | Cross-platform support | OS detection, platform-specific paths |
 | `vm-package-manager` | Package integration | npm/pip/cargo link detection |

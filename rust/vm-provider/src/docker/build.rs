@@ -539,14 +539,14 @@ CMD ["tail", "-f", "/dev/null"]
             hasher.update([0]);
         }
 
-        self.hash_build_context(build_context, build_context, &mut hasher)?;
+        Self::hash_build_context(build_context, build_context, &mut hasher)?;
 
         let digest = format!("{:x}", hasher.finalize());
         let short_digest = &digest[..16];
         Ok(format!("vm-derived:{short_digest}"))
     }
 
-    fn hash_build_context(&self, root: &Path, path: &Path, hasher: &mut Sha256) -> Result<()> {
+    fn hash_build_context(root: &Path, path: &Path, hasher: &mut Sha256) -> Result<()> {
         let metadata = fs::symlink_metadata(path)?;
         let relative = path
             .strip_prefix(root)
@@ -563,7 +563,7 @@ CMD ["tail", "-f", "/dev/null"]
             entries.sort_by_key(|entry| entry.file_name());
 
             for entry in entries {
-                self.hash_build_context(root, &entry.path(), hasher)?;
+                Self::hash_build_context(root, &entry.path(), hasher)?;
             }
             return Ok(());
         }

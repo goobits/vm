@@ -246,7 +246,7 @@ Complete field reference organized by category.
 | `aliases` | object | {} | Shell aliases (key: command) |
 | `environment` | object | {} | Environment variables |
 | **Terminal** ||||
-| `terminal.emoji` | string | ⚡ | Shell prompt emoji |
+| `terminal.emoji` | string | inferred by provider | Shell prompt emoji |
 | `terminal.username` | string | developer | Shell prompt username |
 | `terminal.theme` | string | dracula | Color theme |
 | `terminal.show_git_branch` | bool | true | Show git branch in prompt |
@@ -408,6 +408,11 @@ terminal:
   theme: tokyo_night
   show_git_branch: true
 ```
+
+If `terminal.emoji` is omitted, VM uses a provider-aware default:
+- Docker: `🐳`
+- Tart macOS: `🍎`
+- Tart Linux: `🐧`
 
 ---
 
@@ -676,12 +681,12 @@ vm config set services.docker_registry.max_cache_size_gb 20 --global
 #### Service Commands
 ```bash
 # Package registry management
-vm pkg status              # Check package registry status
-vm pkg list               # List cached packages
+vm registry status         # Check package registry status
+vm registry list           # List cached packages
 
 # Auth proxy management
-vm auth status            # Check auth proxy status
-vm auth list              # List stored secrets
+vm secrets status          # Check auth proxy status
+vm secrets list            # List stored secrets
 ```
 
 #### Service Logs and Debugging
@@ -737,7 +742,7 @@ tart:
   rosetta: false               # Enable x86 emulation for Linux VMs
   disk_size: 60                # Disk: 60 (GB), "60gb", "50%"
   ssh_user: admin              # SSH username (default: admin)
-  install_docker: false        # Install Docker in the VM
+  install_docker: false        # Install Docker in Linux Tart guests
   storage_path: ~/.tart/vms    # Custom VM storage location
 ```
 
@@ -747,7 +752,7 @@ tart:
 - **rosetta**: Enable x86 emulation on ARM (default: false)
 - **disk_size**: VM disk size in GB (default: 50)
 - **ssh_user**: SSH username for connecting (default: admin)
-- **install_docker**: Install Docker in VM (default: false)
+- **install_docker**: Install Docker in Linux Tart guests only (default: false)
 - **storage_path**: Custom VM storage directory (default: ~/.tart/vms)
 
 **Requirements**: Apple Silicon Mac (M1/M2/M3/M4), Tart installed via `brew install cirruslabs/cli/tart`
@@ -818,8 +823,6 @@ vm:
   box: node:20-alpine        # Docker Hub image
   box: ./Dockerfile          # Build from local Dockerfile
   box: supercool.dockerfile  # Build from named Dockerfile
-
-  box: hashicorp/bionic64    # Vagrant Cloud box
 
 # Tart provider (macOS)
 vm:
@@ -902,14 +905,14 @@ versions:
 
 ```yaml
 terminal:
-  emoji: "🚀"           # Prompt emoji
+  emoji: "🍎"           # Prompt emoji
   username: developer   # Prompt name
   theme: dracula       # Color theme
   show_git_branch: true    # Show git branch
   show_timestamp: false   # Show timestamp
 ```
 
-Result: `🚀 developer my-app (main) >`
+Result: `🍎 developer my-app (main) >`
 
 ## Port Strategy
 
@@ -1599,16 +1602,14 @@ vm snapshot restore my-configured-env
 - Throughout documentation, "VM" refers to all provider types unless specifically noted
 
 **Provider**
-- The backend technology that runs your VM: Dockerpodman, or Tart
-- Docker provides lightweight containers (fast, shared kernel)
-- Vagrant provides full virtual machines (complete isolation, any OS)
-- Tart provides macOS virtual machines on Apple Silicon
+- The backend technology that runs your VM: Docker, Podman, or Tart
+- Docker and Podman provide lightweight containers
+- Tart provides native VMs on Apple Silicon
 
 **Box / Image**
 - The base template used to create your VM
-- Docker: "image" (e.g., `ubuntu:24.04`)
-- Vagrant: "box" (e.g., `ubuntu/jammy64`)
-- Tart: "image" (e.g., `ghcr.io/cirruslabs/macos-ventura`)
+- Docker/Podman: "image" (e.g., `ubuntu:24.04`)
+- Tart: "image" (e.g., `ghcr.io/cirruslabs/macos-sonoma-base:latest`)
 
 **Host**
 - Your physical computer where the VM Tool runs

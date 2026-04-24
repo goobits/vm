@@ -24,18 +24,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Shared Shell Experience Across Docker And Tart**: Tart now uses the same canonical `zsh` shell template as Docker
   - Tart macOS guests now get the same prompt, theme, aliases, and shell defaults as Docker-backed `vibe`
   - Tart shell overrides were reduced to runtime environment exports only, removing duplicate PATH, NVM, and alias setup
+  - Default prompt emoji is now inferred by provider when `terminal.emoji` is omitted: Docker `🐳`, Tart macOS `🍎`, Tart Linux `🐧`
 
 ### Fixed
 
 - **Tart Provider Reliability**: The Tart create/start flow now lines up with the intended provider-first workflow
   - `vibe-tart` now points at the correct macOS Tart base and SSH user by default
   - Applying the `vibe-tart` preset preserves provider profiles and Tart-specific settings
+  - Reapplying `vibe-tart` now removes the old preset-derived rocket emoji so inferred provider defaults can show through
   - Prebaked Tart vibe bases no longer try to reinstall baseline AI CLIs during normal provisioning
   - Tart error messages now surface better host log context when guest startup or provisioning fails
+  - Exiting a Tart shell no longer reports a false session error
 
 - **Tart Base Build Robustness**: Building the default macOS Tart base is less brittle
   - Tart base building no longer fails hard on optional macOS `aider-chat` installation
   - macOS Tart guest provisioning now uses the correct virtiofs mount flow instead of Linux-only mount commands
+  - Canonical Tart shell rendering is covered by a regression test
+
+- **Documentation Cleanup**: Main docs now match the current Docker, Podman, and Tart workflow
+  - Removed stale Vagrant references from current provider docs
+  - Updated command references from `vm auth` and `vm pkg` to `vm secrets` and `vm registry`
+  - Clarified Tart as the native macOS VM path and Docker as the default fast path
 ## [4.8.0] - 2026-04-23
 
 ### Added

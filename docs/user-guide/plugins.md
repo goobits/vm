@@ -1,6 +1,6 @@
 # Plugins
 
-Extend VM with custom presets and services that integrate seamlessly with the core tool. Share configurations across teams, add support for specialized frameworks, or bundle company-specific tooling - plugins make VM configurations portable and reusable.
+Extend VM with custom presets and services. Use plugins to share team defaults, support internal frameworks, or package project-specific tooling.
 
 ## Quick Start
 
@@ -42,10 +42,10 @@ Preset plugins define development environment configurations:
 - Service dependencies
 - Port configurations
 
-**Use cases:**
-- Framework-specific environments (Django, Rails, React)
-- Language toolchains (Python, Rust, Go)
-- Development stacks (LAMP, MEAN, JAMstack)
+Common uses:
+- Framework-specific environments
+- Language toolchains
+- Team or project stacks
 
 ### Service Plugins
 
@@ -55,7 +55,7 @@ Service plugins define background services that can run in VMs:
 - Message queues (RabbitMQ, Kafka)
 - Custom services
 
-**Use cases:**
+Common uses:
 - Third-party services
 - Custom microservices
 - Development dependencies
@@ -104,14 +104,14 @@ author: Your Name
 plugin_type: preset
 ```
 
-**Required fields:**
+Required fields:
 - `name` - Unique plugin identifier (lowercase, hyphens)
 - `version` - Semantic version (e.g., 1.0.0)
 - `description` - Brief plugin description
 - `author` - Plugin author name
 - `plugin_type` - Must be "preset" for preset plugins
 
-**Optional fields:**
+Optional fields:
 - `homepage` - Plugin website or repository URL
 - `license` - License identifier (e.g., MIT, Apache-2.0)
 - `tags` - Search tags (e.g., ["javascript", "fullstack"])
@@ -150,7 +150,7 @@ aliases:
   test: npm test
 ```
 
-**Available fields:**
+Available fields:
 - `npm_packages` - Node.js packages to install globally
 - `pip_packages` - Python packages to install
 - `cargo_packages` - Rust packages to install

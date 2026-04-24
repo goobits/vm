@@ -1,6 +1,6 @@
 # Quick Start Guide
 
-Get your isolated development environment running in under 5 minutes.
+Get a working environment up quickly.
 
 ## Your Journey
 
@@ -24,28 +24,21 @@ flowchart LR
     style SSH fill:#f3e5f5
 ```
 
-:::tip Zero Configuration
-VM Tool automatically detects your project type and installs dependencies. No configuration needed for most frameworks!
-:::
-
 ## Minimal Setup
 
 ```bash
 # 1. Clone the repository and build from source
 git clone https://github.com/goobits/vm.git
 cd vm
-./install.sh --build-from-source
+./install.sh
 
-# 2. Create environment (auto-detects your project)
+# 2. Create environment
 vm start
-
-# 3. Enter your development environment
-vm ssh
 ```
 
-### What Gets Auto-Detected?
+### What Gets Detected?
 
-The tool analyzes your project files to identify the framework:
+The tool inspects your project files to choose a starting environment:
 
 | Project File | Detected Environment | Installed Tools |
 |--------------|---------------------|-----------------|
@@ -55,7 +48,7 @@ The tool analyzes your project files to identify the framework:
 | Framework files | Auto-configured | Framework-specific tools |
 
 :::info Manual Configuration
-If detection doesn't match your setup, create a `vm.yaml` file in your project root. See the [Configuration Guide](../user-guide/configuration.md).
+If detection is not right for your project, add a `vm.yaml`. See the [Configuration Guide](../user-guide/configuration.md).
 :::
 
 ## Common Workflows
@@ -64,8 +57,7 @@ If detection doesn't match your setup, create a `vm.yaml` file in your project r
 ```bash
 # React/Vue/Angular projects
 cd my-frontend-app
-vm start                    # → Node.js, npm, dev server ready
-vm ssh
+vm start                    # Node.js, npm, dev server
 npm run dev                  # Runs on auto-configured ports
 ```
 
@@ -73,8 +65,7 @@ npm run dev                  # Runs on auto-configured ports
 ```bash
 # Django/Flask/Rails projects
 cd my-api-project
-vm start                    # → Python/Ruby + PostgreSQL + Redis
-vm ssh
+vm start                    # Python/Ruby + PostgreSQL + Redis
 python manage.py runserver   # Database already configured
 ```
 
@@ -105,8 +96,8 @@ ports:
 
 ```bash
 # Daily workflow
-vm start          # Create/configure/start and SSH
-vm ssh         # Enter the VM
+vm start       # Create/configure/start and open a shell
+vm ssh         # Reconnect later
 vm stop        # Stop VM (keeps data)
 vm start          # Resume stopped VM
 vm destroy     # Delete completely
@@ -129,21 +120,17 @@ vm temp destroy                  # Clean up when done
 ## Need Help?
 
 :::danger Quick Fix
-90% of issues are solved by resetting your environment:
+If the environment is out of sync, reset it:
 ```bash
 vm destroy && vm start
 ```
 :::
 
 :::tip Getting Unstuck
-- **Not working?** Try `vm destroy && vm start` to reset
+- **Not working?** Try `vm destroy && vm start`
 - **Missing features?** Check the [Presets Guide](../user-guide/presets.md) for available configurations
 - **Custom setup?** See the [Configuration Guide](../user-guide/configuration.md)
 - **All commands?** View the [CLI Reference](../user-guide/cli-reference.md)
-:::
-
-:::info Data Safety
-Database backups are created automatically on `vm destroy`. Your data is safe when resetting!
 :::
 
 ## Next Steps

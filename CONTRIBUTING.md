@@ -1,6 +1,6 @@
 # Contributing to VM Tool
 
-Thank you for your interest in contributing to the VM Tool project! This document provides guidelines and best practices for contributors.
+Thanks for contributing. This document covers setup, checks, and expectations.
 
 ## Development Setup
 
@@ -32,7 +32,7 @@ The git hooks run `cargo fmt` and `cargo clippy` on commit to catch issues early
 
 ## Quality Gates
 
-Before submitting any pull request, please ensure all quality gates pass. These checks help maintain code quality and consistency across the project.
+Before opening a pull request, run the quality gates.
 
 ### Running Quality Gates
 
@@ -41,7 +41,7 @@ Before submitting any pull request, please ensure all quality gates pass. These 
 make quality-gates
 ```
 
-This will run the following checks in order:
+This runs:
 
 1. **Code Formatting** (`make fmt`)
 2. **Linting** (`make clippy`)
@@ -75,9 +75,9 @@ make audit
 make test
 ```
 
-### Additional Quality Checks
+### Additional Checks
 
-In addition to the checks run by `make quality-gates`, we use several other tools to ensure code quality:
+We also use:
 
 - **Code Duplication**: `jscpd`
 - **Security Auditing**: `cargo-audit`
@@ -128,7 +128,7 @@ vm/
 ├── rust/              # Rust workspace root
 │   ├── vm/            # Main CLI binary
 │   ├── vm-config/     # Configuration management
-│   ├── vm-provider/   # Provider abstraction (Docker, Tart, Vagrant)
+│   ├── vm-provider/   # Provider abstraction (Docker, Podman, Tart)
 │   ├── vm-core/       # Shared core utilities
 │   ├── vm-cli/        # CLI helpers and formatting
 │   ├── vm-messages/   # Centralized user-facing messages

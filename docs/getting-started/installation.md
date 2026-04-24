@@ -1,6 +1,6 @@
 # Installation Guide
 
-Development environment setup.
+Install `vm`, choose a provider, and build the base you need.
 
 ## Choose Your Installation Path
 
@@ -32,7 +32,7 @@ flowchart TD
 ```
 
 :::tip Apple Silicon Users
-Tart provides native macOS virtualization with better performance than Docker for macOS VMs. Use `os: macos` in your `vm.yaml` to leverage this!
+Use Tart when you want a native macOS VM. Use Docker for the default Linux container path.
 :::
 
 :::info Windows Users
@@ -41,22 +41,19 @@ WSL2 + Docker Desktop provides the best experience. Install WSL2 first, then fol
 
 ## Installation
 
-**Note**: Pre-compiled binaries are not yet available for all platforms. The only official installation method is to build from source.
+Build from source. That is the supported path.
 
 ### Build from Source (Recommended)
-
-This is the most reliable way to install the `vm` tool.
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/goobits/vm.git
 cd vm
 
-# 2. Run the build-from-source installer
-./install.sh --build-from-source
+# 2. Run the installer
+./install.sh
 
-# 3. Follow the on-screen instructions to update your shell's PATH
-#   (e.g., run `source ~/.bashrc` or restart your terminal)
+# 3. Follow the PATH instructions from the installer
 
 # 4. Start using the tool
 vm --version
@@ -72,10 +69,6 @@ vm --version
 - **Docker Desktop** (macOS/Windows) or **Docker Engine** (Linux)
 - **docker-compose**
 
-### For Vagrant Provider
-- **VirtualBox** or **Parallels**
-- **Vagrant**
-
 ### For Tart Provider (Apple Silicon Macs)
 - **macOS** on Apple Silicon (M1/M2/M3/M4)
 - **Tart** virtualization tool (`brew install cirruslabs/cli/tart`)
@@ -90,39 +83,30 @@ brew install --cask docker
 
 ```
 
-### Vagrant Provider  
-```bash
-# Install Vagrant and VirtualBox
-brew tap hashicorp/tap
-brew install hashicorp/tap/hashicorp-vagrant
-brew install --cask virtualbox
-```
-
 ### Tart Provider (Apple Silicon Only)
 ```bash
-# Install Tart for native macOS/Linux VMs
+# Install Tart
 brew install cirruslabs/cli/tart
 
 # Verify installation
 tart --version
 
-# Recommended for the native macOS Tart path:
+# Build the standard macOS Tart base
 vm base build vibe --provider tart
 
-# Then in your project:
+# Then in your project
 vm config preset vibe-tart
-# and start with either provider:
 vm start
 vm start --provider tart
 
-# Or save Tart as the project default:
+# Or save Tart as the project default
 vm config set provider tart
 vm start
 
-# Or run the combined validation helper:
+# Validate both providers
 vm base validate vibe
 
-# If you explicitly want Linux-on-Tart instead of macOS-on-Tart:
+# Linux-on-Tart is explicit
 ./scripts/build-vibe-tart-base.sh --guest-os linux --name vibe-tart-linux-base
 vm config preset vibe-tart-linux
 vm start --provider tart
@@ -140,29 +124,10 @@ sudo usermod -aG docker $USER
 # Log out and back in for docker group changes to take effect
 ```
 
-### Vagrant Provider
-```bash
-# Add HashiCorp GPG key
-wget -O- https://apt.releases.hashicorp.com/gpg | \
-  sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
-
-# Add HashiCorp repository
-echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
-  https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
-  sudo tee /etc/apt/sources.list.d/hashicorp.list
-
-# Install packages
-sudo apt update && sudo apt install vagrant virtualbox
-```
-
 ## Windows Installation
 
 ### Docker Provider
 1. Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop)
-
-### Vagrant Provider
-1. Download **Vagrant** from [vagrant.com](https://www.vagrantup.com/downloads)
-2. Download **VirtualBox** from [virtualbox.org](https://www.virtualbox.org/wiki/Downloads)
 
 ## Verification
 
@@ -172,10 +137,6 @@ After installation, verify everything works:
 # Check Docker (if using Docker provider)
 docker --version
 docker-compose --version
-
-# Check Vagrant (if using Vagrant provider)  
-vagrant --version
-VBoxManage --version
 
 # Test VM tool
 vm --help
@@ -213,10 +174,6 @@ echo 'export VM_TOOL_DIR=/path/to/vm' >> ~/.zshrc
 - **Linux**: Check if docker service is started: `sudo systemctl start docker`
 - **Permissions**: Make sure your user is in the docker group: `groups | grep docker`
 
-
-### Vagrant Issues
-- **VirtualBox conflicts**: Disable Hyper-V on Windows, or use Parallels on macOS
-- **Permissions**: On Linux, add user to vboxusers group: `sudo usermod -aG vboxusers $USER`
 
 ### General Issues
 - **Path problems**: Make sure the vm command is in your PATH after global installation
@@ -261,7 +218,7 @@ cargo install vm --force
 ```bash
 cd vm
 git pull
-./install.sh --build-from-source
+./install.sh
 ```
 
 ## Uninstallation

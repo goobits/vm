@@ -7,6 +7,7 @@ All `vm` commands with usage examples and expected output. Use this as a referen
 | Task | Command |
 |------|---------|
 | Create/start VM | `vm start` |
+| Create/start Tart VM | `vm start --provider tart` |
 | Stop VM | `vm stop` |
 | Connect to VM | `vm ssh` |
 | Check status | `vm status [<vm>]` |
@@ -27,6 +28,10 @@ All `vm` commands with usage examples and expected output. Use this as a referen
 | Forward port | `vm tunnel create <host>:<container>` |
 | List tunnels | `vm tunnel list` |
 | Stop tunnel | `vm tunnel stop [port]` |
+| **Secrets** | |
+| Manage secrets | `vm secrets <subcommand>` |
+| **Registry** | |
+| Manage package registry | `vm registry <subcommand>` |
 | **Database** | |
 | Backup database | `vm db backup <name>` |
 | Restore database | `vm db restore <backup> <db>` |
@@ -46,8 +51,8 @@ All `vm` commands with usage examples and expected output. Use this as a referen
 - [Plugins (`vm plugin`)](#plugins-vm-plugin)
 - [Snapshots (`vm snapshot`)](#snapshots-vm-snapshot)
 - [Database (`vm db`)](#database-vm-db)
-- [Secrets Management (`vm auth`)](#secrets-management-vm-auth)
-- [Package Registry (`vm pkg`)](#package-registry-vm-pkg)
+- [Secrets Management (`vm secrets`)](#secrets-management-vm-secrets)
+- [Package Registry (`vm registry`)](#package-registry-vm-registry)
 - [System Management](#system-management)
 
 ---
@@ -627,48 +632,48 @@ vm db credentials postgresql
 
 ---
 
-## Secrets Management (`vm auth`)
+## Secrets Management (`vm secrets`)
 Manage secrets and credentials.
 
-### `vm auth add`
+### `vm secrets add`
 Store a secret.
 ```bash
-vm auth add <name> <value>
+vm secrets add <name> <value>
 ```
 
-### `vm auth list`
+### `vm secrets list`
 List stored secrets.
 ```bash
-vm auth list
+vm secrets list
 ```
 
-### `vm auth remove`
+### `vm secrets remove`
 Remove a secret.
 ```bash
-vm auth remove <name>
+vm secrets remove <name>
 ```
 
 ---
 
-## Package Registry (`vm pkg`)
+## Package Registry (`vm registry`)
 Manage private package registries.
 
-### `vm pkg add`
+### `vm registry add`
 Publish a package from the current directory.
 ```bash
-vm pkg add [--type <type>]
+vm registry add [--type <type>]
 ```
 
-### `vm pkg list`
+### `vm registry list`
 List all packages in the registry.
 ```bash
-vm pkg list
+vm registry list
 ```
 
-### `vm pkg remove`
+### `vm registry remove`
 Remove a package from the registry.
 ```bash
-vm pkg remove <name>
+vm registry remove <name>
 ```
 
 ---
