@@ -91,7 +91,7 @@ fn test_zshrc_template_has_git_branch_function() {
 fn test_zshrc_template_has_project_alias_loop() {
     let template = vm_provider::ZSHRC_TEMPLATE;
     assert!(
-        template.contains("{% for alias_name, alias_command in project_config.aliases %}"),
+        template.contains("{% for alias in project_aliases %}"),
         "Template should render project-specific aliases from config"
     );
 }

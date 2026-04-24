@@ -425,6 +425,12 @@ fi"#,
             .as_ref()
             .and_then(|p| p.name.clone())
             .unwrap_or_else(|| Self::default_project_name(project_path));
+        let project_aliases = config
+            .aliases
+            .iter()
+            .map(|(key, value)| json!({ "key": key, "value": value }))
+            .collect::<Vec<_>>();
+        let project_ports = Vec::<serde_json::Value>::new();
 
         let mut context = Context::new();
         context.insert("project_name", &project_name);
@@ -446,6 +452,8 @@ fi"#,
         context.insert("show_git_branch", &terminal.show_git_branch.unwrap_or(true));
         context.insert("show_timestamp", &terminal.show_timestamp.unwrap_or(false));
         context.insert("terminal_colors", &colors);
+        context.insert("project_aliases", &project_aliases);
+        context.insert("project_ports", &project_ports);
 
         tera.render("zshrc", &context)
             .map_err(|e| VmError::Internal(format!("Failed to render zshrc template: {e}")))

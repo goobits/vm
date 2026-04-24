@@ -124,16 +124,16 @@ alias dps='docker ps'
 alias dimg='docker images'
 
 # Project-Specific Aliases
-{% if project_config.aliases is defined %}
-{% for alias_name, alias_command in project_config.aliases %}
-alias {{ alias_name }}='{{ alias_command }}'
+{% if project_aliases is defined %}
+{% for alias in project_aliases %}
+alias {{ alias.key }}='{{ alias.value }}'
 {% endfor %}
 {% endif %}
 
 # Port Information
-{% if project_config.ports is defined %}
-{% for service, port in project_config.ports %}
-# {{ service }}: localhost:{{ port }}
+{% if project_ports is defined %}
+{% for port in project_ports %}
+# {{ port.key }}: localhost:{{ port.value }}
 {% endfor %}
 {% endif %}
 

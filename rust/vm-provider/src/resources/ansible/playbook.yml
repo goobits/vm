@@ -97,6 +97,8 @@
             show_git_branch: '{{ project_config.terminal.show_git_branch | default(true) }}'
             show_timestamp: '{{ project_config.terminal.show_timestamp | default(false) }}'
             terminal_colors: "{{ terminal_themes[project_config.terminal.theme | default('dracula')].colors | default(terminal_themes.dracula.colors) }}"
+            project_aliases: "{{ project_config.aliases | default({}) | dict2items }}"
+            project_ports: "{{ project_config.ports | default({}) | dict2items }}"
             home_dir: "/home/{{ project_config.vm.user | default(default_user) }}"
             # AI sync config: host_sync.ai_tools can be boolean (true=all enabled) or object {claude: bool, gemini: bool, ...}
             claude_sync_enabled: "{{ (project_config.host_sync.ai_tools is defined and (project_config.host_sync.ai_tools == true or (project_config.host_sync.ai_tools is mapping and project_config.host_sync.ai_tools.claude | default(false)))) | bool }}"
