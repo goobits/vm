@@ -18,7 +18,6 @@ vm:
 ports:
   _range: [3120, 3129]
 terminal:
-  emoji: 🚀
   show_git_branch: true
   show_timestamp: false
   theme: dracula
@@ -26,18 +25,27 @@ terminal:
 host_sync:
   git_config: true
   ai_tools: true
-default_profile: ubuntu
+preset: vibe-tart
+default_profile: docker
 networking:
   networks:
   - spacebase
 profiles:
-  ubuntu:
+  docker:
     provider: docker
-  mac:
+    ports: {}
+  tart:
     provider: tart
+    tart:
+      guest_os: macos
+      disk_size: 80
+      rosetta: true
+      ssh_user: admin
+      install_docker: false
+    project:
+      workspace_path: /Users/admin/workspace
     vm:
-      box: ghcr.io/cirruslabs/ubuntu:latest
+      box: vibe-tart-base
       memory: 16384
       cpus: 8
-    tart:
-      rosetta: true
+    ports: {}
