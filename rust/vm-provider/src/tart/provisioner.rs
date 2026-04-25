@@ -425,16 +425,42 @@ fi"#,
             .as_ref()
             .and_then(|p| p.name.clone())
             .unwrap_or_else(|| Self::default_project_name(project_path));
+        let project_path_b64 = {
+            use base64::Engine;
+            base64::engine::general_purpose::STANDARD.encode(project_path)
+        };
         let project_aliases = config
             .aliases
             .iter()
-            .map(|(key, value)| json!({ "key": key, "value": value }))
+            .filter(|(key, _)| {
+                let mut chars = key.chars();
+                matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
+                    && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+            })
+            .map(|(key, value)| {
+                use base64::Engine;
+                json!({
+                    "key": key,
+                    "value_b64": base64::engine::general_purpose::STANDARD.encode(value)
+                })
+            })
             .collect::<Vec<_>>();
-        let project_ports = Vec::<serde_json::Value>::new();
+        let project_ports = config
+            .ports
+            .mappings
+            .iter()
+            .map(|mapping| {
+                json!({
+                    "key": format!("{}/{}", mapping.host, format!("{:?}", mapping.protocol).to_lowercase()),
+                    "value": mapping.guest
+                })
+            })
+            .collect::<Vec<_>>();
 
         let mut context = Context::new();
         context.insert("project_name", &project_name);
         context.insert("project_path", project_path);
+        context.insert("project_path_b64", &project_path_b64);
         context.insert(
             "project_config",
             &serde_json::to_value(config).unwrap_or_else(|_| json!({})),

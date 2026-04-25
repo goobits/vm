@@ -5,6 +5,16 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 
+vm_b64decode() {
+  if command -v base64 >/dev/null 2>&1; then
+    printf '%s' "$1" | base64 --decode 2>/dev/null || printf '%s' "$1" | base64 -d 2>/dev/null
+  else
+    printf '%s' "$1"
+  fi
+}
+
+VM_PROJECT_PATH="$(vm_b64decode '{{ project_path_b64 }}')"
+
 # Shell History Directory Initialization
 # Ensure history directory exists and is writable before shell uses it
 _SHELL_HISTORY_DIR="$HOME/.shell_history"
@@ -54,12 +64,24 @@ PROMPT='{{ terminal_emoji }} {{ terminal_username }} %c$(git_branch_name)$(forma
 export TERM=xterm-256color
 export LS_COLORS='di=1;34:ln=1;36:so=1;35:pi=1;33:ex=1;32:bd=1;33:cd=1;33:su=0;41:sg=0;46:tw=0;42:ow=0;43:'
 
-# Enable colored output for common commands
-alias ls='ls --color=auto'
-alias grep='grep --color=auto'
-alias fgrep='fgrep --color=auto'
-alias egrep='egrep --color=auto'
-alias diff='diff --color=auto'
+# Cross-platform command aliases
+case "$(uname -s)" in
+  Darwin)
+    alias ls='ls -G'
+    if command -v ggrep >/dev/null 2>&1; then
+      alias grep='ggrep --color=auto'
+      alias fgrep='ggrep -F --color=auto'
+      alias egrep='ggrep -E --color=auto'
+    fi
+    ;;
+  *)
+    alias ls='ls --color=auto'
+    alias grep='grep --color=auto'
+    alias fgrep='fgrep --color=auto'
+    alias egrep='egrep --color=auto'
+    alias diff='diff --color=auto'
+    ;;
+esac
 alias yoclaude='claude --dangerously-skip-permissions'
 alias yogemini='NO_BROWSER=true GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo'
 alias yocodex='codex --dangerously-bypass-approvals-and-sandbox'
@@ -104,9 +126,13 @@ fi
 
 # Universal Aliases
 alias ll='ls -la'
-alias dev='cd {{ project_path }} && ls'
-alias ports='netstat -tulpn | grep LISTEN'
-alias services='systemctl list-units --type=service --state=running'
+alias dev='cd "$VM_PROJECT_PATH" && ls'
+alias ports='lsof -nP -iTCP -sTCP:LISTEN'
+if command -v systemctl >/dev/null 2>&1; then
+  alias services='systemctl list-units --type=service --state=running'
+else
+  alias services='ps aux'
+fi
 
 # Search Tools
 alias rg='rg --smart-case'
@@ -126,7 +152,8 @@ alias dimg='docker images'
 # Project-Specific Aliases
 {% if project_aliases is defined %}
 {% for alias in project_aliases %}
-alias {{ alias.key }}='{{ alias.value }}'
+VM_ALIAS_CMD_{{ loop.index0 }}="$(vm_b64decode '{{ alias.value_b64 }}')"
+alias {{ alias.key }}="$VM_ALIAS_CMD_{{ loop.index0 }}"
 {% endfor %}
 {% endif %}
 
@@ -139,16 +166,16 @@ alias {{ alias.key }}='{{ alias.value }}'
 
 # Auto-cd to workspace (respect VM_TARGET_DIR for subdirectory support)
 if [ -n "$VM_TARGET_DIR" ]; then
-  cd "$VM_TARGET_DIR" 2>/dev/null || cd {{ project_path }} 2>/dev/null || true
+  cd "$VM_TARGET_DIR" 2>/dev/null || cd "$VM_PROJECT_PATH" 2>/dev/null || true
 else
-  cd {{ project_path }} 2>/dev/null || true
+  cd "$VM_PROJECT_PATH" 2>/dev/null || true
 fi
 
 # Directory sync: Save current directory on exit to sync with host
 # Only saves directory if we're inside the workspace
 save_current_directory() {
   local current_dir="$(pwd)"
-  local workspace_path="{{ project_path }}"
+  local workspace_path="$VM_PROJECT_PATH"
   
   # Check if current directory is inside workspace
   case "$current_dir" in

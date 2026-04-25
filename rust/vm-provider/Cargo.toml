@@ -26,6 +26,7 @@ rayon = { workspace = true }
 shellexpand = { workspace = true }
 tokio = { workspace = true, features = ["time", "rt"] }
 uuid = { version = "1.23.1", features = ["v4"] }
+base64 = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -12,6 +12,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Renamed yolo aliases to yo (yoclaude, yogemini, yocodex) and updated Gemini to use `--yolo`
 - Made the optimized Vibe Dockerfile the default `Dockerfile.vibe`
 
+## [4.8.2] - 2026-04-24
+
+### Fixed
+
+- **Docker And Tart Shell Hardening**: Interactive and non-interactive shell behavior is now more consistent across providers
+  - Docker `vm ssh` and `vm exec` now use the target user environment more reliably
+  - Tart `vm ssh` and `vm exec` now handle shell startup and workspace paths more safely
+  - Shared shell rendering now avoids more cross-provider prompt and path drift
+
+- **Shared Shell Robustness**: The canonical `zsh` template is now safer for mixed Docker and Tart workflows
+  - Workspace paths and project alias commands are rendered through shell-safe metadata
+  - macOS Tart shell defaults no longer assume Linux-only aliases or permissions paths
+  - Claude permissions now include the default macOS Tart workspace path
+
 ## [4.8.1] - 2026-04-23
 
 ### Changed

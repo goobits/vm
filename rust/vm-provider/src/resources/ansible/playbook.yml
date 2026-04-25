@@ -90,6 +90,7 @@
             project_uid: '{{ lookup("env", "HOST_UID") | default(ansible_user_uid, true) }}'
             project_gid: '{{ lookup("env", "HOST_GID") | default(ansible_user_gid, true) }}'
             project_path: '{{ project_config.project.workspace_path | default(default_workspace) }}'
+            project_path_b64: "{{ (project_config.project.workspace_path | default(default_workspace)) | b64encode }}"
             project_hostname: "{{ project_config.project.hostname | default('dev.' + (project_config.project.name | default('project')) + '.local') }}"
             terminal_emoji: "{{ project_config.terminal.emoji | default('🐳') }}"
             terminal_username: "{{ project_config.terminal.username | default('dev') }}"
@@ -97,7 +98,6 @@
             show_git_branch: '{{ project_config.terminal.show_git_branch | default(true) }}'
             show_timestamp: '{{ project_config.terminal.show_timestamp | default(false) }}'
             terminal_colors: "{{ terminal_themes[project_config.terminal.theme | default('dracula')].colors | default(terminal_themes.dracula.colors) }}"
-            project_aliases: "{{ project_config.aliases | default({}) | dict2items }}"
             project_ports: "{{ project_config.ports | default({}) | dict2items }}"
             home_dir: "/home/{{ project_config.vm.user | default(default_user) }}"
             # AI sync config: host_sync.ai_tools can be boolean (true=all enabled) or object {claude: bool, gemini: bool, ...}
@@ -113,6 +113,17 @@
             env_template_configured: "{{ (project_config.project.env_template_path is defined and project_config.project.env_template_path) | bool }}"
             # Consolidated condition for port configurations
             ports_configured: "{{ (project_config.ports is defined and project_config.ports is mapping and project_config.ports | length > 0) | bool }}"
+
+      - name: Initialize shell-safe alias metadata
+        set_fact:
+            project_aliases: []
+
+      - name: Build shell-safe alias metadata
+        set_fact:
+            project_aliases: "{{ project_aliases + [{'key': item.key, 'value_b64': ((item.value | string) | b64encode)}] }}"
+        loop: "{{ project_config.aliases | default({}) | dict2items }}"
+        when:
+            - item.key is match('^[A-Za-z_][A-Za-z0-9_-]*$')
 
       # User creation pre-task
       - name: Ensure project user exists with correct UID/GID

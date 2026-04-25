@@ -6,6 +6,7 @@ use crate::{
     common::instance::{extract_project_name, InstanceInfo, InstanceResolver},
     context::ProviderContext,
     progress::ProgressReporter,
+    security::SecurityValidator,
     BoxConfig, Provider, ResourceUsage, ServiceStatus, TempProvider, TempVmState, VmError,
     VmStatusReport,
 };
@@ -49,6 +50,10 @@ pub struct TartProvider {
 }
 
 impl TartProvider {
+    fn shell_escape_single_quotes(input: &str) -> String {
+        input.replace('\'', "'\"'\"'")
+    }
+
     pub fn new(config: VmConfig) -> Result<Self> {
         if !is_tool_installed("tart") {
             return Err(VmError::Dependency("Tart".into()));
@@ -113,10 +118,6 @@ impl TartProvider {
 
         std::env::current_dir()
             .map_err(|e| VmError::Internal(format!("Failed to determine host workspace path: {e}")))
-    }
-
-    fn shell_escape_single_quotes(input: &str) -> String {
-        input.replace('\'', "'\"'\"'")
     }
 
     fn start_vm_background(&self, vm_name: &str) -> Result<()> {
@@ -509,25 +510,27 @@ impl Provider for TartProvider {
         use duct::cmd;
 
         let instance_name = self.resolve_instance_name(container)?;
+        let shell = self
+            .config
+            .terminal
+            .as_ref()
+            .and_then(|t| t.shell.as_deref())
+            .unwrap_or("zsh");
 
         // Get the sync directory (project root in VM)
         let sync_dir = self.get_sync_directory();
-
-        // Resolve full path in VM
-        let target_path = if relative_path == Path::new("") || relative_path == Path::new(".") {
-            sync_dir.clone()
-        } else {
-            format!(
-                "{}/{}",
-                sync_dir.trim_end_matches('/'),
-                relative_path.display()
-            )
-        };
+        let target_path = SecurityValidator::validate_relative_path(relative_path, &sync_dir)?;
+        let target_path = target_path.to_string_lossy().into_owned();
 
         info!("Opening SSH session in directory: {}", target_path);
+        let target_path_escaped = Self::shell_escape_single_quotes(&target_path);
 
         // Use `tart exec -i -t` for interactive shell session
-        let ssh_command = format!("cd '{}' && exec $SHELL -l", target_path);
+        let ssh_command = format!(
+            "cd '{target_path}' && exec \"${{SHELL:-{shell}}}\" -l",
+            target_path = target_path_escaped,
+            shell = shell
+        );
 
         cmd!(
             "tart",
@@ -543,7 +546,7 @@ impl Provider for TartProvider {
         .run()
         .map_err(|e| VmError::Provider(format!("Exec failed: {}", e)))
         .and_then(|output| match output.status.code() {
-            Some(0) | Some(1) | Some(2) | Some(127) | Some(130) => Ok(()),
+            Some(0) | Some(130) => Ok(()),
             _ => Err(VmError::Provider("SSH connection lost".to_string())),
         })?;
 
@@ -552,10 +555,29 @@ impl Provider for TartProvider {
 
     fn exec(&self, container: Option<&str>, cmd: &[String]) -> Result<()> {
         let vm_name = self.vm_name_with_instance(container)?;
-        let mut args = vec!["exec", &vm_name];
-        let cmd_strs: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
-        args.extend_from_slice(&cmd_strs);
-        stream_command("tart", &args)
+        let shell = self
+            .config
+            .terminal
+            .as_ref()
+            .and_then(|t| t.shell.as_deref())
+            .unwrap_or("zsh");
+        let sync_dir = self.get_sync_directory();
+        let sync_dir_escaped = Self::shell_escape_single_quotes(&sync_dir);
+
+        let mut args: Vec<String> = vec![
+            "exec".to_string(),
+            vm_name,
+            shell.to_string(),
+            "-ilc".to_string(),
+            format!(
+                "cd '{sync_dir}' && exec \"$@\"",
+                sync_dir = sync_dir_escaped
+            ),
+            "vm-exec".to_string(),
+        ];
+        args.extend(cmd.iter().cloned());
+        let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        stream_command("tart", &arg_refs)
     }
 
     fn logs(&self, container: Option<&str>) -> Result<()> {

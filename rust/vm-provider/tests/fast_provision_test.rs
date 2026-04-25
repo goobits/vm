@@ -48,7 +48,7 @@ fn test_zshrc_template_has_expected_jinja_variables() {
         "{{ project_name }}",
         "{{ terminal_emoji }}",
         "{{ terminal_username }}",
-        "{{ project_path }}",
+        "{{ project_path_b64 }}",
     ];
 
     for variable in &expected_variables {
@@ -68,14 +68,14 @@ fn test_zshrc_template_render_placeholder_substitution() {
     vars.insert("{{ project_name }}", "test-project");
     vars.insert("{{ terminal_emoji }}", "🚀");
     vars.insert("{{ terminal_username }}", "developer");
-    vars.insert("{{ project_path }}", "/workspace");
+    vars.insert("{{ project_path_b64 }}", "L3dvcmtzcGFjZQ==");
 
     let result = render_template_placeholders(template, &vars);
 
     assert!(result.contains("test-project"));
     assert!(result.contains("🚀"));
     assert!(result.contains("developer"));
-    assert!(result.contains("/workspace"));
+    assert!(result.contains("L3dvcmtzcGFjZQ=="));
 }
 
 #[test]

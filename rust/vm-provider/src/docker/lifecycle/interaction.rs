@@ -15,6 +15,10 @@ use vm_messages::messages::MESSAGES;
 use super::DEFAULT_SHELL;
 
 impl<'a> LifecycleOperations<'a> {
+    fn shell_escape_single_quotes(input: &str) -> String {
+        input.replace('\'', "'\"'\"'")
+    }
+
     #[must_use = "SSH connection results should be handled"]
     pub fn ssh_into_container(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {
         let workspace_path = self
@@ -35,6 +39,7 @@ impl<'a> LifecycleOperations<'a> {
 
         let target_path = SecurityValidator::validate_relative_path(relative_path, workspace_path)?;
         let target_dir = target_path.to_string_lossy();
+        let target_dir_escaped = Self::shell_escape_single_quotes(target_dir.as_ref());
 
         let tty_flag = if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
             "-it"
@@ -118,7 +123,8 @@ impl<'a> LifecycleOperations<'a> {
                 "sh",
                 "-lc",
                 &format!(
-                    "export VM_TARGET_DIR=\"{target_dir}\" && cd \"$VM_TARGET_DIR\" && exec \"$SHELL\""
+                    "export VM_TARGET_DIR='{target_dir}' && cd \"$VM_TARGET_DIR\" && exec \"$SHELL\" -l",
+                    target_dir = target_dir_escaped
                 ),
             ],
         )
@@ -129,8 +135,7 @@ impl<'a> LifecycleOperations<'a> {
             Ok(output) => {
                 // Handle exit codes gracefully
                 match output.status.code() {
-                    Some(0) | Some(1) | Some(2) => Ok(()), // Normal exit, last command failed, or shell builtin exit
-                    Some(127) => Ok(()), // Command not found (happens when user types non-existent command then exits)
+                    Some(0) => Ok(()),
                     Some(130) => Ok(()), // Ctrl-C interrupt - treat as normal exit
                     _ => {
                         // Only return error for actual connection failures
@@ -174,18 +179,34 @@ impl<'a> LifecycleOperations<'a> {
             .unwrap_or(super::helpers::DEFAULT_WORKSPACE_PATH);
         let user_config = UserConfig::from_vm_config(self.config);
         let project_user = &user_config.username;
+        let project_home = format!("/home/{project_user}");
+        let shell = self
+            .config
+            .terminal
+            .as_ref()
+            .and_then(|t| t.shell.as_deref())
+            .unwrap_or(DEFAULT_SHELL);
+        let workspace_escaped = Self::shell_escape_single_quotes(workspace_path);
 
-        let mut args: Vec<&str> = vec![
-            "exec",
-            "-w",
-            workspace_path,
-            "--user",
-            project_user,
-            &target_container,
+        let mut args: Vec<String> = vec![
+            "exec".to_string(),
+            target_container,
+            "sudo".to_string(),
+            "-Hu".to_string(),
+            project_user.to_string(),
+            "env".to_string(),
+            format!("HOME={project_home}"),
+            format!("USER={project_user}"),
+            format!("LOGNAME={project_user}"),
+            format!("SHELL={shell}"),
+            shell.to_string(),
+            "-ilc".to_string(),
+            format!("cd '{workspace_escaped}' && exec \"$@\""),
+            "vm-exec".to_string(),
         ];
-        let cmd_strs: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
-        args.extend_from_slice(&cmd_strs);
-        stream_command(self.executable, &args)
+        args.extend(cmd.iter().cloned());
+        let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        stream_command(self.executable, &arg_refs)
     }
 
     #[must_use = "log display results should be handled"]
