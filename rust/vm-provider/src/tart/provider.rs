@@ -527,7 +527,7 @@ impl Provider for TartProvider {
 
         // Use `tart exec -i -t` for interactive shell session
         let ssh_command = format!(
-            "cd '{target_path}' && exec \"${{SHELL:-{shell}}}\" -l",
+            "export VM_TARGET_DIR='{target_path}' && cd \"$VM_TARGET_DIR\" && exec \"${{SHELL:-{shell}}}\" -il",
             target_path = target_path_escaped,
             shell = shell
         );
@@ -547,7 +547,10 @@ impl Provider for TartProvider {
         .map_err(|e| VmError::Provider(format!("Exec failed: {}", e)))
         .and_then(|output| match output.status.code() {
             Some(0) | Some(130) => Ok(()),
-            _ => Err(VmError::Provider("SSH connection lost".to_string())),
+            Some(code) => Err(VmError::Provider(format!("Shell exited with code {code}"))),
+            None => Err(VmError::Provider(
+                "Shell terminated unexpectedly".to_string(),
+            )),
         })?;
 
         Ok(())

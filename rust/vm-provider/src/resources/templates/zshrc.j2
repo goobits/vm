@@ -82,13 +82,24 @@ case "$(uname -s)" in
     alias diff='diff --color=auto'
     ;;
 esac
-alias yoclaude='claude --dangerously-skip-permissions'
-alias yogemini='NO_BROWSER=true GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo'
-alias yocodex='codex --dangerously-bypass-approvals-and-sandbox'
+if command -v claude >/dev/null 2>&1; then
+  alias yoclaude='claude --dangerously-skip-permissions'
+fi
+if command -v gemini >/dev/null 2>&1; then
+  alias yogemini='NO_BROWSER=true GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo'
+fi
+if command -v codex >/dev/null 2>&1; then
+  alias yocodex='codex --dangerously-bypass-approvals-and-sandbox'
+fi
 
 # ZSH Syntax Highlighting
 if [[ -r /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]]; then
   source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+elif [[ -r /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]]; then
+  source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+fi
+
+if typeset -f _zsh_highlight >/dev/null 2>&1; then
   ZSH_HIGHLIGHT_HIGHLIGHTERS=(main brackets pattern cursor)
   
   # Apply theme colors
@@ -146,8 +157,10 @@ alias gp='git push'
 alias gl='git log --oneline'
 
 # Docker Shortcuts
-alias dps='docker ps'
-alias dimg='docker images'
+if command -v docker >/dev/null 2>&1; then
+  alias dps='docker ps'
+  alias dimg='docker images'
+fi
 
 # Project-Specific Aliases
 {% if project_aliases is defined %}

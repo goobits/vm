@@ -123,7 +123,7 @@ impl<'a> LifecycleOperations<'a> {
                 "sh",
                 "-lc",
                 &format!(
-                    "export VM_TARGET_DIR='{target_dir}' && cd \"$VM_TARGET_DIR\" && exec \"$SHELL\" -l",
+                    "export VM_TARGET_DIR='{target_dir}' && cd \"$VM_TARGET_DIR\" && exec \"$SHELL\" -il",
                     target_dir = target_dir_escaped
                 ),
             ],
@@ -137,10 +137,10 @@ impl<'a> LifecycleOperations<'a> {
                 match output.status.code() {
                     Some(0) => Ok(()),
                     Some(130) => Ok(()), // Ctrl-C interrupt - treat as normal exit
-                    _ => {
-                        // Only return error for actual connection failures
-                        Err(VmError::Command(String::from("SSH connection lost")))
-                    }
+                    Some(code) => Err(VmError::Command(format!("Shell exited with code {code}"))),
+                    None => Err(VmError::Command(String::from(
+                        "Shell terminated unexpectedly",
+                    ))),
                 }
             }
             Err(e) => {

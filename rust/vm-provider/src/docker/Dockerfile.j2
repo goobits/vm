@@ -217,14 +217,12 @@ EOF
 # Make executable and source from all shell configs
 RUN chmod +x /etc/profile.d/vm-worktree-repair.sh && \
     echo '. /etc/profile.d/vm-worktree-repair.sh' >> /etc/bash.bashrc && \
-    echo '. /etc/profile.d/vm-worktree-repair.sh' >> /home/${PROJECT_USER}/.bashrc && \
-    echo '. /etc/profile.d/vm-worktree-repair.sh' >> /home/${PROJECT_USER}/.zshrc
+    echo '. /etc/profile.d/vm-worktree-repair.sh' >> /home/${PROJECT_USER}/.bashrc
 
 # --- Git Worktree Helper Configuration ---
 # Set VM_WORKTREES environment variable and create vm-worktree command
 RUN echo 'export VM_WORKTREES={{ worktrees_base_dir }}' >> /etc/bash.bashrc && \
-    echo 'export VM_WORKTREES={{ worktrees_base_dir }}' >> /home/${PROJECT_USER}/.bashrc && \
-    echo 'export VM_WORKTREES={{ worktrees_base_dir }}' >> /home/${PROJECT_USER}/.zshrc
+    echo 'export VM_WORKTREES={{ worktrees_base_dir }}' >> /home/${PROJECT_USER}/.bashrc
 
 # Install vm-worktree helper command
 COPY vm-worktree.sh /usr/local/bin/vm-worktree
@@ -245,10 +243,10 @@ RUN echo '' >> /home/${PROJECT_USER}/.bashrc && \
     echo '# --- Shell History Settings ---' >> /home/${PROJECT_USER}/.bashrc && \
     echo 'export HISTSIZE=50000' >> /home/${PROJECT_USER}/.bashrc && \
     echo 'export HISTFILESIZE=50000' >> /home/${PROJECT_USER}/.bashrc && \
-    echo 'export HISTFILE=~/.shell_history/bash_history' >> /home/${PROJECT_USER}/.bashrc && \
     echo 'export HISTCONTROL=ignoredups:erasedups' >> /home/${PROJECT_USER}/.bashrc && \
     echo '# Bash-specific commands (skip if sourced by zsh)' >> /home/${PROJECT_USER}/.bashrc && \
     echo 'if [ -n "$BASH_VERSION" ]; then' >> /home/${PROJECT_USER}/.bashrc && \
+    echo '    export HISTFILE=~/.shell_history/bash_history' >> /home/${PROJECT_USER}/.bashrc && \
     echo '    shopt -s histappend' >> /home/${PROJECT_USER}/.bashrc && \
     echo '    PROMPT_COMMAND="history -a; history -c; history -r; $PROMPT_COMMAND"' >> /home/${PROJECT_USER}/.bashrc && \
     echo 'fi' >> /home/${PROJECT_USER}/.bashrc

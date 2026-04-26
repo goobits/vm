@@ -17,6 +17,16 @@ pub struct TartProvisioner {
 }
 
 impl TartProvisioner {
+    fn is_valid_shell_identifier(key: &str) -> bool {
+        let mut chars = key.chars();
+        match chars.next() {
+            Some(c) if c == '_' || c.is_ascii_alphabetic() => {}
+            _ => return false,
+        }
+
+        chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
+    }
+
     pub fn new(instance_name: String, project_dir: String) -> Self {
         Self {
             instance_name,
@@ -377,6 +387,11 @@ fi"#,
         let mut lines = Vec::new();
 
         for (key, value) in &config.environment {
+            if !Self::is_valid_shell_identifier(key) {
+                warn!("Skipping invalid shell environment key for Tart provisioning: {key}");
+                continue;
+            }
+
             lines.push(format!(
                 "export {}='{}'",
                 key,
@@ -550,17 +565,18 @@ cargo install {}"#,
 
         if Self::uses_prebaked_vibe_tart_base(config) {
             info!(
-                "Skipping Tart AI CLI installation because the standard Tart vibe base should already include them"
+                "Standard Tart vibe base detected; verifying AI CLIs and only repairing missing tools"
             );
-            return Ok(());
         }
 
         if ai_tools.is_claude_enabled() {
-            self.ssh_exec(
-                r#"if ! command -v claude >/dev/null 2>&1; then
+            self.ssh_exec(&format!(
+                r#"export PATH="{}"
+if ! command -v claude >/dev/null 2>&1; then
   curl -fsSL https://claude.ai/install.sh | bash
 fi"#,
-            )?;
+                Self::user_bin_path(config)
+            ))?;
         }
 
         if ai_tools.is_gemini_enabled() || ai_tools.is_codex_enabled() {
@@ -568,15 +584,27 @@ fi"#,
         }
 
         if ai_tools.is_gemini_enabled() {
-            self.ssh_exec(
-                "if ! command -v gemini >/dev/null 2>&1; then npm install -g @google/gemini-cli; fi",
-            )?;
+            self.ssh_exec(&format!(
+                r#"export PATH="{}"
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+if ! command -v gemini >/dev/null 2>&1; then
+  npm install -g @google/gemini-cli
+fi"#,
+                Self::user_bin_path(config)
+            ))?;
         }
 
         if ai_tools.is_codex_enabled() {
-            self.ssh_exec(
-                "if ! command -v codex >/dev/null 2>&1; then npm install -g @openai/codex; fi",
-            )?;
+            self.ssh_exec(&format!(
+                r#"export PATH="{}"
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+if ! command -v codex >/dev/null 2>&1; then
+  npm install -g @openai/codex
+fi"#,
+                Self::user_bin_path(config)
+            ))?;
         }
 
         if ai_tools.is_aider_enabled() {
@@ -983,6 +1011,14 @@ rustup default stable"#,
     }
 
     fn guest_os(config: &VmConfig) -> &'static str {
+        if matches!(config.os.as_deref(), Some("macos")) {
+            return "macos";
+        }
+
+        if matches!(config.os.as_deref(), Some("linux")) {
+            return "linux";
+        }
+
         if matches!(
             config.tart.as_ref().and_then(|t| t.guest_os.as_deref()),
             Some("macos")
@@ -1001,7 +1037,10 @@ rustup default stable"#,
             if name == "vibe-tart-base" || name.contains("macos") {
                 return "macos";
             }
-            if name == "vibe-tart-linux-base" || name.contains("ubuntu") || name.contains("debian")
+            if name == "vibe-tart-linux-base"
+                || name.contains("ubuntu")
+                || name.contains("debian")
+                || name.contains("linux")
             {
                 return "linux";
             }
@@ -1011,9 +1050,12 @@ rustup default stable"#,
             if image.contains("macos") {
                 return "macos";
             }
+            if image.contains("ubuntu") || image.contains("debian") || image.contains("linux") {
+                return "linux";
+            }
         }
 
-        "linux"
+        "macos"
     }
 
     fn ensure_homebrew(&self) -> Result<()> {
@@ -1143,6 +1185,37 @@ mod tests {
         };
 
         assert_eq!(TartProvisioner::guest_os(&config), "linux");
+    }
+
+    #[test]
+    fn guest_os_respects_explicit_config_os() {
+        let config = VmConfig {
+            os: Some("macos".to_string()),
+            vm: Some(VmSettings {
+                r#box: Some(BoxSpec::String("custom-base".to_string())),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        assert_eq!(TartProvisioner::guest_os(&config), "macos");
+    }
+
+    #[test]
+    fn guest_os_defaults_ambiguous_custom_tart_base_to_macos() {
+        let config = VmConfig {
+            vm: Some(VmSettings {
+                r#box: Some(BoxSpec::String("custom-team-base".to_string())),
+                ..Default::default()
+            }),
+            tart: Some(vm_config::config::TartConfig {
+                image: Some("ghcr.io/example/custom-base:latest".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        assert_eq!(TartProvisioner::guest_os(&config), "macos");
     }
 
     #[test]

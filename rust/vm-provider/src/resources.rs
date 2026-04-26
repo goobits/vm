@@ -10,7 +10,8 @@ pub const MANAGE_SERVICE_TASK: &str = include_str!("resources/ansible/tasks/mana
 pub const SERVICE_DEFINITIONS: &str = include_str!("resources/services/service_definitions.yml");
 pub const ZSHRC_TEMPLATE: &str = include_str!("resources/templates/zshrc.j2");
 pub const THEMES_JSON: &str = include_str!("resources/templates/themes.json");
-pub const CLAUDE_SETTINGS: &str = include_str!("resources/settings/claude-settings.json");
+pub const CLAUDE_SETTINGS_TEMPLATE: &str =
+    include_str!("resources/settings/claude-settings.json.j2");
 pub const GEMINI_SETTINGS: &str = include_str!("resources/settings/gemini-settings.json");
 
 /// Copy all embedded resources to the specified directory
@@ -45,7 +46,10 @@ pub fn copy_embedded_resources(shared_dir: &Path) -> Result<()> {
         ),
         (directories[3].join("zshrc.j2"), ZSHRC_TEMPLATE),
         (shared_dir.join("themes.json"), THEMES_JSON),
-        (directories[5].join("settings.json"), CLAUDE_SETTINGS),
+        (
+            directories[5].join("settings.json.j2"),
+            CLAUDE_SETTINGS_TEMPLATE,
+        ),
         (directories[6].join("settings.json"), GEMINI_SETTINGS),
     ];
 

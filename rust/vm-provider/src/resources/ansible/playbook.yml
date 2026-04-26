@@ -103,9 +103,10 @@
             # AI sync config: host_sync.ai_tools can be boolean (true=all enabled) or object {claude: bool, gemini: bool, ...}
             claude_sync_enabled: "{{ (project_config.host_sync.ai_tools is defined and (project_config.host_sync.ai_tools == true or (project_config.host_sync.ai_tools is mapping and project_config.host_sync.ai_tools.claude | default(false)))) | bool }}"
             gemini_sync_enabled: "{{ (project_config.host_sync.ai_tools is defined and (project_config.host_sync.ai_tools == true or (project_config.host_sync.ai_tools is mapping and project_config.host_sync.ai_tools.gemini | default(false)))) | bool }}"
+            codex_sync_enabled: "{{ (project_config.host_sync.ai_tools is defined and (project_config.host_sync.ai_tools == true or (project_config.host_sync.ai_tools is mapping and project_config.host_sync.ai_tools.codex | default(false)))) | bool }}"
             # Consolidated conditions for package manager installation requirements
             # Note: nodejs_required is computed inline to avoid cross-reference issues in set_fact
-            nodejs_required: "{{ ((project_config.npm_packages is defined and project_config.npm_packages is not none and project_config.npm_packages | length > 0) or (project_config.host_sync.ai_tools is defined and (project_config.host_sync.ai_tools == true or (project_config.host_sync.ai_tools is mapping and (project_config.host_sync.ai_tools.claude | default(false) or project_config.host_sync.ai_tools.gemini | default(false)))))) | bool }}"
+            nodejs_required: "{{ ((project_config.npm_packages is defined and project_config.npm_packages is not none and project_config.npm_packages | length > 0) or (project_config.host_sync.ai_tools is defined and (project_config.host_sync.ai_tools == true or (project_config.host_sync.ai_tools is mapping and (project_config.host_sync.ai_tools.claude | default(false) or project_config.host_sync.ai_tools.gemini | default(false) or project_config.host_sync.ai_tools.codex | default(false)))))) | bool }}"
             pip_packages_required: "{{ (project_config.pip_packages is defined and project_config.pip_packages | length > 0) | bool }}"
             cargo_packages_required: "{{ (project_config.cargo_packages is defined and project_config.cargo_packages | length > 0) | bool }}"
             apt_packages_required: "{{ (project_config.apt_packages is defined and project_config.apt_packages | length > 0) | bool }}"
@@ -518,6 +519,53 @@
         register: gemini_install
         changed_when: "'already installed' not in gemini_install.stdout"
 
+      - name: Install Codex CLI
+        shell: |
+            source /home/{{ project_user }}/.nvm/nvm.sh
+            if npm list -g @openai/codex >/dev/null 2>&1; then
+                echo "Codex CLI already installed"
+            else
+                npm install -g @openai/codex
+            fi
+        args:
+            executable: /bin/bash
+        become_user: '{{ project_user }}'
+        when: codex_sync_enabled
+        ignore_errors: yes
+        register: codex_install
+        changed_when: "'already installed' not in codex_install.stdout"
+
+      - name: Verify Claude Code CLI availability
+        shell: |
+            export PATH="$HOME/.local/bin:$PATH"
+            command -v claude
+        args:
+            executable: /bin/bash
+        become_user: '{{ project_user }}'
+        when: claude_sync_enabled
+
+      - name: Verify Gemini CLI availability
+        shell: |
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            export PATH="$HOME/.local/bin:$PATH"
+            command -v gemini
+        args:
+            executable: /bin/bash
+        become_user: '{{ project_user }}'
+        when: gemini_sync_enabled
+
+      - name: Verify Codex CLI availability
+        shell: |
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            export PATH="$HOME/.local/bin:$PATH"
+            command -v codex
+        args:
+            executable: /bin/bash
+        become_user: '{{ project_user }}'
+        when: codex_sync_enabled
+
       - name: Install container pipx packages
         shell: |
             pipx ensurepath
@@ -781,11 +829,10 @@
             owner: '{{ project_user }}'
             mode: '0755'
 
-      - name: Copy shared Claude settings
-        copy:
-            src: '/app/shared/claude-settings/'
-            dest: '/home/{{ project_user }}/.claude/'
-            remote_src: yes
+      - name: Render Claude settings
+        template:
+            src: /app/shared/claude-settings/settings.json.j2
+            dest: '/home/{{ project_user }}/.claude/settings.json'
             owner: '{{ project_user }}'
 
       # Gemini CLI setup
@@ -1030,6 +1077,6 @@
 
                 📁 Project: {{ project_name }}
                 📍 Path: {{ project_path }}
-                🛠️ Tools: Node.js, Claude Code, Gemini CLI
+                🛠️ Tools: Node.js, Claude Code, Gemini CLI, Codex
 
                 💡 Ready to code!
