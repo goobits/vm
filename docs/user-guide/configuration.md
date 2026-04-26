@@ -100,6 +100,7 @@ For provider switching, prefer the first-class provider flow instead:
 
 ```bash
 vm start --provider tart
+vm start --provider docker
 vm config set provider tart
 ```
 
@@ -775,31 +776,14 @@ profiles:
       guest_os: macos
 ```
 
-Use `vibe-tart-linux` only if you explicitly want a Linux VM on Tart:
-
-```yaml
-profiles:
-  tart:
-    provider: tart
-    vm:
-      box: vibe-tart-linux-base
-    tart:
-      guest_os: linux
-      install_docker: true
-```
-
-With the macOS-first `vibe-tart` preset, provider selection can be first-class instead of profile-first:
+With the macOS-first `vibe-tart` preset, Tart is the project default and Docker remains available:
 
 ```bash
+# Tart by default
+vm start
+
 # Docker for this command
-vm start
-
-# Tart for this command
-vm start --provider tart
-
-# Save Tart as the project default
-vm config set provider tart
-vm start
+vm start --provider docker
 ```
 
 To validate the shared Docker/Tart workflow in the current project:
@@ -1265,17 +1249,13 @@ host_sync:
 # vm.yaml
 host_sync:
   ai_tools:
-    claude: true      # Claude Desktop (~/.config/claude)
-    cursor: true      # Cursor editor (~/.cursor)
-    aider: true       # Aider AI (~/.aider)
+    claude: true      # Claude Code
+    gemini: true      # Google Gemini
     codex: false      # OpenAI Codex (disabled)
-    gemini: false     # Google Gemini (disabled)
 ```
 
 **Supported AI tools:**
-- **Claude** - Claude Desktop configuration and settings
-- **Cursor** - Cursor editor AI configuration
-- **Aider** - Aider AI coding assistant settings
+- **Claude** - Claude Code configuration and settings
 - **Codex** - OpenAI Codex configuration
 - **Gemini** - Google Gemini AI settings
 

@@ -58,6 +58,10 @@ pub fn set(field: &str, values: &[String], global: bool, dry_run: bool) -> Resul
         }
     }
 
+    if !global && field == "default_profile" {
+        validate_default_profile(&yaml_value, values.first().map(String::as_str))?;
+    }
+
     // Format the value for display (show as array if multiple values)
     let value_display = if values.len() == 1 {
         values[0].clone()
@@ -87,6 +91,25 @@ pub fn set(field: &str, values: &[String], global: bool, dry_run: bool) -> Resul
         vm_println!("{}", MESSAGES.config.apply_changes_hint);
     }
     Ok(())
+}
+
+fn validate_default_profile(value: &Value, profile_name: Option<&str>) -> Result<()> {
+    let Some(profile_name) = profile_name else {
+        return Ok(());
+    };
+
+    let has_profile = value
+        .get("profiles")
+        .and_then(Value::as_mapping)
+        .is_some_and(|profiles| profiles.contains_key(Value::String(profile_name.to_string())));
+
+    if has_profile {
+        return Ok(());
+    }
+
+    Err(vm_core::error::VmError::Config(format!(
+        "Profile '{profile_name}' not found in vm.yaml. Apply a preset that defines it first, for example: vm config preset vibe-tart"
+    )))
 }
 
 fn set_nested_field(value: &mut Value, field: &str, new_value: Value) -> Result<()> {

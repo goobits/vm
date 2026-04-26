@@ -266,8 +266,10 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
     // Use platform-specific target directory to avoid conflicts in shared filesystems
     let target_dir = project_root.join(format!("target-{platform}"));
 
+    let install_profile =
+        env::var("VM_INSTALL_PROFILE").unwrap_or_else(|_| "source-install".to_string());
     let mut cmd = Command::new("cargo");
-    cmd.args(["build", "--release", "--bin", "vm"]);
+    cmd.args(["build", "--profile", &install_profile, "--bin", "vm"]);
 
     // Enable Tart provider on macOS (Apple Silicon VMs)
     #[cfg(target_os = "macos")]
@@ -299,7 +301,7 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
     vm_success!("Rust binaries built successfully.");
 
     let binary_name = vm_platform::platform::executable_name("vm");
-    let binary_path = target_dir.join("release").join(&binary_name);
+    let binary_path = target_dir.join(&install_profile).join(&binary_name);
     if !binary_path.exists() {
         return Err(vm_core::error::VmError::Internal(format!(
             "Binary not found at: {}",
@@ -564,7 +566,7 @@ mod tests {
     fn test_binary_path_validation() {
         let temp_dir = tempdir().expect("Failed to create temp directory");
         let target_dir = temp_dir.path().join("target-test");
-        let binary_path = target_dir.join("release").join("vm");
+        let binary_path = target_dir.join("source-install").join("vm");
 
         // Create the directory structure
         fs::create_dir_all(
@@ -572,7 +574,7 @@ mod tests {
                 .parent()
                 .expect("binary_path should have parent"),
         )
-        .expect("Failed to create release directory");
+        .expect("Failed to create source install profile directory");
 
         // Test binary existence check logic
         assert!(!binary_path.exists()); // Should not exist initially

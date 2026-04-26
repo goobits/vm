@@ -7,7 +7,7 @@ vm_box: '@vibe-box'
 # Host synchronization configuration (runtime behavior)
 host_sync:
   git_config: true
-  ai_tools: true  # Enable all AI tools (claude, gemini, codex, cursor, aider)
+  ai_tools: true  # Enable AI tool sync (claude, gemini, codex)
 
 # Network configuration
 networking:

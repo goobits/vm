@@ -782,7 +782,7 @@ pub struct HostSyncConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dotfiles: Vec<String>,
 
-    /// AI tool data synchronization (claude, gemini, codex, cursor, aider)
+    /// AI tool data synchronization (claude, gemini, codex)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ai_tools: Option<AiSyncConfig>,
 
@@ -864,20 +864,6 @@ impl AiSyncConfig {
             AiSyncConfig::Detailed(tools) => tools.codex,
         }
     }
-
-    pub fn is_cursor_enabled(&self) -> bool {
-        match self {
-            AiSyncConfig::Boolean(enabled) => *enabled,
-            AiSyncConfig::Detailed(tools) => tools.cursor,
-        }
-    }
-
-    pub fn is_aider_enabled(&self) -> bool {
-        match self {
-            AiSyncConfig::Boolean(enabled) => *enabled,
-            AiSyncConfig::Detailed(tools) => tools.aider,
-        }
-    }
 }
 
 /// Individual AI tool sync settings.
@@ -889,10 +875,6 @@ pub struct AiSyncTools {
     pub gemini: bool,
     #[serde(default)]
     pub codex: bool,
-    #[serde(default)]
-    pub cursor: bool,
-    #[serde(default)]
-    pub aider: bool,
 }
 
 impl Default for AiSyncTools {
@@ -901,8 +883,6 @@ impl Default for AiSyncTools {
             claude: true,
             gemini: true,
             codex: false,
-            cursor: false,
-            aider: false,
         }
     }
 }

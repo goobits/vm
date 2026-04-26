@@ -108,16 +108,16 @@ EOF
 
 if [[ "${PROVIDER}" == "docker" || "${PROVIDER}" == "all" ]]; then
   cat <<'EOF'
-  1. Docker default path
-     time vm start
+  1. Docker provider path
+     time vm start --provider docker
 
 EOF
 fi
 
 if [[ "${PROVIDER}" == "tart" || "${PROVIDER}" == "all" ]]; then
   cat <<'EOF'
-  2. Tart provider path
-     time vm start --provider tart
+  2. Tart default path
+     time vm start
 
 EOF
 fi

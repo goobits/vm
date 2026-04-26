@@ -97,19 +97,13 @@ vm base build vibe --provider tart
 # Then in your project
 vm config preset vibe-tart
 vm start
-vm start --provider tart
 
-# Or save Tart as the project default
-vm config set provider tart
-vm start
+# Docker is still available for this project
+vm start --provider docker
 
 # Validate both providers
 vm base validate vibe
 
-# Linux-on-Tart is explicit
-./scripts/build-vibe-tart-base.sh --guest-os linux --name vibe-tart-linux-base
-vm config preset vibe-tart-linux
-vm start --provider tart
 ```
 
 ## Ubuntu/Debian Installation

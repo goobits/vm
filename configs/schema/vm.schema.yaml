@@ -493,14 +493,6 @@ properties:
                 type: boolean
                 default: false
                 description: Sync OpenAI Codex data to ~/.codex/vms/{project_name}
-              cursor:
-                type: boolean
-                default: false
-                description: Sync Cursor AI data to ~/.cursor/vms/{project_name}
-              aider:
-                type: boolean
-                default: false
-                description: Sync Aider AI data to ~/.aider/vms/{project_name}
         examples:
           - true
           - false

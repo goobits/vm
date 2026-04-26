@@ -105,12 +105,12 @@ vm start
 ```
 
 **3. Use Tart on Apple Silicon when needed**
-If you want a native macOS VM instead of the default Docker path:
+If you want a native macOS VM:
 
 ```bash
 vm config preset vibe-tart
 vm base build vibe --provider tart
-vm start --provider tart
+vm start
 ```
 
 `vm start` drops you into an interactive shell automatically. Use `vm ssh` later to reconnect.
@@ -161,7 +161,8 @@ project:
 The essential commands you'll use daily:
 ```bash
 vm start                  # Create/configure/start and open a shell
-vm start --provider tart  # One-off native macOS Tart session
+vm start --provider tart  # Native macOS Tart session
+vm start --provider docker # Docker session
 vm stop                   # Stop an environment (preserves all data)
 vm destroy                # Delete an environment completely
 vm ssh                    # Reconnect later

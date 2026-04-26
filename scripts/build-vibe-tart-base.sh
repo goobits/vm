@@ -147,12 +147,6 @@ if [[ "${GUEST_OS}" == "macos" ]]; then
       fi
     done
 
-    if ! pipx list --short 2>/dev/null | grep -Fxq \"aider-chat\"; then
-      if ! pipx install aider-chat; then
-        echo \"Warning: failed to install aider-chat into the macOS Tart base; continuing without it\" >&2
-      fi
-    fi
-
     if [ ! -x \"\$HOME/.cargo/bin/cargo\" ]; then
       curl https://sh.rustup.rs -sSf | sh -s -- -y
     fi
@@ -231,7 +225,7 @@ else
 
     export PATH=\"\$HOME/.local/bin:\$PATH\"
     pipx ensurepath >/dev/null 2>&1 || true
-    for pkg in aider-chat git-filter-repo httpie tldr; do
+    for pkg in git-filter-repo httpie tldr; do
       if ! pipx list --short 2>/dev/null | grep -Fxq \"\$pkg\"; then
         pipx install \"\$pkg\"
       fi
@@ -263,23 +257,37 @@ fi
 echo "[5/5] Stopping '${BASE_NAME}'..."
 tart stop "$BASE_NAME" >/dev/null
 
-cat <<EOF
+if [[ "${GUEST_OS}" == "macos" ]]; then
+  cat <<EOF
 
 Local Tart vibe base is ready: ${BASE_NAME}
 
 Next steps:
-  1. Apply the shared vibe preset in your project:
-       vm config preset $( [[ "${GUEST_OS}" == "macos" ]] && echo "vibe-tart" || echo "vibe-tart-linux" )
+  1. Apply the macOS Tart vibe preset in your project:
+       vm config preset vibe-tart
 
-  2. Start either provider from the same project directory:
+  2. Start Tart from the same project directory:
        vm start
-       vm start --provider tart
 
-  3. Or save Tart as the project default:
-       vm config set provider tart
-       vm start
+  3. Docker remains available when the preset defines a Docker profile:
+       vm start --provider docker
 
 This script is the backend for:
   vm base build vibe --provider tart
 
 EOF
+else
+  cat <<EOF
+
+Local Tart Linux base is ready: ${BASE_NAME}
+
+Next steps:
+  1. Configure a custom Tart Linux profile in vm.yaml.
+  2. Start it with:
+       vm start --provider tart
+
+This script is the backend for:
+  vm base build vibe --provider tart
+
+EOF
+fi

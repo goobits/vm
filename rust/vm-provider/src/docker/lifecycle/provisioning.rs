@@ -116,12 +116,6 @@ impl<'a> LifecycleOperations<'a> {
             if [ -d {home}/.codex ]; then
                 chown -R {uid}:{gid} {home}/.codex 2>/dev/null || true
             fi
-            if [ -d {home}/.cursor ]; then
-                chown -R {uid}:{gid} {home}/.cursor 2>/dev/null || true
-            fi
-            if [ -d {home}/.aider ]; then
-                chown -R {uid}:{gid} {home}/.aider 2>/dev/null || true
-            fi
 
             echo "Permissions fixed"
         "#,

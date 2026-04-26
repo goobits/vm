@@ -67,14 +67,6 @@ services:
       # OpenAI Codex data persistence
       - {{ home_dir }}/.vm/ai-sync/codex/{{ project_name }}:/home/{{ project_user }}/.codex:rw
       {% endif %}
-      {% if cursor_sync_enabled %}
-      # Cursor AI data persistence
-      - {{ home_dir }}/.vm/ai-sync/cursor/{{ project_name }}:/home/{{ project_user }}/.cursor:rw
-      {% endif %}
-      {% if aider_sync_enabled %}
-      # Aider AI data persistence
-      - {{ home_dir }}/.vm/ai-sync/aider/{{ project_name }}:/home/{{ project_user }}/.aider:rw
-      {% endif %}
       {% if config.services.audio | default(value=false) %}
       # Audio: PulseAudio socket
       {% if is_macos %}

@@ -238,7 +238,5 @@ fn flatten_config_to_shell(prefix: &str, config: &VmConfig, exports: &mut Vec<St
         add_boolean_export(exports, prefix, "claude_sync", ai_sync.is_claude_enabled());
         add_boolean_export(exports, prefix, "gemini_sync", ai_sync.is_gemini_enabled());
         add_boolean_export(exports, prefix, "codex_sync", ai_sync.is_codex_enabled());
-        add_boolean_export(exports, prefix, "cursor_sync", ai_sync.is_cursor_enabled());
-        add_boolean_export(exports, prefix, "aider_sync", ai_sync.is_aider_enabled());
     }
 }

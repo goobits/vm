@@ -401,7 +401,8 @@ services:
 
         let config_content = fixture.read_file("vm.yaml")?;
         assert!(config_content.contains("preset: vibe-tart"));
-        assert!(config_content.contains("default_profile: docker"));
+        assert!(config_content.contains("provider: tart"));
+        assert!(config_content.contains("default_profile: tart"));
         assert!(config_content.contains("profiles:"));
         assert!(config_content.contains("tart:"));
         assert!(config_content.contains("provider: tart"));
@@ -439,6 +440,69 @@ terminal:
         assert!(!config_content.contains("emoji:"));
         assert!(config_content.contains("theme: dracula"));
         assert!(config_content.contains("show_git_branch: true"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_switching_vibe_to_vibe_tart_does_not_warn_about_preset_defaults() -> Result<()> {
+        let fixture = CliTestFixture::new()?;
+
+        fs::write(
+            fixture.test_dir.join("vm.yaml"),
+            r#"version: "2.0"
+preset: vibe
+provider: docker
+versions:
+  node: "22"
+  python: "3.11"
+host_sync:
+  git_config: true
+  ai_tools: true
+networking:
+  networks:
+    - spacebase
+"#,
+        )?;
+
+        let output = fixture.run_vm_command(&["config", "preset", "vibe-tart"])?;
+        assert!(
+            output.status.success(),
+            "Failed to apply vibe-tart preset: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8(output.stdout)?;
+        assert!(!stdout.contains("contains customizations"));
+
+        let config_content = fixture.read_file("vm.yaml")?;
+        assert!(config_content.contains("preset: vibe-tart"));
+        assert!(config_content.contains("provider: tart"));
+        assert!(config_content.contains("default_profile: tart"));
+        assert!(config_content.contains("profiles:"));
+        assert!(config_content.contains("guest_os: macos"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_default_profile_set_requires_existing_profile() -> Result<()> {
+        let fixture = CliTestFixture::new()?;
+
+        fs::write(
+            fixture.test_dir.join("vm.yaml"),
+            r#"version: "2.0"
+preset: vibe
+provider: docker
+"#,
+        )?;
+
+        let output = fixture.run_vm_command(&["config", "set", "default_profile", "tart"])?;
+        assert!(!output.status.success());
+
+        let stderr = String::from_utf8(output.stderr)?;
+        assert!(stderr.contains("Profile 'tart' not found"));
+        assert!(stderr.contains("vm config preset vibe-tart"));
 
         Ok(())
     }

@@ -247,7 +247,9 @@ fn create_minimal_preset_config(
     if let Some(original) = original_base_config {
         let has_customizations = preserve_user_customizations(&mut minimal, merged, original);
 
-        if has_customizations && !suppress_warning {
+        // Preset-to-preset transitions preserve the previous preset output, but those
+        // fields are not necessarily hand-written customizations.
+        if has_customizations && !suppress_warning && original.preset.is_none() {
             print_customization_warning(original);
         }
     }
@@ -264,7 +266,7 @@ fn remove_legacy_vibe_terminal_emoji(
 ) {
     if !preset_names.split(',').any(|name| {
         let trimmed = name.trim();
-        trimmed == "vibe-tart" || trimmed == "vibe-tart-linux"
+        trimmed == "vibe-tart"
     }) {
         return;
     }

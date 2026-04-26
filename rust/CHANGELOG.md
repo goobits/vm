@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Tart Defaults Now Match The Product Model**: `vibe-tart` now targets macOS guests by default instead of Ubuntu-on-Tart
   - macOS Tart guests now use the correct workspace mount behavior and writable workspace path
-  - Linux-on-Tart remains available as the explicit `vibe-tart-linux` path
+  - The public preset surface is now `vibe` for Docker and `vibe-tart` for macOS Tart
   - `vm base build vibe --provider tart` now builds the standard macOS Tart base by default
 
 - **Shared Shell Experience Across Docker And Tart**: Tart now uses the same canonical `zsh` shell template as Docker
@@ -46,7 +46,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Exiting a Tart shell no longer reports a false session error
 
 - **Tart Base Build Robustness**: Building the default macOS Tart base is less brittle
-  - macOS Tart base builds no longer fail hard on optional `aider-chat` installation
   - macOS Tart guest provisioning now uses the correct virtiofs mount flow instead of Linux-only mount commands
   - Canonical Tart shell rendering is covered by a regression test
 

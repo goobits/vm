@@ -94,20 +94,6 @@ pub fn collect_host_sync_mounts(config: &VmConfig) -> Vec<HostSyncMount> {
             "~/.codex".to_string(),
             ai_tools.is_codex_enabled(),
         );
-        add_mount_if_exists(
-            &mut mounts,
-            "cursor-sync",
-            home.join(".cursor"),
-            "~/.cursor".to_string(),
-            ai_tools.is_cursor_enabled(),
-        );
-        add_mount_if_exists(
-            &mut mounts,
-            "aider-sync",
-            home.join(".config").join("aider"),
-            "~/.config/aider".to_string(),
-            ai_tools.is_aider_enabled(),
-        );
     }
 
     mounts

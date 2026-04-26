@@ -838,6 +838,8 @@ fn test_vibe_tart_preset_uses_admin_ssh_user() -> Result<()> {
     let detector = fixture.create_detector();
 
     let vibe_tart = detector.load_preset("vibe-tart")?;
+    assert_eq!(vibe_tart.provider.as_deref(), Some("tart"));
+    assert_eq!(vibe_tart.default_profile.as_deref(), Some("tart"));
     let tart_profile = vibe_tart
         .profiles
         .as_ref()
@@ -866,41 +868,6 @@ fn test_vibe_tart_preset_uses_admin_ssh_user() -> Result<()> {
             .as_ref()
             .and_then(|tart| tart.ssh_user.as_deref()),
         Some("admin")
-    );
-
-    Ok(())
-}
-
-#[test]
-fn test_vibe_tart_linux_preset_uses_linux_guest() -> Result<()> {
-    let _guard = TEST_MUTEX
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let fixture = PresetTestFixture::new()?;
-    let detector = fixture.create_detector();
-
-    let vibe_tart = detector.load_preset("vibe-tart-linux")?;
-    let tart_profile = vibe_tart
-        .profiles
-        .as_ref()
-        .and_then(|profiles| profiles.get("tart"))
-        .expect("vibe-tart-linux should define a tart profile");
-
-    assert_eq!(tart_profile.provider.as_deref(), Some("tart"));
-    assert_eq!(
-        tart_profile
-            .vm
-            .as_ref()
-            .and_then(|vm| vm.r#box.as_ref())
-            .map(|b| serde_yaml::to_string(b).unwrap().trim().to_string()),
-        Some("vibe-tart-linux-base".to_string())
-    );
-    assert_eq!(
-        tart_profile
-            .tart
-            .as_ref()
-            .and_then(|tart| tart.guest_os.as_deref()),
-        Some("linux")
     );
 
     Ok(())

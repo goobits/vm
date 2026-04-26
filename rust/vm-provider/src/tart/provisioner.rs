@@ -45,7 +45,6 @@ impl TartProvisioner {
         self.ensure_workspace_mount()?;
 
         // 3. Apply host sync behaviors that Tart can support cleanly
-        self.ensure_host_sync_mounts(config)?;
         self.sync_dotfiles(config)?;
         self.sync_ssh_config(config)?;
 
@@ -58,6 +57,9 @@ impl TartProvisioner {
         self.provision_generic_packages(config)?;
         self.provision_ai_tools(config)?;
         self.install_docker_if_requested(config)?;
+        // Mount AI config after CLI installation so installers do not write into
+        // host-synced config directories such as ~/.claude.
+        self.ensure_host_sync_mounts(config)?;
 
         // 6. Detect framework and install dependencies
         self.provision_framework_dependencies(config)?;
@@ -596,18 +598,6 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 if ! command -v codex >/dev/null 2>&1; then
   npm install -g @openai/codex
-fi"#,
-                Self::user_bin_path(config)
-            ))?;
-        }
-
-        if ai_tools.is_aider_enabled() {
-            self.ensure_python_runtime(config)?;
-            self.ensure_python_package_tooling(config)?;
-            self.ssh_exec(&format!(
-                r#"export PATH="{}"
-if ! command -v aider >/dev/null 2>&1; then
-  pipx install aider-chat
 fi"#,
                 Self::user_bin_path(config)
             ))?;

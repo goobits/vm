@@ -3,7 +3,7 @@ preset:
   name: vibe-tart
   description: "Vibe Development with Docker plus native macOS Tart on Apple Silicon"
 
-provider: docker
+provider: tart
 
 vm:
   box: '@vibe-box'
@@ -27,7 +27,7 @@ terminal:
   theme: dracula
   show_git_branch: true
 
-default_profile: docker
+default_profile: tart
 
 profiles:
   docker:

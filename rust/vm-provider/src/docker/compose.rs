@@ -264,24 +264,6 @@ impl<'a> ComposeOperations<'a> {
             maybe_chown_path_to_sudo_user(Path::new(&codex_dir));
         }
 
-        // Cursor sync (default: false, opt-in)
-        if ai_sync.is_cursor_enabled() {
-            let cursor_dir = format!("{}/.vm/ai-sync/cursor/{}", home, project_name);
-            fs::create_dir_all(&cursor_dir).map_err(|e| {
-                VmError::Internal(format!("Failed to create Cursor sync directory: {}", e))
-            })?;
-            maybe_chown_path_to_sudo_user(Path::new(&cursor_dir));
-        }
-
-        // Aider sync (default: false, opt-in)
-        if ai_sync.is_aider_enabled() {
-            let aider_dir = format!("{}/.vm/ai-sync/aider/{}", home, project_name);
-            fs::create_dir_all(&aider_dir).map_err(|e| {
-                VmError::Internal(format!("Failed to create Aider sync directory: {}", e))
-            })?;
-            maybe_chown_path_to_sudo_user(Path::new(&aider_dir));
-        }
-
         Ok(())
     }
 
@@ -563,8 +545,6 @@ impl<'a> ComposeOperations<'a> {
             tera_context.insert("claude_sync_enabled", &ai_sync.is_claude_enabled());
             tera_context.insert("gemini_sync_enabled", &ai_sync.is_gemini_enabled());
             tera_context.insert("codex_sync_enabled", &ai_sync.is_codex_enabled());
-            tera_context.insert("cursor_sync_enabled", &ai_sync.is_cursor_enabled());
-            tera_context.insert("aider_sync_enabled", &ai_sync.is_aider_enabled());
         }
         // No local package mounts or environment variables needed
         let local_pipx_mounts: Vec<(String, String)> = Vec::new();

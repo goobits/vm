@@ -32,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Tart Defaults Now Match The Product Model**: `vibe-tart` is now macOS-first instead of Ubuntu-on-Tart
   - macOS Tart guests now use the right workspace mount behavior and writable workspace path
-  - Linux-on-Tart remains available, but only as the explicit `vibe-tart-linux` path
+  - The public preset surface is now `vibe` for Docker and `vibe-tart` for macOS Tart
   - `vm base build vibe --provider tart` now builds the standard macOS Tart base by default
 
 - **Shared Shell Experience Across Docker And Tart**: Tart now uses the same canonical `zsh` shell template as Docker
@@ -51,7 +51,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Exiting a Tart shell no longer reports a false session error
 
 - **Tart Base Build Robustness**: Building the default macOS Tart base is less brittle
-  - Tart base building no longer fails hard on optional macOS `aider-chat` installation
   - macOS Tart guest provisioning now uses the correct virtiofs mount flow instead of Linux-only mount commands
   - Canonical Tart shell rendering is covered by a regression test
 
@@ -470,7 +469,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **AI Tool Data Synchronization**: Multi-tool support for AI development
-  - Configurable sync for Claude, Gemini, Codex, Cursor, and Aider
+  - Configurable sync for Claude, Gemini, and Codex
   - Boolean shorthand (`ai_tools: true`) or granular per-tool control
   - Automatic data directory creation and mounting
 

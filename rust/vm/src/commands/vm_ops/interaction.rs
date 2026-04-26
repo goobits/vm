@@ -12,7 +12,10 @@ use tracing::debug;
 use crate::error::{VmError, VmResult};
 use crate::state::{count_active_ssh_sessions, VmState};
 use vm_cli::msg;
-use vm_config::{config::VmConfig, detect_worktrees, ConfigLoader};
+use vm_config::{
+    config::{BoxSpec, VmConfig},
+    detect_worktrees, ConfigLoader,
+};
 use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
 use vm_provider::{Provider, ProviderContext};
@@ -35,6 +38,107 @@ fn worktrees_match(worktrees: &[String], mounts: &[String]) -> bool {
     }
 
     true
+}
+
+fn describe_create_target(
+    provider: &dyn Provider,
+    config: &VmConfig,
+) -> Vec<(&'static str, String)> {
+    let mut details = vec![("Provider", provider.name().to_string())];
+
+    match provider.name() {
+        "tart" => {
+            details.push(("Guest OS", describe_tart_guest_os(config)));
+            if let Some(base) = config
+                .vm
+                .as_ref()
+                .and_then(|vm| vm.r#box.as_ref())
+                .map(box_name)
+            {
+                details.push(("Base", base));
+            }
+        }
+        "docker" | "podman" => {
+            details.push(("Guest OS", "Ubuntu/Linux container".to_string()));
+            if let Some(base) = config
+                .vm
+                .as_ref()
+                .and_then(|vm| vm.r#box.as_ref())
+                .map(box_name)
+            {
+                details.push(("Base", base));
+            }
+        }
+        _ => {}
+    }
+
+    details
+}
+
+fn box_name(box_spec: &BoxSpec) -> String {
+    match box_spec {
+        BoxSpec::String(value) => value.clone(),
+        BoxSpec::Build { dockerfile, .. } => dockerfile.clone(),
+    }
+}
+
+fn describe_tart_guest_os(config: &VmConfig) -> String {
+    if matches!(config.os.as_deref(), Some("macos")) {
+        return "macOS VM".to_string();
+    }
+    if matches!(config.os.as_deref(), Some("linux")) {
+        return "Linux VM".to_string();
+    }
+
+    if let Some(guest_os) = config
+        .tart
+        .as_ref()
+        .and_then(|tart| tart.guest_os.as_deref())
+    {
+        return match guest_os {
+            "macos" => "macOS VM".to_string(),
+            "linux" => "Linux VM".to_string(),
+            other => format!("{other} VM"),
+        };
+    }
+
+    if let Some(base) = config
+        .vm
+        .as_ref()
+        .and_then(|vm| vm.r#box.as_ref())
+        .map(box_name)
+    {
+        let base = base.to_lowercase();
+        if base == "vibe-tart-base" || base.contains("macos") {
+            return "macOS VM".to_string();
+        }
+        if base == "vibe-tart-linux-base"
+            || base.contains("ubuntu")
+            || base.contains("debian")
+            || base.contains("linux")
+        {
+            return "Linux VM".to_string();
+        }
+    }
+
+    if let Some(image) = config.tart.as_ref().and_then(|tart| tart.image.as_deref()) {
+        let image = image.to_lowercase();
+        if image.contains("macos") {
+            return "macOS VM".to_string();
+        }
+        if image.contains("ubuntu") || image.contains("debian") || image.contains("linux") {
+            return "Linux VM".to_string();
+        }
+    }
+
+    "macOS VM (default)".to_string()
+}
+
+fn print_create_target(provider: &dyn Provider, config: &VmConfig) {
+    vm_println!("\nTarget environment:");
+    for (label, value) in describe_create_target(provider, config) {
+        vm_println!("  {label}: {value}");
+    }
 }
 
 /// Prompts the user to confirm if they want to refresh mounts.
@@ -235,6 +339,7 @@ fn connect_ssh(
 
                 // Offer to create the VM
                 if io::stdin().is_terminal() {
+                    print_create_target(provider.as_ref(), &config);
                     print!("{}", MESSAGES.vm.ssh_create_prompt);
                     io::stdout().flush()?;
 

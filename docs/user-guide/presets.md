@@ -21,11 +21,10 @@ vm base build vibe --provider docker
 ```
 
 ### vibe-tart (Mac users)
-Same as vibe but set up for switching between Docker and a native macOS Tart VM cleanly
-- Default: Docker with `@vibe-box`
-- Tart: Native macOS Tart VM on Apple Silicon with `vibe-tart-base`
-- One-off switch: `vm start --provider tart`
-- Saved project default: `vm config set provider tart`
+Native macOS Tart VM on Apple Silicon with Docker available as a profile
+- Default: Tart with `vibe-tart-base`
+- Docker: available with `vm start --provider docker`
+- Use this when you want a real macOS guest
 
 ```bash
 vm config preset vibe-tart
@@ -36,28 +35,14 @@ vm base build vibe --provider docker
 # Build the Tart base once:
 vm base build vibe --provider tart
 
-# Start with Docker or Tart from the same repo:
+# Start Tart by default:
 vm start
-vm start --provider tart
 
-# Or persist Tart as the project default:
-vm config set provider tart
-vm start
+# Use Docker from the same repo:
+vm start --provider docker
 
 # Validate both providers from the same repo:
 vm base validate vibe
-```
-
-### vibe-tart-linux
-Explicit Linux VM on Tart for cases where you want a full Linux VM instead of Docker containers
-- Default: Docker with `@vibe-box`
-- Tart: Linux Tart VM on Apple Silicon with `vibe-tart-linux-base`
-- Use this only when you specifically want Linux-on-Tart rather than native macOS
-
-```bash
-vm config preset vibe-tart-linux
-./scripts/build-vibe-tart-base.sh --guest-os linux --name vibe-tart-linux-base
-vm start --provider tart
 ```
 
 ### base

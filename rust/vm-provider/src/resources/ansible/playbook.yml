@@ -488,6 +488,8 @@
       # AI CLI tools - install even for snapshots if sync is enabled (layered provisioning)
       - name: Install Claude Code CLI
         shell: |
+            export HOME="/home/{{ project_user }}"
+            export PATH="$HOME/.local/bin:$PATH"
             if command -v claude >/dev/null 2>&1; then
                 echo "Claude Code CLI already installed"
             else
@@ -504,9 +506,13 @@
 
       - name: Install Gemini CLI
         shell: |
-            source /home/{{ project_user }}/.nvm/nvm.sh
+            export HOME="/home/{{ project_user }}"
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+            NPM_BIN="$(npm prefix -g)/bin"
+            export PATH="$NPM_BIN:$HOME/.local/bin:$PATH"
             # Skip if already installed
-            if npm list -g @google/gemini-cli >/dev/null 2>&1; then
+            if command -v gemini >/dev/null 2>&1 || npm list -g @google/gemini-cli >/dev/null 2>&1; then
                 echo "Gemini CLI already installed"
             else
                 npm install -g @google/gemini-cli
@@ -521,8 +527,12 @@
 
       - name: Install Codex CLI
         shell: |
-            source /home/{{ project_user }}/.nvm/nvm.sh
-            if npm list -g @openai/codex >/dev/null 2>&1; then
+            export HOME="/home/{{ project_user }}"
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+            NPM_BIN="$(npm prefix -g)/bin"
+            export PATH="$NPM_BIN:$HOME/.local/bin:$PATH"
+            if command -v codex >/dev/null 2>&1 || npm list -g @openai/codex >/dev/null 2>&1; then
                 echo "Codex CLI already installed"
             else
                 npm install -g @openai/codex
@@ -537,6 +547,7 @@
 
       - name: Verify Claude Code CLI availability
         shell: |
+            export HOME="/home/{{ project_user }}"
             export PATH="$HOME/.local/bin:$PATH"
             command -v claude
         args:
@@ -546,9 +557,11 @@
 
       - name: Verify Gemini CLI availability
         shell: |
+            export HOME="/home/{{ project_user }}"
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-            export PATH="$HOME/.local/bin:$PATH"
+            NPM_BIN="$(npm prefix -g)/bin"
+            export PATH="$NPM_BIN:$HOME/.local/bin:$PATH"
             command -v gemini
         args:
             executable: /bin/bash
@@ -557,9 +570,11 @@
 
       - name: Verify Codex CLI availability
         shell: |
+            export HOME="/home/{{ project_user }}"
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-            export PATH="$HOME/.local/bin:$PATH"
+            NPM_BIN="$(npm prefix -g)/bin"
+            export PATH="$NPM_BIN:$HOME/.local/bin:$PATH"
             command -v codex
         args:
             executable: /bin/bash
