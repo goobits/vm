@@ -163,14 +163,24 @@ pub struct DockerOps;
 impl DockerOps {
     /// Check if Docker daemon is running by executing 'docker info'.
     pub fn check_daemon_running(executable: Option<&str>) -> Result<()> {
-        DockerCommand::new(executable)
+        let mut cmd = DockerCommand::new(executable)
             .subcommand("info")
-            .execute()
-            .map_err(|e| {
-                VmError::Internal(format!(
-                    "Docker daemon is not running or not accessible: {e}"
-                ))
-            })
+            .build_command()?;
+
+        let output = cmd.output().map_err(|e| {
+            VmError::Internal(format!(
+                "Docker daemon is not running or not accessible: {e}"
+            ))
+        })?;
+
+        if output.status.success() {
+            Ok(())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(VmError::Internal(format!(
+                "Docker daemon is not running or not accessible: {stderr}"
+            )))
+        }
     }
 
     /// List all containers with specified format.

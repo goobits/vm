@@ -4,6 +4,17 @@ use vm_config::config::{BoxSpec, VmConfig, VmSettings};
 use vm_config::detector::git::GitConfig;
 
 #[test]
+fn test_docker_pull_error_message_explains_unprivileged_nested_docker() {
+    let stderr = "failed to register layer: unshare: operation not permitted";
+    let message = BuildOperations::docker_pull_error_message("ubuntu:jammy", stderr);
+
+    assert!(message.contains("Docker cannot register image layers"));
+    assert!(message.contains("unprivileged container"));
+    assert!(message.contains("Run vm from the host machine"));
+    assert!(message.contains(stderr));
+}
+
+#[test]
 fn test_gather_build_args_host_integration() {
     let temp_dir = tempfile::tempdir().unwrap();
     let config = VmConfig {

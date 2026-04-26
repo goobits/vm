@@ -181,7 +181,7 @@ impl<'a> LifecycleOperations<'a> {
         // Check Docker daemon status more thoroughly
         if DockerCommand::new(Some(self.executable))
             .subcommand("ps")
-            .execute()
+            .execute_with_output()
             .is_err()
         {
             vm_error_with_details!(

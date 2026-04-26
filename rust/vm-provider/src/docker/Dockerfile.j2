@@ -178,27 +178,11 @@ USER root
 RUN mkdir -p /app/shared/ansible /app/shared/services /app/shared/templates /app/shared/settings
 COPY --chown=${PROJECT_UID}:${PROJECT_GID} shared /app/shared
 
-# --- Cargo Registry Configuration ---
-# Fix home directory ownership AND append config in a single layer (needed when building from snapshots with different UID)
-# The snapshot may have files owned by a different UID - fix common dotfiles before modifying them
-# Keep runtime shell additions in .bashrc so the shared zshrc can source one canonical location.
+# --- Shared Runtime Shell Configuration ---
+# Fix home directory ownership before shell/runtime setup (needed when building from snapshots
+# with different UID/GID ownership).
 RUN chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER}/.zshrc /home/${PROJECT_USER}/.bashrc /home/${PROJECT_USER}/.profile 2>/dev/null || true && \
-    chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER} 2>/dev/null || true && \
-    echo '' >> /home/${PROJECT_USER}/.bashrc && \
-    echo '# --- VM CARGO REGISTRY CONFIGURATION ---' >> /home/${PROJECT_USER}/.bashrc && \
-    echo 'if [ -n "$VM_CARGO_REGISTRY_HOST" ] && [ -n "$VM_CARGO_REGISTRY_PORT" ]; then' >> /home/${PROJECT_USER}/.bashrc && \
-    echo '    mkdir -p ~/.cargo' >> /home/${PROJECT_USER}/.bashrc && \
-    echo '    cat > ~/.cargo/config.toml << EOF' >> /home/${PROJECT_USER}/.bashrc && \
-    echo '[source.crates-io]' >> /home/${PROJECT_USER}/.bashrc && \
-    echo 'replace-with = "vm-registry"' >> /home/${PROJECT_USER}/.bashrc && \
-    echo '' >> /home/${PROJECT_USER}/.bashrc && \
-    echo '[source.vm-registry]' >> /home/${PROJECT_USER}/.bashrc && \
-    echo "registry = \"sparse+http://\${VM_CARGO_REGISTRY_HOST}:\${VM_CARGO_REGISTRY_PORT}/cargo/\"" >> /home/${PROJECT_USER}/.bashrc && \
-    echo '' >> /home/${PROJECT_USER}/.bashrc && \
-    echo '[net]' >> /home/${PROJECT_USER}/.bashrc && \
-    echo 'retry = 2' >> /home/${PROJECT_USER}/.bashrc && \
-    echo 'EOF' >> /home/${PROJECT_USER}/.bashrc && \
-    echo 'fi' >> /home/${PROJECT_USER}/.bashrc
+    chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER} 2>/dev/null || true
 
 # --- Git Worktree Auto-Repair Configuration ---
 # Create shared initialization script that runs for ALL shells (interactive, non-interactive, bash, zsh, sh)
@@ -214,15 +198,30 @@ if [ -d "/workspace/.git" ] || [ -f "/workspace/.git" ]; then
 fi
 EOF
 
-# Make executable and source from all shell configs
+# Make executable and create one shared runtime shell hook for both bash and zsh.
 RUN chmod +x /etc/profile.d/vm-worktree-repair.sh && \
-    echo '. /etc/profile.d/vm-worktree-repair.sh' >> /etc/bash.bashrc && \
-    echo '. /etc/profile.d/vm-worktree-repair.sh' >> /home/${PROJECT_USER}/.bashrc
+    cat > /etc/profile.d/vm-shell-runtime.sh << 'EOF'
+#!/bin/sh
+[ -f /etc/profile.d/vm-worktree-repair.sh ] && . /etc/profile.d/vm-worktree-repair.sh
+export VM_WORKTREES='{{ worktrees_base_dir }}'
+if [ -n "$VM_CARGO_REGISTRY_HOST" ] && [ -n "$VM_CARGO_REGISTRY_PORT" ]; then
+    mkdir -p "$HOME/.cargo"
+    cat > "$HOME/.cargo/config.toml" << EOCARGO
+[source.crates-io]
+replace-with = "vm-registry"
 
-# --- Git Worktree Helper Configuration ---
-# Set VM_WORKTREES environment variable and create vm-worktree command
-RUN echo 'export VM_WORKTREES={{ worktrees_base_dir }}' >> /etc/bash.bashrc && \
-    echo 'export VM_WORKTREES={{ worktrees_base_dir }}' >> /home/${PROJECT_USER}/.bashrc
+[source.vm-registry]
+registry = "sparse+http://${VM_CARGO_REGISTRY_HOST}:${VM_CARGO_REGISTRY_PORT}/cargo/"
+
+[net]
+retry = 2
+EOCARGO
+fi
+EOF
+
+RUN chmod +x /etc/profile.d/vm-shell-runtime.sh && \
+    echo '. /etc/profile.d/vm-shell-runtime.sh' >> /etc/bash.bashrc && \
+    echo '. /etc/profile.d/vm-shell-runtime.sh' >> /home/${PROJECT_USER}/.bashrc
 
 # Install vm-worktree helper command
 COPY vm-worktree.sh /usr/local/bin/vm-worktree

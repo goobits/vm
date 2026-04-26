@@ -3,7 +3,6 @@
 # NVM Configuration (handles npm global packages in PATH)
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 
 vm_b64decode() {
   if command -v base64 >/dev/null 2>&1; then
@@ -14,6 +13,11 @@ vm_b64decode() {
 }
 
 VM_PROJECT_PATH="$(vm_b64decode '{{ project_path_b64 }}')"
+
+# Source shared runtime shell setup before prompt configuration.
+if [ -f /etc/profile.d/vm-shell-runtime.sh ]; then
+  source /etc/profile.d/vm-shell-runtime.sh
+fi
 
 # Shell History Directory Initialization
 # Ensure history directory exists and is writable before shell uses it
@@ -212,7 +216,5 @@ zshexit() {
   save_current_directory
 }
 
-# Source .bashrc if it exists (preserves custom aliases and env vars from Dockerfiles)
-if [ -f "$HOME/.bashrc" ]; then
-  source "$HOME/.bashrc"
-fi
+# Bash startup files are intentionally not sourced from zsh. They often contain
+# Bash-only prompt and completion code that can break the canonical VM prompt.

@@ -64,10 +64,13 @@ impl<'a> LifecycleOperations<'a> {
             # Fix home directory and common dotfiles
             chown {uid}:{gid} {home} 2>/dev/null || true
             chown {uid}:{gid} {home}/.zshrc {home}/.bashrc {home}/.profile 2>/dev/null || true
+            chmod u+rwx,go+rx {home} 2>/dev/null || true
+            chmod u+rw,go+r {home}/.zshrc {home}/.bashrc {home}/.profile 2>/dev/null || true
 
             # Fix NVM (Node.js version manager)
             if [ -d {home}/.nvm ]; then
                 chown -R {uid}:{gid} {home}/.nvm 2>/dev/null || true
+                chmod -R u+rwX,go+rX {home}/.nvm 2>/dev/null || true
             fi
 
             # Fix Cargo/Rust

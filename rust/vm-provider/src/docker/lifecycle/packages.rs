@@ -30,9 +30,14 @@ impl<'a> LifecycleOperations<'a> {
             return Ok(None);
         }
 
-        let pipx_list_output = std::process::Command::new("pipx")
+        let pipx_list_output = match std::process::Command::new("pipx")
             .args(["list", "--json"])
-            .output()?;
+            .output()
+        {
+            Ok(output) => output,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
 
         if pipx_list_output.status.success() {
             let pipx_json = serde_json::from_slice::<Value>(&pipx_list_output.stdout)

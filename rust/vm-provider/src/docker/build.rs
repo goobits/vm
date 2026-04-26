@@ -91,12 +91,31 @@ impl<'a> BuildOperations<'a> {
                 ));
             }
 
-            return Err(VmError::Internal(format!(
-                "Docker pull failed for image '{image}': {stderr}"
+            return Err(VmError::Internal(Self::docker_pull_error_message(
+                image, &stderr,
             )));
         }
 
         Ok(())
+    }
+
+    pub(super) fn docker_pull_error_message(image: &str, stderr: &str) -> String {
+        if stderr.contains("unshare: operation not permitted")
+            || stderr.contains("failed to register layer")
+                && stderr.contains("operation not permitted")
+        {
+            return format!(
+                "Docker pull failed for image '{image}': Docker cannot register image layers in this environment.\n\n\
+                 This usually means vm is running inside an unprivileged container where Linux namespace or mount operations are blocked.\n\n\
+                 Fixes:\n\
+                   • Run vm from the host machine, not inside this container\n\
+                   • If nested Docker is intentional, start the outer container with the required privileges\n\
+                   • On macOS, run vm from your normal terminal with Docker Desktop or Tart available\n\n\
+                 Raw Docker error: {stderr}"
+            );
+        }
+
+        format!("Docker pull failed for image '{image}': {stderr}")
     }
 
     /// Safely convert a path to string with descriptive error message

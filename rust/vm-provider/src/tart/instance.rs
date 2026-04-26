@@ -179,7 +179,7 @@ mod tests {
         let config = create_test_config();
         let manager = TartInstanceManager::new(&config);
 
-        assert_eq!(manager.default_instance_name(), "testproject-dev");
+        assert_eq!(manager.default_instance_name(), "testproject");
     }
 
     #[test]
@@ -189,7 +189,7 @@ mod tests {
 
         let result = manager.resolve_instance_name(None);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "testproject-dev");
+        assert_eq!(result.unwrap(), "testproject");
     }
 
     // Note: Tests requiring actual Tart command execution are not included

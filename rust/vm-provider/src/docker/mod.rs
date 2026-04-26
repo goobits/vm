@@ -32,11 +32,15 @@ use vm_core::command_stream::is_tool_installed;
 
 pub fn validate_docker_environment(executable: &str) -> Result<()> {
     // Check 1: Docker installed
-    if !Command::new(executable)
+    let version_output = Command::new(executable)
         .arg("--version")
-        .status()?
-        .success()
-    {
+        .output()
+        .map_err(|_| {
+            VmError::DockerNotInstalled(
+                "Install from: https://docs.docker.com/get-docker/".to_string(),
+            )
+        })?;
+    if !version_output.status.success() {
         return Err(VmError::DockerNotInstalled(
             "Install from: https://docs.docker.com/get-docker/".to_string(),
         ));
@@ -716,5 +720,41 @@ impl TempProvider for DockerProvider {
     fn is_container_running(&self, container_name: &str) -> Result<bool> {
         let lifecycle = self.lifecycle_ops();
         lifecycle.is_container_running(container_name)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_docker_environment;
+    use std::io::Write;
+
+    #[cfg(unix)]
+    #[test]
+    fn validate_docker_environment_does_not_print_version_output() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let docker = dir.path().join("docker");
+        let mut file = std::fs::File::create(&docker).unwrap();
+        writeln!(
+            file,
+            r#"#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "Docker version should stay captured"
+  exit 0
+fi
+if [ "$1" = "ps" ]; then
+  exit 0
+fi
+exit 1
+"#
+        )
+        .unwrap();
+        drop(file);
+        let mut permissions = std::fs::metadata(&docker).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&docker, permissions).unwrap();
+
+        validate_docker_environment(docker.to_str().unwrap()).unwrap();
     }
 }

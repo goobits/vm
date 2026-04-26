@@ -563,12 +563,6 @@ cargo install {}"#,
             return Ok(());
         };
 
-        if Self::uses_prebaked_vibe_tart_base(config) {
-            info!(
-                "Standard Tart vibe base detected; verifying AI CLIs and only repairing missing tools"
-            );
-        }
-
         if ai_tools.is_claude_enabled() {
             self.ssh_exec(&format!(
                 r#"export PATH="{}"
@@ -621,18 +615,6 @@ fi"#,
 
         Ok(())
     }
-
-    fn uses_prebaked_vibe_tart_base(config: &VmConfig) -> bool {
-        matches!(
-            config
-                .vm
-                .as_ref()
-                .and_then(|vm| vm.get_box_spec()),
-            Some(BoxSpec::String(ref name))
-                if name == "vibe-tart-base" || name == "vibe-tart-linux-base"
-        )
-    }
-
     fn install_docker_if_requested(&self, config: &VmConfig) -> Result<()> {
         if !config
             .tart
@@ -1134,34 +1116,6 @@ mod tests {
     }
 
     #[test]
-    fn uses_vibe_tart_base_detects_standard_base() {
-        let config = VmConfig {
-            vm: Some(VmSettings {
-                r#box: Some(BoxSpec::String("vibe-tart-base".to_string())),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-
-        assert!(TartProvisioner::uses_prebaked_vibe_tart_base(&config));
-    }
-
-    #[test]
-    fn uses_vibe_tart_base_ignores_other_boxes() {
-        let config = VmConfig {
-            vm: Some(VmSettings {
-                r#box: Some(BoxSpec::String(
-                    "ghcr.io/cirruslabs/ubuntu:latest".to_string(),
-                )),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-
-        assert!(!TartProvisioner::uses_prebaked_vibe_tart_base(&config));
-    }
-
-    #[test]
     fn guest_os_detects_vibe_tart_base_as_macos() {
         let config = VmConfig {
             vm: Some(VmSettings {
@@ -1245,6 +1199,7 @@ mod tests {
 
         assert!(rendered.contains("PROMPT='🍎 "));
         assert!(rendered.contains("alias gs='git status'"));
-        assert!(rendered.contains("cd /Users/admin/workspace"));
+        assert!(rendered
+            .contains("VM_PROJECT_PATH=\"$(vm_b64decode 'L1VzZXJzL2FkbWluL3dvcmtzcGFjZQ==')\""));
     }
 }
