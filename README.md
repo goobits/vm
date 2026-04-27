@@ -228,13 +228,16 @@ vm registry remove my-pkg   # Remove a package from the registry
 
 ### Core Commands
 ```bash
-vm start                    # Create/configure/start and SSH
-vm stop                  # Stop a running VM
-vm destroy               # Destroy a VM
-vm status                # List all VMs (or `vm status <vm>` for detail)
-vm ssh                   # Connect to a VM via SSH
-vm exec <command>        # Execute a command inside a VM
-vm logs                  # View VM logs
+vm create [docker|tart]     # Create/configure an environment
+vm start [docker|tart]      # Create/configure/start and open a shell
+vm use <docker|tart>        # Save the project default provider
+vm stop [docker|tart]       # Stop an environment
+vm destroy [docker|tart]    # Destroy an environment
+vm status [docker|tart]     # List environments or inspect one provider
+vm ssh [docker|tart]        # Connect to an environment
+vm exec <command>           # Execute a command inside the default environment
+vm exec --provider tart pwd # Execute a command inside this project's Tart VM
+vm logs [docker|tart]       # View environment logs
 ```
 
 ### Configuration (`vm config`)
