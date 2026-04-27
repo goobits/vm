@@ -14,7 +14,9 @@ use duct::cmd;
 use serde::Deserialize;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::process::{Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
 use vm_cli::msg;
 use vm_config::config::VmConfig;
@@ -88,11 +90,54 @@ impl TartProvider {
     }
 
     fn is_guest_agent_ready(&self, instance_name: &str) -> bool {
-        cmd!("tart", "exec", instance_name, "echo", "ready")
-            .stderr_null()
-            .stdout_null()
-            .run()
-            .is_ok()
+        self.run_guest_agent_probe(instance_name, Duration::from_secs(3))
+    }
+
+    fn run_guest_agent_probe(&self, instance_name: &str, timeout: Duration) -> bool {
+        let Ok(mut child) = Command::new("tart")
+            .args(["exec", instance_name, "echo", "ready"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+        else {
+            return false;
+        };
+
+        let deadline = Instant::now() + timeout;
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => return status.success(),
+                Ok(None) if Instant::now() < deadline => {
+                    thread::sleep(Duration::from_millis(100));
+                }
+                Ok(None) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return false;
+                }
+                Err(_) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return false;
+                }
+            }
+        }
+    }
+
+    fn wait_for_guest_agent_ready(&self, instance_name: &str, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if self.run_guest_agent_probe(instance_name, Duration::from_secs(3)) {
+                return true;
+            }
+
+            if Instant::now() >= deadline {
+                return false;
+            }
+
+            thread::sleep(Duration::from_secs(1));
+        }
     }
 
     fn collect_metrics(&self, instance: &str) -> Result<CollectedMetrics> {
@@ -530,8 +575,6 @@ impl Provider for TartProvider {
     }
 
     fn ssh(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {
-        use duct::cmd;
-
         let instance_name = self.resolve_instance_name(container)?;
         let state = self.get_instance_state(&instance_name)?;
         match state.as_deref() {
@@ -544,6 +587,18 @@ impl Provider for TartProvider {
             None => {
                 return Err(VmError::Provider(format!(
                     "No such object: Tart VM {instance_name}"
+                )));
+            }
+        }
+
+        if !self.is_guest_agent_ready(&instance_name) {
+            if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
+                vm_println!("⏳ Waiting for Tart guest agent...");
+            }
+
+            if !self.wait_for_guest_agent_ready(&instance_name, Duration::from_secs(45)) {
+                return Err(VmError::Provider(format!(
+                    "Tart VM '{instance_name}' is running, but the guest agent is not ready. Try again in a few seconds or run `tart restart {instance_name}`."
                 )));
             }
         }
@@ -589,26 +644,18 @@ impl Provider for TartProvider {
             shell = shell
         );
 
-        cmd!(
-            "tart",
-            "exec",
-            "-i",
-            "-t",
-            &instance_name,
-            "sh",
-            "-c",
-            &ssh_command
-        )
-        .unchecked()
-        .run()
-        .map_err(|e| VmError::Provider(format!("Exec failed: {}", e)))
-        .and_then(|output| match output.status.code() {
+        let status = Command::new("tart")
+            .args(["exec", "-i", "-t", &instance_name, "sh", "-c", &ssh_command])
+            .status()
+            .map_err(|e| VmError::Provider(format!("Exec failed: {e}")))?;
+
+        match status.code() {
             Some(0) | Some(130) => Ok(()),
             Some(code) => Err(VmError::Provider(format!("Shell exited with code {code}"))),
             None => Err(VmError::Provider(
                 "Shell terminated unexpectedly".to_string(),
             )),
-        })?;
+        }?;
 
         Ok(())
     }
