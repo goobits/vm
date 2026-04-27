@@ -225,6 +225,8 @@ fn handle_ssh_start_prompt(
         return Ok(None);
     }
 
+    wait_for_provider_running(provider.as_ref(), container);
+
     vm_println!("{}", msg!(MESSAGES.vm.ssh_reconnecting, name = vm_name));
 
     let retry_result = provider.ssh(container, relative_path);
@@ -238,6 +240,22 @@ fn handle_ssh_start_prompt(
     }
 
     Ok(Some(retry_result.map_err(VmError::from)))
+}
+
+fn wait_for_provider_running(provider: &dyn Provider, container: Option<&str>) {
+    use std::thread;
+    use std::time::Duration;
+
+    for _ in 0..10 {
+        if provider
+            .get_status_report(container)
+            .is_ok_and(|report| report.is_running)
+        {
+            return;
+        }
+
+        thread::sleep(Duration::from_secs(1));
+    }
 }
 
 fn connect_ssh(

@@ -521,6 +521,21 @@ impl Provider for TartProvider {
         use duct::cmd;
 
         let instance_name = self.resolve_instance_name(container)?;
+        let state = self.get_instance_state(&instance_name)?;
+        match state.as_deref() {
+            Some("running") => {}
+            Some(_) => {
+                return Err(VmError::Provider(format!(
+                    "VM {instance_name} is not running"
+                )));
+            }
+            None => {
+                return Err(VmError::Provider(format!(
+                    "No such object: Tart VM {instance_name}"
+                )));
+            }
+        }
+
         let shell = self
             .config
             .terminal

@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Docker zsh history now falls back safely if persistent history permissions are wrong, avoiding noisy lock failures on exit
+- `vm ssh tart` now detects stopped Tart VMs before opening a shell and waits briefly after starting before reconnecting
 
 ## [4.8.2] - 2026-04-24
 
