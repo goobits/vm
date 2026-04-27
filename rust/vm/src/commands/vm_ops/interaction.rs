@@ -210,6 +210,18 @@ fn handle_ssh_start_prompt(
         return Ok(None);
     }
 
+    if provider.name() == "tart" {
+        vm_println!("\n  Provider: Tart");
+        vm_println!("  Action:   Start existing Tart VM");
+        vm_println!(
+            "  Note:     This does not create or reinstall the VM. To rebuild it, run: vm destroy tart"
+        );
+        vm_println!(
+            "  Logs:     /tmp/vm-tart-{}.log",
+            sanitize_log_name(container.unwrap_or(vm_name))
+        );
+    }
+
     // Start the VM
     vm_println!("{}", msg!(MESSAGES.vm.ssh_starting, name = vm_name));
 
@@ -225,7 +237,26 @@ fn handle_ssh_start_prompt(
         return Ok(None);
     }
 
-    wait_for_provider_running(provider.as_ref(), container);
+    if provider.name() == "tart" {
+        vm_println!("⏳ Waiting for Tart VM to boot...");
+    }
+
+    if !wait_for_provider_running(provider.as_ref(), container) {
+        vm_println!(
+            "\n⚠️  '{}' did not report running before reconnect.",
+            vm_name
+        );
+        if provider.name() == "tart" {
+            vm_println!(
+                "💡 Check Tart logs: /tmp/vm-tart-{}.log",
+                sanitize_log_name(container.unwrap_or(vm_name))
+            );
+            vm_println!("💡 If this VM is stale or incomplete: vm destroy tart && vm ssh tart");
+        } else {
+            vm_println!("💡 Check status: vm status");
+        }
+        return Ok(None);
+    }
 
     vm_println!("{}", msg!(MESSAGES.vm.ssh_reconnecting, name = vm_name));
 
@@ -242,20 +273,31 @@ fn handle_ssh_start_prompt(
     Ok(Some(retry_result.map_err(VmError::from)))
 }
 
-fn wait_for_provider_running(provider: &dyn Provider, container: Option<&str>) {
+fn wait_for_provider_running(provider: &dyn Provider, container: Option<&str>) -> bool {
     use std::thread;
     use std::time::Duration;
 
-    for _ in 0..10 {
+    let attempts = if provider.name() == "tart" { 60 } else { 10 };
+
+    for _ in 0..attempts {
         if provider
             .get_status_report(container)
             .is_ok_and(|report| report.is_running)
         {
-            return;
+            return true;
         }
 
         thread::sleep(Duration::from_secs(1));
     }
+
+    false
+}
+
+fn sanitize_log_name(input: &str) -> String {
+    input
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+        .collect()
 }
 
 fn connect_ssh(
