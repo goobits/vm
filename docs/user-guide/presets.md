@@ -32,6 +32,9 @@ vm config preset vibe-tart
 # Build the Tart base once:
 vm base build vibe --provider tart
 
+# Create Tart explicitly:
+vm create tart
+
 # Start Tart by default:
 vm start
 

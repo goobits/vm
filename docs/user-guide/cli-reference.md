@@ -6,6 +6,8 @@ All `vm` commands with usage examples and expected output. Use this as a referen
 
 | Task | Command |
 |------|---------|
+| Create VM | `vm create` |
+| Create Docker or Tart VM | `vm create <docker|tart>` |
 | Create/start VM | `vm start` |
 | Create/start Tart VM | `vm start tart` |
 | Create/start Docker VM | `vm start docker` |
@@ -81,10 +83,16 @@ These flags can be used with any command.
 
 ## Core Commands
 
+### `vm create`
+Create/configure an environment without opening a shell.
+```bash
+vm create [docker|tart] [--force] [--verbose]
+```
+
 ### `vm start`
 Create/configure/start an environment and open a shell.
 ```bash
-vm start [-c <command>] [--wait]
+vm start [docker|tart] [-c <command>] [--wait]
 ```
 
 **Options:**

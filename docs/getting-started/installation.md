@@ -97,9 +97,11 @@ vm base build vibe --provider tart
 # Then in your project, make Tart the default
 vm config preset vibe-tart
 vm use tart
+vm create tart
 vm start
 
 # Docker is still available for this project
+vm create docker
 vm start docker
 
 # Validate both providers

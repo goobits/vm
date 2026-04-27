@@ -99,6 +99,8 @@ Use profiles for real variants in one `vm.yaml`, such as `dev`, `heavy`, or `gpu
 For provider switching, prefer the first-class provider flow instead:
 
 ```bash
+vm create tart
+vm create docker
 vm start tart
 vm start docker
 vm use tart
@@ -781,6 +783,10 @@ With the macOS-first `vibe-tart` preset, Tart is the project default and Docker 
 ```bash
 # Tart by default
 vm start
+
+# Create providers explicitly
+vm create tart
+vm create docker
 
 # Docker for this command
 vm start docker

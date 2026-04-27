@@ -141,6 +141,15 @@ fn print_create_target(provider: &dyn Provider, config: &VmConfig) {
     }
 }
 
+fn create_command_for_provider(provider: &dyn Provider) -> String {
+    match provider.name() {
+        "docker" => "vm create docker".to_string(),
+        "podman" => "vm create podman".to_string(),
+        "tart" => "vm create tart".to_string(),
+        _ => "vm create".to_string(),
+    }
+}
+
 /// Prompts the user to confirm if they want to refresh mounts.
 ///
 /// Returns `true` if the user confirms, `false` otherwise.
@@ -433,11 +442,17 @@ fn connect_ssh(
                             }
                         }
                     } else {
-                        vm_println!("\n💡 Create with: vm create");
+                        vm_println!(
+                            "\n💡 Create with: {}",
+                            create_command_for_provider(provider.as_ref())
+                        );
                         vm_println!("💡 List existing VMs: vm list");
                     }
                 } else {
-                    vm_println!("\n💡 Create with: vm create");
+                    vm_println!(
+                        "\n💡 Create with: {}",
+                        create_command_for_provider(provider.as_ref())
+                    );
                     vm_println!("💡 List existing VMs: vm list");
                 }
                 // Return a clean error that won't be misinterpreted by the main error handler

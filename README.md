@@ -146,6 +146,7 @@ Choose or switch providers explicitly:
 ```bash
 vm config preset vibe-tart  # Adds Tart and Docker profiles
 vm use tart                 # Save Tart as the project default
+vm create tart              # Create this project's Tart environment
 vm start docker             # Use Docker for this run
 ```
 
@@ -157,6 +158,8 @@ The essential commands you'll use daily:
 vm start                  # Create/configure/start and open a shell
 vm start tart             # Native macOS Tart session for this run
 vm start docker           # Docker session for this run
+vm create tart            # Create/configure this project's Tart environment
+vm create docker          # Create/configure this project's Docker environment
 vm use tart               # Make Tart this project's default
 vm stop                   # Stop an environment (preserves all data)
 vm stop docker            # Stop this project's Docker environment

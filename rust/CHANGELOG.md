@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Provider Switching CLI**: Use direct provider commands for the main workflow
+  - `vm create tart` or `vm create docker` creates/configures a provider-specific environment
   - `vm start tart` or `vm start docker` runs a one-off provider session from the same project
   - `vm ssh`, `vm stop`, `vm status`, `vm logs`, and `vm destroy` accept `docker`, `podman`, or `tart` as project provider selectors
   - `vm exec --provider <provider>` and `vm copy --provider <provider>` cover commands whose positional arguments are already command/path data

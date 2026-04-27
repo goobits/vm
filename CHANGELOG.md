@@ -76,8 +76,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Provider-First Runtime Selection**: Docker and Tart can now be chosen directly from the main workflow
-  - `vm start --provider tart`
-  - `vm config set provider tart|docker`
+  - `vm start tart`
+  - `vm use tart|docker`
   - Matching provider profiles are applied automatically when present
 
 - **Unified Vibe Base Workflows**: Docker and Tart now share the same base-environment commands
