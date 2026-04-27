@@ -179,7 +179,13 @@ impl<'a> LifecycleOperations<'a> {
         if build_ops.image_exists(&image_tag)? {
             vm_dbg!("Reusing cached derived image '{}'", image_tag);
         } else {
-            let base_compose_args = ComposeCommand::build_args(&compose_path, "build", &[])?;
+            let build_flags = if context.is_verbose() {
+                Vec::new()
+            } else {
+                vec!["--quiet"]
+            };
+            let base_compose_args =
+                ComposeCommand::build_args(&compose_path, "build", &build_flags)?;
 
             // Combine compose args with dynamic build args
             let mut all_args = Vec::with_capacity(base_compose_args.len() + build_args.len());
