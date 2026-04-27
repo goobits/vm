@@ -503,6 +503,10 @@ impl Provider for TartProvider {
 
     fn start(&self, container: Option<&str>) -> Result<()> {
         let vm_name = self.vm_name_with_instance(container)?;
+        if self.is_instance_running(&vm_name).unwrap_or(false) {
+            return Ok(());
+        }
+
         self.start_vm_background(&vm_name)
     }
 

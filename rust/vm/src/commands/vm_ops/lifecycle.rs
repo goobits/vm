@@ -58,13 +58,17 @@ pub async fn handle_start(
     let context = ProviderContext::with_verbose(false).with_config(global_config.clone());
     match provider.start_with_context(container, &context) {
         Ok(()) => {
+            if provider.name() == "tart" && !no_wait {
+                vm_println!("⏳ Waiting for Tart guest agent...");
+            }
+
             if provider.name() == "tart"
                 && !no_wait
                 && !wait_for_tart_running(&*provider, container)
             {
                 let log_path = format!(
                     "/tmp/vm-tart-{}.log",
-                    sanitize_log_name(container.unwrap_or("unknown"))
+                    sanitize_log_name(container.unwrap_or(vm_name))
                 );
                 let log_tail = std::fs::read_to_string(&log_path)
                     .ok()
@@ -131,7 +135,7 @@ fn wait_for_tart_running(provider: &dyn Provider, container: Option<&str>) -> bo
     use std::thread;
     use std::time::Duration;
 
-    for _ in 0..5 {
+    for _ in 0..60 {
         thread::sleep(Duration::from_secs(1));
         if let Ok(report) = provider.get_status_report(container) {
             if report.is_running {
