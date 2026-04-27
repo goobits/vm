@@ -16,7 +16,7 @@ All `vm` commands with usage examples and expected output. Use this as a referen
 | Stop Docker or Tart VM | `vm stop <docker|tart>` |
 | Connect to VM | `vm ssh` |
 | Connect to Docker or Tart VM | `vm ssh <docker|tart>` |
-| Check status | `vm status [<vm>]` |
+| Check status | `vm status [docker|tart|<container>]` |
 | Check Docker or Tart status | `vm status <docker|tart>` |
 | View logs | `vm logs [-f]` |
 | View Docker or Tart logs | `vm logs <docker|tart>` |
@@ -283,7 +283,7 @@ vm config clear
 
 ## Port Management
 
-Ports are summarized in `vm status <vm>`.
+Ports are summarized in `vm status [docker|tart|<container>]`.
 
 ### `vm tunnel create`
 Create a dynamic port forwarding tunnel without permanent configuration.

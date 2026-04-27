@@ -96,15 +96,18 @@ ports:
 
 ```bash
 # Daily workflow
-vm start       # Create/configure/start and open a shell
-vm ssh         # Reconnect later
-vm stop        # Stop VM (keeps data)
-vm start          # Resume stopped VM
-vm destroy     # Delete completely
+vm start          # Create/configure/start and open a shell
+vm start tart     # Use Tart for this run
+vm start docker   # Use Docker for this run
+vm ssh            # Reconnect later
+vm stop           # Stop VM (keeps data)
+vm destroy        # Delete completely
 
 # Quick info
-vm status      # List all VMs (or `vm status <vm>` for detail)
-vm logs          # View service logs
+vm status         # List all VMs
+vm status tart    # Inspect this project's Tart VM
+vm logs           # View service logs
+vm logs docker    # View Docker logs for this project
 ```
 
 ## Temporary VMs

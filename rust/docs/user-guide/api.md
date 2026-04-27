@@ -44,7 +44,7 @@ Returns all workspaces owned by the authenticated user.
     "provider_id": "container-abc123",
     "connection_info": {
       "container_id": "abc123",
-      "ssh_command": "vm ssh my-workspace"
+      "ssh_command": "vm ssh"
     }
   }
 ]

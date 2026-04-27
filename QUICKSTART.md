@@ -185,12 +185,12 @@ Container: a1b2c3d4e5f6
 
 #### SSH Command
 ```
-SSH: vm ssh my-project
+SSH: vm ssh
 📋 [copy button]
 ```
 - Click 📋 to copy the SSH command
 - Paste into terminal to connect
-- Uses the `vm` CLI tool
+- Uses the `vm` CLI tool from the project directory
 
 #### Connection Status Badge
 - **● Connected** (green) - Workspace is running
@@ -208,7 +208,7 @@ SSH: vm ssh my-project
 **Example workflow:**
 1. Workspace is running
 2. Click 📋 next to SSH command
-3. Paste into terminal: `vm ssh my-project`
+3. Paste into terminal from the project directory: `vm ssh`
 4. You're now inside the container
 5. Or click "Open in Claude Code" for IDE access
 
@@ -234,7 +234,7 @@ The UI automatically refreshes to keep data current:
 4. Watch **Activity** tab to see progress
 5. Once status is "Connected":
    - Click 📋 next to SSH command
-   - Run `vm ssh my-app` in terminal
+   - Run `vm ssh` from the project directory
    - You're in!
 
 ### Workflow 2: Snapshot Before Major Changes

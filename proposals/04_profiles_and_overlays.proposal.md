@@ -1,11 +1,11 @@
 # Proposal 04: VM Configuration Profiles
 
-**Status:** Draft
+**Status:** Implemented
 **Date:** 2026-01-11
 **Objective:** Enable multiple runtime configurations (e.g., `docker` vs `tart`, `dev` vs `ci`) within a single `vm.yaml` using a DRY, inheritance-based profile system.
 
 ## TL;DR
-Introduce a `profiles` key in `vm.yaml`. Users define a **base configuration** (shared settings) and named **profiles** (overrides). The CLI merges specific profiles over the base at runtime via `vm start --profile <name>`.
+Introduce a `profiles` key in `vm.yaml`. Users define a **base configuration** (shared settings) and named **profiles** (overrides). Provider switching is now first-class through `vm use <docker|tart>` and provider targets such as `vm start tart`.
 
 ## Tree Diff (Implementation Scope)
 
@@ -17,7 +17,7 @@ Introduce a `profiles` key in `vm.yaml`. Users define a **base configuration** (
  │   ├── lib.rs                  # + struct VmConfig { ..., profiles: HashMap<String, Profile> }
  │   └── merge.rs                # + fn merge_profile(base: &Config, profile: &Profile) -> Config
  ├── rust/vm-cli/src/commands/
- │   └── up.rs                   # + arg: --profile <name>
+ │   └── up.rs                   # + provider target handling
  └── docs/user-guide/
      └── configuration.md        # + Section: "Using Profiles"
 ```
@@ -48,7 +48,7 @@ profiles:
       memory: 4096
       cpus: 4
 
-  # Usage: vm start --profile tart (or -p tart)
+  # Usage: vm start tart
   tart:
     provider: tart
     vm:
@@ -73,10 +73,10 @@ profiles:
   - Primitives (e.g., `memory`): **Replace** (Profile overwrites Base).
 
 ### 3. CLI Update (`rust/vm-cli`)
-- Add `--profile, -p <NAME>` global flag.
+- Add provider targets and support `vm use <docker|tart>` for saved defaults.
 - During initialization:
   1. Load `vm.yaml`.
-  2. If `--profile` is set, look up key.
+  2. If a provider target is set, select the matching provider profile.
   3. Clone Base -> Apply Merge -> Return Final Config.
   4. If profile missing -> Error.
 
