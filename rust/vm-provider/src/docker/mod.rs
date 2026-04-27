@@ -29,6 +29,7 @@ use vm_core::error::{Result, VmError};
 use crate::{context::ProviderContext, preflight, Provider, TempProvider, VmStatusReport};
 use vm_config::config::VmConfig;
 use vm_core::command_stream::is_tool_installed;
+use vm_messages::messages::MESSAGES;
 
 pub fn validate_docker_environment(executable: &str) -> Result<()> {
     // Check 1: Docker installed
@@ -432,7 +433,9 @@ impl Provider for DockerProvider {
 
     fn provision(&self, container: Option<&str>) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
-        lifecycle.provision_existing(container)
+        lifecycle.provision_existing(container)?;
+        tracing::info!("{}", MESSAGES.vm.apply_success);
+        Ok(())
     }
 
     fn list(&self) -> Result<()> {
