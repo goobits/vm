@@ -238,14 +238,11 @@ fn handle_ssh_start_prompt(
     }
 
     if provider.name() == "tart" {
-        vm_println!("⏳ Waiting for Tart VM to boot...");
+        vm_println!("⏳ Waiting for Tart guest agent...");
     }
 
     if !wait_for_provider_running(provider.as_ref(), container) {
-        vm_println!(
-            "\n⚠️  '{}' did not report running before reconnect.",
-            vm_name
-        );
+        vm_println!("\n⚠️  '{}' did not become ready before reconnect.", vm_name);
         if provider.name() == "tart" {
             vm_println!(
                 "💡 Check Tart logs: /tmp/vm-tart-{}.log",

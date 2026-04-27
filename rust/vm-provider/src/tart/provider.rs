@@ -87,6 +87,14 @@ impl TartProvider {
         ))
     }
 
+    fn is_guest_agent_ready(&self, instance_name: &str) -> bool {
+        cmd!("tart", "exec", instance_name, "echo", "ready")
+            .stderr_null()
+            .stdout_null()
+            .run()
+            .is_ok()
+    }
+
     fn collect_metrics(&self, instance: &str) -> Result<CollectedMetrics> {
         let metrics_script = include_str!("scripts/collect_metrics.sh");
         let output = cmd!("tart", "exec", instance, "sh", "-c", metrics_script)
@@ -760,7 +768,7 @@ impl Provider for TartProvider {
             )));
         };
 
-        if state != "running" {
+        if state != "running" || !self.is_guest_agent_ready(&instance_name) {
             return Ok(VmStatusReport {
                 name: instance_name.clone(),
                 provider: "tart".into(),

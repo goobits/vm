@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docker zsh history now falls back safely if persistent history permissions are wrong, avoiding noisy lock failures on exit
 - `vm ssh tart` now detects stopped Tart VMs before opening a shell and waits briefly after starting before reconnecting
 - Tart SSH start prompts now clarify that an existing stopped VM is being started, show the Tart log path, and avoid false success when boot does not finish
+- Tart readiness now waits for the guest agent control socket, not just the VM running state
 
 ## [4.8.2] - 2026-04-24
 
