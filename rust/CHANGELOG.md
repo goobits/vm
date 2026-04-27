@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Provider Switching CLI**: Use direct provider commands for the main workflow
   - `vm start tart` or `vm start docker` runs a one-off provider session from the same project
+  - `vm ssh`, `vm stop`, `vm status`, `vm logs`, and `vm destroy` accept `docker`, `podman`, or `tart` as project provider selectors
+  - `vm exec --provider <provider>` and `vm copy --provider <provider>` cover commands whose positional arguments are already command/path data
   - `vm use tart` or `vm use docker` saves the project default and matching profile when available
   - `vm destroy tart` or `vm destroy docker` destroys the current project on a specific provider
   - Docs now reserve `--provider` for provider-scoped subcommands such as `vm base` and `vm fleet`
@@ -21,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Docker Shell History Permissions**: Docker shell entry now repairs the persistent history volume before launching `zsh`
 - **Destroy Provider Resolution**: `vm destroy` now destroys the provider that actually owns the current project instance instead of mixing Docker detection with Tart deletion
+- **Destroy Confirmation Clarity**: Destroy prompts now show the provider and use provider-specific resource labels for Docker containers and Tart VMs
 
 ## [4.8.2] - 2026-04-24
 

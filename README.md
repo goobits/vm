@@ -159,11 +159,14 @@ vm start tart             # Native macOS Tart session for this run
 vm start docker           # Docker session for this run
 vm use tart               # Make Tart this project's default
 vm stop                   # Stop an environment (preserves all data)
+vm stop docker            # Stop this project's Docker environment
 vm destroy                # Delete an environment completely
 vm destroy docker         # Delete this project's Docker environment
 vm destroy tart           # Delete this project's Tart environment
 vm ssh                    # Reconnect later
+vm ssh tart               # Connect to this project's Tart environment
 vm exec "npm install"     # Execute a command inside your environment
+vm exec --provider tart pwd # Run a command in this project's Tart environment
 ```
 
 ### Environment Management

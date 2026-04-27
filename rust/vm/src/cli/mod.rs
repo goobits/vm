@@ -607,7 +607,10 @@ pub enum Command {
     },
     /// Stop your environment
     Stop {
-        /// Container name or ID to stop (if not provided, stops current project VM gracefully)
+        /// Provider, container name, ID, or project name to stop
+        ///
+        /// Use `vm stop docker` or `vm stop tart` to stop the current project
+        /// on a specific provider.
         container: Option<String>,
     },
     /// Run health checks and diagnostics
@@ -658,7 +661,10 @@ pub enum Command {
 
     /// Check environment status (defaults to listing all environments)
     Status {
-        /// Container name, ID, or project name
+        /// Provider, container name, ID, or project name
+        ///
+        /// Use `vm status docker` or `vm status tart` to inspect the current
+        /// project on a specific provider.
         #[arg()]
         container: Option<String>,
     },
@@ -669,7 +675,10 @@ pub enum Command {
     },
     /// Jump into your environment
     Ssh {
-        /// Container name, ID, or project name to connect to
+        /// Provider, container name, ID, or project name to connect to
+        ///
+        /// Use `vm ssh docker` or `vm ssh tart` to connect to the current
+        /// project on a specific provider.
         #[arg()]
         container: Option<String>,
         /// Directory path to start shell in
@@ -692,13 +701,19 @@ pub enum Command {
         /// Container name, ID, or project name
         #[arg(long)]
         container: Option<String>,
+        /// Provider to use for this command
+        #[arg(long, value_parser = ["docker", "podman", "tart"])]
+        provider: Option<String>,
         /// Command to execute inside VM
         #[arg(required = true, num_args = 1..)]
         command: Vec<String>,
     },
     /// View environment logs
     Logs {
-        /// Container name, ID, or project name
+        /// Provider, container name, ID, or project name
+        ///
+        /// Use `vm logs docker` or `vm logs tart` to view logs for the current
+        /// project on a specific provider.
         #[arg()]
         container: Option<String>,
         /// Follow log output (live stream)
@@ -713,6 +728,9 @@ pub enum Command {
     },
     /// Copy files to/from your environment
     Copy {
+        /// Provider to use for this copy operation
+        #[arg(long, value_parser = ["docker", "podman", "tart"])]
+        provider: Option<String>,
         /// Source path (local file or <container>:/path)
         source: String,
         /// Destination path (local file or <container>:/path)
@@ -942,11 +960,52 @@ mod tests {
             "/root",
         ]);
         match args.command {
-            Command::Exec { container, command } => {
+            Command::Exec {
+                container,
+                provider,
+                command,
+            } => {
                 assert_eq!(container, Some("my-vm".to_string()));
+                assert_eq!(provider, None);
                 assert_eq!(command, vec!["ls", "-la", "/root"]);
             }
             _ => panic!("Expected Command::Exec"),
+        }
+    }
+
+    #[test]
+    fn test_exec_provider_command_parsing() {
+        let args = Args::parse_from(["vm", "exec", "--provider", "tart", "--", "pwd"]);
+        match args.command {
+            Command::Exec {
+                container,
+                provider,
+                command,
+            } => {
+                assert_eq!(container, None);
+                assert_eq!(provider, Some("tart".to_string()));
+                assert_eq!(command, vec!["pwd"]);
+            }
+            _ => panic!("Expected Command::Exec"),
+        }
+    }
+
+    #[test]
+    fn test_copy_provider_command_parsing() {
+        let args = Args::parse_from(["vm", "copy", "--provider", "docker", "a.txt", "/tmp/a.txt"]);
+        match args.command {
+            Command::Copy {
+                provider,
+                source,
+                destination,
+                all_vms,
+            } => {
+                assert_eq!(provider, Some("docker".to_string()));
+                assert_eq!(source, "a.txt");
+                assert_eq!(destination, "/tmp/a.txt");
+                assert!(!all_vms);
+            }
+            _ => panic!("Expected Command::Copy"),
         }
     }
 

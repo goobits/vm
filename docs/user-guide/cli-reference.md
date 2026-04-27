@@ -11,14 +11,20 @@ All `vm` commands with usage examples and expected output. Use this as a referen
 | Create/start Docker VM | `vm start docker` |
 | Set project default provider | `vm use <docker|tart>` |
 | Stop VM | `vm stop` |
+| Stop Docker or Tart VM | `vm stop <docker|tart>` |
 | Connect to VM | `vm ssh` |
+| Connect to Docker or Tart VM | `vm ssh <docker|tart>` |
 | Check status | `vm status [<vm>]` |
+| Check Docker or Tart status | `vm status <docker|tart>` |
 | View logs | `vm logs [-f]` |
+| View Docker or Tart logs | `vm logs <docker|tart>` |
 | Wait for services | `vm start --wait` |
 | Destroy VM | `vm destroy` |
 | Destroy Docker VM | `vm destroy docker` |
 | Destroy Tart VM | `vm destroy tart` |
 | Run command | `vm exec <command>` |
+| Run command on provider | `vm exec --provider <docker|tart> <command>` |
+| Copy with provider | `vm copy --provider <docker|tart> <src> <dest>` |
 | Fleet list | `vm fleet list` |
 | **Snapshots** | |
 | Create snapshot | `vm snapshot create <name>` |
@@ -88,13 +94,13 @@ vm start [-c <command>] [--wait]
 ### `vm stop`
 Stop a running VM.
 ```bash
-vm stop [<container>]
+vm stop [docker|tart|<container>]
 ```
 
 ### `vm status`
 List all VMs, or show details for a single VM.
 ```bash
-vm status [<container>]
+vm status [docker|tart|<container>]
 ```
 
 ### `vm destroy`
@@ -106,13 +112,14 @@ vm destroy [docker|tart] [--no-backup] [--force] [--remove-services]
 ### `vm ssh`
 Connect to a VM via SSH.
 ```bash
-vm ssh
+vm ssh [docker|tart|<container>]
 ```
 
 ### `vm exec`
 Execute a command inside a VM.
 ```bash
 vm exec <command>
+vm exec --provider tart <command>
 ```
 
 ### `vm logs`
@@ -121,6 +128,7 @@ View and follow logs from VM containers and services.
 **Basic usage**:
 ```bash
 vm logs              # Show last 50 lines of dev container
+vm logs tart         # Show logs for this project's Tart VM
 vm logs -n 100       # Show last 100 lines
 ```
 
@@ -194,6 +202,9 @@ Copy files to/from a VM.
 ```bash
 # Copy file to VM
 vm copy /local/file.txt /remote/path/file.txt
+
+# Copy file to this project's Tart VM
+vm copy --provider tart /local/file.txt /remote/path/file.txt
 
 # Copy file from VM (prefix with container name)
 vm copy my-vm:/remote/file.txt /local/file.txt

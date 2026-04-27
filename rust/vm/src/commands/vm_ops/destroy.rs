@@ -143,19 +143,24 @@ pub async fn handle_destroy(
             vm_println!();
         }
 
-        vm_println!("{}", msg!(MESSAGES.vm.destroy_confirm, name = vm_name));
-        vm_println!(
-            "{}",
-            msg!(
-                MESSAGES.vm.destroy_info_block,
-                status = if is_running {
-                    MESSAGES.common.status_running
-                } else {
-                    MESSAGES.common.status_stopped
-                },
-                container = &target_container
-            )
-        );
+        let provider_name = provider_display_name(provider.as_ref());
+        let resource_label = provider_resource_label(provider.as_ref());
+        let destroyed_items = provider_destroyed_items(provider.as_ref());
+        let status = if is_running {
+            MESSAGES.common.status_running
+        } else {
+            MESSAGES.common.status_stopped
+        };
+
+        vm_println!("🗑️ Destroy {} VM '{}'?\n", provider_name, vm_name);
+        vm_println!("  Provider:   {}", provider_name);
+        vm_println!("  Status:     {}", status);
+        vm_println!("  {}:  {}", resource_label, target_container);
+        vm_println!();
+        vm_println!("⚠️  This will permanently delete:");
+        vm_println!("{}", destroyed_items);
+        vm_println!();
+
         let options = &[
             "Destroy and preserve services",
             "Destroy and remove services",
@@ -239,6 +244,31 @@ fn container_runtime(provider: &dyn Provider) -> Option<&str> {
         "docker" => Some("docker"),
         "podman" => Some("podman"),
         _ => None,
+    }
+}
+
+fn provider_display_name(provider: &dyn Provider) -> &'static str {
+    match provider.name() {
+        "docker" => "Docker",
+        "podman" => "Podman",
+        "tart" => "Tart",
+        _ => "Provider",
+    }
+}
+
+fn provider_resource_label(provider: &dyn Provider) -> &'static str {
+    match provider.name() {
+        "docker" | "podman" => "Container",
+        "tart" => "VM",
+        _ => "Resource",
+    }
+}
+
+fn provider_destroyed_items(provider: &dyn Provider) -> &'static str {
+    match provider.name() {
+        "docker" | "podman" => "  • Container and all data\n  • Docker image and build cache",
+        "tart" => "  • Tart VM and all data",
+        _ => "  • Provider resource and all data",
     }
 }
 

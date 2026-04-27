@@ -209,9 +209,12 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
             Ok(())
         }
         Command::Exec {
-            container, command, ..
+            container,
+            provider,
+            command,
         } => {
-            let app_config = AppConfig::load(args.config.clone(), args.profile.clone(), None)?;
+            let app_config =
+                AppConfig::load(args.config.clone(), args.profile.clone(), provider.clone())?;
             let project_name = app_config
                 .vm
                 .project
@@ -240,13 +243,19 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
         return vm_ops::handle_list_enhanced(None);
     }
 
+    let provider_override = provider_override_from_command(&args.command);
+
     // Load configuration
     debug!(
-        "Loading configuration: config_file={:?}, profile={:?}",
-        args.config, args.profile
+        "Loading configuration: config_file={:?}, profile={:?}, provider_override={:?}",
+        args.config, args.profile, provider_override
     );
 
-    let app_config = match AppConfig::load(args.config.clone(), args.profile.clone(), None) {
+    let app_config = match AppConfig::load(
+        args.config.clone(),
+        args.profile.clone(),
+        provider_override.clone(),
+    ) {
         Ok(config) => config,
         Err(e) => {
             let error_str = e.to_string();
@@ -359,6 +368,7 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             .await
         }
         Command::Stop { container } => {
+            let container = instance_arg(container);
             vm_ops::handle_stop(
                 provider,
                 container.as_deref(),
@@ -389,6 +399,7 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             preserve_services,
             remove_services,
         } => {
+            let container = instance_arg(container);
             let effective_preserve_services = preserve_services && !remove_services;
             vm_ops::handle_destroy_enhanced(
                 provider,
@@ -410,21 +421,27 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             command,
             force_refresh,
             no_refresh,
-        } => vm_ops::handle_ssh(
-            provider,
-            container.as_deref(),
-            path,
-            command.map(|c| vec!["/bin/bash".to_string(), "-c".to_string(), c]),
-            config,
-            force_refresh,
-            no_refresh,
-        ),
-        Command::Status { container } => vm_ops::handle_status(
-            provider,
-            container.as_deref(),
-            config,
-            global_config.clone(),
-        ),
+        } => {
+            let container = instance_arg(container);
+            vm_ops::handle_ssh(
+                provider,
+                container.as_deref(),
+                path,
+                command.map(|c| vec!["/bin/bash".to_string(), "-c".to_string(), c]),
+                config,
+                force_refresh,
+                no_refresh,
+            )
+        }
+        Command::Status { container } => {
+            let container = instance_arg(container);
+            vm_ops::handle_status(
+                provider,
+                container.as_deref(),
+                config,
+                global_config.clone(),
+            )
+        }
         Command::Tunnel { command } => match command {
             TunnelSubcommand::Create { mapping, container } => tunnel::handle_tunnel(
                 provider,
@@ -452,26 +469,30 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
                 global_config.clone(),
             ),
         },
-        Command::Exec { container, command } => {
-            vm_ops::handle_exec(provider, container.as_deref(), command, config.clone())
-        }
+        Command::Exec {
+            container, command, ..
+        } => vm_ops::handle_exec(provider, container.as_deref(), command, config.clone()),
         Command::Logs {
             container,
             follow,
             tail,
             service,
-        } => vm_ops::handle_logs(
-            provider,
-            container.as_deref(),
-            config.clone(),
-            follow,
-            tail,
-            service.as_deref(),
-        ),
+        } => {
+            let container = instance_arg(container);
+            vm_ops::handle_logs(
+                provider,
+                container.as_deref(),
+                config.clone(),
+                follow,
+                tail,
+                service.as_deref(),
+            )
+        }
         Command::Copy {
             source,
             destination,
             all_vms,
+            ..
         } => vm_ops::handle_copy(provider, &source, &destination, all_vms, config.clone()),
         cmd => {
             vm_error!(
@@ -486,6 +507,41 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
     };
 
     result
+}
+
+fn is_provider_selector(value: &str) -> bool {
+    matches!(value, "docker" | "podman" | "tart")
+}
+
+fn provider_override_from_command(command: &Command) -> Option<String> {
+    match command {
+        Command::Stop { container }
+        | Command::Ssh { container, .. }
+        | Command::Status { container }
+        | Command::Logs { container, .. } => container
+            .as_deref()
+            .filter(|value| is_provider_selector(value))
+            .map(ToString::to_string),
+        Command::Exec { provider, .. } | Command::Copy { provider, .. } => provider.clone(),
+        Command::Destroy {
+            container,
+            all,
+            provider,
+            pattern,
+            ..
+        } if !all && provider.is_none() && pattern.is_none() => container
+            .as_deref()
+            .filter(|value| is_provider_selector(value))
+            .map(ToString::to_string),
+        _ => None,
+    }
+}
+
+fn instance_arg(value: Option<String>) -> Option<String> {
+    match value {
+        Some(value) if is_provider_selector(&value) => None,
+        value => value,
+    }
 }
 
 fn handle_plugin_command(command: &PluginSubcommand) -> VmResult<()> {
