@@ -23,14 +23,11 @@ vm base build vibe --provider docker
 ### vibe-tart (Mac users)
 Native macOS Tart VM on Apple Silicon with Docker available as a profile
 - Default: Tart with `vibe-tart-base`
-- Docker: available with `vm start --provider docker`
-- Use this when you want a real macOS guest
+- Docker: available with `vm start docker`
+- `vm use tart` and `vm use docker` switch the saved project default
 
 ```bash
 vm config preset vibe-tart
-
-# Rebuild the Docker base when needed:
-vm base build vibe --provider docker
 
 # Build the Tart base once:
 vm base build vibe --provider tart
@@ -39,7 +36,10 @@ vm base build vibe --provider tart
 vm start
 
 # Use Docker from the same repo:
-vm start --provider docker
+vm start docker
+
+# Make Docker the saved default:
+vm use docker
 
 # Validate both providers from the same repo:
 vm base validate vibe

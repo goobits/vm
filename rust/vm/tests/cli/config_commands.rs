@@ -508,6 +508,60 @@ provider: docker
     }
 
     #[test]
+    fn test_use_provider_updates_provider_and_default_profile() -> Result<()> {
+        let fixture = CliTestFixture::new()?;
+
+        fs::write(
+            fixture.test_dir.join("vm.yaml"),
+            r#"version: "2.0"
+preset: vibe-tart
+provider: docker
+default_profile: docker
+profiles:
+  docker:
+    provider: docker
+  tart:
+    provider: tart
+"#,
+        )?;
+
+        let output = fixture.run_vm_command(&["use", "tart"])?;
+        assert!(
+            output.status.success(),
+            "Failed to switch provider: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let config_content = fixture.read_file("vm.yaml")?;
+        assert!(config_content.contains("provider: tart"));
+        assert!(config_content.contains("default_profile: tart"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_use_provider_requires_matching_profile_for_tart() -> Result<()> {
+        let fixture = CliTestFixture::new()?;
+
+        fs::write(
+            fixture.test_dir.join("vm.yaml"),
+            r#"version: "2.0"
+preset: vibe
+provider: docker
+"#,
+        )?;
+
+        let output = fixture.run_vm_command(&["use", "tart"])?;
+        assert!(!output.status.success());
+
+        let stderr = String::from_utf8(output.stderr)?;
+        assert!(stderr.contains("Cannot switch to provider 'tart'"));
+        assert!(stderr.contains("vm config preset vibe-tart"));
+
+        Ok(())
+    }
+
+    #[test]
     fn test_config_error_handling() -> Result<()> {
         let fixture = CliTestFixture::new()?;
 

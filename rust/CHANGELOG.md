@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.8.3] - 2026-04-26
+
+### Changed
+
+- **Provider Switching CLI**: Use direct provider commands for the main workflow
+  - `vm start tart` or `vm start docker` runs a one-off provider session from the same project
+  - `vm use tart` or `vm use docker` saves the project default and matching profile when available
+  - `vm destroy tart` or `vm destroy docker` destroys the current project on a specific provider
+  - Docs now reserve `--provider` for provider-scoped subcommands such as `vm base` and `vm fleet`
+
+### Fixed
+
+- **Docker Shell History Permissions**: Docker shell entry now repairs the persistent history volume before launching `zsh`
+- **Destroy Provider Resolution**: `vm destroy` now destroys the provider that actually owns the current project instance instead of mixing Docker detection with Tart deletion
+
 ## [4.8.2] - 2026-04-24
 
 ### Fixed
@@ -59,8 +74,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Provider-First Runtime Selection**: Choose Docker or Tart directly from the main CLI flow
-  - `vm start --provider tart` for one-off Tart usage from the same project
-  - `vm config set provider tart|docker` to persist the project default provider
+  - One-off Tart usage from the same project
+  - Persisting the project default provider
   - Provider selection now applies the matching provider profile automatically when available
 
 - **Unified Vibe Base Workflows**: Docker and Tart now use the same base-environment command model

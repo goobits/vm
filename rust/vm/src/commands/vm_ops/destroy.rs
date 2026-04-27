@@ -15,7 +15,7 @@ use vm_cli::msg;
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::{vm_error, vm_println};
 use vm_messages::messages::MESSAGES;
-use vm_provider::{InstanceInfo, Provider, ProviderContext};
+use vm_provider::{get_provider, InstanceInfo, Provider, ProviderContext};
 
 use super::helpers::unregister_vm_services_helper;
 use super::targets::{get_all_instances, get_instances_from_provider, match_pattern};
@@ -58,14 +58,15 @@ pub async fn handle_destroy(
         .map(|s| s.as_str())
         .unwrap_or("VM");
 
-    let config_container_name = format!("{vm_name}-dev");
-
-    // Use provided container name if given, otherwise use config-derived name
-    let target_container = if let Some(container_name) = container {
-        container_name.to_string()
+    let fallback_container_name = if provider.name() == "tart" {
+        vm_name.to_string()
     } else {
-        config_container_name.clone()
+        format!("{vm_name}-dev")
     };
+
+    let target_container = provider
+        .resolve_instance_name(container)
+        .unwrap_or_else(|_| container.unwrap_or(&fallback_container_name).to_string());
 
     debug!(
         "Destroying VM: target_container='{}', provider='{}', force={}",
@@ -73,23 +74,26 @@ pub async fn handle_destroy(
         provider.name(),
         force
     );
-    let executable = provider_runtime(provider.as_ref());
-
-    // Check if container exists before showing confirmation
-    let container_exists = std::process::Command::new(executable)
-        .args(["inspect", &target_container])
-        .output()
-        .ok()
-        .map(|output| output.status.success())
-        .unwrap_or(false);
+    // Check if the provider owns the target before showing confirmation.
+    // This keeps Docker/Tart behavior aligned and avoids Docker-only probes.
+    let container_exists = provider
+        .list_instances()
+        .map(|instances| {
+            instances
+                .iter()
+                .any(|instance| instance.name == target_container)
+        })
+        .unwrap_or_else(|_| provider.status(container).is_ok());
 
     if !container_exists {
         vm_println!("{}", MESSAGES.vm.destroy_cleanup_already_removed);
 
-        // Clean up images even if container doesn't exist
-        let _ = std::process::Command::new(executable)
-            .args(["image", "rm", "-f", &format!("{vm_name}-image")])
-            .output();
+        // Clean up Docker/Podman images even if the container is already gone.
+        if let Some(executable) = container_runtime(provider.as_ref()) {
+            let _ = std::process::Command::new(executable)
+                .args(["image", "rm", "-f", &format!("{vm_name}-image")])
+                .output();
+        }
 
         unregister_vm_services_helper(&target_container, &global_config).await?;
 
@@ -230,10 +234,11 @@ pub async fn handle_destroy(
     }
 }
 
-fn provider_runtime(provider: &dyn Provider) -> &str {
+fn container_runtime(provider: &dyn Provider) -> Option<&str> {
     match provider.name() {
-        "podman" => "podman",
-        _ => "docker",
+        "docker" => Some("docker"),
+        "podman" => Some("podman"),
+        _ => None,
     }
 }
 
@@ -259,10 +264,12 @@ pub async fn handle_destroy_enhanced(
         return handle_cross_provider_destroy(*all, provider_filter, pattern, *force);
     }
 
-    // Single instance destroy (existing behavior)
+    let (provider, container) = resolve_single_destroy_target(provider, container, &config);
+
+    // Single instance destroy
     handle_destroy(
         provider,
-        container,
+        container.as_deref(),
         config,
         global_config,
         *force,
@@ -270,6 +277,67 @@ pub async fn handle_destroy_enhanced(
         preserve_services,
     )
     .await
+}
+
+fn is_provider_name(value: &str) -> bool {
+    matches!(value, "docker" | "podman" | "tart")
+}
+
+fn provider_for_name(provider_name: &str, config: &VmConfig) -> VmResult<Box<dyn Provider>> {
+    let mut provider_config = config.clone();
+    provider_config.provider = Some(provider_name.to_string());
+    get_provider(provider_config).map_err(VmError::from)
+}
+
+fn project_instance_matches(instance: &InstanceInfo, project_name: &str) -> bool {
+    instance.project.as_deref() == Some(project_name)
+        || instance.name == project_name
+        || instance.name == format!("{project_name}-dev")
+}
+
+fn resolve_project_provider(current_provider: &str, config: &VmConfig) -> Option<String> {
+    let project_name = config.project.as_ref().and_then(|p| p.name.as_deref())?;
+
+    let instances = get_all_instances().ok()?;
+    let matches: Vec<_> = instances
+        .into_iter()
+        .filter(|instance| project_instance_matches(instance, project_name))
+        .collect();
+
+    matches
+        .iter()
+        .find(|instance| instance.provider == current_provider)
+        .or_else(|| {
+            matches
+                .iter()
+                .find(|instance| instance.status.to_lowercase().contains("running"))
+        })
+        .or_else(|| matches.first())
+        .map(|instance| instance.provider.clone())
+}
+
+fn resolve_single_destroy_target(
+    provider: Box<dyn Provider>,
+    container: Option<&str>,
+    config: &VmConfig,
+) -> (Box<dyn Provider>, Option<String>) {
+    if let Some(provider_name) = container.filter(|value| is_provider_name(value)) {
+        if let Ok(provider) = provider_for_name(provider_name, config) {
+            return (provider, None);
+        }
+    }
+
+    if container.is_none() {
+        if let Some(provider_name) = resolve_project_provider(provider.name(), config) {
+            if provider_name != provider.name() {
+                if let Ok(provider) = provider_for_name(&provider_name, config) {
+                    return (provider, None);
+                }
+            }
+        }
+    }
+
+    (provider, container.map(ToString::to_string))
 }
 
 /// Handle destroying instances across providers

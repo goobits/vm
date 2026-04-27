@@ -122,7 +122,7 @@ vm:
   memory: 4096
   cpus: 2
 
-provider: docker  # or vagrant for full isolation
+provider: docker  # or tart on Apple Silicon
 
 project:
   name: my-project
@@ -142,17 +142,11 @@ cd my-django-api && vm start    # → Python + PostgreSQL + Redis
 cd fullstack-app && vm start    # → Multiple presets combined
 ```
 
-Choose your provider explicitly:
-```yaml
-# vm.yaml for a Tart macOS VM
-vm:
-  box: vibe-tart-base
-  memory: 16384
-
-provider: tart
-
-project:
-  name: my-project
+Choose or switch providers explicitly:
+```bash
+vm config preset vibe-tart  # Adds Tart and Docker profiles
+vm use tart                 # Save Tart as the project default
+vm start docker             # Use Docker for this run
 ```
 
 ## 🎮 Commands
@@ -161,10 +155,13 @@ project:
 The essential commands you'll use daily:
 ```bash
 vm start                  # Create/configure/start and open a shell
-vm start --provider tart  # Native macOS Tart session
-vm start --provider docker # Docker session
+vm start tart             # Native macOS Tart session for this run
+vm start docker           # Docker session for this run
+vm use tart               # Make Tart this project's default
 vm stop                   # Stop an environment (preserves all data)
 vm destroy                # Delete an environment completely
+vm destroy docker         # Delete this project's Docker environment
+vm destroy tart           # Delete this project's Tart environment
 vm ssh                    # Reconnect later
 vm exec "npm install"     # Execute a command inside your environment
 ```

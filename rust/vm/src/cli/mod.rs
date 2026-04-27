@@ -25,10 +25,6 @@ pub struct Args {
     #[arg(long, global = true)]
     pub profile: Option<String>,
 
-    /// Select a provider directly for this command
-    #[arg(long, global = true, value_parser = ["docker", "podman", "tart"])]
-    pub provider: Option<String>,
-
     /// Show what would be executed without running
     #[arg(long, global = true)]
     pub dry_run: bool,
@@ -593,12 +589,21 @@ pub enum Command {
     /// Zero to code in one command (init → create → start → ssh)
     #[command(about = "Get from zero to coding in one command")]
     Start {
+        /// Provider to use for this start only
+        #[arg(value_parser = ["docker", "podman", "tart"])]
+        provider: Option<String>,
         /// Command to execute (if not provided, opens interactive shell)
         #[arg(short = 'c', long)]
         command: Option<String>,
         /// Wait for services to be ready before continuing
         #[arg(long)]
         wait: bool,
+    },
+    /// Set the default provider for this project
+    Use {
+        /// Provider to use by default
+        #[arg(value_parser = ["docker", "podman", "tart"])]
+        provider: String,
     },
     /// Stop your environment
     Stop {
@@ -622,7 +627,10 @@ pub enum Command {
     },
     /// Delete an environment
     Destroy {
-        /// Container name, ID, or project name to destroy
+        /// Provider, container name, ID, or project name to destroy
+        ///
+        /// Use `vm destroy docker` or `vm destroy tart` to destroy the current
+        /// project on a specific provider.
         #[arg()]
         container: Option<String>,
         /// Force destruction without confirmation
@@ -802,13 +810,43 @@ mod tests {
 
     #[test]
     fn test_start_command_parsing() {
-        let args = Args::parse_from(["vm", "start", "-c", "echo hi", "--wait"]);
+        let args = Args::parse_from(["vm", "start", "tart", "-c", "echo hi", "--wait"]);
         match args.command {
-            Command::Start { command, wait } => {
+            Command::Start {
+                provider,
+                command,
+                wait,
+            } => {
+                assert_eq!(provider, Some("tart".to_string()));
                 assert_eq!(command, Some("echo hi".to_string()));
                 assert!(wait);
             }
             _ => panic!("Expected Command::Start"),
+        }
+    }
+
+    #[test]
+    fn test_use_command_parsing() {
+        let args = Args::parse_from(["vm", "use", "docker"]);
+        match args.command {
+            Command::Use { provider } => {
+                assert_eq!(provider, "docker");
+            }
+            _ => panic!("Expected Command::Use"),
+        }
+    }
+
+    #[test]
+    fn test_destroy_provider_command_parsing() {
+        let args = Args::parse_from(["vm", "destroy", "docker", "--force"]);
+        match args.command {
+            Command::Destroy {
+                container, force, ..
+            } => {
+                assert_eq!(container, Some("docker".to_string()));
+                assert!(force);
+            }
+            _ => panic!("Expected Command::Destroy"),
         }
     }
 
@@ -914,19 +952,11 @@ mod tests {
 
     #[test]
     fn test_global_flags_parsing() {
-        let args = Args::parse_from([
-            "vm",
-            "--config",
-            "/custom/config.yaml",
-            "--provider",
-            "tart",
-            "status",
-        ]);
+        let args = Args::parse_from(["vm", "--config", "/custom/config.yaml", "status"]);
         assert_eq!(
             args.config,
             Some(std::path::PathBuf::from("/custom/config.yaml"))
         );
-        assert_eq!(args.provider, Some("tart".to_string()));
         match args.command {
             Command::Status { .. } => { /* Correct command */ }
             _ => panic!("Expected Command::Status"),

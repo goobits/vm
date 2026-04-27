@@ -5,7 +5,7 @@ use tracing::debug;
 // Import the CLI types
 use crate::cli::{Args, Command, PluginSubcommand, TunnelSubcommand};
 use vm_cli::msg;
-use vm_config::{config::BoxSpec, AppConfig};
+use vm_config::{config::BoxSpec, AppConfig, ConfigOps};
 use vm_core::{vm_error, vm_println};
 use vm_messages::messages::MESSAGES;
 use vm_provider::get_provider;
@@ -54,16 +54,24 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             }
             doctor::run_with_fix(*fix).map_err(VmError::from)
         }
-        Command::Start { command, wait } => {
+        Command::Start {
+            provider,
+            command,
+            wait,
+        } => {
             debug!("Handling start command");
             start::handle_start(
                 args.config.clone(),
                 command.clone(),
                 args.profile.clone(),
-                args.provider.clone(),
+                provider.clone(),
                 *wait,
             )
             .await
+        }
+        Command::Use { provider } => {
+            debug!("Handling use command");
+            handle_use_provider(provider)
         }
         Command::Fleet { command } => {
             debug!("Handling fleet command");
@@ -80,35 +88,29 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         Command::Registry { command } => {
             debug!("Calling registry operations");
             // For registry commands, use default GlobalConfig if no config file exists
-            let global_config = match AppConfig::load(
-                args.config.clone(),
-                args.profile.clone(),
-                args.provider.clone(),
-            ) {
-                Ok(app_config) => app_config.global,
-                Err(_) => {
-                    // Use default GlobalConfig when no config file exists
-                    // This allows registry commands to work without a vm.yaml
-                    vm_config::GlobalConfig::default()
-                }
-            };
+            let global_config =
+                match AppConfig::load(args.config.clone(), args.profile.clone(), None) {
+                    Ok(app_config) => app_config.global,
+                    Err(_) => {
+                        // Use default GlobalConfig when no config file exists
+                        // This allows registry commands to work without a vm.yaml
+                        vm_config::GlobalConfig::default()
+                    }
+                };
             registry::handle_registry_command(command, global_config).await
         }
         Command::Secrets { command } => {
             debug!("Calling secrets operations");
             // For secrets commands, use default GlobalConfig if no config file exists
-            let global_config = match AppConfig::load(
-                args.config.clone(),
-                args.profile.clone(),
-                args.provider.clone(),
-            ) {
-                Ok(app_config) => app_config.global,
-                Err(_) => {
-                    // Use default GlobalConfig when no config file exists
-                    // This allows secrets commands to work without a vm.yaml
-                    vm_config::GlobalConfig::default()
-                }
-            };
+            let global_config =
+                match AppConfig::load(args.config.clone(), args.profile.clone(), None) {
+                    Ok(app_config) => app_config.global,
+                    Err(_) => {
+                        // Use default GlobalConfig when no config file exists
+                        // This allows secrets commands to work without a vm.yaml
+                        vm_config::GlobalConfig::default()
+                    }
+                };
             secrets::handle_secrets_command(command, global_config).await
         }
         Command::Plugin { command } => {
@@ -138,6 +140,34 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
     }
 }
 
+fn handle_use_provider(provider: &str) -> VmResult<()> {
+    let config = vm_config::config::VmConfig::load(None).map_err(VmError::from)?;
+    let profiles = config.profiles.as_ref();
+    let has_profile = profiles.is_some_and(|profiles| profiles.contains_key(provider));
+
+    if !has_profile && (profiles.is_some() || provider != "docker") {
+        return Err(VmError::config(
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Profile '{provider}' not found in vm.yaml"),
+            ),
+            format!(
+                "Cannot switch to provider '{provider}'. Apply a preset that defines it first, for example: vm config preset vibe-tart"
+            ),
+        ));
+    }
+
+    ConfigOps::set("provider", &[provider.to_string()], false, false).map_err(VmError::from)?;
+
+    if has_profile {
+        ConfigOps::set("default_profile", &[provider.to_string()], false, false)
+            .map_err(VmError::from)?;
+    }
+
+    vm_println!("💡 Start with: vm start");
+    Ok(())
+}
+
 async fn handle_dry_run(args: &Args) -> VmResult<()> {
     match &args.command {
         Command::Create { .. } | Command::Stop { .. } | Command::Destroy { .. } => {
@@ -164,11 +194,7 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
         Command::Ssh {
             container, command, ..
         } => {
-            let app_config = AppConfig::load(
-                args.config.clone(),
-                args.profile.clone(),
-                args.provider.clone(),
-            )?;
+            let app_config = AppConfig::load(args.config.clone(), args.profile.clone(), None)?;
             let project_name = app_config
                 .vm
                 .project
@@ -185,11 +211,7 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
         Command::Exec {
             container, command, ..
         } => {
-            let app_config = AppConfig::load(
-                args.config.clone(),
-                args.profile.clone(),
-                args.provider.clone(),
-            )?;
+            let app_config = AppConfig::load(args.config.clone(), args.profile.clone(), None)?;
             let project_name = app_config
                 .vm
                 .project
@@ -224,11 +246,7 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
         args.config, args.profile
     );
 
-    let app_config = match AppConfig::load(
-        args.config.clone(),
-        args.profile.clone(),
-        args.provider.clone(),
-    ) {
+    let app_config = match AppConfig::load(args.config.clone(), args.profile.clone(), None) {
         Ok(config) => config,
         Err(e) => {
             let error_str = e.to_string();

@@ -7,13 +7,17 @@ All `vm` commands with usage examples and expected output. Use this as a referen
 | Task | Command |
 |------|---------|
 | Create/start VM | `vm start` |
-| Create/start Tart VM | `vm start --provider tart` |
+| Create/start Tart VM | `vm start tart` |
+| Create/start Docker VM | `vm start docker` |
+| Set project default provider | `vm use <docker|tart>` |
 | Stop VM | `vm stop` |
 | Connect to VM | `vm ssh` |
 | Check status | `vm status [<vm>]` |
 | View logs | `vm logs [-f]` |
 | Wait for services | `vm start --wait` |
 | Destroy VM | `vm destroy` |
+| Destroy Docker VM | `vm destroy docker` |
+| Destroy Tart VM | `vm destroy tart` |
 | Run command | `vm exec <command>` |
 | Fleet list | `vm fleet list` |
 | **Snapshots** | |
@@ -96,7 +100,7 @@ vm status [<container>]
 ### `vm destroy`
 Destroy a VM and all its associated resources.
 ```bash
-vm destroy [--no-backup] [--force] [--remove-services]
+vm destroy [docker|tart] [--no-backup] [--force] [--remove-services]
 ```
 
 ### `vm ssh`

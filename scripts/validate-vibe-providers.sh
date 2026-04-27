@@ -109,7 +109,7 @@ EOF
 if [[ "${PROVIDER}" == "docker" || "${PROVIDER}" == "all" ]]; then
   cat <<'EOF'
   1. Docker provider path
-     time vm start --provider docker
+     time vm start docker
 
 EOF
 fi

@@ -270,7 +270,7 @@ Next steps:
        vm start
 
   3. Docker remains available when the preset defines a Docker profile:
-       vm start --provider docker
+       vm start docker
 
 This script is the backend for:
   vm base build vibe --provider tart
@@ -284,7 +284,7 @@ Local Tart Linux base is ready: ${BASE_NAME}
 Next steps:
   1. Configure a custom Tart Linux profile in vm.yaml.
   2. Start it with:
-       vm start --provider tart
+       vm start tart
 
 This script is the backend for:
   vm base build vibe --provider tart

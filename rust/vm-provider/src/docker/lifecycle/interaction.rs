@@ -19,6 +19,31 @@ impl<'a> LifecycleOperations<'a> {
         input.replace('\'', "'\"'\"'")
     }
 
+    fn ensure_shell_history_writable(
+        &self,
+        container_name: &str,
+        user_config: &UserConfig,
+    ) -> Result<()> {
+        let home = format!("/home/{}", user_config.username);
+        let command = format!(
+            "mkdir -p {home}/.shell_history && chown -R {uid}:{gid} {home}/.shell_history && chmod 700 {home}/.shell_history",
+            home = home,
+            uid = user_config.uid,
+            gid = user_config.gid
+        );
+
+        duct::cmd(
+            self.executable,
+            &["exec", "-u", "root", container_name, "sh", "-lc", &command],
+        )
+        .stdout_null()
+        .stderr_null()
+        .run()
+        .map_err(|e| VmError::Internal(format!("Failed to prepare shell history: {e}")))?;
+
+        Ok(())
+    }
+
     #[must_use = "SSH connection results should be handled"]
     pub fn ssh_into_container(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {
         let workspace_path = self
@@ -104,6 +129,8 @@ impl<'a> LifecycleOperations<'a> {
                 "Container {container_name} is not running"
             )));
         }
+
+        self.ensure_shell_history_writable(&container_name, &user_config)?;
 
         // Container is running, proceed with exec
         let result = duct::cmd(

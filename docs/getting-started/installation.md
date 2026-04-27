@@ -94,12 +94,13 @@ tart --version
 # Build the standard macOS Tart base
 vm base build vibe --provider tart
 
-# Then in your project
+# Then in your project, make Tart the default
 vm config preset vibe-tart
+vm use tart
 vm start
 
 # Docker is still available for this project
-vm start --provider docker
+vm start docker
 
 # Validate both providers
 vm base validate vibe
