@@ -489,18 +489,23 @@
       - name: Install Claude Code CLI
         shell: |
             export HOME="/home/{{ project_user }}"
+            mkdir -p "$HOME/.local/bin"
             export PATH="$HOME/.local/bin:$PATH"
             if command -v claude >/dev/null 2>&1; then
                 echo "Claude Code CLI already installed"
             else
                 curl -fsSL https://claude.ai/install.sh | bash
+                CLAUDE_BIN="$(find "$HOME/.local" "$HOME/.claude" -type f -name claude -perm -u+x 2>/dev/null | head -n 1 || true)"
+                if [ -n "$CLAUDE_BIN" ] && [ "$CLAUDE_BIN" != "$HOME/.local/bin/claude" ]; then
+                    ln -sf "$CLAUDE_BIN" "$HOME/.local/bin/claude"
+                fi
+                command -v claude >/dev/null 2>&1
                 echo "Claude Code CLI installed"
             fi
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
         when: claude_sync_enabled
-        ignore_errors: yes
         register: claude_install
         changed_when: "'installed' in claude_install.stdout and 'already' not in claude_install.stdout"
 
@@ -516,12 +521,12 @@
                 echo "Gemini CLI already installed"
             else
                 npm install -g @google/gemini-cli
+                command -v gemini >/dev/null 2>&1
             fi
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
         when: gemini_sync_enabled
-        ignore_errors: yes
         register: gemini_install
         changed_when: "'already installed' not in gemini_install.stdout"
 
@@ -536,12 +541,12 @@
                 echo "Codex CLI already installed"
             else
                 npm install -g @openai/codex
+                command -v codex >/dev/null 2>&1
             fi
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
         when: codex_sync_enabled
-        ignore_errors: yes
         register: codex_install
         changed_when: "'already installed' not in codex_install.stdout"
 
@@ -549,7 +554,10 @@
         shell: |
             export HOME="/home/{{ project_user }}"
             export PATH="$HOME/.local/bin:$PATH"
-            command -v claude
+            if ! command -v claude; then
+                find "$HOME/.local" "$HOME/.claude" -maxdepth 4 -name claude -print 2>/dev/null || true
+                exit 1
+            fi
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
