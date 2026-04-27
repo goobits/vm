@@ -163,17 +163,10 @@ impl<'a> LifecycleOperations<'a> {
         .run();
 
         match result {
-            Ok(output) => {
-                // Handle exit codes gracefully
-                match output.status.code() {
-                    Some(0) => Ok(()),
-                    Some(130) => Ok(()), // Ctrl-C interrupt - treat as normal exit
-                    Some(code) => Err(VmError::Command(format!("Shell exited with code {code}"))),
-                    None => Err(VmError::Command(String::from(
-                        "Shell terminated unexpectedly",
-                    ))),
-                }
-            }
+            // Interactive shell exit code reflects the last command the user ran,
+            // not whether the session itself succeeded. Treat any clean return from
+            // docker exec as a normal end of session.
+            Ok(_) => Ok(()),
             Err(e) => {
                 // Check if the error is because the container is not running
                 let error_str = e.to_string();
