@@ -273,6 +273,7 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
     let global_config = app_config.global;
 
     if let Command::Create {
+        provider: _,
         from_dockerfile,
         save_as,
         ..
@@ -346,6 +347,7 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
     debug!("Executing command: {:?}", args.command);
     let result = match args.command {
         Command::Create {
+            provider: _,
             force,
             instance,
             verbose,
@@ -518,6 +520,7 @@ fn is_provider_selector(value: &str) -> bool {
 
 fn provider_override_from_command(command: &Command) -> Option<String> {
     match command {
+        Command::Create { provider, .. } => provider.clone(),
         Command::Stop { container }
         | Command::Ssh { container, .. }
         | Command::Status { container }

@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Made the optimized Vibe Dockerfile the default `Dockerfile.vibe`
 - Docker and Tart interactive sessions now show matching connection details, and Docker no longer prints Docker CLI hints after exit
 - Docker image builds are quieter by default; use `vm create --verbose` for raw Docker build output
+- `vm create docker|tart` now matches the provider-targeted syntax used by `start`, `ssh`, and `destroy`
 
 ### Fixed
 

@@ -567,6 +567,9 @@ pub enum PluginSubcommand {
 pub enum Command {
     /// Create/configure/start your environment
     Create {
+        /// Provider to create for this command
+        #[arg(value_parser = ["docker", "podman", "tart"])]
+        provider: Option<String>,
         /// Force recreation even if it already exists
         #[arg(long)]
         force: bool,
@@ -822,6 +825,20 @@ mod tests {
         TempSubcommand,
     };
     use clap::Parser;
+
+    #[test]
+    fn test_create_provider_command_parsing() {
+        let args = Args::parse_from(["vm", "create", "tart", "--verbose"]);
+        match args.command {
+            Command::Create {
+                provider, verbose, ..
+            } => {
+                assert_eq!(provider, Some("tart".to_string()));
+                assert!(verbose);
+            }
+            _ => panic!("Expected Command::Create"),
+        }
+    }
 
     #[test]
     fn test_start_command_parsing() {
