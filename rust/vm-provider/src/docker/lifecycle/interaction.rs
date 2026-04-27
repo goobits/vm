@@ -24,12 +24,15 @@ impl<'a> LifecycleOperations<'a> {
         container_name: &str,
         user_config: &UserConfig,
     ) -> Result<()> {
-        let home = format!("/home/{}", user_config.username);
+        // Resolve UID/GID inside the container rather than passing host values.
+        // Snapshot-based boxes intentionally skip the build-time UID swap, so the
+        // container's user UID can differ from the host UID (e.g. macOS host=501,
+        // snapshot developer=1000). Chowning to the host UID would lock the dir
+        // away from the actual shell user.
+        let user = &user_config.username;
+        let home = format!("/home/{user}");
         let command = format!(
-            "mkdir -p {home}/.shell_history && touch {home}/.shell_history/zsh_history && chown -R {uid}:{gid} {home}/.shell_history && chmod 700 {home}/.shell_history && chmod 600 {home}/.shell_history/zsh_history",
-            home = home,
-            uid = user_config.uid,
-            gid = user_config.gid
+            "uid=$(id -u {user}) && gid=$(id -g {user}) && mkdir -p {home}/.shell_history && touch {home}/.shell_history/zsh_history && chown -R \"$uid\":\"$gid\" {home}/.shell_history && chmod 700 {home}/.shell_history && chmod 600 {home}/.shell_history/zsh_history"
         );
 
         duct::cmd(
