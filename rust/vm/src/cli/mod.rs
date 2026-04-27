@@ -645,9 +645,6 @@ pub enum Command {
         /// Destroy all instances across all providers
         #[arg(long)]
         all: bool,
-        /// Destroy all instances from specific provider
-        #[arg(long)]
-        provider: Option<String>,
         /// Match pattern for instance names (e.g., "*-dev")
         #[arg(long)]
         pattern: Option<String>,

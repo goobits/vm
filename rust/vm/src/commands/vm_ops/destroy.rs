@@ -289,7 +289,7 @@ pub async fn handle_destroy_enhanced(
     let span = info_span!("vm_operation", operation = "destroy");
     let _enter = span.enter();
 
-    if *all || provider_filter.is_some() || pattern.is_some() {
+    if *all || pattern.is_some() {
         // Cross-provider destroy operations
         return handle_cross_provider_destroy(*all, provider_filter, pattern, *force);
     }

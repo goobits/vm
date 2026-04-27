@@ -503,6 +503,15 @@ impl Provider for TartProvider {
 
     fn destroy(&self, container: Option<&str>) -> Result<()> {
         let vm_name = self.vm_name_with_instance(container)?;
+
+        if self.is_instance_running(&vm_name).unwrap_or(false) {
+            cmd!("tart", "stop", &vm_name, "--force")
+                .run()
+                .map_err(|e| {
+                    VmError::Provider(format!("Failed to stop Tart VM before delete: {e}"))
+                })?;
+        }
+
         stream_command("tart", &["delete", &vm_name])
     }
 

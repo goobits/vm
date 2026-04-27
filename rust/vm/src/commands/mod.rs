@@ -394,11 +394,14 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             force,
             no_backup,
             all,
-            provider: provider_filter,
             pattern,
             preserve_services,
             remove_services,
         } => {
+            let provider_filter = container
+                .as_deref()
+                .filter(|value| is_provider_selector(value))
+                .map(ToString::to_string);
             let container = instance_arg(container);
             let effective_preserve_services = preserve_services && !remove_services;
             vm_ops::handle_destroy_enhanced(
@@ -526,10 +529,9 @@ fn provider_override_from_command(command: &Command) -> Option<String> {
         Command::Destroy {
             container,
             all,
-            provider,
             pattern,
             ..
-        } if !all && provider.is_none() && pattern.is_none() => container
+        } if !all && pattern.is_none() => container
             .as_deref()
             .filter(|value| is_provider_selector(value))
             .map(ToString::to_string),

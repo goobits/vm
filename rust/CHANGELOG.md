@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docker Shell History Permissions**: Docker shell entry now repairs the persistent history volume before launching `zsh`
 - **Destroy Provider Resolution**: `vm destroy` now destroys the provider that actually owns the current project instance instead of mixing Docker detection with Tart deletion
 - **Destroy Confirmation Clarity**: Destroy prompts now show the provider and use provider-specific resource labels for Docker containers and Tart VMs
+- **Tart Destroy Reliability**: Tart destroy now force-stops a running VM before deleting it
 
 ## [4.8.2] - 2026-04-24
 

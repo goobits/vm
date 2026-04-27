@@ -106,7 +106,7 @@ vm status [docker|tart|<container>]
 ### `vm destroy`
 Destroy a VM and all its associated resources.
 ```bash
-vm destroy [docker|tart] [--no-backup] [--force] [--remove-services]
+vm destroy [docker|tart] [--all] [--pattern <glob>] [--no-backup] [--force] [--remove-services]
 ```
 
 ### `vm ssh`
