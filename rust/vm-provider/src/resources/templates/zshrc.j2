@@ -27,12 +27,16 @@ if [ ! -d "$_SHELL_HISTORY_DIR" ]; then
 fi
 chown "$(id -u)":"$(id -g)" "$_SHELL_HISTORY_DIR" 2>/dev/null || true
 chmod u+w "$_SHELL_HISTORY_DIR" 2>/dev/null || true
+if [ -w "$_SHELL_HISTORY_DIR" ]; then
+  export HISTFILE="${HISTFILE:-$_SHELL_HISTORY_DIR/zsh_history}"
+else
+  export HISTFILE="${HISTFILE:-/tmp/vm-${USER:-user}-zsh_history}"
+fi
 unset _SHELL_HISTORY_DIR
 
 # Shell History Configuration
 export HISTSIZE=50000
 export SAVEHIST=50000
-export HISTFILE="$HOME/.shell_history/zsh_history"
 setopt INC_APPEND_HISTORY      # Append to history immediately
 setopt SHARE_HISTORY            # Share history across sessions
 setopt HIST_IGNORE_DUPS         # Ignore duplicate commands

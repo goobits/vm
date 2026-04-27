@@ -7,10 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.8.3] - 2026-04-26
+
 ### Changed
 
 - Renamed yolo aliases to yo (yoclaude, yogemini, yocodex) and updated Gemini to use `--yolo`
 - Made the optimized Vibe Dockerfile the default `Dockerfile.vibe`
+- Docker and Tart interactive sessions now show matching connection details, and Docker no longer prints Docker CLI hints after exit
+
+### Fixed
+
+- Docker zsh history now falls back safely if persistent history permissions are wrong, avoiding noisy lock failures on exit
 
 ## [4.8.2] - 2026-04-24
 

@@ -26,7 +26,7 @@ impl<'a> LifecycleOperations<'a> {
     ) -> Result<()> {
         let home = format!("/home/{}", user_config.username);
         let command = format!(
-            "mkdir -p {home}/.shell_history && chown -R {uid}:{gid} {home}/.shell_history && chmod 700 {home}/.shell_history",
+            "mkdir -p {home}/.shell_history && touch {home}/.shell_history/zsh_history && chown -R {uid}:{gid} {home}/.shell_history && chmod 700 {home}/.shell_history && chmod 600 {home}/.shell_history/zsh_history",
             home = home,
             uid = user_config.uid,
             gid = user_config.gid
@@ -155,6 +155,7 @@ impl<'a> LifecycleOperations<'a> {
                 ),
             ],
         )
+        .env("DOCKER_CLI_HINTS", "false")
         .unchecked() // Allow all exit codes - we'll handle them below
         .run();
 

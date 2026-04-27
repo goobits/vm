@@ -12,6 +12,7 @@ use crate::{
 };
 use duct::cmd;
 use serde::Deserialize;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tracing::{error, info, warn};
@@ -19,6 +20,7 @@ use vm_cli::msg;
 use vm_config::config::VmConfig;
 use vm_core::command_stream::{is_tool_installed, stream_command};
 use vm_core::error::Result;
+use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
 
 // Constants for Tart provider
@@ -533,6 +535,25 @@ impl Provider for TartProvider {
 
         info!("Opening SSH session in directory: {}", target_path);
         let target_path_escaped = Self::shell_escape_single_quotes(&target_path);
+
+        if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
+            let user = self
+                .config
+                .tart
+                .as_ref()
+                .and_then(|tart| tart.ssh_user.as_deref())
+                .unwrap_or("admin");
+
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.service.docker_ssh_info,
+                    user = user,
+                    path = target_path.as_str(),
+                    shell = shell
+                )
+            );
+        }
 
         // Use `tart exec -i -t` for interactive shell session
         let ssh_command = format!(
