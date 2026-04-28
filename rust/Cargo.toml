@@ -72,7 +72,7 @@ sysinfo = "0.30.13"
 axum = { version = "0.8", features = ["multipart", "ws"] }
 tokio = { version = "1.52", features = ["net", "rt-multi-thread", "macros", "fs", "process"] }
 aes-gcm = "0.10"
-pbkdf2 = "0.12.2"
+pbkdf2 = "0.13.0"
 rand = "0.9"
 sha1 = "0.10.6"
 sha2 = "0.10.9"
