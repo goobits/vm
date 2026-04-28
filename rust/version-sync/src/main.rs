@@ -1,9 +1,7 @@
 use clap::{Parser, Subcommand};
-use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
-use tracing::{error, info};
 use vm_core::error::Result;
 
 #[derive(Parser)]
@@ -25,9 +23,6 @@ enum Command {
 struct VersionSync {
     project_root: PathBuf,
     package_version: String,
-    check_regexes: Vec<Regex>,
-    update_regex_toml: Regex,
-    update_regex_yaml: Regex,
 }
 
 impl VersionSync {
@@ -35,32 +30,20 @@ impl VersionSync {
         let project_root = Self::find_project_root()?;
         let package_version = Self::read_package_version(&project_root)?;
 
-        let check_regexes = vec![
-            Regex::new(r#"version\s*[:=]\s*"?([^"\s]+)"?"#).expect("Invalid regex"),
-            // Fallback for space-separated versions or looser patterns
-            Regex::new(r#"version.+?([0-9]+\.[0-9]+\.[0-9]+)"#).expect("Invalid regex"),
-        ];
-
-        let update_regex_toml = Regex::new(r#"version\s*=\s*"[^"]+""#).expect("Invalid regex");
-        let update_regex_yaml = Regex::new(r#"version:\s*"?[^"\s]+"?"#).expect("Invalid regex");
-
         Ok(Self {
             project_root,
             package_version,
-            check_regexes,
-            update_regex_toml,
-            update_regex_yaml,
         })
     }
 
     fn find_project_root() -> Result<PathBuf> {
         let mut current = std::env::current_dir()?;
         loop {
-            if current.join("package.json").exists() {
+            if current.join("package.json").exists() && current.join("rust/Cargo.toml").exists() {
                 return Ok(current);
             }
             if !current.pop() {
-                error!("Could not find project root (no package.json found)");
+                eprintln!("Could not find project root (no package.json found)");
                 return Err(vm_core::error::VmError::Internal(
                     "Could not find project root".to_string(),
                 ));
@@ -88,13 +71,7 @@ impl VersionSync {
     }
 
     fn files_to_sync(&self) -> Vec<PathBuf> {
-        vec![
-            self.project_root.join("rust/Cargo.toml"),
-            self.project_root.join("configs/defaults.yaml"),
-            self.project_root
-                .join("rust/version-sync/fixtures/config.yaml"),
-            self.project_root.join("rust/version-sync/fixtures/vm.yaml"),
-        ]
+        vec![self.project_root.join("rust/Cargo.toml")]
     }
 
     fn check_file_version(&self, path: &Path) -> Result<FileVersionStatus> {
@@ -106,18 +83,13 @@ impl VersionSync {
             vm_core::error::VmError::Internal(format!("Failed to read {}: {}", path.display(), e))
         })?;
 
-        for regex in &self.check_regexes {
-            if let Some(captures) = regex.captures(&content) {
-                let current_version = captures.get(1).map(|m| m.as_str()).unwrap_or("unknown");
-                if current_version == self.package_version {
-                    return Ok(FileVersionStatus::Synced);
-                } else {
-                    return Ok(FileVersionStatus::OutOfSync(current_version.to_string()));
-                }
+        match Self::workspace_package_version(&content) {
+            Some(current_version) if current_version == self.package_version => {
+                Ok(FileVersionStatus::Synced)
             }
+            Some(current_version) => Ok(FileVersionStatus::OutOfSync(current_version)),
+            None => Ok(FileVersionStatus::NoVersion),
         }
-
-        Ok(FileVersionStatus::NoVersion)
     }
 
     fn update_file_version(&self, path: &Path) -> Result<bool> {
@@ -125,18 +97,10 @@ impl VersionSync {
             vm_core::error::VmError::Internal(format!("Failed to read {}: {}", path.display(), e))
         })?;
 
-        let updated = if self.update_regex_toml.is_match(&content) {
-            self.update_regex_toml.replace_all(
-                &content,
-                &format!(r#"version = "{}""#, self.package_version),
-            )
-        } else {
-            self.update_regex_yaml
-                .replace_all(&content, &format!(r#"version: "{}""#, self.package_version))
-        };
+        let updated = Self::replace_workspace_package_version(&content, &self.package_version);
 
         if updated != content {
-            fs::write(path, updated.as_ref()).map_err(|e| {
+            fs::write(path, updated).map_err(|e| {
                 vm_core::error::VmError::Internal(format!(
                     "Failed to write {}: {}",
                     path.display(),
@@ -149,11 +113,60 @@ impl VersionSync {
         }
     }
 
+    fn workspace_package_version(content: &str) -> Option<String> {
+        let mut in_workspace_package = false;
+
+        for line in content.lines() {
+            let trimmed = line.trim();
+
+            if trimmed.starts_with('[') && trimmed.ends_with(']') {
+                in_workspace_package = trimmed == "[workspace.package]";
+                continue;
+            }
+
+            if in_workspace_package && trimmed.starts_with("version") {
+                let (_, value) = trimmed.split_once('=')?;
+                return Some(value.trim().trim_matches('"').to_string());
+            }
+        }
+
+        None
+    }
+
+    fn replace_workspace_package_version(content: &str, version: &str) -> String {
+        let mut in_workspace_package = false;
+        let mut replaced = false;
+        let mut lines = Vec::new();
+
+        for line in content.lines() {
+            let trimmed = line.trim();
+
+            if trimmed.starts_with('[') && trimmed.ends_with(']') {
+                in_workspace_package = trimmed == "[workspace.package]";
+            }
+
+            if in_workspace_package && !replaced && trimmed.starts_with("version") {
+                let indent_len = line.len() - line.trim_start().len();
+                let indent = &line[..indent_len];
+                lines.push(format!("{indent}version = \"{version}\""));
+                replaced = true;
+            } else {
+                lines.push(line.to_string());
+            }
+        }
+
+        let mut updated = lines.join("\n");
+        if content.ends_with('\n') {
+            updated.push('\n');
+        }
+        updated
+    }
+
     fn check(&self) -> Result<bool> {
-        info!("📦 Package version: {}", self.package_version);
-        info!("");
-        info!("🔍 Checking version synchronization...");
-        info!("");
+        println!("📦 Package version: {}", self.package_version);
+        println!();
+        println!("🔍 Checking version synchronization...");
+        println!();
 
         let mut all_synced = true;
 
@@ -164,10 +177,10 @@ impl VersionSync {
 
             match self.check_file_version(&file_path)? {
                 FileVersionStatus::Synced => {
-                    info!("✅ {} ({})", relative_path.display(), self.package_version);
+                    println!("✅ {} ({})", relative_path.display(), self.package_version);
                 }
                 FileVersionStatus::OutOfSync(current) => {
-                    info!(
+                    println!(
                         "❌ {} ({} → should be {})",
                         relative_path.display(),
                         current,
@@ -176,30 +189,30 @@ impl VersionSync {
                     all_synced = false;
                 }
                 FileVersionStatus::Missing => {
-                    info!("⚠️  {} (missing)", relative_path.display());
+                    println!("⚠️  {} (missing)", relative_path.display());
                 }
                 FileVersionStatus::NoVersion => {
-                    info!("⚠️  {} (no version found)", relative_path.display());
+                    println!("⚠️  {} (no version found)", relative_path.display());
                 }
             }
         }
 
         if all_synced {
-            info!("");
-            info!("✅ All versions are in sync!");
+            println!();
+            println!("✅ All versions are in sync!");
         } else {
-            info!("");
-            info!("❌ Some versions are out of sync. Run 'sync' to fix.");
+            println!();
+            println!("❌ Some versions are out of sync. Run 'sync' to fix.");
         }
 
         Ok(all_synced)
     }
 
     fn sync(&self) -> Result<()> {
-        info!("📦 Package version: {}", self.package_version);
-        info!("");
-        info!("🔄 Synchronizing versions...");
-        info!("");
+        println!("📦 Package version: {}", self.package_version);
+        println!();
+        println!("🔄 Synchronizing versions...");
+        println!();
 
         let mut updated_count = 0;
 
@@ -211,7 +224,7 @@ impl VersionSync {
             match self.check_file_version(&file_path)? {
                 FileVersionStatus::OutOfSync(current) => {
                     if self.update_file_version(&file_path)? {
-                        info!(
+                        println!(
                             "✅ Updated {}: {} → {}",
                             relative_path.display(),
                             current,
@@ -221,27 +234,27 @@ impl VersionSync {
                     }
                 }
                 FileVersionStatus::Synced => {
-                    info!(
+                    println!(
                         "✅ {} already up to date ({})",
                         relative_path.display(),
                         self.package_version
                     );
                 }
                 FileVersionStatus::Missing => {
-                    info!("⚠️  {} (missing)", relative_path.display());
+                    println!("⚠️  {} (missing)", relative_path.display());
                 }
                 FileVersionStatus::NoVersion => {
-                    info!("⚠️  {} (no version found)", relative_path.display());
+                    println!("⚠️  {} (no version found)", relative_path.display());
                 }
             }
         }
 
         if updated_count == 0 {
-            info!("");
-            info!("✅ All versions were already in sync!");
+            println!();
+            println!("✅ All versions were already in sync!");
         } else {
-            info!("");
-            info!(
+            println!();
+            println!(
                 "✅ Updated {} files to version {}",
                 updated_count, self.package_version
             );
@@ -259,13 +272,48 @@ enum FileVersionStatus {
     NoVersion,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::VersionSync;
+
+    const CARGO_TOML: &str = r#"[workspace]
+resolver = "2"
+
+[workspace.package]
+version = "4.8.3"
+edition = "2021"
+
+[workspace.dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+clap = { version = "4.6.1", features = ["derive"] }
+"#;
+
+    #[test]
+    fn reads_workspace_package_version_only() {
+        assert_eq!(
+            VersionSync::workspace_package_version(CARGO_TOML).as_deref(),
+            Some("4.8.3")
+        );
+    }
+
+    #[test]
+    fn updates_workspace_package_version_only() {
+        let updated = VersionSync::replace_workspace_package_version(CARGO_TOML, "4.8.4");
+
+        assert!(updated.contains("[workspace.package]\nversion = \"4.8.4\""));
+        assert!(updated.contains("serde = { version = \"1.0.228\""));
+        assert!(updated.contains("clap = { version = \"4.6.1\""));
+        assert!(!updated.contains("version = \"4.8.3\""));
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
 
     let version_sync = match VersionSync::new() {
         Ok(vs) => vs,
         Err(e) => {
-            error!("Version sync initialization failed: {}", e);
+            eprintln!("Version sync initialization failed: {e}");
             process::exit(1);
         }
     };
@@ -280,13 +328,13 @@ fn main() {
                 }
             }
             Err(e) => {
-                error!("Version check failed: {}", e);
+                eprintln!("Version check failed: {e}");
                 process::exit(1);
             }
         },
         Command::Sync => {
             if let Err(e) = version_sync.sync() {
-                error!("Version sync failed: {}", e);
+                eprintln!("Version sync failed: {e}");
                 process::exit(1);
             }
         }

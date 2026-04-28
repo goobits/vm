@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.8.4] - 2026-04-28
+
+### Fixed
+
+- Tart provisioning now avoids Linux-only mount assumptions and repairs Codex auth/config state for macOS guests
+- Split Tart provisioning helpers for AI tooling, shell config, and temporary mounts to reduce provider duplication
+- Version sync now ignores VM config schema versions and reports check results directly
+
 ## [4.8.3] - 2026-04-26
 
 ### Changed

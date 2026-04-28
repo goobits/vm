@@ -2,14 +2,14 @@ use super::host_sync::{
     collect_host_sync_mounts, expand_tilde, file_name, resolve_guest_home_path, resolve_home_dir,
 };
 use super::provider::tart_run_log_path;
-use crate::{THEMES_JSON, ZSHRC_TEMPLATE};
 use duct::cmd;
-use serde_json::json;
 use std::path::{Path, PathBuf};
-use tera::{Context, Tera};
 use tracing::{info, warn};
 use vm_config::config::{BoxSpec, VmConfig};
 use vm_core::error::{Result, VmError};
+
+mod ai_tools;
+mod shell_config;
 
 pub struct TartProvisioner {
     instance_name: String,
@@ -17,16 +17,6 @@ pub struct TartProvisioner {
 }
 
 impl TartProvisioner {
-    fn is_valid_shell_identifier(key: &str) -> bool {
-        let mut chars = key.chars();
-        match chars.next() {
-            Some(c) if c == '_' || c.is_ascii_alphabetic() => {}
-            _ => return false,
-        }
-
-        chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
-    }
-
     pub fn new(instance_name: String, project_dir: String) -> Self {
         Self {
             instance_name,
@@ -142,14 +132,23 @@ impl TartProvisioner {
     pub(crate) fn ensure_workspace_mount(&self) -> Result<()> {
         let dir_escaped = Self::shell_escape_single_quotes(&self.project_dir);
         let mount_cmd = format!(
-            r#"dir='{dir}';
+            r#"is_mounted() {{
+  if [ -x /sbin/mount ]; then
+    /sbin/mount | grep -F "on $1 " >/dev/null 2>&1
+  elif command -v mount >/dev/null 2>&1; then
+    mount | grep -F "on $1 " >/dev/null 2>&1
+  else
+    return 1
+  fi
+}}
+dir='{dir}';
 if [ -x /sbin/mount_virtiofs ]; then
   mkdir -p "$dir"
-  if ! /sbin/mount | grep -F "on $dir "; then
+  if ! is_mounted "$dir"; then
     /sbin/mount_virtiofs workspace "$dir"
   fi
 else
-  if ! mount | grep -F "on $dir "; then
+  if ! is_mounted "$dir"; then
     if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
     $SUDO mkdir -p "$dir" && $SUDO mount -t virtiofs workspace "$dir"
   fi
@@ -171,14 +170,23 @@ fi"#,
             let guest_path = resolve_guest_home_path(&mount.guest_path);
             let tag = Self::shell_escape_single_quotes(&mount.tag);
             commands.push(format!(
-                r#"target="{guest_path}";
+                r#"is_mounted() {{
+  if [ -x /sbin/mount ]; then
+    /sbin/mount | grep -F "on $1 " >/dev/null 2>&1
+  elif command -v mount >/dev/null 2>&1; then
+    mount | grep -F "on $1 " >/dev/null 2>&1
+  else
+    return 1
+  fi
+}}
+target="{guest_path}";
 if [ -x /sbin/mount_virtiofs ]; then
   mkdir -p "$target"
-  if ! /sbin/mount | grep -F "on $target "; then
+  if ! is_mounted "$target"; then
     /sbin/mount_virtiofs '{tag}' "$target"
   fi
 else
-  if ! mount | grep -F "on $target "; then
+  if ! is_mounted "$target"; then
     if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
     $SUDO mkdir -p "$target" && $SUDO mount -t virtiofs '{tag}' "$target"
   fi
@@ -346,53 +354,6 @@ chmod {mode} "$HOME/{target}""#,
         Ok(())
     }
 
-    fn prepare_codex_home(&self) -> Result<()> {
-        self.ssh_exec(
-            r#"set -e
-codex_home="$HOME/.codex"
-home_uid="$(stat -f %u "$HOME" 2>/dev/null || stat -c %u "$HOME" 2>/dev/null || id -u)"
-home_gid="$(stat -f %g "$HOME" 2>/dev/null || stat -c %g "$HOME" 2>/dev/null || id -g)"
-if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
-$SUDO chflags -R nouchg,noschg "$codex_home" "$HOME/.zshrc" "$HOME/.bashrc" 2>/dev/null || true
-if /sbin/mount | grep -F "on $codex_home " >/dev/null 2>&1 || mount | grep -F "on $codex_home " >/dev/null 2>&1; then
-  $SUDO umount "$codex_home"
-fi
-mkdir -p "$codex_home/bin" "$codex_home/log" "$codex_home/sessions" "$codex_home/rollout"
-touch "$codex_home/config.toml"
-$SUDO chown -R "$home_uid:$home_gid" "$codex_home" "$HOME/.zshrc" "$HOME/.bashrc" 2>/dev/null || true
-chmod u+rw "$HOME/.zshrc" "$HOME/.bashrc" 2>/dev/null || true
-chmod 700 "$codex_home" "$codex_home/bin" "$codex_home/log" "$codex_home/sessions" "$codex_home/rollout"
-chmod 600 "$codex_home/config.toml" 2>/dev/null || true
-if [ -f "$codex_home/auth.json" ]; then chmod 600 "$codex_home/auth.json"; fi"#,
-        )?;
-
-        Ok(())
-    }
-
-    pub(crate) fn ensure_codex_runtime_config(&self, config: &VmConfig) -> Result<()> {
-        let Some(ai_tools) = config
-            .host_sync
-            .as_ref()
-            .and_then(|sync| sync.ai_tools.as_ref())
-        else {
-            return Ok(());
-        };
-        if !ai_tools.is_codex_enabled() {
-            return Ok(());
-        }
-
-        self.prepare_codex_home()?;
-
-        let Some(home_dir) = resolve_home_dir() else {
-            return Ok(());
-        };
-        let codex_dir: PathBuf = home_dir.join(".codex");
-
-        self.copy_host_file_to_guest_home(&codex_dir.join("auth.json"), ".codex/auth.json", "600")?;
-
-        Ok(())
-    }
-
     fn apply_git_config(&self, config: &VmConfig) -> Result<()> {
         if !config
             .host_sync
@@ -456,162 +417,6 @@ if [ -f "$codex_home/auth.json" ]; then chmod 600 "$codex_home/auth.json"; fi"#,
         Ok(())
     }
 
-    pub(crate) fn apply_shell_overrides(&self, config: &VmConfig) -> Result<()> {
-        let Some(overrides) = Self::render_shell_overrides(config) else {
-            return Ok(());
-        };
-
-        let script = format!(
-            r#"cat > "$HOME/.vm_shell_overrides" <<'EOF'
-{overrides}
-EOF
-touch "$HOME/.bashrc"
-if ! grep -Fq '. "$HOME/.vm_shell_overrides"' "$HOME/.bashrc"; then
-  printf '\n[ -f "$HOME/.vm_shell_overrides" ] && . "$HOME/.vm_shell_overrides"\n' >> "$HOME/.bashrc"
-fi"#
-        );
-
-        self.ssh_exec(&script)?;
-        Ok(())
-    }
-
-    pub(crate) fn apply_canonical_shell_config(&self, config: &VmConfig) -> Result<()> {
-        let rendered = Self::render_canonical_zshrc(config, &self.project_dir)?;
-
-        self.ssh_exec(&format!(
-            r#"cat > "$HOME/.zshrc" <<'EOF'
-{}
-EOF
-touch "$HOME/.bashrc"
-if ! grep -Fq '. "$HOME/.vm_shell_overrides"' "$HOME/.bashrc"; then
-  printf '\n[ -f "$HOME/.vm_shell_overrides" ] && . "$HOME/.vm_shell_overrides"\n' >> "$HOME/.bashrc"
-fi
-if command -v chsh >/dev/null 2>&1 && command -v zsh >/dev/null 2>&1; then
-  chsh -s "$(command -v zsh)" "$USER" >/dev/null 2>&1 || true
-fi"#,
-            rendered
-        ))?;
-
-        Ok(())
-    }
-
-    fn render_shell_overrides(config: &VmConfig) -> Option<String> {
-        let mut lines = Vec::new();
-
-        for (key, value) in &config.environment {
-            if !Self::is_valid_shell_identifier(key) {
-                warn!("Skipping invalid shell environment key for Tart provisioning: {key}");
-                continue;
-            }
-
-            lines.push(format!(
-                "export {}='{}'",
-                key,
-                Self::shell_escape_single_quotes(value)
-            ));
-        }
-
-        if lines.is_empty() {
-            None
-        } else {
-            Some(lines.join("\n"))
-        }
-    }
-
-    fn render_canonical_zshrc(config: &VmConfig, project_path: &str) -> Result<String> {
-        let mut tera = Tera::default();
-        tera.add_raw_template("zshrc", ZSHRC_TEMPLATE)
-            .map_err(|e| VmError::Internal(format!("Failed to load zshrc template: {e}")))?;
-
-        let themes: serde_json::Value = serde_json::from_str(THEMES_JSON)
-            .map_err(|e| VmError::Internal(format!("Failed to parse themes.json: {e}")))?;
-
-        let terminal = config.terminal.clone().unwrap_or_default();
-        let theme_name = terminal.theme.unwrap_or_else(|| "dracula".to_string());
-        let colors = themes
-            .get(&theme_name)
-            .and_then(|t| t.get("colors"))
-            .cloned()
-            .or_else(|| themes.get("dracula").and_then(|t| t.get("colors")).cloned())
-            .unwrap_or_else(|| {
-                json!({
-                    "foreground": "#f8f8f2",
-                    "background": "#282a36",
-                    "red": "#ff5555",
-                    "green": "#50fa7b",
-                    "yellow": "#f1fa8c",
-                    "blue": "#bd93f9",
-                    "magenta": "#ff79c6",
-                    "cyan": "#8be9fd",
-                    "bright_black": "#6272a4"
-                })
-            });
-
-        let project_name = config
-            .project
-            .as_ref()
-            .and_then(|p| p.name.clone())
-            .unwrap_or_else(|| Self::default_project_name(project_path));
-        let project_path_b64 = {
-            use base64::Engine;
-            base64::engine::general_purpose::STANDARD.encode(project_path)
-        };
-        let project_aliases = config
-            .aliases
-            .iter()
-            .filter(|(key, _)| {
-                let mut chars = key.chars();
-                matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
-                    && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-            })
-            .map(|(key, value)| {
-                use base64::Engine;
-                json!({
-                    "key": key,
-                    "value_b64": base64::engine::general_purpose::STANDARD.encode(value)
-                })
-            })
-            .collect::<Vec<_>>();
-        let project_ports = config
-            .ports
-            .mappings
-            .iter()
-            .map(|mapping| {
-                json!({
-                    "key": format!("{}/{}", mapping.host, format!("{:?}", mapping.protocol).to_lowercase()),
-                    "value": mapping.guest
-                })
-            })
-            .collect::<Vec<_>>();
-
-        let mut context = Context::new();
-        context.insert("project_name", &project_name);
-        context.insert("project_path", project_path);
-        context.insert("project_path_b64", &project_path_b64);
-        context.insert(
-            "project_config",
-            &serde_json::to_value(config).unwrap_or_else(|_| json!({})),
-        );
-        context.insert(
-            "terminal_emoji",
-            &terminal
-                .emoji
-                .unwrap_or_else(|| Self::default_terminal_emoji(config).to_string()),
-        );
-        context.insert(
-            "terminal_username",
-            &terminal.username.unwrap_or_else(|| "dev".to_string()),
-        );
-        context.insert("show_git_branch", &terminal.show_git_branch.unwrap_or(true));
-        context.insert("show_timestamp", &terminal.show_timestamp.unwrap_or(false));
-        context.insert("terminal_colors", &colors);
-        context.insert("project_aliases", &project_aliases);
-        context.insert("project_ports", &project_ports);
-
-        tera.render("zshrc", &context)
-            .map_err(|e| VmError::Internal(format!("Failed to render zshrc template: {e}")))
-    }
-
     fn provision_generic_packages(&self, config: &VmConfig) -> Result<()> {
         if !config.apt_packages.is_empty() {
             let packages = config.apt_packages.join(" ");
@@ -666,56 +471,6 @@ cargo install {}"#,
         Ok(())
     }
 
-    fn provision_ai_tools(&self, config: &VmConfig) -> Result<()> {
-        let Some(ai_tools) = config
-            .host_sync
-            .as_ref()
-            .and_then(|sync| sync.ai_tools.as_ref())
-        else {
-            return Ok(());
-        };
-
-        if ai_tools.is_claude_enabled() {
-            self.ssh_exec(&format!(
-                r#"export PATH="{}"
-if ! command -v claude >/dev/null 2>&1; then
-  curl -fsSL https://claude.ai/install.sh | bash
-fi"#,
-                Self::user_bin_path(config)
-            ))?;
-        }
-
-        if ai_tools.is_gemini_enabled() || ai_tools.is_codex_enabled() {
-            self.ensure_nodejs_runtime(config)?;
-        }
-
-        if ai_tools.is_gemini_enabled() {
-            self.ssh_exec(&format!(
-                r#"export PATH="{}"
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-if ! command -v gemini >/dev/null 2>&1; then
-  npm install -g @google/gemini-cli
-fi"#,
-                Self::user_bin_path(config)
-            ))?;
-        }
-
-        if ai_tools.is_codex_enabled() {
-            self.ssh_exec(&format!(
-                r#"export PATH="{}"
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-if ! command -v codex >/dev/null 2>&1; then
-  npm install -g @openai/codex
-fi"#,
-                Self::user_bin_path(config)
-            ))?;
-            self.ensure_codex_runtime_config(config)?;
-        }
-
-        Ok(())
-    }
     fn install_docker_if_requested(&self, config: &VmConfig) -> Result<()> {
         if !config
             .tart
@@ -1166,23 +921,6 @@ fi"#,
         r#"if [ -x /opt/homebrew/bin/brew ]; then
   eval "$(/opt/homebrew/bin/brew shellenv)"
 fi"#
-    }
-
-    fn default_terminal_emoji(config: &VmConfig) -> &'static str {
-        match Self::guest_os(config) {
-            "macos" => "🍎",
-            "linux" => "🐧",
-            _ => "🚀",
-        }
-    }
-
-    fn default_project_name(project_path: &str) -> String {
-        Path::new(project_path)
-            .file_name()
-            .and_then(|name| name.to_str())
-            .filter(|name| !name.is_empty())
-            .unwrap_or("project")
-            .to_string()
     }
 }
 
