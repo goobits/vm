@@ -23,7 +23,7 @@ reqwest = { workspace = true }
 
 # Cryptography
 aes-gcm = "0.10"
-pbkdf2 = "0.12"
+pbkdf2 = "0.13"
 sha2 = { workspace = true }
 
 # System integration
