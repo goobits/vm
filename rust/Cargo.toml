@@ -74,7 +74,7 @@ tokio = { version = "1.52", features = ["net", "rt-multi-thread", "macros", "fs"
 aes-gcm = "0.10"
 pbkdf2 = "0.12.2"
 rand = "0.9"
-sha1 = "0.10.6"
+sha1 = "0.11.0"
 sha2 = "0.10.9"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["fmt", "env-filter", "json"] }
