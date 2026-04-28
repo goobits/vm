@@ -361,8 +361,8 @@ pub const VM_MESSAGES: VmMessages = VmMessages {
     snapshot_list_table_separator: "────────────────────────────────────────────────────────────────────────────────────",
 
     // VM SSH
-    ssh_connecting: "🔗 Connecting to '{name}'...",
-    ssh_disconnected: "\n👋 Disconnected from '{name}'\n💡 Reconnect with: vm ssh",
+    ssh_connecting: "\n🔗 Connecting to '{name}'...",
+    ssh_disconnected: "\n👋 Disconnected from '{name}'\n💡 Reconnect with: vm ssh\n",
     ssh_vm_not_found: "\n🔍 VM '{name}' doesn't exist",
     ssh_create_prompt: "\nWould you like to create it now? (y/N): ",
     ssh_creating: "\n🚀 Creating '{name}'...\n\n  ✓ Preparing base environment\n  ✓ Setting up workspace\n  ✓ Configuring network\n  ✓ Starting environment\n  ✓ Running initial provisioning",
