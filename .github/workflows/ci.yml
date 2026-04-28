@@ -28,16 +28,18 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            rust/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+            .build/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
 
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - name: Run unit tests
+        working-directory: rust
         run: cargo test --workspace --lib -- --test-threads=10
 
       - name: Run integration tests
+        working-directory: rust
         run: cargo test --workspace --test '*' --features integration -- --test-threads=2
 
   clippy:
@@ -53,13 +55,14 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            rust/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+            .build/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
 
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - name: Run clippy
+        working-directory: rust
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   audit:
@@ -76,6 +79,7 @@ jobs:
         run: npm install -g jscpd
 
       - name: Run cargo-deny
+        working-directory: rust
         run: cargo deny check advisories
 
       - name: Check for duplicates

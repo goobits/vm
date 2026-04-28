@@ -31,7 +31,12 @@ impl<'a> LifecycleOperations<'a> {
 
     /// Generate container name with instance suffix
     pub fn container_name_with_instance(&self, instance_name: &str) -> String {
-        format!("{}-{}", self.project_name(), instance_name)
+        format!(
+            "{}-{}{}",
+            self.project_name(),
+            instance_name,
+            CONTAINER_SUFFIX
+        )
     }
 
     /// Resolve target container (from Option or default)
@@ -57,8 +62,9 @@ impl<'a> LifecycleOperations<'a> {
 
         Ok(target
             .strip_prefix(&prefix)
+            .map(|name| name.strip_suffix(CONTAINER_SUFFIX).unwrap_or(name))
             .map(str::to_string)
-            .filter(|name| name != "dev"))
+            .filter(|name| !name.is_empty() && name != "dev"))
     }
 
     /// Get sync directory path
@@ -358,7 +364,11 @@ mod tests {
     fn resolves_instance_target_suffix() {
         with_test_ops(|ops| {
             assert_eq!(
-                ops.resolve_instance_name_for_target(Some("demo-preview"))
+                ops.container_name_with_instance("preview"),
+                "demo-preview-dev"
+            );
+            assert_eq!(
+                ops.resolve_instance_name_for_target(Some("demo-preview-dev"))
                     .unwrap(),
                 Some("preview".to_string())
             );

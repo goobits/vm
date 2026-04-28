@@ -38,6 +38,9 @@ impl FileStreamValidator {
                 let bytes = response.bytes().await.map_err(|e| {
                     AppError::InternalError(format!("Failed to read {registry_type} file: {e}"))
                 })?;
+                validate_file_size(bytes.len() as u64, Some(MAX_UPLOAD_SIZE)).map_err(|e| {
+                    AppError::BadRequest(format!("{registry_type} file too large: {e}"))
+                })?;
                 info!(
                     filename = %filename,
                     size = bytes.len(),
@@ -53,6 +56,8 @@ impl FileStreamValidator {
         let bytes = response.bytes().await.map_err(|e| {
             AppError::InternalError(format!("Failed to read {registry_type} file: {e}"))
         })?;
+        validate_file_size(bytes.len() as u64, Some(MAX_UPLOAD_SIZE))
+            .map_err(|e| AppError::BadRequest(format!("{registry_type} file too large: {e}")))?;
 
         info!(
             filename = %filename,
@@ -324,6 +329,7 @@ impl DockerValidator {
 ///
 /// Returns an error if the filename:
 /// - Contains `..` (parent directory references)
+/// - Contains `/` or `\` path separators
 /// - Starts with `/` (absolute paths on Unix)
 /// - Starts with `\` (absolute paths on Windows)
 /// - Contains null bytes (`\0`)
@@ -380,6 +386,15 @@ pub fn validate_filename(filename: &str) -> Result<(), AppError> {
         tracing::warn!(filename = %filename, "Path traversal attempt detected (..)");
         return Err(AppError::BadRequest(
             "Filename contains parent directory reference (..)".to_string(),
+        ));
+    }
+
+    // Filenames are stored under registry-controlled directories and must not
+    // include path segments from client input.
+    if filename.contains('/') || filename.contains('\\') {
+        tracing::warn!(filename = %filename, "Path separator detected in filename");
+        return Err(AppError::BadRequest(
+            "Filename cannot contain path separators".to_string(),
         ));
     }
 
@@ -470,6 +485,13 @@ mod tests {
         let large_data = vec![0u8; (MAX_PACKAGE_FILE_SIZE + 1) as usize];
         let result = FileStreamValidator::validate_package_upload(&large_data, "huge.whl", "pypi");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_filename_rejects_path_segments() {
+        assert!(validate_filename("safe_file.txt").is_ok());
+        assert!(validate_filename("nested/file.txt").is_err());
+        assert!(validate_filename(r"nested\\file.txt").is_err());
     }
 
     #[test]

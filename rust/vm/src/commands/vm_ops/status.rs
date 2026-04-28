@@ -17,8 +17,9 @@ pub fn handle_status(
     container: Option<&str>,
     config: VmConfig,
     _global_config: GlobalConfig,
+    list_all_when_no_container: bool,
 ) -> VmResult<()> {
-    if container.is_none() {
+    if container.is_none() && list_all_when_no_container {
         return handle_list_enhanced(None);
     }
 

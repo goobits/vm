@@ -49,5 +49,44 @@ pub fn load_and_merge_config(file: Option<PathBuf>) -> Result<VmConfig> {
         loader.load()
     };
 
-    result.map_err(|e| VmError::Config(e.to_string()))
+    let config = result.map_err(|e| VmError::Config(e.to_string()))?;
+    apply_declared_presets(config)
+}
+
+fn apply_declared_presets(config: VmConfig) -> Result<VmConfig> {
+    let Some(preset_names) = config.preset.clone() else {
+        return Ok(config);
+    };
+
+    let source_path = config.source_path.clone();
+    let project_dir = std::env::current_dir()
+        .map_err(|e| VmError::Config(format!("Failed to resolve current directory: {e}")))?;
+    let detector = crate::preset::PresetDetector::new(project_dir, crate::paths::get_presets_dir());
+
+    let port_range_str = config.ports.range.as_ref().and_then(|range| {
+        if range.len() == 2 {
+            Some(format!("{}-{}", range[0], range[1]))
+        } else {
+            None
+        }
+    });
+
+    let mut merged_preset = VmConfig::default();
+    for preset_name in preset_names
+        .split(',')
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+    {
+        let preset_config = crate::config_ops::port_placeholders::load_preset_with_placeholders(
+            &detector,
+            preset_name,
+            &port_range_str,
+        )
+        .map_err(|e| VmError::Config(format!("Failed to load preset '{preset_name}': {e}")))?;
+        merged_preset = crate::merge::ConfigMerger::new(merged_preset).merge(preset_config)?;
+    }
+
+    let mut merged = crate::merge::ConfigMerger::new(merged_preset).merge(config)?;
+    merged.source_path = source_path;
+    Ok(merged)
 }

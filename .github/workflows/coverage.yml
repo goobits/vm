@@ -24,10 +24,11 @@ jobs:
         run: cargo install cargo-tarpaulin
 
       - name: Generate coverage
+        working-directory: rust
         run: cargo tarpaulin --workspace --out Xml --output-dir coverage/
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
         with:
-          files: coverage/cobertura.xml
+          files: rust/coverage/cobertura.xml
           fail_ci_if_error: false

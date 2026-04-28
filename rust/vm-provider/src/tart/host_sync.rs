@@ -96,15 +96,6 @@ pub fn collect_host_sync_mounts(config: &VmConfig) -> Vec<HostSyncMount> {
             "~/.gemini".to_string(),
             ai_tools.is_gemini_enabled(),
         );
-        add_ai_sync_mount(
-            &mut mounts,
-            "codex-sync",
-            &home,
-            project_name,
-            "codex",
-            "~/.codex".to_string(),
-            ai_tools.is_codex_enabled(),
-        );
     }
 
     mounts
@@ -184,7 +175,44 @@ mod tests {
     }
 
     #[test]
-    fn ai_tool_sync_uses_project_isolated_vm_dirs() {
+    fn ai_tool_sync_uses_project_isolated_vm_dirs_for_mountable_tools() {
+        let _guard = env_lock().lock().unwrap();
+        let temp_home = tempfile::tempdir().unwrap();
+        let previous_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", temp_home.path());
+
+        let config = VmConfig {
+            project: Some(ProjectConfig {
+                name: Some("demo".to_string()),
+                ..Default::default()
+            }),
+            host_sync: Some(HostSyncConfig {
+                ai_tools: Some(AiSyncConfig::Detailed(AiToolSyncConfig {
+                    claude: true,
+                    ..Default::default()
+                })),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let mounts = collect_host_sync_mounts(&config);
+
+        if let Some(home) = previous_home {
+            std::env::set_var("HOME", home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+
+        assert_eq!(mounts.len(), 1);
+        assert_eq!(mounts[0].tag, "claude-sync");
+        assert_eq!(mounts[0].guest_path, "~/.claude");
+        assert!(mounts[0].host_path.ends_with(".vm/ai-sync/claude/demo"));
+        assert!(mounts[0].host_path.is_dir());
+    }
+
+    #[test]
+    fn codex_sync_does_not_mount_runtime_directory_on_tart() {
         let _guard = env_lock().lock().unwrap();
         let temp_home = tempfile::tempdir().unwrap();
         let previous_home = std::env::var("HOME").ok();
@@ -213,10 +241,6 @@ mod tests {
             std::env::remove_var("HOME");
         }
 
-        assert_eq!(mounts.len(), 1);
-        assert_eq!(mounts[0].tag, "codex-sync");
-        assert_eq!(mounts[0].guest_path, "~/.codex");
-        assert!(mounts[0].host_path.ends_with(".vm/ai-sync/codex/demo"));
-        assert!(mounts[0].host_path.is_dir());
+        assert!(mounts.is_empty());
     }
 }

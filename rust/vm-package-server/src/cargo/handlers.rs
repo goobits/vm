@@ -10,7 +10,7 @@ use crate::{
 };
 use axum::{
     extract::{Path as AxumPath, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Json, Response},
 };
 use serde::Deserialize;
@@ -196,8 +196,11 @@ pub async fn download_crate(
 /// Publishes a new Cargo crate version to the local registry.
 pub async fn publish_crate(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> AppResult<Json<SuccessResponse>> {
+    crate::auth::validate_auth_headers(&state.config, &headers)?;
+
     debug!(payload_size = body.len(), "Incoming Cargo publish request");
     info!("Processing Cargo crate publish");
 

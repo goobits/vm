@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Multipart, Path as AxumPath, State},
+    http::HeaderMap,
     response::Html,
 };
 use tracing::{debug, info, warn};
@@ -253,8 +254,11 @@ pub async fn download_file(
 /// ```
 pub async fn upload_package(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     mut multipart: Multipart,
 ) -> AppResult<axum::Json<SuccessResponse>> {
+    crate::auth::validate_auth_headers(&state.config, &headers)?;
+
     info!("Processing PyPI package upload");
     let pypi_dir = state.data_dir.join("pypi/packages");
 

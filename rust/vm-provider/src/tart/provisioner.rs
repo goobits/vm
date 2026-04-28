@@ -5,7 +5,7 @@ use super::provider::tart_run_log_path;
 use crate::{THEMES_JSON, ZSHRC_TEMPLATE};
 use duct::cmd;
 use serde_json::json;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tera::{Context, Tera};
 use tracing::{info, warn};
 use vm_config::config::{BoxSpec, VmConfig};
@@ -289,6 +289,71 @@ fi"#
                 VmError::Provider(format!("Failed to sync directory to Tart VM: {}", e))
             })?;
         }
+
+        Ok(())
+    }
+
+    fn copy_host_file_to_guest_home(
+        &self,
+        source: &Path,
+        guest_relative_path: &str,
+        mode: &str,
+    ) -> Result<()> {
+        if !source.exists() || !source.is_file() {
+            return Ok(());
+        }
+
+        let source = source
+            .canonicalize()
+            .unwrap_or_else(|_| source.to_path_buf());
+        let Some(parent) = Path::new(guest_relative_path).parent() else {
+            return Ok(());
+        };
+
+        let source_escaped = Self::shell_escape_single_quotes(&source.to_string_lossy());
+        let instance_escaped = Self::shell_escape_single_quotes(&self.instance_name);
+        let parent_escaped = Self::shell_escape_single_quotes(&parent.to_string_lossy());
+        let target_escaped = Self::shell_escape_single_quotes(guest_relative_path);
+        let mode_escaped = Self::shell_escape_single_quotes(mode);
+        let remote_script = format!(
+            r#"set -e
+mkdir -p "$HOME/{parent}"
+cat > "$HOME/{target}"
+chmod {mode} "$HOME/{target}""#,
+            parent = parent_escaped,
+            target = target_escaped,
+            mode = mode_escaped
+        );
+        let remote_script_escaped = Self::shell_escape_single_quotes(&remote_script);
+        let command = format!(
+            "cat '{source}' | tart exec '{instance}' bash -lc '{script}'",
+            source = source_escaped,
+            instance = instance_escaped,
+            script = remote_script_escaped
+        );
+
+        cmd!("sh", "-c", command).run().map_err(|e| {
+            VmError::Provider(format!(
+                "Failed to seed Tart guest file '{}': {}",
+                guest_relative_path, e
+            ))
+        })?;
+
+        Ok(())
+    }
+
+    fn seed_codex_config(&self) -> Result<()> {
+        let Some(home_dir) = resolve_home_dir() else {
+            return Ok(());
+        };
+        let codex_dir: PathBuf = home_dir.join(".codex");
+
+        self.copy_host_file_to_guest_home(&codex_dir.join("auth.json"), ".codex/auth.json", "600")?;
+        self.copy_host_file_to_guest_home(
+            &codex_dir.join("config.toml"),
+            ".codex/config.toml",
+            "600",
+        )?;
 
         Ok(())
     }
@@ -611,6 +676,7 @@ if ! command -v codex >/dev/null 2>&1; then
 fi"#,
                 Self::user_bin_path(config)
             ))?;
+            self.seed_codex_config()?;
         }
 
         Ok(())

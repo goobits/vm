@@ -1,6 +1,8 @@
 # This is a Tera template for docker-compose.yml
 # It will be rendered by the vm-provider crate.
 
+name: {{ project_name }}
+
 services:
   {{ project_name }}-dev:
     container_name: {{ project_name }}-dev
@@ -260,8 +262,10 @@ services:
 
 volumes:
   {{ project_name }}_shell_history:
+    name: {{ project_name }}_shell_history
   {% if config.services.postgresql.enabled | default(value=false) %}
   postgres_data:
+    name: {{ project_name }}_postgres_data
   {% endif %}
 
 {% if config.networking and config.networking.networks and config.networking.networks | length > 0 -%}

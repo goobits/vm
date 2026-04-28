@@ -791,6 +791,7 @@ impl<'a> ComposeOperations<'a> {
 
         container_name
             .strip_prefix(&format!("{project_name}-"))
+            .map(|name| name.strip_suffix("-dev").unwrap_or(name))
             .map(str::to_string)
     }
 

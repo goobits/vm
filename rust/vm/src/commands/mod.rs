@@ -171,24 +171,7 @@ fn handle_use_provider(provider: &str) -> VmResult<()> {
 async fn handle_dry_run(args: &Args) -> VmResult<()> {
     match &args.command {
         Command::Create { .. } | Command::Stop { .. } | Command::Destroy { .. } => {
-            vm_println!("{}", MESSAGES.vm.dry_run_header);
-            vm_println!(
-                "{}",
-                msg!(
-                    MESSAGES.vm.dry_run_command,
-                    command = format!("{:?}", args.command)
-                )
-            );
-            if let Some(config) = &args.config {
-                vm_println!(
-                    "{}",
-                    msg!(
-                        MESSAGES.vm.dry_run_config,
-                        config = config.display().to_string()
-                    )
-                );
-            }
-            vm_println!("{}", MESSAGES.vm.dry_run_complete);
+            print_dry_run_summary(args);
             Ok(())
         }
         Command::Ssh {
@@ -230,12 +213,31 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
         }
         Command::Fleet { command } => vm_ops::handle_fleet_command(command, true).await,
         _ => {
-            // Non-provider commands proceed normally
-            let mut args_copy = args.clone();
-            args_copy.dry_run = false;
-            Box::pin(execute_command(args_copy)).await
+            print_dry_run_summary(args);
+            Ok(())
         }
     }
+}
+
+fn print_dry_run_summary(args: &Args) {
+    vm_println!("{}", MESSAGES.vm.dry_run_header);
+    vm_println!(
+        "{}",
+        msg!(
+            MESSAGES.vm.dry_run_command,
+            command = format!("{:?}", args.command)
+        )
+    );
+    if let Some(config) = &args.config {
+        vm_println!(
+            "{}",
+            msg!(
+                MESSAGES.vm.dry_run_config,
+                config = config.display().to_string()
+            )
+        );
+    }
+    vm_println!("{}", MESSAGES.vm.dry_run_complete);
 }
 
 async fn handle_provider_command(args: Args) -> VmResult<()> {
@@ -439,12 +441,14 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             )
         }
         Command::Status { container } => {
+            let provider_selected = container.as_deref().is_some_and(is_provider_selector);
             let container = instance_arg(container);
             vm_ops::handle_status(
                 provider,
                 container.as_deref(),
                 config,
                 global_config.clone(),
+                !provider_selected,
             )
         }
         Command::Tunnel { command } => match command {

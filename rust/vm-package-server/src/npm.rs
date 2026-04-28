@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Path as AxumPath, State},
+    http::HeaderMap,
     response::Json,
 };
 use base64::{engine::general_purpose, Engine as _};
@@ -221,8 +222,11 @@ pub async fn download_tarball(
 pub async fn publish_package(
     AxumPath(package): AxumPath<String>,
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(mut payload): Json<Value>,
 ) -> AppResult<Json<SuccessResponse>> {
+    crate::auth::validate_auth_headers(&state.config, &headers)?;
+
     debug!(package = %package, "Incoming npm publish request");
     info!(package = %package, "Publishing npm package");
 
@@ -239,6 +243,8 @@ pub async fn publish_package(
 
     for (filename, attachment) in &attachments {
         if filename.ends_with(".tgz") {
+            validate_filename(filename)?;
+
             let data_b64 = attachment["data"].as_str()
                 .ok_or_else(|| {
                     warn!(package = %package, filename = %filename, "npm attachment data field is not a string");
@@ -478,6 +484,42 @@ mod tests {
         let payload = json!({
             "name": "test-package",
             "version": "1.0.0"
+        });
+
+        let response = server.put("/npm/test-package").json(&payload).await;
+
+        assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_publish_package_rejects_path_attachment_name() {
+        let (state, _temp_dir) = create_npm_test_state();
+        let app = axum::Router::new()
+            .route("/npm/{package}", axum::routing::put(publish_package))
+            .with_state(state);
+
+        let server = TestServer::new(app).expect("should create test server");
+
+        let tarball_content = b"fake tarball content";
+        let encoded_tarball = general_purpose::STANDARD.encode(tarball_content);
+        let payload = json!({
+            "name": "test-package",
+            "versions": {
+                "1.0.0": {
+                    "name": "test-package",
+                    "version": "1.0.0",
+                    "dist": {
+                        "tarball": "http://localhost:8080/npm/test-package/-/test-package-1.0.0.tgz"
+                    }
+                }
+            },
+            "_attachments": {
+                "../test-package-1.0.0.tgz": {
+                    "content_type": "application/octet-stream",
+                    "data": encoded_tarball,
+                    "length": tarball_content.len()
+                }
+            }
         });
 
         let response = server.put("/npm/test-package").json(&payload).await;

@@ -298,10 +298,27 @@ pub(crate) fn build_minimal_box_config(
 
     // Start with default config
     let mut config = build_initial_config(sanitized_name)?;
+    config.preset = Some(preset_name.to_string());
+
+    if preset_config.provider.is_some() {
+        config.provider = preset_config.provider.clone();
+    }
+    if preset_config.default_profile.is_some() {
+        config.default_profile = preset_config.default_profile.clone();
+    }
+    if preset_config.os.is_some() {
+        config.os = preset_config.os.clone();
+    }
+    if preset_config.tart.is_some() {
+        config.tart = preset_config.tart.clone();
+    }
+    if preset_config.profiles.is_some() {
+        config.profiles = preset_config.profiles.clone();
+    }
 
     // Copy only the box reference from preset
-    if let Some(preset_vm) = preset_config.vm {
-        if let Some(box_spec) = preset_vm.r#box {
+    if let Some(preset_vm) = preset_config.vm.as_ref() {
+        if let Some(box_spec) = preset_vm.r#box.clone() {
             if config.vm.is_none() {
                 config.vm = Some(crate::config::VmSettings::default());
             }
@@ -313,17 +330,38 @@ pub(crate) fn build_minimal_box_config(
 
     // Merge preset configuration (networking, aliases, terminal, host_sync, etc.)
     // Don't merge: packages, versions (they're in the box)
+    if let Some(preset_project) = preset_config.project.as_ref() {
+        let project = config.project.get_or_insert_with(Default::default);
+        if preset_project.workspace_path.is_some() {
+            project.workspace_path = preset_project.workspace_path.clone();
+        }
+        if preset_project.backup_pattern.is_some() {
+            project.backup_pattern = preset_project.backup_pattern.clone();
+        }
+        if preset_project.env_template_path.is_some() {
+            project.env_template_path = preset_project.env_template_path.clone();
+        }
+    }
+    if preset_config.ports.has_ports() {
+        config.ports = preset_config.ports.clone();
+    }
     if let Some(networking) = preset_config.networking {
         config.networking = Some(networking);
     }
     if !preset_config.aliases.is_empty() {
         config.aliases = preset_config.aliases;
     }
+    if !preset_config.environment.is_empty() {
+        config.environment = preset_config.environment;
+    }
     if let Some(terminal) = preset_config.terminal {
         config.terminal = Some(terminal);
     }
     if let Some(host_sync) = preset_config.host_sync {
         config.host_sync = Some(host_sync);
+    }
+    if let Some(security) = preset_config.security {
+        config.security = Some(security);
     }
 
     // Clear packages/versions - they come from the box/preset at runtime
@@ -427,34 +465,24 @@ fn apply_service_configurations(
     services_to_configure: Vec<String>,
 ) -> Result<()> {
     for service in services_to_configure {
-        // Try to load service config from file, or use embedded defaults
-        let service_path =
-            crate::paths::resolve_tool_path(format!("configs/services/{service}.yaml"));
-
-        let service_config = if service_path.exists() {
-            VmConfig::from_file(&service_path).map_err(|e| {
-                VmError::Config(format!("Failed to load service config: {service}: {e}"))
-            })?
-        } else {
-            // Use embedded default configurations
-            let default_config = match service.as_str() {
-                "postgresql" => include_str!("../../../resources/services/postgresql.yaml"),
-                "redis" => include_str!("../../../resources/services/redis.yaml"),
-                "mongodb" => include_str!("../../../resources/services/mongodb.yaml"),
-                "docker" => include_str!("../../../resources/services/docker.yaml"),
-                _ => {
-                    error!("Unknown service: {}", service);
-                    error!("Available services: postgresql, redis, mongodb, docker");
-                    return Err(VmError::Config(
-                        "Service configuration not found".to_string(),
-                    ));
-                }
-            };
-
+        let service_config = if let Some(default_config) = embedded_service_config(&service) {
             crate::yaml::CoreOperations::parse_yaml_with_diagnostics(
                 default_config,
                 &format!("embedded service config for {}", service),
             )?
+        } else {
+            let service_path =
+                crate::paths::resolve_tool_path(format!("configs/services/{service}.yaml"));
+            if !service_path.exists() {
+                error!("Unknown service: {}", service);
+                error!("Available built-in services: postgresql, redis, mongodb, docker");
+                return Err(VmError::Config(
+                    "Service configuration not found".to_string(),
+                ));
+            }
+            VmConfig::from_file(&service_path).map_err(|e| {
+                VmError::Config(format!("Failed to load service config: {service}: {e}"))
+            })?
         };
 
         // Extract only the specific service we want to enable from the service config
@@ -467,6 +495,16 @@ fn apply_service_configurations(
     }
 
     Ok(())
+}
+
+fn embedded_service_config(service: &str) -> Option<&'static str> {
+    match service {
+        "postgresql" => Some(include_str!("../../../resources/services/postgresql.yaml")),
+        "redis" => Some(include_str!("../../../resources/services/redis.yaml")),
+        "mongodb" => Some(include_str!("../../../resources/services/mongodb.yaml")),
+        "docker" => Some(include_str!("../../../resources/services/docker.yaml")),
+        _ => None,
+    }
 }
 
 /// Write config to YAML file
