@@ -389,7 +389,7 @@ fn connect_ssh(
                 if std::io::stdin().is_terminal() {
                     print_create_target(provider.as_ref(), &config);
 
-                    if confirm_select("Create it now?", false)? {
+                    if confirm_select("Create it now?", true)? {
                         // Actually create the VM
                         vm_println!("{}", msg!(MESSAGES.vm.ssh_creating, name = vm_name));
 
