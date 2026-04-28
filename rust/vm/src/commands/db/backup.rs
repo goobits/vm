@@ -1,5 +1,6 @@
 //! DB backup and restore logic
 use crate::error::{VmError, VmResult};
+use crate::utils::confirm_select;
 use chrono::Local;
 use std::path::{Path, PathBuf};
 use vm_config::GlobalConfig;
@@ -204,16 +205,7 @@ pub async fn reset_db(db_name: &str, force: bool) -> VmResult<()> {
             "⚠️  This will permanently delete all data in the '{}' database.",
             db_name
         );
-        print!("Are you sure you want to continue? (y/N) ");
-        use std::io::{self, Write};
-        io::stdout()
-            .flush()
-            .map_err(|e| VmError::general(e, "Failed to flush stdout"))?;
-        let mut response = String::new();
-        io::stdin()
-            .read_line(&mut response)
-            .map_err(|e| VmError::general(e, "Failed to read user input"))?;
-        if response.trim().to_lowercase() != "y" {
+        if !confirm_select("Continue?", false)? {
             vm_core::vm_println!("Database reset cancelled.");
             return Ok(());
         }

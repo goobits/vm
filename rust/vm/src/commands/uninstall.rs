@@ -1,5 +1,5 @@
 use crate::error::VmError;
-use std::io::{self, Write};
+use crate::utils::confirm_select;
 use std::path::PathBuf;
 use vm_cli::msg;
 use vm_core::{vm_println, vm_success, vm_warning};
@@ -71,17 +71,7 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
     // Confirm with user unless --yes flag is provided
     if !yes {
         vm_warning!("This action cannot be undone!");
-        print!("Are you sure you want to uninstall vm? (y/N): ");
-        io::stdout()
-            .flush()
-            .map_err(|e| VmError::general(e, "Failed to flush stdout"))?;
-
-        let mut response = String::new();
-        io::stdin()
-            .read_line(&mut response)
-            .map_err(|e| VmError::general(e, "Failed to read user input"))?;
-
-        if !response.trim().eq_ignore_ascii_case("y") {
+        if !confirm_select("Uninstall vm?", false)? {
             vm_println!("{}", MESSAGES.vm.uninstall_cancelled);
             return Ok(());
         }

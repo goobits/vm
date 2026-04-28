@@ -6,6 +6,7 @@ use tracing::{debug, warn};
 
 use crate::cli::{ConfigProfileSubcommand, ConfigSubcommand};
 use crate::error::{VmError, VmResult};
+use crate::utils::confirm_select;
 use serde_yaml_ng as serde_yaml;
 use vm_cli::msg;
 use vm_config::ports::{PortRange, PortRegistry};
@@ -30,13 +31,7 @@ fn handle_validate_command() -> VmResult<()> {
             vm_println!("");
             vm_println!("💡 Would you like to apply these fixes automatically?");
 
-            use dialoguer::Confirm;
-            if Confirm::new()
-                .with_prompt("Apply suggested fixes?")
-                .default(false)
-                .interact()
-                .unwrap_or(false)
-            {
+            if confirm_select("Apply suggested fixes?", false)? {
                 vm_println!("");
                 for fix in &report.suggested_fixes {
                     let values = vec![fix.value.clone()];

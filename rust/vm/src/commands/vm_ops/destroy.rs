@@ -3,14 +3,13 @@
 //! This module handles VM destruction including single instance destruction
 //! and cross-provider bulk operations with pattern matching.
 
-use std::io::{self, Write};
-
 use dialoguer::{theme::ColorfulTheme, Select};
 use tracing::{debug, info_span};
 
 use crate::commands::db::utils::execute_psql_command;
 use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
+use crate::utils::confirm_select;
 use vm_cli::msg;
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::{vm_error, vm_println};
@@ -422,17 +421,14 @@ fn handle_cross_provider_destroy(
     let should_destroy = if force {
         true
     } else {
-        print!(
+        vm_println!(
             "{}",
             msg!(
                 MESSAGES.vm.destroy_cross_confirm_prompt,
                 count = filtered_instances.len().to_string()
             )
         );
-        io::stdout().flush()?;
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input)?;
-        matches!(input.trim().to_lowercase().as_str(), "y" | "yes")
+        confirm_select("Destroy these instances?", false)?
     };
 
     if !should_destroy {

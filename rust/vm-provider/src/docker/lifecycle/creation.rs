@@ -2,7 +2,6 @@
 use std::borrow::Cow;
 use std::fs;
 use std::io::IsTerminal;
-use std::io::{self, Write};
 use std::process::Command;
 use tracing::{error, info, warn};
 
@@ -12,12 +11,11 @@ use crate::{
     context::ProviderContext,
     docker::{build::BuildOperations, compose::ComposeOperations, ComposeCommand, DockerOps},
 };
-use vm_cli::msg;
 use vm_config::config::VmConfig;
 use vm_core::{
     command_stream::stream_command_visible,
     error::{Result, VmError},
-    vm_dbg,
+    prompts, vm_dbg,
 };
 use vm_messages::messages::MESSAGES;
 
@@ -372,21 +370,18 @@ impl<'a> LifecycleOperations<'a> {
                 MESSAGES.service.docker_container_exists_stopped
             };
 
-            info!(
-                "{}",
-                msg!(
-                    MESSAGES.service.docker_container_exists_prompt,
-                    option1 = option1
-                )
-            );
-            print!("{}", MESSAGES.service.docker_container_choice_prompt);
-            io::stdout().flush()?;
+            info!("Container already exists. Choose how to proceed.");
 
-            let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
+            let options = [
+                option1,
+                "Recreate the container (destroy and rebuild)",
+                "Cancel operation",
+            ];
+            let selection = prompts::select_index("Choose an option", &options, 0)
+                .map_err(|e| VmError::Internal(format!("Failed to read selection: {e}")))?;
 
-            match input.trim() {
-                "1" => {
+            match selection {
+                0 => {
                     if is_running {
                         info!("Using existing running container.");
                         Ok(())
@@ -395,7 +390,7 @@ impl<'a> LifecycleOperations<'a> {
                         self.start_container(None)
                     }
                 }
-                "2" => {
+                1 => {
                     info!("{}", MESSAGES.service.docker_container_recreating);
                     self.destroy_container(None)?;
                     // Continue with creation below
@@ -440,21 +435,18 @@ impl<'a> LifecycleOperations<'a> {
                 MESSAGES.service.docker_container_exists_stopped
             };
 
-            info!(
-                "{}",
-                msg!(
-                    MESSAGES.service.docker_container_exists_prompt,
-                    option1 = option1
-                )
-            );
-            print!("{}", MESSAGES.service.docker_container_choice_prompt);
-            io::stdout().flush()?;
+            info!("Container already exists. Choose how to proceed.");
 
-            let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
+            let options = [
+                option1,
+                "Recreate the container (destroy and rebuild)",
+                "Cancel operation",
+            ];
+            let selection = prompts::select_index("Choose an option", &options, 0)
+                .map_err(|e| VmError::Internal(format!("Failed to read selection: {e}")))?;
 
-            match input.trim() {
-                "1" => {
+            match selection {
+                0 => {
                     if is_running {
                         info!("Using existing running container.");
                         Ok(())
@@ -463,7 +455,7 @@ impl<'a> LifecycleOperations<'a> {
                         self.start_container(Some(&container_name))
                     }
                 }
-                "2" => {
+                1 => {
                     info!("{}", MESSAGES.service.docker_container_recreating);
                     self.destroy_container(Some(&container_name))?;
                     // Continue with creation below

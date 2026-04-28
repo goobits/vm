@@ -97,7 +97,7 @@ if command -v gemini >/dev/null 2>&1; then
   alias yogemini='NO_BROWSER=true GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo'
 fi
 if command -v codex >/dev/null 2>&1; then
-  alias yocodex='codex --dangerously-bypass-approvals-and-sandbox'
+  alias yocodex='CODEX_HOME="$HOME/.codex" codex --dangerously-bypass-approvals-and-sandbox'
 fi
 
 # ZSH Syntax Highlighting

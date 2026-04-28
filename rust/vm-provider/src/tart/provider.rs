@@ -159,13 +159,13 @@ impl TartProvider {
     }
 
     fn ensure_shell_config_ready(&self, instance_name: &str, sync_dir: &str) -> Result<()> {
-        if self.is_shell_config_ready(instance_name) {
-            return Ok(());
+        let provisioner = TartProvisioner::new(instance_name.to_string(), sync_dir.to_string());
+        if !self.is_shell_config_ready(instance_name) {
+            provisioner.apply_canonical_shell_config(&self.config)?;
+            provisioner.apply_shell_overrides(&self.config)?;
         }
 
-        let provisioner = TartProvisioner::new(instance_name.to_string(), sync_dir.to_string());
-        provisioner.apply_canonical_shell_config(&self.config)?;
-        provisioner.apply_shell_overrides(&self.config)
+        provisioner.ensure_codex_runtime_config(&self.config)
     }
 
     fn is_shell_config_ready(&self, instance_name: &str) -> bool {

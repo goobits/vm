@@ -4,13 +4,14 @@
 //! SSH connections, command execution, and log viewing.
 
 use std::collections::HashSet;
-use std::io::{self, IsTerminal, Write};
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
 use tracing::debug;
 
 use crate::error::{VmError, VmResult};
 use crate::state::{count_active_ssh_sessions, VmState};
+use crate::utils::confirm_select;
 use vm_cli::msg;
 use vm_config::{
     config::{BoxSpec, VmConfig},
@@ -159,16 +160,7 @@ fn prompt_refresh(new_worktrees: &[String]) -> VmResult<bool> {
     }
 
     vm_println!("⚠️  New worktrees detected: {}", new_worktrees.join(", "));
-    print!("   Refresh mounts now? (takes ~3s) (Y/n): ");
-    io::stdout().flush()?;
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-
-    Ok(matches!(
-        input.trim().to_lowercase().as_str(),
-        "y" | "yes" | ""
-    ))
+    confirm_select("Refresh mounts now? (takes ~3s)", true)
 }
 
 /// Checks if it's safe to restart the container by checking for active SSH sessions.
@@ -199,22 +191,12 @@ fn handle_ssh_start_prompt(
     _shell: &str,
 ) -> VmResult<Option<VmResult<()>>> {
     // Check if we're in an interactive terminal
-    if !io::stdin().is_terminal() {
+    if !std::io::stdin().is_terminal() {
         vm_println!("{}", MESSAGES.vm.ssh_start_hint);
         return Ok(None);
     }
 
-    print!("{}", MESSAGES.vm.ssh_start_prompt);
-    io::stdout()
-        .flush()
-        .map_err(|e| VmError::general(e, "Failed to flush stdout"))?;
-
-    let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .map_err(|e| VmError::general(e, "Failed to read user input"))?;
-
-    if !matches!(input.trim().to_lowercase().as_str(), "y" | "yes" | "") {
+    if !confirm_select("Start it now?", true)? {
         vm_println!("{}", MESSAGES.vm.ssh_start_aborted);
         return Ok(None);
     }
@@ -404,15 +386,10 @@ fn connect_ssh(
                 vm_println!("{}", msg!(MESSAGES.vm.ssh_vm_not_found, name = vm_name));
 
                 // Offer to create the VM
-                if io::stdin().is_terminal() {
+                if std::io::stdin().is_terminal() {
                     print_create_target(provider.as_ref(), &config);
-                    print!("{}", MESSAGES.vm.ssh_create_prompt);
-                    io::stdout().flush()?;
 
-                    let mut input = String::new();
-                    io::stdin().read_line(&mut input)?;
-
-                    if matches!(input.trim().to_lowercase().as_str(), "y" | "yes") {
+                    if confirm_select("Create it now?", false)? {
                         // Actually create the VM
                         vm_println!("{}", msg!(MESSAGES.vm.ssh_creating, name = vm_name));
 
@@ -553,13 +530,8 @@ pub fn handle_ssh(
     }
 
     if force_refresh && active_sessions > 0 {
-        print!(
-            "⚠️  Warning: This will disconnect {active_sessions} active SSH sessions. Continue? (y/N): "
-        );
-        io::stdout().flush()?;
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-        if !matches!(input.trim().to_lowercase().as_str(), "y" | "yes") {
+        vm_println!("⚠️  Warning: This will disconnect {active_sessions} active SSH sessions.");
+        if !confirm_select("Continue?", false)? {
             return connect_ssh(provider, container, path, command, config);
         }
     } else {

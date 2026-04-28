@@ -11,6 +11,7 @@ anyhow = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml_ng = { workspace = true }
 duct = { workspace = true }
+dialoguer = { workspace = true }
 which = { workspace = true }
 tempfile = { workspace = true }
 pathdiff = { workspace = true }

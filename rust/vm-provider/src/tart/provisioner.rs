@@ -319,6 +319,10 @@ fi"#
             r#"set -e
 mkdir -p "$HOME/{parent}"
 cat > "$HOME/{target}"
+home_uid="$(stat -f %u "$HOME" 2>/dev/null || stat -c %u "$HOME" 2>/dev/null || id -u)"
+home_gid="$(stat -f %g "$HOME" 2>/dev/null || stat -c %g "$HOME" 2>/dev/null || id -g)"
+if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
+$SUDO chown "$home_uid:$home_gid" "$HOME/{target}" 2>/dev/null || true
 chmod {mode} "$HOME/{target}""#,
             parent = parent_escaped,
             target = target_escaped,
@@ -346,19 +350,37 @@ chmod {mode} "$HOME/{target}""#,
         self.ssh_exec(
             r#"set -e
 codex_home="$HOME/.codex"
+home_uid="$(stat -f %u "$HOME" 2>/dev/null || stat -c %u "$HOME" 2>/dev/null || id -u)"
+home_gid="$(stat -f %g "$HOME" 2>/dev/null || stat -c %g "$HOME" 2>/dev/null || id -g)"
+if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
+$SUDO chflags -R nouchg,noschg "$codex_home" "$HOME/.zshrc" "$HOME/.bashrc" 2>/dev/null || true
 if /sbin/mount | grep -F "on $codex_home " >/dev/null 2>&1 || mount | grep -F "on $codex_home " >/dev/null 2>&1; then
-  if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
   $SUDO umount "$codex_home"
 fi
-rm -rf "$codex_home"
-mkdir -p "$codex_home/log" "$codex_home/sessions" "$codex_home/rollout"
-chmod 700 "$codex_home" "$codex_home/log" "$codex_home/sessions" "$codex_home/rollout""#,
+mkdir -p "$codex_home/bin" "$codex_home/log" "$codex_home/sessions" "$codex_home/rollout"
+touch "$codex_home/config.toml"
+$SUDO chown -R "$home_uid:$home_gid" "$codex_home" "$HOME/.zshrc" "$HOME/.bashrc" 2>/dev/null || true
+chmod u+rw "$HOME/.zshrc" "$HOME/.bashrc" 2>/dev/null || true
+chmod 700 "$codex_home" "$codex_home/bin" "$codex_home/log" "$codex_home/sessions" "$codex_home/rollout"
+chmod 600 "$codex_home/config.toml" 2>/dev/null || true
+if [ -f "$codex_home/auth.json" ]; then chmod 600 "$codex_home/auth.json"; fi"#,
         )?;
 
         Ok(())
     }
 
-    fn seed_codex_config(&self) -> Result<()> {
+    pub(crate) fn ensure_codex_runtime_config(&self, config: &VmConfig) -> Result<()> {
+        let Some(ai_tools) = config
+            .host_sync
+            .as_ref()
+            .and_then(|sync| sync.ai_tools.as_ref())
+        else {
+            return Ok(());
+        };
+        if !ai_tools.is_codex_enabled() {
+            return Ok(());
+        }
+
         self.prepare_codex_home()?;
 
         let Some(home_dir) = resolve_home_dir() else {
@@ -689,7 +711,7 @@ if ! command -v codex >/dev/null 2>&1; then
 fi"#,
                 Self::user_bin_path(config)
             ))?;
-            self.seed_codex_config()?;
+            self.ensure_codex_runtime_config(config)?;
         }
 
         Ok(())

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 // Internal imports
 use crate::config::VmConfig;
 use vm_core::error::{Result, VmError};
-use vm_core::{user_paths, vm_error, vm_println};
+use vm_core::{prompts, user_paths, vm_error, vm_println};
 
 /// Read config file, or prompt to initialize if missing (for write operations).
 pub fn read_config_or_init(path: &Path, allow_init: bool) -> Result<VmConfig> {
@@ -22,23 +22,15 @@ pub fn read_config_or_init(path: &Path, allow_init: bool) -> Result<VmConfig> {
         )));
     }
 
-    use std::io::{self, IsTerminal, Write};
+    use std::io::IsTerminal;
     let is_interactive = std::io::stdin().is_terminal();
 
     if is_interactive {
         vm_println!("⚠️  No configuration found: {}", path.display());
         vm_println!();
-        print!("Initialize new project? (Y/n): ");
-        io::stdout().flush()?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .map_err(|e| VmError::Config(format!("Failed to read input: {e}")))?;
-
-        let should_init = matches!(input.trim().to_lowercase().as_str(), "" | "y" | "yes");
-
-        if !should_init {
+        if !prompts::confirm_select("Initialize new project?", true)
+            .map_err(|e| VmError::Config(format!("Failed to read selection: {e}")))?
+        {
             return Err(VmError::Config(
                 "Configuration required. Run 'vm init' to create one.".to_string(),
             ));

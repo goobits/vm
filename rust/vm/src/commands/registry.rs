@@ -8,8 +8,8 @@ use crate::cli::{RegistryConfigAction, RegistrySubcommand};
 use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
 use crate::service_registry::get_service_registry;
+use crate::utils::confirm_select;
 use anyhow::Context;
-use dialoguer::Confirm;
 use vm_cli::msg;
 use vm_config::GlobalConfig;
 use vm_core::{vm_error, vm_println, vm_success};
@@ -293,13 +293,10 @@ async fn shutdown_server(base_url: &str) -> VmResult<()> {
 
 /// Prompt user to start the server
 fn prompt_start_server() -> VmResult<bool> {
-    let confirmed = Confirm::new()
-        .with_prompt("Package registry server is not running. Start it now?")
-        .default(false)
-        .interact()
-        .map_err(|e| VmError::general(e, "Failed to prompt user"))?;
-
-    Ok(confirmed)
+    confirm_select(
+        "Package registry server is not running. Start it now?",
+        false,
+    )
 }
 
 /// Start server in background if needed as a detached process

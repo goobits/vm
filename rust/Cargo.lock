@@ -3552,6 +3552,7 @@ name = "vm-core"
 version = "4.8.3"
 dependencies = [
  "anyhow",
+ "dialoguer",
  "dirs",
  "duct",
  "pathdiff",

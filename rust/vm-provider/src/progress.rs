@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use tracing::info;
 use vm_cli::msg;
-use vm_core::vm_println;
+use vm_core::{prompts, vm_println};
 use vm_messages::messages::MESSAGES;
 
 // --- Generic Progress Parsing --- //
@@ -495,15 +495,5 @@ impl StatusFormatter {
 
 /// Prompt user for confirmation with a yes/no question
 pub fn confirm_prompt(message: &str) -> bool {
-    print!("{message}");
-    let _ = io::stdout().flush();
-
-    let mut input = String::new();
-    match io::stdin().read_line(&mut input) {
-        Ok(_) => {
-            let response = input.trim().to_lowercase();
-            matches!(response.as_str(), "y" | "yes")
-        }
-        Err(_) => false,
-    }
+    prompts::confirm_select(message, false).unwrap_or(false)
 }
