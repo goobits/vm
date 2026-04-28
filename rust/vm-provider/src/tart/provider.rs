@@ -11,6 +11,7 @@ use crate::{
     VmStatusReport,
 };
 use duct::cmd;
+use indicatif::ProgressBar;
 use serde::Deserialize;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
@@ -138,6 +139,78 @@ impl TartProvider {
 
             thread::sleep(Duration::from_secs(1));
         }
+    }
+
+    fn ensure_workspace_mount_ready(&self, instance_name: &str, sync_dir: &str) -> Result<()> {
+        TartProvisioner::new(instance_name.to_string(), sync_dir.to_string())
+            .ensure_workspace_mount()
+            .map_err(|e| {
+                VmError::Provider(format!(
+                    "Tart workspace mount is not ready at '{sync_dir}'. This VM may be partially provisioned or was started without the workspace share. Try `vm restart tart`, or recreate it with `vm destroy tart && vm ssh`. Mount error: {e}"
+                ))
+            })
+    }
+
+    fn ensure_shell_config_ready(&self, instance_name: &str, sync_dir: &str) -> Result<()> {
+        if self.is_shell_config_ready(instance_name) {
+            return Ok(());
+        }
+
+        let provisioner = TartProvisioner::new(instance_name.to_string(), sync_dir.to_string());
+        provisioner.apply_canonical_shell_config(&self.config)?;
+        provisioner.apply_shell_overrides(&self.config)
+    }
+
+    fn is_shell_config_ready(&self, instance_name: &str) -> bool {
+        cmd!(
+            "tart",
+            "exec",
+            instance_name,
+            "sh",
+            "-lc",
+            "test -f \"$HOME/.zshrc\" && grep -Fq 'VM_PROJECT_PATH=' \"$HOME/.zshrc\""
+        )
+        .stderr_null()
+        .stdout_null()
+        .run()
+        .is_ok()
+    }
+
+    fn ensure_existing_vm_ready(
+        &self,
+        main_phase: &ProgressBar,
+        vm_name: &str,
+        config: &VmConfig,
+    ) -> Result<()> {
+        if !self.is_instance_running(vm_name)? {
+            ProgressReporter::task(main_phase, "Existing VM is stopped; starting it...");
+            self.start_vm_background(vm_name)?;
+        }
+
+        ProgressReporter::task(main_phase, "Waiting for Tart guest agent...");
+        if !self.wait_for_guest_agent_ready(vm_name, Duration::from_secs(60)) {
+            ProgressReporter::finish_phase(main_phase, "Existing VM is not ready.");
+            return Err(VmError::Provider(format!(
+                "Tart VM '{vm_name}' exists but did not become ready. Tart run log: {}",
+                tart_run_log_path(vm_name)
+            )));
+        }
+
+        let sync_dir = self.get_sync_directory();
+        self.ensure_workspace_mount_ready(vm_name, &sync_dir)?;
+
+        if !self.is_shell_config_ready(vm_name) {
+            ProgressReporter::task(
+                main_phase,
+                "Existing VM is missing shell config; running provisioning...",
+            );
+            let provisioner = TartProvisioner::new(vm_name.to_string(), sync_dir);
+            provisioner.provision(config)?;
+        } else {
+            self.ensure_shell_config_ready(vm_name, &sync_dir)?;
+        }
+
+        Ok(())
     }
 
     fn collect_metrics(&self, instance: &str) -> Result<CollectedMetrics> {
@@ -358,27 +431,30 @@ impl TartProvider {
 
         // Check if VM already exists
         ProgressReporter::task(&main_phase, "Checking if VM exists...");
-        let list_output = std::process::Command::new("tart").args(["list"]).output();
-
-        let mut existing_vms = Vec::new();
-        if let Ok(output) = &list_output {
-            let list_str = String::from_utf8_lossy(&output.stdout);
-            existing_vms = list_str.lines().map(|s| s.to_string()).collect();
-
-            if list_str.contains(vm_name) {
-                ProgressReporter::task(&main_phase, "VM already exists.");
-                info!(
-                    "{}",
-                    msg!(MESSAGES.service.provider_tart_vm_exists, name = vm_name)
-                );
-                info!("{}", MESSAGES.service.provider_tart_recreate_hint);
-                ProgressReporter::finish_phase(&main_phase, "Skipped creation.");
-                return Ok(());
-            }
+        if self.get_instance_state(vm_name)?.is_some() {
+            ProgressReporter::task(&main_phase, "Existing VM found; verifying readiness...");
+            vm_println!(
+                "ℹ️  Tart VM '{}' already exists; checking and repairing it instead of cloning.",
+                vm_name
+            );
+            info!(
+                "{}",
+                msg!(MESSAGES.service.provider_tart_vm_exists, name = vm_name)
+            );
+            self.ensure_existing_vm_ready(&main_phase, vm_name, config)?;
+            info!("{}", MESSAGES.service.provider_tart_connect_hint);
+            ProgressReporter::finish_phase(&main_phase, "Environment ready.");
+            return Ok(());
         }
         ProgressReporter::task(&main_phase, "VM not found, proceeding with creation.");
 
         // Check for orphaned VMs (same project, different instance/suffix)
+        let existing_vms = self
+            .instance_manager()
+            .parse_tart_list()?
+            .into_iter()
+            .map(|instance| instance.name)
+            .collect::<Vec<_>>();
         let project_prefix = format!("{}-", extract_project_name(&self.config));
         let orphans: Vec<String> = existing_vms
             .into_iter()
@@ -564,11 +640,9 @@ impl Provider for TartProvider {
         let vm_name = self.vm_name_with_instance(container)?;
 
         if self.is_instance_running(&vm_name).unwrap_or(false) {
-            cmd!("tart", "stop", &vm_name, "--force")
-                .run()
-                .map_err(|e| {
-                    VmError::Provider(format!("Failed to stop Tart VM before delete: {e}"))
-                })?;
+            cmd!("tart", "stop", &vm_name).run().map_err(|e| {
+                VmError::Provider(format!("Failed to stop Tart VM before delete: {e}"))
+            })?;
         }
 
         stream_command("tart", &["delete", &vm_name])
@@ -603,6 +677,10 @@ impl Provider for TartProvider {
             }
         }
 
+        let sync_dir = self.get_sync_directory();
+        self.ensure_workspace_mount_ready(&instance_name, &sync_dir)?;
+        self.ensure_shell_config_ready(&instance_name, &sync_dir)?;
+
         let shell = self
             .config
             .terminal
@@ -611,7 +689,6 @@ impl Provider for TartProvider {
             .unwrap_or("zsh");
 
         // Get the sync directory (project root in VM)
-        let sync_dir = self.get_sync_directory();
         let target_path = SecurityValidator::validate_relative_path(relative_path, &sync_dir)?;
         let target_path = target_path.to_string_lossy().into_owned();
 
@@ -638,10 +715,11 @@ impl Provider for TartProvider {
         }
 
         // Use `tart exec -i -t` for interactive shell session
+        let shell_escaped = Self::shell_escape_single_quotes(shell);
         let ssh_command = format!(
-            "export VM_TARGET_DIR='{target_path}' && cd \"$VM_TARGET_DIR\" && exec \"${{SHELL:-{shell}}}\" -il",
+            "export VM_TARGET_DIR='{target_path}' && cd \"$VM_TARGET_DIR\" && exec '{shell}' -il",
             target_path = target_path_escaped,
-            shell = shell
+            shell = shell_escaped
         );
 
         let status = Command::new("tart")
@@ -669,6 +747,8 @@ impl Provider for TartProvider {
             .and_then(|t| t.shell.as_deref())
             .unwrap_or("zsh");
         let sync_dir = self.get_sync_directory();
+        self.ensure_workspace_mount_ready(&vm_name, &sync_dir)?;
+        self.ensure_shell_config_ready(&vm_name, &sync_dir)?;
         let sync_dir_escaped = Self::shell_escape_single_quotes(&sync_dir);
 
         let mut args: Vec<String> = vec![
@@ -895,8 +975,7 @@ impl Provider for TartProvider {
         let instance_name = self.resolve_instance_name(container)?;
         warn!("Force killing Tart VM: {}", &instance_name);
 
-        // Use the force flag directly for a kill operation.
-        cmd!("tart", "stop", &instance_name, "--force")
+        cmd!("tart", "stop", &instance_name, "--timeout", "0")
             .run()
             .map_err(|e| VmError::Provider(format!("Failed to force stop VM: {}", e)))?;
 

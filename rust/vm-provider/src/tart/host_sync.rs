@@ -71,26 +71,37 @@ pub fn collect_host_sync_mounts(config: &VmConfig) -> Vec<HostSyncMount> {
     let Some(home) = resolve_home_dir() else {
         return mounts;
     };
+    let project_name = config
+        .project
+        .as_ref()
+        .and_then(|project| project.name.as_deref())
+        .unwrap_or("vm-project");
 
     if let Some(ai_tools) = host_sync.ai_tools.as_ref() {
-        add_mount_if_exists(
+        add_ai_sync_mount(
             &mut mounts,
             "claude-sync",
-            home.join(".claude"),
+            &home,
+            project_name,
+            "claude",
             "~/.claude".to_string(),
             ai_tools.is_claude_enabled(),
         );
-        add_mount_if_exists(
+        add_ai_sync_mount(
             &mut mounts,
             "gemini-sync",
-            home.join(".gemini"),
+            &home,
+            project_name,
+            "gemini",
             "~/.gemini".to_string(),
             ai_tools.is_gemini_enabled(),
         );
-        add_mount_if_exists(
+        add_ai_sync_mount(
             &mut mounts,
             "codex-sync",
-            home.join(".codex"),
+            &home,
+            project_name,
+            "codex",
             "~/.codex".to_string(),
             ai_tools.is_codex_enabled(),
         );
@@ -99,14 +110,25 @@ pub fn collect_host_sync_mounts(config: &VmConfig) -> Vec<HostSyncMount> {
     mounts
 }
 
-fn add_mount_if_exists(
+fn add_ai_sync_mount(
     mounts: &mut Vec<HostSyncMount>,
     tag: &str,
-    host_path: PathBuf,
+    home: &Path,
+    project_name: &str,
+    tool_name: &str,
     guest_path: String,
     enabled: bool,
 ) {
-    if !enabled || !host_path.exists() || !host_path.is_dir() {
+    if !enabled {
+        return;
+    }
+
+    let host_path = home
+        .join(".vm")
+        .join("ai-sync")
+        .join(tool_name)
+        .join(project_name);
+    if fs::create_dir_all(&host_path).is_err() || !host_path.is_dir() {
         return;
     }
 
@@ -135,8 +157,17 @@ pub fn file_name(path: &Path) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{file_name, resolve_guest_home_path};
+    use super::{collect_host_sync_mounts, file_name, resolve_guest_home_path};
     use std::path::Path;
+    use std::sync::{Mutex, OnceLock};
+    use vm_config::config::{
+        AiSyncConfig, AiToolSyncConfig, HostSyncConfig, ProjectConfig, VmConfig,
+    };
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     #[test]
     fn resolves_guest_home_path() {
@@ -150,5 +181,42 @@ mod tests {
             file_name(Path::new("/tmp/test.txt")).as_deref(),
             Some("test.txt")
         );
+    }
+
+    #[test]
+    fn ai_tool_sync_uses_project_isolated_vm_dirs() {
+        let _guard = env_lock().lock().unwrap();
+        let temp_home = tempfile::tempdir().unwrap();
+        let previous_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", temp_home.path());
+
+        let config = VmConfig {
+            project: Some(ProjectConfig {
+                name: Some("demo".to_string()),
+                ..Default::default()
+            }),
+            host_sync: Some(HostSyncConfig {
+                ai_tools: Some(AiSyncConfig::Detailed(AiToolSyncConfig {
+                    codex: true,
+                    ..Default::default()
+                })),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let mounts = collect_host_sync_mounts(&config);
+
+        if let Some(home) = previous_home {
+            std::env::set_var("HOME", home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+
+        assert_eq!(mounts.len(), 1);
+        assert_eq!(mounts[0].tag, "codex-sync");
+        assert_eq!(mounts[0].guest_path, "~/.codex");
+        assert!(mounts[0].host_path.ends_with(".vm/ai-sync/codex/demo"));
+        assert!(mounts[0].host_path.is_dir());
     }
 }

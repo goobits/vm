@@ -294,7 +294,8 @@ pub async fn handle_destroy_enhanced(
         return handle_cross_provider_destroy(*all, provider_filter, pattern, *force);
     }
 
-    let (provider, container) = resolve_single_destroy_target(provider, container, &config);
+    let (provider, container) =
+        resolve_single_destroy_target(provider, container, &config, provider_filter);
 
     // Single instance destroy
     handle_destroy(
@@ -350,6 +351,7 @@ fn resolve_single_destroy_target(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     config: &VmConfig,
+    explicit_provider: Option<&str>,
 ) -> (Box<dyn Provider>, Option<String>) {
     if let Some(provider_name) = container.filter(|value| is_provider_name(value)) {
         if let Ok(provider) = provider_for_name(provider_name, config) {
@@ -357,7 +359,7 @@ fn resolve_single_destroy_target(
         }
     }
 
-    if container.is_none() {
+    if container.is_none() && explicit_provider.is_none() {
         if let Some(provider_name) = resolve_project_provider(provider.name(), config) {
             if provider_name != provider.name() {
                 if let Ok(provider) = provider_for_name(&provider_name, config) {

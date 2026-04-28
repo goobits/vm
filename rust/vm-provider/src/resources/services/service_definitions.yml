@@ -4,10 +4,6 @@
 
 # YAML anchors for common patterns
 common_patterns: &common_patterns
-  # Common port configuration pattern
-  default_port_config: &default_port_config
-    service_ignore_errors: true
-
   # Common localhost bind configuration
   localhost_bind_config: &localhost_bind_config
     bind_address: "127.0.0.1"
@@ -43,9 +39,6 @@ service_definitions:
       - postgresql
       - postgresql-contrib
     service_version_command: "ls /etc/postgresql/ | head -1"
-    service_pre_install_commands:
-      - "chown -R postgres:postgres /var/lib/postgresql || true"
-      - "chmod 700 /var/lib/postgresql || true"
     service_versioned_config_lines:
       - path: "/etc/postgresql/VERSION/main/postgresql.conf"
         regexp: "^#?port ="
@@ -59,7 +52,6 @@ service_definitions:
     service_supervisor_environment: "LC_ALL=\"en_US.UTF-8\",LC_CTYPE=\"en_US.UTF-8\""
     service_port: "{{ project_config.services.postgresql.port | default(5432) }}"
     service_post_install_commands: *postgresql_db_setup
-    <<: *default_port_config
 
   mysql:
     service_packages:
@@ -77,7 +69,6 @@ service_definitions:
     service_supervisor_user: "mysql"
     service_port: "{{ project_config.services.mysql.port | default(3306) }}"
     service_post_install_commands: *mysql_db_setup
-    <<: *default_port_config
 
   mongodb:
     service_dependencies:
@@ -100,7 +91,6 @@ service_definitions:
     service_supervisor_user: "mongodb"
     service_port: "{{ project_config.services.mongodb.port | default(27017) }}"
     service_post_install_commands: *mongodb_db_setup
-    <<: *default_port_config
 
   # === CACHE & MESSAGE QUEUE SERVICES ===
   redis:
@@ -137,7 +127,6 @@ service_definitions:
     service_post_install_commands:
       - *docker_group_cmd
       - "{{ 'docker buildx install' if project_config.services.docker.buildx | default(true) else 'echo \"Buildx disabled\"' }}"
-    <<: *default_port_config
     # Note: docker.io CLI is included in base Docker image for Docker provider
 
   # === MULTIMEDIA SERVICES ===
@@ -159,7 +148,6 @@ service_definitions:
       - "pulseaudio --check -v || (pulseaudio --system --start && echo 'PulseAudio started')"
     service_supervisor_command: "/usr/bin/pulseaudio --system --disallow-exit --disallow-module-loading --log-target=stderr"
     service_supervisor_user: "root"
-    <<: *default_port_config
 
   gpu:
     service_packages:
@@ -170,7 +158,6 @@ service_definitions:
       - mesa-va-drivers
     service_post_install_commands:
       - *video_group_cmd
-    <<: *default_port_config
 
   # === SYSTEM & ENVIRONMENT SERVICES ===
   vm:
@@ -182,4 +169,3 @@ service_definitions:
       - "curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -"
       - "apt-get install -y nodejs"
       - "cd /workspace && npm link"
-    <<: *default_port_config

@@ -80,6 +80,7 @@ impl TartProvisioner {
 
         info!("Waiting for SSH to be ready...");
 
+        let log_path = tart_run_log_path(&self.instance_name);
         for _attempt in 1..=30 {
             let result = cmd!("tart", "exec", &self.instance_name, "echo", "ready")
                 .stderr_null()
@@ -91,10 +92,19 @@ impl TartProvisioner {
                 return Ok(());
             }
 
+            if let Ok(log) = std::fs::read_to_string(&log_path) {
+                if log.contains("The number of VMs exceeds the system limit") {
+                    return Err(VmError::Provider(format!(
+                        "Tart could not start because the host VM limit was reached. Stop another Tart VM and retry. Tart run log: {}{}",
+                        log_path,
+                        self.read_host_log_tail(&log_path, 40)
+                    )));
+                }
+            }
+
             thread::sleep(Duration::from_secs(2));
         }
 
-        let log_path = tart_run_log_path(&self.instance_name);
         let log_tail = self.read_host_log_tail(&log_path, 40);
 
         Err(VmError::Provider(format!(
@@ -129,7 +139,7 @@ impl TartProvisioner {
         input.replace('\'', "'\"'\"'")
     }
 
-    fn ensure_workspace_mount(&self) -> Result<()> {
+    pub(crate) fn ensure_workspace_mount(&self) -> Result<()> {
         let dir_escaped = Self::shell_escape_single_quotes(&self.project_dir);
         let mount_cmd = format!(
             r#"dir='{dir}';
@@ -346,7 +356,7 @@ fi"#
         Ok(())
     }
 
-    fn apply_shell_overrides(&self, config: &VmConfig) -> Result<()> {
+    pub(crate) fn apply_shell_overrides(&self, config: &VmConfig) -> Result<()> {
         let Some(overrides) = Self::render_shell_overrides(config) else {
             return Ok(());
         };
@@ -365,7 +375,7 @@ fi"#
         Ok(())
     }
 
-    fn apply_canonical_shell_config(&self, config: &VmConfig) -> Result<()> {
+    pub(crate) fn apply_canonical_shell_config(&self, config: &VmConfig) -> Result<()> {
         let rendered = Self::render_canonical_zshrc(config, &self.project_dir)?;
 
         self.ssh_exec(&format!(

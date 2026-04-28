@@ -42,8 +42,7 @@ ENV TERM=xterm-256color
 # --- Base System Setup ---
 # Skip for pre-provisioned snapshots to avoid permission conflicts
 RUN if [ "$BASE_PREPROVISIONED" != "true" ]; then \
-        # Set timezone (|| true: file may be on read-only layer in some base images)
-        (echo "${TZ}" > /etc/timezone || true) && \
+        echo "${TZ}" > /etc/timezone && \
         apt-get update && apt-get install -y \
         locales \
         curl wget git git-lfs build-essential \
@@ -106,8 +105,8 @@ RUN if id -u ${PROJECT_USER} >/dev/null 2>&1; then \
             fi && \
             usermod -g "$TARGET_GROUP" ${PROJECT_USER} && \
             # Fix ownership of home directory files
-            find /home/${PROJECT_USER} -user $OLD_UID -exec chown ${PROJECT_UID} {} + 2>/dev/null || true && \
-            find /home/${PROJECT_USER} -group $OLD_GID -exec chgrp ${PROJECT_GID} {} + 2>/dev/null || true; \
+            find /home/${PROJECT_USER} -user $OLD_UID -exec chown ${PROJECT_UID} {} + && \
+            find /home/${PROJECT_USER} -group $OLD_GID -exec chgrp ${PROJECT_GID} {} +; \
         else \
             echo "UID/GID already matches (${PROJECT_UID}:${PROJECT_GID}), skipping adjustment"; \
         fi; \
@@ -157,15 +156,14 @@ RUN --mount=type=cache,target=/home/${PROJECT_USER}/.rustup \
     if [ -n "${CARGO_PACKAGES}" ]; then \
         # Fix cache permissions if they exist from a different UID \
         if [ -d "/home/${PROJECT_USER}/.rustup" ]; then \
-            find "/home/${PROJECT_USER}/.rustup" ! -user ${PROJECT_UID} -exec chown ${PROJECT_UID}:${PROJECT_GID} {} + 2>/dev/null || true; \
+            find "/home/${PROJECT_USER}/.rustup" ! -user ${PROJECT_UID} -exec chown ${PROJECT_UID}:${PROJECT_GID} {} +; \
         fi && \
         su - ${PROJECT_USER} -c 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_VERSION} --no-modify-path'; \
     fi
 
 RUN if [ -n "${PIPX_PACKAGES}" ]; then \
-    python3 -m pip install --user --break-system-packages pipx; \
-    python3 -m pipx ensurepath; \
-fi
+	    python3 -m pip install --user --break-system-packages pipx; \
+	fi
 
 # --- PATH Configuration ---
 # Set up environment for package managers (must come before config/shell setup)
@@ -181,8 +179,10 @@ COPY --chown=${PROJECT_UID}:${PROJECT_GID} shared /app/shared
 # --- Shared Runtime Shell Configuration ---
 # Fix home directory ownership before shell/runtime setup (needed when building from snapshots
 # with different UID/GID ownership).
-RUN chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER}/.zshrc /home/${PROJECT_USER}/.bashrc /home/${PROJECT_USER}/.profile 2>/dev/null || true && \
-    chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER} 2>/dev/null || true
+RUN for path in /home/${PROJECT_USER}/.zshrc /home/${PROJECT_USER}/.bashrc /home/${PROJECT_USER}/.profile; do \
+        if [ -e "$path" ]; then chown ${PROJECT_UID}:${PROJECT_GID} "$path"; fi; \
+    done && \
+    chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER}
 
 # --- Git Worktree Auto-Repair Configuration ---
 # Create shared initialization script that runs for ALL shells (interactive, non-interactive, bash, zsh, sh)
@@ -279,8 +279,11 @@ RUN echo '' >> /home/${PROJECT_USER}/.bashrc && \
 # We need to fix ownership of the home directory and common dotfiles/directories
 # that tools like ansible, npm, pip, etc. need to write to at runtime
 RUN chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER} && \
-    chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER}/.zshrc /home/${PROJECT_USER}/.bashrc /home/${PROJECT_USER}/.profile 2>/dev/null || true && \
-    chown -R ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER}/.cache /home/${PROJECT_USER}/.local /home/${PROJECT_USER}/.config 2>/dev/null || true
+    for path in /home/${PROJECT_USER}/.zshrc /home/${PROJECT_USER}/.bashrc /home/${PROJECT_USER}/.profile; do \
+        if [ -e "$path" ]; then chown ${PROJECT_UID}:${PROJECT_GID} "$path"; fi; \
+    done && \
+    mkdir -p /home/${PROJECT_USER}/.cache /home/${PROJECT_USER}/.local /home/${PROJECT_USER}/.config && \
+    chown -R ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER}/.cache /home/${PROJECT_USER}/.local /home/${PROJECT_USER}/.config
 
 # --- Package Installation ---
 # Moved to end for optimal layer caching (60% faster when only packages change)
@@ -321,7 +324,7 @@ RUN --mount=type=cache,target=/home/${PROJECT_USER}/.npm \
         echo "Checking NPM packages: ${NPM_PACKAGES}"; \
         # Fix cache permissions if they exist from a different UID \
         if [ -d "/home/${PROJECT_USER}/.npm" ]; then \
-            find "/home/${PROJECT_USER}/.npm" ! -user ${PROJECT_UID} -exec chown ${PROJECT_UID}:${PROJECT_GID} {} + 2>/dev/null || true; \
+            find "/home/${PROJECT_USER}/.npm" ! -user ${PROJECT_UID} -exec chown ${PROJECT_UID}:${PROJECT_GID} {} +; \
         fi && \
         su - ${PROJECT_USER} -c '. "$NVM_DIR/nvm.sh" && \
         for pkg in ${NPM_PACKAGES}; do \
@@ -342,7 +345,7 @@ RUN --mount=type=cache,target=/home/${PROJECT_USER}/.cache/pip \
         echo "Checking Python packages: ${PIP_PACKAGES}"; \
         # Fix cache permissions if they exist from a different UID \
         if [ -d "/home/${PROJECT_USER}/.cache/pip" ]; then \
-            find "/home/${PROJECT_USER}/.cache/pip" ! -user ${PROJECT_UID} -exec chown ${PROJECT_UID}:${PROJECT_GID} {} + 2>/dev/null || true; \
+            find "/home/${PROJECT_USER}/.cache/pip" ! -user ${PROJECT_UID} -exec chown ${PROJECT_UID}:${PROJECT_GID} {} +; \
         fi && \
         su - ${PROJECT_USER} -c 'for pkg in ${PIP_PACKAGES}; do \
             if ! pip3 show "$pkg" >/dev/null 2>&1; then \
@@ -362,10 +365,10 @@ RUN --mount=type=cache,target=/home/${PROJECT_USER}/.cargo/registry \
         echo "Installing Cargo packages: ${CARGO_PACKAGES}"; \
         # Fix cache permissions if they exist from a different UID \
         if [ -d "/home/${PROJECT_USER}/.cargo/registry" ]; then \
-            find "/home/${PROJECT_USER}/.cargo/registry" ! -user ${PROJECT_UID} -exec chown ${PROJECT_UID}:${PROJECT_GID} {} + 2>/dev/null || true; \
+            find "/home/${PROJECT_USER}/.cargo/registry" ! -user ${PROJECT_UID} -exec chown ${PROJECT_UID}:${PROJECT_GID} {} +; \
         fi && \
         if [ -d "/home/${PROJECT_USER}/.cargo/git" ]; then \
-            find "/home/${PROJECT_USER}/.cargo/git" ! -user ${PROJECT_UID} -exec chown ${PROJECT_UID}:${PROJECT_GID} {} + 2>/dev/null || true; \
+            find "/home/${PROJECT_USER}/.cargo/git" ! -user ${PROJECT_UID} -exec chown ${PROJECT_UID}:${PROJECT_GID} {} +; \
         fi && \
         su - ${PROJECT_USER} -c '. "$HOME/.cargo/env" && \
         for pkg in ${CARGO_PACKAGES}; do \

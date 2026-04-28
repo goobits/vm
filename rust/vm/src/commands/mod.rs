@@ -615,12 +615,49 @@ fn handle_internal_completion(shell: &str) -> VmResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::ZSH_COMPLETION_PRELUDE;
+    use super::{instance_arg, provider_override_from_command, Command, ZSH_COMPLETION_PRELUDE};
 
     #[test]
     fn zsh_completion_prelude_initializes_compdef_for_direct_sourcing() {
         assert!(ZSH_COMPLETION_PRELUDE.contains("${functions[compdef]+x}"));
         assert!(ZSH_COMPLETION_PRELUDE.contains("autoload -Uz compinit"));
         assert!(ZSH_COMPLETION_PRELUDE.contains("compinit -i"));
+    }
+
+    #[test]
+    fn provider_selector_is_routed_as_provider_not_instance() {
+        let command = Command::Destroy {
+            container: Some("tart".to_string()),
+            force: true,
+            no_backup: true,
+            all: false,
+            pattern: None,
+            preserve_services: true,
+            remove_services: false,
+        };
+
+        assert_eq!(
+            provider_override_from_command(&command),
+            Some("tart".to_string())
+        );
+        assert_eq!(instance_arg(Some("tart".to_string())), None);
+    }
+
+    #[test]
+    fn explicit_destroy_provider_is_not_used_as_bulk_filter_without_bulk_flags() {
+        let command = Command::Destroy {
+            container: Some("docker".to_string()),
+            force: false,
+            no_backup: false,
+            all: false,
+            pattern: None,
+            preserve_services: true,
+            remove_services: false,
+        };
+
+        assert_eq!(
+            provider_override_from_command(&command),
+            Some("docker".to_string())
+        );
     }
 }

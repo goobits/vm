@@ -10,7 +10,6 @@
 - name: "Run {{ service_name }} pre-installation commands"
   shell: "{{ item }}"
   loop: "{{ service_pre_install_commands }}"
-  ignore_errors: "{{ service_ignore_errors }}"
   when: service_pre_install_commands | length > 0
 
 - name: "Install {{ service_name }} dependencies"
@@ -101,19 +100,11 @@
     - service_supervisor_command != ""
   notify: restart supervisor
 
-- name: "Restart supervisor for {{ service_name }} (Docker) - conditional"
-  shell: |
-    if pgrep supervisord > /dev/null; then
-      supervisorctl reread
-      supervisorctl update
-      supervisorctl restart {{ service_name }} || true
-    else
-      echo "Supervisor not running, will start on container startup"
-    fi
+- name: "Apply supervisor config for {{ service_name }} (Docker)"
+  meta: flush_handlers
   when:
     - is_docker_container
     - service_supervisor_command != ""
-  ignore_errors: yes
 
 - name: "Wait for {{ service_name }} to be ready"
   wait_for:
@@ -122,10 +113,8 @@
     delay: 2
     timeout: 30
   when: service_port != ""
-  ignore_errors: yes
 
 - name: "Run {{ service_name }} post-installation commands"
   shell: "{{ item }}"
   loop: "{{ service_post_install_commands }}"
-  ignore_errors: "{{ service_ignore_errors }}"
   when: service_post_install_commands | length > 0

@@ -15,6 +15,37 @@ use vm_provider::{docker::DockerOps, Provider, ProviderContext};
 
 use super::helpers::{print_vm_runtime_details, register_vm_services_helper};
 
+fn provider_resource_name(
+    provider: &dyn Provider,
+    vm_name: &str,
+    instance: Option<&str>,
+) -> String {
+    match provider.name() {
+        "tart" => instance
+            .map(|instance_name| format!("{vm_name}-{instance_name}"))
+            .unwrap_or_else(|| vm_name.to_string()),
+        _ => instance
+            .map(|instance_name| format!("{vm_name}-{instance_name}"))
+            .unwrap_or_else(|| format!("{vm_name}-dev")),
+    }
+}
+
+fn provider_selector_suffix(provider: &dyn Provider) -> &'static str {
+    match provider.name() {
+        "docker" => "",
+        "podman" => " podman",
+        "tart" => " tart",
+        _ => "",
+    }
+}
+
+fn provider_exec_selector(provider: &dyn Provider) -> String {
+    match provider.name() {
+        "docker" => String::new(),
+        name => format!(" --provider {name}"),
+    }
+}
+
 /// Auto-adjust resource allocation based on system availability
 fn auto_adjust_resources(config: &mut VmConfig) -> VmResult<()> {
     // Get system resources (fallback to reasonable defaults if detection fails)
@@ -251,20 +282,22 @@ pub async fn handle_create(
     }
 
     vm_println!("{}", msg!(MESSAGES.vm.create_header, name = vm_name));
-    vm_println!("{}", MESSAGES.vm.create_progress);
+    if matches!(provider.name(), "docker" | "podman") {
+        vm_println!("{}", MESSAGES.vm.create_progress);
+    }
 
-    // Register VM services BEFORE creating container so docker-compose can inject env vars
-    // Skip service registration for snapshot builds (they're just base images, no running services needed)
-    let vm_instance_name = if let Some(instance_name) = &instance {
-        format!("{vm_name}-{instance_name}")
-    } else {
-        format!("{vm_name}-dev")
-    };
+    // Docker/Podman need services registered before creation so compose can inject env vars.
+    // Tart does not use docker-compose for VM creation, so registering first makes the CLI
+    // say services are configured before the VM actually exists.
+    let vm_instance_name = provider_resource_name(provider.as_ref(), vm_name, instance.as_deref());
+    let register_services_before_create =
+        save_as.is_none() && matches!(provider.name(), "docker" | "podman");
+    let register_services_after_create = save_as.is_none() && !register_services_before_create;
 
-    if save_as.is_none() {
+    if register_services_before_create {
         vm_println!("{}", MESSAGES.common.configuring_services);
         register_vm_services_helper(&vm_instance_name, &config, &global_config).await?;
-    } else {
+    } else if save_as.is_some() {
         debug!("Skipping service registration for snapshot build");
     }
 
@@ -293,29 +326,41 @@ pub async fn handle_create(
         Ok(()) => {
             vm_println!("{}", MESSAGES.vm.create_success);
 
-            let container_name = if let Some(instance_name) = &instance {
-                format!("{vm_name}-{instance_name}")
+            let container_name =
+                provider_resource_name(provider.as_ref(), vm_name, instance.as_deref());
+
+            if provider.name() == "tart" {
+                vm_println!(
+                    "  Status:     {}\n  Provider:   Tart\n  VM:         {}",
+                    MESSAGES.common.status_running,
+                    container_name
+                );
             } else {
-                format!("{vm_name}-dev")
-            };
-            vm_println!(
-                "{}",
-                msg!(
-                    MESSAGES.vm.create_info_block,
-                    status = MESSAGES.common.status_running,
-                    container = &container_name
-                )
-            );
+                vm_println!(
+                    "{}",
+                    msg!(
+                        MESSAGES.vm.create_info_block,
+                        status = MESSAGES.common.status_running,
+                        container = &container_name
+                    )
+                );
+            }
 
             print_vm_runtime_details(&config, true);
 
-            // Services were already registered before container creation
+            if register_services_after_create {
+                vm_println!("{}", MESSAGES.common.configuring_services);
+                register_vm_services_helper(&vm_instance_name, &config, &global_config).await?;
+            }
+
             if is_first_vm {
+                let provider_suffix = provider_selector_suffix(provider.as_ref());
+                let exec_selector = provider_exec_selector(provider.as_ref());
                 vm_println!("\n🎉 Success! Your VM is ready");
                 vm_println!("📝 Next steps:");
-                vm_println!("  • ssh into VM:  vm ssh");
-                vm_println!("  • Run commands: vm exec 'npm install'");
-                vm_println!("  • View status:  vm status");
+                vm_println!("  • ssh into VM:  vm ssh{}", provider_suffix);
+                vm_println!("  • Run commands: vm exec{} -- npm install", exec_selector);
+                vm_println!("  • View status:  vm status{}", provider_suffix);
             } else {
                 vm_println!("{}", MESSAGES.common.connect_hint);
             }

@@ -16,6 +16,13 @@ use super::helpers::{
     print_vm_runtime_details, register_vm_services_helper, unregister_vm_services_helper,
 };
 
+fn default_resource_name(provider: &dyn Provider, vm_name: &str) -> String {
+    match provider.name() {
+        "tart" => vm_name.to_string(),
+        _ => format!("{vm_name}-dev"),
+    }
+}
+
 /// Handle VM start
 pub async fn handle_start(
     provider: Box<dyn Provider>,
@@ -51,7 +58,7 @@ pub async fn handle_start(
     // Get display name for the VM/container
     let container_name = initial_status
         .map(|r| r.name)
-        .unwrap_or_else(|| format!("{vm_name}-dev"));
+        .unwrap_or_else(|| default_resource_name(provider.as_ref(), vm_name));
 
     vm_println!("{}", msg!(MESSAGES.vm.start_header, name = vm_name));
 
@@ -94,20 +101,27 @@ pub async fn handle_start(
 
             vm_println!("{}", MESSAGES.vm.start_success);
 
-            // Show VM details
-            vm_println!(
-                "{}",
-                msg!(
-                    MESSAGES.vm.start_info_block,
-                    status = MESSAGES.common.status_running,
-                    container = container_name
-                )
-            );
+            if provider.name() == "tart" {
+                vm_println!(
+                    "  Status:     {}\n  Provider:   Tart\n  VM:         {}",
+                    MESSAGES.common.status_running,
+                    container_name
+                );
+            } else {
+                vm_println!(
+                    "{}",
+                    msg!(
+                        MESSAGES.vm.start_info_block,
+                        status = MESSAGES.common.status_running,
+                        container = container_name
+                    )
+                );
+            }
 
             print_vm_runtime_details(&config, false);
 
             // Register VM services and auto-start them
-            let vm_instance_name = format!("{vm_name}-dev");
+            let vm_instance_name = default_resource_name(provider.as_ref(), vm_name);
 
             vm_println!("{}", MESSAGES.common.configuring_services);
             register_vm_services_helper(&vm_instance_name, &config, &global_config).await?;
@@ -186,7 +200,7 @@ pub async fn handle_stop(
             match provider.stop(None) {
                 Ok(()) => {
                     // Unregister VM services after successful stop
-                    let vm_instance_name = format!("{vm_name}-dev");
+                    let vm_instance_name = default_resource_name(provider.as_ref(), vm_name);
 
                     vm_println!("{}", MESSAGES.vm.stop_success);
                     unregister_vm_services_helper(&vm_instance_name, &global_config).await?;

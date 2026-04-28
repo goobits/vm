@@ -127,41 +127,46 @@
             - item.key is match('^[A-Za-z_][A-Za-z0-9_-]*$')
 
       # User creation pre-task
+      - name: Ensure project user supplemental groups exist
+        group:
+            name: '{{ item }}'
+            state: present
+        loop:
+          - sudo
+          - docker
+        when: ansible_facts['user_id'] == 0
+        become: yes
+
       - name: Ensure project user exists with correct UID/GID
         user:
             name: '{{ project_user }}'
-            uid: '{{ project_uid }}'
-            gid: '{{ project_gid }}'
+            uid: "{{ project_uid if not base_preprovisioned else omit }}"
+            gid: "{{ project_gid if not base_preprovisioned else omit }}"
             home: '/home/{{ project_user }}'
             shell: /bin/bash
             create_home: yes
             groups: sudo,docker
         when: ansible_facts['user_id'] == 0  # Only when running as root
         become: yes
-        ignore_errors: yes  # Continue if user already exists
+
+      - name: Read actual project user primary group
+        command: id -gn {{ project_user }}
+        register: project_user_group_result
+        changed_when: false
+
+      - name: Set actual project user ownership facts
+        set_fact:
+            project_user_group: '{{ project_user_group_result.stdout }}'
 
       - name: Ensure project user home directory exists
         file:
             path: '/home/{{ project_user }}'
             state: directory
-            owner: '{{ project_uid }}'
-            group: '{{ project_gid }}'
+            owner: '{{ project_user }}'
+            group: '{{ project_user_group }}'
             mode: '0755'
         become: yes
         when: ansible_facts['user_id'] == 0
-
-      - name: Fix home directory permissions
-        file:
-            path: '/home/{{ project_user }}'
-            owner: '{{ project_uid }}'
-            group: '{{ project_gid }}'
-            recurse: yes
-        when:
-          - ansible_facts['user_id'] == 0
-          - base_preprovisioned | bool
-        become: yes
-        ignore_errors: yes  # Continue if some files can't be changed
-
 
   handlers:
       - name: restart postgresql
@@ -196,12 +201,10 @@
             state: restarted
             scope: user
         when: not is_docker_container
-        ignore_errors: yes
 
       - name: restart audio
         command: supervisorctl restart audio
         when: is_docker_container
-        ignore_errors: yes
 
       - name: restart supervisor
         shell: |
@@ -227,71 +230,55 @@
         when: not is_docker_container
 
       - name: Update /etc/hosts in container
-        shell: |
-            grep -v '^127.0.1.1' /etc/hosts > /tmp/hosts.new
-            echo "127.0.1.1 {{ project_hostname }} {{ project_hostname.split('.')[0] }}" >> /tmp/hosts.new
-            cat /tmp/hosts.new > /etc/hosts
+        lineinfile:
+            path: /etc/hosts
+            regexp: '^127\.0\.1\.1'
+            line: "127.0.1.1 {{ project_hostname }} {{ project_hostname.split('.')[0] }}"
         when: is_docker_container
 
-      # Update apt cache - using shell for Python 3.14 compatibility
       - name: Update apt cache
-        shell: |
-            # Only update if cache is older than 1 hour
-            if [ ! -f /var/lib/apt/lists/*Packages ] || \
-               [ $(find /var/lib/apt/lists -name '*Packages' -mmin +60 2>/dev/null | wc -l) -gt 0 ]; then
-                apt-get update -qq
-                echo "cache_updated"
-            else
-                echo "cache_fresh"
-            fi
+        apt:
+            update_cache: yes
+            cache_valid_time: 3600
+            lock_timeout: 300
         when: not base_preprovisioned
-        register: apt_cache_update
-        changed_when: "'cache_updated' in apt_cache_update.stdout"
 
       # Install base system packages FIRST (before any configuration)
-      - name: Wait for apt lock to be released
-        shell: while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 1; done
-        when: not base_preprovisioned
-
       - name: Install locale packages
-        shell: |
-            PACKAGES_NEEDED=""
-            for pkg in locales locales-all; do
-                if ! dpkg -l "$pkg" 2>/dev/null | grep -q "^ii"; then
-                    PACKAGES_NEEDED="$PACKAGES_NEEDED $pkg"
-                fi
-            done
-            if [ -n "$PACKAGES_NEEDED" ]; then
-                apt-get install -y $PACKAGES_NEEDED
-                echo "packages_installed"
-            else
-                echo "all_present"
-            fi
+        apt:
+            name:
+              - locales
+              - locales-all
+            state: present
+            lock_timeout: 300
         when: not base_preprovisioned
         register: locale_install
-        changed_when: "'packages_installed' in locale_install.stdout"
         retries: 3
         delay: 5
         until: locale_install is succeeded
 
       - name: Install base system packages
-        shell: |
-            BASE_PACKAGES="curl wget git git-lfs build-essential python3-pip python3-dev python3-venv ufw fail2ban unattended-upgrades python3-psycopg2 zsh zsh-syntax-highlighting supervisor"
-            PACKAGES_NEEDED=""
-            for pkg in $BASE_PACKAGES; do
-                if ! dpkg -l "$pkg" 2>/dev/null | grep -q "^ii"; then
-                    PACKAGES_NEEDED="$PACKAGES_NEEDED $pkg"
-                fi
-            done
-            if [ -n "$PACKAGES_NEEDED" ]; then
-                apt-get install -y $PACKAGES_NEEDED
-                echo "packages_installed"
-            else
-                echo "all_present"
-            fi
+        apt:
+            name:
+              - curl
+              - wget
+              - git
+              - git-lfs
+              - build-essential
+              - python3-pip
+              - python3-dev
+              - python3-venv
+              - ufw
+              - fail2ban
+              - unattended-upgrades
+              - python3-psycopg2
+              - zsh
+              - zsh-syntax-highlighting
+              - supervisor
+            state: present
+            lock_timeout: 300
         when: not base_preprovisioned
         register: base_packages_install
-        changed_when: "'packages_installed' in base_packages_install.stdout"
         retries: 3
         delay: 5
         until: base_packages_install is succeeded
@@ -317,10 +304,19 @@
 
       # Timezone configuration (unified method for both VM and container)
       # Skip if pre-provisioned - timezone is set in Dockerfile
-      - name: Set system timezone
-        shell: |
-            ln -sf /usr/share/zoneinfo/{{ project_config.vm.timezone | default('UTC') }} /etc/localtime
-            echo "{{ project_config.vm.timezone | default('UTC') }}" > /etc/timezone
+      - name: Link system timezone
+        file:
+            src: '/usr/share/zoneinfo/{{ project_config.vm.timezone | default("UTC") }}'
+            dest: /etc/localtime
+            state: link
+            force: yes
+        when: not base_preprovisioned
+
+      - name: Write system timezone
+        copy:
+            dest: /etc/timezone
+            content: '{{ project_config.vm.timezone | default("UTC") }}{{ "\n" }}'
+            mode: '0644'
         when: not base_preprovisioned
 
       # Setup supervisor for Docker containers (AFTER it's installed)
@@ -365,27 +361,65 @@
                 files = /etc/supervisor/conf.d/*.conf
         when: is_docker_container and not base_preprovisioned
 
-      # Security setup - Configure rules first, enable last
-      # Using shell commands instead of ufw module to avoid community.general dependency
+      # Security setup - Configure rules first, enable last.
+      # Use command because the ufw module lives outside ansible-core.
       - name: Allow SSH (critical - must be first)
-        shell: ufw allow 22/tcp comment 'Allow SSH access'
+        command:
+            argv:
+              - ufw
+              - allow
+              - 22/tcp
+              - comment
+              - Allow SSH access
+        register: ufw_ssh_rule
+        changed_when: "'Skipping' not in ufw_ssh_rule.stdout"
         when: not is_docker_container
 
       - name: Allow configured ports from localhost
-        shell: ufw allow from 127.0.0.1 to any port {{ service_item.value.port }} proto tcp comment 'Allow {{ service_item.key }} port'
+        command:
+            argv:
+              - ufw
+              - allow
+              - from
+              - 127.0.0.1
+              - to
+              - any
+              - port
+              - '{{ service_item.value.port | string }}'
+              - proto
+              - tcp
+              - comment
+              - 'Allow {{ service_item.key }} port'
         loop: "{{ project_config.services | dict2items }}"
         loop_control:
             loop_var: service_item
+        register: ufw_localhost_rules
+        changed_when: "'Skipping' not in ufw_localhost_rules.stdout"
         when:
             - not is_docker_container
             - service_item.value.port is defined
             - service_item.value.port is not none
 
       - name: Allow configured ports from host
-        shell: ufw allow from 10.0.2.2 to any port {{ service_item.value.port }} proto tcp comment 'Allow {{ service_item.key }} port from host (NAT gateway)'
+        command:
+            argv:
+              - ufw
+              - allow
+              - from
+              - 10.0.2.2
+              - to
+              - any
+              - port
+              - '{{ service_item.value.port | string }}'
+              - proto
+              - tcp
+              - comment
+              - 'Allow {{ service_item.key }} port from host (NAT gateway)'
         loop: "{{ project_config.services | dict2items }}"
         loop_control:
             loop_var: service_item
+        register: ufw_host_rules
+        changed_when: "'Skipping' not in ufw_host_rules.stdout"
         when:
             - not is_docker_container
             - service_item.value.port is defined
@@ -417,69 +451,74 @@
         user:
             name: '{{ project_user }}'
             shell: /usr/bin/zsh
-        ignore_errors: yes
         when: not base_preprovisioned
 
       - name: Generate .zshrc from template
         template:
             src: /app/shared/templates/zshrc.j2
             dest: '/home/{{ project_user }}/.zshrc'
-            owner: '{{ project_uid }}'
-            group: '{{ project_gid }}'
+            owner: '{{ project_user }}'
+            group: '{{ project_user_group }}'
             mode: '0644'
         become_user: root
 
+      - name: Ensure project user writable tool directories
+        file:
+            path: '{{ item }}'
+            state: directory
+            owner: '{{ project_user }}'
+            group: '{{ project_user_group }}'
+            mode: '0755'
+        loop:
+            - '/home/{{ project_user }}/.local'
+            - '/home/{{ project_user }}/.local/bin'
+            - '/home/{{ project_user }}/.cache'
+            - '/home/{{ project_user }}/.config'
+            - '/home/{{ project_user }}/.npm'
+        become: yes
+
+      - name: Ensure enabled AI tool directories are writable
+        file:
+            path: '{{ item.path }}'
+            state: directory
+            owner: '{{ project_user }}'
+            group: '{{ project_user_group }}'
+            mode: '0755'
+        loop:
+            - path: '/home/{{ project_user }}/.claude'
+              enabled: '{{ claude_sync_enabled }}'
+            - path: '/home/{{ project_user }}/.gemini'
+              enabled: '{{ gemini_sync_enabled }}'
+            - path: '/home/{{ project_user }}/.codex'
+              enabled: '{{ codex_sync_enabled }}'
+        when: item.enabled | bool
+        become: yes
+
       - name: Configure Node.js toolchain
         shell: |
-            source /home/{{ project_user }}/.nvm/nvm.sh
+            set -euo pipefail
+            source "/home/{{ project_user }}/.nvm/nvm.sh"
             nvm install {{ project_config.versions.node | default('22') }}
             nvm use {{ project_config.versions.node | default('22') }}
             nvm alias default {{ project_config.versions.node | default('22') }}
             npm install -g npm@{{ project_config.versions.npm | default('latest') }}
             corepack enable
-            if corepack prepare pnpm@{{ project_config.versions.pnpm | default('10.12.3') }} --activate; then
-                echo "corepack_ok"
-            else
-                npm install -g pnpm@{{ project_config.versions.pnpm | default('10.12.3') }}
-                echo "corepack_fallback"
-            fi
+            corepack prepare pnpm@{{ project_config.versions.pnpm | default('10.12.3') }} --activate
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
         when: nodejs_required and not base_preprovisioned
-        ignore_errors: yes
 
-      # Install additional APT packages - using shell for Python 3.14 compatibility
-      # Layered provisioning: works for both fresh builds and snapshots
-      # When refresh_packages is true, force reinstall for security updates
+      # Layered provisioning: works for both fresh builds and snapshots.
+      # When refresh_packages is true, upgrade configured packages to the latest available version.
       - name: Install additional APT packages
-        shell: |
-            APT_PACKAGES="{{ project_config.apt_packages | default([]) | join(' ') }}"
-            REFRESH="{{ refresh_packages | string | lower }}"
-
-            if [ "$REFRESH" = "true" ]; then
-                # Force refresh: update cache and reinstall all packages
-                echo "Forcing package refresh..."
-                apt-get update -qq && apt-get install -y --reinstall $APT_PACKAGES
-                echo "packages_refreshed"
-            else
-                # Normal mode: only install missing packages
-                PACKAGES_TO_INSTALL=""
-                for pkg in $APT_PACKAGES; do
-                    if ! dpkg -l "$pkg" 2>/dev/null | grep -q "^ii"; then
-                        PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL $pkg"
-                    fi
-                done
-                if [ -n "$PACKAGES_TO_INSTALL" ]; then
-                    apt-get update -qq && apt-get install -y $PACKAGES_TO_INSTALL
-                    echo "packages_installed"
-                else
-                    echo "all_packages_present"
-                fi
-            fi
+        apt:
+            name: "{{ project_config.apt_packages | default([]) }}"
+            state: "{{ 'latest' if refresh_packages else 'present' }}"
+            update_cache: "{{ refresh_packages }}"
+            lock_timeout: 300
         when: apt_packages_required
         register: apt_packages_install
-        changed_when: "'packages_installed' in apt_packages_install.stdout or 'packages_refreshed' in apt_packages_install.stdout"
         retries: 3
         delay: 5
         until: apt_packages_install is succeeded
@@ -488,18 +527,40 @@
       # AI CLI tools - install even for snapshots if sync is enabled (layered provisioning)
       - name: Install Claude Code CLI
         shell: |
+            set -euo pipefail
             export HOME="/home/{{ project_user }}"
             mkdir -p "$HOME/.local/bin"
             export PATH="$HOME/.local/bin:$PATH"
+
+            ensure_claude_launcher() {
+                if command -v claude >/dev/null 2>&1; then
+                    return 0
+                fi
+
+                local native_bin=""
+                native_bin="$(find "$HOME/.local/share/claude/versions" -maxdepth 1 -type f -perm /111 2>/dev/null | sort -V | tail -n 1 || true)"
+                if [ -n "$native_bin" ]; then
+                    ln -sf "$native_bin" "$HOME/.local/bin/claude"
+                    hash -r
+                fi
+
+                command -v claude >/dev/null 2>&1
+            }
+
             if command -v claude >/dev/null 2>&1; then
                 echo "Claude Code CLI already installed"
             else
-                curl -fsSL https://claude.ai/install.sh | bash
-                CLAUDE_BIN="$(find "$HOME/.local" "$HOME/.claude" -type f -name claude -perm -u+x 2>/dev/null | head -n 1 || true)"
-                if [ -n "$CLAUDE_BIN" ] && [ "$CLAUDE_BIN" != "$HOME/.local/bin/claude" ]; then
-                    ln -sf "$CLAUDE_BIN" "$HOME/.local/bin/claude"
+                INSTALLER="$(mktemp)"
+                trap 'rm -f "$INSTALLER"' EXIT
+                curl -fsSL https://claude.ai/install.sh -o "$INSTALLER"
+                bash "$INSTALLER"
+                if ! ensure_claude_launcher; then
+                    echo "Claude Code installer completed, but no claude launcher was found." >&2
+                    echo "Searched PATH: $PATH" >&2
+                    find "$HOME/.local" "$HOME/.claude" -maxdepth 8 -printf '%M %p -> %l\n' 2>/dev/null || true
+                    exit 1
                 fi
-                command -v claude >/dev/null 2>&1
+                command -v claude
                 echo "Claude Code CLI installed"
             fi
         args:
@@ -511,17 +572,17 @@
 
       - name: Install Gemini CLI
         shell: |
+            set -euo pipefail
             export HOME="/home/{{ project_user }}"
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
             NPM_BIN="$(npm prefix -g)/bin"
             export PATH="$NPM_BIN:$HOME/.local/bin:$PATH"
-            # Skip if already installed
-            if command -v gemini >/dev/null 2>&1 || npm list -g @google/gemini-cli >/dev/null 2>&1; then
+            if command -v gemini >/dev/null 2>&1; then
                 echo "Gemini CLI already installed"
             else
                 npm install -g @google/gemini-cli
-                command -v gemini >/dev/null 2>&1
+                command -v gemini
             fi
         args:
             executable: /bin/bash
@@ -532,16 +593,17 @@
 
       - name: Install Codex CLI
         shell: |
+            set -euo pipefail
             export HOME="/home/{{ project_user }}"
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
             NPM_BIN="$(npm prefix -g)/bin"
             export PATH="$NPM_BIN:$HOME/.local/bin:$PATH"
-            if command -v codex >/dev/null 2>&1 || npm list -g @openai/codex >/dev/null 2>&1; then
+            if command -v codex >/dev/null 2>&1; then
                 echo "Codex CLI already installed"
             else
                 npm install -g @openai/codex
-                command -v codex >/dev/null 2>&1
+                command -v codex
             fi
         args:
             executable: /bin/bash
@@ -550,53 +612,13 @@
         register: codex_install
         changed_when: "'already installed' not in codex_install.stdout"
 
-      - name: Verify Claude Code CLI availability
-        shell: |
-            export HOME="/home/{{ project_user }}"
-            export PATH="$HOME/.local/bin:$PATH"
-            if ! command -v claude; then
-                find "$HOME/.local" "$HOME/.claude" -maxdepth 4 -name claude -print 2>/dev/null || true
-                exit 1
-            fi
-        args:
-            executable: /bin/bash
-        become_user: '{{ project_user }}'
-        when: claude_sync_enabled
-
-      - name: Verify Gemini CLI availability
-        shell: |
-            export HOME="/home/{{ project_user }}"
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-            NPM_BIN="$(npm prefix -g)/bin"
-            export PATH="$NPM_BIN:$HOME/.local/bin:$PATH"
-            command -v gemini
-        args:
-            executable: /bin/bash
-        become_user: '{{ project_user }}'
-        when: gemini_sync_enabled
-
-      - name: Verify Codex CLI availability
-        shell: |
-            export HOME="/home/{{ project_user }}"
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-            NPM_BIN="$(npm prefix -g)/bin"
-            export PATH="$NPM_BIN:$HOME/.local/bin:$PATH"
-            command -v codex
-        args:
-            executable: /bin/bash
-        become_user: '{{ project_user }}'
-        when: codex_sync_enabled
-
       - name: Install container pipx packages
         shell: |
-            pipx ensurepath
+            set -euo pipefail
             pipx install {{ item }}
         become_user: '{{ project_user }}'
         loop: "{{ project_config.container_pipx_packages | default([]) }}"
         when: project_config.container_pipx_packages is defined and project_config.container_pipx_packages | length > 0
-        ignore_errors: yes
 
       # Python build tools - only update for fresh builds (snapshots have them)
       - name: Ensure Python build tools are up-to-date
@@ -609,25 +631,21 @@
           extra_args: '--user --break-system-packages'
           executable: pip3
         become_user: '{{ project_user }}'
-        ignore_errors: yes
         when: not base_preprovisioned
 
-      # pnpm fallback - ensure pnpm is available (layered provisioning)
-      - name: Install pnpm via npm as fallback
+      - name: Ensure pnpm is activated by Corepack
         shell: |
-            source /home/{{ project_user }}/.nvm/nvm.sh
-            if ! which pnpm > /dev/null 2>&1; then
-                npm install -g pnpm@{{ project_config.versions.pnpm | default('10.12.3') }}
-                echo "pnpm installed"
-            else
-                echo "pnpm already available"
-            fi
+            set -euo pipefail
+            [ -s "/home/{{ project_user }}/.nvm/nvm.sh" ] && source "/home/{{ project_user }}/.nvm/nvm.sh"
+            corepack enable
+            corepack prepare pnpm@{{ project_config.versions.pnpm | default('10.12.3') }} --activate
+            command -v pnpm
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
         when: project_config.versions.pnpm is defined
-        register: pnpm_fallback
-        changed_when: "'pnpm installed' in pnpm_fallback.stdout"
+        register: pnpm_corepack
+        changed_when: "'Preparing pnpm' in pnpm_corepack.stdout"
 
       # ================================================================================
       # CONDITIONAL PACKAGE MANAGER INSTALLATIONS
@@ -669,40 +687,26 @@
 
 
       # Install pip and pipx if pip_packages is defined
-      # Using shell for Python 3.14 compatibility (layered provisioning)
       - name: Install pipx for Python package management
-        shell: |
-            if dpkg -l pipx 2>/dev/null | grep -q "^ii"; then
-                echo "pipx already installed"
-            else
-                apt-get update -qq && apt-get install -y pipx
-                echo "pipx installed"
-            fi
+        apt:
+            name: pipx
+            state: present
+            update_cache: yes
+            lock_timeout: 300
         when: pip_packages_required
         register: pipx_install
-        changed_when: "'pipx installed' in pipx_install.stdout"
         retries: 3
         delay: 5
         until: pipx_install is succeeded
 
-      - name: Ensure pipx PATH is configured
-        shell: |
-            pipx ensurepath
-        become_user: '{{ project_user }}'
-        when: pip_packages_required
-        ignore_errors: yes
-
       - name: Ensure pip is installed for Python libraries
-        shell: |
-            if dpkg -l python3-pip 2>/dev/null | grep -q "^ii"; then
-                echo "python3-pip already installed"
-            else
-                apt-get update -qq && apt-get install -y python3-pip
-                echo "python3-pip installed"
-            fi
+        apt:
+            name: python3-pip
+            state: present
+            update_cache: yes
+            lock_timeout: 300
         when: pip_packages_required
         register: pip_install_apt
-        changed_when: "'python3-pip installed' in pip_install_apt.stdout"
         retries: 3
         delay: 5
         until: pip_install_apt is succeeded
@@ -741,7 +745,6 @@
           service_supervisor_environment: "{{ current_service_def.service_supervisor_environment | default('') }}"
           service_port: "{{ current_service_def.service_port | default('') }}"
           service_post_install_commands: "{{ current_service_def.service_post_install_commands | default([]) }}"
-          service_ignore_errors: "{{ current_service_def.service_ignore_errors | default(false) }}"
         loop: "{{ project_config.services | dict2items }}"
         loop_control:
           loop_var: service_item
@@ -754,68 +757,47 @@
       # Install database client tools for services that run as separate containers in Docker
       # Layered provisioning: install if not already present (works for both fresh and snapshot builds)
       - name: Install PostgreSQL client tools for Docker
-        shell: |
-            if dpkg -l postgresql-client 2>/dev/null | grep -q "^ii"; then
-                echo "postgresql-client already installed"
-            else
-                apt-get update -qq && apt-get install -y postgresql-client
-                echo "postgresql-client installed"
-            fi
+        apt:
+            name: postgresql-client
+            state: present
+            update_cache: yes
+            lock_timeout: 300
         when:
           - is_docker_container
           - project_config.services.postgresql.enabled | default(false)
-        register: pg_client_install
-        changed_when: "'installed' in pg_client_install.stdout and 'already' not in pg_client_install.stdout"
 
       - name: Install Redis client tools for Docker
-        shell: |
-            if dpkg -l redis-tools 2>/dev/null | grep -q "^ii"; then
-                echo "redis-tools already installed"
-            else
-                apt-get update -qq && apt-get install -y redis-tools
-                echo "redis-tools installed"
-            fi
+        apt:
+            name: redis-tools
+            state: present
+            update_cache: yes
+            lock_timeout: 300
         when:
           - is_docker_container
           - project_config.services.redis.enabled | default(false)
-        register: redis_client_install
-        changed_when: "'installed' in redis_client_install.stdout and 'already' not in redis_client_install.stdout"
 
       - name: Install MongoDB client tools for Docker
-        shell: |
-            if dpkg -l mongodb-clients 2>/dev/null | grep -q "^ii"; then
-                echo "mongodb-clients already installed"
-            else
-                apt-get update -qq && apt-get install -y mongodb-clients
-                echo "mongodb-clients installed"
-            fi
+        apt:
+            name: mongodb-clients
+            state: present
+            update_cache: yes
+            lock_timeout: 300
         when:
           - is_docker_container
           - project_config.services.mongodb.enabled | default(false)
-        register: mongo_client_install
-        changed_when: "'installed' in mongo_client_install.stdout and 'already' not in mongo_client_install.stdout"
 
       # Handle Docker service separately (requires user group management)
       # Layered provisioning: install if not already present
       - name: Install Docker
-        shell: |
-            PACKAGES_NEEDED=""
-            if ! dpkg -l docker.io 2>/dev/null | grep -q "^ii"; then
-                PACKAGES_NEEDED="$PACKAGES_NEEDED docker.io"
-            fi
-            if ! dpkg -l docker-compose 2>/dev/null | grep -q "^ii"; then
-                PACKAGES_NEEDED="$PACKAGES_NEEDED docker-compose"
-            fi
-            if [ -n "$PACKAGES_NEEDED" ]; then
-                apt-get update -qq && apt-get install -y $PACKAGES_NEEDED
-                echo "docker packages installed"
-            else
-                echo "docker packages already installed"
-            fi
+        apt:
+            name:
+              - docker.io
+              - docker-compose
+            state: present
+            update_cache: yes
+            lock_timeout: 300
         when:
           - project_config.services.docker.enabled | default(false)
-        register: docker_install
-        changed_when: "'packages installed' in docker_install.stdout and 'already' not in docker_install.stdout"
 
       - name: Add user to docker group
         user:
@@ -851,12 +833,14 @@
             state: directory
             owner: '{{ project_user }}'
             mode: '0755'
+        when: claude_sync_enabled
 
       - name: Render Claude settings
         template:
             src: /app/shared/claude-settings/settings.json.j2
             dest: '/home/{{ project_user }}/.claude/settings.json'
             owner: '{{ project_user }}'
+        when: claude_sync_enabled
 
       # Gemini CLI setup
       - name: Create Gemini settings directory
@@ -865,11 +849,13 @@
             state: directory
             owner: '{{ project_user }}'
             mode: '0755'
+        when: gemini_sync_enabled
 
       - name: Check for project Gemini settings
         stat:
             path: '/app/shared/gemini-settings/settings.json'
         register: gemini_settings
+        when: gemini_sync_enabled
 
       - name: Copy project Gemini settings
         copy:
@@ -877,7 +863,10 @@
             dest: '/home/{{ project_user }}/.gemini/settings.json'
             remote_src: yes
             owner: '{{ project_user }}'
-        when: gemini_settings.stat.exists
+        when:
+            - gemini_sync_enabled
+            - gemini_settings is defined
+            - gemini_settings.stat.exists
 
       - name: Use default Gemini settings
         copy:
@@ -888,7 +877,10 @@
                   "model": "gemini-2.5-pro",
                   "interactive": true
                 }
-        when: not gemini_settings.stat.exists
+        when:
+            - gemini_sync_enabled
+            - gemini_settings is defined
+            - not gemini_settings.stat.exists
         no_log: true
 
 
@@ -949,9 +941,10 @@
       # Install project dependencies
       - name: Install pnpm dependencies
         shell: |
+            set -euo pipefail
             export NVM_DIR="/home/{{ project_user }}/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            cd {{ project_path }}
+            cd {{ project_path | quote }}
             pnpm install
         args:
             executable: /bin/bash
@@ -964,9 +957,10 @@
 
       - name: Check if build script exists
         shell: |
+            set -euo pipefail
             export NVM_DIR="/home/{{ project_user }}/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            cd {{ project_path }}
+            cd {{ project_path | quote }}
             if pnpm run --silent list | grep -q "build"; then
               echo "build_exists"
             else
@@ -982,9 +976,10 @@
 
       - name: Run build script if it exists
         shell: |
+            set -euo pipefail
             export NVM_DIR="/home/{{ project_user }}/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            cd {{ project_path }}
+            cd {{ project_path | quote }}
             pnpm build
         args:
             executable: /bin/bash
@@ -996,9 +991,10 @@
 
       - name: Install NPM dependencies
         shell: |
+            set -euo pipefail
             export NVM_DIR="/home/{{ project_user }}/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            cd {{ project_path }}
+            cd {{ project_path | quote }}
             npm install
         args:
             executable: /bin/bash
@@ -1080,13 +1076,36 @@
         command: git config --global --add safe.directory {{ project_path }}
         become_user: '{{ project_user }}'
 
-      # Enable UFW after all rules are configured
-      # Using shell command instead of ufw module to avoid community.general dependency
-      - name: Enable UFW with default deny policy
-        shell: |
-            ufw default deny incoming
-            ufw logging on
-            ufw --force enable
+      # Enable UFW after all rules are configured.
+      - name: Set UFW default incoming policy
+        command:
+            argv:
+              - ufw
+              - default
+              - deny
+              - incoming
+        register: ufw_default_policy
+        changed_when: "'Default incoming policy changed' in ufw_default_policy.stdout"
+        when: not is_docker_container
+
+      - name: Enable UFW logging
+        command:
+            argv:
+              - ufw
+              - logging
+              - 'on'
+        register: ufw_logging
+        changed_when: "'Logging enabled' in ufw_logging.stdout"
+        when: not is_docker_container
+
+      - name: Enable UFW
+        command:
+            argv:
+              - ufw
+              - --force
+              - enable
+        register: ufw_enable
+        changed_when: "'Firewall is active and enabled' in ufw_enable.stdout"
         notify: restart ssh
         when: not is_docker_container
 

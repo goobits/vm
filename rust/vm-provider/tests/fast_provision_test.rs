@@ -14,14 +14,14 @@ fn render_template_placeholders(template: &str, vars: &HashMap<&str, &str>) -> S
     result
 }
 
-fn render_zshrc_for_test() -> String {
+fn render_zshrc_for_test(project_path_b64: &str) -> String {
     let mut tera = Tera::default();
     tera.add_raw_template("zshrc", vm_provider::ZSHRC_TEMPLATE)
         .expect("zshrc template should load");
 
     let mut context = Context::new();
     context.insert("project_name", "test-project");
-    context.insert("project_path_b64", "L3dvcmtzcGFjZQ==");
+    context.insert("project_path_b64", project_path_b64);
     context.insert("project_config", &json!({}));
     context.insert("terminal_emoji", "🚀");
     context.insert("terminal_username", "vm-dev");
@@ -44,6 +44,14 @@ fn render_zshrc_for_test() -> String {
 
     tera.render("zshrc", &context)
         .expect("zshrc template should render")
+}
+
+fn render_docker_zshrc_for_test() -> String {
+    render_zshrc_for_test("L3dvcmtzcGFjZQ==")
+}
+
+fn render_tart_zshrc_for_test() -> String {
+    render_zshrc_for_test("L1VzZXJzL2FkbWluL3dvcmtzcGFjZQ==")
 }
 
 #[test]
@@ -121,7 +129,7 @@ fn test_rendered_zshrc_prompt_survives_bashrc_prompt() {
     }
 
     let home = tempfile::tempdir().expect("temp home should be created");
-    std::fs::write(home.path().join(".zshrc"), render_zshrc_for_test())
+    std::fs::write(home.path().join(".zshrc"), render_docker_zshrc_for_test())
         .expect("zshrc should be written");
     std::fs::write(home.path().join(".bashrc"), "PROMPT='broken% '\n")
         .expect("bashrc should be written");
@@ -150,6 +158,26 @@ fn test_rendered_zshrc_prompt_survives_bashrc_prompt() {
         !prompt.contains("broken"),
         "bashrc prompt should not override zsh prompt, got: {prompt}"
     );
+}
+
+#[test]
+fn test_rendered_docker_zshrc_targets_workspace() {
+    let rendered = render_docker_zshrc_for_test();
+
+    assert!(rendered.contains("VM_PROJECT_PATH=\"$(vm_b64decode 'L3dvcmtzcGFjZQ==')\""));
+    assert!(rendered.contains("alias dev='cd \"$VM_PROJECT_PATH\" && ls'"));
+    assert!(rendered.contains("PROMPT='🚀 vm-dev %c"));
+}
+
+#[test]
+fn test_rendered_tart_zshrc_targets_macos_workspace() {
+    let rendered = render_tart_zshrc_for_test();
+
+    assert!(
+        rendered.contains("VM_PROJECT_PATH=\"$(vm_b64decode 'L1VzZXJzL2FkbWluL3dvcmtzcGFjZQ==')\"")
+    );
+    assert!(rendered.contains("alias dev='cd \"$VM_PROJECT_PATH\" && ls'"));
+    assert!(rendered.contains("PROMPT='🚀 vm-dev %c"));
 }
 
 #[test]
