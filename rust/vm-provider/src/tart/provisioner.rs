@@ -342,18 +342,31 @@ chmod {mode} "$HOME/{target}""#,
         Ok(())
     }
 
+    fn prepare_codex_home(&self) -> Result<()> {
+        self.ssh_exec(
+            r#"set -e
+codex_home="$HOME/.codex"
+if /sbin/mount | grep -F "on $codex_home " >/dev/null 2>&1 || mount | grep -F "on $codex_home " >/dev/null 2>&1; then
+  if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
+  $SUDO umount "$codex_home"
+fi
+rm -rf "$codex_home"
+mkdir -p "$codex_home/log" "$codex_home/sessions" "$codex_home/rollout"
+chmod 700 "$codex_home" "$codex_home/log" "$codex_home/sessions" "$codex_home/rollout""#,
+        )?;
+
+        Ok(())
+    }
+
     fn seed_codex_config(&self) -> Result<()> {
+        self.prepare_codex_home()?;
+
         let Some(home_dir) = resolve_home_dir() else {
             return Ok(());
         };
         let codex_dir: PathBuf = home_dir.join(".codex");
 
         self.copy_host_file_to_guest_home(&codex_dir.join("auth.json"), ".codex/auth.json", "600")?;
-        self.copy_host_file_to_guest_home(
-            &codex_dir.join("config.toml"),
-            ".codex/config.toml",
-            "600",
-        )?;
 
         Ok(())
     }

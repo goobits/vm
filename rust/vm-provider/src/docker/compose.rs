@@ -14,6 +14,7 @@ use super::host_packages::{
     detect_packages, get_package_env_vars, get_volume_mounts, PackageManager,
 };
 use super::{ComposeCommand, DockerOps, UserConfig};
+use crate::Mount;
 use crate::ProviderContext;
 use crate::TempVmState;
 use vm_config::{config::VmConfig, detect_worktrees};
@@ -487,6 +488,7 @@ impl<'a> ComposeOperations<'a> {
         instance_name: Option<&str>,
         context: &ProviderContext,
         image_tag: Option<&str>,
+        extra_mounts: Option<&[Mount]>,
     ) -> Result<String> {
         // Use shared template engine instead of creating new instance
         let tera = super::get_compose_tera();
@@ -534,6 +536,7 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("is_macos", &cfg!(target_os = "macos"));
         tera_context.insert("host_mounts", &pkg_context.host_mounts);
         tera_context.insert("host_env_vars", &pkg_context.host_env_vars);
+        tera_context.insert("extra_mounts", &extra_mounts.unwrap_or(&[]));
 
         // AI sync flags for template
         if let Some(ai_sync) = &self
@@ -605,7 +608,7 @@ impl<'a> ComposeOperations<'a> {
         build_context_dir: &Path,
         context: &ProviderContext,
     ) -> Result<String> {
-        self.render_docker_compose_internal(build_context_dir, None, context, None)
+        self.render_docker_compose_internal(build_context_dir, None, context, None, None)
     }
 
     pub fn write_docker_compose(
@@ -650,7 +653,13 @@ impl<'a> ComposeOperations<'a> {
         instance_name: &str,
         context: &ProviderContext,
     ) -> Result<String> {
-        self.render_docker_compose_internal(build_context_dir, Some(instance_name), context, None)
+        self.render_docker_compose_internal(
+            build_context_dir,
+            Some(instance_name),
+            context,
+            None,
+            None,
+        )
     }
 
     pub fn write_docker_compose_with_image_tag(
@@ -661,8 +670,13 @@ impl<'a> ComposeOperations<'a> {
     ) -> Result<PathBuf> {
         self.ensure_ai_sync_dirs()?;
 
-        let content =
-            self.render_docker_compose_internal(build_context_dir, None, context, Some(image_tag))?;
+        let content = self.render_docker_compose_internal(
+            build_context_dir,
+            None,
+            context,
+            Some(image_tag),
+            None,
+        )?;
 
         let path = self.temp_dir.join("docker-compose.yml");
         write_if_changed(&path, &content)?;
@@ -684,6 +698,7 @@ impl<'a> ComposeOperations<'a> {
             Some(instance_name),
             context,
             Some(image_tag),
+            None,
         )?;
 
         let path = self.temp_dir.join("docker-compose.yml");
@@ -693,18 +708,15 @@ impl<'a> ComposeOperations<'a> {
     }
 
     pub fn render_docker_compose_with_mounts(&self, state: &TempVmState) -> Result<String> {
-        // Use shared template engine instead of creating new instance
-        let tera = super::get_temp_compose_tera();
-
-        let mut context = TeraContext::new();
-        context.insert("config", &self.config);
-        context.insert("container_name", &state.container_name);
-        context.insert("mounts", &state.mounts);
-
-        let content = tera.render("docker-compose.yml", &context).map_err(|e| {
-            VmError::Internal(format!("Failed to render docker-compose template: {e}"))
-        })?;
-        Ok(content)
+        let build_ops = BuildOperations::new(self.config, self.temp_dir, self.executable);
+        let build_context_dir = build_ops.prepare_compose_build_context()?;
+        self.render_docker_compose_internal(
+            &build_context_dir,
+            None,
+            &ProviderContext::default(),
+            None,
+            Some(&state.mounts),
+        )
     }
 
     pub fn start_with_compose(&self, context: &ProviderContext) -> Result<()> {

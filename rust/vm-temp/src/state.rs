@@ -299,13 +299,25 @@ impl StateManager {
 
         // Validate all mount sources exist and are directories
         for mount in &state.mounts {
-            if !mount.source.exists() {
+            let canonical_source =
+                mount
+                    .source
+                    .canonicalize()
+                    .map_err(|e| StateError::ValidationFailed {
+                        reason: format!(
+                            "Failed to resolve mount source {}: {}",
+                            mount.source.display(),
+                            e
+                        ),
+                    })?;
+
+            if !canonical_source.exists() {
                 return Err(StateError::ValidationFailed {
                     reason: format!("Mount source does not exist: {}", mount.source.display()),
                 });
             }
 
-            if !mount.source.is_dir() {
+            if !canonical_source.is_dir() {
                 return Err(StateError::ValidationFailed {
                     reason: format!(
                         "Mount source is not a directory: {}",
@@ -315,11 +327,11 @@ impl StateManager {
             }
 
             // Security check: prevent mounting dangerous system directories
-            if Self::is_dangerous_mount_source(&mount.source) {
+            if Self::is_dangerous_mount_source(&canonical_source) {
                 return Err(StateError::ValidationFailed {
                     reason: format!(
                         "Dangerous mount source not allowed: {}",
-                        mount.source.display()
+                        canonical_source.display()
                     ),
                 });
             }

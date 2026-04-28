@@ -57,6 +57,12 @@ services:
       {% endif %}
       # Shell history persistence (survives container recreation)
       - {{ project_name }}_shell_history:/home/{{ project_user }}/.shell_history:rw
+      {% if extra_mounts %}
+      # Temporary VM custom mounts
+      {% for mount in extra_mounts %}
+      - {{ mount.source }}:{{ mount.target }}:{{ mount.permissions }}
+      {% endfor %}
+      {% endif %}
       {% if claude_sync_enabled %}
       # Claude AI data persistence (stored in ~/.vm/ai-sync/ to avoid polluting ~/.claude/)
       - {{ home_dir }}/.vm/ai-sync/claude/{{ project_name }}:/home/{{ project_user }}/.claude:rw

@@ -38,6 +38,13 @@ struct CollectedMetrics {
     uptime: Option<String>,
 }
 
+#[derive(Clone, Debug)]
+struct TartDirShare {
+    tag: String,
+    host_path: PathBuf,
+    guest_path: Option<PathBuf>,
+}
+
 pub(crate) fn sanitize_log_name(input: &str) -> String {
     input
         .chars()
@@ -249,6 +256,14 @@ impl TartProvider {
     }
 
     fn start_vm_background(&self, vm_name: &str) -> Result<()> {
+        self.start_vm_background_with_dir_shares(vm_name, &[])
+    }
+
+    fn start_vm_background_with_dir_shares(
+        &self,
+        vm_name: &str,
+        extra_dir_shares: &[TartDirShare],
+    ) -> Result<()> {
         let host_path = self.host_workspace_path()?;
         let raw_log_path = tart_run_log_path(vm_name);
         info!("Tart run log for '{}': {}", vm_name, raw_log_path);
@@ -261,6 +276,14 @@ impl TartProvider {
                 mount.tag,
                 mount.host_path.display(),
                 mount.tag
+            ));
+        }
+        for share in extra_dir_shares {
+            dir_args.push(format!(
+                "{}:{}:tag={}",
+                share.tag,
+                share.host_path.display(),
+                share.tag
             ));
         }
 
@@ -380,6 +403,7 @@ impl TartProvider {
     /// Resolve VM name with instance support
     fn vm_name_with_instance(&self, instance: Option<&str>) -> Result<String> {
         match instance {
+            Some(name) if self.get_instance_state(name)?.is_some() => Ok(name.to_string()),
             Some(_) => {
                 let manager = self.instance_manager();
                 manager.resolve_instance_name(instance)
@@ -421,6 +445,16 @@ impl TartProvider {
         vm_name: &str,
         instance_label: Option<&str>,
         config: &VmConfig,
+    ) -> Result<()> {
+        self.create_vm_internal_with_dir_shares(vm_name, instance_label, config, &[])
+    }
+
+    fn create_vm_internal_with_dir_shares(
+        &self,
+        vm_name: &str,
+        instance_label: Option<&str>,
+        config: &VmConfig,
+        extra_dir_shares: &[TartDirShare],
     ) -> Result<()> {
         let progress = ProgressReporter::new();
         let phase_msg = match instance_label {
@@ -557,7 +591,7 @@ impl TartProvider {
 
         // Start VM (non-blocking)
         ProgressReporter::task(&main_phase, "Starting VM...");
-        let start_result = self.start_vm_background(vm_name);
+        let start_result = self.start_vm_background_with_dir_shares(vm_name, extra_dir_shares);
         if start_result.is_err() {
             ProgressReporter::task(&main_phase, "VM start failed.");
             ProgressReporter::finish_phase(&main_phase, "Creation failed.");
@@ -583,11 +617,83 @@ impl TartProvider {
         }
         ProgressReporter::task(&main_phase, "Initial provisioning complete.");
 
+        if !extra_dir_shares.is_empty() {
+            ProgressReporter::task(&main_phase, "Mounting temporary directories...");
+            self.mount_tart_dir_shares_in_guest(vm_name, extra_dir_shares)?;
+            ProgressReporter::task(&main_phase, "Temporary directories mounted.");
+        }
+
         ProgressReporter::finish_phase(&main_phase, "Environment ready.");
 
         info!("{}", MESSAGES.service.provider_tart_created_success);
         info!("{}", MESSAGES.service.provider_tart_connect_hint);
         Ok(())
+    }
+
+    fn temp_dir_shares(state: &TempVmState) -> Vec<TartDirShare> {
+        state
+            .mounts
+            .iter()
+            .enumerate()
+            .map(|(index, mount)| TartDirShare {
+                tag: format!("vmtemp{index}"),
+                host_path: mount.source.clone(),
+                guest_path: Some(mount.target.clone()),
+            })
+            .collect()
+    }
+
+    fn persist_tart_dir_shares(&self, vm_name: &str, shares: &[TartDirShare]) -> Result<()> {
+        for share in shares {
+            let dir_arg = format!(
+                "{}:{}:tag={}",
+                share.tag,
+                share.host_path.display(),
+                share.tag
+            );
+            info!("Adding Tart directory share: {}", dir_arg);
+            cmd!("tart", "set", vm_name, "--dir", &dir_arg)
+                .run()
+                .map_err(|e| {
+                    VmError::Provider(format!("Failed to add Tart directory share: {}", e))
+                })?;
+        }
+
+        Ok(())
+    }
+
+    fn mount_tart_dir_shares_in_guest(&self, vm_name: &str, shares: &[TartDirShare]) -> Result<()> {
+        let mut commands = Vec::new();
+        for share in shares {
+            let Some(guest_path) = share.guest_path.as_ref() else {
+                continue;
+            };
+            let tag = Self::shell_escape_single_quotes(&share.tag);
+            let target = Self::shell_escape_single_quotes(&guest_path.display().to_string());
+            commands.push(format!(
+                r#"target='{target}';
+if [ -x /sbin/mount_virtiofs ]; then
+  mkdir -p "$target"
+  if ! /sbin/mount | grep -F "on $target "; then
+    /sbin/mount_virtiofs '{tag}' "$target"
+  fi
+else
+  if ! mount | grep -F "on $target "; then
+    if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
+    $SUDO mkdir -p "$target" && $SUDO mount -t virtiofs '{tag}' "$target"
+  fi
+fi"#
+            ));
+        }
+
+        if commands.is_empty() {
+            return Ok(());
+        }
+
+        cmd!("tart", "exec", vm_name, "sh", "-c", commands.join("\n"))
+            .run()
+            .map(|_| ())
+            .map_err(|e| VmError::Provider(format!("Failed to mount temp directories: {}", e)))
     }
 }
 
@@ -1002,6 +1108,12 @@ impl Provider for TartProvider {
     }
 
     fn resolve_instance_name(&self, instance: Option<&str>) -> Result<String> {
+        if let Some(name) = instance {
+            if self.get_instance_state(name)?.is_some() {
+                return Ok(name.to_string());
+            }
+        }
+
         let manager = self.instance_manager();
         manager.resolve_instance_name(instance)
     }
@@ -1041,23 +1153,54 @@ impl TartProvider {
 impl TempProvider for TartProvider {
     fn update_mounts(&self, state: &TempVmState) -> Result<()> {
         info!("Updating mounts for Tart VM: {}", state.container_name);
-        self.stop(Some(&state.container_name))?;
+
+        if self.get_instance_state(&state.container_name)?.is_none() {
+            let shares = Self::temp_dir_shares(state);
+            return self.create_vm_internal_with_dir_shares(
+                &state.container_name,
+                Some("temp"),
+                &self.config,
+                &shares,
+            );
+        }
+
+        if self.is_instance_running(&state.container_name)? {
+            cmd!("tart", "stop", &state.container_name)
+                .run()
+                .map_err(|e| VmError::Provider(format!("Failed to stop Tart temp VM: {}", e)))?;
+        }
+
         self.recreate_with_mounts(state)?;
         Ok(())
     }
 
     fn recreate_with_mounts(&self, state: &TempVmState) -> Result<()> {
-        for mount in &state.mounts {
-            let mount_arg = format!("{}:{}", mount.source.display(), mount.target.display());
-
-            info!("Adding mount: {}", mount_arg);
-
-            cmd!("tart", "set", &state.container_name, "--dir", &mount_arg)
-                .run()
-                .map_err(|e| VmError::Provider(format!("Failed to add mount: {}", e)))?;
+        let shares = Self::temp_dir_shares(state);
+        if self.get_instance_state(&state.container_name)?.is_none() {
+            return self.create_vm_internal_with_dir_shares(
+                &state.container_name,
+                Some("temp"),
+                &self.config,
+                &shares,
+            );
         }
 
-        self.start(Some(&state.container_name))?;
+        if self.is_instance_running(&state.container_name)? {
+            cmd!("tart", "stop", &state.container_name)
+                .run()
+                .map_err(|e| VmError::Provider(format!("Failed to stop Tart temp VM: {}", e)))?;
+        }
+
+        self.persist_tart_dir_shares(&state.container_name, &shares)?;
+        self.start_vm_background_with_dir_shares(&state.container_name, &shares)?;
+        if !self.wait_for_guest_agent_ready(&state.container_name, Duration::from_secs(60)) {
+            return Err(VmError::Provider(format!(
+                "Tart temp VM '{}' started, but the guest agent did not become ready. Tart run log: {}",
+                state.container_name,
+                tart_run_log_path(&state.container_name)
+            )));
+        }
+        self.mount_tart_dir_shares_in_guest(&state.container_name, &shares)?;
         Ok(())
     }
 

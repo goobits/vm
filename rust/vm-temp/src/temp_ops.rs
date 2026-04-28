@@ -74,9 +74,9 @@ impl TempVmOps {
             }
         }
 
-        // Create the VM using the provided provider
-        if let Some(_temp_provider) = provider.as_temp_provider() {
-            provider.create()?;
+        // Create the VM through the mount-aware temp lifecycle.
+        if let Some(temp_provider) = provider.as_temp_provider() {
+            temp_provider.update_mounts(&temp_state)?;
         } else {
             return Err(VmError::Internal(
                 "Provider does not support temp VM operations".to_string(),
@@ -97,9 +97,9 @@ impl TempVmOps {
         if auto_destroy {
             // SSH then destroy
             info!("{}", MESSAGES.service.temp_vm_connecting);
-            provider.ssh(None, &PathBuf::from("."))?;
+            provider.ssh(Some(&temp_state.container_name), &PathBuf::from("."))?;
             info!("{}", MESSAGES.service.temp_vm_auto_destroying);
-            provider.destroy(None)?;
+            provider.destroy(Some(&temp_state.container_name))?;
             state_manager.delete_state()?;
         } else {
             info!("{}", MESSAGES.service.temp_vm_usage_hint);
@@ -138,7 +138,8 @@ impl TempVmOps {
             }
         }
 
-        provider.ssh(None, &PathBuf::from("."))
+        let state = state_manager.load_state()?;
+        provider.ssh(Some(&state.container_name), &PathBuf::from("."))
     }
 
     /// Show temporary VM status
@@ -196,7 +197,7 @@ impl TempVmOps {
         }
 
         // Check provider status
-        provider.status(None)
+        provider.status(Some(&state.container_name))
     }
 
     /// Destroy the temporary VM
@@ -217,7 +218,8 @@ impl TempVmOps {
         }
 
         info!("{}", MESSAGES.service.temp_vm_destroying);
-        provider.destroy(None)?;
+        let state = state_manager.load_state()?;
+        provider.destroy(Some(&state.container_name))?;
 
         state_manager.delete_state()?;
 

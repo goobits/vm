@@ -360,6 +360,34 @@ fn test_build_spec_absolute_context() {
     }
 }
 
+#[test]
+fn test_docker_rejects_tart_base_image_names() {
+    let spec = BoxSpec::String("vibe-tart-base".to_string());
+    let err = BoxConfig::parse_for_docker(&spec, &PathBuf::from(".")).unwrap_err();
+    assert!(err.to_string().contains("looks like a Tart image"));
+}
+
+#[test]
+fn test_docker_rejects_cirrus_macos_tart_images() {
+    let spec = BoxSpec::String("ghcr.io/cirruslabs/macos-sonoma-base:latest".to_string());
+    let err = BoxConfig::parse_for_docker(&spec, &PathBuf::from(".")).unwrap_err();
+    assert!(err.to_string().contains("looks like a Tart image"));
+}
+
+#[test]
+fn test_tart_rejects_dockerfile_string_paths() {
+    for value in [
+        "Dockerfile",
+        "./Dockerfile",
+        "../Dockerfile",
+        "build.dev.dockerfile",
+    ] {
+        let spec = BoxSpec::String(value.to_string());
+        let err = BoxConfig::parse_for_tart(&spec).unwrap_err();
+        assert!(err.to_string().contains("looks like a Dockerfile path"));
+    }
+}
+
 #[cfg(target_os = "windows")]
 #[test]
 fn test_windows_absolute_path() {

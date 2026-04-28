@@ -114,6 +114,22 @@ pub enum BoxConfig {
 }
 
 impl BoxConfig {
+    fn looks_like_tart_image(s: &str) -> bool {
+        let lower = s.to_ascii_lowercase();
+        matches!(s, "vibe-tart-base" | "vibe-tart-linux-base") || lower.contains("cirruslabs/macos")
+    }
+
+    fn looks_like_dockerfile_path(s: &str) -> bool {
+        let potential_path = Path::new(s);
+        let lower = s.to_ascii_lowercase();
+        s.starts_with("./")
+            || s.starts_with("../")
+            || potential_path.is_absolute()
+            || lower == "dockerfile"
+            || lower.ends_with("/dockerfile")
+            || lower.ends_with(".dockerfile")
+    }
+
     /// Parse a BoxSpec for Docker provider
     ///
     /// # Detection Rules
@@ -154,6 +170,12 @@ impl BoxConfig {
                         context,
                         args: None,
                     });
+                }
+
+                if Self::looks_like_tart_image(s) {
+                    return Err(VmError::Config(format!(
+                        "'{s}' looks like a Tart image, but the Docker provider was selected. Use provider: tart or choose a Docker image/Dockerfile."
+                    )));
                 }
 
                 // Default: Docker image
@@ -206,6 +228,12 @@ impl BoxConfig {
                 // Snapshot
                 if let Some(name) = s.strip_prefix('@') {
                     return Ok(BoxConfig::Snapshot(name.to_string()));
+                }
+
+                if Self::looks_like_dockerfile_path(s) {
+                    return Err(VmError::Config(format!(
+                        "'{s}' looks like a Dockerfile path, but the Tart provider cannot build Dockerfiles. Use provider: docker or choose a Tart OCI image."
+                    )));
                 }
 
                 // OCI image

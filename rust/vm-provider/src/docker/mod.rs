@@ -193,59 +193,6 @@ pub(crate) fn get_dockerfile_tera() -> &'static Tera {
     })
 }
 
-/// Shared template engine for temporary VM docker-compose operations
-static TEMP_COMPOSE_TERA: OnceLock<Tera> = OnceLock::new();
-
-pub(crate) fn get_temp_compose_tera() -> &'static Tera {
-    TEMP_COMPOSE_TERA.get_or_init(|| {
-        const TEMP_DOCKER_COMPOSE_TEMPLATE: &str = r#"
-# Temporary VM docker-compose.yml with custom mounts
-services:
-  {{ container_name }}:
-    container_name: {{ container_name }}
-    build:
-      context: ..
-      dockerfile: Dockerfile
-    image: vm-temp:latest
-    volumes:
-      # Default workspace volume
-      - ../..:/workspace:rw
-      # Persistent volumes for cache and package managers
-      - vmtemp_nvm:/home/developer/.nvm
-      - vmtemp_cache:/home/developer/.cache
-      {% if mounts %}# Custom temp VM mounts
-      {% for mount in mounts %}- {{ mount.source }}:{{ mount.target }}:{{ mount.permissions }}
-      {% endfor %}{% endif %}
-    ports:
-      {% if config.ports %}{% for name, port in config.ports %}- "{{ port }}:{{ port }}"
-      {% endfor %}{% endif %}
-    environment:
-      {% if config.environment %}{% for name, value in config.environment %}- {{ name }}={{ value }}
-      {% endfor %}{% endif %}
-    {% if config.security.enable_debugging | default(value=false) %}
-    cap_add:
-      - SYS_PTRACE
-    {% endif %}
-    security_opt:
-      {% if config.security.enable_debugging | default(value=false) %}
-      - seccomp=unconfined
-      {% endif %}
-      {% if config.security.no_new_privileges | default(value=true) %}
-      - no-new-privileges
-      {% endif %}
-    init: true  # Enable tini for proper PID 1 handling (zombie reaping, signal forwarding)
-
-volumes:
-  vmtemp_nvm:
-  vmtemp_cache:
-"#;
-        let mut tera = Tera::default();
-        tera.add_raw_template("docker-compose.yml", TEMP_DOCKER_COMPOSE_TEMPLATE)
-            .expect("Failed to add temporary docker-compose template");
-        tera
-    })
-}
-
 impl Drop for DockerProvider {
     fn drop(&mut self) {
         if self.temp_dir.exists() {

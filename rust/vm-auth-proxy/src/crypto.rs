@@ -8,6 +8,8 @@ use anyhow::{anyhow, Context, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use pbkdf2::pbkdf2_hmac;
 use sha2::Sha256;
+use std::fs;
+use std::path::Path;
 
 /// Number of PBKDF2 iterations for key derivation
 const PBKDF2_ITERATIONS: u32 = 100_000;
@@ -17,6 +19,9 @@ const SALT_LENGTH: usize = 32;
 
 /// AES-GCM nonce length in bytes
 const NONCE_LENGTH: usize = 12;
+
+const MASTER_KEY_FILE: &str = "master.key";
+const MASTER_KEY_BYTES: usize = 32;
 
 /// Encryption key derived from master password and salt
 #[derive(Clone)]
@@ -100,21 +105,42 @@ pub fn generate_auth_token() -> String {
     STANDARD.encode(token_bytes)
 }
 
-/// Get the master password for encryption
-///
-/// For now, uses a simple system-derived password. In production,
-/// this could integrate with system keychain or prompt user.
-pub fn get_master_password() -> Result<String> {
-    // For MVP, derive password from system username and hostname
-    // In production, this should use keychain integration
+pub fn get_or_create_master_password(data_dir: &Path) -> Result<String> {
+    let key_path = data_dir.join(MASTER_KEY_FILE);
+    if key_path.exists() {
+        let password = fs::read_to_string(&key_path)
+            .with_context(|| format!("Failed to read master key at {}", key_path.display()))?;
+        let password = password.trim().to_string();
+        if password.is_empty() {
+            return Err(anyhow!("Master key at {} is empty", key_path.display()));
+        }
+        return Ok(password);
+    }
+
+    let mut key_bytes = [0u8; MASTER_KEY_BYTES];
+    OsRng.fill_bytes(&mut key_bytes);
+    let password = STANDARD.encode(key_bytes);
+    fs::write(&key_path, format!("{password}\n"))
+        .with_context(|| format!("Failed to write master key at {}", key_path.display()))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&key_path, fs::Permissions::from_mode(0o600))
+            .with_context(|| format!("Failed to secure master key at {}", key_path.display()))?;
+    }
+
+    Ok(password)
+}
+
+pub(crate) fn legacy_master_password() -> String {
     let username = std::env::var("USER")
         .or_else(|_| std::env::var("USERNAME"))
         .unwrap_or_else(|_| "vm-user".to_string());
 
     let hostname = std::env::var("HOSTNAME").unwrap_or_else(|_| "vm-host".to_string());
 
-    // Simple combination - in production use proper keychain
-    Ok(format!("vm-auth-proxy-{username}-{hostname}"))
+    format!("vm-auth-proxy-{username}-{hostname}")
 }
 
 #[cfg(test)]
@@ -171,5 +197,18 @@ mod tests {
 
         // Should be valid base64
         assert!(STANDARD.decode(&token1).is_ok());
+    }
+
+    #[test]
+    fn test_master_password_is_persisted_random_value() {
+        let temp_dir = tempfile::tempdir().expect("should create temp dir");
+        let first = get_or_create_master_password(temp_dir.path())
+            .expect("should create persisted master password");
+        let second = get_or_create_master_password(temp_dir.path())
+            .expect("should read persisted master password");
+
+        assert_eq!(first, second);
+        assert_ne!(first, legacy_master_password());
+        assert!(temp_dir.path().join(MASTER_KEY_FILE).exists());
     }
 }

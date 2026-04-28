@@ -151,9 +151,7 @@ mod tests {
     use super::{collect_host_sync_mounts, file_name, resolve_guest_home_path};
     use std::path::Path;
     use std::sync::{Mutex, OnceLock};
-    use vm_config::config::{
-        AiSyncConfig, AiToolSyncConfig, HostSyncConfig, ProjectConfig, VmConfig,
-    };
+    use vm_config::config::{AiSyncConfig, AiSyncTools, HostSyncConfig, ProjectConfig, VmConfig};
 
     fn env_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -187,8 +185,10 @@ mod tests {
                 ..Default::default()
             }),
             host_sync: Some(HostSyncConfig {
-                ai_tools: Some(AiSyncConfig::Detailed(AiToolSyncConfig {
+                ai_tools: Some(AiSyncConfig::Detailed(AiSyncTools {
                     claude: true,
+                    gemini: false,
+                    codex: false,
                     ..Default::default()
                 })),
                 ..Default::default()
@@ -224,7 +224,9 @@ mod tests {
                 ..Default::default()
             }),
             host_sync: Some(HostSyncConfig {
-                ai_tools: Some(AiSyncConfig::Detailed(AiToolSyncConfig {
+                ai_tools: Some(AiSyncConfig::Detailed(AiSyncTools {
+                    claude: false,
+                    gemini: false,
                     codex: true,
                     ..Default::default()
                 })),
