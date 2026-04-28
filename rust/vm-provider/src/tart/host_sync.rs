@@ -189,7 +189,6 @@ mod tests {
                     claude: true,
                     gemini: false,
                     codex: false,
-                    ..Default::default()
                 })),
                 ..Default::default()
             }),
@@ -228,7 +227,6 @@ mod tests {
                     claude: false,
                     gemini: false,
                     codex: true,
-                    ..Default::default()
                 })),
                 ..Default::default()
             }),

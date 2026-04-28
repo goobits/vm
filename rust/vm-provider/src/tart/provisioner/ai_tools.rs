@@ -1,4 +1,5 @@
-use super::{resolve_home_dir, PathBuf, Result, TartProvisioner, VmConfig};
+use super::{resolve_home_dir, Path, PathBuf, Result, TartProvisioner, VmConfig};
+use tracing::warn;
 
 impl TartProvisioner {
     fn prepare_codex_home(&self) -> Result<()> {
@@ -27,11 +28,41 @@ $SUDO chown -R "$home_uid:$home_gid" "$codex_home" "$HOME/.zshrc" "$HOME/.bashrc
 chmod u+rw "$HOME/.zshrc" "$HOME/.bashrc" 2>/dev/null || true
 chmod 700 "$codex_home" "$codex_home/bin" "$codex_home/log" "$codex_home/sessions" "$codex_home/rollout"
 chmod 600 "$codex_home/config.toml" 2>/dev/null || true
-if [ -f "$codex_home/auth.json" ] && [ ! -s "$codex_home/auth.json" ]; then rm -f "$codex_home/auth.json"; fi
-if [ -f "$codex_home/auth.json" ]; then chmod 600 "$codex_home/auth.json"; fi"#,
+repair_auth_json() {
+  auth_json="$codex_home/auth.json"
+  if [ ! -f "$auth_json" ]; then
+    return 0
+  fi
+  if [ ! -s "$auth_json" ]; then
+    rm -f "$auth_json"
+    return 0
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$auth_json" <<'PY' || rm -f "$auth_json"
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    json.load(f)
+PY
+  elif command -v plutil >/dev/null 2>&1; then
+    plutil -lint "$auth_json" >/dev/null 2>&1 || rm -f "$auth_json"
+  elif command -v node >/dev/null 2>&1; then
+    node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$auth_json" || rm -f "$auth_json"
+  fi
+  if [ -f "$auth_json" ]; then chmod 600 "$auth_json"; fi
+}
+repair_auth_json"#,
         )?;
 
         Ok(())
+    }
+
+    fn host_codex_auth_json_is_valid(path: &Path) -> bool {
+        let Ok(file) = std::fs::File::open(path) else {
+            return false;
+        };
+
+        serde_json::from_reader::<_, serde_json::Value>(file).is_ok()
     }
 
     pub(crate) fn ensure_codex_runtime_config(&self, config: &VmConfig) -> Result<()> {
@@ -57,8 +88,14 @@ if [ -f "$codex_home/auth.json" ]; then chmod 600 "$codex_home/auth.json"; fi"#,
         if auth_json
             .metadata()
             .is_ok_and(|metadata| metadata.len() > 0)
+            && Self::host_codex_auth_json_is_valid(&auth_json)
         {
             self.copy_host_file_to_guest_home(&auth_json, ".codex/auth.json", "600")?;
+        } else if auth_json.exists() {
+            warn!(
+                "Skipping invalid or empty Codex auth file while provisioning Tart: {}",
+                auth_json.display()
+            );
         }
 
         Ok(())
@@ -113,5 +150,38 @@ fi"#,
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TartProvisioner;
+    use std::fs;
+
+    #[test]
+    fn host_codex_auth_validation_accepts_json() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let auth_json = temp_dir.path().join("auth.json");
+        fs::write(&auth_json, r#"{"OPENAI_API_KEY":"test"}"#).unwrap();
+
+        assert!(TartProvisioner::host_codex_auth_json_is_valid(&auth_json));
+    }
+
+    #[test]
+    fn host_codex_auth_validation_rejects_empty_file() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let auth_json = temp_dir.path().join("auth.json");
+        fs::write(&auth_json, "").unwrap();
+
+        assert!(!TartProvisioner::host_codex_auth_json_is_valid(&auth_json));
+    }
+
+    #[test]
+    fn host_codex_auth_validation_rejects_invalid_json() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let auth_json = temp_dir.path().join("auth.json");
+        fs::write(&auth_json, "not json").unwrap();
+
+        assert!(!TartProvisioner::host_codex_auth_json_is_valid(&auth_json));
     }
 }
