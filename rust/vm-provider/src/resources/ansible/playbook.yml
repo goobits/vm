@@ -234,6 +234,7 @@
             path: /etc/hosts
             regexp: '^127\.0\.1\.1'
             line: "127.0.1.1 {{ project_hostname }} {{ project_hostname.split('.')[0] }}"
+            unsafe_writes: yes
         when: is_docker_container
 
       - name: Update apt cache
@@ -477,6 +478,17 @@
             - '/home/{{ project_user }}/.npm'
         become: yes
 
+      - name: Ensure project user owns NVM toolchain
+        file:
+            path: '/home/{{ project_user }}/.nvm'
+            state: directory
+            owner: '{{ project_user }}'
+            group: '{{ project_user_group }}'
+            mode: '0755'
+            recurse: yes
+        when: nvm_present.stat.exists | bool
+        become: yes
+
       - name: Ensure enabled AI tool directories are writable
         file:
             path: '{{ item.path }}'
@@ -555,10 +567,16 @@
                 curl -fsSL https://claude.ai/install.sh -o "$INSTALLER"
                 bash "$INSTALLER"
                 if ! ensure_claude_launcher; then
-                    echo "Claude Code installer completed, but no claude launcher was found." >&2
-                    echo "Searched PATH: $PATH" >&2
-                    find "$HOME/.local" "$HOME/.claude" -maxdepth 8 -printf '%M %p -> %l\n' 2>/dev/null || true
-                    exit 1
+                    export NVM_DIR="$HOME/.nvm"
+                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+                    npm install -g @anthropic-ai/claude-code
+                    hash -r
+                    if ! ensure_claude_launcher; then
+                        echo "Claude Code installer completed, but no claude launcher was found." >&2
+                        echo "Searched PATH: $PATH" >&2
+                        find "$HOME/.local" "$HOME/.claude" -maxdepth 5 -printf '%M %p -> %l\n' 2>/dev/null || true
+                        exit 1
+                    fi
                 fi
                 command -v claude
                 echo "Claude Code CLI installed"

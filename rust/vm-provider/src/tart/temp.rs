@@ -28,12 +28,7 @@ impl TartProvider {
 
     fn persist_tart_dir_shares(&self, vm_name: &str, shares: &[TartDirShare]) -> Result<()> {
         for share in shares {
-            let dir_arg = format!(
-                "{}:{}:tag={}",
-                share.tag,
-                share.host_path.display(),
-                share.tag
-            );
+            let dir_arg = format!("{}:tag={}", share.host_path.display(), share.tag);
             info!("Adding Tart directory share: {}", dir_arg);
             self.tart_expr(&["set", vm_name, "--dir", &dir_arg])
                 .run()

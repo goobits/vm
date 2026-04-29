@@ -282,22 +282,12 @@ impl TartProvider {
         info!("Tart run log for '{}': {}", vm_name, raw_log_path);
         let vm_name = Self::shell_escape_single_quotes(vm_name);
         let log_path = Self::shell_escape_single_quotes(&raw_log_path);
-        let mut dir_args = vec![format!("workspace:{}:tag=workspace", host_path.display())];
+        let mut dir_args = vec![format!("{}:tag=workspace", host_path.display())];
         for mount in collect_host_sync_mounts(&self.config) {
-            dir_args.push(format!(
-                "{}:{}:tag={}",
-                mount.tag,
-                mount.host_path.display(),
-                mount.tag
-            ));
+            dir_args.push(format!("{}:tag={}", mount.host_path.display(), mount.tag));
         }
         for share in extra_dir_shares {
-            dir_args.push(format!(
-                "{}:{}:tag={}",
-                share.tag,
-                share.host_path.display(),
-                share.tag
-            ));
+            dir_args.push(format!("{}:tag={}", share.host_path.display(), share.tag));
         }
 
         let escaped_dir_args: Vec<String> = dir_args
