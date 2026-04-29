@@ -14,13 +14,15 @@ mod shell_config;
 pub struct TartProvisioner {
     instance_name: String,
     project_dir: String,
+    tart_home: Option<String>,
 }
 
 impl TartProvisioner {
-    pub fn new(instance_name: String, project_dir: String) -> Self {
+    pub fn new(instance_name: String, project_dir: String, tart_home: Option<String>) -> Self {
         Self {
             instance_name,
             project_dir,
+            tart_home,
         }
     }
 
@@ -72,10 +74,11 @@ impl TartProvisioner {
 
         let log_path = tart_run_log_path(&self.instance_name);
         for _attempt in 1..=30 {
-            let result = cmd!("tart", "exec", &self.instance_name, "echo", "ready")
-                .stderr_null()
-                .stdout_null()
-                .run();
+            let mut expr = cmd!("tart", "exec", &self.instance_name, "echo", "ready");
+            if let Some(tart_home) = &self.tart_home {
+                expr = expr.env("TART_HOME", tart_home);
+            }
+            let result = expr.stderr_null().stdout_null().run();
 
             if result.is_ok() {
                 info!("SSH is ready");
@@ -438,7 +441,14 @@ chmod {mode} "$HOME/{target}""#,
         if !config.npm_packages.is_empty() {
             self.ensure_nodejs_runtime(config)?;
             let packages = config.npm_packages.join(" ");
-            self.ssh_exec(&format!("npm install -g {}", packages))?;
+            self.ssh_exec(&format!(
+                r#"export PATH="{}"
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+npm install -g {}"#,
+                Self::user_bin_path(config),
+                packages
+            ))?;
         }
 
         if !config.pip_packages.is_empty() {
@@ -577,8 +587,13 @@ docker info >/dev/null 2>&1 || sudo docker info >/dev/null 2>&1"#,
         info!("Installing Node.js dependencies");
         self.ensure_nodejs_runtime(config)?;
         self.ssh_exec(&format!(
-            "if [ -f {}/package.json ]; then cd {} && npm install; fi",
-            self.project_dir, self.project_dir
+            r#"export PATH="{}"
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+if [ -f {}/package.json ]; then cd {} && npm install; fi"#,
+            Self::user_bin_path(config),
+            self.project_dir,
+            self.project_dir
         ))?;
         Ok(())
     }
@@ -843,7 +858,11 @@ rustup default stable"#,
     }
 
     fn ssh_exec(&self, command: &str) -> Result<String> {
-        let output = cmd!("tart", "exec", &self.instance_name, "bash", "-c", command)
+        let mut expr = cmd!("tart", "exec", &self.instance_name, "bash", "-c", command);
+        if let Some(tart_home) = &self.tart_home {
+            expr = expr.env("TART_HOME", tart_home);
+        }
+        let output = expr
             .read()
             .map_err(|e| VmError::Provider(format!("Exec command failed: {}", e)))?;
 

@@ -11,6 +11,7 @@ use crate::{
 };
 use duct::cmd;
 use serde::Deserialize;
+use std::ffi::OsStr;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -19,16 +20,16 @@ use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
 use vm_cli::msg;
 use vm_config::config::VmConfig;
-use vm_core::command_stream::{is_tool_installed, stream_command};
+use vm_core::command_stream::{is_tool_installed, stream_command, stream_command_with_env};
 use vm_core::error::Result;
 use vm_core::vm_println;
+use vm_core::{get_cpu_core_count, get_total_memory_gb};
 use vm_messages::messages::MESSAGES;
 
 // Constants for Tart provider
 const DEFAULT_TART_IMAGE: &str = "ghcr.io/cirruslabs/macos-sonoma-base:latest";
 const DEFAULT_TART_VIBE_BASE: &str = "vibe-tart-base";
 const DEFAULT_TART_LINUX_VIBE_BASE: &str = "vibe-tart-linux-base";
-const TART_VM_LOG_PATH: &str = ".tart/vms";
 
 struct CollectedMetrics {
     resources: ResourceUsage,
@@ -64,8 +65,53 @@ impl TartProvider {
         Ok(Self { config })
     }
 
+    fn tart_home(&self) -> Option<String> {
+        self.config
+            .tart
+            .as_ref()
+            .and_then(|tart| tart.storage_path.as_deref())
+            .filter(|path| !path.trim().is_empty())
+            .map(Self::expand_tart_home)
+    }
+
+    fn expand_tart_home(path: &str) -> String {
+        if path == "~" {
+            return std::env::var("HOME").unwrap_or_else(|_| path.to_string());
+        }
+        if let Some(rest) = path.strip_prefix("~/") {
+            if let Ok(home) = std::env::var("HOME") {
+                return format!("{home}/{rest}");
+            }
+        }
+        path.to_string()
+    }
+
+    pub(super) fn tart_expr<A: AsRef<OsStr>>(&self, args: &[A]) -> duct::Expression {
+        let mut expr = cmd("tart", args);
+        if let Some(tart_home) = self.tart_home() {
+            expr = expr.env("TART_HOME", tart_home);
+        }
+        expr
+    }
+
+    fn tart_command(&self) -> Command {
+        let mut command = Command::new("tart");
+        if let Some(tart_home) = self.tart_home() {
+            command.env("TART_HOME", tart_home);
+        }
+        command
+    }
+
+    fn stream_tart_command<A: AsRef<OsStr>>(&self, args: &[A]) -> Result<()> {
+        if let Some(tart_home) = self.tart_home() {
+            stream_command_with_env("tart", args, &[("TART_HOME", tart_home.as_str())])
+        } else {
+            stream_command("tart", args)
+        }
+    }
+
     pub(super) fn get_instance_state(&self, instance_name: &str) -> Result<Option<String>> {
-        let output = cmd!("tart", "list", "--format", "json").read()?;
+        let output = self.tart_expr(&["list", "--format", "json"]).read()?;
         let vms: Vec<serde_json::Value> = serde_json::from_str(&output)?;
         for vm in vms {
             if vm["Name"] == instance_name {
@@ -76,7 +122,7 @@ impl TartProvider {
     }
 
     fn tart_image_exists(&self, image_name: &str) -> Result<bool> {
-        let output = cmd!("tart", "list", "--format", "json").read()?;
+        let output = self.tart_expr(&["list", "--format", "json"]).read()?;
         let vms: Vec<serde_json::Value> = serde_json::from_str(&output)?;
         Ok(vms.iter().any(|vm| vm["Name"].as_str() == Some(image_name)))
     }
@@ -93,7 +139,8 @@ impl TartProvider {
     }
 
     fn run_guest_agent_probe(&self, instance_name: &str, timeout: Duration) -> bool {
-        let Ok(mut child) = Command::new("tart")
+        let Ok(mut child) = self
+            .tart_command()
             .args(["exec", instance_name, "echo", "ready"])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -144,7 +191,11 @@ impl TartProvider {
     }
 
     fn ensure_workspace_mount_ready(&self, instance_name: &str, sync_dir: &str) -> Result<()> {
-        TartProvisioner::new(instance_name.to_string(), sync_dir.to_string())
+        TartProvisioner::new(
+            instance_name.to_string(),
+            sync_dir.to_string(),
+            self.tart_home(),
+        )
             .ensure_workspace_mount()
             .map_err(|e| {
                 VmError::Provider(format!(
@@ -154,7 +205,11 @@ impl TartProvider {
     }
 
     fn ensure_shell_config_ready(&self, instance_name: &str, sync_dir: &str) -> Result<()> {
-        let provisioner = TartProvisioner::new(instance_name.to_string(), sync_dir.to_string());
+        let provisioner = TartProvisioner::new(
+            instance_name.to_string(),
+            sync_dir.to_string(),
+            self.tart_home(),
+        );
         if !self.is_shell_config_ready(instance_name) {
             provisioner.apply_canonical_shell_config(&self.config)?;
             provisioner.apply_shell_overrides(&self.config)?;
@@ -164,14 +219,13 @@ impl TartProvider {
     }
 
     fn is_shell_config_ready(&self, instance_name: &str) -> bool {
-        cmd!(
-            "tart",
+        self.tart_expr(&[
             "exec",
             instance_name,
             "sh",
             "-lc",
-            "test -f \"$HOME/.zshrc\" && grep -Fq 'VM_PROJECT_PATH=' \"$HOME/.zshrc\" && grep -Fq 'VM_AI_ALIAS_REPAIR_VERSION=2' \"$HOME/.zshrc\""
-        )
+            "test -f \"$HOME/.zshrc\" && grep -Fq 'VM_PROJECT_PATH=' \"$HOME/.zshrc\" && grep -Fq 'VM_AI_ALIAS_REPAIR_VERSION=2' \"$HOME/.zshrc\"",
+        ])
         .stderr_null()
         .stdout_null()
         .run()
@@ -180,7 +234,8 @@ impl TartProvider {
 
     fn collect_metrics(&self, instance: &str) -> Result<CollectedMetrics> {
         let metrics_script = include_str!("scripts/collect_metrics.sh");
-        let output = cmd!("tart", "exec", instance, "sh", "-c", metrics_script)
+        let output = self
+            .tart_expr(&["exec", instance, "sh", "-c", metrics_script])
             .stderr_capture()
             .read()
             .map_err(|e| VmError::Provider(format!("SSH command failed: {}", e)))?;
@@ -256,8 +311,13 @@ impl TartProvider {
             log_path
         );
 
-        std::process::Command::new("sh")
-            .args(["-c", &cmd])
+        let mut command = std::process::Command::new("sh");
+        command.args(["-c", &cmd]);
+        if let Some(tart_home) = self.tart_home() {
+            command.env("TART_HOME", tart_home);
+        }
+
+        command
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -324,8 +384,17 @@ impl TartProvider {
     fn apply_runtime_config(&self, instance: &str, config: &VmConfig) -> Result<()> {
         if let Some(cpus) = config.vm.as_ref().and_then(|v| v.cpus.as_ref()) {
             if let Some(count) = cpus.to_count() {
-                info!("Setting CPU count to {}", count);
-                cmd!("tart", "set", instance, "--cpu", count.to_string())
+                let adjusted_count = Self::adjust_cpu_count(count);
+                if adjusted_count != count {
+                    warn!(
+                        "Requested {} CPUs but only {} are available; applying {} CPUs",
+                        count,
+                        get_cpu_core_count().unwrap_or(2),
+                        adjusted_count
+                    );
+                }
+                info!("Setting CPU count to {}", adjusted_count);
+                self.tart_expr(&["set", instance, "--cpu", &adjusted_count.to_string()])
                     .run()
                     .map_err(|e| VmError::Provider(format!("Failed to set CPU: {}", e)))?;
             }
@@ -333,20 +402,44 @@ impl TartProvider {
 
         if let Some(memory) = config.vm.as_ref().and_then(|v| v.memory.as_ref()) {
             if let Some(memory_mb) = memory.to_mb() {
-                info!("Setting memory to {}MB", memory_mb);
-                cmd!(
-                    "tart",
-                    "set",
-                    instance,
-                    "--memory",
-                    format!("{}", memory_mb)
-                )
-                .run()
-                .map_err(|e| VmError::Provider(format!("Failed to set memory: {}", e)))?;
+                let adjusted_memory_mb = Self::adjust_memory_mb(memory_mb);
+                if adjusted_memory_mb != memory_mb {
+                    warn!(
+                        "Requested {} MB RAM but only {} GB total memory is available; applying {} MB",
+                        memory_mb,
+                        get_total_memory_gb().unwrap_or(4),
+                        adjusted_memory_mb
+                    );
+                }
+                info!("Setting memory to {}MB", adjusted_memory_mb);
+                self.tart_expr(&["set", instance, "--memory", &adjusted_memory_mb.to_string()])
+                    .run()
+                    .map_err(|e| VmError::Provider(format!("Failed to set memory: {}", e)))?;
             }
         }
 
         Ok(())
+    }
+
+    fn adjust_cpu_count(requested_cpus: u32) -> u32 {
+        let system_cpus = get_cpu_core_count().unwrap_or(2);
+        if requested_cpus > system_cpus {
+            (system_cpus / 2).max(1).min(system_cpus)
+        } else {
+            requested_cpus
+        }
+    }
+
+    fn adjust_memory_mb(requested_mb: u32) -> u32 {
+        let system_memory_gb = get_total_memory_gb().unwrap_or(4);
+        let requested_gb = (requested_mb as u64) / 1024;
+        let max_safe_memory_gb = system_memory_gb.saturating_sub(2).max(1);
+
+        if requested_gb > max_safe_memory_gb {
+            (max_safe_memory_gb * 1024) as u32
+        } else {
+            requested_mb
+        }
     }
 
     fn vm_name(&self) -> String {
@@ -475,7 +568,7 @@ impl TartProvider {
 
         // Clone the base image
         ProgressReporter::task(&main_phase, &format!("Cloning image '{}'...", image));
-        let clone_result = stream_command("tart", &["clone", &image, vm_name]);
+        let clone_result = self.stream_tart_command(&["clone", &image, vm_name]);
         if clone_result.is_err() {
             ProgressReporter::task(&main_phase, "Clone failed.");
             ProgressReporter::finish_phase(&main_phase, "Creation failed.");
@@ -492,7 +585,7 @@ impl TartProvider {
                             &main_phase,
                             &format!("Setting memory to {} MB...", mb),
                         );
-                        stream_command("tart", &["set", vm_name, "--memory", &mb.to_string()])?;
+                        self.stream_tart_command(&["set", vm_name, "--memory", &mb.to_string()])?;
                         ProgressReporter::task(&main_phase, "Memory configured.");
                     }
                     None => {
@@ -511,7 +604,7 @@ impl TartProvider {
                             &main_phase,
                             &format!("Setting CPUs to {}...", count),
                         );
-                        stream_command("tart", &["set", vm_name, "--cpu", &count.to_string()])?;
+                        self.stream_tart_command(&["set", vm_name, "--cpu", &count.to_string()])?;
                         ProgressReporter::task(&main_phase, "CPUs configured.");
                     }
                     None => {
@@ -532,10 +625,12 @@ impl TartProvider {
                         &main_phase,
                         &format!("Setting disk size to {} GB...", disk_gb),
                     );
-                    stream_command(
-                        "tart",
-                        &["set", vm_name, "--disk-size", &disk_gb.to_string()],
-                    )?;
+                    self.stream_tart_command(&[
+                        "set",
+                        vm_name,
+                        "--disk-size",
+                        &disk_gb.to_string(),
+                    ])?;
                     ProgressReporter::task(&main_phase, "Disk size configured.");
                 }
             }
@@ -553,7 +648,11 @@ impl TartProvider {
 
         // Run initial provisioning using the effective config
         ProgressReporter::task(&main_phase, "Running initial provisioning...");
-        let provisioner = TartProvisioner::new(vm_name.to_string(), self.get_sync_directory());
+        let provisioner = TartProvisioner::new(
+            vm_name.to_string(),
+            self.get_sync_directory(),
+            self.tart_home(),
+        );
         if let Err(e) = provisioner.provision(config) {
             warn!(
                 "Initial provisioning failed: {}. The VM is created but may not be fully configured.",
@@ -625,19 +724,19 @@ impl Provider for TartProvider {
 
     fn stop(&self, container: Option<&str>) -> Result<()> {
         let vm_name = self.vm_name_with_instance(container)?;
-        stream_command("tart", &["stop", &vm_name])
+        self.stream_tart_command(&["stop", &vm_name])
     }
 
     fn destroy(&self, container: Option<&str>) -> Result<()> {
         let vm_name = self.vm_name_with_instance(container)?;
 
         if self.is_instance_running(&vm_name).unwrap_or(false) {
-            cmd!("tart", "stop", &vm_name).run().map_err(|e| {
+            self.tart_expr(&["stop", &vm_name]).run().map_err(|e| {
                 VmError::Provider(format!("Failed to stop Tart VM before delete: {e}"))
             })?;
         }
 
-        stream_command("tart", &["delete", &vm_name])
+        self.stream_tart_command(&["delete", &vm_name])
     }
 
     fn ssh(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {
@@ -714,7 +813,8 @@ impl Provider for TartProvider {
             shell = shell_escaped
         );
 
-        let status = Command::new("tart")
+        let status = self
+            .tart_command()
             .args(["exec", "-i", "-t", &instance_name, "sh", "-c", &ssh_command])
             .status()
             .map_err(|e| VmError::Provider(format!("Exec failed: {e}")))?;
@@ -756,14 +856,17 @@ impl Provider for TartProvider {
         ];
         args.extend(cmd.iter().cloned());
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        stream_command("tart", &arg_refs)
+        self.stream_tart_command(&arg_refs)
     }
 
     fn logs(&self, container: Option<&str>) -> Result<()> {
         let vm_name = self.vm_name_with_instance(container)?;
-        // Try to read logs from ~/.tart/vms/{name}/app.log
-        let home_env = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-        let log_path = format!("{}/{}/{}/app.log", home_env, TART_VM_LOG_PATH, vm_name);
+        // Try to read logs from Tart's configured home directory.
+        let tart_home = self.tart_home().unwrap_or_else(|| {
+            let home_env = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+            format!("{home_env}/.tart")
+        });
+        let log_path = format!("{}/vms/{}/app.log", tart_home, vm_name);
 
         // Check if log file exists before attempting to tail
         if !Path::new(&log_path).exists() {
@@ -828,14 +931,19 @@ impl Provider for TartProvider {
                     vm_name,
                     copy_cmd
                 )
-            )
-            .run();
+            );
+            let output = if let Some(tart_home) = self.tart_home() {
+                output.env("TART_HOME", tart_home).run()
+            } else {
+                output.run()
+            };
 
             output.map_err(|e| VmError::Provider(format!("Failed to copy file to VM: {}", e)))?;
         } else {
             // Download: VM -> local
             let copy_cmd = format!("cat '{}'", remote_path.replace('\'', "'\"'\"'"));
-            let result = cmd!("tart", "exec", &vm_name, "sh", "-c", &copy_cmd)
+            let result = self
+                .tart_expr(&["exec", &vm_name, "sh", "-c", &copy_cmd])
                 .stdout_capture()
                 .run()
                 .map_err(|e| VmError::Provider(format!("Failed to read file from VM: {}", e)))?;
@@ -852,7 +960,7 @@ impl Provider for TartProvider {
             Some(_) => {
                 // Show specific VM status
                 let vm_name = self.vm_name_with_instance(container)?;
-                let output = std::process::Command::new("tart").args(["list"]).output()?;
+                let output = self.tart_command().args(["list"]).output()?;
 
                 if !output.status.success() {
                     return Err(VmError::Internal(
@@ -876,7 +984,7 @@ impl Provider for TartProvider {
             }
             None => {
                 // Show all VMs (existing behavior)
-                stream_command("tart", &["list"])
+                self.stream_tart_command(&["list"])
             }
         }
     }
@@ -950,7 +1058,11 @@ impl Provider for TartProvider {
     fn provision(&self, container: Option<&str>) -> Result<()> {
         let instance_name = self.resolve_instance_name(container)?;
 
-        let provisioner = TartProvisioner::new(instance_name.clone(), self.get_sync_directory());
+        let provisioner = TartProvisioner::new(
+            instance_name.clone(),
+            self.get_sync_directory(),
+            self.tart_home(),
+        );
 
         provisioner.provision(&self.config)?;
 
@@ -960,14 +1072,14 @@ impl Provider for TartProvider {
 
     fn list(&self) -> Result<()> {
         // List all Tart VMs
-        stream_command("tart", &["list"])
+        self.stream_tart_command(&["list"])
     }
 
     fn kill(&self, container: Option<&str>) -> Result<()> {
         let instance_name = self.resolve_instance_name(container)?;
         warn!("Force killing Tart VM: {}", &instance_name);
 
-        cmd!("tart", "stop", &instance_name, "--timeout", "0")
+        self.tart_expr(&["stop", &instance_name, "--timeout", "0"])
             .run()
             .map_err(|e| VmError::Provider(format!("Failed to force stop VM: {}", e)))?;
 
@@ -1028,7 +1140,8 @@ impl TartProvider {
         let command_str = cmd_parts.join(" ");
         let ssh_command = format!("cd '{}' && {}", path.display(), command_str);
 
-        let output = cmd!("tart", "exec", &instance_name, "sh", "-c", &ssh_command)
+        let output = self
+            .tart_expr(&["exec", &instance_name, "sh", "-c", &ssh_command])
             .read()
             .map_err(|e| VmError::Provider(format!("Exec in path failed: {}", e)))?;
 

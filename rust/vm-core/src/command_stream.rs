@@ -39,6 +39,28 @@ pub fn stream_command<A: AsRef<OsStr>>(command: &str, args: &[A]) -> Result<()> 
     stream_command_with_timeout(command, args, None)
 }
 
+/// Stream command output with additional environment variables.
+pub fn stream_command_with_env<A, K, V>(command: &str, args: &[A], envs: &[(K, V)]) -> Result<()>
+where
+    A: AsRef<OsStr>,
+    K: AsRef<OsStr>,
+    V: AsRef<OsStr>,
+{
+    let mut expr = with_buildkit(command, args);
+    for (key, value) in envs {
+        expr = expr.env(key, value);
+    }
+
+    let reader = expr.stderr_to_stdout().reader()?;
+    let lines = BufReader::new(reader).lines();
+
+    for line in lines {
+        info!("{}", line?);
+    }
+
+    Ok(())
+}
+
 /// Stream command output with optional timeout (in seconds).
 /// If timeout is None, command runs indefinitely.
 /// If timeout is exceeded, returns VmError with the full command for debugging.

@@ -27,7 +27,18 @@ impl<'a> TartInstanceManager<'a> {
 
     /// Parse `tart list --format json` output into InstanceInfo
     pub fn parse_tart_list(&self) -> Result<Vec<InstanceInfo>> {
-        let output = std::process::Command::new("tart")
+        let mut command = std::process::Command::new("tart");
+        if let Some(storage_path) = self
+            .config
+            .tart
+            .as_ref()
+            .and_then(|tart| tart.storage_path.as_deref())
+            .filter(|path| !path.trim().is_empty())
+        {
+            command.env("TART_HOME", expand_tilde(storage_path));
+        }
+
+        let output = command
             .args(["list", "--format", "json"])
             .output()
             .map_err(|e| {
@@ -103,6 +114,18 @@ impl<'a> TartInstanceManager<'a> {
         // Return None for both to keep implementation simple.
         (None, None)
     }
+}
+
+fn expand_tilde(path: &str) -> String {
+    if path == "~" {
+        return std::env::var("HOME").unwrap_or_else(|_| path.to_string());
+    }
+    if let Some(rest) = path.strip_prefix("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            return format!("{home}/{rest}");
+        }
+    }
+    path.to_string()
 }
 
 impl<'a> InstanceResolver for TartInstanceManager<'a> {

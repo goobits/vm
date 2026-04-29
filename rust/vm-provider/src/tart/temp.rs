@@ -1,6 +1,5 @@
 use super::{provider::tart_run_log_path, TartProvider};
 use crate::{TempProvider, TempVmState, VmError};
-use duct::cmd;
 use std::path::PathBuf;
 use std::time::Duration;
 use tracing::info;
@@ -36,7 +35,7 @@ impl TartProvider {
                 share.tag
             );
             info!("Adding Tart directory share: {}", dir_arg);
-            cmd!("tart", "set", vm_name, "--dir", &dir_arg)
+            self.tart_expr(&["set", vm_name, "--dir", &dir_arg])
                 .run()
                 .map_err(|e| {
                     VmError::Provider(format!("Failed to add Tart directory share: {}", e))
@@ -87,7 +86,7 @@ fi"#
             return Ok(());
         }
 
-        cmd!("tart", "exec", vm_name, "sh", "-c", commands.join("\n"))
+        self.tart_expr(&["exec", vm_name, "sh", "-c", &commands.join("\n")])
             .run()
             .map(|_| ())
             .map_err(|e| VmError::Provider(format!("Failed to mount temp directories: {}", e)))
@@ -109,7 +108,7 @@ impl TempProvider for TartProvider {
         }
 
         if self.is_instance_running(&state.container_name)? {
-            cmd!("tart", "stop", &state.container_name)
+            self.tart_expr(&["stop", &state.container_name])
                 .run()
                 .map_err(|e| VmError::Provider(format!("Failed to stop Tart temp VM: {}", e)))?;
         }
@@ -130,7 +129,7 @@ impl TempProvider for TartProvider {
         }
 
         if self.is_instance_running(&state.container_name)? {
-            cmd!("tart", "stop", &state.container_name)
+            self.tart_expr(&["stop", &state.container_name])
                 .run()
                 .map_err(|e| VmError::Provider(format!("Failed to stop Tart temp VM: {}", e)))?;
         }
@@ -153,7 +152,8 @@ impl TempProvider for TartProvider {
             return Ok(false);
         }
 
-        let ssh_test = cmd!("tart", "exec", container_name, "echo", "healthy")
+        let ssh_test = self
+            .tart_expr(&["exec", container_name, "echo", "healthy"])
             .stderr_null()
             .stdout_null()
             .run();

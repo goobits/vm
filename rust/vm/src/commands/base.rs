@@ -1,7 +1,7 @@
 use crate::cli::BaseSubcommand;
 use crate::error::{VmError, VmResult};
 use std::process::Command;
-use vm_config::resolve_tool_path;
+use vm_config::{config::VmConfig, resolve_tool_path};
 use vm_core::vm_println;
 
 const DOCKER_BASE_NAME: &str = "@vibe-box";
@@ -44,6 +44,7 @@ fn handle_build(preset: &str, provider: &str) -> VmResult<()> {
         "tart" => {
             let script = resolve_tool_path("scripts/build-vibe-tart-base.sh");
             let mut command = Command::new(script);
+            apply_tart_home_from_config(&mut command);
             command.args(["--guest-os", "linux", "--name", TART_BASE_NAME]);
             run_command(command, "build Tart vibe base")?;
             vm_println!("Built Tart vibe base: {}", TART_BASE_NAME);
@@ -52,6 +53,34 @@ fn handle_build(preset: &str, provider: &str) -> VmResult<()> {
     }
 
     Ok(())
+}
+
+fn apply_tart_home_from_config(command: &mut Command) {
+    let Ok(config) = VmConfig::load(None) else {
+        return;
+    };
+    let Some(storage_path) = config
+        .tart
+        .as_ref()
+        .and_then(|tart| tart.storage_path.as_deref())
+        .filter(|path| !path.trim().is_empty())
+    else {
+        return;
+    };
+
+    command.env("TART_HOME", expand_tilde(storage_path));
+}
+
+fn expand_tilde(path: &str) -> String {
+    if path == "~" {
+        return std::env::var("HOME").unwrap_or_else(|_| path.to_string());
+    }
+    if let Some(rest) = path.strip_prefix("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            return format!("{home}/{rest}");
+        }
+    }
+    path.to_string()
 }
 
 fn handle_validate(
@@ -64,6 +93,7 @@ fn handle_validate(
 
     let script = resolve_tool_path("scripts/validate-vibe-providers.sh");
     let mut cmd = Command::new(script);
+    apply_tart_home_from_config(&mut cmd);
 
     match provider {
         "docker" => {

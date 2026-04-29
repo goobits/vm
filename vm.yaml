@@ -25,11 +25,11 @@ terminal:
   show_timestamp: false
   theme: dracula
   username: vm-dev
+environment:
+  CARGO_TARGET_DIR: /home/admin/.cache/vm-cargo-target
 host_sync:
   git_config: true
   ai_tools: true
-environment:
-  CARGO_TARGET_DIR: /home/admin/.cache/vm-cargo-target
 preset: vibe-tart
 default_profile: tart
 networking:
@@ -38,20 +38,6 @@ networking:
 profiles:
   docker:
     provider: docker
-    ports: {}
-  tart:
-    provider: tart
-    tart:
-      guest_os: linux
-      disk_size: 80
-      ssh_user: admin
-      install_docker: false
-    project:
-      workspace_path: /workspace
-    vm:
-      box: vibe-tart-linux-base
-      memory: 16384
-      cpus: 8
     ports: {}
   macos:
     provider: tart
@@ -65,6 +51,20 @@ profiles:
       workspace_path: /workspace
     vm:
       box: vibe-tart-base
+      memory: 16384
+      cpus: 8
+    ports: {}
+  tart:
+    provider: tart
+    tart:
+      guest_os: linux
+      disk_size: 80
+      ssh_user: admin
+      install_docker: true
+    project:
+      workspace_path: /workspace
+    vm:
+      box: vibe-tart-linux-base
       memory: 16384
       cpus: 8
     ports: {}
