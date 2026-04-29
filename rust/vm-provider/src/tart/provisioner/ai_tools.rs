@@ -2,6 +2,24 @@ use super::{resolve_home_dir, Path, PathBuf, Result, TartProvisioner, VmConfig};
 use tracing::warn;
 
 impl TartProvisioner {
+    fn prepare_json_backed_tool_home(&self, dir_name: &str) -> Result<()> {
+        let dir_name_escaped = Self::shell_escape_single_quotes(dir_name);
+        self.ssh_exec(&format!(
+            r#"set -e
+tool_home="$HOME/{dir_name}"
+mkdir -p "$tool_home"
+find "$tool_home" -type f -name '*.json' -size 0 -exec rm -f {{}} + 2>/dev/null || true
+home_uid="$(stat -f %u "$HOME" 2>/dev/null || stat -c %u "$HOME" 2>/dev/null || id -u)"
+home_gid="$(stat -f %g "$HOME" 2>/dev/null || stat -c %g "$HOME" 2>/dev/null || id -g)"
+if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
+$SUDO chown -R "$home_uid:$home_gid" "$tool_home" 2>/dev/null || true
+chmod 700 "$tool_home" 2>/dev/null || true"#,
+            dir_name = dir_name_escaped
+        ))?;
+
+        Ok(())
+    }
+
     fn prepare_codex_home(&self) -> Result<()> {
         self.ssh_exec(
             r#"set -e
@@ -118,6 +136,7 @@ if ! command -v claude >/dev/null 2>&1; then
 fi"#,
                 Self::user_bin_path(config)
             ))?;
+            self.prepare_json_backed_tool_home(".claude")?;
         }
 
         if ai_tools.is_gemini_enabled() || ai_tools.is_codex_enabled() {
@@ -134,6 +153,7 @@ if ! command -v gemini >/dev/null 2>&1; then
 fi"#,
                 Self::user_bin_path(config)
             ))?;
+            self.prepare_json_backed_tool_home(".gemini")?;
         }
 
         if ai_tools.is_codex_enabled() {

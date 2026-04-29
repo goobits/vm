@@ -438,7 +438,7 @@ async fn start_server_if_needed(global_config: &GlobalConfig, yes: bool) -> VmRe
         }
     } else {
         return Err(VmError::from(anyhow::anyhow!(
-            "Package registry server is required but not running"
+            "Package registry error: server is required but not running"
         )));
     }
 

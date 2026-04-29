@@ -171,7 +171,7 @@ impl TartProvider {
             instance_name,
             "sh",
             "-lc",
-            "test -f \"$HOME/.zshrc\" && grep -Fq 'VM_PROJECT_PATH=' \"$HOME/.zshrc\" && grep -Fq 'CODEX_HOME=\"$HOME/.codex\" codex' \"$HOME/.zshrc\""
+            "test -f \"$HOME/.zshrc\" && grep -Fq 'VM_PROJECT_PATH=' \"$HOME/.zshrc\" && grep -Fq 'VM_AI_ALIAS_REPAIR_VERSION=2' \"$HOME/.zshrc\""
         )
         .stderr_null()
         .stdout_null()

@@ -325,8 +325,29 @@ impl TempVmState {
 
     /// Check if a path is dangerous to mount (system directories)
     fn is_dangerous_mount_path(path: &Path) -> bool {
+        let allowed_private_var_paths = ["/private/var/folders", "/private/var/tmp"];
+        if allowed_private_var_paths
+            .iter()
+            .any(|allowed| path.starts_with(Path::new(allowed)))
+        {
+            return false;
+        }
+
         let dangerous_paths = [
-            "/", "/etc", "/usr", "/var", "/bin", "/sbin", "/boot", "/sys", "/proc", "/dev", "/root",
+            "/",
+            "/etc",
+            "/usr",
+            "/var",
+            "/bin",
+            "/sbin",
+            "/boot",
+            "/sys",
+            "/proc",
+            "/dev",
+            "/root",
+            // macOS canonicalizes several system paths through /private.
+            "/private/etc",
+            "/private/var",
         ];
 
         // Check exact matches and if path starts with dangerous paths
@@ -357,11 +378,26 @@ mod tests {
             "/etc/nginx"
         )));
         assert!(TempVmState::is_dangerous_mount_path(Path::new("/usr/bin")));
+        assert!(TempVmState::is_dangerous_mount_path(Path::new(
+            "/private/etc"
+        )));
+        assert!(TempVmState::is_dangerous_mount_path(Path::new(
+            "/private/var/db"
+        )));
 
         assert!(!TempVmState::is_dangerous_mount_path(Path::new(
             "/home/user"
         )));
         assert!(!TempVmState::is_dangerous_mount_path(Path::new("/tmp")));
+        assert!(!TempVmState::is_dangerous_mount_path(Path::new(
+            "/private/tmp"
+        )));
+        assert!(!TempVmState::is_dangerous_mount_path(Path::new(
+            "/private/var/folders/example"
+        )));
+        assert!(!TempVmState::is_dangerous_mount_path(Path::new(
+            "/private/var/tmp/example"
+        )));
         assert!(!TempVmState::is_dangerous_mount_path(Path::new(
             "/workspace"
         )));

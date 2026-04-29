@@ -602,34 +602,28 @@ fn get_recommended_services(detected_types: &std::collections::HashSet<String>) 
     for tech in detected_types {
         match tech.as_str() {
             "nodejs" | "react" | "vue" | "next" | "angular" => {
-                if !services.contains(&"postgresql".to_string()) {
-                    services.push("postgresql".to_string());
-                }
+                push_unique_service(&mut services, "postgresql");
             }
             "python" | "django" | "flask" => {
-                if !services.contains(&"postgresql".to_string()) {
-                    services.push("postgresql".to_string());
-                }
-                if !services.contains(&"redis".to_string()) {
-                    services.push("redis".to_string());
-                }
+                push_unique_service(&mut services, "postgresql");
+                push_unique_service(&mut services, "redis");
             }
             "rails" | "ruby" => {
-                if !services.contains(&"postgresql".to_string()) {
-                    services.push("postgresql".to_string());
-                }
-                if !services.contains(&"redis".to_string()) {
-                    services.push("redis".to_string());
-                }
+                push_unique_service(&mut services, "postgresql");
+                push_unique_service(&mut services, "redis");
             }
             "docker" => {
-                if !services.contains(&"docker".to_string()) {
-                    services.push("docker".to_string());
-                }
+                push_unique_service(&mut services, "docker");
             }
             _ => {}
         }
     }
 
     services
+}
+
+fn push_unique_service(services: &mut Vec<String>, service: &str) {
+    if !services.iter().any(|existing| existing == service) {
+        services.push(service.to_string());
+    }
 }

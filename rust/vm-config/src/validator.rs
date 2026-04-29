@@ -1,4 +1,5 @@
 // Standard library imports
+use std::collections::HashSet;
 use std::fmt;
 use std::net::TcpListener;
 
@@ -282,6 +283,27 @@ impl ConfigValidator {
         }
 
         // Check for port conflicts
+        let mut mapped_host_ports = HashSet::new();
+        for mapping in &config.ports.mappings {
+            if !mapped_host_ports.insert(mapping.host) {
+                report.add_error(format!("Duplicate host port mapping: {}", mapping.host));
+                continue;
+            }
+
+            if mapping.host == 0 || mapping.guest == 0 {
+                report.add_error("Port numbers must be greater than 0".to_string());
+                continue;
+            }
+
+            let addr = format!("{binding_ip}:{}", mapping.host);
+            if TcpListener::bind(&addr).is_err() {
+                report.add_error(format!(
+                    "Configuration error: Port {} is already in use on host",
+                    mapping.host
+                ));
+            }
+        }
+
         for service in config.services.values() {
             if let Some(port) = service.port {
                 let addr = format!("{binding_ip}:{port}");

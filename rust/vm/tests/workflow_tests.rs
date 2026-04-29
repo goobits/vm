@@ -73,36 +73,9 @@ impl WorkflowTestFixture {
         let test_dir = temp_dir.path().join("test_project");
         fs::create_dir_all(&test_dir)?;
 
-        // Get the path to the vm binary
-        let workspace_root = std::env::current_dir()?;
-
-        // Try multiple possible binary locations (prioritize .build location)
-        let possible_paths = vec![
-            // From workspace root (two levels up from rust/vm): /workspace/.build/target/debug/vm
-            workspace_root
-                .parent()
-                .unwrap()
-                .parent()
-                .unwrap()
-                .join(".build")
-                .join("target")
-                .join("debug")
-                .join("vm"),
-            // From rust root (one level up from rust/vm): /workspace/rust/target/debug/vm
-            workspace_root
-                .parent()
-                .unwrap()
-                .join("target")
-                .join("debug")
-                .join("vm"),
-            // From current dir: /workspace/rust/vm/target/debug/vm
-            workspace_root.join("target").join("debug").join("vm"),
-        ];
-
-        let binary_path = possible_paths
-            .into_iter()
-            .find(|path| path.exists())
-            .expect("Could not find vm binary in any of the expected locations");
+        let binary_path = Command::new(assert_cmd::cargo::cargo_bin!("vm"))
+            .get_program()
+            .into();
 
         Ok(Self {
             _temp_dir: temp_dir,

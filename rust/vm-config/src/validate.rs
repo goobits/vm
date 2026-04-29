@@ -49,7 +49,7 @@ fn check_port_available(port: u16, binding: &str) -> Result<()> {
         Err(e) => {
             if e.kind() == std::io::ErrorKind::AddrInUse {
                 return Err(VmError::Config(format!(
-                    "Port {port} is already in use on host"
+                    "Configuration error: Port {port} is already in use on host"
                 )));
             }
             Err(e.into())

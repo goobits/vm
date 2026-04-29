@@ -19,6 +19,10 @@ host_sync:
   git_config: true
   ai_tools: true
 
+npm_packages:
+  - '@google/gemini-cli'
+  - '@openai/codex'
+
 networking:
   networks:
     - spacebase

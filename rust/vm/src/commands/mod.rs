@@ -141,7 +141,8 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
 }
 
 fn handle_use_provider(provider: &str) -> VmResult<()> {
-    let config = vm_config::config::VmConfig::load(None).map_err(VmError::from)?;
+    let config_path = vm_config::config_ops::find_local_config().map_err(VmError::from)?;
+    let config = vm_config::config::VmConfig::from_file(&config_path).map_err(VmError::from)?;
     let profiles = config.profiles.as_ref();
     let has_profile = profiles.is_some_and(|profiles| profiles.contains_key(provider));
 
@@ -323,7 +324,8 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
     );
 
     // Validate configuration before proceeding
-    let validation_errors = config.validate(true);
+    let skip_port_availability_check = !matches!(args.command, Command::Create { .. });
+    let validation_errors = config.validate(skip_port_availability_check);
     if !validation_errors.is_empty() {
         vm_error!("{}", MESSAGES.common.validation_failed);
         for error in &validation_errors {

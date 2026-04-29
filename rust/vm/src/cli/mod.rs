@@ -754,6 +754,7 @@ pub enum Command {
     },
 
     /// Manage secrets and credentials
+    #[command(name = "secrets", visible_alias = "auth")]
     Secrets {
         #[command(subcommand)]
         command: SecretsSubcommand,

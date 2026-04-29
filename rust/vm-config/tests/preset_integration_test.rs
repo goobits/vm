@@ -869,6 +869,18 @@ fn test_vibe_tart_preset_uses_admin_ssh_user() -> Result<()> {
             .and_then(|tart| tart.ssh_user.as_deref()),
         Some("admin")
     );
+    assert!(
+        vibe_tart
+            .npm_packages
+            .contains(&"@openai/codex".to_string()),
+        "vibe-tart should provision codex as a fallback when @vibe-box is stale"
+    );
+    assert!(
+        vibe_tart
+            .npm_packages
+            .contains(&"@google/gemini-cli".to_string()),
+        "vibe-tart should provision gemini as a fallback when @vibe-box is stale"
+    );
 
     Ok(())
 }

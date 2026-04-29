@@ -104,7 +104,7 @@ impl SnapshotManager {
         }
 
         // Sort by creation time, newest first
-        snapshots.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        snapshots.sort_by_key(|snapshot| std::cmp::Reverse(snapshot.created_at));
 
         Ok(snapshots)
     }

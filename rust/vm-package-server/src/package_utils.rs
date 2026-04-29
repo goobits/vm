@@ -256,7 +256,7 @@ where
     }
 
     // Sort by modification time (most recent first)
-    files_with_time.sort_by(|a, b| b.1.cmp(&a.1));
+    files_with_time.sort_by_key(|(_, modified)| std::cmp::Reverse(*modified));
 
     let mut recent = Vec::new();
     for (path, _) in files_with_time.iter().take(limit * 2) {

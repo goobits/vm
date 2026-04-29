@@ -1,5 +1,5 @@
 version: '2.0'
-provider: docker
+provider: tart
 os: auto
 project:
   hostname: dev.vm.local
@@ -17,6 +17,9 @@ vm:
   user: developer
 ports:
   _range: [3120, 3129]
+npm_packages:
+  - '@google/gemini-cli'
+  - '@openai/codex'
 terminal:
   show_git_branch: true
   show_timestamp: false
@@ -26,7 +29,7 @@ host_sync:
   git_config: true
   ai_tools: true
 preset: vibe-tart
-default_profile: docker
+default_profile: tart
 networking:
   networks:
   - spacebase

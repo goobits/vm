@@ -16,7 +16,7 @@ mod unset;
 pub mod port_placeholders;
 
 // Re-export the public API functions for direct use
-pub use io::load_global_config;
+pub use io::{find_local_config, load_global_config};
 
 // Internal imports
 use vm_core::error::Result;
