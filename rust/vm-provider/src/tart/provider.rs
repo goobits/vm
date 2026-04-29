@@ -10,7 +10,6 @@ use crate::{
     BoxConfig, Provider, ResourceUsage, ServiceStatus, TempProvider, VmError, VmStatusReport,
 };
 use duct::cmd;
-use indicatif::ProgressBar;
 use serde::Deserialize;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
@@ -177,43 +176,6 @@ impl TartProvider {
         .stdout_null()
         .run()
         .is_ok()
-    }
-
-    fn ensure_existing_vm_ready(
-        &self,
-        main_phase: &ProgressBar,
-        vm_name: &str,
-        config: &VmConfig,
-    ) -> Result<()> {
-        if !self.is_instance_running(vm_name)? {
-            ProgressReporter::task(main_phase, "Existing VM is stopped; starting it...");
-            self.start_vm_background(vm_name)?;
-        }
-
-        ProgressReporter::task(main_phase, "Waiting for Tart guest agent...");
-        if !self.wait_for_guest_agent_ready(vm_name, Duration::from_secs(60)) {
-            ProgressReporter::finish_phase(main_phase, "Existing VM is not ready.");
-            return Err(VmError::Provider(format!(
-                "Tart VM '{vm_name}' exists but did not become ready. Tart run log: {}",
-                tart_run_log_path(vm_name)
-            )));
-        }
-
-        let sync_dir = self.get_sync_directory();
-        self.ensure_workspace_mount_ready(vm_name, &sync_dir)?;
-
-        if !self.is_shell_config_ready(vm_name) {
-            ProgressReporter::task(
-                main_phase,
-                "Existing VM is missing shell config; running provisioning...",
-            );
-            let provisioner = TartProvisioner::new(vm_name.to_string(), sync_dir);
-            provisioner.provision(config)?;
-        } else {
-            self.ensure_shell_config_ready(vm_name, &sync_dir)?;
-        }
-
-        Ok(())
     }
 
     fn collect_metrics(&self, instance: &str) -> Result<CollectedMetrics> {
