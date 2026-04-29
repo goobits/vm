@@ -39,7 +39,7 @@ profiles:
   tart:
     provider: tart
     project:
-      workspace_path: /Users/admin/workspace
+      workspace_path: /workspace
     vm:
       box: vibe-tart-base
       memory: 16384

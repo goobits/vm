@@ -51,7 +51,7 @@ fn render_docker_zshrc_for_test() -> String {
 }
 
 fn render_tart_zshrc_for_test() -> String {
-    render_zshrc_for_test("L1VzZXJzL2FkbWluL3dvcmtzcGFjZQ==")
+    render_zshrc_for_test("L3dvcmtzcGFjZQ==")
 }
 
 #[test]
@@ -170,12 +170,10 @@ fn test_rendered_docker_zshrc_targets_workspace() {
 }
 
 #[test]
-fn test_rendered_tart_zshrc_targets_macos_workspace() {
+fn test_rendered_tart_zshrc_targets_workspace() {
     let rendered = render_tart_zshrc_for_test();
 
-    assert!(
-        rendered.contains("VM_PROJECT_PATH=\"$(vm_b64decode 'L1VzZXJzL2FkbWluL3dvcmtzcGFjZQ==')\"")
-    );
+    assert!(rendered.contains("VM_PROJECT_PATH=\"$(vm_b64decode 'L3dvcmtzcGFjZQ==')\""));
     assert!(rendered.contains("alias dev='cd \"$VM_PROJECT_PATH\" && ls'"));
     assert!(rendered.contains("PROMPT='🚀 vm-dev %c"));
 }

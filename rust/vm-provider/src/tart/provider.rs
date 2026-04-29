@@ -462,18 +462,12 @@ impl TartProvider {
         // Check if VM already exists
         ProgressReporter::task(&main_phase, "Checking if VM exists...");
         if self.get_instance_state(vm_name)?.is_some() {
-            ProgressReporter::task(&main_phase, "Existing VM found; verifying readiness...");
+            ProgressReporter::task(&main_phase, "Existing VM found.");
+            vm_println!("⚠️  Tart VM '{}' already exists.", vm_name);
             vm_println!(
-                "ℹ️  Tart VM '{}' already exists; checking and repairing it instead of cloning.",
-                vm_name
+                "   Use 'vm ssh tart' to connect, 'vm start tart' to start, or 'vm destroy tart' to recreate."
             );
-            info!(
-                "{}",
-                msg!(MESSAGES.service.provider_tart_vm_exists, name = vm_name)
-            );
-            self.ensure_existing_vm_ready(&main_phase, vm_name, config)?;
-            info!("{}", MESSAGES.service.provider_tart_connect_hint);
-            ProgressReporter::finish_phase(&main_phase, "Environment ready.");
+            ProgressReporter::finish_phase(&main_phase, "VM already exists.");
             return Ok(());
         }
         ProgressReporter::task(&main_phase, "VM not found, proceeding with creation.");

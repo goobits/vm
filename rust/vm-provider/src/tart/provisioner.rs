@@ -1033,15 +1033,13 @@ mod tests {
             .aliases
             .insert("gs".to_string(), "git status".to_string());
 
-        let rendered =
-            TartProvisioner::render_canonical_zshrc(&config, "/Users/admin/workspace").unwrap();
+        let rendered = TartProvisioner::render_canonical_zshrc(&config, "/workspace").unwrap();
 
         assert!(rendered.contains("PROMPT='🍎 "));
         assert!(rendered.contains("alias gs='git status'"));
         assert!(rendered.contains("VM_AI_ALIAS_REPAIR_VERSION=2"));
         assert!(rendered.contains("yocodex()"));
         assert!(rendered.contains("vm_repair_codex_state"));
-        assert!(rendered
-            .contains("VM_PROJECT_PATH=\"$(vm_b64decode 'L1VzZXJzL2FkbWluL3dvcmtzcGFjZQ==')\""));
+        assert!(rendered.contains("VM_PROJECT_PATH=\"$(vm_b64decode 'L3dvcmtzcGFjZQ==')\""));
     }
 }
