@@ -317,16 +317,15 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         fi; \
     fi
 
+# Project package installation runs as the project user so nvm, pip, and cargo
+# resolve the same home directory and PATH used at runtime.
+USER ${PROJECT_USER}
+
 # NPM Package Installation
-# Note: Run as root first to fix cache permissions, then switch to user for npm install
-RUN --mount=type=cache,target=/home/${PROJECT_USER}/.npm \
+RUN --mount=type=cache,target=/home/${PROJECT_USER}/.npm,uid=${PROJECT_UID},gid=${PROJECT_GID} \
     if [ -n "${NPM_PACKAGES}" ]; then \
         echo "Checking NPM packages: ${NPM_PACKAGES}"; \
-        # Fix cache permissions if they exist from a different UID \
-        if [ -d "/home/${PROJECT_USER}/.npm" ]; then \
-            find "/home/${PROJECT_USER}/.npm" ! -user ${PROJECT_UID} -exec chown ${PROJECT_UID}:${PROJECT_GID} {} +; \
-        fi && \
-        su - ${PROJECT_USER} -c '. "$NVM_DIR/nvm.sh" && \
+        . "$NVM_DIR/nvm.sh"; \
         for pkg in ${NPM_PACKAGES}; do \
             if ! npm list -g --depth=0 "$pkg" >/dev/null 2>&1; then \
                 echo "Installing $pkg..."; \
@@ -334,43 +333,29 @@ RUN --mount=type=cache,target=/home/${PROJECT_USER}/.npm \
             else \
                 echo "Skipping $pkg (already installed)"; \
             fi; \
-        done'; \
+        done; \
     fi
-USER ${PROJECT_USER}
 
 # Python Package Installation
-# Note: Run as root first to fix cache permissions, then switch to user for pip install
-RUN --mount=type=cache,target=/home/${PROJECT_USER}/.cache/pip \
+RUN --mount=type=cache,target=/home/${PROJECT_USER}/.cache/pip,uid=${PROJECT_UID},gid=${PROJECT_GID} \
     if [ -n "${PIP_PACKAGES}" ]; then \
         echo "Checking Python packages: ${PIP_PACKAGES}"; \
-        # Fix cache permissions if they exist from a different UID \
-        if [ -d "/home/${PROJECT_USER}/.cache/pip" ]; then \
-            find "/home/${PROJECT_USER}/.cache/pip" ! -user ${PROJECT_UID} -exec chown ${PROJECT_UID}:${PROJECT_GID} {} +; \
-        fi && \
-        su - ${PROJECT_USER} -c 'for pkg in ${PIP_PACKAGES}; do \
+        for pkg in ${PIP_PACKAGES}; do \
             if ! pip3 show "$pkg" >/dev/null 2>&1; then \
                 echo "Installing $pkg..."; \
                 pip3 install --user --break-system-packages "$pkg"; \
             else \
                 echo "Skipping $pkg (already installed)"; \
             fi; \
-        done'; \
+        done; \
     fi
 
 # Cargo Package Installation
-# Note: Run as root first to fix cache permissions, then switch to user for cargo install
-RUN --mount=type=cache,target=/home/${PROJECT_USER}/.cargo/registry \
-    --mount=type=cache,target=/home/${PROJECT_USER}/.cargo/git \
+RUN --mount=type=cache,target=/home/${PROJECT_USER}/.cargo/registry,uid=${PROJECT_UID},gid=${PROJECT_GID} \
+    --mount=type=cache,target=/home/${PROJECT_USER}/.cargo/git,uid=${PROJECT_UID},gid=${PROJECT_GID} \
     if [ -n "${CARGO_PACKAGES}" ]; then \
         echo "Installing Cargo packages: ${CARGO_PACKAGES}"; \
-        # Fix cache permissions if they exist from a different UID \
-        if [ -d "/home/${PROJECT_USER}/.cargo/registry" ]; then \
-            find "/home/${PROJECT_USER}/.cargo/registry" ! -user ${PROJECT_UID} -exec chown ${PROJECT_UID}:${PROJECT_GID} {} +; \
-        fi && \
-        if [ -d "/home/${PROJECT_USER}/.cargo/git" ]; then \
-            find "/home/${PROJECT_USER}/.cargo/git" ! -user ${PROJECT_UID} -exec chown ${PROJECT_UID}:${PROJECT_GID} {} +; \
-        fi && \
-        su - ${PROJECT_USER} -c '. "$HOME/.cargo/env" && \
+        . "$HOME/.cargo/env"; \
         for pkg in ${CARGO_PACKAGES}; do \
             if ! cargo install --list | grep -q "^${pkg} "; then \
                 echo "Installing ${pkg}..."; \
@@ -378,7 +363,7 @@ RUN --mount=type=cache,target=/home/${PROJECT_USER}/.cargo/registry \
             else \
                 echo "Skipping ${pkg} (already installed)"; \
             fi; \
-        done'; \
+        done; \
     fi
 
 # --- Finalization ---

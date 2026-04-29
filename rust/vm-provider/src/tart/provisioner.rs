@@ -493,7 +493,13 @@ cargo install {}"#,
   if command -v sudo >/dev/null 2>&1; then
     sudo usermod -aG docker "$USER" || true
   fi
-fi"#,
+fi
+if command -v systemctl >/dev/null 2>&1; then
+  sudo systemctl enable --now docker >/dev/null 2>&1 || true
+elif command -v service >/dev/null 2>&1; then
+  sudo service docker start >/dev/null 2>&1 || true
+fi
+docker info >/dev/null 2>&1 || sudo docker info >/dev/null 2>&1"#,
         )?;
 
         Ok(())

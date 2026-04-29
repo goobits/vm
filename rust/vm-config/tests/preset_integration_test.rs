@@ -830,7 +830,7 @@ fn test_preset_description_retrieval() -> Result<()> {
 }
 
 #[test]
-fn test_vibe_tart_preset_uses_admin_ssh_user() -> Result<()> {
+fn test_vibe_tart_preset_uses_linux_tart_by_default() -> Result<()> {
     let _guard = TEST_MUTEX
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -853,14 +853,14 @@ fn test_vibe_tart_preset_uses_admin_ssh_user() -> Result<()> {
             .as_ref()
             .and_then(|vm| vm.r#box.as_ref())
             .map(|b| serde_yaml::to_string(b).unwrap().trim().to_string()),
-        Some("vibe-tart-base".to_string())
+        Some("vibe-tart-linux-base".to_string())
     );
     assert_eq!(
         tart_profile
             .tart
             .as_ref()
             .and_then(|tart| tart.guest_os.as_deref()),
-        Some("macos")
+        Some("linux")
     );
     assert_eq!(
         tart_profile
@@ -868,6 +868,25 @@ fn test_vibe_tart_preset_uses_admin_ssh_user() -> Result<()> {
             .as_ref()
             .and_then(|tart| tart.ssh_user.as_deref()),
         Some("admin")
+    );
+    assert_eq!(
+        tart_profile
+            .tart
+            .as_ref()
+            .and_then(|tart| tart.install_docker),
+        Some(false)
+    );
+    let macos_profile = vibe_tart
+        .profiles
+        .as_ref()
+        .and_then(|profiles| profiles.get("macos"))
+        .expect("vibe-tart should keep an explicit macos profile");
+    assert_eq!(
+        macos_profile
+            .tart
+            .as_ref()
+            .and_then(|tart| tart.guest_os.as_deref()),
+        Some("macos")
     );
     assert!(
         vibe_tart

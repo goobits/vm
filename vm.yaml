@@ -28,6 +28,8 @@ terminal:
 host_sync:
   git_config: true
   ai_tools: true
+environment:
+  CARGO_TARGET_DIR: /home/admin/.cache/vm-cargo-target
 preset: vibe-tart
 default_profile: tart
 networking:
@@ -38,6 +40,20 @@ profiles:
     provider: docker
     ports: {}
   tart:
+    provider: tart
+    tart:
+      guest_os: linux
+      disk_size: 80
+      ssh_user: admin
+      install_docker: false
+    project:
+      workspace_path: /workspace
+    vm:
+      box: vibe-tart-linux-base
+      memory: 16384
+      cpus: 8
+    ports: {}
+  macos:
     provider: tart
     tart:
       guest_os: macos

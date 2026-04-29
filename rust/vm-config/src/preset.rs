@@ -367,7 +367,9 @@ impl PresetDetector {
         // Fall back to embedded preset descriptions
         match name {
             "base" => Some("Generic development preset with basic tools".to_string()),
-            "vibe-tart" => Some("Vibe Development with Docker/Tart profiles for Mac".to_string()),
+            "vibe-tart" => {
+                Some("Vibe Development on Tart with Docker-capable Linux guests".to_string())
+            }
             _ => None,
         }
     }

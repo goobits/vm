@@ -1,7 +1,7 @@
 ---
 preset:
   name: vibe-tart
-  description: "Vibe Development with Docker plus native macOS Tart on Apple Silicon"
+  description: "Vibe Development on Tart with a Linux guest that can run Docker"
 
 provider: tart
 
@@ -18,6 +18,9 @@ project:
 host_sync:
   git_config: true
   ai_tools: true
+
+environment:
+  CARGO_TARGET_DIR: /home/admin/.cache/vm-cargo-target
 
 npm_packages:
   - '@google/gemini-cli'
@@ -37,6 +40,19 @@ profiles:
   docker:
     provider: docker
   tart:
+    provider: tart
+    project:
+      workspace_path: /workspace
+    vm:
+      box: vibe-tart-linux-base
+      memory: 16384
+      cpus: 8
+    tart:
+      guest_os: linux
+      disk_size: 80
+      ssh_user: admin
+      install_docker: false
+  macos:
     provider: tart
     project:
       workspace_path: /workspace

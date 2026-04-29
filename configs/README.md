@@ -11,7 +11,7 @@ Framework and language presets that users can apply via `vm config preset <name>
 
 Available presets:
 - `base` - Minimal base configuration
-- `vibe-tart` - macOS Tart preset with Docker available as an explicit provider
+- `vibe-tart` - Tart preset with a Linux guest capable of running Docker inside Tart, plus an explicit macOS profile
 
 ### `languages/`
 Language-specific package manager configurations (npm, pip, cargo).

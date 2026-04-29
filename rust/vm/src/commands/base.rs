@@ -5,7 +5,7 @@ use vm_config::resolve_tool_path;
 use vm_core::vm_println;
 
 const DOCKER_BASE_NAME: &str = "@vibe-box";
-const TART_BASE_NAME: &str = "vibe-tart-base";
+const TART_BASE_NAME: &str = "vibe-tart-linux-base";
 
 pub async fn handle_base(command: BaseSubcommand) -> VmResult<()> {
     match command {
@@ -44,7 +44,7 @@ fn handle_build(preset: &str, provider: &str) -> VmResult<()> {
         "tart" => {
             let script = resolve_tool_path("scripts/build-vibe-tart-base.sh");
             let mut command = Command::new(script);
-            command.args(["--name", TART_BASE_NAME]);
+            command.args(["--guest-os", "linux", "--name", TART_BASE_NAME]);
             run_command(command, "build Tart vibe base")?;
             vm_println!("Built Tart vibe base: {}", TART_BASE_NAME);
         }

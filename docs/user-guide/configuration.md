@@ -766,11 +766,33 @@ For the closest parity with Docker `vibe`, build a local Tart-native base first:
 vm base build vibe --provider tart
 ```
 
-The `vibe-tart` preset expects the standard local macOS Tart base name:
+The `vibe-tart` preset expects the standard local Linux Tart base name by default:
 
 ```yaml
 profiles:
   tart:
+    provider: tart
+    vm:
+      box: vibe-tart-linux-base
+    tart:
+      guest_os: linux
+      install_docker: false
+```
+
+This keeps Docker installation opt-in while making Docker-in-Tart possible. Enable Docker Engine inside the Linux Tart guest when a project needs it:
+
+```yaml
+profiles:
+  tart:
+    tart:
+      install_docker: true
+```
+
+The macOS Tart guest remains available as an explicit profile:
+
+```yaml
+profiles:
+  macos:
     provider: tart
     vm:
       box: vibe-tart-base
@@ -778,11 +800,14 @@ profiles:
       guest_os: macos
 ```
 
-With the macOS-first `vibe-tart` preset, Tart is the project default and Docker remains available:
+With `vibe-tart`, Tart is the project default and the Docker provider remains available:
 
 ```bash
 # Tart by default
 vm start
+
+# macOS Tart guest explicitly
+vm --profile macos start
 
 # Create providers explicitly
 vm create tart

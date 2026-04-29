@@ -91,7 +91,7 @@ brew install cirruslabs/cli/tart
 # Verify installation
 tart --version
 
-# Build the standard macOS Tart base
+# Build the standard Linux Tart base
 vm base build vibe --provider tart
 
 # Then in your project, make Tart the default

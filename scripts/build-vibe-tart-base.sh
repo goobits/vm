@@ -209,11 +209,6 @@ else
     sudo locale-gen en_US.UTF-8
     sudo update-locale LANG=en_US.UTF-8
 
-    if ! command -v docker >/dev/null 2>&1; then
-      curl -fsSL https://get.docker.com | sh
-      sudo usermod -aG docker \"\$USER\" || true
-    fi
-
     if [ ! -s \"\$HOME/.nvm/nvm.sh\" ]; then
       curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash
     fi
@@ -282,9 +277,15 @@ else
 Local Tart Linux base is ready: ${BASE_NAME}
 
 Next steps:
-  1. Configure a custom Tart Linux profile in vm.yaml.
+  1. Apply the Tart vibe preset in your project:
+       vm config preset vibe-tart
+
   2. Start it with:
        vm start tart
+
+  3. If a project needs Docker inside Tart, enable it in vm.yaml:
+       tart:
+         install_docker: true
 
 This script is the backend for:
   vm base build vibe --provider tart
