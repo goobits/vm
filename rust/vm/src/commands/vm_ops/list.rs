@@ -5,7 +5,9 @@
 
 use tracing::{debug, info_span};
 
-use crate::commands::vm_ops::targets::{get_all_instances, get_instances_from_provider};
+use crate::commands::vm_ops::targets::{
+    get_all_instances, get_instances_from_provider, project_instance_matches,
+};
 use crate::error::VmResult;
 use vm_cli::msg;
 use vm_core::vm_println;
@@ -13,7 +15,10 @@ use vm_messages::messages::MESSAGES;
 use vm_provider::InstanceInfo;
 
 /// Handle VM listing with enhanced filtering options
-pub fn handle_list_enhanced(provider_filter: Option<&str>) -> VmResult<()> {
+pub fn handle_list_enhanced(
+    provider_filter: Option<&str>,
+    project_filter: Option<&str>,
+) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "list");
     let _enter = span.enter();
     debug!(
@@ -22,11 +27,15 @@ pub fn handle_list_enhanced(provider_filter: Option<&str>) -> VmResult<()> {
     );
 
     // Get all instances from all providers (or filtered)
-    let all_instances = if let Some(provider_name) = provider_filter {
+    let mut all_instances = if let Some(provider_name) = provider_filter {
         get_instances_from_provider(provider_name)?
     } else {
         get_all_instances()?
     };
+
+    if let Some(project_name) = project_filter {
+        all_instances.retain(|instance| project_instance_matches(instance, project_name));
+    }
 
     if all_instances.is_empty() {
         if let Some(provider_name) = provider_filter {

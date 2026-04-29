@@ -28,8 +28,8 @@ pub const VM_OPS: VmOperations = VmOperations {
         failed: "❌ Failed to stop '{name}'",
     },
     destroy: OperationMessages {
-        starting: "🗑️ Destroying '{name}'...",
-        success: "✅ Destroyed successfully",
-        failed: "❌ Failed to destroy '{name}'",
+        starting: "🗑️ Removing '{name}'...",
+        success: "✅ Removed successfully",
+        failed: "❌ Failed to remove '{name}'",
     },
 };

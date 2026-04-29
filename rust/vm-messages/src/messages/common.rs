@@ -50,7 +50,7 @@ pub const COMMON_MESSAGES: CommonMessages = CommonMessages {
     // Common Messages
     cleanup_complete: "\n✅ Cleanup complete",
     configuring_services: "\n🔧 Configuring services...",
-    connect_hint: "\n💡 Connect with: vm ssh",
+    connect_hint: "\n💡 Connect with: vm shell",
     ports_label: "  Ports:      {start}-{end}",
     resources_label: "  Resources:  {cpus} CPUs, {memory}",
     services_cleaned: "  ✓ Services cleaned up successfully",
@@ -71,7 +71,7 @@ pub const COMMON_MESSAGES: CommonMessages = CommonMessages {
     // BoxSpec-related errors
     box_dockerfile_not_found: "Dockerfile not found at specified path. Please check the path in your vm.yaml configuration.",
     box_provider_mismatch: "The specified box type is not supported by the current provider. Docker/Podman support Dockerfiles and images, Tart uses OCI images.",
-    box_snapshot_use_restore: "Snapshot reference detected in box field. To restore from a snapshot, use the command: vm snapshot restore <name>",
+    box_snapshot_use_restore: "Snapshot reference detected in box field. To restore from a snapshot, use: vm revert <name>",
 
     // Generic Messages (keeping for backwards compatibility)
     failed: "❌ Failed!",

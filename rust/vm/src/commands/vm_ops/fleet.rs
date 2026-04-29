@@ -14,7 +14,7 @@ use super::targets::resolve_targets;
 
 pub async fn handle_fleet_command(command: &FleetSubcommand, dry_run: bool) -> VmResult<()> {
     match command {
-        FleetSubcommand::List { targets } => handle_list(targets),
+        FleetSubcommand::Ls { targets } => handle_list(targets),
         FleetSubcommand::Status { targets } => handle_status(targets),
         FleetSubcommand::Exec { targets, command } => handle_exec(targets, command, dry_run),
         FleetSubcommand::Copy {

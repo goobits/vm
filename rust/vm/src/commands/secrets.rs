@@ -4,7 +4,7 @@
 //! integrating with the vm-auth-proxy library to provide secure secret storage
 //! and environment variable injection for VMs.
 
-use crate::cli::SecretsSubcommand;
+use crate::cli::SecretSubcommand;
 use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
 use crate::service_registry::get_service_registry;
@@ -17,12 +17,12 @@ use vm_auth_proxy::{self, check_server_running, start_server_if_needed};
 
 /// Handle secrets commands
 pub async fn handle_secrets_command(
-    command: &SecretsSubcommand,
+    command: &SecretSubcommand,
     global_config: GlobalConfig,
 ) -> VmResult<()> {
     match command {
-        SecretsSubcommand::Status => handle_status(&global_config).await,
-        SecretsSubcommand::Add {
+        SecretSubcommand::Status => handle_status(&global_config).await,
+        SecretSubcommand::Add {
             name,
             value,
             scope,
@@ -37,11 +37,9 @@ pub async fn handle_secrets_command(
             )
             .await
         }
-        SecretsSubcommand::List { show_values } => handle_list(*show_values, &global_config).await,
-        SecretsSubcommand::Remove { name, force } => {
-            handle_remove(name, *force, &global_config).await
-        }
-        SecretsSubcommand::Interactive => handle_interactive(&global_config).await,
+        SecretSubcommand::Ls { show_values } => handle_list(*show_values, &global_config).await,
+        SecretSubcommand::Rm { name, force } => handle_remove(name, *force, &global_config).await,
+        SecretSubcommand::Interactive => handle_interactive(&global_config).await,
     }
 }
 

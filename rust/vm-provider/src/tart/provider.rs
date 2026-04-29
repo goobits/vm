@@ -19,7 +19,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
 use vm_cli::msg;
-use vm_config::config::VmConfig;
+use vm_config::config::{BoxSpec, VmConfig};
 use vm_core::command_stream::{
     is_tool_installed, stream_command, stream_command_visible_with_env, stream_command_with_env,
 };
@@ -209,7 +209,7 @@ impl TartProvider {
             .ensure_workspace_mount()
             .map_err(|e| {
                 VmError::Provider(format!(
-                    "Tart workspace mount is not ready at '{sync_dir}'. This VM may be partially provisioned or was started without the workspace share. Try `vm restart tart`, or recreate it with `vm destroy tart && vm ssh`. Mount error: {e}"
+                    "Tart workspace mount is not ready at '{sync_dir}'. This VM may be partially provisioned or was started without the workspace share. Recreate it with `vm rm <name> --force && vm run mac as <name>`. Mount error: {e}"
                 ))
             })
     }
@@ -321,6 +321,69 @@ impl TartProvider {
         ]
         .iter()
         .any(|marker| path.join(marker).exists())
+    }
+
+    fn effective_sync_directory(&self) -> String {
+        let configured = self
+            .config
+            .project
+            .as_ref()
+            .and_then(|p| p.workspace_path.as_deref())
+            .unwrap_or("/workspace");
+
+        if configured == "/workspace" && Self::is_macos_guest_config(&self.config) {
+            let user = self
+                .config
+                .tart
+                .as_ref()
+                .and_then(|tart| tart.ssh_user.as_deref())
+                .unwrap_or("admin");
+            return format!("/Users/{user}/workspace");
+        }
+
+        configured.to_string()
+    }
+
+    fn is_macos_guest_config(config: &VmConfig) -> bool {
+        if matches!(config.os.as_deref(), Some("macos")) {
+            return true;
+        }
+
+        if matches!(config.os.as_deref(), Some("linux")) {
+            return false;
+        }
+
+        if matches!(
+            config.tart.as_ref().and_then(|t| t.guest_os.as_deref()),
+            Some("macos")
+        ) {
+            return true;
+        }
+
+        if matches!(
+            config.tart.as_ref().and_then(|t| t.guest_os.as_deref()),
+            Some("linux")
+        ) {
+            return false;
+        }
+
+        if let Some(BoxSpec::String(name)) = config.vm.as_ref().and_then(|vm| vm.get_box_spec()) {
+            if name == DEFAULT_TART_VIBE_BASE || name.contains("macos") {
+                return true;
+            }
+            if name == DEFAULT_TART_LINUX_VIBE_BASE
+                || name.contains("ubuntu")
+                || name.contains("debian")
+                || name.contains("linux")
+            {
+                return false;
+            }
+        }
+
+        match config.tart.as_ref().and_then(|tart| tart.image.as_deref()) {
+            Some(image) => !image.contains("ubuntu") && !image.contains("linux"),
+            None => true,
+        }
     }
 
     fn start_vm_background(&self, vm_name: &str) -> Result<()> {
@@ -517,7 +580,7 @@ impl TartProvider {
                 return match box_config {
                     BoxConfig::TartImage(image) => Ok(image),
                     BoxConfig::Snapshot(name) => Err(VmError::Config(format!(
-                        "Use 'vm snapshot restore {}' for snapshots",
+                        "Use 'vm revert {}' for snapshots",
                         name
                     ))),
                     _ => Err(VmError::Internal("Invalid box type for Tart".into())),
@@ -565,7 +628,7 @@ impl TartProvider {
             ProgressReporter::task(&main_phase, "Existing VM found.");
             vm_println!("⚠️  Tart VM '{}' already exists.", vm_name);
             vm_println!(
-                "   Use 'vm ssh tart' to connect, 'vm start tart' to start, or 'vm destroy tart' to recreate."
+                "   Use 'vm shell <name>' to connect, 'vm run mac as <name>' to start, or 'vm rm <name>' to recreate."
             );
             ProgressReporter::finish_phase(&main_phase, "VM already exists.");
             return Ok(());
@@ -606,7 +669,7 @@ impl TartProvider {
             && !self.tart_image_exists(&image)?
         {
             return Err(VmError::Config(format!(
-                "Tart vibe base '{}' was not found. Run `vm base build vibe --provider tart` first.",
+                "Tart vibe base '{}' was not found. Run `vm system base build vibe --provider tart` first.",
                 image
             )));
         }
@@ -724,54 +787,6 @@ impl TartProvider {
         info!("{}", MESSAGES.service.provider_tart_created_success);
         info!("{}", MESSAGES.service.provider_tart_connect_hint);
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::TartProvider;
-    use vm_config::config::VmConfig;
-
-    #[test]
-    fn host_workspace_path_uses_loaded_config_parent() {
-        let outer = tempfile::tempdir().unwrap();
-        let project_dir = outer.path().join("workspace");
-        std::fs::create_dir_all(&project_dir).unwrap();
-        let config_path = project_dir.join("vm.yaml");
-        std::fs::write(&config_path, "provider: tart\n").unwrap();
-
-        let provider = TartProvider {
-            config: VmConfig {
-                source_path: Some(config_path),
-                ..Default::default()
-            },
-        };
-
-        let resolved = provider.host_workspace_path().unwrap();
-        assert_eq!(resolved, project_dir.canonicalize().unwrap());
-    }
-
-    #[test]
-    fn host_workspace_path_skips_outer_workspace_wrapper() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let outer_workspace = temp_dir.path().join("workspace");
-        let inner_workspace = outer_workspace.join("workspace");
-        std::fs::create_dir_all(&inner_workspace).unwrap();
-        std::fs::write(inner_workspace.join("vm.yaml"), "provider: tart\n").unwrap();
-
-        let resolved = TartProvider::normalize_host_workspace_path(&outer_workspace).unwrap();
-        assert_eq!(resolved, inner_workspace.canonicalize().unwrap());
-    }
-
-    #[test]
-    fn host_workspace_path_keeps_real_project_named_workspace() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let workspace = temp_dir.path().join("workspace");
-        std::fs::create_dir_all(workspace.join("workspace")).unwrap();
-        std::fs::write(workspace.join("vm.yaml"), "provider: tart\n").unwrap();
-
-        let resolved = TartProvider::normalize_host_workspace_path(&workspace).unwrap();
-        assert_eq!(resolved, workspace.canonicalize().unwrap());
     }
 }
 
@@ -1185,13 +1200,7 @@ impl Provider for TartProvider {
     }
 
     fn get_sync_directory(&self) -> String {
-        // Return workspace_path from config
-        self.config
-            .project
-            .as_ref()
-            .and_then(|p| p.workspace_path.as_deref())
-            .unwrap_or("/workspace")
-            .to_string()
+        self.effective_sync_directory()
     }
 
     fn supports_multi_instance(&self) -> bool {
@@ -1238,5 +1247,114 @@ impl TartProvider {
             .map_err(|e| VmError::Provider(format!("Exec in path failed: {}", e)))?;
 
         Ok(output)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TartProvider;
+    use crate::Provider;
+    use vm_config::config::{ProjectConfig, TartConfig, VmConfig};
+
+    #[test]
+    fn host_workspace_path_uses_loaded_config_parent() {
+        let outer = tempfile::tempdir().unwrap();
+        let project_dir = outer.path().join("workspace");
+        std::fs::create_dir_all(&project_dir).unwrap();
+        let config_path = project_dir.join("vm.yaml");
+        std::fs::write(&config_path, "provider: tart\n").unwrap();
+
+        let provider = TartProvider {
+            config: VmConfig {
+                source_path: Some(config_path),
+                ..Default::default()
+            },
+        };
+
+        let resolved = provider.host_workspace_path().unwrap();
+        assert_eq!(resolved, project_dir.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn host_workspace_path_skips_outer_workspace_wrapper() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let outer_workspace = temp_dir.path().join("workspace");
+        let inner_workspace = outer_workspace.join("workspace");
+        std::fs::create_dir_all(&inner_workspace).unwrap();
+        std::fs::write(inner_workspace.join("vm.yaml"), "provider: tart\n").unwrap();
+
+        let resolved = TartProvider::normalize_host_workspace_path(&outer_workspace).unwrap();
+        assert_eq!(resolved, inner_workspace.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn host_workspace_path_keeps_real_project_named_workspace() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let workspace = temp_dir.path().join("workspace");
+        std::fs::create_dir_all(workspace.join("workspace")).unwrap();
+        std::fs::write(workspace.join("vm.yaml"), "provider: tart\n").unwrap();
+
+        let resolved = TartProvider::normalize_host_workspace_path(&workspace).unwrap();
+        assert_eq!(resolved, workspace.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn macos_guest_uses_writable_default_workspace() {
+        let provider = TartProvider {
+            config: VmConfig {
+                project: Some(ProjectConfig {
+                    workspace_path: Some("/workspace".to_string()),
+                    ..Default::default()
+                }),
+                tart: Some(TartConfig {
+                    guest_os: Some("macos".to_string()),
+                    ssh_user: Some("admin".to_string()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        };
+
+        assert_eq!(provider.get_sync_directory(), "/Users/admin/workspace");
+    }
+
+    #[test]
+    fn linux_guest_keeps_default_workspace() {
+        let provider = TartProvider {
+            config: VmConfig {
+                project: Some(ProjectConfig {
+                    workspace_path: Some("/workspace".to_string()),
+                    ..Default::default()
+                }),
+                tart: Some(TartConfig {
+                    guest_os: Some("linux".to_string()),
+                    ssh_user: Some("admin".to_string()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        };
+
+        assert_eq!(provider.get_sync_directory(), "/workspace");
+    }
+
+    #[test]
+    fn macos_guest_respects_custom_workspace() {
+        let provider = TartProvider {
+            config: VmConfig {
+                project: Some(ProjectConfig {
+                    workspace_path: Some("/Volumes/work/project".to_string()),
+                    ..Default::default()
+                }),
+                tart: Some(TartConfig {
+                    guest_os: Some("macos".to_string()),
+                    ssh_user: Some("admin".to_string()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        };
+
+        assert_eq!(provider.get_sync_directory(), "/Volumes/work/project");
     }
 }

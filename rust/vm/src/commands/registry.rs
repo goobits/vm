@@ -27,10 +27,8 @@ pub async fn handle_registry_command(
         RegistrySubcommand::Add { r#type, yes } => {
             handle_add(r#type.as_deref(), *yes, &global_config).await
         }
-        RegistrySubcommand::Remove { force, yes } => {
-            handle_remove(*force, *yes, &global_config).await
-        }
-        RegistrySubcommand::List { yes } => handle_list(*yes, &global_config).await,
+        RegistrySubcommand::Rm { force, yes } => handle_remove(*force, *yes, &global_config).await,
+        RegistrySubcommand::Ls { yes } => handle_list(*yes, &global_config).await,
         RegistrySubcommand::Config { action } => handle_config(action, &global_config).await,
         RegistrySubcommand::Use { shell, port } => {
             handle_use(shell.as_deref(), *port, &global_config).await

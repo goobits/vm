@@ -1,83 +1,28 @@
-# VM Workspace Management System
+# VM Rust Workspace
 
-A comprehensive workspace management system for creating and managing development environments.
+This workspace contains the Rust implementation of `vm`.
 
-## Overview
-
-This project provides tools for managing containerized development workspaces with features like:
-- Multiple provider support (Docker, Tart)
-- Template-based workspace creation
-- Package management and registry
-- Authentication and access control
-
-## Components
-
-- `vm` - Core CLI tool for workspace management
-- `vm-provider` - Abstraction layer for different VM providers (Docker, Tart, Podman)
-- `vm-config` - Configuration management
-- `vm-package-server` - Package registry server
-- `vm-package-manager` - Package installation and management
-
-## Getting Started
-
-### Prerequisites
-
-- Rust 1.70+
-- Docker (for containerized workspaces)
-
-### Building
+## Build
 
 ```bash
-# Build all components
-cargo build --release
-
-# Build specific components
-cargo build -p vm
+cargo build --workspace
 ```
 
-### Running the CLI
+## Test
 
 ```bash
-# Install the CLI
-cargo install --path vm
-
-# Create and start a workspace
-vm start
-
-# List workspaces
-vm status
-
-# Connect to a workspace
-vm ssh
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
 ```
 
-## Development
-
-### Running Tests
+## CLI Smoke
 
 ```bash
-# Run all tests
-cargo test
-
-# Run integration tests (requires Docker)
-cargo test --features integration -- --ignored
+cargo run -p goobits-vm -- --help
+cargo run -p goobits-vm -- run linux as dev --dry-run
+cargo run -p goobits-vm -- ls --dry-run
+cargo run -p goobits-vm -- system update --dry-run
 ```
 
-### Code Quality
-
-```bash
-# Run clippy
-cargo clippy --all-targets --all-features
-
-# Format code
-cargo fmt
-```
-
-## Documentation
-
-- [Architecture](ARCHITECTURE.md) - System architecture and design
-- [Development Guide](CLAUDE.md) - Notes for AI-assisted development
-
-## License
-
-See individual component licenses for details.
+The public v5 command surface is intent-first: `run`, `ls`, `shell`, `exec`, `logs`, `copy`, `stop`, `rm`, `save`, `revert`, `package`, `config`, `tunnel`, `doctor`, `plugin`, and `system`.

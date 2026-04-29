@@ -49,6 +49,13 @@ pub fn is_running_status(status: &str) -> bool {
     lower.contains("running") || lower.contains("up")
 }
 
+pub fn project_instance_matches(instance: &InstanceInfo, project_name: &str) -> bool {
+    instance.project.as_deref() == Some(project_name)
+        || instance.name == project_name
+        || instance.name == format!("{project_name}-dev")
+        || instance.name.starts_with(&format!("{project_name}-"))
+}
+
 /// Helper function to get instances from all available providers
 pub fn get_all_instances() -> VmResult<Vec<InstanceInfo>> {
     use vm_config::config::VmConfig;

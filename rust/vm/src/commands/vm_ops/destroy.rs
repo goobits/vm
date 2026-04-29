@@ -17,7 +17,9 @@ use vm_messages::messages::MESSAGES;
 use vm_provider::{get_provider, InstanceInfo, Provider, ProviderContext};
 
 use super::helpers::unregister_vm_services_helper;
-use super::targets::{get_all_instances, get_instances_from_provider, match_pattern};
+use super::targets::{
+    get_all_instances, get_instances_from_provider, match_pattern, project_instance_matches,
+};
 
 /// Helper function to backup database services configured with backup_on_destroy
 async fn backup_databases(config: &VmConfig, vm_name: &str, global_config: &GlobalConfig) {
@@ -131,7 +133,7 @@ pub async fn handle_destroy(
                 Err(_) => "N/A".to_string(),
             };
 
-            vm_println!("⚠️  Destroying VM '{}'", vm_name);
+            vm_println!("⚠️  Removing VM '{}'", vm_name);
             vm_println!();
             vm_println!("📊 Database: Your PostgreSQL data will persist");
             vm_println!("   Location: ~/.vm/data/postgres");
@@ -151,7 +153,7 @@ pub async fn handle_destroy(
             MESSAGES.common.status_stopped
         };
 
-        vm_println!("🗑️ Destroy {} VM '{}'?\n", provider_name, vm_name);
+        vm_println!("🗑️ Remove {} VM '{}'?\n", provider_name, vm_name);
         vm_println!("  Provider:   {}", provider_name);
         vm_println!("  Status:     {}", status);
         vm_println!("  {}:  {}", resource_label, target_container);
@@ -161,8 +163,8 @@ pub async fn handle_destroy(
         vm_println!();
 
         let options = &[
-            "Destroy and preserve services",
-            "Destroy and remove services",
+            "Remove VM and preserve services",
+            "Remove VM and remove services",
             "Cancel",
         ];
         let default_idx = if preserve_services { 0 } else { 1 };
@@ -210,7 +212,7 @@ pub async fn handle_destroy(
                         vm_println!("✅ Database backups completed");
                     });
 
-                    vm_println!("⏩ VM destroy continuing (backups running in background)...");
+                    vm_println!("⏩ VM removal continuing (backups running in background)...");
                 }
 
                 vm_println!("{}", MESSAGES.common.configuring_services);
@@ -220,20 +222,20 @@ pub async fn handle_destroy(
                 Ok(())
             }
             Err(e) => {
-                vm_println!("\n❌ Destruction failed: {}", e);
+                vm_println!("\n❌ Removal failed: {}", e);
                 Err(VmError::from(e))
             }
         }
     } else {
         debug!("Destroy confirmation: response='no', cancelling destruction");
         vm_println!("{}", MESSAGES.vm.destroy_cancelled);
-        vm_error!("VM destruction cancelled by user");
+        vm_error!("VM removal cancelled by user");
         Err(VmError::general(
             std::io::Error::new(
                 std::io::ErrorKind::Interrupted,
-                "VM destruction cancelled by user",
+                "VM removal cancelled by user",
             ),
-            "User cancelled VM destruction",
+            "User cancelled VM removal",
         ))
     }
 }
@@ -317,12 +319,6 @@ fn provider_for_name(provider_name: &str, config: &VmConfig) -> VmResult<Box<dyn
     let mut provider_config = config.clone();
     provider_config.provider = Some(provider_name.to_string());
     get_provider(provider_config).map_err(VmError::from)
-}
-
-fn project_instance_matches(instance: &InstanceInfo, project_name: &str) -> bool {
-    instance.project.as_deref() == Some(project_name)
-        || instance.name == project_name
-        || instance.name == format!("{project_name}-dev")
 }
 
 fn resolve_project_provider(current_provider: &str, config: &VmConfig) -> Option<String> {
@@ -428,7 +424,7 @@ fn handle_cross_provider_destroy(
                 count = filtered_instances.len().to_string()
             )
         );
-        confirm_select("Destroy these instances?", false)?
+        confirm_select("Remove these instances?", false)?
     };
 
     if !should_destroy {

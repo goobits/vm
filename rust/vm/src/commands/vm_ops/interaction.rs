@@ -144,10 +144,10 @@ fn print_create_target(provider: &dyn Provider, config: &VmConfig) {
 
 fn create_command_for_provider(provider: &dyn Provider) -> String {
     match provider.name() {
-        "docker" => "vm create docker".to_string(),
-        "podman" => "vm create podman".to_string(),
-        "tart" => "vm create tart".to_string(),
-        _ => "vm create".to_string(),
+        "docker" => "vm run linux".to_string(),
+        "podman" => "vm run container --provider podman".to_string(),
+        "tart" => "vm run mac".to_string(),
+        _ => "vm run linux".to_string(),
     }
 }
 
@@ -205,7 +205,7 @@ fn handle_ssh_start_prompt(
         vm_println!("\n  Provider: Tart");
         vm_println!("  Action:   Start existing Tart VM");
         vm_println!(
-            "  Note:     This does not create or reinstall the VM. To rebuild it, run: vm destroy tart"
+            "  Note:     This does not create or reinstall the VM. To rebuild it, run: vm rm <name> --force"
         );
         vm_println!(
             "  Logs:     /tmp/vm-tart-{}.log",
@@ -239,9 +239,9 @@ fn handle_ssh_start_prompt(
                 "💡 Check Tart logs: /tmp/vm-tart-{}.log",
                 sanitize_log_name(container.unwrap_or(vm_name))
             );
-            vm_println!("💡 If this VM is stale or incomplete: vm destroy tart && vm ssh tart");
+            vm_println!("💡 If this VM is stale or incomplete: vm rm <name> --force && vm run mac as <name>");
         } else {
-            vm_println!("💡 Check status: vm status");
+            vm_println!("💡 Check environments: vm ls");
         }
         return Ok(None);
     }
@@ -423,14 +423,14 @@ fn connect_ssh(
                             "\n💡 Create with: {}",
                             create_command_for_provider(provider.as_ref())
                         );
-                        vm_println!("💡 List existing VMs: vm list");
+                        vm_println!("💡 List existing VMs: vm ls");
                     }
                 } else {
                     vm_println!(
                         "\n💡 Create with: {}",
                         create_command_for_provider(provider.as_ref())
                     );
-                    vm_println!("💡 List existing VMs: vm list");
+                    vm_println!("💡 List existing VMs: vm ls");
                 }
                 // Return a clean error that won't be misinterpreted by the main error handler
                 return Err(VmError::vm_operation(
@@ -525,7 +525,7 @@ pub fn handle_ssh(
             "⚠️  New worktrees detected but can't refresh: {} other SSH sessions are active",
             active_sessions
         );
-        vm_println!("💡 Close other sessions or use `vm ssh --force-refresh` (will disconnect others) or `vm ssh --no-refresh` (connect without refresh)");
+        vm_println!("💡 Close other sessions before reconnecting with `vm shell`");
         return connect_ssh(provider, container, path, command, config);
     }
 

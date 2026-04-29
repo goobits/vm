@@ -203,10 +203,11 @@ vm plugin install /path/to/{plugin_name}
 
 ## Usage
 
-Create a VM using this preset:
+Run an environment using this preset:
 
 ```bash
-vm create my-project --preset {plugin_name}
+vm config preset {plugin_name}
+vm run linux as my-project
 ```
 
 Or add to your `vm.yaml`:

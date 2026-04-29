@@ -1,172 +1,25 @@
 # Presets
 
-Skip manual configuration - VM auto-detects your project type and applies optimized defaults. When you run `vm start` without a config file, the tool analyzes your project files and selects the appropriate preset.
+Presets are reusable configuration overlays for common project types.
 
-## Available Presets
-
-### vibe (Recommended)
-Full-featured development environment with precompiled `@vibe-box` snapshot
-- All common languages: Node.js, Python, Ruby, Rust, Go
-- AI coding tools: Claude Code, Gemini CLI
-- Docker, Kubernetes tools
-- Database clients
-- Standard development utilities
-- Host sync for git config and AI tools
-
-```bash
-vm config preset vibe
-
-# Rebuild the Docker base when needed:
-vm base build vibe --provider docker
-```
-
-### vibe-tart (Mac users)
-Native Tart VM on Apple Silicon using a Linux guest by default, so Docker can run inside Tart when installed.
-- Default: Tart with `vibe-tart-linux-base`
-- Docker inside Tart: enable `tart.install_docker: true` for projects that need it
-- macOS guest: available with `--profile macos`
-- Docker provider: still available with `vm start docker`
-- `vm use tart` and `vm use docker` switch the saved project provider default
-
-```bash
-vm config preset vibe-tart
-
-# Build the Linux Tart base once:
-vm base build vibe --provider tart
-
-# Create Tart explicitly:
-vm create tart
-
-# Start Tart by default:
-vm start
-
-# Use Docker from the same repo:
-vm start docker
-
-# Make Docker the saved default:
-vm use docker
-
-# Validate both providers from the same repo:
-vm base validate vibe
-```
-
-### base
-Minimal development environment
-- Basic shell utilities and git
-- Standard ports configuration
-- Build your own from scratch
-
-**To list all available presets**:
 ```bash
 vm config preset --list
+vm config preset nodejs
+vm config preset python,postgres
+vm run linux as app
 ```
 
-## Usage
-
-### Automatic Detection
-```bash
-# Analyzes project files and applies appropriate preset
-vm start
-```
-
-### Apply Specific Preset
-```bash
-vm config preset vibe
-vm config preset base
-```
-
-## How It Works
-
-1. **Application**: Merges preset configuration with your `vm.yaml`
-   - Your settings take precedence
-   - Presets fill in missing values
-   - Services and tools are additive
-
-2. **Validation**: Ensures compatibility and resolves conflicts
-
-## Customization
-
-Override preset values in `vm.yaml`:
-```yaml
-# Your settings override preset defaults
-os: ubuntu
-ports:
-  frontend: 3010  # Overrides preset's 3000
-services:
-  postgresql:
-    enabled: false  # Disable preset service
-```
-
-## Creating Custom Presets
-
-### Using the Plugin System (Recommended)
-
-Create a custom preset plugin:
+Provider-native base workflows live under `system base`:
 
 ```bash
-# Create plugin template
-vm plugin new my-preset --type preset
-
-# This creates:
-# ~/.vm/plugins/presets/my-preset/
-#  ├── plugin.yaml    # Plugin metadata
-#  ├── preset.yaml    # Preset configuration
-#  └── README.md      # Documentation
+vm system base build vibe --provider docker
+vm system base build vibe --provider tart
+vm system base validate vibe --provider all
 ```
 
-Edit the generated files:
+Provider overrides remain advanced routing controls:
 
-**plugin.yaml** (metadata):
-```yaml
-name: my-preset
-version: 1.0.0
-description: Custom development environment
-author: Your Name
-plugin_type: preset
-```
-
-**preset.yaml** (configuration):
-```yaml
-npm_packages:
-  - your-package
-
-pip_packages:
-  - your-python-package
-
-services:
-  - postgresql
-  - redis
-
-environment:
-  CUSTOM_VAR: value
-```
-
-Then use it:
 ```bash
-vm config preset my-preset
-vm start
+vm run linux as app --provider docker
+vm run linux as isolated --provider tart
 ```
-
-### File-based presets
-
-You can add presets in `configs/presets/`:
-```yaml
-# configs/presets/custom.yaml
-preset:
-  name: "Custom Stack"
-  description: "My custom development setup"
-
-npm_packages:
-  - your-package
-
-services:
-  your-service:
-    enabled: true
-
-ports:
-  - 9000
-```
-
-**Note:** Plugin-based presets are preferred as they provide better organization, versioning, and validation.
-
-For more details, see the [Plugin Guide](./plugins.md).

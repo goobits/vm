@@ -831,14 +831,14 @@ impl<'a> ComposeOperations<'a> {
         let compose_path = self.temp_dir.join("docker-compose.yml");
         if !compose_path.exists() {
             return Err(VmError::Internal(format!(
-                "docker-compose.yml not found in '{}' for container destruction. Use direct Docker commands instead",
+                "docker-compose.yml not found in '{}' for container removal. Use direct Docker commands instead",
                 self.temp_dir.display()
             )));
         }
         let args = ComposeCommand::build_args(&compose_path, "down", &["--volumes"])?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         stream_command(self.executable, &args_refs)
-            .map_err(|e| VmError::Internal(format!("Failed to destroy container: {e}")))
+            .map_err(|e| VmError::Internal(format!("Failed to remove container: {e}")))
     }
 
     /// Get list of expected service container names by parsing the generated docker-compose.yml.

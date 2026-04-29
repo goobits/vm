@@ -1,7 +1,6 @@
 // Configuration-related command handlers
 
 use anyhow::Context;
-use std::path::PathBuf;
 use tracing::{debug, warn};
 
 use crate::cli::{ConfigProfileSubcommand, ConfigSubcommand};
@@ -155,70 +154,12 @@ pub fn handle_config_command(
             _ => Ok(()),
         },
         ConfigSubcommand::Profile { command } => match command {
-            ConfigProfileSubcommand::List => handle_profile_list(),
+            ConfigProfileSubcommand::Ls => handle_profile_list(),
             ConfigProfileSubcommand::Set { name } => handle_profile_set(name),
         },
         ConfigSubcommand::Ports { fix } => handle_ports_command(*fix),
         ConfigSubcommand::Clear { global } => Ok(ConfigOps::clear(*global)?),
     }
-}
-
-/// Load configuration with lenient validation for commands that don't require full project setup
-pub fn load_config_lenient(file: Option<PathBuf>) -> VmResult<VmConfig> {
-    use vm_config::config::VmConfig;
-
-    // Try to load defaults as base
-    const EMBEDDED_DEFAULTS: &str = include_str!("../../../../configs/defaults.yaml");
-    let mut config: VmConfig = serde_yaml::from_str(EMBEDDED_DEFAULTS)
-        .map_err(|e| VmError::config(e, "Failed to parse embedded defaults"))?;
-
-    // Try to find and load user config if it exists
-    let user_config_path = match file {
-        Some(path) => Some(path),
-        None => {
-            // Look for vm.yaml in current directory
-            let current_dir = std::env::current_dir()
-                .map_err(|e| VmError::filesystem(e, ".", "get current directory"))?;
-            let vm_yaml_path = current_dir.join("vm.yaml");
-            if vm_yaml_path.exists() {
-                Some(vm_yaml_path)
-            } else {
-                None
-            }
-        }
-    };
-
-    if let Some(path) = user_config_path {
-        match VmConfig::from_file(&path) {
-            Ok(user_config) => {
-                // Merge user config into defaults using available public API
-                // For lenient loading, we'll do a simple field-by-field merge
-                if user_config.provider.is_some() {
-                    config.provider = user_config.provider;
-                }
-                if user_config.project.is_some() {
-                    config.project = user_config.project;
-                }
-                if user_config.vm.is_some() {
-                    config.vm = user_config.vm;
-                }
-                // Copy other important fields
-                if !user_config.services.is_empty() {
-                    config.services = user_config.services;
-                }
-            }
-            Err(e) => {
-                debug!("Failed to load user config, using defaults: {}", e);
-            }
-        }
-    }
-
-    // Ensure we have at least a minimal valid config for providers
-    if config.provider.is_none() {
-        config.provider = Some(String::from("docker"));
-    }
-
-    Ok(config)
 }
 
 /// Handle ports command

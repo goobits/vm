@@ -82,7 +82,7 @@ pub async fn handle_db(command: DbSubcommand) -> VmResult<()> {
         DbSubcommand::Restore { name, db_name } => {
             backup::restore_db(&name, &db_name).await?;
         }
-        DbSubcommand::List => {
+        DbSubcommand::Ls => {
             let result = utils::execute_psql_command(
                 "SELECT datname, pg_size_pretty(pg_database_size(datname)) FROM pg_database WHERE datistemplate = false;",
             )

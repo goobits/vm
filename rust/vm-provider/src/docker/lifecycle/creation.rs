@@ -314,11 +314,11 @@ impl<'a> LifecycleOperations<'a> {
             self.list_project_containers_for_user();
 
             eprintln!("\n💡 Recommended fix:");
-            eprintln!("      vm destroy --force");
+            eprintln!("      vm rm --force");
             if let Some(name) = instance_name {
-                eprintln!("      vm create --instance {}", name);
+                eprintln!("      vm run linux as {}", name);
             } else {
-                eprintln!("      vm create");
+                eprintln!("      vm run linux");
             }
             eprintln!();
 
@@ -374,7 +374,7 @@ impl<'a> LifecycleOperations<'a> {
 
             let options = [
                 option1,
-                "Recreate the container (destroy and rebuild)",
+                "Recreate the container (remove and rebuild)",
                 "Cancel operation",
             ];
             let selection = prompts::select_index("Choose an option", &options, 0)
@@ -405,8 +405,8 @@ impl<'a> LifecycleOperations<'a> {
             // Non-interactive mode: fail with informative error
             Err(VmError::Internal(format!(
                 "Container '{container_name}' already exists. In non-interactive mode, please use:\n\
-                 - 'vm start' to start the existing container\n\
-                 - 'vm destroy' followed by 'vm create' to recreate it"
+                 - 'vm run linux' to start the existing container\n\
+                 - 'vm rm --force' followed by 'vm run linux' to recreate it"
             )))
         }
     }
@@ -439,7 +439,7 @@ impl<'a> LifecycleOperations<'a> {
 
             let options = [
                 option1,
-                "Recreate the container (destroy and rebuild)",
+                "Recreate the container (remove and rebuild)",
                 "Cancel operation",
             ];
             let selection = prompts::select_index("Choose an option", &options, 0)
@@ -470,8 +470,8 @@ impl<'a> LifecycleOperations<'a> {
             // Non-interactive mode: fail with informative error
             Err(VmError::Internal(format!(
                 "Container '{container_name}' already exists. In non-interactive mode, please use:\n\
-                 - 'vm start {container_name}' to start the existing container\n\
-                 - 'vm destroy {container_name}' followed by 'vm create --instance {instance_name}' to recreate it"
+                 - 'vm run linux as {instance_name}' to start the existing container\n\
+                 - 'vm rm {container_name} --force' followed by 'vm run linux as {instance_name}' to recreate it"
             )))
         }
     }
@@ -684,7 +684,7 @@ impl<'a> LifecycleOperations<'a> {
                 for container in &orphaned {
                     eprintln!("      docker rm -f {}", container);
                 }
-                eprintln!("   Or run: vm destroy --force\n");
+                eprintln!("   Or run: vm rm --force\n");
                 // Return true to indicate we found orphans and need --no-recreate
                 return Ok(true);
             } else {
@@ -692,7 +692,7 @@ impl<'a> LifecycleOperations<'a> {
                 let container_list = orphaned.join(", ");
                 return Err(VmError::Provider(format!(
                     "Found existing service containers that would conflict: {}. \
-                    Use 'vm destroy --force --remove-services' to remove them, or use '--preserve-services' to reuse them.",
+                    Use 'vm rm --force' to remove the environment, or preserve service containers to reuse them.",
                     container_list
                 )));
             }

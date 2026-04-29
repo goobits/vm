@@ -56,7 +56,7 @@ impl<'a> LifecycleOperations<'a> {
             }
         }
 
-        info!("vm list");
+        info!("vm ls");
         info!("-------");
 
         let mut total_cpu = 0.0;

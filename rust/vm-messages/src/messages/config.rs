@@ -40,7 +40,7 @@ pub const CONFIG_MESSAGES: ConfigMessages = ConfigMessages {
     // Config Validation
     validate_header: "🔍 Validating configuration...",
     validate_valid: "\n✅ Configuration is valid\n",
-    validate_create_hint: "\n💡 Ready to create: vm create",
+    validate_create_hint: "\n💡 Ready to run: vm run linux",
     validate_invalid: "\n❌ Configuration has errors\n",
     validate_fix_hint: "\n💡 Fix errors and try again",
     ports_header: "📡 Current port configuration:\n   Project: {project}\n   Port range: {range}",
@@ -48,22 +48,22 @@ pub const CONFIG_MESSAGES: ConfigMessages = ConfigMessages {
     ports_fixing: "🔧 Fixing port conflicts...",
     ports_resolved: "\n✅ Port conflicts resolved\n\n  Old range:  {old}\n  New range:  {new}\n\n  ✓ Updated vm.yaml\n  ✓ Registered in port registry",
     ports_updated: "   📡 New port range: {range}",
-    ports_restart_hint: "\n💡 Restart VM to apply: vm restart",
+    ports_restart_hint: "\n💡 Stop and run the environment again to apply changes",
 
     // Config Error
     not_found: "❌ No vm.yaml configuration file found\n",
-    not_found_hint: "💡 You need a configuration file to run VMs. Try:\n   • Initialize config: vm init\n   • Change to project directory: cd <project>\n   • List existing VMs: vm list --all-providers",
+    not_found_hint: "💡 You need a configuration file to run VMs. Try:\n   • Create one by running: vm run linux\n   • Change to project directory: cd <project>\n   • List existing VMs: vm ls",
 
     // Config
     set_success: "✅ Set {field} = {value} in {path}",
-    apply_changes_hint: "💡 Apply changes: vm restart",
+    apply_changes_hint: "💡 Apply changes by stopping and running the environment again",
     available_presets: "📦 Available presets:",
     no_changes: "   ℹ️  (no changes were made to the file)",
     current_configuration: "📋 Current configuration\n",
     modify_hint: "💡 Modify with: vm config set <field> <value>",
     unset_success: "✅ Unset {field} in {path}",
     preset_applied: "✅ Applied preset '{preset}' to {path}",
-    restart_hint: "\n💡 Restart VM to apply changes: vm restart",
+    restart_hint: "\n💡 Stop and run the environment again to apply changes",
     applied_presets: "\n  Applied presets:",
     apply_preset_hint: "💡 Apply this preset: vm config preset {name}",
 };

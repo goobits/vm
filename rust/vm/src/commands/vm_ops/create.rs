@@ -30,15 +30,6 @@ fn provider_resource_name(
     }
 }
 
-fn provider_selector_suffix(provider: &dyn Provider) -> &'static str {
-    match provider.name() {
-        "docker" => "",
-        "podman" => " podman",
-        "tart" => " tart",
-        _ => "",
-    }
-}
-
 fn provider_exec_selector(provider: &dyn Provider) -> String {
     match provider.name() {
         "docker" => String::new(),
@@ -203,7 +194,7 @@ pub async fn handle_create(
                 if running { " and is running" } else { "" }
             );
             vm_println!(
-                "   Use 'vm ssh' to connect, 'vm start' to start, or 'vm destroy' to recreate."
+                "   Use 'vm shell' to connect, 'vm run linux' to start, or 'vm rm --force' to recreate."
             );
             return Ok(());
         }
@@ -354,20 +345,19 @@ pub async fn handle_create(
             }
 
             if is_first_vm {
-                let provider_suffix = provider_selector_suffix(provider.as_ref());
                 let exec_selector = provider_exec_selector(provider.as_ref());
                 vm_println!("\n🎉 Success! Your VM is ready");
                 vm_println!("📝 Next steps:");
-                vm_println!("  • ssh into VM:  vm ssh{}", provider_suffix);
+                vm_println!("  • Open shell:   vm shell");
                 vm_println!("  • Run commands: vm exec{} -- npm install", exec_selector);
-                vm_println!("  • View status:  vm status{}", provider_suffix);
+                vm_println!("  • View envs:    vm ls");
             } else {
                 vm_println!("{}", MESSAGES.common.connect_hint);
             }
 
             // Handle --save-as flag (save container as global snapshot)
             if let Some(snapshot_name) = &save_as {
-                use crate::commands::snapshot::{
+                use vm_snapshot::{
                     manager::{SnapshotManager, SnapshotScope},
                     metadata::{ServiceSnapshot, SnapshotMetadata},
                 };
@@ -520,9 +510,9 @@ pub async fn handle_create(
                 vm_println!("  1. Add to vm.yaml:");
                 vm_println!("     vm:");
                 vm_println!("       box: @{}", clean_name);
-                vm_println!("  2. Run: vm create");
+                vm_println!("  2. Run: vm run linux");
                 vm_println!("\nTo export and share:");
-                vm_println!("  vm snapshot export @{}", clean_name);
+                vm_println!("  vm package @{}", clean_name);
 
                 // Clean up temporary build container
                 vm_println!("\n  Cleaning up temporary build container...");

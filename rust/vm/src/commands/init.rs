@@ -4,7 +4,7 @@ use std::path::PathBuf;
 // External crate imports
 use anyhow::Result;
 
-/// Handles the `vm init` command by delegating to vm-config's init implementation.
+/// Bootstraps a project config by delegating to vm-config's init implementation.
 /// This ensures consistency across all initialization paths.
 pub fn handle_init(
     file: Option<PathBuf>,

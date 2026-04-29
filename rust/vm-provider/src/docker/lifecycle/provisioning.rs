@@ -204,7 +204,7 @@ impl<'a> LifecycleOperations<'a> {
         )
         .map_err(|e| {
             VmError::Internal(format!(
-                "Ansible provisioning failed. The playbook exited with an error. To see the full output, run `vm create --verbose`. Error: {e}"
+                "Ansible provisioning failed. The playbook exited with an error. Re-run `vm run linux` with debug logging for full output. Error: {e}"
             ))
         })?;
 
@@ -273,7 +273,7 @@ impl<'a> LifecycleOperations<'a> {
             .to_owned();
         if status != "running" {
             return Err(VmError::Internal(format!(
-                "Container {target_container} is not running. Start it first with 'vm start'"
+                "Container {target_container} is not running. Start it first with 'vm run linux'"
             )));
         }
 

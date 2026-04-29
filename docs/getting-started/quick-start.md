@@ -1,143 +1,92 @@
-# Quick Start Guide
+# Quick Start
 
-Get a working environment up quickly.
+`vm` creates humane virtual environments from intent-first commands.
 
-## Your Journey
-
-```mermaid
-flowchart LR
-    Start([📦 Clone & Build]) --> Create[🚀 vm start]
-    Create --> Detect{🔍 Auto-detect<br/>Project Type}
-    Detect -->|package.json| Node[⚡ Node.js]
-    Detect -->|requirements.txt| Python[🐍 Python]
-    Detect -->|Gemfile| Ruby[💎 Ruby]
-    Detect -->|No match| Manual[⚙️ Manual Config]
-    Node --> Ready[✅ Ready to Code]
-    Python --> Ready
-    Ruby --> Ready
-    Manual --> Ready
-    Ready --> SSH[💻 vm ssh]
-
-    style Start fill:#e3f2fd
-    style Ready fill:#e8f5e9
-    style Detect fill:#fff3e0
-    style SSH fill:#f3e5f5
-```
-
-## Minimal Setup
+## Start An Environment
 
 ```bash
-# 1. Clone the repository and build from source
-git clone https://github.com/goobits/vm.git
-cd vm
-./install.sh
-
-# 2. Create environment
-vm start
+vm run linux as dev
 ```
 
-### What Gets Detected?
+This creates the environment if needed, starts it, and names it `dev`.
 
-The tool inspects your project files to choose a starting environment:
-
-| Project File | Detected Environment | Installed Tools |
-|--------------|---------------------|-----------------|
-| `package.json` | Node.js (React, Vue, Angular) | Node.js, npm, project dependencies |
-| `requirements.txt` / `Pipfile` | Python (Django, Flask) | Python, pip, virtualenv, dependencies |
-| `Gemfile` | Ruby (Rails, Sinatra) | Ruby, bundler, gems |
-| Framework files | Auto-configured | Framework-specific tools |
-
-:::info Manual Configuration
-If detection is not right for your project, add a `vm.yaml`. See the [Configuration Guide](../user-guide/configuration.md).
-:::
-
-## Common Workflows
-
-### Web Development
-```bash
-# React/Vue/Angular projects
-cd my-frontend-app
-vm start                    # Node.js, npm, dev server
-npm run dev                  # Runs on auto-configured ports
-```
-
-### API Development
-```bash
-# Django/Flask/Rails projects
-cd my-api-project
-vm start                    # Python/Ruby + PostgreSQL + Redis
-python manage.py runserver   # Database already configured
-```
-
-### Quick Experiments
-```bash
-# Test code in isolated environment
-vm temp create ./src ./tests # Mount specific folders
-vm temp ssh                  # Jump in and experiment
-vm temp destroy              # Clean up when done
-```
-
-## Basic Customization
-
-Only customize if the auto-detection doesn't work for you:
-
-```yaml
-# vm.yaml - minimal override
-os: ubuntu
-provider: docker
-project:
-  name: my-project
-ports:
-  frontend: 3000
-  backend: 8000
-```
-
-## Essential Commands
+## Work Inside It
 
 ```bash
-# Daily workflow
-vm start          # Create/configure/start and open a shell
-vm start tart     # Use Tart for this run
-vm start docker   # Use Docker for this run
-vm ssh            # Reconnect later
-vm stop           # Stop VM (keeps data)
-vm destroy        # Delete completely
-
-# Quick info
-vm status         # List all VMs
-vm status tart    # Inspect this project's Tart VM
-vm logs           # View service logs
-vm logs docker    # View Docker logs for this project
+vm shell dev
+vm exec dev -- npm test
+vm logs dev --follow
+vm copy ./config.json dev:/workspace/config.json
 ```
 
-## Temporary VMs
-
-Suitable for testing, code reviews, or experiments:
+## See What Is Running
 
 ```bash
-vm temp create ./feature-branch  # Mount specific directories
-vm temp ssh                      # Enter temp environment
-vm temp destroy                  # Clean up when done
+vm ls
 ```
 
-## Need Help?
+This lists environments for the current project. Use `vm ls --all` to see every `vm` environment on the machine.
 
-:::danger Quick Fix
-If the environment is out of sync, reset it:
+## Stop Or Remove It
+
 ```bash
-vm destroy && vm start
+vm stop dev
+vm rm dev
 ```
-:::
 
-:::tip Getting Unstuck
-- **Not working?** Try `vm destroy && vm start`
-- **Missing features?** Check the [Presets Guide](../user-guide/presets.md) for available configurations
-- **Custom setup?** See the [Configuration Guide](../user-guide/configuration.md)
-- **All commands?** View the [CLI Reference](../user-guide/cli-reference.md)
-:::
+Removing an environment frees active resources. Saved snapshots are preserved.
 
-## Next Steps
+## Pick A Kind
 
-- [Configuration Guide](../user-guide/configuration.md) - Customize your environment
-- [Presets Guide](../user-guide/presets.md) - Understand auto-detection
-- [CLI Reference](../user-guide/cli-reference.md) - Complete command list
+```bash
+vm run mac as xcode
+vm run linux as backend
+vm run container as redis
+```
+
+Unnamed environments can be addressed by kind:
+
+```bash
+vm run mac
+vm shell mac
+```
+
+The default routing is:
+
+| Kind | Default engine |
+| --- | --- |
+| `mac` | Tart |
+| `linux` | Docker |
+| `container` | Docker |
+
+Override routing only when needed:
+
+```bash
+vm run linux as secure --provider tart
+vm run container as db --provider podman
+```
+
+## Save And Restore State
+
+```bash
+vm save dev as stable
+vm revert dev stable
+vm package dev --output dev.tar.gz
+```
+
+## Advanced Tools
+
+```bash
+vm config show
+vm tunnel add 8080:3000 dev
+vm doctor
+vm system update
+```
+
+Plugin-backed workflows stay top-level:
+
+```bash
+vm db ls
+vm fleet ls
+vm secret add API_KEY value
+```

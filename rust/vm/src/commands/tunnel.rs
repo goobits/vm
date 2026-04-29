@@ -368,7 +368,7 @@ pub fn handle_tunnel(
     if parts.len() != 2 {
         return Err(VmError::validation(
             "Invalid port mapping format. Use: <host_port>:<container_port>".to_string(),
-            Some("Example: vm tunnel 8080:3000".to_string()),
+            Some("Example: vm tunnel add 8080:3000".to_string()),
         ));
     }
 
@@ -418,7 +418,7 @@ pub fn handle_tunnel_list(
         } else {
             vm_println!("No active tunnels");
         }
-        vm_println!("\n💡 Create a tunnel with: vm tunnel <host>:<container>");
+        vm_println!("\n💡 Create a tunnel with: vm tunnel add <host>:<container>");
         return Ok(());
     }
 
