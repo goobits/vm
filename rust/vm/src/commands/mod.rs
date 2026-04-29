@@ -454,31 +454,40 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             )
         }
         Command::Tunnel { command } => match command {
-            TunnelSubcommand::Create { mapping, container } => tunnel::handle_tunnel(
-                provider,
-                mapping.as_str(),
-                container.as_deref(),
-                config,
-                global_config.clone(),
-            ),
-            TunnelSubcommand::List { container } => tunnel::handle_tunnel_list(
-                provider,
-                container.as_deref(),
-                config,
-                global_config.clone(),
-            ),
+            TunnelSubcommand::Create { mapping, container } => {
+                let container = instance_arg(container);
+                tunnel::handle_tunnel(
+                    provider,
+                    mapping.as_str(),
+                    container.as_deref(),
+                    config,
+                    global_config.clone(),
+                )
+            }
+            TunnelSubcommand::List { container } => {
+                let container = instance_arg(container);
+                tunnel::handle_tunnel_list(
+                    provider,
+                    container.as_deref(),
+                    config,
+                    global_config.clone(),
+                )
+            }
             TunnelSubcommand::Stop {
                 port,
                 container,
                 all,
-            } => tunnel::handle_tunnel_stop(
-                provider,
-                port.as_ref().copied(),
-                container.as_deref(),
-                all,
-                config,
-                global_config.clone(),
-            ),
+            } => {
+                let container = instance_arg(container);
+                tunnel::handle_tunnel_stop(
+                    provider,
+                    port.as_ref().copied(),
+                    container.as_deref(),
+                    all,
+                    config,
+                    global_config.clone(),
+                )
+            }
         },
         Command::Exec {
             container, command, ..
@@ -534,6 +543,14 @@ fn provider_override_from_command(command: &Command) -> Option<String> {
             .as_deref()
             .filter(|value| is_provider_selector(value))
             .map(ToString::to_string),
+        Command::Tunnel { command } => match command {
+            TunnelSubcommand::Create { container, .. }
+            | TunnelSubcommand::List { container }
+            | TunnelSubcommand::Stop { container, .. } => container
+                .as_deref()
+                .filter(|value| is_provider_selector(value))
+                .map(ToString::to_string),
+        },
         Command::Exec { provider, .. } | Command::Copy { provider, .. } => provider.clone(),
         Command::Destroy {
             container,

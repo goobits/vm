@@ -6,7 +6,7 @@ use super::LifecycleOperations;
 use crate::{docker::UserConfig, security::SecurityValidator};
 use vm_cli::msg;
 use vm_core::{
-    command_stream::stream_command,
+    command_stream::stream_command_visible,
     error::{Result, VmError},
     vm_println,
 };
@@ -230,7 +230,7 @@ impl<'a> LifecycleOperations<'a> {
         ];
         args.extend(cmd.iter().cloned());
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        stream_command(self.executable, &arg_refs)
+        stream_command_visible(self.executable, &arg_refs)
     }
 
     #[must_use = "log display results should be handled"]
@@ -238,7 +238,7 @@ impl<'a> LifecycleOperations<'a> {
         // Show recent logs without following (-f) to avoid hanging indefinitely
         // Use --tail to show last 50 lines and add timestamps
         let target_container = self.resolve_target_container(container)?;
-        stream_command(
+        stream_command_visible(
             self.executable,
             &["logs", "--tail", "50", "-t", &target_container],
         )
@@ -287,7 +287,7 @@ impl<'a> LifecycleOperations<'a> {
             vm_println!("──────────────────────────────────────────\n");
         }
 
-        stream_command(self.executable, &args)
+        stream_command_visible(self.executable, &args)
             .map_err(|e| VmError::Internal(format!("Failed to show logs: {e}")))
     }
 

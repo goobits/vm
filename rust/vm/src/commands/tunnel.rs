@@ -225,11 +225,12 @@ fn start_relay_container(
     container_port: u16,
     container_name: &str,
 ) -> VmResult<(String, String)> {
+    let (network_name, target_address) = inspect_container_network(executable, container_name)?;
     let relay_name = format!("vm-tunnel-{}-{}", container_name, host_port);
-    let network_arg = format!("--network=container:{}", container_name);
+    let network_arg = format!("--network={network_name}");
     let port_arg = format!("{}:{}", host_port, host_port);
     let listen_arg = format!("tcp-listen:{},fork,reuseaddr", host_port);
-    let connect_arg = format!("tcp-connect:localhost:{}", container_port);
+    let connect_arg = format!("tcp-connect:{}:{}", target_address, container_port);
 
     let output = StdCommand::new(executable)
         .args([
@@ -252,7 +253,7 @@ fn start_relay_container(
         let error = String::from_utf8_lossy(&output.stderr);
         return Err(VmError::general(
             std::io::Error::new(std::io::ErrorKind::Other, error.to_string()),
-            "Failed to start relay container".to_string(),
+            format!("Failed to start relay container: {}", error.trim()),
         ));
     }
 
@@ -266,6 +267,52 @@ fn start_relay_container(
     std::thread::sleep(std::time::Duration::from_millis(500));
 
     Ok((container_id, relay_name))
+}
+
+fn inspect_container_network(executable: &str, container_name: &str) -> VmResult<(String, String)> {
+    let output = StdCommand::new(executable)
+        .args([
+            "inspect",
+            "--format",
+            "{{range $name, $network := .NetworkSettings.Networks}}{{$name}} {{$network.IPAddress}}{{println}}{{end}}",
+            container_name,
+        ])
+        .output()
+        .map_err(|e| {
+            VmError::general(
+                e,
+                format!("Failed to inspect container network for {}", container_name),
+            )
+        })?;
+
+    if !output.status.success() {
+        let error = String::from_utf8_lossy(&output.stderr);
+        return Err(VmError::general(
+            std::io::Error::new(std::io::ErrorKind::Other, error.to_string()),
+            format!("Failed to inspect container network: {}", error.trim()),
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.split_whitespace();
+            let network = parts.next()?;
+            let address = parts.next()?;
+            if network.is_empty() || address.is_empty() {
+                None
+            } else {
+                Some((network.to_string(), address.to_string()))
+            }
+        })
+        .next()
+        .ok_or_else(|| {
+            VmError::general(
+                std::io::Error::new(std::io::ErrorKind::NotFound, "No container network found"),
+                format!("No network with an IP address found for {}", container_name),
+            )
+        })
 }
 
 /// Check if a Docker container is running
@@ -339,33 +386,34 @@ pub fn handle_tunnel(
         )
     })?;
 
-    // Get container name
-    let container_name = container.unwrap_or_else(|| {
-        config
-            .project
-            .as_ref()
-            .and_then(|p| p.name.as_ref())
-            .map(|s| s.as_str())
-            .unwrap_or("vm-project")
-    });
+    let _ = config;
+    let container_name = provider.resolve_instance_name(container)?;
 
     // Create tunnel
     let manager = TunnelManager::new(runtime_executable(provider.as_ref()))?;
-    manager.create_tunnel(host_port, container_port, container_name, provider.as_ref())
+    manager.create_tunnel(
+        host_port,
+        container_port,
+        &container_name,
+        provider.as_ref(),
+    )
 }
 
 /// Handle tunnel list command
 pub fn handle_tunnel_list(
-    _provider: Box<dyn Provider>,
+    provider: Box<dyn Provider>,
     container: Option<&str>,
     _config: VmConfig,
     _global_config: GlobalConfig,
 ) -> VmResult<()> {
-    let manager = TunnelManager::new(runtime_executable(_provider.as_ref()))?;
-    let tunnels = manager.list_tunnels(container)?;
+    let manager = TunnelManager::new(runtime_executable(provider.as_ref()))?;
+    let resolved_container = container
+        .map(|value| provider.resolve_instance_name(Some(value)))
+        .transpose()?;
+    let tunnels = manager.list_tunnels(resolved_container.as_deref())?;
 
     if tunnels.is_empty() {
-        if let Some(filter) = container {
+        if let Some(filter) = resolved_container {
             vm_println!("No active tunnels for container: {}", filter);
         } else {
             vm_println!("No active tunnels");
@@ -395,18 +443,21 @@ pub fn handle_tunnel_list(
 
 /// Handle tunnel stop command
 pub fn handle_tunnel_stop(
-    _provider: Box<dyn Provider>,
+    provider: Box<dyn Provider>,
     port: Option<u16>,
     container: Option<&str>,
     all: bool,
     _config: VmConfig,
     _global_config: GlobalConfig,
 ) -> VmResult<()> {
-    let manager = TunnelManager::new(runtime_executable(_provider.as_ref()))?;
+    let manager = TunnelManager::new(runtime_executable(provider.as_ref()))?;
+    let resolved_container = container
+        .map(|value| provider.resolve_instance_name(Some(value)))
+        .transpose()?;
 
-    if all || (port.is_none() && container.is_some()) {
+    if all || (port.is_none() && resolved_container.is_some()) {
         // Stop all tunnels (optionally filtered by container)
-        let count = manager.stop_all_tunnels(container)?;
+        let count = manager.stop_all_tunnels(resolved_container.as_deref())?;
         if count == 0 {
             vm_println!("No tunnels to stop");
         } else {

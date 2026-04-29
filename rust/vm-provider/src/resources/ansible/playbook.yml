@@ -241,7 +241,6 @@
         apt:
             update_cache: yes
             cache_valid_time: 3600
-            lock_timeout: 300
         when: not base_preprovisioned
 
       # Install base system packages FIRST (before any configuration)
@@ -251,7 +250,6 @@
               - locales
               - locales-all
             state: present
-            lock_timeout: 300
         when: not base_preprovisioned
         register: locale_install
         retries: 3
@@ -277,7 +275,6 @@
               - zsh-syntax-highlighting
               - supervisor
             state: present
-            lock_timeout: 300
         when: not base_preprovisioned
         register: base_packages_install
         retries: 3
@@ -528,7 +525,6 @@
             name: "{{ project_config.apt_packages | default([]) }}"
             state: "{{ 'latest' if refresh_packages else 'present' }}"
             update_cache: "{{ refresh_packages }}"
-            lock_timeout: 300
         when: apt_packages_required
         register: apt_packages_install
         retries: 3
@@ -710,7 +706,6 @@
             name: pipx
             state: present
             update_cache: yes
-            lock_timeout: 300
         when: pip_packages_required
         register: pipx_install
         retries: 3
@@ -722,7 +717,6 @@
             name: python3-pip
             state: present
             update_cache: yes
-            lock_timeout: 300
         when: pip_packages_required
         register: pip_install_apt
         retries: 3
@@ -779,7 +773,6 @@
             name: postgresql-client
             state: present
             update_cache: yes
-            lock_timeout: 300
         when:
           - is_docker_container
           - project_config.services.postgresql.enabled | default(false)
@@ -789,7 +782,6 @@
             name: redis-tools
             state: present
             update_cache: yes
-            lock_timeout: 300
         when:
           - is_docker_container
           - project_config.services.redis.enabled | default(false)
@@ -799,7 +791,6 @@
             name: mongodb-clients
             state: present
             update_cache: yes
-            lock_timeout: 300
         when:
           - is_docker_container
           - project_config.services.mongodb.enabled | default(false)
@@ -813,7 +804,6 @@
               - docker-compose
             state: present
             update_cache: yes
-            lock_timeout: 300
         when:
           - project_config.services.docker.enabled | default(false)
 

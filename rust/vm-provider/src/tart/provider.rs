@@ -20,7 +20,9 @@ use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
 use vm_cli::msg;
 use vm_config::config::VmConfig;
-use vm_core::command_stream::{is_tool_installed, stream_command, stream_command_with_env};
+use vm_core::command_stream::{
+    is_tool_installed, stream_command, stream_command_visible_with_env, stream_command_with_env,
+};
 use vm_core::error::Result;
 use vm_core::vm_println;
 use vm_core::{get_cpu_core_count, get_total_memory_gb};
@@ -107,6 +109,14 @@ impl TartProvider {
             stream_command_with_env("tart", args, &[("TART_HOME", tart_home.as_str())])
         } else {
             stream_command("tart", args)
+        }
+    }
+
+    fn stream_tart_command_visible<A: AsRef<OsStr>>(&self, args: &[A]) -> Result<()> {
+        if let Some(tart_home) = self.tart_home() {
+            stream_command_visible_with_env("tart", args, &[("TART_HOME", tart_home.as_str())])
+        } else {
+            vm_core::command_stream::stream_command_visible("tart", args)
         }
     }
 
@@ -256,16 +266,61 @@ impl TartProvider {
             };
 
             if resolved.is_dir() {
-                return Ok(resolved);
+                return Self::normalize_host_workspace_path(&resolved);
             }
 
             if let Some(parent) = resolved.parent() {
-                return Ok(parent.to_path_buf());
+                return Self::normalize_host_workspace_path(parent);
             }
         }
 
-        std::env::current_dir()
-            .map_err(|e| VmError::Internal(format!("Failed to determine host workspace path: {e}")))
+        let current_dir = std::env::current_dir().map_err(|e| {
+            VmError::Internal(format!("Failed to determine host workspace path: {e}"))
+        })?;
+        Self::normalize_host_workspace_path(&current_dir)
+    }
+
+    fn normalize_host_workspace_path(path: &Path) -> Result<PathBuf> {
+        let canonical_path = path.canonicalize().map_err(|e| {
+            VmError::Internal(format!(
+                "Failed to resolve host workspace path {}: {e}",
+                path.display()
+            ))
+        })?;
+
+        if Self::looks_like_project_root(&canonical_path) {
+            return Ok(canonical_path);
+        }
+
+        let nested_workspace = canonical_path.join("workspace");
+        if canonical_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name == "workspace")
+            && nested_workspace.is_dir()
+            && Self::looks_like_project_root(&nested_workspace)
+        {
+            return nested_workspace.canonicalize().map_err(|e| {
+                VmError::Internal(format!(
+                    "Failed to resolve nested host workspace path {}: {e}",
+                    nested_workspace.display()
+                ))
+            });
+        }
+
+        Ok(canonical_path)
+    }
+
+    fn looks_like_project_root(path: &Path) -> bool {
+        [
+            "vm.yaml",
+            ".git",
+            "Cargo.toml",
+            "package.json",
+            "pyproject.toml",
+        ]
+        .iter()
+        .any(|marker| path.join(marker).exists())
     }
 
     fn start_vm_background(&self, vm_name: &str) -> Result<()> {
@@ -672,6 +727,54 @@ impl TartProvider {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::TartProvider;
+    use vm_config::config::VmConfig;
+
+    #[test]
+    fn host_workspace_path_uses_loaded_config_parent() {
+        let outer = tempfile::tempdir().unwrap();
+        let project_dir = outer.path().join("workspace");
+        std::fs::create_dir_all(&project_dir).unwrap();
+        let config_path = project_dir.join("vm.yaml");
+        std::fs::write(&config_path, "provider: tart\n").unwrap();
+
+        let provider = TartProvider {
+            config: VmConfig {
+                source_path: Some(config_path),
+                ..Default::default()
+            },
+        };
+
+        let resolved = provider.host_workspace_path().unwrap();
+        assert_eq!(resolved, project_dir.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn host_workspace_path_skips_outer_workspace_wrapper() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let outer_workspace = temp_dir.path().join("workspace");
+        let inner_workspace = outer_workspace.join("workspace");
+        std::fs::create_dir_all(&inner_workspace).unwrap();
+        std::fs::write(inner_workspace.join("vm.yaml"), "provider: tart\n").unwrap();
+
+        let resolved = TartProvider::normalize_host_workspace_path(&outer_workspace).unwrap();
+        assert_eq!(resolved, inner_workspace.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn host_workspace_path_keeps_real_project_named_workspace() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let workspace = temp_dir.path().join("workspace");
+        std::fs::create_dir_all(workspace.join("workspace")).unwrap();
+        std::fs::write(workspace.join("vm.yaml"), "provider: tart\n").unwrap();
+
+        let resolved = TartProvider::normalize_host_workspace_path(&workspace).unwrap();
+        assert_eq!(resolved, workspace.canonicalize().unwrap());
+    }
+}
+
 impl Provider for TartProvider {
     fn name(&self) -> &'static str {
         "tart"
@@ -846,7 +949,7 @@ impl Provider for TartProvider {
         ];
         args.extend(cmd.iter().cloned());
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        self.stream_tart_command(&arg_refs)
+        self.stream_tart_command_visible(&arg_refs)
     }
 
     fn logs(&self, container: Option<&str>) -> Result<()> {
@@ -1125,7 +1228,6 @@ impl TartProvider {
         path: &std::path::Path,
         cmd_parts: &[&str],
     ) -> Result<String> {
-        use duct::cmd;
         let instance_name = self.resolve_instance_name(container)?;
         let command_str = cmd_parts.join(" ");
         let ssh_command = format!("cd '{}' && {}", path.display(), command_str);

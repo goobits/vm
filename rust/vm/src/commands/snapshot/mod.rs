@@ -16,6 +16,11 @@ pub async fn handle_snapshot(
 ) -> VmResult<()> {
     let app_config = AppConfig::load(config_path, profile, None)?;
     let executable = app_config.vm.provider.as_deref().unwrap_or("docker");
+    let current_project = app_config
+        .vm
+        .project
+        .as_ref()
+        .and_then(|project| project.name.clone());
 
     match command {
         SnapshotSubcommand::Create {
@@ -43,13 +48,21 @@ pub async fn handle_snapshot(
             .await?;
         }
         SnapshotSubcommand::List { project, r#type } => {
-            vm_snapshot::manager::handle_list(project.as_deref(), r#type.as_deref(), true).await?;
+            let project = project.or_else(|| {
+                if r#type.as_deref() == Some("base") {
+                    None
+                } else {
+                    current_project.clone()
+                }
+            });
+            vm_snapshot::manager::handle_list(project.as_deref(), r#type.as_deref(), false).await?;
         }
         SnapshotSubcommand::Restore {
             name,
             project,
             force,
         } => {
+            let project = project.or_else(|| current_project.clone());
             vm_snapshot::restore::handle_restore(
                 &app_config,
                 executable,
@@ -64,6 +77,7 @@ pub async fn handle_snapshot(
             project,
             force,
         } => {
+            let project = project.or_else(|| current_project.clone());
             vm_snapshot::manager::handle_delete(&name, project.as_deref(), force).await?;
         }
         SnapshotSubcommand::Export {
@@ -72,6 +86,7 @@ pub async fn handle_snapshot(
             compress,
             project,
         } => {
+            let project = project.or_else(|| current_project.clone());
             vm_snapshot::export::handle_export(
                 executable,
                 &name,

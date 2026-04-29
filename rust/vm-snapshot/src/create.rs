@@ -150,162 +150,215 @@ pub async fn handle_create(
             .map_err(|e| VmError::filesystem(e, dir.to_string_lossy(), "create_dir_all"))?;
     }
 
-    // Quiesce containers if requested
-    if quiesce {
-        vm_core::vm_println!("Pausing containers for consistent snapshot...");
-        execute_docker_compose(executable, &["pause"], &project_dir).await?;
-    }
+    let has_compose_file = [
+        "docker-compose.yml",
+        "docker-compose.yaml",
+        "compose.yml",
+        "compose.yaml",
+    ]
+    .iter()
+    .any(|file| project_dir.join(file).exists());
 
-    // Discover services
-    vm_core::vm_println!("Discovering services...");
-    let services_output =
-        execute_docker_compose(executable, &["ps", "--services"], &project_dir).await?;
-    let service_names: Vec<String> = services_output
-        .lines()
-        .filter(|line| !line.is_empty())
-        .map(|s| s.to_string())
-        .collect();
+    let (services, volumes) = if has_compose_file {
+        // Quiesce containers if requested
+        if quiesce {
+            vm_core::vm_println!("Pausing containers for consistent snapshot...");
+            execute_docker_compose(executable, &["pause"], &project_dir).await?;
+        }
 
-    // Parallelize service snapshots for 3-10x faster creation
-    vm_core::vm_println!("Snapshotting services in parallel...");
-    let snapshot_futures = service_names.iter().map(|service| {
-        let service = service.clone();
-        let project_name = project_name.clone();
-        let snapshot_name = snapshot_name.to_string();
-        let images_dir = images_dir.clone();
-        let project_dir = project_dir.clone();
+        // Discover services
+        vm_core::vm_println!("Discovering services...");
+        let services_output =
+            execute_docker_compose(executable, &["ps", "--services"], &project_dir).await?;
+        let service_names: Vec<String> = services_output
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(|s| s.to_string())
+            .collect();
 
-        async move {
-            vm_core::vm_println!("  Snapshotting service: {}", service);
+        // Parallelize service snapshots for 3-10x faster creation
+        vm_core::vm_println!("Snapshotting services in parallel...");
+        let snapshot_futures = service_names.iter().map(|service| {
+            let service = service.clone();
+            let project_name = project_name.clone();
+            let snapshot_name = snapshot_name.to_string();
+            let images_dir = images_dir.clone();
+            let project_dir = project_dir.clone();
 
-            // Get container ID for this service
-            let container_id =
-                execute_docker_compose(executable, &["ps", "-q", &service], &project_dir).await?;
-            if container_id.is_empty() {
-                vm_core::vm_warning!("Service '{}' has no running container, skipping", service);
-                return Ok::<Option<ServiceSnapshot>, VmError>(None);
-            }
+            async move {
+                let container_id =
+                    execute_docker_compose(executable, &["ps", "-q", &service], &project_dir)
+                        .await?;
+                if container_id.is_empty() {
+                    vm_core::vm_warning!(
+                        "Service '{}' has no running container, skipping",
+                        service
+                    );
+                    return Ok::<Option<ServiceSnapshot>, VmError>(None);
+                }
 
-            // Create image from container
-            let image_tag = format!("vm-snapshot/{}/{}:{}", project_name, service, snapshot_name);
-            execute_docker_with_output(executable, &["commit", &container_id, &image_tag]).await?;
-
-            // Save image to tar file
-            let image_file = format!("{}.tar", service);
-            let image_path = images_dir.join(&image_file);
-            let image_path_str = image_path.to_str().ok_or_else(|| {
-                VmError::general(
-                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid UTF-8 in path"),
-                    format!(
-                        "Snapshot path contains invalid UTF-8 characters: {}",
-                        image_path.display()
-                    ),
+                snapshot_container(
+                    executable,
+                    &project_name,
+                    &snapshot_name,
+                    &service,
+                    &container_id,
+                    &images_dir,
                 )
-            })?;
-            execute_docker_with_output(executable, &["save", &image_tag, "-o", image_path_str])
-                .await?;
-
-            // Get image digest
-            let digest_output = execute_docker_with_output(
-                executable,
-                &["inspect", "--format={{.Id}}", &image_tag],
-            )
-            .await?;
-            let digest = if digest_output.is_empty() {
-                None
-            } else {
-                Some(digest_output)
-            };
-
-            Ok(Some(ServiceSnapshot {
-                name: service.clone(),
-                image_tag,
-                image_file,
-                image_digest: digest,
-            }))
-        }
-    });
-
-    // Snapshot services concurrently (CPU-adaptive concurrency)
-    let services: Vec<ServiceSnapshot> = stream::iter(snapshot_futures)
-        .buffer_unordered(optimal_concurrency())
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>>>()?
-        .into_iter()
-        .flatten()
-        .collect();
-
-    // Unpause containers if we paused them
-    if quiesce {
-        vm_core::vm_println!("Unpausing containers...");
-        execute_docker_compose(executable, &["unpause"], &project_dir).await?;
-    }
-
-    // Discover volumes
-    vm_core::vm_println!("Discovering volumes...");
-    let volumes_output =
-        execute_docker_compose(executable, &["config", "--volumes"], &project_dir).await?;
-    let volume_names: Vec<String> = volumes_output
-        .lines()
-        .filter(|line| !line.is_empty())
-        .map(|s| s.to_string())
-        .collect();
-
-    // Parallelize volume backups for 2-4x faster creation
-    vm_core::vm_println!("Backing up volumes in parallel...");
-    let volume_futures = volume_names.iter().map(|volume| {
-        let volume = volume.clone();
-        let project_name = project_name.clone();
-        let volumes_dir = volumes_dir.clone();
-
-        async move {
-            vm_core::vm_println!("  Backing up volume: {}", volume);
-
-            // Use zstd compression for 3-5x faster backups (vs gzip)
-            let archive_file = format!("{}.tar.zst", volume);
-            let archive_path = volumes_dir.join(&archive_file);
-
-            // Get full volume name (might be prefixed with project name)
-            let full_volume_name = format!("{}_{}", project_name, volume);
-
-            // Export volume data using alpine (has zstd) with parallel compression
-            let run_args = [
-                "run",
-                "--rm",
-                "-v",
-                &format!("{}:/data", full_volume_name),
-                "-v",
-                &format!("{}:/backup", volumes_dir.to_string_lossy()),
-                "alpine:latest",
-                "sh",
-                "-c",
-                &format!("tar -c -C /data . | zstd -3 -T0 > /backup/{}", archive_file),
-            ];
-
-            execute_docker_with_output(executable, &run_args).await?;
-
-            // Get archive size (using async fs)
-            let metadata = tokio::fs::metadata(&archive_path)
                 .await
-                .map_err(|e| VmError::filesystem(e, archive_path.to_string_lossy(), "metadata"))?;
+                .map(Some)
+            }
+        });
 
-            Ok::<VolumeSnapshot, VmError>(VolumeSnapshot {
-                name: volume.clone(),
-                archive_file,
-                size_bytes: metadata.len(),
-            })
+        let services: Vec<ServiceSnapshot> = stream::iter(snapshot_futures)
+            .buffer_unordered(optimal_concurrency())
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+
+        if quiesce {
+            vm_core::vm_println!("Unpausing containers...");
+            execute_docker_compose(executable, &["unpause"], &project_dir).await?;
         }
-    });
 
-    // Backup volumes concurrently (CPU-adaptive concurrency)
-    let volumes: Vec<VolumeSnapshot> = stream::iter(volume_futures)
-        .buffer_unordered(optimal_concurrency())
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>>>()?;
+        // Discover volumes
+        vm_core::vm_println!("Discovering volumes...");
+        let volumes_output =
+            execute_docker_compose(executable, &["config", "--volumes"], &project_dir).await?;
+        let volume_names: Vec<String> = volumes_output
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(|s| s.to_string())
+            .collect();
+
+        // Parallelize volume backups for 2-4x faster creation
+        vm_core::vm_println!("Backing up volumes in parallel...");
+        let volume_futures = volume_names.iter().map(|volume| {
+            let volume = volume.clone();
+            let project_name = project_name.clone();
+            let volumes_dir = volumes_dir.clone();
+
+            async move {
+                vm_core::vm_println!("  Backing up volume: {}", volume);
+
+                let archive_file = format!("{}.tar.zst", volume);
+                let archive_path = volumes_dir.join(&archive_file);
+                let full_volume_name = format!("{}_{}", project_name, volume);
+                let run_args = [
+                    "run",
+                    "--rm",
+                    "-v",
+                    &format!("{}:/data", full_volume_name),
+                    "-v",
+                    &format!("{}:/backup", volumes_dir.to_string_lossy()),
+                    "alpine:latest",
+                    "sh",
+                    "-c",
+                    &format!("tar -c -C /data . | zstd -3 -T0 > /backup/{}", archive_file),
+                ];
+
+                execute_docker_with_output(executable, &run_args).await?;
+
+                let metadata = tokio::fs::metadata(&archive_path).await.map_err(|e| {
+                    VmError::filesystem(e, archive_path.to_string_lossy(), "metadata")
+                })?;
+
+                Ok::<VolumeSnapshot, VmError>(VolumeSnapshot {
+                    name: volume.clone(),
+                    archive_file,
+                    size_bytes: metadata.len(),
+                })
+            }
+        });
+
+        let volumes: Vec<VolumeSnapshot> = stream::iter(volume_futures)
+            .buffer_unordered(optimal_concurrency())
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>>>()?;
+
+        (services, volumes)
+    } else {
+        vm_core::vm_println!("Discovering VM-managed containers...");
+        let project_filter = format!("label=com.vm.project={project_name}");
+        let containers_output = execute_docker_with_output(
+            executable,
+            &[
+                "ps",
+                "--filter",
+                &project_filter,
+                "--format",
+                "{{.ID}}\t{{.Names}}",
+            ],
+        )
+        .await?;
+        let containers: Vec<(String, String)> = containers_output
+            .lines()
+            .filter_map(|line| {
+                let (id, name) = line.split_once('\t')?;
+                Some((id.to_string(), name.to_string()))
+            })
+            .collect();
+
+        if containers.is_empty() {
+            return Err(VmError::validation(
+                format!(
+                    "No running VM containers found for project '{}'",
+                    project_name
+                ),
+                Some("Start the VM first, then run `vm snapshot create <name>`.".to_string()),
+            ));
+        }
+
+        if quiesce {
+            vm_core::vm_println!("Pausing containers for consistent snapshot...");
+            for (container_id, _) in &containers {
+                execute_docker_with_output(executable, &["pause", container_id]).await?;
+            }
+        }
+
+        vm_core::vm_println!("Snapshotting containers in parallel...");
+        let snapshot_futures = containers.iter().map(|(container_id, container_name)| {
+            let project_name = project_name.clone();
+            let snapshot_name = snapshot_name.to_string();
+            let images_dir = images_dir.clone();
+            let service_name = container_name.clone();
+            let container_id = container_id.clone();
+
+            async move {
+                snapshot_container(
+                    executable,
+                    &project_name,
+                    &snapshot_name,
+                    &service_name,
+                    &container_id,
+                    &images_dir,
+                )
+                .await
+            }
+        });
+
+        let services: Vec<ServiceSnapshot> = stream::iter(snapshot_futures)
+            .buffer_unordered(optimal_concurrency())
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>>>()?;
+
+        if quiesce {
+            vm_core::vm_println!("Unpausing containers...");
+            for (container_id, _) in &containers {
+                execute_docker_with_output(executable, &["unpause", container_id]).await?;
+            }
+        }
+
+        (services, Vec::new())
+    };
 
     // Copy configuration files
     vm_core::vm_println!("Copying configuration files...");
@@ -362,6 +415,52 @@ pub async fn handle_create(
     );
 
     Ok(())
+}
+
+async fn snapshot_container(
+    executable: &str,
+    project_name: &str,
+    snapshot_name: &str,
+    service_name: &str,
+    container_id: &str,
+    images_dir: &std::path::Path,
+) -> Result<ServiceSnapshot> {
+    vm_core::vm_println!("  Snapshotting container: {}", service_name);
+
+    let image_tag = format!(
+        "vm-snapshot/{}/{}:{}",
+        project_name, service_name, snapshot_name
+    );
+    execute_docker_with_output(executable, &["commit", container_id, &image_tag]).await?;
+
+    let image_file = format!("{}.tar", service_name);
+    let image_path = images_dir.join(&image_file);
+    let image_path_str = image_path.to_str().ok_or_else(|| {
+        VmError::general(
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid UTF-8 in path"),
+            format!(
+                "Snapshot path contains invalid UTF-8 characters: {}",
+                image_path.display()
+            ),
+        )
+    })?;
+    execute_docker_with_output(executable, &["save", &image_tag, "-o", image_path_str]).await?;
+
+    let digest_output =
+        execute_docker_with_output(executable, &["inspect", "--format={{.Id}}", &image_tag])
+            .await?;
+    let image_digest = if digest_output.is_empty() {
+        None
+    } else {
+        Some(digest_output)
+    };
+
+    Ok(ServiceSnapshot {
+        name: service_name.to_string(),
+        image_tag,
+        image_file,
+        image_digest,
+    })
 }
 
 /// Calculate total size of directory recursively using parallel iteration

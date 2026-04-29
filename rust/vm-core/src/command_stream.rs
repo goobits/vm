@@ -85,6 +85,30 @@ pub fn stream_command_visible<A: AsRef<OsStr>>(command: &str, args: &[A]) -> Res
     Ok(())
 }
 
+/// Stream command output directly to stdout with additional environment variables.
+pub fn stream_command_visible_with_env<A, K, V>(
+    command: &str,
+    args: &[A],
+    envs: &[(K, V)],
+) -> Result<()>
+where
+    A: AsRef<OsStr>,
+    K: AsRef<OsStr>,
+    V: AsRef<OsStr>,
+{
+    let mut expr = with_buildkit(command, args);
+    for (key, value) in envs {
+        expr = expr.env(key, value);
+    }
+
+    let reader = expr.stderr_to_stdout().reader()?;
+    let lines = BufReader::new(reader).lines();
+    for line in lines {
+        println!("{}", line?);
+    }
+    Ok(())
+}
+
 /// Stream command output with optional progress parsing
 pub fn stream_command_with_progress<A: AsRef<OsStr>>(
     command: &str,
