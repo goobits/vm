@@ -272,6 +272,40 @@ enum FileVersionStatus {
     NoVersion,
 }
 
+fn main() {
+    let cli = Cli::parse();
+
+    let version_sync = match VersionSync::new() {
+        Ok(vs) => vs,
+        Err(e) => {
+            eprintln!("Version sync initialization failed: {e}");
+            process::exit(1);
+        }
+    };
+
+    match cli.command {
+        Command::Check => match version_sync.check() {
+            Ok(all_synced) => {
+                if all_synced {
+                    process::exit(0);
+                } else {
+                    process::exit(1);
+                }
+            }
+            Err(e) => {
+                eprintln!("Version check failed: {e}");
+                process::exit(1);
+            }
+        },
+        Command::Sync => {
+            if let Err(e) = version_sync.sync() {
+                eprintln!("Version sync failed: {e}");
+                process::exit(1);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::VersionSync;
@@ -304,39 +338,5 @@ clap = { version = "4.6.1", features = ["derive"] }
         assert!(updated.contains("serde = { version = \"1.0.228\""));
         assert!(updated.contains("clap = { version = \"4.6.1\""));
         assert!(!updated.contains("version = \"4.8.3\""));
-    }
-}
-
-fn main() {
-    let cli = Cli::parse();
-
-    let version_sync = match VersionSync::new() {
-        Ok(vs) => vs,
-        Err(e) => {
-            eprintln!("Version sync initialization failed: {e}");
-            process::exit(1);
-        }
-    };
-
-    match cli.command {
-        Command::Check => match version_sync.check() {
-            Ok(all_synced) => {
-                if all_synced {
-                    process::exit(0);
-                } else {
-                    process::exit(1);
-                }
-            }
-            Err(e) => {
-                eprintln!("Version check failed: {e}");
-                process::exit(1);
-            }
-        },
-        Command::Sync => {
-            if let Err(e) = version_sync.sync() {
-                eprintln!("Version sync failed: {e}");
-                process::exit(1);
-            }
-        }
     }
 }
