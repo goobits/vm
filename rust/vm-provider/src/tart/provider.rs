@@ -408,16 +408,7 @@ impl TartProvider {
             dir_args.push(format!("{}:tag={}", share.host_path.display(), share.tag));
         }
 
-        let escaped_dir_args: Vec<String> = dir_args
-            .iter()
-            .map(|arg| format!("--dir '{}'", Self::shell_escape_single_quotes(arg)))
-            .collect();
-        let cmd = format!(
-            "nohup tart run --no-graphics {} '{}' >'{}' 2>&1 &",
-            escaped_dir_args.join(" "),
-            vm_name,
-            log_path
-        );
+        let cmd = self.build_run_command(&vm_name, &log_path, &dir_args);
 
         let mut command = std::process::Command::new("sh");
         command.args(["-c", &cmd]);
@@ -438,6 +429,33 @@ impl TartProvider {
             })?;
 
         Ok(())
+    }
+
+    fn build_run_command(&self, vm_name: &str, log_path: &str, dir_args: &[String]) -> String {
+        let nested_arg = if self
+            .config
+            .tart
+            .as_ref()
+            .and_then(|tart| tart.nested)
+            .unwrap_or(false)
+        {
+            "--nested "
+        } else {
+            ""
+        };
+
+        let escaped_dir_args: Vec<String> = dir_args
+            .iter()
+            .map(|arg| format!("--dir '{}'", Self::shell_escape_single_quotes(arg)))
+            .collect();
+
+        format!(
+            "nohup tart run --no-graphics {}{} '{}' >'{}' 2>&1 &",
+            nested_arg,
+            escaped_dir_args.join(" "),
+            vm_name,
+            log_path
+        )
     }
 
     fn parse_metrics_json(&self, raw: &str) -> Result<CollectedMetrics> {
@@ -1356,5 +1374,22 @@ mod tests {
         };
 
         assert_eq!(provider.get_sync_directory(), "/Volumes/work/project");
+    }
+
+    #[test]
+    fn tart_run_includes_nested_flag_when_configured() {
+        let provider = TartProvider {
+            config: VmConfig {
+                tart: Some(TartConfig {
+                    nested: Some(true),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        };
+
+        assert!(provider
+            .build_run_command("vm-mac", "/tmp/vm-tart-vm_mac.log", &[])
+            .contains("tart run --no-graphics --nested "));
     }
 }

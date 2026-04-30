@@ -59,8 +59,9 @@ profiles:
       guest_os: macos
       disk_size: 80
       rosetta: true
+      nested: true
       ssh_user: admin
-      install_docker: false
+      install_docker: true
     project:
       workspace_path: /workspace
     vm:

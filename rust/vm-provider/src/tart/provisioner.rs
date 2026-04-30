@@ -492,9 +492,7 @@ cargo install {}"#,
         }
 
         if self.is_macos_guest(config) {
-            return Err(VmError::Config(
-                "tart.install_docker is only supported for Linux Tart guests".to_string(),
-            ));
+            return self.install_macos_docker_tools();
         }
 
         self.ssh_exec(
@@ -511,6 +509,61 @@ elif command -v service >/dev/null 2>&1; then
 fi
 docker info >/dev/null 2>&1 || sudo docker info >/dev/null 2>&1"#,
         )?;
+
+        Ok(())
+    }
+
+    fn install_macos_docker_tools(&self) -> Result<()> {
+        self.ensure_homebrew()?;
+
+        let workspace = Self::shell_escape_single_quotes(&self.project_dir);
+        self.ssh_exec(&format!(
+            r#"{brew}
+brew install docker docker-compose docker-buildx colima qemu
+
+mkdir -p "$HOME/.docker"
+if command -v python3 >/dev/null 2>&1; then
+  python3 - "$HOME/.docker/config.json" <<'PY'
+import json
+import os
+import sys
+
+path = sys.argv[1]
+config = {{}}
+if os.path.exists(path):
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            config = json.load(fh)
+    except Exception:
+        config = {{}}
+dirs = config.setdefault("cliPluginsExtraDirs", [])
+plugin_dir = "/opt/homebrew/lib/docker/cli-plugins"
+if plugin_dir not in dirs:
+    dirs.append(plugin_dir)
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(config, fh, indent=2)
+    fh.write("\n")
+PY
+else
+  cat >"$HOME/.docker/config.json" <<'JSON'
+{{
+  "cliPluginsExtraDirs": [
+    "/opt/homebrew/lib/docker/cli-plugins"
+  ]
+}}
+JSON
+fi
+
+mkdir -p '{workspace}'
+cat >'{workspace}/start-colima' <<'SH'
+#!/bin/sh
+colima start --cpu 2 --memory 4 --disk 20
+SH
+chmod +x '{workspace}/start-colima'
+"#,
+            brew = Self::macos_brew_preamble(),
+            workspace = workspace
+        ))?;
 
         Ok(())
     }

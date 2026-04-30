@@ -218,13 +218,17 @@ properties:
         type: boolean
         default: true
         description: Enable Rosetta 2 for x86 emulation (Linux guests only)
+      nested:
+        type: boolean
+        default: false
+        description: Start Tart with nested virtualization. Requires Apple Silicon M3/M4 host and macOS 15+ on the host.
       ssh_user:
         type: string
         description: SSH username (defaults to admin for macOS, ubuntu for Linux)
       install_docker:
         type: boolean
         default: false
-        description: Install Docker inside the Linux VM
+        description: Install Docker tooling inside the guest. Linux guests use Docker Engine; macOS guests use Docker CLI with Colima and require Tart nested virtualization for local Docker engines.
       storage_path:
         type: string
         description: Custom storage path for VMs (e.g., /Volumes/SSD/TartVMs)

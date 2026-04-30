@@ -807,6 +807,8 @@ pub struct TartConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rosetta: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub nested: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ssh_user: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub install_docker: Option<bool>,
