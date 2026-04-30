@@ -29,7 +29,7 @@ Advanced self-management:
 
 ```bash
 vm system update
-vm system update --version v5.0.0
+vm system update --version v5.0.1
 vm system uninstall
 vm system uninstall --keep-config
 ```
