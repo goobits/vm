@@ -262,13 +262,16 @@ Next steps:
        vm config preset vibe-tart
 
   2. Start Tart from the same project directory:
-       vm start
+       vm run mac
 
-  3. Docker remains available when the preset defines a Docker profile:
-       vm start docker
+  3. Docker inside the macOS guest requires an M3/M4 Mac runner, host macOS 15+,
+     guest macOS 15+, and Tart nested virtualization:
+       tart:
+         nested: true
+         install_docker: true
 
 This script is the backend for:
-  vm base build vibe --provider tart
+  vm system base build vibe --provider tart
 
 EOF
 else
@@ -281,14 +284,14 @@ Next steps:
        vm config preset vibe-tart
 
   2. Start it with:
-       vm start tart
+       vm run linux --provider tart
 
   3. If a project needs Docker inside Tart, enable it in vm.yaml:
        tart:
          install_docker: true
 
 This script is the backend for:
-  vm base build vibe --provider tart
+  vm system base build vibe --provider tart
 
 EOF
 fi

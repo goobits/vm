@@ -33,6 +33,22 @@ vm shell dev
 vm exec dev -- pwd
 ```
 
+## Docker In A macOS Tart Guest
+
+Docker inside a macOS Tart guest needs nested virtualization from the Mac runner. Confirm the runner is Apple Silicon M3/M4, the host is macOS 15+, the guest image is macOS 15+, and `tart.nested: true` is set.
+
+After booting the guest:
+
+```bash
+/workspace/start-colima
+docker version
+docker run --rm busybox echo run-ok
+docker buildx version
+docker compose version
+```
+
+If nested virtualization is unavailable, use a remote Docker daemon over SSH/TLS. Do not expose an unauthenticated Docker socket.
+
 ## Port Conflicts
 
 ```bash

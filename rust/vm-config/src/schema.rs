@@ -149,7 +149,7 @@ fn add_vm_schema_fields(cache: &mut HashMap<String, SchemaType>) {
         "tart.ssh_user",
         "tart.storage_path"
     );
-    add_booleans!(cache, "tart.rosetta", "tart.install_docker");
+    add_booleans!(cache, "tart.rosetta", "tart.nested", "tart.install_docker");
 }
 
 /// Add service-related schema fields

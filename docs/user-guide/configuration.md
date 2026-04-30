@@ -54,6 +54,24 @@ vm run linux as isolated --provider tart
 vm run container as db --provider podman
 ```
 
+## macOS Tart Guests With Docker
+
+For Docker inside a macOS Tart guest, the Mac runner must be Apple Silicon M3/M4 on macOS 15+ and the guest image must be macOS 15+. Enable nested virtualization in the Tart config:
+
+```yaml
+tart:
+  guest_os: macos
+  nested: true
+  install_docker: true
+```
+
+`vm run mac` then launches Tart with `--nested` and installs Docker CLI, Compose, Buildx, Colima, and QEMU inside the guest. Start Docker in the guest with:
+
+```bash
+/workspace/start-colima
+docker run --rm busybox echo run-ok
+```
+
 ## Presets
 
 ```bash

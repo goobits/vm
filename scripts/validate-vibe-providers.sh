@@ -85,7 +85,7 @@ run_step() {
 if [[ "${REBUILD_DOCKER_BASE}" == "true" ]]; then
   require_tool docker
   run_step "Rebuilding Docker vibe base" \
-    vm snapshot create @vibe-box --from-dockerfile "${REPO_ROOT}/Dockerfile.vibe" --force
+    vm system base build vibe --provider docker
 fi
 
 if [[ "${BUILD_TART_BASE}" == "true" ]]; then
@@ -109,7 +109,7 @@ EOF
 if [[ "${PROVIDER}" == "docker" || "${PROVIDER}" == "all" ]]; then
   cat <<'EOF'
   1. Docker provider path
-     time vm start docker
+     time vm run linux --provider docker
 
 EOF
 fi
@@ -117,7 +117,7 @@ fi
 if [[ "${PROVIDER}" == "tart" || "${PROVIDER}" == "all" ]]; then
   cat <<'EOF'
   2. Tart default path
-     time vm start
+     time vm run mac
 
 EOF
 fi
@@ -130,11 +130,11 @@ Suggested checks after each start:
   vm exec -- which codex
   vm exec -- git config --global user.name
   vm exec -- printenv | grep -E 'EDITOR|PATH' || true
-  vm ssh
+  vm shell
 
 If both paths work from the same repo and the expected tools are present, the shared vibe workflow is validated.
 
 This script is the backend for:
-  vm base validate vibe
+  vm system base validate vibe
 
 EOF
