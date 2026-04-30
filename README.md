@@ -18,6 +18,26 @@ curl -fsSL https://raw.githubusercontent.com/goobits/vm/main/install.sh | bash
 
 Docker is the default engine for Linux and container environments. Tart powers macOS environments on Apple Silicon macOS. Podman is available as an advanced provider override.
 
+## macOS VMs That Can Run Docker
+
+`vm` can boot a real macOS Tart environment and run Docker workloads inside it.
+
+```text
++----------------------+
+| Apple Silicon Mac    |  M3/M4 + macOS 15+
++----------+-----------+
+           | tart run --nested
++----------v-----------+
+| macOS Dev VM         |  Xcode, Homebrew, /workspace
++----------+-----------+
+           | Colima
++----------v-----------+
+| Docker Workloads     |  build, compose, test
++----------------------+
+```
+
+That means one project can exercise macOS tooling, Linux containers, and repeatable dev workflows from the same `vm` interface.
+
 ## Everyday Workflow
 
 ```bash
