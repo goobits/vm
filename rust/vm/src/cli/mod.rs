@@ -320,6 +320,9 @@ pub enum BaseSubcommand {
         preset: String,
         #[arg(long, value_parser = ["docker", "tart"])]
         provider: String,
+        /// Tart guest OS to build. Auto follows the active config/profile.
+        #[arg(long = "guest-os", value_parser = ["auto", "linux", "macos"], default_value = "auto")]
+        guest_os: String,
     },
     /// Validate the shared provider workflow for the current project
     Validate {
@@ -544,7 +547,10 @@ pub enum Command {
 
 #[cfg(test)]
 mod tests {
-    use super::{Args, Command, DbSubcommand, EnvironmentKind, PluginSubcommand, SystemSubcommand};
+    use super::{
+        Args, BaseSubcommand, Command, DbSubcommand, EnvironmentKind, PluginSubcommand,
+        SystemSubcommand,
+    };
     use clap::Parser;
 
     #[test]
@@ -632,6 +638,39 @@ mod tests {
             Command::System { command } => match command {
                 SystemSubcommand::Update { force, .. } => assert!(force),
                 _ => panic!("Expected SystemSubcommand::Update"),
+            },
+            _ => panic!("Expected Command::System"),
+        }
+    }
+
+    #[test]
+    fn system_base_build_parses_macos_guest_os() {
+        let args = Args::parse_from([
+            "vm",
+            "system",
+            "base",
+            "build",
+            "vibe",
+            "--provider",
+            "tart",
+            "--guest-os",
+            "macos",
+        ]);
+        match args.command {
+            Command::System { command } => match command {
+                SystemSubcommand::Base { command } => match command {
+                    BaseSubcommand::Build {
+                        preset,
+                        provider,
+                        guest_os,
+                    } => {
+                        assert_eq!(preset, "vibe");
+                        assert_eq!(provider, "tart");
+                        assert_eq!(guest_os, "macos");
+                    }
+                    _ => panic!("Expected BaseSubcommand::Build"),
+                },
+                _ => panic!("Expected SystemSubcommand::Base"),
             },
             _ => panic!("Expected Command::System"),
         }

@@ -14,6 +14,7 @@ Provider-native base workflows live under `system base`:
 ```bash
 vm system base build vibe --provider docker
 vm system base build vibe --provider tart
+vm system base build vibe --provider tart --guest-os macos
 vm system base validate vibe --provider all
 ```
 

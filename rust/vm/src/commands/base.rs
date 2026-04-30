@@ -1,15 +1,20 @@
 use crate::cli::BaseSubcommand;
 use crate::error::{VmError, VmResult};
 use std::process::Command;
-use vm_config::{config::VmConfig, resolve_tool_path};
+use vm_config::{config::VmConfig, resolve_tool_path, AppConfig};
 use vm_core::vm_println;
 
 const DOCKER_BASE_NAME: &str = "@vibe-box";
-const TART_BASE_NAME: &str = "vibe-tart-linux-base";
+const TART_LINUX_BASE_NAME: &str = "vibe-tart-linux-base";
+const TART_MACOS_BASE_NAME: &str = "vibe-tart-sequoia-base";
 
 pub async fn handle_base(command: BaseSubcommand) -> VmResult<()> {
     match command {
-        BaseSubcommand::Build { preset, provider } => handle_build(&preset, &provider),
+        BaseSubcommand::Build {
+            preset,
+            provider,
+            guest_os,
+        } => handle_build(&preset, &provider, &guest_os),
         BaseSubcommand::Validate {
             preset,
             provider,
@@ -19,7 +24,7 @@ pub async fn handle_base(command: BaseSubcommand) -> VmResult<()> {
     }
 }
 
-fn handle_build(preset: &str, provider: &str) -> VmResult<()> {
+fn handle_build(preset: &str, provider: &str, guest_os: &str) -> VmResult<()> {
     ensure_supported_preset(preset)?;
 
     match provider {
@@ -42,17 +47,57 @@ fn handle_build(preset: &str, provider: &str) -> VmResult<()> {
             vm_println!("Built Docker vibe base: {}", DOCKER_BASE_NAME);
         }
         "tart" => {
+            let guest_os = resolve_tart_guest_os(guest_os)?;
+            let base_name = tart_base_name(guest_os);
             let script = resolve_tool_path("scripts/build-vibe-tart-base.sh");
             let mut command = Command::new(script);
             apply_tart_home_from_config(&mut command);
-            command.args(["--guest-os", "linux", "--name", TART_BASE_NAME]);
+            command.args(["--guest-os", guest_os, "--name", base_name]);
             run_command(command, "build Tart vibe base")?;
-            vm_println!("Built Tart vibe base: {}", TART_BASE_NAME);
+            vm_println!("Built Tart {guest_os} vibe base: {base_name}");
         }
         _ => unreachable!(),
     }
 
     Ok(())
+}
+
+fn resolve_tart_guest_os(requested: &str) -> VmResult<&'static str> {
+    match requested {
+        "linux" => Ok("linux"),
+        "macos" => Ok("macos"),
+        "auto" => Ok(active_tart_guest_os()),
+        _ => Err(VmError::Validation {
+            message: "Invalid Tart guest OS".to_string(),
+            field: Some("guest-os".to_string()),
+        }),
+    }
+}
+
+fn active_tart_guest_os() -> &'static str {
+    let Ok(app_config) = AppConfig::load(None, None, Some("tart".to_string())) else {
+        return "linux";
+    };
+
+    if app_config
+        .vm
+        .tart
+        .as_ref()
+        .and_then(|tart| tart.guest_os.as_deref())
+        == Some("macos")
+    {
+        "macos"
+    } else {
+        "linux"
+    }
+}
+
+fn tart_base_name(guest_os: &str) -> &'static str {
+    if guest_os == "macos" {
+        TART_MACOS_BASE_NAME
+    } else {
+        TART_LINUX_BASE_NAME
+    }
 }
 
 fn apply_tart_home_from_config(command: &mut Command) {
@@ -147,5 +192,23 @@ fn run_command(mut command: Command, context: &str) -> VmResult<()> {
             message: format!("{context} failed"),
             field: None,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{resolve_tart_guest_os, tart_base_name};
+
+    #[test]
+    fn explicit_tart_guest_os_resolves_base_name() {
+        assert_eq!(resolve_tart_guest_os("linux").unwrap(), "linux");
+        assert_eq!(resolve_tart_guest_os("macos").unwrap(), "macos");
+        assert_eq!(tart_base_name("linux"), "vibe-tart-linux-base");
+        assert_eq!(tart_base_name("macos"), "vibe-tart-sequoia-base");
+    }
+
+    #[test]
+    fn invalid_tart_guest_os_is_rejected() {
+        assert!(resolve_tart_guest_os("windows").is_err());
     }
 }
