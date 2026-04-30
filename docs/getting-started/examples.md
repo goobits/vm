@@ -117,7 +117,7 @@ docker build -f examples/base-images/playwright-chromium.dockerfile -t my-base:l
 
 # Use in your project
 vm:
-  box: my-base:latest  # Instead of ubuntu:24.04
+  image: my-base:latest  # Instead of ubuntu:24.04
 ```
 
 VM creation is significantly faster (seconds instead of the usual 5+ minutes to install Playwright/Chromium).

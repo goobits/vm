@@ -63,7 +63,11 @@ properties:
       box:
         type: string
         default: ubuntu:jammy
-        description: Base image (ubuntu:jammy for Docker, ubuntu/jammy64 for Vagrant)
+        description: Base image, Dockerfile, or saved snapshot. Prefer vm.image in new configs.
+      image:
+        type: string
+        default: ubuntu:jammy
+        description: Base image, Dockerfile, or saved snapshot. Alias for vm.box.
       memory:
         oneOf:
           - type: integer

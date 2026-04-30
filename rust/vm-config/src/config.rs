@@ -309,7 +309,11 @@ pub enum BoxSpec {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct VmSettings {
     /// Unified box configuration (image, Dockerfile, or snapshot)
-    #[serde(skip_serializing_if = "Option::is_none", rename = "box")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        rename = "box",
+        alias = "image"
+    )]
     pub r#box: Option<BoxSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,

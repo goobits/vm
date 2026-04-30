@@ -113,6 +113,7 @@ fn add_vm_schema_fields(cache: &mut HashMap<String, SchemaType>) {
     add_strings!(
         cache,
         "vm.box",
+        "vm.image",
         "vm.memory",
         "vm.cpus",
         "vm.user",

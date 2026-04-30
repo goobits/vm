@@ -17,7 +17,7 @@ project:
   name: backend
   workspace_path: /workspace
 vm:
-  box: ubuntu:24.04
+  image: ubuntu:24.04
   memory: 8192
   cpus: 4
 ports:

@@ -16,6 +16,18 @@ box: ubuntu:24.04
     }
 
     #[test]
+    fn test_image_alias_deserializes_to_box_spec() {
+        let yaml = r#"
+image: ubuntu:24.04
+"#;
+        let vm: VmSettings = serde_yaml_ng::from_str(yaml).unwrap();
+        assert!(matches!(vm.r#box, Some(BoxSpec::String(_))));
+        if let Some(BoxSpec::String(s)) = vm.r#box {
+            assert_eq!(s, "ubuntu:24.04");
+        }
+    }
+
+    #[test]
     fn test_box_spec_string_deserialization_node() {
         let yaml = r#"
 box: node:20
