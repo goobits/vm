@@ -7,7 +7,7 @@ vm run linux as backend
 vm shell backend
 vm exec backend -- npm test
 vm stop backend
-vm rm backend
+vm remove backend
 ```
 
 ## Install
@@ -25,18 +25,18 @@ vm run linux as api
 vm run mac as xcode
 vm run mac
 vm run container as redis
-vm ls
+vm list
 vm shell api
 vm shell mac
 vm exec api -- cargo test
 vm logs api --follow
 vm copy ./config.json api:/workspace/config.json
 vm stop api
-vm rm api
+vm remove api
 ```
 
 `vm run` creates the environment if it does not exist and starts it if it is stopped.
-`vm ls` lists environments for the current project. Use `vm ls --all` for the global inventory.
+`vm list` lists environments for the current project. Use `vm list --all` for the global inventory.
 
 ## Environment Kinds
 
@@ -59,7 +59,7 @@ vm revert backend stable
 vm package backend --output backend.tar.gz
 ```
 
-`vm rm` removes active environment resources but keeps explicitly saved snapshots.
+`vm remove` removes active environment resources but keeps explicitly saved snapshots.
 
 ## Advanced Tools
 

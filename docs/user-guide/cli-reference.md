@@ -14,12 +14,12 @@ USAGE:
 | Run a Linux environment | `vm run linux as backend` |
 | Run a macOS environment | `vm run mac as xcode` |
 | Run a container | `vm run container as redis` |
-| List this project's environments | `vm ls` |
-| List every environment | `vm ls --all` |
+| List this project's environments | `vm list` |
+| List every environment | `vm list --all` |
 | Open a shell | `vm shell backend` |
 | Open an unnamed macOS environment | `vm shell mac` |
 | Stop an environment | `vm stop backend` |
-| Remove an environment | `vm rm backend` |
+| Remove an environment | `vm remove backend` |
 
 ### `vm run`
 
@@ -85,7 +85,7 @@ vm revert backend stable
 vm package backend --output backend.tar.gz
 ```
 
-`vm rm` removes active environment resources and preserves explicitly saved snapshots.
+`vm remove` removes active environment resources and preserves explicitly saved snapshots.
 
 ## Config
 

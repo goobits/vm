@@ -205,7 +205,7 @@ fn handle_ssh_start_prompt(
         vm_println!("\n  Provider: Tart");
         vm_println!("  Action:   Start existing Tart VM");
         vm_println!(
-            "  Note:     This does not create or reinstall the VM. To rebuild it, run: vm rm <name> --force"
+            "  Note:     This does not create or reinstall the VM. To rebuild it, run: vm remove <name> --force"
         );
         vm_println!(
             "  Logs:     /tmp/vm-tart-{}.log",
@@ -239,9 +239,9 @@ fn handle_ssh_start_prompt(
                 "💡 Check Tart logs: /tmp/vm-tart-{}.log",
                 sanitize_log_name(container.unwrap_or(vm_name))
             );
-            vm_println!("💡 If this VM is stale or incomplete: vm rm <name> --force && vm run mac as <name>");
+            vm_println!("💡 If this VM is stale or incomplete: vm remove <name> --force && vm run mac as <name>");
         } else {
-            vm_println!("💡 Check environments: vm ls");
+            vm_println!("💡 Check environments: vm list");
         }
         return Ok(None);
     }
@@ -423,14 +423,14 @@ fn connect_ssh(
                             "\n💡 Create with: {}",
                             create_command_for_provider(provider.as_ref())
                         );
-                        vm_println!("💡 List existing VMs: vm ls");
+                        vm_println!("💡 List existing VMs: vm list");
                     }
                 } else {
                     vm_println!(
                         "\n💡 Create with: {}",
                         create_command_for_provider(provider.as_ref())
                     );
-                    vm_println!("💡 List existing VMs: vm ls");
+                    vm_println!("💡 List existing VMs: vm list");
                 }
                 // Return a clean error that won't be misinterpreted by the main error handler
                 return Err(VmError::vm_operation(

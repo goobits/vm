@@ -194,7 +194,7 @@ pub async fn handle_create(
                 if running { " and is running" } else { "" }
             );
             vm_println!(
-                "   Use 'vm shell' to connect, 'vm run linux' to start, or 'vm rm --force' to recreate."
+                "   Use 'vm shell' to connect, 'vm run linux' to start, or 'vm remove --force' to recreate."
             );
             return Ok(());
         }
@@ -350,7 +350,7 @@ pub async fn handle_create(
                 vm_println!("📝 Next steps:");
                 vm_println!("  • Open shell:   vm shell");
                 vm_println!("  • Run commands: vm exec{} -- npm install", exec_selector);
-                vm_println!("  • View envs:    vm ls");
+                vm_println!("  • View envs:    vm list");
             } else {
                 vm_println!("{}", MESSAGES.common.connect_hint);
             }

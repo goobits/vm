@@ -61,7 +61,7 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             handle_system_command(&command, args.config, args.profile).await
         }
         Command::InternalCompletion { shell } => handle_internal_completion(&shell),
-        Command::Ls { all } => {
+        Command::List { all, raw } => {
             let project = if all {
                 None
             } else {
@@ -70,7 +70,7 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
                     args.profile.clone(),
                 )?)
             };
-            vm_ops::handle_list_enhanced(None, project.as_deref())
+            vm_ops::handle_list_enhanced(None, project.as_deref(), raw)
         }
         Command::Run {
             kind,
@@ -151,7 +151,7 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
                 load_provider_context(args.config, args.profile, None)?;
             vm_ops::handle_stop(provider, environment.as_deref(), config, global_config).await
         }
-        Command::Rm { environment, force } => {
+        Command::Remove { environment, force } => {
             let (provider, config, global_config) =
                 load_provider_context(args.config, args.profile, None)?;
             vm_ops::handle_destroy_enhanced(

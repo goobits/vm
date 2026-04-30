@@ -209,7 +209,7 @@ impl TartProvider {
             .ensure_workspace_mount()
             .map_err(|e| {
                 VmError::Provider(format!(
-                    "Tart workspace mount is not ready at '{sync_dir}'. This VM may be partially provisioned or was started without the workspace share. Recreate it with `vm rm <name> --force && vm run mac as <name>`. Mount error: {e}"
+                    "Tart workspace mount is not ready at '{sync_dir}'. This VM may be partially provisioned or was started without the workspace share. Recreate it with `vm remove <name> --force && vm run mac as <name>`. Mount error: {e}"
                 ))
             })
     }
@@ -628,7 +628,7 @@ impl TartProvider {
             ProgressReporter::task(&main_phase, "Existing VM found.");
             vm_println!("⚠️  Tart VM '{}' already exists.", vm_name);
             vm_println!(
-                "   Use 'vm shell <name>' to connect, 'vm run mac as <name>' to start, or 'vm rm <name>' to recreate."
+                "   Use 'vm shell <name>' to connect, 'vm run mac as <name>' to start, or 'vm remove <name>' to recreate."
             );
             ProgressReporter::finish_phase(&main_phase, "VM already exists.");
             return Ok(());

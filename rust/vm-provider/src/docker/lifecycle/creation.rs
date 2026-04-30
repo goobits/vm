@@ -314,7 +314,7 @@ impl<'a> LifecycleOperations<'a> {
             self.list_project_containers_for_user();
 
             eprintln!("\n💡 Recommended fix:");
-            eprintln!("      vm rm --force");
+            eprintln!("      vm remove --force");
             if let Some(name) = instance_name {
                 eprintln!("      vm run linux as {}", name);
             } else {
@@ -406,7 +406,7 @@ impl<'a> LifecycleOperations<'a> {
             Err(VmError::Internal(format!(
                 "Container '{container_name}' already exists. In non-interactive mode, please use:\n\
                  - 'vm run linux' to start the existing container\n\
-                 - 'vm rm --force' followed by 'vm run linux' to recreate it"
+                 - 'vm remove --force' followed by 'vm run linux' to recreate it"
             )))
         }
     }
@@ -471,7 +471,7 @@ impl<'a> LifecycleOperations<'a> {
             Err(VmError::Internal(format!(
                 "Container '{container_name}' already exists. In non-interactive mode, please use:\n\
                  - 'vm run linux as {instance_name}' to start the existing container\n\
-                 - 'vm rm {container_name} --force' followed by 'vm run linux as {instance_name}' to recreate it"
+                 - 'vm remove {container_name} --force' followed by 'vm run linux as {instance_name}' to recreate it"
             )))
         }
     }
@@ -684,7 +684,7 @@ impl<'a> LifecycleOperations<'a> {
                 for container in &orphaned {
                     eprintln!("      docker rm -f {}", container);
                 }
-                eprintln!("   Or run: vm rm --force\n");
+                eprintln!("   Or run: vm remove --force\n");
                 // Return true to indicate we found orphans and need --no-recreate
                 return Ok(true);
             } else {
@@ -692,7 +692,7 @@ impl<'a> LifecycleOperations<'a> {
                 let container_list = orphaned.join(", ");
                 return Err(VmError::Provider(format!(
                     "Found existing service containers that would conflict: {}. \
-                    Use 'vm rm --force' to remove the environment, or preserve service containers to reuse them.",
+                    Use 'vm remove --force' to remove the environment, or preserve service containers to reuse them.",
                     container_list
                 )));
             }

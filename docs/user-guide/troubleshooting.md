@@ -10,7 +10,7 @@ vm doctor --fix
 ## Environment Will Not Start
 
 ```bash
-vm ls
+vm list
 vm logs dev --tail 100
 vm stop dev
 vm run linux as dev
@@ -19,16 +19,16 @@ vm run linux as dev
 For a clean active environment rebuild:
 
 ```bash
-vm rm dev --force
+vm remove dev --force
 vm run linux as dev
 ```
 
-Saved snapshots are preserved by `vm rm`.
+Saved snapshots are preserved by `vm remove`.
 
 ## Cannot Open A Shell
 
 ```bash
-vm ls
+vm list
 vm shell dev
 vm exec dev -- pwd
 ```

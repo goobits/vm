@@ -85,7 +85,7 @@ Inside the environment, project files are mounted at `project.workspace_path`, u
 
 ## Shared Services
 
-Shared services can be configured in `vm.yaml` and are managed with the environment lifecycle. Removing an environment with `vm rm` frees active resources while preserving explicitly saved snapshots.
+Shared services can be configured in `vm.yaml` and are managed with the environment lifecycle. Removing an environment with `vm remove` frees active resources while preserving explicitly saved snapshots.
 
 ## State
 

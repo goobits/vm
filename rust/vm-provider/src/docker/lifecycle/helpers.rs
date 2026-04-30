@@ -278,7 +278,7 @@ impl<'a> LifecycleOperations<'a> {
 
         match matches.len() {
             0 => Err(VmError::Internal(format!(
-                "No container found matching '{partial_name}'. Use 'vm ls' to see available containers"
+                "No container found matching '{partial_name}'. Use 'vm list' to see available containers"
             ))),
             1 => Ok(matches[0].clone()),
             _ => {

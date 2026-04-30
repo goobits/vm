@@ -18,6 +18,7 @@ use vm_provider::InstanceInfo;
 pub fn handle_list_enhanced(
     provider_filter: Option<&str>,
     project_filter: Option<&str>,
+    raw: bool,
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "list");
     let _enter = span.enter();
@@ -49,17 +50,43 @@ pub fn handle_list_enhanced(
         return Ok(());
     }
 
-    render_instance_table(all_instances);
+    if raw {
+        render_raw_instance_table(all_instances);
+    } else {
+        render_instance_table(all_instances);
+    }
 
     Ok(())
 }
 
 pub fn render_instance_table(instances: Vec<InstanceInfo>) {
-    // Rich dashboard table (always displayed)
+    vm_println!(
+        "{:<20} {:<12} {:<12} {:<10}",
+        "ENVIRONMENT",
+        "KIND",
+        "STATUS",
+        "UPTIME"
+    );
+    vm_println!("{}", "─".repeat(58));
+
+    let mut sorted_instances = instances;
+    sorted_instances.sort_by(|a, b| a.name.cmp(&b.name));
+
+    for instance in sorted_instances {
+        vm_println!(
+            "{:<20} {:<12} {:<12} {:<10}",
+            truncate_string(&instance.name, 20),
+            format_kind(&instance),
+            format_status(&instance.status),
+            format_uptime(&instance.uptime)
+        );
+    }
+}
+
+fn render_raw_instance_table(instances: Vec<InstanceInfo>) {
     vm_println!("{}", MESSAGES.vm.list_table_header);
     vm_println!("{}", MESSAGES.vm.list_table_separator);
 
-    // Sort instances by provider then name for consistent output
     let mut sorted_instances = instances;
     sorted_instances.sort_by(|a, b| a.provider.cmp(&b.provider).then(a.name.cmp(&b.name)));
 
@@ -76,6 +103,15 @@ pub fn render_instance_table(instances: Vec<InstanceInfo>) {
     }
 }
 
+fn format_kind(instance: &InstanceInfo) -> &'static str {
+    match instance.provider.as_str() {
+        "docker" | "podman" => "Container",
+        "tart" if instance.name == "mac" || instance.name.ends_with("-mac") => "macOS",
+        "tart" => "Linux",
+        _ => "Unknown",
+    }
+}
+
 fn truncate_string(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
         s.to_string()
@@ -88,12 +124,12 @@ fn format_status(status: &str) -> String {
     // Normalize status strings across providers with icons
     let lower_status = status.to_lowercase();
     if lower_status.contains("running") || lower_status.contains("up") {
-        "✅ Running".to_string()
+        "🟢 Running".to_string()
     } else if lower_status.contains("stopped")
         || lower_status.contains("exited")
         || lower_status.contains("poweroff")
     {
-        "🔴 Stopped".to_string()
+        "💤 Stopped".to_string()
     } else if lower_status.contains("paused") {
         "⏸️  Paused".to_string()
     } else {
@@ -104,6 +140,6 @@ fn format_status(status: &str) -> String {
 fn format_uptime(uptime: &Option<String>) -> String {
     match uptime {
         Some(time) => time.clone(),
-        None => "--".to_string(),
+        None => "-".to_string(),
     }
 }

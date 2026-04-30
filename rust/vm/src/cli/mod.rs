@@ -416,10 +416,14 @@ pub enum Command {
         memory: Option<String>,
     },
     /// List environments for this project
-    Ls {
+    #[command(alias = "ls")]
+    List {
         /// Show environments across all projects
         #[arg(long)]
         all: bool,
+        /// Show provider IDs and raw provider names
+        #[arg(long)]
+        raw: bool,
     },
     /// Drop into a shell inside an environment
     Shell {
@@ -450,7 +454,8 @@ pub enum Command {
     /// Gracefully halt an environment
     Stop { environment: Option<String> },
     /// Remove an environment while preserving saved snapshots
-    Rm {
+    #[command(alias = "rm")]
+    Remove {
         environment: Option<String>,
         #[arg(long)]
         force: bool,
@@ -565,8 +570,23 @@ mod tests {
     fn ls_parses_all_flag() {
         let args = Args::parse_from(["vm", "ls", "--all"]);
         match args.command {
-            Command::Ls { all } => assert!(all),
-            _ => panic!("Expected Command::Ls"),
+            Command::List { all, raw } => {
+                assert!(all);
+                assert!(!raw);
+            }
+            _ => panic!("Expected Command::List"),
+        }
+    }
+
+    #[test]
+    fn list_parses_raw_flag() {
+        let args = Args::parse_from(["vm", "list", "--raw"]);
+        match args.command {
+            Command::List { all, raw } => {
+                assert!(!all);
+                assert!(raw);
+            }
+            _ => panic!("Expected Command::List"),
         }
     }
 

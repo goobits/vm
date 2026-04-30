@@ -22,16 +22,16 @@ vm copy ./config.json dev:/workspace/config.json
 ## See What Is Running
 
 ```bash
-vm ls
+vm list
 ```
 
-This lists environments for the current project. Use `vm ls --all` to see every `vm` environment on the machine.
+This lists environments for the current project. Use `vm list --all` to see every `vm` environment on the machine.
 
 ## Stop Or Remove It
 
 ```bash
 vm stop dev
-vm rm dev
+vm remove dev
 ```
 
 Removing an environment frees active resources. Saved snapshots are preserved.
