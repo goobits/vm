@@ -6,7 +6,7 @@ Humane virtual environments for development. Ask for the environment you want, g
 vm run linux as backend
 vm shell backend
 vm exec backend -- npm test
-vm stop backend
+vm restart backend
 vm remove backend
 ```
 
@@ -18,39 +18,14 @@ curl -fsSL https://raw.githubusercontent.com/goobits/vm/main/install.sh | bash
 
 Docker is the default engine for Linux and container environments. Tart powers macOS environments on Apple Silicon macOS. Podman is available as an advanced provider override.
 
-## macOS VMs That Can Run Docker
-
-`vm` can boot a real macOS Tart environment and run Docker workloads inside it.
-
-```text
-+----------------------+
-| Apple Silicon Mac    |  M3/M4 + macOS 15+
-+----------+-----------+
-           | tart run --nested
-+----------v-----------+
-| macOS Dev VM         |  Xcode, Homebrew, /workspace
-+----------+-----------+
-           | Colima
-+----------v-----------+
-| Docker Workloads     |  build, compose, test
-+----------------------+
-```
-
-That means one project can exercise macOS tooling, Linux containers, and repeatable dev workflows from the same `vm` interface.
-
 ## Everyday Workflow
 
 ```bash
 vm run linux as api
-vm run mac as xcode
-vm run mac
-vm run container as redis
-vm list
 vm shell api
-vm shell mac
 vm exec api -- cargo test
 vm logs api --follow
-vm copy ./config.json api:/workspace/config.json
+vm restart api
 vm stop api
 vm remove api
 ```
@@ -70,6 +45,26 @@ vm run container as db --provider podman
 ```
 
 Naming is intentionally natural language: use `as <name>`.
+
+## Advanced Capability: Docker Inside macOS VMs
+
+`vm` can boot a real macOS Tart environment and run Docker workloads inside it.
+
+```text
++----------------------+
+| Apple Silicon Mac    |  M3/M4 + macOS 15+
++----------+-----------+
+           | tart run --nested
++----------v-----------+
+| macOS Dev VM         |  Xcode, Homebrew, /workspace
++----------+-----------+
+           | Colima
++----------v-----------+
+| Docker Workloads     |  build, compose, test
++----------------------+
+```
+
+That gives advanced workflows one interface for macOS tooling, Linux containers, and repeatable project environments. It requires an M3/M4 Mac host, macOS 15+ on the host, and a macOS 15+ guest.
 
 ## State
 
