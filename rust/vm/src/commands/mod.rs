@@ -479,13 +479,14 @@ fn apply_kind_overrides(config: &mut VmConfig, intent: &RunIntent) {
                 || value == "ubuntu:24.04"
                 || value == "vibe-tart-linux-base"
                 || value == "@vibe-box"
+                || value == "vibe-tart-base"
         }
         Some(_) => false,
     };
 
     if should_replace_box {
         settings.r#box = Some(BoxSpec::String(
-            "ghcr.io/cirruslabs/macos-sonoma-base:latest".to_string(),
+            "ghcr.io/cirruslabs/macos-sequoia-base:latest".to_string(),
         ));
     }
 }

@@ -8,5 +8,5 @@ vm:
   user: admin
 tart:
   guest_os: macos
-  image: ghcr.io/cirruslabs/macos-sonoma-base:latest
+  image: ghcr.io/cirruslabs/macos-sequoia-base:latest
   disk_size: 60

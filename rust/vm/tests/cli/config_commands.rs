@@ -410,7 +410,7 @@ services:
         assert!(config_content.contains("guest_os: linux"));
         assert!(config_content.contains("install_docker: false"));
         assert!(config_content.contains("macos:"));
-        assert!(config_content.contains("box: vibe-tart-base"));
+        assert!(config_content.contains("box: vibe-tart-sequoia-base"));
         assert!(config_content.contains("guest_os: macos"));
         assert!(config_content.contains("ssh_user: admin"));
 

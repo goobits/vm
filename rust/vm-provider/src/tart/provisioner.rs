@@ -897,7 +897,10 @@ rustup default stable"#,
         }
 
         if let Some(BoxSpec::String(name)) = config.vm.as_ref().and_then(|vm| vm.get_box_spec()) {
-            if name == "vibe-tart-base" || name.contains("macos") {
+            if name == "vibe-tart-sequoia-base"
+                || name == "vibe-tart-base"
+                || name.contains("macos")
+            {
                 return "macos";
             }
             if name == "vibe-tart-linux-base"
@@ -983,7 +986,7 @@ mod tests {
     fn guest_os_detects_vibe_tart_base_as_macos() {
         let config = VmConfig {
             vm: Some(VmSettings {
-                r#box: Some(BoxSpec::String("vibe-tart-base".to_string())),
+                r#box: Some(BoxSpec::String("vibe-tart-sequoia-base".to_string())),
                 ..Default::default()
             }),
             ..Default::default()
@@ -1044,7 +1047,7 @@ mod tests {
                 ..Default::default()
             }),
             vm: Some(VmSettings {
-                r#box: Some(BoxSpec::String("vibe-tart-base".to_string())),
+                r#box: Some(BoxSpec::String("vibe-tart-sequoia-base".to_string())),
                 ..Default::default()
             }),
             terminal: Some(TerminalConfig {

@@ -58,8 +58,8 @@ done
 
 case "$GUEST_OS" in
   macos)
-    : "${BASE_IMAGE:=ghcr.io/cirruslabs/macos-sonoma-base:latest}"
-    : "${BASE_NAME:=vibe-tart-base}"
+    : "${BASE_IMAGE:=ghcr.io/cirruslabs/macos-sequoia-base:latest}"
+    : "${BASE_NAME:=vibe-tart-sequoia-base}"
     ;;
   linux)
     : "${BASE_IMAGE:=ghcr.io/cirruslabs/ubuntu:latest}"

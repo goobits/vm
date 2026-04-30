@@ -197,7 +197,7 @@ profiles:
   tart:
     provider: tart
     vm:
-      box: vibe-tart-base
+      box: vibe-tart-sequoia-base
 "#,
             )?;
 
@@ -209,7 +209,7 @@ profiles:
                     .as_ref()
                     .and_then(|vm| vm.r#box.as_ref())
                     .map(|b| serde_yaml_ng::to_string(b).unwrap().trim().to_string()),
-                Some("vibe-tart-base".to_string())
+                Some("vibe-tart-sequoia-base".to_string())
             );
             Ok(())
         })
@@ -232,7 +232,7 @@ profiles:
   tart:
     provider: tart
     vm:
-      box: vibe-tart-base
+      box: vibe-tart-sequoia-base
 "#,
             )?;
 
@@ -244,7 +244,7 @@ profiles:
                     .as_ref()
                     .and_then(|vm| vm.r#box.as_ref())
                     .map(|b| serde_yaml_ng::to_string(b).unwrap().trim().to_string()),
-                Some("vibe-tart-base".to_string())
+                Some("vibe-tart-sequoia-base".to_string())
             );
             Ok(())
         })
@@ -267,7 +267,7 @@ profiles:
   tart:
     provider: tart
     vm:
-      box: vibe-tart-base
+      box: vibe-tart-sequoia-base
 "#,
             )?;
 

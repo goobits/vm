@@ -362,14 +362,14 @@ fn test_build_spec_absolute_context() {
 
 #[test]
 fn test_docker_rejects_tart_base_image_names() {
-    let spec = BoxSpec::String("vibe-tart-base".to_string());
+    let spec = BoxSpec::String("vibe-tart-sequoia-base".to_string());
     let err = BoxConfig::parse_for_docker(&spec, &PathBuf::from(".")).unwrap_err();
     assert!(err.to_string().contains("looks like a Tart image"));
 }
 
 #[test]
 fn test_docker_rejects_cirrus_macos_tart_images() {
-    let spec = BoxSpec::String("ghcr.io/cirruslabs/macos-sonoma-base:latest".to_string());
+    let spec = BoxSpec::String("ghcr.io/cirruslabs/macos-sequoia-base:latest".to_string());
     let err = BoxConfig::parse_for_docker(&spec, &PathBuf::from(".")).unwrap_err();
     assert!(err.to_string().contains("looks like a Tart image"));
 }

@@ -5,7 +5,7 @@ set -euo pipefail
 REBUILD_DOCKER_BASE=false
 BUILD_TART_BASE=false
 PROVIDER="${PROVIDER:-all}"
-TART_BASE_NAME="${TART_BASE_NAME:-vibe-tart-base}"
+TART_BASE_NAME="${TART_BASE_NAME:-vibe-tart-sequoia-base}"
 
 usage() {
   cat <<'EOF'
@@ -21,7 +21,7 @@ Flags:
 
 Environment:
   PROVIDER                Provider focus for validation output (default: all)
-  TART_BASE_NAME          Tart base name to write into guidance (default: vibe-tart-base)
+  TART_BASE_NAME          Tart base name to write into guidance (default: vibe-tart-sequoia-base)
 EOF
 }
 

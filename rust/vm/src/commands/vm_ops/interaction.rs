@@ -110,7 +110,7 @@ fn describe_tart_guest_os(config: &VmConfig) -> String {
         .map(box_name)
     {
         let base = base.to_lowercase();
-        if base == "vibe-tart-base" || base.contains("macos") {
+        if base == "vibe-tart-sequoia-base" || base == "vibe-tart-base" || base.contains("macos") {
             return "macOS VM".to_string();
         }
         if base == "vibe-tart-linux-base"

@@ -57,7 +57,7 @@ profiles:
     project:
       workspace_path: /workspace
     vm:
-      box: vibe-tart-base
+      box: vibe-tart-sequoia-base
       memory: 16384
       cpus: 8
     tart:

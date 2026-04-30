@@ -29,8 +29,8 @@ use vm_core::{get_cpu_core_count, get_total_memory_gb};
 use vm_messages::messages::MESSAGES;
 
 // Constants for Tart provider
-const DEFAULT_TART_IMAGE: &str = "ghcr.io/cirruslabs/macos-sonoma-base:latest";
-const DEFAULT_TART_VIBE_BASE: &str = "vibe-tart-base";
+const DEFAULT_TART_IMAGE: &str = "ghcr.io/cirruslabs/macos-sequoia-base:latest";
+const DEFAULT_TART_VIBE_BASE: &str = "vibe-tart-sequoia-base";
 const DEFAULT_TART_LINUX_VIBE_BASE: &str = "vibe-tart-linux-base";
 
 struct CollectedMetrics {

@@ -106,7 +106,7 @@ pub enum BoxConfig {
         args: Option<HashMap<String, String>>,
     },
 
-    /// Tart OCI image (e.g., "ghcr.io/cirruslabs/macos-sonoma-base:latest")
+    /// Tart OCI image (e.g., "ghcr.io/cirruslabs/macos-sequoia-base:latest")
     TartImage(String),
 
     /// Snapshot reference (universal across providers)
@@ -116,7 +116,10 @@ pub enum BoxConfig {
 impl BoxConfig {
     fn looks_like_tart_image(s: &str) -> bool {
         let lower = s.to_ascii_lowercase();
-        matches!(s, "vibe-tart-base" | "vibe-tart-linux-base") || lower.contains("cirruslabs/macos")
+        matches!(
+            s,
+            "vibe-tart-sequoia-base" | "vibe-tart-base" | "vibe-tart-linux-base"
+        ) || lower.contains("cirruslabs/macos")
     }
 
     fn looks_like_dockerfile_path(s: &str) -> bool {
