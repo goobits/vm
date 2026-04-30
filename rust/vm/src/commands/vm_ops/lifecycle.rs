@@ -253,3 +253,57 @@ pub async fn handle_stop(
         }
     }
 }
+
+/// Handle VM restart. If the environment is stopped, this makes the intended
+/// final state true by starting it.
+pub async fn handle_restart(
+    provider: Box<dyn Provider>,
+    container: Option<&str>,
+    config: VmConfig,
+    global_config: GlobalConfig,
+) -> VmResult<()> {
+    let span = info_span!("vm_operation", operation = "restart");
+    let _enter = span.enter();
+    debug!("Restarting VM");
+
+    let vm_name = config
+        .project
+        .as_ref()
+        .and_then(|p| p.name.as_ref())
+        .map(|s| s.as_str())
+        .unwrap_or("vm-project");
+    let display_name = container.unwrap_or(vm_name);
+
+    vm_println!("{}", msg!(MESSAGES.vm.restart_header, name = display_name));
+
+    let context = ProviderContext::with_verbose(false).with_config(global_config.clone());
+    let status = provider.get_status_report(container).ok();
+    let result = if status.as_ref().is_some_and(|report| report.is_running) {
+        provider.restart_with_context(container, &context)
+    } else {
+        provider.start_with_context(container, &context)
+    };
+
+    match result {
+        Ok(()) => {
+            let vm_instance_name = container
+                .map(str::to_string)
+                .unwrap_or_else(|| default_resource_name(provider.as_ref(), vm_name));
+            register_vm_services_helper(&vm_instance_name, &config, &global_config).await?;
+            vm_println!("{}", MESSAGES.vm.restart_success);
+            vm_println!("{}", MESSAGES.common.connect_hint);
+            Ok(())
+        }
+        Err(e) => {
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.vm.restart_troubleshooting,
+                    name = display_name,
+                    error = e.to_string()
+                )
+            );
+            Err(VmError::from(e))
+        }
+    }
+}

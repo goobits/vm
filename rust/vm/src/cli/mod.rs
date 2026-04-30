@@ -453,6 +453,8 @@ pub enum Command {
     Copy { source: String, destination: String },
     /// Gracefully halt an environment
     Stop { environment: Option<String> },
+    /// Stop and start an environment
+    Restart { environment: Option<String> },
     /// Remove an environment while preserving saved snapshots
     #[command(alias = "rm")]
     Remove {
@@ -587,6 +589,15 @@ mod tests {
                 assert!(raw);
             }
             _ => panic!("Expected Command::List"),
+        }
+    }
+
+    #[test]
+    fn restart_parses_environment() {
+        let args = Args::parse_from(["vm", "restart", "backend"]);
+        match args.command {
+            Command::Restart { environment } => assert_eq!(environment, Some("backend".into())),
+            _ => panic!("Expected Command::Restart"),
         }
     }
 

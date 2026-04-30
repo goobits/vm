@@ -31,6 +31,7 @@ This lists environments for the current project. Use `vm list --all` to see ever
 
 ```bash
 vm stop dev
+vm restart dev
 vm remove dev
 ```
 

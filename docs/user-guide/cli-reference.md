@@ -19,6 +19,7 @@ USAGE:
 | Open a shell | `vm shell backend` |
 | Open an unnamed macOS environment | `vm shell mac` |
 | Stop an environment | `vm stop backend` |
+| Restart an environment | `vm restart backend` |
 | Remove an environment | `vm remove backend` |
 
 ### `vm run`

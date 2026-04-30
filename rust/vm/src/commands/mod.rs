@@ -151,6 +151,11 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
                 load_provider_context(args.config, args.profile, None)?;
             vm_ops::handle_stop(provider, environment.as_deref(), config, global_config).await
         }
+        Command::Restart { environment } => {
+            let (provider, config, global_config) =
+                load_provider_context(args.config, args.profile, None)?;
+            vm_ops::handle_restart(provider, environment.as_deref(), config, global_config).await
+        }
         Command::Remove { environment, force } => {
             let (provider, config, global_config) =
                 load_provider_context(args.config, args.profile, None)?;
