@@ -122,7 +122,7 @@ vm:
 +----------------------+
 | Apple Silicon Mac    |  M3/M4 + macOS 15+
 +----------+-----------+
-           | tart run --nested
+           | Tart macOS guest
 +----------v-----------+
 | macOS Dev VM         |  Xcode, Homebrew, /workspace
 +----------+-----------+
@@ -132,7 +132,7 @@ vm:
 +----------------------+
 ```
 
-That gives advanced workflows one interface for macOS tooling, Linux containers, and repeatable project environments. It requires an M3/M4 Mac host, macOS 15+ on the host, and a macOS 15+ guest.
+That gives advanced workflows one interface for macOS tooling, Linux containers, and repeatable project environments. Docker inside macOS guests uses Colima with QEMU TCG software emulation, so it is slower than native Docker.
 
 ## Development
 

@@ -35,7 +35,7 @@ vm exec dev -- pwd
 
 ## Docker In A macOS Tart Guest
 
-Docker inside a macOS Tart guest needs nested virtualization from the Mac runner. Confirm the runner is Apple Silicon M3/M4, the host is macOS 15+, the guest image is macOS 15+, and `tart.nested: true` is set.
+Tart does not support nested virtualization for macOS guests. Docker inside a macOS Tart guest uses Colima with QEMU TCG software emulation.
 
 After booting the guest:
 

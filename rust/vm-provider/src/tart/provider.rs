@@ -432,12 +432,9 @@ impl TartProvider {
     }
 
     fn build_run_command(&self, vm_name: &str, log_path: &str, dir_args: &[String]) -> String {
-        let nested_arg = if self
-            .config
-            .tart
-            .as_ref()
-            .and_then(|tart| tart.nested)
-            .unwrap_or(false)
+        let tart = self.config.tart.as_ref();
+        let nested_arg = if tart.and_then(|tart| tart.nested).unwrap_or(false)
+            && tart.and_then(|tart| tart.guest_os.as_deref()) != Some("macos")
         {
             "--nested "
         } else {
@@ -1382,6 +1379,7 @@ mod tests {
             config: VmConfig {
                 tart: Some(TartConfig {
                     nested: Some(true),
+                    guest_os: Some("linux".to_string()),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -1391,5 +1389,23 @@ mod tests {
         assert!(provider
             .build_run_command("vm-mac", "/tmp/vm-tart-vm_mac.log", &[])
             .contains("tart run --no-graphics --nested "));
+    }
+
+    #[test]
+    fn tart_run_omits_nested_flag_for_macos_guests() {
+        let provider = TartProvider {
+            config: VmConfig {
+                tart: Some(TartConfig {
+                    nested: Some(true),
+                    guest_os: Some("macos".to_string()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        };
+
+        assert!(!provider
+            .build_run_command("vm-mac", "/tmp/vm-tart-vm_mac.log", &[])
+            .contains(" --nested "));
     }
 }

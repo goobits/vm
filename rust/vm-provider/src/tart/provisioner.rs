@@ -555,9 +555,32 @@ JSON
 fi
 
 mkdir -p '{workspace}'
+cat >'{workspace}/qemu-system-aarch64-tcg' <<'SH'
+#!/bin/bash
+args=()
+for arg in "$@"; do
+  case "$arg" in
+    virt,accel=hvf)
+      arg="virt,accel=tcg"
+      ;;
+    host)
+      arg="max"
+      ;;
+  esac
+  args+=("$arg")
+done
+exec /opt/homebrew/bin/qemu-system-aarch64 "${{args[@]}}"
+SH
+chmod +x '{workspace}/qemu-system-aarch64-tcg'
+
+mkdir -p "$HOME/.local/share/qemu"
+ln -sf /opt/homebrew/share/qemu/edk2-aarch64-code.fd "$HOME/.local/share/qemu/edk2-aarch64-code.fd"
+ln -sf /opt/homebrew/share/qemu/edk2-aarch64-code.fd "$HOME/.local/share/qemu/edk-aarch64-tcg-code.fd"
+
 cat >'{workspace}/start-colima' <<'SH'
 #!/bin/sh
-colima start --cpu 2 --memory 4 --disk 20
+QEMU_SYSTEM_AARCH64="$(dirname "$0")/qemu-system-aarch64-tcg" \
+  colima start --cpu 2 --memory 4 --disk 20 --vm-type qemu --cpu-type max
 SH
 chmod +x '{workspace}/start-colima'
 "#,

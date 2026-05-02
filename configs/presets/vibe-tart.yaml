@@ -63,6 +63,5 @@ profiles:
     tart:
       guest_os: macos
       disk_size: 80
-      nested: true
       ssh_user: admin
       install_docker: true
