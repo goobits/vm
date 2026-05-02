@@ -30,7 +30,7 @@ help:
 
 # Build (with automatic version bump)
 build:
-	@./scripts/bump-version.sh
+	@./scripts/dev/bump-version.sh
 	cd rust && cargo build --workspace
 
 # Build without version bump
@@ -86,11 +86,11 @@ udeps:
 
 # Analysis
 check-duplicates:
-	./scripts/check-duplicates.sh
+	./scripts/dev/check-duplicates.sh
 
 # Version management
 bump-version:
-	@./scripts/bump-version.sh
+	@./scripts/dev/bump-version.sh
 
 # Quality gates - run all checks before committing
 quality-gates: fmt clippy audit udeps test

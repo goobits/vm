@@ -12,7 +12,7 @@ usage() {
 Validate the shared Docker plus macOS-Tart vibe workflow for the current project.
 
 Usage:
-  ./scripts/validate-vibe-providers.sh [--provider docker|tart|all] [--rebuild-docker-base] [--build-tart-base]
+  ./scripts/internal/validate-vibe-providers.sh [--provider docker|tart|all] [--rebuild-docker-base] [--build-tart-base]
 
 Flags:
   --provider docker|tart|all  Limit validation guidance to one provider (default: all)
@@ -71,7 +71,7 @@ require_tool() {
 require_tool vm
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PROJECT_DIR="$(pwd)"
 
 run_step() {
@@ -91,7 +91,7 @@ fi
 if [[ "${BUILD_TART_BASE}" == "true" ]]; then
   require_tool tart
   run_step "Building Tart vibe base" \
-    "${REPO_ROOT}/scripts/build-vibe-tart-base.sh" --name "${TART_BASE_NAME}"
+    "${REPO_ROOT}/scripts/internal/build-vibe-tart-base.sh" --name "${TART_BASE_NAME}"
 fi
 
 echo

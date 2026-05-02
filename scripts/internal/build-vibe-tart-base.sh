@@ -14,7 +14,7 @@ usage() {
 Build a local Tart-native vibe base VM.
 
 Usage:
-  ./scripts/build-vibe-tart-base.sh [--guest-os macos|linux] [--name NAME] [--base-image IMAGE] [--node-version VERSION]
+  ./scripts/internal/build-vibe-tart-base.sh [--guest-os macos|linux] [--name NAME] [--base-image IMAGE] [--node-version VERSION]
 
 Environment overrides:
   GUEST_OS       Guest OS type to build (default: macos)

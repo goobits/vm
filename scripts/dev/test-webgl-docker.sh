@@ -1,6 +1,6 @@
 #!/bin/bash
 # Test WebGL/WebGPU support in Docker before rebuilding @vibe-box
-# Usage: ./scripts/test-webgl-docker.sh [--no-cache] [--skip-build]
+# Usage: ./scripts/dev/test-webgl-docker.sh [--no-cache] [--skip-build]
 #   --no-cache   Force fresh build (ignore Docker cache)
 #   --skip-build Reuse existing vibe-box-test image (for quick retests)
 

@@ -3,13 +3,13 @@
 # Version Bumper Script
 #
 # Automatically increments the patch version (x.y.z -> x.y.z+1) in Cargo.toml
-# Usage: ./scripts/bump-version.sh
+# Usage: ./scripts/dev/bump-version.sh
 
 set -euo pipefail
 
 CARGO_TOML="rust/Cargo.toml"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CARGO_TOML_PATH="$PROJECT_ROOT/$CARGO_TOML"
 
 # Colors for output

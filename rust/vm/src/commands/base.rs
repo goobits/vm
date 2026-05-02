@@ -49,7 +49,7 @@ fn handle_build(preset: &str, provider: &str, guest_os: &str) -> VmResult<()> {
         "tart" => {
             let guest_os = resolve_tart_guest_os(guest_os)?;
             let base_name = tart_base_name(guest_os);
-            let script = resolve_tool_path("scripts/build-vibe-tart-base.sh");
+            let script = resolve_tool_path("scripts/internal/build-vibe-tart-base.sh");
             let mut command = Command::new(script);
             apply_tart_home_from_config(&mut command);
             command.args(["--guest-os", guest_os, "--name", base_name]);
@@ -136,7 +136,7 @@ fn handle_validate(
 ) -> VmResult<()> {
     ensure_supported_preset(preset)?;
 
-    let script = resolve_tool_path("scripts/validate-vibe-providers.sh");
+    let script = resolve_tool_path("scripts/internal/validate-vibe-providers.sh");
     let mut cmd = Command::new(script);
     apply_tart_home_from_config(&mut cmd);
 
