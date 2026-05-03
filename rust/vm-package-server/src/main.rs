@@ -76,17 +76,27 @@ enum Commands {
     Status,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     // Initialize tracing
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .with_target(false)
+        .with_level(false)
+        .without_time()
+        .init();
 
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Start { host, port, data } => run_server(host, port, data).await,
+        Commands::Start { host, port, data } => {
+            let runtime = tokio::runtime::Runtime::new()?;
+            runtime.block_on(run_server(host, port, data))
+        }
 
-        Commands::Background { host, port, data } => run_server_background(host, port, data).await,
+        Commands::Background { host, port, data } => {
+            let runtime = tokio::runtime::Runtime::new()?;
+            runtime.block_on(run_server_background(host, port, data))
+        }
 
         Commands::Add { r#type } => add_package(&cli.server, r#type.as_deref()),
 

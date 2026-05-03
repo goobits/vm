@@ -1,5 +1,7 @@
 .PHONY: help build build-no-bump publish test test-unit test-integration test-network clippy fmt fmt-fix check-duplicates check bump-version quality-gates deny watch dev udeps
 
+CARGO_JOBS ?= 1
+
 # Default target - show help
 .DEFAULT_GOAL := help
 
@@ -27,15 +29,17 @@ help:
 	@echo "  make watch            - Watch for changes and run tests (cargo-watch)"
 	@echo "  make dev              - Watch for changes and run checks (cargo-watch)"
 	@echo ""
+	@echo "  CARGO_JOBS=N          - Override Cargo parallelism (default: 1)"
+	@echo ""
 
 # Build (with automatic version bump)
 build:
 	@./scripts/dev/bump-version.sh
-	cd rust && cargo build --workspace
+	cd rust && cargo build --workspace -j $(CARGO_JOBS)
 
 # Build without version bump
 build-no-bump:
-	cd rust && cargo build --workspace
+	cd rust && cargo build --workspace -j $(CARGO_JOBS)
 
 # Publish to crates.io
 publish:
@@ -47,12 +51,12 @@ test: test-unit test-integration-conditional
 test-unit:
 	@command -v cargo-nextest >/dev/null 2>&1 && \
 		cd rust && cargo nextest run --workspace --lib --test-threads=10 || \
-		(echo "⚠️  cargo-nextest not found, falling back to cargo test" && cd rust && cargo test --workspace --lib -- --test-threads=10)
+		(echo "⚠️  cargo-nextest not found, falling back to cargo test" && cd rust && cargo test --workspace --lib -j $(CARGO_JOBS) -- --test-threads=10)
 
 test-integration:
 	@command -v cargo-nextest >/dev/null 2>&1 && \
 		cd rust && cargo nextest run --workspace --test '*' --features integration --test-threads=2 || \
-		(echo "⚠️  cargo-nextest not found, falling back to cargo test" && cd rust && cargo test --workspace --test '*' --features integration -- --test-threads=2)
+		(echo "⚠️  cargo-nextest not found, falling back to cargo test" && cd rust && cargo test --workspace --test '*' --features integration -j $(CARGO_JOBS) -- --test-threads=2)
 
 test-integration-conditional:
 ifndef SKIP_INTEGRATION_TESTS
@@ -63,11 +67,11 @@ test-network:
 	@echo "⚠️  Network tests require TLS certificates and may prompt for Keychain access"
 	@command -v cargo-nextest >/dev/null 2>&1 && \
 		cd rust && cargo nextest run --workspace --features network-tests --test-threads=2 || \
-		cd rust && cargo test --workspace --features network-tests -- --test-threads=2
+		cd rust && cargo test --workspace --features network-tests -j $(CARGO_JOBS) -- --test-threads=2
 
 # Code quality
 clippy:
-	cd rust && cargo clippy --workspace --all-targets -- -D warnings
+	cd rust && cargo clippy --workspace --all-targets -j $(CARGO_JOBS) -- -D warnings
 
 fmt:
 	cd rust && cargo fmt --all --check

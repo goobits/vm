@@ -1112,7 +1112,10 @@ if ! bash -n "$0" 2>/dev/null; then
     exit 1
 fi
 
-# Check for required commands
+# Parse arguments
+parse_arguments "$@"
+
+# Check for required commands after parsing so --help and -v work on fresh systems.
 for cmd in curl timeout mktemp; do
     if ! command_exists "$cmd"; then
         echo "❌ Required command '$cmd' not found" >&2
@@ -1120,9 +1123,6 @@ for cmd in curl timeout mktemp; do
         exit $ERR_DEPENDENCY_MISSING
     fi
 done
-
-# Parse arguments
-parse_arguments "$@"
 
 # Run main installation
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then

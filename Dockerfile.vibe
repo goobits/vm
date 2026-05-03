@@ -73,10 +73,12 @@ RUN --mount=type=cache,target=/home/${USER_NAME}/.nvm/.cache,uid=${USER_UID},gid
 
 RUN --mount=type=cache,target=/home/${USER_NAME}/.npm,uid=${USER_UID},gid=${USER_GID} \
     . $NVM_DIR/nvm.sh && npm install -g \
-    @google/gemini-cli @openai/codex \
+    @google/gemini-cli@latest @openai/codex@latest \
     playwright prettier eslint typescript ts-node tsx nodemon npm-check-updates
 
-RUN curl -fsSL https://claude.ai/install.sh | bash
+RUN curl -fsSL https://claude.ai/install.sh | bash && \
+    . $NVM_DIR/nvm.sh && \
+    (command -v claude >/dev/null 2>&1 || npm install -g @anthropic-ai/claude-code@latest)
 
 # Chrome for Testing only available on x86_64
 RUN --mount=type=cache,target=/home/${USER_NAME}/.cache/ms-playwright,uid=${USER_UID},gid=${USER_GID} \

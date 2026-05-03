@@ -79,8 +79,8 @@ async fn run_server_internal(
         }
     };
 
-    info!(data_dir = %abs_data_dir.display(), "📂 Using data directory: {}", abs_data_dir.display());
-    info!(host = %host, port = %port, "Starting server");
+    info!("📂 Using data directory: {}", abs_data_dir.display());
+    info!("Starting server on {host}:{port}");
 
     // Create required components for AppState
     let upstream_config = UpstreamConfig::default();

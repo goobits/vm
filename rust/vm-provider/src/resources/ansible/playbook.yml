@@ -555,34 +555,30 @@
                 command -v claude >/dev/null 2>&1
             }
 
-            if command -v claude >/dev/null 2>&1; then
-                echo "Claude Code CLI already installed"
-            else
-                INSTALLER="$(mktemp)"
-                trap 'rm -f "$INSTALLER"' EXIT
-                curl -fsSL https://claude.ai/install.sh -o "$INSTALLER"
-                bash "$INSTALLER"
+            INSTALLER="$(mktemp)"
+            trap 'rm -f "$INSTALLER"' EXIT
+            curl -fsSL https://claude.ai/install.sh -o "$INSTALLER"
+            bash "$INSTALLER"
+            if ! ensure_claude_launcher; then
+                export NVM_DIR="$HOME/.nvm"
+                [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+                npm install -g @anthropic-ai/claude-code@latest
+                hash -r
                 if ! ensure_claude_launcher; then
-                    export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
-                    npm install -g @anthropic-ai/claude-code
-                    hash -r
-                    if ! ensure_claude_launcher; then
-                        echo "Claude Code installer completed, but no claude launcher was found." >&2
-                        echo "Searched PATH: $PATH" >&2
-                        find "$HOME/.local" "$HOME/.claude" -maxdepth 5 -printf '%M %p -> %l\n' 2>/dev/null || true
-                        exit 1
-                    fi
+                    echo "Claude Code installer completed, but no claude launcher was found." >&2
+                    echo "Searched PATH: $PATH" >&2
+                    find "$HOME/.local" "$HOME/.claude" -maxdepth 5 -printf '%M %p -> %l\n' 2>/dev/null || true
+                    exit 1
                 fi
-                command -v claude
-                echo "Claude Code CLI installed"
             fi
+            command -v claude
+            echo "Claude Code CLI installed or updated"
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
         when: claude_sync_enabled
         register: claude_install
-        changed_when: "'installed' in claude_install.stdout and 'already' not in claude_install.stdout"
+        changed_when: "'installed or updated' in claude_install.stdout"
 
       - name: Install Gemini CLI
         shell: |
@@ -592,18 +588,14 @@
             [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
             NPM_BIN="$(npm prefix -g)/bin"
             export PATH="$NPM_BIN:$HOME/.local/bin:$PATH"
-            if command -v gemini >/dev/null 2>&1; then
-                echo "Gemini CLI already installed"
-            else
-                npm install -g @google/gemini-cli
-                command -v gemini
-            fi
+            npm install -g @google/gemini-cli@latest
+            command -v gemini
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
         when: gemini_sync_enabled
         register: gemini_install
-        changed_when: "'already installed' not in gemini_install.stdout"
+        changed_when: true
 
       - name: Install Codex CLI
         shell: |
@@ -613,18 +605,14 @@
             [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
             NPM_BIN="$(npm prefix -g)/bin"
             export PATH="$NPM_BIN:$HOME/.local/bin:$PATH"
-            if command -v codex >/dev/null 2>&1; then
-                echo "Codex CLI already installed"
-            else
-                npm install -g @openai/codex
-                command -v codex
-            fi
+            npm install -g @openai/codex@latest
+            command -v codex
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
         when: codex_sync_enabled
         register: codex_install
-        changed_when: "'already installed' not in codex_install.stdout"
+        changed_when: true
 
       - name: Install container pipx packages
         shell: |

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Test WebGL/WebGPU support in Docker before rebuilding @vibe-box
-# Usage: ./scripts/dev/test-webgl-docker.sh [--no-cache] [--skip-build]
+# Usage: ./scripts/test-webgl-docker.sh [--no-cache] [--skip-build]
 #   --no-cache   Force fresh build (ignore Docker cache)
 #   --skip-build Reuse existing vibe-box-test image (for quick retests)
 
@@ -32,7 +32,7 @@ for arg in "$@"; do
             ;;
         *)
             echo "ERROR: Unknown argument: $arg" >&2
-            echo "Usage: ./scripts/dev/test-webgl-docker.sh [--no-cache] [--skip-build]" >&2
+            echo "Usage: ./scripts/test-webgl-docker.sh [--no-cache] [--skip-build]" >&2
             exit 2
             ;;
     esac

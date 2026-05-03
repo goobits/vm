@@ -580,7 +580,7 @@ pub fn list_packages(server_url: &str) -> Result<()> {
 
     // Try to get packages from server first, fallback to local storage if server is not running
     let packages = if client.is_server_running() {
-        info!(server_url = %server_url, "Fetching packages from server");
+        debug!(server_url = %server_url, "Fetching packages from server");
         client.list_all_packages()?
     } else {
         info!("ℹ️  Server not running, listing packages from local storage");
@@ -636,13 +636,13 @@ pub fn show_status(server_url: &str) -> Result<()> {
     let client = PackageServerClient::new(server_url);
 
     if !client.is_server_running() {
-        warn!(server_url = %server_url, "Package server is not running");
+        debug!(server_url = %server_url, "Package server is not running");
         info!("❌ Package server is not running at {}", server_url);
         info!("   Hint: Enable this service in vm.yaml for automatic startup (services.package_registry.enabled: true)");
         return Ok(());
     }
 
-    info!(server_url = %server_url, "✅ Package server is running at {}", server_url);
+    info!("✅ Package server is running at {}", server_url);
 
     if let Ok(status) = client.get_server_status() {
         debug!(status = ?status, "Retrieved server status");

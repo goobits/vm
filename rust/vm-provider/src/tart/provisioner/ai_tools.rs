@@ -131,9 +131,9 @@ repair_auth_json"#,
         if ai_tools.is_claude_enabled() {
             self.ssh_exec(&format!(
                 r#"export PATH="{}"
-if ! command -v claude >/dev/null 2>&1; then
-  curl -fsSL https://claude.ai/install.sh | bash
-fi"#,
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+curl -fsSL https://claude.ai/install.sh | bash || npm install -g @anthropic-ai/claude-code@latest"#,
                 Self::user_bin_path(config)
             ))?;
             self.prepare_json_backed_tool_home(".claude")?;
@@ -148,9 +148,7 @@ fi"#,
                 r#"export PATH="{}"
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-if ! command -v gemini >/dev/null 2>&1; then
-  npm install -g @google/gemini-cli
-fi"#,
+npm install -g @google/gemini-cli@latest"#,
                 Self::user_bin_path(config)
             ))?;
             self.prepare_json_backed_tool_home(".gemini")?;
@@ -161,9 +159,7 @@ fi"#,
                 r#"export PATH="{}"
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-if ! command -v codex >/dev/null 2>&1; then
-  npm install -g @openai/codex
-fi"#,
+npm install -g @openai/codex@latest"#,
                 Self::user_bin_path(config)
             ))?;
             self.ensure_codex_runtime_config(config)?;

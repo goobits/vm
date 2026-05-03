@@ -44,7 +44,6 @@
 //! configurations that include presets and global settings.
 
 use std::path::PathBuf;
-use tracing::{error, info};
 use vm_core::error::{Result, VmError};
 
 use crate::cli::formatting::query_field;
@@ -82,14 +81,14 @@ pub fn execute_query(
         };
 
     if raw && value.is_string() {
-        info!(
+        println!(
             "{}",
             value
                 .as_str()
                 .ok_or_else(|| VmError::Config(format!("Expected string value, got: {value:?}")))?
         );
     } else {
-        info!("{}", serde_json::to_string(&value)?);
+        println!("{}", serde_json::to_string(&value)?);
     }
     Ok(())
 }
@@ -106,7 +105,7 @@ pub fn execute_filter(
 pub fn execute_array_length(file: PathBuf, path: String) -> Result<()> {
     use crate::yaml::YamlOperations;
     let length = YamlOperations::array_length(&file, &path)?;
-    info!("{}", length);
+    println!("{length}");
     Ok(())
 }
 
@@ -114,15 +113,15 @@ pub fn execute_has_field(file: PathBuf, field: String, subfield: String) -> Resu
     use crate::yaml::YamlOperations;
     match YamlOperations::has_field(&file, &field, &subfield) {
         Ok(true) => {
-            info!("true");
+            println!("true");
             std::process::exit(0);
         }
         Ok(false) => {
-            info!("false");
+            println!("false");
             std::process::exit(1);
         }
         Err(e) => {
-            error!("Error checking field: {}", e);
+            eprintln!("Error checking field: {e}");
             std::process::exit(1);
         }
     }
@@ -142,6 +141,6 @@ pub fn execute_select_where(
 pub fn execute_count(file: PathBuf, path: String) -> Result<()> {
     use crate::yaml::YamlOperations;
     let count = YamlOperations::count_items(&file, &path)?;
-    info!("{}", count);
+    println!("{count}");
     Ok(())
 }
