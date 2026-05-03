@@ -92,6 +92,21 @@ case "$(uname -s)" in
 esac
 export VM_AI_ALIAS_REPAIR_VERSION=2
 
+vm_home_is_writable() {
+  local _vm_home_test="$HOME/.vm-home-write-test"
+  if touch "$_vm_home_test" 2>/dev/null; then
+    rm -f "$_vm_home_test" 2>/dev/null || true
+    return 0
+  fi
+  echo "ERROR: HOME is not writable by $(id -un): $HOME" >&2
+  if command -v stat >/dev/null 2>&1; then
+    stat -c '%u %g %U %G %a %n' "$HOME" 2>/dev/null || stat -f '%u %g %Su %Sg %Lp %N' "$HOME" 2>/dev/null || ls -ld "$HOME" >&2
+  else
+    ls -ld "$HOME" >&2
+  fi
+  return 1
+}
+
 vm_json_file_is_valid() {
   [ -f "$1" ] || return 1
   if command -v python3 >/dev/null 2>&1; then
@@ -129,16 +144,20 @@ vm_repair_json_file() {
 }
 
 vm_repair_claude_state() {
-  mkdir -p "$HOME/.claude" 2>/dev/null || true
+  vm_home_is_writable || return 1
+  mkdir -p "$HOME/.claude" "$HOME/.claude/projects" "$HOME/.claude/sessions" 2>/dev/null || true
   vm_repair_empty_json_files "$HOME/.claude"
+  [ -f "$HOME/.claude.json" ] && chmod 600 "$HOME/.claude.json" 2>/dev/null || true
 }
 
 vm_repair_gemini_state() {
+  vm_home_is_writable || return 1
   mkdir -p "$HOME/.gemini" 2>/dev/null || true
   vm_repair_empty_json_files "$HOME/.gemini"
 }
 
 vm_repair_codex_state() {
+  vm_home_is_writable || return 1
   mkdir -p "$HOME/.codex" "$HOME/.codex/log" "$HOME/.codex/sessions" "$HOME/.codex/rollout" 2>/dev/null || true
   vm_repair_empty_json_files "$HOME/.codex"
   vm_repair_json_file "$HOME/.codex/auth.json" strict

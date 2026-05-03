@@ -168,6 +168,48 @@
         become: yes
         when: ansible_facts['user_id'] == 0
 
+      - name: Ensure first-run CLI state paths are writable
+        file:
+            path: '{{ item }}'
+            state: directory
+            owner: '{{ project_user }}'
+            group: '{{ project_user_group }}'
+            mode: '0755'
+        loop:
+            - '/home/{{ project_user }}/.local'
+            - '/home/{{ project_user }}/.local/bin'
+            - '/home/{{ project_user }}/.claude'
+            - '/home/{{ project_user }}/.claude/projects'
+            - '/home/{{ project_user }}/.claude/sessions'
+            - '/home/{{ project_user }}/.gemini'
+            - '/home/{{ project_user }}/.codex'
+        become: yes
+
+      - name: Check for Claude top-level state file
+        stat:
+            path: '/home/{{ project_user }}/.claude.json'
+        register: claude_top_level_state
+
+      - name: Ensure Claude top-level state file has project user ownership
+        file:
+            path: '/home/{{ project_user }}/.claude.json'
+            owner: '{{ project_user }}'
+            group: '{{ project_user_group }}'
+            mode: '0600'
+        become: yes
+        when: claude_top_level_state.stat.exists | bool
+
+      - name: Verify project user home is writable
+        shell: |
+            set -e
+            touch "/home/{{ project_user }}/.vm-home-write-test"
+            rm -f "/home/{{ project_user }}/.vm-home-write-test"
+        args:
+            executable: /bin/bash
+        become: yes
+        become_user: '{{ project_user }}'
+        changed_when: false
+
   handlers:
       - name: restart postgresql
         systemd:

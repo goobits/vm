@@ -2,6 +2,31 @@ use super::{resolve_home_dir, Path, PathBuf, Result, TartProvisioner, VmConfig};
 use tracing::warn;
 
 impl TartProvisioner {
+    fn ensure_user_home_ready(&self) -> Result<()> {
+        self.ssh_exec(
+            r#"set -e
+user_uid="$(id -u)"
+user_gid="$(id -g)"
+if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
+$SUDO chown "$user_uid:$user_gid" "$HOME" 2>/dev/null || true
+chmod u+rwx "$HOME" 2>/dev/null || true
+mkdir -p "$HOME/.local/bin" "$HOME/.claude/projects" "$HOME/.claude/sessions"
+$SUDO chown -R "$user_uid:$user_gid" "$HOME/.local" "$HOME/.claude" 2>/dev/null || true
+if [ -f "$HOME/.claude.json" ]; then
+  $SUDO chown "$user_uid:$user_gid" "$HOME/.claude.json" 2>/dev/null || true
+  chmod 600 "$HOME/.claude.json" 2>/dev/null || true
+fi
+if ! touch "$HOME/.vm-home-write-test" 2>/dev/null; then
+  echo "ERROR: HOME is not writable by $(id -un): $HOME" >&2
+  stat -f '%u %g %Su %Sg %Lp %N' "$HOME" 2>/dev/null || stat -c '%u %g %U %G %a %n' "$HOME" >&2 || ls -ld "$HOME" >&2
+  exit 1
+fi
+rm -f "$HOME/.vm-home-write-test""#,
+        )?;
+
+        Ok(())
+    }
+
     fn prepare_json_backed_tool_home(&self, dir_name: &str) -> Result<()> {
         let dir_name_escaped = Self::shell_escape_single_quotes(dir_name);
         self.ssh_exec(&format!(
@@ -9,8 +34,8 @@ impl TartProvisioner {
 tool_home="$HOME/{dir_name}"
 mkdir -p "$tool_home"
 find "$tool_home" -type f -name '*.json' -size 0 -exec rm -f {{}} + 2>/dev/null || true
-home_uid="$(stat -f %u "$HOME" 2>/dev/null || stat -c %u "$HOME" 2>/dev/null || id -u)"
-home_gid="$(stat -f %g "$HOME" 2>/dev/null || stat -c %g "$HOME" 2>/dev/null || id -g)"
+home_uid="$(id -u)"
+home_gid="$(id -g)"
 if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
 $SUDO chown -R "$home_uid:$home_gid" "$tool_home" 2>/dev/null || true
 chmod 700 "$tool_home" 2>/dev/null || true"#,
@@ -24,8 +49,8 @@ chmod 700 "$tool_home" 2>/dev/null || true"#,
         self.ssh_exec(
             r#"set -e
 codex_home="$HOME/.codex"
-home_uid="$(stat -f %u "$HOME" 2>/dev/null || stat -c %u "$HOME" 2>/dev/null || id -u)"
-home_gid="$(stat -f %g "$HOME" 2>/dev/null || stat -c %g "$HOME" 2>/dev/null || id -g)"
+home_uid="$(id -u)"
+home_gid="$(id -g)"
 if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
 $SUDO chflags -R nouchg,noschg "$codex_home" "$HOME/.zshrc" "$HOME/.bashrc" 2>/dev/null || true
 is_mounted() {
@@ -127,6 +152,8 @@ repair_auth_json"#,
         else {
             return Ok(());
         };
+
+        self.ensure_user_home_ready()?;
 
         if ai_tools.is_claude_enabled() {
             self.ssh_exec(&format!(

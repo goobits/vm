@@ -234,6 +234,18 @@ fn test_zshrc_template_has_project_alias_loop() {
 }
 
 #[test]
+fn test_zshrc_template_checks_ai_home_writability() {
+    let rendered = render_docker_zshrc_for_test();
+
+    assert!(rendered.contains("vm_home_is_writable()"));
+    assert!(rendered.contains(".vm-home-write-test"));
+    assert!(rendered.contains("ERROR: HOME is not writable"));
+    assert!(rendered.contains("$HOME/.claude/projects"));
+    assert!(rendered.contains("$HOME/.claude/sessions"));
+    assert!(rendered.contains("$HOME/.claude.json"));
+}
+
+#[test]
 fn test_zshrc_template_avoids_optional_service_dereferences() {
     let jinja_template = vm_provider::ZSHRC_TEMPLATE;
 

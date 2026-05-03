@@ -30,36 +30,15 @@ impl CoreProgressParser for AnsibleParserAdapter {
 }
 
 impl<'a> LifecycleOperations<'a> {
-    /// Fix home directory ownership for snapshot-based containers (one-time, fast)
-    ///
-    /// Centralized permission fix-up for layered provisioning:
-    /// - Snapshots may have files owned by a different UID than the container user
-    /// - This fixes ownership of all key directories that tools need to write to
-    /// - Called once after snapshot load, before Ansible provisioning
-    ///
-    /// Directories handled:
-    /// - Home directory and common dotfiles (.zshrc, .bashrc, .profile)
-    /// - NVM installation and cache (.nvm)
-    /// - Rust/Cargo installation and cache (.cargo, .rustup)
-    /// - Python/pip cache (.cache/pip, .local)
-    /// - NPM cache (.npm)
-    /// - General config directories (.config, .cache)
-    /// - Shell history (.shell_history)
-    fn fix_home_ownership(
-        executable: &str,
-        container_name: &str,
-        user_config: &UserConfig,
-    ) -> Result<()> {
-        use std::process::Command;
-
+    fn home_ownership_fix_script(user_config: &UserConfig) -> String {
         let home_dir = format!("/home/{}", user_config.username);
 
         // Comprehensive permission fix for all directories that may be affected
-        // by UID/GID mismatch between snapshot and current host
+        // by UID/GID mismatch between snapshot and current host.
         //
         // This is the single authoritative place for permission fixes.
         // When adding new cache directories, add them here.
-        let fix_cmd = format!(
+        format!(
             r#"
             # Fix home directory and common dotfiles
             chown {uid}:{gid} {home} 2>/dev/null || true
@@ -106,10 +85,18 @@ impl<'a> LifecycleOperations<'a> {
                 chown -R {uid}:{gid} {home}/.shell_history 2>/dev/null || true
             fi
 
-            # Fix Claude and Gemini CLI directories
-            if [ -d {home}/.claude ]; then
-                chown -R {uid}:{gid} {home}/.claude 2>/dev/null || true
+            # Ensure first-run CLI state paths exist with normal ownership.
+            # Claude Code creates a top-level ~/.claude.json file during startup;
+            # if HOME itself is owned by a host UID, Claude can launch into a blank
+            # screen while it waits on state initialization.
+            mkdir -p {home}/.local/bin {home}/.claude/projects {home}/.claude/sessions 2>/dev/null || true
+            chown -R {uid}:{gid} {home}/.local {home}/.claude 2>/dev/null || true
+            chmod u+rwx,go+rx {home}/.local {home}/.local/bin {home}/.claude {home}/.claude/projects {home}/.claude/sessions 2>/dev/null || true
+            if [ -f {home}/.claude.json ]; then
+                chown {uid}:{gid} {home}/.claude.json 2>/dev/null || true
+                chmod 600 {home}/.claude.json 2>/dev/null || true
             fi
+
             if [ -d {home}/.gemini ]; then
                 chown -R {uid}:{gid} {home}/.gemini 2>/dev/null || true
             fi
@@ -117,12 +104,45 @@ impl<'a> LifecycleOperations<'a> {
                 chown -R {uid}:{gid} {home}/.codex 2>/dev/null || true
             fi
 
+            su -s /bin/sh {username} -c 'touch "$HOME/.vm-home-write-test" && rm -f "$HOME/.vm-home-write-test"' || {{
+                echo "ERROR: HOME is not writable by {username}: {home}" >&2
+                stat -c '%u %g %U %G %a %n' {home} >&2 || ls -ld {home} >&2
+                exit 1
+            }}
+
             echo "Permissions fixed"
         "#,
             uid = user_config.uid,
             gid = user_config.gid,
+            username = user_config.username,
             home = home_dir,
-        );
+        )
+    }
+
+    /// Fix home directory ownership for snapshot-based containers (one-time, fast)
+    ///
+    /// Centralized permission fix-up for layered provisioning:
+    /// - Snapshots may have files owned by a different UID than the container user
+    /// - This fixes ownership of all key directories that tools need to write to
+    /// - Called once after snapshot load, before Ansible provisioning
+    ///
+    /// Directories handled:
+    /// - Home directory and common dotfiles (.zshrc, .bashrc, .profile)
+    /// - NVM installation and cache (.nvm)
+    /// - Rust/Cargo installation and cache (.cargo, .rustup)
+    /// - Python/pip cache (.cache/pip, .local)
+    /// - NPM cache (.npm)
+    /// - General config directories (.config, .cache)
+    /// - Shell history (.shell_history)
+    /// - AI CLI state directories and top-level state files (.claude, .claude.json)
+    fn fix_home_ownership(
+        executable: &str,
+        container_name: &str,
+        user_config: &UserConfig,
+    ) -> Result<()> {
+        use std::process::Command;
+
+        let fix_cmd = Self::home_ownership_fix_script(user_config);
 
         let output = Command::new(executable)
             .args(["exec", "-u", "root", container_name, "bash", "-c", &fix_cmd])
@@ -130,11 +150,12 @@ impl<'a> LifecycleOperations<'a> {
             .map_err(|e| VmError::Internal(format!("Failed to fix home ownership: {e}")))?;
 
         if !output.status.success() {
-            // Non-fatal - log warning but continue
             let stderr = String::from_utf8_lossy(&output.stderr);
-            if !stderr.is_empty() {
-                eprintln!("⚠️  Warning: Home ownership fix had issues: {}", stderr);
-            }
+            return Err(VmError::Internal(format!(
+                "Home ownership repair failed for {}: {}",
+                user_config.username,
+                stderr.trim()
+            )));
         }
 
         Ok(())
@@ -330,5 +351,29 @@ impl<'a> LifecycleOperations<'a> {
         self.prepare_and_copy_config(&container_name)?;
 
         Self::run_ansible_provisioning(self.executable, &container_name, context)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LifecycleOperations;
+    use crate::docker::UserConfig;
+
+    #[test]
+    fn home_ownership_fix_script_repairs_claude_first_run_state_paths() {
+        let user_config = UserConfig {
+            uid: 1000,
+            gid: 1000,
+            username: "developer".to_string(),
+        };
+
+        let script = LifecycleOperations::home_ownership_fix_script(&user_config);
+
+        assert!(script.contains("chown 1000:1000 /home/developer"));
+        assert!(script.contains("/home/developer/.claude/projects"));
+        assert!(script.contains("/home/developer/.claude/sessions"));
+        assert!(script.contains("/home/developer/.claude.json"));
+        assert!(script.contains(".vm-home-write-test"));
+        assert!(script.contains("ERROR: HOME is not writable by developer"));
     }
 }
