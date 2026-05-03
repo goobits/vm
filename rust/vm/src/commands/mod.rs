@@ -5,6 +5,8 @@ use crate::cli::{
     TunnelSubcommand,
 };
 use crate::error::{VmError, VmResult};
+use dialoguer::{theme::ColorfulTheme, Select};
+use std::io::IsTerminal;
 use vm_config::{
     config::{BoxSpec, CpuLimit, MemoryLimit, TartConfig, VmConfig},
     AppConfig,
@@ -20,6 +22,12 @@ if [[ -n ${ZSH_VERSION:-} && -z ${functions[compdef]+x} ]]; then
 fi
 
 "#;
+
+struct EnvironmentSubject {
+    provider_override: Option<String>,
+    profile: Option<String>,
+    target: Option<String>,
+}
 
 pub mod base;
 pub mod clean;
@@ -102,13 +110,13 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             .await
         }
         Command::Shell { environment, path } => {
-            let (provider_override, profile, target) =
-                shell_subject(args.config.clone(), args.profile, environment);
+            let subject =
+                resolve_environment_subject(args.config.clone(), args.profile, environment)?;
             let (provider, config, _) =
-                load_provider_context(args.config, profile, provider_override)?;
+                load_provider_context(args.config, subject.profile, subject.provider_override)?;
             vm_ops::handle_ssh(
                 provider,
-                target.as_deref(),
+                subject.target.as_deref(),
                 path,
                 None,
                 config,
@@ -129,10 +137,13 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             tail,
             service,
         } => {
-            let (provider, config, _) = load_provider_context(args.config, args.profile, None)?;
+            let subject =
+                resolve_environment_subject(args.config.clone(), args.profile, environment)?;
+            let (provider, config, _) =
+                load_provider_context(args.config, subject.profile, subject.provider_override)?;
             vm_ops::handle_logs(
                 provider,
-                environment.as_deref(),
+                subject.target.as_deref(),
                 config,
                 follow,
                 tail,
@@ -147,21 +158,27 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             vm_ops::handle_copy(provider, &source, &destination, false, config)
         }
         Command::Stop { environment } => {
+            let subject =
+                resolve_environment_subject(args.config.clone(), args.profile, environment)?;
             let (provider, config, global_config) =
-                load_provider_context(args.config, args.profile, None)?;
-            vm_ops::handle_stop(provider, environment.as_deref(), config, global_config).await
+                load_provider_context(args.config, subject.profile, subject.provider_override)?;
+            vm_ops::handle_stop(provider, subject.target.as_deref(), config, global_config).await
         }
         Command::Restart { environment } => {
+            let subject =
+                resolve_environment_subject(args.config.clone(), args.profile, environment)?;
             let (provider, config, global_config) =
-                load_provider_context(args.config, args.profile, None)?;
-            vm_ops::handle_restart(provider, environment.as_deref(), config, global_config).await
+                load_provider_context(args.config, subject.profile, subject.provider_override)?;
+            vm_ops::handle_restart(provider, subject.target.as_deref(), config, global_config).await
         }
         Command::Remove { environment, force } => {
+            let subject =
+                resolve_environment_subject(args.config.clone(), args.profile, environment)?;
             let (provider, config, global_config) =
-                load_provider_context(args.config, args.profile, None)?;
+                load_provider_context(args.config, subject.profile, subject.provider_override)?;
             vm_ops::handle_destroy_enhanced(
                 provider,
-                environment.as_deref(),
+                subject.target.as_deref(),
                 config,
                 global_config,
                 &force,
@@ -330,6 +347,83 @@ fn shell_subject(
             None,
         ),
         _ => (None, profile, environment),
+    }
+}
+
+fn resolve_environment_subject(
+    config_path: Option<std::path::PathBuf>,
+    profile: Option<String>,
+    environment: Option<String>,
+) -> VmResult<EnvironmentSubject> {
+    if environment.is_some() || profile.is_some() || !std::io::stdin().is_terminal() {
+        let (provider_override, profile, target) = shell_subject(config_path, profile, environment);
+        return Ok(EnvironmentSubject {
+            provider_override,
+            profile,
+            target,
+        });
+    }
+
+    let config = VmConfig::load(config_path.clone()).map_err(VmError::from)?;
+    let Some(profiles) = config
+        .profiles
+        .as_ref()
+        .filter(|profiles| profiles.len() > 1)
+    else {
+        let (provider_override, profile, target) = shell_subject(config_path, None, None);
+        return Ok(EnvironmentSubject {
+            provider_override,
+            profile,
+            target,
+        });
+    };
+
+    let choices: Vec<(String, String)> = profiles
+        .iter()
+        .map(|(name, profile_config)| {
+            let kind = profile_label(profile_config);
+            let default_marker = if config.default_profile.as_deref() == Some(name.as_str()) {
+                " default"
+            } else {
+                ""
+            };
+            (
+                name.clone(),
+                format!("{kind} ({name} profile{default_marker})"),
+            )
+        })
+        .collect();
+
+    let labels: Vec<&str> = choices.iter().map(|(_, label)| label.as_str()).collect();
+    let default_index = choices
+        .iter()
+        .position(|(name, _)| config.default_profile.as_deref() == Some(name.as_str()))
+        .unwrap_or(0);
+    let selected = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Which environment?")
+        .items(&labels)
+        .default(default_index)
+        .interact()
+        .map_err(|e| VmError::general(e, "Failed to read environment selection"))?;
+
+    Ok(EnvironmentSubject {
+        provider_override: None,
+        profile: Some(choices[selected].0.clone()),
+        target: None,
+    })
+}
+
+fn profile_label(profile: &VmConfig) -> &'static str {
+    match profile.provider.as_deref() {
+        Some("docker") | Some("podman") => "Container",
+        Some("tart") => {
+            if profile_is_macos(Some(profile)) {
+                "macOS"
+            } else {
+                "Linux"
+            }
+        }
+        _ => "Environment",
     }
 }
 
