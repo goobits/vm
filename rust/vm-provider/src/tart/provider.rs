@@ -144,6 +144,10 @@ impl TartProvider {
         ))
     }
 
+    fn tart_state_requires_stop(state: Option<&str>) -> bool {
+        matches!(state, Some("running"))
+    }
+
     fn is_guest_agent_ready(&self, instance_name: &str) -> bool {
         self.run_guest_agent_probe(instance_name, Duration::from_secs(3))
     }
@@ -847,6 +851,10 @@ impl Provider for TartProvider {
 
     fn stop(&self, container: Option<&str>) -> Result<()> {
         let vm_name = self.vm_name_with_instance(container)?;
+        if !Self::tart_state_requires_stop(self.get_instance_state(&vm_name)?.as_deref()) {
+            return Ok(());
+        }
+
         self.stream_tart_command(&["stop", &vm_name])
     }
 
@@ -1270,6 +1278,14 @@ mod tests {
     use super::TartProvider;
     use crate::Provider;
     use vm_config::config::{ProjectConfig, TartConfig, VmConfig};
+
+    #[test]
+    fn tart_stop_only_runs_for_running_state() {
+        assert!(TartProvider::tart_state_requires_stop(Some("running")));
+        assert!(!TartProvider::tart_state_requires_stop(Some("stopped")));
+        assert!(!TartProvider::tart_state_requires_stop(Some("suspended")));
+        assert!(!TartProvider::tart_state_requires_stop(None));
+    }
 
     #[test]
     fn host_workspace_path_uses_loaded_config_parent() {
