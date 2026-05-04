@@ -798,32 +798,35 @@
 
       # Install database client tools for services that run as separate containers in Docker
       # Layered provisioning: install if not already present (works for both fresh and snapshot builds)
-      - name: Install PostgreSQL client tools for Docker
-        apt:
-            name: postgresql-client
-            state: present
-            update_cache: yes
+      - name: Install database client tools for Docker
+        shell: |
+            set -euo pipefail
+            if command -v {{ item.command }} >/dev/null 2>&1; then
+              exit 0
+            fi
+            apt-get update
+            DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends {{ item.package }}
+        args:
+            executable: /bin/bash
+        loop:
+          - service: postgresql
+            package: postgresql-client
+            command: psql
+          - service: redis
+            package: redis-tools
+            command: redis-cli
+          - service: mongodb
+            package: mongodb-clients
+            command: mongo
+        loop_control:
+            label: "{{ item.service }}"
         when:
           - is_docker_container
-          - project_config.services.postgresql.enabled | default(false)
-
-      - name: Install Redis client tools for Docker
-        apt:
-            name: redis-tools
-            state: present
-            update_cache: yes
-        when:
-          - is_docker_container
-          - project_config.services.redis.enabled | default(false)
-
-      - name: Install MongoDB client tools for Docker
-        apt:
-            name: mongodb-clients
-            state: present
-            update_cache: yes
-        when:
-          - is_docker_container
-          - project_config.services.mongodb.enabled | default(false)
+          - project_config.services is defined
+          - item.service in project_config.services
+          - project_config.services[item.service].enabled | default(false)
+        register: docker_client_tools_install
+        changed_when: "'Setting up' in docker_client_tools_install.stdout"
 
       # Handle Docker service separately (requires user group management)
       # Layered provisioning: install if not already present

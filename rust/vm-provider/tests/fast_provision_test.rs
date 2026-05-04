@@ -265,3 +265,24 @@ fn test_zshrc_template_avoids_optional_service_dereferences() {
         );
     }
 }
+
+#[test]
+fn test_docker_database_client_installs_do_not_require_python_apt() {
+    let playbook = vm_provider::resources::ANSIBLE_PLAYBOOK;
+    let client_tools_pos = playbook
+        .find("Install database client tools for Docker")
+        .expect("playbook should install Docker database client tools");
+    let docker_pos = playbook[client_tools_pos..]
+        .find("Install Docker")
+        .expect("playbook should install Docker after client tools");
+    let client_tools_block = &playbook[client_tools_pos..client_tools_pos + docker_pos];
+
+    assert!(client_tools_block.contains("apt-get install"));
+    assert!(client_tools_block.contains("postgresql-client"));
+    assert!(client_tools_block.contains("redis-tools"));
+    assert!(client_tools_block.contains("mongodb-clients"));
+    assert!(
+        !client_tools_block.contains("\n        apt:"),
+        "Docker client tools must avoid Ansible apt module because snapshots may lack python3-apt"
+    );
+}
