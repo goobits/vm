@@ -5,8 +5,7 @@ use crate::cli::{
     TunnelSubcommand,
 };
 use crate::error::{VmError, VmResult};
-use dialoguer::{theme::ColorfulTheme, Select};
-use std::io::IsTerminal;
+use environment::{mac_profile, resolve_environment};
 use vm_config::{
     config::{BoxSpec, CpuLimit, MemoryLimit, TartConfig, VmConfig},
     AppConfig,
@@ -23,17 +22,12 @@ fi
 
 "#;
 
-struct EnvironmentSubject {
-    provider_override: Option<String>,
-    profile: Option<String>,
-    target: Option<String>,
-}
-
 pub mod base;
 pub mod clean;
 pub mod config;
 pub mod db;
 pub mod doctor;
+mod environment;
 pub mod init;
 pub mod plugin;
 pub mod plugin_new;
@@ -110,8 +104,7 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             .await
         }
         Command::Shell { environment, path } => {
-            let subject =
-                resolve_environment_subject(args.config.clone(), args.profile, environment)?;
+            let subject = resolve_environment(args.config.clone(), args.profile, environment)?;
             let (provider, config, _) =
                 load_provider_context(args.config, subject.profile, subject.provider_override)?;
             vm_ops::handle_ssh(
@@ -137,8 +130,7 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             tail,
             service,
         } => {
-            let subject =
-                resolve_environment_subject(args.config.clone(), args.profile, environment)?;
+            let subject = resolve_environment(args.config.clone(), args.profile, environment)?;
             let (provider, config, _) =
                 load_provider_context(args.config, subject.profile, subject.provider_override)?;
             vm_ops::handle_logs(
@@ -158,22 +150,19 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             vm_ops::handle_copy(provider, &source, &destination, false, config)
         }
         Command::Stop { environment } => {
-            let subject =
-                resolve_environment_subject(args.config.clone(), args.profile, environment)?;
+            let subject = resolve_environment(args.config.clone(), args.profile, environment)?;
             let (provider, config, global_config) =
                 load_provider_context(args.config, subject.profile, subject.provider_override)?;
             vm_ops::handle_stop(provider, subject.target.as_deref(), config, global_config).await
         }
         Command::Restart { environment } => {
-            let subject =
-                resolve_environment_subject(args.config.clone(), args.profile, environment)?;
+            let subject = resolve_environment(args.config.clone(), args.profile, environment)?;
             let (provider, config, global_config) =
                 load_provider_context(args.config, subject.profile, subject.provider_override)?;
             vm_ops::handle_restart(provider, subject.target.as_deref(), config, global_config).await
         }
         Command::Remove { environment, force } => {
-            let subject =
-                resolve_environment_subject(args.config.clone(), args.profile, environment)?;
+            let subject = resolve_environment(args.config.clone(), args.profile, environment)?;
             let (provider, config, global_config) =
                 load_provider_context(args.config, subject.profile, subject.provider_override)?;
             vm_ops::handle_destroy_enhanced(
@@ -325,108 +314,6 @@ fn run_target(intent: &RunIntent) -> Option<String> {
     })
 }
 
-fn shell_subject(
-    config_path: Option<std::path::PathBuf>,
-    profile: Option<String>,
-    environment: Option<String>,
-) -> (Option<String>, Option<String>, Option<String>) {
-    match environment.as_deref() {
-        Some("mac") => (
-            Some(EnvironmentKind::Mac.default_provider().to_string()),
-            profile.or_else(|| mac_profile(config_path)),
-            Some("mac".to_string()),
-        ),
-        Some("linux") => (
-            Some(EnvironmentKind::Linux.default_provider().to_string()),
-            None,
-            None,
-        ),
-        Some("container") => (
-            Some(EnvironmentKind::Container.default_provider().to_string()),
-            None,
-            None,
-        ),
-        _ => (None, profile, environment),
-    }
-}
-
-fn resolve_environment_subject(
-    config_path: Option<std::path::PathBuf>,
-    profile: Option<String>,
-    environment: Option<String>,
-) -> VmResult<EnvironmentSubject> {
-    if environment.is_some() || profile.is_some() || !std::io::stdin().is_terminal() {
-        let (provider_override, profile, target) = shell_subject(config_path, profile, environment);
-        return Ok(EnvironmentSubject {
-            provider_override,
-            profile,
-            target,
-        });
-    }
-
-    let config = VmConfig::load(config_path.clone()).map_err(VmError::from)?;
-    let Some(profiles) = config
-        .profiles
-        .as_ref()
-        .filter(|profiles| profiles.len() > 1)
-    else {
-        let (provider_override, profile, target) = shell_subject(config_path, None, None);
-        return Ok(EnvironmentSubject {
-            provider_override,
-            profile,
-            target,
-        });
-    };
-
-    let choices: Vec<(String, String)> = profiles
-        .iter()
-        .map(|(name, profile_config)| {
-            let kind = profile_label(profile_config);
-            let default_marker = if config.default_profile.as_deref() == Some(name.as_str()) {
-                " default"
-            } else {
-                ""
-            };
-            (
-                name.clone(),
-                format!("{kind} ({name} profile{default_marker})"),
-            )
-        })
-        .collect();
-
-    let labels: Vec<&str> = choices.iter().map(|(_, label)| label.as_str()).collect();
-    let default_index = choices
-        .iter()
-        .position(|(name, _)| config.default_profile.as_deref() == Some(name.as_str()))
-        .unwrap_or(0);
-    let selected = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Which environment?")
-        .items(&labels)
-        .default(default_index)
-        .interact()
-        .map_err(|e| VmError::general(e, "Failed to read environment selection"))?;
-
-    Ok(EnvironmentSubject {
-        provider_override: None,
-        profile: Some(choices[selected].0.clone()),
-        target: None,
-    })
-}
-
-fn profile_label(profile: &VmConfig) -> &'static str {
-    match profile.provider.as_deref() {
-        Some("docker") | Some("podman") => "Container",
-        Some("tart") => {
-            if profile_is_macos(Some(profile)) {
-                "macOS"
-            } else {
-                "Linux"
-            }
-        }
-        _ => "Environment",
-    }
-}
-
 fn profile_for_kind(intent: &RunIntent) -> VmResult<Option<String>> {
     if intent.profile.is_some() {
         return Ok(intent.profile.clone());
@@ -437,28 +324,6 @@ fn profile_for_kind(intent: &RunIntent) -> VmResult<Option<String>> {
     }
 
     Ok(None)
-}
-
-fn mac_profile(config_path: Option<std::path::PathBuf>) -> Option<String> {
-    let profiles = VmConfig::load(config_path).ok()?.profiles?;
-
-    ["macos", "mac", "tart"]
-        .iter()
-        .find(|name| profile_is_macos(profiles.get(**name)))
-        .map(|name| (*name).to_string())
-        .or_else(|| {
-            profiles
-                .iter()
-                .find(|(_, profile)| profile_is_macos(Some(profile)))
-                .map(|(name, _)| name.to_string())
-        })
-}
-
-fn profile_is_macos(profile: Option<&VmConfig>) -> bool {
-    profile
-        .and_then(|profile| profile.tart.as_ref())
-        .and_then(|tart| tart.guest_os.as_deref())
-        .is_some_and(|guest_os| guest_os.eq_ignore_ascii_case("macos"))
 }
 
 fn load_project_name(
@@ -895,7 +760,7 @@ fn handle_internal_completion(shell: &str) -> VmResult<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_optional_as_name, parse_save_words, shell_subject, EnvironmentKind, RunIntent,
+        parse_optional_as_name, parse_save_words, EnvironmentKind, RunIntent,
         ZSH_COMPLETION_PRELUDE,
     };
 
@@ -925,45 +790,6 @@ mod tests {
             parse_save_words(&["backend".into(), "as".into(), "stable".into()]).unwrap(),
             (Some("backend".into()), "stable".into())
         );
-    }
-
-    #[test]
-    fn shell_subject_accepts_kind_words() {
-        let missing_config =
-            Some(std::env::temp_dir().join("vm-missing-config-for-shell-test.yaml"));
-        assert_eq!(
-            shell_subject(missing_config, None, Some("mac".into())),
-            (Some("tart".into()), None, Some("mac".into()))
-        );
-        assert_eq!(
-            shell_subject(None, None, Some("backend".into())),
-            (None, None, Some("backend".into()))
-        );
-    }
-
-    #[test]
-    fn shell_subject_uses_macos_tart_profile() {
-        let config_path =
-            std::env::temp_dir().join(format!("vm-macos-tart-profile-{}.yaml", std::process::id()));
-        std::fs::write(
-            &config_path,
-            r#"
-version: '2.0'
-profiles:
-  tart:
-    provider: tart
-    tart:
-      guest_os: macos
-"#,
-        )
-        .expect("write test config");
-
-        assert_eq!(
-            shell_subject(Some(config_path.clone()), None, Some("mac".into())),
-            (Some("tart".into()), Some("tart".into()), Some("mac".into()))
-        );
-
-        let _ = std::fs::remove_file(config_path);
     }
 
     #[test]

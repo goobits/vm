@@ -177,7 +177,9 @@ mod tests {
         let _guard = env_lock().lock().unwrap();
         let temp_home = tempfile::tempdir().unwrap();
         let previous_home = std::env::var("HOME").ok();
+        let previous_sudo_user = std::env::var("SUDO_USER").ok();
         std::env::set_var("HOME", temp_home.path());
+        std::env::remove_var("SUDO_USER");
 
         let config = VmConfig {
             project: Some(ProjectConfig {
@@ -202,6 +204,9 @@ mod tests {
         } else {
             std::env::remove_var("HOME");
         }
+        if let Some(sudo_user) = previous_sudo_user {
+            std::env::set_var("SUDO_USER", sudo_user);
+        }
 
         assert_eq!(mounts.len(), 1);
         assert_eq!(mounts[0].tag, "claude-sync");
@@ -215,7 +220,9 @@ mod tests {
         let _guard = env_lock().lock().unwrap();
         let temp_home = tempfile::tempdir().unwrap();
         let previous_home = std::env::var("HOME").ok();
+        let previous_sudo_user = std::env::var("SUDO_USER").ok();
         std::env::set_var("HOME", temp_home.path());
+        std::env::remove_var("SUDO_USER");
 
         let config = VmConfig {
             project: Some(ProjectConfig {
@@ -239,6 +246,9 @@ mod tests {
             std::env::set_var("HOME", home);
         } else {
             std::env::remove_var("HOME");
+        }
+        if let Some(sudo_user) = previous_sudo_user {
+            std::env::set_var("SUDO_USER", sudo_user);
         }
 
         assert!(mounts.is_empty());

@@ -1,22 +1,18 @@
 use super::{
-    host_sync::collect_host_sync_mounts, instance::TartInstanceManager,
+    command::TartCommand, host_sync::collect_host_sync_mounts, instance::TartInstanceManager,
     provisioner::TartProvisioner, temp::TartDirShare,
 };
 use crate::{
     common::instance::{extract_project_name, InstanceInfo, InstanceResolver},
     context::ProviderContext,
     progress::ProgressReporter,
-    security::SecurityValidator,
     BoxConfig, Provider, ResourceUsage, ServiceStatus, TempProvider, VmError, VmStatusReport,
 };
 use duct::cmd;
 use serde::Deserialize;
 use std::ffi::OsStr;
-use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::thread;
-use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
 use vm_cli::msg;
 use vm_config::config::{BoxSpec, VmConfig};
@@ -67,7 +63,7 @@ impl TartProvider {
         Ok(Self { config })
     }
 
-    fn tart_home(&self) -> Option<String> {
+    pub(super) fn tart_home(&self) -> Option<String> {
         self.config
             .tart
             .as_ref()
@@ -89,19 +85,15 @@ impl TartProvider {
     }
 
     pub(super) fn tart_expr<A: AsRef<OsStr>>(&self, args: &[A]) -> duct::Expression {
-        let mut expr = cmd("tart", args);
-        if let Some(tart_home) = self.tart_home() {
-            expr = expr.env("TART_HOME", tart_home);
-        }
-        expr
+        self.tart().expr(args)
     }
 
     fn tart_command(&self) -> Command {
-        let mut command = Command::new("tart");
-        if let Some(tart_home) = self.tart_home() {
-            command.env("TART_HOME", tart_home);
-        }
-        command
+        self.tart().command()
+    }
+
+    pub(super) fn tart(&self) -> TartCommand {
+        TartCommand::new(self.tart_home())
     }
 
     fn stream_tart_command<A: AsRef<OsStr>>(&self, args: &[A]) -> Result<()> {
@@ -146,104 +138,6 @@ impl TartProvider {
 
     fn tart_state_requires_stop(state: Option<&str>) -> bool {
         matches!(state, Some("running"))
-    }
-
-    fn is_guest_agent_ready(&self, instance_name: &str) -> bool {
-        self.run_guest_agent_probe(instance_name, Duration::from_secs(3))
-    }
-
-    fn run_guest_agent_probe(&self, instance_name: &str, timeout: Duration) -> bool {
-        let Ok(mut child) = self
-            .tart_command()
-            .args(["exec", instance_name, "echo", "ready"])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-        else {
-            return false;
-        };
-
-        let deadline = Instant::now() + timeout;
-        loop {
-            match child.try_wait() {
-                Ok(Some(status)) => return status.success(),
-                Ok(None) if Instant::now() < deadline => {
-                    thread::sleep(Duration::from_millis(100));
-                }
-                Ok(None) => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return false;
-                }
-                Err(_) => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return false;
-                }
-            }
-        }
-    }
-
-    pub(super) fn wait_for_guest_agent_ready(
-        &self,
-        instance_name: &str,
-        timeout: Duration,
-    ) -> bool {
-        let deadline = Instant::now() + timeout;
-        loop {
-            if self.run_guest_agent_probe(instance_name, Duration::from_secs(3)) {
-                return true;
-            }
-
-            if Instant::now() >= deadline {
-                return false;
-            }
-
-            thread::sleep(Duration::from_secs(1));
-        }
-    }
-
-    fn ensure_workspace_mount_ready(&self, instance_name: &str, sync_dir: &str) -> Result<()> {
-        TartProvisioner::new(
-            instance_name.to_string(),
-            sync_dir.to_string(),
-            self.tart_home(),
-        )
-            .ensure_workspace_mount()
-            .map_err(|e| {
-                VmError::Provider(format!(
-                    "Tart workspace mount is not ready at '{sync_dir}'. This VM may be partially provisioned or was started without the workspace share. Recreate it with `vm remove <name> --force && vm run mac as <name>`. Mount error: {e}"
-                ))
-            })
-    }
-
-    fn ensure_shell_config_ready(&self, instance_name: &str, sync_dir: &str) -> Result<()> {
-        let provisioner = TartProvisioner::new(
-            instance_name.to_string(),
-            sync_dir.to_string(),
-            self.tart_home(),
-        );
-        if !self.is_shell_config_ready(instance_name) {
-            provisioner.apply_canonical_shell_config(&self.config)?;
-            provisioner.apply_shell_overrides(&self.config)?;
-        }
-
-        provisioner.ensure_codex_runtime_config(&self.config)
-    }
-
-    fn is_shell_config_ready(&self, instance_name: &str) -> bool {
-        self.tart_expr(&[
-            "exec",
-            instance_name,
-            "sh",
-            "-lc",
-            "test -f \"$HOME/.zshrc\" && grep -Fq 'VM_PROJECT_PATH=' \"$HOME/.zshrc\" && grep -Fq 'VM_AI_ALIAS_REPAIR_VERSION=2' \"$HOME/.zshrc\"",
-        ])
-        .stderr_null()
-        .stdout_null()
-        .run()
-        .is_ok()
     }
 
     fn collect_metrics(&self, instance: &str) -> Result<CollectedMetrics> {
@@ -871,94 +765,7 @@ impl Provider for TartProvider {
     }
 
     fn ssh(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {
-        let instance_name = self.resolve_instance_name(container)?;
-        let state = self.get_instance_state(&instance_name)?;
-        match state.as_deref() {
-            Some("running") => {}
-            Some(_) => {
-                return Err(VmError::Provider(format!(
-                    "VM {instance_name} is not running"
-                )));
-            }
-            None => {
-                return Err(VmError::Provider(format!(
-                    "No such object: Tart VM {instance_name}"
-                )));
-            }
-        }
-
-        if !self.is_guest_agent_ready(&instance_name) {
-            if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
-                vm_println!("⏳ Waiting for Tart guest agent...");
-            }
-
-            if !self.wait_for_guest_agent_ready(&instance_name, Duration::from_secs(45)) {
-                return Err(VmError::Provider(format!(
-                    "Tart VM '{instance_name}' is running, but the guest agent is not ready. Try again in a few seconds or run `tart restart {instance_name}`."
-                )));
-            }
-        }
-
-        let sync_dir = self.get_sync_directory();
-        self.ensure_workspace_mount_ready(&instance_name, &sync_dir)?;
-        self.ensure_shell_config_ready(&instance_name, &sync_dir)?;
-
-        let shell = self
-            .config
-            .terminal
-            .as_ref()
-            .and_then(|t| t.shell.as_deref())
-            .unwrap_or("zsh");
-
-        // Get the sync directory (project root in VM)
-        let target_path = SecurityValidator::validate_relative_path(relative_path, &sync_dir)?;
-        let target_path = target_path.to_string_lossy().into_owned();
-
-        info!("Opening SSH session in directory: {}", target_path);
-        let target_path_escaped = Self::shell_escape_single_quotes(&target_path);
-
-        if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
-            let user = self
-                .config
-                .tart
-                .as_ref()
-                .and_then(|tart| tart.ssh_user.as_deref())
-                .unwrap_or("admin");
-
-            vm_println!(
-                "{}",
-                msg!(
-                    MESSAGES.service.docker_ssh_info,
-                    user = user,
-                    path = target_path.as_str(),
-                    shell = shell
-                )
-            );
-        }
-
-        // Use `tart exec -i -t` for interactive shell session
-        let shell_escaped = Self::shell_escape_single_quotes(shell);
-        let ssh_command = format!(
-            "export VM_TARGET_DIR='{target_path}' && cd \"$VM_TARGET_DIR\" && exec '{shell}' -il",
-            target_path = target_path_escaped,
-            shell = shell_escaped
-        );
-
-        let status = self
-            .tart_command()
-            .args(["exec", "-i", "-t", &instance_name, "sh", "-c", &ssh_command])
-            .status()
-            .map_err(|e| VmError::Provider(format!("Exec failed: {e}")))?;
-
-        match status.code() {
-            Some(0) | Some(130) => Ok(()),
-            Some(code) => Err(VmError::Provider(format!("Shell exited with code {code}"))),
-            None => Err(VmError::Provider(
-                "Shell terminated unexpectedly".to_string(),
-            )),
-        }?;
-
-        Ok(())
+        self.open_shell(container, relative_path)
     }
 
     fn exec(&self, container: Option<&str>, cmd: &[String]) -> Result<()> {
