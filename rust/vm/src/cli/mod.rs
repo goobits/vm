@@ -386,6 +386,20 @@ pub enum PluginSubcommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum Command {
+    /// Create/configure an environment from vm.yaml
+    #[command(hide = true)]
+    Create {
+        environment: Option<String>,
+        #[arg(long)]
+        force: bool,
+    },
+    /// Start an existing environment
+    #[command(hide = true)]
+    Start {
+        environment: Option<String>,
+        #[arg(long)]
+        no_wait: bool,
+    },
     /// Create and start an environment
     Run {
         /// Environment kind: mac, linux, or container
@@ -435,6 +449,15 @@ pub enum Command {
         /// Directory path to start shell in
         #[arg(long)]
         path: Option<PathBuf>,
+        /// Command to execute instead of opening an interactive shell
+        #[arg(short = 'e', long = "command")]
+        command: Option<String>,
+        /// Force refresh mounts (disconnects other sessions)
+        #[arg(long)]
+        force_refresh: bool,
+        /// Skip automatic mount refresh detection
+        #[arg(long)]
+        no_refresh: bool,
     },
     /// Run a single command inside an environment
     #[command(trailing_var_arg = true)]
@@ -456,7 +479,11 @@ pub enum Command {
     /// Move files between host and environment
     Copy { source: String, destination: String },
     /// Gracefully halt an environment
+    #[command(alias = "down", alias = "halt")]
     Stop { environment: Option<String> },
+    /// Check environment status
+    #[command(hide = true)]
+    Status { environment: Option<String> },
     /// Stop and start an environment
     Restart { environment: Option<String> },
     /// Remove an environment while preserving saved snapshots
@@ -585,6 +612,15 @@ mod tests {
     }
 
     #[test]
+    fn ssh_alias_parses_command_execution() {
+        let args = Args::parse_from(["vm", "ssh", "-e", "echo hello"]);
+        match args.command {
+            Command::Shell { command, .. } => assert_eq!(command, Some("echo hello".into())),
+            _ => panic!("Expected Command::Shell"),
+        }
+    }
+
+    #[test]
     fn ls_parses_all_flag() {
         let args = Args::parse_from(["vm", "ls", "--all"]);
         match args.command {
@@ -617,6 +653,44 @@ mod tests {
                 assert!(force);
             }
             _ => panic!("Expected Command::Remove"),
+        }
+    }
+
+    #[test]
+    fn legacy_lifecycle_commands_parse() {
+        let create = Args::parse_from(["vm", "create", "--force"]);
+        match create.command {
+            Command::Create { force, .. } => assert!(force),
+            _ => panic!("Expected Command::Create"),
+        }
+
+        let start = Args::parse_from(["vm", "start", "backend", "--no-wait"]);
+        match start.command {
+            Command::Start {
+                environment,
+                no_wait,
+            } => {
+                assert_eq!(environment, Some("backend".into()));
+                assert!(no_wait);
+            }
+            _ => panic!("Expected Command::Start"),
+        }
+
+        let status = Args::parse_from(["vm", "status", "backend"]);
+        match status.command {
+            Command::Status { environment } => assert_eq!(environment, Some("backend".into())),
+            _ => panic!("Expected Command::Status"),
+        }
+    }
+
+    #[test]
+    fn stop_legacy_aliases_parse() {
+        for alias in ["down", "halt"] {
+            let args = Args::parse_from(["vm", alias, "backend"]);
+            match args.command {
+                Command::Stop { environment } => assert_eq!(environment, Some("backend".into())),
+                _ => panic!("Expected Command::Stop"),
+            }
         }
     }
 
