@@ -40,49 +40,52 @@ impl<'a> LifecycleOperations<'a> {
         // When adding new cache directories, add them here.
         format!(
             r#"
+            user_uid="$(id -u {username})"
+            user_gid="$(id -g {username})"
+
             # Fix home directory and common dotfiles
-            chown {uid}:{gid} {home} 2>/dev/null || true
-            chown {uid}:{gid} {home}/.zshrc {home}/.bashrc {home}/.profile 2>/dev/null || true
+            chown "$user_uid:$user_gid" {home} 2>/dev/null || true
+            chown "$user_uid:$user_gid" {home}/.zshrc {home}/.bashrc {home}/.profile 2>/dev/null || true
             chmod u+rwx,go+rx {home} 2>/dev/null || true
             chmod u+rw,go+r {home}/.zshrc {home}/.bashrc {home}/.profile 2>/dev/null || true
 
             # Fix NVM (Node.js version manager)
             if [ -d {home}/.nvm ]; then
-                chown -R {uid}:{gid} {home}/.nvm 2>/dev/null || true
+                chown -R "$user_uid:$user_gid" {home}/.nvm 2>/dev/null || true
                 chmod -R u+rwX,go+rX {home}/.nvm 2>/dev/null || true
             fi
 
             # Fix Cargo/Rust
             if [ -d {home}/.cargo ]; then
-                chown -R {uid}:{gid} {home}/.cargo 2>/dev/null || true
+                chown -R "$user_uid:$user_gid" {home}/.cargo 2>/dev/null || true
             fi
             if [ -d {home}/.rustup ]; then
-                chown -R {uid}:{gid} {home}/.rustup 2>/dev/null || true
+                chown -R "$user_uid:$user_gid" {home}/.rustup 2>/dev/null || true
             fi
 
             # Fix NPM cache
             if [ -d {home}/.npm ]; then
-                chown -R {uid}:{gid} {home}/.npm 2>/dev/null || true
+                chown -R "$user_uid:$user_gid" {home}/.npm 2>/dev/null || true
             fi
 
             # Fix pip/Python cache
             if [ -d {home}/.cache ]; then
-                chown -R {uid}:{gid} {home}/.cache 2>/dev/null || true
+                chown -R "$user_uid:$user_gid" {home}/.cache 2>/dev/null || true
             fi
 
             # Fix local binaries and packages
             if [ -d {home}/.local ]; then
-                chown -R {uid}:{gid} {home}/.local 2>/dev/null || true
+                chown -R "$user_uid:$user_gid" {home}/.local 2>/dev/null || true
             fi
 
             # Fix config directory
             if [ -d {home}/.config ]; then
-                chown -R {uid}:{gid} {home}/.config 2>/dev/null || true
+                chown -R "$user_uid:$user_gid" {home}/.config 2>/dev/null || true
             fi
 
             # Fix shell history
             if [ -d {home}/.shell_history ]; then
-                chown -R {uid}:{gid} {home}/.shell_history 2>/dev/null || true
+                chown -R "$user_uid:$user_gid" {home}/.shell_history 2>/dev/null || true
             fi
 
             # Ensure first-run CLI state paths exist with normal ownership.
@@ -90,18 +93,18 @@ impl<'a> LifecycleOperations<'a> {
             # if HOME itself is owned by a host UID, Claude can launch into a blank
             # screen while it waits on state initialization.
             mkdir -p {home}/.local/bin {home}/.claude/projects {home}/.claude/sessions 2>/dev/null || true
-            chown -R {uid}:{gid} {home}/.local {home}/.claude 2>/dev/null || true
+            chown -R "$user_uid:$user_gid" {home}/.local {home}/.claude 2>/dev/null || true
             chmod u+rwx,go+rx {home}/.local {home}/.local/bin {home}/.claude {home}/.claude/projects {home}/.claude/sessions 2>/dev/null || true
             if [ -f {home}/.claude.json ]; then
-                chown {uid}:{gid} {home}/.claude.json 2>/dev/null || true
+                chown "$user_uid:$user_gid" {home}/.claude.json 2>/dev/null || true
                 chmod 600 {home}/.claude.json 2>/dev/null || true
             fi
 
             if [ -d {home}/.gemini ]; then
-                chown -R {uid}:{gid} {home}/.gemini 2>/dev/null || true
+                chown -R "$user_uid:$user_gid" {home}/.gemini 2>/dev/null || true
             fi
             if [ -d {home}/.codex ]; then
-                chown -R {uid}:{gid} {home}/.codex 2>/dev/null || true
+                chown -R "$user_uid:$user_gid" {home}/.codex 2>/dev/null || true
             fi
 
             su -s /bin/sh {username} -c 'touch "$HOME/.vm-home-write-test" && rm -f "$HOME/.vm-home-write-test"' || {{
@@ -112,8 +115,6 @@ impl<'a> LifecycleOperations<'a> {
 
             echo "Permissions fixed"
         "#,
-            uid = user_config.uid,
-            gid = user_config.gid,
             username = user_config.username,
             home = home_dir,
         )
@@ -369,7 +370,9 @@ mod tests {
 
         let script = LifecycleOperations::home_ownership_fix_script(&user_config);
 
-        assert!(script.contains("chown 1000:1000 /home/developer"));
+        assert!(script.contains("user_uid=\"$(id -u developer)\""));
+        assert!(script.contains("user_gid=\"$(id -g developer)\""));
+        assert!(script.contains("chown \"$user_uid:$user_gid\" /home/developer"));
         assert!(script.contains("/home/developer/.claude/projects"));
         assert!(script.contains("/home/developer/.claude/sessions"));
         assert!(script.contains("/home/developer/.claude.json"));

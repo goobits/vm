@@ -429,6 +429,7 @@ pub enum Command {
         raw: bool,
     },
     /// Drop into a shell inside an environment
+    #[command(alias = "ssh")]
     Shell {
         environment: Option<String>,
         /// Directory path to start shell in
@@ -459,7 +460,7 @@ pub enum Command {
     /// Stop and start an environment
     Restart { environment: Option<String> },
     /// Remove an environment while preserving saved snapshots
-    #[command(alias = "rm")]
+    #[command(alias = "rm", alias = "destroy")]
     Remove {
         environment: Option<String>,
         #[arg(long)]
@@ -575,6 +576,15 @@ mod tests {
     }
 
     #[test]
+    fn ssh_alias_parses_as_shell() {
+        let args = Args::parse_from(["vm", "ssh", "backend"]);
+        match args.command {
+            Command::Shell { environment, .. } => assert_eq!(environment, Some("backend".into())),
+            _ => panic!("Expected Command::Shell"),
+        }
+    }
+
+    #[test]
     fn ls_parses_all_flag() {
         let args = Args::parse_from(["vm", "ls", "--all"]);
         match args.command {
@@ -595,6 +605,18 @@ mod tests {
                 assert!(raw);
             }
             _ => panic!("Expected Command::List"),
+        }
+    }
+
+    #[test]
+    fn destroy_alias_parses_as_remove() {
+        let args = Args::parse_from(["vm", "destroy", "backend", "--force"]);
+        match args.command {
+            Command::Remove { environment, force } => {
+                assert_eq!(environment, Some("backend".into()));
+                assert!(force);
+            }
+            _ => panic!("Expected Command::Remove"),
         }
     }
 
