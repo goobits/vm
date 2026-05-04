@@ -213,15 +213,17 @@ fn handle_ssh_start_prompt(
         );
     }
 
+    let display_name = container.unwrap_or(vm_name);
+
     // Start the VM
-    vm_println!("{}", msg!(MESSAGES.vm.ssh_starting, name = vm_name));
+    vm_println!("{}", msg!(MESSAGES.vm.ssh_starting, name = display_name));
 
     if let Err(e) = provider.start(container) {
         vm_println!(
             "{}",
             msg!(
                 MESSAGES.vm.ssh_start_failed,
-                name = vm_name,
+                name = display_name,
                 error = e.to_string()
             )
         );
@@ -233,11 +235,14 @@ fn handle_ssh_start_prompt(
     }
 
     if !wait_for_provider_running(provider.as_ref(), container) {
-        vm_println!("\n⚠️  '{}' did not become ready before reconnect.", vm_name);
+        vm_println!(
+            "\n⚠️  '{}' did not become ready before reconnect.",
+            display_name
+        );
         if provider.name() == "tart" {
             vm_println!(
                 "💡 Check Tart logs: /tmp/vm-tart-{}.log",
-                sanitize_log_name(container.unwrap_or(vm_name))
+                sanitize_log_name(display_name)
             );
             vm_println!("💡 If this VM is stale or incomplete: vm remove <name> --force && vm run mac as <name>");
         } else {
@@ -246,12 +251,18 @@ fn handle_ssh_start_prompt(
         return Ok(None);
     }
 
-    vm_println!("{}", msg!(MESSAGES.vm.ssh_reconnecting, name = vm_name));
+    vm_println!(
+        "{}",
+        msg!(MESSAGES.vm.ssh_reconnecting, name = display_name)
+    );
 
     let retry_result = provider.ssh(container, relative_path);
     match &retry_result {
         Ok(()) => {
-            vm_println!("{}", msg!(MESSAGES.vm.ssh_disconnected, name = vm_name));
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.vm.ssh_disconnected, name = display_name)
+            );
         }
         Err(e) => {
             vm_println!("\n❌ SSH connection failed: {}", e);
@@ -349,6 +360,7 @@ fn connect_ssh(
         .and_then(|p| p.name.as_ref())
         .map(|s| s.as_str())
         .unwrap_or("vm-project");
+    let display_name = container.unwrap_or(vm_name);
 
     // Default to "developer" for user since users field may not exist
     let user = "developer";
@@ -359,7 +371,7 @@ fn connect_ssh(
         .and_then(|t| t.shell.as_deref())
         .unwrap_or("zsh");
 
-    vm_println!("{}", msg!(MESSAGES.vm.ssh_connecting, name = vm_name));
+    vm_println!("{}", msg!(MESSAGES.vm.ssh_connecting, name = display_name));
 
     // Increment session count
     let mut state = VmState::load(vm_name)?;
@@ -376,14 +388,20 @@ fn connect_ssh(
     // Show message when SSH session ends
     match &result {
         Ok(()) => {
-            vm_println!("{}", msg!(MESSAGES.vm.ssh_disconnected, name = vm_name));
+            vm_println!(
+                "{}",
+                msg!(MESSAGES.vm.ssh_disconnected, name = display_name)
+            );
         }
         Err(e) => {
             let error_str = e.to_string();
 
             // Check if VM doesn't exist first
             if error_str.contains("No such container") || error_str.contains("No such object") {
-                vm_println!("{}", msg!(MESSAGES.vm.ssh_vm_not_found, name = vm_name));
+                vm_println!(
+                    "{}",
+                    msg!(MESSAGES.vm.ssh_vm_not_found, name = display_name)
+                );
 
                 // Offer to create the VM
                 if std::io::stdin().is_terminal() {
@@ -391,7 +409,7 @@ fn connect_ssh(
 
                     if confirm_select("Create it now?", true)? {
                         // Actually create the VM
-                        vm_println!("{}", msg!(MESSAGES.vm.ssh_creating, name = vm_name));
+                        vm_println!("{}", msg!(MESSAGES.vm.ssh_creating, name = display_name));
 
                         #[allow(clippy::excessive_nesting)]
                         match provider.create_with_context(
@@ -400,7 +418,7 @@ fn connect_ssh(
                             Ok(()) => {
                                 vm_println!(
                                     "{}",
-                                    msg!(MESSAGES.vm.ssh_create_success, name = vm_name)
+                                    msg!(MESSAGES.vm.ssh_create_success, name = display_name)
                                 );
 
                                 // Now try SSH again
@@ -411,7 +429,7 @@ fn connect_ssh(
                                     "{}",
                                     msg!(
                                         MESSAGES.vm.ssh_create_failed,
-                                        name = vm_name,
+                                        name = display_name,
                                         error = create_err.to_string()
                                     )
                                 );
@@ -435,7 +453,7 @@ fn connect_ssh(
                 // Return a clean error that won't be misinterpreted by the main error handler
                 return Err(VmError::vm_operation(
                     std::io::Error::new(std::io::ErrorKind::NotFound, "VM does not exist"),
-                    Some(vm_name),
+                    Some(display_name),
                     "ssh",
                 ));
             }
@@ -447,7 +465,7 @@ fn connect_ssh(
                     && error_str.contains("exited with code 1")
                     && !error_str.contains("No such"))
             {
-                vm_println!("{}", msg!(MESSAGES.vm.ssh_not_running, name = vm_name));
+                vm_println!("{}", msg!(MESSAGES.vm.ssh_not_running, name = display_name));
 
                 // Handle interactive prompt
                 if let Some(retry_result) = handle_ssh_start_prompt(
