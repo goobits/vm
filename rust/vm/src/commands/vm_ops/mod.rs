@@ -19,7 +19,7 @@ mod targets;
 // Re-export all public handlers for external use
 pub use create::handle_create;
 pub use helpers::handle_get_sync_directory;
-pub use interaction::{handle_copy, handle_exec, handle_logs, handle_ssh};
+pub use interaction::{handle_copy, handle_exec, handle_logs, handle_ssh, SshOptions};
 pub use lifecycle::{handle_restart, handle_start, handle_stop};
 
 pub use destroy::handle_destroy_enhanced;

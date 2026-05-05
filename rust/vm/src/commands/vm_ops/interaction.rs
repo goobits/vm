@@ -15,7 +15,7 @@ use crate::utils::confirm_select;
 use vm_cli::msg;
 use vm_config::{
     config::{BoxSpec, VmConfig},
-    detect_worktrees, ConfigLoader,
+    detect_worktrees, ConfigLoader, GlobalConfig,
 };
 use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
@@ -186,9 +186,7 @@ fn handle_ssh_start_prompt(
     container: Option<&str>,
     relative_path: &Path,
     vm_name: &str,
-    _user: &str,
-    _workspace_path: &str,
-    _shell: &str,
+    global_config: &GlobalConfig,
 ) -> VmResult<Option<VmResult<()>>> {
     // Check if we're in an interactive terminal
     if !std::io::stdin().is_terminal() {
@@ -218,7 +216,7 @@ fn handle_ssh_start_prompt(
     // Start the VM
     vm_println!("{}", msg!(MESSAGES.vm.ssh_starting, name = display_name));
 
-    if let Err(e) = provider.start(container) {
+    if let Err(e) = start_provider_for_ssh(provider.as_ref(), container, global_config) {
         vm_println!(
             "{}",
             msg!(
@@ -272,6 +270,17 @@ fn handle_ssh_start_prompt(
     Ok(Some(retry_result.map_err(VmError::from)))
 }
 
+fn start_provider_for_ssh(
+    provider: &dyn Provider,
+    container: Option<&str>,
+    global_config: &GlobalConfig,
+) -> VmResult<()> {
+    let context = ProviderContext::with_verbose(false).with_config(global_config.clone());
+    provider
+        .start_with_context(container, &context)
+        .map_err(VmError::from)
+}
+
 fn wait_for_provider_running(provider: &dyn Provider, container: Option<&str>) -> bool {
     use std::thread;
     use std::time::Duration;
@@ -305,6 +314,7 @@ fn connect_ssh(
     path: Option<PathBuf>,
     command: Option<Vec<String>>,
     config: VmConfig,
+    global_config: &GlobalConfig,
 ) -> VmResult<()> {
     if let Some(cmd) = command {
         // If a command is provided, delegate to the exec handler
@@ -361,15 +371,6 @@ fn connect_ssh(
         .map(|s| s.as_str())
         .unwrap_or("vm-project");
     let display_name = container.unwrap_or(vm_name);
-
-    // Default to "developer" for user since users field may not exist
-    let user = "developer";
-
-    let shell = config
-        .terminal
-        .as_ref()
-        .and_then(|t| t.shell.as_deref())
-        .unwrap_or("zsh");
 
     vm_println!("{}", msg!(MESSAGES.vm.ssh_connecting, name = display_name));
 
@@ -473,9 +474,7 @@ fn connect_ssh(
                     container,
                     &relative_path,
                     vm_name,
-                    user,
-                    workspace_path,
-                    shell,
+                    global_config,
                 )? {
                     return retry_result;
                 }
@@ -494,15 +493,29 @@ fn connect_ssh(
 }
 
 /// Handle SSH into VM
+pub struct SshOptions {
+    pub path: Option<PathBuf>,
+    pub command: Option<Vec<String>>,
+    pub config: VmConfig,
+    pub global_config: GlobalConfig,
+    pub force_refresh: bool,
+    pub no_refresh: bool,
+}
+
 pub fn handle_ssh(
     provider: Box<dyn Provider>,
     container: Option<&str>,
-    path: Option<PathBuf>,
-    command: Option<Vec<String>>,
-    config: VmConfig,
-    force_refresh: bool,
-    no_refresh: bool,
+    options: SshOptions,
 ) -> VmResult<()> {
+    let SshOptions {
+        path,
+        command,
+        config,
+        global_config,
+        force_refresh,
+        no_refresh,
+    } = options;
+
     let vm_name = config
         .project
         .as_ref()
@@ -510,7 +523,7 @@ pub fn handle_ssh(
         .unwrap_or("vm-project");
 
     if no_refresh {
-        return connect_ssh(provider, container, path, command, config);
+        return connect_ssh(provider, container, path, command, config, &global_config);
     }
 
     let worktrees = detect_worktrees()?;
@@ -533,7 +546,7 @@ pub fn handle_ssh(
     };
 
     if worktrees_match(&worktrees, &current_mounts) {
-        return connect_ssh(provider, container, path, command, config);
+        return connect_ssh(provider, container, path, command, config, &global_config);
     }
 
     let (safe_to_restart, active_sessions) = is_safe_to_restart(vm_name);
@@ -544,13 +557,13 @@ pub fn handle_ssh(
             active_sessions
         );
         vm_println!("💡 Close other sessions before reconnecting with `vm shell`");
-        return connect_ssh(provider, container, path, command, config);
+        return connect_ssh(provider, container, path, command, config, &global_config);
     }
 
     if force_refresh && active_sessions > 0 {
         vm_println!("⚠️  Warning: This will disconnect {active_sessions} active SSH sessions.");
         if !confirm_select("Continue?", false)? {
-            return connect_ssh(provider, container, path, command, config);
+            return connect_ssh(provider, container, path, command, config, &global_config);
         }
     } else {
         let new_worktrees: Vec<String> = worktrees
@@ -558,7 +571,7 @@ pub fn handle_ssh(
             .filter(|w| !current_mounts.contains(w))
             .collect();
         if !prompt_refresh(&new_worktrees)? {
-            return connect_ssh(provider, container, path, command, config);
+            return connect_ssh(provider, container, path, command, config, &global_config);
         }
     }
 
@@ -571,11 +584,11 @@ pub fn handle_ssh(
     // to include the new worktree mounts.
     // For now, we'll just restart the container.
     vm_println!("  - Starting container...");
-    let context = ProviderContext::default();
+    let context = ProviderContext::with_verbose(false).with_config(global_config.clone());
     provider.start_with_context(container, &context)?;
     vm_println!("✓ Mounts refreshed.");
 
-    connect_ssh(provider, container, path, command, config)
+    connect_ssh(provider, container, path, command, config, &global_config)
 }
 
 /// Handle command execution in VM
@@ -765,6 +778,103 @@ pub fn handle_copy(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::{Cell, RefCell};
+    use std::path::Path;
+    use vm_core::error::Result as CoreResult;
+    use vm_provider::ProviderContext;
+
+    #[derive(Default)]
+    struct RecordingProvider {
+        start_called: Cell<bool>,
+        start_with_context_called: Cell<bool>,
+        container: RefCell<Option<String>>,
+        context_has_global_config: Cell<bool>,
+    }
+
+    impl Provider for RecordingProvider {
+        fn name(&self) -> &'static str {
+            "recording"
+        }
+
+        fn create_with_context(&self, _context: &ProviderContext) -> CoreResult<()> {
+            Ok(())
+        }
+
+        fn start(&self, container: Option<&str>) -> CoreResult<()> {
+            self.start_called.set(true);
+            self.container.replace(container.map(str::to_string));
+            Ok(())
+        }
+
+        fn start_with_context(
+            &self,
+            container: Option<&str>,
+            context: &ProviderContext,
+        ) -> CoreResult<()> {
+            self.start_with_context_called.set(true);
+            self.container.replace(container.map(str::to_string));
+            self.context_has_global_config
+                .set(context.global_config.is_some());
+            Ok(())
+        }
+
+        fn stop(&self, _container: Option<&str>) -> CoreResult<()> {
+            Ok(())
+        }
+
+        fn destroy(&self, _container: Option<&str>) -> CoreResult<()> {
+            Ok(())
+        }
+
+        fn ssh(&self, _container: Option<&str>, _relative_path: &Path) -> CoreResult<()> {
+            Ok(())
+        }
+
+        fn exec(&self, _container: Option<&str>, _cmd: &[String]) -> CoreResult<()> {
+            Ok(())
+        }
+
+        fn logs(&self, _container: Option<&str>) -> CoreResult<()> {
+            Ok(())
+        }
+
+        fn copy(
+            &self,
+            _source: &str,
+            _destination: &str,
+            _container: Option<&str>,
+        ) -> CoreResult<()> {
+            Ok(())
+        }
+
+        fn status(&self, _container: Option<&str>) -> CoreResult<()> {
+            Ok(())
+        }
+
+        fn restart(&self, _container: Option<&str>) -> CoreResult<()> {
+            Ok(())
+        }
+
+        fn provision(&self, _container: Option<&str>) -> CoreResult<()> {
+            Ok(())
+        }
+
+        fn list(&self) -> CoreResult<()> {
+            Ok(())
+        }
+
+        fn kill(&self, _container: Option<&str>) -> CoreResult<()> {
+            Ok(())
+        }
+
+        fn get_sync_directory(&self) -> String {
+            "/workspace".to_string()
+        }
+
+        fn clone_box(&self) -> Box<dyn Provider> {
+            Box::<RecordingProvider>::default()
+        }
+    }
 
     #[test]
     fn test_worktrees_match() {
@@ -791,5 +901,18 @@ mod tests {
         let mounts = vec![];
         let worktrees = vec!["/path/to/worktree1".to_string()];
         assert!(!worktrees_match(&worktrees, &mounts));
+    }
+
+    #[test]
+    fn ssh_prompt_start_uses_contextual_start_path() {
+        let provider = RecordingProvider::default();
+
+        start_provider_for_ssh(&provider, Some("app"), &GlobalConfig::default())
+            .expect("provider should start");
+
+        assert!(!provider.start_called.get());
+        assert!(provider.start_with_context_called.get());
+        assert_eq!(provider.container.borrow().as_deref(), Some("app"));
+        assert!(provider.context_has_global_config.get());
     }
 }

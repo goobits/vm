@@ -145,18 +145,21 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             no_refresh,
         } => {
             let subject = resolve_environment(args.config.clone(), args.profile, environment)?;
-            let (provider, config, _) =
+            let (provider, config, global_config) =
                 load_provider_context(args.config, subject.profile, subject.provider_override)?;
             let command =
                 command.map(|command| vec!["/bin/sh".to_string(), "-c".to_string(), command]);
             vm_ops::handle_ssh(
                 provider,
                 subject.target.as_deref(),
-                path,
-                command,
-                config,
-                force_refresh,
-                no_refresh,
+                vm_ops::SshOptions {
+                    path,
+                    command,
+                    config,
+                    global_config,
+                    force_refresh,
+                    no_refresh,
+                },
             )
         }
         Command::Exec {
