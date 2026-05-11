@@ -18,10 +18,10 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
-use vm_cli::msg;
 use vm_config::config::VmConfig;
 use vm_core::command_stream::{is_tool_installed, stream_command};
 use vm_core::error::Result;
+use vm_core::msg;
 use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
 

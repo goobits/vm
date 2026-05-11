@@ -12,8 +12,8 @@ use crate::{
     context::ProviderContext,
     docker::{build::BuildOperations, compose::ComposeOperations, ComposeCommand, DockerOps},
 };
-use vm_cli::msg;
 use vm_config::config::VmConfig;
+use vm_core::msg;
 use vm_core::{
     command_stream::stream_command_visible,
     error::{Result, VmError},

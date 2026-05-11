@@ -35,7 +35,6 @@ sysinfo = { workspace = true, features = ["serde"] }
 vm-core = { path = "../vm-core" }
 vm-logging = { path = "../vm-logging" }
 vm-messages = { path = "../vm-messages" }
-vm-cli = { path = "../vm-cli" }
 vm-config = { path = "../vm-config" }
 vm-platform = { path = "../vm-platform" }
 vm-plugin = { path = "../vm-plugin" }

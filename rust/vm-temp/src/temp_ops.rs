@@ -4,8 +4,8 @@ use std::path::PathBuf;
 
 // External crates
 use tracing::{error, info};
-use vm_cli::msg;
 use vm_core::error::{Result, VmError};
+use vm_core::msg;
 use vm_messages::messages::MESSAGES;
 
 // Internal imports

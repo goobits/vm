@@ -7,8 +7,8 @@ use serde_yaml_ng::Value;
 // Internal imports
 use crate::config_ops::io::{find_local_config, get_global_config_path, read_config_or_init};
 use crate::yaml::core::CoreOperations;
-use vm_cli::msg;
 use vm_core::error::Result;
+use vm_core::msg;
 use vm_core::{vm_error, vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 

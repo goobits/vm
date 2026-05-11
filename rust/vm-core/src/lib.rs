@@ -1,6 +1,7 @@
 pub mod command_stream;
 pub mod error;
 pub mod file_system;
+pub mod message;
 pub mod output_macros;
 pub mod project;
 pub mod secrets;

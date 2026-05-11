@@ -14,8 +14,8 @@ use std::time::{Duration, Instant};
 // External crates
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
-use vm_cli::msg;
 use vm_core::error::VmError;
+use vm_core::msg;
 use vm_core::{error::Result, user_paths, vm_println};
 use vm_messages::messages::MESSAGES;
 

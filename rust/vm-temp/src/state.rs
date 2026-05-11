@@ -116,23 +116,39 @@ impl StateManager {
         self.state_file.exists()
     }
 
-    /// Acquire an exclusive lock for state operations
+    /// Acquire an exclusive lock for state operations.
+    ///
+    /// A blocking `lock_exclusive()` would wait forever if a previous process
+    /// holding the lock crashed. We poll `try_lock_exclusive()` instead so the
+    /// CLI fails fast with a clear error rather than hanging indefinitely.
     fn acquire_lock(&self) -> std::result::Result<File, StateError> {
+        const LOCK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+        const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
+
         let lock_file = OpenOptions::new()
             .create(true)
             .truncate(true)
             .write(true)
             .open(&self.lock_file)?;
 
-        lock_file.lock_exclusive().map_err(|e| {
-            StateError::Vm(VmError::Internal(format!(
-                "Failed to acquire lock {}: {}",
-                self.lock_file.display(),
-                e
-            )))
-        })?;
-
-        Ok(lock_file)
+        let lock_start = std::time::Instant::now();
+        loop {
+            match lock_file.try_lock_exclusive() {
+                Ok(()) => return Ok(lock_file),
+                Err(e) => {
+                    if lock_start.elapsed() > LOCK_TIMEOUT {
+                        return Err(StateError::Vm(VmError::Internal(format!(
+                            "Timed out after {}s waiting for temp VM state lock {}: {}. \
+                             If you're sure no other `vm` process is running, delete the lock file to recover.",
+                            LOCK_TIMEOUT.as_secs(),
+                            self.lock_file.display(),
+                            e
+                        ))));
+                    }
+                    std::thread::sleep(POLL_INTERVAL);
+                }
+            }
+        }
     }
 
     /// Load temp VM state from disk

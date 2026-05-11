@@ -7,9 +7,9 @@ use tracing::{debug, warn};
 use crate::cli::{ConfigProfileSubcommand, ConfigSubcommand};
 use crate::error::{VmError, VmResult};
 use serde_yaml_ng as serde_yaml;
-use vm_cli::msg;
 use vm_config::ports::{PortRange, PortRegistry};
 use vm_config::{config::VmConfig, validator::ConfigValidator, ConfigOps};
+use vm_core::msg;
 use vm_core::{vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 

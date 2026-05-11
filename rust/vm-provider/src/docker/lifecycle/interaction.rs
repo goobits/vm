@@ -4,7 +4,7 @@ use std::path::Path;
 
 use super::LifecycleOperations;
 use crate::{docker::UserConfig, security::SecurityValidator};
-use vm_cli::msg;
+use vm_core::msg;
 use vm_core::{
     command_stream::stream_command,
     error::{Result, VmError},

@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 // External crates
-use vm_cli::msg;
 use vm_core::error::{Result, VmError};
+use vm_core::msg;
 use vm_core::{vm_error, vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 

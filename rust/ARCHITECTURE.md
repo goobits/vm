@@ -25,7 +25,6 @@ Goobits VM is built using a **layered architecture** designed around the princip
 | Provider | `vm-temp` | Temporary VM lifecycle, mount management, CLI glue | `cargo test -p vm-temp` |
 | Provider | `vm-snapshot` | Snapshot lifecycle: create, restore, export, and import | `cargo test -p vm-snapshot` |
 | Application | `vm` | Main CLI orchestration and commands | `cargo test -p vm` / `cargo run -p vm -- --help` |
-| Application | `vm-cli` | Message builder and `msg!` macro for formatted output | `cargo test -p vm-cli` |
 | Application | `vm-installer` | Self-installation flow for distributing the CLI | `cargo run -p vm-installer -- --help` |
 | Service | `vm-package-server` | Local multi-registry artifact service | `cargo test -p vm-package-server` / `cargo run -p vm-package-server -- --help` |
 | Service | `vm-auth-proxy` | Authentication proxy that fronts API/services | `cargo run -p vm-auth-proxy -- --help` |
@@ -130,16 +129,6 @@ import/export entry points
 
 **Key Exports**: Main binary, command handlers, service orchestration
 
-#### vm-cli
-**Role**: Message template variable substitution and CLI output formatting.
-
-**Responsibilities**:
-- Variable substitution in `vm-messages` templates via the `msg!` macro.
-- Building complex, formatted messages with `MessageBuilder`.
-- Handling terminal output, colors, and styling.
-
-**Key Exports**: `msg!` macro, `MessageBuilder` struct
-
 ### Service Layer
 
 #### vm-package-server
@@ -229,8 +218,6 @@ graph TD
     J --> C
 
     %% Application layer
-    K[vm-cli] --> A
-    K --> B
     L[vm] --> A
     L --> B
     L --> C
@@ -241,7 +228,6 @@ graph TD
     L --> H
     L --> I
     L --> J
-    L --> K
 
     %% Installer
     M[vm-installer] --> A

@@ -12,8 +12,8 @@ use crate::config_ops::io::{
 };
 use crate::schema;
 use crate::yaml::core::CoreOperations;
-use vm_cli::msg;
 use vm_core::error::Result;
+use vm_core::msg;
 use vm_core::{vm_error, vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 

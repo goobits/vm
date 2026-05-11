@@ -4,8 +4,8 @@ use crate::error::{VmError, VmResult};
 use tracing::debug;
 // Import the CLI types
 use crate::cli::{Args, Command, PluginSubcommand, TunnelSubcommand};
-use vm_cli::msg;
 use vm_config::{config::BoxSpec, AppConfig, ConfigOps};
+use vm_core::msg;
 use vm_core::{vm_error, vm_println};
 use vm_messages::messages::MESSAGES;
 use vm_provider::get_provider;

@@ -10,8 +10,8 @@ use crate::service_manager::get_service_manager;
 use crate::service_registry::get_service_registry;
 use anyhow::Context;
 use dialoguer::Confirm;
-use vm_cli::msg;
 use vm_config::GlobalConfig;
+use vm_core::msg;
 use vm_core::{vm_error, vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 

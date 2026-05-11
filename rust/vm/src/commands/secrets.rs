@@ -8,8 +8,8 @@ use crate::cli::SecretsSubcommand;
 use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
 use crate::service_registry::get_service_registry;
-use vm_cli::msg;
 use vm_config::GlobalConfig;
+use vm_core::msg;
 use vm_core::{vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 

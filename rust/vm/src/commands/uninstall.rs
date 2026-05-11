@@ -1,7 +1,7 @@
 use crate::error::VmError;
 use std::io::{self, Write};
 use std::path::PathBuf;
-use vm_cli::msg;
+use vm_core::msg;
 use vm_core::{vm_println, vm_success, vm_warning};
 use vm_messages::messages::MESSAGES;
 

@@ -7,8 +7,8 @@ use std::path::Path;
 use tracing::{debug, info_span, warn};
 
 use crate::error::{VmError, VmResult};
-use vm_cli::msg;
 use vm_config::{config::MemoryLimit, config::VmConfig, validator::ConfigValidator, GlobalConfig};
+use vm_core::msg;
 use vm_core::{get_cpu_core_count, get_total_memory_gb, vm_error, vm_println};
 use vm_messages::messages::MESSAGES;
 use vm_provider::{docker::DockerOps, Provider, ProviderContext};

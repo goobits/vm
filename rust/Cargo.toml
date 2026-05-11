@@ -20,7 +20,6 @@ members = [
 
     # Application Layer
     "vm",
-    "vm-cli",
     "vm-installer",
 
     # Service Layer
