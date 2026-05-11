@@ -299,17 +299,26 @@ async fn get_environment(
     }
 }
 
-/// Verify the authentication token from headers
+/// Verify the authentication token from headers.
+///
+/// Failed attempts are logged at `warn!` level so operators can spot
+/// misconfigured callers and brute-force probing in the audit trail.
 fn verify_auth_token(state: &AppState, headers: &HeaderMap) -> bool {
     let store = match state.store.lock() {
         Ok(guard) => guard,
-        Err(_) => return false,
+        Err(_) => {
+            warn!("auth: rejected request because secret store mutex is poisoned");
+            return false;
+        }
     };
 
     // Get expected token
     let expected_token = match store.get_auth_token() {
         Some(token) => token,
-        None => return false,
+        None => {
+            warn!("auth: rejected request -- no auth token configured on this server");
+            return false;
+        }
     };
 
     // Check Authorization header. Use a constant-time comparison so a remote
@@ -318,9 +327,21 @@ fn verify_auth_token(state: &AppState, headers: &HeaderMap) -> bool {
         if let Ok(auth_str) = auth_header.to_str() {
             if let Some(token) = auth_str.strip_prefix("Bearer ") {
                 use subtle::ConstantTimeEq;
-                return token.as_bytes().ct_eq(expected_token.as_bytes()).into();
+                let ok: bool = token.as_bytes().ct_eq(expected_token.as_bytes()).into();
+                if !ok {
+                    warn!(
+                        "auth: rejected request -- bearer token mismatch (received {} bytes)",
+                        token.len()
+                    );
+                }
+                return ok;
             }
+            warn!("auth: rejected request -- Authorization header present but not a Bearer token");
+        } else {
+            warn!("auth: rejected request -- Authorization header is not valid UTF-8");
         }
+    } else {
+        warn!("auth: rejected request -- missing Authorization header");
     }
 
     false
