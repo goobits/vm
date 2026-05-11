@@ -9,7 +9,8 @@ use vm_core::error::{Result, VmError};
 use vm_messages::messages::MESSAGES;
 
 // Internal imports
-use crate::{MountParser, MountPermission, StateManager, TempVmState};
+use crate::mount_ops::MountParser;
+use crate::{MountPermission, StateManager, TempVmState};
 use vm_config::config::VmConfig;
 use vm_provider::Provider;
 

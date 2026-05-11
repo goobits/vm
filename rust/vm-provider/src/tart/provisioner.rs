@@ -129,6 +129,16 @@ impl TartProvisioner {
         input.replace('\'', "'\"'\"'")
     }
 
+    /// Single-quote every package name so shell metacharacters from `vm.yaml`
+    /// (e.g. `pkg; rm -rf /`) can't break out of the package list.
+    fn shell_quote_packages(packages: &[String]) -> String {
+        packages
+            .iter()
+            .map(|p| format!("'{}'", Self::shell_escape_single_quotes(p)))
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
     fn ensure_workspace_mount(&self) -> Result<()> {
         let dir_escaped = Self::shell_escape_single_quotes(&self.project_dir);
         let mount_cmd = format!(
@@ -504,7 +514,7 @@ fi"#,
 
     fn provision_generic_packages(&self, config: &VmConfig) -> Result<()> {
         if !config.apt_packages.is_empty() {
-            let packages = config.apt_packages.join(" ");
+            let packages = Self::shell_quote_packages(&config.apt_packages);
             if self.is_macos_guest(config) {
                 self.ensure_homebrew()?;
                 self.ssh_exec(&format!(
@@ -522,14 +532,14 @@ fi"#,
 
         if !config.npm_packages.is_empty() {
             self.ensure_nodejs_runtime(config)?;
-            let packages = config.npm_packages.join(" ");
+            let packages = Self::shell_quote_packages(&config.npm_packages);
             self.ssh_exec(&format!("npm install -g {}", packages))?;
         }
 
         if !config.pip_packages.is_empty() {
             self.ensure_python_runtime(config)?;
             self.ensure_python_package_tooling(config)?;
-            let packages = config.pip_packages.join(" ");
+            let packages = Self::shell_quote_packages(&config.pip_packages);
             self.ssh_exec(&format!(
                 r#"export PATH="{}"
 python3 -m pip install --user {} {}"#,
@@ -545,7 +555,7 @@ python3 -m pip install --user {} {}"#,
 
         if !config.cargo_packages.is_empty() {
             self.ensure_rust_runtime()?;
-            let packages = config.cargo_packages.join(" ");
+            let packages = Self::shell_quote_packages(&config.cargo_packages);
             self.ssh_exec(&format!(
                 r#"export PATH="$HOME/.cargo/bin:$PATH"
 cargo install {}"#,

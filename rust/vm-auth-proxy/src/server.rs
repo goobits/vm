@@ -7,7 +7,7 @@ use crate::types::{
 };
 use anyhow::{Context, Result};
 use axum::{
-    extract::{Path, Query, State},
+    extract::{DefaultBodyLimit, Path, Query, State},
     http::{header, HeaderMap, StatusCode},
     response::Json,
     routing::{delete, get, post},
@@ -50,7 +50,9 @@ pub async fn run_server_with_shutdown(
         start_time: Instant::now(),
     };
 
-    // Build router
+    // Build router. The body limit defends against memory-exhaustion DoS from
+    // oversized payloads; the secrets API only ever needs small JSON bodies.
+    const MAX_BODY_BYTES: usize = 256 * 1024;
     let app = Router::new()
         .route("/health", get(health_check))
         .route("/secrets", get(list_secrets))
@@ -58,6 +60,7 @@ pub async fn run_server_with_shutdown(
         .route("/secrets/{name}", get(get_secret))
         .route("/secrets/{name}", delete(remove_secret))
         .route("/env/{vm_name}", get(get_environment))
+        .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
@@ -309,11 +312,13 @@ fn verify_auth_token(state: &AppState, headers: &HeaderMap) -> bool {
         None => return false,
     };
 
-    // Check Authorization header
+    // Check Authorization header. Use a constant-time comparison so a remote
+    // attacker can't recover the token byte-by-byte via timing side channels.
     if let Some(auth_header) = headers.get(header::AUTHORIZATION) {
         if let Ok(auth_str) = auth_header.to_str() {
             if let Some(token) = auth_str.strip_prefix("Bearer ") {
-                return token == expected_token;
+                use subtle::ConstantTimeEq;
+                return token.as_bytes().ct_eq(expected_token.as_bytes()).into();
             }
         }
     }

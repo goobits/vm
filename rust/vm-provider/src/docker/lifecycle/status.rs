@@ -326,7 +326,11 @@ impl<'a> LifecycleOperations<'a> {
         let inspect_data: serde_json::Value = serde_json::from_slice(&inspect_output.stdout)
             .map_err(|e| VmError::Internal(format!("Failed to parse container info: {e}")))?;
 
-        let container_info = &inspect_data[0];
+        let container_info = inspect_data.get(0).ok_or_else(|| {
+            VmError::Internal(format!(
+                "Container '{container_name}' inspect returned no results"
+            ))
+        })?;
         let state = &container_info["State"];
         let config = &container_info["Config"];
 
