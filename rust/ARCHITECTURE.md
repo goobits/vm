@@ -23,6 +23,7 @@ Goobits VM is built using a **layered architecture** designed around the princip
 | Configuration | `vm-plugin` | Plugin discovery, validation, and preset/service loading | `cargo test -p vm-plugin` |
 | Provider | `vm-provider` | Provider traits plus Docker/Podman/Tart implementations | `cargo test -p vm-provider` |
 | Provider | `vm-temp` | Temporary VM lifecycle, mount management, CLI glue | `cargo test -p vm-temp` |
+| Provider | `vm-snapshot` | Snapshot lifecycle: create, restore, export, and import | `cargo test -p vm-snapshot` |
 | Application | `vm` | Main CLI orchestration and commands | `cargo test -p vm` / `cargo run -p vm -- --help` |
 | Application | `vm-cli` | Message builder and `msg!` macro for formatted output | `cargo test -p vm-cli` |
 | Application | `vm-installer` | Self-installation flow for distributing the CLI | `cargo run -p vm-installer -- --help` |
@@ -100,6 +101,20 @@ Goobits VM is built using a **layered architecture** designed around the princip
 - Integration with main VM providers
 
 **Key Exports**: Temporary VM operations, mount management utilities
+
+#### vm-snapshot
+**Role**: Snapshot lifecycle management for VM state, used both for project-scoped
+checkpoints and for global base-image snapshots.
+
+**Responsibilities**:
+- Create, restore, list, and delete snapshots scoped per project or globally
+- Export snapshots to a portable `.tar.gz` archive (image layers + volumes + metadata)
+- Import snapshots, validating manifest, platform compatibility, and entry paths
+  before extraction
+- Parallel Docker image save/load for large multi-service snapshots
+
+**Key Exports**: `SnapshotManager`, `SnapshotScope`, `SnapshotMetadata`,
+import/export entry points
 
 ### Application Layer
 

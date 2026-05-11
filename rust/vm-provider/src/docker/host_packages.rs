@@ -134,8 +134,6 @@ pub fn detect_packages(packages: &[String], manager: PackageManager) -> HostPack
 
 /// Detect all package manager directories on the host
 fn detect_package_directories(info: &mut HostPackageInfo) {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
-
     // Python directories
     if let Ok(output) = Command::new("python3")
         .args(["-c", "import site; print(site.getusersitepackages())"])
@@ -189,14 +187,19 @@ fn detect_package_directories(info: &mut HostPackageInfo) {
         if cargo_bin.exists() {
             info.cargo_bin = Some(cargo_bin);
         }
-    } else {
-        // Fallback to home-based paths if platform detection fails
-        let cargo_registry = PathBuf::from(&home).join(".cargo/registry");
+    } else if let Ok(home) = vm_core::user_paths::home_dir() {
+        // Fallback to home-based paths if platform detection of cargo_home
+        // fails. vm_core::user_paths::home_dir wraps the platform-aware
+        // lookup, so this works on Linux, macOS, and Windows; the old
+        // `env::var("HOME").unwrap_or_else(|_| "/home/user".to_string())`
+        // was wrong on Windows (no `$HOME`) and on Unix where root's home
+        // is `/root`, not `/home/user`.
+        let cargo_registry = home.join(".cargo/registry");
         if cargo_registry.exists() {
             info.cargo_registry = Some(cargo_registry);
         }
 
-        let cargo_bin = PathBuf::from(&home).join(".cargo/bin");
+        let cargo_bin = home.join(".cargo/bin");
         if cargo_bin.exists() {
             info.cargo_bin = Some(cargo_bin);
         }

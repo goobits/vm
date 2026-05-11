@@ -215,8 +215,7 @@ impl SecretStore {
         {
             use std::os::unix::fs::PermissionsExt;
             let perms = fs::Permissions::from_mode(FILE_PERMISSIONS);
-            fs::set_permissions(&tmp_path, perms)
-                .context("Failed to set file permissions")?;
+            fs::set_permissions(&tmp_path, perms).context("Failed to set file permissions")?;
         }
 
         if let Err(e) =

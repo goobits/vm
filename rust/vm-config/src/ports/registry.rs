@@ -314,9 +314,15 @@ impl PortRegistry {
                 "Failed to write temporary file: {temp_path:?}: {e}"
             ))
         })?;
-        fs::rename(&temp_path, &self.registry_path).map_err(|e| {
-            VmError::Filesystem(format!("Failed to atomically rename temporary file: {e}"))
-        })?;
+        // If the rename step fails (e.g. cross-device, perms), drop the
+        // leftover temp file so we don't leak `port-registry.json.tmp.*`
+        // siblings into `~/.vm/` over time.
+        if let Err(e) = fs::rename(&temp_path, &self.registry_path) {
+            let _ = fs::remove_file(&temp_path);
+            return Err(VmError::Filesystem(format!(
+                "Failed to atomically rename temporary file: {e}"
+            )));
+        }
 
         // Update our local state
         self.entries = entries;

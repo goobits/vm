@@ -689,9 +689,16 @@ impl Provider for TartProvider {
 
     fn logs(&self, container: Option<&str>) -> Result<()> {
         let vm_name = self.vm_name_with_instance(container)?;
-        // Try to read logs from ~/.tart/vms/{name}/app.log
-        let home_env = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-        let log_path = format!("{}/{}/{}/app.log", home_env, TART_VM_LOG_PATH, vm_name);
+        // Try to read logs from ~/.tart/vms/{name}/app.log. The Tart log lives
+        // under the real user's home; falling back to `/tmp` (the old default)
+        // would never find the file.
+        let home = vm_core::user_paths::home_dir().map_err(|e| {
+            VmError::Internal(format!(
+                "Failed to locate home directory for Tart log lookup: {e}"
+            ))
+        })?;
+        let log_path = home.join(TART_VM_LOG_PATH).join(&vm_name).join("app.log");
+        let log_path = log_path.to_string_lossy().into_owned();
 
         // Check if log file exists before attempting to tail
         if !Path::new(&log_path).exists() {
