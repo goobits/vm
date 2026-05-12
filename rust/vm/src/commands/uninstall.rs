@@ -1,7 +1,7 @@
 use crate::error::VmError;
 use std::io::{self, Write};
 use std::path::PathBuf;
-use vm_cli::msg;
+use vm_core::msg;
 use vm_core::{vm_println, vm_success, vm_warning};
 use vm_messages::messages::MESSAGES;
 
@@ -21,15 +21,22 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
         )
     );
 
-    // Find config files to remove
+    // Find config files to remove. Use the platform-aware home lookup so
+    // uninstall works on Windows and so we don't silently scan `/tmp` for
+    // config files when `$HOME` is unset.
     let mut config_files = Vec::new();
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    let home = vm_core::user_paths::home_dir().map_err(|e| {
+        VmError::general(
+            e,
+            "Failed to locate home directory while preparing uninstall".to_string(),
+        )
+    })?;
 
     // Common config locations
     let config_paths = vec![
-        PathBuf::from(&home).join(".vm"),
-        PathBuf::from(&home).join(".config/vm"),
-        PathBuf::from(&home).join(".vm-install.log"),
+        home.join(".vm"),
+        home.join(".config/vm"),
+        home.join(".vm-install.log"),
     ];
 
     for path in &config_paths {
@@ -167,16 +174,16 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
     Ok(())
 }
 
-fn find_shell_configs(home: &str) -> Vec<PathBuf> {
+fn find_shell_configs(home: &std::path::Path) -> Vec<PathBuf> {
     let mut configs = Vec::new();
 
     let potential_configs = vec![
-        PathBuf::from(home).join(".bashrc"),
-        PathBuf::from(home).join(".bash_profile"),
-        PathBuf::from(home).join(".zshrc"),
-        PathBuf::from(home).join(".zprofile"),
-        PathBuf::from(home).join(".profile"),
-        PathBuf::from(home).join(".config/fish/config.fish"),
+        home.join(".bashrc"),
+        home.join(".bash_profile"),
+        home.join(".zshrc"),
+        home.join(".zprofile"),
+        home.join(".profile"),
+        home.join(".config/fish/config.fish"),
     ];
 
     for config in potential_configs {

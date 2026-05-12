@@ -11,7 +11,6 @@ pub mod provisioning;
 pub mod status;
 
 use crate::{progress::ProgressReporter, TempProvider, TempVmState};
-use std::fs;
 use vm_config::config::VmConfig;
 use vm_core::{
     command_stream::stream_command,
@@ -103,7 +102,9 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
         );
         let content = compose_ops.render_docker_compose_with_mounts(state)?;
         let compose_path = self.temp_dir.join("docker-compose.yml");
-        fs::write(&compose_path, content.as_bytes())?;
+        // Atomic write so a crash mid-write can't leave a half-rendered compose
+        // file that the next `docker-compose up` would fail to parse.
+        vm_core::file_system::atomic_write(&compose_path, content.as_bytes())?;
 
         ProgressReporter::task(&phase, "Removing old container...");
         if let Err(e) = stream_command(self.executable, &["rm", "-f", &state.container_name]) {

@@ -1,6 +1,6 @@
 use crate::error::VmError;
 use std::process::Command;
-use vm_cli::msg;
+use vm_core::msg;
 use vm_core::{vm_error, vm_println, vm_success, vm_warning};
 use vm_messages::messages::MESSAGES;
 

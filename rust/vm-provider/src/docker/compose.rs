@@ -14,6 +14,7 @@ use super::host_packages::{
     detect_packages, get_package_env_vars, get_volume_mounts, PackageManager,
 };
 use super::{ComposeCommand, DockerOps, UserConfig};
+use crate::user_home::resolve_home_dir;
 use crate::ProviderContext;
 use crate::TempVmState;
 use vm_config::{config::VmConfig, detect_worktrees};
@@ -38,49 +39,6 @@ fn extract_path_mount(path_string: &String) -> Option<(&str, &str)> {
     path.file_name()
         .and_then(|name| name.to_str())
         .and_then(|name| path.to_str().map(|path_str| (path_str, name)))
-}
-
-/// Resolve the real user's home directory when running under sudo.
-fn resolve_home_dir() -> Option<PathBuf> {
-    if let Ok(sudo_user) = std::env::var("SUDO_USER") {
-        if !sudo_user.is_empty() && sudo_user != "root" {
-            if let Some(home) = home_dir_from_passwd(&sudo_user) {
-                return Some(home);
-            }
-        }
-    }
-
-    std::env::var("HOME").ok().map(PathBuf::from)
-}
-
-/// Look up a user's home directory from /etc/passwd.
-fn home_dir_from_passwd(user: &str) -> Option<PathBuf> {
-    let contents = fs::read_to_string("/etc/passwd").ok()?;
-
-    for line in contents.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-
-        let mut parts = line.split(':');
-        let name = parts.next()?;
-        if name != user {
-            continue;
-        }
-
-        let _passwd = parts.next()?;
-        let _uid = parts.next()?;
-        let _gid = parts.next()?;
-        let _gecos = parts.next()?;
-        let home = parts.next()?;
-
-        if !home.is_empty() {
-            return Some(PathBuf::from(home));
-        }
-    }
-
-    None
 }
 
 /// Ensure files created under sudo are owned by the real user.

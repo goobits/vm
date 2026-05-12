@@ -280,6 +280,24 @@ impl TempVmState {
             )));
         }
 
+        // Also re-check after resolving symlinks so a symlink like ~/legit ->
+        // /etc can't slip past the dangerous-path list. canonicalize() can fail
+        // on broken symlinks; treat that as a validation failure rather than
+        // silently mounting the dangling source.
+        let canonical = source.canonicalize().map_err(|e| {
+            VmError::Config(format!(
+                "Mount source could not be canonicalized: {} ({e})",
+                source.display()
+            ))
+        })?;
+        if canonical != source && Self::is_dangerous_mount_path(&canonical) {
+            return Err(VmError::Config(format!(
+                "Mount source '{}' resolves to dangerous path '{}'; refusing to mount",
+                source.display(),
+                canonical.display()
+            )));
+        }
+
         Ok(())
     }
 

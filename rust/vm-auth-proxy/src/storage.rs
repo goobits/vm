@@ -186,20 +186,43 @@ impl SecretStore {
         serde_json::from_str(&content).context("Failed to parse secrets file")
     }
 
-    /// Save storage to file
+    /// Save storage to file.
+    ///
+    /// Writes to a sibling temp file and renames into place so a crash mid-write
+    /// can't truncate or corrupt the secrets file.
     fn save(&self) -> Result<()> {
         let content =
             serde_json::to_string_pretty(&self.storage).context("Failed to serialize secrets")?;
 
-        fs::write(&self.storage_file, content).context("Failed to write secrets file")?;
+        let tmp_path = match self.storage_file.file_name() {
+            Some(name) => {
+                let mut tmp_name = name.to_os_string();
+                tmp_name.push(".tmp");
+                self.storage_file.with_file_name(tmp_name)
+            }
+            None => {
+                return Err(anyhow::anyhow!(
+                    "Invalid storage file path (no file name): {}",
+                    self.storage_file.display()
+                ))
+            }
+        };
 
-        // Set restrictive permissions on the file
+        fs::write(&tmp_path, &content).context("Failed to write secrets temp file")?;
+
+        // Set restrictive permissions on the temp file before publishing it.
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let perms = fs::Permissions::from_mode(FILE_PERMISSIONS);
-            fs::set_permissions(&self.storage_file, perms)
-                .context("Failed to set file permissions")?;
+            fs::set_permissions(&tmp_path, perms).context("Failed to set file permissions")?;
+        }
+
+        if let Err(e) =
+            fs::rename(&tmp_path, &self.storage_file).context("Failed to rename secrets temp file")
+        {
+            let _ = fs::remove_file(&tmp_path);
+            return Err(e);
         }
 
         Ok(())

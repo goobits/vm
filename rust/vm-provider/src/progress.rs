@@ -5,7 +5,7 @@ use std::io::{self, Write};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use tracing::info;
-use vm_cli::msg;
+use vm_core::msg;
 use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
 

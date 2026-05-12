@@ -79,6 +79,7 @@ pub mod temp_models;
 
 pub mod audio;
 pub mod preflight;
+mod user_home;
 
 #[cfg(feature = "docker")]
 pub mod docker;

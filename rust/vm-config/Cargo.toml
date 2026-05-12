@@ -30,7 +30,6 @@ serde_json = { workspace = true }
 serde_yaml_ng = { workspace = true }
 vm-core = { path = "../vm-core" }
 vm-messages = { path = "../vm-messages" }
-vm-cli = { path = "../vm-cli" }
 vm-plugin = { path = "../vm-plugin" }
 vm-logging = { path = "../vm-logging" }
 which = { workspace = true }

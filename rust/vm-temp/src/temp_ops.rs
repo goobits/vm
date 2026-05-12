@@ -4,12 +4,13 @@ use std::path::PathBuf;
 
 // External crates
 use tracing::{error, info};
-use vm_cli::msg;
 use vm_core::error::{Result, VmError};
+use vm_core::msg;
 use vm_messages::messages::MESSAGES;
 
 // Internal imports
-use crate::{MountParser, MountPermission, StateManager, TempVmState};
+use crate::mount_ops::MountParser;
+use crate::{MountPermission, StateManager, TempVmState};
 use vm_config::config::VmConfig;
 use vm_provider::Provider;
 

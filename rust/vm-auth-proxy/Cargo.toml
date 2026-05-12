@@ -12,7 +12,7 @@ path = "src/lib.rs"
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-vm-cli = { path = "../vm-cli" }
+vm-core = { path = "../vm-core" }
 vm-messages = { path = "../vm-messages" }
 
 # HTTP Server
@@ -25,6 +25,7 @@ reqwest = { workspace = true }
 aes-gcm = "0.10"
 pbkdf2 = "0.12"
 sha2 = { workspace = true }
+subtle = "2"
 
 # System integration
 dirs = { workspace = true }

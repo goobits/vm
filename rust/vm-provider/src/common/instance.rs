@@ -4,9 +4,9 @@
 //! across different providers. It defines a unified interface for instance
 //! resolution and information handling.
 
-use vm_cli::msg;
 use vm_config::config::VmConfig;
 use vm_core::error::{Result, VmError};
+use vm_core::msg;
 use vm_core::vm_error;
 use vm_messages::messages::MESSAGES;
 

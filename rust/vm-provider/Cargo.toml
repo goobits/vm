@@ -17,7 +17,6 @@ tera = { workspace = true }
 sha2 = { workspace = true }
 vm-core = { path = "../vm-core" }
 vm-config = { path = "../vm-config" }
-vm-cli = { path = "../vm-cli" }
 vm-messages = { path = "../vm-messages" }
 vm-platform = { path = "../vm-platform" }
 vm-snapshot = { path = "../vm-snapshot" }

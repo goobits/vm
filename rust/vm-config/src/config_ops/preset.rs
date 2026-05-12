@@ -10,8 +10,8 @@ use crate::merge::ConfigMerger;
 use crate::paths;
 use crate::preset::PresetDetector;
 use crate::yaml::core::CoreOperations;
-use vm_cli::msg;
 use vm_core::error::{Result, VmError};
+use vm_core::msg;
 use vm_core::{vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 

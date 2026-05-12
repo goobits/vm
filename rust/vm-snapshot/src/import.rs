@@ -43,10 +43,48 @@ pub async fn handle_import(
 
     let tar = flate2::read::GzDecoder::new(tar_gz);
     let mut archive = tar::Archive::new(tar);
+    // Refuse traversal/absolute paths and symlink/hardlink entries so a hostile
+    // snapshot can't overwrite files outside the extraction directory.
+    archive.set_overwrite(false);
+    archive.set_preserve_permissions(false);
 
-    archive
-        .unpack(&extract_dir)
-        .map_err(|e| VmError::general(e, "Failed to extract tar archive"))?;
+    let entries = archive
+        .entries()
+        .map_err(|e| VmError::general(e, "Failed to read tar archive entries"))?;
+    for entry in entries {
+        let mut entry =
+            entry.map_err(|e| VmError::general(e, "Failed to read tar archive entry"))?;
+        let entry_path = entry
+            .path()
+            .map_err(|e| VmError::general(e, "Failed to decode tar entry path"))?
+            .into_owned();
+        if entry_path.is_absolute()
+            || entry_path
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            return Err(VmError::validation(
+                format!(
+                    "Snapshot contains unsafe path '{}'; refusing to extract",
+                    entry_path.display()
+                ),
+                None::<String>,
+            ));
+        }
+        let entry_type = entry.header().entry_type();
+        if entry_type.is_symlink() || entry_type.is_hard_link() {
+            return Err(VmError::validation(
+                format!(
+                    "Snapshot contains symlink or hardlink entry '{}'; refusing to extract",
+                    entry_path.display()
+                ),
+                None::<String>,
+            ));
+        }
+        entry
+            .unpack_in(&extract_dir)
+            .map_err(|e| VmError::general(e, "Failed to extract tar archive"))?;
+    }
 
     // Load manifest
     let manifest_path = extract_dir.join("manifest.json");

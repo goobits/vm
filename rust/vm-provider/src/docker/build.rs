@@ -72,15 +72,35 @@ impl<'a> BuildOperations<'a> {
             return Ok(());
         }
 
-        vm_info!("Pulling image '{}'...", image);
-        let output = Command::new(self.executable)
-            .args(["pull", image])
-            .output()?;
+        // Retry transient network failures with exponential backoff. We keep
+        // the attempt count small so a genuinely unreachable registry doesn't
+        // stall `vm create` for minutes; permanent errors (rate limits, auth,
+        // missing manifests) short-circuit immediately.
+        const MAX_ATTEMPTS: u32 = 3;
+        let mut last_stderr = String::new();
+        for attempt in 1..=MAX_ATTEMPTS {
+            if attempt == 1 {
+                vm_info!("Pulling image '{}'...", image);
+            } else {
+                vm_info!(
+                    "Pulling image '{}' (attempt {}/{})...",
+                    image,
+                    attempt,
+                    MAX_ATTEMPTS
+                );
+            }
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
+            let output = Command::new(self.executable)
+                .args(["pull", image])
+                .output()?;
 
-            // Detect rate limiting
+            if output.status.success() {
+                return Ok(());
+            }
+
+            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+
+            // Detect rate limiting -- permanent until external state changes.
             if stderr.contains("toomanyrequests") || stderr.contains("rate limit") {
                 return Err(VmError::Internal(
                     "Docker Hub rate limit reached\n\n\
@@ -91,12 +111,48 @@ impl<'a> BuildOperations<'a> {
                 ));
             }
 
+            if attempt < MAX_ATTEMPTS && Self::is_transient_pull_error(&stderr) {
+                let delay = std::time::Duration::from_secs(1u64 << attempt);
+                vm_info!(
+                    "Transient pull failure for '{}', retrying in {}s...",
+                    image,
+                    delay.as_secs()
+                );
+                std::thread::sleep(delay);
+                last_stderr = stderr;
+                continue;
+            }
+
             return Err(VmError::Internal(Self::docker_pull_error_message(
                 image, &stderr,
             )));
         }
 
-        Ok(())
+        Err(VmError::Internal(Self::docker_pull_error_message(
+            image,
+            &last_stderr,
+        )))
+    }
+
+    /// Returns true if a docker-pull stderr looks like a transient network
+    /// failure that's worth retrying rather than reporting straight away.
+    fn is_transient_pull_error(stderr: &str) -> bool {
+        const TRANSIENT_MARKERS: &[&str] = &[
+            "connection reset",
+            "connection refused",
+            "i/o timeout",
+            "TLS handshake timeout",
+            "tls: bad record MAC",
+            "EOF",
+            "context deadline exceeded",
+            "temporary failure in name resolution",
+            "no route to host",
+            "network is unreachable",
+            "broken pipe",
+        ];
+        TRANSIENT_MARKERS
+            .iter()
+            .any(|marker| stderr.contains(marker))
     }
 
     pub(super) fn docker_pull_error_message(image: &str, stderr: &str) -> String {

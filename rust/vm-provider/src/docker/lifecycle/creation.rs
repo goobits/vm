@@ -12,8 +12,8 @@ use crate::{
     context::ProviderContext,
     docker::{build::BuildOperations, compose::ComposeOperations, ComposeCommand, DockerOps},
 };
-use vm_cli::msg;
 use vm_config::config::VmConfig;
+use vm_core::msg;
 use vm_core::{
     command_stream::stream_command_visible,
     error::{Result, VmError},
@@ -586,13 +586,18 @@ impl<'a> LifecycleOperations<'a> {
             .is_some_and(|existing| existing == config_json);
 
         if !local_config_matches {
-            fs::write(&temp_config_path, &config_json).map_err(|e| {
-                VmError::Internal(format!(
-                    "Failed to write configuration to {}: {}",
-                    temp_config_path.display(),
-                    e
-                ))
-            })?;
+            // Atomic write: a crash mid-write would otherwise leave a partial
+            // vm-config.json that the next `docker cp` would copy into the
+            // container, surfacing later as confusing parse errors.
+            vm_core::file_system::atomic_write(&temp_config_path, config_json.as_bytes()).map_err(
+                |e| {
+                    VmError::Internal(format!(
+                        "Failed to write configuration to {}: {}",
+                        temp_config_path.display(),
+                        e
+                    ))
+                },
+            )?;
         }
 
         let source = BuildOperations::path_to_string(&temp_config_path)?;
