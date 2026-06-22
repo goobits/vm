@@ -18,6 +18,10 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
       fail-fast: false
 
+    defaults:
+      run:
+        working-directory: rust
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -43,6 +47,9 @@ jobs:
   clippy:
     name: Run clippy
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -82,6 +89,7 @@ jobs:
 
       - name: Run cargo-deny
         run: cargo deny check advisories
+        working-directory: rust
 
       - name: Check for duplicates
         run: jscpd -c .jscpd.json rust/

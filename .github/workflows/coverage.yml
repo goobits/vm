@@ -13,6 +13,9 @@ jobs:
   coverage:
     name: Generate code coverage
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -29,5 +32,5 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
         with:
-          files: coverage/cobertura.xml
+          files: rust/coverage/cobertura.xml
           fail_ci_if_error: false
