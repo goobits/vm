@@ -45,7 +45,7 @@ vm-package-server = { path = "../vm-package-server" }
 vm-auth-proxy = { path = "../vm-auth-proxy" }
 vm-docker-registry = { path = "../vm-docker-registry" }
 futures = "0.3.32"
-chrono = "0.4.44"
+chrono = "0.4.45"
 rand = { workspace = true }
 rayon = { workspace = true }
 walkdir = { workspace = true }

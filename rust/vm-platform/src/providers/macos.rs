@@ -179,9 +179,7 @@ impl PlatformProvider for MacOSPlatform {
             Ok(cpu_count)
         } else {
             // Fallback to sysinfo
-            let mut sys = sysinfo::System::new();
-            sys.refresh_cpu();
-            Ok(sys.physical_core_count().unwrap_or(1) as u32)
+            Ok(sysinfo::System::physical_core_count().unwrap_or(1) as u32)
         }
     }
 

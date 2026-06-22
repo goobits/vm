@@ -616,7 +616,14 @@ CMD ["tail", "-f", "/dev/null"]
 
         Self::hash_build_context(build_context, build_context, &mut hasher)?;
 
-        let digest = format!("{:x}", hasher.finalize());
+        use std::fmt::Write as _;
+        let digest = hasher
+            .finalize()
+            .iter()
+            .fold(String::new(), |mut acc, byte| {
+                let _ = write!(acc, "{byte:02x}");
+                acc
+            });
         let short_digest = &digest[..16];
         Ok(format!("vm-derived:{short_digest}"))
     }

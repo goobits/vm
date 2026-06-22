@@ -383,10 +383,7 @@ mod tests {
             .route("/env/{vm_name}", get(get_environment))
             .with_state(state);
 
-        (
-            TestServer::new(app).expect("Failed to create test server"),
-            auth_token,
-        )
+        (TestServer::new(app), auth_token)
     }
 
     #[tokio::test]

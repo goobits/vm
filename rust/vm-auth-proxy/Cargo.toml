@@ -23,7 +23,7 @@ reqwest = { workspace = true }
 
 # Cryptography
 aes-gcm = "0.10"
-pbkdf2 = "0.12"
+pbkdf2 = "0.13"
 sha2 = { workspace = true }
 subtle = "2"
 
@@ -39,4 +39,4 @@ base64 = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-axum-test = "18.7"
+axum-test = "20.1"

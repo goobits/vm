@@ -80,7 +80,7 @@ mod cargo_tests {
             )
             .with_state(state.clone());
 
-        let server = TestServer::new(app).expect("Failed to create test server");
+        let server = TestServer::new(app);
 
         let crate_name = "test-crate";
         let version = "1.0.0";
@@ -154,7 +154,7 @@ mod cargo_tests {
             )
             .with_state(state.clone());
 
-        let server = TestServer::new(app).expect("Failed to create test server");
+        let server = TestServer::new(app);
 
         let version = "1.0.0";
         let crate_content = b"fake crate content";
@@ -186,7 +186,7 @@ mod cargo_tests {
             )
             .with_state(state);
 
-        let server = TestServer::new(app).expect("Failed to create test server");
+        let server = TestServer::new(app);
 
         // Send malformed payload (too short)
         let payload = vec![1, 2, 3];
@@ -206,7 +206,7 @@ mod cargo_tests {
             .route("/cargo/config.json", axum::routing::get(config))
             .with_state(state);
 
-        let server = TestServer::new(app).expect("Failed to create test server");
+        let server = TestServer::new(app);
         let response = server
             .get("/cargo/config.json")
             .add_header("host", "example.com:3000")
@@ -256,7 +256,7 @@ mod cargo_tests {
             .route("/cargo/index/{crate}", axum::routing::get(index_file))
             .with_state(state);
 
-        let server = TestServer::new(app).expect("Failed to create test server");
+        let server = TestServer::new(app);
         let response = server.get(&format!("/cargo/index/{}", crate_name)).await;
 
         assert_eq!(response.status_code(), StatusCode::OK);
@@ -285,7 +285,7 @@ mod cargo_tests {
             )
             .with_state(state);
 
-        let server = TestServer::new(app).expect("Failed to create test server");
+        let server = TestServer::new(app);
         let response = server
             .get(&format!(
                 "/cargo/api/v1/crates/{}/{}/download",

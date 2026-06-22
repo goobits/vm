@@ -51,7 +51,7 @@ async fn create_test_server() -> (TestServer, common::TestSetup) {
 
     // Create minimal router for testing file operations
     let app = Router::new().with_state(setup.app_state.clone());
-    let server = TestServer::new(app).expect("Failed to create test server");
+    let server = TestServer::new(app);
 
     (server, setup)
 }
