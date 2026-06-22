@@ -41,6 +41,23 @@ pub async fn handle_registry_command(
     }
 }
 
+/// Runs a blocking package-server client operation off the async runtime.
+///
+/// The `vm_package_server` client uses `reqwest::blocking`, which spins up and
+/// tears down its own runtime. Calling it directly from an async context panics
+/// with "Cannot drop a runtime in a context where blocking is not allowed", so
+/// the work has to run on a dedicated blocking thread.
+async fn run_blocking_op<T, E>(op: impl FnOnce() -> Result<T, E> + Send + 'static) -> VmResult<T>
+where
+    T: Send + 'static,
+    E: Into<VmError> + Send + 'static,
+{
+    tokio::task::spawn_blocking(op)
+        .await
+        .map_err(|e| VmError::general(e, "package registry client task failed"))?
+        .map_err(Into::into)
+}
+
 /// Show package registry status with service manager information
 async fn handle_status(yes: bool, global_config: &GlobalConfig) -> VmResult<()> {
     let server_url = format!(
@@ -99,7 +116,7 @@ async fn handle_status(yes: bool, global_config: &GlobalConfig) -> VmResult<()> 
     vm_println!("{}", MESSAGES.vm.pkg_registry_auto_managed_info);
 
     // Show additional package registry info
-    vm_package_server::show_status(&server_url).map_err(VmError::from)
+    run_blocking_op(move || vm_package_server::show_status(&server_url)).await
 }
 
 /// Add package from current directory
@@ -118,7 +135,11 @@ async fn handle_add(
 
     vm_println!("{}", MESSAGES.vm.pkg_publishing);
 
-    vm_package_server::client_ops::add_package(&server_url, package_type).map_err(VmError::from)?;
+    let package_type = package_type.map(|s| s.to_string());
+    run_blocking_op(move || {
+        vm_package_server::client_ops::add_package(&server_url, package_type.as_deref())
+    })
+    .await?;
 
     vm_success!("Package published successfully");
     Ok(())
@@ -136,7 +157,8 @@ async fn handle_remove(force: bool, yes: bool, global_config: &GlobalConfig) -> 
 
     vm_println!("{}", MESSAGES.vm.pkg_removing);
 
-    vm_package_server::client_ops::remove_package(&server_url, force).map_err(VmError::from)?;
+    run_blocking_op(move || vm_package_server::client_ops::remove_package(&server_url, force))
+        .await?;
 
     vm_success!("Package removed successfully");
     Ok(())
@@ -152,7 +174,7 @@ async fn handle_list(yes: bool, global_config: &GlobalConfig) -> VmResult<()> {
     // Ensure server is running for complete package listing
     start_server_if_needed(global_config, yes).await?;
 
-    vm_package_server::client_ops::list_packages(&server_url).map_err(VmError::from)?;
+    run_blocking_op(move || vm_package_server::client_ops::list_packages(&server_url)).await?;
 
     Ok(())
 }

@@ -129,6 +129,29 @@ pub async fn handle_create(
 
         // Validate config before proceeding
         vm_println!("Validating configuration...");
+
+        // Fail fast if an explicitly mapped host port is already taken, before
+        // running the rest of validation or any expensive Docker work.
+        let port_binding = config
+            .vm
+            .as_ref()
+            .and_then(|v| v.port_binding.as_deref())
+            .unwrap_or("0.0.0.0");
+        for mapping in &config.ports.mappings {
+            if std::net::TcpListener::bind((port_binding, mapping.host))
+                .is_err_and(|e| e.kind() == std::io::ErrorKind::AddrInUse)
+            {
+                vm_println!(
+                    "Configuration error: Port {} is already in use on host",
+                    mapping.host
+                );
+                return Err(VmError::validation(
+                    "Configuration is invalid, aborting creation.".to_string(),
+                    None::<String>,
+                ));
+            }
+        }
+
         let validator = ConfigValidator::new();
         match validator.validate(&config) {
             Ok(report) => {
