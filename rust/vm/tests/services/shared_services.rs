@@ -179,6 +179,7 @@ fn is_docker_running() -> bool {
 }
 
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_shared_postgres_lifecycle_integration() -> Result<()> {
     if !is_docker_running() {
         println!("Skipping test: Docker is not running or not available.");
@@ -267,6 +268,7 @@ fn test_shared_postgres_lifecycle_integration() -> Result<()> {
 }
 
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_shared_redis_lifecycle_integration() -> Result<()> {
     if !is_docker_running() {
         println!("Skipping test: Docker is not running or not available.");
@@ -348,6 +350,7 @@ fn test_shared_redis_lifecycle_integration() -> Result<()> {
 }
 
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_service_container_reuse_warning() -> Result<()> {
     if !is_docker_running() {
         println!("Skipping test: Docker is not running or not available.");
@@ -460,6 +463,7 @@ fn test_service_container_reuse_warning() -> Result<()> {
 }
 
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_multi_instance_with_shared_services() -> Result<()> {
     if !is_docker_running() {
         println!("Skipping test: Docker is not running or not available.");

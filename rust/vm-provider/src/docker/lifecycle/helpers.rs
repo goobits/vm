@@ -163,8 +163,8 @@ impl<'a> LifecycleOperations<'a> {
         space_str.trim().parse::<f32>().ok()
     }
 
-    /// No-op implementation for non-Unix, non-Windows systems
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    /// No-op implementation for non-Unix systems (e.g. Windows)
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     fn check_disk_space_unix(&self) {}
 
     /// No-op implementation for non-Windows systems
