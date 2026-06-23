@@ -3,6 +3,7 @@ use anyhow::Result;
 use std::process::Command;
 
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_vm_create_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
@@ -36,6 +37,7 @@ fn test_vm_create_command() -> Result<()> {
 }
 
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_vm_create_with_force() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
@@ -66,6 +68,7 @@ fn test_vm_create_with_force() -> Result<()> {
 }
 
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_vm_destroy_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;

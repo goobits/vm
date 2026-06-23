@@ -171,7 +171,7 @@ impl ConfigValidator {
             }
 
             if let Some(path) = &project.workspace_path {
-                if !path.starts_with('/') {
+                if !std::path::Path::new(path).is_absolute() {
                     vm_error!("Workspace path must be absolute: {}", path);
                     return Err(vm_core::error::VmError::Config(
                         "Workspace path must be absolute".to_string(),

@@ -2,6 +2,7 @@ use super::helpers::{VmOpsTestFixture, TEST_MUTEX};
 use anyhow::Result;
 
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_vm_lifecycle_provider_parity() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
