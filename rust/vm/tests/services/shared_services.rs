@@ -44,11 +44,11 @@ impl CliTestFixture {
 }
 
 #[test]
-fn test_vm_auth_help_excludes_start_stop() -> Result<()> {
-    let _guard = TEST_MUTEX.lock().unwrap();
+fn test_vm_secrets_help_excludes_start_stop() -> Result<()> {
+    let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
 
     let fixture = CliTestFixture::new()?;
-    let output = fixture.run_vm_command(&["auth", "--help"])?;
+    let output = fixture.run_vm_command(&["secrets", "--help"])?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
@@ -68,7 +68,7 @@ fn test_vm_auth_help_excludes_start_stop() -> Result<()> {
 
 #[test]
 fn test_main_help_excludes_manual_registry_management() -> Result<()> {
-    let _guard = TEST_MUTEX.lock().unwrap();
+    let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
 
     let fixture = CliTestFixture::new()?;
 
@@ -84,7 +84,7 @@ fn test_main_help_excludes_manual_registry_management() -> Result<()> {
 
 #[test]
 fn test_vm_registry_help_excludes_start_stop() -> Result<()> {
-    let _guard = TEST_MUTEX.lock().unwrap();
+    let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
 
     let fixture = CliTestFixture::new()?;
     let output = fixture.run_vm_command(&["registry", "--help"])?;
@@ -107,11 +107,11 @@ fn test_vm_registry_help_excludes_start_stop() -> Result<()> {
 }
 
 #[test]
-fn test_vm_auth_status_shows_lifecycle_info() -> Result<()> {
-    let _guard = TEST_MUTEX.lock().unwrap();
+fn test_vm_secrets_status_shows_lifecycle_info() -> Result<()> {
+    let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
 
     let fixture = CliTestFixture::new()?;
-    let output = fixture.run_vm_command(&["auth", "status"])?;
+    let output = fixture.run_vm_command(&["secrets", "status"])?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
@@ -124,7 +124,7 @@ fn test_vm_auth_status_shows_lifecycle_info() -> Result<()> {
 
 #[test]
 fn test_vm_registry_status_shows_lifecycle_info() -> Result<()> {
-    let _guard = TEST_MUTEX.lock().unwrap();
+    let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
 
     let fixture = CliTestFixture::new()?;
     // Use --yes flag to auto-start server without prompting
@@ -141,7 +141,7 @@ fn test_vm_registry_status_shows_lifecycle_info() -> Result<()> {
 
 #[test]
 fn test_auth_start_command_no_longer_exists() -> Result<()> {
-    let _guard = TEST_MUTEX.lock().unwrap();
+    let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
 
     let fixture = CliTestFixture::new()?;
     let output = fixture.run_vm_command(&["auth", "start"])?;
@@ -157,7 +157,7 @@ fn test_auth_start_command_no_longer_exists() -> Result<()> {
 
 #[test]
 fn test_registry_start_command_no_longer_exists() -> Result<()> {
-    let _guard = TEST_MUTEX.lock().unwrap();
+    let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
 
     let fixture = CliTestFixture::new()?;
     let output = fixture.run_vm_command(&["registry", "start"])?;
@@ -179,13 +179,14 @@ fn is_docker_running() -> bool {
 }
 
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_shared_postgres_lifecycle_integration() -> Result<()> {
     if !is_docker_running() {
         println!("Skipping test: Docker is not running or not available.");
         return Ok(());
     }
 
-    let _guard = TEST_MUTEX.lock().unwrap();
+    let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let temp_dir = TempDir::new()?;
     let home_dir = temp_dir.path();
     let project_dir = home_dir.join("test-project");
@@ -267,13 +268,14 @@ fn test_shared_postgres_lifecycle_integration() -> Result<()> {
 }
 
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_shared_redis_lifecycle_integration() -> Result<()> {
     if !is_docker_running() {
         println!("Skipping test: Docker is not running or not available.");
         return Ok(());
     }
 
-    let _guard = TEST_MUTEX.lock().unwrap();
+    let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let temp_dir = TempDir::new()?;
     let home_dir = temp_dir.path();
     let project_dir = home_dir.join("test-project-redis");
@@ -348,13 +350,14 @@ fn test_shared_redis_lifecycle_integration() -> Result<()> {
 }
 
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_service_container_reuse_warning() -> Result<()> {
     if !is_docker_running() {
         println!("Skipping test: Docker is not running or not available.");
         return Ok(());
     }
 
-    let _guard = TEST_MUTEX.lock().unwrap();
+    let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let temp_dir = TempDir::new()?;
     let home_dir = temp_dir.path();
     let project_dir = home_dir.join("test-project-reuse");
@@ -460,13 +463,14 @@ fn test_service_container_reuse_warning() -> Result<()> {
 }
 
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_multi_instance_with_shared_services() -> Result<()> {
     if !is_docker_running() {
         println!("Skipping test: Docker is not running or not available.");
         return Ok(());
     }
 
-    let _guard = TEST_MUTEX.lock().unwrap();
+    let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let temp_dir = TempDir::new()?;
     let home_dir = temp_dir.path();
     let project_dir = home_dir.join("test-project-multi");

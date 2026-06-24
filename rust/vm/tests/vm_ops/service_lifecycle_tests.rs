@@ -4,6 +4,7 @@ use std::process::Command;
 use std::time::Duration;
 
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_vm_start_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
@@ -40,6 +41,7 @@ fn test_vm_start_command() -> Result<()> {
 }
 
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_vm_stop_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
@@ -109,6 +111,7 @@ fn test_vm_stop_command() -> Result<()> {
 }
 
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_vm_restart_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
@@ -146,6 +149,7 @@ fn test_vm_restart_command() -> Result<()> {
 }
 
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_vm_apply_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;

@@ -36,9 +36,8 @@ struct HostPackageContext {
 /// Helper function to extract path and mount name from a worktree path
 fn extract_path_mount(path_string: &String) -> Option<(&str, &str)> {
     let path = Path::new(path_string);
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .and_then(|name| path.to_str().map(|path_str| (path_str, name)))
+    path.to_str()
+        .zip(path.file_name().and_then(|name| name.to_str()))
 }
 
 /// Ensure files created under sudo are owned by the real user.

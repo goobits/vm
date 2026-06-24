@@ -199,6 +199,7 @@ ports:
 }
 
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_port_conflict_detection() -> Result<()> {
     let project_name = format!("test-port-forwarding-{}", Uuid::new_v4());
     let fixture = TestFixture::new()?;

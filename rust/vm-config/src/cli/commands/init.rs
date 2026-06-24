@@ -584,10 +584,8 @@ fn get_recommended_services(detected_types: &std::collections::HashSet<String>) 
                     services.push("redis".to_string());
                 }
             }
-            "docker" => {
-                if !services.contains(&"docker".to_string()) {
-                    services.push("docker".to_string());
-                }
+            "docker" if !services.contains(&"docker".to_string()) => {
+                services.push("docker".to_string());
             }
             _ => {}
         }

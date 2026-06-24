@@ -49,4 +49,4 @@ tempfile = { workspace = true }
 assert_cmd = "2.2"
 predicates = "3.1"
 tracing-subscriber = { workspace = true }
-serial_test = "3.4"
+serial_test = "3.5"

@@ -9,6 +9,7 @@ use std::time::Duration;
 /// This test validates that when a VM is created with package registry enabled in global config,
 /// the container receives the correct environment variables and configuration files.
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_package_registry_feature() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
@@ -203,6 +204,7 @@ vm:
 /// This test validates that when a VM is created with database services enabled in global config,
 /// the container receives the correct DATABASE_URL, REDIS_URL, and MONGODB_URL environment variables.
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_database_environment_variables_feature() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
