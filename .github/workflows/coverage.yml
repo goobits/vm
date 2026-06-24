@@ -26,8 +26,11 @@ jobs:
       - name: Install tarpaulin
         run: cargo install cargo-tarpaulin
 
+      # Scope coverage to library (unit) tests. The integration test binaries
+      # spawn Docker/registry containers that hang or fail under tarpaulin's
+      # instrumentation; they are exercised by the integration CI job instead.
       - name: Generate coverage
-        run: cargo tarpaulin --workspace --out Xml --output-dir coverage/
+        run: cargo tarpaulin --workspace --lib --out Xml --output-dir coverage/
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3

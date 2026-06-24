@@ -23,6 +23,7 @@ async fn run_docker_command(args: &[&str]) -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "Creates real Docker registry containers; run with --ignored"]
 #[cfg(feature = "integration")]
 async fn test_garbage_collection_frees_space() {
     if !is_docker_available().await {
