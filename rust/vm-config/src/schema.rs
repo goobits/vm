@@ -118,10 +118,18 @@ fn add_vm_schema_fields(cache: &mut HashMap<String, SchemaType>) {
         "vm.user",
         "vm.port_binding",
         "vm.timezone",
-        "vm.swap"
+        "vm.swap",
+        "vm.logging.driver",
+        "vm.logging.max_size"
     );
     add_booleans!(cache, "vm.gui");
-    add_integers!(cache, "vm.swappiness");
+    add_integers!(
+        cache,
+        "vm.swappiness",
+        "vm.pids_limit",
+        "vm.stop_grace_period",
+        "vm.logging.max_files"
+    );
 
     // Version fields
     add_strings!(
@@ -206,6 +214,7 @@ fn add_terminal_and_package_fields(cache: &mut HashMap<String, SchemaType>) {
     // Object types
     cache.insert("aliases".to_string(), SchemaType::Object);
     cache.insert("environment".to_string(), SchemaType::Object);
+    cache.insert("storage.tmpfs".to_string(), SchemaType::Object);
 
     // Host synchronization
     add_booleans!(
@@ -314,6 +323,21 @@ pub fn lookup_field_type(field: &str, global: bool) -> SchemaType {
         return SchemaType::String;
     }
 
+    if field.starts_with("storage.volumes.") {
+        return match field.rsplit('.').next() {
+            Some("nocopy") => SchemaType::Boolean,
+            Some("target" | "scope" | "retention") => SchemaType::String,
+            _ => SchemaType::Unknown,
+        };
+    }
+
+    if field.starts_with("storage.tmpfs.") {
+        return match field.rsplit('.').next() {
+            Some("target" | "size" | "mode") => SchemaType::String,
+            _ => SchemaType::Unknown,
+        };
+    }
+
     SchemaType::Unknown
 }
 
@@ -399,6 +423,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn canonical_vm_schema_is_valid_yaml() {
+        let schema: Value =
+            serde_yaml_ng::from_str(include_str!("../../../configs/schema/vm.schema.yaml"))
+                .unwrap();
+
+        assert!(schema["properties"]["storage"].is_mapping());
+        assert!(schema["properties"]["vm"]["properties"]["pids_limit"].is_mapping());
+    }
+
+    #[test]
     fn test_lookup_array_fields() {
         assert_eq!(
             lookup_field_type("networking.networks", false),
@@ -434,6 +468,26 @@ mod tests {
         assert_eq!(
             lookup_field_type("ports.frontend", false),
             SchemaType::Integer
+        );
+    }
+
+    #[test]
+    fn test_lookup_storage_fields() {
+        assert_eq!(
+            lookup_field_type("storage.volumes.node_modules.nocopy", false),
+            SchemaType::Boolean
+        );
+        assert_eq!(
+            lookup_field_type("storage.volumes.pnpm_store.scope", false),
+            SchemaType::String
+        );
+        assert_eq!(
+            lookup_field_type("storage.tmpfs.0.mode", false),
+            SchemaType::String
+        );
+        assert_eq!(
+            lookup_field_type("storage.tmpfs", false),
+            SchemaType::Object
         );
     }
 

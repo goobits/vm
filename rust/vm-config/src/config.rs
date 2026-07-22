@@ -128,6 +128,9 @@ pub struct VmConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vm: Option<VmSettings>,
 
+    #[serde(default, skip_serializing_if = "StorageConfig::is_empty")]
+    pub storage: StorageConfig,
+
     // 5. Runtime Versions
     #[serde(skip_serializing_if = "Option::is_none")]
     pub versions: Option<VersionsConfig>,
@@ -322,6 +325,8 @@ pub struct VmSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cpus: Option<CpuLimit>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub pids_limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub swap: Option<SwapLimit>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub swappiness: Option<u32>,
@@ -331,6 +336,11 @@ pub struct VmSettings {
     pub port_binding: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gui: Option<bool>,
+    /// Seconds Docker should allow for graceful shutdown before sending SIGKILL.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stop_grace_period: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logging: Option<ContainerLoggingConfig>,
 }
 
 impl VmSettings {
@@ -338,6 +348,101 @@ impl VmSettings {
     pub fn get_box_spec(&self) -> Option<BoxSpec> {
         self.r#box.clone()
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ContainerLoggingConfig {
+    #[serde(default = "default_logging_driver")]
+    pub driver: String,
+    #[serde(default = "default_logging_max_size")]
+    pub max_size: String,
+    #[serde(default = "default_logging_max_files")]
+    pub max_files: u32,
+}
+
+impl Default for ContainerLoggingConfig {
+    fn default() -> Self {
+        Self {
+            driver: default_logging_driver(),
+            max_size: default_logging_max_size(),
+            max_files: default_logging_max_files(),
+        }
+    }
+}
+
+fn default_logging_driver() -> String {
+    "local".to_string()
+}
+
+fn default_logging_max_size() -> String {
+    "20m".to_string()
+}
+
+fn default_logging_max_files() -> u32 {
+    5
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct StorageConfig {
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub volumes: IndexMap<String, VolumeMountConfig>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tmpfs: Vec<TmpfsMountConfig>,
+}
+
+impl StorageConfig {
+    pub fn is_empty(&self) -> bool {
+        self.volumes.is_empty() && self.tmpfs.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VolumeMountConfig {
+    pub target: String,
+    #[serde(default)]
+    pub scope: VolumeScope,
+    #[serde(default = "default_true")]
+    pub nocopy: bool,
+    #[serde(default)]
+    pub retention: VolumeRetention,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum VolumeScope {
+    #[default]
+    Project,
+    Instance,
+    Platform,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum VolumeRetention {
+    #[default]
+    Keep,
+    Disposable,
+}
+
+impl VolumeRetention {
+    pub fn as_label(self) -> &'static str {
+        match self {
+            Self::Keep => "keep",
+            Self::Disposable => "disposable",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TmpfsMountConfig {
+    pub target: String,
+    pub size: MemoryLimit,
+    #[serde(default = "default_tmpfs_mode")]
+    pub mode: String,
+}
+
+fn default_tmpfs_mode() -> String {
+    "1777".to_string()
 }
 
 /// Memory limit configuration supporting both specific limits and unlimited access.
@@ -930,12 +1035,6 @@ pub struct SecurityConfig {
     pub drop_capabilities: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub security_opts: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_limit: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cpu_limit: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pids_limit: Option<u32>,
 }
 
 /// Docker networking configuration for container connectivity.
@@ -1127,5 +1226,49 @@ impl VmConfig {
                 service.port = None;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod storage_config_tests {
+    use super::{MemoryLimit, VmConfig, VolumeRetention, VolumeScope};
+
+    #[test]
+    fn parses_container_storage_and_runtime_policy() {
+        let config: VmConfig = serde_yaml_ng::from_str(
+            r#"
+provider: docker
+project:
+  name: sketch-api
+vm:
+  pids_limit: 4096
+  stop_grace_period: 60
+  logging: {}
+storage:
+  volumes:
+    node_modules:
+      target: /workspace/node_modules
+      scope: instance
+  tmpfs:
+    - target: /tmp
+      size: 4g
+"#,
+        )
+        .unwrap();
+
+        let vm = config.vm.unwrap();
+        assert_eq!(vm.pids_limit, Some(4096));
+        assert_eq!(vm.stop_grace_period, Some(60));
+        let logging = vm.logging.unwrap();
+        assert_eq!(logging.driver, "local");
+        assert_eq!(logging.max_size, "20m");
+        assert_eq!(logging.max_files, 5);
+
+        let volume = &config.storage.volumes["node_modules"];
+        assert_eq!(volume.scope, VolumeScope::Instance);
+        assert!(volume.nocopy);
+        assert_eq!(volume.retention, VolumeRetention::Keep);
+        assert_eq!(config.storage.tmpfs[0].size, MemoryLimit::Limited(4096));
+        assert_eq!(config.storage.tmpfs[0].mode, "1777");
     }
 }

@@ -70,8 +70,8 @@ properties:
             minimum: 512
             description: Memory allocation in MB
           - type: string
-            pattern: ^(\d+(\.\d+)?(gb|mb|kb)|[1-9]\d?%|unlimited)$
-            description: Memory with units ("1gb", "512mb"), percentage ("50%"), or "unlimited"
+            pattern: ^(\d+(\.\d+)?(gb|g|mb|m|kb|k)|[1-9]\d?%|100%|unlimited)$
+            description: Memory with units ("1gb", "4g", "512mb"), percentage ("50%"), or "unlimited"
         default: 2048
         description: Memory allocation. Supports integers (MB), units ("2gb"), percentages ("50%"), or "unlimited"
         examples:
@@ -132,6 +132,90 @@ properties:
         type: string
         default: America/Los_Angeles
         description: System timezone (e.g., 'America/New_York', 'Europe/London', 'UTC')
+      pids_limit:
+        type: integer
+        minimum: 1
+        description: Maximum number of processes and threads in the development container
+      stop_grace_period:
+        type: integer
+        minimum: 1
+        description: Seconds to wait for graceful container shutdown before forcing termination
+      logging:
+        type: object
+        description: Bounded Docker log rotation policy
+        properties:
+          driver:
+            type: string
+            enum:
+              - local
+              - json-file
+            default: local
+          max_size:
+            type: string
+            pattern: ^[1-9]\d*(k|m|g)$
+            default: 20m
+          max_files:
+            type: integer
+            minimum: 1
+            default: 5
+        additionalProperties: false
+  storage:
+    type: object
+    description: Container-only named volumes and bounded temporary filesystems
+    properties:
+      volumes:
+        type: object
+        description: Logical volume names mapped to stable physical Docker volumes
+        additionalProperties:
+          type: object
+          required:
+            - target
+          properties:
+            target:
+              type: string
+              pattern: ^/.*
+              description: Absolute mount target inside the development container
+            scope:
+              type: string
+              enum:
+                - project
+                - instance
+                - platform
+              default: project
+            nocopy:
+              type: boolean
+              default: true
+            retention:
+              type: string
+              enum:
+                - keep
+                - disposable
+              default: keep
+          additionalProperties: false
+      tmpfs:
+        type: array
+        description: Bounded, disposable in-memory filesystems
+        items:
+          type: object
+          required:
+            - target
+            - size
+          properties:
+            target:
+              type: string
+              pattern: ^/.*
+            size:
+              oneOf:
+                - type: integer
+                  minimum: 1
+                - type: string
+                  pattern: ^\d+(gb|g|mb|m|kb|k)$
+            mode:
+              type: string
+              pattern: ^[0-7]{3,4}$
+              default: "1777"
+          additionalProperties: false
+    additionalProperties: false
   versions:
     type: object
     description: Software version specifications

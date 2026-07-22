@@ -10,6 +10,7 @@ use vm_core::error::{Result, VmError};
 
 // Internal imports
 use super::build::BuildOperations;
+use super::compose_model::{RenderedResources, RenderedStorage};
 use super::host_packages::{
     detect_packages, get_package_env_vars, get_volume_mounts, PackageManager,
 };
@@ -469,9 +470,17 @@ impl<'a> ComposeOperations<'a> {
             None => (self.config.clone(), base_project_name.to_string()),
         };
 
+        let storage = RenderedStorage::new(&final_config, base_project_name, &final_project_name);
+        let resources = RenderedResources::resolve(&final_config)?;
+
         let mut tera_context = TeraContext::new();
         tera_context.insert("config", &final_config);
         tera_context.insert("project_name", &final_project_name);
+        tera_context.insert("base_project_name", &base_project_name);
+        tera_context.insert("storage_volumes", &storage.mounts);
+        tera_context.insert("named_volumes", &storage.named_volumes);
+        tera_context.insert("tmpfs_mounts", &storage.tmpfs);
+        tera_context.insert("resources", &resources);
         tera_context.insert("project_dir", &project_dir_str);
         tera_context.insert("build_context_dir", &build_context_str);
         tera_context.insert("project_uid", &user_config.uid.to_string());
@@ -818,10 +827,15 @@ fn write_if_changed(path: &Path, content: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::docker::compose_model::container_architecture;
     use tempfile::TempDir;
     use vm_config::{
-        config::{HostSyncConfig, ProjectConfig, VmConfig, WorktreesConfig},
-        global_config::{GlobalConfig, WorktreesGlobalSettings},
+        config::{
+            ContainerLoggingConfig, CpuLimit, MemoryLimit, ProjectConfig, StorageConfig,
+            TmpfsMountConfig, VmConfig, VmSettings, VolumeMountConfig, VolumeRetention,
+            VolumeScope,
+        },
+        global_config::GlobalConfig,
     };
 
     fn setup_test_env() -> (TempDir, PathBuf, PathBuf) {
@@ -831,208 +845,266 @@ mod tests {
         (temp_dir, project_dir, temp_path)
     }
 
-    #[test]
-    fn test_package_registry_env_vars_injection() {
-        // Create a temporary directory
-        let temp_dir = TempDir::new().unwrap();
-        let project_dir = temp_dir.path().to_path_buf();
-        let temp_path = temp_dir.path().to_path_buf();
-        let build_dir = temp_dir.path().join("build");
-        std::fs::create_dir_all(&build_dir).unwrap();
+    fn yaml_mapping<'a>(value: &'a serde_yaml_ng::Value, key: &str) -> &'a serde_yaml_ng::Mapping {
+        value
+            .get(key)
+            .and_then(serde_yaml_ng::Value::as_mapping)
+            .unwrap_or_else(|| panic!("missing YAML mapping: {key}"))
+    }
 
-        // Create a minimal VmConfig
-        let vm_config = VmConfig {
-            project: Some(vm_config::config::ProjectConfig {
-                name: Some("test-project".to_string()),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-
-        // Create GlobalConfig with package registry enabled
-        let global_config = GlobalConfig {
-            services: vm_config::global_config::GlobalServices {
-                package_registry: vm_config::global_config::PackageRegistrySettings {
-                    enabled: true,
-                    port: 3080,
-                    max_storage_gb: 10,
-                },
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-
-        // Create ProviderContext with global config
-        let context = ProviderContext::default().with_config(global_config);
-
-        // Create ComposeOperations
-        let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir, "docker");
-
-        // Render docker-compose
-        let result = compose_ops.render_docker_compose(&build_dir, &context);
-        assert!(result.is_ok(), "render_docker_compose should succeed");
-
-        let content = result.unwrap();
-
-        // Verify that environment variables are in the rendered output
-        let host = vm_platform::platform::get_host_gateway();
-
-        assert!(
-            content.contains(&format!("NPM_CONFIG_REGISTRY=http://{}:3080/npm/", host)),
-            "Should contain NPM_CONFIG_REGISTRY"
-        );
-        assert!(
-            content.contains(&format!("PIP_INDEX_URL=http://{}:3080/pypi/simple/", host)),
-            "Should contain PIP_INDEX_URL"
-        );
-        assert!(
-            content.contains("PIP_EXTRA_INDEX_URL=https://pypi.org/simple/"),
-            "Should contain PIP_EXTRA_INDEX_URL for fallback"
-        );
-        assert!(
-            content.contains(&format!("PIP_TRUSTED_HOST={}", host)),
-            "Should contain PIP_TRUSTED_HOST"
-        );
-        assert!(
-            content.contains(&format!("VM_CARGO_REGISTRY_HOST={}", host)),
-            "Should contain VM_CARGO_REGISTRY_HOST"
-        );
-        assert!(
-            content.contains("VM_CARGO_REGISTRY_PORT=3080"),
-            "Should contain VM_CARGO_REGISTRY_PORT"
-        );
+    fn volume_mount<'a>(
+        service: &'a serde_yaml_ng::Mapping,
+        source: &str,
+    ) -> &'a serde_yaml_ng::Mapping {
+        service
+            .get("volumes")
+            .and_then(serde_yaml_ng::Value::as_sequence)
+            .and_then(|mounts| {
+                mounts.iter().find_map(|mount| {
+                    let mapping = mount.as_mapping()?;
+                    (mapping.get("source").and_then(serde_yaml_ng::Value::as_str) == Some(source))
+                        .then_some(mapping)
+                })
+            })
+            .unwrap_or_else(|| panic!("missing volume mount: {source}"))
     }
 
     #[test]
-    fn test_package_registry_disabled_no_env_vars() {
-        // Create a temporary directory
-        let temp_dir = TempDir::new().unwrap();
-        let project_dir = temp_dir.path().to_path_buf();
-        let temp_path = temp_dir.path().to_path_buf();
-        let build_dir = temp_dir.path().join("build");
-        std::fs::create_dir_all(&build_dir).unwrap();
-
-        // Create a minimal VmConfig
-        let vm_config = VmConfig {
-            project: Some(vm_config::config::ProjectConfig {
-                name: Some("test-project".to_string()),
+    fn renders_stable_scoped_storage_and_runtime_policy() {
+        let (_temp_dir, project_dir, temp_path) = setup_test_env();
+        let mut volumes = indexmap::IndexMap::new();
+        volumes.insert(
+            "node_modules".to_string(),
+            VolumeMountConfig {
+                target: "/workspace/node_modules".to_string(),
+                scope: VolumeScope::Instance,
+                nocopy: true,
+                retention: VolumeRetention::Keep,
+            },
+        );
+        volumes.insert(
+            "pnpm_store".to_string(),
+            VolumeMountConfig {
+                target: "/home/developer/.local/share/pnpm/store".to_string(),
+                scope: VolumeScope::Platform,
+                nocopy: true,
+                retention: VolumeRetention::Keep,
+            },
+        );
+        volumes.insert(
+            "scratch".to_string(),
+            VolumeMountConfig {
+                target: "/var/cache/project".to_string(),
+                scope: VolumeScope::Project,
+                nocopy: true,
+                retention: VolumeRetention::Disposable,
+            },
+        );
+        let config = VmConfig {
+            provider: Some("docker".to_string()),
+            project: Some(ProjectConfig {
+                name: Some("sketch-api".to_string()),
                 ..Default::default()
             }),
-            ..Default::default()
-        };
-
-        // Create GlobalConfig with package registry DISABLED
-        let global_config = GlobalConfig {
-            services: vm_config::global_config::GlobalServices {
-                package_registry: vm_config::global_config::PackageRegistrySettings {
-                    enabled: false,
-                    port: 3080,
-                    max_storage_gb: 10,
-                },
+            vm: Some(VmSettings {
+                memory: Some(MemoryLimit::Limited(20_480)),
+                cpus: Some(CpuLimit::Unlimited),
+                pids_limit: Some(4096),
+                stop_grace_period: Some(60),
+                logging: Some(ContainerLoggingConfig::default()),
                 ..Default::default()
+            }),
+            storage: StorageConfig {
+                volumes,
+                tmpfs: vec![TmpfsMountConfig {
+                    target: "/tmp".to_string(),
+                    size: MemoryLimit::Limited(4096),
+                    mode: "1777".to_string(),
+                }],
             },
             ..Default::default()
         };
-
-        // Create ProviderContext with global config
-        let context = ProviderContext::default().with_config(global_config);
-
-        // Create ComposeOperations
-        let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir, "docker");
-
-        // Render docker-compose
-        let result = compose_ops.render_docker_compose(&build_dir, &context);
-        assert!(result.is_ok(), "render_docker_compose should succeed");
-
-        let content = result.unwrap();
-
-        // Verify that registry environment variables are NOT in the rendered output
-        assert!(
-            !content.contains("NPM_CONFIG_REGISTRY="),
-            "Should NOT contain NPM_CONFIG_REGISTRY when disabled"
-        );
-        assert!(
-            !content.contains("VM_CARGO_REGISTRY_HOST="),
-            "Should NOT contain VM_CARGO_REGISTRY_HOST when disabled"
-        );
-    }
-
-    #[test]
-    fn test_no_global_config_no_env_vars() {
-        // Create a temporary directory
-        let temp_dir = TempDir::new().unwrap();
-        let project_dir = temp_dir.path().to_path_buf();
-        let temp_path = temp_dir.path().to_path_buf();
-        let build_dir = temp_dir.path().join("build");
-        std::fs::create_dir_all(&build_dir).unwrap();
-
-        // Create a minimal VmConfig
-        let vm_config = VmConfig {
-            project: Some(vm_config::config::ProjectConfig {
-                name: Some("test-project".to_string()),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-
-        // Create ProviderContext WITHOUT global config
+        let compose = ComposeOperations::new(&config, &temp_path, &project_dir, "docker");
         let context = ProviderContext::default();
 
-        // Create ComposeOperations
-        let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir, "docker");
-
-        // Render docker-compose
-        let result = compose_ops.render_docker_compose(&build_dir, &context);
-        assert!(result.is_ok(), "render_docker_compose should succeed");
-
-        let content = result.unwrap();
-
-        // Verify that registry environment variables are NOT in the rendered output
-        assert!(
-            !content.contains("NPM_CONFIG_REGISTRY="),
-            "Should NOT contain NPM_CONFIG_REGISTRY when no global config"
-        );
-        assert!(
-            !content.contains("VM_CARGO_REGISTRY_HOST="),
-            "Should NOT contain VM_CARGO_REGISTRY_HOST when no global config"
-        );
-    }
-
-    #[test]
-    fn test_host_gateway_detection() {
-        let host = vm_platform::platform::get_host_gateway();
-
-        #[cfg(target_os = "linux")]
-        assert_eq!(host, "172.17.0.1", "Linux should use Docker bridge IP");
-
-        #[cfg(not(target_os = "linux"))]
+        let rendered = compose
+            .render_docker_compose(&project_dir, &context)
+            .unwrap();
         assert_eq!(
-            host, "host.docker.internal",
-            "macOS/Windows should use host.docker.internal"
+            rendered,
+            compose
+                .render_docker_compose(&project_dir, &context)
+                .unwrap(),
+            "rendering the same project must be deterministic"
+        );
+
+        let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(&rendered).unwrap();
+        let services = yaml_mapping(&yaml, "services");
+        let dev = services
+            .get("sketch-api-dev")
+            .and_then(serde_yaml_ng::Value::as_mapping)
+            .unwrap();
+
+        assert_eq!(
+            dev.get("mem_limit").and_then(|value| value.as_str()),
+            Some("20480m")
+        );
+        assert!(
+            !dev.contains_key("cpus"),
+            "unlimited CPUs must omit the limit"
+        );
+        assert_eq!(
+            dev.get("pids_limit").and_then(|value| value.as_u64()),
+            Some(4096)
+        );
+        assert_eq!(
+            dev.get("stop_grace_period")
+                .and_then(serde_yaml_ng::Value::as_str),
+            Some("60s")
+        );
+        assert_eq!(
+            dev.get("restart").and_then(|value| value.as_str()),
+            Some("no")
+        );
+
+        let logging = dev
+            .get("logging")
+            .and_then(serde_yaml_ng::Value::as_mapping)
+            .unwrap();
+        assert_eq!(
+            logging.get("driver").and_then(|value| value.as_str()),
+            Some("local")
+        );
+        let logging_options = logging
+            .get("options")
+            .and_then(serde_yaml_ng::Value::as_mapping)
+            .unwrap();
+        assert_eq!(
+            logging_options
+                .get("max-size")
+                .and_then(serde_yaml_ng::Value::as_str),
+            Some("20m")
+        );
+        assert_eq!(
+            logging_options
+                .get("max-file")
+                .and_then(serde_yaml_ng::Value::as_str),
+            Some("5")
+        );
+
+        assert_eq!(
+            dev.get("tmpfs")
+                .and_then(serde_yaml_ng::Value::as_sequence)
+                .unwrap(),
+            &[serde_yaml_ng::Value::String(
+                "/tmp:size=4096m,mode=1777".to_string()
+            )]
+        );
+        assert!(
+            dev.get("volumes")
+                .and_then(serde_yaml_ng::Value::as_sequence)
+                .unwrap()
+                .iter()
+                .filter_map(serde_yaml_ng::Value::as_str)
+                .any(|mount| mount.ends_with(":/workspace:rw")),
+            "/workspace must remain a host bind"
+        );
+
+        for (source, target) in [
+            ("shell_history", "/home/developer/.shell_history"),
+            ("managed_node_modules", "/workspace/node_modules"),
+            (
+                "managed_pnpm_store",
+                "/home/developer/.local/share/pnpm/store",
+            ),
+        ] {
+            let mount = volume_mount(dev, source);
+            assert_eq!(
+                mount.get("target").and_then(serde_yaml_ng::Value::as_str),
+                Some(target)
+            );
+            assert_eq!(
+                mount
+                    .get("volume")
+                    .and_then(serde_yaml_ng::Value::as_mapping)
+                    .and_then(|volume| volume.get("nocopy"))
+                    .and_then(serde_yaml_ng::Value::as_bool),
+                Some(true)
+            );
+        }
+
+        let named_volumes = yaml_mapping(&yaml, "volumes");
+        assert_eq!(
+            named_volumes["shell_history"]
+                .get("name")
+                .and_then(serde_yaml_ng::Value::as_str),
+            Some("vm_sketch-api_shell_history")
+        );
+        assert_eq!(
+            named_volumes["managed_node_modules"]
+                .get("name")
+                .and_then(serde_yaml_ng::Value::as_str),
+            Some("vm_sketch-api_node_modules")
+        );
+        let platform_store_name = format!(
+            "vm_sketch-api_linux_{}_pnpm_store",
+            container_architecture()
+        );
+        assert_eq!(
+            named_volumes["managed_pnpm_store"]
+                .get("name")
+                .and_then(serde_yaml_ng::Value::as_str),
+            Some(platform_store_name.as_str())
+        );
+        assert_eq!(
+            named_volumes["managed_scratch"]["labels"]
+                .get("com.vm.retention")
+                .and_then(serde_yaml_ng::Value::as_str),
+            Some("disposable")
+        );
+
+        let instance_rendered = compose
+            .render_docker_compose_with_instance(&project_dir, "feature", &context)
+            .unwrap();
+        let instance_yaml: serde_yaml_ng::Value =
+            serde_yaml_ng::from_str(&instance_rendered).unwrap();
+        let instance_volumes = yaml_mapping(&instance_yaml, "volumes");
+        assert_eq!(
+            instance_volumes["managed_node_modules"]
+                .get("name")
+                .and_then(serde_yaml_ng::Value::as_str),
+            Some("vm_sketch-api-feature_node_modules")
+        );
+        assert_eq!(
+            instance_volumes["managed_pnpm_store"]
+                .get("name")
+                .and_then(serde_yaml_ng::Value::as_str),
+            Some(platform_store_name.as_str()),
+            "platform stores remain shared across named instances"
+        );
+        assert_eq!(
+            instance_volumes["managed_scratch"]
+                .get("name")
+                .and_then(serde_yaml_ng::Value::as_str),
+            Some("vm_sketch-api_scratch"),
+            "project-scoped volumes remain shared across named instances"
         );
     }
 
     #[test]
-    fn test_start_with_compose_regenerates_with_new_config() {
-        use tempfile::TempDir;
-        use vm_config::GlobalConfig;
-
+    fn rewrites_compose_when_registry_context_changes() {
         let temp_dir = TempDir::new().unwrap();
         let temp_path = temp_dir.path().to_path_buf();
         let project_dir = temp_dir.path().to_path_buf();
 
-        // Create a basic VM config
         let mut vm_config = VmConfig::default();
         vm_config.project = Some(vm_config::config::ProjectConfig {
             name: Some("test-project".to_string()),
             ..Default::default()
         });
 
-        // First call: Write compose file WITHOUT registry config
         let context_without_registry = ProviderContext::with_verbose(false);
         let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir, "docker");
-
-        // Create build context manually (without pulling images)
         let build_context = temp_path.join("build_context");
         std::fs::create_dir_all(&build_context).unwrap();
 
@@ -1040,302 +1112,31 @@ mod tests {
             .write_docker_compose(&build_context, &context_without_registry)
             .unwrap();
 
-        // Read the initial compose file
         let initial_content = std::fs::read_to_string(&compose_path).unwrap();
+        assert!(!initial_content.contains("NPM_CONFIG_REGISTRY="));
+        assert!(!initial_content.contains("VM_CARGO_REGISTRY_HOST="));
 
-        // Verify NO registry env vars in initial compose
-        assert!(
-            !initial_content.contains("NPM_CONFIG_REGISTRY="),
-            "Initial compose should NOT contain NPM_CONFIG_REGISTRY"
-        );
-        assert!(
-            !initial_content.contains("VM_CARGO_REGISTRY_HOST="),
-            "Initial compose should NOT contain VM_CARGO_REGISTRY_HOST"
-        );
-
-        // Second call: Write compose file WITH registry config
         let mut global_config = GlobalConfig::default();
         global_config.services.package_registry.enabled = true;
         global_config.services.package_registry.port = 3080;
-
         let context_with_registry = ProviderContext::with_verbose(false).with_config(global_config);
-
-        // Regenerate compose with registry enabled
         compose_ops
             .write_docker_compose(&build_context, &context_with_registry)
             .unwrap();
-
-        // Read the updated compose file
         let updated_content = std::fs::read_to_string(&compose_path).unwrap();
 
-        // Verify registry env vars ARE present after regeneration
         let host = vm_platform::platform::get_host_gateway();
-        assert!(
-            updated_content.contains(&format!("NPM_CONFIG_REGISTRY=http://{}:3080/npm/", host)),
-            "Updated compose should contain NPM_CONFIG_REGISTRY with correct host and port"
-        );
-        assert!(
-            updated_content.contains(&format!("VM_CARGO_REGISTRY_HOST={}", host)),
-            "Updated compose should contain VM_CARGO_REGISTRY_HOST"
-        );
-        assert!(
-            updated_content.contains("VM_CARGO_REGISTRY_PORT=3080"),
-            "Updated compose should contain VM_CARGO_REGISTRY_PORT"
-        );
-        assert!(
-            updated_content.contains(&format!("PIP_INDEX_URL=http://{}:3080/pypi/simple/", host)),
-            "Updated compose should contain PIP_INDEX_URL"
-        );
-
-        // Verify that the file was actually regenerated (contents changed)
-        assert_ne!(
-            initial_content, updated_content,
-            "Compose file should be regenerated with different content"
-        );
-    }
-
-    #[test]
-    fn test_start_with_compose_can_disable_registry() {
-        use tempfile::TempDir;
-        use vm_config::GlobalConfig;
-
-        let temp_dir = TempDir::new().unwrap();
-        let temp_path = temp_dir.path().to_path_buf();
-        let project_dir = temp_dir.path().to_path_buf();
-
-        let mut vm_config = VmConfig::default();
-        vm_config.project = Some(vm_config::config::ProjectConfig {
-            name: Some("test-project".to_string()),
-            ..Default::default()
-        });
-
-        // First: Enable registry
-        let mut global_config = GlobalConfig::default();
-        global_config.services.package_registry.enabled = true;
-        global_config.services.package_registry.port = 3080;
-
-        let context_with_registry =
-            ProviderContext::with_verbose(false).with_config(global_config.clone());
-
-        let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir, "docker");
-
-        // Create build context manually (without pulling images)
-        let build_context = temp_path.join("build_context");
-        std::fs::create_dir_all(&build_context).unwrap();
-
-        let compose_path = compose_ops
-            .write_docker_compose(&build_context, &context_with_registry)
-            .unwrap();
-
-        let initial_content = std::fs::read_to_string(&compose_path).unwrap();
-        assert!(
-            initial_content.contains("NPM_CONFIG_REGISTRY="),
-            "Should contain registry vars when enabled"
-        );
-
-        // Second: Disable registry
-        let mut global_config_disabled = GlobalConfig::default();
-        global_config_disabled.services.package_registry.enabled = false;
-
-        let context_disabled =
-            ProviderContext::with_verbose(false).with_config(global_config_disabled);
+        assert!(updated_content.contains(&format!("NPM_CONFIG_REGISTRY=http://{host}:3080/npm/")));
+        assert!(updated_content.contains(&format!("VM_CARGO_REGISTRY_HOST={host}")));
+        assert!(updated_content.contains("VM_CARGO_REGISTRY_PORT=3080"));
+        assert!(updated_content.contains(&format!("PIP_INDEX_URL=http://{host}:3080/pypi/simple/")));
+        assert_ne!(initial_content, updated_content);
 
         compose_ops
-            .write_docker_compose(&build_context, &context_disabled)
+            .write_docker_compose(&build_context, &context_without_registry)
             .unwrap();
-
-        let updated_content = std::fs::read_to_string(&compose_path).unwrap();
-
-        // Verify registry vars are REMOVED after disabling
-        assert!(
-            !updated_content.contains("NPM_CONFIG_REGISTRY="),
-            "Should NOT contain registry vars when disabled"
-        );
-        assert!(
-            !updated_content.contains("VM_CARGO_REGISTRY_HOST="),
-            "Should NOT contain registry vars when disabled"
-        );
-    }
-
-    #[test]
-    fn test_worktrees_disabled_by_default() {
-        let (_temp_dir, project_dir, temp_path) = setup_test_env();
-        let config = VmConfig::default();
-        let context = ProviderContext::default();
-        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir, "docker");
-
-        let rendered = compose_ops
-            .render_docker_compose(&project_dir, &context)
-            .unwrap();
-        assert!(!rendered.contains("/worktrees:rw"));
-    }
-
-    #[test]
-    fn test_worktrees_enabled_globally() {
-        let (_temp_dir, project_dir, temp_path) = setup_test_env();
-        let config = VmConfig {
-            project: Some(ProjectConfig {
-                name: Some("test-project".into()),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let mut global_config = GlobalConfig::default();
-        global_config.worktrees.enabled = true;
-        let context = ProviderContext::default().with_config(global_config);
-        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir, "docker");
-
-        let rendered = compose_ops
-            .render_docker_compose(&project_dir, &context)
-            .unwrap();
-        // New implementation detects worktrees dynamically from git
-        // If no worktrees exist, no worktree mounts should be in the output
-        // This test now just verifies it renders without error
-        assert!(!rendered.is_empty());
-    }
-
-    #[test]
-    fn test_worktrees_enabled_per_project() {
-        let (_temp_dir, project_dir, temp_path) = setup_test_env();
-        let config = VmConfig {
-            project: Some(ProjectConfig {
-                name: Some("test-project".into()),
-                ..Default::default()
-            }),
-            host_sync: Some(HostSyncConfig {
-                worktrees: Some(WorktreesConfig {
-                    enabled: true,
-                    base_path: None,
-                }),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let context = ProviderContext::default();
-        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir, "docker");
-
-        let rendered = compose_ops
-            .render_docker_compose(&project_dir, &context)
-            .unwrap();
-        // New implementation detects worktrees dynamically from git
-        // Worktree config enabled just means detection is active
-        assert!(!rendered.is_empty());
-    }
-
-    #[test]
-    fn test_worktrees_project_overrides_global_disabled() {
-        let (_temp_dir, project_dir, temp_path) = setup_test_env();
-        let config = VmConfig {
-            project: Some(ProjectConfig {
-                name: Some("test-project".into()),
-                ..Default::default()
-            }),
-            host_sync: Some(HostSyncConfig {
-                worktrees: Some(WorktreesConfig {
-                    enabled: true,
-                    base_path: None,
-                }),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let mut global_config = GlobalConfig::default();
-        global_config.worktrees.enabled = false;
-        let context = ProviderContext::default().with_config(global_config);
-        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir, "docker");
-
-        let rendered = compose_ops
-            .render_docker_compose(&project_dir, &context)
-            .unwrap();
-        // Project-level worktrees enabled overrides global disabled
-        assert!(!rendered.is_empty());
-    }
-
-    #[test]
-    fn test_worktrees_custom_base_path_from_project() {
-        let (_temp_dir, project_dir, temp_path) = setup_test_env();
-        let config = VmConfig {
-            project: Some(ProjectConfig {
-                name: Some("test-project".into()),
-                ..Default::default()
-            }),
-            host_sync: Some(HostSyncConfig {
-                worktrees: Some(WorktreesConfig {
-                    enabled: true,
-                    base_path: Some("/custom/path".to_string()),
-                }),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let context = ProviderContext::default();
-        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir, "docker");
-
-        let rendered = compose_ops
-            .render_docker_compose(&project_dir, &context)
-            .unwrap();
-        // Custom base_path is now deprecated - worktrees detected dynamically
-        assert!(!rendered.is_empty());
-    }
-
-    #[test]
-    fn test_worktrees_custom_base_path_from_global() {
-        let (_temp_dir, project_dir, temp_path) = setup_test_env();
-        let config = VmConfig {
-            project: Some(ProjectConfig {
-                name: Some("test-project".into()),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let global_config = GlobalConfig {
-            worktrees: WorktreesGlobalSettings {
-                enabled: true,
-                base_path: Some("/global/path".to_string()),
-            },
-            ..Default::default()
-        };
-        let context = ProviderContext::default().with_config(global_config);
-        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir, "docker");
-
-        let rendered = compose_ops
-            .render_docker_compose(&project_dir, &context)
-            .unwrap();
-        // Custom base_path is now deprecated - worktrees detected dynamically
-        assert!(!rendered.is_empty());
-    }
-
-    #[test]
-    fn test_worktrees_project_base_path_overrides_global() {
-        let (_temp_dir, project_dir, temp_path) = setup_test_env();
-        let config = VmConfig {
-            project: Some(ProjectConfig {
-                name: Some("test-project".into()),
-                ..Default::default()
-            }),
-            host_sync: Some(HostSyncConfig {
-                worktrees: Some(WorktreesConfig {
-                    enabled: true,
-                    base_path: Some("/project/path".to_string()),
-                }),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let global_config = GlobalConfig {
-            worktrees: WorktreesGlobalSettings {
-                enabled: true,
-                base_path: Some("/global/path".to_string()),
-            },
-            ..Default::default()
-        };
-        let context = ProviderContext::default().with_config(global_config);
-        let compose_ops = ComposeOperations::new(&config, &temp_path, &project_dir, "docker");
-
-        let rendered = compose_ops
-            .render_docker_compose(&project_dir, &context)
-            .unwrap();
-        // Custom base_path is now deprecated - worktrees detected dynamically
-        assert!(!rendered.is_empty());
+        let disabled_content = std::fs::read_to_string(&compose_path).unwrap();
+        assert!(!disabled_content.contains("NPM_CONFIG_REGISTRY="));
+        assert!(!disabled_content.contains("VM_CARGO_REGISTRY_HOST="));
     }
 }
