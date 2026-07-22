@@ -124,23 +124,6 @@ fn clean_dangling_volumes(executable: &str, dry_run: bool, verbose: bool) -> VmR
     Ok(count)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::MANAGED_DISPOSABLE_VOLUME_FILTERS;
-
-    #[test]
-    fn volume_cleanup_requires_vm_ownership_and_disposable_retention() {
-        assert_eq!(
-            MANAGED_DISPOSABLE_VOLUME_FILTERS,
-            [
-                "dangling=true",
-                "label=com.vm.managed=true",
-                "label=com.vm.retention=disposable",
-            ]
-        );
-    }
-}
-
 /// Clean stopped temp containers
 fn clean_stopped_temp_containers(executable: &str, dry_run: bool, verbose: bool) -> VmResult<u32> {
     debug!("Cleaning stopped temp containers");
@@ -450,5 +433,22 @@ fn print_cleanup_summary(results: &CleanupResults, dry_run: bool) {
                 results.build_cache_mb
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MANAGED_DISPOSABLE_VOLUME_FILTERS;
+
+    #[test]
+    fn volume_cleanup_requires_vm_ownership_and_disposable_retention() {
+        assert_eq!(
+            MANAGED_DISPOSABLE_VOLUME_FILTERS,
+            [
+                "dangling=true",
+                "label=com.vm.managed=true",
+                "label=com.vm.retention=disposable",
+            ]
+        );
     }
 }

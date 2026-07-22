@@ -34,12 +34,7 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     #[must_use = "container creation results should be handled"]
-    pub fn create_container(&self) -> Result<()> {
-        self.create_container_with_context(&ProviderContext::default())
-    }
-
-    #[must_use = "container creation results should be handled"]
-    pub fn create_container_with_context(&self, context: &ProviderContext) -> Result<()> {
+    pub fn create_container(&self, context: &ProviderContext) -> Result<()> {
         self.create_container_impl(None, context)
     }
 
@@ -103,8 +98,8 @@ impl<'a> LifecycleOperations<'a> {
 
         if container_exists {
             return match instance_name {
-                Some(name) => self.handle_existing_container_with_instance(name),
-                None => self.handle_existing_container(),
+                Some(name) => self.handle_existing_container_with_instance(name, context),
+                None => self.handle_existing_container(context),
             };
         }
 
@@ -333,15 +328,9 @@ impl<'a> LifecycleOperations<'a> {
         }
     }
 
-    /// Create a container with a specific instance name
+    /// Create a container with a specific instance name.
     #[must_use = "container creation results should be handled"]
-    pub fn create_container_with_instance(&self, instance_name: &str) -> Result<()> {
-        self.create_container_with_instance_and_context(instance_name, &ProviderContext::default())
-    }
-
-    /// Create a container with a specific instance name and context
-    #[must_use = "container creation results should be handled"]
-    pub fn create_container_with_instance_and_context(
+    pub fn create_container_with_instance(
         &self,
         instance_name: &str,
         context: &ProviderContext,
@@ -350,7 +339,7 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     #[must_use = "existing container handling results should be checked"]
-    fn handle_existing_container(&self) -> Result<()> {
+    fn handle_existing_container(&self, context: &ProviderContext) -> Result<()> {
         let container_name = self.container_name();
 
         // Check if it's running
@@ -392,14 +381,14 @@ impl<'a> LifecycleOperations<'a> {
                         Ok(())
                     } else {
                         info!("{}", MESSAGES.service.docker_container_starting);
-                        self.start_container(None)
+                        self.start_container(None, context)
                     }
                 }
                 "2" => {
                     info!("{}", MESSAGES.service.docker_container_recreating);
-                    self.destroy_container(None)?;
+                    self.destroy_container(None, context)?;
                     // Continue with creation below
-                    self.create_container()
+                    self.create_container(context)
                 }
                 _ => {
                     error!("Operation cancelled.");
@@ -418,7 +407,11 @@ impl<'a> LifecycleOperations<'a> {
 
     /// Handle existing container with custom instance name
     #[must_use = "existing container handling results should be checked"]
-    fn handle_existing_container_with_instance(&self, instance_name: &str) -> Result<()> {
+    fn handle_existing_container_with_instance(
+        &self,
+        instance_name: &str,
+        context: &ProviderContext,
+    ) -> Result<()> {
         let container_name = self.container_name_with_instance(instance_name);
 
         // Check if it's running
@@ -460,14 +453,14 @@ impl<'a> LifecycleOperations<'a> {
                         Ok(())
                     } else {
                         info!("{}", MESSAGES.service.docker_container_starting);
-                        self.start_container(Some(&container_name))
+                        self.start_container(Some(&container_name), context)
                     }
                 }
                 "2" => {
                     info!("{}", MESSAGES.service.docker_container_recreating);
-                    self.destroy_container(Some(&container_name))?;
+                    self.destroy_container(Some(&container_name), context)?;
                     // Continue with creation below
-                    self.create_container_with_instance(instance_name)
+                    self.create_container_with_instance(instance_name, context)
                 }
                 _ => {
                     error!("Operation cancelled.");

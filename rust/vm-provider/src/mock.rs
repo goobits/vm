@@ -1,4 +1,4 @@
-use crate::{Provider, TempProvider};
+use crate::{InstanceInfo, Provider, ProviderContext, TempProvider, VmStatusReport};
 use std::path::Path;
 use vm_config::config::VmConfig;
 use vm_core::error::Result;
@@ -11,19 +11,16 @@ impl Provider for MockProvider {
         "mock"
     }
 
-    fn create(&self) -> Result<()> {
+    fn create(&self, _context: &ProviderContext) -> Result<()> {
         Ok(())
     }
-    fn create_with_context(&self, _context: &crate::context::ProviderContext) -> Result<()> {
-        Ok(())
-    }
-    fn start(&self, _container: Option<&str>) -> Result<()> {
+    fn start(&self, _container: Option<&str>, _context: &ProviderContext) -> Result<()> {
         Ok(())
     }
     fn stop(&self, _container: Option<&str>) -> Result<()> {
         Ok(())
     }
-    fn destroy(&self, _container: Option<&str>) -> Result<()> {
+    fn destroy(&self, _container: Option<&str>, _context: &ProviderContext) -> Result<()> {
         Ok(())
     }
     fn ssh(&self, _container: Option<&str>, _relative_path: &Path) -> Result<()> {
@@ -45,29 +42,32 @@ impl Provider for MockProvider {
         Ok(())
     }
 
-    fn status(&self, _container: Option<&str>) -> Result<()> {
-        println!("Status for mock-vm:");
-        println!("  Running: true");
-        println!("  IP Address: 127.0.0.1");
-        Ok(())
+    fn status(&self, _container: Option<&str>) -> Result<VmStatusReport> {
+        Ok(VmStatusReport {
+            name: "mock-vm".to_string(),
+            provider: "mock".to_string(),
+            is_running: true,
+            ..Default::default()
+        })
     }
 
-    fn restart(&self, _container: Option<&str>) -> Result<()> {
+    fn restart(&self, _container: Option<&str>, _context: &ProviderContext) -> Result<()> {
         Ok(())
     }
     fn provision(&self, _container: Option<&str>) -> Result<()> {
         Ok(())
     }
 
-    fn list(&self) -> Result<()> {
-        println!("{:<20} {:<10} {:<18}", "NAME", "STATUS", "IP ADDRESS");
-        println!("{:<20} {:<10} {:<18}", "mock-vm-1", "running", "127.0.0.1");
-        println!("{:<20} {:<10} {:<18}", "mock-vm-2", "stopped", "N/A");
-        Ok(())
-    }
-
-    fn kill(&self, _container: Option<&str>) -> Result<()> {
-        Ok(())
+    fn list_instances(&self) -> Result<Vec<InstanceInfo>> {
+        Ok(vec![InstanceInfo {
+            name: "mock-vm".to_string(),
+            id: "mock-id".to_string(),
+            status: "running".to_string(),
+            provider: "mock".to_string(),
+            project: Some("mock".to_string()),
+            uptime: None,
+            created_at: None,
+        }])
     }
     fn get_sync_directory(&self) -> String {
         "/tmp/mock_sync".to_string()

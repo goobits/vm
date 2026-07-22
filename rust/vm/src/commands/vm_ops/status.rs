@@ -31,7 +31,7 @@ pub fn handle_status(
         provider.name()
     );
 
-    let report = provider.get_status_report(container)?;
+    let report = provider.status(container)?;
     display_status_dashboard(&report);
     Ok(())
 }

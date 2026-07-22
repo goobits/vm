@@ -12,7 +12,7 @@ use vm_messages::messages::MESSAGES;
 use crate::mount_ops::MountParser;
 use crate::{MountPermission, StateManager, TempVmState};
 use vm_config::config::VmConfig;
-use vm_provider::Provider;
+use vm_provider::{Provider, ProviderContext};
 
 /// Core temporary VM operations
 pub struct TempVmOps;
@@ -77,7 +77,7 @@ impl TempVmOps {
 
         // Create the VM using the provided provider
         if let Some(_temp_provider) = provider.as_temp_provider() {
-            provider.create()?;
+            provider.create(&ProviderContext::default())?;
         } else {
             return Err(VmError::Internal(
                 "Provider does not support temp VM operations".to_string(),
@@ -100,7 +100,7 @@ impl TempVmOps {
             info!("{}", MESSAGES.service.temp_vm_connecting);
             provider.ssh(None, &PathBuf::from("."))?;
             info!("{}", MESSAGES.service.temp_vm_auto_destroying);
-            provider.destroy(None)?;
+            provider.destroy(None, &ProviderContext::default())?;
             state_manager.delete_state()?;
         } else {
             info!("{}", MESSAGES.service.temp_vm_usage_hint);
@@ -197,7 +197,9 @@ impl TempVmOps {
         }
 
         // Check provider status
-        provider.status(None)
+        let report = provider.status(None)?;
+        info!("   Running: {}", report.is_running);
+        Ok(())
     }
 
     /// Destroy the temporary VM
@@ -218,7 +220,7 @@ impl TempVmOps {
         }
 
         info!("{}", MESSAGES.service.temp_vm_destroying);
-        provider.destroy(None)?;
+        provider.destroy(None, &ProviderContext::default())?;
 
         state_manager.delete_state()?;
 
@@ -637,7 +639,7 @@ impl TempVmOps {
 
         info!("{}", MESSAGES.service.temp_vm_starting);
 
-        match provider.start(None) {
+        match provider.start(None, &ProviderContext::default()) {
             Ok(()) => {
                 info!("{}", MESSAGES.service.temp_vm_started_success);
 
@@ -688,7 +690,7 @@ impl TempVmOps {
         info!("{}", MESSAGES.service.temp_vm_stopping_step);
         info!("{}", MESSAGES.service.temp_vm_starting_step);
 
-        match provider.restart(None) {
+        match provider.restart(None, &ProviderContext::default()) {
             Ok(()) => {
                 info!("{}", MESSAGES.service.temp_vm_services_ready);
                 info!("{}", MESSAGES.service.temp_vm_restarted_success);

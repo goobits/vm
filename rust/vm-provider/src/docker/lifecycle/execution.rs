@@ -15,22 +15,17 @@ use vm_core::vm_warning;
 
 impl<'a> LifecycleOperations<'a> {
     #[must_use = "container start results should be handled"]
-    pub fn start_container(&self, container: Option<&str>) -> Result<()> {
-        let target_container = self.resolve_target_container(container)?;
-        stream_command(self.executable, &["start", &target_container])
-    }
-
-    /// Start container with context-aware docker-compose regeneration
-    #[must_use = "container start results should be handled"]
-    pub fn start_container_with_context(
+    pub fn start_container(
         &self,
         container: Option<&str>,
         context: &ProviderContext,
     ) -> Result<()> {
         let target_container = self.resolve_target_container(container)?;
-        let compose_ops = self.regenerate_compose_with_context(container, context)?;
+        if context.global_config.is_none() {
+            return stream_command(self.executable, &["start", &target_container]);
+        }
 
-        // Use compose to start (handles both stopped containers and fresh starts)
+        let compose_ops = self.regenerate_compose_with_context(container, context)?;
         compose_ops.start_named_with_compose(&target_container, context)
     }
 
@@ -49,11 +44,7 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     #[must_use = "container destruction results should be handled"]
-    pub fn destroy_container(&self, container: Option<&str>) -> Result<()> {
-        self.destroy_container_with_context(container, &ProviderContext::default())
-    }
-
-    pub fn destroy_container_with_context(
+    pub fn destroy_container(
         &self,
         container: Option<&str>,
         context: &ProviderContext,
@@ -126,43 +117,12 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     #[must_use = "container restart results should be handled"]
-    pub fn restart_container(&self, container: Option<&str>) -> Result<()> {
-        self.stop_container(container)?;
-        self.start_container(container)
-    }
-
-    /// Restart container with context-aware docker-compose regeneration
-    #[must_use = "container restart results should be handled"]
-    pub fn restart_container_with_context(
+    pub fn restart_container(
         &self,
         container: Option<&str>,
         context: &ProviderContext,
     ) -> Result<()> {
-        let target_container = self.resolve_target_container(container)?;
-        let compose_ops = self.regenerate_compose_with_context(container, context)?;
-
-        // Stop the container first
         self.stop_container(container)?;
-
-        // Use compose to start with updated configuration
-        compose_ops.start_named_with_compose(&target_container, context)
-    }
-
-    #[must_use = "container kill results should be handled"]
-    pub fn kill_container(&self, container: Option<&str>) -> Result<()> {
-        let container_name = self.container_name();
-        let target_container = match container {
-            None => container_name.clone(),
-            Some(provided_name) => {
-                // Try to resolve partial container names
-                match self.resolve_container_name(provided_name) {
-                    Ok(resolved_name) => resolved_name,
-                    Err(_) => provided_name.to_string(), // Fall back to original name if resolution fails
-                }
-            }
-        };
-        stream_command(self.executable, &["kill", &target_container]).map_err(|e| {
-            VmError::Internal(format!("Failed to kill container '{}'. Container may not exist or Docker may be unresponsive: {}", &target_container, e))
-        })
+        self.start_container(container, context)
     }
 }
