@@ -56,7 +56,18 @@ services:
       {% endfor %}
       {% endif %}
       # Shell history persistence (survives container recreation)
-      - {{ project_name }}_shell_history:/home/{{ project_user }}/.shell_history:rw
+      - type: volume
+        source: shell_history
+        target: /home/{{ project_user }}/.shell_history
+        volume:
+          nocopy: true
+      {% for volume in storage_volumes %}
+      - type: volume
+        source: {{ volume.alias }}
+        target: {{ volume.target }}
+         volume:
+           nocopy: {{ volume.nocopy }}
+      {% endfor %}
       {% if extra_mounts %}
       # Temporary VM custom mounts
       {% for mount in extra_mounts %}
@@ -196,35 +207,41 @@ services:
       {% for cap in config.security.drop_capabilities %}- {{ cap }}
       {% endfor %}
     {% endif %}
-    {% if config.vm.memory %}
-      {% if config.vm.memory != "unlimited" %}
-    mem_limit: {{ config.vm.memory }}m
-      {% endif %}
-    {% elif config.security.memory_limit %}
-    mem_limit: {{ config.security.memory_limit }}
+    {% if resources.memory %}
+    mem_limit: {{ resources.memory }}
     {% endif %}
-    {% if config.vm.cpus %}
-      {% if config.vm.cpus != "unlimited" %}
-    cpus: "{{ config.vm.cpus }}"
-      {% endif %}
-    {% elif config.security.cpu_limit %}
-    cpus: "{{ config.security.cpu_limit }}"
+    {% if resources.cpus %}
+    cpus: "{{ resources.cpus }}"
     {% endif %}
     {% if config.vm.swappiness is defined %}
     mem_swappiness: {{ config.vm.swappiness }}
     {% endif %}
     {# Note: swap is now a SwapLimit enum, memswap_limit is computed provider-side #}
-    {% if config.security.pids_limit %}
-    pids_limit: {{ config.security.pids_limit }}
+    {% if config.vm.pids_limit %}
+    pids_limit: {{ config.vm.pids_limit }}
+    {% endif %}
+    {% if config.vm.stop_grace_period %}
+    stop_grace_period: "{{ config.vm.stop_grace_period }}s"
+    {% endif %}
+    {% if config.vm.logging %}
+    logging:
+      driver: {{ config.vm.logging.driver }}
+      options:
+        max-size: "{{ config.vm.logging.max_size }}"
+        max-file: "{{ config.vm.logging.max_files }}"
     {% endif %}
     {% if config.security.read_only_root | default(value=false) %}
     read_only: true
+    {% endif %}
+    {% if tmpfs_mounts and tmpfs_mounts | length > 0 %}
     tmpfs:
-      - /tmp
-      - /var/tmp
+      {% for mount in tmpfs_mounts %}
+      - "{{ mount.target }}{% if mount.size %}:size={{ mount.size }}{% endif %},mode={{ mount.mode }}"
+      {% endfor %}
     {% endif %}
     command: ["tail", "-f", "/dev/null"]
     init: true  # Enable tini for proper PID 1 handling (zombie reaping, signal forwarding)
+    restart: "no"
     tty: true
     stdin_open: true
     {% if config.networking and config.networking.networks and config.networking.networks | length > 0 -%}
@@ -245,7 +262,11 @@ services:
       - POSTGRES_USER={{ config.services.postgresql.user | default(value="postgres") }}
       - POSTGRES_PASSWORD={{ postgresql_password | default(value="postgres") }}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - type: volume
+        source: postgres_data
+        target: /var/lib/postgresql/data
+        volume:
+          nocopy: true
     ports:
       - "{{ config.services.postgresql.port | default(value=5432) }}:5432"
     restart: unless-stopped
@@ -261,12 +282,15 @@ services:
   {% endif %}
 
 volumes:
-  {{ project_name }}_shell_history:
-    name: {{ project_name }}_shell_history
-  {% if config.services.postgresql.enabled | default(value=false) %}
-  postgres_data:
-    name: {{ project_name }}_postgres_data
-  {% endif %}
+  {% for volume in named_volumes %}
+  {{ volume.alias }}:
+    name: {{ volume.name }}
+    labels:
+      com.vm.managed: "true"
+      com.vm.project: "{{ base_project_name }}"
+     com.vm.instance: "{{ project_name }}"
+     com.vm.retention: "{{ volume.retention }}"
+  {% endfor %}
 
 {% if config.networking and config.networking.networks and config.networking.networks | length > 0 -%}
 networks:

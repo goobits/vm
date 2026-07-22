@@ -2,7 +2,7 @@
 //
 // This module provides unified parsing for resource limit values across different formats:
 // - Raw numbers: 1024, 4
-// - Memory units: "1gb", "512mb", "2048mb"
+// - Memory units: "1gb", "4g", "512mb", "512m"
 // - Percentages: "50%", "90%"
 // - Unlimited: "unlimited"
 
@@ -26,7 +26,7 @@ pub enum ParsedLimit {
 ///
 /// # Supported Formats
 /// - Numbers: "1024", "4"
-/// - Memory units: "1gb", "512mb", "1.5gb", "2GB" (case-insensitive)
+/// - Memory units: "1gb", "4g", "512mb", "512m", "2GB" (case-insensitive)
 /// - Percentages: "50%", "90%", "75%"
 /// - Unlimited: "unlimited"
 ///
@@ -63,25 +63,22 @@ pub fn parse_limit_value(s: &str) -> Result<ParsedLimit, String> {
         return Ok(ParsedLimit::Percentage(percent));
     }
 
-    // Check for memory units (gb, mb, kb)
+    // Check for binary memory units. Compose-style single-letter suffixes are
+    // accepted alongside the more explicit forms.
     let lower = s.to_lowercase();
-
-    if let Some(num_str) = lower.strip_suffix("gb") {
-        let gb = parse_float(num_str.trim())?;
-        let bytes = (gb * 1024.0 * 1024.0 * 1024.0) as u64;
-        return Ok(ParsedLimit::Bytes(bytes));
-    }
-
-    if let Some(num_str) = lower.strip_suffix("mb") {
-        let mb = parse_float(num_str.trim())?;
-        let bytes = (mb * 1024.0 * 1024.0) as u64;
-        return Ok(ParsedLimit::Bytes(bytes));
-    }
-
-    if let Some(num_str) = lower.strip_suffix("kb") {
-        let kb = parse_float(num_str.trim())?;
-        let bytes = (kb * 1024.0) as u64;
-        return Ok(ParsedLimit::Bytes(bytes));
+    for (suffix, multiplier) in [
+        ("gb", 1024.0 * 1024.0 * 1024.0),
+        ("g", 1024.0 * 1024.0 * 1024.0),
+        ("mb", 1024.0 * 1024.0),
+        ("m", 1024.0 * 1024.0),
+        ("kb", 1024.0),
+        ("k", 1024.0),
+    ] {
+        if let Some(number) = lower.strip_suffix(suffix) {
+            return Ok(ParsedLimit::Bytes(
+                (parse_float(number.trim())? * multiplier) as u64,
+            ));
+        }
     }
 
     // Try parsing as raw number
@@ -183,6 +180,10 @@ mod tests {
             parse_limit_value("1.5gb").unwrap(),
             ParsedLimit::Bytes((1.5 * 1024.0 * 1024.0 * 1024.0) as u64)
         );
+        assert_eq!(
+            parse_limit_value("4g").unwrap(),
+            ParsedLimit::Bytes(4 * 1024 * 1024 * 1024)
+        );
 
         // MB
         assert_eq!(
@@ -193,10 +194,18 @@ mod tests {
             parse_limit_value("1024MB").unwrap(),
             ParsedLimit::Bytes(1024 * 1024 * 1024)
         );
+        assert_eq!(
+            parse_limit_value("512m").unwrap(),
+            ParsedLimit::Bytes(512 * 1024 * 1024)
+        );
 
         // KB
         assert_eq!(
             parse_limit_value("1024kb").unwrap(),
+            ParsedLimit::Bytes(1024 * 1024)
+        );
+        assert_eq!(
+            parse_limit_value("1024k").unwrap(),
             ParsedLimit::Bytes(1024 * 1024)
         );
     }

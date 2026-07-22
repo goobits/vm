@@ -88,6 +88,8 @@ impl ConfigValidator {
         self.validate_services()?;
         self.validate_versions()?;
         self.validate_networking()?;
+        self.validate_runtime()?;
+        self.validate_storage()?;
         Ok(())
     }
 
@@ -364,11 +366,176 @@ impl ConfigValidator {
         }
         Ok(())
     }
+
+    fn validate_runtime(&self) -> Result<()> {
+        let Some(vm) = &self.config.vm else {
+            return Ok(());
+        };
+
+        if vm.pids_limit == Some(0) {
+            return Err(VmError::Config(
+                "vm.pids_limit must be greater than zero".to_string(),
+            ));
+        }
+        if vm.stop_grace_period == Some(0) {
+            return Err(VmError::Config(
+                "vm.stop_grace_period must be greater than zero".to_string(),
+            ));
+        }
+
+        if let Some(logging) = &vm.logging {
+            if !matches!(logging.driver.as_str(), "local" | "json-file") {
+                return Err(VmError::Config(
+                    "vm.logging.driver must be 'local' or 'json-file'".to_string(),
+                ));
+            }
+            if !valid_size_string(&logging.max_size) {
+                return Err(VmError::Config(
+                    "vm.logging.max_size must be a positive size such as '20m'".to_string(),
+                ));
+            }
+            if logging.max_files == 0 {
+                return Err(VmError::Config(
+                    "vm.logging.max_files must be greater than zero".to_string(),
+                ));
+            }
+        }
+
+        if self.config.provider.as_deref() == Some("tart")
+            && (vm.pids_limit.is_some() || vm.stop_grace_period.is_some() || vm.logging.is_some())
+        {
+            return Err(VmError::Config(
+                "Container runtime limits and logging are not supported by Tart".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn validate_storage(&self) -> Result<()> {
+        if self.config.storage.is_empty() {
+            return Ok(());
+        }
+        if self.config.provider.as_deref() == Some("tart") {
+            return Err(VmError::Config(
+                "Named volumes and tmpfs mounts are not supported by Tart".to_string(),
+            ));
+        }
+
+        let username = self
+            .config
+            .vm
+            .as_ref()
+            .and_then(|vm| vm.user.as_deref())
+            .unwrap_or("developer");
+        let mut targets = HashSet::from([format!("/home/{username}/.shell_history")]);
+        if self
+            .config
+            .services
+            .get("postgresql")
+            .is_some_and(|service| service.enabled)
+        {
+            targets.insert("/var/lib/postgresql/data".to_string());
+        }
+        for (name, volume) in &self.config.storage.volumes {
+            if !valid_storage_name(name) {
+                return Err(VmError::Config(format!(
+                    "Invalid storage volume name '{name}': use letters, numbers, dashes, or underscores"
+                )));
+            }
+            if matches!(name.as_str(), "shell_history" | "postgres_data") {
+                return Err(VmError::Config(format!(
+                    "Storage volume name '{name}' is reserved by the VM tool"
+                )));
+            }
+            validate_mount_target(&volume.target)?;
+            if volume.target == "/workspace" {
+                return Err(VmError::Config(
+                    "A named volume cannot replace the /workspace source bind; use a nested target"
+                        .to_string(),
+                ));
+            }
+            if !targets.insert(volume.target.clone()) {
+                return Err(VmError::Config(format!(
+                    "Duplicate storage target: {}",
+                    volume.target
+                )));
+            }
+        }
+
+        for tmpfs in &self.config.storage.tmpfs {
+            validate_mount_target(&tmpfs.target)?;
+            if !targets.insert(tmpfs.target.clone()) {
+                return Err(VmError::Config(format!(
+                    "Duplicate storage target: {}",
+                    tmpfs.target
+                )));
+            }
+            if !matches!(tmpfs.size.to_mb(), Some(size) if size > 0) {
+                return Err(VmError::Config(format!(
+                    "tmpfs mount '{}' requires a fixed, positive size",
+                    tmpfs.target
+                )));
+            }
+            if !(3..=4).contains(&tmpfs.mode.len())
+                || !tmpfs
+                    .mode
+                    .chars()
+                    .all(|character| matches!(character, '0'..='7'))
+            {
+                return Err(VmError::Config(format!(
+                    "tmpfs mount '{}' has invalid mode '{}'; use three or four octal digits",
+                    tmpfs.target, tmpfs.mode
+                )));
+            }
+        }
+
+        Ok(())
+    }
+}
+
+fn valid_storage_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+}
+
+fn validate_mount_target(target: &str) -> Result<()> {
+    let path = std::path::Path::new(target);
+    if !path.is_absolute()
+        || target == "/"
+        || target.ends_with('/')
+        || target.contains("//")
+        || target.contains("/../")
+        || target.ends_with("/..")
+        || target.contains("/./")
+        || target.ends_with("/.")
+    {
+        return Err(VmError::Config(format!(
+            "Storage target '{target}' must be a normalized absolute path below /"
+        )));
+    }
+    Ok(())
+}
+
+fn valid_size_string(value: &str) -> bool {
+    let value = value.trim();
+    if value.len() < 2 {
+        return false;
+    }
+    let (number, suffix) = value.split_at(value.len() - 1);
+    number.parse::<u64>().is_ok_and(|number| number > 0)
+        && matches!(suffix.to_ascii_lowercase().as_str(), "k" | "m" | "g")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{
+        MemoryLimit, StorageConfig, TmpfsMountConfig, VolumeMountConfig, VolumeRetention,
+        VolumeScope,
+    };
 
     #[test]
     fn test_valid_config() {
@@ -415,5 +582,103 @@ mod tests {
 
         let validator = ConfigValidator::new(config, std::path::PathBuf::from("test.yaml"), false);
         assert!(validator.validate().is_err());
+    }
+
+    #[test]
+    fn test_valid_container_storage_policy() {
+        let mut config = VmConfig {
+            provider: Some("docker".to_string()),
+            project: Some(crate::config::ProjectConfig {
+                name: Some("test".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        config.storage.volumes.insert(
+            "node_modules".to_string(),
+            VolumeMountConfig {
+                target: "/workspace/node_modules".to_string(),
+                scope: VolumeScope::Instance,
+                nocopy: true,
+                retention: VolumeRetention::Keep,
+            },
+        );
+        config.storage.tmpfs.push(TmpfsMountConfig {
+            target: "/tmp".to_string(),
+            size: MemoryLimit::Limited(4096),
+            mode: "1777".to_string(),
+        });
+
+        let validator = ConfigValidator::new(config, PathBuf::from("test.yaml"), true);
+        assert!(validator.validate().is_ok());
+    }
+
+    #[test]
+    fn test_storage_policy_cannot_hide_workspace_bind() {
+        let mut volumes = indexmap::IndexMap::new();
+        volumes.insert(
+            "source".to_string(),
+            VolumeMountConfig {
+                target: "/workspace".to_string(),
+                scope: VolumeScope::Project,
+                nocopy: true,
+                retention: VolumeRetention::Keep,
+            },
+        );
+        let config = VmConfig {
+            provider: Some("docker".to_string()),
+            project: Some(crate::config::ProjectConfig {
+                name: Some("test".to_string()),
+                ..Default::default()
+            }),
+            storage: StorageConfig {
+                volumes,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let error = ConfigValidator::new(config, PathBuf::from("test.yaml"), true)
+            .validate()
+            .unwrap_err();
+        assert!(error.to_string().contains("cannot replace the /workspace"));
+    }
+
+    #[test]
+    fn test_storage_policy_rejects_reserved_names_and_unnormalized_targets() {
+        let base = || VmConfig {
+            provider: Some("docker".to_string()),
+            project: Some(crate::config::ProjectConfig {
+                name: Some("test".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let volume = |target: &str| VolumeMountConfig {
+            target: target.to_string(),
+            scope: VolumeScope::Project,
+            nocopy: true,
+            retention: VolumeRetention::Keep,
+        };
+
+        let mut reserved = base();
+        reserved.storage.volumes.insert(
+            "shell_history".to_string(),
+            volume("/home/developer/history-copy"),
+        );
+        let error = ConfigValidator::new(reserved, PathBuf::from("test.yaml"), true)
+            .validate()
+            .unwrap_err();
+        assert!(error.to_string().contains("reserved"));
+
+        let mut unnormalized = base();
+        unnormalized
+            .storage
+            .volumes
+            .insert("cache".to_string(), volume("/home/developer//cache"));
+        let error = ConfigValidator::new(unnormalized, PathBuf::from("test.yaml"), true)
+            .validate()
+            .unwrap_err();
+        assert!(error.to_string().contains("normalized absolute path"));
     }
 }

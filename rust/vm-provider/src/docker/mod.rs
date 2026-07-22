@@ -2,6 +2,7 @@
 
 pub mod build;
 pub mod command;
+mod compose_model;
 
 #[cfg(test)]
 mod build_tests;
