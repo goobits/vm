@@ -21,8 +21,15 @@ use super::targets::{
     get_all_instances, get_instances_from_provider, match_pattern, project_instance_matches,
 };
 
-/// Helper function to backup database services configured with backup_on_destroy
-async fn backup_databases(config: &VmConfig, vm_name: &str, global_config: &GlobalConfig) {
+/// Back up database services configured with `backup_on_destroy`.
+///
+/// Destruction must not begin until every requested backup succeeds. Callers can
+/// explicitly bypass this gate with `--no-backup`.
+async fn backup_databases(
+    config: &VmConfig,
+    vm_name: &str,
+    global_config: &GlobalConfig,
+) -> VmResult<()> {
     use crate::commands::db::backup::backup_db;
 
     for (service_name, service_config) in &config.services {
@@ -33,12 +40,19 @@ async fn backup_databases(config: &VmConfig, vm_name: &str, global_config: &Glob
         let db_name = format!("{}_{}", vm_name.replace('-', "_"), service_name);
         vm_println!("📦 Creating backup for database: {}", db_name);
 
-        if let Err(e) = backup_db(&db_name, None, global_config.backups.keep_count).await {
-            vm_println!("⚠️  Warning: Failed to backup {}: {}", db_name, e);
-        } else {
-            vm_println!("✓ Backup created for {}", db_name);
-        }
+        backup_db(&db_name, None, global_config.backups.keep_count)
+            .await
+            .map_err(|error| {
+                VmError::vm_operation(
+                    error,
+                    Some(vm_name),
+                    format!("back up database '{db_name}' before destroy"),
+                )
+            })?;
+        vm_println!("✓ Backup created for {}", db_name);
     }
+
+    Ok(())
 }
 
 /// Handle VM destruction
@@ -192,6 +206,12 @@ pub async fn handle_destroy(
 
     if should_destroy {
         debug!("Destroy confirmation: response='yes', proceeding with destruction");
+
+        if !no_backup {
+            vm_println!("🔄 Creating configured database backups...");
+            backup_databases(&config, vm_name, &global_config).await?;
+        }
+
         vm_println!("{}", MESSAGES.vm.destroy_progress);
 
         // Build context with preserve_services flag
@@ -199,22 +219,6 @@ pub async fn handle_destroy(
 
         match provider.destroy_with_context(container, &context) {
             Ok(()) => {
-                // Backup database services if configured (run in background)
-                if !no_backup {
-                    // Clone values for the background task
-                    let config_clone = config.clone();
-                    let vm_name_clone = vm_name.to_string();
-                    let global_config_clone = global_config.clone();
-
-                    tokio::spawn(async move {
-                        vm_println!("🔄 Starting database backups in background...");
-                        backup_databases(&config_clone, &vm_name_clone, &global_config_clone).await;
-                        vm_println!("✅ Database backups completed");
-                    });
-
-                    vm_println!("⏩ VM removal continuing (backups running in background)...");
-                }
-
                 vm_println!("{}", MESSAGES.common.configuring_services);
                 unregister_vm_services_helper(&target_container, &global_config).await?;
 
