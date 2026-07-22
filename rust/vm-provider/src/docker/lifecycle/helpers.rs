@@ -1,5 +1,6 @@
 //! Helper utilities for lifecycle operations
 use super::LifecycleOperations;
+use crate::common::instance::{fuzzy_match_instances, InstanceInfo};
 use crate::docker::command::DockerCommand;
 use crate::{
     context::ProviderContext,
@@ -231,73 +232,23 @@ impl<'a> LifecycleOperations<'a> {
             )));
         }
 
-        let containers_output = String::from_utf8_lossy(&output.stdout);
+        let instances = String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .filter_map(|line| {
+                let (name, id) = line.split_once('\t')?;
+                Some(InstanceInfo {
+                    name: name.to_string(),
+                    id: id.to_string(),
+                    status: String::new(),
+                    provider: self.executable.to_string(),
+                    project: None,
+                    uptime: None,
+                    created_at: None,
+                })
+            })
+            .collect::<Vec<_>>();
 
-        // First, try exact name match
-        for line in containers_output.lines() {
-            let parts: Vec<&str> = line.split('\t').collect();
-            if parts.len() >= 2 {
-                let name = parts[0];
-                let id = parts[1];
-
-                // Exact name match
-                if name == partial_name {
-                    return Ok(name.to_string());
-                }
-
-                // Exact ID match (full or partial)
-                if id.starts_with(partial_name) {
-                    return Ok(name.to_string());
-                }
-            }
-        }
-
-        // Second, try project name resolution (partial_name -> partial_name-dev)
-        let candidate_name = format!("{partial_name}-dev");
-        for line in containers_output.lines() {
-            let parts: Vec<&str> = line.split('\t').collect();
-            if !parts.is_empty() {
-                let name = parts[0];
-                if name == candidate_name {
-                    return Ok(name.to_string());
-                }
-            }
-        }
-
-        // Third, try fuzzy matching on container names
-        let mut matches = Vec::new();
-        for line in containers_output.lines() {
-            let parts: Vec<&str> = line.split('\t').collect();
-            if !parts.is_empty() {
-                let name = parts[0];
-                if name.contains(partial_name) {
-                    matches.push(name.to_string());
-                }
-            }
-        }
-
-        match matches.len() {
-            0 => Err(VmError::Internal(format!(
-                "No container found matching '{partial_name}'. Use 'vm list' to see available containers"
-            ))),
-            1 => Ok(matches[0].clone()),
-            _ => {
-                // Multiple matches - prefer exact project name match
-                for name in &matches {
-                    if name == &format!("{partial_name}-dev") {
-                        return Ok(name.clone());
-                    }
-                }
-                // Otherwise return first match but warn about ambiguity
-                eprintln!(
-                    "Warning: Multiple containers match '{}': {}",
-                    partial_name,
-                    matches.join(", ")
-                );
-                eprintln!("Using: {}", matches[0]);
-                Ok(matches[0].clone())
-            }
-        }
+        fuzzy_match_instances(partial_name, &instances)
     }
 
     /// Regenerate docker-compose file with the latest context and return compose ops.

@@ -4,22 +4,18 @@
 //! and cross-provider bulk operations with pattern matching.
 
 use dialoguer::{theme::ColorfulTheme, Select};
-use tracing::{debug, info_span};
+use tracing::debug;
 
 use crate::commands::db::utils::execute_psql_command;
 use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
-use crate::utils::confirm_select;
 use vm_cli::msg;
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::{vm_error, vm_println};
 use vm_messages::messages::MESSAGES;
-use vm_provider::{get_provider, InstanceInfo, Provider, ProviderContext};
+use vm_provider::{Provider, ProviderContext};
 
 use super::helpers::unregister_vm_services_helper;
-use super::targets::{
-    get_all_instances, get_instances_from_provider, match_pattern, project_instance_matches,
-};
 
 /// Back up database services configured with `backup_on_destroy`.
 ///
@@ -147,7 +143,7 @@ pub async fn handle_destroy(
                 Err(_) => "N/A".to_string(),
             };
 
-            vm_println!("⚠️  Removing VM '{}'", vm_name);
+            vm_println!("⚠️  Destroying VM '{}'", vm_name);
             vm_println!();
             vm_println!("📊 Database: Your PostgreSQL data will persist");
             vm_println!("   Location: ~/.vm/data/postgres");
@@ -167,7 +163,7 @@ pub async fn handle_destroy(
             MESSAGES.common.status_stopped
         };
 
-        vm_println!("🗑️ Remove {} VM '{}'?\n", provider_name, vm_name);
+        vm_println!("🗑️ Destroy {} VM '{}'?\n", provider_name, vm_name);
         vm_println!("  Provider:   {}", provider_name);
         vm_println!("  Status:     {}", status);
         vm_println!("  {}:  {}", resource_label, target_container);
@@ -177,8 +173,8 @@ pub async fn handle_destroy(
         vm_println!();
 
         let options = &[
-            "Remove VM and preserve services",
-            "Remove VM and remove services",
+            "Destroy and preserve services",
+            "Destroy and remove services",
             "Cancel",
         ];
         let default_idx = if preserve_services { 0 } else { 1 };
@@ -226,20 +222,20 @@ pub async fn handle_destroy(
                 Ok(())
             }
             Err(e) => {
-                vm_println!("\n❌ Removal failed: {}", e);
+                vm_println!("\n❌ Destruction failed: {}", e);
                 Err(VmError::from(e))
             }
         }
     } else {
         debug!("Destroy confirmation: response='no', cancelling destruction");
         vm_println!("{}", MESSAGES.vm.destroy_cancelled);
-        vm_error!("VM removal cancelled by user");
+        vm_error!("VM destruction cancelled by user");
         Err(VmError::general(
             std::io::Error::new(
                 std::io::ErrorKind::Interrupted,
-                "VM removal cancelled by user",
+                "VM destruction cancelled by user",
             ),
-            "User cancelled VM removal",
+            "User cancelled VM destruction",
         ))
     }
 }
@@ -275,229 +271,4 @@ fn provider_destroyed_items(provider: &dyn Provider) -> &'static str {
         "tart" => "  • Tart VM and all data",
         _ => "  • Provider resource and all data",
     }
-}
-
-/// Enhanced destroy handler with cross-provider support
-#[allow(clippy::too_many_arguments)]
-pub async fn handle_destroy_enhanced(
-    provider: Box<dyn Provider>,
-    container: Option<&str>,
-    config: VmConfig,
-    global_config: GlobalConfig,
-    force: &bool,
-    no_backup: &bool,
-    all: &bool,
-    provider_filter: Option<&str>,
-    pattern: Option<&str>,
-    preserve_services: bool,
-) -> VmResult<()> {
-    let span = info_span!("vm_operation", operation = "destroy");
-    let _enter = span.enter();
-
-    if *all || pattern.is_some() {
-        // Cross-provider destroy operations
-        return handle_cross_provider_destroy(*all, provider_filter, pattern, *force);
-    }
-
-    let (provider, container) =
-        resolve_single_destroy_target(provider, container, &config, provider_filter);
-
-    // Single instance destroy
-    handle_destroy(
-        provider,
-        container.as_deref(),
-        config,
-        global_config,
-        *force,
-        *no_backup,
-        preserve_services,
-    )
-    .await
-}
-
-fn is_provider_name(value: &str) -> bool {
-    matches!(value, "docker" | "podman" | "tart")
-}
-
-fn provider_for_name(provider_name: &str, config: &VmConfig) -> VmResult<Box<dyn Provider>> {
-    let mut provider_config = config.clone();
-    provider_config.provider = Some(provider_name.to_string());
-    get_provider(provider_config).map_err(VmError::from)
-}
-
-fn resolve_project_provider(current_provider: &str, config: &VmConfig) -> Option<String> {
-    let project_name = config.project.as_ref().and_then(|p| p.name.as_deref())?;
-
-    let instances = get_all_instances().ok()?;
-    let matches: Vec<_> = instances
-        .into_iter()
-        .filter(|instance| project_instance_matches(instance, project_name))
-        .collect();
-
-    matches
-        .iter()
-        .find(|instance| instance.provider == current_provider)
-        .or_else(|| {
-            matches
-                .iter()
-                .find(|instance| instance.status.to_lowercase().contains("running"))
-        })
-        .or_else(|| matches.first())
-        .map(|instance| instance.provider.clone())
-}
-
-fn resolve_single_destroy_target(
-    provider: Box<dyn Provider>,
-    container: Option<&str>,
-    config: &VmConfig,
-    explicit_provider: Option<&str>,
-) -> (Box<dyn Provider>, Option<String>) {
-    if let Some(provider_name) = container.filter(|value| is_provider_name(value)) {
-        if let Ok(provider) = provider_for_name(provider_name, config) {
-            return (provider, None);
-        }
-    }
-
-    if container.is_none() && explicit_provider.is_none() {
-        if let Some(provider_name) = resolve_project_provider(provider.name(), config) {
-            if provider_name != provider.name() {
-                if let Ok(provider) = provider_for_name(&provider_name, config) {
-                    return (provider, None);
-                }
-            }
-        }
-    }
-
-    (provider, container.map(ToString::to_string))
-}
-
-/// Handle destroying instances across providers
-fn handle_cross_provider_destroy(
-    all: bool,
-    provider_filter: Option<&str>,
-    pattern: Option<&str>,
-    force: bool,
-) -> VmResult<()> {
-    debug!(
-        "Cross-provider destroy: all={}, provider_filter={:?}, pattern={:?}, force={}",
-        all, provider_filter, pattern, force
-    );
-
-    // Get all instances to destroy
-    let instances_to_destroy = if let Some(provider_name) = provider_filter {
-        get_instances_from_provider(provider_name)?
-    } else {
-        get_all_instances()?
-    };
-
-    // Filter by pattern if provided
-    let filtered_instances: Vec<_> = if let Some(pattern_str) = pattern {
-        instances_to_destroy
-            .into_iter()
-            .filter(|instance| match_pattern(&instance.name, pattern_str))
-            .collect()
-    } else {
-        instances_to_destroy
-    };
-
-    if filtered_instances.is_empty() {
-        vm_println!("{}", MESSAGES.vm.destroy_cross_no_instances);
-        return Ok(());
-    }
-
-    // Show what will be destroyed
-    vm_println!("{}", MESSAGES.vm.destroy_cross_list_header);
-    for instance in &filtered_instances {
-        vm_println!(
-            "{}",
-            msg!(
-                MESSAGES.vm.destroy_cross_list_item,
-                name = &instance.name,
-                provider = &instance.provider
-            )
-        );
-    }
-
-    let should_destroy = if force {
-        true
-    } else {
-        vm_println!(
-            "{}",
-            msg!(
-                MESSAGES.vm.destroy_cross_confirm_prompt,
-                count = filtered_instances.len().to_string()
-            )
-        );
-        confirm_select("Remove these instances?", false)?
-    };
-
-    if !should_destroy {
-        vm_println!("{}", MESSAGES.vm.destroy_cross_cancelled);
-        return Ok(());
-    }
-
-    // Destroy each instance
-    let mut success_count = 0;
-    let mut error_count = 0;
-
-    for instance in filtered_instances {
-        vm_println!(
-            "{}",
-            msg!(
-                MESSAGES.vm.destroy_cross_progress,
-                name = &instance.name,
-                provider = &instance.provider
-            )
-        );
-
-        let result = destroy_single_instance(&instance);
-        match result {
-            Ok(()) => {
-                vm_println!(
-                    "{}",
-                    msg!(
-                        MESSAGES.vm.destroy_cross_success_item,
-                        name = &instance.name
-                    )
-                );
-                success_count += 1;
-            }
-            Err(e) => {
-                vm_println!(
-                    "{}",
-                    msg!(
-                        MESSAGES.vm.destroy_cross_failed,
-                        name = &instance.name,
-                        error = e.to_string()
-                    )
-                );
-                error_count += 1;
-            }
-        }
-    }
-
-    vm_println!(
-        "{}",
-        msg!(
-            MESSAGES.vm.destroy_cross_complete,
-            success = success_count.to_string(),
-            errors = error_count.to_string()
-        )
-    );
-
-    Ok(())
-}
-
-/// Destroy a single instance using its provider
-fn destroy_single_instance(instance: &InstanceInfo) -> VmResult<()> {
-    use vm_config::config::VmConfig;
-    use vm_provider::get_provider;
-
-    let config = VmConfig {
-        provider: Some(instance.provider.clone()),
-        ..Default::default()
-    };
-
-    let provider = get_provider(config)?;
-    Ok(provider.destroy(Some(&instance.name))?)
 }

@@ -4,11 +4,8 @@
 //! across different providers. It defines a unified interface for instance
 //! resolution and information handling.
 
-use vm_cli::msg;
 use vm_config::config::VmConfig;
 use vm_core::error::{Result, VmError};
-use vm_core::vm_error;
-use vm_messages::messages::MESSAGES;
 
 /// Information about a VM instance
 #[derive(Debug, Clone)]
@@ -51,15 +48,27 @@ pub fn fuzzy_match_instances(partial: &str, instances: &[InstanceInfo]) -> Resul
         )));
     }
 
-    // First, try exact name match
-    for instance in instances {
-        if instance.name == partial {
-            return Ok(instance.name.clone());
-        }
+    if let Some(instance) = instances.iter().find(|instance| instance.name == partial) {
+        return Ok(instance.name.clone());
+    }
 
-        // Exact ID match (full or partial)
-        if instance.id.starts_with(partial) {
-            return Ok(instance.name.clone());
+    let id_matches: Vec<_> = instances
+        .iter()
+        .filter(|instance| instance.id.starts_with(partial))
+        .collect();
+    match id_matches.as_slice() {
+        [instance] => return Ok(instance.name.clone()),
+        [] => {}
+        _ => {
+            let mut names: Vec<_> = id_matches
+                .iter()
+                .map(|instance| instance.name.as_str())
+                .collect();
+            names.sort_unstable();
+            return Err(VmError::Internal(format!(
+                "Ambiguous instance ID '{partial}' matches: {}. Use an exact name or longer ID",
+                names.join(", ")
+            )));
         }
     }
 
@@ -85,19 +94,11 @@ pub fn fuzzy_match_instances(partial: &str, instances: &[InstanceInfo]) -> Resul
         ))),
         1 => Ok(matches[0].clone()),
         _ => {
-            // Multiple matches - prefer exact project name match
-            for name in &matches {
-                if name == &format!("{partial}-dev") {
-                    return Ok(name.clone());
-                }
-            }
-            // Otherwise return first match but warn about ambiguity
-            vm_error!("{}", MESSAGES.vm.ambiguous);
-            for name in &matches {
-                vm_error!("  • {}", name);
-            }
-            vm_error!("{}", msg!(MESSAGES.vm.using, name = &matches[0]));
-            Ok(matches[0].clone())
+            matches.sort_unstable();
+            Err(VmError::Internal(format!(
+                "Ambiguous instance name '{partial}' matches: {}. Use an exact name",
+                matches.join(", ")
+            )))
         }
     }
 }
@@ -237,6 +238,27 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("No instance found"));
+    }
+
+    #[test]
+    fn test_fuzzy_match_rejects_ambiguous_names() {
+        let instances = ["api-one", "api-two"]
+            .into_iter()
+            .enumerate()
+            .map(|(index, name)| InstanceInfo {
+                name: name.to_string(),
+                id: format!("id{index}"),
+                status: "running".to_string(),
+                provider: "docker".to_string(),
+                project: None,
+                uptime: None,
+                created_at: None,
+            })
+            .collect::<Vec<_>>();
+
+        let error = fuzzy_match_instances("api", &instances).unwrap_err();
+        assert!(error.to_string().contains("Ambiguous instance name"));
+        assert!(error.to_string().contains("api-one, api-two"));
     }
 
     #[test]

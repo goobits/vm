@@ -74,7 +74,7 @@ fn test_vm_stop_command() -> Result<()> {
         "Container did not stop within timeout"
     );
 
-    // Test stop with specific container (force kill)
+    // Test graceful stop with a specific container.
     fixture.run_vm_command(&["start"])?;
     assert!(fixture.wait_for_container_state("running", 30));
 
@@ -100,7 +100,7 @@ fn test_vm_stop_command() -> Result<()> {
         let state = stdout.trim();
         assert_ne!(
             state, "running",
-            "Container should not be running after force kill"
+            "Container should not be running after graceful stop"
         );
     }
 

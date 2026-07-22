@@ -139,16 +139,6 @@ pub struct FleetTargetArgs {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum FleetSubcommand {
-    /// List instances across providers
-    Ls {
-        #[command(flatten)]
-        targets: FleetTargetArgs,
-    },
-    /// Show status for instances across providers
-    Status {
-        #[command(flatten)]
-        targets: FleetTargetArgs,
-    },
     /// Run a command across instances
     #[command(trailing_var_arg = true)]
     Exec {
@@ -452,12 +442,6 @@ pub enum Command {
         /// Command to execute instead of opening an interactive shell
         #[arg(short = 'e', long = "command")]
         command: Option<String>,
-        /// Force refresh mounts (disconnects other sessions)
-        #[arg(long)]
-        force_refresh: bool,
-        /// Skip automatic mount refresh detection
-        #[arg(long)]
-        no_refresh: bool,
     },
     /// Run a single command inside an environment
     #[command(trailing_var_arg = true)]

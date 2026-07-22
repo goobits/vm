@@ -6,22 +6,28 @@ use crate::error::VmResult;
 use vm_core::error::VmError;
 use vm_provider::InstanceInfo;
 
-/// Resolve instances across providers with optional filtering.
-pub fn resolve_targets(
-    provider_filter: Option<&str>,
-    pattern: Option<&str>,
-    running: bool,
-    stopped: bool,
-) -> VmResult<Vec<InstanceInfo>> {
-    let running = if running || stopped { running } else { true };
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InstanceStateFilter {
+    Running,
+    Stopped,
+}
 
-    let instances = if let Some(provider_name) = provider_filter {
+#[derive(Clone, Copy, Debug)]
+pub struct TargetQuery<'a> {
+    pub provider: Option<&'a str>,
+    pub pattern: Option<&'a str>,
+    pub state: InstanceStateFilter,
+}
+
+/// Resolve instances across providers using one explicit query model.
+pub fn resolve_targets(query: TargetQuery<'_>) -> VmResult<Vec<InstanceInfo>> {
+    let instances = if let Some(provider_name) = query.provider {
         get_instances_from_provider(provider_name)?
     } else {
         get_all_instances()?
     };
 
-    let mut filtered: Vec<InstanceInfo> = if let Some(pattern_str) = pattern {
+    let mut filtered: Vec<InstanceInfo> = if let Some(pattern_str) = query.pattern {
         instances
             .into_iter()
             .filter(|instance| match_pattern(&instance.name, pattern_str))
@@ -30,15 +36,13 @@ pub fn resolve_targets(
         instances
     };
 
-    if running ^ stopped {
-        filtered.retain(|instance| {
-            let is_running = is_running_status(&instance.status);
-            if running {
-                is_running
-            } else {
-                !is_running
-            }
-        });
+    match query.state {
+        InstanceStateFilter::Running => {
+            filtered.retain(|instance| is_running_status(&instance.status));
+        }
+        InstanceStateFilter::Stopped => {
+            filtered.retain(|instance| !is_running_status(&instance.status));
+        }
     }
 
     Ok(filtered)

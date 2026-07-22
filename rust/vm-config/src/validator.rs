@@ -103,11 +103,26 @@ impl ConfigValidator {
 
     /// Validates the given configuration.
     pub fn validate(&self, config: &VmConfig) -> Result<ValidationReport> {
+        self.validate_with_port_availability(config, true)
+    }
+
+    /// Validate a known existing environment before it is recreated. Host port
+    /// occupancy is ignored because the current environment owns those ports;
+    /// all structural and resource checks still run.
+    pub fn validate_for_recreate(&self, config: &VmConfig) -> Result<ValidationReport> {
+        self.validate_with_port_availability(config, false)
+    }
+
+    fn validate_with_port_availability(
+        &self,
+        config: &VmConfig,
+        check_port_availability: bool,
+    ) -> Result<ValidationReport> {
         let mut report = ValidationReport::default();
 
         self.validate_cpu(config, &mut report)?;
         self.validate_memory(config, &mut report)?;
-        self.validate_ports(config, &mut report)?;
+        self.validate_ports(config, &mut report, check_port_availability)?;
         self.validate_user(config, &mut report)?;
         // self.validate_disk_space(&mut report)?; // Placeholder for future implementation
 
@@ -228,7 +243,12 @@ impl ConfigValidator {
     }
 
     /// Validates the port mappings.
-    fn validate_ports(&self, config: &VmConfig, report: &mut ValidationReport) -> Result<()> {
+    fn validate_ports(
+        &self,
+        config: &VmConfig,
+        report: &mut ValidationReport,
+        check_port_availability: bool,
+    ) -> Result<()> {
         let binding_ip = config
             .vm
             .as_ref()
@@ -282,6 +302,10 @@ impl ConfigValidator {
             used_ports.sort_unstable();
         }
 
+        if !check_port_availability {
+            return Ok(());
+        }
+
         // Check for port conflicts
         let mut mapped_host_ports = HashSet::new();
         for mapping in &config.ports.mappings {
@@ -315,5 +339,40 @@ impl ConfigValidator {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ConfigValidator;
+    use crate::config::{ServiceConfig, VmConfig, VmSettings};
+
+    #[test]
+    fn recreate_validation_ignores_only_host_port_occupancy() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let mut config = VmConfig {
+            vm: Some(VmSettings {
+                user: Some("developer".to_string()),
+                port_binding: Some("127.0.0.1".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        config.services.insert(
+            "postgresql".to_string(),
+            ServiceConfig {
+                enabled: true,
+                port: Some(port),
+                ..Default::default()
+            },
+        );
+
+        let validator = ConfigValidator::new();
+        let normal = validator.validate(&config).unwrap();
+        let recreate = validator.validate_for_recreate(&config).unwrap();
+
+        assert!(normal.errors.iter().any(|error| error.contains("in use")));
+        assert!(recreate.errors.is_empty());
     }
 }

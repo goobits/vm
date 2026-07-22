@@ -4,38 +4,16 @@
 //! multi-instance providers, and service registration.
 
 use std::path::Path;
-use tracing::{debug, info_span, warn};
+use tracing::{debug, info_span};
 
 use crate::error::{VmError, VmResult};
 use vm_cli::msg;
 use vm_config::{config::MemoryLimit, config::VmConfig, validator::ConfigValidator, GlobalConfig};
 use vm_core::{get_cpu_core_count, get_total_memory_gb, vm_error, vm_println};
 use vm_messages::messages::MESSAGES;
-use vm_provider::{docker::DockerOps, Provider, ProviderContext};
+use vm_provider::{Provider, ProviderContext};
 
 use super::helpers::{print_vm_runtime_details, register_vm_services_helper};
-
-fn provider_resource_name(
-    provider: &dyn Provider,
-    vm_name: &str,
-    instance: Option<&str>,
-) -> String {
-    match provider.name() {
-        "tart" => instance
-            .map(|instance_name| format!("{vm_name}-{instance_name}"))
-            .unwrap_or_else(|| vm_name.to_string()),
-        _ => instance
-            .map(|instance_name| format!("{vm_name}-{instance_name}"))
-            .unwrap_or_else(|| format!("{vm_name}-dev")),
-    }
-}
-
-fn provider_exec_selector(provider: &dyn Provider) -> String {
-    match provider.name() {
-        "docker" => String::new(),
-        name => format!(" --provider {name}"),
-    }
-}
 
 /// Auto-adjust resource allocation based on system availability
 fn auto_adjust_resources(config: &mut VmConfig) -> VmResult<()> {
@@ -110,94 +88,113 @@ fn auto_adjust_resources(config: &mut VmConfig) -> VmResult<()> {
 }
 
 /// Handle VM creation
-#[allow(clippy::too_many_arguments)]
 pub async fn handle_create(
     provider: Box<dyn Provider>,
     mut config: VmConfig,
     global_config: GlobalConfig,
-    mut force: bool,
+    force: bool,
     instance: Option<String>,
     verbose: bool,
-    save_as: Option<String>,
-    from_dockerfile: Option<std::path::PathBuf>,
-    preserve_services: bool,
     refresh_packages: bool,
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "create");
     let _enter = span.enter();
     debug!("Starting VM creation");
 
-    // Note: Config modifications for --from-dockerfile and --save-as are now handled
-    // in commands/mod.rs before provider creation to avoid container name conflicts
+    auto_adjust_resources(&mut config)?;
+    vm_println!("Validating configuration...");
 
-    // Auto-enable force mode for snapshot builds to avoid prompts
-    // Note: We still want full resources for snapshot builds, not minimal
-    let is_snapshot_build = save_as.is_some() && from_dockerfile.is_some();
-    if is_snapshot_build {
-        debug!("Auto-enabling force mode for snapshot build from Dockerfile");
-        force = true;
-    }
+    let vm_name = config
+        .project
+        .as_ref()
+        .and_then(|project| project.name.as_deref())
+        .unwrap_or("vm-project");
+    let target_name = match (provider.name(), instance.as_deref()) {
+        (_, Some(instance_name)) => format!("{vm_name}-{instance_name}"),
+        ("tart", None) => vm_name.to_string(),
+        (_, None) => format!("{vm_name}-dev"),
+    };
+    let existing_instance = provider
+        .list_instances()?
+        .into_iter()
+        .find(|candidate| candidate.name == target_name);
+    let is_recreate = force && existing_instance.is_some();
 
-    if force && !is_snapshot_build {
-        // Regular force mode: use minimal resources and skip validation
-        vm_println!("⚡ Force mode: using minimal resources and skipping validation");
-        let mut vm_settings = config.vm.take().unwrap_or_default();
-        vm_settings.memory = Some(vm_config::config::MemoryLimit::Limited(2048));
-        vm_settings.cpus = Some(vm_config::config::CpuLimit::Limited(2));
-        config.vm = Some(vm_settings);
-    } else {
-        // Auto-adjust resources if needed (before validation)
-        auto_adjust_resources(&mut config)?;
-
-        // Validate config before proceeding
-        vm_println!("Validating configuration...");
-        let validator = ConfigValidator::new();
-        match validator.validate(&config) {
-            Ok(report) => {
-                if report.has_errors() {
-                    vm_error!("Configuration validation failed:");
-                    vm_println!("{}", report);
-                    return Err(VmError::validation(
-                        "Configuration is invalid, aborting creation.".to_string(),
-                        None::<String>,
-                    ));
-                }
-                if !report.warnings.is_empty() || !report.info.is_empty() {
-                    vm_println!("{}", report);
-                }
-                vm_println!("✓ Configuration is valid.");
-            }
-            Err(e) => {
+    // Fail before expensive provider work when an explicitly mapped port is
+    // occupied by something other than the environment being force-recreated.
+    if !is_recreate {
+        let port_binding = config
+            .vm
+            .as_ref()
+            .and_then(|settings| settings.port_binding.as_deref())
+            .unwrap_or("0.0.0.0");
+        for mapping in &config.ports.mappings {
+            if std::net::TcpListener::bind((port_binding, mapping.host))
+                .is_err_and(|error| error.kind() == std::io::ErrorKind::AddrInUse)
+            {
                 return Err(VmError::validation(
-                    format!("An unexpected error occurred during validation: {e}"),
-                    None::<String>,
+                    format!("Port {} is already in use on host", mapping.host),
+                    Some("ports"),
                 ));
             }
         }
     }
-    let vm_name = config
-        .project
-        .as_ref()
-        .and_then(|p| p.name.as_ref())
-        .map(|s| s.as_str())
-        .unwrap_or("vm-project");
 
-    // Fast exit for Docker/Podman only if container already exists (unless --force)
-    if !force && matches!(provider.name(), "docker" | "podman") {
-        let existing_container = format!("{vm_name}-dev");
-        if DockerOps::container_exists(None, &existing_container).unwrap_or(false) {
-            let running =
-                DockerOps::is_container_running(None, &existing_container).unwrap_or(false);
+    let validator = ConfigValidator::new();
+    let validation = if is_recreate {
+        validator.validate_for_recreate(&config)
+    } else {
+        validator.validate(&config)
+    };
+    match validation {
+        Ok(report) => {
+            if report.has_errors() {
+                vm_error!("Configuration validation failed:");
+                vm_println!("{}", report);
+                return Err(VmError::validation(
+                    "Configuration is invalid, aborting creation.",
+                    None::<String>,
+                ));
+            }
+            if !report.warnings.is_empty() || !report.info.is_empty() {
+                vm_println!("{}", report);
+            }
+            vm_println!("✓ Configuration is valid.");
+        }
+        Err(error) => {
+            return Err(VmError::validation(
+                format!("Unexpected configuration validation error: {error}"),
+                None::<String>,
+            ));
+        }
+    }
+    if let Some(existing) = existing_instance {
+        if !force {
             vm_println!(
                 "⚠️  Container '{}' already exists{}.",
-                existing_container,
-                if running { " and is running" } else { "" }
+                target_name,
+                if existing.status.to_lowercase().contains("running")
+                    || existing.status.to_lowercase().contains("up")
+                {
+                    " and is running"
+                } else {
+                    ""
+                }
             );
             vm_println!(
-                "   Use 'vm shell' to connect, 'vm run linux' to start, or 'vm remove --force' to recreate."
+                "   Use 'vm ssh' to connect, 'vm start' to start, or 'vm create --force' to recreate."
             );
             return Ok(());
         }
+
+        vm_println!(
+            "{}",
+            msg!(MESSAGES.vm.create_force_recreating, name = &target_name)
+        );
+        provider.destroy_with_context(
+            instance.as_deref(),
+            &ProviderContext::default().preserve_services(true),
+        )?;
     }
 
     let is_first_vm = !Path::new(".vm").exists();
@@ -226,25 +223,6 @@ pub async fn handle_create(
                 name = vm_name
             )
         );
-
-        if force {
-            debug!("Force flag set - will destroy existing instance if present");
-            // Try to destroy specific instance first
-            vm_println!(
-                "{}",
-                msg!(
-                    MESSAGES.vm.create_force_recreating_instance,
-                    name = instance_name
-                )
-            );
-            if let Err(e) = provider.destroy(Some(instance_name)) {
-                warn!(
-                    "Failed to destroy existing instance '{}' during force create: {}",
-                    instance_name, e
-                );
-                // Continue with creation even if destroy fails
-            }
-        }
     } else {
         // Standard single-instance creation
         if let Some(instance_name) = &instance {
@@ -257,19 +235,6 @@ pub async fn handle_create(
                 )
             );
         }
-
-        if force {
-            debug!("Force flag set - attempting to destroy existing VM (if any)");
-            warn!("Forcing recreation of VM '{}'", vm_name);
-            vm_println!(
-                "{}",
-                msg!(MESSAGES.vm.create_force_recreating, name = vm_name)
-            );
-
-            if let Err(err) = provider.destroy(None) {
-                debug!("Force destroy skipped or failed (container may not exist yet): {err}");
-            }
-        }
     }
 
     vm_println!("{}", msg!(MESSAGES.vm.create_header, name = vm_name));
@@ -277,30 +242,18 @@ pub async fn handle_create(
         vm_println!("{}", MESSAGES.vm.create_progress);
     }
 
-    // Docker/Podman need services registered before creation so compose can inject env vars.
-    // Tart does not use docker-compose for VM creation, so registering first makes the CLI
-    // say services are configured before the VM actually exists.
-    let vm_instance_name = provider_resource_name(provider.as_ref(), vm_name, instance.as_deref());
-    let register_services_before_create =
-        save_as.is_none() && matches!(provider.name(), "docker" | "podman");
-    let register_services_after_create = save_as.is_none() && !register_services_before_create;
-
+    // Compose needs service settings before creation; VM providers register
+    // services only after the guest exists.
+    let register_services_before_create = matches!(provider.name(), "docker" | "podman");
     if register_services_before_create {
         vm_println!("{}", MESSAGES.common.configuring_services);
-        register_vm_services_helper(&vm_instance_name, &config, &global_config).await?;
-    } else if save_as.is_some() {
-        debug!("Skipping service registration for snapshot build");
+        register_vm_services_helper(&target_name, &config, &global_config).await?;
     }
 
-    // Create provider context with verbose flag and global config
-    // Skip provisioning for snapshot builds (Dockerfile already has everything)
-    let mut context = ProviderContext::with_verbose(verbose)
+    let context = ProviderContext::with_verbose(verbose)
         .with_config(global_config.clone())
-        .preserve_services(preserve_services)
+        .preserve_services(true)
         .refresh_packages(refresh_packages);
-    if save_as.is_some() {
-        context = context.skip_provisioning();
-    }
 
     // Call the appropriate create method based on whether instance is specified
     let create_result = if let Some(instance_name) = &instance {
@@ -317,224 +270,30 @@ pub async fn handle_create(
         Ok(()) => {
             vm_println!("{}", MESSAGES.vm.create_success);
 
-            let container_name =
-                provider_resource_name(provider.as_ref(), vm_name, instance.as_deref());
-
-            if provider.name() == "tart" {
-                vm_println!(
-                    "  Status:     {}\n  Provider:   Tart\n  VM:         {}",
-                    MESSAGES.common.status_running,
-                    container_name
-                );
-            } else {
-                vm_println!(
-                    "{}",
-                    msg!(
-                        MESSAGES.vm.create_info_block,
-                        status = MESSAGES.common.status_running,
-                        container = &container_name
-                    )
-                );
-            }
+            vm_println!(
+                "{}",
+                msg!(
+                    MESSAGES.vm.create_info_block,
+                    status = MESSAGES.common.status_running,
+                    container = &target_name
+                )
+            );
 
             print_vm_runtime_details(&config, true);
 
-            if register_services_after_create {
+            if !register_services_before_create {
                 vm_println!("{}", MESSAGES.common.configuring_services);
-                register_vm_services_helper(&vm_instance_name, &config, &global_config).await?;
+                register_vm_services_helper(&target_name, &config, &global_config).await?;
             }
 
             if is_first_vm {
-                let exec_selector = provider_exec_selector(provider.as_ref());
                 vm_println!("\n🎉 Success! Your VM is ready");
                 vm_println!("📝 Next steps:");
-                vm_println!("  • Open shell:   vm shell");
-                vm_println!("  • Run commands: vm exec{} -- npm install", exec_selector);
-                vm_println!("  • View envs:    vm list");
+                vm_println!("  • ssh into VM:  vm ssh");
+                vm_println!("  • Run commands: vm exec 'npm install'");
+                vm_println!("  • View status:  vm status");
             } else {
                 vm_println!("{}", MESSAGES.common.connect_hint);
-            }
-
-            // Handle --save-as flag (save container as global snapshot)
-            if let Some(snapshot_name) = &save_as {
-                use vm_snapshot::{
-                    manager::{SnapshotManager, SnapshotScope},
-                    metadata::{ServiceSnapshot, SnapshotMetadata},
-                };
-
-                let (is_global, clean_name) =
-                    if let Some(stripped) = snapshot_name.strip_prefix('@') {
-                        (true, stripped)
-                    } else {
-                        (false, snapshot_name.as_str())
-                    };
-
-                if !is_global {
-                    vm_println!("\n⚠️  Warning: Snapshot name should start with @ for global snapshots (e.g., @vibe-base)");
-                    vm_println!("   Saving as @{} instead...", clean_name);
-                }
-
-                vm_println!(
-                    "\n📸 Saving container as global snapshot '@{}'...",
-                    clean_name
-                );
-
-                // Create snapshot manager and directory
-                let manager = SnapshotManager::new()?;
-                let snapshot_dir = manager.get_snapshot_dir(SnapshotScope::Global, clean_name);
-                let executable = config.provider.as_deref().unwrap_or("docker");
-
-                if snapshot_dir.exists() {
-                    vm_println!(
-                        "⚠️  Snapshot '@{}' already exists, overwriting...",
-                        clean_name
-                    );
-                    std::fs::remove_dir_all(&snapshot_dir).map_err(|e| {
-                        VmError::filesystem(e, snapshot_dir.display().to_string(), "remove_dir_all")
-                    })?;
-                }
-
-                let images_dir = snapshot_dir.join("images");
-                std::fs::create_dir_all(&images_dir).map_err(|e| {
-                    VmError::filesystem(e, images_dir.display().to_string(), "create_dir_all")
-                })?;
-
-                // Commit container to image
-                let image_tag = format!("vm-snapshot/global/{}:latest", clean_name);
-                vm_println!("  Creating image from container...");
-
-                // Clone container_name since it was moved earlier
-                let container_name_clone = container_name.clone();
-                let commit_output = tokio::process::Command::new(executable)
-                    .args(["commit", &container_name_clone, &image_tag])
-                    .output()
-                    .await
-                    .map_err(|e| VmError::general(e, "Failed to commit container"))?;
-
-                if !commit_output.status.success() {
-                    let stderr = String::from_utf8_lossy(&commit_output.stderr);
-                    return Err(VmError::general(
-                        std::io::Error::new(std::io::ErrorKind::Other, "Docker commit failed"),
-                        format!("Failed to commit container: {}", stderr),
-                    ));
-                }
-
-                // Save image to tar file
-                vm_println!("  Saving image to snapshot directory...");
-                let image_file = "base.tar";
-                let image_path = images_dir.join(image_file);
-
-                let image_path_str = image_path.to_str().ok_or_else(|| {
-                    VmError::general(
-                        std::io::Error::new(
-                            std::io::ErrorKind::InvalidInput,
-                            "Invalid UTF-8 in path",
-                        ),
-                        format!(
-                            "Snapshot path contains invalid UTF-8 characters: {}",
-                            image_path.display()
-                        ),
-                    )
-                })?;
-
-                let save_output = tokio::process::Command::new(executable)
-                    .args(["save", &image_tag, "-o", image_path_str])
-                    .output()
-                    .await
-                    .map_err(|e| VmError::general(e, "Failed to save image"))?;
-
-                if !save_output.status.success() {
-                    let stderr = String::from_utf8_lossy(&save_output.stderr);
-                    return Err(VmError::general(
-                        std::io::Error::new(std::io::ErrorKind::Other, "Docker save failed"),
-                        format!("Failed to save image: {}", stderr),
-                    ));
-                }
-
-                // Get image digest
-                let digest_output = tokio::process::Command::new(executable)
-                    .args(["inspect", "--format={{.Id}}", &image_tag])
-                    .output()
-                    .await
-                    .map_err(|e| VmError::general(e, "Failed to inspect image"))?;
-
-                let digest = if digest_output.status.success() {
-                    Some(
-                        String::from_utf8_lossy(&digest_output.stdout)
-                            .trim()
-                            .to_string(),
-                    )
-                } else {
-                    None
-                };
-
-                // Calculate snapshot size
-                let snapshot_size = calculate_directory_size(&snapshot_dir)?;
-
-                // Create metadata
-                let metadata = SnapshotMetadata {
-                    name: clean_name.to_string(),
-                    created_at: chrono::Utc::now(),
-                    description: Some("Base image snapshot created from Dockerfile".to_string()),
-                    project_name: "global".to_string(),
-                    project_dir: std::env::current_dir()
-                        .unwrap_or_else(|_| std::path::PathBuf::from("."))
-                        .to_string_lossy()
-                        .to_string(),
-                    git_commit: None,
-                    git_dirty: false,
-                    git_branch: None,
-                    services: vec![ServiceSnapshot {
-                        name: "base".to_string(),
-                        image_tag: image_tag.clone(),
-                        image_file: image_file.to_string(),
-                        image_digest: digest,
-                    }],
-                    volumes: vec![],
-                    compose_file: "".to_string(),
-                    vm_config_file: "".to_string(),
-                    total_size_bytes: snapshot_size,
-                };
-
-                metadata.save(snapshot_dir.join("metadata.json"))?;
-
-                vm_println!(
-                    "  ✓ Snapshot saved ({:.2} MB)",
-                    snapshot_size as f64 / (1024.0 * 1024.0)
-                );
-                vm_println!(
-                    "\n🎉 Global snapshot '@{}' created successfully!",
-                    clean_name
-                );
-                vm_println!("\nTo use this base image in other projects:");
-                vm_println!("  1. Add to vm.yaml:");
-                vm_println!("     vm:");
-                vm_println!("       box: @{}", clean_name);
-                vm_println!("  2. Run: vm run linux");
-                vm_println!("\nTo export and share:");
-                vm_println!("  vm package @{}", clean_name);
-
-                // Clean up temporary build container
-                vm_println!("\n  Cleaning up temporary build container...");
-                let cleanup_container_name = if let Some(instance_name) = &instance {
-                    format!("{vm_name}-{instance_name}")
-                } else {
-                    format!("{vm_name}-dev")
-                };
-
-                // Stop container
-                let _ = tokio::process::Command::new(executable)
-                    .args(["stop", &cleanup_container_name])
-                    .output()
-                    .await;
-
-                // Remove container
-                let _ = tokio::process::Command::new(executable)
-                    .args(["rm", &cleanup_container_name])
-                    .output()
-                    .await;
-
-                vm_println!("  ✓ Cleanup complete");
             }
 
             Ok(())
@@ -568,29 +327,4 @@ pub async fn handle_create(
     }
 
     Ok(())
-}
-
-/// Calculate total size of directory recursively
-fn calculate_directory_size(path: &std::path::Path) -> VmResult<u64> {
-    let mut total = 0u64;
-
-    if path.is_dir() {
-        let entries = std::fs::read_dir(path)
-            .map_err(|e| VmError::filesystem(e, path.to_string_lossy(), "read_dir"))?;
-
-        for entry in entries {
-            let entry = entry.map_err(|e| VmError::general(e, "Failed to read directory entry"))?;
-            let path = entry.path();
-
-            if path.is_dir() {
-                total += calculate_directory_size(&path)?;
-            } else {
-                let metadata = std::fs::metadata(&path)
-                    .map_err(|e| VmError::filesystem(e, path.to_string_lossy(), "metadata"))?;
-                total += metadata.len();
-            }
-        }
-    }
-
-    Ok(total)
 }

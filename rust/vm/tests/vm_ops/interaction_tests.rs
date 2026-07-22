@@ -3,6 +3,7 @@ use anyhow::Result;
 use std::time::Duration;
 
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_vm_exec_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
@@ -38,6 +39,7 @@ fn test_vm_exec_command() -> Result<()> {
 }
 
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_vm_ssh_command_execution() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
@@ -92,6 +94,7 @@ fn test_vm_ssh_command_execution() -> Result<()> {
 }
 
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_vm_logs_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
@@ -126,6 +129,7 @@ fn test_vm_logs_command() -> Result<()> {
 }
 
 #[test]
+#[ignore = "Creates real Docker containers; run with --ignored"]
 fn test_vm_ssh_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;

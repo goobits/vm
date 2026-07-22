@@ -1,597 +1,103 @@
-//! VM interaction command handlers
-//!
-//! This module provides commands for interacting with running VMs including
-//! SSH connections, command execution, and log viewing.
+//! VM interaction command handlers.
 
-use std::collections::HashSet;
-use std::io::IsTerminal;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use tracing::debug;
 
 use crate::error::{VmError, VmResult};
-use crate::state::{count_active_ssh_sessions, VmState};
-use crate::utils::confirm_select;
 use vm_cli::msg;
-use vm_config::{
-    config::{BoxSpec, VmConfig},
-    detect_worktrees, ConfigLoader, GlobalConfig,
-};
+use vm_config::{config::VmConfig, ConfigLoader};
 use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
-use vm_provider::{Provider, ProviderContext};
+use vm_provider::Provider;
 
-/// Compares detected worktrees with current container mounts.
-///
-/// Returns `true` if all worktrees are mounted, `false` otherwise.
-/// This is optimized for the common case where mounts are a superset of worktrees.
-fn worktrees_match(worktrees: &[String], mounts: &[String]) -> bool {
-    if worktrees.is_empty() {
-        return true;
+fn detected_relative_path(path: Option<PathBuf>) -> PathBuf {
+    if let Some(path) = path {
+        return path;
     }
 
-    let mount_set: HashSet<_> = mounts.iter().collect();
-
-    for worktree in worktrees {
-        if !mount_set.contains(&worktree) {
-            return false;
+    match ConfigLoader::new().relative_path_from_config() {
+        Ok(Some(path)) => {
+            debug!(path = %path.display(), "Detected path relative to vm.yaml");
+            path
+        }
+        Ok(None) => PathBuf::from("."),
+        Err(error) => {
+            debug!(%error, "Could not detect path relative to vm.yaml");
+            PathBuf::from(".")
         }
     }
-
-    true
 }
 
-fn describe_create_target(
-    provider: &dyn Provider,
-    config: &VmConfig,
-) -> Vec<(&'static str, String)> {
-    let mut details = vec![("Provider", provider.name().to_string())];
-
+fn create_command(provider: &dyn Provider) -> String {
     match provider.name() {
-        "tart" => {
-            details.push(("Guest OS", describe_tart_guest_os(config)));
-            if let Some(base) = config
-                .vm
-                .as_ref()
-                .and_then(|vm| vm.r#box.as_ref())
-                .map(box_name)
-            {
-                details.push(("Base", base));
-            }
-        }
-        "docker" | "podman" => {
-            details.push(("Guest OS", "Ubuntu/Linux container".to_string()));
-            if let Some(base) = config
-                .vm
-                .as_ref()
-                .and_then(|vm| vm.r#box.as_ref())
-                .map(box_name)
-            {
-                details.push(("Base", base));
-            }
-        }
-        _ => {}
-    }
-
-    details
-}
-
-fn box_name(box_spec: &BoxSpec) -> String {
-    match box_spec {
-        BoxSpec::String(value) => value.clone(),
-        BoxSpec::Build { dockerfile, .. } => dockerfile.clone(),
+        "docker" | "podman" | "tart" => format!("vm create {}", provider.name()),
+        _ => "vm create".to_string(),
     }
 }
 
-fn describe_tart_guest_os(config: &VmConfig) -> String {
-    if matches!(config.os.as_deref(), Some("macos")) {
-        return "macOS VM".to_string();
-    }
-    if matches!(config.os.as_deref(), Some("linux")) {
-        return "Linux VM".to_string();
-    }
-
-    if let Some(guest_os) = config
-        .tart
-        .as_ref()
-        .and_then(|tart| tart.guest_os.as_deref())
-    {
-        return match guest_os {
-            "macos" => "macOS VM".to_string(),
-            "linux" => "Linux VM".to_string(),
-            other => format!("{other} VM"),
-        };
-    }
-
-    if let Some(base) = config
-        .vm
-        .as_ref()
-        .and_then(|vm| vm.r#box.as_ref())
-        .map(box_name)
-    {
-        let base = base.to_lowercase();
-        if base == "vibe-tart-sequoia-base" || base == "vibe-tart-base" || base.contains("macos") {
-            return "macOS VM".to_string();
-        }
-        if base == "vibe-tart-linux-base"
-            || base.contains("ubuntu")
-            || base.contains("debian")
-            || base.contains("linux")
-        {
-            return "Linux VM".to_string();
-        }
-    }
-
-    if let Some(image) = config.tart.as_ref().and_then(|tart| tart.image.as_deref()) {
-        let image = image.to_lowercase();
-        if image.contains("macos") {
-            return "macOS VM".to_string();
-        }
-        if image.contains("ubuntu") || image.contains("debian") || image.contains("linux") {
-            return "Linux VM".to_string();
-        }
-    }
-
-    "macOS VM (default)".to_string()
-}
-
-fn print_create_target(provider: &dyn Provider, config: &VmConfig) {
-    vm_println!("\nTarget environment:");
-    for (label, value) in describe_create_target(provider, config) {
-        vm_println!("  {label}: {value}");
-    }
-}
-
-fn create_command_for_provider(provider: &dyn Provider) -> String {
+fn start_command(provider: &dyn Provider) -> String {
     match provider.name() {
-        "docker" => "vm run linux".to_string(),
-        "podman" => "vm run container --provider podman".to_string(),
-        "tart" => "vm run mac".to_string(),
-        _ => "vm run linux".to_string(),
+        "docker" | "podman" | "tart" => format!("vm start {}", provider.name()),
+        _ => "vm start".to_string(),
     }
 }
 
-/// Prompts the user to confirm if they want to refresh mounts.
-///
-/// Returns `true` if the user confirms, `false` otherwise.
-fn prompt_refresh(new_worktrees: &[String]) -> VmResult<bool> {
-    if new_worktrees.is_empty() {
-        return Ok(false);
-    }
-
-    vm_println!("⚠️  New worktrees detected: {}", new_worktrees.join(", "));
-    confirm_select("Refresh mounts now? (takes ~3s)", true)
-}
-
-/// Checks if it's safe to restart the container by checking for active SSH sessions.
-///
-/// Returns a tuple: `(is_safe, active_session_count)`.
-fn is_safe_to_restart(project_name: &str) -> (bool, u32) {
-    match count_active_ssh_sessions(project_name) {
-        Ok(count) => (count == 0, count),
-        Err(e) => {
-            // If we can't read the state, assume it's not safe to restart to be cautious.
-            debug!(
-                "Could not read SSH session state: {}. Assuming unsafe to restart.",
-                e
-            );
-            (false, 0) // Return 0 count as we couldn't determine it
-        }
-    }
-}
-
-/// Helper function to handle SSH start prompt interaction
-fn handle_ssh_start_prompt(
-    provider: Box<dyn Provider>,
-    container: Option<&str>,
-    relative_path: &Path,
-    vm_name: &str,
-    global_config: &GlobalConfig,
-) -> VmResult<Option<VmResult<()>>> {
-    // Check if we're in an interactive terminal
-    if !std::io::stdin().is_terminal() {
-        vm_println!("{}", MESSAGES.vm.ssh_start_hint);
-        return Ok(None);
-    }
-
-    if !confirm_select("Start it now?", true)? {
-        vm_println!("{}", MESSAGES.vm.ssh_start_aborted);
-        return Ok(None);
-    }
-
-    if provider.name() == "tart" {
-        vm_println!("\n  Provider: Tart");
-        vm_println!("  Action:   Start existing Tart VM");
-        vm_println!(
-            "  Note:     This does not create or reinstall the VM. To rebuild it, run: vm remove <name> --force"
-        );
-        vm_println!(
-            "  Logs:     /tmp/vm-tart-{}.log",
-            sanitize_log_name(container.unwrap_or(vm_name))
-        );
-    }
-
-    let display_name = container.unwrap_or(vm_name);
-
-    // Start the VM
-    vm_println!("{}", msg!(MESSAGES.vm.ssh_starting, name = display_name));
-
-    if let Err(e) = start_provider_for_ssh(provider.as_ref(), container, global_config) {
-        vm_println!(
-            "{}",
-            msg!(
-                MESSAGES.vm.ssh_start_failed,
-                name = display_name,
-                error = e.to_string()
-            )
-        );
-        return Ok(None);
-    }
-
-    if provider.name() == "tart" {
-        vm_println!("⏳ Waiting for Tart guest agent...");
-    }
-
-    if !wait_for_provider_running(provider.as_ref(), container) {
-        vm_println!(
-            "\n⚠️  '{}' did not become ready before reconnect.",
-            display_name
-        );
-        if provider.name() == "tart" {
-            vm_println!(
-                "💡 Check Tart logs: /tmp/vm-tart-{}.log",
-                sanitize_log_name(display_name)
-            );
-            vm_println!("💡 If this VM is stale or incomplete: vm remove <name> --force && vm run mac as <name>");
-        } else {
-            vm_println!("💡 Check environments: vm list");
-        }
-        return Ok(None);
-    }
-
-    vm_println!(
-        "{}",
-        msg!(MESSAGES.vm.ssh_reconnecting, name = display_name)
-    );
-
-    let retry_result = provider.ssh(container, relative_path);
-    match &retry_result {
-        Ok(()) => {
-            vm_println!(
-                "{}",
-                msg!(MESSAGES.vm.ssh_disconnected, name = display_name)
-            );
-        }
-        Err(e) => {
-            vm_println!("\n❌ SSH connection failed: {}", e);
-        }
-    }
-
-    Ok(Some(retry_result.map_err(VmError::from)))
-}
-
-fn start_provider_for_ssh(
-    provider: &dyn Provider,
-    container: Option<&str>,
-    global_config: &GlobalConfig,
-) -> VmResult<()> {
-    let context = ProviderContext::with_verbose(false).with_config(global_config.clone());
-    provider
-        .start_with_context(container, &context)
-        .map_err(VmError::from)
-}
-
-fn wait_for_provider_running(provider: &dyn Provider, container: Option<&str>) -> bool {
-    use std::thread;
-    use std::time::Duration;
-
-    let attempts = if provider.name() == "tart" { 60 } else { 10 };
-
-    for _ in 0..attempts {
-        if provider
-            .get_status_report(container)
-            .is_ok_and(|report| report.is_running)
-        {
-            return true;
-        }
-
-        thread::sleep(Duration::from_secs(1));
-    }
-
-    false
-}
-
-fn sanitize_log_name(input: &str) -> String {
-    input
-        .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
-        .collect()
-}
-
-fn connect_ssh(
+/// Connect to a running environment. Creation, startup, and mount changes are
+/// intentionally owned by their lifecycle commands.
+pub fn handle_ssh(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     path: Option<PathBuf>,
-    command: Option<Vec<String>>,
     config: VmConfig,
-    global_config: &GlobalConfig,
 ) -> VmResult<()> {
-    if let Some(cmd) = command {
-        // If a command is provided, delegate to the exec handler
-        return handle_exec(provider, container, cmd, config);
-    }
-
-    // Determine the relative path:
-    // 1. If user explicitly provided --path, use that
-    // 2. Otherwise, auto-detect based on current directory relative to vm.yaml location
-    // 3. Fall back to "." if detection fails
-    let relative_path = match path {
-        Some(p) => p,
-        None => {
-            // Auto-detect: calculate relative path from config location to current directory
-            let loader = ConfigLoader::new();
-            match loader.relative_path_from_config() {
-                Ok(Some(detected_path)) => {
-                    debug!(
-                        "Auto-detected relative path from config: '{}'",
-                        detected_path.display()
-                    );
-                    detected_path
-                }
-                Ok(None) => {
-                    debug!("Could not detect relative path (no config found or cwd outside project), defaulting to workspace root");
-                    PathBuf::from(".")
-                }
-                Err(e) => {
-                    debug!(
-                        "Failed to detect relative path: {}. Defaulting to workspace root",
-                        e
-                    );
-                    PathBuf::from(".")
-                }
-            }
-        }
-    };
-    let workspace_path = config
-        .project
-        .as_ref()
-        .and_then(|p| p.workspace_path.as_deref())
-        .unwrap_or("/workspace");
-
-    debug!(
-        "SSH command: relative_path='{}', workspace_path='{}'",
-        relative_path.display(),
-        workspace_path
-    );
-
+    let relative_path = detected_relative_path(path);
     let vm_name = config
         .project
         .as_ref()
-        .and_then(|p| p.name.as_ref())
-        .map(|s| s.as_str())
+        .and_then(|project| project.name.as_deref())
         .unwrap_or("vm-project");
-    let display_name = container.unwrap_or(vm_name);
 
-    vm_println!("{}", msg!(MESSAGES.vm.ssh_connecting, name = display_name));
-
-    // Increment session count
-    let mut state = VmState::load(vm_name)?;
-    state.increment_ssh_sessions();
-    state.save(vm_name)?;
+    debug!(
+        provider = provider.name(),
+        target = ?container,
+        relative_path = %relative_path.display(),
+        "Connecting to VM"
+    );
+    vm_println!("{}", msg!(MESSAGES.vm.ssh_connecting, name = vm_name));
 
     let result = provider.ssh(container, &relative_path);
-
-    // Decrement session count
-    let mut state = VmState::load(vm_name)?;
-    state.decrement_ssh_sessions();
-    state.save(vm_name)?;
-
-    // Show message when SSH session ends
     match &result {
-        Ok(()) => {
-            vm_println!(
-                "{}",
-                msg!(MESSAGES.vm.ssh_disconnected, name = display_name)
-            );
-        }
-        Err(e) => {
-            let error_str = e.to_string();
-
-            // Check if VM doesn't exist first
-            if error_str.contains("No such container") || error_str.contains("No such object") {
+        Ok(()) => vm_println!("{}", msg!(MESSAGES.vm.ssh_disconnected, name = vm_name)),
+        Err(error) => {
+            let message = error.to_string();
+            if message.contains("No such container")
+                || message.contains("No such object")
+                || message.contains("No container found matching")
+            {
+                vm_println!("{}", msg!(MESSAGES.vm.ssh_vm_not_found, name = vm_name));
                 vm_println!(
-                    "{}",
-                    msg!(MESSAGES.vm.ssh_vm_not_found, name = display_name)
+                    "Create it explicitly with: {}",
+                    create_command(provider.as_ref())
                 );
-
-                // Offer to create the VM
-                if std::io::stdin().is_terminal() {
-                    print_create_target(provider.as_ref(), &config);
-
-                    if confirm_select("Create it now?", true)? {
-                        // Actually create the VM
-                        vm_println!("{}", msg!(MESSAGES.vm.ssh_creating, name = display_name));
-
-                        #[allow(clippy::excessive_nesting)]
-                        match provider.create_with_context(
-                            &ProviderContext::default().preserve_services(true),
-                        ) {
-                            Ok(()) => {
-                                vm_println!(
-                                    "{}",
-                                    msg!(MESSAGES.vm.ssh_create_success, name = display_name)
-                                );
-
-                                // Now try SSH again
-                                return Ok(provider.ssh(container, &relative_path)?);
-                            }
-                            Err(create_err) => {
-                                vm_println!(
-                                    "{}",
-                                    msg!(
-                                        MESSAGES.vm.ssh_create_failed,
-                                        name = display_name,
-                                        error = create_err.to_string()
-                                    )
-                                );
-                                return Err(create_err.into());
-                            }
-                        }
-                    } else {
-                        vm_println!(
-                            "\n💡 Create with: {}",
-                            create_command_for_provider(provider.as_ref())
-                        );
-                        vm_println!("💡 List existing VMs: vm list");
-                    }
-                } else {
-                    vm_println!(
-                        "\n💡 Create with: {}",
-                        create_command_for_provider(provider.as_ref())
-                    );
-                    vm_println!("💡 List existing VMs: vm list");
-                }
-                // Return a clean error that won't be misinterpreted by the main error handler
-                return Err(VmError::vm_operation(
-                    std::io::Error::new(std::io::ErrorKind::NotFound, "VM does not exist"),
-                    Some(display_name),
-                    "ssh",
-                ));
-            }
-            // Check if the error is because the container is not running
-            else if error_str.contains("is not running")
-                || error_str.contains("Container is not running")
-                || (error_str.contains("docker")
-                    && error_str.contains("exec")
-                    && error_str.contains("exited with code 1")
-                    && !error_str.contains("No such"))
+            } else if message.contains("is not running")
+                || message.contains("Container is not running")
             {
-                vm_println!("{}", msg!(MESSAGES.vm.ssh_not_running, name = display_name));
-
-                // Handle interactive prompt
-                if let Some(retry_result) = handle_ssh_start_prompt(
-                    provider,
-                    container,
-                    &relative_path,
-                    vm_name,
-                    global_config,
-                )? {
-                    return retry_result;
-                }
-            } else if error_str.contains("connection lost")
-                || error_str.contains("connection failed")
-            {
-                vm_println!("{}", MESSAGES.vm.ssh_connection_lost);
+                vm_println!("{}", msg!(MESSAGES.vm.ssh_not_running, name = vm_name));
+                vm_println!(
+                    "Start it explicitly with: {}",
+                    start_command(provider.as_ref())
+                );
             } else {
-                // For other errors, show the actual error but clean up the message
                 vm_println!("{}", MESSAGES.vm.ssh_session_ended);
             }
         }
     }
 
-    Ok(result?)
+    result.map_err(VmError::from)
 }
 
-/// Handle SSH into VM
-pub struct SshOptions {
-    pub path: Option<PathBuf>,
-    pub command: Option<Vec<String>>,
-    pub config: VmConfig,
-    pub global_config: GlobalConfig,
-    pub force_refresh: bool,
-    pub no_refresh: bool,
-}
-
-pub fn handle_ssh(
-    provider: Box<dyn Provider>,
-    container: Option<&str>,
-    options: SshOptions,
-) -> VmResult<()> {
-    let SshOptions {
-        path,
-        command,
-        config,
-        global_config,
-        force_refresh,
-        no_refresh,
-    } = options;
-
-    let vm_name = config
-        .project
-        .as_ref()
-        .and_then(|p| p.name.as_deref())
-        .unwrap_or("vm-project");
-
-    if no_refresh {
-        return connect_ssh(provider, container, path, command, config, &global_config);
-    }
-
-    let worktrees = detect_worktrees()?;
-    let container_name = container.unwrap_or(vm_name);
-    let current_mounts = match provider.get_container_mounts(container_name) {
-        Ok(mounts) => mounts,
-        Err(e) => {
-            let error_str = e.to_string();
-            if error_str.contains("No such object")
-                || error_str.contains("is not running")
-                || error_str.contains("No container found matching")
-            {
-                // Container doesn't exist or isn't running. Assume no mounts and proceed with refresh logic.
-                Vec::new()
-            } else {
-                // For other errors, propagate them.
-                return Err(e.into());
-            }
-        }
-    };
-
-    if worktrees_match(&worktrees, &current_mounts) {
-        return connect_ssh(provider, container, path, command, config, &global_config);
-    }
-
-    let (safe_to_restart, active_sessions) = is_safe_to_restart(vm_name);
-
-    if !safe_to_restart && !force_refresh {
-        vm_println!(
-            "⚠️  New worktrees detected but can't refresh: {} other SSH sessions are active",
-            active_sessions
-        );
-        vm_println!("💡 Close other sessions before reconnecting with `vm shell`");
-        return connect_ssh(provider, container, path, command, config, &global_config);
-    }
-
-    if force_refresh && active_sessions > 0 {
-        vm_println!("⚠️  Warning: This will disconnect {active_sessions} active SSH sessions.");
-        if !confirm_select("Continue?", false)? {
-            return connect_ssh(provider, container, path, command, config, &global_config);
-        }
-    } else {
-        let new_worktrees: Vec<String> = worktrees
-            .into_iter()
-            .filter(|w| !current_mounts.contains(w))
-            .collect();
-        if !prompt_refresh(&new_worktrees)? {
-            return connect_ssh(provider, container, path, command, config, &global_config);
-        }
-    }
-
-    vm_println!("⏳ Refreshing mounts...");
-    vm_println!("  - Stopping container...");
-    provider.stop(container)?;
-    vm_println!("  - Updating volumes...");
-    // This is a placeholder for updating the compose file.
-    // In a real implementation, you would modify the docker-compose.yml
-    // to include the new worktree mounts.
-    // For now, we'll just restart the container.
-    vm_println!("  - Starting container...");
-    let context = ProviderContext::with_verbose(false).with_config(global_config.clone());
-    provider.start_with_context(container, &context)?;
-    vm_println!("✓ Mounts refreshed.");
-
-    connect_ssh(provider, container, path, command, config, &global_config)
-}
-
-/// Handle command execution in VM
+/// Execute a command in a running environment.
 pub fn handle_exec(
     provider: Box<dyn Provider>,
     container: Option<&str>,
@@ -599,48 +105,40 @@ pub fn handle_exec(
     config: VmConfig,
 ) -> VmResult<()> {
     debug!(
-        "Executing command in VM: command={:?}, provider='{}'",
-        command,
-        provider.name()
+        command = ?command,
+        provider = provider.name(),
+        "Executing command in VM"
     );
 
     let vm_name = config
         .project
         .as_ref()
-        .and_then(|p| p.name.as_ref())
-        .map(|s| s.as_str())
+        .and_then(|project| project.name.as_deref())
         .unwrap_or("vm-project");
-
-    let cmd_display = command.join(" ");
+    let command_display = command.join(" ");
     vm_println!(
         "{}",
         msg!(
             MESSAGES.vm.exec_header,
             name = vm_name,
-            command = &cmd_display
+            command = &command_display
         )
     );
 
     let result = provider.exec(container, &command);
-
+    vm_println!("{}", MESSAGES.vm.exec_separator);
     match &result {
-        Ok(()) => {
-            vm_println!("{}", MESSAGES.vm.exec_separator);
-            vm_println!("{}", MESSAGES.vm.exec_success);
-        }
-        Err(e) => {
-            vm_println!("{}", MESSAGES.vm.exec_separator);
-            vm_println!(
-                "{}",
-                msg!(MESSAGES.vm.exec_troubleshooting, error = e.to_string())
-            );
-        }
+        Ok(()) => vm_println!("{}", MESSAGES.vm.exec_success),
+        Err(error) => vm_println!(
+            "{}",
+            msg!(MESSAGES.vm.exec_troubleshooting, error = error.to_string())
+        ),
     }
 
     result.map_err(VmError::from)
 }
 
-/// Handle VM logs viewing
+/// View environment logs.
 pub fn handle_logs(
     provider: Box<dyn Provider>,
     container: Option<&str>,
@@ -650,269 +148,42 @@ pub fn handle_logs(
     service: Option<&str>,
 ) -> VmResult<()> {
     debug!(
-        "Viewing VM logs: provider='{}', follow={}, tail={}, service={:?}",
-        provider.name(),
-        follow,
-        tail,
-        service
+        provider = provider.name(),
+        follow, tail, service, "Viewing VM logs"
     );
 
-    // Use extended logs method (falls back to basic logs for non-Docker providers)
-    let result = provider.logs_extended(container, follow, tail, service, &config);
-
-    result.map_err(VmError::from)
+    provider
+        .logs_extended(container, follow, tail, service, &config)
+        .map_err(VmError::from)
 }
 
-/// Handle file copy to/from VM
+/// Copy a file to or from one environment.
 pub fn handle_copy(
     provider: Box<dyn Provider>,
     source: &str,
     destination: &str,
-    all_vms: bool,
     config: VmConfig,
 ) -> VmResult<()> {
-    if all_vms {
-        // Get all instances from the provider
-        let instances = provider.list_instances().map_err(VmError::from)?;
+    debug!(
+        source,
+        destination,
+        provider = provider.name(),
+        "Copying files"
+    );
 
-        if instances.is_empty() {
-            vm_println!("No instances found");
-            return Ok(());
-        }
+    let vm_name = config
+        .project
+        .as_ref()
+        .and_then(|project| project.name.as_deref())
+        .unwrap_or("vm-project");
+    let direction = if source.contains(':') { "from" } else { "to" };
+    vm_println!("Copying file {} VM '{}'...", direction, vm_name);
 
-        // Determine direction and prepare the path template
-        let (direction, is_to_vms) = if source.contains(':') {
-            ("from", false)
-        } else {
-            ("to", true)
-        };
-
-        vm_println!(
-            "📦 Copying files {} {} instances...",
-            direction,
-            instances.len()
-        );
-
-        let mut success_count = 0;
-        let mut failed = vec![];
-
-        for instance in &instances {
-            let (actual_source, actual_dest) = if is_to_vms {
-                // Copy TO all VMs: source is local, destination has container prefix
-                let dest_path = destination.strip_prefix(':').unwrap_or(destination);
-                (
-                    source.to_string(),
-                    format!("{}:{}", instance.name, dest_path),
-                )
-            } else {
-                // Copy FROM all VMs: source has container prefix, destination is local
-                let src_path = source.strip_prefix(':').unwrap_or(source);
-                (
-                    format!("{}:{}", instance.name, src_path),
-                    destination.to_string(),
-                )
-            };
-
-            match provider.copy(&actual_source, &actual_dest, Some(&instance.name)) {
-                Ok(()) => {
-                    vm_println!("  ✓ {} '{}'", direction, instance.name);
-                    success_count += 1;
-                }
-                Err(e) => {
-                    vm_println!("  ❌ '{}': {}", instance.name, e);
-                    failed.push(instance.name.clone());
-                }
-            }
-        }
-
-        vm_println!(
-            "\n📊 {} of {} copies successful",
-            success_count,
-            instances.len()
-        );
-
-        if !failed.is_empty() {
-            return Err(VmError::general(
-                std::io::Error::new(std::io::ErrorKind::Other, "Some copies failed"),
-                format!("Failed for instances: {}", failed.join(", ")),
-            ));
-        }
-
-        Ok(())
-    } else {
-        // Original single-VM copy logic
-        debug!(
-            "Copying files: source='{}', destination='{}', provider='{}'",
-            source,
-            destination,
-            provider.name()
-        );
-
-        let vm_name = config
-            .project
-            .as_ref()
-            .and_then(|p| p.name.as_ref())
-            .map(|s| s.as_str())
-            .unwrap_or("vm-project");
-
-        // Determine direction for user feedback
-        let direction = if source.contains(':') { "from" } else { "to" };
-
-        vm_println!("📦 Copying file {} VM '{}'...", direction, vm_name);
-
-        let result = provider.copy(source, destination, None);
-
-        match &result {
-            Ok(()) => {
-                vm_println!("✓ File copied successfully");
-            }
-            Err(e) => {
-                vm_println!("❌ Copy failed: {}", e);
-            }
-        }
-
-        result.map_err(VmError::from)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::cell::{Cell, RefCell};
-    use std::path::Path;
-    use vm_core::error::Result as CoreResult;
-    use vm_provider::ProviderContext;
-
-    #[derive(Default)]
-    struct RecordingProvider {
-        start_called: Cell<bool>,
-        start_with_context_called: Cell<bool>,
-        container: RefCell<Option<String>>,
-        context_has_global_config: Cell<bool>,
+    let result = provider.copy(source, destination, None);
+    match &result {
+        Ok(()) => vm_println!("File copied successfully"),
+        Err(error) => vm_println!("Copy failed: {}", error),
     }
 
-    impl Provider for RecordingProvider {
-        fn name(&self) -> &'static str {
-            "recording"
-        }
-
-        fn create_with_context(&self, _context: &ProviderContext) -> CoreResult<()> {
-            Ok(())
-        }
-
-        fn start(&self, container: Option<&str>) -> CoreResult<()> {
-            self.start_called.set(true);
-            self.container.replace(container.map(str::to_string));
-            Ok(())
-        }
-
-        fn start_with_context(
-            &self,
-            container: Option<&str>,
-            context: &ProviderContext,
-        ) -> CoreResult<()> {
-            self.start_with_context_called.set(true);
-            self.container.replace(container.map(str::to_string));
-            self.context_has_global_config
-                .set(context.global_config.is_some());
-            Ok(())
-        }
-
-        fn stop(&self, _container: Option<&str>) -> CoreResult<()> {
-            Ok(())
-        }
-
-        fn destroy(&self, _container: Option<&str>) -> CoreResult<()> {
-            Ok(())
-        }
-
-        fn ssh(&self, _container: Option<&str>, _relative_path: &Path) -> CoreResult<()> {
-            Ok(())
-        }
-
-        fn exec(&self, _container: Option<&str>, _cmd: &[String]) -> CoreResult<()> {
-            Ok(())
-        }
-
-        fn logs(&self, _container: Option<&str>) -> CoreResult<()> {
-            Ok(())
-        }
-
-        fn copy(
-            &self,
-            _source: &str,
-            _destination: &str,
-            _container: Option<&str>,
-        ) -> CoreResult<()> {
-            Ok(())
-        }
-
-        fn status(&self, _container: Option<&str>) -> CoreResult<()> {
-            Ok(())
-        }
-
-        fn restart(&self, _container: Option<&str>) -> CoreResult<()> {
-            Ok(())
-        }
-
-        fn provision(&self, _container: Option<&str>) -> CoreResult<()> {
-            Ok(())
-        }
-
-        fn list(&self) -> CoreResult<()> {
-            Ok(())
-        }
-
-        fn kill(&self, _container: Option<&str>) -> CoreResult<()> {
-            Ok(())
-        }
-
-        fn get_sync_directory(&self) -> String {
-            "/workspace".to_string()
-        }
-
-        fn clone_box(&self) -> Box<dyn Provider> {
-            Box::<RecordingProvider>::default()
-        }
-    }
-
-    #[test]
-    fn test_worktrees_match() {
-        let worktrees = vec![
-            "/path/to/worktree1".to_string(),
-            "/path/to/worktree2".to_string(),
-        ];
-        let mounts = vec![
-            "/path/to/worktree1".to_string(),
-            "/path/to/worktree2".to_string(),
-            "/path/to/other".to_string(),
-        ];
-        assert!(worktrees_match(&worktrees, &mounts));
-
-        let worktrees = vec![
-            "/path/to/worktree1".to_string(),
-            "/path/to/worktree3".to_string(),
-        ];
-        assert!(!worktrees_match(&worktrees, &mounts));
-
-        let worktrees = vec![];
-        assert!(worktrees_match(&worktrees, &mounts));
-
-        let mounts = vec![];
-        let worktrees = vec!["/path/to/worktree1".to_string()];
-        assert!(!worktrees_match(&worktrees, &mounts));
-    }
-
-    #[test]
-    fn ssh_prompt_start_uses_contextual_start_path() {
-        let provider = RecordingProvider::default();
-
-        start_provider_for_ssh(&provider, Some("app"), &GlobalConfig::default())
-            .expect("provider should start");
-
-        assert!(!provider.start_called.get());
-        assert!(provider.start_with_context_called.get());
-        assert_eq!(provider.container.borrow().as_deref(), Some("app"));
-        assert!(provider.context_has_global_config.get());
-    }
+    result.map_err(VmError::from)
 }

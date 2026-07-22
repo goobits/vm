@@ -28,7 +28,6 @@ pub mod config;
 pub mod db;
 pub mod doctor;
 mod environment;
-pub mod init;
 pub mod plugin;
 pub mod plugin_new;
 pub mod registry;
@@ -85,9 +84,6 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
                 force,
                 subject.target,
                 false,
-                None,
-                None,
-                true,
                 false,
             )
             .await
@@ -141,26 +137,19 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             environment,
             path,
             command,
-            force_refresh,
-            no_refresh,
         } => {
             let subject = resolve_environment(args.config.clone(), args.profile, environment)?;
-            let (provider, config, global_config) =
+            let (provider, config, _) =
                 load_provider_context(args.config, subject.profile, subject.provider_override)?;
-            let command =
-                command.map(|command| vec!["/bin/sh".to_string(), "-c".to_string(), command]);
-            vm_ops::handle_ssh(
-                provider,
-                subject.target.as_deref(),
-                vm_ops::SshOptions {
-                    path,
-                    command,
+            match command {
+                Some(command) => vm_ops::handle_exec(
+                    provider,
+                    subject.target.as_deref(),
+                    vec!["/bin/sh".to_string(), "-c".to_string(), command],
                     config,
-                    global_config,
-                    force_refresh,
-                    no_refresh,
-                },
-            )
+                ),
+                None => vm_ops::handle_ssh(provider, subject.target.as_deref(), path, config),
+            }
         }
         Command::Exec {
             environment,
@@ -192,7 +181,7 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             destination,
         } => {
             let (provider, config, _) = load_provider_context(args.config, args.profile, None)?;
-            vm_ops::handle_copy(provider, &source, &destination, false, config)
+            vm_ops::handle_copy(provider, &source, &destination, config)
         }
         Command::Stop { environment } => {
             let subject = resolve_environment(args.config.clone(), args.profile, environment)?;
@@ -234,16 +223,13 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             let subject = resolve_environment(args.config.clone(), args.profile, environment)?;
             let (provider, config, global_config) =
                 load_provider_context(args.config, subject.profile, subject.provider_override)?;
-            vm_ops::handle_destroy_enhanced(
+            vm_ops::handle_destroy(
                 provider,
                 subject.target.as_deref(),
                 config,
                 global_config,
-                &force,
-                &false,
-                &false,
-                None,
-                None,
+                force,
+                false,
                 true,
             )
             .await
@@ -351,19 +337,7 @@ async fn handle_run(intent: RunIntent) -> VmResult<()> {
     let result = if status.is_ok() {
         vm_ops::handle_start(provider, target.as_deref(), config, global_config, false).await
     } else {
-        vm_ops::handle_create(
-            provider,
-            config,
-            global_config,
-            false,
-            target,
-            false,
-            None,
-            intent.build,
-            true,
-            false,
-        )
-        .await
+        vm_ops::handle_create(provider, config, global_config, false, target, false, false).await
     };
 
     if result.is_ok() {
@@ -461,12 +435,8 @@ fn ensure_config_exists(
         return Ok(());
     }
 
-    Ok(init::handle_init(
-        None,
-        None,
-        None,
-        provider.map(ToString::to_string),
-    )?)
+    vm_config::cli::init_config_file(None, None, None, provider.map(ToString::to_string))
+        .map_err(|error| VmError::config(error, "initialize project configuration"))
 }
 
 fn apply_run_overrides(config: &mut VmConfig, intent: &RunIntent) -> VmResult<()> {
