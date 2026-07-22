@@ -3,7 +3,7 @@
 //! This module provides commands for managing VM lifecycle including
 //! start and stop operations.
 
-use tracing::{debug, info_span, warn};
+use tracing::{debug, info_span};
 
 use crate::error::{VmError, VmResult};
 use vm_config::{config::VmConfig, GlobalConfig};
@@ -160,82 +160,47 @@ fn sanitize_log_name(input: &str) -> String {
         .collect()
 }
 
-/// Handle VM stop - graceful stop for current project or force kill specific container
+/// Handle a graceful VM stop.
 pub async fn handle_stop(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     config: VmConfig,
     global_config: GlobalConfig,
 ) -> VmResult<()> {
-    match container {
-        None => {
-            // Graceful stop of current project VM
-            let span = info_span!("vm_operation", operation = "stop");
-            let _enter = span.enter();
-            debug!("Stopping VM");
+    let span = info_span!("vm_operation", operation = "stop");
+    let _enter = span.enter();
+    debug!(target = ?container, "Stopping VM");
 
-            let vm_name = config
-                .project
-                .as_ref()
-                .and_then(|p| p.name.as_ref())
-                .map(|s| s.as_str())
-                .unwrap_or("vm-project");
+    let project_name = config
+        .project
+        .as_ref()
+        .and_then(|p| p.name.as_deref())
+        .unwrap_or("vm-project");
+    let display_name = container.unwrap_or(project_name);
 
-            vm_println!("{}", msg!(MESSAGES.vm.stop_header, name = vm_name));
+    vm_println!("{}", msg!(MESSAGES.vm.stop_header, name = display_name));
 
-            match provider.stop(None) {
-                Ok(()) => {
-                    // Unregister VM services after successful stop
-                    let vm_instance_name = format!("{vm_name}-dev");
+    match provider.stop(container) {
+        Ok(()) => {
+            let instance_name = container
+                .map(ToOwned::to_owned)
+                .unwrap_or_else(|| format!("{project_name}-dev"));
 
-                    vm_println!("{}", MESSAGES.vm.stop_success);
-                    unregister_vm_services_helper(&vm_instance_name, &global_config).await?;
-
-                    vm_println!("{}", MESSAGES.vm.stop_restart_hint);
-                    Ok(())
-                }
-                Err(e) => {
-                    vm_println!(
-                        "{}",
-                        msg!(
-                            MESSAGES.vm.stop_troubleshooting,
-                            name = vm_name,
-                            error = e.to_string()
-                        )
-                    );
-                    Err(VmError::from(e))
-                }
-            }
+            vm_println!("{}", MESSAGES.vm.stop_success);
+            unregister_vm_services_helper(&instance_name, &global_config).await?;
+            vm_println!("{}", MESSAGES.vm.stop_restart_hint);
+            Ok(())
         }
-        Some(container_name) => {
-            // Force kill specific container
-            let span = info_span!("vm_operation", operation = "kill");
-            let _enter = span.enter();
-            warn!("Force killing container: {}", container_name);
-
+        Err(e) => {
             vm_println!(
                 "{}",
-                msg!(MESSAGES.vm.stop_force_header, name = container_name)
+                msg!(
+                    MESSAGES.vm.stop_troubleshooting,
+                    name = display_name,
+                    error = e.to_string()
+                )
             );
-
-            match provider.kill(Some(container_name)) {
-                Ok(()) => {
-                    // For force kill, still unregister services for cleanup
-                    vm_println!("{}", MESSAGES.vm.stop_force_success);
-                    unregister_vm_services_helper(container_name, &global_config).await?;
-                    Ok(())
-                }
-                Err(e) => {
-                    vm_println!(
-                        "{}",
-                        msg!(
-                            MESSAGES.vm.stop_force_troubleshooting,
-                            error = e.to_string()
-                        )
-                    );
-                    Err(VmError::from(e))
-                }
-            }
+            Err(VmError::from(e))
         }
     }
 }

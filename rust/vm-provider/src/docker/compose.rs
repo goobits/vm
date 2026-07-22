@@ -18,7 +18,7 @@ use crate::user_home::resolve_home_dir;
 use crate::ProviderContext;
 use crate::TempVmState;
 use vm_config::{config::VmConfig, detect_worktrees};
-use vm_core::command_stream::{stream_command, stream_command_visible};
+use vm_core::command_stream::stream_command_visible;
 
 pub struct ComposeOperations<'a> {
     pub config: &'a VmConfig,
@@ -749,40 +749,6 @@ impl<'a> ComposeOperations<'a> {
         container_name
             .strip_prefix(&format!("{project_name}-"))
             .map(str::to_string)
-    }
-
-    #[allow(dead_code)]
-    pub fn stop_with_compose(&self) -> Result<()> {
-        let compose_path = self.temp_dir.join("docker-compose.yml");
-        if compose_path.exists() {
-            let args = ComposeCommand::build_args(&compose_path, "stop", &[])?;
-            let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-            stream_command(self.executable, &args_refs).map_err(|e| {
-                VmError::Internal(format!(
-                    "Failed to stop container using docker-compose: {e}"
-                ))
-            })
-        } else {
-            Err(VmError::Internal(format!(
-                "docker-compose.yml not found in '{}'. Cannot stop container without compose configuration",
-                self.temp_dir.display()
-            )))
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn destroy_with_compose(&self) -> Result<()> {
-        let compose_path = self.temp_dir.join("docker-compose.yml");
-        if !compose_path.exists() {
-            return Err(VmError::Internal(format!(
-                "docker-compose.yml not found in '{}' for container destruction. Use direct Docker commands instead",
-                self.temp_dir.display()
-            )));
-        }
-        let args = ComposeCommand::build_args(&compose_path, "down", &["--volumes"])?;
-        let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        stream_command(self.executable, &args_refs)
-            .map_err(|e| VmError::Internal(format!("Failed to destroy container: {e}")))
     }
 
     /// Get list of expected service container names by parsing the generated docker-compose.yml.

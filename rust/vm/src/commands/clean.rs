@@ -1,7 +1,7 @@
 //! Cleanup operation for pruning orphaned resources.
 //!
 //! This command cleans up unused Docker resources:
-//! - Dangling volumes
+//! - VM-managed disposable volumes
 //! - Stopped temp containers
 //! - Old log files
 //! - Dangling images
@@ -47,12 +47,23 @@ pub async fn handle_clean(dry_run: bool, verbose: bool) -> VmResult<()> {
     Ok(())
 }
 
-/// Clean dangling Docker volumes
-fn clean_dangling_volumes(executable: &str, dry_run: bool, verbose: bool) -> VmResult<u32> {
-    debug!("Cleaning dangling volumes");
+const MANAGED_DISPOSABLE_VOLUME_FILTERS: [&str; 3] = [
+    "dangling=true",
+    "label=com.vm.managed=true",
+    "label=com.vm.retention=disposable",
+];
 
-    let output = StdCommand::new(executable)
-        .args(["volume", "ls", "--filter", "dangling=true", "--quiet"])
+/// Clean dangling volumes that VM explicitly marked as disposable.
+fn clean_dangling_volumes(executable: &str, dry_run: bool, verbose: bool) -> VmResult<u32> {
+    debug!("Cleaning VM-managed disposable volumes");
+
+    let mut command = StdCommand::new(executable);
+    command.args(["volume", "ls"]);
+    for filter in MANAGED_DISPOSABLE_VOLUME_FILTERS {
+        command.args(["--filter", filter]);
+    }
+    let output = command
+        .arg("--quiet")
         .output()
         .map_err(|e| VmError::general(e, "Failed to list dangling volumes"))?;
 
@@ -70,34 +81,64 @@ fn clean_dangling_volumes(executable: &str, dry_run: bool, verbose: bool) -> VmR
 
     if count == 0 {
         if verbose {
-            vm_println!("  Volumes: No dangling volumes found");
+            vm_println!("  Volumes: No managed disposable volumes found");
         }
         return Ok(0);
     }
 
     if dry_run {
-        vm_println!("  Volumes: Would remove {} dangling volume(s)", count);
+        vm_println!(
+            "  Volumes: Would remove {} managed disposable volume(s)",
+            count
+        );
         if verbose {
             for vol in &volumes {
                 vm_println!("    - {}", vol);
             }
         }
     } else {
+        let mut removed = 0;
         for vol in &volumes {
-            let result = StdCommand::new(executable)
+            let Ok(output) = StdCommand::new(executable)
                 .args(["volume", "rm", vol])
-                .output();
+                .output()
+            else {
+                continue;
+            };
+            if !output.status.success() {
+                continue;
+            }
 
-            if let Ok(out) = result {
-                if out.status.success() && verbose {
-                    vm_println!("    Removed volume: {}", vol);
-                }
+            removed += 1;
+            if verbose {
+                vm_println!("    Removed volume: {}", vol);
             }
         }
-        vm_println!("  Volumes: Removed {} dangling volume(s)", count);
+        vm_println!(
+            "  Volumes: Removed {} managed disposable volume(s)",
+            removed
+        );
+        return Ok(removed);
     }
 
     Ok(count)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MANAGED_DISPOSABLE_VOLUME_FILTERS;
+
+    #[test]
+    fn volume_cleanup_requires_vm_ownership_and_disposable_retention() {
+        assert_eq!(
+            MANAGED_DISPOSABLE_VOLUME_FILTERS,
+            [
+                "dangling=true",
+                "label=com.vm.managed=true",
+                "label=com.vm.retention=disposable",
+            ]
+        );
+    }
 }
 
 /// Clean stopped temp containers
