@@ -43,7 +43,7 @@ pub async fn handle_start(
         .map(|s| s.as_str())
         .unwrap_or("vm-project");
 
-    let initial_status = provider.get_status_report(container).ok();
+    let initial_status = provider.status(container).ok();
     if initial_status
         .as_ref()
         .is_some_and(|report| report.is_running)
@@ -63,7 +63,7 @@ pub async fn handle_start(
     vm_println!("{}", msg!(MESSAGES.vm.start_header, name = vm_name));
 
     let context = ProviderContext::with_verbose(false).with_config(global_config.clone());
-    match provider.start_with_context(container, &context) {
+    match provider.start(container, &context) {
         Ok(()) => {
             if provider.name() == "tart" && !no_wait {
                 vm_println!("⏳ Waiting for Tart guest agent...");
@@ -151,7 +151,7 @@ fn wait_for_tart_running(provider: &dyn Provider, container: Option<&str>) -> bo
 
     for _ in 0..60 {
         thread::sleep(Duration::from_secs(1));
-        if let Ok(report) = provider.get_status_report(container) {
+        if let Ok(report) = provider.status(container) {
             if report.is_running {
                 return true;
             }
@@ -242,11 +242,11 @@ pub async fn handle_restart(
     vm_println!("{}", msg!(MESSAGES.vm.restart_header, name = display_name));
 
     let context = ProviderContext::with_verbose(false).with_config(global_config.clone());
-    let status = provider.get_status_report(container).ok();
+    let status = provider.status(container).ok();
     let result = if status.as_ref().is_some_and(|report| report.is_running) {
-        provider.restart_with_context(container, &context)
+        provider.restart(container, &context)
     } else {
-        provider.start_with_context(container, &context)
+        provider.start(container, &context)
     };
 
     match result {

@@ -708,34 +708,25 @@ impl Provider for TartProvider {
         "tart"
     }
 
-    fn create(&self) -> Result<()> {
-        self.create_vm_internal(&self.vm_name(), None, &self.config)
-    }
-
-    fn create_instance(&self, instance_name: &str) -> Result<()> {
-        let vm_name = format!("{}-{}", self.vm_name(), instance_name);
-        self.create_vm_internal(&vm_name, Some(instance_name), &self.config)
-    }
-
-    fn create_with_context(&self, context: &ProviderContext) -> Result<()> {
+    fn create(&self, context: &ProviderContext) -> Result<()> {
         // Apply global config defaults if present, but always use the project VmConfig
         let _ = context; // Global config is not directly applicable to VM creation
         self.create_vm_internal(&self.vm_name(), None, &self.config)
     }
 
-    fn create_instance_with_context(
-        &self,
-        instance_name: &str,
-        context: &ProviderContext,
-    ) -> Result<()> {
+    fn create_instance(&self, instance_name: &str, context: &ProviderContext) -> Result<()> {
         // Apply global config defaults if present, but always use the project VmConfig
         let _ = context; // Global config is not directly applicable to VM creation
         let vm_name = format!("{}-{}", self.vm_name(), instance_name);
         self.create_vm_internal(&vm_name, Some(instance_name), &self.config)
     }
 
-    fn start(&self, container: Option<&str>) -> Result<()> {
+    fn start(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
         let vm_name = self.vm_name_with_instance(container)?;
+        if context.global_config.is_some() {
+            info!("Applying config updates to Tart VM");
+            self.apply_runtime_config(&vm_name, &self.config)?;
+        }
         if self.is_instance_running(&vm_name).unwrap_or(false) {
             return Ok(());
         }
@@ -752,7 +743,7 @@ impl Provider for TartProvider {
         self.stream_tart_command(&["stop", &vm_name])
     }
 
-    fn destroy(&self, container: Option<&str>) -> Result<()> {
+    fn destroy(&self, container: Option<&str>, _context: &ProviderContext) -> Result<()> {
         let vm_name = self.vm_name_with_instance(container)?;
 
         if self.is_instance_running(&vm_name).unwrap_or(false) {
@@ -893,41 +884,7 @@ impl Provider for TartProvider {
         Ok(())
     }
 
-    fn status(&self, container: Option<&str>) -> Result<()> {
-        match container {
-            Some(_) => {
-                // Show specific VM status
-                let vm_name = self.vm_name_with_instance(container)?;
-                let output = self.tart_command().args(["list"]).output()?;
-
-                if !output.status.success() {
-                    return Err(VmError::Internal(
-                        "Failed to get Tart VM status. Check that Tart is properly installed"
-                            .to_string(),
-                    ));
-                }
-
-                let list_output = String::from_utf8_lossy(&output.stdout);
-                for line in list_output.lines() {
-                    if line.contains(&vm_name) {
-                        info!("{}", line);
-                        return Ok(());
-                    }
-                }
-                info!(
-                    "{}",
-                    msg!(MESSAGES.service.provider_vm_not_found, name = vm_name)
-                );
-                Ok(())
-            }
-            None => {
-                // Show all VMs (existing behavior)
-                self.stream_tart_command(&["list"])
-            }
-        }
-    }
-
-    fn get_status_report(&self, container: Option<&str>) -> Result<VmStatusReport> {
+    fn status(&self, container: Option<&str>) -> Result<VmStatusReport> {
         let instance_name = self.resolve_instance_name(container)?;
 
         let Some(state) = self.get_instance_state(&instance_name)? else {
@@ -959,38 +916,9 @@ impl Provider for TartProvider {
         })
     }
 
-    fn start_with_context(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
-        let instance_name = self.resolve_instance_name(container)?;
-
-        // Apply runtime configuration from project config
-        if context.global_config.is_some() {
-            info!("Applying config updates to Tart VM");
-            self.apply_runtime_config(&instance_name, &self.config)?;
-        }
-
-        self.start(Some(&instance_name))
-    }
-
-    fn restart_with_context(
-        &self,
-        container: Option<&str>,
-        context: &ProviderContext,
-    ) -> Result<()> {
-        let instance_name = self.resolve_instance_name(container)?;
-
-        // Apply runtime configuration from project config
-        if context.global_config.is_some() {
-            info!("Applying config updates to Tart VM");
-            self.apply_runtime_config(&instance_name, &self.config)?;
-        }
-
-        self.restart(Some(&instance_name))
-    }
-
-    fn restart(&self, container: Option<&str>) -> Result<()> {
-        // Stop then start the VM
+    fn restart(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
         self.stop(container)?;
-        self.start(container)
+        self.start(container, context)
     }
 
     fn provision(&self, container: Option<&str>) -> Result<()> {
@@ -1005,23 +933,6 @@ impl Provider for TartProvider {
         provisioner.provision(&self.config)?;
 
         info!("{}", MESSAGES.vm.apply_success);
-        Ok(())
-    }
-
-    fn list(&self) -> Result<()> {
-        // List all Tart VMs
-        self.stream_tart_command(&["list"])
-    }
-
-    fn kill(&self, container: Option<&str>) -> Result<()> {
-        let instance_name = self.resolve_instance_name(container)?;
-        warn!("Force killing Tart VM: {}", &instance_name);
-
-        self.tart_expr(&["stop", &instance_name, "--timeout", "0"])
-            .run()
-            .map_err(|e| VmError::Provider(format!("Failed to force stop VM: {}", e)))?;
-
-        info!("Tart VM force-stopped successfully via CLI");
         Ok(())
     }
 

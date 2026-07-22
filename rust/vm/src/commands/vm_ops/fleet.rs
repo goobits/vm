@@ -7,7 +7,7 @@ use tracing::{debug, info_span};
 use crate::cli::{FleetSubcommand, FleetTargetArgs};
 use crate::error::{VmError, VmResult};
 use vm_core::vm_println;
-use vm_provider::{get_provider, InstanceInfo, Provider};
+use vm_provider::{get_provider, InstanceInfo, Provider, ProviderContext};
 
 use super::targets::{resolve_targets, InstanceStateFilter, TargetQuery};
 
@@ -189,14 +189,15 @@ fn handle_start_stop(targets: &FleetTargetArgs, action: Action, dry_run: bool) -
 
     let mut success = 0;
     let mut failed = 0;
+    let context = ProviderContext::default();
 
     for (provider_name, provider_instances) in group_by_provider(instances) {
         let provider = provider_for(&provider_name)?;
         for instance in provider_instances {
             let result = match action {
-                Action::Start => provider.start(Some(&instance.name)),
+                Action::Start => provider.start(Some(&instance.name), &context),
                 Action::Stop => provider.stop(Some(&instance.name)),
-                Action::Restart => provider.restart(Some(&instance.name)),
+                Action::Restart => provider.restart(Some(&instance.name), &context),
             };
 
             match result {

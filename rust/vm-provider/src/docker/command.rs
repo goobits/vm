@@ -5,16 +5,9 @@
 //! code duplication across Docker operations by providing common patterns
 //! for executing Docker subcommands.
 
-use serde::Deserialize;
-use std::process::{Command, Output};
+use std::process::Command;
 use vm_core::error::{Result, VmError};
 use vm_core::{vm_dbg, vm_error};
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "PascalCase")]
-struct Mount {
-    source: String,
-}
 
 /// Builder for Docker commands with fluent interface and consistent error handling.
 ///
@@ -25,8 +18,6 @@ pub struct DockerCommand {
     executable: String,
     subcommand: Option<String>,
     args: Vec<String>,
-    #[allow(dead_code)] // Will be used for output capture in monitoring features
-    capture_output: bool,
 }
 
 impl DockerCommand {
@@ -36,7 +27,6 @@ impl DockerCommand {
             executable: executable.unwrap_or("docker").to_string(),
             subcommand: None,
             args: Vec::new(),
-            capture_output: false,
         }
     }
 
@@ -49,24 +39,6 @@ impl DockerCommand {
     /// Add a single argument to the command.
     pub fn arg<S: Into<String>>(mut self, arg: S) -> Self {
         self.args.push(arg.into());
-        self
-    }
-
-    /// Add multiple arguments to the command.
-    #[allow(dead_code)] // Will be used for batch operations and plugin system
-    pub fn args<I, S>(mut self, args: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.args.extend(args.into_iter().map(Into::into));
-        self
-    }
-
-    /// Enable output capture for the command (useful for parsing results).
-    #[allow(dead_code)] // Will be used for monitoring and health checks
-    pub fn capture_output(mut self) -> Self {
-        self.capture_output = true;
         self
     }
 
@@ -114,19 +86,6 @@ impl DockerCommand {
                 output.status, stderr
             )))
         }
-    }
-
-    /// Execute the command and return the raw Output struct.
-    ///
-    /// Use this when you need access to both stdout and stderr,
-    /// or need to handle non-zero exit codes manually.
-    pub fn execute_raw(self) -> Result<Output> {
-        let mut cmd = self.build_command()?;
-
-        vm_dbg!("Executing Docker command (raw): {:?}", &cmd);
-
-        cmd.output()
-            .map_err(|e| VmError::Internal(format!("Failed to execute Docker command: {e}")))
     }
 
     /// Build the underlying Command object.
@@ -210,46 +169,6 @@ impl DockerOps {
         Ok(output.lines().any(|line| line.trim() == container_name))
     }
 
-    /// Execute a command inside a container.
-    ///
-    /// # Arguments
-    /// * `container_name` - Name of the container
-    /// * `command_args` - Command and arguments to execute
-    #[allow(dead_code)] // Utility function for debugging and manual operations
-    pub fn exec_in_container(
-        executable: Option<&str>,
-        container_name: &str,
-        command_args: &[&str],
-    ) -> Result<()> {
-        let mut cmd = DockerCommand::new(executable)
-            .subcommand("exec")
-            .arg(container_name);
-
-        for arg in command_args {
-            cmd = cmd.arg(*arg);
-        }
-
-        cmd.execute()
-    }
-
-    /// Execute a command inside a container and capture output.
-    #[allow(dead_code)] // Will be used for interactive diagnostics
-    pub fn exec_in_container_with_output(
-        executable: Option<&str>,
-        container_name: &str,
-        command_args: &[&str],
-    ) -> Result<String> {
-        let mut cmd = DockerCommand::new(executable)
-            .subcommand("exec")
-            .arg(container_name);
-
-        for arg in command_args {
-            cmd = cmd.arg(*arg);
-        }
-
-        cmd.execute_with_output()
-    }
-
     /// Copy files to/from a container.
     ///
     /// # Arguments
@@ -263,20 +182,7 @@ impl DockerOps {
             .execute()
     }
 
-    /// Get container statistics with specified format.
-    #[allow(dead_code)] // Will be used for resource monitoring
-    pub fn stats(executable: Option<&str>, container_name: &str, format: &str) -> Result<String> {
-        DockerCommand::new(executable)
-            .subcommand("stats")
-            .arg("--no-stream")
-            .arg("--format")
-            .arg(format)
-            .arg(container_name)
-            .execute_with_output()
-    }
-
     /// Start a container by name.
-    #[allow(dead_code)] // Will be used for lifecycle management
     pub fn start_container(executable: Option<&str>, container_name: &str) -> Result<()> {
         DockerCommand::new(executable)
             .subcommand("start")
@@ -284,17 +190,7 @@ impl DockerOps {
             .execute()
     }
 
-    /// Stop a container by name.
-    #[allow(dead_code)] // Will be used for lifecycle management
-    pub fn stop_container(executable: Option<&str>, container_name: &str) -> Result<()> {
-        DockerCommand::new(executable)
-            .subcommand("stop")
-            .arg(container_name)
-            .execute()
-    }
-
     /// Remove a container by name (with force flag).
-    #[allow(dead_code)] // Will be used for cleanup operations
     pub fn remove_container(
         executable: Option<&str>,
         container_name: &str,
@@ -318,24 +214,6 @@ impl DockerOps {
             .arg("ready")
             .execute()
             .is_ok()
-    }
-
-    /// Get a list of host paths mounted into the container.
-    pub fn get_container_mounts(
-        executable: Option<&str>,
-        container_name: &str,
-    ) -> Result<Vec<String>> {
-        let output = DockerCommand::new(executable)
-            .subcommand("inspect")
-            .arg("--format")
-            .arg("{{json .Mounts}}")
-            .arg(container_name)
-            .execute_with_output()?;
-
-        let mounts: Vec<Mount> = serde_json::from_str(&output)
-            .map_err(|e| VmError::Internal(format!("Failed to parse Docker mounts: {e}")))?;
-
-        Ok(mounts.into_iter().map(|m| m.source).collect())
     }
 
     /// Check if a Docker network exists by name.
@@ -378,20 +256,6 @@ impl DockerOps {
             }
         }
         Ok(())
-    }
-
-    /// Check if a Docker image exists locally.
-    ///
-    /// # Arguments
-    /// * `image_name` - Name of the image (e.g., "supercool:latest")
-    pub fn image_exists(executable: Option<&str>, image_name: &str) -> Result<bool> {
-        let output = DockerCommand::new(executable)
-            .subcommand("images")
-            .arg("--format")
-            .arg("{{.Repository}}:{{.Tag}}")
-            .execute_with_output()?;
-
-        Ok(output.lines().any(|line| line.trim() == image_name))
     }
 
     /// Build a custom Docker image from a Dockerfile.
@@ -458,22 +322,9 @@ mod tests {
             .subcommand("ps")
             .arg("-a")
             .arg("--format")
-            .arg("{{.Names}}")
-            .capture_output();
+            .arg("{{.Names}}");
 
         assert!(cmd.subcommand.is_some());
         assert_eq!(cmd.args.len(), 3);
-        assert!(cmd.capture_output);
-    }
-
-    #[test]
-    fn test_docker_command_chaining() {
-        let cmd = DockerCommand::new(None)
-            .subcommand("exec")
-            .arg("container")
-            .arg("echo")
-            .arg("hello");
-
-        assert_eq!(cmd.args, vec!["container", "echo", "hello"]);
     }
 }

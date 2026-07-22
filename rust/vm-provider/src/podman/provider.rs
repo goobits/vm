@@ -90,43 +90,26 @@ impl Provider for PodmanProvider {
         "podman"
     }
 
-    fn create(&self) -> Result<()> {
-        self.create_with_context(&ProviderContext::default())
-    }
-
-    fn create_with_context(&self, context: &ProviderContext) -> Result<()> {
+    fn create(&self, context: &ProviderContext) -> Result<()> {
         // Delegate to Docker provider - it will generate compose files and templates
         // The actual command execution will be intercepted by our lifecycle wrapper
-        self.docker_provider.create_with_context(context)
+        self.docker_provider.create(context)
     }
 
-    fn create_instance(&self, instance_name: &str) -> Result<()> {
-        self.docker_provider.create_instance(instance_name)
+    fn create_instance(&self, instance_name: &str, context: &ProviderContext) -> Result<()> {
+        self.docker_provider.create_instance(instance_name, context)
     }
 
-    fn create_instance_with_context(
-        &self,
-        instance_name: &str,
-        context: &ProviderContext,
-    ) -> Result<()> {
-        self.docker_provider
-            .create_instance_with_context(instance_name, context)
-    }
-
-    fn start(&self, container: Option<&str>) -> Result<()> {
-        self.docker_provider.start(container)
-    }
-
-    fn start_with_context(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
-        self.docker_provider.start_with_context(container, context)
+    fn start(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
+        self.docker_provider.start(container, context)
     }
 
     fn stop(&self, container: Option<&str>) -> Result<()> {
         self.docker_provider.stop(container)
     }
 
-    fn destroy(&self, container: Option<&str>) -> Result<()> {
-        self.docker_provider.destroy(container)
+    fn destroy(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
+        self.docker_provider.destroy(container, context)
     }
 
     fn ssh(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {
@@ -157,42 +140,17 @@ impl Provider for PodmanProvider {
         self.docker_provider.copy(source, destination, container)
     }
 
-    fn get_container_mounts(&self, container_name: &str) -> Result<Vec<String>> {
-        self.docker_provider.get_container_mounts(container_name)
-    }
-
-    fn status(&self, container: Option<&str>) -> Result<()> {
-        self.docker_provider.status(container)
-    }
-
-    fn restart(&self, container: Option<&str>) -> Result<()> {
-        self.docker_provider.restart(container)
-    }
-
-    fn restart_with_context(
-        &self,
-        container: Option<&str>,
-        context: &ProviderContext,
-    ) -> Result<()> {
-        self.docker_provider
-            .restart_with_context(container, context)
+    fn restart(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
+        self.docker_provider.restart(container, context)
     }
 
     fn provision(&self, container: Option<&str>) -> Result<()> {
         self.docker_provider.provision(container)
     }
 
-    fn list(&self) -> Result<()> {
-        self.docker_provider.list()
-    }
-
-    fn kill(&self, container: Option<&str>) -> Result<()> {
-        self.docker_provider.kill(container)
-    }
-
-    fn get_status_report(&self, container: Option<&str>) -> Result<VmStatusReport> {
+    fn status(&self, container: Option<&str>) -> Result<VmStatusReport> {
         // Get the report from docker provider and update the provider name
-        let mut report = self.docker_provider.get_status_report(container)?;
+        let mut report = self.docker_provider.status(container)?;
         report.provider = "podman".to_string();
         Ok(report)
     }

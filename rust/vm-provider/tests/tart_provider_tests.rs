@@ -4,7 +4,7 @@ use std::path::Path;
 use uuid::Uuid;
 use vm_config::config::{ProjectConfig, VmConfig};
 use vm_core::error::Result;
-use vm_provider::{tart::TartProvider, Provider};
+use vm_provider::{tart::TartProvider, Provider, ProviderContext};
 
 struct TestFixture {
     _vm_name: String,
@@ -33,7 +33,7 @@ impl TestFixture {
 impl Drop for TestFixture {
     fn drop(&mut self) {
         // Ensure the VM is destroyed after the test
-        let _ = self.provider.destroy(None);
+        let _ = self.provider.destroy(None, &ProviderContext::default());
     }
 }
 
@@ -42,7 +42,7 @@ impl Drop for TestFixture {
 fn test_tart_ssh_path_integration() -> Result<()> {
     // Setup
     let fixture = TestFixture::new()?;
-    fixture.provider.create()?;
+    fixture.provider.create(&ProviderContext::default())?;
 
     let workspace_path = fixture.provider.get_sync_directory();
     let test_dir_name = "test_dir";

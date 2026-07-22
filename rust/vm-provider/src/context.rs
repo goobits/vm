@@ -13,8 +13,6 @@ pub struct ProviderContext {
     pub verbose: bool,
     /// Global configuration settings
     pub global_config: Option<GlobalConfig>,
-    /// Skip Ansible provisioning (used for snapshot builds)
-    pub skip_provisioning: bool,
     /// Reuse existing service containers instead of failing
     pub preserve_services: bool,
     /// Using a pre-provisioned snapshot as base image
@@ -24,11 +22,6 @@ pub struct ProviderContext {
 }
 
 impl ProviderContext {
-    /// Create a new context with default settings
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Create a context with verbose output enabled
     pub fn with_verbose(verbose: bool) -> Self {
         Self {
@@ -40,12 +33,6 @@ impl ProviderContext {
     /// Set the global config for the context
     pub fn with_config(mut self, global_config: GlobalConfig) -> Self {
         self.global_config = Some(global_config);
-        self
-    }
-
-    /// Skip Ansible provisioning (for snapshot builds from Dockerfiles)
-    pub fn skip_provisioning(mut self) -> Self {
-        self.skip_provisioning = true;
         self
     }
 

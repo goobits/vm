@@ -11,7 +11,7 @@ use vm_messages::messages::MESSAGES;
 // Internal imports
 use crate::{MountParser, MountPermission, StateManager, TempVmState};
 use vm_config::config::VmConfig;
-use vm_provider::Provider;
+use vm_provider::{Provider, ProviderContext};
 
 /// Core temporary VM operations
 pub struct TempVmOps;
@@ -99,7 +99,10 @@ impl TempVmOps {
             info!("{}", MESSAGES.service.temp_vm_connecting);
             provider.ssh(Some(&temp_state.container_name), &PathBuf::from("."))?;
             info!("{}", MESSAGES.service.temp_vm_auto_destroying);
-            provider.destroy(Some(&temp_state.container_name))?;
+            provider.destroy(
+                Some(&temp_state.container_name),
+                &ProviderContext::default(),
+            )?;
             state_manager.delete_state()?;
         } else {
             info!("{}", MESSAGES.service.temp_vm_usage_hint);
@@ -197,7 +200,9 @@ impl TempVmOps {
         }
 
         // Check provider status
-        provider.status(Some(&state.container_name))
+        let report = provider.status(Some(&state.container_name))?;
+        info!("   Running: {}", report.is_running);
+        Ok(())
     }
 
     /// Destroy the temporary VM
@@ -219,7 +224,7 @@ impl TempVmOps {
 
         info!("{}", MESSAGES.service.temp_vm_destroying);
         let state = state_manager.load_state()?;
-        provider.destroy(Some(&state.container_name))?;
+        provider.destroy(Some(&state.container_name), &ProviderContext::default())?;
 
         state_manager.delete_state()?;
 
@@ -638,7 +643,7 @@ impl TempVmOps {
 
         info!("{}", MESSAGES.service.temp_vm_starting);
 
-        match provider.start(None) {
+        match provider.start(None, &ProviderContext::default()) {
             Ok(()) => {
                 info!("{}", MESSAGES.service.temp_vm_started_success);
 
@@ -689,7 +694,7 @@ impl TempVmOps {
         info!("{}", MESSAGES.service.temp_vm_stopping_step);
         info!("{}", MESSAGES.service.temp_vm_starting_step);
 
-        match provider.restart(None) {
+        match provider.restart(None, &ProviderContext::default()) {
             Ok(()) => {
                 info!("{}", MESSAGES.service.temp_vm_services_ready);
                 info!("{}", MESSAGES.service.temp_vm_restarted_success);

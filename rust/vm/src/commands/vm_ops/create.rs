@@ -191,7 +191,7 @@ pub async fn handle_create(
             "{}",
             msg!(MESSAGES.vm.create_force_recreating, name = &target_name)
         );
-        provider.destroy_with_context(
+        provider.destroy(
             instance.as_deref(),
             &ProviderContext::default().preserve_services(true),
         )?;
@@ -258,12 +258,12 @@ pub async fn handle_create(
     // Call the appropriate create method based on whether instance is specified
     let create_result = if let Some(instance_name) = &instance {
         if provider.supports_multi_instance() {
-            provider.create_instance_with_context(instance_name, &context)
+            provider.create_instance(instance_name, &context)
         } else {
-            provider.create_with_context(&context)
+            provider.create(&context)
         }
     } else {
-        provider.create_with_context(&context)
+        provider.create(&context)
     };
 
     match create_result {

@@ -272,54 +272,22 @@ pub trait Provider {
     fn name(&self) -> &'static str;
 
     /// Create a new VM instance.
-    /// This is the main provisioning step.
-    fn create(&self) -> Result<()> {
-        self.create_with_context(&ProviderContext::default())
-    }
-
-    /// Create a new VM instance with context.
-    fn create_with_context(&self, context: &ProviderContext) -> Result<()>;
+    fn create(&self, context: &ProviderContext) -> Result<()>;
 
     /// Create a new VM instance with a specific name.
     /// This allows creating multiple instances of the same project.
-    fn create_instance(&self, _instance_name: &str) -> Result<()> {
-        // Default implementation falls back to regular create()
-        // Providers can override this for true multi-instance support
-        self.create()
-    }
-
-    /// Create a new VM instance with a specific name and context.
-    fn create_instance_with_context(
-        &self,
-        instance_name: &str,
-        context: &ProviderContext,
-    ) -> Result<()> {
-        // Default implementation ignores context and calls old method for backward compatibility
-        let _ = context;
-        self.create_instance(instance_name)
+    fn create_instance(&self, _instance_name: &str, context: &ProviderContext) -> Result<()> {
+        self.create(context)
     }
 
     /// Start an existing, stopped VM.
-    fn start(&self, container: Option<&str>) -> Result<()>;
+    fn start(&self, container: Option<&str>, context: &ProviderContext) -> Result<()>;
 
     /// Stop a running VM without destroying it.
     fn stop(&self, container: Option<&str>) -> Result<()>;
 
     /// Destroy a VM, removing all associated resources.
-    fn destroy(&self, container: Option<&str>) -> Result<()> {
-        self.destroy_with_context(container, &ProviderContext::default())
-    }
-
-    /// Destroy a VM with context (e.g., preserve_services flag).
-    fn destroy_with_context(
-        &self,
-        container: Option<&str>,
-        context: &ProviderContext,
-    ) -> Result<()> {
-        // Default implementation ignores context for backward compatibility
-        let _ = context;
-        self.destroy(container)
-    }
+    fn destroy(&self, container: Option<&str>, context: &ProviderContext) -> Result<()>;
 
     /// Open an interactive shell (SSH) into the VM.
     fn ssh(&self, container: Option<&str>, relative_path: &Path) -> Result<()>;
@@ -353,47 +321,17 @@ pub trait Provider {
     /// * `container` - Optional container name for auto-detection
     fn copy(&self, source: &str, destination: &str, container: Option<&str>) -> Result<()>;
 
-    /// Get a list of host paths mounted into the container.
-    fn get_container_mounts(&self, _container_name: &str) -> Result<Vec<String>> {
-        // Default implementation returns an empty vec for providers that don't support it
-        Ok(Vec::new())
-    }
-
     /// Get the status of the VM.
-    fn status(&self, container: Option<&str>) -> Result<()>;
+    fn status(&self, container: Option<&str>) -> Result<VmStatusReport>;
 
     /// Restart a VM (stop then start).
-    fn restart(&self, container: Option<&str>) -> Result<()>;
-
-    /// Start a VM with context (allows global config updates).
-    /// This regenerates configuration files before starting.
-    fn start_with_context(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
-        // Default: fall back to regular start, ignore context
-        let _ = context;
-        self.start(container)
-    }
-
-    /// Restart a VM with context (allows global config updates).
-    /// This regenerates configuration files before restarting.
-    fn restart_with_context(
-        &self,
-        container: Option<&str>,
-        context: &ProviderContext,
-    ) -> Result<()> {
-        // Default: fall back to regular restart, ignore context
-        let _ = context;
-        self.restart(container)
+    fn restart(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
+        self.stop(container)?;
+        self.start(container, context)
     }
 
     /// Re-run provisioning on existing VM.
     fn provision(&self, container: Option<&str>) -> Result<()>;
-
-    /// List all VMs.
-    fn list(&self) -> Result<()>;
-
-    /// Force kill VM processes.
-    /// If container is provided, kill that specific container. Otherwise, kill the project's container.
-    fn kill(&self, container: Option<&str>) -> Result<()>;
 
     /// Get workspace directory.
     fn get_sync_directory(&self) -> String;
@@ -413,23 +351,12 @@ pub trait Provider {
         }
     }
 
-    /// List all instances managed by this provider
-    fn list_instances(&self) -> Result<Vec<InstanceInfo>> {
-        // Default implementation calls existing list() method and returns empty
-        self.list()?;
-        Ok(vec![])
-    }
+    /// List all instances managed by this provider.
+    fn list_instances(&self) -> Result<Vec<InstanceInfo>>;
 
     /// Check if this provider supports multiple instances
     fn supports_multi_instance(&self) -> bool {
         false // Default to single instance for backward compatibility
-    }
-
-    /// Get comprehensive status report for enhanced dashboard
-    fn get_status_report(&self, _container: Option<&str>) -> Result<VmStatusReport> {
-        Err(VmError::Provider(
-            "Enhanced status not supported by this provider".to_string(),
-        ))
     }
 
     /// Create a snapshot of the VM state

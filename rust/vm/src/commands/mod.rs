@@ -199,7 +199,7 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             let (provider, _config, _) =
                 load_provider_context(args.config, subject.profile, subject.provider_override)?;
             let report = provider
-                .get_status_report(subject.target.as_deref())
+                .status(subject.target.as_deref())
                 .map_err(VmError::from)?;
             vm_println!(
                 "{}\t{}\t{}",
@@ -327,7 +327,7 @@ async fn handle_run(intent: RunIntent) -> VmResult<()> {
     let target = run_target(&intent);
     let connect_hint = shell_hint(&intent);
 
-    let status = provider.get_status_report(target.as_deref());
+    let status = provider.status(target.as_deref());
     if status.as_ref().is_ok_and(|report| report.is_running) {
         vm_println!("✓ Environment is already running");
         vm_println!("  Connect with: {}", connect_hint);

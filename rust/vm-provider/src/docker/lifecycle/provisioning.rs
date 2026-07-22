@@ -304,26 +304,7 @@ impl<'a> LifecycleOperations<'a> {
 
     /// Internal provisioning with context
     pub(super) fn provision_container_with_context(&self, context: &ProviderContext) -> Result<()> {
-        // Skip provisioning if requested (e.g., for snapshot builds from Dockerfiles)
-        if context.skip_provisioning {
-            return Ok(());
-        }
-
-        let container_name = self.container_name();
-
-        // Step 6: Wait for readiness and run ansible (configuration only)
-        self.wait_for_container_ready(&container_name)?;
-
-        // Fix home directory ownership for snapshot-based containers (one-time, fast)
-        // This ensures tools like nvm, cargo work regardless of host UID
-        if context.is_snapshot {
-            let user_config = UserConfig::from_vm_config(self.config);
-            Self::fix_home_ownership(self.executable, &container_name, &user_config)?;
-        }
-
-        self.prepare_and_copy_config(&container_name)?;
-
-        Self::run_ansible_provisioning(self.executable, &container_name, context)
+        self.provision_container(None, context)
     }
 
     /// Provision container with custom instance name and context
@@ -332,18 +313,21 @@ impl<'a> LifecycleOperations<'a> {
         instance_name: &str,
         context: &ProviderContext,
     ) -> Result<()> {
-        // Skip provisioning if requested (e.g., for snapshot builds from Dockerfiles)
-        if context.skip_provisioning {
-            return Ok(());
-        }
+        self.provision_container(Some(instance_name), context)
+    }
 
-        let container_name = self.container_name_with_instance(instance_name);
+    fn provision_container(
+        &self,
+        instance_name: Option<&str>,
+        context: &ProviderContext,
+    ) -> Result<()> {
+        let container_name = instance_name.map_or_else(
+            || self.container_name(),
+            |name| self.container_name_with_instance(name),
+        );
 
-        // Step 6: Wait for readiness and run ansible (configuration only)
         self.wait_for_container_ready(&container_name)?;
 
-        // Fix home directory ownership for snapshot-based containers (one-time, fast)
-        // This ensures tools like nvm, cargo work regardless of host UID
         if context.is_snapshot {
             let user_config = UserConfig::from_vm_config(self.config);
             Self::fix_home_ownership(self.executable, &container_name, &user_config)?;

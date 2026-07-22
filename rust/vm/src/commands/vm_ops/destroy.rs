@@ -119,7 +119,9 @@ pub async fn handle_destroy(
         true
     } else {
         // Check status to show current state
-        let is_running = provider.status(container).is_ok();
+        let is_running = provider
+            .status(container)
+            .is_ok_and(|report| report.is_running);
 
         let service_manager_result = get_service_manager();
         let pg_service_check = if let Ok(sm) = service_manager_result {
@@ -213,7 +215,7 @@ pub async fn handle_destroy(
         // Build context with preserve_services flag
         let context = ProviderContext::default().preserve_services(preserve_services);
 
-        match provider.destroy_with_context(container, &context) {
+        match provider.destroy(container, &context) {
             Ok(()) => {
                 vm_println!("{}", MESSAGES.common.configuring_services);
                 unregister_vm_services_helper(&target_container, &global_config).await?;

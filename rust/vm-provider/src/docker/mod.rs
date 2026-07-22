@@ -207,42 +207,25 @@ impl Provider for DockerProvider {
         "docker"
     }
 
-    fn create(&self) -> Result<()> {
-        self.create_with_context(&ProviderContext::default())
-    }
-
-    fn create_with_context(&self, context: &ProviderContext) -> Result<()> {
+    fn create(&self, context: &ProviderContext) -> Result<()> {
         validate_docker_environment(&self.executable)?;
         preflight::check_system_resources()?;
 
         let lifecycle = self.lifecycle_ops();
-        lifecycle.create_container_with_context(context)
+        lifecycle.create_container(context)
     }
 
-    fn create_instance(&self, instance_name: &str) -> Result<()> {
-        self.create_instance_with_context(instance_name, &ProviderContext::default())
-    }
-
-    fn create_instance_with_context(
-        &self,
-        instance_name: &str,
-        context: &ProviderContext,
-    ) -> Result<()> {
+    fn create_instance(&self, instance_name: &str, context: &ProviderContext) -> Result<()> {
         validate_docker_environment(&self.executable)?;
         preflight::check_system_resources()?;
 
         let lifecycle = self.lifecycle_ops();
-        lifecycle.create_container_with_instance_and_context(instance_name, context)
+        lifecycle.create_container_with_instance(instance_name, context)
     }
 
-    fn start(&self, container: Option<&str>) -> Result<()> {
+    fn start(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
-        lifecycle.start_container(container)
-    }
-
-    fn start_with_context(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
-        let lifecycle = self.lifecycle_ops();
-        lifecycle.start_container_with_context(container, context)
+        lifecycle.start_container(container, context)
     }
 
     fn stop(&self, container: Option<&str>) -> Result<()> {
@@ -250,17 +233,9 @@ impl Provider for DockerProvider {
         lifecycle.stop_container(container)
     }
 
-    fn destroy(&self, container: Option<&str>) -> Result<()> {
-        self.destroy_with_context(container, &ProviderContext::default())
-    }
-
-    fn destroy_with_context(
-        &self,
-        container: Option<&str>,
-        context: &ProviderContext,
-    ) -> Result<()> {
+    fn destroy(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
-        lifecycle.destroy_container_with_context(container, context)
+        lifecycle.destroy_container(container, context)
     }
 
     fn ssh(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {
@@ -331,51 +306,9 @@ impl Provider for DockerProvider {
         )
     }
 
-    fn status(&self, container: Option<&str>) -> Result<()> {
-        // Legacy status method - just check if container exists
-        // The enhanced status is handled via get_status_report()
+    fn restart(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
-        let target_container = lifecycle.resolve_target_container(container)?;
-
-        let output = std::process::Command::new(&self.executable)
-            .args([
-                "inspect",
-                "--format",
-                "{{.State.Running}}",
-                &target_container,
-            ])
-            .output()
-            .map_err(|e| VmError::Internal(format!("Failed to check container status: {e}")))?;
-
-        if !output.status.success() {
-            return Err(VmError::Internal(format!(
-                "Container '{target_container}' not found"
-            )));
-        }
-
-        let is_running = String::from_utf8_lossy(&output.stdout).trim() == "true";
-
-        if !is_running {
-            return Err(VmError::Internal(format!(
-                "Container '{target_container}' is not running"
-            )));
-        }
-
-        Ok(())
-    }
-
-    fn restart(&self, container: Option<&str>) -> Result<()> {
-        let lifecycle = self.lifecycle_ops();
-        lifecycle.restart_container(container)
-    }
-
-    fn restart_with_context(
-        &self,
-        container: Option<&str>,
-        context: &ProviderContext,
-    ) -> Result<()> {
-        let lifecycle = self.lifecycle_ops();
-        lifecycle.restart_container_with_context(container, context)
+        lifecycle.restart_container(container, context)
     }
 
     fn provision(&self, container: Option<&str>) -> Result<()> {
@@ -385,29 +318,14 @@ impl Provider for DockerProvider {
         Ok(())
     }
 
-    fn list(&self) -> Result<()> {
+    fn status(&self, container: Option<&str>) -> Result<VmStatusReport> {
         let lifecycle = self.lifecycle_ops();
-        lifecycle.list_containers()
-    }
-
-    fn kill(&self, container: Option<&str>) -> Result<()> {
-        let lifecycle = self.lifecycle_ops();
-        lifecycle.kill_container(container)
-    }
-
-    fn get_status_report(&self, container: Option<&str>) -> Result<VmStatusReport> {
-        let lifecycle = self.lifecycle_ops();
-        lifecycle.get_status_report(container)
+        lifecycle.status_report(container)
     }
 
     fn get_sync_directory(&self) -> String {
         let lifecycle = self.lifecycle_ops();
         lifecycle.get_sync_directory()
-    }
-
-    fn get_container_mounts(&self, container_name: &str) -> Result<Vec<String>> {
-        let target_container = self.resolve_instance_name(Some(container_name))?;
-        DockerOps::get_container_mounts(Some(&self.executable), &target_container)
     }
 
     fn as_temp_provider(&self) -> Option<&dyn TempProvider> {
@@ -605,7 +523,7 @@ impl Provider for DockerProvider {
 
             if request.force {
                 tracing::info!("Removing current container '{}'", target_container);
-                let _ = lifecycle.destroy_container(None); // Best effort
+                let _ = lifecycle.destroy_container(None, &ProviderContext::default());
             }
         }
 
