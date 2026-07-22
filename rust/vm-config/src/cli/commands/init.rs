@@ -561,34 +561,22 @@ fn detect_and_recommend_services(project_dir: &std::path::Path) -> Result<Vec<St
 fn get_recommended_services(detected_types: &std::collections::HashSet<String>) -> Vec<String> {
     let mut services = Vec::new();
 
-    for tech in detected_types {
-        match tech.as_str() {
-            "nodejs" | "react" | "vue" | "next" | "angular" => {
-                if !services.contains(&"postgresql".to_string()) {
-                    services.push("postgresql".to_string());
-                }
-            }
-            "python" | "django" | "flask" => {
-                if !services.contains(&"postgresql".to_string()) {
-                    services.push("postgresql".to_string());
-                }
-                if !services.contains(&"redis".to_string()) {
-                    services.push("redis".to_string());
-                }
-            }
-            "rails" | "ruby" => {
-                if !services.contains(&"postgresql".to_string()) {
-                    services.push("postgresql".to_string());
-                }
-                if !services.contains(&"redis".to_string()) {
-                    services.push("redis".to_string());
-                }
-            }
-            "docker" if !services.contains(&"docker".to_string()) => {
-                services.push("docker".to_string());
-            }
-            _ => {}
-        }
+    let includes_any = |technologies: &[&str]| {
+        technologies
+            .iter()
+            .any(|technology| detected_types.contains(*technology))
+    };
+
+    if includes_any(&[
+        "nodejs", "react", "vue", "next", "angular", "python", "django", "flask", "rails", "ruby",
+    ]) {
+        services.push("postgresql".to_string());
+    }
+    if includes_any(&["python", "django", "flask", "rails", "ruby"]) {
+        services.push("redis".to_string());
+    }
+    if detected_types.contains("docker") {
+        services.push("docker".to_string());
     }
 
     services
