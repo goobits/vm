@@ -599,31 +599,23 @@ fn detect_and_recommend_services(project_dir: &std::path::Path) -> Result<Vec<St
 fn get_recommended_services(detected_types: &std::collections::HashSet<String>) -> Vec<String> {
     let mut services = Vec::new();
 
-    for tech in detected_types {
-        match tech.as_str() {
-            "nodejs" | "react" | "vue" | "next" | "angular" => {
-                push_unique_service(&mut services, "postgresql");
-            }
-            "python" | "django" | "flask" => {
-                push_unique_service(&mut services, "postgresql");
-                push_unique_service(&mut services, "redis");
-            }
-            "rails" | "ruby" => {
-                push_unique_service(&mut services, "postgresql");
-                push_unique_service(&mut services, "redis");
-            }
-            "docker" => {
-                push_unique_service(&mut services, "docker");
-            }
-            _ => {}
-        }
+    let includes_any = |technologies: &[&str]| {
+        technologies
+            .iter()
+            .any(|technology| detected_types.contains(*technology))
+    };
+
+    if includes_any(&[
+        "nodejs", "react", "vue", "next", "angular", "python", "django", "flask", "rails", "ruby",
+    ]) {
+        services.push("postgresql".to_string());
+    }
+    if includes_any(&["python", "django", "flask", "rails", "ruby"]) {
+        services.push("redis".to_string());
+    }
+    if detected_types.contains("docker") {
+        services.push("docker".to_string());
     }
 
     services
-}
-
-fn push_unique_service(services: &mut Vec<String>, service: &str) {
-    if !services.iter().any(|existing| existing == service) {
-        services.push(service.to_string());
-    }
 }
