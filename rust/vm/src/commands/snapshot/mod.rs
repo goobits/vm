@@ -5,10 +5,6 @@ use crate::error::VmResult;
 use std::path::PathBuf;
 use vm_config::AppConfig;
 
-// Re-export modules and types for internal use
-pub use vm_snapshot::manager;
-pub use vm_snapshot::metadata;
-
 pub async fn handle_snapshot(
     command: SnapshotSubcommand,
     config_path: Option<PathBuf>,

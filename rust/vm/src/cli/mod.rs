@@ -142,25 +142,15 @@ pub struct FleetTargetArgs {
     #[arg(long)]
     pub pattern: Option<String>,
     /// Only include running instances
-    #[arg(long)]
+    #[arg(long, conflicts_with = "stopped")]
     pub running: bool,
     /// Only include stopped instances
-    #[arg(long)]
+    #[arg(long, conflicts_with = "running")]
     pub stopped: bool,
 }
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum FleetSubcommand {
-    /// List instances across providers
-    List {
-        #[command(flatten)]
-        targets: FleetTargetArgs,
-    },
-    /// Show status for instances across providers
-    Status {
-        #[command(flatten)]
-        targets: FleetTargetArgs,
-    },
     /// Run a command across instances
     #[command(trailing_var_arg = true)]
     Exec {
@@ -579,28 +569,17 @@ pub enum Command {
         /// Show verbose provisioning output
         #[arg(long)]
         verbose: bool,
-        /// Save as a snapshot name (with --from-dockerfile)
-        #[arg(long)]
-        save_as: Option<String>,
-        /// Build from a Dockerfile (used with --save-as)
-        #[arg(long, value_name = "PATH")]
-        from_dockerfile: Option<PathBuf>,
         /// Reinstall packages even if already present
         #[arg(long)]
         refresh_packages: bool,
     },
-    /// Zero to code in one command (init → create → start → ssh)
-    #[command(about = "Get from zero to coding in one command")]
+    /// Start an existing environment
     Start {
-        /// Provider to use for this start only
-        #[arg(value_parser = ["docker", "podman", "tart"])]
-        provider: Option<String>,
-        /// Command to execute (if not provided, opens interactive shell)
-        #[arg(short = 'c', long)]
-        command: Option<String>,
-        /// Wait for services to be ready before continuing
+        /// Provider, container name, ID, or project name to start
+        container: Option<String>,
+        /// Do not wait for provider startup readiness
         #[arg(long)]
-        wait: bool,
+        no_wait: bool,
     },
     /// Set the default provider for this project
     Use {
@@ -645,12 +624,6 @@ pub enum Command {
         /// Do not create a backup before destroying
         #[arg(long)]
         no_backup: bool,
-        /// Destroy all instances across all providers
-        #[arg(long)]
-        all: bool,
-        /// Match pattern for instance names (e.g., "*-dev")
-        #[arg(long)]
-        pattern: Option<String>,
         /// Reuse existing service containers (postgres, redis, etc.) instead of creating new ones
         #[arg(long, default_value = "true")]
         preserve_services: bool,
@@ -667,6 +640,9 @@ pub enum Command {
         /// project on a specific provider.
         #[arg()]
         container: Option<String>,
+        /// Filters used when listing environments
+        #[command(flatten)]
+        targets: FleetTargetArgs,
     },
     /// Manage port tunnels to your environment
     Tunnel {
@@ -684,17 +660,6 @@ pub enum Command {
         /// Directory path to start shell in
         #[arg(long)]
         path: Option<PathBuf>,
-        /// Command to execute (if not provided, opens interactive shell)
-        #[arg(short = 'e', long = "command")]
-        command: Option<String>,
-
-        /// Force refresh mounts (disconnects other sessions)
-        #[arg(long)]
-        force_refresh: bool,
-
-        /// Skip automatic mount refresh detection
-        #[arg(long)]
-        no_refresh: bool,
     },
     /// Run a command in your environment
     Exec {
@@ -735,9 +700,6 @@ pub enum Command {
         source: String,
         /// Destination path (local file or <container>:/path)
         destination: String,
-        /// Copy to/from all running containers
-        #[arg(long)]
-        all_vms: bool,
     },
 
     /// Work with temporary environments
@@ -842,16 +804,11 @@ mod tests {
 
     #[test]
     fn test_start_command_parsing() {
-        let args = Args::parse_from(["vm", "start", "tart", "-c", "echo hi", "--wait"]);
+        let args = Args::parse_from(["vm", "start", "tart", "--no-wait"]);
         match args.command {
-            Command::Start {
-                provider,
-                command,
-                wait,
-            } => {
-                assert_eq!(provider, Some("tart".to_string()));
-                assert_eq!(command, Some("echo hi".to_string()));
-                assert!(wait);
+            Command::Start { container, no_wait } => {
+                assert_eq!(container, Some("tart".to_string()));
+                assert!(no_wait);
             }
             _ => panic!("Expected Command::Start"),
         }
@@ -1012,14 +969,43 @@ mod tests {
                 provider,
                 source,
                 destination,
-                all_vms,
             } => {
                 assert_eq!(provider, Some("docker".to_string()));
                 assert_eq!(source, "a.txt");
                 assert_eq!(destination, "/tmp/a.txt");
-                assert!(!all_vms);
             }
             _ => panic!("Expected Command::Copy"),
+        }
+    }
+
+    #[test]
+    fn test_removed_implicit_workflow_flags_are_rejected() {
+        assert!(Args::try_parse_from(["vm", "start", "-c", "echo hi"]).is_err());
+        assert!(Args::try_parse_from(["vm", "ssh", "--force-refresh"]).is_err());
+        assert!(Args::try_parse_from(["vm", "copy", "a", "b", "--all-vms"]).is_err());
+        assert!(Args::try_parse_from(["vm", "destroy", "--all"]).is_err());
+    }
+
+    #[test]
+    fn test_status_filters_parsing() {
+        let args = Args::parse_from([
+            "vm",
+            "status",
+            "--provider",
+            "docker",
+            "--pattern",
+            "api-*",
+            "--stopped",
+        ]);
+        match args.command {
+            Command::Status { container, targets } => {
+                assert_eq!(container, None);
+                assert_eq!(targets.provider.as_deref(), Some("docker"));
+                assert_eq!(targets.pattern.as_deref(), Some("api-*"));
+                assert!(targets.stopped);
+                assert!(!targets.running);
+            }
+            _ => panic!("Expected Command::Status"),
         }
     }
 

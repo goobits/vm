@@ -9,13 +9,10 @@ use crate::error::{VmError, VmResult};
 use vm_core::vm_println;
 use vm_provider::{get_provider, InstanceInfo, Provider};
 
-use super::list::render_instance_table;
-use super::targets::resolve_targets;
+use super::targets::{resolve_targets, InstanceStateFilter, TargetQuery};
 
 pub async fn handle_fleet_command(command: &FleetSubcommand, dry_run: bool) -> VmResult<()> {
     match command {
-        FleetSubcommand::List { targets } => handle_list(targets),
-        FleetSubcommand::Status { targets } => handle_status(targets),
         FleetSubcommand::Exec { targets, command } => handle_exec(targets, command, dry_run),
         FleetSubcommand::Copy {
             targets,
@@ -30,50 +27,27 @@ pub async fn handle_fleet_command(command: &FleetSubcommand, dry_run: bool) -> V
     }
 }
 
-fn handle_list(targets: &FleetTargetArgs) -> VmResult<()> {
-    let instances = resolve_targets(
-        targets.provider.as_deref(),
-        targets.pattern.as_deref(),
-        targets.running,
-        targets.stopped,
-    )?;
+fn query_for(targets: &FleetTargetArgs, default_state: InstanceStateFilter) -> TargetQuery<'_> {
+    let state = if targets.running {
+        InstanceStateFilter::Running
+    } else if targets.stopped {
+        InstanceStateFilter::Stopped
+    } else {
+        default_state
+    };
 
-    if instances.is_empty() {
-        vm_println!("No instances found");
-        return Ok(());
+    TargetQuery {
+        provider: targets.provider.as_deref(),
+        pattern: targets.pattern.as_deref(),
+        state,
     }
-
-    render_instance_table(instances);
-    Ok(())
-}
-
-fn handle_status(targets: &FleetTargetArgs) -> VmResult<()> {
-    let instances = resolve_targets(
-        targets.provider.as_deref(),
-        targets.pattern.as_deref(),
-        targets.running,
-        targets.stopped,
-    )?;
-
-    if instances.is_empty() {
-        vm_println!("No instances found");
-        return Ok(());
-    }
-
-    render_instance_table(instances);
-    Ok(())
 }
 
 fn handle_exec(targets: &FleetTargetArgs, command: &[String], dry_run: bool) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "fleet_exec");
     let _enter = span.enter();
 
-    let instances = resolve_targets(
-        targets.provider.as_deref(),
-        targets.pattern.as_deref(),
-        targets.running,
-        targets.stopped,
-    )?;
+    let instances = resolve_targets(query_for(targets, InstanceStateFilter::Running))?;
 
     if instances.is_empty() {
         vm_println!("No instances found");
@@ -96,7 +70,7 @@ fn handle_exec(targets: &FleetTargetArgs, command: &[String], dry_run: bool) -> 
     let mut success = 0;
     let mut failed = 0;
 
-    for (provider_name, provider_instances) in group_by_provider(instances)? {
+    for (provider_name, provider_instances) in group_by_provider(instances) {
         let provider = provider_for(&provider_name)?;
         for instance in provider_instances {
             debug!(
@@ -116,8 +90,7 @@ fn handle_exec(targets: &FleetTargetArgs, command: &[String], dry_run: bool) -> 
         }
     }
 
-    summary(success, failed);
-    Ok(())
+    summary(success, failed)
 }
 
 fn handle_copy(
@@ -129,12 +102,7 @@ fn handle_copy(
     let span = info_span!("vm_operation", operation = "fleet_copy");
     let _enter = span.enter();
 
-    let instances = resolve_targets(
-        targets.provider.as_deref(),
-        targets.pattern.as_deref(),
-        targets.running,
-        targets.stopped,
-    )?;
+    let instances = resolve_targets(query_for(targets, InstanceStateFilter::Running))?;
 
     if instances.is_empty() {
         vm_println!("No instances found");
@@ -157,7 +125,7 @@ fn handle_copy(
     let mut success = 0;
     let mut failed = 0;
 
-    for (provider_name, provider_instances) in group_by_provider(instances)? {
+    for (provider_name, provider_instances) in group_by_provider(instances) {
         let provider = provider_for(&provider_name)?;
         for instance in provider_instances {
             debug!(
@@ -177,8 +145,7 @@ fn handle_copy(
         }
     }
 
-    summary(success, failed);
-    Ok(())
+    summary(success, failed)
 }
 
 enum Action {
@@ -191,12 +158,11 @@ fn handle_start_stop(targets: &FleetTargetArgs, action: Action, dry_run: bool) -
     let span = info_span!("vm_operation", operation = "fleet_lifecycle");
     let _enter = span.enter();
 
-    let instances = resolve_targets(
-        targets.provider.as_deref(),
-        targets.pattern.as_deref(),
-        targets.running,
-        targets.stopped,
-    )?;
+    let default_state = match action {
+        Action::Start => InstanceStateFilter::Stopped,
+        Action::Stop | Action::Restart => InstanceStateFilter::Running,
+    };
+    let instances = resolve_targets(query_for(targets, default_state))?;
 
     if instances.is_empty() {
         vm_println!("No instances found");
@@ -224,7 +190,7 @@ fn handle_start_stop(targets: &FleetTargetArgs, action: Action, dry_run: bool) -
     let mut success = 0;
     let mut failed = 0;
 
-    for (provider_name, provider_instances) in group_by_provider(instances)? {
+    for (provider_name, provider_instances) in group_by_provider(instances) {
         let provider = provider_for(&provider_name)?;
         for instance in provider_instances {
             let result = match action {
@@ -246,8 +212,7 @@ fn handle_start_stop(targets: &FleetTargetArgs, action: Action, dry_run: bool) -
         }
     }
 
-    summary(success, failed);
-    Ok(())
+    summary(success, failed)
 }
 
 fn provider_for(provider_name: &str) -> VmResult<Box<dyn Provider>> {
@@ -260,9 +225,7 @@ fn provider_for(provider_name: &str) -> VmResult<Box<dyn Provider>> {
     get_provider(config).map_err(VmError::from)
 }
 
-fn group_by_provider(
-    instances: Vec<InstanceInfo>,
-) -> VmResult<BTreeMap<String, Vec<InstanceInfo>>> {
+fn group_by_provider(instances: Vec<InstanceInfo>) -> BTreeMap<String, Vec<InstanceInfo>> {
     let mut grouped: BTreeMap<String, Vec<InstanceInfo>> = BTreeMap::new();
     for instance in instances {
         grouped
@@ -270,14 +233,56 @@ fn group_by_provider(
             .or_default()
             .push(instance);
     }
-    Ok(grouped)
+    grouped
 }
 
-fn summary(success: usize, failed: usize) {
+fn summary(success: usize, failed: usize) -> VmResult<()> {
     let total = success + failed;
     if failed == 0 {
         vm_println!("\n✓ {} of {} succeeded", success, total);
     } else {
         vm_println!("\n✓ {} of {} succeeded, {} failed", success, total, failed);
+        return Err(VmError::general(
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "one or more fleet operations failed",
+            ),
+            format!("{failed} of {total} fleet operations failed"),
+        ));
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{query_for, InstanceStateFilter};
+    use crate::cli::FleetTargetArgs;
+
+    fn targets() -> FleetTargetArgs {
+        FleetTargetArgs {
+            provider: None,
+            pattern: None,
+            running: false,
+            stopped: false,
+        }
+    }
+
+    #[test]
+    fn query_uses_command_default_when_no_state_filter_is_supplied() {
+        let targets = targets();
+        let query = query_for(&targets, InstanceStateFilter::Running);
+
+        assert_eq!(query.state, InstanceStateFilter::Running);
+    }
+
+    #[test]
+    fn explicit_state_filter_overrides_command_default() {
+        let mut targets = targets();
+        targets.stopped = true;
+
+        let query = query_for(&targets, InstanceStateFilter::Running);
+
+        assert_eq!(query.state, InstanceStateFilter::Stopped);
     }
 }

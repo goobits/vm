@@ -5,7 +5,6 @@
 
 use tracing::debug;
 
-use super::list::handle_list_enhanced;
 use crate::error::VmResult;
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::vm_println;
@@ -18,10 +17,6 @@ pub fn handle_status(
     config: VmConfig,
     _global_config: GlobalConfig,
 ) -> VmResult<()> {
-    if container.is_none() {
-        return handle_list_enhanced(None);
-    }
-
     // Get VM name from config
     let vm_name = config
         .project

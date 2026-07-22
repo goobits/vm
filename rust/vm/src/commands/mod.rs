@@ -4,7 +4,7 @@ use crate::error::{VmError, VmResult};
 use tracing::debug;
 // Import the CLI types
 use crate::cli::{Args, Command, PluginSubcommand, TunnelSubcommand};
-use vm_config::{config::BoxSpec, AppConfig, ConfigOps};
+use vm_config::{AppConfig, ConfigOps};
 use vm_core::msg;
 use vm_core::{vm_error, vm_println};
 use vm_messages::messages::MESSAGES;
@@ -24,13 +24,11 @@ pub mod clean;
 pub mod config;
 pub mod db;
 pub mod doctor;
-pub mod init;
 pub mod plugin;
 pub mod plugin_new;
 pub mod registry;
 pub mod secrets;
 pub mod snapshot;
-pub mod start;
 pub mod temp;
 pub mod tunnel;
 pub mod uninstall;
@@ -53,21 +51,6 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
                 clean::handle_clean(false, false).await?;
             }
             doctor::run_with_fix(*fix).map_err(VmError::from)
-        }
-        Command::Start {
-            provider,
-            command,
-            wait,
-        } => {
-            debug!("Handling start command");
-            start::handle_start(
-                args.config.clone(),
-                command.clone(),
-                args.profile.clone(),
-                provider.clone(),
-                *wait,
-            )
-            .await
         }
         Command::Use { provider } => {
             debug!("Handling use command");
@@ -170,7 +153,10 @@ fn handle_use_provider(provider: &str) -> VmResult<()> {
 
 async fn handle_dry_run(args: &Args) -> VmResult<()> {
     match &args.command {
-        Command::Create { .. } | Command::Stop { .. } | Command::Destroy { .. } => {
+        Command::Create { .. }
+        | Command::Start { .. }
+        | Command::Stop { .. }
+        | Command::Destroy { .. } => {
             vm_println!("{}", MESSAGES.vm.dry_run_header);
             vm_println!(
                 "{}",
@@ -191,9 +177,7 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
             vm_println!("{}", MESSAGES.vm.dry_run_complete);
             Ok(())
         }
-        Command::Ssh {
-            container, command, ..
-        } => {
+        Command::Ssh { container, .. } => {
             let app_config = AppConfig::load(args.config.clone(), args.profile.clone(), None)?;
             let project_name = app_config
                 .vm
@@ -201,11 +185,7 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
                 .and_then(|p| p.name)
                 .unwrap_or_default();
             let target = container.as_deref().unwrap_or(&project_name);
-            if let Some(cmd) = command {
-                vm_println!("Dry run: Would execute command `{}` on {}", cmd, target);
-            } else {
-                vm_println!("Dry run: Would connect to {}", target);
-            }
+            vm_println!("Dry run: Would connect to {}", target);
             Ok(())
         }
         Command::Exec {
@@ -239,8 +219,17 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
 }
 
 async fn handle_provider_command(args: Args) -> VmResult<()> {
-    if matches!(args.command, Command::Status { container: None }) {
-        return vm_ops::handle_list_enhanced(None);
+    if let Command::Status {
+        container: None,
+        targets,
+    } = &args.command
+    {
+        return vm_ops::handle_list_enhanced(
+            targets.provider.as_deref(),
+            targets.pattern.as_deref(),
+            targets.running,
+            targets.stopped,
+        );
     }
 
     let provider_override = provider_override_from_command(&args.command);
@@ -269,50 +258,8 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
         }
     };
     // Extract VM config and global config
-    let mut config = app_config.vm;
+    let config = app_config.vm;
     let global_config = app_config.global;
-
-    if let Command::Create {
-        provider: _,
-        from_dockerfile,
-        save_as,
-        ..
-    } = &args.command
-    {
-        if let Some(dockerfile_path) = from_dockerfile {
-            if matches!(config.provider.as_deref(), Some("tart")) {
-                return Err(VmError::validation(
-                    "Dockerfile builds are not supported for the Tart provider.".to_string(),
-                    None::<String>,
-                ));
-            }
-
-            let mut vm_settings = config.vm.take().unwrap_or_default();
-            vm_settings.r#box = Some(BoxSpec::String(
-                dockerfile_path.to_string_lossy().to_string(),
-            ));
-            config.vm = Some(vm_settings);
-        }
-
-        if save_as.is_some() && from_dockerfile.is_some() {
-            let raw_name = save_as
-                .as_deref()
-                .unwrap_or("snapshot")
-                .trim_start_matches('@');
-            let mut safe_name: String = raw_name
-                .chars()
-                .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
-                .collect();
-            safe_name = safe_name.trim_matches('-').to_string();
-            if safe_name.is_empty() {
-                safe_name = "snapshot".to_string();
-            }
-
-            let mut project = config.project.take().unwrap_or_default();
-            project.name = Some(format!("snapshot-{}", safe_name));
-            config.project = Some(project);
-        }
-    }
 
     debug!(
         "Loaded configuration: provider={:?}, project_name={:?}",
@@ -351,8 +298,6 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             force,
             instance,
             verbose,
-            save_as,
-            from_dockerfile,
             refresh_packages,
         } => {
             vm_ops::handle_create(
@@ -362,10 +307,18 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
                 force,
                 instance,
                 verbose,
-                save_as,
-                from_dockerfile,
-                true,
                 refresh_packages,
+            )
+            .await
+        }
+        Command::Start { container, no_wait } => {
+            let container = instance_arg(container);
+            vm_ops::handle_start(
+                provider,
+                container.as_deref(),
+                config,
+                global_config.clone(),
+                no_wait,
             )
             .await
         }
@@ -395,50 +348,30 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
             container,
             force,
             no_backup,
-            all,
-            pattern,
             preserve_services,
             remove_services,
         } => {
-            let provider_filter = container
-                .as_deref()
-                .filter(|value| is_provider_selector(value))
-                .map(ToString::to_string);
             let container = instance_arg(container);
             let effective_preserve_services = preserve_services && !remove_services;
-            vm_ops::handle_destroy_enhanced(
+            vm_ops::handle_destroy(
                 provider,
                 container.as_deref(),
                 config,
                 global_config.clone(),
-                &force,
-                &no_backup,
-                &all,
-                provider_filter.as_deref(),
-                pattern.as_deref(),
+                force,
+                no_backup,
                 effective_preserve_services,
             )
             .await
         }
-        Command::Ssh {
-            container,
-            path,
-            command,
-            force_refresh,
-            no_refresh,
-        } => {
+        Command::Ssh { container, path } => {
             let container = instance_arg(container);
-            vm_ops::handle_ssh(
-                provider,
-                container.as_deref(),
-                path,
-                command.map(|c| vec!["/bin/bash".to_string(), "-c".to_string(), c]),
-                config,
-                force_refresh,
-                no_refresh,
-            )
+            vm_ops::handle_ssh(provider, container.as_deref(), path, config)
         }
-        Command::Status { container } => {
+        Command::Status {
+            container,
+            targets: _,
+        } => {
             let container = instance_arg(container);
             vm_ops::handle_status(
                 provider,
@@ -496,9 +429,8 @@ async fn handle_provider_command(args: Args) -> VmResult<()> {
         Command::Copy {
             source,
             destination,
-            all_vms,
             ..
-        } => vm_ops::handle_copy(provider, &source, &destination, all_vms, config.clone()),
+        } => vm_ops::handle_copy(provider, &source, &destination, config.clone()),
         cmd => {
             vm_error!(
                 "Command {:?} should have been handled in earlier match statement",
@@ -521,20 +453,16 @@ fn is_provider_selector(value: &str) -> bool {
 fn provider_override_from_command(command: &Command) -> Option<String> {
     match command {
         Command::Create { provider, .. } => provider.clone(),
-        Command::Stop { container }
+        Command::Start { container, .. }
+        | Command::Stop { container }
         | Command::Ssh { container, .. }
-        | Command::Status { container }
+        | Command::Status { container, .. }
         | Command::Logs { container, .. } => container
             .as_deref()
             .filter(|value| is_provider_selector(value))
             .map(ToString::to_string),
         Command::Exec { provider, .. } | Command::Copy { provider, .. } => provider.clone(),
-        Command::Destroy {
-            container,
-            all,
-            pattern,
-            ..
-        } if !all && pattern.is_none() => container
+        Command::Destroy { container, .. } => container
             .as_deref()
             .filter(|value| is_provider_selector(value))
             .map(ToString::to_string),
