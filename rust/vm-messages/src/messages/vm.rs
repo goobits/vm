@@ -32,7 +32,6 @@ pub struct VmMessages {
     pub destroy_confirm: &'static str,
     pub destroy_confirm_prompt: &'static str,
     pub destroy_force: &'static str,
-    pub destroy_info_block: &'static str,
     pub destroy_progress: &'static str,
     pub destroy_success: &'static str,
 
@@ -300,12 +299,11 @@ pub const VM_MESSAGES: VmMessages = VmMessages {
 
     // VM Destroy
     destroy_cancelled: "\n❌ Removal cancelled",
-    destroy_cleanup_already_removed: "✅ Container already removed, cleaning up remaining resources...\n\n  ✓ Cleaning images\n\n🔧 Cleaning up services...",
+    destroy_cleanup_already_removed: "✅ Container already removed\n\n🔧 Cleaning up service registration...",
     destroy_confirm: "🗑️ Remove VM '{name}'?\n",
     destroy_confirm_prompt: "Confirm removal? (y/N): ",
     destroy_force: "🗑️ Removing '{name}' (forced)\n",
-    destroy_info_block: "  Status:     {status}\n  Container:  {container}\n\n⚠️  This will permanently delete:\n  • Container and all data\n  • Docker image and build cache\n",
-    destroy_progress: "\n  ✓ Stopping container\n  ✓ Removing container\n  ✓ Cleaning images",
+    destroy_progress: "\n  ✓ Stopping container\n  ✓ Removing container",
     destroy_success: "\n✅ VM removed",
 
     // VM Start

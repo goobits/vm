@@ -166,7 +166,6 @@ Plugin-backed commands are flat at the top level:
 ```bash
 vm db ls
 vm db backup <database>
-vm fleet ls [--provider <provider>] [--pattern <glob>]
 vm fleet exec [--provider <provider>] -- <command>
 vm secret add <name> <value>
 vm secret ls

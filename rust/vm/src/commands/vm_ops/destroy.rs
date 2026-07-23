@@ -19,8 +19,7 @@ use super::helpers::unregister_vm_services_helper;
 
 /// Back up database services configured with `backup_on_destroy`.
 ///
-/// Destruction must not begin until every requested backup succeeds. Callers can
-/// explicitly bypass this gate with `--no-backup`.
+/// Destruction must not begin until every requested backup succeeds.
 async fn backup_databases(
     config: &VmConfig,
     vm_name: &str,
@@ -58,8 +57,6 @@ pub async fn handle_destroy(
     config: VmConfig,
     global_config: GlobalConfig,
     force: bool,
-    no_backup: bool,
-    preserve_services: bool,
 ) -> VmResult<()> {
     // Get VM name from config for confirmation prompt
     let vm_name = config
@@ -98,21 +95,13 @@ pub async fn handle_destroy(
 
     if !container_exists {
         vm_println!("{}", MESSAGES.vm.destroy_cleanup_already_removed);
-
-        // Clean up Docker/Podman images even if the container is already gone.
-        if let Some(executable) = container_runtime(provider.as_ref()) {
-            let _ = std::process::Command::new(executable)
-                .args(["image", "rm", "-f", &format!("{vm_name}-image")])
-                .output();
-        }
-
         unregister_vm_services_helper(&target_container, &global_config).await?;
 
         vm_println!("{}", MESSAGES.common.cleanup_complete);
         return Ok(());
     }
 
-    let mut preserve_services = preserve_services;
+    let mut preserve_services = true;
     let should_destroy = if force {
         debug!("Force flag set - skipping confirmation prompt");
         vm_println!("{}", msg!(MESSAGES.vm.destroy_force, name = vm_name));
@@ -147,8 +136,7 @@ pub async fn handle_destroy(
 
             vm_println!("⚠️  Destroying VM '{}'", vm_name);
             vm_println!();
-            vm_println!("📊 Database: Your PostgreSQL data will persist");
-            vm_println!("   Location: ~/.vm/data/postgres");
+            vm_println!("📊 Database: Managed PostgreSQL storage will persist");
             vm_println!("   Database: {} ({})", db_name, db_size);
             vm_println!();
             vm_println!("💡 Tip: Create a backup first");
@@ -179,12 +167,10 @@ pub async fn handle_destroy(
             "Destroy and remove services",
             "Cancel",
         ];
-        let default_idx = if preserve_services { 0 } else { 1 };
-
         let selection = Select::with_theme(&ColorfulTheme::default())
             .with_prompt("Choose an option")
             .items(options)
-            .default(default_idx)
+            .default(0)
             .interact()
             .map_err(|e| VmError::general(e, "Failed to read user selection"))?;
 
@@ -205,10 +191,7 @@ pub async fn handle_destroy(
     if should_destroy {
         debug!("Destroy confirmation: response='yes', proceeding with destruction");
 
-        if !no_backup {
-            vm_println!("🔄 Creating configured database backups...");
-            backup_databases(&config, vm_name, &global_config).await?;
-        }
+        backup_databases(&config, vm_name, &global_config).await?;
 
         vm_println!("{}", MESSAGES.vm.destroy_progress);
 
@@ -242,14 +225,6 @@ pub async fn handle_destroy(
     }
 }
 
-fn container_runtime(provider: &dyn Provider) -> Option<&str> {
-    match provider.name() {
-        "docker" => Some("docker"),
-        "podman" => Some("podman"),
-        _ => None,
-    }
-}
-
 fn provider_display_name(provider: &dyn Provider) -> &'static str {
     match provider.name() {
         "docker" => "Docker",
@@ -269,7 +244,9 @@ fn provider_resource_label(provider: &dyn Provider) -> &'static str {
 
 fn provider_destroyed_items(provider: &dyn Provider) -> &'static str {
     match provider.name() {
-        "docker" | "podman" => "  • Container and all data\n  • Docker image and build cache",
+        "docker" | "podman" => {
+            "  • Container and its writable layer\n\n  Managed named volumes are preserved."
+        }
         "tart" => "  • Tart VM and all data",
         _ => "  • Provider resource and all data",
     }

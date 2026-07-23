@@ -850,7 +850,7 @@ services:
             ..Default::default()
         });
 
-        let context_without_registry = ProviderContext::with_verbose(false);
+        let context_without_registry = ProviderContext::default();
         let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir, "docker");
         let build_context = temp_path.join("build_context");
         std::fs::create_dir_all(&build_context).unwrap();
@@ -866,7 +866,7 @@ services:
         let mut global_config = GlobalConfig::default();
         global_config.services.package_registry.enabled = true;
         global_config.services.package_registry.port = 3080;
-        let context_with_registry = ProviderContext::with_verbose(false).with_config(global_config);
+        let context_with_registry = ProviderContext::default().with_config(global_config);
         compose_ops
             .write_docker_compose(&build_context, &context_with_registry)
             .unwrap();

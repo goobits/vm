@@ -94,8 +94,6 @@ pub async fn handle_create(
     global_config: GlobalConfig,
     force: bool,
     instance: Option<String>,
-    verbose: bool,
-    refresh_packages: bool,
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "create");
     let _enter = span.enter();
@@ -246,10 +244,9 @@ pub async fn handle_create(
         register_vm_services_helper(&target_name, &config, &global_config).await?;
     }
 
-    let context = ProviderContext::with_verbose(verbose)
+    let context = ProviderContext::default()
         .with_config(global_config.clone())
-        .preserve_services(true)
-        .refresh_packages(refresh_packages);
+        .preserve_services(true);
 
     // Call the appropriate create method based on whether instance is specified
     let create_result = if let Some(instance_name) = &instance {

@@ -9,27 +9,15 @@ use vm_config::GlobalConfig;
 /// Runtime context for provider operations
 #[derive(Debug, Clone, Default)]
 pub struct ProviderContext {
-    /// Show detailed/verbose output
-    pub verbose: bool,
     /// Global configuration settings
     pub global_config: Option<GlobalConfig>,
     /// Reuse existing service containers instead of failing
     pub preserve_services: bool,
     /// Using a pre-provisioned snapshot as base image
     pub is_snapshot: bool,
-    /// Force refresh of all packages (bypasses cache for security updates)
-    pub refresh_packages: bool,
 }
 
 impl ProviderContext {
-    /// Create a context with verbose output enabled
-    pub fn with_verbose(verbose: bool) -> Self {
-        Self {
-            verbose,
-            ..Default::default()
-        }
-    }
-
     /// Set the global config for the context
     pub fn with_config(mut self, global_config: GlobalConfig) -> Self {
         self.global_config = Some(global_config);
@@ -48,15 +36,9 @@ impl ProviderContext {
         self
     }
 
-    /// Set whether to force refresh all packages (bypasses cache)
-    pub fn refresh_packages(mut self, refresh: bool) -> Self {
-        self.refresh_packages = refresh;
-        self
-    }
-
-    /// Check if verbose mode is enabled (CLI flag or environment variable)
+    /// Check if verbose mode is enabled through the process environment.
     pub fn is_verbose(&self) -> bool {
-        self.verbose || env::var("VM_VERBOSE").is_ok() || env::var("VM_DEBUG").is_ok()
+        env::var("VM_VERBOSE").is_ok() || env::var("VM_DEBUG").is_ok()
     }
 
     /// Get the Ansible verbosity flag based on context

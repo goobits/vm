@@ -186,13 +186,8 @@ impl<'a> LifecycleOperations<'a> {
         // Enable timing instrumentation if ANSIBLE_PROFILE is set
         let enable_profiling = std::env::var("ANSIBLE_PROFILE").is_ok();
 
-        // Pass snapshot status and refresh flag to Ansible
-        // - base_preprovisioned: skip redundant base system tasks for snapshots
-        // - refresh_packages: force apt-get update and bypass installed package checks
-        let extra_vars = format!(
-            "--extra-vars 'base_preprovisioned={} refresh_packages={}'",
-            context.is_snapshot, context.refresh_packages
-        );
+        // Snapshots skip base system tasks but still run layered provisioning.
+        let extra_vars = format!("--extra-vars 'base_preprovisioned={}'", context.is_snapshot);
 
         let ansible_cmd = if enable_profiling {
             format!(

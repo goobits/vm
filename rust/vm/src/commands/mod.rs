@@ -81,16 +81,7 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             let subject = resolve_environment(args.config.clone(), args.profile, environment)?;
             let (provider, config, global_config) =
                 load_provider_context(args.config, subject.profile, subject.provider_override)?;
-            vm_ops::handle_create(
-                provider,
-                config,
-                global_config,
-                force,
-                subject.target,
-                false,
-                false,
-            )
-            .await
+            vm_ops::handle_create(provider, config, global_config, force, subject.target).await
         }
         Command::Start {
             environment,
@@ -225,8 +216,6 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
                 config,
                 global_config,
                 force,
-                false,
-                true,
             )
             .await
         }

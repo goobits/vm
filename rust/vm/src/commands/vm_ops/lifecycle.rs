@@ -62,7 +62,7 @@ pub async fn handle_start(
 
     vm_println!("{}", msg!(MESSAGES.vm.start_header, name = vm_name));
 
-    let context = ProviderContext::with_verbose(false).with_config(global_config.clone());
+    let context = ProviderContext::default().with_config(global_config.clone());
     match provider.start(container, &context) {
         Ok(()) => {
             if provider.name() == "tart" && !no_wait {
@@ -241,7 +241,7 @@ pub async fn handle_restart(
 
     vm_println!("{}", msg!(MESSAGES.vm.restart_header, name = display_name));
 
-    let context = ProviderContext::with_verbose(false).with_config(global_config.clone());
+    let context = ProviderContext::default().with_config(global_config.clone());
     let status = provider.status(container).ok();
     let result = if status.as_ref().is_some_and(|report| report.is_running) {
         provider.restart(container, &context)

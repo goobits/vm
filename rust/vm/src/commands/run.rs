@@ -73,16 +73,7 @@ pub(super) async fn handle(intent: RunIntent) -> VmResult<()> {
         )
         .await
     } else {
-        vm_ops::handle_create(
-            provider,
-            config,
-            app_config.global,
-            false,
-            target,
-            false,
-            false,
-        )
-        .await
+        vm_ops::handle_create(provider, config, app_config.global, false, target).await
     };
 
     if result.is_ok() {

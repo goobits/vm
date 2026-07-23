@@ -61,7 +61,7 @@ impl<'a> LifecycleOperations<'a> {
 
         // Optionally remove service containers based on context
         if !context.preserve_services {
-            info!("Removing service containers (--preserve-services=false)");
+            info!("Removing service containers");
             let compose_ops = ComposeOperations::new(
                 self.config,
                 self.generated_dir,
@@ -87,7 +87,7 @@ impl<'a> LifecycleOperations<'a> {
                 }
             }
         } else {
-            info!("Preserving service containers (--preserve-services=true)");
+            info!("Preserving service containers");
         }
 
         // Only cleanup audio if it was enabled in the configuration

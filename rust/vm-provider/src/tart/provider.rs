@@ -12,7 +12,7 @@ use duct::cmd;
 use serde::Deserialize;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use tracing::{error, info, warn};
 use vm_cli::msg;
 use vm_config::config::{BoxSpec, VmConfig};
@@ -86,10 +86,6 @@ impl TartProvider {
 
     pub(super) fn tart_expr<A: AsRef<OsStr>>(&self, args: &[A]) -> duct::Expression {
         self.tart().expr(args)
-    }
-
-    fn tart_command(&self) -> Command {
-        self.tart().command()
     }
 
     pub(super) fn tart(&self) -> TartCommand {

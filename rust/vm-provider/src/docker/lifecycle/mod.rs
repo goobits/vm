@@ -1,6 +1,8 @@
 //! Docker container lifecycle management operations.
 
 // Module declarations in dependency order
+mod configuration;
+mod conflicts;
 pub mod creation;
 mod diagnostics;
 pub mod execution;

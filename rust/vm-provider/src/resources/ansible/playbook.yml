@@ -20,9 +20,6 @@
       # Snapshot mode - skip base system tasks when using pre-provisioned snapshot
       # This variable is passed via --extra-vars from vm tool
       base_preprovisioned: "{{ base_preprovisioned | default(false) | bool }}"
-      # Force package refresh - bypass cache and reinstall packages (for security updates)
-      # This variable is passed via --extra-vars from vm tool (--refresh-packages flag)
-      refresh_packages: "{{ refresh_packages | default(false) | bool }}"
 
   # Load and process configuration
   pre_tasks:
@@ -520,12 +517,10 @@
         become_user: root
 
       # Layered provisioning: works for both fresh builds and snapshots.
-      # When refresh_packages is true, upgrade configured packages to the latest available version.
       - name: Install additional APT packages
         apt:
             name: "{{ project_config.apt_packages | default([]) }}"
-            state: "{{ 'latest' if refresh_packages else 'present' }}"
-            update_cache: "{{ refresh_packages }}"
+            state: present
         when: apt_packages_required
         register: apt_packages_install
         retries: 3

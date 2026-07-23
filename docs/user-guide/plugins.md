@@ -15,7 +15,7 @@ Plugin-backed commands stay flat when available:
 
 ```bash
 vm db ls
-vm fleet ls
+vm fleet exec -- npm test
 vm secret add API_KEY value
 ```
 
